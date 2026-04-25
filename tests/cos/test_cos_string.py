@@ -55,7 +55,7 @@ def test_get_string_utf16_le_bom() -> None:
 
 
 def test_get_string_utf8_bom_pdf_2_0() -> None:
-    raw = b"\xef\xbb\xbf" + "naïve".encode()
+    raw = b"\xef\xbb\xbf" + "naïve".encode("utf-8")
     assert COSString(raw).get_string() == "naïve"
 
 
