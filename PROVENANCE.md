@@ -57,7 +57,15 @@ PDF-specific code, not stdlib-adapter territory. Ports the PDFBox COS object mod
 | `pypdfbox/cos/cos_document.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/COSDocument.java` |
 
 ### `pypdfbox/pdfparser/`
-_(not started)_
+
+PDF-specific parsing — port territory.
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization subset only) |
+
+Original work (no PROVENANCE entry needed; listed here for clarity):
+- `pypdfbox/pdfparser/parse_error.py` — Python-native exception type with optional byte offset.
 
 ### `pypdfbox/pdfwriter/`
 _(not started)_
