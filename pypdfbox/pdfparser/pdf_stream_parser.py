@@ -1,0 +1,441 @@
+from __future__ import annotations
+
+from collections.abc import Iterator
+from typing import ClassVar
+
+from pypdfbox.cos import (
+    COSBase,
+    COSBoolean,
+    COSDictionary,
+    COSName,
+    COSNull,
+    COSNumber,
+)
+from pypdfbox.io import RandomAccessRead
+
+from .cos_parser import COSParser
+from .parse_error import PDFParseError
+
+
+class Operator:
+    """Content-stream operator token.
+
+    Mirrors ``org.apache.pdfbox.contentstream.operator.Operator`` for the
+    subset needed by the tokenizer. The contentstream module (§6.7) will
+    augment this with operator-name constants and a singleton pool; for
+    now it's a small value type holding the keyword and, for the inline-
+    image data operator (``ID``), the raw image bytes captured between
+    ``ID`` and ``EI``.
+
+    Two operators carry parameters out of band:
+    - ``ID`` — ``image_data`` is the raw byte payload between ``ID`` and ``EI``.
+    - ``BI`` — ``image_parameters`` is the inline-image parameter dictionary.
+    """
+
+    __slots__ = ("_name", "image_data", "image_parameters")
+
+    def __init__(
+        self,
+        name: str,
+        image_data: bytes | None = None,
+        image_parameters: COSDictionary | None = None,
+    ) -> None:
+        self._name = name
+        self.image_data = image_data
+        self.image_parameters = image_parameters
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def get_name(self) -> str:
+        return self._name
+
+    def get_image_data(self) -> bytes | None:
+        return self.image_data
+
+    def set_image_data(self, data: bytes) -> None:
+        self.image_data = data
+
+    def get_image_parameters(self) -> COSDictionary | None:
+        return self.image_parameters
+
+    def set_image_parameters(self, params: COSDictionary) -> None:
+        self.image_parameters = params
+
+    def __repr__(self) -> str:
+        return f"Operator({self._name!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Operator):
+            return NotImplemented
+        return (
+            self._name == other._name
+            and self.image_data == other.image_data
+        )
+
+    def __hash__(self) -> int:
+        return hash(("Operator", self._name))
+
+
+# Operator name constants (subset).
+_OP_BEGIN_INLINE_IMAGE = "BI"
+_OP_BEGIN_INLINE_IMAGE_DATA = "ID"
+_OP_END_INLINE_IMAGE = "EI"
+
+
+class PDFStreamParser(COSParser):
+    """
+    Tokenize a content stream into a sequence of operands and operators
+    per ISO 32000-1 §7.8 / §9 / §10. Mirrors
+    ``org.apache.pdfbox.pdfparser.PDFStreamParser``.
+
+    A content stream is conceptually a series of ``<operands...> <operator>``
+    tuples. Operands are direct COS objects (numbers, names, strings,
+    arrays, dicts, booleans, nulls); operators are alphabetic keywords
+    like ``q``, ``Q``, ``BT``, ``Tf``, ``Tj``, ``re``, ``cm``, etc., not
+    prefixed with ``/``. A few operators include the apostrophe (``'``)
+    and quotation mark (``"``) — text-show variants from §9.4.3.
+
+    Inline images (§8.9.7) are handled inline: ``BI`` opens the parameter
+    dictionary, ``ID`` introduces the raw image bytes, ``EI`` closes the
+    segment. The raw bytes between ``ID`` and ``EI`` are NOT parsed as
+    PDF tokens — they're captured wholesale and attached as
+    ``image_data`` on the ``ID`` operator (matching upstream PDFBox,
+    which returns the begin-image-data operator carrying the bytes).
+    """
+
+    # Maximum scan window used to disambiguate a real ``EI`` from an
+    # ``EI`` byte pair embedded in image data — mirrors PDFBox's
+    # ``MAX_BIN_CHAR_TEST_LENGTH = 10``.
+    MAX_BIN_CHAR_TEST_LENGTH: ClassVar[int] = 10
+
+    # Whitespace bytes recognised as a separator immediately following a
+    # candidate ``EI`` — matches PDFBox's ``isSpaceOrReturn`` (LF, CR, SP).
+    _EI_SEP: ClassVar[frozenset[int]] = frozenset({0x0A, 0x0D, 0x20})
+
+    def __init__(self, source: RandomAccessRead) -> None:
+        super().__init__(source, document=None)
+        self._inline_image_depth = 0
+        self._inline_offset = 0
+
+    # ---------- public API ----------
+
+    def parse_next_token(self) -> COSBase | Operator | None:
+        """Return the next operand or operator. ``None`` at EOF."""
+        self.skip_whitespace()
+        if self.is_eof():
+            return None
+        b = self.peek_byte()
+        if b == RandomAccessRead.EOF:
+            return None
+
+        # Dispatch on the first byte. Operands are handled via COSParser;
+        # operators are picked up by the default branch.
+        if b == 0x3C:  # '<' — '<<' (dict) or '<...>' (hex string)
+            second = self._peek_two_bytes()[1]
+            if second == 0x3C:
+                return self.parse_cos_dictionary()
+            return self._read_cos_hex_string()
+        if b == 0x5B:  # '[' — array
+            return self.parse_cos_array()
+        if b == 0x28:  # '(' — literal string
+            return self._read_cos_literal_string()
+        if b == 0x2F:  # '/' — name
+            return COSName.get_pdf_name(self.read_name())
+        if b == 0x6E:  # 'n' — possibly 'null' or an operator starting with 'n'
+            return self._parse_n_keyword()
+        if b in (0x74, 0x66):  # 't' / 'f' — true / false / operator
+            return self._parse_tf_keyword()
+        if b in (0x2B, 0x2D, 0x2E) or self.is_digit(b):
+            return self._parse_number_token()
+        if b == 0x42:  # 'B' — possibly BI (begin inline image) or other op
+            return self._parse_b_keyword()
+        if b == 0x49:  # 'I' — special-cased ID operator
+            return self._parse_id_operator()
+        if b == 0x5D:  # ']' — stray close-bracket. Upstream returns COSNull.
+            self.read_byte()
+            return COSNull.NULL
+        # Default: an operator keyword (alphabetic + ' " * etc.).
+        return self._read_operator_token()
+
+    def parse(self) -> list[COSBase | Operator]:
+        """Drain the stream — mirrors PDFBox's ``parse()``."""
+        return list(self.tokens())
+
+    def tokens(self) -> Iterator[COSBase | Operator]:
+        while True:
+            tok = self.parse_next_token()
+            if tok is None:
+                return
+            yield tok
+
+    # ---------- numbers ----------
+
+    def _parse_number_token(self) -> COSBase:
+        """Parse a numeric operand. Content-stream numbers do NOT take
+        the ``<n> <m> R`` indirect-reference shape — so we route through
+        ``COSNumber.get`` directly rather than ``COSParser._parse_number_or_indirect_reference``.
+
+        Lenient like upstream: an isolated ``+`` becomes ``COSNull.NULL``;
+        ``-`` immediately followed by another ``-`` discards the second
+        sign (PDFBOX double-negative quirk); ``-`` mid-number is dropped
+        (PDFBOX-4064)."""
+        buf = bytearray()
+        first = self.read_byte()
+        buf.append(first)
+
+        # Double-negative quirk: skip a second '-' right after the first.
+        if first == 0x2D and self.peek_byte() == 0x2D:
+            self.read_byte()
+
+        dot_seen = first == 0x2E
+        while True:
+            nxt = self.peek_byte()
+            if nxt == RandomAccessRead.EOF:
+                break
+            if self.is_digit(nxt):
+                buf.append(self.read_byte())
+                continue
+            if nxt == 0x2E and not dot_seen:
+                buf.append(self.read_byte())
+                dot_seen = True
+                continue
+            if nxt == 0x2D:
+                # Drop a stray '-' inside the number (PDFBOX-4064).
+                self.read_byte()
+                continue
+            break
+
+        text = buf.decode("ascii")
+        if text == "+":
+            # PDFBOX-5906 — isolated '+' is ignored; upstream returns null.
+            return COSNull.NULL
+        return COSNumber.get(text)
+
+    # ---------- keyword dispatch ----------
+
+    def _parse_n_keyword(self) -> COSBase | Operator:
+        kw = self._read_operator_string()
+        if kw == "null":
+            return COSNull.NULL
+        return Operator(kw)
+
+    def _parse_tf_keyword(self) -> COSBase | Operator:
+        kw = self._read_operator_string()
+        if kw == "true":
+            return COSBoolean.TRUE
+        if kw == "false":
+            return COSBoolean.FALSE
+        return Operator(kw)
+
+    def _parse_b_keyword(self) -> Operator:
+        """Handle keywords starting with ``B``. ``BI`` triggers inline-
+        image dictionary collection (the actual byte payload is captured
+        when the subsequent ``ID`` is parsed)."""
+        kw = self._read_operator_string()
+        op = Operator(kw)
+        if kw != _OP_BEGIN_INLINE_IMAGE:
+            return op
+        # Inline-image: collect /Key value pairs into a dict until we hit
+        # the ``ID`` operator (returned as an Operator carrying image_data).
+        self._inline_image_depth += 1
+        if self._inline_image_depth > 1:
+            # Reset and surface the error like upstream (PDFBOX-6038).
+            depth = self._inline_image_depth
+            offset = self._inline_offset
+            self._inline_image_depth = 0
+            raise PDFParseError(
+                f"Nested '{_OP_BEGIN_INLINE_IMAGE}' operator not allowed at offset "
+                f"{self.position}, first: {offset}, depth: {depth}",
+                position=self.position,
+            )
+        self._inline_offset = self.position
+        params = COSDictionary()
+        op.set_image_parameters(params)
+        while True:
+            tok = self.parse_next_token()
+            if not isinstance(tok, COSName):
+                break
+            value = self.parse_next_token()
+            if not isinstance(value, COSBase):
+                # Malformed: bail out, mirror upstream's silent break.
+                break
+            params.set_item(tok.get_name(), value)
+        # ``tok`` is the trailing operator — should be the ``ID`` operator
+        # carrying the image bytes. Hand them to the BI op for convenience.
+        if isinstance(tok, Operator) and tok.image_data is not None:
+            op.set_image_data(tok.image_data)
+        self._inline_image_depth -= 1
+        return op
+
+    def _parse_id_operator(self) -> Operator:
+        """Handle the ``ID`` operator: consume one EOL/whitespace byte
+        then capture raw bytes up to (and not including) ``EI`` followed
+        by whitespace."""
+        start = self.position
+        b1 = self.read_byte()
+        b2 = self.read_byte()
+        if b1 != 0x49 or b2 != 0x44:  # 'I' 'D'
+            raise PDFParseError(
+                f"expected 'ID' operator at byte {start}, got "
+                f"{bytes((max(b1, 0), max(b2, 0)))!r}",
+                position=start,
+            )
+        # Consume one line break (CR / LF / CRLF) or any single whitespace
+        # byte, mirroring upstream's ``skipLinebreak() || isWhitespace()``.
+        if not self._skip_linebreak():
+            nxt = self.peek_byte()
+            if nxt != RandomAccessRead.EOF and self.is_whitespace(nxt):
+                self.read_byte()
+        # Walk forward looking for ``EI`` followed by whitespace AND not
+        # immediately followed by binary data — same heuristic as upstream
+        # so embedded ``EI`` byte pairs inside image bytes don't terminate
+        # the segment prematurely. Mirrors upstream's loop condition:
+        # ``!(EI && sep && !bin) && !isEOF()`` — note that ``isEOF()``
+        # becomes true the moment the read cursor is past the last byte,
+        # so a real ``EI`` at the very end of the stream terminates the
+        # loop via the EOF guard rather than the ``hasNextSpaceOrReturn``
+        # check (which sees -1 and returns false).
+        out = bytearray()
+        last_byte = self.read_byte()
+        cur_byte = self.read_byte()
+        while True:
+            ei_terminates = (
+                last_byte == 0x45  # 'E'
+                and cur_byte == 0x49  # 'I'
+                and self._next_is_ei_separator()
+                and self._has_no_following_bin_data()
+            )
+            if ei_terminates or self.is_eof():
+                break
+            # last_byte is guaranteed non-EOF here: cur_byte fell behind it
+            # but could only be EOF on the next iteration, which we catch
+            # via ``is_eof()`` above.
+            if last_byte == RandomAccessRead.EOF:
+                break
+            out.append(last_byte)
+            last_byte = cur_byte
+            cur_byte = self.read_byte()
+        # The ``EI`` operator itself is intentionally NOT unread — upstream
+        # discards it because nothing downstream consumes a separate EI op.
+        op = Operator(_OP_BEGIN_INLINE_IMAGE_DATA)
+        op.set_image_data(bytes(out))
+        return op
+
+    def _skip_linebreak(self) -> bool:
+        """Consume one EOL marker (CR, LF, or CRLF). Returns True if any
+        bytes were consumed."""
+        b = self.peek_byte()
+        if b == 0x0D:
+            self.read_byte()
+            if self.peek_byte() == 0x0A:
+                self.read_byte()
+            return True
+        if b == 0x0A:
+            self.read_byte()
+            return True
+        return False
+
+    def _next_is_ei_separator(self) -> bool:
+        b = self.peek_byte()
+        return b in self._EI_SEP
+
+    def _has_no_following_bin_data(self) -> bool:
+        """Probe up to ``MAX_BIN_CHAR_TEST_LENGTH`` bytes ahead for binary
+        garbage. If what follows looks like control bytes (other than the
+        recognised whitespace), we're inside the image data and the ``EI``
+        we matched isn't the real terminator. Mirrors PDFBox's
+        ``hasNoFollowingBinData`` heuristic."""
+        start_pos = self.position
+        probe = bytearray()
+        for _ in range(self.MAX_BIN_CHAR_TEST_LENGTH):
+            b = self.read_byte()
+            if b == RandomAccessRead.EOF:
+                break
+            probe.append(b)
+        # Restore position regardless of what we found.
+        self.seek(start_pos)
+        if not probe:
+            return True
+
+        no_bin = True
+        start_op = -1
+        end_op = -1
+        for i, byte_val in enumerate(probe):
+            if (byte_val != 0 and byte_val < 0x09) or (
+                0x0A < byte_val < 0x20 and byte_val != 0x0D
+            ) or byte_val > 0x7F:
+                no_bin = False
+                break
+            is_ws = byte_val in (0x00, 0x09, 0x20, 0x0A, 0x0D)
+            if start_op == -1 and not is_ws:
+                start_op = i
+            elif start_op != -1 and end_op == -1 and is_ws:
+                end_op = i
+
+        if no_bin and end_op != -1 and start_op != -1:
+            tok = probe[start_op:end_op].decode("ascii", errors="replace")
+            if tok not in ("Q", "EMC", "S") and not _looks_like_number(tok):
+                no_bin = False
+
+        if no_bin and start_op != -1 and len(probe) == self.MAX_BIN_CHAR_TEST_LENGTH:
+            slice_end = end_op if end_op != -1 else self.MAX_BIN_CHAR_TEST_LENGTH
+            tok_bytes = probe[start_op:slice_end]
+            tok_str = tok_bytes.decode("ascii", errors="replace")
+            if slice_end - start_op > 3 and not _looks_like_number(tok_str):
+                no_bin = False
+
+        return no_bin
+
+    # ---------- generic operator reader ----------
+
+    def _read_operator_token(self) -> Operator:
+        return Operator(self._read_operator_string())
+
+    def _read_operator_string(self) -> str:
+        """Read an operator keyword. PDF operators are short alphabetic
+        runs, optionally containing ``*`` (e.g. ``B*``, ``f*``, ``n*``)
+        or being one of the apostrophe/quote text-show variants. Numbers
+        are NOT consumed, except for the Type 3 glyph operators ``d0`` /
+        ``d1`` (PDFBox carries this special case)."""
+        self.skip_whitespace()
+        out = bytearray()
+        # Special case the apostrophe and quotation mark text-show
+        # operators (§9.4.3): they're complete operators by themselves.
+        first = self.peek_byte()
+        if first == 0x27 or first == 0x22:  # ' or "
+            out.append(self.read_byte())
+            return out.decode("ascii")
+        while True:
+            b = self.peek_byte()
+            if b == RandomAccessRead.EOF:
+                break
+            if (
+                self.is_whitespace(b)
+                or b in (0x5B, 0x3C, 0x28, 0x2F, 0x25)  # [ < ( / %
+                or self.is_digit(b)
+            ):
+                break
+            cur = self.read_byte()
+            out.append(cur)
+            # Type 3 glyph quirk: ``d0`` / ``d1`` operators include the digit.
+            nxt = self.peek_byte()
+            if cur == 0x64 and nxt in (0x30, 0x31):  # 'd' followed by '0' or '1'
+                out.append(self.read_byte())
+        return out.decode("ascii", errors="replace")
+
+
+def _looks_like_number(s: str) -> bool:
+    """Match ``^\\d*(\\.\\d*)?$`` — PDFBox's ``NUMBER_PATTERN``."""
+    if not s:
+        return True
+    saw_dot = False
+    for ch in s:
+        if ch.isdigit():
+            continue
+        if ch == "." and not saw_dot:
+            saw_dot = True
+            continue
+        return False
+    return True

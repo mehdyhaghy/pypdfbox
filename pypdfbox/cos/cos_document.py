@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pypdfbox.io import ScratchFile
+from pypdfbox.io import RandomAccessRead, ScratchFile
 
 from .cos_array import COSArray
 from .cos_base import COSBase
@@ -31,7 +31,11 @@ class COSDocument(COSBase):
     mirror PDFBox.
     """
 
-    def __init__(self, scratch_file: ScratchFile | None = None) -> None:
+    def __init__(
+        self,
+        scratch_file: ScratchFile | None = None,
+        source: RandomAccessRead | None = None,
+    ) -> None:
         super().__init__()
         if scratch_file is None:
             self._scratch_file = ScratchFile()
@@ -39,6 +43,10 @@ class COSDocument(COSBase):
         else:
             self._scratch_file = scratch_file
             self._owns_scratch = False
+        # Optional owned input source. The Loader sets this when it created
+        # the RandomAccessRead on the caller's behalf so close() can release
+        # it; callers that hand in their own source leave this None.
+        self._source = source
         self._objects: dict[COSObjectKey, COSObject] = {}
         self._trailer: COSDictionary | None = None
         self._version: float = DEFAULT_VERSION
@@ -176,6 +184,8 @@ class COSDocument(COSBase):
         self._objects.clear()
         if self._owns_scratch:
             self._scratch_file.close()
+        if self._source is not None and not self._source.is_closed():
+            self._source.close()
 
     def __enter__(self) -> COSDocument:
         return self

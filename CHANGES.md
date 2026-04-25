@@ -42,3 +42,16 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/cos/cos_document.py`: added `add_xref_table`, `get_objects_by_type`, `get_linearized_dictionary` (placeholder returning `None` until linearization-hint parsing lands).
 - `pypdfbox/cos/cos_name.py`: added single-letter and short-name constants (`A`, `B`, `C`, `D`, `T`, `BE`, `PARAMS`, `FLATE_DECODE`, `ASCII85_DECODE`, `STANDARD_ENCODING`) referenced by ported tests.
 - `pypdfbox/pdfparser/base_parser.py::read_name`: a `#` not followed by two hex digits is now kept literally rather than raising `PDFParseError`. Matches upstream `TestBaseParser.testInvalidHexSequence`.
+
+## Filter module + Loader (parallel wave)
+
+- `pypdfbox/filter/ascii85_decode.py`: encode/decode delegate to stdlib `base64.a85encode` / `a85decode` (which already implements PDF's base-85 + `z` shortcut + adobe `<~ ... ~>` framing). Original wrapper handles whitespace pre-cleaning, `~>` terminator stripping, and per-spec error reporting (`OSError`).
+- `pypdfbox/filter/flate_decode.py`: `zlib` wrapper. PNG predictors 10-15 + TIFF predictor 2 supported on decode; encode-side predictor raises `NotImplementedError` (matches upstream).
+- `pypdfbox/filter/ascii_hex_decode.py`: `binascii` wrapper. Whitespace ignored, odd-digit pad with `0`, terminates on `>`.
+- `pypdfbox/filter/run_length_decode.py`: ported line-for-line so encoded bytes match upstream byte-identical.
+- `pypdfbox/filter/lzw_decode.py`: PDF-flavored LZW (9-12 bit codes, MSB-first, EarlyChange honored on decode; encoder always emits EarlyChange=1 with the PDFBOX-1977 final-EOD-width fix).
+- **Predictor logic duplication**: `flate_decode.py` and `lzw_decode.py` each carry an inline copy of the PNG/TIFF predictor inverse. Marked TODO for a shared `pypdfbox/filter/_predictor.py` extraction.
+- `pypdfbox/cos/cos_document.py`: optional `source: RandomAccessRead | None` parameter / instance attribute so `Loader` can attach the file handle it created and have `doc.close()` close it. Caller-supplied sources stay caller-owned.
+- `pypdfbox/loader.py`: top-level `Loader.load_pdf()` accepts path / `bytes` / `bytearray` / `memoryview` / `BinaryIO` / `RandomAccessRead`. Mirrors `org.apache.pdfbox.Loader.loadPDF()`. Encryption / password / `MemoryUsageSetting` parameters deferred until those features ship.
+- `pypdfbox/__init__.py`: exports `Loader` so `from pypdfbox import Loader` works (matches PRD §7).
+- `pypdfbox/pdfparser/pdf_stream_parser.py`: extends `COSParser`. Surfaces an `Operator` value type carrying the operator name plus optional `image_parameters` / `image_data` for inline-image (`BI` ... `ID` ... `EI`) sequences. Lenient PDFBox quirks preserved: stray `]` returns `COSNull`, isolated `+` returns `COSNull`, internal `-` in numbers dropped (PDFBOX-4064), Type-3 `d0`/`d1` operator suffix accepted.

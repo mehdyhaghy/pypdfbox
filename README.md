@@ -43,6 +43,25 @@ The upstream PDFBox project, maintained by the Apache Software Foundation, estab
 - **No per-file license headers.** Ported files are tracked in [`PROVENANCE.md`](PROVENANCE.md) (file → upstream PDFBox version + Java path), which satisfies Apache 2.0 §4(b) in one centralized place.
 - Substantive deviations from upstream behavior are recorded in [`CHANGES.md`](CHANGES.md).
 
+## Quick start
+
+```python
+from pypdfbox import Loader
+
+# from a file path
+doc = Loader.load_pdf("file.pdf")
+
+# from in-memory bytes
+doc = Loader.load_pdf(open("file.pdf", "rb").read())
+
+# always close (or use as a context manager)
+with Loader.load_pdf("file.pdf") as doc:
+    catalog = doc.get_catalog()
+    pages_ref = catalog.get_item("Pages")
+    pages = pages_ref.get_object()  # lazy-loaded
+    print(pages.get_int("Count"))
+```
+
 ## Implementation status
 
 Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
@@ -51,8 +70,9 @@ Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
 |---|---|
 | `io` | ✅ complete (read/write ABCs, BytesIO/file/mmap/view adapters, ScratchFile, MemoryUsageSetting, IOUtils) |
 | `cos` | ✅ complete (visitor + leaf primitives + COSNumber + containers + COSObject/Key + COSStream + COSDocument) |
-| `pdfparser` | in progress (#1 BaseParser, #2 COSParser, #3 XrefTrailerResolver + PDFParser with traditional xref + /Prev + streams) |
+| `pdfparser` | in progress (#1 BaseParser, #2 COSParser, #3 XrefTrailerResolver + PDFParser, #6 PDFStreamParser; #4 xref-streams / #5 malformed recovery deferred) |
 | `pdfwriter` | not started |
+| `filter` | in progress (FlateDecode, ASCIIHexDecode, ASCII85Decode, RunLengthDecode, LZWDecode; DCT / CCITT / JPX / JBIG2 deferred) |
 
 ## Development
 
