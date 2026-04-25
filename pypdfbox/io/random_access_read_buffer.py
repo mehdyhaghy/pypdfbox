@@ -68,9 +68,11 @@ class RandomAccessReadBuffer(RandomAccessRead):
 
     def seek(self, position: int) -> None:
         self._check_open()
-        if position < 0 or position > self._length:
-            raise ValueError(f"seek position {position} out of range [0, {self._length}]")
-        self._buf.seek(position)
+        if position < 0:
+            raise OSError(f"invalid seek position {position}")
+        # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.
+        target = min(position, self._length)
+        self._buf.seek(target)
 
     def length(self) -> int:
         self._check_open()

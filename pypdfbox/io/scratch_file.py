@@ -82,6 +82,10 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     def is_closed(self) -> bool:
         return self._closed
 
+    def create_view(self, start_position: int, length: int) -> RandomAccessRead:
+        # PDFBox upstream: ScratchFileBuffer does not support views.
+        raise NotImplementedError("createView() not supported on ScratchFileBuffer")
+
     # ----- RandomAccessWrite -----
 
     def write(self, b: int) -> None:

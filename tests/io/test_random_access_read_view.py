@@ -50,13 +50,19 @@ def test_seek_within_view() -> None:
     assert v.read() == ord("f")
 
 
-def test_seek_out_of_view_range_raises() -> None:
+def test_seek_negative_raises() -> None:
     p = _parent()
     v = RandomAccessReadView(p, start_position=2, length=4)
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError):
         v.seek(-1)
-    with pytest.raises(ValueError):
-        v.seek(5)
+
+
+def test_seek_past_end_clamps_to_eof() -> None:
+    p = _parent()
+    v = RandomAccessReadView(p, start_position=2, length=4)
+    v.seek(99)
+    assert v.is_eof()
+    assert v.get_position() == 4
 
 
 def test_construction_validates_bounds() -> None:
@@ -65,8 +71,19 @@ def test_construction_validates_bounds() -> None:
         RandomAccessReadView(p, start_position=-1, length=2)
     with pytest.raises(ValueError):
         RandomAccessReadView(p, start_position=0, length=-1)
-    with pytest.raises(ValueError):
-        RandomAccessReadView(p, start_position=8, length=10)  # past end
+
+
+def test_construction_allows_view_past_parent_end() -> None:
+    # Upstream PDFBox does not validate: view length is a logical window
+    # and reads simply return -1 once the parent reaches EOF.
+    p = _parent()  # 10 bytes
+    v = RandomAccessReadView(p, start_position=8, length=10)
+    assert v.length() == 10
+    # Only 2 bytes are actually readable from parent[8:].
+    buf = bytearray(10)
+    n = v.read_into(buf)
+    assert n == 2
+    assert bytes(buf[:2]) == b"ij"
 
 
 def test_close_does_not_close_parent_by_default() -> None:
@@ -91,11 +108,9 @@ def test_create_view_factory_on_abc() -> None:
     assert v.read() == ord("c")
 
 
-def test_view_of_view() -> None:
-    p = _parent()  # b"abcdefghij"
-    v1 = p.create_view(2, 6)  # b"cdefgh"
-    v2 = v1.create_view(1, 4)  # b"defg"
-    assert v2.length() == 4
-    buf = bytearray(4)
-    assert v2.read_into(buf) == 4
-    assert bytes(buf) == b"defg"
+def test_view_of_view_is_forbidden() -> None:
+    # Upstream PDFBox raises IOException when create_view is invoked on a view.
+    p = _parent()
+    v1 = p.create_view(2, 6)
+    with pytest.raises(OSError):
+        v1.create_view(1, 4)

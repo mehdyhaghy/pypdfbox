@@ -91,7 +91,11 @@ class COSStream(COSDictionary):
         self._buffer.seek(0)
 
     def create_raw_input_stream(self) -> BinaryIO:
-        """Return a fresh ``BytesIO`` snapshot of the current raw bytes."""
+        """Return a fresh ``BytesIO`` snapshot of the current raw bytes.
+
+        Raises ``OSError`` if the stream has no data (PDFBox parity)."""
+        if self._buffer is None:
+            raise OSError("stream has no data")
         return io.BytesIO(self.get_raw_data())
 
     def create_raw_output_stream(self) -> BinaryIO:
@@ -100,6 +104,30 @@ class COSStream(COSDictionary):
         if self._closed:
             raise ValueError("operation on closed COSStream")
         return _CommittingOutputStream(self)
+
+    def create_input_stream(self) -> BinaryIO:
+        """Return a stream over the **decoded** body. Without ``/Filter`` this
+        is equivalent to ``create_raw_input_stream``. Filter decoding lives
+        in the ``filter`` module (cluster #1) — calling this on a stream
+        with filters set raises ``NotImplementedError`` until then."""
+        if self.get_filter_list():
+            raise NotImplementedError(
+                "COSStream filter decoding lives in pypdfbox.filter (not yet ported)"
+            )
+        return self.create_raw_input_stream()
+
+    def create_output_stream(self, filters: COSBase | None = None) -> BinaryIO:
+        """Return a writable stream that on ``close()`` becomes the body.
+
+        If ``filters`` is supplied (a ``COSName`` or ``COSArray`` of names)
+        the stream's ``/Filter`` entry is set, but actual filter encoding is
+        deferred to the ``filter`` module — passing filters today raises
+        ``NotImplementedError``."""
+        if filters is not None:
+            raise NotImplementedError(
+                "COSStream filter encoding lives in pypdfbox.filter (not yet ported)"
+            )
+        return self.create_raw_output_stream()
 
     # ---------- /Filter introspection ----------
 

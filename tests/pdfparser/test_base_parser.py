@@ -192,9 +192,10 @@ def test_read_name_utf8_via_hex_escapes() -> None:
     assert p.read_name() == "naïve"
 
 
-def test_read_name_invalid_hex_escape_raises() -> None:
-    with pytest.raises(PDFParseError):
-        parser(b"/Bad#ZZ").read_name()
+def test_read_name_invalid_hex_escape_keeps_hash_literally() -> None:
+    # Match upstream PDFBox: a '#' not followed by two hex digits is kept
+    # literally rather than raising.
+    assert parser(b"/Bad#ZZ ").read_name() == "Bad#ZZ"
 
 
 def test_read_name_missing_slash_raises() -> None:

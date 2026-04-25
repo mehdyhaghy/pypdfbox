@@ -53,6 +53,10 @@ class COSString(COSBase):
     def set_force_hex_form(self, force_hex: bool) -> None:
         self._force_hex_form = force_hex
 
+    def to_hex_string(self) -> str:
+        """Hex-encoded raw bytes, uppercase — matches PDFBox ``toHexString``."""
+        return self._bytes.hex().upper()
+
     @classmethod
     def parse_hex(cls, hex_text: str) -> COSString:
         """Construct from the body of a hex-string literal ``<...>``.
@@ -66,7 +70,8 @@ class COSString(COSBase):
         try:
             data = bytes.fromhex(cleaned)
         except ValueError as exc:
-            raise ValueError(f"invalid hex string: {hex_text!r}") from exc
+            # Mirrors PDFBox's IOException — translates to OSError in pypdfbox.
+            raise OSError(f"invalid hex string: {hex_text!r}") from exc
         s = cls(data)
         s.set_force_hex_form(True)
         return s

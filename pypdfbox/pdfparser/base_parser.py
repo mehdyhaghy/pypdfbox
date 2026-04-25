@@ -213,17 +213,19 @@ class BaseParser:
                     self._src.rewind(1)
                 break
             if b == 0x23:  # '#' — hex escape
-                hi = self._src.read()
-                lo = self._src.read()
-                if (
-                    hi == RandomAccessRead.EOF
-                    or lo == RandomAccessRead.EOF
-                    or not self.is_hex_digit(hi)
-                    or not self.is_hex_digit(lo)
-                ):
-                    raise PDFParseError(
-                        "invalid #xx escape in name", position=self.position
-                    )
+                hi = self._src.peek()
+                if hi == RandomAccessRead.EOF or not self.is_hex_digit(hi):
+                    # Malformed escape — keep '#' literally and continue.
+                    out.append(b)
+                    continue
+                self._src.read()
+                lo = self._src.peek()
+                if lo == RandomAccessRead.EOF or not self.is_hex_digit(lo):
+                    # Only one valid hex digit followed '#'; keep both raw.
+                    out.append(b)
+                    out.append(hi)
+                    continue
+                self._src.read()
                 out.append(int(bytes((hi, lo)).decode("ascii"), 16))
             else:
                 out.append(b)

@@ -69,6 +69,34 @@ class RandomAccessRead(ABC):
     def is_eof(self) -> bool:
         return self.get_position() >= self.length()
 
+    def read_fully(
+        self, buf: bytearray, offset: int = 0, length: int | None = None
+    ) -> None:
+        """
+        Read exactly ``length`` bytes into ``buf`` starting at ``offset``.
+        Raises ``EOFError`` if EOF is reached before ``length`` bytes are read.
+        Mirrors ``DataInput.readFully`` / PDFBox's ``RandomAccessRead.readFully``.
+        """
+        if length is None:
+            length = len(buf) - offset
+        if length < 0:
+            raise ValueError("length must be non-negative")
+        if offset < 0 or offset + length > len(buf):
+            raise ValueError("offset/length out of range for buf")
+        total = 0
+        while total < length:
+            n = self.read_into(buf, offset + total, length - total)
+            if n <= 0:
+                raise EOFError("EOF reached before reading requested length")
+            total += n
+
+    def skip(self, n: int) -> None:
+        """Advance position by ``n`` bytes (clipped to length)."""
+        if n < 0:
+            raise ValueError("skip count must be non-negative")
+        target = min(self.get_position() + n, self.length())
+        self.seek(target)
+
     def available(self) -> int:
         return self.length() - self.get_position()
 

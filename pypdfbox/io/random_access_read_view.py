@@ -24,12 +24,9 @@ class RandomAccessReadView(RandomAccessRead):
             raise ValueError("start_position must be non-negative")
         if length < 0:
             raise ValueError("length must be non-negative")
-        parent_length = parent.length()
-        if start_position + length > parent_length:
-            raise ValueError(
-                f"view extends past parent end: "
-                f"start={start_position} length={length} parent_length={parent_length}"
-            )
+        # PDFBox upstream does not validate that start_position + length fits
+        # within the parent: the view is a logical window; reads stop at
+        # parent EOF or view EOF, whichever comes first.
         self._parent = parent
         self._start = start_position
         self._length = length
@@ -76,9 +73,10 @@ class RandomAccessReadView(RandomAccessRead):
 
     def seek(self, position: int) -> None:
         self._check_open()
-        if position < 0 or position > self._length:
-            raise ValueError(f"seek position {position} out of range [0, {self._length}]")
-        self._position = position
+        if position < 0:
+            raise OSError(f"invalid seek position {position}")
+        # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.
+        self._position = min(position, self._length)
 
     def length(self) -> int:
         self._check_open()
@@ -92,3 +90,7 @@ class RandomAccessReadView(RandomAccessRead):
 
     def is_closed(self) -> bool:
         return self._closed
+
+    def create_view(self, start_position: int, length: int) -> RandomAccessRead:
+        # PDFBox upstream forbids nested views on a RandomAccessReadView.
+        raise OSError("createView() not supported on a RandomAccessReadView")

@@ -40,7 +40,9 @@ def test_parse_hex_pads_odd_digits() -> None:
 
 
 def test_parse_hex_invalid_raises() -> None:
-    with pytest.raises(ValueError):
+    # parse_hex raises OSError to mirror PDFBox's IOException contract
+    # (translated to OSError in pypdfbox per the test-porting conventions).
+    with pytest.raises(OSError):
         COSString.parse_hex("zz")
 
 

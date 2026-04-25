@@ -9,6 +9,7 @@ from .cos_float import COSFloat
 from .cos_integer import COSInteger
 from .cos_name import COSName
 from .cos_null import COSNull
+from .cos_number import COSNumber
 from .cos_object import COSObject
 from .cos_object_key import COSObjectKey
 from .cos_stream import COSStream
@@ -25,6 +26,7 @@ __all__ = [
     "COSInteger",
     "COSName",
     "COSNull",
+    "COSNumber",
     "COSObject",
     "COSObjectKey",
     "COSStream",

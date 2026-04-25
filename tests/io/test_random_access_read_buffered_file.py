@@ -53,12 +53,16 @@ def test_seek_and_position(sample_file: Path) -> None:
         assert rab.read() == ord("k")
 
 
-def test_seek_out_of_range_raises(sample_file: Path) -> None:
+def test_seek_negative_raises(sample_file: Path) -> None:
+    with RandomAccessReadBufferedFile(sample_file) as rab, pytest.raises(OSError):
+        rab.seek(-1)
+
+
+def test_seek_past_end_clamps_to_eof(sample_file: Path) -> None:
     with RandomAccessReadBufferedFile(sample_file) as rab:
-        with pytest.raises(ValueError):
-            rab.seek(-1)
-        with pytest.raises(ValueError):
-            rab.seek(rab.length() + 1)
+        rab.seek(rab.length() + 1)
+        assert rab.is_eof()
+        assert rab.get_position() == rab.length()
 
 
 def test_peek_does_not_advance(sample_file: Path) -> None:

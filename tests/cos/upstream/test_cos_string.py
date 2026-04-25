@@ -1,0 +1,155 @@
+"""
+Ported from Apache PDFBox 3.0:
+  pdfbox/src/test/java/org/apache/pdfbox/cos/TestCOSString.java
+
+Upstream extends TestCOSBase. Tests that depend on ``COSWriter`` to verify
+the PDF-encoded form (``writePDFTests``, the unicode round-trip via
+``COSWriter.writeString``, and ``testAccept``) are skipped pending the
+pdfwriter cluster — pypdfbox doesn't yet emit literal/hex string syntax.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from pypdfbox.cos import COSString
+
+
+def _create_hex(s: str) -> str:
+    """Mirrors upstream ``createHex`` (chars ↦ uppercase hex of code point)."""
+    return "".join(format(ord(c), "X") for c in s)
+
+
+def test_set_force_hex_literal_form() -> None:
+    # Upstream verifies the bytes COSWriter emits — pypdfbox has no writer
+    # yet. We assert the flag round-trips and the in-memory state matches.
+    cos_str = COSString("Test with a text and a few numbers 1, 2 and 3")
+    assert not cos_str.is_force_hex_form()
+    cos_str.set_force_hex_form(True)
+    assert cos_str.is_force_hex_form()
+    cos_str.set_force_hex_form(False)
+    assert not cos_str.is_force_hex_form()
+
+
+def test_from_hex() -> None:
+    expected = "Quick and simple test"
+    hex_form = _create_hex(expected)
+    test1 = COSString.parse_hex(hex_form)
+    assert test1.get_string() == expected
+    # Invalid hex characters trigger an OSError (mirrors PDFBox IOException).
+    with pytest.raises(OSError):
+        COSString.parse_hex(hex_form + "xx")
+
+
+def test_get_hex() -> None:
+    expected = "Test subject for testing getHex"
+    test1 = COSString(expected)
+    hex_form = _create_hex(expected)
+    assert test1.to_hex_string() == hex_form
+
+    esc_char_string = "( test#some) escaped< \\chars>!~1239857 "
+    esc_cs = COSString(esc_char_string)
+    assert esc_cs.to_hex_string() == _create_hex(esc_char_string)
+
+
+def test_get_string() -> None:
+    test_str = "Test subject for getString()"
+    test1 = COSString(test_str)
+    assert test1.get_string() == test_str
+
+    hex_str = COSString.parse_hex(_create_hex(test_str))
+    assert hex_str.get_string() == test_str
+
+    esc_char_string = "( test#some) escaped< \\chars>!~1239857 "
+    escaped_string = COSString(esc_char_string)
+    assert escaped_string.get_string() == esc_char_string
+
+    test_str = "Line1\nLine2\nLine3\n"
+    line_feed_string = COSString(test_str)
+    assert line_feed_string.get_string() == test_str
+
+
+def test_get_bytes() -> None:
+    esc_char_string = "( test#some) escaped< \\chars>!~1239857 "
+    s = COSString(esc_char_string)
+    assert s.get_bytes() == esc_char_string.encode("latin-1")
+
+
+@pytest.mark.skip(reason="writePDF requires pdfwriter / COSWriter (not yet ported)")
+def test_write_pdf() -> None:
+    pass
+
+
+@pytest.mark.skip(reason="testUnicode round-trips through COSWriter (not yet ported)")
+def test_unicode() -> None:
+    pass
+
+
+@pytest.mark.skip(reason="testAccept needs COSWriter (not ported); covered by hand-written test")
+def test_accept() -> None:
+    pass
+
+
+def test_equals() -> None:
+    # Several rounds for consistency.
+    for _ in range(10):
+        # Reflexive
+        x1 = COSString("Test")
+        assert x1 == x1
+
+        # Symmetric.
+        y1 = COSString("Test")
+        assert x1 == y1
+        assert y1 == x1
+        x2 = COSString("Test")
+        x2.set_force_hex_form(True)
+        # x1 != x2 (different hex flag) ⇒ x2 != x1.
+        assert x1 != x2
+        assert x2 != x1
+
+        # Transitive.
+        z1 = COSString("Test")
+        assert x1 == y1
+        assert y1 == z1
+        assert x1 == z1
+        # Negative consequence: x1 == y1 && y1 != x2 ⇒ x1 != x2.
+        assert x1 == y1
+        assert y1 != x2
+        assert x1 != x2
+
+
+def test_hash_code() -> None:
+    str1 = COSString("Test1")
+    str2 = COSString("Test2")
+    assert hash(str1) != hash(str2)
+    str3 = COSString("Test1")
+    assert hash(str1) == hash(str3)
+    str3.set_force_hex_form(True)
+    assert hash(str1) != hash(str3)
+
+
+def test_compare_from_hex_string() -> None:
+    # PDFBOX-2401
+    test1 = COSString.parse_hex("000000FF000000")
+    test2 = COSString.parse_hex("000000FF00FFFF")
+    assert test1 == test1
+    assert test2 == test2
+    assert test1.to_hex_string() != test2.to_hex_string()
+    assert test1.get_bytes() != test2.get_bytes()
+    assert test1 != test2
+    assert test2 != test1
+    assert test1.get_string() != test2.get_string()
+
+
+def test_empty_string_with_bom() -> None:
+    # PDFBOX-3881: a hex string consisting only of the BOM is empty.
+    assert COSString.parse_hex("FEFF").get_string() == ""
+    assert COSString.parse_hex("FFFE").get_string() == ""
+
+
+def test_is_set_direct() -> None:
+    s = COSString("test cos string")
+    s.set_direct(True)
+    assert s.is_direct()
+    s.set_direct(False)
+    assert not s.is_direct()

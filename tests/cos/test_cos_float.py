@@ -27,7 +27,11 @@ def test_set_value_clears_original() -> None:
 
 def test_negative_and_scientific() -> None:
     assert COSFloat("-0.5").value == -0.5
-    assert COSFloat("1e-3").value == 0.001
+    # COSFloat clamps to IEEE-754 single precision (Java float parity), so
+    # 0.001 round-trips with the float32 representation, not the exact double.
+    import math
+
+    assert math.isclose(COSFloat("1e-3").value, 0.001, rel_tol=1e-6)
 
 
 def test_int_conversion_truncates() -> None:

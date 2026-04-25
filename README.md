@@ -50,8 +50,8 @@ Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
 | Module | Status |
 |---|---|
 | `io` | ✅ complete (read/write ABCs, BytesIO/file/mmap/view adapters, ScratchFile, MemoryUsageSetting, IOUtils) |
-| `cos` | ✅ complete (visitor + leaf primitives + containers + COSObject/Key + COSStream + COSDocument) |
-| `pdfparser` | in progress (cluster #1: BaseParser tokenizer) |
+| `cos` | ✅ complete (visitor + leaf primitives + COSNumber + containers + COSObject/Key + COSStream + COSDocument) |
+| `pdfparser` | in progress (cluster #1: BaseParser tokenizer; upstream tests ported) |
 | `pdfwriter` | not started |
 
 ## Development

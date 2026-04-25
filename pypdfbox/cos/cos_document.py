@@ -74,6 +74,38 @@ class COSDocument(COSBase):
     def remove_object(self, key: COSObjectKey) -> COSObject | None:
         return self._objects.pop(key, None)
 
+    def add_xref_table(self, table: dict[COSObjectKey | None, int]) -> None:
+        """Bulk-register xref entries — mirrors PDFBox's ``addXRefTable``.
+
+        Entries with a ``None`` key (PDFBOX-6132 — corrupt xref entry) are
+        ignored; the offset value itself is currently unused by ``COSDocument``
+        but kept in the signature for parity."""
+        for key in table:
+            if key is None:
+                continue
+            self.get_object_from_pool(key)
+
+    def get_objects_by_type(self, type_name: COSName | str) -> list[COSObject]:
+        """Return every resolved object whose dictionary's ``/Type`` equals
+        ``type_name``. Matches PDFBox semantics (returns an empty list when
+        no objects match)."""
+        target = type_name if isinstance(type_name, COSName) else COSName.get_pdf_name(type_name)
+        out: list[COSObject] = []
+        for cos_obj in self._objects.values():
+            resolved = cos_obj.get_object()
+            if isinstance(resolved, COSDictionary):
+                t = resolved.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+                if isinstance(t, COSName) and t == target:
+                    out.append(cos_obj)
+        return out
+
+    def get_linearized_dictionary(self) -> COSDictionary | None:
+        """Return the linearization parameter dictionary, or ``None`` if the
+        document is not linearized. Currently always ``None`` because pypdfbox
+        does not yet parse the linearization hint table — placeholder kept for
+        API parity (PDFBOX-6132)."""
+        return None
+
     # ---------- trailer / catalog / id ----------
 
     def get_trailer(self) -> COSDictionary | None:

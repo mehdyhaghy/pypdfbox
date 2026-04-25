@@ -91,3 +91,15 @@ COSName.CONTENTS = COSName.get_pdf_name("Contents")  # type: ignore[attr-defined
 COSName.CATALOG = COSName.get_pdf_name("Catalog")  # type: ignore[attr-defined]
 COSName.STRUCT_TREE_ROOT = COSName.get_pdf_name("StructTreeRoot")  # type: ignore[attr-defined]
 COSName.METADATA = COSName.get_pdf_name("Metadata")  # type: ignore[attr-defined]
+# Single-letter / short names referenced by upstream tests and a handful of
+# PDF spec-defined keys. Keep this list minimal — grow on demand.
+COSName.A = COSName.get_pdf_name("A")  # type: ignore[attr-defined]
+COSName.B = COSName.get_pdf_name("B")  # type: ignore[attr-defined]
+COSName.C = COSName.get_pdf_name("C")  # type: ignore[attr-defined]
+COSName.D = COSName.get_pdf_name("D")  # type: ignore[attr-defined]
+COSName.T = COSName.get_pdf_name("T")  # type: ignore[attr-defined]
+COSName.BE = COSName.get_pdf_name("BE")  # type: ignore[attr-defined]
+COSName.PARAMS = COSName.get_pdf_name("Params")  # type: ignore[attr-defined]
+COSName.FLATE_DECODE = COSName.get_pdf_name("FlateDecode")  # type: ignore[attr-defined]
+COSName.ASCII85_DECODE = COSName.get_pdf_name("ASCII85Decode")  # type: ignore[attr-defined]
+COSName.STANDARD_ENCODING = COSName.get_pdf_name("StandardEncoding")  # type: ignore[attr-defined]

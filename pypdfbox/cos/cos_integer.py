@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from .cos_base import COSBase
+from .cos_number import COSNumber
 from .i_cos_visitor import ICOSVisitor
 
 # Java's Integer.valueOf caches -128..127 by default; PDFBox extends to
@@ -12,7 +12,7 @@ _CACHE_LOW = -100
 _CACHE_HIGH = 256
 
 
-class COSInteger(COSBase):
+class COSInteger(COSNumber):
     """PDF integer object."""
 
     _cache: ClassVar[dict[int, COSInteger]] = {}
@@ -22,9 +22,16 @@ class COSInteger(COSBase):
         if not isinstance(value, int) or isinstance(value, bool):
             raise TypeError("COSInteger value must be int")
         self._value = value
+        # PDFBOX-5176: integers parsed from input outside Java's Long range
+        # are kept (Python ints are unbounded) but flagged invalid so the
+        # writer / consumer can react. Defaults to True; set via ``set_valid``.
+        self._valid: bool = True
 
+    # PDFBox-style static factory. Java overloads ``COSInteger.get(long)`` vs
+    # ``COSNumber.get(String)``; Python sees the same name on the subclass
+    # so we silence mypy's LSP complaint here.
     @classmethod
-    def get(cls, value: int) -> COSInteger:
+    def get(cls, value: int) -> COSInteger:  # type: ignore[override]
         """Return a cached instance for small values, else a new one."""
         if _CACHE_LOW <= value <= _CACHE_HIGH:
             cached = cls._cache.get(value)
@@ -47,6 +54,12 @@ class COSInteger(COSBase):
 
     def float_value(self) -> float:
         return float(self._value)
+
+    def is_valid(self) -> bool:
+        return self._valid
+
+    def set_valid(self, valid: bool) -> None:
+        self._valid = valid
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_integer(self)

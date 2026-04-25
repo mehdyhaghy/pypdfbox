@@ -58,12 +58,18 @@ def test_seek_and_position() -> None:
     assert rab.read() == ord("f")
 
 
-def test_seek_out_of_range_raises() -> None:
+def test_seek_negative_raises() -> None:
     rab = RandomAccessReadBuffer(b"abc")
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError):
         rab.seek(-1)
-    with pytest.raises(ValueError):
-        rab.seek(100)
+
+
+def test_seek_past_end_clamps_to_eof() -> None:
+    # PDFBox semantics: seeking past length is allowed; position clamps to length.
+    rab = RandomAccessReadBuffer(b"abc")
+    rab.seek(100)
+    assert rab.is_eof()
+    assert rab.get_position() == 3
 
 
 def test_peek_does_not_advance_position() -> None:
