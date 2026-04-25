@@ -49,8 +49,8 @@ Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
 
 | Module | Status |
 |---|---|
-| `io` | in progress |
-| `cos` | not started |
+| `io` | ✅ complete (read/write ABCs, BytesIO/file/mmap/view adapters, ScratchFile, MemoryUsageSetting, IOUtils) |
+| `cos` | in progress (cluster #1: leaf primitives) |
 | `pdfparser` | not started |
 | `pdfwriter` | not started |
 
