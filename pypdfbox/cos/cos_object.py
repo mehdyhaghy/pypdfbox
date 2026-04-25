@@ -62,6 +62,12 @@ class COSObject(COSBase):
         loads xref entries eagerly)."""
         self._object = value
 
+    def set_loader(self, loader: Callable[[COSObject], COSBase | None] | None) -> None:
+        """Attach (or replace) the lazy loader. ``None`` removes any loader.
+        Used by ``PDFParser`` after the xref has been resolved to wire up
+        every pool entry to a body-parsing callback."""
+        self._loader = loader
+
     def is_object_loaded(self) -> bool:
         return self._object is not None
 
