@@ -51,6 +51,10 @@ class COSDocument(COSBase):
         self._trailer: COSDictionary | None = None
         self._version: float = DEFAULT_VERSION
         self._is_xref_stream: bool = False
+        # Byte offset of the most recent xref section the parser found at the
+        # tail of the source — used by the incremental writer to set /Prev on
+        # the appended xref. ``0`` means "unknown / new document".
+        self._start_xref: int = 0
         self._closed: bool = False
 
     # ---------- object pool ----------
@@ -168,6 +172,27 @@ class COSDocument(COSBase):
 
     def set_xref_stream(self, value: bool) -> None:
         self._is_xref_stream = value
+
+    # ---------- source / startxref (incremental save plumbing) ----------
+
+    def get_source(self) -> RandomAccessRead | None:
+        """Return the underlying ``RandomAccessRead`` the parser created for
+        this document, or ``None`` if the caller built the document from
+        scratch. Used by the incremental writer to copy original bytes
+        verbatim before appending updates."""
+        return self._source
+
+    def get_start_xref(self) -> int:
+        """Byte offset of the trailing ``startxref`` directive in the source
+        file. ``0`` for newly-built (unsaved) documents."""
+        return self._start_xref
+
+    def set_start_xref(self, offset: int) -> None:
+        """Record the trailing ``startxref`` value seen by the parser. The
+        incremental writer reads this back as the ``/Prev`` chain pointer."""
+        if offset < 0:
+            raise ValueError("startxref offset must be non-negative")
+        self._start_xref = offset
 
     # ---------- visitor / lifecycle ----------
 

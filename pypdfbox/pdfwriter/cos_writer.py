@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import secrets
 import time
@@ -23,7 +24,7 @@ from pypdfbox.cos import (
     COSString,
     ICOSVisitor,
 )
-from pypdfbox.io import RandomAccessWrite
+from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
 from .cos_standard_output_stream import COSStandardOutputStream
 from .cos_writer_xref_entry import COSWriterXRefEntry
@@ -125,12 +126,29 @@ class COSWriter(ICOSVisitor):
         output: BinaryIO | RandomAccessWrite,
         *,
         incremental: bool = False,
+        incremental_input: RandomAccessRead | None = None,
     ) -> None:
-        if incremental:
-            raise NotImplementedError("incremental save lands in cluster #2")
         self._output = output
-        self._adapter = _RawSinkAdapter(output)
-        self._standard_output = COSStandardOutputStream(self._adapter)
+        self._incremental_update = incremental
+        self._incremental_input = incremental_input
+        # In incremental mode the body, xref, and trailer are accumulated in
+        # an in-memory buffer; the final ``doWriteIncrement`` copies the
+        # source bytes to the real output and then drains the buffer
+        # (mirrors PDFBox's ByteArrayOutputStream → OutputStream pipeline).
+        if incremental:
+            self._increment_buffer: io.BytesIO | None = io.BytesIO()
+            self._adapter = _RawSinkAdapter(self._increment_buffer)
+            # ``position`` is seeded with the source length so xref offsets
+            # are computed as if the increment were already concatenated to
+            # the original file. Matches upstream's
+            # ``new COSStandardOutputStream(output, inputData.length())``.
+            self._standard_output = COSStandardOutputStream(
+                self._adapter, position=0
+            )
+        else:
+            self._increment_buffer = None
+            self._adapter = _RawSinkAdapter(output)
+            self._standard_output = COSStandardOutputStream(self._adapter)
 
         # writer state — mirrors private fields on the upstream class.
         self._startxref: int = 0
@@ -188,6 +206,23 @@ class COSWriter(ICOSVisitor):
         existing_keys = document.get_object_keys()
         self._number = max((k.object_number for k in existing_keys), default=0)
 
+        if self._incremental_update:
+            # Auto-pull the input source from the document if the caller
+            # did not pass one explicitly (matches the convenience wiring
+            # PDDocument provides upstream).
+            if self._incremental_input is None:
+                self._incremental_input = document.get_source()
+            if self._incremental_input is None:
+                raise ValueError(
+                    "incremental save requires either incremental_input= or "
+                    "a COSDocument carrying a source (Loader.load_pdf populates this)"
+                )
+            self._reject_signed_with_byterange_placeholder(document)
+            # /ID synthesis: skip in incremental mode — the trailer must
+            # preserve the source's /ID array verbatim (PDF 32000-1 §14.4).
+            self._do_write_increment(document)
+            return
+
         self._ensure_document_id(document)
         document.accept(self)
 
@@ -222,6 +257,226 @@ class COSWriter(ICOSVisitor):
         out.write(EOF)
         out.write_eol()
         return None
+
+    # ---------- incremental save ----------
+
+    def _reject_signed_with_byterange_placeholder(self, doc: COSDocument) -> None:
+        """Refuse to re-save a signed document while the security cluster's
+        digest computation is still stubbed out.
+
+        ISO 32000-1 §12.8 reserves a ``/ByteRange [0 0 0 0]`` placeholder
+        inside the signature dict; touching the file without recomputing
+        the digest invalidates the signature. We raise here rather than
+        silently corrupt the signature."""
+        for cos_obj in doc.get_objects():
+            resolved = cos_obj.get_object()
+            if not isinstance(resolved, COSDictionary):
+                continue
+            type_name = resolved.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+            if not isinstance(type_name, COSName):
+                continue
+            if type_name.name not in ("Sig", "DocTimeStamp"):
+                continue
+            byte_range = resolved.get_dictionary_object(
+                COSName.get_pdf_name("ByteRange")
+            )
+            if not isinstance(byte_range, COSArray) or byte_range.size() != 4:
+                continue
+            # Upstream sniffs for ``br[2] > inputData.length()`` to detect
+            # the placeholder. The canonical placeholder is ``[0 0 0 0]``;
+            # any 4-int byterange whose third entry doesn't actually point
+            # past the (signed) source's end is also a no-go for us until
+            # the security cluster ports the digest pipeline.
+            raise NotImplementedError(
+                "re-signing with PDFBox-style ByteRange placeholders requires "
+                "the security cluster"
+            )
+
+    def _do_write_increment(self, doc: COSDocument) -> None:
+        """Append-only path: copy original bytes verbatim, then emit only
+        the dirty objects + a fresh xref section chained via ``/Prev``.
+
+        Mirrors ``COSWriter.doWriteIncrement`` + ``prepareIncrement`` +
+        ``doWriteXRefInc`` upstream.
+        """
+        assert self._incremental_input is not None
+        assert self._increment_buffer is not None
+
+        source_length = self._incremental_input.length()
+
+        # 1. ``prepareIncrement`` — register every existing key/actual so
+        # references emitted from the dirty graph reuse the source's keys.
+        self._prepare_increment(doc)
+
+        # 2. Walk the dirty graph. Every COSObject in the pool whose
+        # resolved actual is dirty becomes a candidate; we then promote
+        # any directly-referenced dirty actuals.
+        self._enqueue_dirty_objects(doc)
+
+        if not self._objects_to_write:
+            # Nothing to write — match upstream: no extra bytes appended,
+            # output is byte-for-byte identical to the source.
+            self._copy_source_to_output()
+            return
+
+        # 2.5 Whitespace separator so the appended bytes are unambiguously
+        # delimited from the source's trailing ``%%EOF``. Mirrors upstream's
+        # ``getStandardOutput().writeCRLF()`` at the top of
+        # ``visitFromDocument`` in incremental mode. Goes through the
+        # buffered stream so byte offsets stay consistent.
+        out = self._standard_output
+        out.write_crlf()
+
+        # 3. Emit each indirect object's body. Offsets recorded by
+        # ``_do_write_object`` are relative to the increment buffer, so we
+        # compensate when writing the xref to make them absolute.
+        self._do_write_objects()
+
+        # 4. Emit the new xref section. Must include only the changed
+        # objects + the mandatory free-list head (object 0).
+        self._do_write_xref_increment(source_length)
+
+        # 5. Emit the trailer with /Prev pointing at the prior startxref.
+        self._do_write_trailer_increment(doc)
+
+        # 6. startxref + %%EOF (offsets are absolute = source_length + buffer pos).
+        out.write(STARTXREF)
+        out.write_eol()
+        out.write_int(source_length + self._startxref)
+        out.write_eol()
+        out.write(EOF)
+        out.write_eol()
+
+        # 7. Drain: copy source, then append increment.
+        self._copy_source_to_output()
+        increment = self._increment_buffer.getvalue()
+        if increment:
+            self._write_to_output(increment)
+
+    def _prepare_increment(self, doc: COSDocument) -> None:
+        """Populate ``object_keys`` / ``key_object`` from the source's
+        object pool so that references emitted from dirty objects resolve
+        to existing keys instead of minting fresh ones."""
+        for key in doc.get_object_keys():
+            cos_obj = doc.get_object_from_pool(key)
+            actual = cos_obj.get_object()
+            if actual is None:
+                continue
+            self._object_keys[id(actual)] = key
+            self._key_holders[id(actual)] = actual
+            self._key_object[key] = actual
+            # Record the COSObject wrapper too (so a dictionary holding
+            # the wrapper as an indirect-reference value resolves cleanly).
+            self._object_keys[id(cos_obj)] = key
+            self._key_holders[id(cos_obj)] = cos_obj
+
+    def _enqueue_dirty_objects(self, doc: COSDocument) -> None:
+        """Queue every indirect object in the pool whose resolved value is
+        marked ``needs_to_be_updated``."""
+        for cos_obj in doc.get_objects():
+            actual = cos_obj.get_object()
+            if actual is None:
+                continue
+            if actual.is_needs_to_be_updated() or cos_obj.is_needs_to_be_updated():
+                self._add_object_to_write(cos_obj)
+
+    def _do_write_xref_increment(self, source_length: int) -> None:
+        """Emit the new xref section. Subsections cover only the changed /
+        new objects plus the mandatory free-list head."""
+        out = self._standard_output
+
+        # Always include the free-list head (object 0). Upstream calls this
+        # ``addXRefEntry(FreeXReference.NULL_ENTRY)``.
+        self._xref_entries.append(COSWriterXRefEntry.get_null_entry())
+
+        entries = sorted(self._xref_entries)
+        # Record startxref relative to the increment buffer (we add
+        # source_length back when writing the trailer / startxref line).
+        self._startxref = out.get_position()
+
+        out.write(XREF)
+        out.write_eol()
+
+        for first, count in self._build_ranges(entries):
+            self._write_xref_range(first, count)
+            for entry in entries:
+                if first <= entry.key.object_number < first + count:
+                    self._write_xref_entry_incremental(entry, source_length)
+
+    def _write_xref_entry_incremental(
+        self, entry: COSWriterXRefEntry, source_length: int
+    ) -> None:
+        """Same wire format as the full-save xref entry, but offsets are
+        rebased to absolute (= source_length + offset-in-buffer)."""
+        out = self._standard_output
+        absolute = entry.offset + source_length if not entry.free else entry.offset
+        out.write(_format_xref_offset(absolute))
+        out.write(SPACE)
+        out.write(_format_xref_generation(entry.key.generation_number))
+        out.write(SPACE)
+        out.write(XREF_FREE if entry.free else XREF_USED)
+        out.write_crlf()
+
+    def _do_write_trailer_increment(self, doc: COSDocument) -> None:
+        """Emit the appended trailer: copy source trailer, set /Prev to
+        the previous startxref, set /Size to max_obj_num + 1, preserve /ID."""
+        out = self._standard_output
+        out.write(TRAILER)
+        out.write_eol()
+
+        source_trailer = doc.get_trailer()
+        # Build a fresh trailer dict mirroring the source's keys but with
+        # /Prev re-targeted and /Size updated. We mutate a copy so the
+        # in-memory document is left untouched.
+        trailer = COSDictionary()
+        if source_trailer is not None:
+            for k, v in source_trailer.entry_set():
+                trailer.set_item(k, v)
+
+        # /Prev → previous startxref. Defaults to 0 for synthesised
+        # documents — matches upstream which still writes /Prev even if
+        # the original document had none.
+        trailer.set_int(COSName.PREV, doc.get_start_xref())  # type: ignore[attr-defined]
+
+        # /Size = max(known_keys) + 1, accounting for both source keys and
+        # any newly-minted keys for fresh objects.
+        all_keys = set(doc.get_object_keys())
+        all_keys.update(self._key_object.keys())
+        highest = max((k.object_number for k in all_keys), default=0)
+        trailer.set_int(COSName.SIZE, highest + 1)  # type: ignore[attr-defined]
+
+        # /ID array stays direct (must round-trip inline per spec §14.4).
+        id_arr = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
+        if isinstance(id_arr, COSArray):
+            id_arr.set_direct(True)
+
+        # Other ephemeral keys upstream strips before re-emit.
+        trailer.remove_item(COSName.get_pdf_name("DocChecksum"))
+        trailer.remove_item(COSName.get_pdf_name("XRefStm"))
+
+        trailer.accept(self)
+
+    def _copy_source_to_output(self) -> None:
+        """Stream the original file bytes through to the real output sink
+        verbatim. Mirrors ``IOUtils.copy(input, incrementalOutput)``."""
+        assert self._incremental_input is not None
+        src = self._incremental_input
+        src.seek(0)
+        # Read in chunks to avoid materialising the entire source at once.
+        chunk = bytearray(64 * 1024)
+        while True:
+            n = src.read_into(chunk, 0, len(chunk))
+            if n <= 0:
+                break
+            self._write_to_output(bytes(chunk[:n]))
+
+    def _write_to_output(self, data: bytes) -> None:
+        """Write directly to the real output sink (bypasses the increment
+        buffer). Used for streaming the source copy and the final flush."""
+        if isinstance(self._output, RandomAccessWrite):
+            self._output.write_bytes(data)
+        else:
+            self._output.write(data)
 
     # ---------- header ----------
 
@@ -283,12 +538,26 @@ class COSWriter(ICOSVisitor):
             return
         if any(o is obj for o in self._objects_to_write):
             return
-        # If we already have a key for the actual, this is a duplicate — skip.
-        if actual is not None and id(actual) in self._object_keys:
-            # Different ``obj`` (e.g., a fresh COSObject wrapping the same
-            # actual) but the actual will already be emitted under its
-            # registered key.
-            return
+
+        # In **incremental** mode upstream filters out un-dirtied objects
+        # here so that traversal of a dirty dictionary doesn't drag every
+        # transitively-referenced object back into the appended xref. The
+        # check honours both ``obj`` and the resolved ``actual`` (matches
+        # ``isNeedToBeUpdated(object) || isNeedToBeUpdated(cosBase)``).
+        if self._incremental_update:
+            obj_dirty = obj.is_needs_to_be_updated()
+            actual_dirty = (
+                actual is not None and actual.is_needs_to_be_updated()
+            )
+            if not (obj_dirty or actual_dirty):
+                return
+        else:
+            # In full-save mode, an actual that already has a key has
+            # already been queued under its first sighting — skip the
+            # duplicate.
+            if actual is not None and id(actual) in self._object_keys:
+                return
+
         self._objects_to_write.append(obj)
         if actual is not None:
             self._actuals_added.add(id(actual))

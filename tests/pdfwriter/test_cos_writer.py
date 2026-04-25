@@ -361,10 +361,14 @@ def test_dictionary_pretty_print() -> None:
 # ---------- writer state guards --------------------------------------------
 
 
-def test_incremental_param_rejected() -> None:
+def test_incremental_without_source_raises() -> None:
+    """``incremental=True`` is accepted by the constructor (cluster #2) but
+    ``write()`` requires either an explicit ``incremental_input`` or a
+    document carrying a source from the parser."""
     sink = io.BytesIO()
-    with pytest.raises(NotImplementedError):
-        COSWriter(sink, incremental=True)
+    doc = _make_doc()
+    with pytest.raises(ValueError), COSWriter(sink, incremental=True) as w:
+        w.write(doc)
 
 
 def test_encrypted_document_rejected() -> None:

@@ -60,6 +60,9 @@ class PDFParser:
         self._version = self.parse_header()
         self._document.set_version(self._version)
         startxref = self.find_startxref_offset()
+        # Record so the incremental writer can chain its appended xref
+        # via /Prev (PRD §6.5 cluster #2).
+        self._document.set_start_xref(startxref)
         self.parse_xref_chain(startxref)
         trailer = self._resolver.get_trailer()
         if trailer is not None:
