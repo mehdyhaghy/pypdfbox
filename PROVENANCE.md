@@ -64,6 +64,7 @@ PDF-specific parsing — port territory.
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization subset only) |
+| `pypdfbox/pdfparser/cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (direct-object / array / dict / indirect-ref subset; no xref / stream-body / object-stream paths yet) |
 
 Original work (no PROVENANCE entry needed; listed here for clarity):
 - `pypdfbox/pdfparser/parse_error.py` — Python-native exception type with optional byte offset.
