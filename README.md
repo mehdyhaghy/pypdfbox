@@ -56,6 +56,8 @@ Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
 
 ## Development
 
+**Requires Python 3.14+** (chosen so we can use the official no-GIL free-threaded build for parallel parsing/rendering work later).
+
 Package management is [`uv`](https://docs.astral.sh/uv/).
 
 ```sh
