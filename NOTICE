@@ -1,0 +1,38 @@
+pypdfbox
+Copyright 2026 pypdfbox contributors
+
+This product is licensed under the Apache License, Version 2.0
+(http://www.apache.org/licenses/LICENSE-2.0).
+
+----------------------------------------------------------------------
+
+This product is derived from / inspired by:
+
+  Apache PDFBox
+  Copyright 2002-2024 The Apache Software Foundation
+
+  This product includes software developed at
+  The Apache Software Foundation (http://www.apache.org/).
+
+  Apache PDFBox is licensed under the Apache License, Version 2.0.
+  https://pdfbox.apache.org/
+
+  Pinned upstream reference baseline: Apache PDFBox 3.0.x
+  (Specific point release will be recorded per-port in source-file
+  headers; see CLAUDE.md for the per-file header template.)
+
+  Modifications:
+    - Reimplemented in Python (target: Python 3.10+).
+    - Java camelCase API names converted to Python snake_case.
+    - Package layout mirrors the original Java packages where reasonable
+      (e.g. org.apache.pdfbox.cos -> pypdfbox.cos).
+    - Behavior is preserved where technically possible; deviations are
+      called out in per-file headers and CHANGES.md.
+
+----------------------------------------------------------------------
+
+Apache PDFBox itself depends on / acknowledges:
+  Portions of Apache PDFBox are derived from or include components
+  developed under their own permissive licenses. Where pypdfbox ports
+  such components, the original upstream attribution is propagated
+  in the corresponding source-file headers.

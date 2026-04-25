@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pypdfbox"
+version = "0.0.1"
+description = "Python-native port of Apache PDFBox-compatible APIs (Apache 2.0)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "pypdfbox contributors" }]
+keywords = ["pdf", "pdfbox", "accessibility", "tagged-pdf", "pdf-a"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+]
+
+# PRD §4: only Apache-2.0 / MIT / BSD dependencies allowed.
+# Phase-1 core deliberately has zero runtime deps.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",          # MIT
+    "pytest-cov>=5",      # MIT
+    "ruff>=0.5",          # MIT
+    "mypy>=1.10",         # MIT
+]
+
+[project.urls]
+Homepage = "https://github.com/mehdyhaghy/pypdfbox"
+Repository = "https://github.com/mehdyhaghy/pypdfbox"
+
+[tool.hatch.build.targets.wheel]
+packages = ["pypdfbox"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
