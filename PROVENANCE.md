@@ -24,10 +24,15 @@ Per PRD §3.7 (stdlib-first), the io module is adapter code over Python stdlib (
 |---|---|---|---|
 | `pypdfbox/io/random_access_read.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/RandomAccessRead.java` | interface contract only (method signatures + semantics) |
 | `pypdfbox/io/random_access_write.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/RandomAccessWrite.java` | interface contract only |
+| `pypdfbox/io/memory_usage_setting.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/MemoryUsageSetting.java` | API surface (modes, factories, predicates) |
+| `pypdfbox/io/scratch_file.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/ScratchFile.java` | API surface (`create_buffer()`, lifecycle); storage is `tempfile.SpooledTemporaryFile`, not page-based |
 
 Original work (no PROVENANCE entry needed; listed here for clarity):
 - `pypdfbox/io/random_access_read_buffer.py` — adapter over `io.BytesIO`
 - `pypdfbox/io/random_access_read_buffered_file.py` — adapter over `io.BufferedReader`
+- `pypdfbox/io/random_access_read_memory_mapped.py` — adapter over `mmap.mmap`
+- `pypdfbox/io/random_access_read_view.py` — slice view, original
+- `pypdfbox/io/random_access_write_buffer.py` — adapter over `io.BytesIO`
 - `pypdfbox/io/io_utils.py` — small convenience helpers (most usage delegates to stdlib)
 
 ### `pypdfbox/cos/`

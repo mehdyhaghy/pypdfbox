@@ -83,6 +83,21 @@ class RandomAccessRead(ABC):
         else:
             self.rewind(len(b))
 
+    def create_view(self, start_position: int, length: int) -> RandomAccessRead:
+        """
+        Return a read-only slice view onto this stream covering bytes
+        ``[start_position, start_position + length)``.
+
+        The view shares this stream's underlying storage; callers must not
+        interleave reads on the parent and the view in performance-sensitive
+        code (each view operation seeks the parent to its own logical
+        position).
+        """
+        # Deferred import to avoid cycle: View depends on this ABC.
+        from .random_access_read_view import RandomAccessReadView
+
+        return RandomAccessReadView(self, start_position, length)
+
     def __enter__(self) -> RandomAccessRead:
         return self
 
