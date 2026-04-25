@@ -19,8 +19,10 @@ classifiers = [
     "Topic :: Text Processing :: Markup",
 ]
 
-# PRD §4: only Apache-2.0 / MIT / BSD dependencies allowed.
-# Phase-1 core deliberately has zero runtime deps.
+# PRD §4 + §3.7.1: runtime deps require explicit user approval per the
+# library catalog. Currently approved: none (cryptography will be added
+# when encryption/signature clusters land). Font handling is ported from
+# org.apache.fontbox.* directly — no fonttools dep.
 dependencies = []
 
 [project.urls]
