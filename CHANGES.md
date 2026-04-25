@@ -55,3 +55,14 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/loader.py`: top-level `Loader.load_pdf()` accepts path / `bytes` / `bytearray` / `memoryview` / `BinaryIO` / `RandomAccessRead`. Mirrors `org.apache.pdfbox.Loader.loadPDF()`. Encryption / password / `MemoryUsageSetting` parameters deferred until those features ship.
 - `pypdfbox/__init__.py`: exports `Loader` so `from pypdfbox import Loader` works (matches PRD §7).
 - `pypdfbox/pdfparser/pdf_stream_parser.py`: extends `COSParser`. Surfaces an `Operator` value type carrying the operator name plus optional `image_parameters` / `image_data` for inline-image (`BI` ... `ID` ... `EI`) sequences. Lenient PDFBox quirks preserved: stray `]` returns `COSNull`, isolated `+` returns `COSNull`, internal `-` in numbers dropped (PDFBOX-4064), Type-3 `d0`/`d1` operator suffix accepted.
+
+## pdfwriter cluster #1 (full-save, traditional xref)
+
+- `pypdfbox/pdfwriter/cos_writer.py`: cluster #1 covers full-save mode only. The following upstream paths are stubbed and raise `NotImplementedError` until later clusters land:
+  - `incremental=True` constructor flag → cluster #2 (incremental save).
+  - Xref-stream output (`writeXrefStream` and friends) → cluster #3.
+  - Object-stream packing (`COSWriterObjectStream`) → cluster #3.
+  - Encrypted documents (`is_encrypted()` → `True`) → security cluster.
+  - Signatures (`SignatureInterface`, `/ByteRange` ranges) → cluster #2.
+- `pypdfbox/pdfwriter/cos_writer.py`: `write(document)` accepts a `COSDocument` directly. Upstream's overloads also take `PDDocument` / `FDFDocument`; those wrappers are not yet ported (`PDDocument` → PRD §6.6 cluster).
+- `pypdfbox/pdfwriter/cos_writer.py`: `/ID` synthesis uses `hashlib.sha256(time_ns + secrets.token_bytes(16))[:16]` instead of upstream's `Long.toString(idTime) + info-dict-values` digest. Same shape (two 16-byte hex strings) and same purpose; we don't have a `PDDocument.getDocumentId()` to thread in yet.

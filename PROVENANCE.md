@@ -74,7 +74,14 @@ Original work (no PROVENANCE entry needed; listed here for clarity):
 - `pypdfbox/pdfparser/parse_error.py` — Python-native exception type with optional byte offset.
 
 ### `pypdfbox/pdfwriter/`
-_(not started)_
+
+PDF-specific serialization — port territory.
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdfwriter/cos_standard_output_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSStandardOutputStream.java` |
+| `pypdfbox/pdfwriter/cos_writer_xref_entry.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriterXRefEntry.java` |
+| `pypdfbox/pdfwriter/cos_writer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriter.java` (full-save path only — incremental, xref-stream output, object-stream packing, encryption, signatures stubbed for later clusters) |
 
 ### `pypdfbox/filter/`
 
