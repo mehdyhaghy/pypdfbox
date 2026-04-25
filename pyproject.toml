@@ -26,7 +26,12 @@ classifiers = [
 # Phase-1 core deliberately has zero runtime deps.
 dependencies = []
 
-[project.optional-dependencies]
+[project.urls]
+Homepage = "https://github.com/mehdyhaghy/pypdfbox"
+Repository = "https://github.com/mehdyhaghy/pypdfbox"
+
+# PEP 735 dependency groups — uv-native, replaces optional-dependencies for dev tooling.
+[dependency-groups]
 dev = [
     "pytest>=8",          # MIT
     "pytest-cov>=5",      # MIT
@@ -34,12 +39,11 @@ dev = [
     "mypy>=1.10",         # MIT
 ]
 
-[project.urls]
-Homepage = "https://github.com/mehdyhaghy/pypdfbox"
-Repository = "https://github.com/mehdyhaghy/pypdfbox"
-
 [tool.hatch.build.targets.wheel]
 packages = ["pypdfbox"]
+
+[tool.uv]
+package = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

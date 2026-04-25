@@ -17,7 +17,18 @@ This file tracks every source file in `pypdfbox/` that is **ported from Apache P
 ## Ported files
 
 ### `pypdfbox/io/`
-_(none yet — first port pending)_
+
+Per PRD §3.7 (stdlib-first), the io module is adapter code over Python stdlib (`io.BytesIO`, `io.BufferedReader`, etc.). Only the **interface contracts** below derive from PDFBox; concrete implementations are original work wrapping stdlib.
+
+| pypdfbox path | upstream PDFBox version | upstream Java path | derivation scope |
+|---|---|---|---|
+| `pypdfbox/io/random_access_read.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/RandomAccessRead.java` | interface contract only (method signatures + semantics) |
+| `pypdfbox/io/random_access_write.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/RandomAccessWrite.java` | interface contract only |
+
+Original work (no PROVENANCE entry needed; listed here for clarity):
+- `pypdfbox/io/random_access_read_buffer.py` — adapter over `io.BytesIO`
+- `pypdfbox/io/random_access_read_buffered_file.py` — adapter over `io.BufferedReader`
+- `pypdfbox/io/io_utils.py` — small convenience helpers (most usage delegates to stdlib)
 
 ### `pypdfbox/cos/`
 _(not started)_

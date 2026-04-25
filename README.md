@@ -56,11 +56,22 @@ Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
 
 ## Development
 
+Package management is [`uv`](https://docs.astral.sh/uv/).
+
 ```sh
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
+uv sync               # creates .venv and installs pypdfbox + dev deps (pinned via uv.lock)
+uv run pytest         # run the test suite
+uv run ruff check .   # lint
+uv run mypy pypdfbox  # type-check
 ```
+
+To add a runtime or dev dependency:
+
+```sh
+uv add <pkg>                  # runtime
+uv add --group dev <pkg>      # dev
+```
+
 
 ## Contributing
 
