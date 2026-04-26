@@ -90,17 +90,20 @@ def test_unknown_names_are_rejected() -> None:
 
 
 def test_courier_widths_are_600_across_256_slots() -> None:
+    """Encoded slots are 600 (monospace); unmapped slots are 0."""
     widths = Standard14Fonts.get_average_widths("Courier")
     assert isinstance(widths, list)
     assert len(widths) == 256
-    assert all(w == 600.0 for w in widths)
+    nonzero = {w for w in widths if w > 0}
+    assert nonzero == {600.0}
 
 
 @pytest.mark.parametrize("name", ["Courier-Bold", "Courier-Oblique", "Courier-BoldOblique"])
 def test_all_courier_variants_are_monospace_600(name: str) -> None:
     widths = Standard14Fonts.get_average_widths(name)
     assert len(widths) == 256
-    assert all(w == 600.0 for w in widths)
+    nonzero = {w for w in widths if w > 0}
+    assert nonzero == {600.0}
 
 
 @pytest.mark.parametrize(
@@ -114,10 +117,17 @@ def test_all_courier_variants_are_monospace_600(name: str) -> None:
         "ZapfDingbats",
     ],
 )
-def test_proportional_families_use_500_placeholder(name: str) -> None:
+def test_proportional_families_have_full_256_table_with_real_afm_widths(name: str) -> None:
+    """With AFM bundling, the table is real per-glyph data, not a flat 500.
+
+    Encoded slots carry the AFM advance width (a positive number); unmapped
+    or ``.notdef`` slots carry ``0.0``. At least one slot must be non-zero
+    or the encoding/AFM wiring is broken.
+    """
     widths = Standard14Fonts.get_average_widths(name)
     assert len(widths) == 256
-    assert all(w == 500.0 for w in widths)
+    assert any(w > 0.0 for w in widths)
+    assert all(w >= 0.0 for w in widths)
 
 
 def test_get_average_widths_resolves_alias() -> None:

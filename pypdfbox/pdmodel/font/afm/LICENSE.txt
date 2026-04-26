@@ -1,0 +1,27 @@
+Adobe Core 14 AFM Files
+=======================
+
+The Adobe Font Metrics (AFM) files bundled in this directory describe the
+metrics of the 14 PDF Standard fonts (Times, Helvetica, Courier, Symbol,
+ZapfDingbats families) defined in PDF 32000-1:2008 (and ISO 32000-1) §9.6.2.2.
+
+Copyright (c) 1985, 1987, 1989, 1990, 1993, 1997 Adobe Systems Incorporated.
+All Rights Reserved.
+
+These AFM files are redistributed verbatim from the Apache PDFBox project
+(https://pdfbox.apache.org/), which itself ships them under the standard
+permissive Adobe AFM redistribution terms preserved in the per-file
+``Comment Copyright ...`` headers at the top of each ``.afm`` file. The
+underlying Adobe AFM files are publicly available metrics-only data and
+have been distributed by Adobe and downstream consumers (TeX Live, Ghostscript,
+Apache PDFBox, Apache FOP, ...) under terms that permit unmodified
+redistribution alongside derived works.
+
+Times is a trademark of Linotype-Hell AG and/or its subsidiaries.
+
+Source: https://github.com/apache/pdfbox/tree/trunk/pdfbox/src/main/resources/org/apache/pdfbox/resources/afm
+
+The Adobe Glyph List (AGL) and the Zapf Dingbats Glyph List, used by
+``pypdfbox.fontbox.encoding`` to round-trip glyph names ↔ Unicode, ship under
+the same Adobe permissive terms; see the root ``NOTICE`` for the full
+attribution.

@@ -9,7 +9,6 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 from pypdfbox.rendering import PDFRenderer
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -302,3 +301,266 @@ def test_invalid_page_index_raises() -> None:
     renderer = PDFRenderer(doc)
     with pytest.raises((IndexError, KeyError)):
         renderer.render_image(99)
+
+
+# ---------------------------------------------------------------------------
+# text rendering — embedded TTF
+# ---------------------------------------------------------------------------
+
+
+def _build_test_ttf() -> bytes:
+    """Synthesise a minimal TrueType font with two glyphs (A, B) drawn as
+    solid 800x800-em squares. Used by the text-rendering test to confirm
+    glyphs land as filled black pixels at the expected page bbox.
+    """
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+    fb = FontBuilder(1024, isTTF=True)
+    fb.setupGlyphOrder([".notdef", "A", "B"])
+    fb.setupCharacterMap({0x41: "A", 0x42: "B"})
+
+    def square_glyph() -> object:
+        pen = TTGlyphPen(None)
+        pen.moveTo((100, 100))
+        pen.lineTo((900, 100))
+        pen.lineTo((900, 900))
+        pen.lineTo((100, 900))
+        pen.closePath()
+        return pen.glyph()
+
+    glyphs = {
+        ".notdef": TTGlyphPen(None).glyph(),
+        "A": square_glyph(),
+        "B": square_glyph(),
+    }
+    fb.setupGlyf(glyphs)
+    fb.setupHorizontalMetrics(
+        {".notdef": (0, 0), "A": (1024, 0), "B": (1024, 0)}
+    )
+    fb.setupHorizontalHeader(ascent=900, descent=-100)
+    fb.setupNameTable({"familyName": "Test", "styleName": "Regular"})
+    fb.setupOS2(sTypoAscender=900, usWinAscent=900, usWinDescent=100)
+    fb.setupPost()
+    buf = io.BytesIO()
+    fb.save(buf)
+    return buf.getvalue()
+
+
+def _build_ttf_pdfont() -> object:
+    """Wrap the synthesised TTF in a PDTrueTypeFont with a /FontDescriptor
+    /FontFile2 pointing at the raw bytes."""
+    from pypdfbox.cos import COSDictionary, COSName, COSStream
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+    from pypdfbox.pdmodel.font.pd_true_type_font import PDTrueTypeFont
+
+    ttf_bytes = _build_test_ttf()
+    font_file2 = COSStream()
+    font_file2.set_raw_data(ttf_bytes)
+
+    fd_dict = COSDictionary()
+    descriptor = PDFontDescriptor(fd_dict)
+    descriptor.set_font_file2(font_file2)
+
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.SUBTYPE, COSName.get_pdf_name("TrueType"))
+    font_dict.set_item(
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("TestFont")
+    )
+    font_dict.set_item(
+        COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
+    )
+    # Use WinAnsi-ish encoding — A=0x41, B=0x42 are identity so the default
+    # works for our two test glyphs.
+    font = PDTrueTypeFont(font_dict)
+    return font
+
+
+def test_ttf_text_show_renders_filled_pixels() -> None:
+    """Render BT … Tf … Tj 'AB' ET on a 200x100 page and confirm the
+    glyph footprints land as non-white pixels in the expected bbox."""
+    doc, page = _make_doc(200.0, 100.0)
+    font = _build_ttf_pdfont()
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.begin_text()
+        cs.set_font(font, 50.0)  # 50pt = ~50px at 72 DPI
+        cs.new_line_at_offset(20.0, 30.0)
+        cs.show_text("AB")
+        cs.end_text()
+    img = PDFRenderer(doc).render_image(0)
+    assert img.size == (200, 100)
+    # Count non-white pixels — synthesised TTF squares are pure black, so
+    # the glyph footprint should produce a measurable count of dark pixels.
+    dark_count = 0
+    for y in range(img.size[1]):
+        for x in range(img.size[0]):
+            r, g, b = img.getpixel((x, y))
+            if r < 128 and g < 128 and b < 128:
+                dark_count += 1
+    # Two ~40x40 squares = ~3200 ideal pixels. Allow huge margin for
+    # AA softening and glyph metric variance — anything > 200 confirms
+    # real rasterisation happened.
+    assert dark_count > 200, f"expected glyph fill, got dark_count={dark_count}"
+
+
+def test_text_without_embedded_font_program_falls_back_quietly() -> None:
+    """A Tf for a Standard 14-style font (no /FontFile*) must NOT crash —
+    it falls back to a placeholder rectangle and the page still completes.
+    """
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.font.pd_true_type_font import PDTrueTypeFont
+
+    doc, page = _make_doc(100.0, 100.0)
+    # Build a TTF font dict with NO /FontDescriptor /FontFile2 — this
+    # mimics a Standard 14 reference where no embedded program is shipped.
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.SUBTYPE, COSName.get_pdf_name("TrueType"))
+    font_dict.set_item(
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("Helvetica")
+    )
+    font = PDTrueTypeFont(font_dict)
+
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.begin_text()
+        cs.set_font(font, 12.0)
+        cs.new_line_at_offset(10.0, 50.0)
+        cs.show_text("hi")
+        cs.end_text()
+    # Should not raise.
+    img = PDFRenderer(doc).render_image(0)
+    assert img.size == (100, 100)
+
+
+# ---------------------------------------------------------------------------
+# Form XObject Do
+# ---------------------------------------------------------------------------
+
+
+def test_form_xobject_do_renders_inner_content() -> None:
+    """Place a Form XObject containing a red square at PDF (10..30, 10..30)
+    onto a page via Do — the square should appear at PDF (50..70, 50..70)
+    after the page-level cm shifts it by (40, 40)."""
+    from pypdfbox.cos import COSName, COSStream
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    doc, page = _make_doc(100.0, 100.0)
+
+    # Build a Form XObject with a red 20x20 square at (10, 10)..(30, 30).
+    form_stream = COSStream()
+    form_stream.set_raw_data(
+        b"1 0 0 rg\n"
+        b"10 10 20 20 re\n"
+        b"f\n"
+    )
+    form = PDFormXObject(form_stream)
+    form.set_b_box(PDRectangle(0.0, 0.0, 100.0, 100.0))
+
+    # Page contents: translate by (40, 40), then Do the form.
+    page_dict = page.get_cos_object()
+    contents = COSStream()
+    contents.set_raw_data(
+        b"q\n"
+        b"1 0 0 1 40 40 cm\n"
+        b"/Form0 Do\n"
+        b"Q\n"
+    )
+    page_dict.set_item(COSName.CONTENTS, contents)
+    # Register the form as Form0 in the page resources. PDPage.get_resources()
+    # returns a fresh-but-empty PDResources wrapper when none is attached, so
+    # always attach explicitly to make sure mutations land on the page.
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    resources = PDResources()
+    page.set_resources(resources)
+    resources.put(
+        COSName.get_pdf_name("XObject"),
+        COSName.get_pdf_name("Form0"),
+        form.get_cos_object(),
+    )
+
+    img = PDFRenderer(doc).render_image(0)
+    # Form-internal rect at PDF (10,10)-(30,30) shifted by (40,40)
+    # → PDF (50,50)-(70,70). PIL y is flipped: (50, 30)-(70, 50).
+    inside = img.getpixel((60, 40))
+    outside_below = img.getpixel((10, 90))
+    assert _is_close(inside, (255, 0, 0)), inside
+    assert _is_close(outside_below, (255, 255, 255)), outside_below
+
+
+# ---------------------------------------------------------------------------
+# clip path W
+# ---------------------------------------------------------------------------
+
+
+def test_clip_w_restricts_subsequent_fill_to_clip_region() -> None:
+    """Clip to a 20x20 box at (40,40), then fill the entire page red.
+    Pixels outside the clip should remain white; pixels inside should be
+    red.
+    """
+    from pypdfbox.cos import COSName, COSStream
+
+    doc, page = _make_doc(100.0, 100.0)
+
+    page_dict = page.get_cos_object()
+    contents = COSStream()
+    contents.set_raw_data(
+        b"40 40 20 20 re\n"
+        b"W n\n"  # set clip to that rect, then end-path
+        b"1 0 0 rg\n"
+        b"0 0 100 100 re\n"
+        b"f\n"
+    )
+    page_dict.set_item(COSName.CONTENTS, contents)
+
+    img = PDFRenderer(doc).render_image(0)
+    # Inside clip — PDF (50, 50) → PIL (50, 50)
+    assert _is_close(img.getpixel((50, 50)), (255, 0, 0)), img.getpixel((50, 50))
+    # Outside clip — top-left, bottom-right
+    assert _is_close(img.getpixel((10, 10)), (255, 255, 255)), img.getpixel((10, 10))
+    assert _is_close(img.getpixel((80, 80)), (255, 255, 255)), img.getpixel((80, 80))
+
+
+# ---------------------------------------------------------------------------
+# inline image BI / ID / EI
+# ---------------------------------------------------------------------------
+
+
+def test_inline_image_renders_pixels() -> None:
+    """A 4x4 raw DeviceRGB inline image scaled into a 40x40 area should
+    render the expected solid-red pixels.
+    """
+    from pypdfbox.cos import COSName, COSStream
+
+    doc, page = _make_doc(100.0, 100.0)
+
+    # 4x4 solid red raster, 8 bpc DeviceRGB.
+    pixels = bytes([255, 0, 0]) * (4 * 4)
+    page_dict = page.get_cos_object()
+    contents = COSStream()
+    body = (
+        b"q\n"
+        b"40 0 0 40 30 30 cm\n"
+        b"BI\n"
+        b"/W 4\n"
+        b"/H 4\n"
+        b"/CS /RGB\n"
+        b"/BPC 8\n"
+        b"ID\n"
+        + pixels
+        + b"\nEI\n"
+        b"Q\n"
+    )
+    contents.set_raw_data(body)
+    page_dict.set_item(COSName.CONTENTS, contents)
+
+    img = PDFRenderer(doc).render_image(0)
+    # Image bbox is PDF (30, 30)-(70, 70) → PIL (30, 30)-(70, 70).
+    inside = img.getpixel((50, 50))
+    outside = img.getpixel((5, 5))
+    assert _is_close(inside, (255, 0, 0), tol=20), inside
+    assert _is_close(outside, (255, 255, 255)), outside

@@ -99,6 +99,7 @@ PDF stream filters per ISO 32000-1 §7.4. Per PRD §3.7, filters that wrap stdli
 | `pypdfbox/filter/ascii85_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85Filter.java` | API surface; base-85 numerics delegated to `base64.a85encode`/`a85decode` |
 | `pypdfbox/filter/run_length_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/RunLengthFilter.java` | full port — encoder ported line-for-line so output bytes match PDFBox |
 | `pypdfbox/filter/lzw_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java` | full port — PDF-flavored LZW (9-12 bit, MSB-first, EarlyChange handling). Predictor (PNG/TIFF) lives in shared `_predictor.py` |
+| `pypdfbox/filter/ccitt_fax_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CCITTFaxFilter.java` | API surface; T.4 / T.6 decoding delegated to libtiff via Pillow (synthetic TIFF wrapper around the encoded strip). Decode-only (no encoder use case yet). |
 
 ### `pypdfbox/contentstream/`
 
@@ -132,11 +133,11 @@ _(not started)_
 
 ### `pypdfbox/rendering/`
 
-Cluster #1 ships **original Python work** built on Pillow + aggdraw — not a line-by-line port of upstream `PDFRenderer.java` / `PageDrawer.java`. The upstream classes target Java2D's `Graphics2D` API; there is no Python equivalent to port verbatim. The PUBLIC API surface (`render_image(page_index, scale)`, `render_image_with_dpi(page_index, dpi)`) does mirror upstream, and operator dispatch reuses the ported `PDFStreamEngine` infrastructure.
+Clusters #1 + #2 ship **original Python work** built on Pillow + aggdraw + fontTools — not a line-by-line port of upstream `PDFRenderer.java` / `PageDrawer.java`. The upstream classes target Java2D's `Graphics2D` API; there is no Python equivalent to port verbatim. The PUBLIC API surface (`render_image(page_index, scale)`, `render_image_with_dpi(page_index, dpi)`) does mirror upstream, and operator dispatch reuses the ported `PDFStreamEngine` infrastructure. Cluster #2 added text/glyph rasterisation (TrueType glyph outlines through fontTools), Form XObject `Do`, `W`/`W*` clip paths, and inline images.
 
 | pypdfbox path | upstream PDFBox version | upstream Java path | derivation scope |
 |---|---|---|---|
-| `pypdfbox/rendering/pdf_renderer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/PDFRenderer.java` + `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java` | API surface only (`renderImage` / `renderImageWithDPI` entry points + per-operator semantics from `PageDrawer`). Implementation is original Python over Pillow + aggdraw — Java2D `Graphics2D` has no Python equivalent. |
+| `pypdfbox/rendering/pdf_renderer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/PDFRenderer.java` + `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java` | API surface only (`renderImage` / `renderImageWithDPI` entry points + per-operator semantics from `PageDrawer`). Implementation is original Python over Pillow + aggdraw + fontTools — Java2D `Graphics2D` has no Python equivalent. |
 
 Original work (no PROVENANCE entry needed; listed for clarity):
 - `pypdfbox/rendering/__init__.py` — re-exports `PDFRenderer`
@@ -297,7 +298,8 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureNode.java` |
 | `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDAttributeObject.java` (lite — typed owner subclasses deferred) |
 | `pypdfbox/pdmodel/documentinterchange/logicalstructure/revisions.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/Revisions.java` |
-| `pypdfbox/pdmodel/font/standard14_fonts.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/Standard14Fonts.java` (lite — flat per-family widths; full per-glyph AFM data deferred) |
+| `pypdfbox/pdmodel/font/standard14_fonts.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/Standard14Fonts.java` (per-glyph widths + descriptor numerics now sourced from bundled Adobe AFM files via `afm_loader`) |
+| `pypdfbox/pdmodel/font/afm/*.afm` (14 files) | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/afm/*.afm` (verbatim Adobe Core 14 AFM metrics; redistributed under the Adobe permissive notice preserved in each file's `Comment Copyright …` header — see `pypdfbox/pdmodel/font/afm/LICENSE.txt`) |
 | `pypdfbox/pdmodel/font/encoding/encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/Encoding.java` |
 | `pypdfbox/pdmodel/font/encoding/dictionary_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/DictionaryEncoding.java` |
 | `pypdfbox/pdmodel/font/encoding/standard_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/StandardEncoding.java` |
@@ -625,3 +627,14 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 |---|---|---|
 | `pypdfbox/pdfwriter/cos_writer.py` (xref-stream + ObjStm output) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriter.java` (writeXrefStream + COSWriterObjectStream paths) |
 | `pypdfbox/pdfparser/pdf_parser.py` (xref-stream decoder + compressed-object loader) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFXRefStreamParser.java` + `PDFObjectStreamParser.java` |
+
+### Type 1 / CFF font program parsing (fontTools wrappers)
+
+The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upstream — `org.apache.fontbox.type1.Type1Font` and `org.apache.fontbox.cff.CFFFont` (plus their helper classes `CFFParser`, `CharStringHandler`, `Type1Lexer`, etc.) re-implement PostScript / CFF parsing in Java. We delegate that responsibility to the (MIT-licensed) `fontTools` library and only mirror the public API surface needed by `PDType1Font` / `PDType1CFont`. Method names, parameter shapes, and semantic contracts (lazy parse, glyph-name lookup, charstring draw protocol) match upstream where applicable.
+
+| pypdfbox path | upstream PDFBox version | upstream Java path | derivation scope |
+|---|---|---|---|
+| `pypdfbox/fontbox/type1/type1_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Font.java` | API surface only — parsing delegated to `fontTools.t1Lib.T1Font` |
+| `pypdfbox/fontbox/cff/cff_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFFont.java` | API surface only — parsing delegated to `fontTools.cffLib.CFFFontSet`; widths via `fontTools.misc.psCharStrings.T2WidthExtractor` |
+| `pypdfbox/pdmodel/font/pd_type1_font.py` (`get_glyph_width` extension + `get_glyph_path` + `set_font_program` + `_get_type1_font`) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1Font.java` (`getWidthFromFont`, `getPath` analogues) |
+| `pypdfbox/pdmodel/font/pd_type1c_font.py` (`get_glyph_width` / `get_glyph_path` / `set_font_program` / `_get_cff_font` overrides) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (graduated from marker subclass to working CFF wrapper) |

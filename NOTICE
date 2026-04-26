@@ -36,3 +36,26 @@ Apache PDFBox itself depends on / acknowledges:
   developed under their own permissive licenses. Where pypdfbox ports
   such components, the original upstream attribution is propagated
   in the corresponding source-file headers.
+
+----------------------------------------------------------------------
+
+Adobe Core 14 AFM (Adobe Font Metrics) files
+  Copyright (c) 1985, 1987, 1989, 1990, 1993, 1997 Adobe Systems
+  Incorporated. All Rights Reserved.
+
+  pypdfbox bundles the 14 Adobe Core AFM files (Times, Helvetica,
+  Courier, Symbol, ZapfDingbats families) under
+  ``pypdfbox/pdmodel/font/afm/`` to provide standard metrics for the
+  14 PDF Standard fonts (PDF 32000-1:2008 §9.6.2.2). The files are
+  redistributed verbatim from Apache PDFBox under the Adobe permissive
+  redistribution terms preserved in each AFM file's
+  ``Comment Copyright …`` header. See
+  ``pypdfbox/pdmodel/font/afm/LICENSE.txt`` for full attribution.
+
+  Times is a trademark of Linotype-Hell AG and/or its subsidiaries.
+
+Includes the Adobe Glyph List
+  Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated.
+
+Includes the Zapf Dingbats Glyph List
+  Copyright 2002, 2010 Adobe Systems Incorporated.
