@@ -99,7 +99,14 @@ PDF stream filters per ISO 32000-1 §7.4. Per PRD §3.7, filters that wrap stdli
 | `pypdfbox/filter/lzw_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java` | full port — PDF-flavored LZW (9-12 bit, MSB-first, EarlyChange handling) |
 
 ### `pypdfbox/contentstream/`
-_(not started)_
+
+Cluster #1 (Operator + OperatorName + PDContentStream).
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/Operator.java` (operands list stored on the instance — pypdfbox parser attaches operands to Operator for consumer convenience; upstream keeps them on PDFStreamEngine. See `CHANGES.md`.) |
+| `pypdfbox/contentstream/operator_name.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/OperatorName.java` |
+| `pypdfbox/contentstream/pd_content_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/PDContentStream.java` (`get_matrix` typed as `Any` until `Matrix` ports with the rendering cluster) |
 
 ### `pypdfbox/text/`
 _(not started)_
@@ -238,3 +245,7 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | `tests/pdmodel/upstream/test_pd_document_catalog.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDDocumentCatalogTest.java` (page-labels / output-intents / open-action / threads cases skipped — depend on later clusters) |
 | `tests/pdmodel/upstream/test_pd_page.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTest.java` (acroform / annotation / thread-bead cases skipped — depend on later clusters) |
 | `tests/pdmodel/upstream/test_pd_page_tree.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTreeTest.java` (cases requiring `with_outline.pdf` / `page_tree_multiple_levels.pdf` / `PDFBOX-6040-nodeloop.pdf` fixtures skipped) |
+
+### `tests/contentstream/upstream/`
+
+Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or `PDContentStream` (verified by recursive listing of `pdfbox/src/test/java/org/apache/pdfbox/contentstream/`; only operator-*processor* tests live there, which depend on rendering and aren't in scope until cluster #2+). The hand-written tests under `tests/contentstream/test_operator.py` / `test_operator_name.py` / `test_pd_content_stream.py` are the only coverage for cluster #1; nothing to port here.
