@@ -20,10 +20,18 @@ classifiers = [
 ]
 
 # PRD §4 + §3.7.1: runtime deps require explicit user approval per the
-# library catalog. Currently approved: none (cryptography will be added
-# when encryption/signature clusters land). Font handling is ported from
-# org.apache.fontbox.* directly — no fonttools dep.
-dependencies = []
+# library catalog. Currently approved:
+#   - cryptography (Apache 2.0 / BSD): replaces upstream's javax.crypto
+#     stdlib usage + Bouncy Castle for encryption/signing. Required by
+#     pypdfbox.pdmodel.encryption (StandardSecurityHandler r2-r6:
+#     RC4 40/128-bit, AES-128/256 CBC) and signature verification
+#     (PDSignature /Contents PKCS#7).
+# Font handling is ported from org.apache.fontbox.* directly — no
+# fonttools dep. asn1crypto / pyHanko intentionally NOT adopted; see
+# CHANGES.md for rationale.
+dependencies = [
+    "cryptography>=42",   # Apache-2.0 / BSD
+]
 
 [project.urls]
 Homepage = "https://github.com/mehdyhaghy/pypdfbox"
