@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import struct
+from dataclasses import dataclass
+
+from pypdfbox.fontbox.ttf import wgl4_names
+from pypdfbox.fontbox.ttf.post_script_table import PostScriptTable
+from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+
+@dataclass
+class _StubTTF:
+    name: str = "TestFont"
+    num_glyphs: int = 0
+
+    def get_name(self) -> str:
+        return self.name
+
+    def get_number_of_glyphs(self) -> int:
+        return self.num_glyphs
+
+
+def _pack_fixed(whole: int, frac: int = 0) -> bytes:
+    # signed-short whole, unsigned-short frac
+    return struct.pack(">hH", whole, frac)
+
+
+def _pack_header(
+    fmt_whole: int,
+    fmt_frac: int = 0,
+    italic_whole: int = 0,
+    italic_frac: int = 0,
+    underline_pos: int = -100,
+    underline_thick: int = 50,
+    is_fixed_pitch: int = 0,
+    min_mem42: int = 0,
+    max_mem42: int = 0,
+    min_mem1: int = 0,
+    max_mem1: int = 0,
+) -> bytes:
+    return (
+        _pack_fixed(fmt_whole, fmt_frac)
+        + _pack_fixed(italic_whole, italic_frac)
+        + struct.pack(">hh", underline_pos, underline_thick)
+        + struct.pack(">IIIII", is_fixed_pitch, min_mem42, max_mem42, min_mem1, max_mem1)
+    )
+
+
+def _read(blob: bytes, ttf: _StubTTF | None = None) -> PostScriptTable:
+    table = PostScriptTable()
+    table.set_length(len(blob))
+    table.read(ttf or _StubTTF(), MemoryTTFDataStream(blob))  # type: ignore[arg-type]
+    return table
+
+
+def test_header_only_no_glyph_names() -> None:
+    blob = _pack_header(3, italic_whole=0, italic_frac=0,
+                        underline_pos=-150, underline_thick=20,
+                        is_fixed_pitch=1,
+                        min_mem42=0x10, max_mem42=0x20,
+                        min_mem1=0x30, max_mem1=0x40)
+    t = _read(blob)
+    assert t.get_format_type() == 3.0
+    assert t.get_italic_angle() == 0.0
+    assert t.get_underline_position() == -150
+    assert t.get_underline_thickness() == 20
+    assert t.get_is_fixed_pitch() == 1
+    assert t.get_min_mem_type42() == 0x10
+    assert t.get_max_mem_type42() == 0x20
+    assert t.get_min_mem_type1() == 0x30
+    assert t.get_max_mem_type1() == 0x40
+    # No bytes left after the header — warning path; format 3.0 means no names anyway.
+    assert t.get_glyph_names() is None
+    assert t.get_initialized() is True
+
+
+def test_format_1_uses_wgl4_names() -> None:
+    # Format 1.0 with at least one extra byte after header so we don't trip
+    # the EOF warning path.
+    blob = _pack_header(1) + b"\x00"
+    t = _read(blob)
+    assert t.get_format_type() == 1.0
+    names = t.get_glyph_names()
+    assert names is not None
+    assert len(names) == wgl4_names.NUMBER_OF_MAC_GLYPHS
+    assert names[0] == ".notdef"
+    assert names[3] == "space"
+    # accessor
+    assert t.get_name(0) == ".notdef"
+    assert t.get_name(-1) is None
+    assert t.get_name(len(names)) is None
+
+
+def test_format_2_with_custom_names() -> None:
+    # 3 glyphs: index 0 -> WGL4 ".notdef" (mac index 0)
+    #           index 1 -> WGL4 "space"   (mac index 3)
+    #           index 2 -> custom name "myGlyph" (index 258)
+    num_glyphs = 3
+    indices = [0, 3, wgl4_names.NUMBER_OF_MAC_GLYPHS]  # last refs custom slot 0
+    body = struct.pack(">H", num_glyphs)
+    body += b"".join(struct.pack(">H", i) for i in indices)
+    # one custom Pascal-style name
+    body += bytes([len("myGlyph")]) + b"myGlyph"
+
+    blob = _pack_header(2) + body
+    t = _read(blob)
+    assert t.get_format_type() == 2.0
+    names = t.get_glyph_names()
+    assert names == [".notdef", "space", "myGlyph"]
+
+
+def test_format_2_reserved_index_yields_undefined() -> None:
+    # An index in 32768..65535 is reserved; should resolve to ".undefined".
+    num_glyphs = 2
+    body = struct.pack(">HHH", num_glyphs, 0, 40000)
+    blob = _pack_header(2) + body
+    t = _read(blob)
+    names = t.get_glyph_names()
+    assert names == [".notdef", ".undefined"]
+
+
+def test_format_2_truncated_custom_names_pad_with_notdef() -> None:
+    # Claim two custom names but only write one — second should pad to .notdef.
+    num_glyphs = 2
+    indices = [
+        wgl4_names.NUMBER_OF_MAC_GLYPHS,        # custom slot 0
+        wgl4_names.NUMBER_OF_MAC_GLYPHS + 1,    # custom slot 1
+    ]
+    body = struct.pack(">H", num_glyphs)
+    body += b"".join(struct.pack(">H", i) for i in indices)
+    body += bytes([3]) + b"abc"  # only first name supplied
+    blob = _pack_header(2) + body
+    t = _read(blob)
+    names = t.get_glyph_names()
+    assert names == ["abc", ".notdef"]
+
+
+def test_format_2_5_uses_offsets() -> None:
+    # Format 2.5: per-glyph signed byte offset; final index = i + 1 + offset
+    # 3 glyphs, offsets chosen so that:
+    #   gid 0 -> 0+1+(-1) = 0  -> ".notdef"
+    #   gid 1 -> 1+1+(+1) = 3  -> "space"
+    #   gid 2 -> 2+1+(+1) = 4  -> "exclam"
+    body = struct.pack(">bbb", -1, 1, 1)
+    blob = _pack_header(2, fmt_frac=0x8000) + body
+    t = _read(blob, _StubTTF(num_glyphs=3))
+    assert t.get_format_type() == 2.5
+    names = t.get_glyph_names()
+    assert names == [".notdef", "space", "exclam"]
+
+
+def test_format_2_5_out_of_range_index_blanks_name() -> None:
+    # Only one glyph; offset pushes beyond WGL4 -> empty string in slot
+    body = struct.pack(">b", 100)  # gid 0 -> 0+1+100 = 101 (still in range)
+    blob = _pack_header(2, fmt_frac=0x8000) + body
+    t = _read(blob, _StubTTF(num_glyphs=1))
+    names = t.get_glyph_names()
+    assert names is not None
+    assert len(names) == 1
+    # gid0 = 101 -> WGL4 index 101 which is "Eacute"
+    assert names[0] == "Eacute"
+
+
+def test_format_2_5_invalid_index_remains_blank() -> None:
+    # offset such that gid 0 -> 0+1+127 = 128 (still valid)
+    # Use a second glyph that overflows: gid 1 -> 1+1+127 = 129 (valid)
+    # Force one truly invalid: use gid 0 -> 0+1+(-2) = -1 (negative)
+    body = struct.pack(">b", -2)
+    blob = _pack_header(2, fmt_frac=0x8000) + body
+    t = _read(blob, _StubTTF(num_glyphs=1))
+    names = t.get_glyph_names()
+    assert names == [""]
+
+
+def test_italic_angle_fractional() -> None:
+    # italic angle = -10.5 -> whole = -11, frac = 0x8000
+    blob = _pack_header(3, italic_whole=-11, italic_frac=0x8000)
+    t = _read(blob)
+    assert t.get_italic_angle() == -10.5
+
+
+def test_set_glyph_names_round_trip() -> None:
+    t = PostScriptTable()
+    t.set_glyph_names(["A", "B"])
+    assert t.get_glyph_names() == ["A", "B"]
+    assert t.get_name(0) == "A"
+    assert t.get_name(1) == "B"
+    assert t.get_name(2) is None
+    t.set_glyph_names(None)
+    assert t.get_glyph_names() is None
+    assert t.get_name(0) is None
+
+
+def test_format_4_smoke_does_not_crash() -> None:
+    # Format 4.0 isn't explicitly handled; the read() should still complete the
+    # header and leave initialized = True. There are no payload bytes after the
+    # header so no name list is built. (We add one byte to skip the EOF-warning
+    # branch and exercise the "fall through unhandled format" path.)
+    blob = _pack_header(4) + b"\x00"
+    t = _read(blob)
+    assert t.get_format_type() == 4.0
+    assert t.get_glyph_names() is None
+    assert t.get_initialized() is True
+
+
+def test_format_3_with_extra_bytes_does_not_create_names() -> None:
+    blob = _pack_header(3) + b"\x00\x00\x00"
+    t = _read(blob)
+    assert t.get_format_type() == 3.0
+    assert t.get_glyph_names() is None
