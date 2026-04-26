@@ -31,6 +31,29 @@ class PDAttributeObject:
                 f"PDAttributeObject.create expects COSDictionary, got "
                 f"{type(dictionary).__name__}"
             )
+        # Local imports avoid a circular import (taggedpdf -> logicalstructure).
+        from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
+            PDExportFormatAttributeObject,
+            PDLayoutAttributeObject,
+            PDListAttributeObject,
+            PDPrintFieldAttributeObject,
+            PDTableAttributeObject,
+            PDUserAttributeObject,
+        )
+
+        owner = dictionary.get_name(_O)
+        if owner == PDLayoutAttributeObject.OWNER:
+            return PDLayoutAttributeObject(dictionary)
+        if owner == PDListAttributeObject.OWNER:
+            return PDListAttributeObject(dictionary)
+        if owner == PDPrintFieldAttributeObject.OWNER:
+            return PDPrintFieldAttributeObject(dictionary)
+        if owner == PDTableAttributeObject.OWNER:
+            return PDTableAttributeObject(dictionary)
+        if owner in PDExportFormatAttributeObject._VALID_OWNERS:
+            return PDExportFormatAttributeObject(dictionary)
+        if owner == PDUserAttributeObject.OWNER:
+            return PDUserAttributeObject(dictionary)
         return PDAttributeObject(dictionary)
 
     def get_cos_object(self) -> COSDictionary:

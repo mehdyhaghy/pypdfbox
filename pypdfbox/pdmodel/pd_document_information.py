@@ -193,11 +193,11 @@ class PDDocumentInformation:
 
     # ---------- custom metadata ----------
 
-    def get_metadata_keys(self) -> set[str]:
-        """Return all metadata key names present in the info dictionary,
-        as a set (upstream returns ``TreeSet`` — Python's set has no order
-        guarantee but callers typically iterate or test membership only)."""
-        return {key.get_name() for key in self._info.key_set()}
+    def get_metadata_keys(self) -> list[str]:
+        """Return all metadata key names present in the info dictionary, in
+        sorted order (upstream returns ``TreeSet`` — sorted ``list`` matches
+        the documented ordering and stays stable for callers that iterate)."""
+        return sorted(key.get_name() for key in self._info.key_set())
 
     def get_custom_metadata_value(self, field_name: str) -> str | None:
         return self._info.get_string(field_name)

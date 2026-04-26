@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import io
 from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from typing import TYPE_CHECKING, BinaryIO
 
-from pypdfbox.cos import COSArray, COSDocument, COSName, COSStream
-from pypdfbox.filter import FilterFactory
+from pypdfbox.cos import COSArray, COSDictionary, COSDocument, COSName, COSStream
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -14,7 +12,9 @@ if TYPE_CHECKING:
 
 _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
 _LENGTH: COSName = COSName.LENGTH  # type: ignore[attr-defined]
+_METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _DL: COSName = COSName.get_pdf_name("DL")
+_DECODE_PARMS: COSName = COSName.get_pdf_name("DecodeParms")
 
 
 class PDStream:
@@ -82,16 +82,16 @@ class PDStream:
         input_data: bytes | bytearray | memoryview | BinaryIO,
         filters: COSName | COSArray | None,
     ) -> None:
-        """Read ``input_data`` and write the (raw) bytes into the wrapped
-        ``COSStream``. The ``filters`` argument, if given, populates the
-        stream's ``/Filter`` entry — but no encoding is performed: the
-        bytes you pass in are stored as-is and are assumed to already be
-        in the encoded form indicated by ``filters``.
+        """Read ``input_data`` and write the bytes into the wrapped
+        ``COSStream``. The ``filters`` argument, if given, populates
+        ``/Filter`` and the bytes are stored as-is (already-encoded form).
 
         Mirrors upstream's ``PDStream(PDDocument, InputStream, COSBase)``
-        which calls ``stream.createOutputStream(filters)``; PDFBox 3 does
-        encode on write. We match the *recorded filter list* but stash
-        the raw bytes (encoding-on-write is filter-cluster #2 territory)."""
+        which calls ``stream.createOutputStream(filters)``; we keep the
+        same shape but the caller is expected to pass already-encoded
+        bytes when ``filters`` is set (encode-on-embed would force callers
+        to pass the *decoded* form, which breaks every existing call site
+        that hands us pre-compressed bytes)."""
         if isinstance(input_data, (bytes, bytearray, memoryview)):
             data = bytes(input_data)
         else:
@@ -110,13 +110,17 @@ class PDStream:
 
     # ---------- output streams ----------
 
-    def create_output_stream(self, filter: COSName | None = None) -> BinaryIO:  # noqa: A002
-        """Writable stream — on close, its contents become the body. If
-        ``filter`` is supplied, it's recorded on ``/Filter`` (encoding
-        itself is deferred; callers must write already-encoded bytes)."""
-        if filter is not None:
-            self._stream.set_item(_FILTER, filter)
-        return self._stream.create_raw_output_stream()
+    def create_output_stream(
+        self,
+        filters: COSName | str | Sequence[COSName | str] | None = None,
+    ) -> BinaryIO:
+        """Writable stream — on ``close()`` its contents become the body.
+
+        With ``filters`` supplied, the bytes you write are *encoded*
+        through the chain on close (and ``/Filter`` is updated). Without
+        filters, bytes are stored verbatim and any existing ``/Filter``
+        entry is left untouched."""
+        return self._stream.create_output_stream(filters)
 
     # ---------- input streams ----------
 
@@ -124,7 +128,8 @@ class PDStream:
         self,
         stop_filters: Sequence[str | COSName] | None = None,
     ) -> BinaryIO:
-        """Decoded read stream.
+        """Decoded read stream — delegates to
+        :meth:`COSStream.create_input_stream`.
 
         - With no ``/Filter`` set → returns the raw bytes.
         - With filters set → applies each registered filter in order. If
@@ -134,29 +139,16 @@ class PDStream:
           mirrors upstream ``createInputStream(List<String>)`` and is used
           by image XObjects to short-circuit DCT/JBIG2 decoding.
 
-        Returns a ``BytesIO`` over the decoded payload. Raises ``KeyError``
-        when the chain references a filter not registered in
-        ``FilterFactory``."""
-        filters = self.get_filters()
-        if not filters:
-            return self._stream.create_raw_input_stream()
+        For an empty stream (no body set), returns an empty ``BytesIO``
+        rather than raising — matches the natural "no data" case. (This
+        diverges slightly from ``COSStream.create_input_stream``, which
+        raises ``OSError``: callers of ``PDStream`` are typed handles
+        that often legitimately wrap a fresh-and-empty COSStream.)"""
+        if not self._stream.has_data():
+            import io as _io  # noqa: PLC0415 — local to avoid leaking name
 
-        stop_set: set[str] = set()
-        if stop_filters is not None:
-            for s in stop_filters:
-                stop_set.add(s.name if isinstance(s, COSName) else s)
-
-        encoded = self._stream.get_raw_data()
-        # Apply filters in order, halting at the first stop filter.
-        for index, filter_name in enumerate(filters):
-            if filter_name.name in stop_set:
-                break
-            f = FilterFactory.get(filter_name)
-            src = io.BytesIO(encoded)
-            dst = io.BytesIO()
-            f.decode(src, dst, self._stream, index)
-            encoded = dst.getvalue()
-        return io.BytesIO(encoded)
+            return _io.BytesIO(b"")
+        return self._stream.create_input_stream(stop_filters)
 
     def create_raw_input_stream(self) -> BinaryIO:
         """Raw (still-encoded) bytes."""
@@ -164,12 +156,22 @@ class PDStream:
 
     # ---------- length ----------
 
-    def get_length(self) -> int:
-        """``/Length`` — encoded body length. Returns 0 when absent."""
+    def get_length(self) -> int | None:
+        """``/Length`` — encoded body length. Returns the dictionary
+        value when present (parser-populated), else falls back to the
+        live raw-byte length, else ``None`` for an entirely empty
+        stream. Mirrors upstream ``getLength()`` whose dictionary
+        access can yield a missing entry."""
         length = self._stream.get_int(_LENGTH, -1)
         if length >= 0:
             return length
-        return self._stream.get_length()
+        # Fall back to the live buffer; 0 still counts as a real length.
+        if self._stream.has_data():
+            return self._stream.get_length()
+        # No /Length entry and no body — match upstream's "missing".
+        if not self._stream.contains_key(_LENGTH):
+            return None
+        return 0
 
     def get_decoded_stream_length(self) -> int:
         """``/DL`` — decoded body length hint (may be absent → -1)."""
@@ -221,13 +223,83 @@ class PDStream:
         arr = COSArray(names)
         self._stream.set_item(_FILTER, arr)
 
+    # ---------- decode parameters ----------
+
+    def get_decode_parms(self) -> list[COSDictionary] | None:
+        """``/DecodeParms`` chain as a list of dictionaries (one per
+        filter, in the same order as ``get_filters``). Returns ``None``
+        when no ``/DecodeParms`` entry is present.
+
+        PDF allows ``/DecodeParms`` to be either a single dictionary
+        (when ``/Filter`` has one entry) or an array of dictionaries (one
+        per filter, with the null object ``COSNull`` standing in for "no
+        params for this filter")."""
+        from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
+
+        parms = self._stream.get_dictionary_object(_DECODE_PARMS)
+        if parms is None:
+            return None
+        if isinstance(parms, COSDictionary):
+            return [parms]
+        if isinstance(parms, COSArray):
+            out: list[COSDictionary] = []
+            for entry in parms:
+                if isinstance(entry, COSDictionary):
+                    out.append(entry)
+                elif entry is None or isinstance(entry, COSNull):
+                    # "No parameters for this filter" sentinel — record
+                    # an empty dict so the list-index alignment with the
+                    # filter chain is preserved.
+                    out.append(COSDictionary())
+                else:
+                    raise TypeError(
+                        f"unexpected /DecodeParms entry type: {type(entry).__name__}"
+                    )
+            return out
+        raise TypeError(f"unexpected /DecodeParms type: {type(parms).__name__}")
+
+    def set_decode_parms(
+        self,
+        parms: COSDictionary | Sequence[COSDictionary] | None,
+    ) -> None:
+        """Replace ``/DecodeParms``. Accepts ``None`` (removes the entry),
+        a single ``COSDictionary`` (stored as-is — single-filter form),
+        or a sequence of dictionaries (stored as a ``COSArray``)."""
+        if parms is None:
+            self._stream.remove_item(_DECODE_PARMS)
+            return
+        if isinstance(parms, COSDictionary):
+            self._stream.set_item(_DECODE_PARMS, parms)
+            return
+        arr = COSArray(list(parms))
+        self._stream.set_item(_DECODE_PARMS, arr)
+
+    # ---------- /Metadata ----------
+
+    def get_metadata(self) -> COSStream | None:
+        """``/Metadata`` — stream-level XMP metadata, or ``None``."""
+        meta = self._stream.get_dictionary_object(_METADATA)
+        if meta is None:
+            return None
+        if isinstance(meta, COSStream):
+            return meta
+        raise TypeError(f"unexpected /Metadata type: {type(meta).__name__}")
+
+    def set_metadata(self, stream: COSStream | None) -> None:
+        """Set ``/Metadata`` (or remove when ``None``)."""
+        if stream is None:
+            self._stream.remove_item(_METADATA)
+            return
+        self._stream.set_item(_METADATA, stream)
+
     # ---------- bytes convenience ----------
 
     def to_byte_array(self) -> bytes:
-        """Return the *decoded* body as a ``bytes``. Mirrors upstream
-        ``toByteArray()``."""
-        with self.create_input_stream() as src:
-            return src.read()
+        """Return the *decoded* body as a ``bytes``. Empty stream →
+        ``b""``. Mirrors upstream ``toByteArray()``."""
+        if not self._stream.has_data():
+            return b""
+        return self._stream.to_byte_array()
 
 
 def _to_name(value: COSName | str) -> COSName:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import Any, BinaryIO
 
 from pypdfbox.io import ScratchFile, ScratchFileBuffer
@@ -29,6 +29,46 @@ class _CommittingOutputStream(io.BytesIO):
         super().close()
 
 
+class _EncodingOutputStream(io.BytesIO):
+    """``BytesIO`` subclass whose ``close()`` runs the buffered raw bytes
+    through a filter chain (in reverse: rightmost filter first, as
+    decoders are applied left-to-right) and commits the encoded result
+    back into the owning ``COSStream``. The ``/Filter`` entry is set on
+    the owner so subsequent decode chains can recover the raw bytes."""
+
+    def __init__(self, owner: COSStream, filters: Sequence[COSName]) -> None:
+        super().__init__()
+        self._owner = owner
+        self._filters: list[COSName] = list(filters)
+        self._committed = False
+
+    def close(self) -> None:
+        if not self._committed:
+            self._committed = True
+            # Local import to avoid a hard cos→filter dependency at
+            # module import time (filter imports COSDictionary etc.).
+            from pypdfbox.filter import FilterFactory  # noqa: PLC0415
+
+            data = self.getvalue()
+            # PDF filter chain reads left-to-right when *decoding*; when
+            # *encoding* we must apply them in reverse so the rightmost
+            # decoder undoes the first encoder, etc.
+            for name in reversed(self._filters):
+                f = FilterFactory.get(name)
+                src = io.BytesIO(data)
+                dst = io.BytesIO()
+                f.encode(src, dst, self._owner)
+                data = dst.getvalue()
+            self._owner._set_raw_data_internal(data)
+            # Record the filter chain on /Filter so future readers can
+            # decode the bytes we just wrote.
+            if len(self._filters) == 1:
+                self._owner.set_item(COSName.FILTER, self._filters[0])  # type: ignore[attr-defined]
+            else:
+                self._owner.set_item(COSName.FILTER, COSArray(list(self._filters)))  # type: ignore[attr-defined]
+        super().close()
+
+
 class COSStream(COSDictionary):
     """
     PDF stream — a dictionary plus a binary content body. Inherits
@@ -37,9 +77,11 @@ class COSStream(COSDictionary):
 
     Body bytes are stored in a ``ScratchFile`` buffer (which spills to
     disk per the document's ``MemoryUsageSetting``). Filter encoding /
-    decoding is delegated to the ``filter`` module (PRD §6.4) and is
-    out of scope for this class — only **raw** byte access is provided
-    here. Decoded helpers will land in cluster ``filter`` cluster #1.
+    decoding is delegated to ``pypdfbox.filter`` via ``FilterFactory``:
+    :meth:`create_input_stream` decodes through the ``/Filter`` chain
+    and :meth:`create_output_stream` accepts an optional filter chain
+    that is encoded on close. Encryption-aware streams and image-flow
+    predictor handling on encode remain deferred (see ``CHANGES.md``).
     """
 
     def __init__(
@@ -105,29 +147,95 @@ class COSStream(COSDictionary):
             raise ValueError("operation on closed COSStream")
         return _CommittingOutputStream(self)
 
-    def create_input_stream(self) -> BinaryIO:
-        """Return a stream over the **decoded** body. Without ``/Filter`` this
-        is equivalent to ``create_raw_input_stream``. Filter decoding lives
-        in the ``filter`` module (cluster #1) — calling this on a stream
-        with filters set raises ``NotImplementedError`` until then."""
-        if self.get_filter_list():
-            raise NotImplementedError(
-                "COSStream filter decoding lives in pypdfbox.filter (not yet ported)"
-            )
-        return self.create_raw_input_stream()
+    def create_input_stream(
+        self,
+        stop_filters: Sequence[str | COSName] | None = None,
+    ) -> BinaryIO:
+        """Return a stream over the **decoded** body.
 
-    def create_output_stream(self, filters: COSBase | None = None) -> BinaryIO:
+        Without ``/Filter`` this is equivalent to
+        :meth:`create_raw_input_stream`. With ``/Filter`` set, each filter
+        in the chain is resolved through ``FilterFactory`` and applied in
+        order. ``stop_filters`` (a sequence of filter names) lets callers
+        halt decoding early — e.g. image XObjects stop before
+        ``/DCTDecode`` so the JPEG bytes are preserved verbatim. Mirrors
+        upstream ``COSStream.createInputStream(List<String>)``."""
+        if self._buffer is None:
+            raise OSError("stream has no data")
+
+        chain = self.get_filter_list()
+        if not chain:
+            return self.create_raw_input_stream()
+
+        # Local import to keep cos free of a static filter dep.
+        from pypdfbox.filter import FilterFactory  # noqa: PLC0415
+
+        stop_set: set[str] = set()
+        if stop_filters is not None:
+            for s in stop_filters:
+                stop_set.add(s.name if isinstance(s, COSName) else s)
+
+        data = self.get_raw_data()
+        for index, name in enumerate(chain):
+            if name.name in stop_set:
+                break
+            f = FilterFactory.get(name)
+            src = io.BytesIO(data)
+            dst = io.BytesIO()
+            f.decode(src, dst, self, index)
+            data = dst.getvalue()
+        return io.BytesIO(data)
+
+    def create_output_stream(
+        self,
+        filters: COSBase | Sequence[COSName | str] | None = None,
+    ) -> BinaryIO:
         """Return a writable stream that on ``close()`` becomes the body.
 
-        If ``filters`` is supplied (a ``COSName`` or ``COSArray`` of names)
-        the stream's ``/Filter`` entry is set, but actual filter encoding is
-        deferred to the ``filter`` module — passing filters today raises
-        ``NotImplementedError``."""
-        if filters is not None:
-            raise NotImplementedError(
-                "COSStream filter encoding lives in pypdfbox.filter (not yet ported)"
-            )
-        return self.create_raw_output_stream()
+        - ``filters=None`` → the bytes you write are stored verbatim
+          (raw / unencoded). The stream's existing ``/Filter`` entry is
+          left untouched.
+        - ``filters`` is a single ``COSName`` → wraps in a one-element
+          chain.
+        - ``filters`` is a ``COSArray`` of names *or* a Python sequence
+          of ``COSName`` / ``str`` → each filter is applied in reverse on
+          ``close()`` so reading back through ``create_input_stream``
+          recovers the bytes you wrote. ``/Filter`` is set accordingly."""
+        if self._closed:
+            raise ValueError("operation on closed COSStream")
+        if filters is None:
+            return self.create_raw_output_stream()
+
+        names = _coerce_filter_chain(filters)
+        return _EncodingOutputStream(self, names)
+
+    # ---------- decoded / raw bytes convenience ----------
+
+    def to_byte_array(self) -> bytes:
+        """All decoded bytes as a ``bytes``. Returns ``b""`` for an
+        empty stream (no body set). Mirrors upstream ``toByteArray()``."""
+        if self._buffer is None or self._buffer.length() == 0:
+            return b""
+        with self.create_input_stream() as src:
+            return src.read()
+
+    def to_raw_byte_array(self) -> bytes:
+        """All raw (still-encoded) bytes as a ``bytes``. Returns ``b""``
+        for an empty stream."""
+        return self.get_raw_data()
+
+    def set_data(
+        self,
+        data: bytes | bytearray | memoryview,
+        filters: Sequence[COSName | str] | COSName | str | None = None,
+    ) -> None:
+        """Convenience setter — write ``data`` (raw, unencoded) through
+        the supplied filter chain. With ``filters=None`` the bytes are
+        stored verbatim and any existing ``/Filter`` is left untouched.
+        With a filter chain, ``data`` is treated as the decoded payload
+        and is encoded on the way in (and ``/Filter`` is set)."""
+        with self.create_output_stream(filters) as out:
+            out.write(bytes(data))
 
     # ---------- /Filter introspection ----------
 
@@ -179,3 +287,37 @@ class COSStream(COSDictionary):
 
     def __repr__(self) -> str:
         return f"COSStream(dict_size={self.size()}, body_len={self.get_length()})"
+
+
+def _coerce_filter_chain(
+    filters: COSBase | Sequence[COSName | str] | str,
+) -> list[COSName]:
+    """Normalize the many shapes ``filters`` may take into a list of
+    ``COSName``. Accepts a single ``COSName``, a ``COSArray`` of names,
+    a single ``str``, or any sequence of ``COSName`` / ``str``."""
+    if isinstance(filters, COSName):
+        return [filters]
+    if isinstance(filters, COSArray):
+        out: list[COSName] = []
+        for entry in filters:
+            if isinstance(entry, COSName):
+                out.append(entry)
+            else:
+                raise TypeError(
+                    f"non-name entry in /Filter array: {type(entry).__name__}"
+                )
+        return out
+    if isinstance(filters, str):
+        return [COSName.get_pdf_name(filters)]
+    # Treat as a generic sequence of name-or-string.
+    out = []
+    for entry in filters:
+        if isinstance(entry, COSName):
+            out.append(entry)
+        elif isinstance(entry, str):
+            out.append(COSName.get_pdf_name(entry))
+        else:
+            raise TypeError(
+                f"filter entry must be COSName or str, got {type(entry).__name__}"
+            )
+    return out

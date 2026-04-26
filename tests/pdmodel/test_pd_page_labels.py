@@ -190,3 +190,136 @@ def test_catalog_set_get_page_labels() -> None:
     fetched = doc.get_document_catalog().get_page_labels()
     assert fetched is not None
     assert fetched.get_labels_by_page_indices() == ["1", "2"]
+
+
+# ---------- get_label_for_page ----------
+
+
+def test_get_label_for_page_default_returns_one() -> None:
+    """Empty/default labels: get_label_for_page(0) → '1' (decimal default)."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    assert labels.get_label_for_page(0) == "1"
+
+
+def test_get_label_for_page_decimal_with_start_offset() -> None:
+    """One range with /S /D /St 5 at page 0: page 0 → '5', page 1 → '6'."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_DECIMAL, start_number=5)
+    assert labels.get_label_for_page(0) == "5"
+    assert labels.get_label_for_page(1) == "6"
+
+
+def test_get_label_for_page_roman_lower() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_ROMAN_LOWER)
+    assert labels.get_label_for_page(0) == "i"
+    assert labels.get_label_for_page(3) == "iv"
+
+
+def test_get_label_for_page_letters_upper_doubles() -> None:
+    """Letters style: page 0 → 'A', page 25 → 'Z', page 26 → 'AA'."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_LETTERS_UPPER)
+    assert labels.get_label_for_page(0) == "A"
+    assert labels.get_label_for_page(25) == "Z"
+    assert labels.get_label_for_page(26) == "AA"
+
+
+def test_get_label_for_page_walks_to_right_range() -> None:
+    """Multiple ranges: pick the range covering the requested index."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_ROMAN_LOWER)
+    labels.set_label_range(3, style=PDPageLabels.STYLE_DECIMAL, prefix="A-")
+    labels.set_label_range(
+        7, style=PDPageLabels.STYLE_LETTERS_UPPER, start_number=1
+    )
+    assert labels.get_label_for_page(0) == "i"
+    assert labels.get_label_for_page(2) == "iii"
+    # Range starts at 3, /St defaults to 1 → page 3 → "A-1".
+    assert labels.get_label_for_page(3) == "A-1"
+    assert labels.get_label_for_page(5) == "A-3"
+    # Range starts at 7 with letters → page 7 → "A".
+    assert labels.get_label_for_page(7) == "A"
+    assert labels.get_label_for_page(8) == "B"
+
+
+def test_get_label_for_page_with_prefix_only() -> None:
+    """Range with prefix and no style: just emits the prefix."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    r = PDPageLabelRange()
+    r.set_prefix("Cover")
+    labels.set_label_item(0, r)
+    assert labels.get_label_for_page(0) == "Cover"
+
+
+# ---------- get_label_ranges ----------
+
+
+def test_get_label_ranges_lists_each_entry() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_ROMAN_LOWER)
+    labels.set_label_range(
+        4, style=PDPageLabels.STYLE_DECIMAL, prefix="A-", start_number=10
+    )
+    ranges = labels.get_label_ranges()
+    assert len(ranges) == 2
+    assert ranges[0] == {
+        "start_index": 0,
+        "style": "r",
+        "prefix": None,
+        "start_number": 1,
+    }
+    assert ranges[1] == {
+        "start_index": 4,
+        "style": "D",
+        "prefix": "A-",
+        "start_number": 10,
+    }
+
+
+# ---------- set_label_range ----------
+
+
+def test_set_label_range_validates_negative() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    with pytest.raises(ValueError):
+        labels.set_label_range(-1, style=PDPageLabels.STYLE_DECIMAL)
+
+
+def test_set_label_range_replaces_existing() -> None:
+    """A second set_label_range at the same start_index overwrites."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_DECIMAL)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_ROMAN_UPPER)
+    assert labels.get_label_for_page(0) == "I"
+
+
+# ---------- to_roman / to_letters helpers ----------
+
+
+def test_to_roman_basic() -> None:
+    from pypdfbox.pdmodel.pd_page_labels import to_roman
+
+    assert to_roman(1) == "I"
+    assert to_roman(4) == "IV"
+    assert to_roman(9) == "IX"
+    assert to_roman(40) == "XL"
+    assert to_roman(1990) == "MCMXC"
+
+
+def test_to_letters_basic() -> None:
+    from pypdfbox.pdmodel.pd_page_labels import to_letters
+
+    assert to_letters(1) == "A"
+    assert to_letters(26) == "Z"
+    assert to_letters(27) == "AA"
+    assert to_letters(28) == "BB"

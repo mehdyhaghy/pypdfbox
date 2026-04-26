@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -56,6 +56,24 @@ def _make_letter_label(num: int) -> str:
     return chr(ord("a") + letter) * num_letters
 
 
+def to_roman(n: int) -> str:
+    """Public helper: upper-case Roman numeral for ``n`` (>= 1).
+
+    Returns an empty string for non-positive input (matches the internal
+    label generator). Mirrors PDFBox's roman rendering.
+    """
+    return _make_roman_label(n).upper()
+
+
+def to_letters(n: int) -> str:
+    """Public helper: upper-case letter label (``A..Z, AA..ZZ, ...``).
+
+    Letter labels follow the PDF 32000-1 Table 159 doubling scheme:
+    1→A, 26→Z, 27→AA, 28→BB, etc. Returns empty for non-positive input.
+    """
+    return _make_letter_label(n).upper()
+
+
 class PDPageLabels:
     """
     Page label dictionary (PDF 32000-1:2008 §12.4.2). Mirrors
@@ -67,6 +85,14 @@ class PDPageLabels:
     ``CHANGES.md``. Reads handle both flat ``/Nums`` arrays and a single
     level of ``/Kids`` for compatibility with documents in the wild.
     """
+
+    # Style entry values, mirrored on the wrapper for convenience so callers
+    # don't have to import ``PDPageLabelRange`` just for the constants.
+    STYLE_DECIMAL: str = PDPageLabelRange.STYLE_DECIMAL
+    STYLE_ROMAN_UPPER: str = PDPageLabelRange.STYLE_ROMAN_UPPER
+    STYLE_ROMAN_LOWER: str = PDPageLabelRange.STYLE_ROMAN_LOWER
+    STYLE_LETTERS_UPPER: str = PDPageLabelRange.STYLE_LETTERS_UPPER
+    STYLE_LETTERS_LOWER: str = PDPageLabelRange.STYLE_LETTERS_LOWER
 
     def __init__(
         self,
@@ -173,6 +199,85 @@ class PDPageLabels:
         # page (matches upstream behaviour where the array slot stays null).
         return [r if r is not None else "" for r in result]
 
+    def get_label_for_page(self, index: int) -> str:
+        """Compute the label for the 0-based page ``index`` without needing
+        to know the document's total page count.
+
+        Walks the in-memory ``/Nums`` ranges, finds the range covering
+        ``index``, and renders ``prefix + style(start_number + (index -
+        range_start))``. Returns ``str(index + 1)`` for negative indices /
+        no-op cases (mirrors the spec default of decimal labelling).
+        """
+        if index < 0:
+            return str(index + 1)
+        sorted_starts = sorted(self._labels)
+        # Find the range whose start is the greatest <= index.
+        range_start = sorted_starts[0]
+        for s in sorted_starts:
+            if s <= index:
+                range_start = s
+            else:
+                break
+        info = self._labels[range_start]
+        offset = index - range_start
+        prefix = info.get_prefix() or ""
+        # Upstream PDFBOX-1047: trim the prefix at the first NUL.
+        nul = prefix.find("\x00")
+        if nul >= 0:
+            prefix = prefix[:nul]
+        style = info.get_style()
+        if style is None:
+            return prefix
+        return prefix + _render_number(info.get_start() + offset, style)
+
+    def get_label_ranges(self) -> list[dict[str, Any]]:
+        """List each /Nums range as a ``dict`` with keys ``start_index``,
+        ``style`` (``/S``), ``prefix`` (``/P``), ``start_number`` (``/St``).
+
+        Convenience for callers that want plain-data introspection without
+        touching ``PDPageLabelRange`` directly.
+        """
+        out: list[dict[str, Any]] = []
+        for start in sorted(self._labels):
+            info = self._labels[start]
+            out.append(
+                {
+                    "start_index": start,
+                    "style": info.get_style(),
+                    "prefix": info.get_prefix(),
+                    "start_number": info.get_start(),
+                }
+            )
+        return out
+
+    def set_label_range(
+        self,
+        start_index: int,
+        style: str | None = None,
+        prefix: str | None = None,
+        start_number: int = 1,
+    ) -> None:
+        """Append (or replace) a range entry in /Nums at ``start_index``.
+
+        Convenience constructor on top of :meth:`set_label_item`. ``style``
+        should be one of the ``STYLE_*`` constants. ``start_number`` must be
+        positive (PDF 32000-1 §12.4.2 — ``/St`` is a positive integer).
+        """
+        if start_index < 0:
+            raise ValueError(
+                "start_index parameter of set_label_range may not be < 0"
+            )
+        item = PDPageLabelRange()
+        if style is not None:
+            item.set_style(style)
+        if prefix is not None:
+            item.set_prefix(prefix)
+        # ``set_start`` itself validates positivity; default 1 is the spec
+        # default so we only emit /St when the caller asked for non-default.
+        if start_number != 1:
+            item.set_start(start_number)
+        self._labels[start_index] = item
+
     def get_page_indices_by_labels(self) -> dict[str, int]:
         """Inverse map. Where a label repeats, the highest index wins."""
         number_of_pages = self._doc.get_number_of_pages()
@@ -251,4 +356,4 @@ def _render_number(page_index: int, style: str) -> str:
     return str(page_index)
 
 
-__all__ = ["PDPageLabels"]
+__all__ = ["PDPageLabels", "to_letters", "to_roman"]
