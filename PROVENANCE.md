@@ -221,6 +221,11 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_transition_motion.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionMotion.java` |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_transition_dimension.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionDimension.java` |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_transition_direction.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionDirection.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_acro_form.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDAcroForm.java` (scaffold — flatten/refresh_appearances/FDF/scripting/PDFieldTree/XFA deferred) |
+| `pypdfbox/pdmodel/interactive/form/pd_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDField.java` (scaffold — value handling + `/AA` typing deferred) |
+| `pypdfbox/pdmodel/interactive/form/pd_non_terminal_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDNonTerminalField.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_terminal_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDTerminalField.java` (also hosts `PDFieldStub` — generic concrete subclass returned by factory until typed dispatch lands) |
+| `pypdfbox/pdmodel/interactive/form/pd_field_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldFactory.java` (returns `PDFieldStub` for all `/FT` until Tx/Btn/Ch/Sig dispatch lands) |
 
 ### `pypdfbox/fontbox/`
 
