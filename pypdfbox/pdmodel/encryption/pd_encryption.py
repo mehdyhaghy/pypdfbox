@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 
+from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
+
 # Algorithm version constants — mirror PDFBox ``PDEncryption`` static fields.
 VERSION0_UNDOCUMENTED_UNSUPPORTED: int = 0
 VERSION1_40_BIT_ALGORITHM: int = 1
@@ -29,6 +31,10 @@ _RECIPIENTS: COSName = COSName.get_pdf_name("Recipients")
 _CF: COSName = COSName.get_pdf_name("CF")
 _STM_F: COSName = COSName.get_pdf_name("StmF")
 _STR_F: COSName = COSName.get_pdf_name("StrF")
+_EFF: COSName = COSName.get_pdf_name("EFF")
+_STD_CF: COSName = COSName.get_pdf_name("StdCF")
+_DEFAULT_CRYPT_FILTER: COSName = COSName.get_pdf_name("DefaultCryptFilter")
+_IDENTITY: str = "Identity"
 
 
 def _get_bytes(d: COSDictionary, key: COSName) -> bytes | None:
@@ -190,11 +196,72 @@ class PDEncryption:
     def set_str_f(self, name: str) -> None:
         self._dict.set_name(_STR_F, name)
 
+    # ---------- /CF dispatch — typed PDCryptFilterDictionary wrappers ----------
+
+    def get_crypt_filter_dictionary(self, name: str) -> PDCryptFilterDictionary | None:
+        """Return the named entry of /CF wrapped in a typed dictionary.
+
+        ``name`` is matched case-sensitively against the keys of the /CF
+        sub-dictionary. Returns ``None`` when /CF is absent or the named
+        filter does not exist. The "Identity" name is reserved by the spec
+        (PDF 32000-1 §7.6.5) and never appears in /CF — callers should
+        special-case it before calling here.
+        """
+        cf = self.get_cf()
+        if cf is None:
+            return None
+        entry = cf.get_dictionary_object(COSName.get_pdf_name(name))
+        if isinstance(entry, COSDictionary):
+            return PDCryptFilterDictionary(entry)
+        return None
+
+    def set_crypt_filter_dictionary(
+        self, name: str, dictionary: PDCryptFilterDictionary
+    ) -> None:
+        """Store ``dictionary`` under ``name`` in /CF, creating /CF if absent."""
+        cf = self.get_cf()
+        if cf is None:
+            cf = COSDictionary()
+            self.set_cf(cf)
+        # Mirror PDFBox PDFBOX-4436 workaround: keep the entry as a direct
+        # object so Adobe Reader on Android resolves it correctly.
+        cos_obj = dictionary.get_cos_object()
+        cos_obj.set_direct(True)
+        cf.set_item(COSName.get_pdf_name(name), cos_obj)
+
+    def get_std_crypt_filter_dictionary(self) -> PDCryptFilterDictionary | None:
+        """Return /CF/StdCF wrapped in a typed dictionary, or ``None``."""
+        return self.get_crypt_filter_dictionary("StdCF")
+
+    def set_std_crypt_filter_dictionary(
+        self, dictionary: PDCryptFilterDictionary
+    ) -> None:
+        """Store ``dictionary`` under /CF/StdCF (creates /CF if absent)."""
+        self.set_crypt_filter_dictionary("StdCF", dictionary)
+
+    def get_default_crypt_filter_dictionary(self) -> PDCryptFilterDictionary | None:
+        """Return /CF/DefaultCryptFilter — public-key handler convention."""
+        return self.get_crypt_filter_dictionary("DefaultCryptFilter")
+
+    def set_default_crypt_filter_dictionary(
+        self, dictionary: PDCryptFilterDictionary
+    ) -> None:
+        """Store ``dictionary`` under /CF/DefaultCryptFilter."""
+        self.set_crypt_filter_dictionary("DefaultCryptFilter", dictionary)
+
+    def remove_v45_filters(self) -> None:
+        """Strip /CF, /StmF, /StrF, /EFF — used when downgrading to V <= 3."""
+        self._dict.remove_item(_CF)
+        self._dict.remove_item(_STM_F)
+        self._dict.remove_item(_STR_F)
+        self._dict.remove_item(_EFF)
+
 
 __all__ = [
     "DEFAULT_LENGTH",
     "DEFAULT_NAME",
     "DEFAULT_VERSION",
+    "PDCryptFilterDictionary",
     "PDEncryption",
     "VERSION0_UNDOCUMENTED_UNSUPPORTED",
     "VERSION1_40_BIT_ALGORITHM",

@@ -371,14 +371,23 @@ def test_incremental_without_source_raises() -> None:
         w.write(doc)
 
 
-def test_encrypted_document_rejected() -> None:
+def test_encrypted_cos_document_writes_passthrough() -> None:
+    """Writing a raw COSDocument that happens to carry an /Encrypt entry
+    is a low-level pass-through: no handler is wired (handlers live on
+    PDDocument), so the writer emits the document verbatim. Encryption
+    of stream / string payloads only kicks in when ``write(PDDocument)``
+    is used and a protection policy or active handler is staged."""
     doc = _make_doc()
     trailer = doc.get_trailer()
     assert trailer is not None
     trailer.set_item(COSName.ENCRYPT, COSDictionary())  # type: ignore[attr-defined]
     sink = io.BytesIO()
-    with pytest.raises(NotImplementedError), COSWriter(sink) as w:
+    with COSWriter(sink) as w:
         w.write(doc)
+    out = sink.getvalue()
+    # /Encrypt round-tripped verbatim into the trailer.
+    assert b"/Encrypt" in out
+    assert out.startswith(b"%PDF-1.4")
 
 
 def test_pddocument_not_supported() -> None:

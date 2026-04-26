@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -51,6 +53,23 @@ class PDFParser:
         self._document: COSDocument | None = None
         self._version: float | None = None
         self._cos_parser: COSParser | None = None
+        # Optional decryption material — when set via ``set_password`` the
+        # parser instantiates a security handler eagerly (as soon as the
+        # trailer's ``/Encrypt`` + ``/ID`` are available) so encrypted
+        # xref-stream bodies can be deciphered before their entries are
+        # decoded. Mirrors the upstream ``PDFParser(source, password, …)``
+        # ctor overload. ``None`` (the default) preserves the lazy
+        # post-load decryption flow driven by ``PDDocument.decrypt``.
+        self._password: str | bytes | None = None
+        # Populated by ``_prepare_security_handler_if_needed`` once the
+        # trailer's ``/Encrypt`` is in scope. Reused for every subsequent
+        # xref-stream object in the chain.
+        self._security_handler: Any | None = None
+        # Set to ``True`` whenever the parser observes an indirect object
+        # whose dictionary advertises ``/Type /XRef`` while the document
+        # carries an ``/Encrypt`` entry. Diagnostic surface for callers
+        # that want to know whether the early-handler path was exercised.
+        self._has_encrypted_xref_streams: bool = False
 
     # ---------- public entry point ----------
 
@@ -94,6 +113,127 @@ class PDFParser:
         trailer = self._resolver.get_trailer()
         if trailer is None:
             return None
+        ids = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
+        if not isinstance(ids, COSArray) or ids.size() == 0:
+            return None
+        first = ids.get(0)
+        if isinstance(first, COSString):
+            return first.get_bytes()
+        return None
+
+    # ---------- early-decryption surface (PDF 1.5+ encrypted xref streams) ----------
+
+    def set_password(self, password: str | bytes | None) -> None:
+        """Stage a password so the parser can instantiate a security
+        handler the moment the trailer's ``/Encrypt`` becomes available.
+        Required for documents whose xref *itself* is an encrypted stream
+        — the handler must decipher the body before entries can be parsed.
+
+        Pass ``None`` (the default) to keep the legacy flow where loading
+        finishes first and ``PDDocument.decrypt`` walks the pool to attach
+        a handler retroactively. Mirrors the ``password`` argument of
+        upstream's ``PDFParser`` constructor overloads."""
+        self._password = password
+
+    def get_password(self) -> str | bytes | None:
+        return self._password
+
+    def get_security_handler(self) -> Any | None:
+        """Return the security handler instantiated by the eager-decrypt
+        path (see :meth:`set_password`), or ``None`` when no password was
+        supplied or the document is not encrypted."""
+        return self._security_handler
+
+    def has_encrypted_xref_streams(self) -> bool:
+        """``True`` when the parser saw at least one xref-stream object in
+        a document that carries an ``/Encrypt`` entry. Set during
+        :meth:`parse_xref_chain`; useful for tests and diagnostics."""
+        return self._has_encrypted_xref_streams
+
+    def _prepare_security_handler_if_needed(self) -> Any | None:
+        """If the trailer carries ``/Encrypt`` and a password has been
+        staged via :meth:`set_password`, build (and cache) a
+        ``StandardSecurityHandler`` ready to decipher subsequent xref-stream
+        bodies / objects. Returns the cached handler on subsequent calls."""
+        if self._security_handler is not None:
+            return self._security_handler
+        if self._password is None:
+            return None
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            return None
+        # The trailer's /Encrypt entry is almost always an indirect ref
+        # (``/Encrypt 4 0 R``) that hasn't been loader-attached yet —
+        # ``populate_document`` runs after the xref chain is fully walked.
+        # Resolve it manually here so the handler can stand up before any
+        # downstream xref-stream body is touched.
+        enc_dict = self._resolve_dict_entry(trailer, COSName.ENCRYPT)  # type: ignore[attr-defined]
+        if not isinstance(enc_dict, COSDictionary):
+            return None
+        # Local imports — pdfparser must not depend on pdmodel at import
+        # time (encryption lives one layer up).
+        from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
+        from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: PLC0415
+            StandardDecryptionMaterial,
+            StandardSecurityHandler,
+        )
+
+        encryption = PDEncryption(enc_dict)
+        document_id = self._resolve_document_id(trailer) or b""
+        password_bytes: bytes
+        if isinstance(self._password, str):
+            password_bytes = self._password.encode("utf-8")
+        else:
+            password_bytes = bytes(self._password)
+        handler = StandardSecurityHandler(encryption)
+        handler.prepare_for_decryption(
+            encryption,
+            document_id,
+            StandardDecryptionMaterial(password_bytes),
+        )
+        self._security_handler = handler
+        return handler
+
+    def _resolve_dict_entry(
+        self, container: COSDictionary, key: COSName
+    ) -> COSBase | None:
+        """Return ``container[key]`` resolved through the parser's
+        already-known xref entries, even when ``populate_document`` has
+        not yet attached loaders. Direct values pass through unchanged.
+        Used during the eager-decrypt bootstrap where the trailer is
+        available but the object pool is still being assembled."""
+        item = container.get_item(key)
+        if item is None:
+            return None
+        if not isinstance(item, COSObject):
+            return item
+        if item.is_object_loaded():
+            return item.get_object()
+        # Look up the entry in the resolver and parse it inline. We do
+        # NOT register a loader on the COSObject here — populate_document
+        # will do that for the whole pool when the chain is complete.
+        target_key = COSObjectKey(
+            item.get_object_number(), item.get_generation_number()
+        )
+        xref = self._resolver.get_xref_table()
+        entry = xref.get(target_key)
+        if entry is None or entry.compressed_index == -1:
+            return None
+        if entry.type is not XrefType.TABLE:
+            # Compressed / xref-stream-derived entries need cluster #4 to
+            # decode — leave the eager bootstrap dormant in that case.
+            return None
+        # Snapshot cursor, parse the indirect, restore cursor so the
+        # outer xref walker isn't disturbed.
+        saved = self._src.get_position()
+        try:
+            return self._load_indirect_object_at(entry.offset, item)
+        finally:
+            self._src.seek(saved)
+
+    def _resolve_document_id(self, trailer: COSDictionary) -> bytes | None:
+        """``/ID`` companion to :meth:`_resolve_dict_entry`. Returns the
+        first element of the ID array as bytes, or ``None``."""
         ids = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
         if not isinstance(ids, COSArray) or ids.size() == 0:
             return None
@@ -188,10 +328,70 @@ class PDFParser:
         peek = self._base.peek_byte()
         if peek == 0x78:  # 'x' — likely the "xref" keyword
             self._parse_traditional_xref_section()
+            # Once the trailer has been merged, eagerly stand up the
+            # security handler if the caller staged a password — the next
+            # iteration of /Prev may land on an xref STREAM, and that
+            # body has to be deciphered before its entries decode.
+            self._prepare_security_handler_if_needed()
         else:
+            # PDF 1.5+ xref-stream (an indirect object whose dict carries
+            # /Type /XRef and whose body holds packed xref entries).
+            #
+            # The full xref-stream entry decoder still belongs to parser
+            # cluster #4. What lives here is the *encryption integration*:
+            # we peek at the dictionary to detect ``/Type /XRef`` and, if
+            # the document is encrypted and a password has been staged,
+            # build the security handler so the xref-stream body can be
+            # deciphered before entries are parsed.
+            self._handle_xref_stream_at(offset)
             raise NotImplementedError(
                 "xref-stream parsing lives in parser cluster #4"
             )
+
+    def _handle_xref_stream_at(self, offset: int) -> None:
+        """Pre-flight an xref-stream object: surface diagnostic state and,
+        when a password has been staged, attach the security handler so a
+        future cluster-#4 entry decoder can decipher the body.
+
+        Does NOT decode entries — that work is parser cluster #4. Always
+        returns; never raises (the outer caller raises NotImplementedError
+        until the entry decoder lands)."""
+        # Reset cursor to the indirect-object header so a partial dict
+        # parse can cheaply read the stream's dictionary without disturbing
+        # the eventual entry decoder's view.
+        self._src.seek(offset)
+        self._base.skip_whitespace()
+        try:
+            on = self._base.read_int()
+            self._base.skip_whitespace()
+            gn = self._base.read_int()
+            self._base.skip_whitespace()
+            kw = self._base.read_keyword()
+        except PDFParseError:
+            return
+        if kw != b"obj":
+            return
+        assert self._cos_parser is not None
+        try:
+            body = self._cos_parser.parse_direct_object()
+        except PDFParseError:
+            return
+        if not isinstance(body, COSDictionary):
+            return
+        type_obj = body.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+        if not (isinstance(type_obj, COSName) and type_obj.name == "XRef"):
+            return
+        # Treat the xref-stream dict as a trailer fragment so /Encrypt /ID
+        # /Root /Size are visible to the early-handler bootstrap. Existing
+        # trailer keys from previously-parsed sections still win — the
+        # resolver merges newest-first, and we install this fragment into
+        # the *current* section.
+        self._resolver.set_trailer(body)
+        # Track that we crossed at least one encrypted xref-stream so
+        # ``has_encrypted_xref_streams`` reflects reality.
+        if body.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
+            self._has_encrypted_xref_streams = True
+            self._prepare_security_handler_if_needed()
 
     def _parse_traditional_xref_section(self) -> None:
         """Parse ``xref <subsections> trailer << ... >>``."""

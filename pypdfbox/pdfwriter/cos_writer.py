@@ -26,6 +26,14 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
+# Sentinel name objects used to filter the /Encrypt and /ID entries out of the
+# encryption pipeline. Hoisted to module scope so we don't recompute on every
+# leaf visit. ISO 32000-1 §7.6.1: the /Encrypt dictionary itself is never
+# encrypted (would be circular), and the file identifier /ID array is the
+# trailer-level handle the handler keys off of — encrypting it would make the
+# document undecryptable.
+_ID_NAME: COSName = COSName.get_pdf_name("ID")
+
 from .cos_standard_output_stream import COSStandardOutputStream
 from .cos_writer_xref_entry import COSWriterXRefEntry
 
@@ -171,6 +179,26 @@ class COSWriter(ICOSVisitor):
         self._current_object_key: COSObjectKey | None = None
         self._closed = False
 
+        # ---- encryption pipeline state (security cluster integration) ----
+        # ``_security_handler``: active handler used to encipher COSStream
+        # bodies and COSString payloads inside indirect objects. Populated by
+        # ``write(PDDocument)`` from either ``pd._security_handler`` (already
+        # decrypted document being re-saved) or by calling
+        # ``protection_policy``'s handler factory. ``None`` disables the
+        # encryption pass entirely.
+        self._security_handler: Any = None
+        # Identity of the COSDictionary backing the trailer's ``/Encrypt``
+        # entry (the dictionary, not its wrapping COSObject) so that strings
+        # encountered while serialising the encryption dictionary itself are
+        # NOT encrypted — would otherwise be circular per ISO 32000-1 §7.6.1.
+        self._encrypt_dict_id: int | None = None
+        # When walking the trailer (the outer ``visit_from_dictionary`` for
+        # the trailer dict) ``_current_object_key`` is None and we must not
+        # encrypt strings; the trailer is a top-level structure, not an
+        # indirect object. Tracked explicitly because the trailer's /ID is
+        # also the cleartext key the handler relied on.
+        self._in_encrypt_subtree: bool = False
+
     # ---------- public API ----------
 
     def get_standard_output(self) -> COSStandardOutputStream:
@@ -182,28 +210,47 @@ class COSWriter(ICOSVisitor):
     def get_xref_entries(self) -> list[COSWriterXRefEntry]:
         return self._xref_entries
 
-    def write(self, document: COSDocument) -> None:
+    def write(self, document: Any) -> None:
         """Emit ``document`` end-to-end as a self-contained PDF.
 
-        ``PDDocument`` is not yet ported (see PRD §6.6); for now callers
-        pass a ``COSDocument`` directly — matches upstream's
-        ``write(COSDocument)`` overload that wraps ``new PDDocument(doc)``.
+        Accepts either a ``COSDocument`` (low-level, no encryption support
+        — mirrors PDFBox's ``write(COSDocument)`` overload) or a
+        ``PDDocument`` (high-level, drives the encryption pipeline when
+        the document carries an active ``_protection_policy`` or
+        ``_security_handler``). The PDDocument overload mirrors upstream's
+        ``write(PDDocument)``.
         """
         if self._closed:
             raise ValueError("operation on closed COSWriter")
-        if not isinstance(document, COSDocument):
+
+        # Accept PDDocument → unwrap to COSDocument and stage encryption.
+        # Avoid a hard dependency on pdmodel by duck-typing the wrapper.
+        pd_document: Any = None
+        if isinstance(document, COSDocument):
+            cos_document = document
+        elif hasattr(document, "get_document") and hasattr(document, "is_encrypted"):
+            pd_document = document
+            cos_document = document.get_document()
+            if not isinstance(cos_document, COSDocument):
+                raise TypeError(
+                    "PDDocument.get_document() did not return a COSDocument"
+                )
+        else:
             raise TypeError(
-                "COSWriter.write expects a pypdfbox.cos.COSDocument; PDDocument "
-                "is not yet ported (PRD §6.6)."
+                f"COSWriter.write expects a COSDocument or PDDocument; got "
+                f"{type(document).__name__}"
             )
-        if document.is_encrypted():
-            raise NotImplementedError(
-                "writing encrypted documents lands with the security cluster"
-            )
+
+        # Stage the encryption handler BEFORE numbering / serialisation so
+        # that ``prepare_document`` has a chance to mutate the trailer
+        # (it may add an /Encrypt indirect entry whose object number must
+        # be reflected in ``self._number``).
+        if pd_document is not None and not self._incremental_update:
+            self._stage_encryption(pd_document, cos_document)
 
         # Seed numbering from the highest existing object number so we
         # don't reuse keys when the parser already loaded them.
-        existing_keys = document.get_object_keys()
+        existing_keys = cos_document.get_object_keys()
         self._number = max((k.object_number for k in existing_keys), default=0)
 
         if self._incremental_update:
@@ -211,20 +258,127 @@ class COSWriter(ICOSVisitor):
             # did not pass one explicitly (matches the convenience wiring
             # PDDocument provides upstream).
             if self._incremental_input is None:
-                self._incremental_input = document.get_source()
+                self._incremental_input = cos_document.get_source()
             if self._incremental_input is None:
                 raise ValueError(
                     "incremental save requires either incremental_input= or "
                     "a COSDocument carrying a source (Loader.load_pdf populates this)"
                 )
-            self._reject_signed_with_byterange_placeholder(document)
+            self._reject_signed_with_byterange_placeholder(cos_document)
             # /ID synthesis: skip in incremental mode — the trailer must
             # preserve the source's /ID array verbatim (PDF 32000-1 §14.4).
-            self._do_write_increment(document)
+            self._do_write_increment(cos_document)
             return
 
-        self._ensure_document_id(document)
-        document.accept(self)
+        self._ensure_document_id(cos_document)
+        # Refresh the encryption-dict identity AFTER ``_ensure_document_id``
+        # in case ``prepare_document`` ran first (it did, above) — the dict
+        # may have been wrapped in an indirect since.
+        self._refresh_encrypt_dict_id(cos_document)
+        cos_document.accept(self)
+
+    # ---------- encryption staging ----------
+
+    def _stage_encryption(self, pd_document: Any, cos_document: COSDocument) -> None:
+        """Wire ``self._security_handler`` from the PDDocument when the
+        document should be saved encrypted.
+
+        Two write paths land here:
+
+        * **Fresh encryption** — ``protect()`` was called, so
+          ``pd._protection_policy`` is populated. We instantiate the
+          policy's standard handler, prime the trailer with a /ID array
+          (the standard handler keys off /ID[0] for r2-r4 derivation),
+          then call ``handler.prepare_document`` to populate /Encrypt.
+
+        * **Re-save of an already-encrypted document** —
+          ``pd._security_handler`` is set (from a prior ``decrypt`` call)
+          and ``set_all_security_to_be_removed(False)``. We reuse the
+          same handler so streams are re-encrypted with the same file
+          key, preserving the /Encrypt entry as-is.
+
+        When ``set_all_security_to_be_removed(True)`` is honoured by
+        ``PDDocument.save`` (which strips /Encrypt before this point),
+        we never get here — the security_handler stays None and the
+        plaintext path is taken.
+        """
+        # Path 1: caller wants to remove security on save → no-op.
+        if pd_document.is_all_security_to_be_removed():
+            return
+
+        # Path 2: fresh ``protect()`` policy → derive a handler.
+        protection_policy = getattr(pd_document, "_protection_policy", None)
+        if protection_policy is not None:
+            from pypdfbox.pdmodel.encryption.standard_protection_policy import (
+                StandardProtectionPolicy,
+            )
+            from pypdfbox.pdmodel.encryption.standard_security_handler import (
+                StandardSecurityHandler,
+            )
+
+            if not isinstance(protection_policy, StandardProtectionPolicy):
+                raise NotImplementedError(
+                    "COSWriter encryption: only StandardProtectionPolicy is "
+                    "supported (public-key handler dispatch is deferred)"
+                )
+            # The standard handler derives the file-encryption key from
+            # the file-id; ensure trailer carries one BEFORE prepare_document
+            # synthesises /O, /U, etc. (otherwise it falls back to the
+            # 16-zero-bytes fixture which won't survive a re-load).
+            self._propagate_document_id(cos_document)
+            handler = StandardSecurityHandler(protection_policy)
+            handler.prepare_document(pd_document)
+            # Cache the handler back on the PDDocument so subsequent
+            # ``decrypt()`` / ``get_current_access_permission()`` calls see
+            # an active handler immediately after save.
+            pd_document._security_handler = handler  # noqa: SLF001
+            self._security_handler = handler
+            return
+
+        # Path 3: re-save of an already-decrypted encrypted document.
+        existing_handler = getattr(pd_document, "_security_handler", None)
+        if existing_handler is not None and pd_document.is_encrypted():
+            self._security_handler = existing_handler
+
+    def _propagate_document_id(self, cos_document: COSDocument) -> None:
+        """Ensure the trailer carries an /ID before the handler's key
+        derivation runs. Fresh documents get a random 16-byte identifier;
+        loaded documents keep their existing /ID intact."""
+        trailer = cos_document.get_trailer()
+        if trailer is None:
+            trailer = COSDictionary()
+            cos_document.set_trailer(trailer)
+        existing = trailer.get_dictionary_object(_ID_NAME)
+        if isinstance(existing, COSArray) and existing.size() == 2:
+            return
+        # Generate a fresh 16-byte file identifier per ISO 32000-1 §14.4.
+        # Both halves of the /ID array start identical for a brand-new
+        # document — they only diverge when the file is later updated.
+        id_bytes = secrets.token_bytes(16)
+        first = COSString(id_bytes)
+        first.set_force_hex_form(True)
+        second = COSString(id_bytes)
+        second.set_force_hex_form(True)
+        new_arr = COSArray([first, second])
+        new_arr.set_direct(True)
+        trailer.set_item(_ID_NAME, new_arr)
+
+    def _refresh_encrypt_dict_id(self, cos_document: COSDocument) -> None:
+        """Capture the identity of the /Encrypt dictionary so that strings
+        encountered while serialising it are skipped by the encryption
+        pipeline (per ISO 32000-1 §7.6.1, /Encrypt itself isn't encrypted)."""
+        if self._security_handler is None:
+            self._encrypt_dict_id = None
+            return
+        trailer = cos_document.get_trailer()
+        if trailer is None:
+            self._encrypt_dict_id = None
+            return
+        enc = trailer.get_dictionary_object(COSName.ENCRYPT)  # type: ignore[attr-defined]
+        if isinstance(enc, COSDictionary):
+            self._encrypt_dict_id = id(enc)
+        else:
+            self._encrypt_dict_id = None
 
     def close(self) -> None:
         if self._closed:
@@ -569,7 +723,26 @@ class COSWriter(ICOSVisitor):
         self._written_objects.add(id(obj))
         key = self._get_object_key(obj)
         self._current_object_key = key
-        self._do_write_object_with_key(key, obj)
+        # Detect whether this indirect object IS the /Encrypt dictionary so
+        # the leaf visitors can suppress string encryption while we serialise
+        # it (per ISO 32000-1 §7.6.1, the /Encrypt dict is never enciphered).
+        actual = obj.get_object() if isinstance(obj, COSObject) else obj
+        previous_in_encrypt = self._in_encrypt_subtree
+        if (
+            self._encrypt_dict_id is not None
+            and actual is not None
+            and id(actual) == self._encrypt_dict_id
+        ):
+            self._in_encrypt_subtree = True
+        try:
+            self._do_write_object_with_key(key, obj)
+        finally:
+            self._in_encrypt_subtree = previous_in_encrypt
+            # Clear the current key once this indirect object is done so
+            # any subsequent emit (xref, trailer) sees ``None`` and skips
+            # the encryption pipeline. Otherwise stray strings in the
+            # trailer (notably /ID) would be enciphered.
+            self._current_object_key = None
 
     def _do_write_object_with_key(self, key: COSObjectKey, obj: COSBase) -> None:
         out = self._standard_output
@@ -839,6 +1012,30 @@ class COSWriter(ICOSVisitor):
         return None
 
     def visit_from_string(self, obj: COSString) -> Any:
+        # Encryption pipeline: when we have an active handler AND this string
+        # lives inside an indirect object (so we have a (num, gen) to bind
+        # to the per-object key), encipher its bytes before writing.
+        # Strings inside the /Encrypt dictionary itself stay cleartext
+        # (would be circular), as do strings inside the trailer (no
+        # indirect key — covers /ID transparently).
+        if (
+            self._security_handler is not None
+            and self._current_object_key is not None
+            and not self._in_encrypt_subtree
+        ):
+            cipher_bytes = self._security_handler.encrypt_string(
+                obj.get_bytes(),
+                self._current_object_key.object_number,
+                self._current_object_key.generation_number,
+            )
+            # Wrap the ciphertext in a fresh COSString so we don't mutate
+            # the in-memory object — re-saves should still work. Force hex
+            # form because the AES output is binary and would otherwise
+            # require literal-form escaping.
+            cipher_string = COSString(cipher_bytes)
+            cipher_string.set_force_hex_form(True)
+            self.write_string(cipher_string, self._standard_output)
+            return None
         self.write_string(obj, self._standard_output)
         return None
 
@@ -919,6 +1116,22 @@ class COSWriter(ICOSVisitor):
                 raw = src.read()
         else:
             raw = b""
+
+        # Encryption pipeline: when an active handler is wired AND this
+        # stream is being emitted as an indirect object (which is always
+        # the case for streams — they cannot be direct), encrypt the body
+        # using the per-object key. Streams inside the /Encrypt subtree
+        # (none in practice, but guard anyway) stay cleartext.
+        if (
+            self._security_handler is not None
+            and self._current_object_key is not None
+            and not self._in_encrypt_subtree
+        ):
+            raw = self._security_handler.encrypt_stream(
+                raw,
+                self._current_object_key.object_number,
+                self._current_object_key.generation_number,
+            )
 
         # Update /Length to match what we'll actually emit. Streams are
         # always indirect, so this is safe.

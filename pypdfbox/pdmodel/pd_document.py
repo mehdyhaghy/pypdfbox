@@ -254,7 +254,12 @@ class PDDocument:
             sink = target
         try:
             with COSWriter(sink) as writer:
-                writer.write(self._document)
+                # Pass the PDDocument so the writer can drive the
+                # encryption pipeline — ``_protection_policy`` and
+                # ``_security_handler`` live on this wrapper, not on the
+                # raw COSDocument. Mirrors upstream
+                # ``COSWriter.write(PDDocument)``.
+                writer.write(self)
         finally:
             if opened is not None:
                 opened.close()
@@ -420,7 +425,16 @@ class PDDocument:
 
         # Walk every loaded indirect — attach the handler to each COSStream
         # so that ``create_input_stream`` decrypts before the filter chain.
+        # This also covers xref-stream objects (PDF 1.5+ encrypted xref
+        # streams, /Type /XRef): they live in the same pool and inherit
+        # from COSStream, so the same hook deciphers their body when the
+        # parser cluster reads it back.
         for cos_obj in self._document.get_objects():
+            # Avoid forcing a parse on objects that aren't yet loaded —
+            # the lazy loader will see the security handler attached at
+            # the COSStream level once it materialises. ``get_object()``
+            # only triggers parsing for stream-bearing entries because the
+            # stream body itself is encrypted, so we still call through.
             actual = cos_obj.get_object()
             if isinstance(actual, _COSStream):
                 actual.set_security_handler(

@@ -107,6 +107,34 @@ class StandardSecurityHandler(SecurityHandler):
     def is_encrypt_metadata(self) -> bool:
         return self._encrypt_metadata
 
+    # ------------------------------------------------- /CF dispatch helpers
+
+    @staticmethod
+    def get_stream_filter_name(encryption: PDEncryption) -> str | None:
+        """Return /StmF — name of the default crypt filter for streams."""
+        return encryption.get_stm_f()
+
+    @staticmethod
+    def get_string_filter_name(encryption: PDEncryption) -> str | None:
+        """Return /StrF — name of the default crypt filter for strings."""
+        return encryption.get_str_f()
+
+    @classmethod
+    def _is_aes_v4(cls, encryption: PDEncryption) -> bool:
+        """V=4 AES detection: prefer /CF/<StmF>/CFM, fall back to /StmF name."""
+        stm_f = cls.get_stream_filter_name(encryption)
+        if stm_f is None or stm_f == "Identity":
+            return False
+        # Authoritative path: look up the named crypt filter and read /CFM.
+        crypt_filter = encryption.get_crypt_filter_dictionary(stm_f)
+        if crypt_filter is not None:
+            cfm = crypt_filter.get_cfm()
+            if cfm is not None:
+                return cfm in ("AESV2", "AESV3")
+        # Fallback for legacy writers that put the algorithm directly in /StmF
+        # without a matching /CF entry.
+        return stm_f in ("AESV2", "AESV3")
+
     # ------------------------------------------------------------ read path
 
     def prepare_for_decryption(
@@ -131,11 +159,14 @@ class StandardSecurityHandler(SecurityHandler):
         self.set_key_length(key_length_bits)
         self._permissions = int(encryption.get_p())
         self._encrypt_metadata = bool(encryption.is_encrypt_meta_data())
-        # AES is signalled by V=4 with /CFM AESV2 or V=5/6.
+        # AES is signalled by V=4 with the default stream filter's /CFM set
+        # to AESV2, or V=5/6 with AESV3. We resolve through /CF when present
+        # and only fall back to a name-based heuristic for legacy writers
+        # that put the algorithm name directly in /StmF.
         if version >= 5:
             self.set_aes(True)
         elif version == 4:
-            self.set_aes(encryption.get_stm_f() in ("AESV2", "AESV3"))
+            self.set_aes(self._is_aes_v4(encryption))
         else:
             self.set_aes(False)
 
@@ -255,9 +286,12 @@ class StandardSecurityHandler(SecurityHandler):
         if not owner_pw:
             owner_pw = user_pw
 
-        # Document IDs aren't always available on this lite path; PDFBox uses
-        # a freshly minted ID when none exists. We do the same for r2-r4.
-        document_id = b"\x00" * 16
+        # File identifier (/ID[0]) — the standard handler binds the file
+        # encryption key to this value (PDF 32000-1 §7.6.4.3 algorithm 2).
+        # Pull it from the document's trailer when present so a re-load can
+        # derive the same key; fall back to the 16-zero-bytes fixture when
+        # no /ID is reachable (legacy lite-path tests rely on this).
+        document_id = self._extract_document_id(document, b"\x00" * 16)
 
         if revision >= 5:
             # r5/r6 keys are random; we synthesise them and wrap.
@@ -295,6 +329,36 @@ class StandardSecurityHandler(SecurityHandler):
         # standard PDFBox setter.
         if hasattr(document, "set_encryption_dictionary"):
             document.set_encryption_dictionary(encryption)
+
+    @staticmethod
+    def _extract_document_id(document: object, default: bytes) -> bytes:
+        """Return ``/ID[0]`` from the document's trailer as raw bytes.
+
+        Walks both flavours of input: a ``PDDocument`` (uses
+        ``get_document().get_document_id()``) or a ``COSDocument`` directly
+        (uses its own accessor). Falls back to ``default`` if no /ID is
+        reachable so the legacy lite-path callers — which never installed
+        a trailer — keep working.
+        """
+        # Late imports keep this file independent of the cos / pdmodel
+        # packages at module-load time.
+        from pypdfbox.cos import COSString as _COSString
+
+        cos_doc = document
+        get_doc = getattr(document, "get_document", None)
+        if callable(get_doc):
+            cos_doc = get_doc()
+
+        get_id = getattr(cos_doc, "get_document_id", None)
+        if not callable(get_id):
+            return default
+        ids = get_id()
+        if ids is None or ids.size() < 1:
+            return default
+        first = ids.get(0)
+        if isinstance(first, _COSString):
+            return first.get_bytes()
+        return default
 
     # ============================================================ r2-r4 ===
 

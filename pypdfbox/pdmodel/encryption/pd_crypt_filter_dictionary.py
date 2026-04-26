@@ -1,0 +1,95 @@
+"""``/CF`` crypt-filter sub-dictionary wrapper.
+
+Mirrors ``org.apache.pdfbox.pdmodel.encryption.PDCryptFilterDictionary``. A
+crypt filter dictionary describes how a particular encryption algorithm
+(``/CFM`` — V2 / AESV2 / AESV3 / None) is applied to streams or strings, and
+what key length to use. The /Encrypt dictionary references one or more crypt
+filters by name through its /CF entry, and selects a default for streams via
+/StmF and for strings via /StrF (PDF 32000-1 §7.6.5).
+"""
+
+from __future__ import annotations
+
+from pypdfbox.cos import COSArray, COSDictionary, COSName
+
+_TYPE: COSName = COSName.get_pdf_name("Type")
+_CRYPT_FILTER: COSName = COSName.get_pdf_name("CryptFilter")
+_CFM: COSName = COSName.get_pdf_name("CFM")
+_LENGTH: COSName = COSName.get_pdf_name("Length")
+_RECIPIENTS: COSName = COSName.get_pdf_name("Recipients")
+_ENCRYPT_METADATA: COSName = COSName.get_pdf_name("EncryptMetadata")
+
+
+class PDCryptFilterDictionary:
+    """Wraps an entry of the ``/Encrypt /CF`` sub-dictionary.
+
+    Field semantics follow PDF 32000-1 §7.6.5 Table 25:
+
+    * ``/CFM`` — the crypt-filter method name. One of ``None`` / ``V2`` /
+      ``AESV2`` / ``AESV3``. Determines whether RC4 or AES (and which key
+      size) is used for objects assigned to this filter.
+    * ``/Length`` — key length in **bytes** (note: at the /CF level upstream
+      PDFBox uses bytes, not bits; defaults to 5 = 40-bit RC4).
+    * ``/Recipients`` — required for public-key crypt filters; an array of
+      PKCS#7 envelopes.
+    * ``/EncryptMetadata`` — whether the document metadata stream should be
+      encrypted by this filter. Defaults to ``True``.
+    """
+
+    # ``/CFM`` values per PDF 32000-1 §7.6.5 Table 25.
+    CFM_NONE: str = "None"
+    CFM_V2: str = "V2"
+    CFM_AESV2: str = "AESV2"
+    CFM_AESV3: str = "AESV3"
+
+    def __init__(self, dictionary: COSDictionary | None = None) -> None:
+        if dictionary is None:
+            self._dict: COSDictionary = COSDictionary()
+            # Fresh crypt-filter dictionaries are tagged ``/Type /CryptFilter``
+            # per the spec (it's optional but PDFBox always writes it).
+            self._dict.set_item(_TYPE, _CRYPT_FILTER)
+        else:
+            self._dict = dictionary
+
+    def get_cos_object(self) -> COSDictionary:
+        return self._dict
+
+    # ---------- /CFM ----------
+
+    def get_cfm(self) -> str | None:
+        return self._dict.get_name(_CFM)
+
+    def set_cfm(self, name: str) -> None:
+        self._dict.set_name(_CFM, name)
+
+    # ---------- /Length (in bytes) ----------
+
+    def get_length(self) -> int:
+        # Default per PDF 32000-1 §7.6.5 Table 25: 5 bytes (40 bit RC4).
+        return self._dict.get_int(_LENGTH, 5)
+
+    def set_length(self, length: int) -> None:
+        self._dict.set_int(_LENGTH, length)
+
+    # ---------- /Recipients (public-key crypt filters) ----------
+
+    def get_recipients(self) -> COSArray | None:
+        v = self._dict.get_dictionary_object(_RECIPIENTS)
+        if isinstance(v, COSArray):
+            return v
+        return None
+
+    def set_recipients(self, recipients: COSArray) -> None:
+        self._dict.set_item(_RECIPIENTS, recipients)
+
+    # ---------- /EncryptMetadata ----------
+
+    def get_encrypt_metadata(self) -> bool:
+        # Default per PDF 32000-1 §7.6.5 Table 25 is true.
+        return self._dict.get_boolean(_ENCRYPT_METADATA, True)
+
+    def set_encrypt_metadata(self, encrypt_metadata: bool) -> None:
+        self._dict.set_boolean(_ENCRYPT_METADATA, encrypt_metadata)
+
+
+__all__ = ["PDCryptFilterDictionary"]
