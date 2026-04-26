@@ -1,0 +1,223 @@
+from __future__ import annotations
+
+import datetime as _dt
+import re
+from typing import Any
+
+from pypdfbox.cos import COSDictionary, COSName, COSString
+
+# PDF info dictionary keys (PDF 32000-1:2008 §14.3.3, Table 317).
+_TITLE: COSName = COSName.get_pdf_name("Title")
+_AUTHOR: COSName = COSName.get_pdf_name("Author")
+_SUBJECT: COSName = COSName.get_pdf_name("Subject")
+_KEYWORDS: COSName = COSName.get_pdf_name("Keywords")
+_CREATOR: COSName = COSName.get_pdf_name("Creator")
+_PRODUCER: COSName = COSName.get_pdf_name("Producer")
+_CREATION_DATE: COSName = COSName.get_pdf_name("CreationDate")
+_MOD_DATE: COSName = COSName.get_pdf_name("ModDate")
+_TRAPPED: COSName = COSName.get_pdf_name("Trapped")
+
+
+_VALID_TRAPPED = frozenset({"True", "False", "Unknown"})
+
+
+# Matches PDF 32000-1:2008 §7.9.4 date strings: ``D:YYYYMMDDHHmmSSOHH'mm'``.
+# Every component after the year is optional (per spec, missing components
+# default to zero / GMT). The trailing apostrophes are also optional in
+# practice — many writers omit the closing one.
+_PDF_DATE_RE = re.compile(
+    r"^D?:?"
+    r"(?P<year>\d{4})"
+    r"(?P<month>\d{2})?"
+    r"(?P<day>\d{2})?"
+    r"(?P<hour>\d{2})?"
+    r"(?P<minute>\d{2})?"
+    r"(?P<second>\d{2})?"
+    r"(?:(?P<offsign>[Z+\-])"
+    r"(?P<offhour>\d{2})?'?"
+    r"(?P<offminute>\d{2})?'?)?"
+    r"$"
+)
+
+
+def _parse_pdf_date(value: str) -> _dt.datetime | None:
+    """Parse a PDF date string into a timezone-aware ``datetime``.
+
+    Mirrors ``org.apache.pdfbox.util.DateConverter.toCalendar`` for the
+    common subset; returns ``None`` if the string is unparseable. Missing
+    components default to 1 (month/day) or 0 (time) per the spec.
+    """
+    if not value:
+        return None
+    m = _PDF_DATE_RE.match(value.strip())
+    if m is None:
+        return None
+    year = int(m.group("year"))
+    month = int(m.group("month") or 1)
+    day = int(m.group("day") or 1)
+    hour = int(m.group("hour") or 0)
+    minute = int(m.group("minute") or 0)
+    second = int(m.group("second") or 0)
+    sign = m.group("offsign")
+    if sign is None or sign == "Z":
+        tz: _dt.tzinfo = _dt.timezone.utc
+    else:
+        off_hour = int(m.group("offhour") or 0)
+        off_minute = int(m.group("offminute") or 0)
+        delta = _dt.timedelta(hours=off_hour, minutes=off_minute)
+        if sign == "-":
+            delta = -delta
+        tz = _dt.timezone(delta)
+    try:
+        return _dt.datetime(year, month, day, hour, minute, second, tzinfo=tz)
+    except ValueError:
+        return None
+
+
+def _format_pdf_date(value: _dt.datetime) -> str:
+    """Format a ``datetime`` as a PDF date string (``D:YYYYMMDDHHmmSSOHH'mm'``)."""
+    base = value.strftime("D:%Y%m%d%H%M%S")
+    offset = value.utcoffset()
+    if offset is None:
+        return base + "Z00'00'"
+    total_seconds = int(offset.total_seconds())
+    if total_seconds == 0:
+        return base + "Z00'00'"
+    sign = "+" if total_seconds > 0 else "-"
+    total_seconds = abs(total_seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    return f"{base}{sign}{hours:02d}'{minutes:02d}'"
+
+
+class PDDocumentInformation:
+    """
+    Wrapper around the trailer's ``/Info`` dictionary. Mirrors
+    ``org.apache.pdfbox.pdmodel.PDDocumentInformation``.
+
+    Each ``get_*`` accessor returns ``None`` if the entry is absent;
+    each ``set_*`` accessor with a ``None`` argument clears the entry.
+    """
+
+    def __init__(self, info: COSDictionary | None = None) -> None:
+        self._info = info if info is not None else COSDictionary()
+
+    # ---------- COS surface ----------
+
+    def get_cos_object(self) -> COSDictionary:
+        return self._info
+
+    # ---------- low-level passthrough ----------
+
+    def get_property_string_value(self, property_key: str) -> str | None:
+        """Return the raw string at ``property_key`` (no type coercion).
+
+        Allows callers to pull date strings unparsed for validation.
+        """
+        return self._info.get_string(property_key)
+
+    # ---------- standard fields ----------
+
+    def get_title(self) -> str | None:
+        return self._info.get_string(_TITLE)
+
+    def set_title(self, title: str | None) -> None:
+        self._info.set_string(_TITLE, title)
+
+    def get_author(self) -> str | None:
+        return self._info.get_string(_AUTHOR)
+
+    def set_author(self, author: str | None) -> None:
+        self._info.set_string(_AUTHOR, author)
+
+    def get_subject(self) -> str | None:
+        return self._info.get_string(_SUBJECT)
+
+    def set_subject(self, subject: str | None) -> None:
+        self._info.set_string(_SUBJECT, subject)
+
+    def get_keywords(self) -> str | None:
+        return self._info.get_string(_KEYWORDS)
+
+    def set_keywords(self, keywords: str | None) -> None:
+        self._info.set_string(_KEYWORDS, keywords)
+
+    def get_creator(self) -> str | None:
+        return self._info.get_string(_CREATOR)
+
+    def set_creator(self, creator: str | None) -> None:
+        self._info.set_string(_CREATOR, creator)
+
+    def get_producer(self) -> str | None:
+        return self._info.get_string(_PRODUCER)
+
+    def set_producer(self, producer: str | None) -> None:
+        self._info.set_string(_PRODUCER, producer)
+
+    # ---------- dates ----------
+
+    def get_creation_date(self) -> _dt.datetime | None:
+        raw = self._info.get_string(_CREATION_DATE)
+        return _parse_pdf_date(raw) if raw is not None else None
+
+    def set_creation_date(self, date: _dt.datetime | None) -> None:
+        if date is None:
+            self._info.remove_item(_CREATION_DATE)
+            return
+        self._info.set_item(_CREATION_DATE, COSString(_format_pdf_date(date)))
+
+    def get_modification_date(self) -> _dt.datetime | None:
+        raw = self._info.get_string(_MOD_DATE)
+        return _parse_pdf_date(raw) if raw is not None else None
+
+    def set_modification_date(self, date: _dt.datetime | None) -> None:
+        if date is None:
+            self._info.remove_item(_MOD_DATE)
+            return
+        self._info.set_item(_MOD_DATE, COSString(_format_pdf_date(date)))
+
+    # ---------- trapped ----------
+
+    def get_trapped(self) -> str | None:
+        return self._info.get_name(_TRAPPED)
+
+    def set_trapped(self, value: str | None) -> None:
+        if value is not None and value not in _VALID_TRAPPED:
+            raise ValueError(
+                "Valid values for trapped are 'True', 'False', or 'Unknown'"
+            )
+        if value is None:
+            self._info.remove_item(_TRAPPED)
+        else:
+            self._info.set_name(_TRAPPED, value)
+
+    # ---------- custom metadata ----------
+
+    def get_metadata_keys(self) -> set[str]:
+        """Return all metadata key names present in the info dictionary,
+        as a set (upstream returns ``TreeSet`` — Python's set has no order
+        guarantee but callers typically iterate or test membership only)."""
+        return {key.get_name() for key in self._info.key_set()}
+
+    def get_custom_metadata_value(self, field_name: str) -> str | None:
+        return self._info.get_string(field_name)
+
+    def set_custom_metadata_value(
+        self, field_name: str, field_value: str | None
+    ) -> None:
+        self._info.set_string(field_name, field_value)
+
+    # ---------- introspection ----------
+
+    def __repr__(self) -> str:
+        return (
+            f"PDDocumentInformation(title={self.get_title()!r}, "
+            f"author={self.get_author()!r})"
+        )
+
+
+__all__ = ["PDDocumentInformation"]
+
+
+# Suppress unused-import in typing-only branch (kept for future expansion).
+_ = Any

@@ -11,6 +11,7 @@ from .pd_page_tree import PDPageTree
 
 if TYPE_CHECKING:
     from .pd_document_catalog import PDDocumentCatalog
+    from .pd_document_information import PDDocumentInformation
 
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -135,15 +136,30 @@ class PDDocument:
             self._catalog = PDDocumentCatalog(self)
         return self._catalog
 
-    def get_document_information(self) -> COSDictionary | None:
-        """Cluster #1 returns the raw ``/Info`` dictionary (or ``None``).
-        ``PDDocumentInformation`` wrapper lands in cluster #2 — see
-        ``CHANGES.md``."""
+    def get_document_information(self) -> PDDocumentInformation:
+        """Return the trailer's ``/Info`` dictionary wrapped as
+        ``PDDocumentInformation``. If absent, an empty wrapper is created
+        and wired into the trailer so subsequent setters round-trip
+        (matches upstream ``PDDocument.getDocumentInformation``)."""
+        from .pd_document_information import PDDocumentInformation
+
         trailer = self._document.get_trailer()
         if trailer is None:
-            return None
+            trailer = COSDictionary()
+            self._document.set_trailer(trailer)
         info = trailer.get_dictionary_object(_INFO)
-        return info if isinstance(info, COSDictionary) else None
+        if not isinstance(info, COSDictionary):
+            info = COSDictionary()
+            trailer.set_item(_INFO, info)
+        return PDDocumentInformation(info)
+
+    def set_document_information(self, info: PDDocumentInformation) -> None:
+        """Replace the trailer's ``/Info`` entry."""
+        trailer = self._document.get_trailer()
+        if trailer is None:
+            trailer = COSDictionary()
+            self._document.set_trailer(trailer)
+        trailer.set_item(_INFO, info.get_cos_object())
 
     # ---------- pages ----------
 

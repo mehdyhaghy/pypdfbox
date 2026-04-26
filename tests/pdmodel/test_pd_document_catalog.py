@@ -65,9 +65,18 @@ def test_stubbed_accessors_raise() -> None:
         cat.get_names,
         cat.get_dests,
         cat.get_open_action,
-        cat.get_viewer_preferences,
         cat.get_output_intents,
         cat.get_mark_info,
     ):
         with pytest.raises(NotImplementedError):
             stub()
+
+
+def test_get_viewer_preferences_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_viewer_preferences() is None
+
+
+def test_get_page_labels_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_page_labels() is None

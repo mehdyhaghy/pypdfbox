@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 
+from .pd_page_labels import PDPageLabels
 from .pd_page_tree import PDPageTree
+from .pd_viewer_preferences import PDViewerPreferences
 
 if TYPE_CHECKING:
     from .pd_document import PDDocument
@@ -17,6 +19,8 @@ _VERSION: COSName = COSName.get_pdf_name("Version")
 _LANG: COSName = COSName.get_pdf_name("Lang")
 _PAGE_LAYOUT: COSName = COSName.get_pdf_name("PageLayout")
 _PAGE_MODE: COSName = COSName.get_pdf_name("PageMode")
+_PAGE_LABELS: COSName = COSName.get_pdf_name("PageLabels")
+_VIEWER_PREFERENCES: COSName = COSName.get_pdf_name("ViewerPreferences")
 
 
 class PDDocumentCatalog:
@@ -176,11 +180,35 @@ class PDDocumentCatalog:
             "pdmodel cluster #7"
         )
 
-    def get_viewer_preferences(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_viewer_preferences requires PDViewerPreferences — "
-            "pdmodel cluster #2"
-        )
+    def get_viewer_preferences(self) -> PDViewerPreferences | None:
+        """Return the catalog's ``/ViewerPreferences`` wrapped, or ``None``
+        if the entry is absent."""
+        v = self._catalog.get_dictionary_object(_VIEWER_PREFERENCES)
+        if isinstance(v, COSDictionary):
+            return PDViewerPreferences(v)
+        return None
+
+    def set_viewer_preferences(self, prefs: PDViewerPreferences | None) -> None:
+        if prefs is None:
+            self._catalog.remove_item(_VIEWER_PREFERENCES)
+            return
+        self._catalog.set_item(_VIEWER_PREFERENCES, prefs.get_cos_object())
+
+    # ---------- page labels ----------
+
+    def get_page_labels(self) -> PDPageLabels | None:
+        """Return the catalog's ``/PageLabels`` wrapped, or ``None`` if
+        the entry is absent."""
+        v = self._catalog.get_dictionary_object(_PAGE_LABELS)
+        if isinstance(v, COSDictionary):
+            return PDPageLabels(self._document, v)
+        return None
+
+    def set_page_labels(self, labels: PDPageLabels | None) -> None:
+        if labels is None:
+            self._catalog.remove_item(_PAGE_LABELS)
+            return
+        self._catalog.set_item(_PAGE_LABELS, labels.get_cos_object())
 
     def get_output_intents(self) -> list[Any]:
         raise NotImplementedError(

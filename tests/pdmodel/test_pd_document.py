@@ -124,19 +124,30 @@ def test_close_idempotent() -> None:
     doc.close()  # second call must not raise
 
 
-def test_get_document_information_none_when_no_info() -> None:
+def test_get_document_information_creates_when_absent() -> None:
+    """Cluster #2: ``get_document_information`` always returns a wrapper;
+    it auto-creates the ``/Info`` dict on the trailer when missing."""
+    from pypdfbox.pdmodel import PDDocumentInformation
+
     doc = PDDocument()
-    assert doc.get_document_information() is None
+    info = doc.get_document_information()
+    assert isinstance(info, PDDocumentInformation)
+    # The new info dict was wired into the trailer.
+    trailer = doc.get_document().get_trailer()
+    assert trailer is not None
+    assert trailer.get_dictionary_object(COSName.INFO) is info.get_cos_object()  # type: ignore[attr-defined]
 
 
-def test_get_document_information_returns_dict_when_present() -> None:
+def test_get_document_information_returns_existing_dict() -> None:
     doc = PDDocument()
     info = COSDictionary()
     info.set_string(COSName.get_pdf_name("Title"), "Hello")
     trailer = doc.get_document().get_trailer()
     assert trailer is not None
     trailer.set_item(COSName.INFO, info)  # type: ignore[attr-defined]
-    assert doc.get_document_information() is info
+    wrapper = doc.get_document_information()
+    assert wrapper.get_cos_object() is info
+    assert wrapper.get_title() == "Hello"
 
 
 def test_version_default_is_1_4() -> None:

@@ -11,13 +11,15 @@ from pypdfbox import PDDocument
 
 
 # ``retrievePageLabels`` and ``retrievePageLabelsOnMalformedPdf`` — need
-# PDPageLabels (pdmodel cluster #2) plus a fixture PDF.
-@pytest.mark.skip(reason="needs PDPageLabels — pdmodel cluster #2 + fixture")
+# the upstream test_pagelabels.pdf / badpagelabels.pdf fixtures. PDPageLabels
+# itself shipped in pdmodel cluster #2; same label generator is exercised
+# synthetically in ``tests/pdmodel/test_pd_page_labels.py``.
+@pytest.mark.skip(reason="needs test_pagelabels.pdf fixture; logic covered by hand-written test_pd_page_labels.py")
 def test_retrieve_page_labels() -> None:  # pragma: no cover
     pass
 
 
-@pytest.mark.skip(reason="needs PDPageLabels — pdmodel cluster #2 + fixture")
+@pytest.mark.skip(reason="needs badpagelabels.pdf fixture; tolerant traversal covered synthetically")
 def test_retrieve_page_labels_on_malformed_pdf() -> None:  # pragma: no cover
     pass
 
