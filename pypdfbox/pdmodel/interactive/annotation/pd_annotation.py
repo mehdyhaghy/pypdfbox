@@ -1,0 +1,345 @@
+from __future__ import annotations
+
+import datetime as _dt
+from typing import TYPE_CHECKING
+
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSString,
+)
+
+from ...pd_rectangle import PDRectangle
+
+if TYPE_CHECKING:
+    pass
+
+
+# Names referenced by PDAnnotation. Several are only relevant to subclasses
+# but they live on the base wrapper so the dispatch table can read /Subtype
+# without round-tripping through a subclass first.
+_TYPE: COSName = COSName.get_pdf_name("Type")
+_ANNOT: COSName = COSName.get_pdf_name("Annot")
+_SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
+_RECT: COSName = COSName.get_pdf_name("Rect")
+_CONTENTS: COSName = COSName.get_pdf_name("Contents")
+_M: COSName = COSName.get_pdf_name("M")
+_F: COSName = COSName.get_pdf_name("F")
+_NM: COSName = COSName.get_pdf_name("NM")
+_T: COSName = COSName.get_pdf_name("T")
+_BORDER: COSName = COSName.get_pdf_name("Border")
+_C: COSName = COSName.get_pdf_name("C")
+
+
+class PDAnnotation:
+    """
+    Abstract base for PDF annotations. Mirrors
+    ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation``.
+
+    Annotation dictionaries always carry ``/Type /Annot`` and a
+    ``/Subtype`` that identifies the concrete annotation class. Use
+    :meth:`create` to dispatch a raw ``COSDictionary`` to the right
+    subclass.
+
+    pdmodel cluster #5 lite ships only the base + Link, Text, Square,
+    Circle, Unknown subclasses. Heavy subclasses (Widget for forms,
+    FreeText with appearance streams, etc.) are deferred — the factory
+    falls back to :class:`PDAnnotationUnknown` for any subtype the
+    truncated dispatch table doesn't recognise.
+    """
+
+    # ---------- /F flag bits (PDF 32000-1:2008 Table 165) ----------
+
+    FLAG_INVISIBLE: int = 1 << 0
+    FLAG_HIDDEN: int = 1 << 1
+    FLAG_PRINTED: int = 1 << 2
+    FLAG_NO_ZOOM: int = 1 << 3
+    FLAG_NO_ROTATE: int = 1 << 4
+    FLAG_NO_VIEW: int = 1 << 5
+    FLAG_READ_ONLY: int = 1 << 6
+    FLAG_LOCKED: int = 1 << 7
+    FLAG_TOGGLE_NO_VIEW: int = 1 << 8
+    FLAG_LOCKED_CONTENTS: int = 1 << 9
+
+    def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
+        if annotation_dict is None:
+            self._dict = COSDictionary()
+            self._dict.set_item(_TYPE, _ANNOT)
+        else:
+            if not isinstance(annotation_dict, COSDictionary):
+                raise TypeError(
+                    "PDAnnotation requires a COSDictionary or None; got "
+                    f"{type(annotation_dict).__name__}"
+                )
+            self._dict = annotation_dict
+            # Upstream's no-arg constructor sets /Type Annot; the
+            # COSDictionary constructor leaves the dict untouched. We
+            # follow that — caller is responsible for a well-formed dict.
+
+    # ---------- COS surface ----------
+
+    def get_cos_object(self) -> COSDictionary:
+        return self._dict
+
+    # ---------- /Subtype ----------
+
+    def get_subtype(self) -> str | None:
+        return self._dict.get_name(_SUBTYPE)
+
+    def _set_subtype(self, subtype: str) -> None:
+        """Protected upstream — subclasses set this in their constructor."""
+        self._dict.set_item(_SUBTYPE, COSName.get_pdf_name(subtype))
+
+    # ---------- factory ----------
+
+    @staticmethod
+    def create(cos_dict: COSBase) -> PDAnnotation:
+        """Dispatch a raw annotation dict to the appropriate subclass.
+
+        Mirrors upstream's static ``createAnnotation``. Subtypes the
+        cluster #5 lite truncated table doesn't recognise (Widget, FreeText,
+        FileAttachment, Line, Popup, RubberStamp, Polygon, Polyline, Ink,
+        Highlight, Underline, Strikeout, Squiggly, Caret, Sound, …) all fall
+        back to :class:`PDAnnotationUnknown` rather than raising — a parser
+        round-trip should never lose data.
+        """
+        if not isinstance(cos_dict, COSDictionary):
+            raise TypeError(
+                f"PDAnnotation.create expects a COSDictionary, got "
+                f"{type(cos_dict).__name__}"
+            )
+        # Local imports avoid a circular import at module-load time.
+        from .pd_annotation_link import PDAnnotationLink
+        from .pd_annotation_square_circle import (
+            PDAnnotationCircle,
+            PDAnnotationSquare,
+        )
+        from .pd_annotation_text import PDAnnotationText
+        from .pd_annotation_unknown import PDAnnotationUnknown
+
+        subtype = cos_dict.get_name(_SUBTYPE)
+        if subtype is None:
+            return PDAnnotationUnknown(cos_dict)
+        if subtype == PDAnnotationLink.SUB_TYPE:
+            return PDAnnotationLink(cos_dict)
+        if subtype == PDAnnotationText.SUB_TYPE:
+            return PDAnnotationText(cos_dict)
+        if subtype == PDAnnotationSquare.SUB_TYPE:
+            return PDAnnotationSquare(cos_dict)
+        if subtype == PDAnnotationCircle.SUB_TYPE:
+            return PDAnnotationCircle(cos_dict)
+        return PDAnnotationUnknown(cos_dict)
+
+    # ---------- /Rect ----------
+
+    def get_rectangle(self) -> PDRectangle | None:
+        value = self._dict.get_dictionary_object(_RECT)
+        if isinstance(value, COSArray) and value.size() >= 4:
+            return PDRectangle.from_cos_array(value)
+        return None
+
+    def set_rectangle(self, rectangle: PDRectangle | None) -> None:
+        if rectangle is None:
+            self._dict.remove_item(_RECT)
+            return
+        self._dict.set_item(_RECT, rectangle.to_cos_array())
+
+    # ---------- /Contents ----------
+
+    def get_contents(self) -> str | None:
+        return self._dict.get_string(_CONTENTS)
+
+    def set_contents(self, value: str | None) -> None:
+        self._dict.set_string(_CONTENTS, value)
+
+    # ---------- /M (modification date) ----------
+
+    def get_modified_date(self) -> str | None:
+        """Return the raw /M string. Upstream returns the unparsed string;
+        callers run it through DateConverter when they need a structured
+        value. We follow that — date parsing already lives in
+        ``pd_document_information`` and we don't duplicate it here."""
+        return self._dict.get_string(_M)
+
+    def set_modified_date(self, value: str | _dt.datetime | None) -> None:
+        if value is None:
+            self._dict.remove_item(_M)
+            return
+        if isinstance(value, _dt.datetime):
+            # Match the format used by PDDocumentInformation.
+            base = value.strftime("D:%Y%m%d%H%M%S")
+            offset = value.utcoffset()
+            if offset is None or int(offset.total_seconds()) == 0:
+                formatted = base + "Z00'00'"
+            else:
+                total_seconds = int(offset.total_seconds())
+                sign = "+" if total_seconds > 0 else "-"
+                total_seconds = abs(total_seconds)
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+                formatted = f"{base}{sign}{hours:02d}'{minutes:02d}'"
+            self._dict.set_item(_M, COSString(formatted))
+            return
+        self._dict.set_string(_M, value)
+
+    # ---------- /F (annotation flags) ----------
+
+    def get_annotation_flags(self) -> int:
+        return self._dict.get_int(_F, 0)
+
+    def set_annotation_flags(self, flags: int) -> None:
+        self._dict.set_int(_F, int(flags))
+
+    def _is_flag(self, flag: int) -> bool:
+        return (self.get_annotation_flags() & flag) == flag
+
+    def _set_flag(self, flag: int, value: bool) -> None:
+        current = self.get_annotation_flags()
+        if value:
+            new = current | flag
+        else:
+            new = current & ~flag
+        self.set_annotation_flags(new)
+
+    def is_invisible(self) -> bool:
+        return self._is_flag(self.FLAG_INVISIBLE)
+
+    def set_invisible(self, value: bool) -> None:
+        self._set_flag(self.FLAG_INVISIBLE, value)
+
+    def is_hidden(self) -> bool:
+        return self._is_flag(self.FLAG_HIDDEN)
+
+    def set_hidden(self, value: bool) -> None:
+        self._set_flag(self.FLAG_HIDDEN, value)
+
+    def is_printed(self) -> bool:
+        return self._is_flag(self.FLAG_PRINTED)
+
+    def set_printed(self, value: bool) -> None:
+        self._set_flag(self.FLAG_PRINTED, value)
+
+    def is_no_zoom(self) -> bool:
+        return self._is_flag(self.FLAG_NO_ZOOM)
+
+    def set_no_zoom(self, value: bool) -> None:
+        self._set_flag(self.FLAG_NO_ZOOM, value)
+
+    def is_no_rotate(self) -> bool:
+        return self._is_flag(self.FLAG_NO_ROTATE)
+
+    def set_no_rotate(self, value: bool) -> None:
+        self._set_flag(self.FLAG_NO_ROTATE, value)
+
+    def is_no_view(self) -> bool:
+        return self._is_flag(self.FLAG_NO_VIEW)
+
+    def set_no_view(self, value: bool) -> None:
+        self._set_flag(self.FLAG_NO_VIEW, value)
+
+    def is_read_only(self) -> bool:
+        return self._is_flag(self.FLAG_READ_ONLY)
+
+    def set_read_only(self, value: bool) -> None:
+        self._set_flag(self.FLAG_READ_ONLY, value)
+
+    def is_locked(self) -> bool:
+        return self._is_flag(self.FLAG_LOCKED)
+
+    def set_locked(self, value: bool) -> None:
+        self._set_flag(self.FLAG_LOCKED, value)
+
+    def is_toggle_no_view(self) -> bool:
+        return self._is_flag(self.FLAG_TOGGLE_NO_VIEW)
+
+    def set_toggle_no_view(self, value: bool) -> None:
+        self._set_flag(self.FLAG_TOGGLE_NO_VIEW, value)
+
+    def is_locked_contents(self) -> bool:
+        return self._is_flag(self.FLAG_LOCKED_CONTENTS)
+
+    def set_locked_contents(self, value: bool) -> None:
+        self._set_flag(self.FLAG_LOCKED_CONTENTS, value)
+
+    # ---------- /NM (annotation name) ----------
+
+    def get_annotation_name(self) -> str | None:
+        return self._dict.get_string(_NM)
+
+    def set_annotation_name(self, value: str | None) -> None:
+        self._dict.set_string(_NM, value)
+
+    # ---------- /T (text label / title) ----------
+
+    def get_title_popup(self) -> str | None:
+        """Upstream calls this ``getTitlePopup`` on PDAnnotationMarkup. The
+        cluster #5 lite scope hasn't ported PDAnnotationMarkup yet, but /T
+        is a generic-enough field that base-class accessors are useful for
+        Link/Text/Square/Circle round-trips."""
+        return self._dict.get_string(_T)
+
+    def set_title_popup(self, value: str | None) -> None:
+        self._dict.set_string(_T, value)
+
+    # ---------- /Border ----------
+
+    def get_border(self) -> COSArray:
+        """Default /Border is ``[0 0 1]`` per spec — match upstream which
+        synthesises the default rather than returning ``null``."""
+        value = self._dict.get_dictionary_object(_BORDER)
+        if isinstance(value, COSArray):
+            return value
+        default = COSArray(
+            [COSInteger.get(0), COSInteger.get(0), COSInteger.get(1)]
+        )
+        return default
+
+    def set_border(self, border_array: COSArray | None) -> None:
+        if border_array is None:
+            self._dict.remove_item(_BORDER)
+            return
+        self._dict.set_item(_BORDER, border_array)
+
+    # ---------- /C (color components) ----------
+
+    def get_color(self) -> COSArray | None:
+        """Cluster #5 lite returns the raw ``COSArray`` of color components.
+        The typed PDColor wrapper lands with the rendering cluster (PRD
+        §6.12). See ``CHANGES.md``."""
+        value = self._dict.get_dictionary_object(_C)
+        if isinstance(value, COSArray):
+            return value
+        return None
+
+    def set_color(self, color: COSArray | None) -> None:
+        if color is None:
+            self._dict.remove_item(_C)
+            return
+        self._dict.set_item(_C, color)
+
+    def set_color_components(self, components: list[float] | tuple[float, ...]) -> None:
+        """Convenience alternative to ``set_color`` taking raw floats — no
+        upstream equivalent (upstream takes a ``PDColor``). Useful before
+        the rendering cluster lands."""
+        arr = COSArray([COSFloat(float(c)) for c in components])
+        self._dict.set_item(_C, arr)
+
+    # ---------- equality / repr ----------
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, PDAnnotation):
+            return self._dict is other._dict
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return id(self._dict)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(subtype={self.get_subtype()!r})"
+
+
+__all__ = ["PDAnnotation"]

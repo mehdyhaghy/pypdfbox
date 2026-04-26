@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
     COSBase,
@@ -9,6 +9,9 @@ from pypdfbox.cos import (
     COSObject,
     COSStream,
 )
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 
 
 # Category prefixes — match upstream ``PDResources.createKey()`` per kind.
@@ -76,8 +79,9 @@ class PDResources:
 
     def get_xobject(self, name: COSName) -> COSBase | None:
         """Return the raw ``/XObject`` entry (typically a ``COSStream``)
-        for ``name``, or ``None``. Cluster #1 returns the raw COS object;
-        ``PDXObject`` wrapping lands in cluster #3."""
+        for ``name``, or ``None``. Kept from cluster #1 — returns the raw
+        COS object. For the typed ``PDXObject`` wrapper, see
+        ``get_x_object``."""
         sub = self._get_subdict(_X_OBJECT)
         if sub is None:
             return None
@@ -85,6 +89,71 @@ class PDResources:
         if isinstance(entry, COSObject):
             return entry.get_object()
         return entry
+
+    # ---------- typed XObject surface (cluster #3) ----------
+
+    def get_x_object(self, name: COSName | str) -> PDXObject | None:
+        """Return the typed ``PDXObject`` for ``name`` — either a
+        ``PDFormXObject`` (/Subtype /Form) or a ``PDImageXObject``
+        (/Subtype /Image). ``None`` when the entry is absent.
+
+        Mirrors upstream ``PDResources.getXObject`` which delegates to
+        ``PDXObject.createXObject`` for /Subtype dispatch."""
+        # Local imports keep cluster boundaries explicit and avoid an
+        # import cycle (graphics → common → pd_stream → cos).
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+            PDFormXObject,
+        )
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            PDImageXObject,
+        )
+
+        key = name if isinstance(name, COSName) else COSName.get_pdf_name(name)
+        entry = self.get_xobject(key)
+        if entry is None:
+            return None
+        if not isinstance(entry, COSStream):
+            raise TypeError(
+                f"/XObject entry {key!s} is not a stream: {type(entry).__name__}"
+            )
+        subtype = entry.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
+        if subtype == "Form":
+            return PDFormXObject(entry)
+        if subtype == "Image":
+            return PDImageXObject(entry)
+        raise OSError(f"Invalid XObject Subtype: {subtype!r}")
+
+    def get_x_object_names(self) -> list[str]:
+        """``/XObject`` keys as plain strings. Mirrors upstream's
+        ``getXObjectNames()`` which returns ``Set<COSName>`` — Python idiom
+        is a list of strings here for pleasant iteration."""
+        return [n.name for n in self.get_xobject_names()]
+
+    def add_x_object(self, xobject: PDXObject) -> COSName:
+        """Register ``xobject`` under a fresh key. Form XObjects are keyed
+        ``Form0``/``Form1``/…, image XObjects ``Im0``/``Im1``/…, matching
+        upstream ``createKey`` per kind."""
+        # Local imports — cluster boundary, see ``get_x_object``.
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+            PDFormXObject,
+        )
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            PDImageXObject,
+        )
+
+        if isinstance(xobject, PDFormXObject):
+            prefix = _PREFIX_FORM
+        elif isinstance(xobject, PDImageXObject):
+            prefix = _PREFIX_IMAGE
+        else:
+            # Unknown subclass — fall back to subtype on the COS dict.
+            subtype = xobject.get_cos_object().get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
+            prefix = _PREFIX_FORM if subtype == "Form" else _PREFIX_IMAGE
+
+        sub = self._get_or_create_subdict(_X_OBJECT)
+        key = self._create_key(sub, prefix)
+        sub.set_item(key, xobject.get_cos_object())
+        return key
 
     def get_font(self, name: COSName) -> COSDictionary | None:
         """Raw font dictionary; ``PDFont`` wrapper lands in cluster #4."""

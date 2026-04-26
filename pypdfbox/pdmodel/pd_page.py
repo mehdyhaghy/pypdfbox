@@ -29,6 +29,7 @@ _ROTATE: COSName = COSName.get_pdf_name("Rotate")
 _USER_UNIT: COSName = COSName.get_pdf_name("UserUnit")
 _PARENT: COSName = COSName.PARENT  # type: ignore[attr-defined]
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
+_ANNOTS: COSName = COSName.get_pdf_name("Annots")
 
 
 class PDPage:
@@ -263,12 +264,54 @@ class PDPage:
 
         self._page.set_item(_USER_UNIT, COSFloat(float(unit)))
 
-    # ---------- stubs for later clusters ----------
+    # ---------- annotations ----------
 
-    def get_annotations(self) -> Any:
-        raise NotImplementedError(
-            "PDPage.get_annotations requires PDAnnotation — pdmodel cluster #5"
-        )
+    def get_annotations(self) -> list[Any]:
+        """Resolve ``/Annots`` into a list of :class:`PDAnnotation`.
+
+        Returns an empty list when ``/Annots`` is absent. Each entry is
+        dispatched to the appropriate subclass via
+        :meth:`PDAnnotation.create`. Non-dictionary entries (rare but
+        legal under defensive parsing) are skipped.
+        """
+        # Local import — annotation module imports PDRectangle from this
+        # package, and a top-level import would create a cycle.
+        from .interactive.annotation import PDAnnotation
+
+        annots = self._page.get_dictionary_object(_ANNOTS)
+        if annots is None:
+            return []
+        if not isinstance(annots, COSArray):
+            return []
+        result: list[Any] = []
+        for i in range(annots.size()):
+            entry = annots.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(PDAnnotation.create(entry))
+        return result
+
+    def set_annotations(self, annotations: list[Any] | None) -> None:
+        """Replace ``/Annots`` with a fresh array built from ``annotations``.
+
+        ``None`` removes the entry. Each item must be a
+        :class:`PDAnnotation` (we read its underlying ``COSDictionary``).
+        """
+        if annotations is None:
+            self._page.remove_item(_ANNOTS)
+            return
+        from .interactive.annotation import PDAnnotation
+
+        arr = COSArray()
+        for ann in annotations:
+            if not isinstance(ann, PDAnnotation):
+                raise TypeError(
+                    "PDPage.set_annotations entries must be PDAnnotation; "
+                    f"got {type(ann).__name__}"
+                )
+            arr.add(ann.get_cos_object())
+        self._page.set_item(_ANNOTS, arr)
+
+    # ---------- stubs for later clusters ----------
 
     def get_thumb(self) -> Any:
         raise NotImplementedError(
