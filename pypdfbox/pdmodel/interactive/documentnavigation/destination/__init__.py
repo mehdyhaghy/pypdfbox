@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .pd_destination import PDDestination
+from .pd_destination_name_tree_node import PDDestinationNameTreeNode
 from .pd_named_destination import PDNamedDestination
 from .pd_page_destination import PDPageDestination
 from .pd_page_fit_destination import PDPageFitDestination
@@ -11,6 +12,7 @@ from .pd_page_xyz_destination import PDPageXYZDestination
 
 __all__ = [
     "PDDestination",
+    "PDDestinationNameTreeNode",
     "PDNamedDestination",
     "PDPageDestination",
     "PDPageFitDestination",

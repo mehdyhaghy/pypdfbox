@@ -5,6 +5,7 @@ import pytest
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDDestination,
+    PDDestinationNameTreeNode,
     PDNamedDestination,
     PDPageFitDestination,
     PDPageFitHeightDestination,
@@ -89,3 +90,23 @@ def test_destination_factory_rejects_unknown_array_type() -> None:
     arr = COSArray([COSInteger.get(0), COSName.get_pdf_name("UnknownDest")])
     with pytest.raises(OSError):
         PDDestination.create(arr)
+
+
+def test_destination_name_tree_get_set_and_names() -> None:
+    tree = PDDestinationNameTreeNode()
+    first = PDPageXYZDestination()
+    first.set_page_number(0)
+    second = PDPageFitDestination()
+    second.set_page_number(2)
+
+    tree.set_value("chapter-2", second)
+    tree.set_value("chapter-1", first)
+
+    assert tree.get_names() == ["chapter-1", "chapter-2"]
+    resolved = tree.get_value("chapter-1")
+    assert isinstance(resolved, PDPageXYZDestination)
+    assert resolved.get_page_number() == 0
+
+    tree.set_value("chapter-2", None)
+    assert tree.get_names() == ["chapter-1"]
+    assert tree.get_value("chapter-2") is None

@@ -182,8 +182,14 @@ class PDDocumentCatalog:
         )
 
     def get_dests(self) -> Any:
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestinationNameTreeNode,
+        )
+
         value = self._catalog.get_dictionary_object(_DESTS)
-        return value if isinstance(value, COSDictionary) else None
+        if isinstance(value, COSDictionary):
+            return PDDestinationNameTreeNode(value)
+        return None
 
     def get_open_action(self) -> Any:
         from pypdfbox.pdmodel.interactive.action import PDAction

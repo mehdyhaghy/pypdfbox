@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSName
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument, PDDocumentCatalog
 from pypdfbox.pdmodel.interactive.action import PDActionURI
-from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDPageXYZDestination
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDDestinationNameTreeNode,
+    PDPageXYZDestination,
+)
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import PDDocumentOutline
 
 
@@ -111,3 +114,24 @@ def test_open_action_accepts_action_or_destination() -> None:
     resolved_dest = catalog.get_open_action()
     assert isinstance(resolved_dest, PDPageXYZDestination)
     assert resolved_dest.get_page_number() == 0
+
+
+def test_get_dests_wraps_destination_name_tree() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    dests_dict = COSDictionary()
+    catalog.get_cos_object().set_item(COSName.get_pdf_name("Dests"), dests_dict)
+
+    dests = catalog.get_dests()
+    assert isinstance(dests, PDDestinationNameTreeNode)
+    assert dests.get_cos_object() is dests_dict
+
+    dest = PDPageXYZDestination()
+    dest.set_page_number(1)
+    dests.set_value("Chapter1", dest)
+
+    resolved = catalog.get_dests()
+    assert isinstance(resolved, PDDestinationNameTreeNode)
+    fetched = resolved.get_value("Chapter1")
+    assert isinstance(fetched, PDPageXYZDestination)
+    assert fetched.get_page_number() == 1
