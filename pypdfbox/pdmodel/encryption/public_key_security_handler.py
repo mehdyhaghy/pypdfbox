@@ -2,24 +2,33 @@
 
 Mirrors ``org.apache.pdfbox.pdmodel.encryption.PublicKeySecurityHandler``.
 
-Lite slice: decrypt-side only. Walks the ``/Recipients`` CMS-enveloped blobs
-on an ``/Encrypt`` dictionary, decrypts the first one that matches the
-supplied private key (via ``cryptography.hazmat.primitives.serialization``
-``pkcs7``), and derives the file-encryption key per PDF 32000-1 §7.6.5.
+Decrypt path walks the ``/Recipients`` CMS-enveloped blobs on an
+``/Encrypt`` dictionary, decrypts the first one that matches the supplied
+private key (via ``cryptography.hazmat.primitives.serialization.pkcs7``),
+and derives the file-encryption key per PDF 32000-1 §7.6.5.
 
-Encrypt-side wiring (envelope construction + recipient hash computation) is
-deferred — :meth:`prepare_document` raises ``NotImplementedError``.
+Encrypt path generates a 20-byte seed, builds a one-recipient PKCS#7
+envelope per ``PublicKeyRecipient`` using
+``cryptography.hazmat.primitives.serialization.pkcs7.PKCS7EnvelopeBuilder``,
+populates ``/Encrypt`` (`/Filter /Adobe.PubSec`, `/SubFilter`, `/V`, `/R`,
+`/Length`, `/Recipients`, `/CF /DefaultCryptFilter`, `/StmF`, `/StrF`),
+and derives the same SHA-1/SHA-256-truncated file key the decrypt path
+expects.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 from typing import TYPE_CHECKING
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.serialization import pkcs7
 
 from pypdfbox.cos import COSArray, COSString
 
+from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
 from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
@@ -32,15 +41,24 @@ _SEED_LENGTH = 20
 
 
 class PublicKeySecurityHandler(SecurityHandler):
-    """Lite port — decrypt path with a stub encrypt entry point."""
+    """Lite port — both decrypt and encrypt paths wired.
+
+    Decrypt validates a recipient envelope against the supplied private key
+    and derives the file key per §7.6.5. Encrypt builds one PKCS#7 envelope
+    per recipient and writes the matching `/Encrypt` dictionary.
+    """
 
     FILTER: str = "Adobe.PubSec"
 
     SUBFILTER4: str = "adbe.pkcs7.s4"
     SUBFILTER5: str = "adbe.pkcs7.s5"
 
-    def __init__(self) -> None:
+    def __init__(self, protection_policy: object | None = None) -> None:
         super().__init__()
+        # Mirrors ``StandardSecurityHandler`` — write callers attach the
+        # policy here so :meth:`prepare_document` can pull recipients +
+        # key-length without an extra plumbing step.
+        self._protection_policy = protection_policy
 
     # ------------------------------------------------------------ decrypt
 
@@ -141,14 +159,150 @@ class PublicKeySecurityHandler(SecurityHandler):
 
     # ------------------------------------------------------------ encrypt
 
-    def prepare_document(self, document: object) -> None:  # noqa: ARG002
-        """Encrypt-side wiring — seed generation, CMS envelope construction,
-        recipient hash composition — is **deferred**. Track in ``CHANGES.md``
-        when implemented."""
-        raise NotImplementedError(
-            "PublicKeySecurityHandler.prepare_document is not implemented yet — "
-            "encrypt path (seed + CMS envelope + /Recipients population) deferred."
+    def prepare_document(self, document: object) -> None:
+        """Populate ``/Encrypt`` from the attached ``PublicKeyProtectionPolicy``.
+
+        Per PDF 32000-1 §7.6.5:
+
+        1. Generate a 20-byte cryptographically random seed.
+        2. For each recipient, build a per-recipient blob = seed (20 bytes) ||
+           permissions (4 bytes, big-endian) and wrap it in a one-recipient
+           PKCS#7 envelope using AES-128 (V=4) or AES-256 (V=5) content
+           encryption. The envelope is serialised as DER bytes.
+        3. Stash the envelopes on ``/Encrypt /Recipients`` and write the
+           companion fields ``/Filter``, ``/SubFilter``, ``/V``, ``/R``,
+           ``/Length``, ``/CF /DefaultCryptFilter``, ``/StmF``, ``/StrF``.
+        4. Derive the file-encryption key as
+           ``hash(seed || every recipient blob in order
+                  [|| 0xFF*4 if not encrypting metadata])``
+           truncated to ``/Length // 8`` bytes — SHA-256 for V>=5, SHA-1 for
+           V=4 — and seed ``self._encryption_key`` so the per-object cipher
+           dispatch in :class:`SecurityHandler` works straight away.
+        """
+        # Late imports keep the public-key cluster's heavy dependencies out
+        # of the module-load path for callers that only use the standard
+        # handler.
+        from .pd_encryption import PDEncryption  # noqa: PLC0415
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
         )
+
+        policy = getattr(self, "_protection_policy", None)
+        if policy is None:
+            # Fall back to scanning the document for an attached policy when
+            # the handler was instantiated without one — mirrors how upstream
+            # PDFBox finds the policy via the document's encryption setup.
+            policy = getattr(document, "_protection_policy", None)
+        if not isinstance(policy, PublicKeyProtectionPolicy):
+            raise ValueError(
+                "PublicKeySecurityHandler.prepare_document requires a "
+                "PublicKeyProtectionPolicy"
+            )
+
+        recipients = policy.get_recipients()
+        if not recipients:
+            raise ValueError(
+                "PublicKeyProtectionPolicy must have at least one recipient"
+            )
+
+        key_length_bits = policy.get_encryption_key_length() or 128
+        # Pick V/R/CFM by key length. The spec only defines AES-128 (V=4) and
+        # AES-256 (V=5) for /Adobe.PubSec; legacy RC4 variants are out of
+        # scope for the lite port.
+        if key_length_bits >= 256:
+            key_length_bits = 256
+            version = 5
+            revision = 5
+            sub_filter = self.SUBFILTER5
+            cfm = PDCryptFilterDictionary.CFM_AESV3
+            content_alg = algorithms.AES256
+            digest_factory = hashlib.sha256
+        else:
+            key_length_bits = 128
+            version = 4
+            revision = 4
+            sub_filter = self.SUBFILTER4
+            cfm = PDCryptFilterDictionary.CFM_AESV2
+            content_alg = algorithms.AES128
+            digest_factory = hashlib.sha1
+
+        seed = os.urandom(_SEED_LENGTH)
+
+        envelopes: list[bytes] = []
+        for recipient in recipients:
+            cert = recipient.get_x509()
+            if cert is None:
+                raise ValueError(
+                    "PublicKeyRecipient is missing its X.509 certificate"
+                )
+            permission_obj = recipient.get_permission()
+            if permission_obj is None:
+                raise ValueError(
+                    "PublicKeyRecipient is missing its AccessPermission"
+                )
+            # Permissions are stored as a 4-byte two's-complement big-endian
+            # integer per §7.6.5 — same on-the-wire shape upstream uses.
+            perms_int = (
+                permission_obj.get_permission_bytes() & 0xFFFFFFFF
+            )
+            blob = seed + perms_int.to_bytes(4, "big")
+
+            builder = pkcs7.PKCS7EnvelopeBuilder()
+            builder = builder.set_data(blob)
+            builder = builder.add_recipient(cert)
+            builder = builder.set_content_encryption_algorithm(content_alg)
+            envelope_der = builder.encrypt(
+                serialization.Encoding.DER,
+                [pkcs7.PKCS7Options.Binary],
+            )
+            envelopes.append(envelope_der)
+
+        # Build the /Encrypt dictionary.
+        encryption = PDEncryption()
+        encryption.set_filter(self.FILTER)
+        encryption.set_sub_filter(sub_filter)
+        encryption.set_v(version)
+        encryption.set_revision(revision)
+        encryption.set_length(key_length_bits)
+
+        recipients_array = COSArray()
+        for envelope_der in envelopes:
+            recipients_array.add(COSString(envelope_der))
+        # PDEncryption has no /Recipients setter — write through the COS
+        # dictionary directly. The accessor side already accepts any
+        # COSArray via get_recipients().
+        encryption.get_cos_object().set_item("Recipients", recipients_array)
+
+        crypt_filter = PDCryptFilterDictionary()
+        crypt_filter.set_cfm(cfm)
+        # /CF /Length is in bytes per Table 25 (note the bits/bytes split).
+        crypt_filter.set_length(key_length_bits // 8)
+        encryption.set_default_crypt_filter_dictionary(crypt_filter)
+        encryption.set_stm_f("DefaultCryptFilter")
+        encryption.set_str_f("DefaultCryptFilter")
+
+        # Derive the file-encryption key per §7.6.5: hash(seed || every
+        # recipient blob in order || (0xFF*4 when EncryptMetadata is false))
+        # truncated to /Length // 8 bytes.
+        digest = digest_factory(usedforsecurity=False) if version < 5 else digest_factory()
+        digest.update(seed)
+        for envelope_der in envelopes:
+            digest.update(envelope_der)
+        if not encryption.is_encrypt_meta_data():
+            digest.update(b"\xff\xff\xff\xff")
+        encryption_key = digest.digest()[: key_length_bits // 8]
+
+        self.set_encryption_key(encryption_key)
+        self.set_key_length(key_length_bits)
+        self.set_version(version)
+        self.set_revision(revision)
+        # /Adobe.PubSec always pairs with AES in this lite port.
+        self.set_aes(True)
+
+        # Attach the encryption dictionary to the document if it exposes the
+        # standard PDFBox setter (mirrors StandardSecurityHandler.prepare_document).
+        if hasattr(document, "set_encryption_dictionary"):
+            document.set_encryption_dictionary(encryption)
 
     # ------------------------------------------------------------ helpers
 
