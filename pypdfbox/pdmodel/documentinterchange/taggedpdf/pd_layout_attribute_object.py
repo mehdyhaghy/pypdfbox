@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary
+from pypdfbox.cos import COSDictionary
 
+from .pd_four_colours import PDFourColours
 from .pd_standard_attribute_object import PDStandardAttributeObject
 
 
@@ -52,13 +53,27 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
 
     # ---------- /BackgroundColor ----------
 
-    def get_background_color(self) -> COSArray | None:
-        return self._get_array("BackgroundColor")
+    def get_background_color(self) -> tuple[float, ...] | None:
+        return self._get_color_value("BackgroundColor")
+
+    def set_background_color(self, rgb: tuple[float, ...] | None) -> None:
+        self._set_color_value("BackgroundColor", rgb)
 
     # ---------- /Color ----------
 
-    def get_color(self) -> COSArray | None:
-        return self._get_array("Color")
+    def get_color(self) -> tuple[float, ...] | None:
+        return self._get_color_value("Color")
+
+    def set_color(self, rgb: tuple[float, ...] | None) -> None:
+        self._set_color_value("Color", rgb)
+
+    # ---------- /BorderColor ----------
+
+    def get_border_color(self) -> PDFourColours | None:
+        return self._get_four_colours("BorderColor")
+
+    def set_border_color(self, four: PDFourColours | None) -> None:
+        self._set_four_colours("BorderColor", four)
 
     # ---------- /SpaceBefore ----------
 

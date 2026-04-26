@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSArray
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDExportFormatAttributeObject,
+    PDFourColours,
     PDLayoutAttributeObject,
     PDListAttributeObject,
     PDPrintFieldAttributeObject,
@@ -132,6 +133,57 @@ def test_standard_is_abstract_intermediate() -> None:
     # Sanity: subclasses inherit from the standard intermediate.
     assert issubclass(PDLayoutAttributeObject, PDStandardAttributeObject)
     assert issubclass(PDUserAttributeObject, PDStandardAttributeObject)
+
+
+# ---------- PDFourColours + Layout color helpers ----------
+
+
+def test_four_colours_round_trip_distinct_sides() -> None:
+    four = PDFourColours()
+    four.set_top((1.0, 0.0, 0.0))
+    four.set_right((0.0, 1.0, 0.0))
+    four.set_bottom((0.0, 0.0, 1.0))
+    four.set_left((0.5, 0.5, 0.5))
+    assert four.get_top() == (1.0, 0.0, 0.0)
+    assert four.get_right() == (0.0, 1.0, 0.0)
+    assert four.get_bottom() == (0.0, 0.0, 1.0)
+    assert four.get_left() == (0.5, 0.5, 0.5)
+
+
+def test_four_colours_single_color_applies_to_all_sides() -> None:
+    four = PDFourColours.single_color((0.5, 0.5, 0.5))
+    assert four.get_top() == (0.5, 0.5, 0.5)
+    assert four.get_right() == (0.5, 0.5, 0.5)
+    assert four.get_bottom() == (0.5, 0.5, 0.5)
+    assert four.get_left() == (0.5, 0.5, 0.5)
+
+
+def test_layout_background_color_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_background_color((1.0, 0.5, 0.0))
+    assert obj.get_background_color() == (1.0, 0.5, 0.0)
+
+
+def test_layout_color_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_color((0.25, 0.5, 0.75))
+    assert obj.get_color() == (0.25, 0.5, 0.75)
+
+
+def test_layout_border_color_round_trip_with_four_colours() -> None:
+    obj = PDLayoutAttributeObject()
+    four = PDFourColours()
+    four.set_top((1.0, 0.0, 0.0))
+    four.set_right((0.0, 1.0, 0.0))
+    four.set_bottom((0.0, 0.0, 1.0))
+    four.set_left((0.0, 0.0, 0.0))
+    obj.set_border_color(four)
+    read_back = obj.get_border_color()
+    assert read_back is not None
+    assert read_back.get_top() == (1.0, 0.0, 0.0)
+    assert read_back.get_right() == (0.0, 1.0, 0.0)
+    assert read_back.get_bottom() == (0.0, 0.0, 1.0)
+    assert read_back.get_left() == (0.0, 0.0, 0.0)
 
 
 # Factory dispatch tests are deferred: they require the wiring update to

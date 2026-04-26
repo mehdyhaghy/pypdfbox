@@ -30,6 +30,10 @@ from .pd_appearance_dictionary import PDAppearanceDictionary
 from .pd_appearance_entry import PDAppearanceEntry
 from .pd_appearance_stream import PDAppearanceStream
 from .pd_border_style_dictionary import PDBorderStyleDictionary
+from .pd_ink_list import PDInkList
+from .pd_line_info import PDLineInfo
+from .pd_path_info import PDPathInfo
+from .pd_vertices import PDVertices
 
 __all__ = [
     "PDAnnotation",
@@ -60,4 +64,8 @@ __all__ = [
     "PDAppearanceEntry",
     "PDAppearanceStream",
     "PDBorderStyleDictionary",
+    "PDInkList",
+    "PDLineInfo",
+    "PDPathInfo",
+    "PDVertices",
 ]

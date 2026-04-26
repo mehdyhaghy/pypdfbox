@@ -43,9 +43,22 @@ class Loader:
     """
 
     @staticmethod
-    def load_pdf(source: PDFSource, /) -> COSDocument:
+    def load_pdf(
+        source: PDFSource,
+        password: str | bytes | None = None,
+        /,
+    ) -> COSDocument:
         """Parse a PDF from one of the supported sources and return the
-        populated ``COSDocument``."""
+        populated ``COSDocument``.
+
+        When ``password`` is supplied (or the empty string for blank-password
+        documents) and the parsed trailer carries an ``/Encrypt`` entry, the
+        document is auto-decrypted: a ``StandardSecurityHandler`` is wired
+        into every ``COSStream`` so subsequent reads decipher transparently.
+        Encrypted documents loaded without a password are returned encrypted —
+        the caller can wrap them in a ``PDDocument`` and call ``decrypt`` later.
+
+        Mirrors PDFBox ``Loader.loadPDF(..., String password)``."""
         access, owned = Loader._coerce_source(source)
         parser = PDFParser(access)
         try:
@@ -63,6 +76,28 @@ class Loader:
         if owned:
             # Hand ownership to the document so doc.close() releases it.
             document._source = access  # noqa: SLF001 — sibling-package handoff
+
+        # Auto-decrypt path: only kick in when the document is actually
+        # encrypted AND the caller passed a password (empty string counts —
+        # plenty of documents are protected with a blank user password).
+        if password is not None and document.is_encrypted():
+            try:
+                from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+            except ImportError:
+                # pdmodel layer not installed yet — return the encrypted
+                # COSDocument and let the caller drive decryption manually.
+                return document
+            pd = PDDocument(document)
+            # The COSDocument is the loader's return value — the transient
+            # wrapper must not assume ownership (a stray gc cycle could
+            # close the document out from under the caller).
+            pd._owns_document = False  # noqa: SLF001
+            try:
+                pd.decrypt(password)
+            except BaseException:
+                if owned:
+                    access.close()
+                raise
         return document
 
     @staticmethod

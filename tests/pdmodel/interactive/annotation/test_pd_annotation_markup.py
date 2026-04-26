@@ -160,14 +160,15 @@ def test_text_markup_quad_points_clear() -> None:
 
 
 def test_ink_list_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDInkList
+
     ann = PDAnnotationInk()
     inner = COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(5.0), COSFloat(5.0)])
     outer = COSArray([inner])
     ann.set_ink_list(outer)
     rt = ann.get_ink_list()
-    assert rt is outer
-    assert rt.size() == 1
-    assert rt.get(0) is inner
+    assert isinstance(rt, PDInkList)
+    assert rt.get_cos_array() is outer
 
 
 def test_ink_list_default_none() -> None:

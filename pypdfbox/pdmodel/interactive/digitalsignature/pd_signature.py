@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+
+from .signature_validation_result import SignatureValidationResult
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SIG: COSName = COSName.get_pdf_name("Sig")
@@ -151,5 +155,107 @@ class PDSignature:
         s.set_force_hex_form(True)
         self._dict.set_item(_CONTENTS, s)
 
+    # ---------- convenience: raw /Contents and signed bytes ----------
 
-__all__ = ["PDSignature"]
+    def get_contents_bytes(self) -> bytes | None:
+        """Return the raw decoded ``/Contents`` PKCS#7 SignedData blob.
+
+        Alias of :meth:`get_contents` — kept for symmetry with
+        :meth:`get_signed_data` which returns the *bytes that were signed*
+        rather than the *signature* bytes themselves.
+        """
+        return self.get_contents()
+
+    def get_signed_data(self, document_bytes: bytes) -> bytes | None:
+        """Return the concatenated byte slices identified by ``/ByteRange``.
+
+        ``/ByteRange`` is ``[start1, len1, start2, len2]``: the two ranges
+        that bracket the ``/Contents`` placeholder. Hashing this byte string
+        is what produces the message digest covered by the PKCS#7 signature.
+        Returns ``None`` if no ``/ByteRange`` is present.
+        """
+        br = self.get_byte_range()
+        if br is None:
+            return None
+        start1, len1, start2, len2 = br
+        return document_bytes[start1 : start1 + len1] + document_bytes[start2 : start2 + len2]
+
+    # ---------- verify ----------
+
+    def verify(self, document_bytes: bytes) -> SignatureValidationResult:
+        """Verify this signature against ``document_bytes``.
+
+        Partial implementation: computes the document digest from
+        ``/ByteRange`` and extracts the signer certificate from the
+        embedded PKCS#7 SignedData blob. Full PKCS#7 SignedData chain
+        validation (signed-attributes verification, signature math,
+        certificate-chain trust) is **deferred** — see :class:`
+        SignatureValidationResult` and ``CHANGES.md``. Always returns a
+        result with ``is_valid=False`` until the full path is implemented.
+        """
+        result = SignatureValidationResult()
+
+        byte_range = self.get_byte_range()
+        if byte_range is None:
+            result.errors.append("missing /ByteRange")
+            return result
+        if len(byte_range) != 4:
+            result.errors.append(
+                f"/ByteRange must have 4 entries, got {len(byte_range)}"
+            )
+            return result
+
+        contents = self.get_contents_bytes()
+        if contents is None:
+            result.errors.append("missing /Contents")
+            return result
+
+        # Compute digest over /ByteRange slices.
+        signed_data = self.get_signed_data(document_bytes)
+        if signed_data is None:
+            result.errors.append("could not extract signed data from document")
+            return result
+
+        sub_filter = (self.get_sub_filter() or "").lower()
+        if sub_filter == "adbe.pkcs7.sha1":
+            result.computed_digest = hashlib.sha1(signed_data).digest()  # noqa: S324
+        else:
+            result.computed_digest = hashlib.sha256(signed_data).digest()
+
+        # Extract signer certificate from embedded PKCS#7 SignedData blob.
+        try:
+            from cryptography.hazmat.primitives.serialization import pkcs7
+
+            certs = pkcs7.load_der_pkcs7_certificates(contents)
+        except Exception as exc:  # noqa: BLE001 — surface any parse failure
+            result.errors.append(f"failed to parse PKCS#7 /Contents: {exc}")
+            return result
+
+        if not certs:
+            result.errors.append("no certificates in PKCS#7 SignedData")
+            return result
+
+        cert = certs[0]
+        result.signer_certificate = cert
+        try:
+            result.signer_subject = cert.subject.rfc4514_string()
+        except Exception:  # noqa: BLE001
+            result.signer_subject = None
+        try:
+            result.signer_serial_number = int(cert.serial_number)
+        except Exception:  # noqa: BLE001
+            result.signer_serial_number = None
+
+        # Full PKCS#7 SignedData verification (signed-attribute hash match,
+        # signature-over-signed-attributes, chain trust) is not implemented:
+        # cryptography's high-level API is signing-only. A full port needs
+        # asn1crypto or manual ASN.1 walking — tracked in CHANGES.md.
+        result.errors.append(
+            "full PKCS#7 SignedData verification deferred — "
+            "only certificate extraction implemented"
+        )
+        result.is_valid = False
+        return result
+
+
+__all__ = ["PDSignature", "SignatureValidationResult"]

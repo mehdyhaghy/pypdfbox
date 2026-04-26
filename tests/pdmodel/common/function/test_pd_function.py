@@ -191,3 +191,124 @@ def test_type0_accessors() -> None:
 def test_type0_order_defaults_to_one() -> None:
     fn = PDFunctionType0(COSStream())
     assert fn.get_order() == 1
+
+
+# ---------- evaluation ----------
+
+
+def _make_type2(c0: list[float], c1: list[float], n: float,
+                domain: list[float] | None = None,
+                rng: list[float] | None = None) -> PDFunctionType2:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    raw.set_item("C0", COSArray([COSFloat(v) for v in c0]))
+    raw.set_item("C1", COSArray([COSFloat(v) for v in c1]))
+    raw.set_item("N", COSFloat(n))
+    if domain is not None:
+        domain_arr = COSArray()
+        domain_arr.set_float_array(domain)
+        raw.set_item("Domain", domain_arr)
+    if rng is not None:
+        range_arr = COSArray()
+        range_arr.set_float_array(rng)
+        raw.set_item("Range", range_arr)
+    return PDFunctionType2(raw)
+
+
+def test_base_eval_is_abstract() -> None:
+    base = PDFunction()
+    with pytest.raises(NotImplementedError):
+        base.eval([0.0])
+
+
+def test_type2_eval_at_zero_returns_c0() -> None:
+    fn = _make_type2([0.1, 0.2, 0.3], [0.9, 0.8, 0.7], 1.0, domain=[0.0, 1.0])
+    assert fn.eval([0.0]) == pytest.approx([0.1, 0.2, 0.3])
+
+
+def test_type2_eval_at_one_returns_c1() -> None:
+    fn = _make_type2([0.1, 0.2, 0.3], [0.9, 0.8, 0.7], 1.0, domain=[0.0, 1.0])
+    assert fn.eval([1.0]) == pytest.approx([0.9, 0.8, 0.7])
+
+
+def test_type2_eval_at_half_with_n1_returns_midpoint() -> None:
+    fn = _make_type2([0.0, 0.0], [1.0, 0.5], 1.0, domain=[0.0, 1.0])
+    assert fn.eval([0.5]) == pytest.approx([0.5, 0.25])
+
+
+def test_type2_eval_at_half_with_n2_returns_quarter() -> None:
+    # x**N = 0.5**2 = 0.25
+    fn = _make_type2([0.0, 1.0], [1.0, 0.0], 2.0, domain=[0.0, 1.0])
+    # y[0] = 0 + 0.25*(1-0) = 0.25
+    # y[1] = 1 + 0.25*(0-1) = 0.75
+    assert fn.eval([0.5]) == pytest.approx([0.25, 0.75])
+
+
+def test_type2_eval_clips_output_when_range_present() -> None:
+    fn = _make_type2(
+        [0.0], [2.0], 1.0, domain=[0.0, 1.0], rng=[0.0, 1.0]
+    )
+    # Without clipping y(1.0) = 2.0; clipped to /Range upper bound 1.0.
+    assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+def test_clip_input_clamps_below_min() -> None:
+    fn = _make_type2([0.0], [1.0], 1.0, domain=[0.2, 0.8])
+    assert fn.clip_input([-5.0]) == pytest.approx([0.2])
+
+
+def test_clip_input_clamps_above_max() -> None:
+    fn = _make_type2([0.0], [1.0], 1.0, domain=[0.2, 0.8])
+    assert fn.clip_input([5.0]) == pytest.approx([0.8])
+
+
+def test_get_ranges_for_inputs_pairs_domain() -> None:
+    fn = _make_type2([0.0], [1.0], 1.0, domain=[0.0, 1.0, -2.0, 2.0])
+    assert fn.get_ranges_for_inputs() == [(0.0, 1.0), (-2.0, 2.0)]
+
+
+def test_get_ranges_for_outputs_pairs_range() -> None:
+    fn = _make_type2([0.0], [1.0], 1.0, rng=[0.0, 1.0, 0.0, 0.5])
+    assert fn.get_ranges_for_outputs() == [(0.0, 1.0), (0.0, 0.5)]
+
+
+def test_type3_eval_routes_to_first_subfunction() -> None:
+    # Subfunction 0: C0=[0], C1=[1], N=1 over encoded [0,1]
+    sub0 = COSDictionary()
+    sub0.set_int("FunctionType", 2)
+    sub0.set_item("C0", COSArray([COSFloat(0.0)]))
+    sub0.set_item("C1", COSArray([COSFloat(1.0)]))
+    sub0.set_item("N", COSFloat(1.0))
+    sub0_domain = COSArray()
+    sub0_domain.set_float_array([0.0, 1.0])
+    sub0.set_item("Domain", sub0_domain)
+
+    # Subfunction 1: C0=[1], C1=[0], N=1 over encoded [0,1]
+    sub1 = COSDictionary()
+    sub1.set_int("FunctionType", 2)
+    sub1.set_item("C0", COSArray([COSFloat(1.0)]))
+    sub1.set_item("C1", COSArray([COSFloat(0.0)]))
+    sub1.set_item("N", COSFloat(1.0))
+    sub1_domain = COSArray()
+    sub1_domain.set_float_array([0.0, 1.0])
+    sub1.set_item("Domain", sub1_domain)
+
+    parent = COSDictionary()
+    parent.set_int("FunctionType", 3)
+    parent_domain = COSArray()
+    parent_domain.set_float_array([0.0, 1.0])
+    parent.set_item("Domain", parent_domain)
+    parent.set_item("Functions", COSArray([sub0, sub1]))
+    parent.set_item("Bounds", COSArray([COSFloat(0.5)]))
+    parent.set_item(
+        "Encode",
+        COSArray([COSFloat(0.0), COSFloat(1.0), COSFloat(0.0), COSFloat(1.0)]),
+    )
+
+    fn3 = PDFunctionType3(parent)
+    # x = 0.25 falls in sub0's interval [0, 0.5]; mapped to 0.5 in encoded
+    # [0,1]; sub0 (linear ramp 0->1) returns 0.5.
+    assert fn3.eval([0.25]) == pytest.approx([0.5])
+    # x = 0.75 falls in sub1's interval [0.5, 1.0]; mapped to 0.5; sub1
+    # (linear ramp 1->0) returns 0.5.
+    assert fn3.eval([0.75]) == pytest.approx([0.5])

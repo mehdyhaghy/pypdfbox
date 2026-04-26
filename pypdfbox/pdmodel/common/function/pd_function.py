@@ -17,10 +17,12 @@ class PDFunction:
     ``COSStream`` (Type 0, 4). The dictionary/stream provides ``/FunctionType``,
     ``/Domain``, and (for sampled / output-clipped functions) ``/Range``.
 
-    Function evaluation (``eval(input)``) and PostScript-calculator parsing
-    are deferred — see ``CHANGES.md``. This lite port covers the structural
-    accessors needed by callers that introspect or build function dictionaries
-    (e.g. shading dictionaries, tint transforms).
+    Function evaluation (``eval(input)``) is implemented for Type 2
+    (exponential interpolation) and Type 3 (stitching). Type 0 (sampled-table
+    interpolation) and Type 4 (PostScript calculator) eval are deferred —
+    see ``CHANGES.md``. The structural accessors below cover callers that
+    introspect or build function dictionaries (e.g. shading dictionaries,
+    tint transforms).
     """
 
     def __init__(self, function: COSBase | None = None) -> None:
@@ -130,6 +132,75 @@ class PDFunction:
         if rng is None:
             return 0
         return rng.size() // 2
+
+    # ---------- evaluation ----------
+
+    def get_ranges_for_inputs(self) -> list[tuple[float, float]]:
+        """Return ``/Domain`` paired as ``(min, max)`` tuples — one per input
+        dimension. Empty list when ``/Domain`` is absent or malformed."""
+        domain = self.get_domain()
+        if domain is None:
+            return []
+        flat = domain.to_float_array()
+        # Guard against odd lengths by truncating to the largest even prefix.
+        return [(flat[2 * i], flat[2 * i + 1]) for i in range(len(flat) // 2)]
+
+    def get_ranges_for_outputs(self) -> list[tuple[float, float]]:
+        """Return ``/Range`` paired as ``(min, max)`` tuples — one per output
+        dimension. Empty list when ``/Range`` is absent."""
+        rng = self.get_range()
+        if rng is None:
+            return []
+        flat = rng.to_float_array()
+        return [(flat[2 * i], flat[2 * i + 1]) for i in range(len(flat) // 2)]
+
+    def clip_input(self, values: list[float]) -> list[float]:
+        """Clamp each input to its ``/Domain`` ``(min, max)`` pair.
+
+        Per PDF 32000-1 §7.10.2, inputs outside the declared domain are
+        clipped, not rejected. Excess inputs (beyond the declared dimension
+        count) pass through unchanged.
+        """
+        ranges = self.get_ranges_for_inputs()
+        out: list[float] = []
+        for i, v in enumerate(values):
+            if i < len(ranges):
+                lo, hi = ranges[i]
+                if lo > hi:
+                    lo, hi = hi, lo
+                out.append(min(max(v, lo), hi))
+            else:
+                out.append(v)
+        return out
+
+    def clip_output(self, values: list[float]) -> list[float]:
+        """Clamp each output to its ``/Range`` ``(min, max)`` pair when
+        ``/Range`` is present. Returns inputs unchanged when ``/Range`` is
+        absent (legal for Type 2 / 3)."""
+        ranges = self.get_ranges_for_outputs()
+        if not ranges:
+            return list(values)
+        out: list[float] = []
+        for i, v in enumerate(values):
+            if i < len(ranges):
+                lo, hi = ranges[i]
+                if lo > hi:
+                    lo, hi = hi, lo
+                out.append(min(max(v, lo), hi))
+            else:
+                out.append(v)
+        return out
+
+    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+        """Evaluate the function at ``input``. Subclasses override.
+
+        Default raises ``NotImplementedError``; Type 0 (sampled) and Type 4
+        (PostScript calculator) eval are deferred — callers should rely on
+        the structural accessors instead.
+        """
+        raise NotImplementedError(
+            f"eval() is not implemented for {type(self).__name__}"
+        )
 
 
 __all__ = ["PDFunction"]

@@ -13,6 +13,8 @@ from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object i
     PDAttributeObject,
 )
 
+from .pd_four_colours import PDFourColours
+
 
 class PDStandardAttributeObject(PDAttributeObject):
     """
@@ -123,6 +125,61 @@ class PDStandardAttributeObject(PDAttributeObject):
         for value in values:
             array.add(COSFloat(float(value)))
         self._dictionary.set_item(name, array)
+
+    # ---------- color (single RGB / N-component) ----------
+
+    def _get_color_value(self, key: COSName | str) -> tuple[float, ...] | None:
+        v = self._dictionary.get_dictionary_object(key)
+        if not isinstance(v, COSArray):
+            return None
+        out: list[float] = []
+        for index in range(v.size()):
+            item = v.get_object(index)
+            if not isinstance(item, (COSInteger, COSFloat)):
+                return None
+            out.append(float(item.value))
+        return tuple(out)
+
+    def _set_color_value(
+        self, key: COSName | str, rgb: tuple[float, ...] | None
+    ) -> None:
+        if rgb is None:
+            self._dictionary.remove_item(key)
+            return
+        array = COSArray()
+        for component in rgb:
+            array.add(COSFloat(float(component)))
+        self._dictionary.set_item(key, array)
+
+    # ---------- four-side color (e.g. /BorderColor) ----------
+
+    def _get_four_colours(self, key: COSName | str) -> PDFourColours | None:
+        v = self._dictionary.get_dictionary_object(key)
+        if not isinstance(v, COSArray):
+            return None
+        return PDFourColours(v)
+
+    def _set_four_colours(
+        self, key: COSName | str, four: PDFourColours | None
+    ) -> None:
+        if four is None:
+            self._dictionary.remove_item(key)
+        else:
+            self._dictionary.set_item(key, four.get_cos_array())
+
+    # ---------- gamma ----------
+
+    def _get_gamma(self, key: COSName | str) -> float | None:
+        v = self._dictionary.get_dictionary_object(key)
+        if isinstance(v, (COSInteger, COSFloat)):
+            return float(v.value)
+        return None
+
+    def _set_gamma(self, key: COSName | str, gamma: float | None) -> None:
+        if gamma is None:
+            self._dictionary.remove_item(key)
+        else:
+            self._dictionary.set_float(key, float(gamma))
 
     # ---------- raw item passthrough ----------
 

@@ -1,18 +1,26 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
     PDSimpleFileSpecification,
 )
 from pypdfbox.pdmodel.interactive.action.pd_action_embedded_go_to import (
     PDActionEmbeddedGoTo,
+    TargetStep,
 )
 from pypdfbox.pdmodel.interactive.action.pd_action_movie import PDActionMovie
+from pypdfbox.pdmodel.interactive.action.pd_action_remote_go_to import (
+    PDActionRemoteGoTo,
+)
 from pypdfbox.pdmodel.interactive.action.pd_action_rendition import PDActionRendition
 from pypdfbox.pdmodel.interactive.action.pd_action_sound import PDActionSound
 from pypdfbox.pdmodel.interactive.action.pd_action_transition import PDActionTransition
+from pypdfbox.pdmodel.interactive.action.pd_target_directory import PDTargetDirectory
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
+)
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
+    PDDestination,
 )
 from pypdfbox.pdmodel.interactive.pagenavigation.pd_transition import PDTransition
 from pypdfbox.pdmodel.interactive.pagenavigation.pd_transition_style import (
@@ -149,3 +157,73 @@ def test_pd_action_embedded_go_to_round_trips_file_dest_window_target() -> None:
     assert action.get_file() is None
     assert action.get_d() is None
     assert action.get_target() is None
+
+
+def test_walk_to_target_returns_each_chained_hop() -> None:
+    """A 2-step ``/T`` chain (parent + child) yields two ``TargetStep``
+    entries in root-first order with their accessor data flattened."""
+    action = PDActionEmbeddedGoTo()
+
+    parent = PDTargetDirectory()
+    parent.set_relationship("P")
+    parent.set_target_filename("parent.pdf")
+    parent.set_page_number(2)
+    parent.set_annotation_number(7)
+
+    child = PDTargetDirectory()
+    child.set_relationship("C")
+    child.set_target_filename("child.pdf")
+    child.set_named_destination("Section1")
+
+    parent.set_target(child)
+    action.set_target(parent)
+
+    steps = action.walk_to_target()
+
+    assert len(steps) == 2
+    assert steps[0] == TargetStep(
+        relationship="P",
+        target_filename="parent.pdf",
+        page_number=2,
+        named_destination=None,
+        annotation_number=7,
+    )
+    assert steps[1] == TargetStep(
+        relationship="C",
+        target_filename="child.pdf",
+        page_number=None,
+        named_destination="Section1",
+        annotation_number=None,
+    )
+
+
+def test_walk_to_target_empty_when_no_chain() -> None:
+    """An action without ``/T`` walks to an empty list."""
+    action = PDActionEmbeddedGoTo()
+    assert action.walk_to_target() == []
+
+
+def test_get_destination_array_returns_pd_destination() -> None:
+    """``/D`` as an explicit page-target ``COSArray`` dispatches to a
+    concrete ``PDDestination`` subclass."""
+    action = PDActionRemoteGoTo()
+    arr = COSArray([COSInteger.get(0), COSName.get_pdf_name("XYZ")])
+    action.set_d(arr)
+
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDDestination)
+    assert isinstance(resolved, PDPageXYZDestination)
+
+
+def test_get_destination_string_returns_str() -> None:
+    """``/D`` as a ``COSString`` named destination is returned as ``str``."""
+    action = PDActionRemoteGoTo()
+    action.set_d(COSString("Chapter1"))
+
+    assert action.get_destination() == "Chapter1"
+
+
+def test_get_destination_none_when_absent() -> None:
+    """``/D`` absent yields ``None`` from the typed dispatch."""
+    action = PDActionRemoteGoTo()
+    assert action.get_destination() is None

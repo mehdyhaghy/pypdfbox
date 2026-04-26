@@ -24,16 +24,21 @@ class PDAnnotationInk(PDAnnotationMarkup):
 
     # ---------- /InkList ----------
 
-    def get_ink_list(self) -> COSArray | None:
+    def get_ink_list(self) -> "PDInkList | None":
+        from .pd_ink_list import PDInkList
+
         value = self._dict.get_dictionary_object(_INK_LIST)
         if isinstance(value, COSArray):
-            return value
+            return PDInkList(value)
         return None
 
-    def set_ink_list(self, arr: COSArray | None) -> None:
-        if arr is None:
+    def set_ink_list(self, ink: "PDInkList | COSArray | None") -> None:
+        from .pd_ink_list import PDInkList
+
+        if ink is None:
             self._dict.remove_item(_INK_LIST)
             return
+        arr = ink.get_cos_array() if isinstance(ink, PDInkList) else ink
         self._dict.set_item(_INK_LIST, arr)
 
 

@@ -579,3 +579,28 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 | `pypdfbox/contentstream/operator/text/{set_text_rendering_mode,set_text_rise,set_character_spacing,set_word_spacing,set_horizontal_scaling,set_text_leading,next_line}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/*.java` (lite no-op stubs) |
 | `pypdfbox/contentstream/operator/color/{set_stroking_color_space,set_non_stroking_color_space,set_stroking_color,set_stroking_color_n,set_non_stroking_color,set_non_stroking_color_n,set_stroking_gray,set_non_stroking_gray,set_stroking_rgb,set_non_stroking_rgb,set_stroking_cmyk,set_non_stroking_cmyk}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/*.java` (lite no-op stubs) |
 | `pypdfbox/contentstream/operator/markedcontent/{begin_marked_content,begin_marked_content_with_props,end_marked_content,define_marked_content_point,define_marked_content_point_with_props}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/*.java` (lite no-op stubs) |
+
+### Wave 9 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/encryption/pd_encryption.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PDEncryption.java` |
+| `pypdfbox/pdmodel/encryption/access_permission.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/AccessPermission.java` (lite — bit positions exposed as 1-based for readability) |
+| `pypdfbox/pdmodel/encryption/protection_policy.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/ProtectionPolicy.java` |
+| `pypdfbox/pdmodel/encryption/standard_protection_policy.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/StandardProtectionPolicy.java` |
+| `pypdfbox/pdmodel/encryption/security_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/SecurityHandler.java` (lite — uses `cryptography` library; /CF dispatch deferred) |
+| `pypdfbox/pdmodel/encryption/standard_security_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/StandardSecurityHandler.java` (revisions 2-6) |
+| `pypdfbox/pdmodel/encryption/security_provider.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/SecurityHandlerFactory.java` (lite registry) |
+| `pypdfbox/pdmodel/encryption/public_key_security_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeySecurityHandler.java` (decrypt-only; encrypt path raises NotImplementedError) |
+| `pypdfbox/pdmodel/encryption/public_key_protection_policy.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeyProtectionPolicy.java` |
+| `pypdfbox/pdmodel/encryption/public_key_recipient.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeyRecipient.java` |
+| `pypdfbox/pdmodel/encryption/public_key_decryption_material.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeyDecryptionMaterial.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/signature_validation_result.py` | 3.0.x | original (PDFBox uses Java exceptions; we return a structured dataclass) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_ink_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDInkAppearanceHandler.java` (geometry helper extracted) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_path_info.py` | 3.0.x | original (typed (x,y)-list helper) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_line_info.py` | 3.0.x | original (typed 2-point line helper) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_vertices.py` | 3.0.x | original (typed flat float-list helper for /Vertices) |
+| `pypdfbox/contentstream/operator/imagecontent/{begin_inline_image,begin_inline_image_data,end_inline_image}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/{BI,ID,EI}.java` (lite no-op stubs) |
+| `pypdfbox/contentstream/operator/graphics/{invoke_named_xobject,concatenate_matrix}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/{Do,cm}.java` (lite no-op stubs) |
+| `pypdfbox/contentstream/operator/state/{set_dash_pattern,set_flatness,set_rendering_intent,set_graphics_state_parameters}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/{d,i,ri,gs}.java` (lite no-op stubs) |
+| `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_four_colours.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDFourColours.java` |

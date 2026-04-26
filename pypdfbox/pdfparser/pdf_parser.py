@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pypdfbox.cos import (
+    COSArray,
     COSBase,
     COSDictionary,
     COSDocument,
@@ -9,6 +10,7 @@ from pypdfbox.cos import (
     COSObject,
     COSObjectKey,
     COSStream,
+    COSString,
 )
 from pypdfbox.io import RandomAccessRead
 
@@ -69,6 +71,36 @@ class PDFParser:
             self._document.set_trailer(trailer)
         self.populate_document()
         return self._document
+
+    # ---------- encryption / id introspection ----------
+
+    def get_encryption_dictionary(self) -> COSDictionary | None:
+        """Return the trailer's ``/Encrypt`` dictionary (resolved through
+        an indirect reference if necessary) or ``None`` when the document
+        is not encrypted. Mirrors PDFBox ``PDFParser.getEncryption()``.
+
+        Must be called after :meth:`parse` so the trailer is populated."""
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            return None
+        enc = trailer.get_dictionary_object(COSName.ENCRYPT)  # type: ignore[attr-defined]
+        return enc if isinstance(enc, COSDictionary) else None
+
+    def get_document_id(self) -> bytes | None:
+        """Return the first element of the trailer's ``/ID`` array (the
+        permanent file identifier per PDF 32000-1 §14.4) as bytes, or
+        ``None`` when no ``/ID`` is present. The standard security handler
+        keys file-encryption-key derivation off of this value."""
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            return None
+        ids = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
+        if not isinstance(ids, COSArray) or ids.size() == 0:
+            return None
+        first = ids.get(0)
+        if isinstance(first, COSString):
+            return first.get_bytes()
+        return None
 
     # ---------- step 1: header ----------
 

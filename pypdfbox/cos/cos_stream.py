@@ -98,6 +98,15 @@ class COSStream(COSDictionary):
             self._owns_scratch = False
         self._buffer: ScratchFileBuffer | None = None
         self._closed = False
+        # Encryption-aware decode: when populated, ``create_input_stream``
+        # passes the raw bytes through ``handler.decrypt_stream`` BEFORE
+        # running the /Filter chain. Mirrors PDFBox where the security
+        # handler decrypts the on-disk bytes during parse, then the filter
+        # chain decompresses the cleartext payload.
+        self._security_handler: Any | None = None
+        self._object_number: int = 0
+        self._generation_number: int = 0
+        self._decrypted: bool = False
 
     # ---------- raw bytes I/O ----------
 
@@ -147,6 +156,24 @@ class COSStream(COSDictionary):
             raise ValueError("operation on closed COSStream")
         return _CommittingOutputStream(self)
 
+    def set_security_handler(
+        self,
+        handler: Any | None,
+        obj_num: int,
+        gen_num: int,
+    ) -> None:
+        """Attach the document's security handler plus this stream's
+        ``(obj_num, gen_num)`` so :meth:`create_input_stream` can call
+        ``handler.decrypt_stream(raw, obj_num, gen_num)`` lazily on the
+        first decode. ``PDDocument.decrypt`` walks the object pool and
+        calls this on every ``COSStream``."""
+        self._security_handler = handler
+        self._object_number = int(obj_num)
+        self._generation_number = int(gen_num)
+        # Fresh handler attachment — clear the "already-decrypted" flag so
+        # the next read deciphers the on-disk bytes once.
+        self._decrypted = False
+
     def create_input_stream(
         self,
         stop_filters: Sequence[str | COSName] | None = None,
@@ -159,9 +186,25 @@ class COSStream(COSDictionary):
         order. ``stop_filters`` (a sequence of filter names) lets callers
         halt decoding early — e.g. image XObjects stop before
         ``/DCTDecode`` so the JPEG bytes are preserved verbatim. Mirrors
-        upstream ``COSStream.createInputStream(List<String>)``."""
+        upstream ``COSStream.createInputStream(List<String>)``.
+
+        When a security handler has been attached via
+        :meth:`set_security_handler`, the raw bytes are first decrypted
+        in-place (and re-stored as the new raw body) so subsequent calls
+        skip the cipher pass — ``_decrypted`` guards against double-undo.
+        """
         if self._buffer is None:
             raise OSError("stream has no data")
+
+        # Encryption-aware decode: undo the cipher pass exactly once,
+        # before the /Filter chain runs.
+        if self._security_handler is not None and not self._decrypted:
+            raw = self.get_raw_data()
+            plain = self._security_handler.decrypt_stream(
+                raw, self._object_number, self._generation_number
+            )
+            self._set_raw_data_internal(plain)
+            self._decrypted = True
 
         chain = self.get_filter_list()
         if not chain:

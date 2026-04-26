@@ -59,5 +59,27 @@ class PDFunctionType2(PDFunction):
     def set_n(self, n: float) -> None:
         self.get_cos_object().set_item(_N, COSFloat(n))
 
+    # ---------- evaluation ----------
+
+    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+        """Exponential interpolation per PDF 32000-1 §7.10.3.
+
+        ``y[j] = C0[j] + x**N * (C1[j] - C0[j])`` for each output ``j``.
+        Type 2 always takes a single input; only ``input[0]`` is used.
+        Output is clipped to ``/Range`` when present.
+        """
+        clipped = self.clip_input(input)
+        x = clipped[0] if clipped else 0.0
+        c0 = self.get_c0()
+        c1 = self.get_c1()
+        n = self.get_n()
+        # Pad shorter array with zeros so we never index out of bounds.
+        width = max(len(c0), len(c1))
+        c0_p = c0 + [0.0] * (width - len(c0))
+        c1_p = c1 + [0.0] * (width - len(c1))
+        x_pow = x ** n
+        result = [c0_p[j] + x_pow * (c1_p[j] - c0_p[j]) for j in range(width)]
+        return self.clip_output(result)
+
 
 __all__ = ["PDFunctionType2"]

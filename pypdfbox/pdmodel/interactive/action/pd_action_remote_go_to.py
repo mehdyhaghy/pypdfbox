@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSString
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
+    PDDestination,
+)
 
 from .pd_action import PDAction
 
@@ -33,11 +36,28 @@ class PDActionRemoteGoTo(PDAction):
 
     def get_named_destination(self) -> str | None:
         """Return ``/D`` when it is a string-form named destination."""
-        from pypdfbox.cos import COSString
-
         d = self._action.get_dictionary_object(_D)
         if isinstance(d, COSString):
             return d.get_string()
+        return None
+
+    def get_destination(self) -> PDDestination | str | None:
+        """Return ``/D`` dispatched to its appropriate type:
+
+        - ``PDDestination`` instance for explicit page-target arrays
+          (``COSArray`` form);
+        - ``str`` for named destinations (``COSString`` or ``COSName`` form);
+        - ``None`` when ``/D`` is absent.
+        """
+        d = self._action.get_dictionary_object(_D)
+        if d is None:
+            return None
+        if isinstance(d, COSArray):
+            return PDDestination.create(d)
+        if isinstance(d, COSString):
+            return d.get_string()
+        if isinstance(d, COSName):
+            return d.get_name()
         return None
 
     def set_named_destination(self, name: str | None) -> None:

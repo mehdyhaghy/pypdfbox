@@ -17,6 +17,11 @@ from .color.set_stroking_color_n import SetStrokingColorN
 from .color.set_stroking_color_space import SetStrokingColorSpace
 from .color.set_stroking_gray import SetStrokingGray
 from .color.set_stroking_rgb import SetStrokingRGB
+from .graphics.concatenate_matrix import ConcatenateMatrix
+from .graphics.invoke_named_xobject import InvokeNamedXObject
+from .imagecontent.begin_inline_image import BeginInlineImage
+from .imagecontent.begin_inline_image_data import BeginInlineImageData
+from .imagecontent.end_inline_image import EndInlineImage
 from .markedcontent.begin_marked_content import BeginMarkedContent
 from .markedcontent.begin_marked_content_with_props import (
     BeginMarkedContentWithProps,
@@ -56,6 +61,10 @@ from .path.move_to import MoveTo
 from .path.stroke_path import StrokePath
 from .state.restore_graphics_state import RestoreGraphicsState
 from .state.save_graphics_state import SaveGraphicsState
+from .state.set_dash_pattern import SetDashPattern
+from .state.set_flatness import SetFlatness
+from .state.set_graphics_state_parameters import SetGraphicsStateParameters
+from .state.set_rendering_intent import SetRenderingIntent
 from .text.move_text_position import MoveTextPosition
 from .text.move_text_set_leading_handler import MoveTextSetLeading
 from .text.next_line import NextLine
@@ -118,6 +127,17 @@ class OperatorRegistry:
         # graphics-state operators
         SaveGraphicsState.OPERATOR_NAME: SaveGraphicsState,
         RestoreGraphicsState.OPERATOR_NAME: RestoreGraphicsState,
+        ConcatenateMatrix.OPERATOR_NAME: ConcatenateMatrix,
+        SetDashPattern.OPERATOR_NAME: SetDashPattern,
+        SetFlatness.OPERATOR_NAME: SetFlatness,
+        SetRenderingIntent.OPERATOR_NAME: SetRenderingIntent,
+        SetGraphicsStateParameters.OPERATOR_NAME: SetGraphicsStateParameters,
+        # XObject invocation
+        InvokeNamedXObject.OPERATOR_NAME: InvokeNamedXObject,
+        # inline-image operators
+        BeginInlineImage.OPERATOR_NAME: BeginInlineImage,
+        BeginInlineImageData.OPERATOR_NAME: BeginInlineImageData,
+        EndInlineImage.OPERATOR_NAME: EndInlineImage,
         # path-construction operators
         MoveTo.OPERATOR_NAME: MoveTo,
         LineTo.OPERATOR_NAME: LineTo,

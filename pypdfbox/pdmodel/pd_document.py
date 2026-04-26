@@ -87,6 +87,16 @@ class PDDocument:
         # Mirror the upstream ``allSecurityToBeRemoved`` flag.
         self._all_security_to_be_removed: bool = False
 
+        # Lazy ``PDEncryption`` wrapper around the trailer's /Encrypt dict;
+        # populated on first ``get_encryption()`` call or by ``decrypt()``.
+        self._encryption: Any = None
+        # Active security handler after ``decrypt()`` succeeds — used by
+        # ``get_current_access_permission`` and by the writer for encrypt
+        # passes.
+        self._security_handler: Any = None
+        # Policy staged by ``protect()`` and consumed by the writer at save.
+        self._protection_policy: Any = None
+
         self._closed: bool = False
 
     # ---------- construction helpers ----------
@@ -114,14 +124,25 @@ class PDDocument:
     # ---------- alternate construction ----------
 
     @classmethod
-    def load(cls, source: PDDocumentSource) -> PDDocument:
+    def load(
+        cls,
+        source: PDDocumentSource,
+        password: str | bytes | None = None,
+    ) -> PDDocument:
         """Convenience classmethod — forwards to ``Loader.load_pdf`` and
         wraps the result in a ``PDDocument``. Matches PRD §7's example
-        usage ``with PDDocument.load(path) as doc: …``."""
+        usage ``with PDDocument.load(path) as doc: …``.
+
+        When ``password`` is supplied the document is auto-decrypted on
+        load (mirrors ``PDDocument.load(File, String)`` upstream)."""
         # Local import to avoid a circular import at module load time.
         from pypdfbox.loader import Loader
 
-        cos_doc = Loader.load_pdf(source)
+        cos_doc = (
+            Loader.load_pdf(source)
+            if password is None
+            else Loader.load_pdf(source, password)
+        )
         return cls(cos_doc)
 
     # ---------- COS surface ----------
@@ -198,6 +219,31 @@ class PDDocument:
         # Local import — pdfwriter depends on cos and we want the loader-style
         # late binding to keep import-time cycles impossible.
         from pypdfbox.pdfwriter import COSWriter
+
+        # Honour ``set_all_security_to_be_removed``: drop /Encrypt from the
+        # trailer (and force any decrypted streams to be re-emitted as
+        # plaintext) before handing off to the writer. Mirrors PDFBox's
+        # ``saveUnencrypted`` semantics — once decrypted, raw bytes on
+        # COSStream already carry the plaintext payload thanks to the
+        # in-place rewrite inside ``COSStream.create_input_stream``.
+        if self._all_security_to_be_removed and self.is_encrypted():
+            trailer = self._document.get_trailer()
+            if trailer is not None:
+                import contextlib
+
+                # Force a decode pass on every stream so its raw bytes are
+                # plaintext before the writer snapshots them.
+                from pypdfbox.cos import COSStream as _COSStream
+
+                for cos_obj in self._document.get_objects():
+                    actual = cos_obj.get_object()
+                    if isinstance(actual, _COSStream) and actual.has_data():
+                        with contextlib.suppress(Exception):
+                            # If decryption hasn't been wired yet the raw
+                            # bytes stay as-is; matches upstream's "best
+                            # effort" stripping behaviour.
+                            actual.create_input_stream().close()
+                trailer.remove_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
 
         opened: BinaryIO | None = None
         sink: BinaryIO | RandomAccessWrite
@@ -290,27 +336,135 @@ class PDDocument:
     def set_all_security_to_be_removed(self, value: bool) -> None:
         self._all_security_to_be_removed = bool(value)
 
-    # ---------- stubs (later clusters) ----------
-
     def get_encryption(self) -> Any:
-        raise NotImplementedError(
-            "PDDocument.get_encryption requires PDEncryption — pdmodel cluster #10"
+        """Return the document's :class:`PDEncryption` wrapper around the
+        trailer's ``/Encrypt`` dictionary, or ``None`` when the document
+        is not encrypted. Cached after first call. Mirrors upstream
+        ``PDDocument.getEncryption``."""
+        from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+
+        if self._encryption is not None:
+            return self._encryption
+        enc_dict = self._document.get_encryption_dictionary()
+        if enc_dict is None:
+            return None
+        self._encryption = PDEncryption(enc_dict)
+        return self._encryption
+
+    def set_encryption_dictionary(self, encryption: Any) -> None:
+        """Replace the trailer's ``/Encrypt`` entry. Accepts a
+        :class:`PDEncryption` (preferred) or a raw ``COSDictionary``."""
+        from pypdfbox.cos import COSDictionary as _COSDictionary
+
+        if isinstance(encryption, _COSDictionary):
+            enc_dict = encryption
+            self._encryption = None
+        else:
+            # Duck-type: PDEncryption.get_cos_object()
+            enc_dict = encryption.get_cos_object()
+            self._encryption = encryption
+        trailer = self._document.get_trailer()
+        if trailer is None:
+            trailer = _COSDictionary()
+            self._document.set_trailer(trailer)
+        trailer.set_item(COSName.ENCRYPT, enc_dict)  # type: ignore[attr-defined]
+
+    def decrypt(self, password: str | bytes = "") -> None:
+        """Validate ``password`` against the document's ``/Encrypt``
+        dictionary and attach the resulting security handler to every
+        ``COSStream`` in the object pool so subsequent reads decrypt
+        on-the-fly. Mirrors upstream's load-time decryption pipeline.
+
+        Raises :class:`PDInvalidPasswordException` when the password is
+        rejected (or when no password was supplied for an owner/user
+        password-protected document). Quietly returns when the document
+        is not encrypted."""
+        from pypdfbox.cos import COSStream as _COSStream
+        from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+        from pypdfbox.pdmodel.encryption.standard_security_handler import (
+            StandardDecryptionMaterial,
+            StandardSecurityHandler,
         )
 
-    def set_encryption_dictionary(self, _encryption: Any) -> None:
-        raise NotImplementedError(
-            "PDDocument.set_encryption_dictionary — pdmodel cluster #10"
+        if not self.is_encrypted():
+            return
+
+        enc_dict = self._document.get_encryption_dictionary()
+        if enc_dict is None:
+            return
+        encryption = PDEncryption(enc_dict)
+
+        # Pull the file ID's first element — the standard handler keys off
+        # of it during file-encryption-key derivation. May be absent on
+        # ancient documents; the handler tolerates ``b""``.
+        document_id: bytes = b""
+        ids = self._document.get_document_id()
+        if ids is not None and ids.size() >= 1:
+            from pypdfbox.cos import COSString as _COSString
+
+            first = ids.get(0)
+            if isinstance(first, _COSString):
+                document_id = first.get_bytes()
+
+        if isinstance(password, str):
+            password_bytes: bytes = password.encode("utf-8")
+        else:
+            password_bytes = bytes(password)
+
+        handler = StandardSecurityHandler(encryption)
+        handler.prepare_for_decryption(
+            encryption,
+            document_id,
+            StandardDecryptionMaterial(password_bytes),
         )
 
-    def protect(self, _policy: Any) -> None:
-        raise NotImplementedError(
-            "PDDocument.protect — pdmodel cluster #10 (security)"
+        # Walk every loaded indirect — attach the handler to each COSStream
+        # so that ``create_input_stream`` decrypts before the filter chain.
+        for cos_obj in self._document.get_objects():
+            actual = cos_obj.get_object()
+            if isinstance(actual, _COSStream):
+                actual.set_security_handler(
+                    handler,
+                    cos_obj.get_object_number(),
+                    cos_obj.get_generation_number(),
+                )
+
+        self._security_handler = handler
+        self._encryption = encryption
+
+    def protect(self, protection_policy: Any) -> None:
+        """Stage an encryption policy on the document — actual key
+        derivation and ``/Encrypt`` synthesis happen at save time via the
+        writer. Mirrors upstream ``PDDocument.protect``."""
+        from pypdfbox.pdmodel.encryption.standard_protection_policy import (
+            StandardProtectionPolicy,
         )
+
+        if not isinstance(protection_policy, StandardProtectionPolicy):
+            # Public-key handlers land later — fail loudly until then.
+            raise NotImplementedError(
+                "PDDocument.protect: only StandardProtectionPolicy is supported "
+                "(public-key handler dispatch is deferred)"
+            )
+        self._protection_policy = protection_policy
 
     def get_current_access_permission(self) -> Any:
-        raise NotImplementedError(
-            "PDDocument.get_current_access_permission — pdmodel cluster #10"
-        )
+        """Return the :class:`AccessPermission` derived from the most
+        recent successful :meth:`decrypt` call (owner-level when no
+        decryption occurred but the document is unencrypted). When the
+        document is encrypted but not yet decrypted, returns a
+        no-permission default."""
+        from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
+
+        if self._security_handler is not None:
+            current = getattr(
+                self._security_handler, "get_current_access_permission", None
+            )
+            if callable(current):
+                return current()
+        if not self.is_encrypted():
+            return AccessPermission.get_owner_access_permission()
+        return AccessPermission(0)
 
     def add_signature(self, *_args: Any, **_kwargs: Any) -> None:
         raise NotImplementedError(

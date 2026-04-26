@@ -191,8 +191,12 @@ def test_security_removal_flag_round_trip() -> None:
 
 def test_stubs_raise_with_cluster_pointer() -> None:
     doc = PDDocument()
-    with pytest.raises(NotImplementedError):
-        doc.get_encryption()
+    # ``get_encryption`` now returns ``None`` for unencrypted docs (no
+    # raise) — encryption wiring landed in the security cluster.
+    assert doc.get_encryption() is None
+    # ``protect`` accepts only StandardProtectionPolicy; passing a stray
+    # object still raises (NotImplementedError for non-standard policy
+    # shapes such as the public-key handler).
     with pytest.raises(NotImplementedError):
         doc.protect(object())
     with pytest.raises(NotImplementedError):
