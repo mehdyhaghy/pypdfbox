@@ -11,6 +11,7 @@ from .name_record import NameRecord
 from .naming_table import NamingTable
 from .os2_windows_metrics_table import OS2WindowsMetricsTable
 from .post_script_table import PostScriptTable
+from .true_type_font import TrueTypeFont
 from .ttf_data_stream import (
     MemoryTTFDataStream,
     RandomAccessReadDataStream,
@@ -34,4 +35,5 @@ __all__ = [
     "RandomAccessReadDataStream",
     "TTFDataStream",
     "TTFTable",
+    "TrueTypeFont",
 ]

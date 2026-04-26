@@ -173,12 +173,28 @@ class TestPredictor:
         flate.decode(io.BytesIO(compressed), out, params)
         assert out.getvalue() == b"plain bytes"
 
-    def test_predictor_encode_raises(self) -> None:
+    def test_predictor_encode_round_trip_png_up(self) -> None:
+        # Encode and decode through FlateDecode with /Predictor 12.
         flate = FlateDecode()
         params = COSDictionary()
         params.set_int("Predictor", 12)
-        with pytest.raises(NotImplementedError):
-            flate.encode(io.BytesIO(b"x"), io.BytesIO(), params)
+        params.set_int("Columns", 4)
+        params.set_int("Colors", 1)
+        params.set_int("BitsPerComponent", 8)
+        original = bytes([10, 20, 30, 40, 11, 22, 33, 44])
+        encoded = io.BytesIO()
+        flate.encode(io.BytesIO(original), encoded, params)
+        decoded = io.BytesIO()
+        flate.decode(io.BytesIO(encoded.getvalue()), decoded, params)
+        assert decoded.getvalue() == original
+
+    def test_predictor_encode_unsupported_raises(self) -> None:
+        flate = FlateDecode()
+        params = COSDictionary()
+        params.set_int("Predictor", 7)  # not 1, 2, or 10..15
+        params.set_int("Columns", 4)
+        with pytest.raises(OSError):
+            flate.encode(io.BytesIO(b"abcd"), io.BytesIO(), params)
 
 
 class TestErrors:

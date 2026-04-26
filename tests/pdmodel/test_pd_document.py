@@ -199,8 +199,11 @@ def test_stubs_raise_with_cluster_pointer() -> None:
     # shapes such as the public-key handler).
     with pytest.raises(NotImplementedError):
         doc.protect(object())
-    with pytest.raises(NotImplementedError):
-        doc.add_signature(object())
+    # ``add_signature`` now exists; it requires a real ``PDSignature``
+    # instance — passing anything else raises TypeError (write-side
+    # signature pipeline shipped in the digitalsignature cluster).
+    with pytest.raises(TypeError):
+        doc.add_signature(object())  # type: ignore[arg-type]
 
 
 def test_construction_from_cos_document() -> None:

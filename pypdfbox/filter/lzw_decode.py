@@ -5,6 +5,7 @@ from typing import BinaryIO
 
 from pypdfbox.cos import COSDictionary
 
+from ._predictor import predict, unpredict
 from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
@@ -115,132 +116,7 @@ def _initial_code_table() -> list[bytes | None]:
     return table
 
 
-# ---------- predictor support (PNG/TIFF row predictors) ---------------
-#
-# Note for the parent agent during consolidation: this predictor logic
-# is duplicated here (inline) and is also needed by FlateDecode. When
-# both filters land, factor this into ``pypdfbox/filter/_predictor.py``
-# and have FlateDecode import the same helpers. Kept inline now to avoid
-# coupling cluster #1 and cluster #3.
-
-
-def _row_length(colors: int, bits_per_component: int, columns: int) -> int:
-    bits_per_pixel = colors * bits_per_component
-    return (columns * bits_per_pixel + 7) // 8
-
-
-def _decode_predictor_row(
-    predictor: int,
-    colors: int,
-    bits_per_component: int,
-    columns: int,
-    actline: bytearray,
-    lastline: bytes,
-) -> None:
-    """Inverse PNG/TIFF predictor over one row, in place on ``actline``."""
-    if predictor == 1 or predictor == 10:
-        return
-    bits_per_pixel = colors * bits_per_component
-    bytes_per_pixel = max(1, (bits_per_pixel + 7) // 8)
-    rowlength = len(actline)
-
-    if predictor == 2:
-        # TIFF Sub. 8-bit fast path; fall back to a generic byte-wise
-        # SUB for 16-bit so that round-tripping common cases stays
-        # correct. Sub-byte components for predictor 2 are uncommon
-        # in the wild for LZW image streams; if needed we can extend.
-        if bits_per_component == 8:
-            for p in range(bytes_per_pixel, rowlength):
-                actline[p] = (actline[p] + actline[p - bytes_per_pixel]) & 0xFF
-            return
-        if bits_per_component == 16:
-            for p in range(bytes_per_pixel, rowlength - 1, 2):
-                sub = (actline[p] << 8) | actline[p + 1]
-                left = (actline[p - bytes_per_pixel] << 8) | actline[p - bytes_per_pixel + 1]
-                total = (sub + left) & 0xFFFF
-                actline[p] = (total >> 8) & 0xFF
-                actline[p + 1] = total & 0xFF
-            return
-        raise OSError(f"unsupported TIFF predictor bit depth: {bits_per_component}")
-
-    if predictor == 11:
-        # PNG Sub
-        for p in range(bytes_per_pixel, rowlength):
-            actline[p] = (actline[p] + actline[p - bytes_per_pixel]) & 0xFF
-        return
-    if predictor == 12:
-        # PNG Up
-        for p in range(rowlength):
-            actline[p] = (actline[p] + lastline[p]) & 0xFF
-        return
-    if predictor == 13:
-        # PNG Average
-        for p in range(rowlength):
-            left = actline[p - bytes_per_pixel] if p - bytes_per_pixel >= 0 else 0
-            up = lastline[p]
-            actline[p] = (actline[p] + (left + up) // 2) & 0xFF
-        return
-    if predictor == 14:
-        # PNG Paeth
-        for p in range(rowlength):
-            a = actline[p - bytes_per_pixel] if p - bytes_per_pixel >= 0 else 0
-            b = lastline[p]
-            c = lastline[p - bytes_per_pixel] if p - bytes_per_pixel >= 0 else 0
-            value = a + b - c
-            absa = abs(value - a)
-            absb = abs(value - b)
-            absc = abs(value - c)
-            if absa <= absb and absa <= absc:
-                pred = a
-            elif absb <= absc:
-                pred = b
-            else:
-                pred = c
-            actline[p] = (actline[p] + pred) & 0xFF
-        return
-    # Unknown predictor: leave data as-is rather than corrupt it. This
-    # matches PDFBox's permissive behavior in ``decodePredictorRow``.
-
-
-def _apply_predictor(
-    raw: bytes,
-    predictor: int,
-    colors: int,
-    bits_per_component: int,
-    columns: int,
-) -> bytes:
-    """Apply the inverse predictor to ``raw`` and return decoded bytes."""
-    if predictor == 1:
-        return raw
-    rowlen = _row_length(colors, bits_per_component, columns)
-    if rowlen <= 0:
-        raise OSError(f"invalid predictor row length: {rowlen}")
-    png_per_row = predictor >= 10
-    out = bytearray()
-    lastline = bytes(rowlen)
-    pos = 0
-    n = len(raw)
-    while pos < n:
-        current_predictor = predictor
-        if png_per_row:
-            if pos >= n:
-                break
-            current_predictor = raw[pos] + 10
-            pos += 1
-        end = pos + rowlen
-        actline = bytearray(rowlen)
-        if end <= n:
-            actline[: rowlen] = raw[pos:end]
-            pos = end
-        else:
-            actline[: n - pos] = raw[pos:n]
-            pos = n
-        _decode_predictor_row(
-            current_predictor, colors, bits_per_component, columns, actline, lastline
-        )
-        out.extend(actline)
-        lastline = bytes(actline)
-    return bytes(out)
+# ---------- decode-params resolution ---------------------------------
 
 
 def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
@@ -302,8 +178,8 @@ class LZWDecode(Filter):
             colors = min(decode_params.get_int("Colors", 1), 32)
             bits_per_component = decode_params.get_int("BitsPerComponent", 8)
             columns = decode_params.get_int("Columns", 1)
-            raw_bytes = _apply_predictor(
-                raw_bytes, predictor, colors, bits_per_component, columns
+            raw_bytes = unpredict(
+                raw_bytes, predictor, columns, colors, bits_per_component
             )
 
         decoded.write(raw_bytes)
@@ -316,6 +192,18 @@ class LZWDecode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
+        # Pull all input up-front so we can run a predictor pre-pass when
+        # /Predictor > 1 is requested via the decode-params dict.
+        data = raw.read()
+        decode_params = _get_decode_params(parameters, 0)
+        predictor = decode_params.get_int("Predictor", 1)
+        if predictor > 1:
+            colors = min(decode_params.get_int("Colors", 1), 32)
+            bits_per_component = decode_params.get_int("BitsPerComponent", 8)
+            columns = decode_params.get_int("Columns", 1)
+            data = predict(data, predictor, columns, colors, bits_per_component)
+        raw_buffer = BytesIO(data)
+
         # Encoder always emits an EarlyChange=1 stream (the PDF default);
         # decoder honors the parameter for streams produced elsewhere.
         early_change = True
@@ -331,7 +219,7 @@ class LZWDecode(Filter):
         found_code = -1
 
         while True:
-            byte = raw.read(1)
+            byte = raw_buffer.read(1)
             if not byte:
                 break
             b = byte[0]

@@ -115,13 +115,13 @@ def test_set_resource_cache_to_none_disables_caching() -> None:
     assert isinstance(cache, DefaultResourceCache)
 
 
-def test_add_signature_raises_with_new_message() -> None:
+def test_add_signature_rejects_non_pdsignature() -> None:
+    """``add_signature`` now ships a working pipeline (digitalsignature
+    cluster). Passing a non-PDSignature must raise ``TypeError`` — the
+    NotImplementedError stub message is gone."""
     doc = PDDocument()
-    with pytest.raises(NotImplementedError) as excinfo:
-        doc.add_signature(object())
-    msg = str(excinfo.value)
-    assert "Signature creation deferred" in msg
-    assert "PDSignature.verify" in msg
+    with pytest.raises(TypeError):
+        doc.add_signature(object())  # type: ignore[arg-type]
 
 
 def test_register_true_type_font_for_closing_is_a_noop() -> None:

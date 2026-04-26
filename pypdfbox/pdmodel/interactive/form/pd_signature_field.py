@@ -60,6 +60,13 @@ class PDSignatureField(PDTerminalField):
                 value.get_cos_object() if hasattr(value, "get_cos_object") else value,
             )
 
+    def get_value_as_string(self) -> str:
+        """Upstream PDFBox returns ``""`` — the signature dictionary has no
+        single textual representation. Callers wanting metadata should use
+        :meth:`get_signature` and inspect ``/Name``, ``/Reason``, ``/Location``.
+        """
+        return ""
+
     # ---------- /SV ----------
 
     def get_seed_value(self) -> PDSeedValue | None:

@@ -171,10 +171,18 @@ class COSWriter(ICOSVisitor):
         xref_stream: bool = False,
         object_stream: bool = False,
         hybrid_xref: bool = False,
+        allow_signing_placeholders: bool = False,
     ) -> None:
         self._output = output
         self._incremental_update = incremental
         self._incremental_input = incremental_input
+        # When True, skip the safety guard that normally rejects re-saving a
+        # source-side signature with a ``[0 0 0 0]`` ByteRange placeholder.
+        # The signing pipeline (``PDDocument.add_signature`` /
+        # ``save_incremental_for_external_signing``) sets this because it owns
+        # the placeholder + post-write splice and will compute the digest
+        # itself; everyone else stays protected.
+        self._allow_signing_placeholders: bool = allow_signing_placeholders
         # PDF 32000-1 §7.5.8 — when True, replace the traditional ``xref``
         # table + ``trailer`` pair with a single ``/Type /XRef`` stream.
         self._xref_stream: bool = xref_stream
@@ -380,7 +388,8 @@ class COSWriter(ICOSVisitor):
                     "incremental save requires either incremental_input= or "
                     "a COSDocument carrying a source (Loader.load_pdf populates this)"
                 )
-            self._reject_signed_with_byterange_placeholder(cos_document)
+            if not self._allow_signing_placeholders:
+                self._reject_signed_with_byterange_placeholder(cos_document)
             # /ID synthesis: skip in incremental mode — the trailer must
             # preserve the source's /ID array verbatim (PDF 32000-1 §14.4).
             self._do_write_increment(cos_document)

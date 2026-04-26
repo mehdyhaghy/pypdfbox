@@ -195,6 +195,13 @@ class PDChoice(PDVariableText):
         cos = self._write_string_or_array(value)
         self._field.set_item(_V, cos)
 
+    def get_value_as_string(self) -> str:
+        """Comma-joined view of ``get_value`` — mirrors PDFBox
+        ``PDChoice.getValueAsString``.
+        """
+        values = self.get_value()
+        return ",".join(values)
+
     def get_default_value(self) -> list[str]:
         item = self.get_inheritable_attribute(_DV)
         return self._read_string_or_array(item)

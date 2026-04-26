@@ -10,6 +10,8 @@ from .pd_page import PDPage
 from .pd_page_tree import PDPageTree
 
 if TYPE_CHECKING:
+    from .interactive.digitalsignature.pd_signature import PDSignature
+    from .interactive.digitalsignature.signature_interface import SignatureInterface
     from .pd_document_catalog import PDDocumentCatalog
     from .pd_document_information import PDDocumentInformation
 
@@ -108,6 +110,16 @@ class PDDocument:
         self._security_handler: Any = None
         # Policy staged by ``protect()`` and consumed by the writer at save.
         self._protection_policy: Any = None
+
+        # Pending signature staged by ``add_signature(...)`` and consumed by
+        # the next ``save_incremental`` call. ``_pending_signature_dict`` is
+        # the COSDictionary backing the PDSignature (so the writer emits its
+        # bytes), ``_pending_signature_interface`` is the SignatureInterface
+        # callback that produces the PKCS#7 blob over the bracketed bytes.
+        # Cleared after a successful sign cycle.
+        self._pending_signature: PDSignature | None = None
+        self._pending_signature_interface: SignatureInterface | None = None
+        self._pending_signature_options: Any = None
 
         self._closed: bool = False
 
@@ -285,7 +297,13 @@ class PDDocument:
         Requires the document to have been loaded from a parsable source
         — incremental mode preserves the original bytes and appends only
         objects flagged ``needs_to_be_updated``. Synthesised documents
-        with no source raise ``ValueError`` (matches upstream)."""
+        with no source raise ``ValueError`` (matches upstream).
+
+        When :meth:`add_signature` has staged a pending signature, the save
+        runs the full signing pipeline: writes a placeholder ``/Contents``
+        and a ``/ByteRange`` covering everything outside it, calls the
+        registered :class:`SignatureInterface` over the bracketed bytes,
+        and splices the resulting PKCS#7 DER blob back into ``/Contents``."""
         if self._closed:
             raise ValueError("operation on closed PDDocument")
         source = self._document.get_source()
@@ -294,6 +312,33 @@ class PDDocument:
                 "save_incremental requires a loaded document with a source "
                 "(use Loader.load_pdf or PDDocument.load)"
             )
+
+        # Pending-signature path → full sign pipeline.
+        if self._pending_signature is not None:
+            if self._pending_signature_interface is None:
+                raise ValueError(
+                    "save_incremental on a signed document requires a "
+                    "SignatureInterface — pass one to add_signature() or use "
+                    "save_incremental_for_external_signing"
+                )
+            signed_bytes, contents_span, byte_range = (
+                self._render_incremental_with_placeholder()
+            )
+            interface = self._pending_signature_interface
+            # Hash + sign the bracketed bytes via the SignatureInterface.
+            import io as _io
+
+            bracketed = self._extract_bracketed(signed_bytes, byte_range)
+            pkcs7_der = interface.sign(_io.BytesIO(bracketed))
+            final_bytes = self._splice_signature(
+                signed_bytes, contents_span, pkcs7_der
+            )
+            self._write_bytes_to_target(final_bytes, target)
+            # Clear staging so a follow-up save_incremental doesn't double-sign.
+            self._pending_signature = None
+            self._pending_signature_interface = None
+            self._pending_signature_options = None
+            return
 
         from pypdfbox.pdfwriter import COSWriter
 
@@ -310,6 +355,195 @@ class PDDocument:
         finally:
             if opened is not None:
                 opened.close()
+
+    # ---------- signing internals ----------
+
+    # Hex-character width reserved for the ``/Contents <…>`` placeholder.
+    # 16384 hex chars = 8192 raw bytes, enough headroom for typical RSA-2048
+    # PKCS#7 detached SignedData blobs (≈ 2-3 KiB) plus full chains and
+    # OCSP / CRL evidence when present. Mirrors PDFBox's default reservation.
+    _CONTENTS_PLACEHOLDER_HEX_LEN: int = 16384
+    # Width (decimal digits) reserved for each ByteRange placeholder slot.
+    # Wide enough to cover any PDF up to ~10 GiB without re-flowing offsets.
+    _BYTERANGE_SLOT_WIDTH: int = 10
+
+    def _render_incremental_with_placeholder(
+        self,
+    ) -> tuple[bytearray, tuple[int, int], list[int]]:
+        """Run the incremental writer with the pending signature carrying a
+        ``/Contents <0…0>`` placeholder of ``_CONTENTS_PLACEHOLDER_HEX_LEN``
+        hex chars and a ``/ByteRange [0 ☐ ☐ ☐]`` placeholder. After the
+        bytes are produced, locate the placeholders, compute the real
+        ``/ByteRange``, and patch it in place. The ``/Contents`` slot is
+        left as zeros for the caller (or :meth:`save_incremental`) to
+        splice into."""
+        from pypdfbox.cos import COSArray, COSInteger
+        from pypdfbox.pdfwriter import COSWriter
+
+        sig = self._pending_signature
+        assert sig is not None
+        sig_dict = sig.get_cos_object()
+
+        # Install the /Contents placeholder: a COSString of all-zero bytes
+        # whose hex form occupies exactly _CONTENTS_PLACEHOLDER_HEX_LEN chars.
+        placeholder_bytes = b"\x00" * (self._CONTENTS_PLACEHOLDER_HEX_LEN // 2)
+        sig.set_contents(placeholder_bytes)
+
+        # Install a /ByteRange placeholder using a sentinel made of digits
+        # wide enough that the real ByteRange will fit when we splice.
+        # ``[0 9999999999 9999999999 9999999999]`` — 4 ints, three of which
+        # are ``_BYTERANGE_SLOT_WIDTH`` digits wide.
+        sentinel = int("9" * self._BYTERANGE_SLOT_WIDTH)
+        br_placeholder = COSArray()
+        br_placeholder.add(COSInteger.get(0))
+        br_placeholder.add(COSInteger.get(sentinel))
+        br_placeholder.add(COSInteger.get(sentinel))
+        br_placeholder.add(COSInteger.get(sentinel))
+        # Force inline emit so the placeholder lives literally inside the
+        # signature dict (we can't splice through an indirect ref).
+        br_placeholder.set_direct(True)
+        sig_dict.set_item(COSName.get_pdf_name("ByteRange"), br_placeholder)
+        sig_dict.set_needs_to_be_updated(True)
+
+        # Drive the writer into a buffer.
+        import io as _io
+
+        buf = _io.BytesIO()
+        source = self._document.get_source()
+        with COSWriter(
+            buf,
+            incremental=True,
+            incremental_input=source,
+            allow_signing_placeholders=True,
+        ) as writer:
+            writer.write(self._document)
+        rendered = bytearray(buf.getvalue())
+
+        # Locate the /Contents placeholder. The signature dict is the only
+        # one carrying a contiguous run of N hex zeros enclosed in `<…>`,
+        # so we can scan for that exact pattern. Search from the END so a
+        # source document that already contains a similar literal (e.g. an
+        # XMP packet padding) doesn't mislead us — the dirty signature dict
+        # is appended after the source bytes, so it's the last hit.
+        zero_run = b"<" + b"0" * self._CONTENTS_PLACEHOLDER_HEX_LEN + b">"
+        idx = rendered.rfind(zero_run)
+        if idx < 0:
+            raise RuntimeError(
+                "signature splice failed: /Contents placeholder not found "
+                "in writer output (writer may have collapsed the COSString)"
+            )
+        # contents_span is the slice [start, end) covering the hex zeros
+        # BETWEEN the angle brackets — what we'll overwrite with PKCS#7 hex.
+        contents_start = idx + 1  # skip the '<'
+        contents_end = contents_start + self._CONTENTS_PLACEHOLDER_HEX_LEN
+
+        # ByteRange = [start1, len1, start2, len2] where the two slices
+        # bracket the /Contents bytes (INCLUDING the angle brackets, per
+        # ISO 32000-1 §12.8.1: "the byte range shall span the entire file
+        # except the bytes between < and >, exclusive of those delimiters").
+        # Strictly: bytes 0..idx (just before `<`), then idx+1+N+1..end.
+        contents_open = idx                        # position of `<`
+        contents_close = idx + len(zero_run) - 1   # position of `>`
+        start1 = 0
+        len1 = contents_open + 1                   # include `<`
+        start2 = contents_close                    # include `>`
+        len2 = len(rendered) - start2
+        byte_range = [start1, len1, start2, len2]
+
+        # Splice the real ByteRange into the placeholder. Find the first
+        # `/ByteRange` token after the source's original /ByteRange (if any
+        # — the source might also have a signed dict with its own range).
+        # Strategy: find the literal bytes corresponding to the placeholder
+        # array and replace them with a same-width formatted array (we pad
+        # with trailing spaces so total width matches).
+        sentinel_text = (
+            b"[0 "
+            + str(sentinel).encode("ascii")
+            + b" "
+            + str(sentinel).encode("ascii")
+            + b" "
+            + str(sentinel).encode("ascii")
+            + b"]"
+        )
+        sentinel_idx = rendered.rfind(sentinel_text)
+        if sentinel_idx < 0:
+            br_pos = rendered.rfind(b"/ByteRange")
+            preview = (
+                bytes(rendered[br_pos : br_pos + 200]) if br_pos >= 0 else b"<none>"
+            )
+            raise RuntimeError(
+                "signature splice failed: /ByteRange placeholder not found "
+                f"in writer output. /ByteRange context: {preview!r}"
+            )
+        new_br = (
+            b"[0 "
+            + str(len1).encode("ascii")
+            + b" "
+            + str(start2).encode("ascii")
+            + b" "
+            + str(len2).encode("ascii")
+            + b"]"
+        )
+        if len(new_br) > len(sentinel_text):
+            raise RuntimeError(
+                f"signature splice failed: real /ByteRange ({len(new_br)} bytes) "
+                f"exceeds placeholder width ({len(sentinel_text)} bytes)"
+            )
+        # Pad with trailing spaces inside the brackets so widths match exactly.
+        # Insert spaces just before the closing bracket.
+        padding_needed = len(sentinel_text) - len(new_br)
+        padded_br = new_br[:-1] + b" " * padding_needed + b"]"
+        rendered[sentinel_idx : sentinel_idx + len(sentinel_text)] = padded_br
+
+        return rendered, (contents_start, contents_end), byte_range
+
+    @staticmethod
+    def _extract_bracketed(buffer: bytes | bytearray, byte_range: list[int]) -> bytes:
+        """Return ``buffer[start1:start1+len1] + buffer[start2:start2+len2]``."""
+        start1, len1, start2, len2 = byte_range
+        return bytes(buffer[start1 : start1 + len1]) + bytes(
+            buffer[start2 : start2 + len2]
+        )
+
+    @staticmethod
+    def _splice_signature(
+        buffer: bytearray, contents_span: tuple[int, int], pkcs7_der: bytes
+    ) -> bytes:
+        """Hex-encode ``pkcs7_der`` and patch it into ``buffer`` at
+        ``contents_span``. Pads with trailing zeros to fill the placeholder.
+
+        Raises ``ValueError`` when the PKCS#7 blob is too large for the
+        reserved /Contents slot — caller may bump
+        :attr:`_CONTENTS_PLACEHOLDER_HEX_LEN`."""
+        contents_start, contents_end = contents_span
+        slot_len = contents_end - contents_start
+        hex_blob = pkcs7_der.hex().upper().encode("ascii")
+        if len(hex_blob) > slot_len:
+            raise ValueError(
+                f"PKCS#7 signature ({len(hex_blob)} hex chars) larger than "
+                f"reserved /Contents placeholder ({slot_len} hex chars). "
+                f"Increase PDDocument._CONTENTS_PLACEHOLDER_HEX_LEN."
+            )
+        padded = hex_blob + b"0" * (slot_len - len(hex_blob))
+        out = bytearray(buffer)
+        out[contents_start:contents_end] = padded
+        return bytes(out)
+
+    @staticmethod
+    def _write_bytes_to_target(
+        data: bytes,
+        target: str | os.PathLike[str] | BinaryIO | RandomAccessWrite,
+    ) -> None:
+        """Drain ``data`` into ``target`` honouring the same target-shape
+        contract as :meth:`save_incremental`."""
+        if isinstance(target, (str, os.PathLike)):
+            with open(target, "wb") as fh:
+                fh.write(data)
+            return
+        if isinstance(target, RandomAccessWrite):
+            target.write_bytes(data)
+            return
+        target.write(data)
 
     # ---------- version ----------
 
@@ -492,11 +726,130 @@ class PDDocument:
             return AccessPermission.get_owner_access_permission()
         return AccessPermission(0)
 
-    def add_signature(self, *_args: Any, **_kwargs: Any) -> None:
-        raise NotImplementedError(
-            "Signature creation deferred — PDSignature.verify works for "
-            "read-side. See PRD §6.10 for the signing pipeline."
+    def add_signature(
+        self,
+        sig: PDSignature,
+        signature_interface: SignatureInterface | None = None,
+        options: Any = None,
+    ) -> None:
+        """Stage ``sig`` for inclusion in the next :meth:`save_incremental`
+        and bind ``signature_interface`` as the PKCS#7 producer. Mirrors
+        upstream ``PDDocument.addSignature(PDSignature, SignatureInterface,
+        SignatureOptions)``.
+
+        The signature dictionary is wired into the document's /AcroForm
+        (creating one if necessary) inside an invisible signature field
+        named ``Signature1`` (or the next free ``SignatureN``) so it has a
+        stable indirect reference. /SigFlags |= 3 (SignaturesExist +
+        AppendOnly) per ISO 32000-1 §12.7.3.
+
+        ``signature_interface`` may be ``None`` only when the caller intends
+        to drive the signing externally via
+        :meth:`save_incremental_for_external_signing`.
+        """
+        from .interactive.digitalsignature.pd_signature import PDSignature
+
+        if not isinstance(sig, PDSignature):
+            raise TypeError(
+                f"add_signature expected a PDSignature, got {type(sig).__name__}"
+            )
+
+        sig_dict = sig.get_cos_object()
+
+        # Default /Filter + /SubFilter when caller didn't set them — matches
+        # PDFBox's default ``Adobe.PPKLite`` + ``adbe.pkcs7.detached`` choice.
+        if sig.get_filter() is None:
+            sig.set_filter("Adobe.PPKLite")
+        if sig.get_sub_filter() is None:
+            sig.set_sub_filter("adbe.pkcs7.detached")
+
+        # Wire the signature dict into /AcroForm /Fields so the writer reaches
+        # it from the catalog. We attach via an invisible signature field
+        # widget containing the sig dict in /V.
+        catalog = self.get_document_catalog()
+        from .interactive.form import PDAcroForm
+
+        acro_form = catalog.get_acro_form()
+        if acro_form is None:
+            acro_form = PDAcroForm(self)
+            catalog.set_acro_form(acro_form)
+        acro_form_dict = acro_form.get_cos_object()
+
+        # Build an invisible signature field. /T = "Signature{N}" where N is
+        # the smallest unused number among existing /Sig fields. The widget
+        # carries an empty /Rect (invisible) and the sig dict in /V.
+        existing_field_names: set[str] = set()
+        fields_arr = acro_form_dict.get_dictionary_object(COSName.get_pdf_name("Fields"))
+        if isinstance(fields_arr, COSArray):
+            for entry in fields_arr:
+                resolved = entry.get_object() if hasattr(entry, "get_object") else entry
+                if isinstance(resolved, COSDictionary):
+                    nm = resolved.get_string(COSName.get_pdf_name("T"))
+                    if nm:
+                        existing_field_names.add(nm)
+        else:
+            fields_arr = COSArray()
+            acro_form_dict.set_item(COSName.get_pdf_name("Fields"), fields_arr)
+
+        n = 1
+        while f"Signature{n}" in existing_field_names:
+            n += 1
+        field_name = f"Signature{n}"
+
+        sig_field = COSDictionary()
+        sig_field.set_item(COSName.get_pdf_name("FT"), COSName.get_pdf_name("Sig"))
+        sig_field.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot"))
+        sig_field.set_item(
+            COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Widget")
         )
+        sig_field.set_string(COSName.get_pdf_name("T"), field_name)
+        sig_field.set_int(COSName.get_pdf_name("F"), 132)  # Print + Locked
+        # Invisible widget — zero-area rectangle.
+        rect = COSArray()
+        for v in (0, 0, 0, 0):
+            from pypdfbox.cos import COSInteger as _COSInteger
+
+            rect.add(_COSInteger.get(v))
+        sig_field.set_item(COSName.get_pdf_name("Rect"), rect)
+        # /V points at the signature value dict. Direct embed keeps the
+        # writer pipeline simple: walking the field reaches the sig dict.
+        sig_field.set_item(COSName.get_pdf_name("V"), sig_dict)
+        # Anchor the widget to the first page so the field is reachable from
+        # the page tree as well (mirrors what PDFBox does internally).
+        try:
+            first_page = self.get_pages()[0].get_cos_object()
+        except (IndexError, KeyError):
+            first_page = None
+        if first_page is not None:
+            sig_field.set_item(COSName.get_pdf_name("P"), first_page)
+            page_annots = first_page.get_dictionary_object(
+                COSName.get_pdf_name("Annots")
+            )
+            if not isinstance(page_annots, COSArray):
+                page_annots = COSArray()
+                first_page.set_item(COSName.get_pdf_name("Annots"), page_annots)
+            page_annots.add(sig_field)
+            # First page now needs a fresh xref entry in incremental mode.
+            first_page.set_needs_to_be_updated(True)
+
+        fields_arr.add(sig_field)
+
+        # /SigFlags = SignaturesExist (1) | AppendOnly (2) per §12.7.3.
+        acro_form.set_signatures_exist(True)
+        acro_form.set_appendonly(True)
+
+        # Mark the touched dicts dirty so incremental save emits them.
+        sig_dict.set_needs_to_be_updated(True)
+        sig_field.set_needs_to_be_updated(True)
+        acro_form_dict.set_needs_to_be_updated(True)
+        catalog.get_cos_object().set_needs_to_be_updated(True)
+        if isinstance(fields_arr, COSArray):
+            fields_arr.set_needs_to_be_updated(True)
+
+        # Register so the next save_incremental knows to splice.
+        self._pending_signature = sig
+        self._pending_signature_interface = signature_interface
+        self._pending_signature_options = options
 
     def import_page(self, page: PDPage) -> PDPage:
         """Deep-copy ``page`` into this document and return the new
@@ -582,10 +935,41 @@ class PDDocument:
         management lands when font subsetting does (see ``CHANGES.md``)."""
         self._fonts_to_close.append(font)
 
-    def save_incremental_for_external_signing(self, _output: Any) -> Any:
-        raise NotImplementedError(
-            "PDDocument.save_incremental_for_external_signing — "
-            "pdmodel cluster #10 (signatures)"
+    def save_incremental_for_external_signing(
+        self, output: BinaryIO
+    ) -> ExternalSigningSupport:
+        """Drive an externally-supplied signer (HSM, smartcard, remote PKCS#11
+        broker, ...) by emitting the signed-but-uncovered bytes and handing
+        the caller an :class:`ExternalSigningSupport` shim.
+
+        Workflow::
+
+            with open("out.pdf", "wb") as fh:
+                handle = doc.save_incremental_for_external_signing(fh)
+                pkcs7_blob = my_external_signer(handle.get_content())
+                handle.set_signature(pkcs7_blob)
+
+        Internally identical to :meth:`save_incremental` minus the actual
+        ``signature_interface.sign`` call — the caller signs the bracketed
+        bytes and then triggers the splice via
+        :meth:`ExternalSigningSupport.set_signature`.
+        """
+        if self._closed:
+            raise ValueError("operation on closed PDDocument")
+        if self._pending_signature is None:
+            raise ValueError(
+                "save_incremental_for_external_signing requires a prior "
+                "add_signature(...) call"
+            )
+        signed_bytes, contents_span, byte_range = (
+            self._render_incremental_with_placeholder()
+        )
+        return ExternalSigningSupport(
+            document=self,
+            output=output,
+            buffer=signed_bytes,
+            contents_span=contents_span,
+            byte_range=byte_range,
         )
 
     # ---------- lifecycle ----------
@@ -615,3 +999,65 @@ class PDDocument:
             f"PDDocument(pages={n}, version={self._document.get_version()}, "
             f"encrypted={self.is_encrypted()})"
         )
+
+
+class ExternalSigningSupport:
+    """Handle returned by :meth:`PDDocument.save_incremental_for_external_signing`.
+
+    Mirrors PDFBox's ``ExternalSigningSupport`` interface: hands the caller
+    the bytes to hash + sign, then patches the resulting PKCS#7 blob into
+    ``/Contents`` and drains the final document to the user-supplied
+    ``output``.
+
+    Typical usage::
+
+        with open("out.pdf", "wb") as fh:
+            handle = doc.save_incremental_for_external_signing(fh)
+            blob = remote_hsm.sign(handle.get_content())
+            handle.set_signature(blob)
+    """
+
+    def __init__(
+        self,
+        *,
+        document: PDDocument,
+        output: BinaryIO,
+        buffer: bytearray,
+        contents_span: tuple[int, int],
+        byte_range: list[int],
+    ) -> None:
+        self._document = document
+        self._output = output
+        self._buffer = buffer
+        self._contents_span = contents_span
+        self._byte_range = byte_range
+        self._signature_set: bool = False
+
+    def get_content(self) -> bytes:
+        """Return the bracketed bytes the caller must sign — the
+        concatenation of the two slices identified by ``/ByteRange``."""
+        return PDDocument._extract_bracketed(self._buffer, self._byte_range)
+
+    def get_byte_range(self) -> list[int]:
+        """Return the computed ``/ByteRange`` (post-placeholder-patch)."""
+        return list(self._byte_range)
+
+    def set_signature(self, pkcs7_der: bytes) -> None:
+        """Splice ``pkcs7_der`` into the ``/Contents`` placeholder, drain the
+        final document bytes to the configured output sink, and clear any
+        pending-signature staging on the parent document."""
+        if self._signature_set:
+            raise RuntimeError("set_signature called twice on the same handle")
+        final = PDDocument._splice_signature(
+            self._buffer, self._contents_span, pkcs7_der
+        )
+        PDDocument._write_bytes_to_target(final, self._output)
+        self._signature_set = True
+        # Clear pending-signature staging on the document so a subsequent
+        # save_incremental doesn't try to re-sign with no interface.
+        self._document._pending_signature = None  # noqa: SLF001
+        self._document._pending_signature_interface = None  # noqa: SLF001
+        self._document._pending_signature_options = None  # noqa: SLF001
+
+
+__all__ = ["PDDocument", "PDDocumentSource", "ExternalSigningSupport"]
