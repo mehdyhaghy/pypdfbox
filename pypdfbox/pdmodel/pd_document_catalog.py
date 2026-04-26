@@ -25,6 +25,9 @@ _OUTLINES: COSName = COSName.get_pdf_name("Outlines")
 _OPEN_ACTION: COSName = COSName.get_pdf_name("OpenAction")
 _DESTS: COSName = COSName.get_pdf_name("Dests")
 _NAMES: COSName = COSName.get_pdf_name("Names")
+_STRUCT_TREE_ROOT: COSName = COSName.get_pdf_name("StructTreeRoot")
+_MARK_INFO: COSName = COSName.get_pdf_name("MarkInfo")
+_OC_PROPERTIES: COSName = COSName.get_pdf_name("OCProperties")
 
 
 class PDDocumentCatalog:
@@ -136,13 +139,39 @@ class PDDocumentCatalog:
             return
         self._catalog.set_item(_PAGE_MODE, COSName.get_pdf_name(mode))
 
-    # ---------- stubs for later clusters ----------
+    # ---------- /StructTreeRoot ----------
 
     def get_struct_tree_root(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_struct_tree_root requires PDStructTreeRoot — "
-            "pdmodel cluster #8"
-        )
+        from .documentinterchange.logicalstructure import PDStructureTreeRoot
+
+        v = self._catalog.get_dictionary_object(_STRUCT_TREE_ROOT)
+        if isinstance(v, COSDictionary):
+            return PDStructureTreeRoot(v)
+        return None
+
+    def set_struct_tree_root(self, root: Any) -> None:
+        if root is None:
+            self._catalog.remove_item(_STRUCT_TREE_ROOT)
+            return
+        self._catalog.set_item(_STRUCT_TREE_ROOT, root.get_cos_object())
+
+    # ---------- /MarkInfo ----------
+
+    def get_mark_info(self) -> Any:
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if isinstance(v, COSDictionary):
+            return PDMarkInfo(v)
+        return None
+
+    def set_mark_info(self, mark_info: Any) -> None:
+        if mark_info is None:
+            self._catalog.remove_item(_MARK_INFO)
+            return
+        self._catalog.set_item(_MARK_INFO, mark_info.get_cos_object())
+
+    # ---------- stubs for later clusters ----------
 
     def get_acro_form(self) -> Any:
         raise NotImplementedError(
@@ -171,10 +200,18 @@ class PDDocumentCatalog:
         )
 
     def get_oc_properties(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_oc_properties requires PDOptionalContentProperties — "
-            "pdmodel cluster #2"
-        )
+        from .graphics.optionalcontent import PDOptionalContentProperties
+
+        v = self._catalog.get_dictionary_object(_OC_PROPERTIES)
+        if isinstance(v, COSDictionary):
+            return PDOptionalContentProperties(v)
+        return None
+
+    def set_oc_properties(self, oc_properties: Any) -> None:
+        if oc_properties is None:
+            self._catalog.remove_item(_OC_PROPERTIES)
+            return
+        self._catalog.set_item(_OC_PROPERTIES, oc_properties.get_cos_object())
 
     def get_names(self) -> Any:
         from .pd_document_name_dictionary import PDDocumentNameDictionary
@@ -253,11 +290,6 @@ class PDDocumentCatalog:
         raise NotImplementedError(
             "PDDocumentCatalog.get_output_intents requires PDOutputIntent — "
             "pdmodel cluster #2"
-        )
-
-    def get_mark_info(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_mark_info requires PDMarkInfo — pdmodel cluster #8"
         )
 
     # ---------- raw COS passthrough used by tests ----------

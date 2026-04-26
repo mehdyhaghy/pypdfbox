@@ -63,12 +63,9 @@ def test_stubbed_accessors_raise() -> None:
     doc = PDDocument()
     cat = doc.get_document_catalog()
     for stub in (
-        cat.get_struct_tree_root,
         cat.get_acro_form,
         cat.get_metadata,
-        cat.get_oc_properties,
         cat.get_output_intents,
-        cat.get_mark_info,
     ):
         with pytest.raises(NotImplementedError):
             stub()
@@ -77,6 +74,14 @@ def test_stubbed_accessors_raise() -> None:
 def test_get_names_absent_returns_none() -> None:
     doc = PDDocument()
     assert doc.get_document_catalog().get_names() is None
+
+
+def test_get_struct_tree_root_mark_info_oc_properties_absent_return_none() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_struct_tree_root() is None
+    assert cat.get_mark_info() is None
+    assert cat.get_oc_properties() is None
 
 
 def test_get_viewer_preferences_absent_returns_none() -> None:
