@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 # ---------- viewer-prefs key constants (PDF 32000-1:2008 §12.2, Table 150) ----------
 
@@ -12,6 +12,7 @@ _HIDE_WINDOWUI: COSName = COSName.get_pdf_name("HideWindowUI")
 _FIT_WINDOW: COSName = COSName.get_pdf_name("FitWindow")
 _CENTER_WINDOW: COSName = COSName.get_pdf_name("CenterWindow")
 _DISPLAY_DOC_TITLE: COSName = COSName.get_pdf_name("DisplayDocTitle")
+_PICK_TRAY_BY_PDF_SIZE: COSName = COSName.get_pdf_name("PickTrayByPDFSize")
 _NON_FULL_SCREEN_PAGE_MODE: COSName = COSName.get_pdf_name("NonFullScreenPageMode")
 _DIRECTION: COSName = COSName.get_pdf_name("Direction")
 _VIEW_AREA: COSName = COSName.get_pdf_name("ViewArea")
@@ -20,6 +21,9 @@ _PRINT_AREA: COSName = COSName.get_pdf_name("PrintArea")
 _PRINT_CLIP: COSName = COSName.get_pdf_name("PrintClip")
 _DUPLEX: COSName = COSName.get_pdf_name("Duplex")
 _PRINT_SCALING: COSName = COSName.get_pdf_name("PrintScaling")
+_NUM_COPIES: COSName = COSName.get_pdf_name("NumCopies")
+_PRINT_PAGE_RANGE: COSName = COSName.get_pdf_name("PrintPageRange")
+_ENFORCE: COSName = COSName.get_pdf_name("Enforce")
 
 
 class PDViewerPreferences:
@@ -31,6 +35,10 @@ class PDViewerPreferences:
     the entry is absent. Name-valued accessors return the spec default
     (e.g. ``CropBox`` for boundary fields, ``UseNone`` for non-full-screen
     page mode) — matching upstream signatures that bake the default in.
+
+    PDF 2.0 (32000-2) and PDF 32000-1 Table 150 entries beyond what
+    upstream PDFBox 3.0 exposes (``PickTrayByPDFSize``, ``NumCopies``,
+    ``PrintPageRange``, ``Enforce``) are surfaced here as enrichment.
     """
 
     # ---------- nested enumerations (mirror upstream's Java enums) ----------
@@ -107,6 +115,12 @@ class PDViewerPreferences:
     def set_display_doc_title(self, value: bool) -> None:
         self._prefs.set_boolean(_DISPLAY_DOC_TITLE, value)
 
+    def pick_tray_by_pdf_size(self) -> bool:
+        return self._prefs.get_boolean(_PICK_TRAY_BY_PDF_SIZE, False)
+
+    def set_pick_tray_by_pdf_size(self, value: bool) -> None:
+        self._prefs.set_boolean(_PICK_TRAY_BY_PDF_SIZE, value)
+
     # ---------- name-valued accessors (with documented defaults) ----------
 
     def get_non_full_screen_page_mode(self) -> str:
@@ -174,6 +188,40 @@ class PDViewerPreferences:
 
     def set_print_scaling(self, value: PRINT_SCALING | str) -> None:
         self._prefs.set_name(_PRINT_SCALING, str(value))
+
+    # ---------- numeric / array accessors (PDF 32000-1 / 32000-2 enrichment) ----------
+
+    def get_num_copies(self) -> int:
+        # PDF 32000-1 Table 150: default value is 1.
+        v = self._prefs.get_int(_NUM_COPIES, 1)
+        return v if v >= 1 else 1
+
+    def set_num_copies(self, value: int) -> None:
+        self._prefs.set_int(_NUM_COPIES, value)
+
+    def get_print_page_range(self) -> COSArray | None:
+        """Raw ``/PrintPageRange`` array — pairs of 1-based page numbers
+        (start, end). Returns ``None`` when absent."""
+        v = self._prefs.get_dictionary_object(_PRINT_PAGE_RANGE)
+        return v if isinstance(v, COSArray) else None
+
+    def set_print_page_range(self, value: COSArray | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_PRINT_PAGE_RANGE)
+        else:
+            self._prefs.set_item(_PRINT_PAGE_RANGE, value)
+
+    def get_enforce(self) -> COSArray | None:
+        """Raw ``/Enforce`` array (PDF 2.0 Table 150) — names of viewer
+        preferences that shall be enforced. Returns ``None`` when absent."""
+        v = self._prefs.get_dictionary_object(_ENFORCE)
+        return v if isinstance(v, COSArray) else None
+
+    def set_enforce(self, value: COSArray | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_ENFORCE)
+        else:
+            self._prefs.set_item(_ENFORCE, value)
 
     def __repr__(self) -> str:
         return "PDViewerPreferences(...)"

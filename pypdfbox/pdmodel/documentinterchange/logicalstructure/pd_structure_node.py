@@ -59,6 +59,29 @@ class PDStructureNode:
             "neither StructTreeRoot nor StructElem."
         )
 
+    @staticmethod
+    def wrap_kid(kid: Any) -> Any:
+        """Dispatch a /K kid entry to a typed wrapper based on /Type, or
+        return the raw int / COSBase. Ints are MCIDs (marked content ids)."""
+        from pypdfbox.cos import COSDictionary, COSInteger
+
+        from .pd_marked_content_reference import PDMarkedContentReference
+        from .pd_object_reference import PDObjectReference
+
+        if isinstance(kid, COSInteger):
+            return kid.value
+        if isinstance(kid, COSDictionary):
+            type_name = kid.get_name(_TYPE)
+            if type_name == "MCR":
+                return PDMarkedContentReference(kid)
+            if type_name == "OBJR":
+                return PDObjectReference(kid)
+            if type_name == "StructElem":
+                from .pd_structure_element import PDStructureElement
+
+                return PDStructureElement(kid)
+        return kid
+
     def get_cos_object(self) -> COSDictionary:
         return self._dictionary
 

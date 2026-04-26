@@ -550,3 +550,32 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 ### `tests/contentstream/upstream/`
 
 Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or `PDContentStream` (verified by recursive listing of `pdfbox/src/test/java/org/apache/pdfbox/contentstream/`; only operator-*processor* tests live there, which depend on rendering and aren't in scope until cluster #2+). The hand-written tests under `tests/contentstream/test_operator.py` / `test_operator_name.py` / `test_pd_content_stream.py` are the only coverage for cluster #1; nothing to port here.
+
+### Wave 8 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/font/pd_cid_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFont.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_cid_font_type0.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType0.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_cid_font_type2.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2.java` (scaffold) |
+| `pypdfbox/pdmodel/font/pd_cid_system_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDSystemInfo.java` |
+| `pypdfbox/pdmodel/font/pd_type3_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3Font.java` (lite — typed PDCharProc deferred) |
+| `pypdfbox/pdmodel/font/pd_mm_type1_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDMMType1Font.java` (marker subclass) |
+| `pypdfbox/pdmodel/font/pd_type1c_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (marker subclass) |
+| `pypdfbox/pdmodel/common/function/pd_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunction.java` (lite — eval deferred) |
+| `pypdfbox/pdmodel/common/function/pd_function_type0.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType0.java` (lite — sampled-table decoding deferred) |
+| `pypdfbox/pdmodel/common/function/pd_function_type2.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType2.java` |
+| `pypdfbox/pdmodel/common/function/pd_function_type3.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType3.java` |
+| `pypdfbox/pdmodel/common/function/pd_function_type4.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType4.java` (lite — PostScript instruction parsing deferred) |
+| `pypdfbox/pdmodel/pd_pages_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPagesNameTreeNode.java` |
+| `pypdfbox/pdmodel/pd_templates_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDTemplatesNameTreeNode.java` |
+| `pypdfbox/pdmodel/pd_ids_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDIDSNameTreeNode.java` (leaf type bytes; deviates from upstream String) |
+| `pypdfbox/pdmodel/pd_urls_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDURLSNameTreeNode.java` |
+| `pypdfbox/pdmodel/pd_alternate_presentations_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDAlternatePresentationsNameTreeNode.java` |
+| `pypdfbox/pdmodel/pd_renditions_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDRenditionsNameTreeNode.java` |
+| `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_marked_content_reference.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDMarkedContentReference.java` |
+| `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_object_reference.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDObjectReference.java` |
+| `pypdfbox/contentstream/operator/path/{curve_to,curve_to_replicate_initial_point,curve_to_replicate_final_point,close_path,append_rectangle,stroke_path,close_and_stroke_path,fill_path_non_zero_winding,fill_path_even_odd,legacy_fill_path,fill_then_stroke_non_zero_winding,close_fill_then_stroke_non_zero_winding,fill_then_stroke_even_odd,close_fill_then_stroke_even_odd,end_path_no_op,clip_non_zero_winding,clip_even_odd}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/{graphics,path,clip}/*.java` (lite no-op stubs) |
+| `pypdfbox/contentstream/operator/text/{set_text_rendering_mode,set_text_rise,set_character_spacing,set_word_spacing,set_horizontal_scaling,set_text_leading,next_line}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/*.java` (lite no-op stubs) |
+| `pypdfbox/contentstream/operator/color/{set_stroking_color_space,set_non_stroking_color_space,set_stroking_color,set_stroking_color_n,set_non_stroking_color,set_non_stroking_color_n,set_stroking_gray,set_non_stroking_gray,set_stroking_rgb,set_non_stroking_rgb,set_stroking_cmyk,set_non_stroking_cmyk}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/*.java` (lite no-op stubs) |
+| `pypdfbox/contentstream/operator/markedcontent/{begin_marked_content,begin_marked_content_with_props,end_marked_content,define_marked_content_point,define_marked_content_point_with_props}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/*.java` (lite no-op stubs) |

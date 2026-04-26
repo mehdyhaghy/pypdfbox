@@ -4,14 +4,28 @@ from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName
 
+from .pd_alternate_presentations_name_tree_node import (
+    PDAlternatePresentationsNameTreeNode,
+)
 from .pd_document_name_destination_dictionary import PDDocumentNameDestinationDictionary
 from .pd_embedded_files_name_tree_node import PDEmbeddedFilesNameTreeNode
+from .pd_ids_name_tree_node import PDIDSNameTreeNode
 from .pd_javascript_name_tree_node import PDJavascriptNameTreeNode
+from .pd_pages_name_tree_node import PDPagesNameTreeNode
+from .pd_renditions_name_tree_node import PDRenditionsNameTreeNode
+from .pd_templates_name_tree_node import PDTemplatesNameTreeNode
+from .pd_urls_name_tree_node import PDURLSNameTreeNode
 
 _NAMES: COSName = COSName.get_pdf_name("Names")
 _DESTS: COSName = COSName.get_pdf_name("Dests")
 _EMBEDDED_FILES: COSName = COSName.get_pdf_name("EmbeddedFiles")
 _JAVA_SCRIPT: COSName = COSName.get_pdf_name("JavaScript")
+_PAGES: COSName = COSName.get_pdf_name("Pages")
+_TEMPLATES: COSName = COSName.get_pdf_name("Templates")
+_IDS: COSName = COSName.get_pdf_name("IDS")
+_URLS: COSName = COSName.get_pdf_name("URLS")
+_ALTERNATE_PRESENTATIONS: COSName = COSName.get_pdf_name("AlternatePresentations")
+_RENDITIONS: COSName = COSName.get_pdf_name("Renditions")
 
 
 class PDDocumentNameDictionary:
@@ -109,6 +123,97 @@ class PDDocumentNameDictionary:
             self._name_dictionary.set_item(
                 _JAVA_SCRIPT, javascript.get_cos_object()
             )
+
+    # ---------- /Pages ----------
+
+    def get_pages(self) -> PDPagesNameTreeNode | None:
+        dic = self._name_dictionary.get_dictionary_object(_PAGES)
+        if isinstance(dic, COSDictionary):
+            return PDPagesNameTreeNode(dic)
+        return None
+
+    def set_pages(self, pages: PDPagesNameTreeNode | None) -> None:
+        if pages is None:
+            self._name_dictionary.remove_item(_PAGES)
+        else:
+            self._name_dictionary.set_item(_PAGES, pages.get_cos_object())
+
+    # ---------- /Templates ----------
+
+    def get_templates(self) -> PDTemplatesNameTreeNode | None:
+        dic = self._name_dictionary.get_dictionary_object(_TEMPLATES)
+        if isinstance(dic, COSDictionary):
+            return PDTemplatesNameTreeNode(dic)
+        return None
+
+    def set_templates(self, templates: PDTemplatesNameTreeNode | None) -> None:
+        if templates is None:
+            self._name_dictionary.remove_item(_TEMPLATES)
+        else:
+            self._name_dictionary.set_item(_TEMPLATES, templates.get_cos_object())
+
+    # ---------- /IDS ----------
+
+    def get_ids(self) -> PDIDSNameTreeNode | None:
+        dic = self._name_dictionary.get_dictionary_object(_IDS)
+        if isinstance(dic, COSDictionary):
+            return PDIDSNameTreeNode(dic)
+        return None
+
+    def set_ids(self, ids: PDIDSNameTreeNode | None) -> None:
+        if ids is None:
+            self._name_dictionary.remove_item(_IDS)
+        else:
+            self._name_dictionary.set_item(_IDS, ids.get_cos_object())
+
+    # ---------- /URLS ----------
+
+    def get_urls(self) -> PDURLSNameTreeNode | None:
+        dic = self._name_dictionary.get_dictionary_object(_URLS)
+        if isinstance(dic, COSDictionary):
+            return PDURLSNameTreeNode(dic)
+        return None
+
+    def set_urls(self, urls: PDURLSNameTreeNode | None) -> None:
+        if urls is None:
+            self._name_dictionary.remove_item(_URLS)
+        else:
+            self._name_dictionary.set_item(_URLS, urls.get_cos_object())
+
+    # ---------- /AlternatePresentations ----------
+
+    def get_alternate_presentations(
+        self,
+    ) -> PDAlternatePresentationsNameTreeNode | None:
+        dic = self._name_dictionary.get_dictionary_object(_ALTERNATE_PRESENTATIONS)
+        if isinstance(dic, COSDictionary):
+            return PDAlternatePresentationsNameTreeNode(dic)
+        return None
+
+    def set_alternate_presentations(
+        self, alternate_presentations: PDAlternatePresentationsNameTreeNode | None
+    ) -> None:
+        if alternate_presentations is None:
+            self._name_dictionary.remove_item(_ALTERNATE_PRESENTATIONS)
+        else:
+            self._name_dictionary.set_item(
+                _ALTERNATE_PRESENTATIONS,
+                alternate_presentations.get_cos_object(),
+            )
+
+    # ---------- /Renditions ----------
+
+    def get_renditions(self) -> PDRenditionsNameTreeNode | None:
+        dic = self._name_dictionary.get_dictionary_object(_RENDITIONS)
+        if isinstance(dic, COSDictionary):
+            return PDRenditionsNameTreeNode(dic)
+        return None
+
+    def set_renditions(self, renditions: PDRenditionsNameTreeNode | None) -> None:
+        if renditions is None:
+            self._name_dictionary.remove_item(_RENDITIONS)
+        else:
+            self._name_dictionary.set_item(_RENDITIONS, renditions.get_cos_object())
 
 
 __all__ = ["PDDocumentNameDictionary"]

@@ -89,6 +89,8 @@ def test_type0_font_get_descendant_font_returns_none_when_absent() -> None:
 
 
 def test_type0_font_get_descendant_font_returns_first_dict() -> None:
+    from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
+
     font = PDType0Font()
     descendant = COSDictionary()
     descendant.set_name(COSName.SUBTYPE, "CIDFontType2")  # type: ignore[attr-defined]
@@ -97,8 +99,8 @@ def test_type0_font_get_descendant_font_returns_first_dict() -> None:
         COSName.get_pdf_name("DescendantFonts"), COSArray([descendant])
     )
     out = font.get_descendant_font()
-    assert isinstance(out, COSDictionary)
-    assert out is descendant
+    assert isinstance(out, PDCIDFontType2)
+    assert out.get_cos_object() is descendant
 
 
 # ---------- PDFontDescriptor round-trips ----------
@@ -223,7 +225,7 @@ def test_font_factory_dispatches_type0() -> None:
 
 def test_font_factory_returns_none_for_unsupported_subtype() -> None:
     raw = COSDictionary()
-    raw.set_name(COSName.SUBTYPE, "Type3")  # type: ignore[attr-defined]
+    raw.set_name(COSName.SUBTYPE, "CIDFontType0")  # type: ignore[attr-defined]
     assert PDFontFactory.create_font(raw) is None
 
 

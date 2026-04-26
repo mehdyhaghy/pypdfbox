@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel import PDDocument, PDViewerPreferences
 
 
@@ -17,6 +17,7 @@ def test_boolean_defaults_are_false() -> None:
     assert p.fit_window() is False
     assert p.center_window() is False
     assert p.display_doc_title() is False
+    assert p.pick_tray_by_pdf_size() is False
 
 
 def test_boolean_round_trip() -> None:
@@ -27,12 +28,14 @@ def test_boolean_round_trip() -> None:
     p.set_fit_window(True)
     p.set_center_window(True)
     p.set_display_doc_title(True)
+    p.set_pick_tray_by_pdf_size(True)
     assert p.hide_toolbar()
     assert p.hide_menubar()
     assert p.hide_window_ui()
     assert p.fit_window()
     assert p.center_window()
     assert p.display_doc_title()
+    assert p.pick_tray_by_pdf_size()
 
 
 def test_non_full_screen_page_mode_default_and_round_trip() -> None:
@@ -44,6 +47,10 @@ def test_non_full_screen_page_mode_default_and_round_trip() -> None:
     assert p.get_non_full_screen_page_mode() == "UseOutlines"
     p.set_non_full_screen_page_mode("UseThumbs")
     assert p.get_non_full_screen_page_mode() == "UseThumbs"
+    p.set_non_full_screen_page_mode(
+        PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOC
+    )
+    assert p.get_non_full_screen_page_mode() == "UseOC"
 
 
 def test_reading_direction_default_l2r() -> None:
@@ -79,6 +86,10 @@ def test_duplex_no_default() -> None:
     assert p.get_duplex() is None
     p.set_duplex(PDViewerPreferences.DUPLEX.DuplexFlipShortEdge)
     assert p.get_duplex() == "DuplexFlipShortEdge"
+    p.set_duplex(PDViewerPreferences.DUPLEX.DuplexFlipLongEdge)
+    assert p.get_duplex() == "DuplexFlipLongEdge"
+    p.set_duplex(PDViewerPreferences.DUPLEX.Simplex)
+    assert p.get_duplex() == "Simplex"
 
 
 def test_print_scaling_default_app_default() -> None:
@@ -88,13 +99,55 @@ def test_print_scaling_default_app_default() -> None:
     assert p.get_print_scaling() == "None"
 
 
+def test_num_copies_default_one_and_round_trip() -> None:
+    p = PDViewerPreferences()
+    assert p.get_num_copies() == 1
+    p.set_num_copies(5)
+    assert p.get_num_copies() == 5
+    cos = p.get_cos_object()
+    assert cos.contains_key(COSName.get_pdf_name("NumCopies"))
+
+
+def test_print_page_range_default_none_and_round_trip() -> None:
+    p = PDViewerPreferences()
+    assert p.get_print_page_range() is None
+    arr = COSArray.of_cos_integers([1, 3, 5, 7])
+    p.set_print_page_range(arr)
+    fetched = p.get_print_page_range()
+    assert fetched is not None
+    assert fetched.size() == 4
+    assert fetched.get_int(0) == 1
+    assert fetched.get_int(1) == 3
+    assert fetched.get_int(2) == 5
+    assert fetched.get_int(3) == 7
+    p.set_print_page_range(None)
+    assert p.get_print_page_range() is None
+
+
+def test_enforce_default_none_and_round_trip() -> None:
+    p = PDViewerPreferences()
+    assert p.get_enforce() is None
+    arr = COSArray.of_cos_names(["PrintScaling"])
+    p.set_enforce(arr)
+    fetched = p.get_enforce()
+    assert fetched is not None
+    assert fetched.size() == 1
+    assert fetched.get_name(0) == "PrintScaling"
+    p.set_enforce(None)
+    assert p.get_enforce() is None
+
+
 def test_underlying_dict_keys_match_pdf_names() -> None:
     p = PDViewerPreferences()
     p.set_hide_toolbar(True)
     p.set_view_area(PDViewerPreferences.BOUNDARY.MediaBox)
+    p.set_pick_tray_by_pdf_size(True)
+    p.set_num_copies(2)
     cos = p.get_cos_object()
     assert cos.contains_key(COSName.get_pdf_name("HideToolbar"))
     assert cos.contains_key(COSName.get_pdf_name("ViewArea"))
+    assert cos.contains_key(COSName.get_pdf_name("PickTrayByPDFSize"))
+    assert cos.contains_key(COSName.get_pdf_name("NumCopies"))
 
 
 def test_catalog_set_get_round_trip() -> None:
@@ -122,6 +175,17 @@ def test_construct_from_existing_dict() -> None:
     raw = COSDictionary()
     raw.set_boolean(COSName.get_pdf_name("HideToolbar"), True)
     raw.set_name(COSName.get_pdf_name("ViewArea"), "BleedBox")
+    raw.set_int(COSName.get_pdf_name("NumCopies"), 4)
+    range_arr = COSArray()
+    range_arr.add(COSInteger.get(2))
+    range_arr.add(COSInteger.get(6))
+    raw.set_item(COSName.get_pdf_name("PrintPageRange"), range_arr)
     p = PDViewerPreferences(raw)
     assert p.hide_toolbar()
     assert p.get_view_area() == "BleedBox"
+    assert p.get_num_copies() == 4
+    fetched = p.get_print_page_range()
+    assert fetched is not None
+    assert fetched.size() == 2
+    assert fetched.get_int(0) == 2
+    assert fetched.get_int(1) == 6
