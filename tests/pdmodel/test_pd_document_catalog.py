@@ -67,12 +67,16 @@ def test_stubbed_accessors_raise() -> None:
         cat.get_acro_form,
         cat.get_metadata,
         cat.get_oc_properties,
-        cat.get_names,
         cat.get_output_intents,
         cat.get_mark_info,
     ):
         with pytest.raises(NotImplementedError):
             stub()
+
+
+def test_get_names_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_names() is None
 
 
 def test_get_viewer_preferences_absent_returns_none() -> None:

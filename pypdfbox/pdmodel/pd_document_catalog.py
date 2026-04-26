@@ -24,6 +24,7 @@ _VIEWER_PREFERENCES: COSName = COSName.get_pdf_name("ViewerPreferences")
 _OUTLINES: COSName = COSName.get_pdf_name("Outlines")
 _OPEN_ACTION: COSName = COSName.get_pdf_name("OpenAction")
 _DESTS: COSName = COSName.get_pdf_name("Dests")
+_NAMES: COSName = COSName.get_pdf_name("Names")
 
 
 class PDDocumentCatalog:
@@ -176,10 +177,18 @@ class PDDocumentCatalog:
         )
 
     def get_names(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_names requires PDDocumentNameDictionary — "
-            "pdmodel cluster #2"
-        )
+        from .pd_document_name_dictionary import PDDocumentNameDictionary
+
+        v = self._catalog.get_dictionary_object(_NAMES)
+        if isinstance(v, COSDictionary):
+            return PDDocumentNameDictionary(self, v)
+        return None
+
+    def set_names(self, names: Any) -> None:
+        if names is None:
+            self._catalog.remove_item(_NAMES)
+            return
+        self._catalog.set_item(_NAMES, names.get_cos_object())
 
     def get_dests(self) -> Any:
         from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
