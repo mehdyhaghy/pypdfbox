@@ -9,7 +9,7 @@ from pypdfbox.io import (
     RandomAccessReadBuffer,
     RandomAccessReadBufferedFile,
 )
-from pypdfbox.pdfparser import PDFParser
+from pypdfbox.pdfparser import PDFParseError, PDFParser
 
 # Type alias for everything Loader.load_pdf accepts. Mirrors the overloads
 # of org.apache.pdfbox.Loader.loadPDF (file, byte[], RandomAccessRead,
@@ -50,9 +50,13 @@ class Loader:
         parser = PDFParser(access)
         try:
             document = parser.parse()
+        except PDFParseError as e:
+            if owned:
+                access.close()
+            # Mirror upstream Loader.loadPDF: malformed input surfaces as
+            # an IOException-equivalent (OSError) at the Loader boundary.
+            raise OSError(str(e)) from e
         except BaseException:
-            # Parsing failed; release any source we created on the
-            # caller's behalf so we don't leak file handles.
             if owned:
                 access.close()
             raise
