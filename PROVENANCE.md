@@ -204,6 +204,13 @@ Cluster #7 partial (outlines + destinations + actions).
 | `pypdfbox/pdmodel/interactive/action/pd_action_unknown.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDAction.java` (unknown-action fallback pattern) |
 | `pypdfbox/pdmodel/interactive/action/pd_page_additional_actions.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDPageAdditionalActions.java` |
 
+Cluster #7 foundations (file specifications, generic name tree, optional content, page transitions, AcroForm scaffold).
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/common/pd_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDNameTreeNode.java` |
+| `pypdfbox/pdmodel/common/pd_string_name_tree_node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDJavascriptNameTreeNode.java` (modelled after; concrete string-keyed subclass — additive value→COS direction) |
+
 ### `pypdfbox/fontbox/`
 
 Cluster #1 — TTF data stream + 12 table classes + WGL4 glyph-name table.
