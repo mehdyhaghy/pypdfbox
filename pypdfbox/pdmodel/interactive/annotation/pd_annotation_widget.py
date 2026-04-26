@@ -100,35 +100,47 @@ class PDAnnotationWidget(PDAnnotation):
 
     # ---------- /BS (border style) ----------
 
-    def get_border_style(self) -> COSDictionary | None:
-        """Cluster lite stub — returns the raw border-style dict.
-        ``PDBorderStyleDictionary`` typed wrapper is deferred."""
+    def get_border_style(self) -> "PDBorderStyleDictionary | None":
+        from .pd_border_style_dictionary import PDBorderStyleDictionary
+
         value = self._dict.get_dictionary_object(_BS)
         if isinstance(value, COSDictionary):
-            return value
+            return PDBorderStyleDictionary(value)
         return None
 
-    def set_border_style(self, bs: COSDictionary | None) -> None:
+    def set_border_style(
+        self, bs: "PDBorderStyleDictionary | COSDictionary | None"
+    ) -> None:
         if bs is None:
             self._dict.remove_item(_BS)
             return
-        self._dict.set_item(_BS, bs)
+        self._dict.set_item(
+            _BS,
+            bs.get_cos_object() if hasattr(bs, "get_cos_object") else bs,
+        )
 
     # ---------- /MK (appearance characteristics) ----------
 
-    def get_appearance_characteristics(self) -> COSDictionary | None:
-        """Cluster lite stub — returns the raw ``/MK`` dict.
-        ``PDAppearanceCharacteristicsDictionary`` typed wrapper is deferred."""
+    def get_appearance_characteristics(self) -> "PDAppearanceCharacteristicsDictionary | None":
+        from .pd_appearance_characteristics_dictionary import (
+            PDAppearanceCharacteristicsDictionary,
+        )
+
         value = self._dict.get_dictionary_object(_MK)
         if isinstance(value, COSDictionary):
-            return value
+            return PDAppearanceCharacteristicsDictionary(value)
         return None
 
-    def set_appearance_characteristics(self, ac: COSDictionary | None) -> None:
+    def set_appearance_characteristics(
+        self, ac: "PDAppearanceCharacteristicsDictionary | COSDictionary | None"
+    ) -> None:
         if ac is None:
             self._dict.remove_item(_MK)
             return
-        self._dict.set_item(_MK, ac)
+        self._dict.set_item(
+            _MK,
+            ac.get_cos_object() if hasattr(ac, "get_cos_object") else ac,
+        )
 
     # ---------- /Parent (field) ----------
 

@@ -19,8 +19,10 @@ from .pd_action_transition import PDActionTransition
 from .pd_action_unknown import PDActionUnknown
 from .pd_action_uri import PDActionURI
 from .pd_annotation_additional_actions import PDAnnotationAdditionalActions
+from .pd_document_catalog_additional_actions import PDDocumentCatalogAdditionalActions
 from .pd_form_field_additional_actions import PDFormFieldAdditionalActions
 from .pd_page_additional_actions import PDPageAdditionalActions
+from .pd_target_directory import PDTargetDirectory
 
 __all__ = [
     "PDAction",
@@ -42,6 +44,8 @@ __all__ = [
     "PDActionURI",
     "PDActionUnknown",
     "PDAnnotationAdditionalActions",
+    "PDDocumentCatalogAdditionalActions",
     "PDFormFieldAdditionalActions",
     "PDPageAdditionalActions",
+    "PDTargetDirectory",
 ]

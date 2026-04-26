@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
@@ -9,6 +9,7 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination 
 )
 
 from .pd_action import PDAction
+from .pd_target_directory import PDTargetDirectory
 
 _F: COSName = COSName.get_pdf_name("F")
 _D: COSName = COSName.D  # type: ignore[attr-defined]
@@ -18,8 +19,7 @@ _T: COSName = COSName.get_pdf_name("T")
 
 class PDActionEmbeddedGoTo(PDAction):
     """Embedded GoTo action. Mirrors PDFBox ``PDActionEmbeddedGoTo`` lite
-    surface. The ``/T`` (target dictionary) entry is returned as raw
-    ``COSBase``; a typed ``PDTargetDirectory`` wrapper is deferred."""
+    surface."""
 
     SUB_TYPE = "GoToE"
 
@@ -50,14 +50,22 @@ class PDActionEmbeddedGoTo(PDAction):
     def set_new_window(self, new_window: bool) -> None:
         self._action.set_boolean(_NEW_WINDOW, new_window)
 
-    def get_target(self) -> COSBase | None:
-        return self._action.get_dictionary_object(_T)
+    def get_target(self) -> PDTargetDirectory | None:
+        d = self._action.get_dictionary_object(_T)
+        if isinstance(d, COSDictionary):
+            return PDTargetDirectory(d)
+        return None
 
-    def set_target(self, target: COSBase | None) -> None:
+    def set_target(
+        self, target: PDTargetDirectory | COSDictionary | None
+    ) -> None:
         if target is None:
             self._action.remove_item(_T)
             return
-        self._action.set_item(_T, target)
+        self._action.set_item(
+            _T,
+            target.get_cos_object() if hasattr(target, "get_cos_object") else target,
+        )
 
 
 __all__ = ["PDActionEmbeddedGoTo"]

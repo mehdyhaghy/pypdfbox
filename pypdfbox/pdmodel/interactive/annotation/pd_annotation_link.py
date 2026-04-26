@@ -90,20 +90,24 @@ class PDAnnotationLink(PDAnnotation):
 
     # ---------- /BS (border style) ----------
 
-    def get_border_style(self) -> COSDictionary | None:
-        """Cluster #5 lite stub — returns the raw border style dict.
-        ``PDBorderStyleDictionary`` is deferred to a later annotation
-        cluster."""
+    def get_border_style(self) -> "PDBorderStyleDictionary | None":
+        from .pd_border_style_dictionary import PDBorderStyleDictionary
+
         value = self._dict.get_dictionary_object(_BS)
         if isinstance(value, COSDictionary):
-            return value
+            return PDBorderStyleDictionary(value)
         return None
 
-    def set_border_style(self, bs: COSDictionary | None) -> None:
+    def set_border_style(
+        self, bs: "PDBorderStyleDictionary | COSDictionary | None"
+    ) -> None:
         if bs is None:
             self._dict.remove_item(_BS)
             return
-        self._dict.set_item(_BS, bs)
+        self._dict.set_item(
+            _BS,
+            bs.get_cos_object() if hasattr(bs, "get_cos_object") else bs,
+        )
 
     # ---------- /QuadPoints — exposed as raw array (deferred typed wrapper) ----------
 

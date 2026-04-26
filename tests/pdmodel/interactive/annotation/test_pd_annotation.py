@@ -84,13 +84,12 @@ def test_create_unknown_for_missing_subtype() -> None:
 
 
 def test_create_unknown_for_unsupported_subtype() -> None:
-    # Highlight + other markup annotations still fall back to Unknown
-    # until the markup-annotation cluster lands.
+    # Screen, Sound, 3D and other §12.5 subtypes still fall back to Unknown.
     d = COSDictionary()
-    d.set_name(COSName.SUBTYPE, "Highlight")  # type: ignore[attr-defined]
+    d.set_name(COSName.SUBTYPE, "Screen")  # type: ignore[attr-defined]
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationUnknown)
-    assert ann.get_subtype() == "Highlight"
+    assert ann.get_subtype() == "Screen"
 
 
 def test_create_rejects_non_dict() -> None:

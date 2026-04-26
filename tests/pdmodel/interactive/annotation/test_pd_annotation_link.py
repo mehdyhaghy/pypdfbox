@@ -91,12 +91,16 @@ def test_highlight_mode_clear_returns_default() -> None:
 
 
 def test_border_style_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderStyleDictionary
+
     ann = PDAnnotationLink()
     bs = COSDictionary()
     bs.set_name(COSName.TYPE, "Border")  # type: ignore[attr-defined]
     bs.set_int(COSName.get_pdf_name("W"), 2)
     ann.set_border_style(bs)
-    assert ann.get_border_style() is bs
+    resolved = ann.get_border_style()
+    assert isinstance(resolved, PDBorderStyleDictionary)
+    assert resolved.get_cos_object() is bs
 
 
 def test_border_style_default_none() -> None:

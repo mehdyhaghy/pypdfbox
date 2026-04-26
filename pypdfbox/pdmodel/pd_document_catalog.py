@@ -30,6 +30,8 @@ _MARK_INFO: COSName = COSName.get_pdf_name("MarkInfo")
 _OC_PROPERTIES: COSName = COSName.get_pdf_name("OCProperties")
 _ACRO_FORM: COSName = COSName.get_pdf_name("AcroForm")
 _OUTPUT_INTENTS: COSName = COSName.get_pdf_name("OutputIntents")
+_METADATA: COSName = COSName.get_pdf_name("Metadata")
+_AA: COSName = COSName.get_pdf_name("AA")
 
 
 class PDDocumentCatalog:
@@ -208,9 +210,34 @@ class PDDocumentCatalog:
         self._catalog.set_item(_OUTLINES, outline.get_cos_object())
 
     def get_metadata(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_metadata requires PDMetadata (xmpbox cluster)"
-        )
+        from pypdfbox.cos import COSStream
+
+        from .common.pd_metadata import PDMetadata
+
+        v = self._catalog.get_dictionary_object(_METADATA)
+        if isinstance(v, COSStream):
+            return PDMetadata(v)
+        return None
+
+    def set_metadata(self, metadata: Any) -> None:
+        if metadata is None:
+            self._catalog.remove_item(_METADATA)
+            return
+        self._catalog.set_item(_METADATA, metadata.get_cos_object())
+
+    def get_actions(self) -> Any:
+        from .interactive.action import PDDocumentCatalogAdditionalActions
+
+        v = self._catalog.get_dictionary_object(_AA)
+        if isinstance(v, COSDictionary):
+            return PDDocumentCatalogAdditionalActions(v)
+        return None
+
+    def set_actions(self, aa: Any) -> None:
+        if aa is None:
+            self._catalog.remove_item(_AA)
+            return
+        self._catalog.set_item(_AA, aa.get_cos_object())
 
     def get_oc_properties(self) -> Any:
         from .graphics.optionalcontent import PDOptionalContentProperties

@@ -76,22 +76,32 @@ def test_actions_aa_round_trip() -> None:
 
 
 def test_border_style_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderStyleDictionary
+
     ann = PDAnnotationWidget()
     bs = COSDictionary()
     bs.set_name(COSName.TYPE, "Border")  # type: ignore[attr-defined]
     bs.set_int(COSName.get_pdf_name("W"), 3)
     ann.set_border_style(bs)
-    assert ann.get_border_style() is bs
+    resolved = ann.get_border_style()
+    assert isinstance(resolved, PDBorderStyleDictionary)
+    assert resolved.get_cos_object() is bs
     ann.set_border_style(None)
     assert ann.get_border_style() is None
 
 
 def test_appearance_characteristics_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import (
+        PDAppearanceCharacteristicsDictionary,
+    )
+
     ann = PDAnnotationWidget()
     mk = COSDictionary()
     mk.set_int(COSName.get_pdf_name("R"), 90)
     ann.set_appearance_characteristics(mk)
-    assert ann.get_appearance_characteristics() is mk
+    resolved = ann.get_appearance_characteristics()
+    assert isinstance(resolved, PDAppearanceCharacteristicsDictionary)
+    assert resolved.get_cos_object() is mk
     ann.set_appearance_characteristics(None)
     assert ann.get_appearance_characteristics() is None
 

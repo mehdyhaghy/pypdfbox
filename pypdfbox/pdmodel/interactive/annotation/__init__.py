@@ -1,23 +1,63 @@
 from __future__ import annotations
 
 from .pd_annotation import PDAnnotation
+from .pd_annotation_caret import PDAnnotationCaret
+from .pd_annotation_file_attachment import PDAnnotationFileAttachment
+from .pd_annotation_free_text import PDAnnotationFreeText
+from .pd_annotation_highlight import PDAnnotationHighlight
+from .pd_annotation_ink import PDAnnotationInk
+from .pd_annotation_line import PDAnnotationLine
 from .pd_annotation_link import PDAnnotationLink
+from .pd_annotation_markup import PDAnnotationMarkup
+from .pd_annotation_polygon import PDAnnotationPolygon
+from .pd_annotation_polyline import PDAnnotationPolyline
+from .pd_annotation_popup import PDAnnotationPopup
+from .pd_annotation_rubber_stamp import PDAnnotationRubberStamp
 from .pd_annotation_square_circle import (
     PDAnnotationCircle,
     PDAnnotationSquare,
     PDAnnotationSquareCircle,
 )
+from .pd_annotation_squiggly import PDAnnotationSquiggly
+from .pd_annotation_strikeout import PDAnnotationStrikeout
 from .pd_annotation_text import PDAnnotationText
+from .pd_annotation_text_markup import PDAnnotationTextMarkup
+from .pd_annotation_underline import PDAnnotationUnderline
 from .pd_annotation_unknown import PDAnnotationUnknown
 from .pd_annotation_widget import PDAnnotationWidget
+from .pd_appearance_characteristics_dictionary import PDAppearanceCharacteristicsDictionary
+from .pd_appearance_dictionary import PDAppearanceDictionary
+from .pd_appearance_entry import PDAppearanceEntry
+from .pd_appearance_stream import PDAppearanceStream
+from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 __all__ = [
     "PDAnnotation",
+    "PDAnnotationCaret",
     "PDAnnotationCircle",
+    "PDAnnotationFileAttachment",
+    "PDAnnotationFreeText",
+    "PDAnnotationHighlight",
+    "PDAnnotationInk",
+    "PDAnnotationLine",
     "PDAnnotationLink",
+    "PDAnnotationMarkup",
+    "PDAnnotationPolygon",
+    "PDAnnotationPolyline",
+    "PDAnnotationPopup",
+    "PDAnnotationRubberStamp",
     "PDAnnotationSquare",
     "PDAnnotationSquareCircle",
+    "PDAnnotationSquiggly",
+    "PDAnnotationStrikeout",
     "PDAnnotationText",
+    "PDAnnotationTextMarkup",
+    "PDAnnotationUnderline",
     "PDAnnotationUnknown",
     "PDAnnotationWidget",
+    "PDAppearanceCharacteristicsDictionary",
+    "PDAppearanceDictionary",
+    "PDAppearanceEntry",
+    "PDAppearanceStream",
+    "PDBorderStyleDictionary",
 ]

@@ -59,11 +59,14 @@ def test_version_round_trip() -> None:
     assert cat.get_version() == "1.7"
 
 
-def test_stubbed_accessors_raise() -> None:
+def test_get_metadata_absent_returns_none() -> None:
     doc = PDDocument()
-    cat = doc.get_document_catalog()
-    with pytest.raises(NotImplementedError):
-        cat.get_metadata()
+    assert doc.get_document_catalog().get_metadata() is None
+
+
+def test_get_actions_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_actions() is None
 
 
 def test_get_output_intents_absent_returns_empty_list() -> None:

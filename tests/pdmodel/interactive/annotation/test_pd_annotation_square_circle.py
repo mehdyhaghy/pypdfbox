@@ -50,19 +50,27 @@ def test_square_and_circle_share_base() -> None:
 
 
 def test_border_style_round_trip_square() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderStyleDictionary
+
     ann = PDAnnotationSquare()
     bs = COSDictionary()
     bs.set_int(COSName.get_pdf_name("W"), 3)
     ann.set_border_style(bs)
-    assert ann.get_border_style() is bs
+    resolved = ann.get_border_style()
+    assert isinstance(resolved, PDBorderStyleDictionary)
+    assert resolved.get_cos_object() is bs
 
 
 def test_border_style_round_trip_circle() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderStyleDictionary
+
     ann = PDAnnotationCircle()
     bs = COSDictionary()
     bs.set_int(COSName.get_pdf_name("W"), 3)
     ann.set_border_style(bs)
-    assert ann.get_border_style() is bs
+    resolved = ann.get_border_style()
+    assert isinstance(resolved, PDBorderStyleDictionary)
+    assert resolved.get_cos_object() is bs
 
 
 def test_border_style_default_none() -> None:

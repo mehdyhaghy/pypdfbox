@@ -1,0 +1,177 @@
+from __future__ import annotations
+
+from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSFloat, COSName
+
+from .pd_annotation import PDAnnotation
+
+_L: COSName = COSName.get_pdf_name("L")
+_LE: COSName = COSName.get_pdf_name("LE")
+_CAP: COSName = COSName.get_pdf_name("Cap")
+_CO: COSName = COSName.get_pdf_name("CO")
+_LL: COSName = COSName.get_pdf_name("LL")
+_LLE: COSName = COSName.get_pdf_name("LLE")
+
+
+class PDAnnotationLine(PDAnnotation):
+    """
+    Line annotation — ``/Subtype /Line``. Mirrors
+    ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLine``.
+
+    A line annotation displays a single straight line on the page,
+    optionally decorated with end-point styles (arrows, circles, …) and a
+    caption (PDF 32000-1:2008 §12.5.6.7).
+
+    Cluster #5 lite: only the core line geometry, end-point styles,
+    caption flag/offsets and leader-line length/extension are exposed.
+    Heavier surface (``/LLO``, BS/BE styling, measurement intents,
+    appearance generation) is deferred.
+    """
+
+    SUB_TYPE: str = "Line"
+
+    # ---------- /LE line-ending style constants (Table 176) ----------
+
+    LE_NONE: str = "None"
+    LE_SQUARE: str = "Square"
+    LE_CIRCLE: str = "Circle"
+    LE_DIAMOND: str = "Diamond"
+    LE_OPEN_ARROW: str = "OpenArrow"
+    LE_CLOSED_ARROW: str = "ClosedArrow"
+    LE_BUTT: str = "Butt"
+    LE_R_OPEN_ARROW: str = "ROpenArrow"
+    LE_R_CLOSED_ARROW: str = "RClosedArrow"
+    LE_SLASH: str = "Slash"
+
+    def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
+        super().__init__(annotation_dict)
+        if annotation_dict is None:
+            self._set_subtype(self.SUB_TYPE)
+
+    # ---------- /L (line coordinates) ----------
+
+    def get_line(self) -> list[float] | None:
+        """Return the 4-element ``[x1, y1, x2, y2]`` line or ``None`` when
+        unset. Upstream returns ``float[]`` — Python uses ``list[float]``."""
+        value = self._dict.get_dictionary_object(_L)
+        if isinstance(value, COSArray) and value.size() >= 4:
+            return value.to_float_array()[:4]
+        return None
+
+    def set_line(self, line: list[float]) -> None:
+        """Set ``/L`` to the supplied 4-element ``[x1, y1, x2, y2]``."""
+        arr = COSArray([COSFloat(float(c)) for c in line])
+        self._dict.set_item(_L, arr)
+
+    # ---------- /LE (line ending styles) ----------
+
+    def _get_le_array(self) -> COSArray | None:
+        value = self._dict.get_dictionary_object(_LE)
+        if isinstance(value, COSArray):
+            return value
+        return None
+
+    def _set_le_entry(self, index: int, style: str) -> None:
+        arr = self._get_le_array()
+        if arr is None:
+            arr = COSArray(
+                [
+                    COSName.get_pdf_name(self.LE_NONE),
+                    COSName.get_pdf_name(self.LE_NONE),
+                ]
+            )
+            self._dict.set_item(_LE, arr)
+        # Pad if the existing array is too short.
+        while arr.size() <= index:
+            arr.add(COSName.get_pdf_name(self.LE_NONE))
+        arr.set(index, COSName.get_pdf_name(style))
+
+    def get_start_point_ending_style(self) -> str:
+        """Default per spec is ``None``."""
+        arr = self._get_le_array()
+        if arr is not None and arr.size() >= 1:
+            entry = arr.get(0)
+            if isinstance(entry, COSName):
+                return entry.name
+        return self.LE_NONE
+
+    def set_start_point_ending_style(self, style: str) -> None:
+        self._set_le_entry(0, style)
+
+    def get_end_point_ending_style(self) -> str:
+        """Default per spec is ``None``."""
+        arr = self._get_le_array()
+        if arr is not None and arr.size() >= 2:
+            entry = arr.get(1)
+            if isinstance(entry, COSName):
+                return entry.name
+        return self.LE_NONE
+
+    def set_end_point_ending_style(self, style: str) -> None:
+        self._set_le_entry(1, style)
+
+    # ---------- /Cap (caption flag) ----------
+
+    def get_caption(self) -> bool:
+        """Default per spec is ``False``."""
+        return self._dict.get_boolean(_CAP, False)
+
+    def set_caption(self, value: bool) -> None:
+        self._dict.set_item(_CAP, COSBoolean.get(value))
+
+    # ---------- /CO (caption offset) ----------
+
+    def _get_co_array(self) -> COSArray | None:
+        value = self._dict.get_dictionary_object(_CO)
+        if isinstance(value, COSArray):
+            return value
+        return None
+
+    def _set_co_entry(self, index: int, offset: float) -> None:
+        arr = self._get_co_array()
+        if arr is None:
+            arr = COSArray([COSFloat(0.0), COSFloat(0.0)])
+            self._dict.set_item(_CO, arr)
+        while arr.size() <= index:
+            arr.add(COSFloat(0.0))
+        arr.set(index, COSFloat(float(offset)))
+
+    def get_caption_horizontal_offset(self) -> float:
+        arr = self._get_co_array()
+        if arr is not None and arr.size() >= 1:
+            entry = arr.get(0)
+            if hasattr(entry, "value"):
+                return float(entry.value)  # type: ignore[union-attr]
+        return 0.0
+
+    def set_caption_horizontal_offset(self, offset: float) -> None:
+        self._set_co_entry(0, offset)
+
+    def get_caption_vertical_offset(self) -> float:
+        arr = self._get_co_array()
+        if arr is not None and arr.size() >= 2:
+            entry = arr.get(1)
+            if hasattr(entry, "value"):
+                return float(entry.value)  # type: ignore[union-attr]
+        return 0.0
+
+    def set_caption_vertical_offset(self, offset: float) -> None:
+        self._set_co_entry(1, offset)
+
+    # ---------- /LL (leader line length) ----------
+
+    def get_leader_line_length(self) -> float:
+        return self._dict.get_float(_LL, 0.0)
+
+    def set_leader_line_length(self, length: float) -> None:
+        self._dict.set_float(_LL, float(length))
+
+    # ---------- /LLE (leader line extension length) ----------
+
+    def get_leader_line_extension_length(self) -> float:
+        return self._dict.get_float(_LLE, 0.0)
+
+    def set_leader_line_extension_length(self, length: float) -> None:
+        self._dict.set_float(_LLE, float(length))
+
+
+__all__ = ["PDAnnotationLine"]

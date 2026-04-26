@@ -33,6 +33,7 @@ _NM: COSName = COSName.get_pdf_name("NM")
 _T: COSName = COSName.get_pdf_name("T")
 _BORDER: COSName = COSName.get_pdf_name("Border")
 _C: COSName = COSName.get_pdf_name("C")
+_AP: COSName = COSName.get_pdf_name("AP")
 
 
 class PDAnnotation:
@@ -113,12 +114,25 @@ class PDAnnotation:
                 f"{type(cos_dict).__name__}"
             )
         # Local imports avoid a circular import at module-load time.
+        from .pd_annotation_caret import PDAnnotationCaret
+        from .pd_annotation_file_attachment import PDAnnotationFileAttachment
+        from .pd_annotation_free_text import PDAnnotationFreeText
+        from .pd_annotation_highlight import PDAnnotationHighlight
+        from .pd_annotation_ink import PDAnnotationInk
+        from .pd_annotation_line import PDAnnotationLine
         from .pd_annotation_link import PDAnnotationLink
+        from .pd_annotation_polygon import PDAnnotationPolygon
+        from .pd_annotation_polyline import PDAnnotationPolyline
+        from .pd_annotation_popup import PDAnnotationPopup
+        from .pd_annotation_rubber_stamp import PDAnnotationRubberStamp
         from .pd_annotation_square_circle import (
             PDAnnotationCircle,
             PDAnnotationSquare,
         )
+        from .pd_annotation_squiggly import PDAnnotationSquiggly
+        from .pd_annotation_strikeout import PDAnnotationStrikeout
         from .pd_annotation_text import PDAnnotationText
+        from .pd_annotation_underline import PDAnnotationUnderline
         from .pd_annotation_unknown import PDAnnotationUnknown
         from .pd_annotation_widget import PDAnnotationWidget
 
@@ -135,6 +149,32 @@ class PDAnnotation:
             return PDAnnotationCircle(cos_dict)
         if subtype == PDAnnotationWidget.SUB_TYPE:
             return PDAnnotationWidget(cos_dict)
+        if subtype == PDAnnotationLine.SUB_TYPE:
+            return PDAnnotationLine(cos_dict)
+        if subtype == PDAnnotationFreeText.SUB_TYPE:
+            return PDAnnotationFreeText(cos_dict)
+        if subtype == PDAnnotationFileAttachment.SUB_TYPE:
+            return PDAnnotationFileAttachment(cos_dict)
+        if subtype == PDAnnotationRubberStamp.SUB_TYPE:
+            return PDAnnotationRubberStamp(cos_dict)
+        if subtype == PDAnnotationPopup.SUB_TYPE:
+            return PDAnnotationPopup(cos_dict)
+        if subtype == PDAnnotationHighlight.SUB_TYPE:
+            return PDAnnotationHighlight(cos_dict)
+        if subtype == PDAnnotationUnderline.SUB_TYPE:
+            return PDAnnotationUnderline(cos_dict)
+        if subtype == PDAnnotationStrikeout.SUB_TYPE:
+            return PDAnnotationStrikeout(cos_dict)
+        if subtype == PDAnnotationSquiggly.SUB_TYPE:
+            return PDAnnotationSquiggly(cos_dict)
+        if subtype == PDAnnotationCaret.SUB_TYPE:
+            return PDAnnotationCaret(cos_dict)
+        if subtype == PDAnnotationInk.SUB_TYPE:
+            return PDAnnotationInk(cos_dict)
+        if subtype == PDAnnotationPolygon.SUB_TYPE:
+            return PDAnnotationPolygon(cos_dict)
+        if subtype == PDAnnotationPolyline.SUB_TYPE:
+            return PDAnnotationPolyline(cos_dict)
         return PDAnnotationUnknown(cos_dict)
 
     # ---------- /Rect ----------
@@ -330,6 +370,27 @@ class PDAnnotation:
         the rendering cluster lands."""
         arr = COSArray([COSFloat(float(c)) for c in components])
         self._dict.set_item(_C, arr)
+
+    # ---------- /AP (appearance dictionary) ----------
+
+    def get_appearance_dictionary(self) -> "PDAppearanceDictionary | None":
+        from .pd_appearance_dictionary import PDAppearanceDictionary
+
+        value = self._dict.get_dictionary_object(_AP)
+        if isinstance(value, COSDictionary):
+            return PDAppearanceDictionary(value)
+        return None
+
+    def set_appearance_dictionary(
+        self, ap: "PDAppearanceDictionary | COSDictionary | None"
+    ) -> None:
+        if ap is None:
+            self._dict.remove_item(_AP)
+            return
+        self._dict.set_item(
+            _AP,
+            ap.get_cos_object() if hasattr(ap, "get_cos_object") else ap,
+        )
 
     # ---------- equality / repr ----------
 

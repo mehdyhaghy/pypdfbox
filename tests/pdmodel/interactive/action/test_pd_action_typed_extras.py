@@ -135,9 +135,13 @@ def test_pd_action_embedded_go_to_round_trips_file_dest_window_target() -> None:
     action.set_new_window(False)
     assert action.is_new_window() is False
 
+    from pypdfbox.pdmodel.interactive.action import PDTargetDirectory
+
     target = COSDictionary()
     action.set_target(target)
-    assert action.get_target() is target
+    resolved_target = action.get_target()
+    assert isinstance(resolved_target, PDTargetDirectory)
+    assert resolved_target.get_cos_object() is target
 
     action.set_file(None)
     action.set_d(None)
