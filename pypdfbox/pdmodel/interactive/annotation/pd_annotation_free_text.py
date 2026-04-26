@@ -1,14 +1,21 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_annotation import PDAnnotation
+from .pd_annotation_line import PDAnnotationLine
+from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 _DA: COSName = COSName.get_pdf_name("DA")
 _Q: COSName = COSName.get_pdf_name("Q")
 _DS: COSName = COSName.get_pdf_name("DS")
 _RC: COSName = COSName.get_pdf_name("RC")
 _IT: COSName = COSName.get_pdf_name("IT")
+_CL: COSName = COSName.get_pdf_name("CL")
+_LE: COSName = COSName.get_pdf_name("LE")
+_BS: COSName = COSName.get_pdf_name("BS")
+_BE: COSName = COSName.get_pdf_name("BE")
+_RD: COSName = COSName.get_pdf_name("RD")
 
 
 class PDAnnotationFreeText(PDAnnotation):
@@ -17,9 +24,11 @@ class PDAnnotationFreeText(PDAnnotation):
     ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationFreeText``.
 
     A free-text annotation displays text directly on the page rather than
-    in a popup (PDF 32000-1:2008 §12.5.6.6). Cluster #5 lite exposes
-    ``/DA``, ``/Q``, ``/DS``, ``/RC`` and ``/IT`` — appearance generation
-    and the callout-line geometry (``/CL``, ``/LE``) are deferred.
+    in a popup (PDF 32000-1:2008 §12.5.6.6). Exposes ``/DA``, ``/Q``,
+    ``/DS``, ``/RC``, ``/IT``, ``/CL``, ``/LE``, ``/BS``, ``/BE`` and
+    ``/RD``. Appearance generation is deferred. ``/BE`` is exposed as a
+    raw :class:`COSDictionary` until ``PDBorderEffectDictionary`` is
+    ported.
     """
 
     SUB_TYPE: str = "FreeText"
@@ -32,6 +41,7 @@ class PDAnnotationFreeText(PDAnnotation):
 
     # ---------- /IT intent constants (Table 174) ----------
 
+    IT_FREE_TEXT_PLAIN: str = "FreeText"
     IT_FREE_TEXT_CALLOUT: str = "FreeTextCallout"
     IT_FREE_TEXT_TYPE_WRITER: str = "FreeTextTypeWriter"
 
@@ -83,6 +93,87 @@ class PDAnnotationFreeText(PDAnnotation):
             self._dict.remove_item(_IT)
             return
         self._dict.set_name(_IT, intent)
+
+    # ---------- /CL (callout line) ----------
+
+    def get_callout_line(self) -> list[float] | None:
+        """Return the ``/CL`` callout-line coordinates.
+
+        4 floats ``[x1, y1, x2, y2]`` for a 2-segment knee, or 6 floats
+        ``[x1, y1, x2, y2, x3, y3]`` for a 3-segment knee. Returns
+        ``None`` when ``/CL`` is absent or malformed.
+        """
+        value = self._dict.get_dictionary_object(_CL)
+        if isinstance(value, COSArray):
+            size = value.size()
+            if size >= 6:
+                return value.to_float_array()[:6]
+            if size >= 4:
+                return value.to_float_array()[:4]
+        return None
+
+    def set_callout_line(self, coords: list[float] | None) -> None:
+        """Set ``/CL``. Accepts 4 or 6 floats; ``None`` clears the entry."""
+        if coords is None:
+            self._dict.remove_item(_CL)
+            return
+        arr = COSArray([COSFloat(float(c)) for c in coords])
+        self._dict.set_item(_CL, arr)
+
+    # ---------- /LE (line ending style) ----------
+
+    def get_line_ending(self) -> str:
+        """Default per spec is ``None``."""
+        value = self._dict.get_name(_LE)
+        return value if value is not None else PDAnnotationLine.LE_NONE
+
+    def set_line_ending(self, le: str) -> None:
+        self._dict.set_name(_LE, le)
+
+    # ---------- /BS (border style dictionary) ----------
+
+    def get_border_style(self) -> PDBorderStyleDictionary | None:
+        value = self._dict.get_dictionary_object(_BS)
+        if isinstance(value, COSDictionary):
+            return PDBorderStyleDictionary(value)
+        return None
+
+    def set_border_style(self, bs: PDBorderStyleDictionary | None) -> None:
+        if bs is None:
+            self._dict.remove_item(_BS)
+            return
+        self._dict.set_item(_BS, bs.get_cos_object())
+
+    # ---------- /BE (border effect dictionary) ----------
+
+    def get_border_effect(self) -> COSDictionary | None:
+        value = self._dict.get_dictionary_object(_BE)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_border_effect(self, be: COSDictionary | None) -> None:
+        if be is None:
+            self._dict.remove_item(_BE)
+            return
+        self._dict.set_item(_BE, be)
+
+    # ---------- /RD (rectangle differences) ----------
+
+    def get_rectangle_differences(self) -> list[float] | None:
+        """Return the 4-element ``[left, top, right, bottom]`` ``/RD``
+        differences, or ``None`` when unset."""
+        value = self._dict.get_dictionary_object(_RD)
+        if isinstance(value, COSArray) and value.size() >= 4:
+            return value.to_float_array()[:4]
+        return None
+
+    def set_rectangle_differences(self, diffs: list[float] | None) -> None:
+        if diffs is None:
+            self._dict.remove_item(_RD)
+            return
+        arr = COSArray([COSFloat(float(d)) for d in diffs])
+        self._dict.set_item(_RD, arr)
 
 
 __all__ = ["PDAnnotationFreeText"]

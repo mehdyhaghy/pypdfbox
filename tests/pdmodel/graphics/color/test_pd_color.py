@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
+from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 
 
 # ---------- device singletons ----------
@@ -135,3 +139,41 @@ def test_pd_color_gray_round_trip() -> None:
     restored = PDColor.from_cos_array(array, PDDeviceGray.INSTANCE)
     assert restored.get_components() == original.get_components()
     assert restored.get_color_space() is PDDeviceGray.INSTANCE
+
+
+# ---------- PDColor.to_rgb ----------
+
+
+def test_to_rgb_device_gray_midtone() -> None:
+    rgb = PDColor([0.5], PDDeviceGray.INSTANCE).to_rgb()
+    assert rgb == (0.5, 0.5, 0.5)
+
+
+def test_to_rgb_device_rgb_pure_red() -> None:
+    rgb = PDColor([1.0, 0.0, 0.0], PDDeviceRGB.INSTANCE).to_rgb()
+    assert rgb == (1.0, 0.0, 0.0)
+
+
+def test_to_rgb_device_cmyk_pure_red() -> None:
+    rgb = PDColor([0.0, 1.0, 1.0, 0.0], PDDeviceCMYK.INSTANCE).to_rgb()
+    assert rgb[0] == pytest.approx(1.0, abs=1e-6)
+    assert rgb[1] == pytest.approx(0.0, abs=1e-6)
+    assert rgb[2] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_to_rgb_device_cmyk_pure_black_via_k() -> None:
+    rgb = PDColor([0.0, 0.0, 0.0, 1.0], PDDeviceCMYK.INSTANCE).to_rgb()
+    assert rgb == (0.0, 0.0, 0.0)
+
+
+def test_to_rgb_lab_white_round_trip() -> None:
+    rgb = PDColor([100.0, 0.0, 0.0], PDLab()).to_rgb()
+    assert rgb[0] == pytest.approx(1.0, abs=0.05)
+    assert rgb[1] == pytest.approx(1.0, abs=0.05)
+    assert rgb[2] == pytest.approx(1.0, abs=0.05)
+
+
+def test_to_rgb_pattern_raises_not_implemented() -> None:
+    color = PDColor([], PDPattern(), COSName.get_pdf_name("P1"))
+    with pytest.raises(NotImplementedError):
+        color.to_rgb()

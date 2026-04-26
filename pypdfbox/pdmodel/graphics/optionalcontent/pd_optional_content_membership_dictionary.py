@@ -122,5 +122,93 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
             )
         self._dict.set_item(_VE, ve)
 
+    # ---------- /VE evaluation (PDF 32000-1 §8.11.2.4) ----------
+
+    def evaluate_visibility(self, visible_ocgs: set[int]) -> bool:
+        """Evaluate the /VE visibility expression tree.
+
+        ``visible_ocgs`` is the set of ``id(cos_dictionary)`` values for
+        OCGs that are currently ON. Returns ``True`` if the expression
+        evaluates to "visible".
+
+        Falls back to /P + /OCGs evaluation when /VE is absent.
+        """
+        ve = self.get_visibility_expression()
+        if ve is None:
+            return self._evaluate_policy(visible_ocgs)
+        return self._eval_node(ve, visible_ocgs)
+
+    def is_visible(self, visible_ocgs: set[int]) -> bool:
+        """Combined visibility test.
+
+        Prefers /VE when present; otherwise applies /P + /OCGs policy.
+        """
+        if self.get_visibility_expression() is not None:
+            return self.evaluate_visibility(visible_ocgs)
+        return self._evaluate_policy(visible_ocgs)
+
+    @classmethod
+    def _eval_node(cls, node: object, visible: set[int]) -> bool:
+        """Recursively evaluate a /VE tree node.
+
+        - ``COSDictionary``: True iff ``id(node)`` is in ``visible``.
+        - ``COSArray``: dispatch on the first element ("And"/"Or"/"Not").
+        """
+        if isinstance(node, COSDictionary):
+            return id(node) in visible
+        if isinstance(node, COSArray):
+            if node.size() == 0:
+                raise ValueError("Empty /VE sub-array — missing operator")
+            head = node.get_object(0)
+            if not isinstance(head, COSName):
+                raise ValueError(
+                    "First element of /VE array must be a COSName operator"
+                )
+            op = head.name
+            rest = [node.get_object(i) for i in range(1, node.size())]
+            if op == "Not":
+                if len(rest) != 1:
+                    raise ValueError(
+                        f"/VE 'Not' requires exactly 1 operand, got {len(rest)}"
+                    )
+                return not cls._eval_node(rest[0], visible)
+            if op == "And":
+                if not rest:
+                    raise ValueError("/VE 'And' requires >= 1 operand")
+                return all(cls._eval_node(child, visible) for child in rest)
+            if op == "Or":
+                if not rest:
+                    raise ValueError("/VE 'Or' requires >= 1 operand")
+                return any(cls._eval_node(child, visible) for child in rest)
+            raise ValueError(f"Unknown /VE operator: {op!r}")
+        # Anything else (e.g. unresolved indirect ref to a non-dict, or null)
+        # is treated as "not visible".
+        return False
+
+    def _evaluate_policy(self, visible_ocgs: set[int]) -> bool:
+        """Apply the /P policy to the /OCGs list.
+
+        Per PDF 32000-1 §8.11.2.2:
+        - "AllOn":  visible iff every OCG is on
+        - "AnyOn":  visible iff at least one OCG is on (default)
+        - "AnyOff": visible iff at least one OCG is off
+        - "AllOff": visible iff every OCG is off
+        With no /OCGs entries, AllOn/AllOff are vacuously True and
+        AnyOn/AnyOff are vacuously False (matches PDFBox semantics).
+        """
+        groups = self.get_o_cgs()
+        states = [id(g.get_cos_object()) in visible_ocgs for g in groups]
+        policy = self.get_visibility_policy()
+        if policy == "AllOn":
+            return all(states)
+        if policy == "AnyOn":
+            return any(states)
+        if policy == "AnyOff":
+            return any(not s for s in states)
+        if policy == "AllOff":
+            return all(not s for s in states)
+        # Unknown policy: be conservative, treat as default AnyOn.
+        return any(states)
+
 
 __all__ = ["PDOptionalContentMembershipDictionary"]

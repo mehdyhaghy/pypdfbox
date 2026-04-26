@@ -80,6 +80,74 @@ def test_simple_font_widths_default_empty() -> None:
     assert font.get_first_char() == -1
 
 
+# ---------- PDSimpleFont encode / decode ----------
+
+
+def _font_with_encoding(name: str) -> PDType1Font:
+    font = PDType1Font()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"), COSName.get_pdf_name(name)
+    )
+    return font
+
+
+def test_simple_font_get_encoding_typed_resolves_winansi() -> None:
+    from pypdfbox.pdmodel.font.encoding import WinAnsiEncoding
+
+    font = _font_with_encoding("WinAnsiEncoding")
+    typed = font.get_encoding_typed()
+    assert typed is WinAnsiEncoding.INSTANCE
+    # Cached on second access.
+    assert font.get_encoding_typed() is typed
+
+
+def test_simple_font_get_encoding_typed_returns_none_when_absent() -> None:
+    assert PDType1Font().get_encoding_typed() is None
+
+
+def test_simple_font_encode_winansi_ascii() -> None:
+    font = _font_with_encoding("WinAnsiEncoding")
+    assert font.encode("ABC") == b"\x41\x42\x43"
+
+
+def test_simple_font_decode_winansi_ascii() -> None:
+    font = _font_with_encoding("WinAnsiEncoding")
+    assert font.decode(b"\x41\x42\x43") == "ABC"
+
+
+def test_simple_font_encode_without_encoding_falls_back_to_latin1() -> None:
+    font = PDType1Font()
+    assert font.encode("ABC") == b"\x41\x42\x43"
+
+
+def test_simple_font_decode_without_encoding_falls_back_to_latin1() -> None:
+    font = PDType1Font()
+    assert font.decode(b"\x41\x42\x43") == "ABC"
+
+
+def test_simple_font_encode_symbol_alpha() -> None:
+    font = _font_with_encoding("SymbolEncoding")
+    # 'alpha' lives at code 0o141 (0x61) in the Adobe Symbol Encoding.
+    assert font.encode("α") == bytes([0o141])
+
+
+def test_simple_font_decode_symbol_alpha() -> None:
+    font = _font_with_encoding("SymbolEncoding")
+    assert font.decode(bytes([0o141])) == "α"
+
+
+def test_simple_font_round_trip_ascii_winansi() -> None:
+    font = _font_with_encoding("WinAnsiEncoding")
+    text = "Hello, World!"
+    assert font.decode(font.encode(text)) == text
+
+
+def test_simple_font_round_trip_ascii_standard() -> None:
+    font = _font_with_encoding("StandardEncoding")
+    text = "ABC abc 123"
+    assert font.decode(font.encode(text)) == text
+
+
 # ---------- PDType0Font descendant fonts ----------
 
 

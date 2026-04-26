@@ -44,12 +44,25 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
     """Parse a PDF date string into a timezone-aware ``datetime``.
 
     Mirrors ``org.apache.pdfbox.util.DateConverter.toCalendar`` for the
-    common subset; returns ``None`` if the string is unparseable. Missing
-    components default to 1 (month/day) or 0 (time) per the spec.
+    common subset; returns ``None`` if the string is unparseable. Operates
+    in lenient mode per real-world PDF producers (Adobe / Word / etc.):
+
+    * The ``D:`` prefix is optional.
+    * Time components may be truncated; missing fields default to 1
+      (month/day) or 0 (time) per PDF 32000-1:2008 §7.9.4.
+    * Missing timezone is treated as UTC.
+    * Bare ``Z`` (no offset) is UTC; offsets accept either ``+0530`` or
+      ``+05'30'`` form.
+    * Surrounding whitespace is stripped.
+    * A ``60``-second leap-second value is clamped to ``59`` (Python's
+      ``datetime`` does not represent leap seconds).
     """
     if not value:
         return None
-    m = _PDF_DATE_RE.match(value.strip())
+    stripped = value.strip()
+    if not stripped:
+        return None
+    m = _PDF_DATE_RE.match(stripped)
     if m is None:
         return None
     year = int(m.group("year"))
@@ -58,6 +71,10 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
     hour = int(m.group("hour") or 0)
     minute = int(m.group("minute") or 0)
     second = int(m.group("second") or 0)
+    # Clamp leap-second padding (e.g. "235960") — Python's datetime does
+    # not represent leap seconds; upstream PDFBox silently truncates.
+    if second == 60:
+        second = 59
     sign = m.group("offsign")
     if sign is None or sign == "Z":
         tz: _dt.tzinfo = _dt.timezone.utc

@@ -6,6 +6,7 @@ import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDDocumentInformation
+from pypdfbox.pdmodel.pd_document_information import _parse_pdf_date
 
 
 def test_default_construction_yields_empty_dict() -> None:
@@ -140,3 +141,112 @@ def test_set_document_information_replaces_trailer_entry() -> None:
     fetched = doc.get_document_information()
     assert fetched.get_cos_object() is new_info.get_cos_object()
     assert fetched.get_author() == "Alice"
+
+
+# ---------- _parse_pdf_date lenient-mode regression tests ----------
+
+
+def test_parse_date_strict_full_format() -> None:
+    """Canonical D:YYYYMMDDHHmmSSOHH'mm' still parses (regression)."""
+    assert _parse_pdf_date("D:20230101120000Z00'00'") == _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_missing_d_prefix() -> None:
+    """Many writers omit the leading 'D:' marker."""
+    assert _parse_pdf_date("20230101120000Z00'00'") == _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_truncated_to_year_month() -> None:
+    assert _parse_pdf_date("D:202301") == _dt.datetime(
+        2023, 1, 1, 0, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_truncated_to_year_month_day() -> None:
+    assert _parse_pdf_date("D:20230101") == _dt.datetime(
+        2023, 1, 1, 0, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_truncated_to_hour() -> None:
+    assert _parse_pdf_date("D:2023010112") == _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_full_time_without_timezone() -> None:
+    """No Z and no offset — assume UTC."""
+    assert _parse_pdf_date("D:20230101120000") == _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_bare_z_without_offset() -> None:
+    assert _parse_pdf_date("D:20230101120000Z") == _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_compact_timezone_no_apostrophes() -> None:
+    expected = _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone(_dt.timedelta(hours=5, minutes=30))
+    )
+    assert _parse_pdf_date("D:20230101120000+0530") == expected
+
+
+def test_parse_date_apostrophe_timezone_form() -> None:
+    expected = _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone(_dt.timedelta(hours=5, minutes=30))
+    )
+    assert _parse_pdf_date("D:20230101120000+05'30'") == expected
+
+
+def test_parse_date_negative_offset_compact() -> None:
+    expected = _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone(_dt.timedelta(hours=-8))
+    )
+    assert _parse_pdf_date("D:20230101120000-0800") == expected
+
+
+def test_parse_date_strips_whitespace() -> None:
+    assert _parse_pdf_date("  D:20230101120000Z  ") == _dt.datetime(
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+    )
+
+
+def test_parse_date_clamps_leap_second() -> None:
+    """Time HHmm60 — clamp to HHmm59 (Python datetime has no leap-second
+    representation; upstream PDFBox silently truncates as well)."""
+    assert _parse_pdf_date("D:20230101235960Z") == _dt.datetime(
+        2023, 1, 1, 23, 59, 59, tzinfo=_dt.timezone.utc
+    )
+
+
+@pytest.mark.parametrize(
+    "garbage",
+    [
+        "",
+        "   ",
+        "hello world",
+        "D:abc",
+        "not a date",
+        "D:",
+    ],
+)
+def test_parse_date_returns_none_for_garbage(garbage: str) -> None:
+    assert _parse_pdf_date(garbage) is None
+
+
+def test_round_trip_via_info_dict_with_lenient_string() -> None:
+    """Reading a CreationDate stored without the 'D:' prefix still works."""
+    raw = COSDictionary()
+    raw.set_item(
+        COSName.get_pdf_name("CreationDate"), COSString("20230101120000Z00'00'")
+    )
+    info = PDDocumentInformation(raw)
+    parsed = info.get_creation_date()
+    assert parsed == _dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)

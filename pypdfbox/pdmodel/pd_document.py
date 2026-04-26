@@ -90,6 +90,18 @@ class PDDocument:
         # Lazy ``PDEncryption`` wrapper around the trailer's /Encrypt dict;
         # populated on first ``get_encryption()`` call or by ``decrypt()``.
         self._encryption: Any = None
+        # Lazy :class:`DefaultResourceCache` — built on first access via
+        # ``get_resource_cache``. Shared across every ``PDResources`` lookup
+        # in the document so identical indirect refs round-trip the same
+        # typed wrapper. ``None`` means "not yet allocated"; callers can
+        # inject a custom cache (or ``None`` to disable) via
+        # ``set_resource_cache``.
+        self._resource_cache: Any = None
+        # Stash for TTF fonts that asked to be closed at document close.
+        # We don't manage TTF lifetimes at runtime (Python GC handles it),
+        # so this list is effectively a registration log — see
+        # ``register_true_type_font_for_closing``.
+        self._fonts_to_close: list[Any] = []
         # Active security handler after ``decrypt()`` succeeds — used by
         # ``get_current_access_permission`` and by the writer for encrypt
         # passes.
@@ -482,7 +494,8 @@ class PDDocument:
 
     def add_signature(self, *_args: Any, **_kwargs: Any) -> None:
         raise NotImplementedError(
-            "PDDocument.add_signature — pdmodel cluster #10 (signatures)"
+            "Signature creation deferred — PDSignature.verify works for "
+            "read-side. See PRD §6.10 for the signing pipeline."
         )
 
     def import_page(self, page: PDPage) -> PDPage:
@@ -546,21 +559,28 @@ class PDDocument:
         return value
 
     def get_resource_cache(self) -> Any:
-        raise NotImplementedError(
-            "PDDocument.get_resource_cache requires ResourceCache — "
-            "pdmodel cluster #3 (XObject)"
-        )
+        """Return the document's :class:`PDResourceCache`, lazily allocating
+        a :class:`DefaultResourceCache` on first access. Mirrors upstream
+        ``PDDocument.getResourceCache``."""
+        if self._resource_cache is None:
+            from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 
-    def set_resource_cache(self, _cache: Any) -> None:
-        raise NotImplementedError(
-            "PDDocument.set_resource_cache — pdmodel cluster #3"
-        )
+            self._resource_cache = DefaultResourceCache()
+        return self._resource_cache
 
-    def register_true_type_font_for_closing(self, _font: Any) -> None:
-        raise NotImplementedError(
-            "PDDocument.register_true_type_font_for_closing — "
-            "pdmodel cluster #4 (fonts)"
-        )
+    def set_resource_cache(self, cache: Any) -> None:
+        """Install a custom :class:`PDResourceCache` (or ``None`` to disable
+        caching). Subsequent ``get_resource_cache`` calls return whatever
+        was passed in — no lazy re-allocation when ``None``."""
+        self._resource_cache = cache
+
+    def register_true_type_font_for_closing(self, font: Any) -> None:
+        """Register ``font`` to be closed when the document closes. Lite
+        stub — Python GC handles TTF lifetimes for us, so this method just
+        appends to an internal list without driving any teardown. Provided
+        to keep the upstream API surface complete; full lifecycle
+        management lands when font subsetting does (see ``CHANGES.md``)."""
+        self._fonts_to_close.append(font)
 
     def save_incremental_for_external_signing(self, _output: Any) -> Any:
         raise NotImplementedError(

@@ -170,6 +170,7 @@ class COSWriter(ICOSVisitor):
         incremental_input: RandomAccessRead | None = None,
         xref_stream: bool = False,
         object_stream: bool = False,
+        hybrid_xref: bool = False,
     ) -> None:
         self._output = output
         self._incremental_update = incremental
@@ -182,6 +183,13 @@ class COSWriter(ICOSVisitor):
         # reference stream), pack non-stream indirect objects into ObjStm
         # streams to shrink the output.
         self._object_stream: bool = object_stream
+        # PDF 32000-1 §7.5.8.4 hybrid layout — emit BOTH a traditional
+        # ``xref`` table and a parallel ``/Type /XRef`` stream, with the
+        # trailer announcing the latter via ``/XRefStm <offset>``. Old
+        # PDF-1.4 readers see the traditional table; modern readers prefer
+        # the stream. Mutually exclusive with plain xref-stream output —
+        # hybrid wins when both are set since it is a strict superset.
+        self._hybrid_xref: bool = hybrid_xref
         # Populated during xref-stream mode by ``_pack_object_streams`` —
         # maps id(actual COSBase) → (objstm_obj_num, index_in_objstm) so
         # ``_do_write_xref_stream`` knows which entries should be written
@@ -212,6 +220,11 @@ class COSWriter(ICOSVisitor):
 
         # writer state — mirrors private fields on the upstream class.
         self._startxref: int = 0
+        # Hybrid mode (§7.5.8.4): offset of the parallel ``/Type /XRef``
+        # stream object, captured during emit so the subsequent
+        # ``trailer`` can announce it via ``/XRefStm``. ``None`` outside
+        # hybrid mode (so a stale value never leaks into a non-hybrid save).
+        self._hybrid_xref_stm_offset: int | None = None
         self._number: int = 0
         # ``object_keys``: COSBase identity → assigned key. Identity-keyed
         # so two equal-but-distinct objects get separate keys (matches
@@ -293,6 +306,25 @@ class COSWriter(ICOSVisitor):
         promote because the user might want to flip them in either order
         and reading either getter back should be honest)."""
         self._object_stream = bool(value)
+
+    def is_hybrid_xref_output(self) -> bool:
+        """``True`` if the writer will emit a hybrid layout (PDF 32000-1
+        §7.5.8.4): both a traditional ``xref`` table and a parallel
+        ``/Type /XRef`` stream, linked from the trailer via ``/XRefStm``."""
+        return self._hybrid_xref
+
+    def set_hybrid_xref(self, value: bool) -> None:
+        """Toggle hybrid xref output. When ``True``, the writer emits the
+        body, then a ``/Type /XRef`` stream as a normal indirect object,
+        then the traditional ``xref`` keyword + table covering ALL objects
+        (including the xref stream itself), then the ``trailer`` with
+        ``/XRefStm <offset>`` pointing at the xref stream, and finally
+        ``startxref <offset_of_traditional_xref>`` so legacy readers find
+        the table while modern readers can prefer the stream.
+
+        Mutually exclusive with :py:meth:`set_xref_stream` — when both are
+        on, hybrid wins (it is a superset behavior)."""
+        self._hybrid_xref = bool(value)
 
     def write(self, document: Any) -> None:
         """Emit ``document`` end-to-end as a self-contained PDF.
@@ -482,7 +514,19 @@ class COSWriter(ICOSVisitor):
 
     def visit_from_document(self, doc: COSDocument) -> Any:
         self._do_write_header(doc)
-        if self._xref_stream:
+        if self._hybrid_xref:
+            # Hybrid layout (PDF 32000-1 §7.5.8.4): emit the body, then a
+            # ``/Type /XRef`` stream as a normal indirect object, then the
+            # traditional ``xref`` table covering ALL objects (including
+            # the xref stream itself), then a ``trailer`` carrying
+            # ``/XRefStm <xref_stream_offset>``. ``startxref`` points at
+            # the traditional xref so legacy PDF-1.4 readers find it
+            # first; modern readers see /XRefStm and prefer the stream.
+            self._do_write_body(doc)
+            self._do_write_xref_stream(doc, in_hybrid=True)
+            self._do_write_xref_table()
+            self._do_write_trailer(doc, xref_stm_offset=self._hybrid_xref_stm_offset)
+        elif self._xref_stream:
             # xref-stream / object-stream output path — emit the body,
             # then a single ``/Type /XRef`` indirect object that subsumes
             # the trailer (PDF 32000-1 §7.5.8.4 — "the trailer dictionary
@@ -1234,7 +1278,9 @@ class COSWriter(ICOSVisitor):
         # threads it through the encryption pipeline if active.
         self._do_write_object(objstm)
 
-    def _do_write_xref_stream(self, doc: COSDocument) -> None:
+    def _do_write_xref_stream(
+        self, doc: COSDocument, *, in_hybrid: bool = False
+    ) -> None:
         """Emit the xref stream that subsumes the trailer (§7.5.8).
 
         Workflow:
@@ -1247,14 +1293,28 @@ class COSWriter(ICOSVisitor):
         6. emit it as a normal indirect object — the existing
            ``visit_from_stream`` path runs FlateDecode + the encryption
            pipeline (if active) for us.
+
+        When ``in_hybrid`` is ``True`` (PDF 32000-1 §7.5.8.4 hybrid layout):
+
+        * skip the gap-filling pass (the subsequent traditional xref
+          table emit will run it itself, and double-running would emit
+          duplicate free-list entries),
+        * publish the xref stream's offset into
+          ``self._hybrid_xref_stm_offset`` instead of clobbering
+          ``self._startxref`` (which must end up pointing at the
+          *traditional* xref table for legacy readers).
         """
         out = self._standard_output
 
         # 1. Fresh number for the xref stream object.
         xref_key = self._mint_fresh_object_key()
 
-        # 2. Mandatory free-list head + any gaps.
-        self._fill_gaps_with_free_entries()
+        # 2. Mandatory free-list head + any gaps. In hybrid mode the
+        # subsequent traditional xref pass owns the gap-filling — running
+        # it here too would double-add free-list entries and inflate the
+        # eventual ``xref`` section.
+        if not in_hybrid:
+            self._fill_gaps_with_free_entries()
 
         # 3. Build the table of (objnum, type, field2, field3) tuples.
         # Type 0 = free (next-free, gen)
@@ -1364,7 +1424,14 @@ class COSWriter(ICOSVisitor):
         # — required because the xref stream itself MUST be encrypted in
         # encrypted documents (per ISO 32000-1 §7.5.8.2 the entire stream
         # body is encrypted just like any other COSStream).
-        self._startxref = xref_offset
+        #
+        # Hybrid mode: ``startxref`` belongs to the traditional table that
+        # will be emitted next, so stash the stream offset for the trailer
+        # to publish via /XRefStm and leave ``_startxref`` alone.
+        if in_hybrid:
+            self._hybrid_xref_stm_offset = xref_offset
+        else:
+            self._startxref = xref_offset
         self._do_write_object(xref_stream)
 
     @staticmethod
@@ -1389,7 +1456,9 @@ class COSWriter(ICOSVisitor):
 
     # ---------- trailer ----------
 
-    def _do_write_trailer(self, doc: COSDocument) -> None:
+    def _do_write_trailer(
+        self, doc: COSDocument, *, xref_stm_offset: int | None = None
+    ) -> None:
         out = self._standard_output
         out.write(TRAILER)
         out.write_eol()
@@ -1405,6 +1474,17 @@ class COSWriter(ICOSVisitor):
             trailer.set_int(COSName.SIZE, 1)  # type: ignore[attr-defined]
         # Cluster #1 is full-save; clear /Prev so we don't claim incremental.
         trailer.remove_item(COSName.PREV)  # type: ignore[attr-defined]
+
+        # Hybrid layout (§7.5.8.4): announce the parallel xref stream's
+        # offset via /XRefStm so modern readers can use it; legacy readers
+        # ignore the key and fall back to the traditional table at
+        # ``startxref``. Outside hybrid mode we strip any stale /XRefStm
+        # the source may have carried — full-save invalidates it.
+        xref_stm_name = COSName.get_pdf_name("XRefStm")
+        if xref_stm_offset is not None:
+            trailer.set_int(xref_stm_name, xref_stm_offset)
+        else:
+            trailer.remove_item(xref_stm_name)
 
         # /ID array must be emitted inline (PDF spec calls it a direct array).
         id_arr = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))

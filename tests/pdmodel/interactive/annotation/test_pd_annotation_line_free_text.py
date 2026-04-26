@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_free_text import (
     PDAnnotationFreeText,
 )
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_line import (
     PDAnnotationLine,
+)
+from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
+    PDBorderStyleDictionary,
 )
 
 
@@ -150,3 +154,94 @@ def test_free_text_justification_constants() -> None:
     assert PDAnnotationFreeText.JUSTIFICATION_LEFT == 0
     assert PDAnnotationFreeText.JUSTIFICATION_CENTER == 1
     assert PDAnnotationFreeText.JUSTIFICATION_RIGHT == 2
+
+
+def test_free_text_intent_constants() -> None:
+    assert PDAnnotationFreeText.IT_FREE_TEXT_PLAIN == "FreeText"
+    assert PDAnnotationFreeText.IT_FREE_TEXT_CALLOUT == "FreeTextCallout"
+    assert PDAnnotationFreeText.IT_FREE_TEXT_TYPE_WRITER == "FreeTextTypeWriter"
+
+
+def test_free_text_callout_line_default_none() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_callout_line() is None
+
+
+def test_free_text_callout_line_round_trip_4_floats() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_callout_line([10.0, 20.0, 30.0, 40.0])
+    assert ann.get_callout_line() == [10.0, 20.0, 30.0, 40.0]
+
+
+def test_free_text_callout_line_round_trip_6_floats() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_callout_line([10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
+    assert ann.get_callout_line() == [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+
+
+def test_free_text_callout_line_clear() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_callout_line([1.0, 2.0, 3.0, 4.0])
+    ann.set_callout_line(None)
+    assert ann.get_callout_line() is None
+
+
+def test_free_text_line_ending_default_none() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_line_ending() == PDAnnotationLine.LE_NONE
+
+
+def test_free_text_line_ending_round_trip() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_line_ending(PDAnnotationLine.LE_OPEN_ARROW)
+    assert ann.get_line_ending() == "OpenArrow"
+
+
+def test_free_text_border_style_default_none() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_border_style() is None
+
+
+def test_free_text_border_style_round_trip() -> None:
+    ann = PDAnnotationFreeText()
+    bs = PDBorderStyleDictionary()
+    bs.set_width(2.0)
+    bs.set_style(PDBorderStyleDictionary.STYLE_DASHED)
+    ann.set_border_style(bs)
+    fetched = ann.get_border_style()
+    assert fetched is not None
+    assert fetched.get_width() == 2.0
+    assert fetched.get_style() == PDBorderStyleDictionary.STYLE_DASHED
+    ann.set_border_style(None)
+    assert ann.get_border_style() is None
+
+
+def test_free_text_border_effect_default_none() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_border_effect() is None
+
+
+def test_free_text_border_effect_round_trip() -> None:
+    ann = PDAnnotationFreeText()
+    be = COSDictionary()
+    be.set_name(COSName.get_pdf_name("S"), "C")
+    be.set_float(COSName.get_pdf_name("I"), 1.5)
+    ann.set_border_effect(be)
+    fetched = ann.get_border_effect()
+    assert fetched is be
+    assert fetched.get_name(COSName.get_pdf_name("S")) == "C"
+    ann.set_border_effect(None)
+    assert ann.get_border_effect() is None
+
+
+def test_free_text_rectangle_differences_default_none() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_rectangle_differences() is None
+
+
+def test_free_text_rectangle_differences_round_trip() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_rectangle_differences([10.0, 10.0, 10.0, 10.0])
+    assert ann.get_rectangle_differences() == [10.0, 10.0, 10.0, 10.0]
+    ann.set_rectangle_differences(None)
+    assert ann.get_rectangle_differences() is None
