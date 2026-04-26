@@ -148,8 +148,7 @@ def test_user_unit_round_trip() -> None:
 
 def test_stub_methods_raise() -> None:
     page = PDPage()
-    with pytest.raises(NotImplementedError):
-        page.get_annotations()
+    assert page.get_annotations() == []
     with pytest.raises(NotImplementedError):
         page.get_thumb()
     with pytest.raises(NotImplementedError):

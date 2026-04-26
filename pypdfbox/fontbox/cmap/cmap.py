@@ -167,6 +167,9 @@ class CMap:
         the first ``min_code_length`` bytes (Adobe Reader behavior)."""
         max_len = self._max_code_length
         min_len = self._min_code_length
+        if max_len <= 0:
+            b = self._read_one(input_stream)
+            return b if b >= 0 else 0
         bytes_buf = bytearray(max_len)
 
         # Read the initial minCodeLength bytes.

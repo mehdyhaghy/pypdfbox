@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.tools import cli
 
@@ -48,19 +47,29 @@ def test_decrypt_encrypted_returns_one(
 ) -> None:
     """Cluster #1 cannot strip real encryption — must exit 1, not crash."""
     src = tmp_path / "fake_encrypted.pdf"
-    doc = PDDocument()
-    # Stamp /Encrypt on the trailer so PDDocument.is_encrypted() returns
-    # True. The dict body is intentionally minimal — we exercise the CLI
-    # branch, not the security stack.
-    enc = COSDictionary()
-    enc.set_int(COSName.get_pdf_name("V"), 1)
-    enc.set_int(COSName.get_pdf_name("R"), 2)
-    enc.set_int(COSName.get_pdf_name("Length"), 40)
-    trailer = doc.get_document().get_trailer()
-    assert trailer is not None
-    trailer.set_item(COSName.ENCRYPT, enc)  # type: ignore[attr-defined]
-    doc.save(src)
-    doc.close()
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Count 0 /Kids [] >>\nendobj\n",
+    ]
+    data = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(len(data))
+        data.extend(obj)
+    startxref = len(data)
+    data.extend(b"xref\n0 3\n")
+    data.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        data.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    trailer = (
+        b"trailer\n"
+        b"<< /Size 3 /Root 1 0 R /Encrypt << /V 1 /R 2 /Length 40 >> >>\n"
+        b"startxref\n"
+        + str(startxref).encode("ascii")
+        + b"\n%%EOF\n"
+    )
+    data.extend(trailer)
+    src.write_bytes(bytes(data))
 
     rc = cli.run_cli(["decrypt", "-i", str(src)])
     assert rc == 1

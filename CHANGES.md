@@ -82,3 +82,33 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/contentstream/operator.py`: operands list is stored on the `Operator` instance (`get_operands()` / `set_operands()`). Upstream keeps the operand stack on `PDFStreamEngine` / `PDFStreamParser`; pypdfbox attaches operands directly to the `Operator` returned by the parser as a convenience for token consumers (the parser already does this — see `pdf_stream_parser.py`). The cached singletons returned by `Operator.get_operator(name)` for ordinary operators must therefore be treated as flyweights — do not mutate operands on a cached instance you did not just receive from the parser.
 - `pypdfbox/contentstream/operator.py`: cache uses a plain `dict` plus a `threading.Lock` instead of upstream `ConcurrentHashMap.putIfAbsent`. Functionally identical under the GIL.
 - `pypdfbox/contentstream/pd_content_stream.py`: `get_matrix()` is typed `Any` rather than `Matrix` because `pypdfbox.util.Matrix` is not yet ported (it lands with the rendering cluster). Subclasses may return a `COSArray` (the on-disk form) until then.
+
+## pdmodel cluster #3 (PDStream + XObject family)
+
+- `pypdfbox/pdmodel/common/pd_stream.py`: stream construction/output with `filters` records the `/Filter` chain but stores caller-supplied bytes as-is. Upstream writes through `COSStream.createOutputStream(filters)` and therefore encodes on write; pypdfbox defers encode-on-write until the filter encoding surface is widened. Decoding existing filtered bytes is supported through `FilterFactory`.
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: image decoding, color-space wrapping, array color spaces, and rendered image conversion are deferred to rendering / graphics-color clusters. Cluster #3 exposes image metadata, raw `/ColorSpace` names, filter access, and decoded byte streams only.
+- `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py`: `get_matrix()` returns a plain six-float list until `pypdfbox.util.Matrix` lands with the rendering cluster.
+
+## pdmodel cluster #5 lite (annotations)
+
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation.py`: factory dispatch is intentionally truncated to Link/Text/Square/Circle plus `PDAnnotationUnknown`; Widget, Markup, and heavier annotation subclasses are deferred to forms/rendering clusters.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_link.py`: action and destination accessors return raw COS objects until `PDAction` and the full `PDDestination` family land in pdmodel cluster #7.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_square_circle.py`: inherits directly from `PDAnnotation` instead of upstream `PDAnnotationMarkup`; border style, border effect, and interior color use raw COS containers until their typed wrappers land.
+
+## pdmodel cluster #7 partial (outlines / destinations / actions)
+
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/*`: outline tree/list mechanics are present, with typed destination/action accessors for the common action and destination wrappers in this cluster.
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/*`: ships named, Fit/FitB, FitH/FitBH, FitV/FitBV, and XYZ destinations. FitR and richer page-object resolution/index lookup are deferred.
+- `pypdfbox/pdmodel/interactive/action/*`: ships base/factory plus GoTo, URI, Named, Launch, RemoteGoTo, JavaScript, and Unknown wrappers. Richer actions (SubmitForm, ResetForm, ImportData, Hide, Thread, Sound, Movie, Rendition, Trans, GoToE) are deferred and currently preserve as `PDActionUnknown`.
+- `pypdfbox/pdmodel/pd_document_catalog.py`: `get_dests()` returns the raw `/Dests` dictionary until the name-tree node classes are ported.
+
+## fontbox CMap cluster
+
+- `pypdfbox/fontbox/cmap/cmap_parser.py`: predefined CMap loading currently supports only programmatic `Identity-H` and `Identity-V`; file-backed predefined CMaps such as `Adobe-Japan1-UCS2` are deferred.
+
+## tools cluster #1
+
+- `pypdfbox/tools/merge.py`: cluster #1 performs naive page-list concatenation and does not remap cross-document references such as links, named destinations, structure-tree owners, or form resources. This is replaced by `PDFMergerUtility` semantics when the multipdf cluster lands.
+- `pypdfbox/tools/split.py`: cluster #1 copies page COS dictionaries into fresh documents without remapping references to sibling pages or document-level structures.
+- `pypdfbox/tools/decrypt.py`: cluster #1 is pass-through for unencrypted PDFs and returns non-zero for encrypted inputs; real security removal depends on pdmodel cluster #10.
+- `pypdfbox/tools/version.py`: prints Python/runtime package metadata in addition to the upstream-style version string.

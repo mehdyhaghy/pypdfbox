@@ -4,6 +4,8 @@ import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDResources
+from pypdfbox.pdmodel.graphics.form import PDFormXObject
+from pypdfbox.pdmodel.graphics.image import PDImageXObject
 
 
 def test_empty_resources_has_empty_name_lists() -> None:
@@ -90,3 +92,26 @@ def test_put_places_value() -> None:
     font = COSDictionary()
     res.put(COSName.get_pdf_name("Font"), COSName.get_pdf_name("MyFont"), font)
     assert res.get_font(COSName.get_pdf_name("MyFont")) is font
+
+
+def test_get_x_object_dispatches_by_subtype() -> None:
+    res = PDResources()
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    image = COSStream()
+    image.set_name(COSName.SUBTYPE, "Image")  # type: ignore[attr-defined]
+
+    form_name = res.add(COSName.get_pdf_name("XObject"), form)
+    image_name = res.add(COSName.get_pdf_name("XObject"), image)
+
+    assert isinstance(res.get_x_object(form_name), PDFormXObject)
+    assert isinstance(res.get_x_object(image_name), PDImageXObject)
+
+
+def test_add_x_object_uses_typed_prefixes() -> None:
+    res = PDResources()
+    form_name = res.add_x_object(PDFormXObject(COSStream()))
+    image_name = res.add_x_object(PDImageXObject(COSStream()))
+
+    assert form_name.get_name() == "Form0"
+    assert image_name.get_name() == "Im0"

@@ -21,6 +21,9 @@ _PAGE_LAYOUT: COSName = COSName.get_pdf_name("PageLayout")
 _PAGE_MODE: COSName = COSName.get_pdf_name("PageMode")
 _PAGE_LABELS: COSName = COSName.get_pdf_name("PageLabels")
 _VIEWER_PREFERENCES: COSName = COSName.get_pdf_name("ViewerPreferences")
+_OUTLINES: COSName = COSName.get_pdf_name("Outlines")
+_OPEN_ACTION: COSName = COSName.get_pdf_name("OpenAction")
+_DESTS: COSName = COSName.get_pdf_name("Dests")
 
 
 class PDDocumentCatalog:
@@ -146,10 +149,20 @@ class PDDocumentCatalog:
         )
 
     def get_document_outline(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_document_outline requires PDOutlineNode — "
-            "pdmodel cluster #7"
+        from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
+            PDDocumentOutline,
         )
+
+        value = self._catalog.get_dictionary_object(_OUTLINES)
+        if isinstance(value, COSDictionary):
+            return PDDocumentOutline(value)
+        return None
+
+    def set_document_outline(self, outline: Any) -> None:
+        if outline is None:
+            self._catalog.remove_item(_OUTLINES)
+            return
+        self._catalog.set_item(_OUTLINES, outline.get_cos_object())
 
     def get_metadata(self) -> Any:
         raise NotImplementedError(
@@ -169,16 +182,27 @@ class PDDocumentCatalog:
         )
 
     def get_dests(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_dests requires PDDestinationNameTreeNode — "
-            "pdmodel cluster #7"
-        )
+        value = self._catalog.get_dictionary_object(_DESTS)
+        return value if isinstance(value, COSDictionary) else None
 
     def get_open_action(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_open_action requires PDDestination/PDAction — "
-            "pdmodel cluster #7"
+        from pypdfbox.pdmodel.interactive.action import PDAction
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestination,
         )
+
+        value = self._catalog.get_dictionary_object(_OPEN_ACTION)
+        if isinstance(value, COSDictionary):
+            return PDAction.create(value)
+        if isinstance(value, (COSArray, COSName, COSString)):
+            return PDDestination.create(value)
+        return None
+
+    def set_open_action(self, action: Any) -> None:
+        if action is None:
+            self._catalog.remove_item(_OPEN_ACTION)
+            return
+        self._catalog.set_item(_OPEN_ACTION, action.get_cos_object())
 
     def get_viewer_preferences(self) -> PDViewerPreferences | None:
         """Return the catalog's ``/ViewerPreferences`` wrapped, or ``None``

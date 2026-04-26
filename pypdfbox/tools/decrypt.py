@@ -19,7 +19,6 @@ Exit codes follow upstream: 0 success, 1 not-encrypted-or-no-permission
 from __future__ import annotations
 
 import argparse
-import os
 import tempfile
 from pathlib import Path
 
@@ -72,5 +71,20 @@ def run(args: argparse.Namespace) -> int:
         # write happens through the same code path so callers get a
         # consistent file regardless.
         doc.set_all_security_to_be_removed(True)
-        doc.save(out)
+        if out == src:
+            with tempfile.NamedTemporaryFile(
+                dir=src.parent,
+                prefix=f".{src.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as tmp:
+                tmp_path = Path(tmp.name)
+            try:
+                doc.save(tmp_path)
+                tmp_path.replace(src)
+            finally:
+                if tmp_path.exists():
+                    tmp_path.unlink()
+        else:
+            doc.save(out)
     return 0

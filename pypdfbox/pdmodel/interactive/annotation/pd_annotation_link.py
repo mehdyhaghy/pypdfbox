@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
 from .pd_annotation import PDAnnotation
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.action import PDAction
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 
 _A: COSName = COSName.get_pdf_name("A")
 _DEST: COSName = COSName.get_pdf_name("Dest")
@@ -16,11 +22,7 @@ class PDAnnotationLink(PDAnnotation):
     ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink``.
 
     Either ``/A`` (action) or ``/Dest`` (destination) carries the target —
-    not both, per PDF 32000-1:2008 §12.5.6.5. Upstream returns typed
-    ``PDAction`` / ``PDDestination`` wrappers; cluster #5 lite returns the
-    raw ``COSDictionary`` / ``COSArray`` / ``COSName`` because those typed
-    wrappers belong to pdmodel cluster #7 (actions) and the destinations
-    cluster. See ``CHANGES.md``.
+    not both, per PDF 32000-1:2008 §12.5.6.5.
     """
 
     SUB_TYPE: str = "Link"
@@ -37,35 +39,41 @@ class PDAnnotationLink(PDAnnotation):
 
     # ---------- /A (action) ----------
 
-    def get_action(self) -> COSDictionary | None:
-        """Return the raw action dictionary. Replace with a typed
-        ``PDAction`` once pdmodel cluster #7 lands."""
+    def get_action(self) -> PDAction | None:
+        from pypdfbox.pdmodel.interactive.action import PDAction
+
         value = self._dict.get_dictionary_object(_A)
         if isinstance(value, COSDictionary):
-            return value
+            return PDAction.create(value)
         return None
 
-    def set_action(self, action: COSDictionary | None) -> None:
+    def set_action(self, action: PDAction | COSDictionary | None) -> None:
         if action is None:
             self._dict.remove_item(_A)
             return
-        self._dict.set_item(_A, action)
+        self._dict.set_item(
+            _A,
+            action.get_cos_object() if hasattr(action, "get_cos_object") else action,
+        )
 
     # ---------- /Dest (destination) ----------
 
-    def get_destination(self) -> COSBase | None:
-        """Return the raw destination — may be a ``COSArray`` (explicit
-        destination), ``COSName`` (named destination), or ``COSString``
-        (byte-string named destination). PDDestination wrapper lands with
-        the destinations port."""
-        value = self._dict.get_dictionary_object(_DEST)
-        return value
+    def get_destination(self) -> PDDestination | None:
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestination,
+        )
 
-    def set_destination(self, dest: COSBase | None) -> None:
+        value = self._dict.get_dictionary_object(_DEST)
+        return PDDestination.create(value)
+
+    def set_destination(self, dest: PDDestination | COSBase | None) -> None:
         if dest is None:
             self._dict.remove_item(_DEST)
             return
-        self._dict.set_item(_DEST, dest)
+        self._dict.set_item(
+            _DEST,
+            dest.get_cos_object() if hasattr(dest, "get_cos_object") else dest,
+        )
 
     # ---------- /H (highlight mode) ----------
 

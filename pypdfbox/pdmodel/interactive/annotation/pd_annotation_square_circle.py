@@ -89,6 +89,11 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         if annotation_dict is None:
             super().__init__(self.SUB_TYPE)
+        elif not isinstance(annotation_dict, COSDictionary):
+            raise TypeError(
+                "PDAnnotationSquare requires a COSDictionary or None; got "
+                f"{type(annotation_dict).__name__}"
+            )
         else:
             super().__init__(annotation_dict)
 
@@ -101,6 +106,11 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         if annotation_dict is None:
             super().__init__(self.SUB_TYPE)
+        elif not isinstance(annotation_dict, COSDictionary):
+            raise TypeError(
+                "PDAnnotationCircle requires a COSDictionary or None; got "
+                f"{type(annotation_dict).__name__}"
+            )
         else:
             super().__init__(annotation_dict)
 

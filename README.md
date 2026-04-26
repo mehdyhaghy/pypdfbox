@@ -71,8 +71,11 @@ Phase 1 (read/write core): `io` → `cos` → `pdfparser` → `pdfwriter`.
 | `io` | ✅ complete (read/write ABCs, BytesIO/file/mmap/view adapters, ScratchFile, MemoryUsageSetting, IOUtils) |
 | `cos` | ✅ complete (visitor + leaf primitives + COSNumber + containers + COSObject/Key + COSStream + COSDocument) |
 | `pdfparser` | in progress (#1 BaseParser, #2 COSParser, #3 XrefTrailerResolver + PDFParser, #6 PDFStreamParser; #4 xref-streams / #5 malformed recovery deferred) |
-| `pdfwriter` | not started |
+| `pdfwriter` | in progress (full save, incremental save, ContentStreamWriter; xref streams / object streams deferred) |
 | `filter` | in progress (FlateDecode, ASCIIHexDecode, ASCII85Decode, RunLengthDecode, LZWDecode; DCT / CCITT / JPX / JBIG2 deferred) |
+| `pdmodel` | in progress (document/page/resources/info/viewer prefs/page labels, PDStream/XObjects, annotation lite, outline/action/destination partial) |
+| `fontbox` | in progress (TTF tables, encodings/glyph list, CMap parser; CFF/Type1, GSUB/GPOS, subsetting deferred) |
+| `tools` | in progress (info, merge, split, version, decrypt cluster #1) |
 
 ## Development
 

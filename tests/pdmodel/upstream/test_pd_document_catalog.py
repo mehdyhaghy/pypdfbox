@@ -8,18 +8,23 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox import PDDocument
+from pypdfbox.cos import COSBoolean, COSName
 
 
 # ``retrievePageLabels`` and ``retrievePageLabelsOnMalformedPdf`` — need
 # the upstream test_pagelabels.pdf / badpagelabels.pdf fixtures. PDPageLabels
 # itself shipped in pdmodel cluster #2; same label generator is exercised
 # synthetically in ``tests/pdmodel/test_pd_page_labels.py``.
-@pytest.mark.skip(reason="needs test_pagelabels.pdf fixture; logic covered by hand-written test_pd_page_labels.py")
+@pytest.mark.skip(
+    reason="needs test_pagelabels.pdf fixture; covered by test_pd_page_labels.py"
+)
 def test_retrieve_page_labels() -> None:  # pragma: no cover
     pass
 
 
-@pytest.mark.skip(reason="needs badpagelabels.pdf fixture; tolerant traversal covered synthetically")
+@pytest.mark.skip(
+    reason="needs badpagelabels.pdf fixture; tolerant traversal covered synthetically"
+)
 def test_retrieve_page_labels_on_malformed_pdf() -> None:  # pragma: no cover
     pass
 
@@ -39,11 +44,15 @@ def test_handle_output_intents() -> None:  # pragma: no cover
     pass
 
 
-# ``handleBooleanInOpenAction`` — needs catalog ``get_open_action`` typed
-# accessor (pdmodel cluster #7).
-@pytest.mark.skip(reason="needs PDDestination/PDAction get_open_action — pdmodel cluster #7")
-def test_handle_boolean_in_open_action() -> None:  # pragma: no cover
-    pass
+def test_handle_boolean_in_open_action() -> None:
+    """``handleBooleanInOpenAction`` — malformed boolean must not crash."""
+    with PDDocument() as doc:
+        catalog = doc.get_document_catalog()
+        catalog.get_cos_object().set_item(
+            COSName.get_pdf_name("OpenAction"),
+            COSBoolean.TRUE,
+        )
+        assert catalog.get_open_action() is None
 
 
 # ``testNullThreads`` — needs catalog ``get_threads`` (article threads —

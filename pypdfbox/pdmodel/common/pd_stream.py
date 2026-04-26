@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import io
 from collections.abc import Iterable, Sequence
+from contextlib import suppress
 from typing import TYPE_CHECKING, BinaryIO
 
-from pypdfbox.cos import COSArray, COSBase, COSDocument, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDocument, COSName, COSStream
 from pypdfbox.filter import FilterFactory
 
 if TYPE_CHECKING:
@@ -50,6 +51,8 @@ class PDStream:
 
         if document_or_stream is None:
             self._stream: COSStream = COSStream()
+            if input_data is not None:
+                self._embed(input_data, filters)
         elif isinstance(document_or_stream, COSStream):
             if input_data is not None:
                 raise TypeError(
@@ -58,7 +61,12 @@ class PDStream:
                 )
             self._stream = document_or_stream
         elif isinstance(document_or_stream, (PDDocument, COSDocument)):
-            self._stream = COSStream()
+            cos_doc = (
+                document_or_stream.get_document()
+                if isinstance(document_or_stream, PDDocument)
+                else document_or_stream
+            )
+            self._stream = COSStream(cos_doc.scratch_file)
             if input_data is not None:
                 self._embed(input_data, filters)
         else:
@@ -89,10 +97,8 @@ class PDStream:
         else:
             data = input_data.read()
             if hasattr(input_data, "close"):
-                try:
+                with suppress(Exception):
                     input_data.close()
-                except Exception:  # noqa: BLE001 — match upstream's "close quietly"
-                    pass
         self._stream.set_raw_data(data)
         if filters is not None:
             self._stream.set_item(_FILTER, filters)
@@ -107,9 +113,10 @@ class PDStream:
     def create_output_stream(self, filter: COSName | None = None) -> BinaryIO:  # noqa: A002
         """Writable stream — on close, its contents become the body. If
         ``filter`` is supplied, it's recorded on ``/Filter`` (encoding
-        itself is filter-cluster #2 territory; today ``COSStream`` raises
-        ``NotImplementedError`` if a filter is passed through to it)."""
-        return self._stream.create_output_stream(filter)
+        itself is deferred; callers must write already-encoded bytes)."""
+        if filter is not None:
+            self._stream.set_item(_FILTER, filter)
+        return self._stream.create_raw_output_stream()
 
     # ---------- input streams ----------
 
@@ -159,7 +166,10 @@ class PDStream:
 
     def get_length(self) -> int:
         """``/Length`` — encoded body length. Returns 0 when absent."""
-        return self._stream.get_int(_LENGTH, 0)
+        length = self._stream.get_int(_LENGTH, -1)
+        if length >= 0:
+            return length
+        return self._stream.get_length()
 
     def get_decoded_stream_length(self) -> int:
         """``/DL`` — decoded body length hint (may be absent → -1)."""

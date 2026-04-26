@@ -48,6 +48,9 @@ class CMapParser:
         previous_token: object = None
         token = self._parse_next_token(ras)
         while token is not None:
+            if isinstance(token, str) and token.startswith("%"):
+                token = self._parse_next_token(ras)
+                continue
             if isinstance(token, _Operator):
                 op = token.op
                 if op == "endcmap":
@@ -175,7 +178,8 @@ class CMapParser:
                 result.add_base_font_character(input_code, nxt.name)
             else:
                 raise OSError(
-                    f"Error parsing CMap beginbfchar, expected{{COSString or COSName}} and not {nxt!r}"
+                    "Error parsing CMap beginbfchar, expected"
+                    f"{{COSString or COSName}} and not {nxt!r}"
                 )
 
     def _parse_begincidrange(
@@ -243,7 +247,7 @@ class CMapParser:
             if isinstance(nxt, list):
                 # Array-form bfrange: [<u1> <u2> ...] one entry per code.
                 array: list[bytes] = [bytes(x) for x in nxt if isinstance(x, (bytes, bytearray))]
-                if array and len(array) >= end - start:
+                if array and len(array) >= end - start + 1:
                     self._add_mapping_from_bfrange_list(result, start_code, array)
             elif isinstance(nxt, (bytes, bytearray)):
                 token_bytes = bytearray(nxt)
@@ -474,7 +478,7 @@ class CMapParser:
 
 
 def _is_whitespace_or_eof(b: int) -> bool:
-    return b in (-1, 0x20, 0x0D, 0x0A)
+    return b in (-1, 0x09, 0x20, 0x0D, 0x0A)
 
 
 def _is_delimiter(b: int) -> bool:

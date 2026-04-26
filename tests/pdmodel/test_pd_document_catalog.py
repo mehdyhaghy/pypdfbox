@@ -4,6 +4,9 @@ import pytest
 
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel import PDDocument, PDDocumentCatalog
+from pypdfbox.pdmodel.interactive.action import PDActionURI
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDPageXYZDestination
+from pypdfbox.pdmodel.interactive.documentnavigation.outline import PDDocumentOutline
 
 
 def test_catalog_attached_to_fresh_document() -> None:
@@ -59,12 +62,9 @@ def test_stubbed_accessors_raise() -> None:
     for stub in (
         cat.get_struct_tree_root,
         cat.get_acro_form,
-        cat.get_document_outline,
         cat.get_metadata,
         cat.get_oc_properties,
         cat.get_names,
-        cat.get_dests,
-        cat.get_open_action,
         cat.get_output_intents,
         cat.get_mark_info,
     ):
@@ -80,3 +80,34 @@ def test_get_viewer_preferences_absent_returns_none() -> None:
 def test_get_page_labels_absent_returns_none() -> None:
     doc = PDDocument()
     assert doc.get_document_catalog().get_page_labels() is None
+
+
+def test_document_outline_round_trip() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    outline = PDDocumentOutline()
+
+    catalog.set_document_outline(outline)
+    resolved = catalog.get_document_outline()
+
+    assert isinstance(resolved, PDDocumentOutline)
+    assert resolved.get_cos_object() is outline.get_cos_object()
+
+
+def test_open_action_accepts_action_or_destination() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    action = PDActionURI()
+    action.set_uri("https://example.test")
+
+    catalog.set_open_action(action)
+    resolved_action = catalog.get_open_action()
+    assert isinstance(resolved_action, PDActionURI)
+    assert resolved_action.get_uri() == "https://example.test"
+
+    dest = PDPageXYZDestination()
+    dest.set_page_number(0)
+    catalog.set_open_action(dest)
+    resolved_dest = catalog.get_open_action()
+    assert isinstance(resolved_dest, PDPageXYZDestination)
+    assert resolved_dest.get_page_number() == 0
