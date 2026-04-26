@@ -1,0 +1,66 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from pypdfbox.cos import COSDictionary, COSName
+
+from .pd_button import PDButton
+
+if TYPE_CHECKING:
+    from .pd_acro_form import PDAcroForm
+    from .pd_non_terminal_field import PDNonTerminalField
+
+_FT_KEY: COSName = COSName.get_pdf_name("FT")
+_FF: COSName = COSName.get_pdf_name("Ff")
+
+
+class PDPushButton(PDButton):
+    """``/FT /Btn`` with ``FLAG_PUSHBUTTON`` set. Mirrors PDFBox
+    ``PDPushButton``.
+
+    Push buttons do not retain a value: ``get_value`` / ``get_default_value`` /
+    ``get_value_as_string`` return empty strings, ``get_export_values`` returns
+    an empty list, and ``set_export_values`` rejects non-empty arguments per
+    upstream.
+    """
+
+    def __init__(
+        self,
+        form: PDAcroForm,
+        field: COSDictionary | None = None,
+        parent: PDNonTerminalField | None = None,
+    ) -> None:
+        new_field = field is None
+        if new_field:
+            field = COSDictionary()
+            field.set_name(_FT_KEY, self.FT)
+        super().__init__(form, field, parent)
+        if new_field:
+            self.set_field_flags(self.FLAG_PUSHBUTTON)
+
+    # ---------- upstream behavior overrides ----------
+
+    def get_value(self) -> str:
+        return ""
+
+    def get_default_value(self) -> str:
+        return ""
+
+    def get_value_as_string(self) -> str:
+        return ""
+
+    def get_export_values(self) -> list[str]:
+        return []
+
+    def set_export_values(self, values: list[str] | None) -> None:
+        if values:
+            raise ValueError(
+                "A PDPushButton shall not use the Opt entry in the field dictionary"
+            )
+        super().set_export_values(values)
+
+    def get_on_values(self) -> set[str]:
+        return set()
+
+
+__all__ = ["PDPushButton"]

@@ -28,6 +28,7 @@ _NAMES: COSName = COSName.get_pdf_name("Names")
 _STRUCT_TREE_ROOT: COSName = COSName.get_pdf_name("StructTreeRoot")
 _MARK_INFO: COSName = COSName.get_pdf_name("MarkInfo")
 _OC_PROPERTIES: COSName = COSName.get_pdf_name("OCProperties")
+_ACRO_FORM: COSName = COSName.get_pdf_name("AcroForm")
 
 
 class PDDocumentCatalog:
@@ -171,12 +172,23 @@ class PDDocumentCatalog:
             return
         self._catalog.set_item(_MARK_INFO, mark_info.get_cos_object())
 
-    # ---------- stubs for later clusters ----------
+    # ---------- /AcroForm ----------
 
     def get_acro_form(self) -> Any:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_acro_form requires PDAcroForm — pdmodel cluster #6"
-        )
+        from .interactive.form import PDAcroForm
+
+        v = self._catalog.get_dictionary_object(_ACRO_FORM)
+        if isinstance(v, COSDictionary):
+            return PDAcroForm(self._document, v)
+        return None
+
+    def set_acro_form(self, acro_form: Any) -> None:
+        if acro_form is None:
+            self._catalog.remove_item(_ACRO_FORM)
+            return
+        self._catalog.set_item(_ACRO_FORM, acro_form.get_cos_object())
+
+    # ---------- stubs for later clusters ----------
 
     def get_document_outline(self) -> Any:
         from pypdfbox.pdmodel.interactive.documentnavigation.outline import (

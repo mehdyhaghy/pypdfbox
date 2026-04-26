@@ -63,12 +63,16 @@ def test_stubbed_accessors_raise() -> None:
     doc = PDDocument()
     cat = doc.get_document_catalog()
     for stub in (
-        cat.get_acro_form,
         cat.get_metadata,
         cat.get_output_intents,
     ):
         with pytest.raises(NotImplementedError):
             stub()
+
+
+def test_get_acro_form_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_acro_form() is None
 
 
 def test_get_names_absent_returns_none() -> None:
