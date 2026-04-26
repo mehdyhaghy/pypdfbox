@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import COSBase, COSDictionary, COSName
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
 
@@ -13,6 +15,7 @@ _TU: COSName = COSName.get_pdf_name("TU")
 _TM: COSName = COSName.get_pdf_name("TM")
 _FT: COSName = COSName.get_pdf_name("FT")
 _FF: COSName = COSName.get_pdf_name("Ff")
+_AA: COSName = COSName.get_pdf_name("AA")
 _PARENT: COSName = COSName.get_pdf_name("Parent")
 
 
@@ -139,6 +142,27 @@ class PDField:
 
     def set_no_export(self, value: bool) -> None:
         self._set_flag(self.FLAG_NO_EXPORT, value)
+
+    # ---------- /AA (additional actions) ----------
+
+    def get_actions(self) -> PDFormFieldAdditionalActions | None:
+        from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+
+        value = self._field.get_dictionary_object(_AA)
+        if isinstance(value, COSDictionary):
+            return PDFormFieldAdditionalActions(value)
+        return None
+
+    def set_actions(
+        self, aa: PDFormFieldAdditionalActions | COSDictionary | None
+    ) -> None:
+        if aa is None:
+            self._field.remove_item(_AA)
+            return
+        self._field.set_item(
+            _AA,
+            aa.get_cos_object() if hasattr(aa, "get_cos_object") else aa,
+        )
 
     # ---------- abstract ----------
 

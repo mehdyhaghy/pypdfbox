@@ -62,11 +62,15 @@ def test_action_clear() -> None:
 
 
 def test_actions_aa_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+
     ann = PDAnnotationWidget()
     aa = COSDictionary()
     aa.set_name(COSName.TYPE, "AA")  # type: ignore[attr-defined]
     ann.set_actions(aa)
-    assert ann.get_actions() is aa
+    resolved = ann.get_actions()
+    assert isinstance(resolved, PDFormFieldAdditionalActions)
+    assert resolved.get_cos_object() is aa
     ann.set_actions(None)
     assert ann.get_actions() is None
 

@@ -13,6 +13,8 @@ from .pd_action_submit_form import PDActionSubmitForm
 from .pd_action_thread import PDActionThread
 from .pd_action_unknown import PDActionUnknown
 from .pd_action_uri import PDActionURI
+from .pd_annotation_additional_actions import PDAnnotationAdditionalActions
+from .pd_form_field_additional_actions import PDFormFieldAdditionalActions
 from .pd_page_additional_actions import PDPageAdditionalActions
 
 __all__ = [
@@ -29,5 +31,7 @@ __all__ = [
     "PDActionThread",
     "PDActionURI",
     "PDActionUnknown",
+    "PDAnnotationAdditionalActions",
+    "PDFormFieldAdditionalActions",
     "PDPageAdditionalActions",
 ]

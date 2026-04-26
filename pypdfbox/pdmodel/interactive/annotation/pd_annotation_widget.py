@@ -7,7 +7,10 @@ from pypdfbox.cos import COSDictionary, COSName
 from .pd_annotation import PDAnnotation
 
 if TYPE_CHECKING:
-    from pypdfbox.pdmodel.interactive.action import PDAction
+    from pypdfbox.pdmodel.interactive.action import (
+        PDAction,
+        PDFormFieldAdditionalActions,
+    )
 
 
 _H: COSName = COSName.get_pdf_name("H")
@@ -75,20 +78,25 @@ class PDAnnotationWidget(PDAnnotation):
 
     # ---------- /AA (additional actions) ----------
 
-    def get_actions(self) -> COSDictionary | None:
-        """Cluster lite stub — returns the raw additional-actions dict.
-        ``PDFormFieldAdditionalActions`` typed wrapper is deferred to a
-        later cluster."""
+    def get_actions(self) -> PDFormFieldAdditionalActions | None:
+        """Widget ``/AA`` holds form-field actions (PDF 32000-1 Table 196)."""
+        from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+
         value = self._dict.get_dictionary_object(_AA)
         if isinstance(value, COSDictionary):
-            return value
+            return PDFormFieldAdditionalActions(value)
         return None
 
-    def set_actions(self, actions: COSDictionary | None) -> None:
+    def set_actions(
+        self, actions: PDFormFieldAdditionalActions | COSDictionary | None
+    ) -> None:
         if actions is None:
             self._dict.remove_item(_AA)
             return
-        self._dict.set_item(_AA, actions)
+        self._dict.set_item(
+            _AA,
+            actions.get_cos_object() if hasattr(actions, "get_cos_object") else actions,
+        )
 
     # ---------- /BS (border style) ----------
 
