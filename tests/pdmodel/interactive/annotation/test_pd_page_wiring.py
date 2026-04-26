@@ -12,6 +12,7 @@ from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotationSquare,
     PDAnnotationText,
     PDAnnotationUnknown,
+    PDAnnotationWidget,
 )
 
 
@@ -35,8 +36,7 @@ def test_page_get_annotations_dispatches_per_subtype() -> None:
     assert isinstance(result[1], PDAnnotationText)
     assert isinstance(result[2], PDAnnotationSquare)
     assert isinstance(result[3], PDAnnotationCircle)
-    # Widget + Unknownish both fall through to PDAnnotationUnknown.
-    assert isinstance(result[4], PDAnnotationUnknown)
+    assert isinstance(result[4], PDAnnotationWidget)
     assert isinstance(result[5], PDAnnotationUnknown)
 
 

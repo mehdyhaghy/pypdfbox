@@ -120,6 +120,7 @@ class PDAnnotation:
         )
         from .pd_annotation_text import PDAnnotationText
         from .pd_annotation_unknown import PDAnnotationUnknown
+        from .pd_annotation_widget import PDAnnotationWidget
 
         subtype = cos_dict.get_name(_SUBTYPE)
         if subtype is None:
@@ -132,6 +133,8 @@ class PDAnnotation:
             return PDAnnotationSquare(cos_dict)
         if subtype == PDAnnotationCircle.SUB_TYPE:
             return PDAnnotationCircle(cos_dict)
+        if subtype == PDAnnotationWidget.SUB_TYPE:
+            return PDAnnotationWidget(cos_dict)
         return PDAnnotationUnknown(cos_dict)
 
     # ---------- /Rect ----------

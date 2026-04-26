@@ -9,6 +9,7 @@ from .pd_annotation_square_circle import (
 )
 from .pd_annotation_text import PDAnnotationText
 from .pd_annotation_unknown import PDAnnotationUnknown
+from .pd_annotation_widget import PDAnnotationWidget
 
 __all__ = [
     "PDAnnotation",
@@ -18,4 +19,5 @@ __all__ = [
     "PDAnnotationSquareCircle",
     "PDAnnotationText",
     "PDAnnotationUnknown",
+    "PDAnnotationWidget",
 ]

@@ -84,12 +84,13 @@ def test_create_unknown_for_missing_subtype() -> None:
 
 
 def test_create_unknown_for_unsupported_subtype() -> None:
-    # Widget falls back in cluster #5 lite — see CHANGES.md.
+    # Highlight + other markup annotations still fall back to Unknown
+    # until the markup-annotation cluster lands.
     d = COSDictionary()
-    d.set_name(COSName.SUBTYPE, "Widget")  # type: ignore[attr-defined]
+    d.set_name(COSName.SUBTYPE, "Highlight")  # type: ignore[attr-defined]
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationUnknown)
-    assert ann.get_subtype() == "Widget"
+    assert ann.get_subtype() == "Highlight"
 
 
 def test_create_rejects_non_dict() -> None:
