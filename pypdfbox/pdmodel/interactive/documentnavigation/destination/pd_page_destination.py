@@ -42,14 +42,22 @@ class PDPageDestination(PDDestination):
     def set_page_number(self, page_number: int) -> None:
         self._array.set(0, COSInteger.get(page_number))
 
-    def find_page_number(self) -> int:
-        """0-based page index when ``/D[0]`` is a COSInteger; ``-1`` otherwise.
-        Lite scope: page-dict resolution against the document's page tree
-        (when ``/D[0]`` is an indirect ref to a Page) is deferred."""
-        return self.get_page_number()
+    def find_page_number(self, document=None) -> int:
+        """0-based page index when /D[0] is a COSInteger; otherwise resolves
+        /D[0] (a Page dict ref) against ``document``'s page tree by identity.
+        Returns ``-1`` when ``/D[0]`` is a Page ref but no document is supplied
+        or the page can't be located.
+        """
+        page = self._array.get_object(0)
+        if isinstance(page, COSInteger):
+            return page.value
+        if isinstance(page, COSDictionary) and document is not None:
+            from pypdfbox.pdmodel.pd_page import PDPage
+            return document.get_pages().index_of(PDPage(page))
+        return -1
 
-    def retrieve_page_number(self) -> int:
-        return self.find_page_number()
+    def retrieve_page_number(self, document=None) -> int:
+        return self.find_page_number(document)
 
     def get_type(self) -> str | None:
         return self._array.get_name(1)

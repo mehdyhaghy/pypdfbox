@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDResources
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
@@ -75,16 +73,13 @@ def test_get_xobject_missing_returns_none() -> None:
     assert res.get_xobject(COSName.get_pdf_name("NoSuchKey")) is None
 
 
-def test_typed_accessor_stubs_raise() -> None:
+def test_typed_accessors_return_none_when_missing() -> None:
     res = PDResources()
-    with pytest.raises(NotImplementedError):
-        res.get_color_space(COSName.get_pdf_name("CS0"))
-    with pytest.raises(NotImplementedError):
-        res.get_pattern(COSName.get_pdf_name("P0"))
-    with pytest.raises(NotImplementedError):
-        res.get_shading(COSName.get_pdf_name("Sh0"))
-    with pytest.raises(NotImplementedError):
-        res.get_ext_gstate(COSName.get_pdf_name("GS0"))
+    assert res.get_color_space(COSName.get_pdf_name("CS0")) is None
+    assert res.get_pattern(COSName.get_pdf_name("P0")) is None
+    assert res.get_shading(COSName.get_pdf_name("Sh0")) is None
+    assert res.get_ext_gstate(COSName.get_pdf_name("GS0")) is None
+    assert res.get_property_list(COSName.get_pdf_name("MC0")) is None
 
 
 def test_put_places_value() -> None:

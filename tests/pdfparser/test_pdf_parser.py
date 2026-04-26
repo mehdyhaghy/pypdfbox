@@ -222,11 +222,13 @@ def test_xref_entry_with_unknown_flag_raises() -> None:
         PDFParser(RandomAccessReadBuffer(bytes(out))).parse()
 
 
-def test_xref_stream_form_raises_not_implemented() -> None:
+def test_xref_stream_malformed_dict_raises() -> None:
     """If the byte at the xref offset isn't 'x' (i.e. isn't 'xref'), we
-    treat it as an xref stream and defer to cluster #4."""
+    treat it as an xref stream. A malformed body (missing /Length, /W,
+    etc.) must surface as ``PDFParseError``; the cluster-#4 decoder
+    refuses to silently accept a truncated record."""
     pdf = b"%PDF-1.5\n1 0 obj\n<< /Type /XRef >>\nstream\nendstream\nendobj\nstartxref\n9\n%%EOF"
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(PDFParseError):
         PDFParser(RandomAccessReadBuffer(pdf)).parse()
 
 

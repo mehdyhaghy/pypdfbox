@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import sys
 
-from pypdfbox.cos import COSStream
+from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.text import PDFTextStripper, TextPosition
 
 
@@ -237,6 +238,91 @@ def test_process_page_extracts_single_page() -> None:
 # ---------------------------------------------------------------------------
 # custom separators
 # ---------------------------------------------------------------------------
+
+
+def _attach_to_unicode_font(
+    page: PDPage, font_name: str, cmap_body: bytes
+) -> None:
+    """Wire ``page.Resources.Font.<font_name>`` to a ``Type0`` font dict
+    whose ``/ToUnicode`` is a stream carrying ``cmap_body``.
+
+    The font subtype is irrelevant to the stripper's lookup path — only
+    ``/ToUnicode`` is consulted — but we set it to ``Type0`` for realism.
+    """
+    to_unicode = COSStream()
+    to_unicode.set_data(cmap_body)
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Type0"))
+    font_dict.set_item(COSName.get_pdf_name("ToUnicode"), to_unicode)
+    resources = PDResources()
+    resources.put(
+        COSName.get_pdf_name("Font"),
+        COSName.get_pdf_name(font_name),
+        font_dict,
+    )
+    page.set_resources(resources)
+
+
+# Minimal ToUnicode CMap mapping byte 0x01 -> 'α' (U+03B1).
+_ONE_BYTE_CMAP = (
+    b"/CIDInit /ProcSet findresource begin\n"
+    b"12 dict begin\n"
+    b"begincmap\n"
+    b"1 begincodespacerange <00> <FF> endcodespacerange\n"
+    b"1 beginbfchar <01> <03B1> endbfchar\n"
+    b"endcmap\n"
+)
+
+# 2-byte CID-style ToUnicode CMap mapping <0001> -> U+03B1.
+_TWO_BYTE_CMAP = (
+    b"/CIDInit /ProcSet findresource begin\n"
+    b"12 dict begin\n"
+    b"begincmap\n"
+    b"1 begincodespacerange <0000> <FFFF> endcodespacerange\n"
+    b"1 beginbfchar <0001> <03B1> endbfchar\n"
+    b"endcmap\n"
+)
+
+
+def test_get_text_to_unicode_one_byte_cmap() -> None:
+    """A page whose font has a /ToUnicode CMap mapping byte 0x01 -> 'α'
+    should decode ``(\\x01) Tj`` as ``"α"`` rather than the Latin-1
+    fallback ``"\\x01"``."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td (\x01) Tj ET"
+    )
+    _attach_to_unicode_font(page, "F0", _ONE_BYTE_CMAP)
+    s = PDFTextStripper()
+    out = s.get_text(doc)
+    assert out == "α\n"
+
+
+def test_get_text_to_unicode_two_byte_cmap() -> None:
+    """A 2-byte CID-style /ToUnicode CMap mapping <0001> -> U+03B1
+    decodes the hex-string operand ``<0001>`` as ``"α"``."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td <0001> Tj ET"
+    )
+    _attach_to_unicode_font(page, "F0", _TWO_BYTE_CMAP)
+    s = PDFTextStripper()
+    out = s.get_text(doc)
+    assert out == "α\n"
+
+
+def test_get_text_no_to_unicode_falls_back_to_latin1() -> None:
+    """Existing behaviour must be preserved: a page with no /ToUnicode
+    on the font (or no Resources at all) decodes via COSString.get_string()
+    (Latin-1 / PDFDocEncoding)."""
+    doc = PDDocument()
+    _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td (Hello) Tj ET"
+    )
+    s = PDFTextStripper()
+    out = s.get_text(doc)
+    assert out == "Hello\n"
 
 
 def test_custom_separators() -> None:

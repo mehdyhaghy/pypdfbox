@@ -3,7 +3,8 @@ from __future__ import annotations
 import sys
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSName, COSNumber, COSString
+from pypdfbox.cos import COSArray, COSName, COSNumber, COSStream, COSString
+from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
 
@@ -52,6 +53,16 @@ class PDFTextStripper:
         self._page_end: str = "\n"
         self._word_separator: str = " "
         self._line_separator: str = "\n"
+        # Per-page CMap cache + active page handle for /ToUnicode lookup.
+        # ``_cmap_cache`` keys are font resource names (the same ones the
+        # ``Tf`` operator names); the value is the parsed ``CMap`` or
+        # ``None`` when the font has no ``/ToUnicode`` entry. The cache
+        # lifetime is one ``process_page`` invocation — we reset it on
+        # entry so a fresh page's ``/Resources`` chain is consulted from
+        # scratch (font dicts may be re-defined per page).
+        self._cmap_cache: dict[str, CMap | None] = {}
+        self._active_page: PDPage | None = None
+        self._active_cmap: CMap | None = None
 
     # ---------- configuration accessors ----------
 
@@ -139,8 +150,17 @@ class PDFTextStripper:
         body = page.get_contents()
         if not body:
             return ""
-        positions = self._extract_positions(body)
-        return self._format_positions(positions)
+        # Bind the page so ``Tf`` handlers can reach ``/Resources`` for
+        # ``/ToUnicode`` lookup, and clear the per-page CMap cache.
+        self._active_page = page
+        self._cmap_cache = {}
+        self._active_cmap = None
+        try:
+            positions = self._extract_positions(body)
+            return self._format_positions(positions)
+        finally:
+            self._active_page = None
+            self._active_cmap = None
 
     # ---------- parser walk ----------
 
@@ -194,6 +214,9 @@ class PDFTextStripper:
                 size = operands[1]
                 if isinstance(name, COSName):
                     state.font_name = name.get_name()
+                    # Resolve and cache the /ToUnicode CMap (if any) so
+                    # Tj/TJ/'/" emitters can decode glyph codes.
+                    self._active_cmap = self._get_cmap_for_font(state.font_name)
                 if isinstance(size, COSNumber):
                     state.font_size = size.float_value()
         elif op == "TL":
@@ -279,7 +302,10 @@ class PDFTextStripper:
         state: _TextState,
         positions: list[TextPosition],
     ) -> None:
-        text = s.get_string()
+        if self._active_cmap is not None:
+            text = self._decode_text_via_cmap(s.get_bytes(), self._active_cmap)
+        else:
+            text = s.get_string()
         if not text:
             return
         positions.append(
@@ -313,6 +339,70 @@ class PDFTextStripper:
                 # uses this to nudge the text-x cursor so the word-gap
                 # heuristic can detect spacing inserted via ``TJ``.
                 state.text_x -= entry.float_value() * state.font_size / 1000.0
+
+    # ---------- /ToUnicode CMap helpers ----------
+
+    def _get_cmap_for_font(self, font_resource_name: str | None) -> CMap | None:
+        """Resolve and cache the parsed ``/ToUnicode`` CMap for the
+        font registered as ``font_resource_name`` in the active page's
+        ``/Resources/Font`` subdictionary.
+
+        Returns ``None`` (and caches the negative result) when:
+          - no page is active, or
+          - the resources don't list this font, or
+          - the font dict has no ``/ToUnicode`` entry, or
+          - ``/ToUnicode`` isn't a stream.
+
+        ``Encoding`` / ``Differences`` based glyph→unicode resolution for
+        fonts without ``/ToUnicode`` is deferred (see ``CHANGES.md``).
+        """
+        if font_resource_name is None or self._active_page is None:
+            return None
+        cached = self._cmap_cache.get(font_resource_name)
+        if font_resource_name in self._cmap_cache:
+            return cached
+        cmap: CMap | None = None
+        try:
+            resources = self._active_page.get_resources()
+            font_dict = resources.get_font(COSName.get_pdf_name(font_resource_name))
+            if font_dict is not None:
+                to_unicode = font_dict.get_dictionary_object("ToUnicode")
+                if isinstance(to_unicode, COSStream):
+                    with to_unicode.create_input_stream() as src:
+                        cmap = CMapParser().parse(src.read())
+        except Exception:  # noqa: BLE001 — defensive: malformed CMap → no decode
+            cmap = None
+        self._cmap_cache[font_resource_name] = cmap
+        return cmap
+
+    @staticmethod
+    def _decode_text_via_cmap(text_bytes: bytes, cmap: CMap) -> str:
+        """Walk ``text_bytes`` consuming codes whose width is governed by
+        the CMap's codespace ranges, look each up via ``cmap.to_unicode``,
+        and concatenate. Codes with no Unicode mapping are skipped.
+
+        Mirrors PDFBox's ``PDFont.encode``/``readCode`` loop, simplified
+        for the lite stripper: we drive ``CMap.read_code`` directly off a
+        ``BytesIO`` rather than threading the parser through a glyph
+        positioning pass.
+        """
+        import io as _io  # noqa: PLC0415 — local: only used here
+
+        stream = _io.BytesIO(text_bytes)
+        out: list[str] = []
+        while True:
+            pos_before = stream.tell()
+            if pos_before >= len(text_bytes):
+                break
+            code = cmap.read_code(stream)
+            # Guard against zero-length reads (defensive — read_code
+            # always advances at least one byte for non-empty input).
+            if stream.tell() == pos_before:
+                break
+            piece = cmap.to_unicode(code)
+            if piece is not None:
+                out.append(piece)
+        return "".join(out)
 
     # ---------- formatting ----------
 

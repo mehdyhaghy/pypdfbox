@@ -90,12 +90,21 @@ class PDActionEmbeddedGoTo(PDAction):
         Returns the chain as a list (root first). Returns an empty list
         when ``/T`` is absent on this action.
 
-        Note: this walker does not detect cycles in malformed chains (a
-        target that ``/T``s back to an ancestor will loop forever). Cycle
-        detection and document-tree resolution are deferred."""
+        Cycle handling (soft-stop): a malformed ``/T`` chain that loops
+        back to an already-visited ``COSDictionary`` (compared by Python
+        object identity) terminates the walk after recording the current
+        step. The partial chain accumulated up to that point is returned
+        rather than raising — callers receive what we have so far instead
+        of an exception or an infinite loop."""
         steps: list[TargetStep] = []
+        visited: set[int] = set()
         current = self.get_target()
         while current is not None:
+            target_dict = current.get_cos_object()
+            target_id = id(target_dict)
+            if target_id in visited:
+                break
+            visited.add(target_id)
             relationship = current.get_relationship() or "C"
             steps.append(
                 TargetStep(

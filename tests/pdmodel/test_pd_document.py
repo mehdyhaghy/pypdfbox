@@ -200,8 +200,6 @@ def test_stubs_raise_with_cluster_pointer() -> None:
     with pytest.raises(NotImplementedError):
         doc.protect(object())
     with pytest.raises(NotImplementedError):
-        doc.import_page(PDPage())
-    with pytest.raises(NotImplementedError):
         doc.add_signature(object())
 
 
@@ -215,3 +213,104 @@ def test_construction_from_cos_document() -> None:
 def test_construction_rejects_bad_type() -> None:
     with pytest.raises(TypeError):
         PDDocument("nope")  # type: ignore[arg-type]
+
+
+# ---------- import_page (cross-document deep-copy) ----------
+
+
+def test_import_page_creates_independent_copy() -> None:
+    """Cross-document copy: the imported page wraps a fresh COSDictionary
+    that is *not* the source's underlying dict, and adds to dst's tree."""
+    src = PDDocument()
+    src.add_page(PDPage())
+    dst = PDDocument()
+    src_page = src.get_pages()[0]
+
+    imported = dst.import_page(src_page)
+
+    assert isinstance(imported, PDPage)
+    assert imported.get_cos_object() is not src_page.get_cos_object()
+    assert dst.get_number_of_pages() == 1
+    # Source must remain untouched.
+    assert src.get_number_of_pages() == 1
+
+
+def test_import_page_resources_not_shared() -> None:
+    """The /Resources dict on the imported page must be a deep copy —
+    mutating one must not bleed into the other."""
+    src = PDDocument()
+    src_page = PDPage()
+    # Force a /Resources dict so we can compare identity meaningfully.
+    src_page.set_resources(COSDictionary())
+    src.add_page(src_page)
+    dst = PDDocument()
+
+    imported = dst.import_page(src.get_pages()[0])
+
+    src_res = src.get_pages()[0].get_resources().get_cos_object()
+    dst_res = imported.get_resources().get_cos_object()
+    assert dst_res is not src_res
+    # Mutate destination — source must not see it.
+    dst_res.set_item(COSName.get_pdf_name("Marker"), COSName.get_pdf_name("X"))
+    assert not src_res.contains_key(COSName.get_pdf_name("Marker"))
+
+
+def test_import_page_drops_parent_pointer() -> None:
+    """The deep-copied page must not carry over its source /Parent — the
+    page tree's add() rewires it to dst's /Pages root."""
+    src = PDDocument()
+    src.add_page(PDPage())
+    dst = PDDocument()
+
+    imported = dst.import_page(src.get_pages()[0])
+
+    parent = imported.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Parent")
+    )
+    # /Parent is now dst's /Pages root, not src's.
+    assert parent is dst.get_pages().get_cos_object()
+    assert parent is not src.get_pages().get_cos_object()
+
+
+def test_import_page_three_pages_in_order() -> None:
+    """Importing each page of a 3-page source individually preserves order
+    and leaves dst with exactly 3 pages."""
+    src = PDDocument()
+    pages = [PDPage(), PDPage(), PDPage()]
+    for p in pages:
+        src.add_page(p)
+    dst = PDDocument()
+
+    imported = [dst.import_page(src.get_pages()[i]) for i in range(3)]
+
+    assert dst.get_number_of_pages() == 3
+    for i, ip in enumerate(imported):
+        assert dst.get_pages()[i].get_cos_object() is ip.get_cos_object()
+        # Each imported dict is a fresh copy distinct from the source.
+        assert ip.get_cos_object() is not src.get_pages()[i].get_cos_object()
+
+
+def test_import_page_copies_contents_stream_bytes() -> None:
+    """The /Contents stream body is deep-copied: the imported stream is a
+    distinct COSStream instance carrying identical raw bytes."""
+    from pypdfbox.cos import COSStream
+
+    src = PDDocument()
+    src_page = PDPage()
+    contents = COSStream()
+    contents.set_raw_data(b"q 1 0 0 1 0 0 cm Q\n")
+    src_page.set_contents(contents)
+    src.add_page(src_page)
+    dst = PDDocument()
+
+    imported = dst.import_page(src.get_pages()[0])
+
+    src_contents = src.get_pages()[0].get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Contents")
+    )
+    dst_contents = imported.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Contents")
+    )
+    assert isinstance(dst_contents, COSStream)
+    assert dst_contents is not src_contents
+    assert dst_contents.get_raw_data() == b"q 1 0 0 1 0 0 cm Q\n"

@@ -31,6 +31,8 @@ _PARENT: COSName = COSName.PARENT  # type: ignore[attr-defined]
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 _AA: COSName = COSName.get_pdf_name("AA")
+_THUMB: COSName = COSName.get_pdf_name("Thumb")
+_TRANS: COSName = COSName.get_pdf_name("Trans")
 
 
 class PDPage:
@@ -315,14 +317,32 @@ class PDPage:
     # ---------- stubs for later clusters ----------
 
     def get_thumb(self) -> Any:
-        raise NotImplementedError(
-            "PDPage.get_thumb requires PDImageXObject — pdmodel cluster #3"
-        )
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
+
+        v = self._page.get_dictionary_object(_THUMB)
+        if isinstance(v, COSStream):
+            return PDImageXObject(v)
+        return None
+
+    def set_thumb(self, thumb: Any) -> None:
+        if thumb is None:
+            self._page.remove_item(_THUMB)
+            return
+        self._page.set_item(_THUMB, thumb.get_cos_object())
 
     def get_transition(self) -> Any:
-        raise NotImplementedError(
-            "PDPage.get_transition requires PDTransition — pdmodel cluster #2"
-        )
+        from pypdfbox.pdmodel.interactive.pagenavigation import PDTransition
+
+        v = self._page.get_dictionary_object(_TRANS)
+        if isinstance(v, COSDictionary):
+            return PDTransition(v)
+        return None
+
+    def set_transition(self, trans: Any) -> None:
+        if trans is None:
+            self._page.remove_item(_TRANS)
+            return
+        self._page.set_item(_TRANS, trans.get_cos_object())
 
     def get_actions(self) -> Any:
         from pypdfbox.pdmodel.interactive.action import PDPageAdditionalActions

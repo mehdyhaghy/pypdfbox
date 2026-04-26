@@ -605,3 +605,10 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 | `pypdfbox/contentstream/operator/graphics/{invoke_named_xobject,concatenate_matrix}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/{Do,cm}.java` (lite no-op stubs) |
 | `pypdfbox/contentstream/operator/state/{set_dash_pattern,set_flatness,set_rendering_intent,set_graphics_state_parameters}.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/{d,i,ri,gs}.java` (lite no-op stubs) |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_four_colours.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDFourColours.java` |
+
+### Wave 12 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdfwriter/cos_writer.py` (xref-stream + ObjStm output) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriter.java` (writeXrefStream + COSWriterObjectStream paths) |
+| `pypdfbox/pdfparser/pdf_parser.py` (xref-stream decoder + compressed-object loader) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFXRefStreamParser.java` + `PDFObjectStreamParser.java` |

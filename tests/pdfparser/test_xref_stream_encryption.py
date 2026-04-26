@@ -164,29 +164,17 @@ def test_unencrypted_pdf_with_password_set_parses_cleanly() -> None:
     assert doc.has_object(COSObjectKey(1, 0))
 
 
-def test_xref_stream_entry_decoder_still_deferred() -> None:
-    """Parsing a real xref-stream body still belongs to parser cluster
-    #4. The encryption integration here only attaches a handler — it
-    must not silently start decoding entries.
-
-    Verifies the existing contract: an xref-stream form raises
-    ``NotImplementedError``. Without this guard a future regression
-    could let half-decoded garbage through."""
+def test_xref_stream_malformed_dict_raises_parse_error() -> None:
+    """A malformed xref stream (missing /Length, /W, etc.) must surface
+    as ``PDFParseError`` from the cluster-#4 decoder rather than be
+    silently accepted. Regression guard for the parse-vs-load boundary."""
     pdf = (
         b"%PDF-1.5\n"
         b"1 0 obj\n<< /Type /XRef >>\nstream\nendstream\nendobj\n"
         b"startxref\n9\n%%EOF"
     )
     parser = PDFParser(RandomAccessReadBuffer(pdf))
-    with pytest.raises(NotImplementedError):
+    from pypdfbox.pdfparser import PDFParseError  # noqa: PLC0415
+
+    with pytest.raises(PDFParseError):
         parser.parse()
-
-
-def test_encrypted_xref_stream_round_trip_pending_cluster_4() -> None:
-    """Full round-trip of an *encrypted* xref-stream PDF needs the
-    cluster-#4 entry decoder. Until that lands we can't synthesise the
-    fixture end-to-end. The API surface that the integration adds is
-    exercised by the other tests in this module; this placeholder keeps
-    the round-trip case visible so it isn't forgotten when cluster #4
-    arrives."""
-    pytest.skip("needs encrypted xref-stream fixture (parser cluster #4)")

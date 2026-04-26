@@ -272,6 +272,90 @@ def test_get_ranges_for_outputs_pairs_range() -> None:
     assert fn.get_ranges_for_outputs() == [(0.0, 1.0), (0.0, 0.5)]
 
 
+def _make_type0(
+    size: list[int],
+    bits: int,
+    domain: list[float],
+    rng: list[float],
+    body: bytes,
+    encode: list[float] | None = None,
+    decode: list[float] | None = None,
+    order: int | None = None,
+) -> PDFunctionType0:
+    raw = COSStream()
+    raw.set_int("FunctionType", 0)
+    size_arr = COSArray()
+    for s in size:
+        size_arr.add(COSInteger.get(s))
+    raw.set_item("Size", size_arr)
+    raw.set_int("BitsPerSample", bits)
+    domain_arr = COSArray()
+    domain_arr.set_float_array(domain)
+    raw.set_item("Domain", domain_arr)
+    range_arr = COSArray()
+    range_arr.set_float_array(rng)
+    raw.set_item("Range", range_arr)
+    if encode is not None:
+        encode_arr = COSArray()
+        encode_arr.set_float_array(encode)
+        raw.set_item("Encode", encode_arr)
+    if decode is not None:
+        decode_arr = COSArray()
+        decode_arr.set_float_array(decode)
+        raw.set_item("Decode", decode_arr)
+    if order is not None:
+        raw.set_int("Order", order)
+    raw.set_raw_data(body)
+    return PDFunctionType0(raw)
+
+
+def test_type0_eval_1d_endpoints_and_midpoint() -> None:
+    fn = _make_type0(
+        size=[3],
+        bits=8,
+        domain=[0.0, 1.0],
+        rng=[0.0, 1.0],
+        body=bytes([0x00, 0x80, 0xFF]),
+    )
+    assert fn.eval([0.0]) == pytest.approx([0.0])
+    # 0x80/0xFF = 128/255 ≈ 0.5019607
+    assert fn.eval([0.5]) == pytest.approx([0x80 / 0xFF])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+def test_type0_eval_2d_corners_and_center() -> None:
+    # 2x2 grid, samples laid out with the first dim varying fastest:
+    #   (0,0)=0x00  (1,0)=0xFF  (0,1)=0xFF  (1,1)=0x00
+    fn = _make_type0(
+        size=[2, 2],
+        bits=8,
+        domain=[0.0, 1.0, 0.0, 1.0],
+        rng=[0.0, 1.0],
+        body=bytes([0x00, 0xFF, 0xFF, 0x00]),
+    )
+    assert fn.eval([0.0, 0.0]) == pytest.approx([0.0])
+    assert fn.eval([1.0, 0.0]) == pytest.approx([1.0])
+    assert fn.eval([0.0, 1.0]) == pytest.approx([1.0])
+    assert fn.eval([1.0, 1.0]) == pytest.approx([0.0])
+    # Center: 4-corner average = (0 + 255 + 255 + 0) / 4 / 255 = 0.5
+    assert fn.eval([0.5, 0.5]) == pytest.approx([0.5])
+
+
+def test_type0_order3_falls_back_to_linear() -> None:
+    """/Order = 3 (cubic spline) is not implemented — eval falls back to
+    linear interpolation, matching the /Order = 1 result."""
+    common = dict(
+        size=[3],
+        bits=8,
+        domain=[0.0, 1.0],
+        rng=[0.0, 1.0],
+        body=bytes([0x00, 0x80, 0xFF]),
+    )
+    linear = _make_type0(**common)
+    cubic = _make_type0(**common, order=3)
+    assert cubic.eval([0.5]) == pytest.approx(linear.eval([0.5]))
+
+
 def test_type3_eval_routes_to_first_subfunction() -> None:
     # Subfunction 0: C0=[0], C1=[1], N=1 over encoded [0,1]
     sub0 = COSDictionary()
@@ -312,3 +396,91 @@ def test_type3_eval_routes_to_first_subfunction() -> None:
     # x = 0.75 falls in sub1's interval [0.5, 1.0]; mapped to 0.5; sub1
     # (linear ramp 1->0) returns 0.5.
     assert fn3.eval([0.75]) == pytest.approx([0.5])
+
+
+# ---------- Type 4 PostScript-calculator eval ----------
+
+
+def _make_type4(body: str, *,
+                domain: list[float] | None = None,
+                rng: list[float] | None = None) -> PDFunctionType4:
+    raw = COSStream()
+    raw.set_int("FunctionType", 4)
+    if domain is not None:
+        domain_arr = COSArray()
+        domain_arr.set_float_array(domain)
+        raw.set_item("Domain", domain_arr)
+    if rng is not None:
+        range_arr = COSArray()
+        range_arr.set_float_array(rng)
+        raw.set_item("Range", range_arr)
+    raw.set_data(body.encode("ascii"))
+    return PDFunctionType4(raw)
+
+
+def test_type4_eval_empty_body_echoes_input() -> None:
+    fn = _make_type4("{ }", domain=[0.0, 10.0])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+def test_type4_eval_dup_mul_squares_input() -> None:
+    fn = _make_type4("{ dup mul }", domain=[-10.0, 10.0])
+    assert fn.eval([3.0]) == pytest.approx([9.0])
+
+
+def test_type4_eval_exch_sub_abs() -> None:
+    fn = _make_type4("{ exch sub abs }", domain=[0.0, 10.0, 0.0, 10.0])
+    assert fn.eval([5.0, 3.0]) == pytest.approx([2.0])
+
+
+def test_type4_eval_geometric_mean_of_squares() -> None:
+    fn = _make_type4(
+        "{ dup mul exch dup mul add 0.5 mul }",
+        domain=[-10.0, 10.0, -10.0, 10.0],
+    )
+    assert fn.eval([3.0, 4.0]) == pytest.approx([12.5])
+
+
+def test_type4_eval_if_branch_taken() -> None:
+    # abs(x) via if: dup 0 lt {neg} if  — dup so the comparison doesn't
+    # consume the value being abs'd.
+    fn = _make_type4("{ dup 0 lt {neg} if }", domain=[-10.0, 10.0])
+    assert fn.eval([-5.0]) == pytest.approx([5.0])
+
+
+def test_type4_eval_if_branch_not_taken() -> None:
+    fn = _make_type4("{ dup 0 lt {neg} if }", domain=[-10.0, 10.0])
+    assert fn.eval([5.0]) == pytest.approx([5.0])
+
+
+def test_type4_eval_true_false_and() -> None:
+    fn = _make_type4("{ true false and }")
+    # bools coerce to 0.0/1.0 in the returned float list
+    assert fn.eval([]) == pytest.approx([0.0])
+
+
+def test_type4_eval_stack_underflow_raises() -> None:
+    fn = _make_type4("{ pop }")
+    with pytest.raises(OSError):
+        fn.eval([])
+
+
+def test_type4_eval_ifelse_picks_branch() -> None:
+    # |x| via ifelse: dup 0 lt {neg}{} ifelse
+    fn = _make_type4("{ dup 0 lt {neg}{} ifelse }", domain=[-10.0, 10.0])
+    assert fn.eval([-7.0]) == pytest.approx([7.0])
+    assert fn.eval([4.0]) == pytest.approx([4.0])
+
+
+def test_type4_eval_unknown_operator_raises() -> None:
+    fn = _make_type4("{ banana }")
+    with pytest.raises(OSError):
+        fn.eval([1.0])
+
+
+def test_type4_eval_clips_input_and_output() -> None:
+    fn = _make_type4("{ dup mul }", domain=[-2.0, 2.0], rng=[0.0, 4.0])
+    # input 5.0 clipped to 2.0 -> 4.0; output stays at 4.0
+    assert fn.eval([5.0]) == pytest.approx([4.0])
+    # input -10.0 clipped to -2.0 -> 4.0
+    assert fn.eval([-10.0]) == pytest.approx([4.0])

@@ -10,7 +10,9 @@ from pypdfbox.cos import (
     COSStream,
 )
 from pypdfbox.pdmodel import PDPage, PDRectangle
+from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
 from pypdfbox.pdmodel.interactive.action import PDActionURI, PDPageAdditionalActions
+from pypdfbox.pdmodel.interactive.pagenavigation import PDTransition
 
 
 def test_default_constructor_us_letter_media_box() -> None:
@@ -150,11 +152,33 @@ def test_user_unit_round_trip() -> None:
 def test_stub_methods_raise() -> None:
     page = PDPage()
     assert page.get_annotations() == []
-    with pytest.raises(NotImplementedError):
-        page.get_thumb()
-    with pytest.raises(NotImplementedError):
-        page.get_transition()
+    assert page.get_thumb() is None
+    assert page.get_transition() is None
     assert page.get_actions() is None
+
+
+def test_set_thumb_round_trip() -> None:
+    page = PDPage()
+    stream = COSStream()
+    stream.set_raw_data(b"fake-image-data")
+    thumb = PDImageXObject(stream)
+    page.set_thumb(thumb)
+    resolved = page.get_thumb()
+    assert isinstance(resolved, PDImageXObject)
+    assert resolved.get_cos_object() is stream
+    page.set_thumb(None)
+    assert page.get_thumb() is None
+
+
+def test_set_transition_round_trip() -> None:
+    page = PDPage()
+    trans = PDTransition(style="Split")
+    page.set_transition(trans)
+    resolved = page.get_transition()
+    assert isinstance(resolved, PDTransition)
+    assert resolved.get_style() == "Split"
+    page.set_transition(None)
+    assert page.get_transition() is None
 
 
 def test_page_additional_actions_round_trip() -> None:

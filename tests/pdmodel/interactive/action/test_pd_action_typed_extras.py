@@ -203,6 +203,35 @@ def test_walk_to_target_empty_when_no_chain() -> None:
     assert action.walk_to_target() == []
 
 
+def test_walk_to_target_breaks_on_cycle() -> None:
+    """A malformed ``/T`` chain that loops back to an already-visited
+    ``COSDictionary`` terminates after recording the visited steps rather
+    than spinning forever."""
+    action = PDActionEmbeddedGoTo()
+
+    parent = PDTargetDirectory()
+    parent.set_relationship("P")
+    parent.set_target_filename("parent.pdf")
+
+    child = PDTargetDirectory()
+    child.set_relationship("C")
+    child.set_target_filename("child.pdf")
+
+    # Build a 2-step chain, then point step 2's /T back at step 1's
+    # underlying COSDictionary to form a cycle.
+    parent.set_target(child)
+    child.get_cos_object().set_item(
+        COSName.get_pdf_name("T"), parent.get_cos_object()
+    )
+    action.set_target(parent)
+
+    steps = action.walk_to_target()
+
+    assert len(steps) == 2
+    assert steps[0].target_filename == "parent.pdf"
+    assert steps[1].target_filename == "child.pdf"
+
+
 def test_get_destination_array_returns_pd_destination() -> None:
     """``/D`` as an explicit page-target ``COSArray`` dispatches to a
     concrete ``PDDestination`` subclass."""

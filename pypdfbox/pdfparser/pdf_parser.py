@@ -14,7 +14,7 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
-from pypdfbox.io import RandomAccessRead
+from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .base_parser import BaseParser
 from .cos_parser import COSParser
@@ -344,54 +344,186 @@ class PDFParser:
             # build the security handler so the xref-stream body can be
             # deciphered before entries are parsed.
             self._handle_xref_stream_at(offset)
-            raise NotImplementedError(
-                "xref-stream parsing lives in parser cluster #4"
-            )
 
     def _handle_xref_stream_at(self, offset: int) -> None:
-        """Pre-flight an xref-stream object: surface diagnostic state and,
-        when a password has been staged, attach the security handler so a
-        future cluster-#4 entry decoder can decipher the body.
+        """Parse one xref-stream object (PDF 32000-1 §7.5.8): read its
+        dictionary, decode the body via ``COSStream.create_input_stream``
+        (so /Filter chains — typically ``/FlateDecode`` with a PNG
+        predictor — are unwound), and register one xref entry per packed
+        record.
 
-        Does NOT decode entries — that work is parser cluster #4. Always
-        returns; never raises (the outer caller raises NotImplementedError
-        until the entry decoder lands)."""
-        # Reset cursor to the indirect-object header so a partial dict
-        # parse can cheaply read the stream's dictionary without disturbing
-        # the eventual entry decoder's view.
+        Also doubles as the early-decryption surface: when the stream
+        dictionary carries ``/Encrypt`` (which can only happen in a
+        hybrid layout, since the stream itself can't reference the
+        document's own /Encrypt), or when the trailer of a previous
+        section already had it, the staged password (see
+        :meth:`set_password`) is used to attach a security handler to
+        the stream before the body is decoded."""
+        # Reset cursor to the indirect-object header and parse the
+        # ``n g obj`` line + dictionary + ``stream`` body.
         self._src.seek(offset)
         self._base.skip_whitespace()
-        try:
-            on = self._base.read_int()
-            self._base.skip_whitespace()
-            gn = self._base.read_int()
-            self._base.skip_whitespace()
-            kw = self._base.read_keyword()
-        except PDFParseError:
-            return
+        on = self._base.read_int()
+        self._base.skip_whitespace()
+        gn = self._base.read_int()
+        self._base.skip_whitespace()
+        kw = self._base.read_keyword()
         if kw != b"obj":
-            return
+            raise PDFParseError(
+                f"expected 'obj' at offset {offset}, got {kw!r}",
+                position=self._base.position,
+            )
         assert self._cos_parser is not None
-        try:
-            body = self._cos_parser.parse_direct_object()
-        except PDFParseError:
-            return
+        body = self._cos_parser.parse_direct_object()
         if not isinstance(body, COSDictionary):
-            return
+            raise PDFParseError(
+                "xref-stream object body is not a dictionary",
+                position=self._base.position,
+            )
         type_obj = body.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
         if not (isinstance(type_obj, COSName) and type_obj.name == "XRef"):
-            return
+            raise PDFParseError(
+                "xref-stream dict missing /Type /XRef",
+                position=self._base.position,
+            )
+        # Convert the parsed dict to a stream and read its body using the
+        # same machinery the regular indirect-object loader uses.
+        stream = self._convert_dict_to_stream(body)
+        # The dictionary may reference /Length indirectly; the body-read
+        # path through ``_read_stream_body`` already handles that.
+        self._base.skip_whitespace()
+        peek = self._base.peek_byte()
+        if peek != 0x73:
+            raise PDFParseError(
+                "xref-stream object missing 'stream' keyword",
+                position=self._base.position,
+            )
+        kw2 = self._base.read_keyword()
+        if kw2 != b"stream":
+            raise PDFParseError(
+                f"expected 'stream' in xref-stream object, got {kw2!r}",
+                position=self._base.position,
+            )
+        self._read_stream_body(stream)
         # Treat the xref-stream dict as a trailer fragment so /Encrypt /ID
-        # /Root /Size are visible to the early-handler bootstrap. Existing
-        # trailer keys from previously-parsed sections still win — the
-        # resolver merges newest-first, and we install this fragment into
-        # the *current* section.
-        self._resolver.set_trailer(body)
-        # Track that we crossed at least one encrypted xref-stream so
-        # ``has_encrypted_xref_streams`` reflects reality.
-        if body.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
+        # /Root /Size are visible to /Prev walking and the early-handler
+        # bootstrap. Existing trailer keys from previously-parsed sections
+        # still win — the resolver merges newest-first.
+        self._resolver.set_trailer(stream)
+        # Diagnostics + early-handler bootstrap — match the legacy
+        # behaviour from the pre-cluster-#4 stub.
+        if stream.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
             self._has_encrypted_xref_streams = True
             self._prepare_security_handler_if_needed()
+        # If a security handler was already prepared (encrypted
+        # /Prev-chained xref stream — the trailer's /Encrypt becomes
+        # available before this stream is reached), wire it up so the
+        # body bytes get deciphered before /Filter unwinds them.
+        if self._security_handler is not None:
+            stream.set_security_handler(self._security_handler, on, gn)
+        # Decode the body and walk the packed entries.
+        self._decode_xref_stream_entries(stream)
+
+    def _decode_xref_stream_entries(self, stream: COSStream) -> None:
+        """Decode an xref stream's body and register one xref entry per
+        record. PDF 32000-1 §7.5.8.3."""
+        # /W [w1 w2 w3] — field widths in bytes. w1=0 means "type defaults
+        # to 1 (uncompressed in-use)"; w3=0 means "generation defaults to 0".
+        w_obj = stream.get_dictionary_object(COSName.get_pdf_name("W"))
+        if not isinstance(w_obj, COSArray) or w_obj.size() < 3:
+            raise PDFParseError("xref stream missing or malformed /W")
+        widths: list[int] = []
+        for i in range(3):
+            wi = w_obj.get(i)
+            if not isinstance(wi, COSInteger):
+                raise PDFParseError(f"xref stream /W[{i}] is not an integer")
+            widths.append(wi.value)
+        w1, w2, w3 = widths
+        # /Index [first1 count1 first2 count2 ...]; default = [0 /Size].
+        index_pairs: list[tuple[int, int]] = []
+        idx_obj = stream.get_dictionary_object(COSName.get_pdf_name("Index"))
+        if isinstance(idx_obj, COSArray):
+            if idx_obj.size() % 2 != 0:
+                raise PDFParseError("xref stream /Index has odd length")
+            for i in range(0, idx_obj.size(), 2):
+                first = idx_obj.get(i)
+                count = idx_obj.get(i + 1)
+                if not isinstance(first, COSInteger) or not isinstance(count, COSInteger):
+                    raise PDFParseError("xref stream /Index entries must be integers")
+                index_pairs.append((first.value, count.value))
+        else:
+            size_obj = stream.get_dictionary_object(COSName.SIZE)  # type: ignore[attr-defined]
+            if not isinstance(size_obj, COSInteger):
+                raise PDFParseError("xref stream missing /Size and /Index")
+            index_pairs.append((0, size_obj.value))
+        # Decode the body through any /Filter chain (and the security
+        # handler, when one is attached).
+        with stream.create_input_stream() as src:
+            body = src.read()
+        record_size = w1 + w2 + w3
+        if record_size <= 0:
+            raise PDFParseError("xref stream /W field widths sum to zero")
+        cursor = 0
+        for first, count in index_pairs:
+            for i in range(count):
+                if cursor + record_size > len(body):
+                    raise PDFParseError(
+                        "xref stream body truncated relative to /Index"
+                    )
+                record = body[cursor : cursor + record_size]
+                cursor += record_size
+                # Slice each field; honour the spec's defaults when w_i==0.
+                if w1 == 0:
+                    field1 = 1  # default = uncompressed in-use
+                else:
+                    field1 = int.from_bytes(record[0:w1], "big")
+                field2 = int.from_bytes(record[w1 : w1 + w2], "big")
+                if w3 == 0:
+                    field3 = 0  # default generation
+                else:
+                    field3 = int.from_bytes(record[w1 + w2 : w1 + w2 + w3], "big")
+                obj_num = first + i
+                if field1 == 0:
+                    # Free entry — record it but flag with compressed_index=-1
+                    # so populate_document() skips it (matches the traditional
+                    # 'f' flag path).
+                    self._resolver.set_entry(
+                        COSObjectKey(obj_num, field3),
+                        XrefEntry(
+                            type=XrefType.STREAM,
+                            offset=field2,
+                            compressed_index=-1,
+                        ),
+                    )
+                elif field1 == 1:
+                    # Uncompressed: field2 = byte offset, field3 = generation.
+                    self._resolver.set_entry(
+                        COSObjectKey(obj_num, field3),
+                        XrefEntry(type=XrefType.STREAM, offset=field2),
+                    )
+                elif field1 == 2:
+                    # Compressed: field2 = ObjStm obj number, field3 = index
+                    # within stream. Generation is always 0 per spec.
+                    self._resolver.set_entry(
+                        COSObjectKey(obj_num, 0),
+                        XrefEntry(
+                            type=XrefType.COMPRESSED,
+                            offset=field2,
+                            compressed_index=field3,
+                        ),
+                    )
+                else:
+                    # PDF 32000-1 §7.5.8.3: "any other value of the type
+                    # field shall be interpreted as a reference to the null
+                    # object." Treat as a free slot.
+                    self._resolver.set_entry(
+                        COSObjectKey(obj_num, 0),
+                        XrefEntry(
+                            type=XrefType.STREAM,
+                            offset=0,
+                            compressed_index=-1,
+                        ),
+                    )
 
     def _parse_traditional_xref_section(self) -> None:
         """Parse ``xref <subsections> trailer << ... >>``."""
@@ -472,9 +604,12 @@ class PDFParser:
     def _make_loader(self, entry: XrefEntry):  # type: ignore[no-untyped-def]
         """Build a lazy loader callback for a single xref entry."""
         if entry.type is XrefType.COMPRESSED:
-            def _compressed_loader(_obj: COSObject) -> COSBase | None:
-                raise NotImplementedError(
-                    "compressed-object-stream loading lives in parser cluster #4"
+            objstm_obj_num = entry.offset
+            inner_index = entry.compressed_index
+
+            def _compressed_loader(obj: COSObject) -> COSBase | None:
+                return self._load_compressed_object(
+                    objstm_obj_num, inner_index, obj
                 )
             return _compressed_loader
 
@@ -484,6 +619,74 @@ class PDFParser:
             return self._load_indirect_object_at(offset, obj)
 
         return _loader
+
+    def _load_compressed_object(
+        self, objstm_obj_num: int, inner_index: int, obj: COSObject
+    ) -> COSBase | None:
+        """Resolve an object stored inside an object stream (PDF 32000-1
+        §7.5.7). The owning ``ObjStm`` is itself an indirect object whose
+        body, after /Filter is applied, is a header of ``/N`` ``(obj_num
+        byte_offset)`` pairs followed by ``/N`` packed direct objects
+        starting at ``/First``.
+
+        ``inner_index`` is the position of the requested object inside the
+        ObjStm — *not* the requested object's own number. ``obj`` is the
+        ``COSObject`` placeholder whose ``_resolved`` field the caller
+        will populate from our return value."""
+        assert self._document is not None
+        objstm = self._document.get_object_from_pool(
+            COSObjectKey(objstm_obj_num, 0)
+        )
+        objstm_body = objstm.get_object()
+        if not isinstance(objstm_body, COSStream):
+            raise PDFParseError(
+                f"object stream {objstm_obj_num} is not a stream"
+            )
+        n_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("N"))
+        first_obj = objstm_body.get_dictionary_object(
+            COSName.get_pdf_name("First")
+        )
+        if not isinstance(n_obj, COSInteger) or not isinstance(first_obj, COSInteger):
+            raise PDFParseError(
+                f"object stream {objstm_obj_num} missing /N or /First"
+            )
+        n = n_obj.value
+        first = first_obj.value
+        if not 0 <= inner_index < n:
+            raise PDFParseError(
+                f"compressed-object index {inner_index} out of range "
+                f"[0, {n}) for ObjStm {objstm_obj_num}"
+            )
+        with objstm_body.create_input_stream() as src:
+            decoded = src.read()
+        # The header is N pairs of "<obj_num> <byte_offset>", whitespace-
+        # separated. Parse all of them so we can locate the requested entry
+        # at ``inner_index``.
+        header_view = RandomAccessReadBuffer(decoded[:first])
+        header_parser = BaseParser(header_view)
+        pairs: list[tuple[int, int]] = []
+        for _ in range(n):
+            header_parser.skip_whitespace()
+            stored_obj_num = header_parser.read_int()
+            header_parser.skip_whitespace()
+            byte_offset = header_parser.read_int()
+            pairs.append((stored_obj_num, byte_offset))
+        header_view.close()
+        target_obj_num, target_byte_offset = pairs[inner_index]
+        # Optional sanity check: the obj_num stored in the header should
+        # match the placeholder's own number (PDFBox warns when they
+        # disagree but trusts the xref entry; we follow).
+        if target_obj_num != obj.object_number:
+            # Tolerate the discrepancy — match upstream's permissive
+            # behaviour for malformed object streams.
+            pass
+        # Parse the requested direct object from the decoded payload.
+        body_view = RandomAccessReadBuffer(decoded[first + target_byte_offset:])
+        body_parser = COSParser(body_view, document=self._document)
+        try:
+            return body_parser.parse_direct_object()
+        finally:
+            body_view.close()
 
     def _load_indirect_object_at(self, offset: int, obj: COSObject) -> COSBase | None:
         """Seek to ``offset`` and parse the indirect-object definition.

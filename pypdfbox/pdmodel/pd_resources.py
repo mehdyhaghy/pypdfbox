@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import (
     COSBase,
@@ -11,7 +11,12 @@ from pypdfbox.cos import (
 )
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.graphics.color import PDColorSpace
+    from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern
+    from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
     from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
+    from pypdfbox.pdmodel.graphics.shading import PDShading
+    from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
 
 
 # Category prefixes — match upstream ``PDResources.createKey()`` per kind.
@@ -30,20 +35,18 @@ class PDResources:
     PDF ``/Resources`` dictionary wrapper. Mirrors
     ``org.apache.pdfbox.pdmodel.PDResources``.
 
-    Cluster #1 ships the *raw* surface only:
+    Surface:
 
     - name-listing accessors (``get_xobject_names`` etc.) returning a list
       of ``COSName``;
     - raw value accessors (``get_xobject``, ``get_font``) returning the
-      underlying ``COSStream`` / ``COSDictionary`` rather than the typed
-      PD wrapper, since ``PDXObject`` lives in cluster #3 and ``PDFont``
-      in cluster #4 (see ``CHANGES.md``);
-    - ``add(category, value)`` for ``/XObject`` and ``/Font`` only — the
-      writer needs this to register newly-minted resources.
-
-    Methods that *must* return a typed PD object (``get_color_space``,
-    ``get_pattern``, ``get_shading``, ``get_ext_gstate``) raise
-    ``NotImplementedError`` with a cluster pointer.
+      underlying ``COSStream`` / ``COSDictionary`` (``PDFont`` typed wrapper
+      lands in cluster #4 — see ``CHANGES.md``);
+    - typed accessors (``get_color_space``, ``get_pattern``, ``get_shading``,
+      ``get_ext_gstate``, ``get_property_list``) returning the appropriate
+      PD wrapper or ``None``;
+    - ``add(category, value)`` and ``put(category, name, value)`` for
+      registering newly-minted resources across all standard categories.
     """
 
     def __init__(self, resources: COSDictionary | None = None) -> None:
@@ -74,6 +77,16 @@ class PDResources:
         if sub is None:
             return []
         return list(sub.key_set())
+
+    def _lookup(self, category: str, name: COSName) -> COSBase | None:
+        """Resolve ``/Resources/<category>/<name>``. Returns the dereferenced
+        COS value, or ``None`` when either the category sub-dictionary or the
+        named entry is missing. Mirrors upstream ``getCOSObject().getDictionaryObject(...)``
+        chained through the category dictionary."""
+        sub = self._get_subdict(COSName.get_pdf_name(category))
+        if sub is None:
+            return None
+        return sub.get_dictionary_object(name)
 
     # ---------- raw category accessors ----------
 
@@ -188,28 +201,66 @@ class PDResources:
         """``/Properties`` keys. Upstream method name is ``getPropertiesNames``."""
         return self._names_in(self._get_subdict(_PROPERTIES))
 
-    # ---------- typed-accessor stubs (later clusters) ----------
+    # ---------- typed-accessor surface ----------
 
-    def get_color_space(self, name: COSName) -> Any:
-        raise NotImplementedError(
-            "PDResources.get_color_space requires PDColorSpace family — pdmodel cluster #9"
+    def get_color_space(self, name: COSName) -> "PDColorSpace | None":
+        """Return the typed ``PDColorSpace`` for ``name``, or ``None`` when
+        the entry is absent. Mirrors upstream
+        ``PDResources.getColorSpace(COSName)`` — dispatch lives in
+        ``PDColorSpace.create``."""
+        # Local import keeps cluster boundaries explicit.
+        from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
+
+        base = self._lookup("ColorSpace", name)
+        return PDColorSpace.create(base)
+
+    def get_pattern(self, name: COSName) -> "PDAbstractPattern | None":
+        """Return the typed ``PDAbstractPattern`` for ``name`` (a
+        ``PDTilingPattern`` or ``PDShadingPattern``), or ``None`` when the
+        entry is missing or not a dictionary."""
+        from pypdfbox.pdmodel.graphics.pattern import (  # noqa: PLC0415
+            PDAbstractPattern,
         )
 
-    def get_pattern(self, name: COSName) -> Any:
-        raise NotImplementedError(
-            "PDResources.get_pattern requires PDAbstractPattern — pdmodel cluster #9"
+        base = self._lookup("Pattern", name)
+        if isinstance(base, COSDictionary):
+            return PDAbstractPattern.create(base)
+        return None
+
+    def get_shading(self, name: COSName) -> "PDShading | None":
+        """Return the typed ``PDShading`` for ``name`` (one of
+        ``PDShadingType1``..``PDShadingType7``), or ``None`` when the entry
+        is absent."""
+        from pypdfbox.pdmodel.graphics.shading import PDShading  # noqa: PLC0415
+
+        base = self._lookup("Shading", name)
+        if isinstance(base, COSDictionary):
+            return PDShading.create(base)
+        return None
+
+    def get_ext_gstate(self, name: COSName) -> "PDExtendedGraphicsState | None":
+        """Return the typed ``PDExtendedGraphicsState`` for ``name``, or
+        ``None`` when the entry is absent or not a dictionary."""
+        from pypdfbox.pdmodel.graphics.state import (  # noqa: PLC0415
+            PDExtendedGraphicsState,
         )
 
-    def get_shading(self, name: COSName) -> Any:
-        raise NotImplementedError(
-            "PDResources.get_shading requires PDShading — pdmodel cluster #9"
+        base = self._lookup("ExtGState", name)
+        if isinstance(base, COSDictionary):
+            return PDExtendedGraphicsState(base)
+        return None
+
+    def get_property_list(self, name: COSName) -> "PDPropertyList | None":
+        """Return the typed ``PDPropertyList`` (OCG / OCMD) for ``name``, or
+        ``None`` when the entry is absent or not a dictionary."""
+        from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
+            PDPropertyList,
         )
 
-    def get_ext_gstate(self, name: COSName) -> Any:
-        raise NotImplementedError(
-            "PDResources.get_ext_gstate requires PDExtendedGraphicsState — "
-            "pdmodel cluster #9"
-        )
+        base = self._lookup("Properties", name)
+        if isinstance(base, COSDictionary):
+            return PDPropertyList.create(base)
+        return None
 
     # ---------- put / add ----------
 
@@ -224,9 +275,9 @@ class PDResources:
     def add(self, category: COSName, value: COSBase) -> COSName:
         """Register ``value`` under a freshly-allocated key in ``category``.
 
-        Cluster #1 supports ``/XObject`` and ``/Font`` (the categories the
-        writer / parser currently exercise). Other categories raise
-        ``NotImplementedError`` until their typed PD wrappers ship.
+        Supports the standard resource categories — ``/XObject``, ``/Font``,
+        ``/ColorSpace``, ``/ExtGState``, ``/Shading``, ``/Pattern``,
+        ``/Properties``. Unknown categories raise ``ValueError``.
 
         Returns the allocated ``COSName`` key.
         """
@@ -245,8 +296,8 @@ class PDResources:
         elif category is _PROPERTIES:
             prefix = _PREFIX_PROPERTY_LIST
         else:
-            raise NotImplementedError(
-                f"PDResources.add: category {category!s} not supported in cluster #1"
+            raise ValueError(
+                f"PDResources.add: unknown resource category {category!s}"
             )
 
         sub = self._get_or_create_subdict(category)

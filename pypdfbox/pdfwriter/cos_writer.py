@@ -87,6 +87,39 @@ def _format_xref_generation(gen: int) -> bytes:
     return f"{gen:05d}".encode("ascii")
 
 
+# Per PDF 32000-1 §7.5.7 PDFBox caps each ObjStm at 100 objects so that
+# slow ObjStm decoders (the index header is parsed sequentially) stay
+# bounded; we mirror that ceiling.
+_OBJSTM_MAX: int = 100
+
+
+def _ceil_log256(value: int) -> int:
+    """Number of bytes needed to encode ``value`` as an unsigned big-endian
+    integer. Used for the ``/W`` field widths in xref streams.
+
+    ``_ceil_log256(0) == 1`` — matches the spec's "minimum 1 byte" rule."""
+    if value <= 0:
+        return 1
+    width = 0
+    v = value
+    while v > 0:
+        v >>= 8
+        width += 1
+    return width
+
+
+def _pack_unsigned(value: int, width: int) -> bytes:
+    """Big-endian unsigned int encoded in exactly ``width`` bytes. Raises
+    ``ValueError`` if ``value`` doesn't fit — ISO 32000-1 §7.5.8.3 says
+    field widths must be sized so this never happens, so a fit failure
+    indicates a writer bug rather than user input."""
+    if value < 0:
+        raise ValueError(f"xref stream field cannot be negative: {value}")
+    if width <= 0:
+        raise ValueError(f"xref stream field width must be positive: {width}")
+    return int(value).to_bytes(width, "big", signed=False)
+
+
 # Adapter: ``COSStandardOutputStream`` accepts anything with ``write(bytes)``.
 # A ``RandomAccessWrite`` exposes ``write_bytes(...)`` instead, so we wrap it.
 class _RawSinkAdapter:
@@ -135,10 +168,29 @@ class COSWriter(ICOSVisitor):
         *,
         incremental: bool = False,
         incremental_input: RandomAccessRead | None = None,
+        xref_stream: bool = False,
+        object_stream: bool = False,
     ) -> None:
         self._output = output
         self._incremental_update = incremental
         self._incremental_input = incremental_input
+        # PDF 32000-1 §7.5.8 — when True, replace the traditional ``xref``
+        # table + ``trailer`` pair with a single ``/Type /XRef`` stream.
+        self._xref_stream: bool = xref_stream
+        # PDF 32000-1 §7.5.7 — when True (and ``xref_stream`` is also on,
+        # since type-2 xref entries can only be addressed by a cross-
+        # reference stream), pack non-stream indirect objects into ObjStm
+        # streams to shrink the output.
+        self._object_stream: bool = object_stream
+        # Populated during xref-stream mode by ``_pack_object_streams`` —
+        # maps id(actual COSBase) → (objstm_obj_num, index_in_objstm) so
+        # ``_do_write_xref_stream`` knows which entries should be written
+        # as type=2 compressed records instead of type=1 indirect ones.
+        self._compressed_locations: dict[int, tuple[int, int]] = {}
+        # Identity-set of objects that have already been packed into an
+        # ObjStm; the regular ``_do_write_object`` path skips these so we
+        # don't emit duplicate indirect frames for the same payload.
+        self._packed_object_ids: set[int] = set()
         # In incremental mode the body, xref, and trailer are accumulated in
         # an in-memory buffer; the final ``doWriteIncrement`` copies the
         # source bytes to the real output and then drains the buffer
@@ -209,6 +261,38 @@ class COSWriter(ICOSVisitor):
 
     def get_xref_entries(self) -> list[COSWriterXRefEntry]:
         return self._xref_entries
+
+    # ---- xref-stream / object-stream output toggles ----
+    # Mirror upstream COSWriter's ``setIncrementalWriter``-style accessor
+    # naming. Booleans mirror the constructor-time flags so callers can
+    # flip them between construction and the actual ``write()`` call.
+
+    def is_xref_stream_output(self) -> bool:
+        """``True`` if the writer will emit an xref *stream* (PDF 32000-1
+        §7.5.8) instead of a traditional ``xref`` table + ``trailer``."""
+        return self._xref_stream
+
+    def set_xref_stream(self, value: bool) -> None:
+        """Toggle xref-stream output. See PDF 32000-1 §7.5.8.
+
+        When ``True`` the writer skips emitting the ``xref`` keyword and
+        the ``trailer`` keyword entirely — both are folded into a single
+        ``/Type /XRef`` indirect-object stream whose offset is announced
+        by the ``startxref`` line. Required for object-stream output."""
+        self._xref_stream = bool(value)
+
+    def is_object_stream_output(self) -> bool:
+        """``True`` if non-stream indirect objects will be packed into
+        ``/Type /ObjStm`` streams (PDF 32000-1 §7.5.7)."""
+        return self._object_stream
+
+    def set_object_stream(self, value: bool) -> None:
+        """Toggle object-stream packing. Type-2 xref entries are the only
+        way to address packed objects, so this implies xref-stream output;
+        callers must also set :py:meth:`set_xref_stream` (we don't auto-
+        promote because the user might want to flip them in either order
+        and reading either getter back should be honest)."""
+        self._object_stream = bool(value)
 
     def write(self, document: Any) -> None:
         """Emit ``document`` end-to-end as a self-contained PDF.
@@ -398,9 +482,18 @@ class COSWriter(ICOSVisitor):
 
     def visit_from_document(self, doc: COSDocument) -> Any:
         self._do_write_header(doc)
-        self._do_write_body(doc)
-        self._do_write_xref_table()
-        self._do_write_trailer(doc)
+        if self._xref_stream:
+            # xref-stream / object-stream output path — emit the body,
+            # then a single ``/Type /XRef`` indirect object that subsumes
+            # the trailer (PDF 32000-1 §7.5.8.4 — "the trailer dictionary
+            # entries shall be present in the xref stream dictionary").
+            self._do_write_body_xref_stream(doc)
+            self._do_write_xref_stream(doc)
+        else:
+            # Classic path: dedicated ``xref`` section + ``trailer`` keyword.
+            self._do_write_body(doc)
+            self._do_write_xref_table()
+            self._do_write_trailer(doc)
 
         # startxref + EOF
         out = self._standard_output
@@ -720,6 +813,18 @@ class COSWriter(ICOSVisitor):
         # Skip dangling references (matches upstream).
         if isinstance(obj, COSObject) and obj.get_object() is None:
             return
+        # Object-stream packing: any object that has been packed into an
+        # ObjStm must NOT also be emitted as a free-standing indirect frame
+        # (the xref stream points at its in-objstm location instead).
+        actual_for_skip: COSBase | None = (
+            obj.get_object() if isinstance(obj, COSObject) else obj
+        )
+        if (
+            actual_for_skip is not None
+            and id(actual_for_skip) in self._packed_object_ids
+        ):
+            self._written_objects.add(id(obj))
+            return
         self._written_objects.add(id(obj))
         key = self._get_object_key(obj)
         self._current_object_key = key
@@ -771,6 +876,23 @@ class COSWriter(ICOSVisitor):
         out.write_eol()
 
     # ---------- key assignment ----------
+
+    def _mint_fresh_object_key(self) -> COSObjectKey:
+        """Return a never-before-used ``(num, 0)`` key, advancing
+        ``self._number`` past any declared keys already in flight.
+
+        The plain ``self._number += 1`` pattern works for the cluster #1
+        full-save path because every actual is funneled through
+        :py:meth:`_get_object_key` first. For the cluster #3 ObjStm /
+        xref-stream paths we mint keys *outside* that funnel (we know we
+        want a brand-new number for the synthetic stream), so we must
+        check against ``_key_object`` to avoid colliding with any
+        explicitly-declared ``COSObject(n, 0)`` numbers."""
+        while True:
+            self._number += 1
+            candidate = COSObjectKey(self._number, 0)
+            if candidate not in self._key_object:
+                return candidate
 
     def _get_object_key(self, obj: COSBase) -> COSObjectKey:
         """Return (and lazily assign) the indirect-object key for ``obj``.
@@ -929,6 +1051,341 @@ class COSWriter(ICOSVisitor):
         # Each xref entry must end with a 2-byte EOL so the row is exactly
         # 20 bytes — ISO 32000-1 §7.5.4.
         out.write_crlf()
+
+    # ---------- xref-stream / object-stream output (§7.5.7, §7.5.8) ----------
+
+    def _do_write_body_xref_stream(self, doc: COSDocument) -> None:
+        """Body emission for the xref-stream path.
+
+        Identical to ``_do_write_body`` in *what* gets reached, but:
+
+        * if object-stream packing is enabled, non-stream indirect objects
+          are routed through the ObjStm packer first (it emits one or more
+          ``/Type /ObjStm`` indirect objects and records type-2 xref
+          locations for the packed payloads).
+        * the xref stream itself is emitted by the caller in
+          ``_do_write_xref_stream`` after this method returns.
+        """
+        trailer = doc.get_trailer()
+        if trailer is not None:
+            root = trailer.get_item(COSName.ROOT)  # type: ignore[attr-defined]
+            info = trailer.get_item(COSName.INFO)  # type: ignore[attr-defined]
+            encrypt = trailer.get_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+            if root is not None:
+                self._add_object_to_write(root)
+            if info is not None:
+                self._add_object_to_write(info)
+            self._do_write_objects()
+            if encrypt is not None:
+                self._add_object_to_write(encrypt)
+            self._do_write_objects()
+        else:
+            self._do_write_objects()
+
+        # Object-stream packing runs *after* the body has been queued so
+        # we can see every actual referenced from /Root + /Info graphs.
+        # Required-by-spec exclusions (streams, /Encrypt, /Type /Sig) are
+        # filtered inside the packer.
+        if self._object_stream:
+            self._pack_object_streams(doc)
+
+    def _pack_object_streams(self, doc: COSDocument) -> None:
+        """Bundle eligible non-stream indirect objects into one or more
+        ``/Type /ObjStm`` streams (PDF 32000-1 §7.5.7).
+
+        Each ObjStm carries up to ``_OBJSTM_MAX`` payloads. Wire format:
+
+        * dictionary entries: ``/Type /ObjStm /N <count> /First <offset>
+          /Filter /FlateDecode /Length ...``
+        * body: the index header (whitespace-separated ``<obj_num>
+          <byte_offset>`` pairs covering ``N`` objects), then the
+          concatenated object bodies starting at ``/First``.
+
+        For each packed object we record ``id(actual) → (objstm_num, idx)``
+        so :py:meth:`_do_write_xref_stream` knows to emit a type-2 entry
+        for it; the regular indirect-frame emission in
+        :py:meth:`_do_write_object` is suppressed via ``_packed_object_ids``.
+        """
+        candidates: list[tuple[COSObjectKey, COSBase]] = []
+        for key, actual in self._key_object.items():
+            if id(actual) in self._packed_object_ids:
+                continue
+            if not self._is_packable(actual, key):
+                continue
+            # Generation must be 0 — type-2 entries can't represent
+            # non-zero generations (the second field is the ObjStm number,
+            # the third is the index, and gen is implicitly 0 per spec).
+            if key.generation_number != 0:
+                continue
+            candidates.append((key, actual))
+
+        if not candidates:
+            return
+
+        # Stable order: by object number ascending — matches what the
+        # reader will reconstruct.
+        candidates.sort(key=lambda kv: kv[0].object_number)
+
+        for chunk_start in range(0, len(candidates), _OBJSTM_MAX):
+            chunk = candidates[chunk_start : chunk_start + _OBJSTM_MAX]
+            self._emit_one_object_stream(chunk)
+
+    def _is_packable(self, actual: COSBase, key: COSObjectKey) -> bool:
+        """Per ISO 32000-1 §7.5.7: streams cannot be inside another
+        stream, the /Encrypt dict can never be packed (the reader needs
+        it before it can decrypt anything), and signature dictionaries
+        rely on the on-disk byte range so packing would invalidate the
+        signature."""
+        if isinstance(actual, COSStream):
+            return False
+        if (
+            self._encrypt_dict_id is not None
+            and id(actual) == self._encrypt_dict_id
+        ):
+            return False
+        if isinstance(actual, COSDictionary):
+            type_name = actual.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+            if isinstance(type_name, COSName) and type_name.name in (
+                "Sig",
+                "DocTimeStamp",
+            ):
+                return False
+        return True
+
+    def _emit_one_object_stream(
+        self, chunk: list[tuple[COSObjectKey, COSBase]]
+    ) -> None:
+        """Pack ``chunk`` into a single ObjStm and emit it as an
+        indirect object. Records compressed-locations for each packed
+        object so the xref stream can resolve them."""
+        # Serialize each object body to bytes via a per-pack scratch writer.
+        # Reuse the visitor layer (so dict / array / string formatting
+        # stays consistent) but redirect output to a fresh
+        # ``COSStandardOutputStream`` scoped to this packing pass.
+        bodies: list[bytes] = []
+        for _key, actual in chunk:
+            buf = io.BytesIO()
+            saved_output = self._standard_output
+            saved_adapter = self._adapter
+            saved_current = self._current_object_key
+            self._adapter = _RawSinkAdapter(buf)
+            self._standard_output = COSStandardOutputStream(self._adapter)
+            # Strings inside packed objects are NOT encrypted (the entire
+            # ObjStm body goes through the security handler once, as a
+            # single stream). Spoof ``_current_object_key`` to None and
+            # set ``_in_encrypt_subtree`` so per-string encryption is
+            # bypassed during the per-object body emit.
+            self._current_object_key = None
+            previous_in_enc = self._in_encrypt_subtree
+            self._in_encrypt_subtree = True
+            try:
+                actual.accept(self)
+            finally:
+                self._in_encrypt_subtree = previous_in_enc
+                self._standard_output = saved_output
+                self._adapter = saved_adapter
+                self._current_object_key = saved_current
+            bodies.append(buf.getvalue())
+
+        # Build the index header: whitespace-separated "<obj_num> <offset>"
+        # pairs — offsets are relative to ``/First``.
+        index_parts: list[bytes] = []
+        running = 0
+        for (key, _), body in zip(chunk, bodies, strict=False):
+            index_parts.append(f"{key.object_number} {running}".encode("ascii"))
+            running += len(body)
+        index_blob = b" ".join(index_parts)
+        first_offset = len(index_blob)
+        # Add a separator so the first object body doesn't butt up against
+        # the last index integer (parsers tolerate either, but a leading
+        # whitespace makes the structure unambiguous and matches PDFBox).
+        if bodies:
+            index_blob += b"\n"
+            first_offset += 1
+        payload = index_blob + b"".join(bodies)
+
+        # Mint a fresh object number for the ObjStm itself (skip past any
+        # declared keys that haven't been ``_get_object_key``-funneled).
+        objstm_key = self._mint_fresh_object_key()
+
+        # Build the COSStream wrapper. ``set_data(..., FlateDecode)``
+        # compresses on commit and sets /Filter; we then add the §7.5.7
+        # required keys.
+        objstm = COSStream()
+        objstm.set_data(payload, [COSName.FLATE_DECODE])
+        objstm.set_item(COSName.TYPE, COSName.get_pdf_name("ObjStm"))  # type: ignore[attr-defined]
+        objstm.set_int(COSName.get_pdf_name("N"), len(chunk))
+        objstm.set_int(COSName.get_pdf_name("First"), first_offset)
+
+        # Register the ObjStm in the writer's key tables so the xref pass
+        # picks it up.
+        self._object_keys[id(objstm)] = objstm_key
+        self._key_holders[id(objstm)] = objstm
+        self._key_object[objstm_key] = objstm
+
+        # Record per-packed-object compressed locations BEFORE the actual
+        # emit (so even if the emit raises, ``_do_write_object``'s skip-
+        # set keeps in sync — and so the xref stream can see them).
+        for index, (_pkey, actual) in enumerate(chunk):
+            self._compressed_locations[id(actual)] = (objstm_key.object_number, index)
+            self._packed_object_ids.add(id(actual))
+
+        # Emit as a normal indirect object — the regular stream path
+        # threads it through the encryption pipeline if active.
+        self._do_write_object(objstm)
+
+    def _do_write_xref_stream(self, doc: COSDocument) -> None:
+        """Emit the xref stream that subsumes the trailer (§7.5.8).
+
+        Workflow:
+
+        1. mint a fresh object number for the xref stream itself
+        2. add a free-list head (object 0) + any gap entries
+        3. compute /W field widths from the maximum offset
+        4. pack each xref entry (free / type-1 / type-2) into the body
+        5. wrap the body in a COSStream with /Type /XRef + trailer entries
+        6. emit it as a normal indirect object — the existing
+           ``visit_from_stream`` path runs FlateDecode + the encryption
+           pipeline (if active) for us.
+        """
+        out = self._standard_output
+
+        # 1. Fresh number for the xref stream object.
+        xref_key = self._mint_fresh_object_key()
+
+        # 2. Mandatory free-list head + any gaps.
+        self._fill_gaps_with_free_entries()
+
+        # 3. Build the table of (objnum, type, field2, field3) tuples.
+        # Type 0 = free (next-free, gen)
+        # Type 1 = uncompressed (offset, gen)
+        # Type 2 = compressed (objstm_num, index_in_objstm)
+        records: list[tuple[int, int, int, int]] = []
+        max_field2 = 0
+        for entry in self._xref_entries:
+            objnum = entry.key.object_number
+            if entry.free:
+                records.append((objnum, 0, entry.offset, entry.key.generation_number))
+                continue
+            actual = (
+                entry.obj.get_object()
+                if isinstance(entry.obj, COSObject)
+                else entry.obj
+            )
+            comp = (
+                self._compressed_locations.get(id(actual))
+                if actual is not None
+                else None
+            )
+            if comp is not None:
+                objstm_num, idx = comp
+                records.append((objnum, 2, objstm_num, idx))
+            else:
+                records.append((objnum, 1, entry.offset, entry.key.generation_number))
+                max_field2 = max(max_field2, entry.offset)
+
+        # 4. Compute /W widths.
+        # w1: 1 byte (only need values 0/1/2)
+        # w2: enough bytes to hold the max offset
+        # w3: 2 bytes (covers 16-bit gen plus reasonable index counts)
+        w1 = 1
+        # The xref stream itself will sit at ``out.get_position()`` or
+        # later; widen the estimate so the field width survives the self-
+        # entry insertion below.
+        max_field2 = max(max_field2, out.get_position() + 4096)
+        w2 = max(1, _ceil_log256(max_field2))
+        w3 = 2
+
+        # 5. Self-entry: the xref stream's own offset goes into the body.
+        xref_offset = out.get_position()
+        records.append((xref_key.object_number, 1, xref_offset, 0))
+        records.sort(key=lambda r: r[0])
+
+        # Pack the body: each record = w1 + w2 + w3 big-endian bytes.
+        body = bytearray()
+        for _objnum, t, f2, f3 in records:
+            body.extend(_pack_unsigned(t, w1))
+            body.extend(_pack_unsigned(f2, w2))
+            body.extend(_pack_unsigned(f3, w3))
+
+        # /Index — list of (first, count) ranges. PDFBox always emits
+        # /Index even for the single-range case; readers tolerate either.
+        ranges = self._build_int_ranges([r[0] for r in records])
+        index_arr = COSArray()
+        index_arr.set_direct(True)
+        for first, count in ranges:
+            index_arr.add(COSInteger.get(first))
+            index_arr.add(COSInteger.get(count))
+
+        # /W array.
+        w_arr = COSArray()
+        w_arr.set_direct(True)
+        w_arr.add(COSInteger.get(w1))
+        w_arr.add(COSInteger.get(w2))
+        w_arr.add(COSInteger.get(w3))
+
+        # Build the xref-stream COSStream.
+        xref_stream = COSStream()
+        xref_stream.set_data(bytes(body), [COSName.FLATE_DECODE])
+        xref_stream.set_item(COSName.TYPE, COSName.get_pdf_name("XRef"))  # type: ignore[attr-defined]
+        # /Size = highest object number + 1.
+        size_value = max((r[0] for r in records), default=0) + 1
+        xref_stream.set_int(COSName.SIZE, size_value)  # type: ignore[attr-defined]
+        xref_stream.set_item(COSName.get_pdf_name("W"), w_arr)
+        xref_stream.set_item(COSName.get_pdf_name("Index"), index_arr)
+
+        # Promote trailer entries (Root, Info, Encrypt, ID) into the xref-
+        # stream dict. Per §7.5.8.4 the xref stream IS the trailer in this
+        # mode — there is no separate ``trailer`` keyword.
+        trailer = doc.get_trailer()
+        if trailer is not None:
+            for tkey in (
+                COSName.ROOT,  # type: ignore[attr-defined]
+                COSName.INFO,  # type: ignore[attr-defined]
+                COSName.ENCRYPT,  # type: ignore[attr-defined]
+                COSName.get_pdf_name("ID"),
+            ):
+                value = trailer.get_item(tkey)
+                if value is not None:
+                    xref_stream.set_item(tkey, value)
+            # Ensure /ID stays direct (not promoted into a fresh indirect).
+            id_arr = xref_stream.get_dictionary_object(COSName.get_pdf_name("ID"))
+            if isinstance(id_arr, COSArray):
+                id_arr.set_direct(True)
+
+        # Register the xref stream's key BEFORE emit so any internal
+        # reference attempts use the same number we minted above.
+        self._object_keys[id(xref_stream)] = xref_key
+        self._key_holders[id(xref_stream)] = xref_stream
+        self._key_object[xref_key] = xref_stream
+
+        # 6. Emit the xref stream as a regular indirect object. This goes
+        # through ``visit_from_stream`` which honours ``_security_handler``
+        # — required because the xref stream itself MUST be encrypted in
+        # encrypted documents (per ISO 32000-1 §7.5.8.2 the entire stream
+        # body is encrypted just like any other COSStream).
+        self._startxref = xref_offset
+        self._do_write_object(xref_stream)
+
+    @staticmethod
+    def _build_int_ranges(numbers: list[int]) -> list[tuple[int, int]]:
+        """Group sorted object numbers into ``(first, count)`` runs.
+        Mirrors :py:meth:`_build_ranges` but takes ints not entries."""
+        nums = sorted(set(numbers))
+        ranges: list[tuple[int, int]] = []
+        if not nums:
+            return ranges
+        first = nums[0]
+        count = 1
+        for prev, cur in zip(nums, nums[1:], strict=False):
+            if cur == prev + 1:
+                count += 1
+            else:
+                ranges.append((first, count))
+                first = cur
+                count = 1
+        ranges.append((first, count))
+        return ranges
 
     # ---------- trailer ----------
 

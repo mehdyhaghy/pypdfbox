@@ -485,11 +485,65 @@ class PDDocument:
             "PDDocument.add_signature — pdmodel cluster #10 (signatures)"
         )
 
-    def import_page(self, _page: PDPage) -> PDPage:
-        raise NotImplementedError(
-            "PDDocument.import_page requires content-stream rewriting — "
-            "pdmodel cluster #3 + contentstream cluster"
-        )
+    def import_page(self, page: PDPage) -> PDPage:
+        """Deep-copy ``page`` into this document and return the new
+        :class:`PDPage`.
+
+        The page's dictionary, ``/Resources``, ``/Contents`` stream(s), and
+        inheritable attributes are copied. Annotations are copied as-is
+        (their ``/Subtype``-specific references are NOT remapped;
+        cross-document ``/Names`` tree merging, ``/Dest`` resolution, font
+        / image resource deduplication, and annotation ``/Parent`` /
+        ``/AcroForm`` field fix-ups are deferred — see ``CHANGES.md``)."""
+        src_dict = page.get_cos_object()
+        new_dict = self._deep_copy_cos(src_dict, set())
+        # Drop /Parent — re-set when added to our page tree.
+        new_dict.remove_item(COSName.get_pdf_name("Parent"))
+        new_page = PDPage(new_dict)
+        self.get_pages().add(new_page)
+        return new_page
+
+    def _deep_copy_cos(self, value: Any, seen: set[int]) -> Any:
+        """Recursive deep copy of a ``COSBase`` tree. Cycles are broken via
+        an ``id()``-keyed seen set — when revisited, the original instance
+        is shared (rare in well-formed PDFs but possible via /Parent loops
+        or self-referential resource trees)."""
+        from pypdfbox.cos import COSArray, COSDictionary, COSObject, COSStream
+
+        if id(value) in seen:
+            return value
+        if isinstance(value, COSObject):
+            # Resolve indirect ref, then deep-copy the resolved value.
+            return self._deep_copy_cos(value.get_object(), seen)
+        if isinstance(value, COSStream):
+            seen.add(id(value))
+            new_stream = COSStream()
+            for key in list(value.key_set()):
+                new_stream.set_item(
+                    key, self._deep_copy_cos(value.get_item(key), seen)
+                )
+            # Copy raw (still-encoded) stream bytes verbatim — /Filter chain
+            # and /Length come along via the dict copy above.
+            if value.has_data():
+                new_stream.set_raw_data(value.get_raw_data())
+            return new_stream
+        if isinstance(value, COSDictionary):
+            seen.add(id(value))
+            new_dict = COSDictionary()
+            for key in list(value.key_set()):
+                new_dict.set_item(
+                    key, self._deep_copy_cos(value.get_item(key), seen)
+                )
+            return new_dict
+        if isinstance(value, COSArray):
+            seen.add(id(value))
+            new_arr = COSArray()
+            for item in value:
+                new_arr.add(self._deep_copy_cos(item, seen))
+            return new_arr
+        # Scalars (COSInteger, COSFloat, COSName, COSString, COSBoolean,
+        # COSNull) are immutable in practice — share the original instance.
+        return value
 
     def get_resource_cache(self) -> Any:
         raise NotImplementedError(
