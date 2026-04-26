@@ -4,7 +4,18 @@ from threading import Lock
 
 from pypdfbox.cos import COSBase, COSDictionary
 
-from .operator_name import OperatorName
+# This subpackage mirrors ``org.apache.pdfbox.contentstream.operator``.
+# ``Operator``, ``OperatorName``, ``OperatorProcessor`` and
+# ``MissingOperandException`` all live in that Java package upstream.
+# In pypdfbox ``OperatorName`` and ``OperatorProcessor`` /
+# ``MissingOperandException`` live one level up at
+# ``pypdfbox/contentstream/operator_name.py`` /
+# ``operator_processor.py`` (a flat shape inherited from cluster #1);
+# we re-export them through this ``__init__`` so callers can import
+# them at the upstream-faithful path
+# ``pypdfbox.contentstream.operator.OperatorName`` etc.
+from ..operator_name import OperatorName
+from ..operator_processor import MissingOperandException, OperatorProcessor
 
 
 class Operator:
@@ -114,3 +125,11 @@ class Operator:
 
     def __repr__(self) -> str:
         return f"PDFOperator{{{self._name}}}"
+
+
+__all__ = [
+    "MissingOperandException",
+    "Operator",
+    "OperatorName",
+    "OperatorProcessor",
+]
