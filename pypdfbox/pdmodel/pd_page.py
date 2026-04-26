@@ -30,6 +30,7 @@ _USER_UNIT: COSName = COSName.get_pdf_name("UserUnit")
 _PARENT: COSName = COSName.PARENT  # type: ignore[attr-defined]
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _ANNOTS: COSName = COSName.get_pdf_name("Annots")
+_AA: COSName = COSName.get_pdf_name("AA")
 
 
 class PDPage:
@@ -324,9 +325,18 @@ class PDPage:
         )
 
     def get_actions(self) -> Any:
-        raise NotImplementedError(
-            "PDPage.get_actions requires PDAction — pdmodel cluster #7"
-        )
+        from pypdfbox.pdmodel.interactive.action import PDPageAdditionalActions
+
+        actions = self._page.get_dictionary_object(_AA)
+        if isinstance(actions, COSDictionary):
+            return PDPageAdditionalActions(actions)
+        return None
+
+    def set_actions(self, actions: Any) -> None:
+        if actions is None:
+            self._page.remove_item(_AA)
+            return
+        self._page.set_item(_AA, actions.get_cos_object())
 
     # ---------- equality / repr ----------
 

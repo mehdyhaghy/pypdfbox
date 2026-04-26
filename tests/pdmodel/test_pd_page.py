@@ -10,6 +10,7 @@ from pypdfbox.cos import (
     COSStream,
 )
 from pypdfbox.pdmodel import PDPage, PDRectangle
+from pypdfbox.pdmodel.interactive.action import PDActionURI, PDPageAdditionalActions
 
 
 def test_default_constructor_us_letter_media_box() -> None:
@@ -153,8 +154,23 @@ def test_stub_methods_raise() -> None:
         page.get_thumb()
     with pytest.raises(NotImplementedError):
         page.get_transition()
-    with pytest.raises(NotImplementedError):
-        page.get_actions()
+    assert page.get_actions() is None
+
+
+def test_page_additional_actions_round_trip() -> None:
+    page = PDPage()
+    actions = PDPageAdditionalActions()
+    open_action = PDActionURI()
+    open_action.set_uri("https://example.test/open")
+    actions.set_o(open_action)
+
+    page.set_actions(actions)
+    resolved = page.get_actions()
+
+    assert isinstance(resolved, PDPageAdditionalActions)
+    resolved_open = resolved.get_o()
+    assert isinstance(resolved_open, PDActionURI)
+    assert resolved_open.get_uri() == "https://example.test/open"
 
 
 def test_constructor_rejects_bad_type() -> None:

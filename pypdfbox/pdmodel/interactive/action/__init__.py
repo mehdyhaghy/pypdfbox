@@ -8,6 +8,7 @@ from .pd_action_named import PDActionNamed
 from .pd_action_remote_go_to import PDActionRemoteGoTo
 from .pd_action_unknown import PDActionUnknown
 from .pd_action_uri import PDActionURI
+from .pd_page_additional_actions import PDPageAdditionalActions
 
 __all__ = [
     "PDAction",
@@ -18,4 +19,5 @@ __all__ = [
     "PDActionRemoteGoTo",
     "PDActionURI",
     "PDActionUnknown",
+    "PDPageAdditionalActions",
 ]
