@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSObject
 from pypdfbox.pdmodel import PDPage, PDPageTree
 
 
@@ -67,6 +67,43 @@ def test_index_out_of_range_raises() -> None:
         _ = tree[5]
     with pytest.raises(IndexError):
         _ = tree[-2]
+
+
+def test_index_of_direct_pages() -> None:
+    tree = PDPageTree()
+    pages = [_make_page(f"p{i}") for i in range(3)]
+    for page in pages:
+        tree.add(page)
+
+    assert tree.index_of(pages[0]) == 0
+    assert tree.index_of(pages[2]) == 2
+    assert tree.index_of_page(pages[1]) == 1
+
+
+def test_index_of_indirect_page_object() -> None:
+    root = COSDictionary()
+    root.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    kids = COSArray()
+    root.set_item(COSName.KIDS, kids)  # type: ignore[attr-defined]
+
+    first = _make_page("first")
+    second = _make_page("second")
+    first.get_cos_object().set_item(COSName.PARENT, root)  # type: ignore[attr-defined]
+    second.get_cos_object().set_item(COSName.PARENT, root)  # type: ignore[attr-defined]
+    kids.add(COSObject(10, resolved=first.get_cos_object()))
+    kids.add(COSObject(11, resolved=second.get_cos_object()))
+    root.set_int(COSName.COUNT, 2)  # type: ignore[attr-defined]
+
+    tree = PDPageTree(root)
+    assert tree.index_of(first) == 0
+    assert tree.index_of(PDPage(second.get_cos_object())) == 1
+
+
+def test_index_of_missing_page_returns_minus_one() -> None:
+    tree = PDPageTree()
+    tree.add(_make_page("present"))
+
+    assert tree.index_of(_make_page("missing")) == -1
 
 
 def test_remove_decrements_count() -> None:

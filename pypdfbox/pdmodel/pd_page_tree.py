@@ -54,6 +54,7 @@ class PDPageTree:
       - iteration in document order;
       - ``len()`` via ``/Count`` (with a walk-fallback);
       - 0-based and negative indexing;
+      - ``index_of(page)`` / ``index_of_page(page)`` lookup;
       - ``add(page)`` / ``remove(page)`` / ``insert_before`` / ``insert_after``;
       - the ``get_inheritable_attribute`` static helper.
     """
@@ -135,6 +136,24 @@ class PDPageTree:
     def get(self, index: int) -> PDPage:
         """0-based accessor — matches upstream's ``get(int)``."""
         return self[index]
+
+    def index_of(self, page: PDPage | COSDictionary) -> int:
+        """Return the 0-based document-order index of ``page``.
+
+        Mirrors upstream ``indexOf(PDPage)``: returns ``-1`` when the page
+        is not part of this page tree. Comparison is by the underlying
+        ``COSDictionary`` identity so callers can pass a fresh ``PDPage``
+        wrapper around an existing page dictionary.
+        """
+        page_dict = _unwrap_page_dict(page)
+        for index, candidate in enumerate(self):
+            if candidate.get_cos_object() is page_dict:
+                return index
+        return -1
+
+    def index_of_page(self, page: PDPage | COSDictionary) -> int:
+        """Alias for ``index_of`` for callers porting page-index helpers."""
+        return self.index_of(page)
 
     # ---------- mutation ----------
 
