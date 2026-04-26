@@ -26,6 +26,7 @@ class PDDestination:
         from .pd_named_destination import PDNamedDestination
         from .pd_page_fit_destination import PDPageFitDestination
         from .pd_page_fit_height_destination import PDPageFitHeightDestination
+        from .pd_page_fit_rectangle_destination import PDPageFitRectangleDestination
         from .pd_page_fit_width_destination import PDPageFitWidthDestination
         from .pd_page_xyz_destination import PDPageXYZDestination
 
@@ -55,6 +56,8 @@ class PDDestination:
                 PDPageFitHeightDestination.TYPE_BOUNDED,
             ):
                 return PDPageFitHeightDestination(base)
+            if type_str == PDPageFitRectangleDestination.TYPE:
+                return PDPageFitRectangleDestination(base)
             if type_str == PDPageXYZDestination.TYPE:
                 return PDPageXYZDestination(base)
             raise OSError(f"Unknown destination type: {type_str}")

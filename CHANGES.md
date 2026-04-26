@@ -98,7 +98,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## pdmodel cluster #7 partial (outlines / destinations / actions)
 
 - `pypdfbox/pdmodel/interactive/documentnavigation/outline/*`: outline tree/list mechanics are present, with typed destination/action accessors for the common action and destination wrappers in this cluster.
-- `pypdfbox/pdmodel/interactive/documentnavigation/destination/*`: ships named, Fit/FitB, FitH/FitBH, FitV/FitBV, and XYZ destinations. FitR and richer page-object resolution/index lookup are deferred.
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/*`: ships named, Fit/FitB, FitH/FitBH, FitV/FitBV, FitR, and XYZ destinations. Richer page-object resolution/index lookup is deferred.
 - `pypdfbox/pdmodel/interactive/action/*`: ships base/factory plus GoTo, URI, Named, Launch, RemoteGoTo, JavaScript, and Unknown wrappers. Richer actions (SubmitForm, ResetForm, ImportData, Hide, Thread, Sound, Movie, Rendition, Trans, GoToE) are deferred and currently preserve as `PDActionUnknown`.
 - `pypdfbox/pdmodel/interactive/action/pd_page_additional_actions.py`: ships page-open `/O` and page-close `/C` triggers. Other additional-actions dictionaries for annotations/forms are deferred to their owning clusters.
 - `pypdfbox/pdmodel/pd_document_catalog.py`: `get_dests()` returns the raw `/Dests` dictionary until the name-tree node classes are ported.

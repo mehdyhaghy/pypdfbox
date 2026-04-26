@@ -8,6 +8,7 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDNamedDestination,
     PDPageFitDestination,
     PDPageFitHeightDestination,
+    PDPageFitRectangleDestination,
     PDPageFitWidthDestination,
     PDPageXYZDestination,
 )
@@ -56,6 +57,16 @@ def test_page_width_height_and_xyz_coordinates() -> None:
     assert xyz.get_top() == 20.0
     assert xyz.get_zoom() == 1.25
 
+    rectangle = PDPageFitRectangleDestination()
+    rectangle.set_left(1)
+    rectangle.set_bottom(2)
+    rectangle.set_right(3)
+    rectangle.set_top(4)
+    assert rectangle.get_left() == 1.0
+    assert rectangle.get_bottom() == 2.0
+    assert rectangle.get_right() == 3.0
+    assert rectangle.get_top() == 4.0
+
 
 def test_destination_factory_dispatches_array_types() -> None:
     arr = COSArray([COSInteger.get(0), COSName.get_pdf_name("XYZ"), COSFloat(1.0)])
@@ -69,6 +80,9 @@ def test_destination_factory_dispatches_array_types() -> None:
 
     arr.set(1, COSName.get_pdf_name("Fit"))
     assert isinstance(PDDestination.create(arr), PDPageFitDestination)
+
+    arr.set(1, COSName.get_pdf_name("FitR"))
+    assert isinstance(PDDestination.create(arr), PDPageFitRectangleDestination)
 
 
 def test_destination_factory_rejects_unknown_array_type() -> None:
