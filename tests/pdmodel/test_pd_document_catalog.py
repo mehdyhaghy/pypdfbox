@@ -62,12 +62,13 @@ def test_version_round_trip() -> None:
 def test_stubbed_accessors_raise() -> None:
     doc = PDDocument()
     cat = doc.get_document_catalog()
-    for stub in (
-        cat.get_metadata,
-        cat.get_output_intents,
-    ):
-        with pytest.raises(NotImplementedError):
-            stub()
+    with pytest.raises(NotImplementedError):
+        cat.get_metadata()
+
+
+def test_get_output_intents_absent_returns_empty_list() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_output_intents() == []
 
 
 def test_get_acro_form_absent_returns_none() -> None:

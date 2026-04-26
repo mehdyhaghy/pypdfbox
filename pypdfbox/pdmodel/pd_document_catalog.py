@@ -29,6 +29,7 @@ _STRUCT_TREE_ROOT: COSName = COSName.get_pdf_name("StructTreeRoot")
 _MARK_INFO: COSName = COSName.get_pdf_name("MarkInfo")
 _OC_PROPERTIES: COSName = COSName.get_pdf_name("OCProperties")
 _ACRO_FORM: COSName = COSName.get_pdf_name("AcroForm")
+_OUTPUT_INTENTS: COSName = COSName.get_pdf_name("OutputIntents")
 
 
 class PDDocumentCatalog:
@@ -299,10 +300,24 @@ class PDDocumentCatalog:
         self._catalog.set_item(_PAGE_LABELS, labels.get_cos_object())
 
     def get_output_intents(self) -> list[Any]:
-        raise NotImplementedError(
-            "PDDocumentCatalog.get_output_intents requires PDOutputIntent — "
-            "pdmodel cluster #2"
-        )
+        from .graphics.color import PDOutputIntent
+
+        arr = self._catalog.get_dictionary_object(_OUTPUT_INTENTS)
+        if not isinstance(arr, COSArray):
+            return []
+        result: list[Any] = []
+        for i in range(arr.size()):
+            entry = arr.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(PDOutputIntent(entry))
+        return result
+
+    def add_output_intent(self, intent: Any) -> None:
+        arr = self._catalog.get_dictionary_object(_OUTPUT_INTENTS)
+        if not isinstance(arr, COSArray):
+            arr = COSArray()
+            self._catalog.set_item(_OUTPUT_INTENTS, arr)
+        arr.add(intent.get_cos_object())
 
     # ---------- raw COS passthrough used by tests ----------
 
