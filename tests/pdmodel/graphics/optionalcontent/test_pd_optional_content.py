@@ -5,6 +5,7 @@ import pytest
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,
+    PDOptionalContentMembershipDictionary,
     PDOptionalContentProperties,
 )
 
@@ -150,3 +151,125 @@ def test_base_state_off_marks_groups_disabled_by_default() -> None:
     # Explicit /ON entry overrides base state.
     props.set_group_enabled(a, True)
     assert props.is_group_enabled(a) is True
+
+
+# ---------- compute_visible_ocgs (PDF 32000-1 §8.11.4.3) ----------
+
+
+def _build_props_with_groups(
+    *names: str,
+) -> tuple[PDOptionalContentProperties, list[PDOptionalContentGroup]]:
+    props = PDOptionalContentProperties()
+    groups = [PDOptionalContentGroup(n) for n in names]
+    for g in groups:
+        props.add_group(g)
+    return props, groups
+
+
+def test_compute_visible_ocgs_base_state_on_default() -> None:
+    props, (a, b, c) = _build_props_with_groups("A", "B", "C")
+    visible = props.compute_visible_ocgs()
+    assert visible == {
+        id(a.get_cos_object()),
+        id(b.get_cos_object()),
+        id(c.get_cos_object()),
+    }
+
+
+def test_compute_visible_ocgs_base_state_off_yields_empty() -> None:
+    props, _ = _build_props_with_groups("A", "B", "C")
+    props.set_base_state("OFF")
+    assert props.compute_visible_ocgs() == set()
+
+
+def test_compute_visible_ocgs_on_minus_one_off() -> None:
+    props, (a, b, c) = _build_props_with_groups("A", "B", "C")
+    # Default base state ON; place B in /OFF.
+    props.set_group_enabled(b, False)
+    visible = props.compute_visible_ocgs()
+    assert visible == {id(a.get_cos_object()), id(c.get_cos_object())}
+
+
+def test_compute_visible_ocgs_off_plus_two_on() -> None:
+    props, (a, b, c) = _build_props_with_groups("A", "B", "C")
+    props.set_base_state("OFF")
+    # Add A and C explicitly to /ON.
+    props.set_group_enabled(a, True)
+    props.set_group_enabled(c, True)
+    visible = props.compute_visible_ocgs()
+    assert visible == {id(a.get_cos_object()), id(c.get_cos_object())}
+
+
+def test_compute_visible_ocgs_unchanged_treated_as_on_baseline() -> None:
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_base_state("Unchanged")
+    # No /ON or /OFF entries → baseline is the full set.
+    visible = props.compute_visible_ocgs()
+    assert visible == {id(a.get_cos_object()), id(b.get_cos_object())}
+
+
+def test_compute_visible_ocgs_on_overrides_off_when_both_listed() -> None:
+    # Per PDF 32000-1 §8.11.4.3, /ON is applied after /OFF, so /ON wins.
+    props, (a,) = _build_props_with_groups("A")
+    d = props.get_cos_object().get_dictionary_object(COSName.D)  # type: ignore[attr-defined]
+    assert isinstance(d, COSDictionary)
+    off_arr = COSArray()
+    off_arr.add(a.get_cos_object())
+    on_arr = COSArray()
+    on_arr.add(a.get_cos_object())
+    d.set_item(COSName.get_pdf_name("OFF"), off_arr)
+    d.set_item(COSName.get_pdf_name("ON"), on_arr)
+    visible = props.compute_visible_ocgs()
+    assert visible == {id(a.get_cos_object())}
+
+
+def test_compute_visible_ocgs_feeds_ocmd_anyon() -> None:
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_group_enabled(b, False)  # B off, A on
+    visible = props.compute_visible_ocgs()
+
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_o_cgs([a, b])
+    ocmd.set_visibility_policy("AnyOn")
+    assert ocmd.is_visible(visible) is True  # A is on
+
+
+def test_compute_visible_ocgs_feeds_ocmd_allon() -> None:
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_group_enabled(b, False)
+    visible = props.compute_visible_ocgs()
+
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_o_cgs([a, b])
+    ocmd.set_visibility_policy("AllOn")
+    assert ocmd.is_visible(visible) is False  # B is off
+
+    # Re-enable B and recompute.
+    props.set_group_enabled(b, True)
+    assert ocmd.is_visible(props.compute_visible_ocgs()) is True
+
+
+def test_compute_visible_ocgs_feeds_ocmd_anyoff() -> None:
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_group_enabled(b, False)
+    visible = props.compute_visible_ocgs()
+
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_o_cgs([a, b])
+    ocmd.set_visibility_policy("AnyOff")
+    assert ocmd.is_visible(visible) is True  # B is off
+
+
+def test_compute_visible_ocgs_feeds_ocmd_alloff() -> None:
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_base_state("OFF")
+    visible = props.compute_visible_ocgs()
+
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_o_cgs([a, b])
+    ocmd.set_visibility_policy("AllOff")
+    assert ocmd.is_visible(visible) is True  # both off
+
+    # Turn A on; AllOff should now fail.
+    props.set_group_enabled(a, True)
+    assert ocmd.is_visible(props.compute_visible_ocgs()) is False

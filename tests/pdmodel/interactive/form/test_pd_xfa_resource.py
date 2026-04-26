@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+
+import pytest
+
 from pypdfbox.cos import COSArray, COSStream, COSString
 from pypdfbox.pdmodel.interactive.form.pd_xfa_resource import PDXFAResource
 
@@ -49,3 +53,69 @@ def test_is_dynamic_false_for_plain_payload() -> None:
 def test_is_dynamic_false_for_empty_xfa() -> None:
     xfa = PDXFAResource(COSArray())
     assert xfa.is_dynamic() is False
+
+
+def test_get_document_from_cos_stream() -> None:
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><foo/></xdp:xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    root = xfa.get_document()
+
+    assert isinstance(root, ET.Element)
+    assert root.tag == "{http://ns.adobe.com/xdp/}xdp"
+    assert len(list(root)) == 1
+    assert root[0].tag == "foo"
+
+
+def test_get_document_from_tagged_packet_array() -> None:
+    arr = COSArray()
+    arr.add(COSString("template"))
+    arr.add(_stream(b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/">'))
+    arr.add(COSString("datasets"))
+    arr.add(_stream(b"<template/>"))
+    arr.add(COSString("form"))
+    arr.add(_stream(b"<datasets/>"))
+    arr.add(COSString("config"))
+    arr.add(_stream(b"</xdp:xdp>"))
+    xfa = PDXFAResource(arr)
+
+    root = xfa.get_document()
+
+    assert root.tag == "{http://ns.adobe.com/xdp/}xdp"
+    child_tags = [child.tag for child in root]
+    assert child_tags == ["template", "datasets"]
+
+
+def test_get_document_is_cached() -> None:
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><foo/></xdp:xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    first = xfa.get_document()
+    second = xfa.get_document()
+
+    assert first is second
+
+
+def test_get_document_propagates_parse_error_on_malformed_xml() -> None:
+    xfa = PDXFAResource(_stream(b"<not-closed>"))
+
+    with pytest.raises(ET.ParseError):
+        xfa.get_document()
+
+
+def test_get_document_as_xml_returns_decoded_payload() -> None:
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><foo/></xdp:xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    assert xfa.get_document_as_xml() == body.decode(encoding="utf-8")
+
+
+def test_get_document_as_xml_concatenates_array_form() -> None:
+    arr = COSArray()
+    arr.add(COSString("template"))
+    arr.add(_stream(b"<a>"))
+    arr.add(COSString("datasets"))
+    arr.add(_stream(b"<b/></a>"))
+    xfa = PDXFAResource(arr)
+
+    assert xfa.get_document_as_xml() == "<a><b/></a>"

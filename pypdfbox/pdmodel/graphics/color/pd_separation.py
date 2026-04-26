@@ -82,5 +82,31 @@ class PDSeparation(PDColorSpace):
         assert self._array is not None
         self._array.set(self._TINT_TRANSFORM, transform)
 
+    # ---------- conversion ----------
+
+    def to_rgb(
+        self, components: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Evaluate the tint transform and forward to the alternate CS.
+
+        Per PDF 32000-1 §8.6.6.4, ``components`` is the single tint
+        value in ``[0, 1]``. The tint transform (a PDF function) maps
+        it to coordinates in the alternate color space, which then
+        produces the RGB output.
+        """
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        from .pd_color import PDColor
+
+        alternate = self.get_alternate_color_space()
+        if alternate is None:
+            return None
+        tint = self.get_tint_transform()
+        function = PDFunction.create(tint) if tint is not None else None
+        if function is None:
+            return None
+        alt_components = function.eval(list(components))
+        return PDColor(alt_components, alternate).to_rgb()
+
 
 __all__ = ["PDSeparation"]

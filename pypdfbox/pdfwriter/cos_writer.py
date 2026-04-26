@@ -1420,10 +1420,12 @@ class COSWriter(ICOSVisitor):
         self._key_object[xref_key] = xref_stream
 
         # 6. Emit the xref stream as a regular indirect object. This goes
-        # through ``visit_from_stream`` which honours ``_security_handler``
-        # — required because the xref stream itself MUST be encrypted in
-        # encrypted documents (per ISO 32000-1 §7.5.8.2 the entire stream
-        # body is encrypted just like any other COSStream).
+        # through ``visit_from_stream``; that visitor explicitly skips the
+        # encryption pass for ``/Type /XRef`` streams (ISO 32000-2 §7.6.2:
+        # "All cross-reference streams in the file shall not be
+        # encrypted."), so the body stays plaintext-FlateDecoded and the
+        # parser can read /Encrypt's byte offset out of it before any
+        # security handler exists.
         #
         # Hybrid mode: ``startxref`` belongs to the traditional table that
         # will be emitted next, so stash the stream offset for the trailer
@@ -1659,10 +1661,24 @@ class COSWriter(ICOSVisitor):
         # the case for streams — they cannot be direct), encrypt the body
         # using the per-object key. Streams inside the /Encrypt subtree
         # (none in practice, but guard anyway) stay cleartext.
+        #
+        # Cross-reference streams (``/Type /XRef``) are exempted per ISO
+        # 32000-2 §7.6.2: "All cross-reference streams in the file shall
+        # not be encrypted." They carry the byte offsets the parser uses
+        # to locate /Encrypt itself, so encrypting them would create a
+        # chicken-and-egg bootstrap: the FlateDecode pass would see
+        # ciphertext and fail before the security handler could ever be
+        # built. Skipping them here keeps the writer's output round-
+        # trippable through the parser's eager-decrypt path.
+        type_name = obj.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+        is_xref_stream = (
+            isinstance(type_name, COSName) and type_name.name == "XRef"
+        )
         if (
             self._security_handler is not None
             and self._current_object_key is not None
             and not self._in_encrypt_subtree
+            and not is_xref_stream
         ):
             raw = self._security_handler.encrypt_stream(
                 raw,
@@ -1674,8 +1690,21 @@ class COSWriter(ICOSVisitor):
         # always indirect, so this is safe.
         obj.set_int(COSName.LENGTH, len(raw))  # type: ignore[attr-defined]
 
-        # Emit the dictionary first.
-        self.visit_from_dictionary(obj)
+        # Emit the dictionary first. For xref streams the dict subsumes
+        # the trailer — its /ID strings must stay cleartext (the standard
+        # security handler folds /ID[0] into the file-encryption-key
+        # derivation, so encrypting it would make the document
+        # unreadable). The regular trailer-emit path bypasses
+        # ``visit_from_string``'s encryption branch by leaving
+        # ``_current_object_key`` at None; xref streams ARE indirect, so
+        # we instead flip ``_in_encrypt_subtree`` for the dict block.
+        previous_in_enc = self._in_encrypt_subtree
+        if is_xref_stream:
+            self._in_encrypt_subtree = True
+        try:
+            self.visit_from_dictionary(obj)
+        finally:
+            self._in_encrypt_subtree = previous_in_enc
 
         out.write(STREAM)
         out.write_crlf()

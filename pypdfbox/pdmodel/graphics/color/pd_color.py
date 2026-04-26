@@ -28,8 +28,12 @@ class PDColor:
 
     Lite surface: ``to_rgb()`` covers the common device + CIE color
     spaces (DeviceGray/RGB/CMYK, Indexed with a DeviceRGB base, Lab via
-    D65 + sRGB matrix). Pattern, ICCBased, DeviceN and Separation raise
-    ``NotImplementedError`` until rendering lands.
+    D65 + sRGB matrix). ``ICCBased`` falls back to its ``/Alternate``
+    (or one inferred from ``/N``); ``Separation`` and ``DeviceN``
+    evaluate their tint transform via :class:`PDFunction` and forward
+    to the alternate; uncolored tiling ``Pattern`` recurses into its
+    underlying color space. Colored patterns (no underlying CS) raise
+    ``NotImplementedError`` — those need full pattern rendering.
     """
 
     def __init__(
@@ -69,8 +73,13 @@ class PDColor:
         assumes a DeviceRGB base and 1 byte per component, and ``Lab``
         uses a fixed D65 white point with the sRGB matrix and gamma
         encoding (no chromatic adaptation, no black-point compensation).
-        ``Pattern``, ``ICCBased``, ``DeviceN`` and ``Separation`` raise
-        :class:`NotImplementedError`.
+        ``ICCBased`` falls back to its ``/Alternate`` color space (or
+        infers one from ``/N``); ``Separation`` and ``DeviceN`` evaluate
+        their tint transform and forward to the alternate. Colored
+        ``Pattern`` instances (no underlying color space) raise
+        :class:`NotImplementedError` — pattern shading is a rendering
+        concern; uncolored tiling patterns recurse into the underlying
+        color space.
         """
         name = self._color_space.get_name()
         if name == "DeviceGray":
@@ -104,10 +113,20 @@ class PDColor:
             )
         if name == "Lab":
             return self._lab_to_rgb()
-        if name in ("Pattern", "ICCBased", "DeviceN", "Separation"):
-            raise NotImplementedError(
-                f"PDColor.to_rgb() is not implemented for color space {name!r}"
-            )
+        # Color spaces that own their own to_rgb logic — delegate.
+        if name in ("ICCBased", "Separation", "DeviceN", "Pattern"):
+            cs_to_rgb = getattr(self._color_space, "to_rgb", None)
+            if cs_to_rgb is None:
+                raise NotImplementedError(
+                    f"PDColor.to_rgb() is not implemented for color space {name!r}"
+                )
+            result = cs_to_rgb(self._components)
+            if result is None:
+                # Colored pattern (no underlying color) — rendering territory.
+                raise NotImplementedError(
+                    f"PDColor.to_rgb() requires an underlying color space for {name!r}"
+                )
+            return _clamp_rgb(result)
         raise NotImplementedError(
             f"PDColor.to_rgb() is not implemented for color space {name!r}"
         )

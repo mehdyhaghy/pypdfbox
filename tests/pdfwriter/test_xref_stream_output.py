@@ -263,12 +263,13 @@ def test_object_stream_round_trip_via_parser() -> None:
 # ---------- encryption integration ------------------------------------------
 
 
-def test_xref_stream_body_is_encrypted_when_handler_active() -> None:
-    """The xref stream's body MUST go through the per-object encryption
-    pipeline when an active security handler is wired. Plaintext fixed-
-    width records would compress predictably and the first bytes would
-    look like ``00 00 00 00 ff ff`` (the free-list head); after AES /
-    RC4 enciphering they should look random."""
+def test_xref_stream_body_stays_plaintext_when_handler_active() -> None:
+    """The xref stream's body must stay plaintext (only ``/FlateDecode``-
+    encoded, never enciphered) even when a security handler is wired —
+    ISO 32000-2 §7.6.2: "All cross-reference streams in the file shall
+    not be encrypted." The parser uses the xref stream to locate the
+    /Encrypt object itself, so encrypting it would create an unresolvable
+    chicken-and-egg bootstrap (FlateDecode would see ciphertext)."""
     pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
 
     from pypdfbox import PDDocument
@@ -296,12 +297,6 @@ def test_xref_stream_body_is_encrypted_when_handler_active() -> None:
         w.write(pd)
     saved = sink.getvalue()
 
-    # Locate the xref-stream object body and verify it does NOT contain
-    # the canonical free-list head byte sequence in cleartext. The
-    # default /W is "1 N 2", so a free-head plaintext record begins with
-    # 0x00 (type) followed by some number of zero offset bytes followed
-    # by 0xFF 0xFF (gen 65535). We assert that exact tail is absent —
-    # the cipher pass should scramble it.
     startxref_idx = saved.rindex(b"startxref\n")
     line_start = startxref_idx + len(b"startxref\n")
     line_end = saved.index(b"\n", line_start)
@@ -317,18 +312,20 @@ def test_xref_stream_body_is_encrypted_when_handler_active() -> None:
     body_end = end_marker
     while body_end > body_start and body_window[body_end - 1] in (0x0A, 0x0D):
         body_end -= 1
-    raw_cipher = body_window[body_start:body_end]
+    body = body_window[body_start:body_end]
 
-    # Cleartext xref-stream bytes (FlateDecoded) start with the deflate
-    # magic 0x78 0x9C / 0x78 0xDA / 0x78 0x01. Encryption happens AFTER
-    # filter encoding, so an encrypted body should NOT start with the
-    # zlib magic.
-    assert raw_cipher[:1] != b"\x78", (
-        "xref-stream body looks like raw deflate output — encryption "
-        "pipeline did not run on it"
+    # Plaintext FlateDecoded bytes start with the zlib magic
+    # 0x78 0x9C / 0x78 0xDA / 0x78 0x01. The encryption pipeline must
+    # have skipped this stream — otherwise the leading byte would be
+    # randomised by the cipher pass.
+    assert body[:1] == b"\x78", (
+        "xref-stream body lost its zlib magic — the encryption pipeline "
+        "should have skipped this object per ISO 32000-2 §7.6.2"
     )
 
-    # NB: parser-side support for re-decrypting encrypted xref streams
-    # (where /Encrypt lives in the xref-stream dict itself) is owned by
-    # the parser cluster and not exercised here — this test asserts the
-    # *writer* side only.
+    # End-to-end sanity: the saved file must round-trip through the
+    # parser with the same password (which proves the bootstrap that
+    # /Encrypt's offset is readable from the cleartext xref stream).
+    from pypdfbox.pdmodel import PDDocument as _PDDocument
+    with _PDDocument.load(saved, password="user") as reloaded:
+        assert reloaded.is_encrypted()

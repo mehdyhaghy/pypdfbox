@@ -219,9 +219,15 @@ class PDFParser:
         entry = xref.get(target_key)
         if entry is None or entry.compressed_index == -1:
             return None
-        if entry.type is not XrefType.TABLE:
-            # Compressed / xref-stream-derived entries need cluster #4 to
-            # decode — leave the eager bootstrap dormant in that case.
+        if entry.type is XrefType.COMPRESSED:
+            # Object lives inside an object stream — that decoder runs
+            # later; leave the eager bootstrap dormant in that case.
+            # ``XrefType.STREAM`` (uncompressed entry from an xref stream)
+            # still carries a real byte offset and can be loaded inline,
+            # which is exactly the path encrypted PDF 1.5+ documents need:
+            # /Encrypt object is referenced by an xref-STREAM entry, and
+            # we have to materialise it here so the security handler can
+            # be built before any other xref-stream body is decoded.
             return None
         # Snapshot cursor, parse the indirect, restore cursor so the
         # outer xref walker isn't disturbed.
@@ -405,24 +411,36 @@ class PDFParser:
                 position=self._base.position,
             )
         self._read_stream_body(stream)
+        # Per ISO 32000-2 §7.6.2 cross-reference streams "shall not be
+        # encrypted". Mark this stream so the COSStream decode path skips
+        # the security-handler pass even after the document-level handler
+        # walk in ``PDDocument.decrypt`` retroactively wires one onto
+        # every other stream — otherwise the same body would be deciphered
+        # twice (once now during xref load, once later) and the second
+        # pass would garble the entries.
+        stream.set_skip_encryption(True)
         # Treat the xref-stream dict as a trailer fragment so /Encrypt /ID
         # /Root /Size are visible to /Prev walking and the early-handler
         # bootstrap. Existing trailer keys from previously-parsed sections
         # still win — the resolver merges newest-first.
         self._resolver.set_trailer(stream)
-        # Diagnostics + early-handler bootstrap — match the legacy
-        # behaviour from the pre-cluster-#4 stub.
+        # Diagnostic flag for callers / tests.
         if stream.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
             self._has_encrypted_xref_streams = True
-            self._prepare_security_handler_if_needed()
-        # If a security handler was already prepared (encrypted
-        # /Prev-chained xref stream — the trailer's /Encrypt becomes
-        # available before this stream is reached), wire it up so the
-        # body bytes get deciphered before /Filter unwinds them.
-        if self._security_handler is not None:
-            stream.set_security_handler(self._security_handler, on, gn)
-        # Decode the body and walk the packed entries.
+        # Decode the body and walk the packed entries — this populates
+        # the resolver with byte offsets for every object, including the
+        # /Encrypt object itself. Has to run BEFORE the handler bootstrap
+        # because ``_prepare_security_handler_if_needed`` resolves
+        # ``/Encrypt`` through the resolver to grab its dict.
         self._decode_xref_stream_entries(stream)
+        # Now that entries are registered, eagerly stand up the security
+        # handler if /Encrypt is in scope and a password was staged. The
+        # handler isn't used to decrypt THIS stream (xref streams are
+        # exempt — see set_skip_encryption above), but it must exist
+        # before subsequent /Prev-chained sections or downstream pool
+        # objects are touched.
+        if stream.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
+            self._prepare_security_handler_if_needed()
 
     def _decode_xref_stream_entries(self, stream: COSStream) -> None:
         """Decode an xref stream's body and register one xref entry per

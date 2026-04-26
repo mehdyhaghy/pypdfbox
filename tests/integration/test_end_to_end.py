@@ -294,13 +294,9 @@ def test_encrypt_and_xref_stream_combined_roundtrip() -> None:
 
     Exercises the writer-side encryption pipeline + the parser's xref-
     stream loader + the security handler in a single end-to-end pass.
-
-    The writer-side hybrid case (xref-stream encrypted body) is exercised
-    in ``tests/pdfwriter/test_xref_stream_output.py``; the parser-side
-    counterpart — re-decrypting an /Encrypt'd xref stream during
-    ``parse_xref_chain`` — has not landed yet, so the FlateDecode pass on
-    the still-ciphertext xref-stream body fails before the security
-    handler is wired. Skipped until that parser cluster catches up.
+    The bootstrap is non-trivial because the xref stream itself is what
+    tells the parser where to find the /Encrypt object — see CHANGES.md
+    for the writer/parser contract that makes this round-trip safe.
     """
     pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
     from pypdfbox.pdmodel.encryption.standard_protection_policy import (
@@ -319,13 +315,7 @@ def test_encrypt_and_xref_stream_combined_roundtrip() -> None:
     assert b"/XRef" in saved
     assert b"hybrid xref+encrypt" not in saved
 
-    try:
-        reloaded = PDDocument.load(saved, password="u")
-    except (NotImplementedError, OSError) as exc:
-        pytest.skip(
-            f"parser cannot re-decrypt encrypted xref streams yet: {exc}"
-        )
-    with reloaded:
+    with PDDocument.load(saved, password="u") as reloaded:
         assert reloaded.is_encrypted() is True
         assert reloaded.get_number_of_pages() == 1
         text = PDFTextStripper().get_text(reloaded)

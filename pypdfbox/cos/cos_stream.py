@@ -107,6 +107,15 @@ class COSStream(COSDictionary):
         self._object_number: int = 0
         self._generation_number: int = 0
         self._decrypted: bool = False
+        # Skip-encryption marker for spec-exempt streams. Per ISO 32000-2
+        # §7.6.2 cross-reference streams (``/Type /XRef``) and the body
+        # of the /Encrypt object itself are NEVER encrypted, even in an
+        # encrypted document. Parser code sets this flag on those streams
+        # so the document-level handler walk in ``PDDocument.decrypt``
+        # — which attaches a handler to every stream in the pool — does
+        # not double-decipher (or, worse, decipher already-plaintext
+        # bytes as if they were ciphertext).
+        self._skip_encryption: bool = False
 
     # ---------- raw bytes I/O ----------
 
@@ -166,13 +175,48 @@ class COSStream(COSDictionary):
         ``(obj_num, gen_num)`` so :meth:`create_input_stream` can call
         ``handler.decrypt_stream(raw, obj_num, gen_num)`` lazily on the
         first decode. ``PDDocument.decrypt`` walks the object pool and
-        calls this on every ``COSStream``."""
+        calls this on every ``COSStream``.
+
+        No-op when :meth:`set_skip_encryption` has marked this stream as
+        spec-exempt (xref streams, /Encrypt body, etc.) — those bodies
+        are guaranteed plaintext on disk and must not be deciphered.
+        Also auto-skips when ``/Type /XRef`` is present in the dict: the
+        parser builds one COSStream during ``_handle_xref_stream_at`` and
+        marks it, but lazy loaders on the indirect pool entry can later
+        materialise a *different* COSStream from disk. Re-discovering
+        the xref-stream identity here closes that gap so a stray decrypt
+        walk doesn't garble the body of the second instance."""
+        if self._skip_encryption:
+            return
+        type_name = self.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+        if isinstance(type_name, COSName) and type_name.name == "XRef":
+            self._skip_encryption = True
+            return
         self._security_handler = handler
         self._object_number = int(obj_num)
         self._generation_number = int(gen_num)
         # Fresh handler attachment — clear the "already-decrypted" flag so
         # the next read deciphers the on-disk bytes once.
         self._decrypted = False
+
+    def set_skip_encryption(self, skip: bool) -> None:
+        """Mark this stream as exempt from the security-handler decode
+        pass. ISO 32000-2 §7.6.2 mandates that cross-reference streams
+        and the /Encrypt object itself are never encrypted; the parser
+        sets this on those streams so the later document-level
+        ``PDDocument.decrypt`` walk doesn't attach a handler that would
+        garble the already-plaintext body. Idempotent."""
+        self._skip_encryption = bool(skip)
+        if self._skip_encryption:
+            # Defensive: if a handler had already been attached (e.g. by
+            # a prior decrypt walk that ran before the parser flagged the
+            # stream), drop it so no future ``create_input_stream`` call
+            # tries to undo a cipher that was never applied.
+            self._security_handler = None
+            self._decrypted = False
+
+    def is_skip_encryption(self) -> bool:
+        return self._skip_encryption
 
     def create_input_stream(
         self,

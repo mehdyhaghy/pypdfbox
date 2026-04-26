@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSName
+from pypdfbox.cos import COSArray, COSBase, COSName
 
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
@@ -81,6 +81,36 @@ class PDDeviceN(PDColorSpace):
     def set_alternate_color_space(self, alternate: PDColorSpace) -> None:
         assert self._array is not None
         self._array.set(self._ALTERNATE_CS, alternate.get_cos_object())
+
+    def get_tint_transform(self) -> COSBase | None:
+        """Return the raw tint transform COS object (function dictionary
+        or stream). Function evaluation lives in the function module."""
+        assert self._array is not None
+        return self._array.get_object(self._TINT_TRANSFORM)
+
+    def set_tint_transform(self, transform: COSBase) -> None:
+        assert self._array is not None
+        self._array.set(self._TINT_TRANSFORM, transform)
+
+    # ---------- conversion ----------
+
+    def to_rgb(
+        self, components: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Evaluate the tint transform on the multi-component tint
+        vector and forward to the alternate CS. Per PDF 32000-1
+        §8.6.6.5, ``components`` is one value per colorant."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        alternate = self.get_alternate_color_space()
+        if alternate is None:
+            return None
+        tint = self.get_tint_transform()
+        function = PDFunction.create(tint) if tint is not None else None
+        if function is None:
+            return None
+        alt_components = function.eval(list(components))
+        return PDColor(alt_components, alternate).to_rgb()
 
 
 __all__ = ["PDDeviceN"]

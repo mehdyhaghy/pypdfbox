@@ -120,5 +120,37 @@ class PDICCBased(PDColorSpace):
             return
         stream.set_item(_METADATA, metadata)
 
+    # ---------- conversion ----------
+
+    def to_rgb(
+        self, components: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Convert ``components`` through the alternate color space.
+
+        Lite surface: no embedded ICC profile is parsed. Per PDF 32000-1
+        §8.6.5.5, the ``/Alternate`` entry provides a fallback color
+        space; if absent we infer one from ``/N``: ``1`` → DeviceGray,
+        ``3`` → DeviceRGB, ``4`` → DeviceCMYK. ICC profile parsing is
+        deferred (CLAUDE.md library-first note — when implemented it
+        will wrap a permissive ICC library, never reimplement).
+        """
+        from .pd_device_cmyk import PDDeviceCMYK
+        from .pd_device_gray import PDDeviceGray
+        from .pd_device_rgb import PDDeviceRGB
+
+        alternate = self.get_alternate()
+        if alternate is None:
+            n = self.get_n()
+            if n == 1:
+                alternate = PDDeviceGray.INSTANCE
+            elif n == 3:
+                alternate = PDDeviceRGB.INSTANCE
+            elif n == 4:
+                alternate = PDDeviceCMYK.INSTANCE
+            else:
+                return None
+        # Build a PDColor in the alternate CS and let it dispatch.
+        return PDColor(components, alternate).to_rgb()
+
 
 __all__ = ["PDICCBased"]

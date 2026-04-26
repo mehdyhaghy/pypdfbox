@@ -9,11 +9,17 @@ families are implemented:
   PDF 32000-2 §7.6.4.4.6 onwards. The hardened r6 hash (algorithm 2.B from
   §7.6.4.3.4) is included.
 
+For V=4 / V=5 the per-object cipher (RC4 vs AES-128 vs AES-256 vs Identity)
+is selected from the ``/CF`` sub-dictionary entries pointed at by ``/StmF``,
+``/StrF`` and ``/EFF`` per PDF 32000-1 §7.6.5. The CFM names are resolved at
+``prepare_for_decryption`` / ``prepare_document`` time and cached, then the
+cipher methods dispatch through the cached routing table. For V<4 (no /CF)
+the legacy single-algorithm path inherited from ``SecurityHandler`` is used.
+
 This is the *lite* port: it implements the password / key derivation paths
 needed to read and write encrypted documents, but does not yet model
-``/Recipients`` (public-key handlers), ``/CF`` per-stream crypt-filter
-selection, or strict per-revision key-length validation. Those are tracked
-in ``CHANGES.md``.
+``/Recipients`` (public-key handlers) or strict per-revision key-length
+validation. Those are tracked in ``CHANGES.md``.
 """
 
 from __future__ import annotations
@@ -23,7 +29,7 @@ import os
 import struct
 from typing import TYPE_CHECKING
 
-from cryptography.hazmat.primitives import padding as _padding  # noqa: F401
+from cryptography.hazmat.primitives import padding as _aes_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 try:
@@ -35,6 +41,14 @@ from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
     from .pd_encryption import PDEncryption
+
+
+# /CF /CFM values per PDF 32000-1 §7.6.5 Table 25.
+_CFM_IDENTITY: str = "Identity"
+_CFM_NONE: str = "None"
+_CFM_V2: str = "V2"
+_CFM_AESV2: str = "AESV2"
+_CFM_AESV3: str = "AESV3"
 
 
 # PDF 32000-1 §7.6.4.3 — 32-byte padding constant prepended to passwords.
@@ -98,6 +112,14 @@ class StandardSecurityHandler(SecurityHandler):
         # prepare_document.
         self._permissions: int = DEFAULT_PERMISSIONS
         self._encrypt_metadata: bool = True
+        # Per-object crypt-filter routing table — each entry is one of
+        # _CFM_V2 / _CFM_AESV2 / _CFM_AESV3 / _CFM_IDENTITY / _CFM_NONE, or
+        # ``None`` to mean "no /CF table, use the legacy single-algo path
+        # from SecurityHandler". Populated by prepare_for_decryption /
+        # prepare_document for V>=4 documents.
+        self._stream_cfm: str | None = None
+        self._string_cfm: str | None = None
+        self._embedded_file_cfm: str | None = None
 
     # ------------------------------------------------------------ accessors
 
@@ -123,17 +145,161 @@ class StandardSecurityHandler(SecurityHandler):
     def _is_aes_v4(cls, encryption: PDEncryption) -> bool:
         """V=4 AES detection: prefer /CF/<StmF>/CFM, fall back to /StmF name."""
         stm_f = cls.get_stream_filter_name(encryption)
-        if stm_f is None or stm_f == "Identity":
+        if stm_f is None or stm_f == _CFM_IDENTITY:
             return False
         # Authoritative path: look up the named crypt filter and read /CFM.
         crypt_filter = encryption.get_crypt_filter_dictionary(stm_f)
         if crypt_filter is not None:
             cfm = crypt_filter.get_cfm()
             if cfm is not None:
-                return cfm in ("AESV2", "AESV3")
+                return cfm in (_CFM_AESV2, _CFM_AESV3)
         # Fallback for legacy writers that put the algorithm directly in /StmF
         # without a matching /CF entry.
-        return stm_f in ("AESV2", "AESV3")
+        return stm_f in (_CFM_AESV2, _CFM_AESV3)
+
+    @classmethod
+    def _resolve_cfm(cls, encryption: PDEncryption, filter_name: str | None) -> str | None:
+        """Resolve a /StmF / /StrF / /EFF entry to its /CFM string.
+
+        ``filter_name`` is the name written in /Encrypt (e.g. "StdCF" or
+        "Identity"). Returns:
+
+        * ``"Identity"`` — pass-through, no cipher applied.
+        * ``"V2"`` / ``"AESV2"`` / ``"AESV3"`` — cipher to use (resolved
+          through /CF when present, else the legacy heuristic of treating
+          ``filter_name`` itself as the algorithm name).
+        * ``None`` — no filter declared at all (caller falls back to the
+          legacy single-algorithm path inherited from SecurityHandler).
+        """
+        if filter_name is None:
+            return None
+        if filter_name == _CFM_IDENTITY:
+            return _CFM_IDENTITY
+        cf = encryption.get_crypt_filter_dictionary(filter_name)
+        if cf is not None:
+            cfm = cf.get_cfm()
+            if cfm is not None:
+                return cfm
+        # Legacy writers occasionally put the algorithm name directly in
+        # /StmF / /StrF without a /CF entry. Match the same heuristic
+        # _is_aes_v4 already uses.
+        if filter_name in (_CFM_V2, _CFM_AESV2, _CFM_AESV3, _CFM_NONE):
+            return filter_name
+        # Unknown filter name with no /CF entry — treat as legacy.
+        return None
+
+    def _populate_routing_table(self, encryption: PDEncryption) -> None:
+        """Cache the /StmF, /StrF, /EFF → CFM resolutions on this handler.
+
+        For V<4 documents (no /CF, no /StmF, no /StrF) all three slots stay
+        ``None`` so the cipher entry points fall back to the legacy
+        single-algorithm path on ``SecurityHandler``.
+
+        For V>=4 the slots hold the resolved CFM string. /EFF defaults to
+        /StmF when absent, per PDF 32000-1 §7.6.5.
+        """
+        version = int(encryption.get_v())
+        if version < 4:
+            self._stream_cfm = None
+            self._string_cfm = None
+            self._embedded_file_cfm = None
+            return
+
+        self._stream_cfm = self._resolve_cfm(encryption, encryption.get_stm_f())
+        self._string_cfm = self._resolve_cfm(encryption, encryption.get_str_f())
+        eff_name = encryption.get_eff()
+        if eff_name is None:
+            # Spec default: embedded files inherit /StmF.
+            self._embedded_file_cfm = self._stream_cfm
+        else:
+            self._embedded_file_cfm = self._resolve_cfm(encryption, eff_name)
+
+    # ---------- routing-table accessors (mostly for tests) ----------
+
+    def get_stream_cfm(self) -> str | None:
+        """Return the resolved /CFM for the default stream filter, or None."""
+        return self._stream_cfm
+
+    def get_string_cfm(self) -> str | None:
+        """Return the resolved /CFM for the default string filter, or None."""
+        return self._string_cfm
+
+    def get_embedded_file_cfm(self) -> str | None:
+        """Return the resolved /CFM for embedded file streams, or None."""
+        return self._embedded_file_cfm
+
+    # ----------------------------------------------------- cipher dispatch
+
+    def decrypt_string(self, s: bytes, obj_num: int, gen_num: int) -> bytes:
+        cfm = self._string_cfm
+        if cfm is None:
+            return super().decrypt_string(s, obj_num, gen_num)
+        return self._dispatch_decrypt(cfm, s, obj_num, gen_num)
+
+    def encrypt_string(self, s: bytes, obj_num: int, gen_num: int) -> bytes:
+        cfm = self._string_cfm
+        if cfm is None:
+            return super().encrypt_string(s, obj_num, gen_num)
+        return self._dispatch_encrypt(cfm, s, obj_num, gen_num)
+
+    def decrypt_stream(
+        self,
+        data: bytes,
+        obj_num: int,
+        gen_num: int,
+        is_embedded_file: bool = False,
+    ) -> bytes:
+        cfm = self._embedded_file_cfm if is_embedded_file else self._stream_cfm
+        if cfm is None:
+            # Routing table empty (V<4) — fall back to the legacy single-algo
+            # path. ``SecurityHandler`` doesn't know about is_embedded_file
+            # because per-object filters don't exist below V=4.
+            return super().decrypt_stream(data, obj_num, gen_num)
+        return self._dispatch_decrypt(cfm, data, obj_num, gen_num)
+
+    def encrypt_stream(
+        self,
+        data: bytes,
+        obj_num: int,
+        gen_num: int,
+        is_embedded_file: bool = False,
+    ) -> bytes:
+        cfm = self._embedded_file_cfm if is_embedded_file else self._stream_cfm
+        if cfm is None:
+            return super().encrypt_stream(data, obj_num, gen_num)
+        return self._dispatch_encrypt(cfm, data, obj_num, gen_num)
+
+    def _dispatch_decrypt(
+        self, cfm: str, data: bytes, obj_num: int, gen_num: int
+    ) -> bytes:
+        if cfm == _CFM_IDENTITY or cfm == _CFM_NONE:
+            return data
+        if cfm == _CFM_V2:
+            return _rc4(self.compute_object_key(obj_num, gen_num), data)
+        if cfm == _CFM_AESV2:
+            return _aes128_cbc_decrypt(
+                self.compute_object_key(obj_num, gen_num), data
+            )
+        if cfm == _CFM_AESV3:
+            # AES-256: file-encryption key used directly (no per-object salt).
+            return _aes128_cbc_decrypt(self.get_encryption_key() or b"", data)
+        # Unknown CFM — refuse silently rather than corrupting bytes.
+        return data
+
+    def _dispatch_encrypt(
+        self, cfm: str, data: bytes, obj_num: int, gen_num: int
+    ) -> bytes:
+        if cfm == _CFM_IDENTITY or cfm == _CFM_NONE:
+            return data
+        if cfm == _CFM_V2:
+            return _rc4(self.compute_object_key(obj_num, gen_num), data)
+        if cfm == _CFM_AESV2:
+            return _aes128_cbc_encrypt(
+                self.compute_object_key(obj_num, gen_num), data
+            )
+        if cfm == _CFM_AESV3:
+            return _aes128_cbc_encrypt(self.get_encryption_key() or b"", data)
+        return data
 
     # ------------------------------------------------------------ read path
 
@@ -169,6 +335,11 @@ class StandardSecurityHandler(SecurityHandler):
             self.set_aes(self._is_aes_v4(encryption))
         else:
             self.set_aes(False)
+
+        # Cache the per-object crypt-filter routing table — empty for V<4
+        # (legacy single-algo path), populated from /StmF / /StrF / /EFF
+        # via /CF for V>=4.
+        self._populate_routing_table(encryption)
 
         password = decryption_material.get_password() or b""
         o = encryption.get_o()
@@ -304,6 +475,9 @@ class StandardSecurityHandler(SecurityHandler):
             encryption.set_oe(oe)
             encryption.set_ue(ue)
             encryption.set_perms(perms)
+            # /CF/StdCF + /StmF + /StrF — write side gets the same routing
+            # table the read side will rebuild on load.
+            self._install_std_crypt_filter(encryption, _CFM_AESV3, 32)
         else:
             o = self._compute_owner_password_r2_r4(
                 owner_pw, user_pw, revision, key_len_bits // 8
@@ -324,11 +498,38 @@ class StandardSecurityHandler(SecurityHandler):
             )
             encryption.set_o(o)
             encryption.set_u(u)
+            if version == 4:
+                cfm = _CFM_AESV2 if prefer_aes else _CFM_V2
+                self._install_std_crypt_filter(encryption, cfm, key_len_bits // 8)
+
+        # Cache the routing table so encrypt_string / encrypt_stream can
+        # dispatch to the right cipher on the write side too.
+        self._populate_routing_table(encryption)
 
         # Attach the encryption dictionary to the document if it exposes the
         # standard PDFBox setter.
         if hasattr(document, "set_encryption_dictionary"):
             document.set_encryption_dictionary(encryption)
+
+    @staticmethod
+    def _install_std_crypt_filter(
+        encryption: PDEncryption, cfm: str, length_bytes: int
+    ) -> None:
+        """Wire /CF/StdCF + /StmF + /StrF on ``encryption`` for V>=4 writes.
+
+        Mirrors what PDFBox's ``StandardSecurityHandler.prepareEncryptionDictRev4``
+        / ``prepareEncryptionDictRev6`` do — installs a single named crypt
+        filter and points both /StmF and /StrF at it. /EFF is intentionally
+        left absent so embedded files inherit /StmF (spec default).
+        """
+        from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
+
+        std = PDCryptFilterDictionary()
+        std.set_cfm(cfm)
+        std.set_length(length_bytes)
+        encryption.set_std_crypt_filter_dictionary(std)
+        encryption.set_stm_f("StdCF")
+        encryption.set_str_f("StdCF")
 
     @staticmethod
     def _extract_document_id(document: object, default: bytes) -> bytes:
@@ -680,6 +881,41 @@ def _rc4(key: bytes, data: bytes) -> bytes:
     cipher = Cipher(_ARC4(key), mode=None)
     enc = cipher.encryptor()
     return enc.update(data) + enc.finalize()
+
+
+def _aes128_cbc_encrypt(key: bytes, data: bytes) -> bytes:
+    """AES-CBC with PKCS#7 padding and a random 16-byte IV prefix.
+
+    Used by AESV2 (per-object key, n+5 → 16 bytes) and AESV3 (file key, 32
+    bytes) per-object cipher dispatch. Mirrors the on-disk layout that
+    ``SecurityHandler`` already produces for the V<4 legacy path.
+    """
+    iv = os.urandom(16)
+    padder = _aes_padding.PKCS7(128).padder()
+    padded = padder.update(data) + padder.finalize()
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    enc = cipher.encryptor()
+    return iv + enc.update(padded) + enc.finalize()
+
+
+def _aes128_cbc_decrypt(key: bytes, data: bytes) -> bytes:
+    """AES-CBC inverse of :func:`_aes128_cbc_encrypt`.
+
+    Tolerant of malformed PKCS#7 padding (returns the raw padded bytes) to
+    match PDFBox's loose decryption behaviour — strict callers should wrap
+    this in their own validation.
+    """
+    if len(data) < 16:
+        return b""
+    iv, ct = data[:16], data[16:]
+    cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+    dec = cipher.decryptor()
+    padded = dec.update(ct) + dec.finalize()
+    unpadder = _aes_padding.PKCS7(128).unpadder()
+    try:
+        return unpadder.update(padded) + unpadder.finalize()
+    except ValueError:
+        return padded
 
 
 def _aes_cbc_no_padding_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:

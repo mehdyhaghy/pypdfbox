@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+
 from pypdfbox.cos import COSArray, COSBase, COSStream
 
 
@@ -11,13 +13,16 @@ class PDXFAResource:
     ``[name, stream, name, stream, ...]`` entries (the tagged-stream form per
     ISO 32000-1:2008 §12.7.8) where each stream carries one XML element.
 
-    Lite scope: ``get_bytes`` mirrors upstream's concatenation behavior.
-    Deferred: ``get_document`` (W3C XML parsing), set helpers, and a
-    fully-spec is_dynamic detection.
+    ``get_bytes`` mirrors upstream's concatenation behavior; ``get_document``
+    parses the concatenated payload into an ``ElementTree`` element (cached
+    on the instance).
+
+    Deferred: set helpers and fully-spec is_dynamic detection.
     """
 
     def __init__(self, xfa: COSBase) -> None:
         self._xfa = xfa
+        self._document: ET.Element | None = None
 
     def get_cos_object(self) -> COSBase:
         return self._xfa
@@ -51,6 +56,25 @@ class PDXFAResource:
     def _bytes_from_stream(stream: COSStream) -> bytes:
         with stream.create_input_stream() as src:
             return src.read()
+
+    def get_document_as_xml(self) -> str:
+        """Return the concatenated XFA payload decoded as a UTF-8 string."""
+        return self.get_bytes().decode(encoding="utf-8")
+
+    def get_document(self) -> ET.Element:
+        """Parse the XFA payload into an ``ElementTree`` element (cached).
+
+        Mirrors upstream PDFBox's ``getDocument()`` which returns a parsed
+        W3C ``Document``. Here we return the root ``Element`` from the
+        stdlib ``xml.etree.ElementTree`` parser. The result is cached on
+        the instance so repeated calls return the same object identity.
+
+        Malformed XML raises ``xml.etree.ElementTree.ParseError`` (the
+        stdlib default), which is allowed to propagate to the caller.
+        """
+        if self._document is None:
+            self._document = ET.fromstring(self.get_bytes())
+        return self._document
 
     def is_dynamic(self) -> bool:
         """Heuristic dynamic-XFA check.

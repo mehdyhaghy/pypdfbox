@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
+    PDComplexFileSpecification,
+)
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
@@ -12,6 +17,15 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination 
 
 from .pd_action import PDAction
 from .pd_target_directory import PDTargetDirectory
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
+        PDPageDestination,
+    )
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,6 +97,122 @@ class PDActionEmbeddedGoTo(PDAction):
             target.get_cos_object() if hasattr(target, "get_cos_object") else target,
         )
 
+    def resolve_target(
+        self,
+        source_document: PDDocument,
+        target_document: PDDocument | None = None,
+    ) -> tuple[PDDocument, PDPageDestination | PDPage] | None:
+        """Walk the ``/T`` chain to the embedded file the action targets and
+        resolve the final destination inside it.
+
+        Per PDF 32000-1 §12.6.4.4 / Table 202, ``/T`` is a chain of
+        ``PDTargetDirectory`` dictionaries. For each step:
+
+        * ``/R = "C"`` (child) — the new scope is the document obtained by
+          loading the embedded file named in ``/N`` from the current
+          scope's ``/Names /EmbeddedFiles`` name tree.
+        * ``/R = "P"`` (parent) — the new scope pops back to
+          ``target_document`` (the document containing this action's
+          owning attachment, supplied by the caller). When
+          ``target_document`` is ``None`` the walk gracefully returns
+          ``None``.
+
+        After the last hop (no nested ``/T``), the action's ``/D`` entry is
+        resolved against the final scope's catalog (``/Dests`` name tree
+        for named destinations) and returned.
+
+        Returns ``(final_document, destination_or_page)`` on success, or
+        ``None`` when any step fails to resolve (missing ``/N``, missing
+        embedded file bytes, unreadable embedded PDF, missing destination)."""
+        from pypdfbox.pdmodel.pd_document import PDDocument as _PDDocument
+
+        current_scope: PDDocument = source_document
+        current_target = self.get_target()
+
+        # Track docs we opened so we don't leak them on a graceful failure.
+        opened_docs: list[PDDocument] = []
+
+        try:
+            while current_target is not None:
+                relationship = current_target.get_relationship() or "C"
+                next_filename = current_target.get_target_filename()
+                if next_filename is None:
+                    # /N missing — chain broken.
+                    return None
+
+                if relationship == "P":
+                    # Pop to the supplied parent scope.
+                    if target_document is None:
+                        return None
+                    next_scope: PDDocument | None = target_document
+                else:
+                    # Descend into the embedded file referenced by /N inside
+                    # the current scope's /Names /EmbeddedFiles tree.
+                    next_scope = _open_embedded_pdf(
+                        current_scope, next_filename, _PDDocument
+                    )
+                    if next_scope is None:
+                        return None
+                    if next_scope is not source_document and next_scope is not target_document:
+                        opened_docs.append(next_scope)
+
+                current_scope = next_scope
+                nested = current_target.get_target()
+                if nested is None:
+                    break
+                current_target = nested
+
+            # Resolve the action's /D against the final scope.
+            final = self._resolve_final_destination(current_scope)
+            if final is None:
+                return None
+            # Hand ownership of opened docs back so caller closes the chain
+            # by closing the final doc only — we drop our list once the
+            # walk succeeds (caller may close them via documents we return).
+            opened_docs.clear()
+            return current_scope, final
+        finally:
+            # Close any docs we opened that we won't return to the caller.
+            for d in opened_docs:
+                try:
+                    d.close()
+                except Exception:  # noqa: BLE001 — best-effort cleanup
+                    _LOG.debug("Failed to close embedded PDDocument", exc_info=True)
+
+    def _resolve_final_destination(
+        self, scope: PDDocument
+    ) -> PDPageDestination | PDPage | None:
+        """Resolve this action's ``/D`` against ``scope``'s name dictionaries.
+
+        ``/D`` can be:
+        * an explicit page destination array → :class:`PDPageDestination`
+          (returned as-is — the page reference inside is opaque to us
+          unless it's a numeric index, which the caller can resolve).
+        * a name / byte string → looked up in ``scope``'s
+          ``/Names /Dests`` name tree.
+        """
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+            PDNamedDestination,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
+            PDPageDestination,
+        )
+
+        dest = self.get_d()
+        if dest is None:
+            return None
+        if isinstance(dest, PDPageDestination):
+            return dest
+        if isinstance(dest, PDNamedDestination):
+            name = dest.get_named_destination()
+            if name is None:
+                return None
+            resolved = _resolve_named_destination(scope, name)
+            if isinstance(resolved, PDPageDestination):
+                return resolved
+            return None
+        return None
+
     def walk_to_target(self) -> list[TargetStep]:
         """Walk the ``/T`` → ``/T`` → ... chain and return each hop as a
         :class:`TargetStep`.
@@ -117,6 +247,107 @@ class PDActionEmbeddedGoTo(PDAction):
             )
             current = current.get_target()
         return steps
+
+
+def _open_embedded_pdf(
+    scope: PDDocument,
+    name: str,
+    pddocument_cls: type[PDDocument],
+) -> PDDocument | None:
+    """Look up ``name`` in ``scope``'s ``/Names /EmbeddedFiles`` name tree
+    and load the referenced embedded file as a fresh :class:`PDDocument`.
+
+    Returns ``None`` when the name is missing, the file specification has
+    no embedded stream, the bytes are empty, or the bytes don't parse as
+    a PDF (graceful degradation per spec — callers get a soft ``None``
+    rather than an exception, mirroring upstream's tolerant behaviour
+    for malformed embedded GoTo targets)."""
+    catalog = scope.get_document_catalog()
+    names = catalog.get_names()
+    if names is None:
+        return None
+    embedded_files = names.get_embedded_files()
+    if embedded_files is None:
+        return None
+    file_spec = embedded_files.get_value(name)
+    if file_spec is None:
+        return None
+    if not isinstance(file_spec, PDComplexFileSpecification):
+        # Lookup may return raw COSDictionary — wrap.
+        cos = getattr(file_spec, "get_cos_object", lambda: None)()
+        if isinstance(cos, COSDictionary):
+            file_spec = PDComplexFileSpecification(cos)
+        else:
+            return None
+    embedded = file_spec.get_embedded_file()
+    if embedded is None:
+        # Fall back to /UF / /DOS / /Mac / /Unix in that order.
+        embedded = (
+            file_spec.get_embedded_file_unicode()
+            or file_spec.get_embedded_file_dos()
+            or file_spec.get_embedded_file_mac()
+            or file_spec.get_embedded_file_unix()
+        )
+        if embedded is None:
+            return None
+    try:
+        data = embedded.to_byte_array()
+    except Exception:  # noqa: BLE001 — malformed stream is a soft failure
+        _LOG.debug(
+            "Embedded file %r — failed to read bytes", name, exc_info=True
+        )
+        return None
+    if not data:
+        return None
+    try:
+        return pddocument_cls.load(data)
+    except Exception:  # noqa: BLE001 — non-PDF payload is a soft failure
+        _LOG.debug(
+            "Embedded file %r — bytes do not parse as a PDF",
+            name,
+            exc_info=True,
+        )
+        return None
+
+
+def _resolve_named_destination(
+    scope: PDDocument, name: str
+) -> PDDestination | None:
+    """Resolve a named destination ``name`` against ``scope``'s
+    ``/Names /Dests`` name tree (PDF 1.2+), falling back to the legacy
+    catalog ``/Dests`` flat dictionary (PDF 1.1)."""
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (
+        PDDestinationNameTreeNode,
+    )
+
+    catalog = scope.get_document_catalog()
+
+    # PDF 1.2+ /Names /Dests path (proper name tree).
+    names = catalog.get_names()
+    if names is not None:
+        names_cos = names.get_cos_object()
+        dests_dict = names_cos.get_dictionary_object(
+            COSName.get_pdf_name("Dests")
+        )
+        if isinstance(dests_dict, COSDictionary):
+            tree = PDDestinationNameTreeNode(dests_dict)
+            value = tree.get_value(name)
+            if value is not None:
+                return value
+        flat = names.get_dests()
+        if flat is not None:
+            value = flat.get_destination(name)
+            if value is not None:
+                return value
+
+    # Legacy catalog /Dests — wrapped here as PDDestinationNameTreeNode in
+    # this codebase (its get_value walks the flat /Names array form).
+    legacy = catalog.get_dests()
+    if legacy is not None:
+        value = legacy.get_value(name)
+        if value is not None:
+            return value
+    return None
 
 
 __all__ = ["PDActionEmbeddedGoTo", "TargetStep"]

@@ -17,8 +17,18 @@ _E: COSName = COSName.get_pdf_name("E")
 _ACTUAL_TEXT: COSName = COSName.get_pdf_name("ActualText")
 _A: COSName = COSName.get_pdf_name("A")
 _C: COSName = COSName.get_pdf_name("C")
+_PG: COSName = COSName.get_pdf_name("Pg")
+_TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
+_ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
 
 _STRUCT_ELEM_NAME: str = "StructElem"
+_STRUCT_TREE_ROOT_NAME: str = "StructTreeRoot"
+
+# Cap how far we follow a /RoleMap chain. PDF 32000-1 §14.7.4 doesn't pin a
+# limit; upstream PDFBox uses the role-map dictionary itself as the cycle
+# detector. We additionally cap the walk at 16 hops as belt-and-braces
+# protection against pathological inputs.
+_MAX_ROLE_MAP_DEPTH: int = 16
 
 
 class PDStructureElement(PDStructureNode):
@@ -52,6 +62,77 @@ class PDStructureElement(PDStructureNode):
 
     def set_structure_type(self, structure_type: str) -> None:
         self._dictionary.set_name(_S, structure_type)
+
+    # ---------- /Pg page ----------
+
+    def get_page(self) -> Any | None:
+        """Return the typed ``PDPage`` for ``/Pg`` if present, else ``None``.
+
+        Mirrors upstream ``PDStructureElement.getPage()``. The returned wrapper
+        wraps the same underlying ``COSDictionary`` (no copy)."""
+        from pypdfbox.pdmodel.pd_page import PDPage
+
+        pg = self._dictionary.get_dictionary_object(_PG)
+        if isinstance(pg, COSDictionary):
+            return PDPage(pg)
+        return None
+
+    def set_page(self, page: Any | None) -> None:
+        """Write ``/Pg``. ``None`` removes the entry."""
+        if page is None:
+            self._dictionary.remove_item(_PG)
+            return
+        cos = page.get_cos_object() if hasattr(page, "get_cos_object") else page
+        self._dictionary.set_item(_PG, cos)
+
+    # ---------- /S resolved through /RoleMap ----------
+
+    def get_standard_structure_type(self) -> str | None:
+        """Resolve this element's ``/S`` against the structure-tree-root
+        ``/RoleMap`` until a standard PDF structure type is reached. Returns
+        the resolved name, or ``None`` if ``/S`` is absent.
+
+        Per PDF 32000-1 §14.7.4 a structure element's ``/S`` may be a
+        non-standard name; the catalog's ``/StructTreeRoot/RoleMap`` maps it
+        (potentially through several hops) to a standard structure type.
+        """
+        struct_type = self._dictionary.get_name(_S)
+        if struct_type is None:
+            return None
+
+        role_map = self._find_role_map()
+        if not role_map:
+            return struct_type
+
+        seen: set[str] = set()
+        current = struct_type
+        for _ in range(_MAX_ROLE_MAP_DEPTH):
+            if current in seen:
+                # Cycle — bail with the last value we resolved.
+                return current
+            seen.add(current)
+            mapped = role_map.get(current)
+            if mapped is None:
+                return current
+            current = mapped
+        return current
+
+    def _find_role_map(self) -> dict[str, str]:
+        """Walk the ``/P`` parent chain to the ``StructTreeRoot`` and return
+        its ``/RoleMap`` as a ``{name: name}`` dict. Returns an empty dict if
+        no root or no role map is reachable."""
+        node: COSDictionary | None = self._dictionary
+        seen: set[int] = set()
+        # Cap the parent walk too — defensive against malformed cyclic /P.
+        for _ in range(_MAX_ROLE_MAP_DEPTH):
+            if node is None or id(node) in seen:
+                return {}
+            seen.add(id(node))
+            if node.get_name(_TYPE) == _STRUCT_TREE_ROOT_NAME:
+                return _read_role_map(node)
+            parent = node.get_dictionary_object(_P)
+            node = parent if isinstance(parent, COSDictionary) else None
+        return {}
 
     # ---------- /P parent (raw COSBase; typed PDStructureNode deferred) ----
 
@@ -168,6 +249,20 @@ class PDStructureElement(PDStructureNode):
             self._dictionary.remove_item(_C)
             return
         self._dictionary.set_item(_C, class_names.to_cos_array())
+
+
+def _read_role_map(root: COSDictionary) -> dict[str, str]:
+    """Extract ``/RoleMap`` from a structure-tree-root dict as a Python
+    ``{name: name}`` map. Non-name values are skipped (they cannot resolve
+    to a standard structure type in any meaningful way)."""
+    rm = root.get_dictionary_object(_ROLE_MAP)
+    if not isinstance(rm, COSDictionary):
+        return {}
+    out: dict[str, str] = {}
+    for key, value in rm.entry_set():
+        if isinstance(value, COSName):
+            out[key.get_name()] = value.get_name()
+    return out
 
 
 __all__ = ["PDStructureElement"]

@@ -79,6 +79,22 @@ class PDSimpleFont(PDFont):
                 widths.append(float(item.value))
         return widths
 
+    def get_average_font_width(self) -> float:
+        """Return the average glyph advance for this font in *thousandths
+        of an em* (the same scale upstream's ``getAverageFontWidth``
+        returns). Computed as the arithmetic mean of the entries in
+        ``/Widths``; zero-width entries (typically ``.notdef`` slots) are
+        skipped because they would otherwise drag the mean toward zero
+        for sparsely-mapped fonts. Returns ``0.0`` when the font has no
+        ``/Widths`` array or every entry is zero — callers should use
+        their own fallback in that case.
+        """
+        widths = self.get_widths()
+        non_zero = [w for w in widths if w > 0.0]
+        if not non_zero:
+            return 0.0
+        return sum(non_zero) / len(non_zero)
+
     # ---------- encoding ----------
 
     def get_encoding(self) -> COSBase | None:

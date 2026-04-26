@@ -61,6 +61,15 @@ class Loader:
         Mirrors PDFBox ``Loader.loadPDF(..., String password)``."""
         access, owned = Loader._coerce_source(source)
         parser = PDFParser(access)
+        # Stage the password BEFORE ``parse()`` so the parser can stand up
+        # a security handler the instant the trailer's ``/Encrypt`` becomes
+        # available — required for PDF 1.5+ documents whose xref *itself*
+        # is an encrypted stream (the body must be deciphered before its
+        # ``/FlateDecode`` filter can run; otherwise zlib sees ciphertext
+        # and fails with "incorrect header check"). The post-parse
+        # ``PDDocument.decrypt`` path is too late for that case.
+        if password is not None:
+            parser.set_password(password)
         try:
             document = parser.parse()
         except PDFParseError as e:

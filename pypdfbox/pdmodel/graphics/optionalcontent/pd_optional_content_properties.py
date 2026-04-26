@@ -200,6 +200,60 @@ class PDOptionalContentProperties:
             )
         self._get_d().set_item(_BASE_STATE, cos_name)
 
+    # ---------- aggregate visibility ----------
+
+    def compute_visible_ocgs(self) -> set[int]:
+        """Return the set of ``id(ocg_cosdict)`` values for OCGs whose
+        computed visibility is ON, per PDF 32000-1 §8.11.4.3 default
+        configuration (/D) resolution rules.
+
+        Algorithm:
+
+        1. Start from the BaseState seed:
+           - "ON" (default)  → every OCG in /OCGs.
+           - "OFF"           → empty set.
+           - "Unchanged"     → treated as "ON" baseline at first call (no
+             prior session state to preserve in this stateless context).
+        2. Remove every entry listed in /D /OFF.
+        3. Add every entry listed in /D /ON.
+
+        The /AS auto-state usage array is not applied in v1 (see PRD §8.11
+        gap note in CHANGES.md). Returns the resulting set of ``id()``
+        values, ready to feed into
+        ``PDOptionalContentMembershipDictionary.is_visible``.
+        """
+        d = self._get_d()
+        base_state = self.get_base_state()
+
+        all_ocg_ids: set[int] = set()
+        for entry in self._get_ocgs():
+            ocg = self._to_dictionary(entry)
+            if ocg is not None:
+                all_ocg_ids.add(id(ocg))
+
+        if base_state == "OFF":
+            visible: set[int] = set()
+        else:
+            # "ON" (default) and "Unchanged" both seed with the full set
+            # for a stateless first call.
+            visible = set(all_ocg_ids)
+
+        off = d.get_dictionary_object(_OFF)
+        if isinstance(off, COSArray):
+            for entry in off:
+                ocg = self._to_dictionary(entry)
+                if ocg is not None:
+                    visible.discard(id(ocg))
+
+        on = d.get_dictionary_object(_ON)
+        if isinstance(on, COSArray):
+            for entry in on:
+                ocg = self._to_dictionary(entry)
+                if ocg is not None:
+                    visible.add(id(ocg))
+
+        return visible
+
     # ---------- alternate configurations ----------
 
     def get_configuration_names(self) -> list[str]:

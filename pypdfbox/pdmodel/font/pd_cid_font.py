@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream
 
 from .pd_cid_system_info import PDCIDSystemInfo
 from .pd_font import PDFont
@@ -26,10 +26,10 @@ class PDCIDFont(PDFont):
     ``/Type`` is ``/Font`` it is not directly usable as a font. Concrete
     subclasses (``PDCIDFontType0``, ``PDCIDFontType2``) set ``/Subtype``.
 
-    Lite — width-table parsing, vertical-displacement parsing, and the
-    ``PDFontLike`` / ``PDVectorFont`` mixins are deferred. This wrapper
-    only exposes the COS-level accessors over the dictionary entries
-    enumerated in PDF 32000-1 §9.7.4.
+    Lite — the ``PDFontLike`` / ``PDVectorFont`` mixins are deferred.
+    This wrapper exposes the COS-level accessors over the dictionary
+    entries enumerated in PDF 32000-1 §9.7.4 plus parsing of the ``/W``
+    and ``/W2`` width tables (§9.7.4.3) into ``CID -> width`` maps.
     """
 
     def __init__(
@@ -39,6 +39,9 @@ class PDCIDFont(PDFont):
     ) -> None:
         super().__init__(font_dict)
         self._parent = parent_type0_font
+        # Lazy caches for parsed /W and /W2 tables (PDF 32000-1 §9.7.4.3).
+        self._widths: dict[int, float] | None = None
+        self._widths2: dict[int, tuple[float, float, float]] | None = None
 
     # ---------- subtype (abstract) ----------
 
@@ -113,6 +116,189 @@ class PDCIDFont(PDFont):
             self._dict.remove_item(_W2)
             return
         self._dict.set_item(_W2, arr)
+
+    # ---------- parsed width tables (PDF 32000-1 §9.7.4.3) ----------
+
+    def get_default_width(self) -> float:
+        """Return ``/DW`` as a float, defaulting to 1000 per the spec."""
+        return self._dict.get_float(_DW, 1000.0)
+
+    def get_widths(self) -> dict[int, float]:
+        """Parse ``/W`` into a ``CID -> width`` map (1/1000 em).
+
+        Per PDF 32000-1 §9.7.4.3 the ``/W`` array uses two interleaved
+        forms:
+
+        * ``c [w1 w2 w3 ...]`` — consecutive CIDs starting at ``c`` get
+          widths ``w1``, ``w2``, ...
+        * ``c1 c2 w`` — every CID in the inclusive range ``c1..c2`` gets
+          width ``w``.
+
+        Result is cached on first call. Mutating ``/W`` after the cache is
+        populated requires :meth:`clear_widths_cache`.
+        """
+        if self._widths is not None:
+            return self._widths
+        widths: dict[int, float] = {}
+        w = self.get_w()
+        if w is not None:
+            self._parse_w_array(w, widths)
+        self._widths = widths
+        return widths
+
+    def get_glyph_width(self, cid: int) -> float:
+        """Width of ``cid`` in 1/1000 em, falling back to ``/DW`` when unmapped."""
+        widths = self.get_widths()
+        w = widths.get(cid)
+        if w is not None:
+            return w
+        return self.get_default_width()
+
+    def clear_widths_cache(self) -> None:
+        """Drop cached parsed ``/W`` and ``/W2`` tables."""
+        self._widths = None
+        self._widths2 = None
+
+    @staticmethod
+    def _parse_w_array(arr: COSArray, out: dict[int, float]) -> None:
+        i = 0
+        n = arr.size()
+        while i < n:
+            first = arr.get_object(i)
+            if not isinstance(first, COSNumber):
+                # Malformed — skip to next slot rather than raise; mirrors
+                # PDFBox's lenient parsing.
+                i += 1
+                continue
+            c = first.int_value()
+            if i + 1 >= n:
+                break
+            second = arr.get_object(i + 1)
+            if isinstance(second, COSArray):
+                # Form 1: c [w1 w2 w3 ...]
+                for k in range(second.size()):
+                    item = second.get_object(k)
+                    if isinstance(item, COSNumber):
+                        out[c + k] = item.float_value()
+                i += 2
+            elif isinstance(second, COSNumber):
+                # Form 2: c1 c2 w
+                if i + 2 >= n:
+                    break
+                third = arr.get_object(i + 2)
+                if not isinstance(third, COSNumber):
+                    i += 3
+                    continue
+                c2 = second.int_value()
+                w = third.float_value()
+                for cid in range(c, c2 + 1):
+                    out[cid] = w
+                i += 3
+            else:
+                i += 2
+
+    # ---------- /DW2 + parsed /W2 (vertical metrics, §9.7.4.3) ----------
+
+    def get_default_position_vector(self) -> tuple[float, float]:
+        """Return ``(v_y, v_x)`` from ``/DW2``; defaults to ``(880, -1000)``.
+
+        Note: ``/DW2`` per spec is ``[ position_vector_y displacement_vector_y ]``
+        but is widely treated as ``(v_y, v_x)``. We return both values and
+        leave interpretation to the caller. Default per spec is
+        ``[880 -1000]``.
+        """
+        arr = self.get_dw2()
+        if arr is None or arr.size() < 2:
+            return (880.0, -1000.0)
+        a = arr.get_object(0)
+        b = arr.get_object(1)
+        v_y = a.float_value() if isinstance(a, COSNumber) else 880.0
+        v_x = b.float_value() if isinstance(b, COSNumber) else -1000.0
+        return (v_y, v_x)
+
+    def get_widths2(self) -> dict[int, tuple[float, float, float]]:
+        """Parse ``/W2`` into ``CID -> (w1y, v_x, v_y)`` (1/1000 em).
+
+        Per PDF 32000-1 §9.7.4.3 the ``/W2`` array uses two interleaved
+        forms; each width entry is the triple ``[w1y v_x v_y]``:
+
+        * ``c [w1y_1 v_x_1 v_y_1 w1y_2 v_x_2 v_y_2 ...]`` — consecutive
+          CIDs starting at ``c`` get the successive triples.
+        * ``c1 c2 w1y v_x v_y`` — every CID in ``c1..c2`` gets the same
+          triple.
+
+        Result is cached on first call.
+        """
+        if self._widths2 is not None:
+            return self._widths2
+        widths: dict[int, tuple[float, float, float]] = {}
+        w2 = self.get_w2()
+        if w2 is not None:
+            self._parse_w2_array(w2, widths)
+        self._widths2 = widths
+        return widths
+
+    @staticmethod
+    def _parse_w2_array(
+        arr: COSArray, out: dict[int, tuple[float, float, float]]
+    ) -> None:
+        i = 0
+        n = arr.size()
+        while i < n:
+            first = arr.get_object(i)
+            if not isinstance(first, COSNumber):
+                i += 1
+                continue
+            c = first.int_value()
+            if i + 1 >= n:
+                break
+            second = arr.get_object(i + 1)
+            if isinstance(second, COSArray):
+                # Form 1: c [w1y_1 v_x_1 v_y_1 w1y_2 v_x_2 v_y_2 ...]
+                inner = second
+                m = inner.size()
+                k = 0
+                while k + 2 < m:
+                    a = inner.get_object(k)
+                    b = inner.get_object(k + 1)
+                    d = inner.get_object(k + 2)
+                    if (
+                        isinstance(a, COSNumber)
+                        and isinstance(b, COSNumber)
+                        and isinstance(d, COSNumber)
+                    ):
+                        out[c + (k // 3)] = (
+                            a.float_value(),
+                            b.float_value(),
+                            d.float_value(),
+                        )
+                    k += 3
+                i += 2
+            elif isinstance(second, COSNumber):
+                # Form 2: c1 c2 w1y v_x v_y
+                if i + 4 >= n:
+                    break
+                third = arr.get_object(i + 2)
+                fourth = arr.get_object(i + 3)
+                fifth = arr.get_object(i + 4)
+                if not (
+                    isinstance(third, COSNumber)
+                    and isinstance(fourth, COSNumber)
+                    and isinstance(fifth, COSNumber)
+                ):
+                    i += 5
+                    continue
+                c2 = second.int_value()
+                triple = (
+                    third.float_value(),
+                    fourth.float_value(),
+                    fifth.float_value(),
+                )
+                for cid in range(c, c2 + 1):
+                    out[cid] = triple
+                i += 5
+            else:
+                i += 2
 
     # ---------- /CIDToGIDMap ----------
 

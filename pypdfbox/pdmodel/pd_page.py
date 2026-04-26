@@ -147,7 +147,14 @@ class PDPage:
     def _stream_bytes(stream: COSStream) -> bytes:
         if not stream.has_data():
             return b""
-        with stream.create_raw_input_stream() as src:
+        # ``create_input_stream`` (not the raw variant) so the security
+        # handler decrypts and the /Filter chain — typically
+        # ``/FlateDecode`` for content streams emitted by our writer — is
+        # unwound before the bytes hit the consumer. Returning still-
+        # encrypted or still-compressed bytes here makes
+        # ``PDFTextStripper`` see garbage operators on any encrypted or
+        # compressed page.
+        with stream.create_input_stream() as src:
             return src.read()
 
     def set_contents(self, stream: COSStream) -> None:

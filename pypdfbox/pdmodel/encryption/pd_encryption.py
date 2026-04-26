@@ -196,6 +196,14 @@ class PDEncryption:
     def set_str_f(self, name: str) -> None:
         self._dict.set_name(_STR_F, name)
 
+    # ---------- /EFF — default embedded-file filter name ----------
+
+    def get_eff(self) -> str | None:
+        return self._dict.get_name(_EFF)
+
+    def set_eff(self, name: str) -> None:
+        self._dict.set_name(_EFF, name)
+
     # ---------- /CF dispatch — typed PDCryptFilterDictionary wrappers ----------
 
     def get_crypt_filter_dictionary(self, name: str) -> PDCryptFilterDictionary | None:

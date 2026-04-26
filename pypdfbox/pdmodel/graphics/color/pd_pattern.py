@@ -64,6 +64,23 @@ class PDPattern(PDColorSpace):
     def get_underlying_color_space(self) -> PDColorSpace | None:
         return self._underlying
 
+    # ---------- conversion ----------
+
+    def to_rgb(
+        self, components: list[float]
+    ) -> tuple[float, float, float] | None:
+        """For an *uncolored* tiling pattern, recurse into the
+        underlying color space — the components carry the pattern's
+        paint color. *Colored* tiling patterns and shading patterns
+        carry no components and return ``None``; rendering them is a
+        rendering-module concern (PDF 32000-1 §8.7).
+        """
+        from .pd_color import PDColor
+
+        if self._underlying is None:
+            return None
+        return PDColor(components, self._underlying).to_rgb()
+
     def __str__(self) -> str:
         return self.NAME
 
