@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSFloat, COSInteger, COSName, COSNull
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSNull,
+)
 
 from .pd_destination import PDDestination
 
@@ -18,8 +26,9 @@ class PDPageDestination(PDDestination):
     def get_cos_object(self) -> COSArray:
         return self._array
 
-    def get_page(self) -> COSBase | None:
-        return self._array.get_object(0)
+    def get_page(self) -> COSDictionary | None:
+        page = self._array.get_object(0)
+        return page if isinstance(page, COSDictionary) else None
 
     def set_page(self, page: COSBase | None) -> None:
         self._array.set(0, page if page is not None else COSNull.NULL)
@@ -32,6 +41,15 @@ class PDPageDestination(PDDestination):
 
     def set_page_number(self, page_number: int) -> None:
         self._array.set(0, COSInteger.get(page_number))
+
+    def find_page_number(self) -> int:
+        """0-based page index when ``/D[0]`` is a COSInteger; ``-1`` otherwise.
+        Lite scope: page-dict resolution against the document's page tree
+        (when ``/D[0]`` is an indirect ref to a Page) is deferred."""
+        return self.get_page_number()
+
+    def retrieve_page_number(self) -> int:
+        return self.find_page_number()
 
     def get_type(self) -> str | None:
         return self._array.get_name(1)

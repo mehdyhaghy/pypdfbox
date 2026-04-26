@@ -1,0 +1,160 @@
+from __future__ import annotations
+
+from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+    PDAttributeObject,
+)
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
+    PDStructureElement,
+)
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_node import (
+    PDStructureNode,
+)
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
+    PDStructureTreeRoot,
+)
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.revisions import Revisions
+
+_TYPE = COSName.TYPE  # type: ignore[attr-defined]
+_K = COSName.get_pdf_name("K")
+
+
+# ---------- PDStructureNode ----------
+
+
+def test_structure_node_fresh_has_no_type() -> None:
+    node = PDStructureNode()
+    assert node.get_cos_object().get_name(_TYPE) is None
+    assert node.get_kids() == []
+
+
+def test_structure_node_with_type_string_sets_type() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.get_type() == "StructElem"
+
+
+def test_structure_node_wraps_existing_dictionary() -> None:
+    dic = COSDictionary()
+    dic.set_name(_TYPE, "StructTreeRoot")
+    node = PDStructureNode(dic)
+    assert node.get_cos_object() is dic
+    assert node.get_type() == "StructTreeRoot"
+
+
+def test_structure_node_append_kid_then_get_kids_round_trip() -> None:
+    node = PDStructureNode("StructElem")
+    child = COSDictionary()
+    child.set_name(_TYPE, "StructElem")
+    node.append_kid(child)
+    kids = node.get_kids()
+    assert kids == [child]
+
+
+def test_structure_node_append_two_kids_promotes_to_array() -> None:
+    node = PDStructureNode("StructElem")
+    child_a = COSDictionary()
+    child_b = COSDictionary()
+    node.append_kid(child_a)
+    node.append_kid(child_b)
+    kids = node.get_kids()
+    assert kids == [child_a, child_b]
+
+
+def test_structure_node_remove_kid_removes() -> None:
+    node = PDStructureNode("StructElem")
+    child_a = COSDictionary()
+    child_b = COSDictionary()
+    node.append_kid(child_a)
+    node.append_kid(child_b)
+    assert node.remove_kid(child_a) is True
+    assert node.get_kids() == [child_b]
+
+
+def test_structure_node_remove_only_kid_clears_k() -> None:
+    node = PDStructureNode("StructElem")
+    child = COSDictionary()
+    node.append_kid(child)
+    assert node.remove_kid(child) is True
+    assert node.get_cos_object().get_dictionary_object(_K) is None
+
+
+def test_structure_node_remove_unknown_kid_returns_false() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    assert node.remove_kid(COSDictionary()) is False
+
+
+def test_structure_node_set_kids_clears_when_empty() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    node.set_kids([])
+    assert node.get_kids() == []
+
+
+# ---------- PDStructureNode.create dispatch ----------
+
+
+def test_structure_node_create_dispatches_struct_tree_root() -> None:
+    dic = COSDictionary()
+    dic.set_name(_TYPE, "StructTreeRoot")
+    result = PDStructureNode.create(dic)
+    assert isinstance(result, PDStructureTreeRoot)
+
+
+def test_structure_node_create_dispatches_struct_elem() -> None:
+    dic = COSDictionary()
+    dic.set_name(_TYPE, "StructElem")
+    result = PDStructureNode.create(dic)
+    assert isinstance(result, PDStructureElement)
+
+
+def test_structure_node_create_dispatches_no_type_to_struct_elem() -> None:
+    dic = COSDictionary()
+    result = PDStructureNode.create(dic)
+    assert isinstance(result, PDStructureElement)
+
+
+# ---------- PDAttributeObject ----------
+
+
+def test_attribute_object_owner_round_trip() -> None:
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    assert attr.get_owner() == "Layout"
+
+
+def test_attribute_object_create_returns_generic_for_unknown_owner() -> None:
+    dic = COSDictionary()
+    dic.set_name(COSName.get_pdf_name("O"), "ZZUnknownOwnerZZ")
+    result = PDAttributeObject.create(dic)
+    assert isinstance(result, PDAttributeObject)
+    assert result.get_owner() == "ZZUnknownOwnerZZ"
+
+
+def test_attribute_object_is_empty_only_owner() -> None:
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    assert attr.is_empty() is True
+
+
+# ---------- Revisions ----------
+
+
+def test_revisions_add_object_size_and_indexed_access() -> None:
+    revs: Revisions[str] = Revisions()
+    revs.add_object("a", 0)
+    revs.add_object("b", 1)
+    assert revs.size() == 2
+    assert revs.get_object_at(1) is not None
+    # The COS-side string is a COSString — check the integer revision
+    assert revs.get_revision_number_at(1) == 1
+    assert revs.get_revision_number_at(0) == 0
+
+
+def test_revisions_round_trip_through_cos_array() -> None:
+    revs: Revisions[str] = Revisions()
+    revs.add_object("x", 3)
+    arr = revs.to_cos_array()
+    rebuilt: Revisions[str] = Revisions(arr)
+    assert rebuilt.size() == 1
+    assert rebuilt.get_revision_number_at(0) == 3

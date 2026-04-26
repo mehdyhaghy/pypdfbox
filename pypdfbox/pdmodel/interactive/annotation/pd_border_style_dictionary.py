@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _BORDER: COSName = COSName.get_pdf_name("Border")
@@ -69,21 +70,25 @@ class PDBorderStyleDictionary:
 
     # ---------- /D (dash style) ----------
 
-    def set_dash_style(self, dash_array: COSArray | None) -> None:
-        if dash_array is None:
+    def set_dash_style(
+        self, dash_pattern: PDLineDashPattern | COSArray | None
+    ) -> None:
+        if dash_pattern is None:
             self._dict.remove_item(_D)
             return
-        self._dict.set_item(_D, dash_array)
+        if isinstance(dash_pattern, COSArray):
+            self._dict.set_item(_D, dash_pattern)
+            return
+        # `/D` here is the inner dash array only (not the [array, phase] form).
+        inner = COSArray()
+        inner.set_float_array(dash_pattern.get_dash_array())
+        self._dict.set_item(_D, inner)
 
-    def get_dash_style(self) -> COSArray | None:
-        """Returns the raw ``/D`` dash array, or ``None`` if absent.
-
-        Upstream returns a ``PDLineDashPattern``; that typed wrapper is
-        deferred until ``pypdfbox.pdmodel.graphics`` lands.
-        """
+    def get_dash_style(self) -> PDLineDashPattern | None:
+        """Return the ``/D`` dash pattern, or ``None`` if absent."""
         value = self._dict.get_dictionary_object(_D)
         if isinstance(value, COSArray):
-            return value
+            return PDLineDashPattern(value, 0)
         return None
 
 

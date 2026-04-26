@@ -15,6 +15,7 @@ from .pd_signature_field import PDSignatureField
 from .pd_terminal_field import PDFieldStub, PDTerminalField
 from .pd_text_field import PDTextField
 from .pd_variable_text import PDVariableText
+from .pd_xfa_resource import PDXFAResource
 
 __all__ = [
     "PDAcroForm",
@@ -33,4 +34,5 @@ __all__ = [
     "PDTerminalField",
     "PDTextField",
     "PDVariableText",
+    "PDXFAResource",
 ]

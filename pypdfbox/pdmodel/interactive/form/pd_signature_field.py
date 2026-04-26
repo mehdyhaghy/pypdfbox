@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName
 
+from ..digitalsignature import PDSeedValue, PDSignature, PDSignatureLock
 from .pd_terminal_field import PDTerminalField
 
 if TYPE_CHECKING:
@@ -41,45 +42,57 @@ class PDSignatureField(PDTerminalField):
 
     # ---------- /V ----------
 
-    def get_signature(self) -> COSBase | None:
-        return self._field.get_dictionary_object(_V)
+    def get_signature(self) -> PDSignature | None:
+        item = self._field.get_dictionary_object(_V)
+        if isinstance(item, COSDictionary):
+            return PDSignature(item)
+        return None
 
-    def get_value(self) -> COSBase | None:
+    def get_value(self) -> PDSignature | None:
         return self.get_signature()
 
-    def set_value(self, value: COSBase | None) -> None:
+    def set_value(self, value: PDSignature | COSDictionary | None) -> None:
         if value is None:
             self._field.remove_item(_V)
         else:
-            self._field.set_item(_V, value)
+            self._field.set_item(
+                _V,
+                value.get_cos_object() if hasattr(value, "get_cos_object") else value,
+            )
 
     # ---------- /SV ----------
 
-    def get_seed_value(self) -> COSDictionary | None:
+    def get_seed_value(self) -> PDSeedValue | None:
         item = self._field.get_dictionary_object(_SV)
         if isinstance(item, COSDictionary):
-            return item
+            return PDSeedValue(item)
         return None
 
-    def set_seed_value(self, seed: COSDictionary | None) -> None:
+    def set_seed_value(self, seed: PDSeedValue | COSDictionary | None) -> None:
         if seed is None:
             self._field.remove_item(_SV)
         else:
-            self._field.set_item(_SV, seed)
+            self._field.set_item(
+                _SV,
+                seed.get_cos_object() if hasattr(seed, "get_cos_object") else seed,
+            )
 
     # ---------- /Lock ----------
 
-    def get_lock(self) -> COSDictionary | None:
+    def get_lock(self) -> PDSignatureLock | None:
         item = self._field.get_dictionary_object(_LOCK)
         if isinstance(item, COSDictionary):
-            return item
+            return PDSignatureLock(item)
         return None
 
-    def set_lock(self, lock: COSDictionary | None) -> None:
+    def set_lock(self, lock: PDSignatureLock | COSDictionary | None) -> None:
         if lock is None:
             self._field.remove_item(_LOCK)
         else:
-            self._field.set_item(_LOCK, lock)
+            self._field.set_item(
+                _LOCK,
+                lock.get_cos_object() if hasattr(lock, "get_cos_object") else lock,
+            )
 
 
 __all__ = ["PDSignatureField"]

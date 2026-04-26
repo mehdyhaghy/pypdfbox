@@ -54,14 +54,16 @@ def test_style_round_trip_dashed() -> None:
 
 
 def test_dash_style_round_trip() -> None:
+    from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
+
     bs = PDBorderStyleDictionary()
     arr = COSArray()
     arr.add(COSInteger.get(3))
     arr.add(COSInteger.get(2))
     bs.set_dash_style(arr)
     rt = bs.get_dash_style()
-    assert isinstance(rt, COSArray)
-    assert len(rt) == 2
+    assert isinstance(rt, PDLineDashPattern)
+    assert rt.get_dash_array() == [3.0, 2.0]
 
 
 def test_construct_from_existing_dict_preserves_contents() -> None:

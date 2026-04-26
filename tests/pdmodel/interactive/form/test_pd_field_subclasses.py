@@ -175,21 +175,31 @@ def test_signature_field_fresh_has_ft_sig() -> None:
 
 
 def test_signature_field_raw_value_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.digitalsignature import PDSeedValue, PDSignature
+
     form = PDAcroForm()
     sig = PDSignatureField(form)
     raw = COSDictionary()
     raw.set_string(COSName.get_pdf_name("Type"), "Sig")
     sig.set_value(raw)
-    assert sig.get_signature() is raw
-    assert sig.get_value() is raw
+    resolved_sig = sig.get_signature()
+    assert isinstance(resolved_sig, PDSignature)
+    assert resolved_sig.get_cos_object() is raw
+    assert sig.get_value().get_cos_object() is raw
 
     seed = COSDictionary()
     sig.set_seed_value(seed)
-    assert sig.get_seed_value() is seed
+    resolved_seed = sig.get_seed_value()
+    assert isinstance(resolved_seed, PDSeedValue)
+    assert resolved_seed.get_cos_object() is seed
+
+    from pypdfbox.pdmodel.interactive.digitalsignature import PDSignatureLock
 
     lock = COSDictionary()
     sig.set_lock(lock)
-    assert sig.get_lock() is lock
+    resolved_lock = sig.get_lock()
+    assert isinstance(resolved_lock, PDSignatureLock)
+    assert resolved_lock.get_cos_object() is lock
 
 
 # ---------- PDVariableText ----------

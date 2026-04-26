@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
+from ..pd_property_list import PDPropertyList
+
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _OCG: COSName = COSName.get_pdf_name("OCG")
 _NAME: COSName = COSName.get_pdf_name("Name")
@@ -17,7 +19,7 @@ _ON: COSName = COSName.get_pdf_name("ON")
 _OFF: COSName = COSName.get_pdf_name("OFF")
 
 
-class PDOptionalContentGroup:
+class PDOptionalContentGroup(PDPropertyList):
     """Optional content group (OCG). Mirrors PDFBox ``PDOptionalContentGroup``."""
 
     def __init__(self, name_or_dict: str | COSDictionary) -> None:

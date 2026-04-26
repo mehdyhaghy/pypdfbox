@@ -31,5 +31,20 @@ class PDActionRemoteGoTo(PDAction):
             return
         self._action.set_item(_D, destination)
 
+    def get_named_destination(self) -> str | None:
+        """Return ``/D`` when it is a string-form named destination."""
+        from pypdfbox.cos import COSString
+
+        d = self._action.get_dictionary_object(_D)
+        if isinstance(d, COSString):
+            return d.get_string()
+        return None
+
+    def set_named_destination(self, name: str | None) -> None:
+        if name is None:
+            self._action.remove_item(_D)
+            return
+        self._action.set_string(_D, name)
+
 
 __all__ = ["PDActionRemoteGoTo"]

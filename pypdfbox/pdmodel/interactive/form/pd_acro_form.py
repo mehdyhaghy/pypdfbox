@@ -129,10 +129,15 @@ class PDAcroForm:
     def set_need_appearances(self, value: bool) -> None:
         self._dictionary.set_boolean(_NEED_APPEARANCES, value)
 
-    # ---------- /XFA (raw — typed PDXFAResource deferred) ----------
+    # ---------- /XFA ----------
 
-    def xfa(self) -> COSBase | None:
-        return self._dictionary.get_dictionary_object(_XFA)
+    def xfa(self) -> "PDXFAResource | None":
+        from .pd_xfa_resource import PDXFAResource
+
+        raw = self._dictionary.get_dictionary_object(_XFA)
+        if raw is None:
+            return None
+        return PDXFAResource(raw)
 
 
 __all__ = ["PDAcroForm"]

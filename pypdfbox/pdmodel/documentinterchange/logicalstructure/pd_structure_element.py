@@ -16,6 +16,8 @@ _LANG: COSName = COSName.get_pdf_name("Lang")
 _ALT: COSName = COSName.get_pdf_name("Alt")
 _E: COSName = COSName.get_pdf_name("E")
 _ACTUAL_TEXT: COSName = COSName.get_pdf_name("ActualText")
+_A: COSName = COSName.get_pdf_name("A")
+_C: COSName = COSName.get_pdf_name("C")
 
 
 class PDStructureElement:
@@ -171,6 +173,45 @@ class PDStructureElement:
         arr.add(existing)
         arr.add(cos_kid)
         self._element.set_item(_K, arr)
+
+    # ---------- /A attributes ----------
+
+    def get_attributes(self) -> "Revisions[PDAttributeObject]":
+        from .pd_attribute_object import PDAttributeObject
+        from .revisions import Revisions
+
+        a = self._element.get_dictionary_object(_A)
+        if isinstance(a, COSArray):
+            return Revisions(a)
+        revs: Revisions[PDAttributeObject] = Revisions()
+        if isinstance(a, COSDictionary):
+            revs.add_object(PDAttributeObject(a), self.get_revision_number())
+        return revs
+
+    def set_attributes(self, attributes: "Revisions[PDAttributeObject] | None") -> None:
+        if attributes is None:
+            self._element.remove_item(_A)
+            return
+        self._element.set_item(_A, attributes.to_cos_array())
+
+    # ---------- /C class names ----------
+
+    def get_class_names(self) -> "Revisions[COSName]":
+        from .revisions import Revisions
+
+        c = self._element.get_dictionary_object(_C)
+        if isinstance(c, COSArray):
+            return Revisions(c)
+        revs: Revisions[COSName] = Revisions()
+        if isinstance(c, COSName):
+            revs.add_object(c, self.get_revision_number())
+        return revs
+
+    def set_class_names(self, class_names: "Revisions[COSName] | None") -> None:
+        if class_names is None:
+            self._element.remove_item(_C)
+            return
+        self._element.set_item(_C, class_names.to_cos_array())
 
 
 def _to_cos(value: Any) -> COSBase:
