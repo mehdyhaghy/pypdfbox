@@ -131,7 +131,15 @@ Cluster #2 (PDFStreamEngine + OperatorProcessor base + 9 PRD §6.7 text operator
 _(not started)_
 
 ### `pypdfbox/rendering/`
-_(not started)_
+
+Cluster #1 ships **original Python work** built on Pillow + aggdraw — not a line-by-line port of upstream `PDFRenderer.java` / `PageDrawer.java`. The upstream classes target Java2D's `Graphics2D` API; there is no Python equivalent to port verbatim. The PUBLIC API surface (`render_image(page_index, scale)`, `render_image_with_dpi(page_index, dpi)`) does mirror upstream, and operator dispatch reuses the ported `PDFStreamEngine` infrastructure.
+
+| pypdfbox path | upstream PDFBox version | upstream Java path | derivation scope |
+|---|---|---|---|
+| `pypdfbox/rendering/pdf_renderer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/PDFRenderer.java` + `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java` | API surface only (`renderImage` / `renderImageWithDPI` entry points + per-operator semantics from `PageDrawer`). Implementation is original Python over Pillow + aggdraw — Java2D `Graphics2D` has no Python equivalent. |
+
+Original work (no PROVENANCE entry needed; listed for clarity):
+- `pypdfbox/rendering/__init__.py` — re-exports `PDFRenderer`
 
 ### `pypdfbox/pdmodel/`
 
@@ -363,7 +371,7 @@ Cluster #1 — TTF data stream + 12 table classes + WGL4 glyph-name table.
 | `pypdfbox/fontbox/ttf/cmap_lookup.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/CmapLookup.java` |
 | `pypdfbox/fontbox/ttf/cmap_subtable.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/CmapSubtable.java` (formats 0/2/4/6/12; formats 8/10/13/14 raise NotImplementedError — deferred to fontbox cluster #3) |
 | `pypdfbox/fontbox/ttf/wgl4_names.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/WGL4Names.java` |
-| `pypdfbox/fontbox/ttf/true_type_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/TrueTypeFont.java` (minimal: SFNT directory walk + lazy access to `head` / `hhea` / `maxp` / `hmtx` / `cmap` for advance-width lookup; glyph outlines, GSUB / GPOS, kerning, name table accessors deferred to a later cluster) |
+| `pypdfbox/fontbox/ttf/true_type_font.py` | n/a (wrapper) | API-shape mirror of `fontbox/src/main/java/org/apache/fontbox/ttf/TrueTypeFont.java`; SFNT parsing is delegated to the MIT-licensed `fontTools.ttLib` library rather than a hand-rolled port. The wrapper preserves the PDFBox accessor surface (`get_units_per_em`, `get_number_of_glyphs`, `get_advance_width`, `get_unicode_cmap_subtable`, `get_header` / `get_horizontal_header` / `get_maximum_profile` / `get_horizontal_metrics`, `get_table_map`) and projects fontTools' values back into the existing typed-table classes (`HeaderTable`, `HorizontalHeaderTable`, etc., which remain hand-rolled ports of their upstream Java counterparts). Glyph outlines, GSUB / GPOS, kerning, and name-table accessors still defer to a later cluster. |
 
 Cluster #3 — encodings + Adobe Glyph List.
 

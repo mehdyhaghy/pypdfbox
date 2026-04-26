@@ -1,3 +1,5 @@
 from __future__ import annotations
 
-__all__: list[str] = []
+from .pdf_renderer import PDFRenderer
+
+__all__: list[str] = ["PDFRenderer"]

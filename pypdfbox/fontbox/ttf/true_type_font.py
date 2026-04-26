@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import io
+from typing import TYPE_CHECKING, Any
 
 from .header_table import HeaderTable
 from .horizontal_header_table import HorizontalHeaderTable
@@ -14,28 +15,43 @@ if TYPE_CHECKING:
 
 
 class TrueTypeFont:
-    """Minimal TrueType / OpenType font wrapper.
+    """TrueType / OpenType font wrapper.
 
-    Mirrors ``org.apache.fontbox.ttf.TrueTypeFont`` but only loads the
-    tables required for advance-width lookup in this cluster: ``head``,
-    ``hhea``, ``maxp``, ``hmtx``, and (lazily) ``cmap``. A full port —
-    glyph outlines, GSUB / GPOS, kerning, name-table accessors — is
-    deferred to a later cluster. Construction does *not* eagerly read
-    every table; the directory is parsed and tables are read on demand.
+    Mirrors ``org.apache.fontbox.ttf.TrueTypeFont`` at the public-method
+    level. Internally the SFNT structure is parsed by ``fontTools.ttLib``
+    rather than re-implemented in pure Python — TTF/OTF/CFF parsing is
+    exactly what the (MIT-licensed) ``fontTools`` library exists for, so
+    we wrap it instead of maintaining a hand-rolled parser. The typed
+    table helpers (``HeaderTable``, ``HorizontalHeaderTable``,
+    ``HorizontalMetricsTable``, ``MaximumProfileTable``) remain in the
+    package and are returned, populated from the fontTools-parsed values,
+    so the legacy accessor surface keeps working.
+
+    fontTools is imported lazily inside the constructor so callers that
+    never touch a TTF stream don't pay its import cost.
     """
-
-    # SFNT directory entry: tag(4) + checksum(4) + offset(4) + length(4)
-    _DIR_ENTRY_SIZE: int = 16
-    _SFNT_HEADER_SIZE: int = 12  # version(4) + numTables(2) + 3 unused(6)
 
     def __init__(self, data: TTFDataStream) -> None:
         self._data: TTFDataStream = data
-        self._tables: dict[str, TTFTable] = {}
+        # Materialise the SFNT bytes into a BytesIO for fontTools. The
+        # legacy TTFDataStream surface only guarantees random-access
+        # reads, so we round-trip through bytes rather than wrapping it.
+        raw = self._read_all_bytes(data)
+        # Lazy import — fontTools is heavy and most pypdfbox use does not
+        # touch it.
+        import fontTools.ttLib as ttLib  # noqa: PLC0415
+
+        self._tt: Any = ttLib.TTFont(io.BytesIO(raw), lazy=True)
+        # Populated lazily on first access; cached because each call into
+        # fontTools re-resolves the underlying table object.
         self._head: HeaderTable | None = None
         self._hhea: HorizontalHeaderTable | None = None
         self._maxp: MaximumProfileTable | None = None
         self._hmtx: HorizontalMetricsTable | None = None
-        self._read_directory()
+        self._cmap_subtable: CmapSubtable | None = None
+        self._cmap_resolved: bool = False
+        self._advance_widths: list[int] | None = None
+        self._table_map: dict[str, TTFTable] | None = None
 
     # ---------- factories ----------
 
@@ -44,145 +60,263 @@ class TrueTypeFont:
         """Parse a TTF from an in-memory byte buffer."""
         return cls(MemoryTTFDataStream(data))
 
-    # ---------- directory ----------
+    # ---------- attribute-style accessors (PDFBox-equivalent fields) ----
 
-    def _read_directory(self) -> None:
-        d = self._data
-        d.seek(0)
-        d.read_unsigned_int()  # sfnt version (0x00010000 / 'OTTO' / 'true')
-        num_tables = d.read_unsigned_short()
-        d.read_unsigned_short()  # searchRange
-        d.read_unsigned_short()  # entrySelector
-        d.read_unsigned_short()  # rangeShift
+    @property
+    def unitsPerEm(self) -> int:  # noqa: N802 — mirror upstream Java field name
+        return int(self._tt["head"].unitsPerEm)
 
-        for _ in range(num_tables):
-            tag = d.read_tag()
-            checksum = d.read_unsigned_int()
-            offset = d.read_unsigned_int()
-            length = d.read_unsigned_int()
-            table = TTFTable()
-            table.set_tag(tag)
-            table.set_check_sum(checksum)
-            table.set_offset(offset)
-            table.set_length(length)
-            self._tables[tag] = table
+    @property
+    def numGlyphs(self) -> int:  # noqa: N802 — mirror upstream Java field name
+        return int(self._tt["maxp"].numGlyphs)
 
-    # ---------- table access ----------
+    @property
+    def advance_widths(self) -> list[int]:
+        """Per-glyph advance widths in font units, indexed by glyph ID."""
+        if self._advance_widths is None:
+            metrics = self._tt["hmtx"].metrics
+            self._advance_widths = [
+                int(metrics[name][0]) for name in self._tt.getGlyphOrder()
+            ]
+        return self._advance_widths
 
-    def get_table_map(self) -> dict[str, TTFTable]:
-        return self._tables
-
-    def get_number_of_glyphs(self) -> int:
-        maxp = self.get_maximum_profile()
-        return maxp.get_num_glyphs() if maxp is not None else 0
+    # ---------- method-style accessors (camelCase -> snake_case) --------
 
     def get_units_per_em(self) -> int:
-        head = self.get_header()
-        return head.get_units_per_em() if head is not None else 0
+        return self.unitsPerEm
 
-    def get_header(self) -> HeaderTable | None:
-        if self._head is None:
-            self._head = self._read_table(HeaderTable.TAG, HeaderTable())
-        return self._head
-
-    def get_horizontal_header(self) -> HorizontalHeaderTable | None:
-        if self._hhea is None:
-            self._hhea = self._read_table(
-                HorizontalHeaderTable.TAG, HorizontalHeaderTable()
-            )
-        return self._hhea
-
-    def get_maximum_profile(self) -> MaximumProfileTable | None:
-        if self._maxp is None:
-            self._maxp = self._read_table(
-                MaximumProfileTable.TAG, MaximumProfileTable()
-            )
-        return self._maxp
-
-    def get_horizontal_metrics(self) -> HorizontalMetricsTable | None:
-        if self._hmtx is None:
-            # hmtx depends on hhea + maxp (numHMetrics, numGlyphs)
-            self.get_horizontal_header()
-            self.get_maximum_profile()
-            self._hmtx = self._read_table(
-                HorizontalMetricsTable.TAG, HorizontalMetricsTable()
-            )
-        return self._hmtx
+    def get_number_of_glyphs(self) -> int:
+        return self.numGlyphs
 
     def get_advance_width(self, gid: int) -> int:
         """Advance width (in font units) for ``gid``. Falls back to 250
         when the font lacks an ``hmtx`` table — matches upstream's
         ``HorizontalMetricsTable.getAdvanceWidth`` default."""
-        hmtx = self.get_horizontal_metrics()
-        if hmtx is None:
+        if "hmtx" not in self._tt:
             return 250
-        return hmtx.get_advance_width(gid)
+        widths = self.advance_widths
+        if not widths:
+            return 250
+        if 0 <= gid < len(widths):
+            return widths[gid]
+        # Monospaced fonts may omit trailing entries — fall back to last.
+        return widths[-1]
 
-    # ---------- cmap (minimal) ----------
+    # ---------- typed-table accessors (legacy surface) ------------------
+
+    def get_table_map(self) -> dict[str, TTFTable]:
+        """Return a {tag: TTFTable} map reflecting the SFNT directory.
+
+        Each entry is a bare :class:`TTFTable` carrying tag / offset /
+        length / checksum metadata. The actual table payload is exposed
+        through the typed accessors (``get_header``, ``get_horizontal_header``,
+        etc.) — this map is preserved only for callers that need to walk
+        the directory.
+        """
+        if self._table_map is None:
+            reader = self._tt.reader  # SFNTReader
+            tables: dict[str, TTFTable] = {}
+            for tag, entry in reader.tables.items():
+                t = TTFTable()
+                t.set_tag(tag)
+                t.set_check_sum(int(entry.checkSum))
+                t.set_offset(int(entry.offset))
+                t.set_length(int(entry.length))
+                tables[tag] = t
+            self._table_map = tables
+        return self._table_map
+
+    def get_header(self) -> HeaderTable | None:
+        if self._head is not None:
+            return self._head
+        if "head" not in self._tt:
+            return None
+        ft = self._tt["head"]
+        h = HeaderTable()
+        h._version = float(ft.tableVersion)  # noqa: SLF001
+        h._font_revision = float(ft.fontRevision)  # noqa: SLF001
+        h._check_sum_adjustment = int(ft.checkSumAdjustment)  # noqa: SLF001
+        h._magic_number = int(ft.magicNumber)  # noqa: SLF001
+        h._flags = int(ft.flags)  # noqa: SLF001
+        h._units_per_em = int(ft.unitsPerEm)  # noqa: SLF001
+        h._x_min = int(ft.xMin)  # noqa: SLF001
+        h._y_min = int(ft.yMin)  # noqa: SLF001
+        h._x_max = int(ft.xMax)  # noqa: SLF001
+        h._y_max = int(ft.yMax)  # noqa: SLF001
+        h._mac_style = int(ft.macStyle)  # noqa: SLF001
+        h._lowest_rec_ppem = int(ft.lowestRecPPEM)  # noqa: SLF001
+        h._font_direction_hint = int(ft.fontDirectionHint)  # noqa: SLF001
+        h._index_to_loc_format = int(ft.indexToLocFormat)  # noqa: SLF001
+        h._glyph_data_format = int(ft.glyphDataFormat)  # noqa: SLF001
+        h.initialized = True
+        self._head = h
+        return h
+
+    def get_horizontal_header(self) -> HorizontalHeaderTable | None:
+        if self._hhea is not None:
+            return self._hhea
+        if "hhea" not in self._tt:
+            return None
+        ft = self._tt["hhea"]
+        t = HorizontalHeaderTable()
+        # fontTools stores hhea.tableVersion as a raw uint32 ("L"), so
+        # convert back to the 16.16 fixed-point float upstream exposes.
+        t._version = self._fixed_16_16(int(ft.tableVersion))  # noqa: SLF001
+        t._ascender = int(ft.ascent)  # noqa: SLF001
+        t._descender = int(ft.descent)  # noqa: SLF001
+        t._line_gap = int(ft.lineGap)  # noqa: SLF001
+        t._advance_width_max = int(ft.advanceWidthMax)  # noqa: SLF001
+        t._min_left_side_bearing = int(ft.minLeftSideBearing)  # noqa: SLF001
+        t._min_right_side_bearing = int(ft.minRightSideBearing)  # noqa: SLF001
+        t._x_max_extent = int(ft.xMaxExtent)  # noqa: SLF001
+        t._caret_slope_rise = int(ft.caretSlopeRise)  # noqa: SLF001
+        t._caret_slope_run = int(ft.caretSlopeRun)  # noqa: SLF001
+        t._metric_data_format = int(ft.metricDataFormat)  # noqa: SLF001
+        t._number_of_h_metrics = int(ft.numberOfHMetrics)  # noqa: SLF001
+        t.initialized = True
+        self._hhea = t
+        return t
+
+    def get_maximum_profile(self) -> MaximumProfileTable | None:
+        if self._maxp is not None:
+            return self._maxp
+        if "maxp" not in self._tt:
+            return None
+        ft = self._tt["maxp"]
+        t = MaximumProfileTable()
+        # maxp.tableVersion is a signed int32 in fontTools — re-encode to
+        # the 16.16 fixed-point float upstream exposes (0x00005000 -> 0.3125,
+        # 0x00010000 -> 1.0).
+        t._version = self._fixed_16_16(int(ft.tableVersion) & 0xFFFFFFFF)  # noqa: SLF001
+        t._num_glyphs = int(ft.numGlyphs)  # noqa: SLF001
+        if t._version >= 1.0:  # noqa: SLF001
+            t._max_points = int(getattr(ft, "maxPoints", 0))  # noqa: SLF001
+            t._max_contours = int(getattr(ft, "maxContours", 0))  # noqa: SLF001
+            t._max_composite_points = int(getattr(ft, "maxCompositePoints", 0))  # noqa: SLF001
+            t._max_composite_contours = int(getattr(ft, "maxCompositeContours", 0))  # noqa: SLF001
+            t._max_zones = int(getattr(ft, "maxZones", 0))  # noqa: SLF001
+            t._max_twilight_points = int(getattr(ft, "maxTwilightPoints", 0))  # noqa: SLF001
+            t._max_storage = int(getattr(ft, "maxStorage", 0))  # noqa: SLF001
+            t._max_function_defs = int(getattr(ft, "maxFunctionDefs", 0))  # noqa: SLF001
+            t._max_instruction_defs = int(getattr(ft, "maxInstructionDefs", 0))  # noqa: SLF001
+            t._max_stack_elements = int(getattr(ft, "maxStackElements", 0))  # noqa: SLF001
+            t._max_size_of_instructions = int(getattr(ft, "maxSizeOfInstructions", 0))  # noqa: SLF001
+            t._max_component_elements = int(getattr(ft, "maxComponentElements", 0))  # noqa: SLF001
+            depth = int(getattr(ft, "maxComponentDepth", 0))
+            # PDFBOX-6105 — clamp 0 to 1.
+            t._max_component_depth = depth if depth != 0 else 1  # noqa: SLF001
+        t.initialized = True
+        self._maxp = t
+        return t
+
+    def get_horizontal_metrics(self) -> HorizontalMetricsTable | None:
+        if self._hmtx is not None:
+            return self._hmtx
+        if "hmtx" not in self._tt:
+            return None
+        hhea = self.get_horizontal_header()
+        if hhea is None:
+            return None
+        num_h_metrics = hhea.get_number_of_h_metrics()
+        # fontTools resolves hmtx into a {glyph_name: (advance, lsb)} dict
+        # keyed by glyph name. Project back to GID order to populate the
+        # legacy structure faithfully.
+        ft_metrics = self._tt["hmtx"].metrics
+        glyph_order = self._tt.getGlyphOrder()
+        advances = [int(ft_metrics[n][0]) for n in glyph_order]
+        lsbs = [int(ft_metrics[n][1]) for n in glyph_order]
+
+        t = HorizontalMetricsTable()
+        t._num_h_metrics = num_h_metrics  # noqa: SLF001
+        # First num_h_metrics entries carry both advance and LSB; the
+        # remaining glyphs share the last advance and have a trailing
+        # LSB-only block in the on-disk table.
+        t._advance_width = advances[:num_h_metrics]  # noqa: SLF001
+        t._left_side_bearing = lsbs[:num_h_metrics]  # noqa: SLF001
+        t._non_horizontal_left_side_bearing = lsbs[num_h_metrics:]  # noqa: SLF001
+        t.initialized = True
+        self._hmtx = t
+        return t
+
+    # ---------- cmap (Unicode subtable) ---------------------------------
 
     def get_unicode_cmap_subtable(self) -> CmapSubtable | None:
-        """Return the first usable Unicode-style cmap subtable.
+        """Return a Unicode-style cmap subtable view.
 
-        Walks the ``cmap`` table looking for the platform/encoding
-        combinations PDFBox prefers for non-symbolic TrueType fonts:
-        (3, 1) Windows Unicode BMP, (0, *) Unicode, (3, 0) Windows
-        Symbol. Returns ``None`` if the font has no usable cmap.
-
-        The returned subtable exposes ``get_glyph_id(code)``.
+        Wraps the dict that ``fontTools`` resolves via
+        ``cmap.getBestCmap()`` (which prefers Windows Unicode Full /
+        Windows Unicode BMP / Unicode platform tables in the same order
+        PDFBox does) inside a thin :class:`CmapSubtable` view so callers
+        can continue to use ``get_glyph_id(code)`` / ``get_char_codes(gid)``
+        unchanged. Returns ``None`` if the font has no cmap.
         """
+        if self._cmap_resolved:
+            return self._cmap_subtable
+        self._cmap_resolved = True
+        if "cmap" not in self._tt:
+            self._cmap_subtable = None
+            return None
+        cmap_table = self._tt["cmap"]
+        best = cmap_table.getBestCmap()  # dict[int, str] of unicode -> glyph name
+        if not best:
+            self._cmap_subtable = None
+            return None
+        # Find the picked subtable so platform_id / platform_encoding_id
+        # stay reportable. fontTools picks a preferred order internally;
+        # we mirror it by re-walking the same priority list.
+        preferred = (
+            (3, 10), (0, 6), (0, 4), (3, 1), (0, 3), (0, 2), (0, 1), (0, 0),
+        )
+        chosen = None
+        for plat, enc in preferred:
+            for sub in cmap_table.tables:
+                if sub.platformID == plat and sub.platEncID == enc:
+                    chosen = sub
+                    break
+            if chosen is not None:
+                break
+        if chosen is None:
+            chosen = cmap_table.tables[0] if cmap_table.tables else None
+
+        glyph_name_to_gid = {n: i for i, n in enumerate(self._tt.getGlyphOrder())}
+        char_to_gid: dict[int, int] = {}
+        for code, name in best.items():
+            gid = glyph_name_to_gid.get(name)
+            if gid is not None:
+                char_to_gid[code] = gid
+
         from .cmap_subtable import CmapSubtable  # noqa: PLC0415
 
-        cmap_dir = self._tables.get("cmap")
-        if cmap_dir is None:
-            return None
+        view = CmapSubtable()
+        if chosen is not None:
+            view.set_platform_id(int(chosen.platformID))
+            view.set_platform_encoding_id(int(chosen.platEncID))
+        # Reuse the existing subtable's storage: ``_character_code_to_glyph_id``
+        # is what ``get_glyph_id`` reads; ``_glyph_id_to_character_code`` /
+        # ``_multiple`` power ``get_char_codes``.
+        view._character_code_to_glyph_id = char_to_gid  # noqa: SLF001
+        max_gid = max(char_to_gid.values(), default=-1)
+        if max_gid >= 0:
+            view._build_glyph_id_to_character_code_lookup(max_gid)  # noqa: SLF001
+        self._cmap_subtable = view
+        return view
 
-        d = self._data
-        d.seek(cmap_dir.get_offset())
-        d.read_unsigned_short()  # version
-        num_subtables = d.read_unsigned_short()
+    # ---------- helpers -------------------------------------------------
 
-        subtables: list[CmapSubtable] = []
-        for _ in range(num_subtables):
-            sub = CmapSubtable()
-            sub.init_data(d)
-            subtables.append(sub)
+    @staticmethod
+    def _fixed_16_16(raw: int) -> float:
+        """Decode a 16.16 fixed-point unsigned 32-bit value into a float."""
+        whole = (raw >> 16) & 0xFFFF
+        frac = raw & 0xFFFF
+        return whole + frac / 65536.0
 
-        # Sort: prefer (3,1) > (0,*) > (3,0) > anything else.
-        def _priority(sub: CmapSubtable) -> int:
-            pid = sub.get_platform_id()
-            eid = sub.get_platform_encoding_id()
-            if pid == 3 and eid == 1:
-                return 0
-            if pid == 0:
-                return 1
-            if pid == 3 and eid == 0:
-                return 2
-            return 3
-
-        num_glyphs = self.get_number_of_glyphs()
-        for sub in sorted(subtables, key=_priority):
-            try:
-                sub.init_subtable(cmap_dir, num_glyphs, d)
-                return sub
-            except (NotImplementedError, OSError):
-                continue
-        return None
-
-    # ---------- helpers ----------
-
-    def _read_table(self, tag: str, instance: TTFTable) -> TTFTable | None:
-        entry = self._tables.get(tag)
-        if entry is None:
-            return None
-        instance.set_tag(entry.get_tag())
-        instance.set_check_sum(entry.get_check_sum())
-        instance.set_offset(entry.get_offset())
-        instance.set_length(entry.get_length())
-        self._data.seek(entry.get_offset())
-        instance.read(self, self._data)
-        # Replace the placeholder TTFTable with the typed instance.
-        self._tables[tag] = instance
-        return instance
+    @staticmethod
+    def _read_all_bytes(data: TTFDataStream) -> bytes:
+        """Drain the supplied TTFDataStream into a ``bytes`` buffer for
+        fontTools to consume. Both shipped concrete subclasses already
+        hold the full font in memory, so this is a cheap reference copy.
+        """
+        return data.get_original_data()
 
 
 __all__ = ["TrueTypeFont"]
