@@ -29,6 +29,7 @@ class FilterFactory:
         "RL": "RunLengthDecode",
         "CCF": "CCITTFaxDecode",
         "DCT": "DCTDecode",
+        "JPX": "JPXDecode",
     }
 
     @classmethod

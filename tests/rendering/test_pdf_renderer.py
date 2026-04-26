@@ -564,3 +564,256 @@ def test_inline_image_renders_pixels() -> None:
     outside = img.getpixel((5, 5))
     assert _is_close(inside, (255, 0, 0), tol=20), inside
     assert _is_close(outside, (255, 255, 255)), outside
+
+
+# ---------------------------------------------------------------------------
+# text rendering — embedded Type1 (PFB) and Type1C (CFF) fonts
+# ---------------------------------------------------------------------------
+
+
+def _build_type1c_cff_bytes() -> bytes:
+    """Build a tiny in-memory CFF font set with one glyph 'A' drawn as
+    a 700x700 unit square at the origin. The bytes returned are exactly
+    what a PDF ``/FontFile3 /Subtype /Type1C`` stream carries.
+    """
+    import io as _io  # noqa: PLC0415
+
+    from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
+    from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+    from fontTools.ttLib import TTFont  # noqa: PLC0415
+
+    fb = FontBuilder(1000, isTTF=False)
+    fb.setupGlyphOrder([".notdef", "A"])
+    fb.setupCharacterMap({0x41: "A"})
+
+    def _cs(program: list) -> T2CharString:
+        s = T2CharString()
+        s.program = program
+        return s
+
+    char_strings = {
+        ".notdef": _cs([0, "endchar"]),
+        # 800-wide square glyph: hmoveto to (0,0); rect outline 700x700.
+        "A": _cs(
+            [
+                800,
+                0,
+                "hmoveto",
+                700,
+                "vlineto",
+                700,
+                "hlineto",
+                -700,
+                "vlineto",
+                "endchar",
+            ]
+        ),
+    }
+    fb.setupCFF(
+        psName="TestType1C",
+        fontInfo={"FullName": "Test Type1C"},
+        charStringsDict=char_strings,
+        privateDict={},
+    )
+    fb.setupHorizontalMetrics({".notdef": (0, 0), "A": (800, 0)})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupOS2(
+        sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200
+    )
+    fb.setupNameTable({"familyName": "Test", "styleName": "Regular"})
+    fb.setupPost()
+    buf = _io.BytesIO()
+    fb.font.save(buf)
+    re_open = TTFont(_io.BytesIO(buf.getvalue()))
+    return bytes(re_open.getTableData("CFF "))
+
+
+def _build_type1_program_with_square_a():
+    """Hand-roll a minimal :class:`Type1Font` whose glyph 'A' draws a
+    700x700-unit square at the origin. Mirrors the test helper from
+    ``test_type1_cff_glyph.py`` — no PFB encoding required."""
+    from pypdfbox.fontbox.type1.type1_font import Type1Font  # noqa: PLC0415
+
+    program = Type1Font()
+
+    class _StubCharString:
+        def __init__(self, width: float, commands: list) -> None:
+            self.width = width
+            self._commands = commands
+
+        def draw(self, pen) -> None:  # noqa: ANN001 — pen protocol
+            for cmd in self._commands:
+                if cmd[0] == "moveTo":
+                    pen.moveTo(cmd[1])
+                elif cmd[0] == "lineTo":
+                    pen.lineTo(cmd[1])
+                elif cmd[0] == "closePath":
+                    pen.closePath()
+
+    program._charstrings = {
+        ".notdef": _StubCharString(0.0, []),
+        "A": _StubCharString(
+            800.0,
+            [
+                ("moveTo", (0.0, 0.0)),
+                ("lineTo", (700.0, 0.0)),
+                ("lineTo", (700.0, 700.0)),
+                ("lineTo", (0.0, 700.0)),
+                ("closePath",),
+            ],
+        ),
+    }
+    program._font_matrix = [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+    program._units_per_em = 1000
+    return program
+
+
+def _count_dark_pixels(img) -> int:
+    dark = 0
+    for y in range(img.size[1]):
+        for x in range(img.size[0]):
+            r, g, b = img.getpixel((x, y))
+            if r < 128 and g < 128 and b < 128:
+                dark += 1
+    return dark
+
+
+def test_type1c_cff_text_show_renders_filled_pixels() -> None:
+    """Embed a synthetic CFF (Type1C) font on /FontFile3 /Subtype /Type1C
+    and render an 'A'. The 700x700-unit square glyph must produce a
+    measurable footprint of dark pixels."""
+    from pypdfbox.cos import COSDictionary, COSName, COSStream
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+    from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
+
+    doc, page = _make_doc(200.0, 100.0)
+
+    cff_bytes = _build_type1c_cff_bytes()
+    font_file3 = COSStream()
+    font_file3.set_raw_data(cff_bytes)
+    font_file3.set_name(COSName.SUBTYPE, "Type1C")
+
+    fd_dict = COSDictionary()
+    descriptor = PDFontDescriptor(fd_dict)
+    descriptor.set_font_file3(font_file3)
+
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+    font_dict.set_item(
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("MyEmbeddedType1C")
+    )
+    font_dict.set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    font_dict.set_item(
+        COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
+    )
+    font = PDType1CFont(font_dict)
+
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.begin_text()
+        cs.set_font(font, 50.0)
+        cs.new_line_at_offset(20.0, 30.0)
+        cs.show_text("A")
+        cs.end_text()
+    img = PDFRenderer(doc).render_image(0)
+    assert img.size == (200, 100)
+    dark = _count_dark_pixels(img)
+    assert dark > 200, f"expected CFF glyph fill, got dark_count={dark}"
+
+
+def test_type1_pfb_text_show_renders_filled_pixels() -> None:
+    """Type1 (PFB) glyph rendering. PFB byte synthesis is non-trivial,
+    so the embedded program is injected via ``set_font_program`` and the
+    PD font is wired into the renderer's font cache by patching
+    ``_resolve_font``."""
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+
+    doc, page = _make_doc(200.0, 100.0)
+
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+    font_dict.set_item(
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("MyEmbeddedType1")
+    )
+    font_dict.set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    font = PDType1Font(font_dict)
+    font.set_font_program(_build_type1_program_with_square_a())
+
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.begin_text()
+        cs.set_font(font, 50.0)
+        cs.new_line_at_offset(20.0, 30.0)
+        cs.show_text("A")
+        cs.end_text()
+
+    # Patch the renderer's font resolver so the synthesised Type1 font
+    # (with its injected program) is used instead of a fresh PDFontFactory
+    # round-trip from the bare /Font dict.
+    renderer = PDFRenderer(doc)
+    original_resolve = renderer._resolve_font
+
+    def _resolve(font_name):  # noqa: ANN001
+        result = original_resolve(font_name)
+        if isinstance(result, PDType1Font):
+            result.set_font_program(font._get_type1_font())
+        return result
+
+    renderer._resolve_font = _resolve  # type: ignore[method-assign]
+    img = renderer.render_image(0)
+    assert img.size == (200, 100)
+    dark = _count_dark_pixels(img)
+    assert dark > 200, f"expected Type1 glyph fill, got dark_count={dark}"
+
+
+def test_standard14_no_embedded_program_renders_placeholder_and_warns_once(
+    caplog,
+) -> None:
+    """A Type1 font naming a Standard 14 family (e.g. Helvetica) with no
+    embedded /FontFile must render a placeholder and emit exactly one
+    debug log per font, not one per glyph."""
+    import logging  # noqa: PLC0415
+
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+
+    doc, page = _make_doc(200.0, 100.0)
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+    font_dict.set_item(
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("Helvetica")
+    )
+    font = PDType1Font(font_dict)
+
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.begin_text()
+        cs.set_font(font, 12.0)
+        cs.new_line_at_offset(10.0, 50.0)
+        cs.show_text("hello")  # 5 glyphs — should warn ONCE, not 5x
+        cs.end_text()
+
+    caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
+    img = PDFRenderer(doc).render_image(0)
+    assert img.size == (200, 100)  # didn't crash
+    # Exactly one Standard 14 fallback log message, despite 5 placeholder
+    # glyphs being drawn.
+    standard14_msgs = [
+        r
+        for r in caplog.records
+        if "Standard 14" in r.getMessage() and "Helvetica" in r.getMessage()
+    ]
+    assert len(standard14_msgs) == 1, (
+        f"expected one Standard 14 log, got {len(standard14_msgs)}: "
+        f"{[r.getMessage() for r in standard14_msgs]}"
+    )

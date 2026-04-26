@@ -177,8 +177,12 @@ class PDFRenderer(PDFStreamEngine):
       ``Td``/``TD``/``Tm``/``T*``/``Tj``/``TJ``/``'``/``"``. Glyph
       outlines are extracted from embedded TrueType fonts via fontTools
       (``glyphSet[name].draw(pen)``) and rasterised through aggdraw.
-      Type1 / Type3 / Standard 14 (no embedded program) fall back to a
-      faint placeholder rectangle — non-fatal, no crash.
+      Embedded Type1 (PFB) and Type1C (CFF) glyph outlines are sourced
+      from ``PDType1Font.get_glyph_path`` / ``PDType1CFont.get_glyph_path``
+      (fontTools-backed) and rasterised through the same aggdraw pipeline.
+      Type3 / Standard 14 (no embedded program) fall back to a faint
+      placeholder rectangle with a one-time debug log — non-fatal, no
+      crash.
     - Clip: ``W`` / ``W*`` — stage a clip-pending flag; the next path-end
       operator (paint or ``n``) intersects the path with the current clip
       mask via PIL polygon flattening.
@@ -190,8 +194,8 @@ class PDFRenderer(PDFStreamEngine):
 
     - Shadings, patterns, transparency groups, soft masks, blend modes,
       line dash/cap/join, ``Tr`` text rendering modes (clipping/stroke),
-      Type1/Type3/Standard 14 glyph outlines (placeholder rectangle
-      instead).
+      Type3 charprocs and Standard 14 glyph outlines without an embedded
+      program (placeholder rectangle instead — see ``CHANGES.md``).
     """
 
     def __init__(self, document: PDDocument) -> None:
@@ -220,6 +224,12 @@ class PDFRenderer(PDFStreamEngine):
         # we don't re-walk the resource dict and reparse the embedded TTF
         # on every Tf.
         self._font_cache: dict[tuple[int, str], Any] = {}
+        # Track which Standard 14 fonts (no embedded program) we've already
+        # warned about, so the placeholder-rectangle fallback only logs once
+        # per font instead of once per glyph. Keyed by id(font) since two
+        # PDFont instances pointing at the same dict still warrant separate
+        # warnings (different content streams may have referenced them).
+        self._warned_standard14_fonts: set[int] = set()
 
     # ------------------------------------------------------------------
     # public API (mirrors PDFRenderer.java)
@@ -283,6 +293,7 @@ class PDFRenderer(PDFStreamEngine):
         self._current_point = (0.0, 0.0)
         self._pending_clip = None
         self._font_cache = {}
+        self._warned_standard14_fonts = set()
 
         try:
             self.process_page(page)
@@ -1322,10 +1333,14 @@ class PDFRenderer(PDFStreamEngine):
 
         # Resolve the embedded TrueType only once per character run.
         ttf, glyph_set = self._get_ttf_glyph_set(font)
-        units_per_em = ttf.get_units_per_em() if ttf is not None else 1000
+        # Detect Type1 / Type1C (CFF) so the per-glyph path source is
+        # ``font.get_glyph_path(code)`` rather than fontTools' glyphSet.
+        type1_units_per_em = self._get_type1_units_per_em(font)
 
         for code in data:
-            advance_units = self._draw_glyph(font, code, ttf, glyph_set)
+            advance_units = self._draw_glyph(
+                font, code, ttf, glyph_set, type1_units_per_em
+            )
             # Word spacing applies to the space character (0x20) per spec.
             wordspace = self._gs.text_wordspace if code == 0x20 else 0.0
             tx = (
@@ -1335,7 +1350,6 @@ class PDFRenderer(PDFStreamEngine):
             ) * (self._gs.text_horizontal_scaling / 100.0)
             trans: _Matrix = (1.0, 0.0, 0.0, 1.0, tx, 0.0)
             self._gs.text_matrix = _matmul(trans, self._gs.text_matrix)
-        del units_per_em  # consumed via _draw_glyph; placeholder only
 
     def _get_ttf_glyph_set(
         self, font: Any
@@ -1377,16 +1391,46 @@ class PDFRenderer(PDFStreamEngine):
             return (ttf, None)
         return (ttf, glyph_set)
 
+    @staticmethod
+    def _get_type1_units_per_em(font: Any) -> int | None:
+        """Return ``units_per_em`` for a Type1/Type1C font when an embedded
+        program is available, ``None`` otherwise.
+
+        Routes through ``font._get_type1_font()`` (PFB) or
+        ``font._get_cff_font()`` (CFF) — whichever exists. If neither
+        embedded program is present (e.g. Standard 14 reference) the
+        caller falls back to the placeholder rectangle path.
+        """
+        from pypdfbox.pdmodel.font.pd_type1_font import (  # noqa: PLC0415
+            PDType1Font,
+        )
+        from pypdfbox.pdmodel.font.pd_type1c_font import (  # noqa: PLC0415
+            PDType1CFont,
+        )
+
+        if isinstance(font, PDType1CFont):
+            program = font._get_cff_font()  # noqa: SLF001
+            if program is not None:
+                return program.units_per_em
+            return None
+        if isinstance(font, PDType1Font):
+            program = font._get_type1_font()  # noqa: SLF001
+            if program is not None:
+                return program.units_per_em
+            return None
+        return None
+
     def _draw_glyph(
         self,
         font: Any,
         code: int,
         ttf: Any | None,
         glyph_set: Any | None,
+        type1_units_per_em: int | None = None,
     ) -> float:
         """Draw glyph for ``code`` and return its advance width in 1/1000
-        em (PDF units). Falls back to a placeholder rectangle when no TTF
-        outline is available."""
+        em (PDF units). Falls back to a placeholder rectangle when no
+        glyph outline is available (Standard 14, Type 3, etc.)."""
         # Compute the text-rendering CTM = text_matrix * full_ctm with the
         # standard PDF text transformation (font size + horizontal scale +
         # rise) baked into a 6-tuple.
@@ -1427,19 +1471,113 @@ class PDFRenderer(PDFStreamEngine):
             except Exception as exc:  # noqa: BLE001
                 _log.debug("rendering: glyph %d draw failed: %s", code, exc)
 
-        # ----- placeholder rectangle (no TTF outline available) -----
+        # ----- Type1 / Type1C (CFF) path -----
+        # Both subclasses expose ``get_glyph_path(code)`` returning command
+        # tuples in font units; convert to an aggdraw path scaled to
+        # unit-em and reuse the same fill pipeline as the TTF branch.
+        if type1_units_per_em is not None and type1_units_per_em > 0:
+            try:
+                commands = font.get_glyph_path(code)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug(
+                    "rendering: type1 glyph %d path build failed: %s",
+                    code,
+                    exc,
+                )
+                commands = []
+            advance_units = self._font_width_units(font, code)
+            if commands and self._draw is not None:
+                try:
+                    path = self._build_aggdraw_path_from_commands(
+                        commands, scale=1.0 / type1_units_per_em
+                    )
+                    if path is not None:
+                        self._fill_aggdraw_path(
+                            path, glyph_to_device, self._gs.fill_rgb
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug(
+                        "rendering: type1 glyph %d draw failed: %s",
+                        code,
+                        exc,
+                    )
+            return advance_units
+
+        # ----- placeholder rectangle (no outline source available) -----
         # Draw a faint outline at the glyph's nominal box so callers can see
         # *something*, then advance by the font-supplied width if any.
         try:
             advance_units = self._font_width_units(font, code)
         except Exception:  # noqa: BLE001
             advance_units = 500.0
+        # Once-per-font debug for Standard 14 references whose glyph
+        # outlines we currently can't synthesise (no /FontFile and we
+        # don't yet bundle Liberation TTFs as substitution targets).
+        self._maybe_warn_standard14(font)
         # Faint placeholder — a 1x1 unit-square outline scaled by the
         # text-local matrix. Skip when no draw context (defensive).
         if self._draw is not None:
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
         return advance_units
+
+    def _maybe_warn_standard14(self, font: Any) -> None:
+        """Emit a one-time debug log for Standard 14 fonts without an
+        embedded program. The placeholder rectangle is the visible signal;
+        this log makes the gap explicit for renderer consumers."""
+        key = id(font)
+        if key in self._warned_standard14_fonts:
+            return
+        try:
+            from pypdfbox.pdmodel.font.standard14_fonts import (  # noqa: PLC0415
+                Standard14Fonts,
+            )
+
+            base_font = font.get_name() if hasattr(font, "get_name") else None
+        except Exception:  # noqa: BLE001
+            return
+        if base_font is None or not Standard14Fonts.containsName(base_font):
+            return
+        self._warned_standard14_fonts.add(key)
+        _log.debug(
+            "rendering: %s is a Standard 14 font with no embedded "
+            "program; using placeholder rectangle (Liberation TTF "
+            "substitution not yet bundled — see CHANGES.md)",
+            base_font,
+        )
+
+    @staticmethod
+    def _build_aggdraw_path_from_commands(
+        commands: list[tuple], scale: float
+    ) -> aggdraw.Path | None:
+        """Convert a Type1/CFF ``get_glyph_path`` command sequence into an
+        :class:`aggdraw.Path` scaled by ``scale``. Returns ``None`` when no
+        drawable segments emit (empty commands or only ``moveto``)."""
+        path = aggdraw.Path()
+        emitted_segment = False
+        for cmd in commands:
+            tag = cmd[0]
+            if tag == "moveto":
+                path.moveto(cmd[1] * scale, cmd[2] * scale)
+            elif tag == "lineto":
+                path.lineto(cmd[1] * scale, cmd[2] * scale)
+                emitted_segment = True
+            elif tag == "curveto":
+                path.curveto(
+                    cmd[1] * scale,
+                    cmd[2] * scale,
+                    cmd[3] * scale,
+                    cmd[4] * scale,
+                    cmd[5] * scale,
+                    cmd[6] * scale,
+                )
+                emitted_segment = True
+            elif tag == "closepath":
+                path.close()
+                emitted_segment = True
+        if not emitted_segment:
+            return None
+        return path
 
     @staticmethod
     def _code_to_gid(font: Any, code: int, ttf: Any) -> int:

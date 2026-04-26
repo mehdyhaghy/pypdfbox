@@ -59,3 +59,16 @@ Includes the Adobe Glyph List
 
 Includes the Zapf Dingbats Glyph List
   Copyright 2002, 2010 Adobe Systems Incorporated.
+
+----------------------------------------------------------------------
+
+Runtime dependencies (declared, not bundled — installed by pip from PyPI):
+
+  jbig2-parser (Python: jbig2_parser)
+  Copyright (c) 2024 MichailTal
+  Licensed under the MIT License.
+  https://github.com/MichailTal/jbig2_parser
+
+  Used by `pypdfbox/filter/jbig2_decode.py` to decode JBIG2 (ITU-T
+  T.88) bilevel image streams referenced by /JBIG2Decode in PDF
+  image XObjects.
