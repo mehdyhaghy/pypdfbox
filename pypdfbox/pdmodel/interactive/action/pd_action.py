@@ -24,10 +24,15 @@ class PDAction:
     @staticmethod
     def create(action: COSDictionary | None) -> PDAction | None:
         from .pd_action_go_to import PDActionGoTo
+        from .pd_action_hide import PDActionHide
+        from .pd_action_import_data import PDActionImportData
         from .pd_action_java_script import PDActionJavaScript
         from .pd_action_launch import PDActionLaunch
         from .pd_action_named import PDActionNamed
         from .pd_action_remote_go_to import PDActionRemoteGoTo
+        from .pd_action_reset_form import PDActionResetForm
+        from .pd_action_submit_form import PDActionSubmitForm
+        from .pd_action_thread import PDActionThread
         from .pd_action_unknown import PDActionUnknown
         from .pd_action_uri import PDActionURI
 
@@ -48,6 +53,16 @@ class PDAction:
             return PDActionRemoteGoTo(action)
         if sub_type == PDActionJavaScript.SUB_TYPE:
             return PDActionJavaScript(action)
+        if sub_type == PDActionSubmitForm.SUB_TYPE:
+            return PDActionSubmitForm(action)
+        if sub_type == PDActionResetForm.SUB_TYPE:
+            return PDActionResetForm(action)
+        if sub_type == PDActionImportData.SUB_TYPE:
+            return PDActionImportData(action)
+        if sub_type == PDActionHide.SUB_TYPE:
+            return PDActionHide(action)
+        if sub_type == PDActionThread.SUB_TYPE:
+            return PDActionThread(action)
         return PDActionUnknown(action)
 
     def get_cos_object(self) -> COSDictionary:
