@@ -202,6 +202,11 @@ Cluster #7 partial (outlines + destinations + actions).
 | `pypdfbox/pdmodel/interactive/action/pd_action_import_data.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionImportData.java` |
 | `pypdfbox/pdmodel/interactive/action/pd_action_hide.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionHide.java` |
 | `pypdfbox/pdmodel/interactive/action/pd_action_thread.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionThread.java` |
+| `pypdfbox/pdmodel/interactive/action/pd_action_sound.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionSound.java` (lite — `/Sound` returns raw COS, typed PDSoundStream deferred) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_movie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionMovie.java` (lite — `/Annotation` returns raw COS, typed PDAnnotationMovie deferred) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_rendition.py` | 3.0.x | PDF 32000-1 §12.6.4.13 (no upstream source — modelled on spec; `/AN` and `/R` return raw COS) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_transition.py` | 3.0.x | PDF 32000-1 §12.6.4.14 (no upstream source; `/Trans` typed via PDTransition) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_embedded_go_to.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionEmbeddedGoTo.java` (lite — `/T` target directory returns raw COS, typed PDTargetDirectory deferred) |
 | `pypdfbox/pdmodel/interactive/action/pd_action_unknown.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDAction.java` (unknown-action fallback pattern) |
 | `pypdfbox/pdmodel/interactive/action/pd_page_additional_actions.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDPageAdditionalActions.java` |
 | `pypdfbox/pdmodel/interactive/action/pd_form_field_additional_actions.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDFormFieldAdditionalActions.java` |

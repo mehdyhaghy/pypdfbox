@@ -23,16 +23,21 @@ class PDAction:
 
     @staticmethod
     def create(action: COSDictionary | None) -> PDAction | None:
+        from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
         from .pd_action_go_to import PDActionGoTo
         from .pd_action_hide import PDActionHide
         from .pd_action_import_data import PDActionImportData
         from .pd_action_java_script import PDActionJavaScript
         from .pd_action_launch import PDActionLaunch
+        from .pd_action_movie import PDActionMovie
         from .pd_action_named import PDActionNamed
         from .pd_action_remote_go_to import PDActionRemoteGoTo
+        from .pd_action_rendition import PDActionRendition
         from .pd_action_reset_form import PDActionResetForm
+        from .pd_action_sound import PDActionSound
         from .pd_action_submit_form import PDActionSubmitForm
         from .pd_action_thread import PDActionThread
+        from .pd_action_transition import PDActionTransition
         from .pd_action_unknown import PDActionUnknown
         from .pd_action_uri import PDActionURI
 
@@ -63,6 +68,16 @@ class PDAction:
             return PDActionHide(action)
         if sub_type == PDActionThread.SUB_TYPE:
             return PDActionThread(action)
+        if sub_type == PDActionSound.SUB_TYPE:
+            return PDActionSound(action)
+        if sub_type == PDActionMovie.SUB_TYPE:
+            return PDActionMovie(action)
+        if sub_type == PDActionRendition.SUB_TYPE:
+            return PDActionRendition(action)
+        if sub_type == PDActionTransition.SUB_TYPE:
+            return PDActionTransition(action)
+        if sub_type == PDActionEmbeddedGoTo.SUB_TYPE:
+            return PDActionEmbeddedGoTo(action)
         return PDActionUnknown(action)
 
     def get_cos_object(self) -> COSDictionary:
