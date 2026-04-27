@@ -14,6 +14,10 @@ _ON: COSName = COSName.get_pdf_name("ON")
 _OFF: COSName = COSName.get_pdf_name("OFF")
 _BASE_STATE: COSName = COSName.get_pdf_name("BaseState")
 _UNCHANGED: COSName = COSName.get_pdf_name("Unchanged")
+_AS: COSName = COSName.get_pdf_name("AS")
+_EVENT: COSName = COSName.get_pdf_name("Event")
+_CATEGORY: COSName = COSName.get_pdf_name("Category")
+_USAGE: COSName = COSName.get_pdf_name("Usage")
 
 _BASE_STATE_NAMES = {
     "ON": _ON,
@@ -202,7 +206,7 @@ class PDOptionalContentProperties:
 
     # ---------- aggregate visibility ----------
 
-    def compute_visible_ocgs(self) -> set[int]:
+    def compute_visible_ocgs(self, destination: str | None = None) -> set[int]:
         """Return the set of ``id(ocg_cosdict)`` values for OCGs whose
         computed visibility is ON, per PDF 32000-1 §8.11.4.3 default
         configuration (/D) resolution rules.
@@ -216,10 +220,17 @@ class PDOptionalContentProperties:
              prior session state to preserve in this stateless context).
         2. Remove every entry listed in /D /OFF.
         3. Add every entry listed in /D /ON.
+        4. Apply the /D /AS auto-state usage array (PDF 32000-1 §8.11.4.4
+           Table 102) for the supplied ``destination`` ("View" / "Print" /
+           "Export"). For each /AS entry whose /Event matches ``destination``
+           (case-sensitive), each OCG in its /OCGs array is looked up in
+           the spec-ordered /Category names against the OCG's own /Usage
+           dictionary, reading the ``<Event>State`` sibling. "ON" adds the
+           id, "OFF" discards it, "Unchanged" leaves the prior decision.
+           First non-"Unchanged" category result wins per (entry, OCG).
+           When ``destination`` is ``None`` the /AS pass is skipped.
 
-        The /AS auto-state usage array is not applied in v1 (see PRD §8.11
-        gap note in CHANGES.md). Returns the resulting set of ``id()``
-        values, ready to feed into
+        Returns the resulting set of ``id()`` values, ready to feed into
         ``PDOptionalContentMembershipDictionary.is_visible``.
         """
         d = self._get_d()
@@ -252,7 +263,70 @@ class PDOptionalContentProperties:
                 if ocg is not None:
                     visible.add(id(ocg))
 
+        if destination is not None:
+            self._apply_auto_state(d, destination, visible)
+
         return visible
+
+    def _apply_auto_state(
+        self,
+        d: COSDictionary,
+        destination: str,
+        visible: set[int],
+    ) -> None:
+        """Apply /D /AS Usage Application entries for ``destination`` to
+        ``visible`` in place. See PDF 32000-1 §8.11.4.4 Table 102."""
+        as_arr = d.get_dictionary_object(_AS)
+        if not isinstance(as_arr, COSArray):
+            return
+        state_key = COSName.get_pdf_name(f"{destination}State")
+        for raw_entry in as_arr:
+            entry = self._to_dictionary(raw_entry)
+            if entry is None:
+                continue
+            event = entry.get_dictionary_object(_EVENT)
+            if not isinstance(event, COSName) or event.name != destination:
+                continue
+            categories_obj = entry.get_dictionary_object(_CATEGORY)
+            categories: list[COSName] = []
+            if isinstance(categories_obj, COSName):
+                categories = [categories_obj]
+            elif isinstance(categories_obj, COSArray):
+                categories = [c for c in categories_obj if isinstance(c, COSName)]
+            if not categories:
+                continue
+            ocgs_obj = entry.get_dictionary_object(_OCGS)
+            if not isinstance(ocgs_obj, COSArray):
+                continue
+            for raw_ocg in ocgs_obj:
+                ocg = self._to_dictionary(raw_ocg)
+                if ocg is None:
+                    continue
+                # Wrap in PDOptionalContentGroup to reuse the typed accessor
+                # (validates /Type /OCG, mirrors PDFBox's typed lookup).
+                try:
+                    PDOptionalContentGroup(ocg)
+                except (TypeError, ValueError):
+                    continue
+                usage = ocg.get_dictionary_object(_USAGE)
+                if not isinstance(usage, COSDictionary):
+                    continue
+                for category in categories:
+                    sub = usage.get_dictionary_object(category)
+                    if not isinstance(sub, COSDictionary):
+                        continue
+                    state = sub.get_dictionary_object(state_key)
+                    if not isinstance(state, COSName):
+                        continue
+                    upper = state.name.upper()
+                    if upper == "UNCHANGED":
+                        continue
+                    if upper == "ON":
+                        visible.add(id(ocg))
+                    elif upper == "OFF":
+                        visible.discard(id(ocg))
+                    # First non-"Unchanged" category result wins per OCG.
+                    break
 
     # ---------- alternate configurations ----------
 

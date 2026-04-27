@@ -12,6 +12,7 @@ from pypdfbox.cos import (
 from .font.pd_font import PDFont
 from .graphics.form.pd_form_x_object import PDFormXObject
 from .graphics.image.pd_image_x_object import PDImageXObject
+from .graphics.pd_property_list import PDPropertyList
 from .graphics.pd_x_object import PDXObject
 from .pd_page import PDPage
 from .pd_resources import PDResources
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _FONT: COSName = COSName.get_pdf_name("Font")
 _X_OBJECT: COSName = COSName.get_pdf_name("XObject")
+_PROPERTIES: COSName = COSName.get_pdf_name("Properties")
 
 
 class AppendMode(Enum):
@@ -308,9 +310,14 @@ class PDPageContentStream:
         self._write_operands(size)
         self._write_operator(b"Tf")
 
-    def show_text(self, text: str) -> None:
-        """Emit ``(text) Tj``. The text is PDF-escaped (literal form for
-        ASCII, hex form for any non-ASCII byte).
+    def show_text(self, text: str | bytes) -> None:
+        """Emit ``(text) Tj``.
+
+        ``text`` may be ``str`` (encoded via the lite latin-1/UTF-16BE
+        fallback — see deferred font.encode below) or already-encoded
+        ``bytes`` for callers that ran the bytes through their font's
+        encoder. Bytes are emitted as a literal string when ASCII-safe,
+        otherwise as hex form.
 
         Note: the *font*'s encode step is a font-cluster #4+ concern.
         Upstream calls ``font.encode(text)``; the lite surface here
@@ -318,12 +325,16 @@ class PDPageContentStream:
         the WinAnsi standard 14-font mapping for ASCII) and falls back to
         UTF-16BE hex form for non-Latin-1 input.
         """
-        try:
-            data = text.encode("latin-1")
-            ascii_safe = all(b < 0x80 and b not in (0x0D, 0x0A) for b in data)
-        except UnicodeEncodeError:
-            data = text.encode("utf-16-be")
-            ascii_safe = False
+        if isinstance(text, (bytes, bytearray)):
+            data = bytes(text)
+            ascii_safe = all(0x20 <= b < 0x80 or b == 0x09 for b in data)
+        else:
+            try:
+                data = text.encode("latin-1")
+                ascii_safe = all(0x20 <= b < 0x80 or b == 0x09 for b in data)
+            except UnicodeEncodeError:
+                data = text.encode("utf-16-be")
+                ascii_safe = False
         if ascii_safe:
             self._buffer.append(0x28)  # (
             for b in data:
@@ -444,6 +455,65 @@ class PDPageContentStream:
         self.restore_graphics_state()
 
     # ------------------------------------------------------------------
+    # marked content (tagged-PDF authoring)
+    # ------------------------------------------------------------------
+
+    def begin_marked_content(self, tag: COSName | str) -> None:
+        """Emit ``/<tag> BMC``."""
+        self._write_name(_to_cos_name(tag))
+        self._buffer.append(0x20)
+        self._write_operator(b"BMC")
+
+    def begin_marked_content_with_dict(
+        self,
+        tag: COSName | str,
+        property_list: PDPropertyList | COSName | str,
+    ) -> None:
+        """Emit ``/<tag> /<key> BDC``.
+
+        ``property_list`` may be a typed :class:`PDPropertyList`, a raw
+        :class:`COSName` (the key already registered under
+        ``/Resources/Properties``), or a ``str`` used directly as the
+        property-list key. Typed property lists are auto-registered and a
+        ``MC<n>`` slot is allocated when needed.
+        """
+        if isinstance(property_list, PDPropertyList):
+            key = self._resource_key_for_property_list(property_list)
+        else:
+            key = _to_cos_name(property_list)
+        self._write_name(_to_cos_name(tag))
+        self._buffer.append(0x20)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"BDC")
+
+    def end_marked_content(self) -> None:
+        """Emit ``EMC``."""
+        self._write_operator(b"EMC")
+
+    def add_marked_content_point(self, tag: COSName | str) -> None:
+        """Emit ``/<tag> MP`` — single marked-content point."""
+        self._write_name(_to_cos_name(tag))
+        self._buffer.append(0x20)
+        self._write_operator(b"MP")
+
+    def add_marked_content_point_with_dict(
+        self,
+        tag: COSName | str,
+        property_list: PDPropertyList | COSName | str,
+    ) -> None:
+        """Emit ``/<tag> /<key> DP`` — marked-content point with properties."""
+        if isinstance(property_list, PDPropertyList):
+            key = self._resource_key_for_property_list(property_list)
+        else:
+            key = _to_cos_name(property_list)
+        self._write_name(_to_cos_name(tag))
+        self._buffer.append(0x20)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"DP")
+
+    # ------------------------------------------------------------------
     # resource key allocation
     # ------------------------------------------------------------------
 
@@ -467,6 +537,20 @@ class PDPageContentStream:
                     return key
         return self._resources.add_x_object(xobject)
 
+    def _resource_key_for_property_list(
+        self, property_list: PDPropertyList
+    ) -> COSName:
+        """Return the /Resources/Properties key for ``property_list``,
+        allocating a new ``MC<n>`` slot when necessary."""
+        prop_cos = property_list.get_cos_object()
+        res_dict = self._resources.get_cos_object()
+        sub = res_dict.get_dictionary_object(_PROPERTIES)
+        if sub is not None:
+            for key in sub.key_set():
+                if sub.get_dictionary_object(key) is prop_cos:
+                    return key
+        return self._resources.add(_PROPERTIES, prop_cos)
+
     # ------------------------------------------------------------------
     # low-level emit helpers
     # ------------------------------------------------------------------
@@ -485,6 +569,12 @@ class PDPageContentStream:
         # COSName names are ASCII-safe in practice for resource keys —
         # avoid the full ``#xx``-escape pass that the cos writer does.
         self._buffer.extend(name.get_name().encode("ascii"))
+
+
+def _to_cos_name(name: COSName | str) -> COSName:
+    if isinstance(name, COSName):
+        return name
+    return COSName.get_pdf_name(name)
 
 
 def _format_number(value: float) -> bytes:

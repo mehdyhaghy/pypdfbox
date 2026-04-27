@@ -153,6 +153,69 @@ def test_structure_node_append_and_remove_typed_kids() -> None:
     assert isinstance(kids[1], PDObjectReference)
 
 
+# ---------- PDStructureNode.insert_before ----------
+
+
+def test_structure_node_insert_before_into_array() -> None:
+    node = PDStructureNode("StructElem")
+    a, b, c = COSDictionary(), COSDictionary(), COSDictionary()
+    node.set_kids([a, c])
+    new_kid = COSDictionary()
+    assert node.insert_before(new_kid, c) is True
+    kids = node.get_kids()
+    assert kids == [a, new_kid, c]
+    # The 'b' wasn't used — keep this branch readable.
+    assert b is not new_kid
+
+
+def test_structure_node_insert_before_promotes_single_kid_to_array() -> None:
+    node = PDStructureNode("StructElem")
+    only = COSDictionary()
+    node.append_kid(only)
+    # /K is currently a single dict (not an array).
+    assert isinstance(node.get_cos_object().get_dictionary_object(_K), COSDictionary)
+
+    new_kid = COSDictionary()
+    assert node.insert_before(new_kid, only) is True
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert isinstance(raw_k, COSArray)
+    assert raw_k.get_object(0) is new_kid
+    assert raw_k.get_object(1) is only
+
+
+def test_structure_node_insert_before_unknown_returns_false() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    assert node.insert_before(COSDictionary(), COSDictionary()) is False
+
+
+def test_structure_node_insert_before_empty_returns_false() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.insert_before(COSDictionary(), COSDictionary()) is False
+
+
+def test_structure_node_insert_before_typed_kids() -> None:
+    node = PDStructureNode("StructElem")
+    head = PDStructureElement(structure_type="P")
+    tail = PDStructureElement(structure_type="P")
+    middle = PDStructureElement(structure_type="P")
+    node.set_kids([head, tail])
+
+    assert node.insert_before(middle, tail) is True
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert isinstance(raw_k, COSArray)
+    assert raw_k.get_object(0) is head.get_cos_object()
+    assert raw_k.get_object(1) is middle.get_cos_object()
+    assert raw_k.get_object(2) is tail.get_cos_object()
+
+
+def test_structure_node_insert_before_int_mcid_anchor() -> None:
+    node = PDStructureNode("StructElem")
+    node.set_kids([1, 2, 3])
+    assert node.insert_before(99, 2) is True
+    assert node.get_kids() == [1, 99, 2, 3]
+
+
 # ---------- PDStructureNode.create dispatch ----------
 
 

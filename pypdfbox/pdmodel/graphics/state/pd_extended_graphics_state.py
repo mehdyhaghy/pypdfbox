@@ -12,8 +12,11 @@ from pypdfbox.cos import (
     COSNumber,
 )
 
+from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
+
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
+    from pypdfbox.pdmodel.graphics.state.pd_font_setting import PDFontSetting
 
 # Single-letter / short name keys defined by PDF spec for the ExtGState
 # dictionary. Local aliases keep the wrappers terse without polluting
@@ -348,23 +351,22 @@ class PDExtendedGraphicsState:
     def set_non_stroking_alpha_constant(self, alpha: float | None) -> None:
         self._set_float_item(_CA_NS, alpha)
 
-    # ---------- BM (blend mode, raw — typed BlendMode wrapper deferred) ----------
+    # ---------- BM (blend mode) ----------
 
-    def get_blend_mode(self) -> COSName | str | None:
-        base = self._dict.get_dictionary_object(_BM)
-        if base is None:
-            return None
-        if isinstance(base, COSName):
-            return base
-        return None
+    def get_blend_mode(self) -> BlendMode | None:
+        return BlendMode.from_cos(self._dict.get_dictionary_object(_BM))
 
-    def set_blend_mode(self, bm: COSName | str | None) -> None:
+    def set_blend_mode(self, bm: BlendMode | COSName | str | None) -> None:
         if bm is None:
             self._dict.remove_item(_BM)
-        elif isinstance(bm, COSName):
+            return
+        if isinstance(bm, BlendMode):
+            self._dict.set_item(_BM, bm.get_cos_name())
+            return
+        if isinstance(bm, COSName):
             self._dict.set_item(_BM, bm)
-        else:
-            self._dict.set_name(_BM, bm)
+            return
+        self._dict.set_name(_BM, bm)
 
     # ---------- AIS (alpha source flag) ----------
 
@@ -475,6 +477,22 @@ class PDExtendedGraphicsState:
         else:
             base.grow_to_size(2)
         base.set(1, COSFloat(float(size)))
+
+    # ---------- /Font (typed PDFontSetting wrapper) ----------
+
+    def get_font_setting(self) -> PDFontSetting | None:
+        from pypdfbox.pdmodel.graphics.state.pd_font_setting import PDFontSetting
+
+        base = self._dict.get_dictionary_object(_FONT)
+        if isinstance(base, COSArray):
+            return PDFontSetting(base)
+        return None
+
+    def set_font_setting(self, setting: PDFontSetting | None) -> None:
+        if setting is None:
+            self._dict.remove_item(_FONT)
+            return
+        self._dict.set_item(_FONT, setting.get_cos_object())
 
 
 __all__ = ["PDExtendedGraphicsState"]

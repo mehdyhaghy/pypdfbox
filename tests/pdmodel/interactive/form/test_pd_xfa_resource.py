@@ -119,3 +119,96 @@ def test_get_document_as_xml_concatenates_array_form() -> None:
     xfa = PDXFAResource(arr)
 
     assert xfa.get_document_as_xml() == "<a><b/></a>"
+
+
+def test_is_dynamic_false_for_static_position_layout() -> None:
+    body = (
+        b'<xdp xmlns="http://ns.adobe.com/xdp/">'
+        b"<template>"
+        b'<subform name="form1" layout="position"/>'
+        b"</template>"
+        b"</xdp>"
+    )
+    xfa = PDXFAResource(_stream(body))
+
+    assert xfa.is_dynamic() is False
+
+
+def test_is_dynamic_true_for_tb_layout() -> None:
+    body = (
+        b'<xdp xmlns="http://ns.adobe.com/xdp/">'
+        b"<template>"
+        b'<subform name="form1" layout="tb"/>'
+        b"</template>"
+        b"</xdp>"
+    )
+    xfa = PDXFAResource(_stream(body))
+
+    assert xfa.is_dynamic() is True
+
+
+def test_is_dynamic_true_for_namespaced_template_and_subform() -> None:
+    body = (
+        b'<xdp xmlns="http://ns.adobe.com/xdp/" '
+        b'xmlns:tpl="http://www.xfa.org/schema/xfa-template/3.3/">'
+        b"<tpl:template>"
+        b'<tpl:subform name="form1" layout="lr-tb"/>'
+        b"</tpl:template>"
+        b"</xdp>"
+    )
+    xfa = PDXFAResource(_stream(body))
+
+    assert xfa.is_dynamic() is True
+
+
+def test_is_dynamic_false_when_layout_attribute_absent() -> None:
+    body = (
+        b'<xdp xmlns="http://ns.adobe.com/xdp/">'
+        b"<template>"
+        b'<subform name="form1"/>'
+        b"</template>"
+        b"</xdp>"
+    )
+    xfa = PDXFAResource(_stream(body))
+
+    assert xfa.is_dynamic() is False
+
+
+def test_is_dynamic_falls_back_to_substring_on_malformed_xml() -> None:
+    # Unbalanced tags + an undeclared xfa: prefix make this a hard parse error,
+    # but the legacy <xdp:xdp marker should still trigger the heuristic.
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><xfa:datasets/>'
+    xfa = PDXFAResource(_stream(body))
+
+    # Must not raise.
+    assert xfa.is_dynamic() is True
+
+
+def test_is_dynamic_falls_back_to_substring_when_no_template_packet() -> None:
+    # Parses fine, but there is no <template> packet — the heuristic kicks in
+    # and finds 'subform name="form1"' even though no layout was declared.
+    body = b'<xdp xmlns="http://ns.adobe.com/xdp/"><config><subform name="form1"/></config></xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    assert xfa.is_dynamic() is True
+
+
+def test_is_dynamic_is_cached() -> None:
+    body = (
+        b'<xdp xmlns="http://ns.adobe.com/xdp/">'
+        b"<template>"
+        b'<subform name="form1" layout="tb"/>'
+        b"</template>"
+        b"</xdp>"
+    )
+    xfa = PDXFAResource(_stream(body))
+
+    first = xfa.is_dynamic()
+    # Mutate the underlying stream after the first call: the cached result
+    # must not be recomputed.
+    xfa._xfa.set_raw_data(b"<plain/>")  # type: ignore[union-attr]
+    second = xfa.is_dynamic()
+
+    assert first is True
+    assert second is True
+    assert first == second

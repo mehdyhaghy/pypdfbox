@@ -70,6 +70,41 @@ def test_layout_space_before_after() -> None:
     assert obj.get_space_after() == 2.0
 
 
+def test_layout_start_indent_default_zero_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_start_indent() == 0.0
+    obj.set_start_indent(12.5)
+    assert obj.get_start_indent() == 12.5
+
+
+def test_layout_end_indent_default_zero_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_end_indent() == 0.0
+    obj.set_end_indent(7)
+    assert obj.get_end_indent() == 7.0
+
+
+def test_layout_text_indent_default_zero_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_text_indent() == 0.0
+    obj.set_text_indent(-4.0)
+    assert obj.get_text_indent() == -4.0
+
+
+def test_layout_text_align_default_start_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_text_align() == PDLayoutAttributeObject.TEXT_ALIGN_START
+    obj.set_text_align(PDLayoutAttributeObject.TEXT_ALIGN_JUSTIFY)
+    assert obj.get_text_align() == "Justify"
+
+
+def test_layout_baseline_shift_default_zero_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_baseline_shift() == 0.0
+    obj.set_baseline_shift(2.25)
+    assert obj.get_baseline_shift() == 2.25
+
+
 def test_list_round_trip_list_numbering() -> None:
     obj = PDListAttributeObject()
     obj.set_list_numbering("Decimal")

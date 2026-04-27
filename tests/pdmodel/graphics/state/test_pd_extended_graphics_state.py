@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
 
 
@@ -85,17 +86,48 @@ def test_round_trip_blend_mode_cosname() -> None:
     multiply = COSName.get_pdf_name("Multiply")
     gs.set_blend_mode(multiply)
     bm = gs.get_blend_mode()
-    assert isinstance(bm, COSName)
-    assert bm is multiply
+    assert isinstance(bm, BlendMode)
+    assert bm is BlendMode.MULTIPLY
     assert bm.get_name() == "Multiply"
+    assert gs.get_cos_object().get_item("BM") is multiply
 
 
 def test_round_trip_blend_mode_string_stored_as_name() -> None:
     gs = PDExtendedGraphicsState()
     gs.set_blend_mode("Screen")
     bm = gs.get_blend_mode()
-    assert isinstance(bm, COSName)
-    assert bm.get_name() == "Screen"
+    assert isinstance(bm, BlendMode)
+    assert bm is BlendMode.SCREEN
+    assert gs.get_cos_object().get_item("BM").get_name() == "Screen"
+
+
+def test_round_trip_blend_mode_typed_wrapper() -> None:
+    gs = PDExtendedGraphicsState()
+    gs.set_blend_mode(BlendMode.SOFT_LIGHT)
+    bm = gs.get_blend_mode()
+    assert bm is BlendMode.SOFT_LIGHT
+    assert gs.get_cos_object().get_item("BM") == COSName.get_pdf_name("SoftLight")
+    gs.set_blend_mode(None)
+    assert gs.get_blend_mode() is None
+    assert gs.get_cos_object().get_item("BM") is None
+
+
+def test_blend_mode_array_picks_first_recognised_entry() -> None:
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Bogus"))
+    arr.add(COSName.get_pdf_name("Hue"))
+    gs.get_cos_object().set_item("BM", arr)
+    assert gs.get_blend_mode() is BlendMode.HUE
+
+
+def test_blend_mode_compatible_aliases_to_normal() -> None:
+    assert BlendMode.get("Compatible") is BlendMode.NORMAL
+
+
+def test_blend_mode_separable_classification() -> None:
+    assert BlendMode.MULTIPLY.is_separable()
+    assert not BlendMode.HUE.is_separable()
 
 
 def test_round_trip_alpha_source_flag() -> None:
@@ -281,7 +313,7 @@ def test_copy_into_graphics_state_uses_matching_setters() -> None:
     assert ("alpha_constants", 0.5) in target.calls
     assert ("non_stroke_alpha_constants", 0.25) in target.calls
     assert ("alpha_source", True) in target.calls
-    assert ("blend_mode", COSName.get_pdf_name("Multiply")) in target.calls
+    assert ("blend_mode", BlendMode.MULTIPLY) in target.calls
     assert ("font", COSName.get_pdf_name("F1")) in target.text_state.calls
     assert ("font_size", 11.0) in target.text_state.calls
     assert ("knockout", False) in target.text_state.calls

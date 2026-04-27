@@ -276,6 +276,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/pd_property_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDPropertyList.java` (lite — `create()` returns `None` for unknown `/Type`) |
 | `pypdfbox/pdmodel/graphics/pd_line_dash_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDLineDashPattern.java` (lite — phase accepts `float`) |
 | `pypdfbox/pdmodel/graphics/state/pd_extended_graphics_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PDExtendedGraphicsState.java` (lite — `/SMask`/`/TR`/`/TR2`/`copy_into_graphics_state` deferred) |
+| `pypdfbox/pdmodel/graphics/state/pd_font_setting.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PDFontSetting.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_indexed.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDIndexed.java` (lite — lookup table raw filtered bytes) |
 | `pypdfbox/pdmodel/graphics/color/pd_separation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java` |

@@ -273,3 +273,101 @@ def test_compute_visible_ocgs_feeds_ocmd_alloff() -> None:
     # Turn A on; AllOff should now fail.
     props.set_group_enabled(a, True)
     assert ocmd.is_visible(props.compute_visible_ocgs()) is False
+
+
+# ---------- /D /AS auto-state usage application (PDF 32000-1 §8.11.4.4) ----------
+
+
+def _add_as_entry(
+    props: PDOptionalContentProperties,
+    event: str,
+    categories: list[str],
+    ocgs: list[PDOptionalContentGroup],
+) -> COSDictionary:
+    """Append a Usage Application dict to /D /AS and return it."""
+    d = props.get_cos_object().get_dictionary_object(COSName.D)  # type: ignore[attr-defined]
+    assert isinstance(d, COSDictionary)
+    as_arr = d.get_dictionary_object(COSName.get_pdf_name("AS"))
+    if not isinstance(as_arr, COSArray):
+        as_arr = COSArray()
+        d.set_item(COSName.get_pdf_name("AS"), as_arr)
+    entry = COSDictionary()
+    entry.set_item(COSName.get_pdf_name("Event"), COSName.get_pdf_name(event))
+    cat_arr = COSArray()
+    for c in categories:
+        cat_arr.add(COSName.get_pdf_name(c))
+    entry.set_item(COSName.get_pdf_name("Category"), cat_arr)
+    ocg_arr = COSArray()
+    for g in ocgs:
+        ocg_arr.add(g.get_cos_object())
+    entry.set_item(COSName.get_pdf_name("OCGs"), ocg_arr)
+    as_arr.add(entry)
+    return entry
+
+
+def _set_usage_state(
+    group: PDOptionalContentGroup, category: str, state_key: str, state: str
+) -> None:
+    """Write /Usage/<category>/<state_key> = /<state> on an OCG dict."""
+    cos = group.get_cos_object()
+    usage = cos.get_dictionary_object(COSName.get_pdf_name("Usage"))
+    if not isinstance(usage, COSDictionary):
+        usage = COSDictionary()
+        cos.set_item(COSName.get_pdf_name("Usage"), usage)
+    sub = usage.get_dictionary_object(COSName.get_pdf_name(category))
+    if not isinstance(sub, COSDictionary):
+        sub = COSDictionary()
+        usage.set_item(COSName.get_pdf_name(category), sub)
+    sub.set_item(COSName.get_pdf_name(state_key), COSName.get_pdf_name(state))
+
+
+def test_compute_visible_ocgs_as_on_overrides_off_for_matching_event() -> None:
+    # /D /OFF excludes A; /AS Print entry with /PrintState ON re-enables A.
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_group_enabled(a, False)  # A in /D /OFF
+    _set_usage_state(a, "Print", "PrintState", "ON")
+    _add_as_entry(props, "Print", ["Print"], [a])
+
+    # No destination: legacy behaviour, A still off.
+    assert props.compute_visible_ocgs() == {id(b.get_cos_object())}
+
+    # Print destination: /AS ON re-adds A.
+    visible = props.compute_visible_ocgs("Print")
+    assert visible == {id(a.get_cos_object()), id(b.get_cos_object())}
+
+
+def test_compute_visible_ocgs_as_off_overrides_base_state_on() -> None:
+    # BaseState ON; /AS View entry with /ViewState OFF removes A for View.
+    props, (a, b) = _build_props_with_groups("A", "B")
+    _set_usage_state(a, "View", "ViewState", "OFF")
+    _add_as_entry(props, "View", ["View"], [a])
+
+    visible = props.compute_visible_ocgs("View")
+    assert visible == {id(b.get_cos_object())}
+
+
+def test_compute_visible_ocgs_as_unchanged_leaves_prior_decision() -> None:
+    # /AS entry with /ViewState Unchanged must not flip the prior /D /OFF decision.
+    props, (a, b) = _build_props_with_groups("A", "B")
+    props.set_group_enabled(a, False)  # A in /D /OFF
+    _set_usage_state(a, "View", "ViewState", "Unchanged")
+    _add_as_entry(props, "View", ["View"], [a])
+
+    visible = props.compute_visible_ocgs("View")
+    # A stays off because /AS said "Unchanged".
+    assert visible == {id(b.get_cos_object())}
+
+
+def test_compute_visible_ocgs_as_event_mismatch_is_ignored() -> None:
+    # /AS Print entry should not affect a View destination request.
+    props, (a, b) = _build_props_with_groups("A", "B")
+    _set_usage_state(a, "Print", "PrintState", "OFF")
+    _add_as_entry(props, "Print", ["Print"], [a])
+
+    # View destination: Print entry skipped, A remains visible (BaseState ON).
+    visible = props.compute_visible_ocgs("View")
+    assert visible == {id(a.get_cos_object()), id(b.get_cos_object())}
+
+    # Print destination: entry applies, A removed.
+    visible_print = props.compute_visible_ocgs("Print")
+    assert visible_print == {id(b.get_cos_object())}

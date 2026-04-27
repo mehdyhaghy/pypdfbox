@@ -135,6 +135,36 @@ class PDStructureNode:
         arr.add(cos_kid)
         self._dictionary.set_item(_K, arr)
 
+    def insert_before(self, new_kid: Any, before_kid: Any) -> bool:
+        """Insert ``new_kid`` immediately before ``before_kid`` in ``/K``.
+
+        Mirrors upstream ``PDStructureNode.insertBefore``. Returns ``True``
+        when ``before_kid`` is found and the insert happens; ``False`` when
+        ``before_kid`` is missing (no insert performed). Promotes a
+        single-entry ``/K`` to a ``COSArray`` when the insert turns it into
+        two entries.
+        """
+        if new_kid is None or before_kid is None:
+            return False
+        cos_new = _to_cos(new_kid)
+        cos_before = _to_cos(before_kid)
+        existing = self._dictionary.get_dictionary_object(_K)
+        if existing is None:
+            return False
+        if isinstance(existing, COSArray):
+            for i in range(existing.size()):
+                if _same_kid(existing.get_object(i), cos_before):
+                    existing.add_at(i, cos_new)
+                    return True
+            return False
+        if _same_kid(existing, cos_before):
+            arr = COSArray()
+            arr.add(cos_new)
+            arr.add(existing)
+            self._dictionary.set_item(_K, arr)
+            return True
+        return False
+
     def remove_kid(self, kid: Any) -> bool:
         if kid is None:
             return False

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from typing import ClassVar
 
 from pypdfbox.cos import COSArray, COSBase, COSStream
 
@@ -17,12 +18,17 @@ class PDXFAResource:
     parses the concatenated payload into an ``ElementTree`` element (cached
     on the instance).
 
-    Deferred: set helpers and fully-spec is_dynamic detection.
+    Deferred: set helpers.
     """
+
+    # Sentinel for the cached ``is_dynamic`` slot — distinguishes "not yet
+    # computed" from a legitimate ``False`` result.
+    _IS_DYNAMIC_UNSET: ClassVar[object] = object()
 
     def __init__(self, xfa: COSBase) -> None:
         self._xfa = xfa
         self._document: ET.Element | None = None
+        self._is_dynamic_cache: bool | object = self._IS_DYNAMIC_UNSET
 
     def get_cos_object(self) -> COSBase:
         return self._xfa
@@ -77,20 +83,94 @@ class PDXFAResource:
         return self._document
 
     def is_dynamic(self) -> bool:
-        """Heuristic dynamic-XFA check.
+        """Detect a dynamic-XFA payload.
 
-        Lite scope — looks for a couple of common dynamic-form markers in
-        the raw XML bytes (``<xfa:datasets``, ``<xdp:xdp``, or a
-        ``subform name="form1"`` declaration). Full spec-driven detection
-        (parse the XDP, inspect ``/template/subform/@layout`` etc.) is
-        deferred. Returns ``False`` on any I/O error.
+        XFA payloads are wrapped in an ``<xdp:xdp>`` envelope whose top-level
+        children are independent "packets" (one per XFA schema: template,
+        config, datasets, form, ...). The dynamic/static distinction lives in
+        the ``<template>`` packet: dynamic forms declare their root
+        ``<subform>`` with a flow ``layout`` attribute (``tb``, ``lr-tb``,
+        ``rl-tb``, ``tb-rl``, ...); static forms either set
+        ``layout="position"`` or omit the attribute. The XFA template
+        namespace is ``http://www.xfa.org/schema/xfa-template/<version>/``.
+
+        Implementation: parse the concatenated payload with stdlib
+        ``ElementTree``, locate any ``<template>`` element (namespaced or
+        not, directly or as an ``<xdp:xdp>`` child), pick its first
+        ``<subform>`` child, and check the ``layout`` attribute. Returns
+        ``True`` when the layout is set and not ``"position"``; returns
+        ``False`` when it is ``"position"`` or absent.
+
+        On malformed XML, missing ``<template>`` packet, or missing root
+        ``<subform>`` we fall back to the previous substring heuristic so
+        broken-but-plausibly-dynamic payloads aren't silently downgraded.
+        Result is cached on the instance.
         """
+        cached = self._is_dynamic_cache
+        if cached is not self._IS_DYNAMIC_UNSET:
+            return bool(cached)
+
+        result = self._compute_is_dynamic()
+        self._is_dynamic_cache = result
+        return result
+
+    def _compute_is_dynamic(self) -> bool:
         try:
             data = self.get_bytes()
         except OSError:
             return False
         if not data:
             return False
+
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError:
+            return self._is_dynamic_substring_heuristic(data)
+
+        template = self._find_template_element(root)
+        if template is None:
+            return self._is_dynamic_substring_heuristic(data)
+
+        subform = self._find_first_subform(template)
+        if subform is None:
+            return self._is_dynamic_substring_heuristic(data)
+
+        layout = subform.get("layout")
+        if layout is None:
+            return False
+        return layout != "position"
+
+    @staticmethod
+    def _local_name(tag: str) -> str:
+        # ElementTree tags are ``{ns}local`` for namespaced elements.
+        if "}" in tag:
+            return tag.split("}", 1)[1]
+        return tag
+
+    @classmethod
+    def _find_template_element(cls, root: ET.Element) -> ET.Element | None:
+        # The root may already be the <template> packet (rare — usually it
+        # is <xdp:xdp> with packets as children, but defensive-first).
+        if cls._local_name(root.tag) == "template":
+            return root
+        for child in root:
+            if cls._local_name(child.tag) == "template":
+                return child
+        # Last resort: scan the whole tree for any <template> element.
+        for elem in root.iter():
+            if cls._local_name(elem.tag) == "template":
+                return elem
+        return None
+
+    @classmethod
+    def _find_first_subform(cls, template: ET.Element) -> ET.Element | None:
+        for child in template:
+            if cls._local_name(child.tag) == "subform":
+                return child
+        return None
+
+    @staticmethod
+    def _is_dynamic_substring_heuristic(data: bytes) -> bool:
         for marker in (b"<xfa:datasets", b"<xdp:xdp", b'subform name="form1"'):
             if marker in data:
                 return True

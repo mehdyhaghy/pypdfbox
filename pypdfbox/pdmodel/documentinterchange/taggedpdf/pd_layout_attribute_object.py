@@ -12,8 +12,11 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     ``PDLayoutAttributeObject``.
 
     Lite scope: the most common typed accessors per PDF 32000-1:2008
-    §14.8.5.4 are exposed. Border / padding / column / decoration / ruby
-    accessors and the change-notification plumbing are deferred.
+    §14.8.5.4 are exposed (placement, writing mode, foreground / background
+    colors, four-side border colors, vertical spacing, indents, text align,
+    baseline shift). Border-style / border-thickness / padding / column /
+    decoration / ruby accessors and the change-notification plumbing are
+    still deferred.
     """
 
     OWNER: str = "Layout"
@@ -29,6 +32,12 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     WRITING_MODE_LRTB: str = "LrTb"
     WRITING_MODE_RLTB: str = "RlTb"
     WRITING_MODE_TBRL: str = "TbRl"
+
+    # TextAlign values
+    TEXT_ALIGN_START: str = "Start"
+    TEXT_ALIGN_CENTER: str = "Center"
+    TEXT_ALIGN_END: str = "End"
+    TEXT_ALIGN_JUSTIFY: str = "Justify"
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         super().__init__(dictionary)
@@ -90,6 +99,46 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
 
     def set_space_after(self, value: float | int) -> None:
         self._set_number("SpaceAfter", value)
+
+    # ---------- /StartIndent ----------
+
+    def get_start_indent(self) -> float:
+        return self._get_number("StartIndent", 0.0)
+
+    def set_start_indent(self, value: float | int) -> None:
+        self._set_number("StartIndent", value)
+
+    # ---------- /EndIndent ----------
+
+    def get_end_indent(self) -> float:
+        return self._get_number("EndIndent", 0.0)
+
+    def set_end_indent(self, value: float | int) -> None:
+        self._set_number("EndIndent", value)
+
+    # ---------- /TextIndent ----------
+
+    def get_text_indent(self) -> float:
+        return self._get_number("TextIndent", 0.0)
+
+    def set_text_indent(self, value: float | int) -> None:
+        self._set_number("TextIndent", value)
+
+    # ---------- /TextAlign ----------
+
+    def get_text_align(self) -> str | None:
+        return self._get_name("TextAlign", self.TEXT_ALIGN_START)
+
+    def set_text_align(self, text_align: str) -> None:
+        self._set_name("TextAlign", text_align)
+
+    # ---------- /BaselineShift ----------
+
+    def get_baseline_shift(self) -> float:
+        return self._get_number("BaselineShift", 0.0)
+
+    def set_baseline_shift(self, value: float | int) -> None:
+        self._set_number("BaselineShift", value)
 
     def __repr__(self) -> str:
         return (

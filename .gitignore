@@ -38,3 +38,6 @@ htmlcov/
 corpus/
 oracle/cache/
 *.pdf.diff
+
+# Upstream Java source — local clone for parity tooling (see scripts/parity.py)
+pdfbox/

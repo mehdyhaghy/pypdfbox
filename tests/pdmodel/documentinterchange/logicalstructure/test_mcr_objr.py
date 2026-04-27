@@ -123,3 +123,68 @@ def test_objr_set_obj_none_removes() -> None:
     objr.set_obj(target)
     objr.set_obj(None)
     assert objr.get_obj() is None
+
+
+# ---------- PDObjectReference.get_referenced_object ----------
+
+
+def test_objr_get_referenced_object_none_when_obj_absent() -> None:
+    objr = PDObjectReference()
+    assert objr.get_referenced_object() is None
+
+
+def test_objr_get_referenced_object_link_annotation() -> None:
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+        PDAnnotationLink,
+    )
+
+    objr = PDObjectReference()
+    annot_dict = COSDictionary()
+    annot_dict.set_name(_TYPE, "Annot")
+    annot_dict.set_name(COSName.get_pdf_name("Subtype"), "Link")
+    objr.set_obj(annot_dict)
+
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDAnnotationLink)
+    assert referenced.get_cos_object() is annot_dict
+
+
+def test_objr_get_referenced_object_form_xobject_stream() -> None:
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+
+    objr = PDObjectReference()
+    stream = COSStream()
+    stream.set_name(COSName.get_pdf_name("Subtype"), "Form")
+    objr.set_obj(stream)
+
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDFormXObject)
+    assert referenced.get_cos_object() is stream
+
+
+def test_objr_set_referenced_object_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+        PDAnnotationLink,
+    )
+
+    annotation = PDAnnotationLink()
+    objr = PDObjectReference()
+    objr.set_referenced_object(annotation)
+
+    assert objr.get_cos_object().get_dictionary_object(_OBJ) is annotation.get_cos_object()
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDAnnotationLink)
+    assert referenced.get_cos_object() is annotation.get_cos_object()
+
+
+def test_objr_set_referenced_object_none_clears_obj() -> None:
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+        PDAnnotationLink,
+    )
+
+    annotation = PDAnnotationLink()
+    objr = PDObjectReference()
+    objr.set_referenced_object(annotation)
+    objr.set_referenced_object(None)
+    assert objr.get_obj() is None
+    assert objr.get_referenced_object() is None

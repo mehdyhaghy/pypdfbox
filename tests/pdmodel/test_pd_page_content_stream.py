@@ -434,3 +434,118 @@ def test_constructor_rejects_none_target() -> None:
     doc = PDDocument()
     with pytest.raises(TypeError):
         PDPageContentStream(doc, None)
+
+
+# ------------------------------------------------------------------
+# show_text bytes overload
+# ------------------------------------------------------------------
+
+
+def test_show_text_accepts_bytes_ascii_safe() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text(b"hi")
+    assert _stream_bytes(page) == b"(hi) Tj\n"
+
+
+def test_show_text_bytes_with_high_bytes_uses_hex_form() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text(b"\x00H\x00i")
+    assert _stream_bytes(page) == b"<00480069> Tj\n"
+
+
+def test_show_text_bytes_escapes_special_characters() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text(b"a(b)c\\d")
+    assert _stream_bytes(page) == b"(a\\(b\\)c\\\\d) Tj\n"
+
+
+# ------------------------------------------------------------------
+# marked content (BMC / BDC / EMC / MP / DP)
+# ------------------------------------------------------------------
+
+
+def test_begin_marked_content_emits_bmc() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content("P")
+        cs.show_text("hi")
+        cs.end_marked_content()
+    assert _stream_bytes(page) == b"/P BMC\n(hi) Tj\nEMC\n"
+
+
+def test_marked_content_accepts_cos_name() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content(COSName.get_pdf_name("Span"))
+        cs.end_marked_content()
+    assert _stream_bytes(page) == b"/Span BMC\nEMC\n"
+
+
+def test_begin_marked_content_with_dict_string_property_key() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content_with_dict("P", "MC0")
+        cs.end_marked_content()
+    assert _stream_bytes(page) == b"/P /MC0 BDC\nEMC\n"
+
+
+def test_begin_marked_content_with_property_list_registers_resource() -> None:
+    from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
+        PDOptionalContentGroup,
+    )
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    ocg = PDOptionalContentGroup("Layer1")
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content_with_dict("OC", ocg)
+        cs.end_marked_content()
+
+    body = _stream_bytes(page)
+    assert b"/OC /Prop0 BDC" in body
+    res = page.get_resources().get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Properties")
+    )
+    assert res is not None
+    assert res.get_dictionary_object(COSName.get_pdf_name("Prop0")) is ocg.get_cos_object()
+
+
+def test_marked_content_point_emits_mp_and_dp() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.add_marked_content_point("Artifact")
+        cs.add_marked_content_point_with_dict("Span", "MC9")
+    assert _stream_bytes(page) == b"/Artifact MP\n/Span /MC9 DP\n"
+
+
+def test_marked_content_property_list_reuses_existing_key() -> None:
+    from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
+        PDOptionalContentGroup,
+    )
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    ocg = PDOptionalContentGroup("Layer1")
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content_with_dict("OC", ocg)
+        cs.end_marked_content()
+        cs.begin_marked_content_with_dict("OC", ocg)
+        cs.end_marked_content()
+
+    body = _stream_bytes(page)
+    # Both entries reuse MC0 — only one Properties slot allocated.
+    assert body.count(b"/OC /Prop0 BDC") == 2
+    res = page.get_resources().get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Properties")
+    )
+    assert len(list(res.key_set())) == 1
