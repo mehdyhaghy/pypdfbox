@@ -54,8 +54,11 @@ def test_round_trip_seed_value_certificate() -> None:
     cert.set_name("Type", "SVCert")
     sv.set_seed_value_certificate(cert)
     got = sv.get_seed_value_certificate()
-    assert got is cert
-    assert got is not None and got.get_name("Type") == "SVCert"
+    # get_seed_value_certificate now returns a typed PDSeedValueCertificate
+    # wrapper around the underlying COSDictionary.
+    assert got is not None
+    assert got.get_cos_object() is cert
+    assert got.get_cos_object().get_name("Type") == "SVCert"
 
 
 # ---------- /Ff flag bit set/get ----------

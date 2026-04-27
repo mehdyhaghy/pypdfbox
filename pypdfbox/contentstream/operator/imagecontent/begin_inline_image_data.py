@@ -13,8 +13,12 @@ class BeginInlineImageData(OperatorProcessor):
     image-data bytes are read straight off the stream, not driven via a
     separate processor).
 
-    Lite stub: registry-routing scaffold only — inline-image decoding
-    lands with the rendering cluster.
+    Lite stub: registry-routing scaffold only. The constructed-image
+    type now exists as
+    :class:`pypdfbox.pdmodel.graphics.image.PDInlineImage` (which
+    consumes the ``ID`` byte payload via its constructor), but full
+    BI/ID/EI dispatch through the engine lands with the rendering
+    cluster's engine wiring in a later wave.
     """
 
     OPERATOR_NAME = "ID"

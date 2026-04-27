@@ -8,7 +8,6 @@ from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
 )
 from pypdfbox.pdmodel.pd_page import PDPage
 
-
 # ---------- /ParentTreeNextKey ----------
 
 
@@ -67,18 +66,24 @@ def test_role_map_set_none_removes_entry() -> None:
 
 
 def test_class_map_round_trip_via_setter() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureClassMap,
+    )
+
     root = PDStructureTreeRoot()
     attr = COSDictionary()
     attr.set_name(COSName.get_pdf_name("O"), "Layout")
     root.set_class_map({"MyClass": attr})
     fetched = root.get_class_map()
-    assert "MyClass" in fetched
-    assert fetched["MyClass"] is attr
+    assert isinstance(fetched, PDStructureClassMap)
+    defs = fetched.get_class_definitions()
+    assert "MyClass" in defs
+    assert defs["MyClass"][0].get_cos_object() is attr
 
 
 def test_class_map_empty_when_absent() -> None:
     root = PDStructureTreeRoot()
-    assert root.get_class_map() == {}
+    assert root.get_class_map() is None
 
 
 # ---------- /IDTree convenience lookup ----------

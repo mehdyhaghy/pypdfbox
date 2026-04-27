@@ -13,9 +13,11 @@ from __future__ import annotations
 from .adobe_pdf_schema import AdobePDFSchema
 from .dom_xmp_parser import DomXmpParser, XmpParsingException
 from .dublin_core_schema import DublinCoreSchema
+from .exif_schema import ExifSchema
 from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
+from .tiff_schema import TiffSchema
 from .xmp_basic_job_ticket_schema import JobType, XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_media_management_schema import XMPMediaManagementSchema
@@ -28,10 +30,12 @@ __all__ = [
     "AdobePDFSchema",
     "DomXmpParser",
     "DublinCoreSchema",
+    "ExifSchema",
     "JobType",
     "PDFAExtensionSchema",
     "PDFAIdentificationSchema",
     "PhotoshopSchema",
+    "TiffSchema",
     "XMPBasicJobTicketSchema",
     "XMPBasicSchema",
     "XMPMediaManagementSchema",

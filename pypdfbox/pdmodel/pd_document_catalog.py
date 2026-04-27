@@ -4,6 +4,9 @@ from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 
+from .page_layout import PageLayout
+from .page_mode import PageMode
+from .pd_developer_extension import PDDeveloperExtension
 from .pd_page_labels import PDPageLabels
 from .pd_page_tree import PDPageTree
 from .pd_viewer_preferences import PDViewerPreferences
@@ -36,6 +39,7 @@ _THREADS: COSName = COSName.get_pdf_name("Threads")
 _PERMS: COSName = COSName.get_pdf_name("Perms")
 _LEGAL: COSName = COSName.get_pdf_name("Legal")
 _COLLECTION: COSName = COSName.get_pdf_name("Collection")
+_EXTENSIONS: COSName = COSName.get_pdf_name("Extensions")
 
 
 class PDDocumentCatalog:
@@ -123,27 +127,65 @@ class PDDocumentCatalog:
 
     # ---------- page layout / mode ----------
 
-    def get_page_layout(self) -> str | None:
+    def get_page_layout(self) -> PageLayout | None:
+        """Return the catalog's ``/PageLayout`` as a :class:`PageLayout`,
+        or ``None`` if the entry is absent or not a recognised value.
+
+        ``PageLayout`` is a :class:`enum.StrEnum`, so the returned value
+        compares equal to its underlying PDF string (e.g.
+        ``cat.get_page_layout() == "OneColumn"``). This keeps callers that
+        still expect a plain string working unchanged.
+        """
         v = self._catalog.get_dictionary_object(_PAGE_LAYOUT)
         if isinstance(v, COSName):
-            return v.get_name()
+            try:
+                return PageLayout.from_string(v.get_name())
+            except ValueError:
+                return None
         return None
 
-    def set_page_layout(self, layout: str | None) -> None:
+    def set_page_layout(self, layout: PageLayout | str | None) -> None:
+        """Set the catalog's ``/PageLayout``.
+
+        Accepts a :class:`PageLayout` enum value or the raw PDF name
+        string for back-compat. Pass ``None`` to remove the entry.
+        """
         if layout is None:
             self._catalog.remove_item(_PAGE_LAYOUT)
             return
+        if isinstance(layout, PageLayout):
+            self._catalog.set_item(_PAGE_LAYOUT, layout.to_cos_name())
+            return
         self._catalog.set_item(_PAGE_LAYOUT, COSName.get_pdf_name(layout))
 
-    def get_page_mode(self) -> str | None:
+    def get_page_mode(self) -> PageMode | None:
+        """Return the catalog's ``/PageMode`` as a :class:`PageMode`,
+        or ``None`` if the entry is absent or not a recognised value.
+
+        ``PageMode`` is a :class:`enum.StrEnum`, so the returned value
+        compares equal to its underlying PDF string (e.g.
+        ``cat.get_page_mode() == "UseOutlines"``). This keeps callers that
+        still expect a plain string working unchanged.
+        """
         v = self._catalog.get_dictionary_object(_PAGE_MODE)
         if isinstance(v, COSName):
-            return v.get_name()
+            try:
+                return PageMode.from_string(v.get_name())
+            except ValueError:
+                return None
         return None
 
-    def set_page_mode(self, mode: str | None) -> None:
+    def set_page_mode(self, mode: PageMode | str | None) -> None:
+        """Set the catalog's ``/PageMode``.
+
+        Accepts a :class:`PageMode` enum value or the raw PDF name string
+        for back-compat. Pass ``None`` to remove the entry.
+        """
         if mode is None:
             self._catalog.remove_item(_PAGE_MODE)
+            return
+        if isinstance(mode, PageMode):
+            self._catalog.set_item(_PAGE_MODE, mode.to_cos_name())
             return
         self._catalog.set_item(_PAGE_MODE, COSName.get_pdf_name(mode))
 
@@ -289,17 +331,12 @@ class PDDocumentCatalog:
         return None
 
     def get_open_action(self) -> Any:
-        from pypdfbox.pdmodel.interactive.action import PDAction
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-            PDDestination,
+        from pypdfbox.pdmodel.common.pd_destination_or_action import (
+            PDDestinationOrAction,
         )
 
         value = self._catalog.get_dictionary_object(_OPEN_ACTION)
-        if isinstance(value, COSDictionary):
-            return PDAction.create(value)
-        if isinstance(value, (COSArray, COSName, COSString)):
-            return PDDestination.create(value)
-        return None
+        return PDDestinationOrAction.create(value)
 
     def set_open_action(self, action: Any) -> None:
         if action is None:
@@ -414,6 +451,69 @@ class PDDocumentCatalog:
             self._catalog.remove_item(_COLLECTION)
             return
         self._catalog.set_item(_COLLECTION, collection)
+
+    # ---------- /Extensions (developer extensions) ----------
+
+    def get_developer_extensions(self) -> dict[str, PDDeveloperExtension]:
+        """Return the catalog's ``/Extensions`` mapping (PDF 32000-1
+        §7.12.2 / ISO 32000-2 §7.12.3) as a snapshot ``dict`` keyed by
+        the registered prefix name (e.g. ``"ADBE"``) with
+        :class:`PDDeveloperExtension` values.
+
+        Returns an empty ``dict`` when ``/Extensions`` is absent or
+        malformed. The returned mapping is a snapshot — mutating it does
+        not write back; use :meth:`set_developer_extensions` or
+        :meth:`add_developer_extension` to persist changes."""
+        v = self._catalog.get_dictionary_object(_EXTENSIONS)
+        if not isinstance(v, COSDictionary):
+            return {}
+        result: dict[str, PDDeveloperExtension] = {}
+        for key in v.key_set():
+            entry = v.get_dictionary_object(key)
+            if isinstance(entry, COSDictionary):
+                result[key.get_name()] = PDDeveloperExtension(entry)
+        return result
+
+    def set_developer_extensions(
+        self, extensions: dict[str, PDDeveloperExtension] | None
+    ) -> None:
+        """Replace the catalog's ``/Extensions`` mapping. Pass ``None``
+        or an empty mapping to remove the entry entirely.
+
+        Each key is the registered prefix name (e.g. ``"ADBE"``); each
+        value is a :class:`PDDeveloperExtension`."""
+        if not extensions:
+            self._catalog.remove_item(_EXTENSIONS)
+            return
+        ext_dict = COSDictionary()
+        for prefix, ext in extensions.items():
+            ext_dict.set_item(
+                COSName.get_pdf_name(prefix), ext.get_cos_object()
+            )
+        self._catalog.set_item(_EXTENSIONS, ext_dict)
+
+    def add_developer_extension(
+        self, prefix: str, extension: PDDeveloperExtension
+    ) -> None:
+        """Add (or replace) a single developer extension under
+        ``prefix`` in ``/Extensions``. Creates the ``/Extensions``
+        dictionary on demand."""
+        v = self._catalog.get_dictionary_object(_EXTENSIONS)
+        if not isinstance(v, COSDictionary):
+            v = COSDictionary()
+            self._catalog.set_item(_EXTENSIONS, v)
+        v.set_item(COSName.get_pdf_name(prefix), extension.get_cos_object())
+
+    def remove_developer_extension(self, prefix: str) -> None:
+        """Remove the developer extension stored under ``prefix`` in
+        ``/Extensions``. Removes the ``/Extensions`` dictionary itself
+        when the last entry is removed."""
+        v = self._catalog.get_dictionary_object(_EXTENSIONS)
+        if not isinstance(v, COSDictionary):
+            return
+        v.remove_item(COSName.get_pdf_name(prefix))
+        if v.is_empty():
+            self._catalog.remove_item(_EXTENSIONS)
 
     # ---------- raw COS passthrough used by tests ----------
 

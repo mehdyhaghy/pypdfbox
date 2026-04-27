@@ -5,53 +5,16 @@ from typing import BinaryIO
 
 from pypdfbox.io import RandomAccessRead
 
+from .cid_range import CIDRange
 from .codespace_range import CodespaceRange
 
 _log = logging.getLogger(__name__)
 
 _SPACE = " "
 
-
-class _CIDRange:
-    """Range of contiguous CID values (package-private upstream)."""
-
-    __slots__ = ("_from", "_to", "_unicode", "_code_length")
-
-    def __init__(self, frm: int, to: int, unicode_: int, code_length: int) -> None:
-        self._from = frm
-        self._to = to
-        self._unicode = unicode_
-        self._code_length = code_length
-
-    def get_code_length(self) -> int:
-        return self._code_length
-
-    def map_bytes(self, data: bytes) -> int:
-        if len(data) == self._code_length:
-            ch = _to_int(data)
-            if self._from <= ch <= self._to:
-                return self._unicode + (ch - self._from)
-        return -1
-
-    def map_int(self, code: int, length: int) -> int:
-        if length == self._code_length and self._from <= code <= self._to:
-            return self._unicode + (code - self._from)
-        return -1
-
-    def unmap(self, code: int) -> int:
-        if self._unicode <= code <= self._unicode + (self._to - self._from):
-            return self._from + (code - self._unicode)
-        return -1
-
-    def extend(self, new_from: int, new_to: int, new_cid: int, length: int) -> bool:
-        if (
-            self._code_length == length
-            and new_from == self._to + 1
-            and new_cid == self._unicode + self._to - self._from + 1
-        ):
-            self._to = new_to
-            return True
-        return False
+# Backwards-compatible alias for the package-private name used in earlier
+# pypdfbox releases. Prefer ``CIDRange`` for new code.
+_CIDRange = CIDRange
 
 
 def _to_int(data: bytes | bytearray | memoryview, data_len: int | None = None) -> int:
@@ -107,7 +70,7 @@ class CMap:
 
         # CID mappings: dict-of-dicts keyed by input byte length.
         self._code_to_cid: dict[int, dict[int, int]] = {}
-        self._code_to_cid_ranges: list[_CIDRange] = []
+        self._code_to_cid_ranges: list[CIDRange] = []
 
         # Inverted (Unicode -> code bytes) mapping.
         self._unicode_to_byte_codes: dict[str, bytes] = {}
@@ -350,7 +313,7 @@ class CMap:
     ) -> None:
         last = self._code_to_cid_ranges[-1] if self._code_to_cid_ranges else None
         if last is None or not last.extend(frm, to, cid, length):
-            self._code_to_cid_ranges.append(_CIDRange(frm, to, cid, length))
+            self._code_to_cid_ranges.append(CIDRange(frm, to, cid, length))
             if length < self._min_cid_length:
                 self._min_cid_length = length
             if length > self._max_cid_length:

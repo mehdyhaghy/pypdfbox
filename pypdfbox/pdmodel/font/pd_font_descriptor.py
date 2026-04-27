@@ -27,6 +27,11 @@ _FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
 _CHAR_SET: COSName = COSName.get_pdf_name("CharSet")
+_CID_SET: COSName = COSName.get_pdf_name("CIDSet")
+_WIDTHS: COSName = COSName.get_pdf_name("Widths")
+_STYLE: COSName = COSName.get_pdf_name("Style")
+_PANOSE: COSName = COSName.get_pdf_name("Panose")
+_LANG: COSName = COSName.get_pdf_name("Lang")
 
 
 # Flag bit constants (PDF 32000-1 §9.8.2, Table 123).
@@ -168,6 +173,13 @@ class PDFontDescriptor:
             return PDRectangle.from_cos_array(v)
         return None
 
+    def set_font_bounding_box(self, rect: PDRectangle | None) -> None:
+        """Typed setter mirroring upstream ``setFontBoundingBox(PDRectangle)``."""
+        if rect is None:
+            self._dict.remove_item(_FONT_BBOX)
+            return
+        self._dict.set_item(_FONT_BBOX, rect.get_cos_array())
+
     # ---------- numeric metrics ----------
 
     def get_ascent(self) -> float:
@@ -183,13 +195,16 @@ class PDFontDescriptor:
         self._dict.set_float(_DESCENT, float(value))
 
     def get_cap_height(self) -> float:
-        return self._dict.get_float(_CAP_HEIGHT, 0.0)
+        # PDFBOX-429: Scheherazade font ships a negative CapHeight; upstream
+        # returns the absolute value as a workaround. Match that behavior.
+        return abs(self._dict.get_float(_CAP_HEIGHT, 0.0))
 
     def set_cap_height(self, value: float) -> None:
         self._dict.set_float(_CAP_HEIGHT, float(value))
 
     def get_x_height(self) -> float:
-        return self._dict.get_float(_X_HEIGHT, 0.0)
+        # PDFBOX-429: see ``get_cap_height``.
+        return abs(self._dict.get_float(_X_HEIGHT, 0.0))
 
     def set_x_height(self, value: float) -> None:
         self._dict.set_float(_X_HEIGHT, float(value))
@@ -218,11 +233,27 @@ class PDFontDescriptor:
     def set_avg_width(self, value: float) -> None:
         self._dict.set_float(_AVG_WIDTH, float(value))
 
+    def get_average_width(self) -> float:
+        """Upstream-named alias for ``get_avg_width``."""
+        return self.get_avg_width()
+
+    def set_average_width(self, value: float) -> None:
+        """Upstream-named alias for ``set_avg_width``."""
+        self.set_avg_width(value)
+
     def get_max_width(self) -> float:
         return self._dict.get_float(_MAX_WIDTH, 0.0)
 
     def set_max_width(self, value: float) -> None:
         self._dict.set_float(_MAX_WIDTH, float(value))
+
+    def has_widths(self) -> bool:
+        """Mirrors upstream ``hasWidths()``: true if /Widths or /MissingWidth is set."""
+        return self._dict.contains_key(_WIDTHS) or self._dict.contains_key(_MISSING_WIDTH)
+
+    def has_missing_width(self) -> bool:
+        """Mirrors upstream ``hasMissingWidth()``: true if /MissingWidth is set."""
+        return self._dict.contains_key(_MISSING_WIDTH)
 
     def get_missing_width(self) -> float:
         return self._dict.get_float(_MISSING_WIDTH, 0.0)
@@ -273,6 +304,10 @@ class PDFontDescriptor:
             return
         self._dict.set_string(_CHAR_SET, value)
 
+    def set_character_set(self, value: str | None) -> None:
+        """Upstream-named alias for ``set_char_set`` (matches ``setCharacterSet``)."""
+        self.set_char_set(value)
+
     # ---------- font program streams ----------
 
     def _get_font_file(self, key: COSName) -> PDStream | None:
@@ -308,6 +343,88 @@ class PDFontDescriptor:
     def set_font_file3(self, stream: PDStream | COSStream | None) -> None:
         self._set_font_file(_FONT_FILE3, stream)
 
+    # ---------- /CIDSet ----------
+
+    def get_cid_set(self) -> PDStream | None:
+        """A stream containing the CIDSet (CID-keyed fonts only).
+
+        Mirrors upstream ``PDFontDescriptor.getCIDSet()``.
+        """
+        return self._get_font_file(_CID_SET)
+
+    def set_cid_set(self, stream: PDStream | COSStream | None) -> None:
+        """Mirrors upstream ``PDFontDescriptor.setCIDSet(PDStream)``."""
+        self._set_font_file(_CID_SET, stream)
+
+    # ---------- /Style /Panose ----------
+
+    def get_panose(self) -> PDPanose | None:
+        """Returns the Panose entry of the Style dictionary, if any.
+
+        Mirrors upstream ``PDFontDescriptor.getPanose()``.
+        """
+        v = self._dict.get_dictionary_object(_STYLE)
+        if not isinstance(v, COSDictionary):
+            return None
+        panose = v.get_dictionary_object(_PANOSE)
+        # Upstream casts directly to COSString; accept that exact shape.
+        try:
+            from pypdfbox.cos import COSString
+        except ImportError:  # pragma: no cover - circular safety
+            return None
+        if not isinstance(panose, COSString):
+            return None
+        data = panose.get_bytes()
+        if len(data) >= PDPanose.LENGTH:
+            return PDPanose(data)
+        return None
+
+    # ---------- /Lang (PDF 32000-1 Table 122) ----------
+    # Note: upstream PDFBox 3.0 PDFontDescriptor does NOT expose these — they
+    # are PDF-spec-mandated entries we surface for completeness. Recorded in
+    # CHANGES.md as a deliberate pypdfbox extension.
+
+    def get_lang(self) -> str | None:
+        """Language identifier (BCP 47 string) for the glyphs in this font."""
+        return self._dict.get_name(_LANG)
+
+    def set_lang(self, value: str | None) -> None:
+        if value is None:
+            self._dict.remove_item(_LANG)
+            return
+        self._dict.set_name(_LANG, value)
+
+
+class PDPanose:
+    """Panose-1 classification block (10 bytes) from the /Style dictionary.
+
+    Mirrors ``org.apache.pdfbox.pdmodel.font.PDPanose``. Upstream exposes the
+    raw 10-byte block plus per-byte category accessors; our port surfaces the
+    raw bytes and the family-class / serif-style headers — enough for the
+    descriptor wrapper to round-trip the value. Additional per-byte
+    accessors land alongside the font subsetting cluster.
+    """
+
+    LENGTH: int = 10
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: bytes | bytearray) -> None:
+        if len(data) < self.LENGTH:
+            raise ValueError(
+                f"PDPanose requires at least {self.LENGTH} bytes, got {len(data)}"
+            )
+        self._data = bytes(data[: self.LENGTH])
+
+    def get_bytes(self) -> bytes:
+        return self._data
+
+    def get_family_class(self) -> int:
+        return self._data[0]
+
+    def get_serif_style(self) -> int:
+        return self._data[1]
+
 
 __all__ = [
     "FLAG_ALL_CAP",
@@ -320,4 +437,5 @@ __all__ = [
     "FLAG_SMALL_CAP",
     "FLAG_SYMBOLIC",
     "PDFontDescriptor",
+    "PDPanose",
 ]

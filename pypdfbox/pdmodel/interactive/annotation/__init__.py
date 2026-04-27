@@ -26,6 +26,7 @@ from .pd_annotation_underline import PDAnnotationUnderline
 from .pd_annotation_unknown import PDAnnotationUnknown
 from .pd_annotation_widget import PDAnnotationWidget
 from .pd_appearance_characteristics_dictionary import PDAppearanceCharacteristicsDictionary
+from .pd_appearance_content_stream import PDAppearanceContentStream
 from .pd_appearance_dictionary import PDAppearanceDictionary
 from .pd_appearance_entry import PDAppearanceEntry
 from .pd_appearance_stream import PDAppearanceStream
@@ -60,6 +61,7 @@ __all__ = [
     "PDAnnotationUnknown",
     "PDAnnotationWidget",
     "PDAppearanceCharacteristicsDictionary",
+    "PDAppearanceContentStream",
     "PDAppearanceDictionary",
     "PDAppearanceEntry",
     "PDAppearanceStream",

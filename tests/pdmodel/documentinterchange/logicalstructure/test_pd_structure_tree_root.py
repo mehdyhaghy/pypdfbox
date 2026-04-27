@@ -71,13 +71,19 @@ def test_struct_tree_root_parent_tree_next_key_round_trip() -> None:
 
 
 def test_struct_tree_root_class_map_round_trip() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureClassMap,
+    )
+
     root = PDStructureTreeRoot()
     attr = COSDictionary()
     attr.set_name(COSName.get_pdf_name("O"), "Layout")
     root.set_class_map({"MyClass": attr})
     fetched = root.get_class_map()
-    assert "MyClass" in fetched
-    assert fetched["MyClass"] is attr
+    assert isinstance(fetched, PDStructureClassMap)
+    defs = fetched.get_class_definitions()
+    assert "MyClass" in defs
+    assert defs["MyClass"][0].get_cos_object() is attr
 
 
 def test_struct_element_constructor_sets_structure_type() -> None:

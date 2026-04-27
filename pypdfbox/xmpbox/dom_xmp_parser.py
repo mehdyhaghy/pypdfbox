@@ -6,9 +6,11 @@ from xml.etree import ElementTree as ET
 
 from .adobe_pdf_schema import AdobePDFSchema
 from .dublin_core_schema import DublinCoreSchema
+from .exif_schema import ExifSchema
 from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
+from .tiff_schema import TiffSchema
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import RDF_NAMESPACE, XMPMetadata
@@ -36,6 +38,8 @@ _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
     XMPageTextSchema.NAMESPACE: XMPageTextSchema,
     PhotoshopSchema.NAMESPACE: PhotoshopSchema,
     AdobePDFSchema.NAMESPACE: AdobePDFSchema,
+    TiffSchema.NAMESPACE: TiffSchema,
+    ExifSchema.NAMESPACE: ExifSchema,
 }
 
 

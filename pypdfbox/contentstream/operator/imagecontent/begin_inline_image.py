@@ -10,9 +10,11 @@ class BeginInlineImage(OperatorProcessor):
     """``BI`` — Begin an inline image object. Mirrors
     ``org.apache.pdfbox.contentstream.operator.BeginInlineImage``.
 
-    Lite stub: registry-routing scaffold only — inline-image decoding
-    arrives with the rendering cluster; for now this just logs the
-    dispatch.
+    Lite stub: registry-routing scaffold only. The constructed-image
+    type now exists as
+    :class:`pypdfbox.pdmodel.graphics.image.PDInlineImage`, but full
+    BI/ID/EI dispatch through the engine lands together with the
+    rendering cluster's engine wiring in a later wave.
     """
 
     OPERATOR_NAME = "BI"

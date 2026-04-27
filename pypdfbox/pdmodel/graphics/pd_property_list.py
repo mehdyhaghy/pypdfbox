@@ -10,9 +10,15 @@ _OCMD: COSName = COSName.get_pdf_name("OCMD")
 class PDPropertyList:
     """A property list dictionary used in marked content.
 
-    Mirrors PDFBox ``PDPropertyList``. Concrete subclasses include
-    ``PDOptionalContentGroup`` (/Type /OCG) and
-    ``PDOptionalContentMembershipDictionary`` (/Type /OCMD).
+    Mirrors upstream
+    ``org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList``.
+    Concrete subclasses include :class:`PDOptionalContentGroup` (``/Type /OCG``)
+    and :class:`PDOptionalContentMembershipDictionary` (``/Type /OCMD``).
+
+    Note: pypdfbox keeps the implementation file under ``pdmodel.graphics``
+    to avoid churn for existing callers; an upstream-named alias is also
+    re-exported from
+    ``pypdfbox.pdmodel.documentinterchange.markedcontent.pd_property_list``.
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
@@ -22,11 +28,20 @@ class PDPropertyList:
 
     @staticmethod
     def create(dictionary: COSDictionary | None) -> PDPropertyList | None:
-        """Dispatch a raw COSDictionary to the appropriate concrete subclass.
+        """Dispatch a raw ``COSDictionary`` to the appropriate concrete
+        subclass.
 
-        Returns ``None`` when ``dictionary`` is ``None`` or carries no /Type
-        entry recognised here. Upstream returns a bare ``PDPropertyList`` for
-        unknown types; we deliberately return ``None`` (the task spec).
+        Mirrors upstream ``PDPropertyList.create(COSDictionary)``:
+
+        - ``/Type /OCG``  → :class:`PDOptionalContentGroup`
+        - ``/Type /OCMD`` → :class:`PDOptionalContentMembershipDictionary`
+        - any other ``/Type`` (or none) → bare :class:`PDPropertyList`
+          wrapping the dictionary, matching upstream's "todo: more types"
+          fallback. This is a behavioural fix vs. earlier pypdfbox releases
+          that returned ``None`` for unknown types.
+
+        ``None`` input still returns ``None`` — upstream would NPE on a null
+        argument; the Python port is intentionally permissive here.
         """
         if dictionary is None:
             return None
@@ -49,7 +64,9 @@ class PDPropertyList:
             )
 
             return PDOptionalContentMembershipDictionary(dictionary)
-        return None
+        # Unknown / missing /Type — upstream returns a bare PDPropertyList
+        # wrapping the supplied dictionary. We follow.
+        return PDPropertyList(dictionary)
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict

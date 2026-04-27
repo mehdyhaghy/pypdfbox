@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 
+from .pd_seed_value_certificate import PDSeedValueCertificate
+from .pd_seed_value_mdp import PDSeedValueMDP
+
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SV: COSName = COSName.get_pdf_name("SV")
 _FILTER: COSName = COSName.get_pdf_name("Filter")
@@ -30,9 +33,9 @@ class PDSeedValue:
     """Seed value dictionary (``/Type /SV``). Mirrors PDFBox ``PDSeedValue``
     (PDF 32000-1 §12.7.4.5, Table 234).
 
-    Deferred upstream behavior: typed wrappers for ``/MDP``, ``/TimeStamp``
-    and ``/Cert`` (``PDSeedValueCertificate``) are not implemented yet —
-    those accessors return raw ``COSDictionary``.
+    Typed wrappers exist for ``/MDP`` (:class:`PDSeedValueMDP`) and ``/Cert``
+    (:class:`PDSeedValueCertificate`). ``/TimeStamp`` still returns the raw
+    ``COSDictionary`` until a typed wrapper is ported.
     """
 
     TYPE = "SV"
@@ -106,19 +109,31 @@ class PDSeedValue:
             return
         self._dict.set_item(_REASONS, COSArray.of_cos_strings(reasons))
 
-    # ---------- /MDP raw ----------
+    # ---------- /MDP (typed wrapper) ----------
 
-    def get_mdp(self) -> COSDictionary | None:
+    def get_mdp(self) -> PDSeedValueMDP | None:
+        """Return the ``/MDP`` sub-dictionary as a :class:`PDSeedValueMDP`,
+        or ``None`` if absent."""
         v = self._dict.get_dictionary_object(_MDP)
         if isinstance(v, COSDictionary):
-            return v
+            return PDSeedValueMDP(v)
         return None
 
-    def set_mdp(self, mdp: COSDictionary | None) -> None:
+    def set_mdp(self, mdp: PDSeedValueMDP | COSDictionary | None) -> None:
+        """Set or remove the ``/MDP`` sub-dictionary. Accepts either a
+        :class:`PDSeedValueMDP` (preferred) or a raw ``COSDictionary``."""
         if mdp is None:
             self._dict.remove_item(_MDP)
             return
-        self._dict.set_item(_MDP, mdp)
+        if isinstance(mdp, PDSeedValueMDP):
+            self._dict.set_item(_MDP, mdp.get_cos_object())
+        else:
+            self._dict.set_item(_MDP, mdp)
+
+    # PDFBox upstream has a typo'd ``setMPD``; we expose the corrected name
+    # as ``set_mdp`` (above) and provide ``set_mpd`` for parity.
+    def set_mpd(self, mdp: PDSeedValueMDP | COSDictionary | None) -> None:
+        self.set_mdp(mdp)
 
     # ---------- /TimeStamp raw ----------
 
@@ -164,20 +179,43 @@ class PDSeedValue:
             return
         self._dict.set_item(_LEGAL_ATTESTATION, COSArray.of_cos_strings(values))
 
-    # ---------- /Cert (certificate seed value sub-dict) ----------
-    # Note: typed PDSeedValueCertificate wrapper deferred — return raw COS dict.
+    # ---------- /Cert (typed wrapper) ----------
 
-    def get_seed_value_certificate(self) -> COSDictionary | None:
+    def get_seed_value_certificate(self) -> PDSeedValueCertificate | None:
+        """Return the ``/Cert`` sub-dictionary as a
+        :class:`PDSeedValueCertificate`, or ``None`` if absent.
+
+        Mirrors upstream ``PDSeedValue.getSeedValueCertificate``.
+        """
         v = self._dict.get_dictionary_object(_CERT)
         if isinstance(v, COSDictionary):
-            return v
+            return PDSeedValueCertificate(v)
         return None
 
-    def set_seed_value_certificate(self, cert: COSDictionary | None) -> None:
+    def set_seed_value_certificate(
+        self, cert: PDSeedValueCertificate | COSDictionary | None
+    ) -> None:
+        """Set or remove the ``/Cert`` sub-dictionary. Accepts either a
+        :class:`PDSeedValueCertificate` (preferred) or a raw ``COSDictionary``.
+        """
         if cert is None:
             self._dict.remove_item(_CERT)
             return
-        self._dict.set_item(_CERT, cert)
+        if isinstance(cert, PDSeedValueCertificate):
+            self._dict.set_item(_CERT, cert.get_cos_object())
+        else:
+            self._dict.set_item(_CERT, cert)
+
+    # PRD-required short aliases.
+    def get_certificate(self) -> PDSeedValueCertificate | None:
+        """Alias for :meth:`get_seed_value_certificate`."""
+        return self.get_seed_value_certificate()
+
+    def set_certificate(
+        self, cert: PDSeedValueCertificate | COSDictionary | None
+    ) -> None:
+        """Alias for :meth:`set_seed_value_certificate`."""
+        self.set_seed_value_certificate(cert)
 
     # ---------- /Ff required-flag helpers ----------
 

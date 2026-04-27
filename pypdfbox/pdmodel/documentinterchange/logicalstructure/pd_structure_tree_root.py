@@ -6,6 +6,7 @@ from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
+from .pd_structure_class_map import PDStructureClassMap
 from .pd_structure_element import PDStructureElement
 from .pd_structure_node import PDStructureNode
 
@@ -25,8 +26,8 @@ class PDStructureTreeRoot(PDStructureNode):
 
     Lite surface: ``/K`` returns typed children where known, preserving raw
     COS fallback; ``/ParentTree`` returns a typed number-tree wrapper with raw
-    COS values; ``/ClassMap`` returns the raw Python ``dict`` of COSBase
-    entries (no ``PDAttributeObject`` typed wrap yet).
+    COS values; ``/ClassMap`` returns a :class:`PDStructureClassMap` typed
+    wrapper exposing ``PDAttributeObject``-typed entries.
     """
 
     def __init__(self, struct_tree_root: COSDictionary | None = None) -> None:
@@ -70,29 +71,36 @@ class PDStructureTreeRoot(PDStructureNode):
 
     # ---------- /ClassMap ----------
 
-    def get_class_map(self) -> dict[str, Any]:
+    def get_class_map(self) -> PDStructureClassMap | None:
         """
-        Returns the raw class map. Values are kept as raw COSBase entries
-        (single ``COSDictionary`` or list of COSBase from a ``COSArray``)
-        — typed ``PDAttributeObject`` wrapping is deferred.
+        Returns the ``/ClassMap`` as a :class:`PDStructureClassMap` typed
+        wrapper, or ``None`` when the entry is absent.
+
+        Mirrors upstream ``PDStructureTreeRoot.getClassMap`` semantics; we
+        return a typed wrapper instead of a raw ``Map<String,Object>``.
         """
         cm = self._dictionary.get_dictionary_object(_CLASS_MAP)
-        out: dict[str, Any] = {}
         if not isinstance(cm, COSDictionary):
-            return out
-        for key, base in cm.entry_set():
-            if isinstance(base, COSArray):
-                items: list[COSBase] = []
-                for i in range(base.size()):
-                    item = base.get_object(i)
-                    if item is not None:
-                        items.append(item)
-                out[key.get_name()] = items
-            else:
-                out[key.get_name()] = base
-        return out
+            return None
+        return PDStructureClassMap(cm)
 
-    def set_class_map(self, class_map: dict[str, Any] | None) -> None:
+    def set_class_map(
+        self, class_map: PDStructureClassMap | dict[str, Any] | None
+    ) -> None:
+        """Write the ``/ClassMap`` entry.
+
+        Accepts a :class:`PDStructureClassMap`, a raw ``dict`` whose values
+        are :class:`PDAttributeObject` (or lists of them) or raw COS
+        dictionaries / arrays, or ``None``/empty to remove the entry."""
+        if class_map is None:
+            self._dictionary.remove_item(_CLASS_MAP)
+            return
+        if isinstance(class_map, PDStructureClassMap):
+            if class_map.is_empty():
+                self._dictionary.remove_item(_CLASS_MAP)
+                return
+            self._dictionary.set_item(_CLASS_MAP, class_map.get_cos_object())
+            return
         if not class_map:
             self._dictionary.remove_item(_CLASS_MAP)
             return
@@ -235,6 +243,7 @@ def _to_cos(value: Any) -> COSBase:
 
 
 __all__ = [
+    "PDStructureClassMap",
     "PDStructureElementNameTreeNode",
     "PDStructureElementNumberTreeNode",
     "PDStructureTreeRoot",

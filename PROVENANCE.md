@@ -684,3 +684,36 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/xmpbox/upstream/test_photoshop_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/PhotoshopSchemaTest.java` |
 | `tests/text/upstream/test_pdf_text_stripper_by_area.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/text/PDFTextStripperByAreaTest.java` |
 | `tests/fontbox/ttf/upstream/test_glyph_substitution_table.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/GlyphSubstitutionTableTest.java` (spirit-port — Lohit-Bengali fixture not bundled; asserts `get_supported_script_tags`/`get_supported_feature_tags` against `LiberationSans-Regular.ttf`) |
+
+### Wave 29 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_class_map.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDStructureTreeRoot.java` (extracted typed wrapper around the inline `getClassMap`/`setClassMap` block — no standalone upstream class) |
+| `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_user_property.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDUserProperty.java` (relocated to `taggedpdf` for proximity to `PDUserAttributeObject`) |
+| `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_marked_content.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDMarkedContent.java` |
+| `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_artifact_marked_content.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDArtifactMarkedContent.java` |
+| `pypdfbox/pdmodel/pd_developer_extension.py` | 3.0.x | original (PDF 32000-1 §7.12.2 / ISO 32000-2 §7.12.3 — no upstream Java class in 3.0.x or trunk; only the COSName constants `BASE_VERSION` / `EXTENSION_LEVEL` / `EXTENSIONS` exist upstream) |
+| `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_default_attribute_object.py` | 3.0 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDDefaultAttributeObject.java` |
+| `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_parent_tree_value.py` | 3.0 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDParentTreeValue.java` |
+| `pypdfbox/pdmodel/page_layout.py` | 3.0 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PageLayout.java` |
+| `pypdfbox/pdmodel/page_mode.py` | 3.0 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PageMode.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_appearance_content_stream.py` | 3.0 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDAppearanceContentStream.java` (relocated to `interactive/annotation` for cohesion with `PDAppearanceStream`) |
+| `pypdfbox/pdmodel/common/pd_destination_or_action.py` | 3.0 | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDDestinationOrAction.java` (concrete marker class with static `create(value)` dispatcher; Python has no interface-only construct) |
+| `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value_certificate.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueCertificate.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value_mdp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueMDP.java` |
+| `pypdfbox/fontbox/cmap/cid_range.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cmap/CIDRange.java` (promoted from private `_CIDRange` to public typed) |
+| `pypdfbox/fontbox/cmap/bf_char_entry.py` | 3.0.x | original (no upstream class — `bfchar` triples are inlined by upstream `CMapParser`; pypdfbox surfaces typed value object) |
+| `pypdfbox/fontbox/cmap/bf_char_range.py` | 3.0.x | original (no upstream class — `bfrange` triples are inlined by upstream `CMapParser`) |
+| `pypdfbox/xmpbox/exif_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/ExifSchema.java` (simple-typed properties only — Rational / GPSCoordinate / typed-struct properties deferred until `RationalType` / `OECF` / `CFAPattern` / `Flash` / `DeviceSettings` types land) |
+| `pypdfbox/xmpbox/tiff_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/TiffSchema.java` (substitute for non-existent `CameraRawSchema` — TIFF tags cover camera-pipeline metadata) |
+| `pypdfbox/tools/extracttext.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/ExtractText.java` |
+| `tests/tools/upstream/test_extracttext.py` | 3.0.x | `pdfbox-tools/src/test/java/org/apache/pdfbox/tools/TestExtractText.java` |
+| `pypdfbox/tools/encrypt.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/Encrypt.java` |
+| `pypdfbox/contentstream/pdf_graphics_stream_engine.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/PDFGraphicsStreamEngine.java` |
+| `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_property_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDPropertyList.java` (re-export module — implementation lives in `pypdfbox/pdmodel/graphics/pd_property_list.py`) |
+| `pypdfbox/pdmodel/graphics/image/pd_inline_image.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PDInlineImage.java` |
+| `tests/pdmodel/upstream/test_page_layout.py` | 3.0 | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PageLayoutTest.java` |
+| `tests/pdmodel/upstream/test_page_mode.py` | 3.0 | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PageModeTest.java` |
+| `tests/fontbox/cmap/upstream/test_cid_range.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/cmap/CIDRangeTest.java` |
+| `tests/pdmodel/graphics/image/upstream/test_pd_inline_image.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDInlineImageTest.java` |

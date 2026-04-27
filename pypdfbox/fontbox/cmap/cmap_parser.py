@@ -597,6 +597,6 @@ def _build_identity_cmap(name: str) -> CMap | None:
     cmap.set_wmode(1 if name == "Identity-V" else 0)
     cmap.add_codespace_range(CodespaceRange(b"\x00\x00", b"\xff\xff"))
     # One CID range covering all 65536 codes — collapses into a single
-    # _CIDRange entry rather than 65536 dict entries.
+    # CIDRange entry rather than 65536 dict entries.
     cmap.add_cid_range(b"\x00\x00", b"\xff\xff", 0)
     return cmap

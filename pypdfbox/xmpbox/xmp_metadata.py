@@ -459,3 +459,57 @@ class XMPMetadata:
         schema accessors.
         """
         return self.add_photoshop_schema()
+
+    # --- TIFF schema --------------------------------------------------
+
+    def get_tiff_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``XMPMetadata.getTiffSchema``."""
+        from .tiff_schema import TiffSchema
+
+        return self.get_schema(TiffSchema)
+
+    def add_tiff_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addTiffSchema``: install (or reuse) a
+        :class:`TiffSchema` and return it. Idempotent — repeat calls return
+        the existing schema rather than stacking duplicates.
+        """
+        from .tiff_schema import TiffSchema
+
+        existing = self.get_schema(TiffSchema)
+        if existing is not None:
+            return existing
+        schema = TiffSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_tiff_schema(self) -> XMPSchema:
+        """Upstream-compatible alias of :meth:`add_tiff_schema`."""
+        return self.add_tiff_schema()
+
+    # --- Exif schema --------------------------------------------------
+
+    def get_exif_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``XMPMetadata.getExifSchema``."""
+        from .exif_schema import ExifSchema
+
+        return self.get_schema(ExifSchema)
+
+    def add_exif_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addExifSchema``: install (or reuse) an
+        :class:`ExifSchema` and return it. Idempotent — repeat calls return
+        the existing schema rather than stacking duplicates.
+        """
+        from .exif_schema import ExifSchema
+
+        existing = self.get_schema(ExifSchema)
+        if existing is not None:
+            return existing
+        schema = ExifSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_exif_schema(self) -> XMPSchema:
+        """Upstream-compatible alias of :meth:`add_exif_schema`."""
+        return self.add_exif_schema()

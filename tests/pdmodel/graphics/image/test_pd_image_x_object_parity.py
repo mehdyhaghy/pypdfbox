@@ -246,12 +246,18 @@ def test_set_oc_none_removes_entry() -> None:
     assert image.get_cos_object().get_dictionary_object(COSName.get_pdf_name("OC")) is None
 
 
-def test_oc_returns_none_for_unknown_type() -> None:
+def test_oc_returns_bare_property_list_for_unknown_type() -> None:
     image = _make_image()
     other = COSDictionary()
     other.set_name(COSName.TYPE, "Other")  # type: ignore[attr-defined]
     image.get_cos_object().set_item(COSName.get_pdf_name("OC"), other)
-    # PDPropertyList.create returns None for unrecognised /Type entries.
-    assert image.get_oc() is None
+    # Upstream PDPropertyList.create wraps an unknown /Type in a bare
+    # PDPropertyList (the "todo: more types" fallback). It is *not* None.
+    result = image.get_oc()
+    assert result is not None
+    assert type(result) is PDPropertyList
+    assert result.get_cos_object() is other
     # Sanity: PDPropertyList.create directly agrees.
-    assert PDPropertyList.create(other) is None
+    direct = PDPropertyList.create(other)
+    assert direct is not None
+    assert type(direct) is PDPropertyList

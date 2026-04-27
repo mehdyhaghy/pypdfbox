@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSFloat
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream, COSString
+from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_ALL_CAP,
     FLAG_FIXED_PITCH,
@@ -21,6 +22,7 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_SMALL_CAP,
     FLAG_SYMBOLIC,
     PDFontDescriptor,
+    PDPanose,
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
@@ -153,3 +155,232 @@ def test_get_font_bounding_box_typed() -> None:
 def test_get_font_bounding_box_missing_returns_none() -> None:
     fd = PDFontDescriptor()
     assert fd.get_font_bounding_box() is None
+
+
+def test_set_font_bounding_box_round_trip() -> None:
+    fd = PDFontDescriptor()
+    rect = PDRectangle(-50.0, -200.0, 750.0, 850.0)
+    fd.set_font_bounding_box(rect)
+
+    out = fd.get_font_bounding_box()
+    assert isinstance(out, PDRectangle)
+    assert out.lower_left_x == pytest.approx(-50.0)
+    assert out.lower_left_y == pytest.approx(-200.0)
+    assert out.upper_right_x == pytest.approx(750.0)
+    assert out.upper_right_y == pytest.approx(850.0)
+
+    # None clears the entry.
+    fd.set_font_bounding_box(None)
+    assert fd.get_font_bounding_box() is None
+    assert fd.get_font_b_box() is None
+
+
+# ---------- string/name fields ----------
+
+
+def test_font_name_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_name() is None
+
+    fd.set_font_name("Helvetica-Bold")
+    assert fd.get_font_name() == "Helvetica-Bold"
+
+    fd.set_font_name(None)
+    assert fd.get_font_name() is None
+
+
+def test_font_family_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_family() is None
+
+    fd.set_font_family("Helvetica")
+    assert fd.get_font_family() == "Helvetica"
+
+    fd.set_font_family(None)
+    assert fd.get_font_family() is None
+
+
+def test_font_stretch_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_stretch() is None
+
+    fd.set_font_stretch("SemiCondensed")
+    assert fd.get_font_stretch() == "SemiCondensed"
+
+    fd.set_font_stretch(None)
+    assert fd.get_font_stretch() is None
+
+
+def test_font_weight_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_weight() == 0.0
+
+    fd.set_font_weight(700.0)
+    assert fd.get_font_weight() == pytest.approx(700.0)
+
+
+def test_char_set_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_char_set() is None
+
+    fd.set_char_set("/A/B/C/space")
+    assert fd.get_char_set() == "/A/B/C/space"
+
+    # set_character_set is the upstream-named alias.
+    fd.set_character_set("/X/Y")
+    assert fd.get_char_set() == "/X/Y"
+
+    fd.set_char_set(None)
+    assert fd.get_char_set() is None
+
+
+def test_lang_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_lang() is None
+
+    fd.set_lang("en-US")
+    assert fd.get_lang() == "en-US"
+
+    fd.set_lang(None)
+    assert fd.get_lang() is None
+
+
+# ---------- AverageWidth alias ----------
+
+
+def test_average_width_alias_matches_avg_width() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_average_width() == 0.0
+    assert fd.get_avg_width() == 0.0
+
+    fd.set_average_width(425.0)
+    assert fd.get_average_width() == pytest.approx(425.0)
+    assert fd.get_avg_width() == pytest.approx(425.0)
+
+    fd.set_avg_width(500.0)
+    assert fd.get_average_width() == pytest.approx(500.0)
+
+
+# ---------- has_widths / has_missing_width ----------
+
+
+def test_has_widths_and_has_missing_width() -> None:
+    fd = PDFontDescriptor()
+    assert fd.has_widths() is False
+    assert fd.has_missing_width() is False
+
+    fd.set_missing_width(250.0)
+    assert fd.has_missing_width() is True
+    assert fd.has_widths() is True
+
+    fd2 = PDFontDescriptor()
+    fd2.get_cos_object().set_item(COSName.get_pdf_name("Widths"), COSArray())
+    assert fd2.has_widths() is True
+    assert fd2.has_missing_width() is False
+
+
+# ---------- CapHeight / XHeight abs() semantics (PDFBOX-429) ----------
+
+
+def test_cap_height_returns_absolute_value() -> None:
+    fd = PDFontDescriptor()
+    fd.set_cap_height(-700.0)
+    # Upstream returns abs() to work around buggy fonts (Scheherazade).
+    assert fd.get_cap_height() == pytest.approx(700.0)
+
+
+def test_x_height_returns_absolute_value() -> None:
+    fd = PDFontDescriptor()
+    fd.set_x_height(-450.0)
+    assert fd.get_x_height() == pytest.approx(450.0)
+
+
+# ---------- font program streams ----------
+
+
+@pytest.mark.parametrize(
+    ("getter", "setter"),
+    [
+        ("get_font_file", "set_font_file"),
+        ("get_font_file2", "set_font_file2"),
+        ("get_font_file3", "set_font_file3"),
+        ("get_cid_set", "set_cid_set"),
+    ],
+)
+def test_font_file_streams_round_trip(getter: str, setter: str) -> None:
+    fd = PDFontDescriptor()
+    assert getattr(fd, getter)() is None
+
+    cos_stream = COSStream()
+    pd_stream = PDStream(cos_stream)
+    getattr(fd, setter)(pd_stream)
+
+    out = getattr(fd, getter)()
+    assert isinstance(out, PDStream)
+    assert out.get_cos_object() is cos_stream
+
+    # Also accept a raw COSStream.
+    other = COSStream()
+    getattr(fd, setter)(other)
+    assert getattr(fd, getter)().get_cos_object() is other
+
+    getattr(fd, setter)(None)
+    assert getattr(fd, getter)() is None
+
+
+# ---------- /Style /Panose ----------
+
+
+def test_panose_returns_none_when_style_missing() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_panose() is None
+
+
+def test_panose_returns_none_when_data_too_short() -> None:
+    fd = PDFontDescriptor()
+    style = COSDictionary()
+    style.set_item(COSName.get_pdf_name("Panose"), COSString(b"\x00\x01\x02"))  # < 10 bytes
+    fd.get_cos_object().set_item(COSName.get_pdf_name("Style"), style)
+    assert fd.get_panose() is None
+
+
+def test_panose_round_trip_from_style_dict() -> None:
+    fd = PDFontDescriptor()
+    style = COSDictionary()
+    payload = bytes(range(10))  # 0,1,2,...,9 — 10 bytes
+    style.set_item(COSName.get_pdf_name("Panose"), COSString(payload))
+    fd.get_cos_object().set_item(COSName.get_pdf_name("Style"), style)
+
+    panose = fd.get_panose()
+    assert isinstance(panose, PDPanose)
+    assert panose.get_bytes() == payload
+    assert panose.get_family_class() == 0
+    assert panose.get_serif_style() == 1
+
+
+def test_panose_constructor_validates_length() -> None:
+    PDPanose(bytes(10))  # ok
+    PDPanose(bytes(20))  # ok, truncates to first 10
+    with pytest.raises(ValueError):
+        PDPanose(bytes(5))
+
+
+# ---------- /Type entry written by the no-arg constructor ----------
+
+
+def test_constructor_sets_type_font_descriptor() -> None:
+    fd = PDFontDescriptor()
+    cos = fd.get_cos_object()
+    type_value = cos.get_dictionary_object(COSName.get_pdf_name("Type"))
+    assert isinstance(type_value, COSName)
+    assert type_value.name == "FontDescriptor"
+
+
+def test_existing_dictionary_type_not_overwritten() -> None:
+    cos = COSDictionary()
+    fd = PDFontDescriptor(cos)
+    # Pre-existing dict had no /Type — wrapper does not synthesize one when
+    # an explicit dict is passed in (mirrors upstream's package-private vs
+    # public constructor split).
+    assert cos.get_dictionary_object(COSName.get_pdf_name("Type")) is None
+    assert fd.get_cos_object() is cos

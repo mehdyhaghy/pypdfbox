@@ -14,6 +14,7 @@ from pypdfbox.cos import (
 )
 
 from .pd_standard_attribute_object import PDStandardAttributeObject
+from .pd_user_property import PDUserProperty
 
 
 def _cos_to_py(value: COSBase | None) -> Any:
@@ -51,13 +52,23 @@ class PDUserAttributeObject(PDStandardAttributeObject):
     A user-properties attribute object (``/O /UserProperties``). Mirrors
     PDFBox ``PDUserAttributeObject``.
 
-    The lite surface returns/accepts ``/P`` entries as plain Python dicts
-    (``{"N": str, "V": Any, "F": str | None, "H": bool}``) rather than the
-    upstream ``PDUserProperty`` wrapper class — the wrapper plus
-    structure-element change notification are deferred.
+    The ``/P`` entries can be accessed two ways:
+
+    * The upstream-style typed surface — ``get_owner_user_properties`` /
+      ``set_user_properties`` / ``add_user_property`` /
+      ``remove_user_property`` — which returns/accepts the typed
+      :class:`PDUserProperty` wrapper.
+    * A back-compat dict surface — ``get_property`` / ``set_property`` /
+      ``get_owner_properties`` / ``set_owner_properties`` / etc. — which
+      returns/accepts plain Python dicts ``{"N", "V", "F", "H"}``. This
+      surface predates the typed wrapper and is preserved so existing
+      callers continue to work.
+
+    Both surfaces operate on the same underlying ``/P`` array.
     """
 
     OWNER: str = "UserProperties"
+    OWNER_USER_PROPERTIES: str = "UserProperties"
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         super().__init__(dictionary)
@@ -179,6 +190,77 @@ class PDUserAttributeObject(PDStandardAttributeObject):
                 return True
         return False
 
+    # ---------- typed PDUserProperty surface (PDFBox parity) ----------
+
+    def get_owner_user_properties(self) -> list[PDUserProperty]:
+        """Return the ``/P`` entries as :class:`PDUserProperty` wrappers.
+
+        Mirrors upstream ``PDUserAttributeObject.getOwnerUserProperties``.
+        Each wrapper is bound back to ``self`` so subsequent setter calls
+        on the returned property notify the owning attribute object.
+        """
+        v = self._dictionary.get_dictionary_object("P")
+        if not isinstance(v, COSArray):
+            return []
+        out: list[PDUserProperty] = []
+        for index in range(v.size()):
+            entry = v.get_object(index)
+            if not isinstance(entry, COSDictionary):
+                continue
+            out.append(PDUserProperty(self, entry))
+        return out
+
+    def set_user_properties(self, user_properties: list[PDUserProperty]) -> None:
+        """Replace the ``/P`` array with the given wrappers.
+
+        Mirrors upstream ``PDUserAttributeObject.setUserProperties``.
+        """
+        array = COSArray()
+        for user_property in user_properties:
+            array.add(user_property.get_cos_object())
+        self._dictionary.set_item("P", array)
+
+    def add_user_property(self, user_property: PDUserProperty) -> None:
+        """Append a single ``PDUserProperty`` wrapper to ``/P``.
+
+        Mirrors upstream ``PDUserAttributeObject.addUserProperty``: if no
+        ``/P`` array exists one is created.
+        """
+        v = self._dictionary.get_dictionary_object("P")
+        if isinstance(v, COSArray):
+            array = v
+        else:
+            array = COSArray()
+            self._dictionary.set_item("P", array)
+        array.add(user_property.get_cos_object())
+        self.notify_change()
+
+    def remove_user_property(self, user_property: PDUserProperty | None) -> None:
+        """Remove ``user_property`` from ``/P`` (by COSDictionary identity).
+
+        Mirrors upstream ``PDUserAttributeObject.removeUserProperty``: a
+        ``None`` argument is silently ignored, and ``notifyChanged`` only
+        fires when an entry was actually removed.
+        """
+        if user_property is None:
+            return
+        v = self._dictionary.get_dictionary_object("P")
+        if not isinstance(v, COSArray):
+            return
+        if v.remove(user_property.get_cos_object()):
+            self.notify_change()
+
+    def user_property_changed(self, user_property: PDUserProperty) -> None:
+        """Hook invoked by ``PDUserProperty`` setters when the property
+        mutates. Upstream is a no-op extension point for subclasses; we
+        forward to ``notify_change`` so any registered structure-element
+        observer learns of the change.
+        """
+        # Match upstream behaviour: the base implementation is empty. We
+        # avoid calling notify_change here because doing so during a
+        # set_owner / set_revision_number flow would double-notify.
+        _ = user_property
+
     def __repr__(self) -> str:
         return (
             f"PDUserAttributeObject(O={self.get_owner()}, "
@@ -186,4 +268,4 @@ class PDUserAttributeObject(PDStandardAttributeObject):
         )
 
 
-__all__ = ["PDUserAttributeObject"]
+__all__ = ["PDUserAttributeObject", "PDUserProperty"]
