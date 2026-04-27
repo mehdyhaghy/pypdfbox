@@ -18,6 +18,26 @@ from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
 from .tiff_schema import TiffSchema
+from .type import (
+    AbstractField,
+    AbstractSimpleProperty,
+    AgentNameType,
+    ArrayProperty,
+    Attribute,
+    BooleanType,
+    Cardinality,
+    ChoiceType,
+    DateType,
+    GUIDType,
+    IntegerType,
+    LangAlt,
+    MIMEType,
+    ProperNameType,
+    RealType,
+    TextType,
+    TypeMapping,
+    URIType,
+)
 from .xmp_basic_job_ticket_schema import JobType, XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_media_management_schema import XMPMediaManagementSchema
@@ -27,15 +47,33 @@ from .xmp_rights_management_schema import XMPRightsManagementSchema
 from .xmp_schema import XMPSchema
 
 __all__ = [
+    "AbstractField",
+    "AbstractSimpleProperty",
     "AdobePDFSchema",
+    "AgentNameType",
+    "ArrayProperty",
+    "Attribute",
+    "BooleanType",
+    "Cardinality",
+    "ChoiceType",
+    "DateType",
     "DomXmpParser",
     "DublinCoreSchema",
     "ExifSchema",
+    "GUIDType",
+    "IntegerType",
     "JobType",
+    "LangAlt",
+    "MIMEType",
     "PDFAExtensionSchema",
     "PDFAIdentificationSchema",
     "PhotoshopSchema",
+    "ProperNameType",
+    "RealType",
+    "TextType",
     "TiffSchema",
+    "TypeMapping",
+    "URIType",
     "XMPBasicJobTicketSchema",
     "XMPBasicSchema",
     "XMPMediaManagementSchema",

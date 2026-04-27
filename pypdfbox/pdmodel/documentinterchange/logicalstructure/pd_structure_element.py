@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterator
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
@@ -208,11 +208,95 @@ class PDStructureElement(PDStructureNode):
     def set_actual_text(self, actual_text: str | None) -> None:
         self._dictionary.set_string(_ACTUAL_TEXT, actual_text)
 
+    # ---------- /Alt convenience alias ----------
+
+    def get_alt_text(self) -> str | None:
+        """Convenience alias for ``get_alternate_description`` (``/Alt``).
+
+        pypdfbox addition. Upstream PDFBox exposes only
+        ``getAlternateDescription``; this short-name accessor mirrors
+        common terminology used in PDF tagging tooling and is purely
+        additive (no behavior change)."""
+        return self.get_alternate_description()
+
+    def set_alt_text(self, alt_text: str | None) -> None:
+        """Convenience alias for ``set_alternate_description``."""
+        self.set_alternate_description(alt_text)
+
     # ---------- /K kids ----------
     #
     # ``get_kids`` / ``set_kids`` / ``append_kid`` / ``remove_kid`` come from
     # PDStructureNode. The base node treats ``/K`` as a flat list of typed
     # structure-tree entries, preserving unknown values as raw COS fallback.
+
+    # ---------- traversal helpers (pypdfbox additions) ----------
+    #
+    # Upstream PDFBox does not expose iter_descendants / find_by_role
+    # directly; Java callers typically use the Stream API over getKids().
+    # These helpers are pypdfbox conveniences and are purely additive.
+
+    def iter_kids(self) -> Iterator[Any]:
+        """Yield direct ``/K`` kids one at a time.
+
+        Items are wrapped per :meth:`PDStructureNode.wrap_kid`:
+        ``PDStructureElement`` / ``PDMarkedContentReference`` /
+        ``PDObjectReference`` / ``int`` MCID, or raw COS fallback for
+        unknown entries. This is a streaming view of :meth:`get_kids`.
+        """
+        for kid in self.get_kids():
+            yield kid
+
+    def iter_descendants(self) -> Iterator[PDStructureElement]:
+        """Depth-first walk of the ``/K`` sub-tree.
+
+        Yields every descendant ``PDStructureElement`` (not the node
+        itself, and not marked-content references / object references /
+        MCIDs). Order is pre-order DFS: each child element is yielded
+        before its own descendants. Cycles in ``/K`` (malformed input)
+        are guarded by an identity-set so the walk terminates.
+        """
+        seen: set[int] = {id(self._dictionary)}
+        stack: list[PDStructureElement] = []
+        # Push direct kids in reverse so pop() yields them in original order.
+        direct = [k for k in self.get_kids() if isinstance(k, PDStructureElement)]
+        stack.extend(reversed(direct))
+        while stack:
+            node = stack.pop()
+            node_id = id(node.get_cos_object())
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            yield node
+            children = [
+                k for k in node.get_kids() if isinstance(k, PDStructureElement)
+            ]
+            stack.extend(reversed(children))
+
+    def find_by_role(self, role: str) -> Iterator[PDStructureElement]:
+        """Yield every descendant element whose structure type matches
+        ``role``.
+
+        ``role`` is compared against the descendant's *resolved* standard
+        structure type (i.e. after ``/RoleMap`` remap via
+        :meth:`get_standard_structure_type`); falling back to the raw
+        ``/S`` when no role-map is reachable. This means ``find_by_role
+        ("H1")`` matches both elements whose ``/S`` is ``H1`` and elements
+        whose ``/S`` maps to ``H1`` through a parent ``StructTreeRoot``'s
+        ``/RoleMap``.
+        """
+        for descendant in self.iter_descendants():
+            resolved = descendant.get_standard_structure_type()
+            if resolved == role:
+                yield descendant
+
+    def find_first_by_role(self, role: str) -> PDStructureElement | None:
+        """Return the first descendant matching ``role``, or ``None``.
+
+        Equivalent to ``next(self.find_by_role(role), None)`` but spelled
+        out for callers who prefer an explicit accessor."""
+        for descendant in self.find_by_role(role):
+            return descendant
+        return None
 
     # ---------- /A attributes ----------
 

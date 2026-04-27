@@ -587,23 +587,76 @@ class PDPageContentStream:
 
     def draw_image(
         self,
-        image: PDImageXObject,
-        x: float,
-        y: float,
+        image: PDImageXObject | Any,
+        x: float | tuple[float, float, float, float, float, float] | list[float] | None = None,
+        y: float | None = None,
         width: float | None = None,
         height: float | None = None,
     ) -> None:
-        """Emit ``q <w> 0 0 <h> <x> <y> cm /<key> Do Q``.
+        """Emit ``q <a> <b> <c> <d> <e> <f> cm /<key> Do Q`` — draw
+        ``image`` on the current page.
 
-        When ``width``/``height`` are omitted we use the image's intrinsic
-        ``/Width`` and ``/Height`` (matching upstream's
-        ``drawImage(PDImageXObject, float, float)`` overload).
+        Mirrors upstream's three ``drawImage`` overloads:
+
+        - ``draw_image(image, x, y)`` — draws at the image's intrinsic
+          ``/Width`` × ``/Height`` (1 pt per pixel) anchored at ``(x, y)``.
+          Equivalent to ``drawImage(PDImageXObject, float, float)``.
+        - ``draw_image(image, x, y, width, height)`` — draws scaled to
+          ``width`` × ``height`` anchored at ``(x, y)``. Equivalent to
+          ``drawImage(PDImageXObject, float, float, float, float)``.
+        - ``draw_image(image, transform_matrix)`` — draws using a full
+          custom CTM ``(a, b, c, d, e, f)`` passed as a 6-tuple/list.
+          Equivalent to ``drawImage(PDImageXObject, Matrix)``.
+
+        ``image`` accepts a :class:`PDImageXObject` directly, or — for
+        callers who haven't preassembled an XObject — a filesystem path
+        (``str`` / :class:`pathlib.Path`), a Pillow ``Image.Image``, or
+        raw image ``bytes``. In the latter cases we lazy-import
+        ``pypdfbox.pdmodel.graphics.image.jpeg_factory.JPEGFactory`` /
+        ``lossless_factory.LosslessFactory`` to build the XObject; if
+        those modules aren't available a clear :class:`NotImplementedError`
+        is raised.
+
+        Raises :class:`RuntimeError` when called inside a text block
+        (between ``BT`` / ``ET``) — matches upstream's
+        ``IllegalStateException`` guard.
         """
-        if not isinstance(image, PDImageXObject):
-            raise TypeError(
-                f"PDPageContentStream.draw_image expects PDImageXObject; got "
-                f"{type(image).__name__}"
+        if self._in_text_mode:
+            raise RuntimeError(
+                "draw_image is not allowed within a text block (BT/ET)."
             )
+
+        # Resolve the image argument to a PDImageXObject. Accept the
+        # native type unchanged; otherwise route through the lazy-imported
+        # factory modules.
+        if not isinstance(image, PDImageXObject):
+            image = self._coerce_to_image_xobject(image, self._document)
+
+        # ``draw_image(image, transform_matrix)`` overload — the second
+        # positional argument is a 6-element tuple/list of CTM components.
+        if isinstance(x, (tuple, list)) and y is None and width is None and height is None:
+            matrix = tuple(x)
+            if len(matrix) != 6:
+                raise ValueError(
+                    "draw_image transform_matrix must have 6 components "
+                    f"(a, b, c, d, e, f); got {len(matrix)}"
+                )
+            a, b_, c, d, e, f = (float(v) for v in matrix)
+            key = self._resource_key_for_xobject(image)
+            self.save_graphics_state()
+            self.transform(a, b_, c, d, e, f)
+            self._write_name(key)
+            self._buffer.append(0x20)
+            self._write_operator(b"Do")
+            self.restore_graphics_state()
+            return
+
+        if x is None or y is None:
+            raise TypeError(
+                "draw_image requires either (image, x, y[, width, height]) "
+                "or (image, transform_matrix)"
+            )
+
         if width is None:
             width = float(image.get_width())
         if height is None:
@@ -615,6 +668,111 @@ class PDPageContentStream:
         self._buffer.append(0x20)
         self._write_operator(b"Do")
         self.restore_graphics_state()
+
+    @staticmethod
+    def _coerce_to_image_xobject(
+        image: Any, document: PDDocument
+    ) -> PDImageXObject:
+        """Convert ``image`` (path / Pillow Image / bytes) to a
+        :class:`PDImageXObject` via the JPEG/Lossless factories.
+
+        Lazy-imports the factory modules so they remain optional at
+        import time. Raises :class:`NotImplementedError` when neither
+        factory is importable, with guidance for callers to install the
+        factories or pass a pre-built ``PDImageXObject``.
+
+        Routing:
+
+        - JPEG bytes / ``.jpg`` / ``.jpeg`` paths → ``JPEGFactory.create_from_byte_array``.
+        - Other paths / Pillow images / generic bytes → ``LosslessFactory.create_from_image``
+          (Pillow handles PNG/GIF/BMP/etc. decoding).
+        """
+        # Probe-import the factories on each call; cheap (sys.modules
+        # caches after the first hit) and keeps the public API surface
+        # working when the factories are absent at module import.
+        try:
+            from pypdfbox.pdmodel.graphics.image.jpeg_factory import (  # type: ignore[import-not-found]
+                JPEGFactory,
+            )
+        except ImportError:
+            JPEGFactory = None  # type: ignore[assignment]
+        try:
+            from pypdfbox.pdmodel.graphics.image.lossless_factory import (  # type: ignore[import-not-found]
+                LosslessFactory,
+            )
+        except ImportError:
+            LosslessFactory = None  # type: ignore[assignment]
+
+        # Even if the modules import, the symbols themselves may be
+        # missing (test stubs, partial installs). Treat that as the
+        # same "not available" condition.
+        jpeg = getattr(JPEGFactory, "create_from_byte_array", None) if JPEGFactory else None
+        lossless = getattr(LosslessFactory, "create_from_image", None) if LosslessFactory else None
+
+        if jpeg is None and lossless is None:
+            raise NotImplementedError(
+                "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
+            )
+
+        from pathlib import Path as _Path
+        try:
+            from PIL.Image import Image as _PILImage  # type: ignore[import-not-found]
+            from PIL import Image as _PILImageMod  # type: ignore[import-not-found]
+        except ImportError:
+            _PILImage = None  # type: ignore[assignment]
+            _PILImageMod = None  # type: ignore[assignment]
+
+        # Path / str → dispatch on suffix; JPEG → JPEGFactory, anything
+        # else → LosslessFactory. Mirrors upstream's
+        # ``PDImageXObject.createFromFileByExtension``.
+        if isinstance(image, (str, _Path)):
+            path = _Path(image)
+            ext = path.suffix.lower().lstrip(".")
+            if ext in ("jpg", "jpeg"):
+                if jpeg is None:
+                    raise NotImplementedError(
+                        "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
+                    )
+                return jpeg(document, path.read_bytes())
+            if lossless is None or _PILImageMod is None:
+                raise NotImplementedError(
+                    "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
+                )
+            with _PILImageMod.open(path) as src:
+                src.load()
+                return lossless(document, src)
+
+        # bytes → sniff JPEG SOI marker; otherwise hand off to Pillow
+        # then the lossless factory.
+        if isinstance(image, (bytes, bytearray)):
+            data = bytes(image)
+            if data[:2] == b"\xff\xd8":
+                if jpeg is None:
+                    raise NotImplementedError(
+                        "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
+                    )
+                return jpeg(document, data)
+            if lossless is None or _PILImageMod is None:
+                raise NotImplementedError(
+                    "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
+                )
+            import io as _io
+            with _PILImageMod.open(_io.BytesIO(data)) as src:
+                src.load()
+                return lossless(document, src)
+
+        # Pillow Image → always decode via the lossless factory.
+        if _PILImage is not None and isinstance(image, _PILImage):
+            if lossless is None:
+                raise NotImplementedError(
+                    "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
+                )
+            return lossless(document, image)
+
+        raise TypeError(
+            "PDPageContentStream.draw_image expects PDImageXObject, str, "
+            f"Path, bytes, or PIL.Image.Image; got {type(image).__name__}"
+        )
 
     def draw_form(
         self,

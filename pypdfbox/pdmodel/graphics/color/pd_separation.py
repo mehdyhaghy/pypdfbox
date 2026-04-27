@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSBase, COSName
 
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.function import PDFunction
 
 
 class PDSeparation(PDColorSpace):
@@ -12,9 +17,6 @@ class PDSeparation(PDColorSpace):
 
     Array form: ``[/Separation <colorant name> <alternate CS> <tint
     transform>]``.
-
-    Lite surface: tint transform evaluation lives in the function
-    module; ``get_tint_transform`` returns the raw COS object.
     """
 
     NAME: str = "Separation"
@@ -72,15 +74,45 @@ class PDSeparation(PDColorSpace):
         assert self._array is not None
         self._array.set(self._ALTERNATE_CS, alternate.get_cos_object())
 
-    def get_tint_transform(self) -> COSBase | None:
+    def get_tint_transform(self) -> PDFunction | None:
+        """Return the tint transform as a :class:`PDFunction`. Mirrors
+        upstream ``PDSeparation.getTintTransform()``.
+
+        Returns ``None`` for placeholder slots that don't dispatch to a
+        concrete function type — keep the default ctor's empty-name
+        slot from blowing up callers that probe before populating.
+        """
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        raw = self.get_tint_transform_cos()
+        if raw is None:
+            return None
+        try:
+            return PDFunction.create(raw)
+        except (TypeError, ValueError):
+            return None
+
+    def get_tint_transform_cos(self) -> COSBase | None:
         """Return the raw tint transform COS object (function dictionary
-        or stream). Function evaluation lives in the function module."""
+        or stream). Pypdfbox enrichment — upstream exposes only the
+        typed ``PDFunction`` accessor."""
         assert self._array is not None
         return self._array.get_object(self._TINT_TRANSFORM)
 
-    def set_tint_transform(self, transform: COSBase) -> None:
+    def set_tint_transform(self, transform: object) -> None:
+        """Store the tint transform. Accepts either a :class:`PDFunction`
+        (upstream signature) or a raw COS object (pypdfbox enrichment).
+        """
         assert self._array is not None
-        self._array.set(self._TINT_TRANSFORM, transform)
+        if hasattr(transform, "get_cos_object"):
+            self._array.set(self._TINT_TRANSFORM, transform.get_cos_object())
+        elif isinstance(transform, COSBase):
+            self._array.set(self._TINT_TRANSFORM, transform)
+        else:
+            raise TypeError(
+                "set_tint_transform expects PDFunction or COSBase, "
+                f"got {type(transform).__name__}"
+            )
 
     # ---------- conversion ----------
 
@@ -94,15 +126,10 @@ class PDSeparation(PDColorSpace):
         it to coordinates in the alternate color space, which then
         produces the RGB output.
         """
-        from pypdfbox.pdmodel.common.function import PDFunction
-
-        from .pd_color import PDColor
-
         alternate = self.get_alternate_color_space()
         if alternate is None:
             return None
-        tint = self.get_tint_transform()
-        function = PDFunction.create(tint) if tint is not None else None
+        function = self.get_tint_transform()
         if function is None:
             return None
         alt_components = function.eval(list(components))

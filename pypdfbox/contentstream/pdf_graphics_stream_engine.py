@@ -436,6 +436,14 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
         concrete image type used by their content stream)."""
         raise NotImplementedError
 
+    def show_inline_image(self, inline_image: Any) -> None:
+        """Forward inline-image dispatch to :meth:`draw_image`. Mirrors
+        upstream ``PDFGraphicsStreamEngine.showInlineImage`` which
+        delegates ``PDInlineImage`` arrivals through the same paint path
+        as XObject images so subclasses don't need to model the two
+        forms separately."""
+        self.draw_image(inline_image)
+
     def clip(self, winding_rule: int) -> None:
         """Modify the current clipping path by intersecting it with the
         current path. The clipping path is not updated until the

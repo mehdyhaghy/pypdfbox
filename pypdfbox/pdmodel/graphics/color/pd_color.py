@@ -83,6 +83,34 @@ class PDColor:
         cs_name = self.get_color_space_name()
         return cs_name == "Pattern"
 
+    def is_separation(self) -> bool:
+        """Return ``True`` if the wrapped color space is a Separation.
+        Convenience predicate that delegates to
+        :meth:`PDColorSpace.is_separation` — pypdfbox enrichment with no
+        upstream PDFBox equivalent on ``PDColor`` (the predicate lives on
+        ``PDColorSpace``); we re-expose it here for callers that hold a
+        ``PDColor`` and want to branch without poking at the color space.
+        """
+        if self._color_space is None:
+            return False
+        is_sep = getattr(self._color_space, "is_separation", None)
+        if is_sep is None:
+            return False
+        return bool(is_sep())
+
+    def is_device_n(self) -> bool:
+        """Return ``True`` if the wrapped color space is a DeviceN.
+        Convenience predicate that delegates to
+        :meth:`PDColorSpace.is_device_n` — pypdfbox enrichment, see
+        :meth:`is_separation` for the rationale.
+        """
+        if self._color_space is None:
+            return False
+        is_dn = getattr(self._color_space, "is_device_n", None)
+        if is_dn is None:
+            return False
+        return bool(is_dn())
+
     # ---------- conversion ----------
 
     def to_rgb(self) -> tuple[float, float, float]:

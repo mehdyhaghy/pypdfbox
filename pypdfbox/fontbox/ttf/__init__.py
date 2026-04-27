@@ -23,6 +23,7 @@ from .ttf_data_stream import (
     RandomAccessReadDataStream,
     TTFDataStream,
 )
+from .ttf_subsetter import TTFSubsetter
 from .ttf_table import TTFTable
 from .vertical_header_table import VerticalHeaderTable
 from .vertical_metrics_table import VerticalMetricsTable
@@ -49,6 +50,7 @@ __all__ = [
     "PostScriptTable",
     "RandomAccessReadDataStream",
     "TTFDataStream",
+    "TTFSubsetter",
     "TTFTable",
     "TrueTypeFont",
     "VerticalHeaderTable",

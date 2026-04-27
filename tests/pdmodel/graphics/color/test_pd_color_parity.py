@@ -6,8 +6,10 @@ from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
 
 # ---------- get_components / set_components round-trip ----------
@@ -158,3 +160,27 @@ def test_to_raw_image_raises_not_implemented() -> None:
     color = PDColor([1.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
     with pytest.raises(NotImplementedError):
         color.to_raw_image()
+
+
+# ---------- is_separation / is_device_n predicates ----------
+
+
+def test_is_separation_true_for_separation_color_space() -> None:
+    color = PDColor([1.0], PDSeparation())
+    assert color.is_separation() is True
+    assert color.is_device_n() is False
+
+
+def test_is_device_n_true_for_device_n_color_space() -> None:
+    cs = PDDeviceN()
+    cs.set_colorant_names(["Cyan", "Magenta"])
+    color = PDColor([1.0, 1.0], cs)
+    assert color.is_device_n() is True
+    assert color.is_separation() is False
+
+
+def test_is_separation_and_is_device_n_false_for_device_rgb() -> None:
+    color = PDColor([1.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
+    assert color.is_separation() is False
+    assert color.is_device_n() is False
+    assert color.is_pattern() is False

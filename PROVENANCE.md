@@ -744,3 +744,47 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/multipdf/upstream/test_pdf_clone_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFCloneUtilityTest.java` (only `testClonePDFWithCosArrayStream` ported — other two depend on `PDFMergerUtility` not yet ported) |
 | `tests/multipdf/upstream/test_layer_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/TestLayerUtility.java` |
 | `tests/multipdf/upstream/test_page_extractor.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PageExtractorTest.java` |
+
+### Wave 31 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/multipdf/splitter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` |
+| `pypdfbox/multipdf/pdf_merger_utility.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (structure-tree merging deferred) |
+| `pypdfbox/pdmodel/graphics/image/jpeg_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactory.java` |
+| `pypdfbox/pdmodel/graphics/image/lossless_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactory.java` |
+| `pypdfbox/fontbox/cmap/cmap_manager.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/CMapManager.java` (relocated to `fontbox/cmap` to co-locate with the resources directory it reads) |
+| `pypdfbox/fontbox/cmap/resources/Adobe-CNS1-UCS2` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Adobe-CNS1-UCS2` |
+| `pypdfbox/fontbox/cmap/resources/Adobe-GB1-UCS2` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Adobe-GB1-UCS2` |
+| `pypdfbox/fontbox/cmap/resources/Adobe-Japan1-UCS2` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Adobe-Japan1-UCS2` |
+| `pypdfbox/fontbox/cmap/resources/Adobe-Korea1-UCS2` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Adobe-Korea1-UCS2` |
+| `pypdfbox/fontbox/cmap/resources/Identity-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Identity-H` |
+| `pypdfbox/fontbox/cmap/resources/Identity-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Identity-V` |
+| `pypdfbox/fontbox/ttf/ttf_subsetter.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/TTFSubsetter.java` (API surface only — subset logic delegated to `fontTools.subset.Subsetter`) |
+| `pypdfbox/xmpbox/type/abstract_field.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AbstractField.java` + `xmpbox/src/main/java/org/apache/xmpbox/type/Attribute.java` |
+| `pypdfbox/xmpbox/type/abstract_simple_property.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AbstractSimpleProperty.java` |
+| `pypdfbox/xmpbox/type/text_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/TextType.java` |
+| `pypdfbox/xmpbox/type/integer_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/IntegerType.java` |
+| `pypdfbox/xmpbox/type/boolean_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/BooleanType.java` |
+| `pypdfbox/xmpbox/type/date_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/DateType.java` |
+| `pypdfbox/xmpbox/type/real_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/RealType.java` |
+| `pypdfbox/xmpbox/type/uri_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/URIType.java` |
+| `pypdfbox/xmpbox/type/proper_name_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ProperNameType.java` |
+| `pypdfbox/xmpbox/type/agent_name_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AgentNameType.java` |
+| `pypdfbox/xmpbox/type/mime_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/MIMEType.java` |
+| `pypdfbox/xmpbox/type/guid_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/GUIDType.java` |
+| `pypdfbox/xmpbox/type/choice_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ChoiceType.java` |
+| `pypdfbox/xmpbox/type/array_property.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ArrayProperty.java` + `Cardinality.java` + `AbstractComplexProperty.java` + `ComplexPropertyContainer.java` |
+| `pypdfbox/xmpbox/type/lang_alt.py` | 3.0.x | derived from `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java#reorganizeAltOrder` + `ArrayProperty(Cardinality.Alt)` idiom |
+| `pypdfbox/xmpbox/type/type_mapping.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/TypeMapping.java` (subset: simple-property registry + create_* factories; structured-type plumbing deferred) |
+| `pypdfbox/pdmodel/interactive/action/pd_windows_launch_params.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDWindowsLaunchParams.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/AppearanceGeneratorHelper.java` (text-field flat-text path only — button/choice/signature appearances deferred) |
+| `pypdfbox/tools/texttopdf.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/TextToPDF.java` |
+| `pypdfbox/tools/writedecodedstream.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/WriteDecodedDoc.java` |
+| `pypdfbox/pdmodel/pdfa_flavour.py` | 3.0.x | original (no upstream PDFBox class — closest analogue is `org.verapdf.pdfa.flavours.PDFAFlavour` from veraPDF; pypdfbox provides a passive *detector* per CLAUDE.md "no preflight, no veraPDF reimplementation") |
+| `tests/xmpbox/type/upstream/test_attribute.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/AttributeTest.java` |
+| `tests/xmpbox/type/upstream/test_simple_metadata_properties.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestSimpleMetadataProperties.java` |
+| `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactoryTest.java` |
+| `tests/pdmodel/graphics/image/upstream/test_lossless_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactoryTest.java` (rendering-comparison parts skipped) |
+| `tests/multipdf/upstream/test_pdf_merger_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFMergerUtilityTest.java` (4 active + 25 skipped — rendering / fixture-dependent) |
+| `tests/fontbox/ttf/upstream/test_ttf_subsetter.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/TTFSubsetterTest.java` (4 active + 5 skipped — system-font / `forceInvisible`) |

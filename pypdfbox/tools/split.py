@@ -2,13 +2,10 @@
 ``pypdfbox split -i in.pdf [-split N] [-startPage X -endPage Y]
 [-outputPrefix prefix]`` — break a PDF into per-N-page output files.
 
-Mirrors upstream ``org.apache.pdfbox.tools.PDFSplit``, which uses
-``org.apache.pdfbox.multipdf.Splitter``. Same caveat as ``merge``: cluster
-#1 ships a naive splitter that copies page COS dictionaries into fresh
-output documents without remapping cross-document references. Suitable
-for the common case (split each page into its own file) but won't preserve
-named-destination links or struct-tree owners that pointed at sibling
-pages.
+Mirrors upstream ``org.apache.pdfbox.tools.PDFSplit``, which delegates to
+``org.apache.pdfbox.multipdf.Splitter``. We do the same — see
+``pypdfbox.multipdf.splitter.Splitter`` for the per-chunk behaviour and
+the structure-tree cloning deviation noted in ``CHANGES.md``.
 
 Default behaviour matches upstream: when neither ``-split`` nor a page
 range is given, split every page into its own file.
@@ -18,7 +15,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from pypdfbox.pdmodel import PDDocument, PDPage
+from pypdfbox.multipdf import Splitter
+from pypdfbox.pdmodel import PDDocument
 
 
 def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -80,21 +78,13 @@ def run(args: argparse.Namespace) -> int:
             return 2
         end = min(end, total)
 
-        # Collect the source pages once — the iterator is forward-only and
-        # we slice it into chunks below.
-        pages = list(doc.get_pages())
-        # 1-based -> 0-based slice for the in-range section.
-        in_range = pages[start - 1 : end]
-
-        chunk_size = args.split
-        for chunk_index in range(0, len(in_range), chunk_size):
-            chunk = in_range[chunk_index : chunk_index + chunk_size]
-            out_doc = PDDocument()
+        splitter = Splitter()
+        splitter.set_split_at_page(args.split)
+        splitter.set_start_page(start)
+        splitter.set_end_page(end)
+        chunks = splitter.split(doc)
+        for ordinal, out_doc in enumerate(chunks, start=1):
             try:
-                for page in chunk:
-                    out_doc.add_page(PDPage(page.get_cos_object()))
-                # Upstream numbers from 1 (output-1.pdf, output-2.pdf, ...).
-                ordinal = (chunk_index // chunk_size) + 1
                 out_path = out_dir / f"{prefix}-{ordinal}.pdf"
                 out_doc.save(out_path)
                 print(str(out_path))

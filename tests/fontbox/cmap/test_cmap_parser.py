@@ -53,6 +53,13 @@ def test_identity_predefined_maps_two_byte_codes_to_cids() -> None:
     assert cmap.read_cid(__import__("io").BytesIO(b"\x12\x34")) == 0x1234
 
 
-def test_non_identity_predefined_is_deferred() -> None:
+def test_bundled_predefined_loads_from_disk() -> None:
+    # Adobe-Japan1-UCS2 ships in pypdfbox/fontbox/cmap/resources/.
+    cmap = CMapParser.parse_predefined("Adobe-Japan1-UCS2")
+    assert cmap.get_name() == "Adobe-Japan1-UCS2"
+    assert cmap.has_unicode_mappings()
+
+
+def test_unknown_predefined_raises() -> None:
     with pytest.raises(OSError):
-        CMapParser.parse_predefined("Adobe-Japan1-UCS2")
+        CMapParser.parse_predefined("NotARealPredefinedCMap-XYZ")

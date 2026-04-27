@@ -1029,6 +1029,89 @@ class PDDocument:
             byte_range=byte_range,
         )
 
+    # ---------- top-level convenience helpers (pypdfbox additions) ----------
+    #
+    # These three helpers are NOT in upstream PDFBox. They are Python-friendly
+    # shortcuts that delegate to the multipdf cluster (Splitter / PageExtractor
+    # / PDFMergerUtility) so users can stay on the PDDocument surface for
+    # common page-level operations:
+    #
+    #     parts = doc.split(every=1)
+    #     section = doc.extract_pages(2, 4)
+    #     merged = PDDocument.merge(doc_a, doc_b, doc_c)
+    #
+    # The delegates are imported lazily — Splitter / PDFMergerUtility may not
+    # be available in every wave; an ImportError is surfaced with a pointer to
+    # the canonical class so callers can fall back to the upstream-shaped API.
+    # Recorded in CHANGES.md as a pypdfbox-specific addition.
+
+    def split(self, every: int = 1) -> list[PDDocument]:
+        """Split the document into a list of new :class:`PDDocument` instances.
+        Delegates to :class:`pypdfbox.multipdf.splitter.Splitter`.
+
+        ``every`` is the number of pages per output document (mirrors
+        upstream ``Splitter.setSplitAtPage``); the default of 1 emits one
+        document per page.
+
+        Pypdfbox-only convenience — no upstream equivalent on
+        ``PDDocument`` itself."""
+        if self._closed:
+            raise ValueError("operation on closed PDDocument")
+        try:
+            from pypdfbox.multipdf.splitter import Splitter
+        except ImportError as exc:  # pragma: no cover — wave-ordering guard
+            raise ImportError(
+                "PDDocument.split requires pypdfbox.multipdf.splitter.Splitter, "
+                "which is not yet available in this build. Use the upstream-"
+                "shaped API (Splitter().split(doc)) once the splitter cluster "
+                "lands."
+            ) from exc
+
+        splitter = Splitter()
+        splitter.set_split_at_page(every)
+        return splitter.split(self)
+
+    def extract_pages(self, start: int, end: int) -> PDDocument:
+        """Return a new :class:`PDDocument` containing pages ``[start..end]``
+        (1-based, inclusive). Delegates to
+        :class:`pypdfbox.multipdf.page_extractor.PageExtractor`.
+
+        Pypdfbox-only convenience — no upstream equivalent on
+        ``PDDocument`` itself."""
+        if self._closed:
+            raise ValueError("operation on closed PDDocument")
+        from pypdfbox.multipdf.page_extractor import PageExtractor
+
+        return PageExtractor(self, start, end).extract()
+
+    @classmethod
+    def merge(cls, *docs: PDDocument) -> PDDocument:
+        """Merge ``docs`` left-to-right into a single new :class:`PDDocument`.
+        Delegates to
+        :class:`pypdfbox.multipdf.pdf_merger_utility.PDFMergerUtility`.
+
+        Pypdfbox-only convenience — no upstream equivalent on
+        ``PDDocument`` itself. Returns an empty document when called with no
+        arguments."""
+        if not docs:
+            return cls()
+        try:
+            from pypdfbox.multipdf.pdf_merger_utility import PDFMergerUtility
+        except ImportError as exc:  # pragma: no cover — wave-ordering guard
+            raise ImportError(
+                "PDDocument.merge requires "
+                "pypdfbox.multipdf.pdf_merger_utility.PDFMergerUtility, "
+                "which is not yet available in this build. Use the upstream-"
+                "shaped API (PDFMergerUtility().merge_documents(...)) once "
+                "the merger cluster lands."
+            ) from exc
+
+        merger = PDFMergerUtility()
+        result = cls()
+        for d in docs:
+            merger.append_document(result, d)
+        return result
+
     # ---------- lifecycle ----------
 
     def close(self) -> None:

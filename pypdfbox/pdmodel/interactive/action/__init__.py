@@ -26,6 +26,7 @@ from .pd_document_catalog_additional_actions import PDDocumentCatalogAdditionalA
 from .pd_form_field_additional_actions import PDFormFieldAdditionalActions
 from .pd_page_additional_actions import PDPageAdditionalActions
 from .pd_target_directory import PDTargetDirectory
+from .pd_windows_launch_params import PDWindowsLaunchParams
 
 __all__ = [
     "PDAction",
@@ -54,4 +55,5 @@ __all__ = [
     "PDFormFieldAdditionalActions",
     "PDPageAdditionalActions",
     "PDTargetDirectory",
+    "PDWindowsLaunchParams",
 ]

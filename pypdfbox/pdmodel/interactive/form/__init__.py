@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .pd_acro_form import PDAcroForm
+from .pd_appearance_generator import PDAppearanceGenerator
 from .pd_button import PDButton
 from .pd_check_box import PDCheckBox
 from .pd_choice import PDChoice
@@ -19,6 +20,7 @@ from .pd_xfa_resource import PDXFAResource
 
 __all__ = [
     "PDAcroForm",
+    "PDAppearanceGenerator",
     "PDButton",
     "PDCheckBox",
     "PDChoice",

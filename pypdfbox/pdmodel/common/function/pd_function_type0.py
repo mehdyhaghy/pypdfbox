@@ -15,7 +15,7 @@ _ENCODE = "Encode"
 _DECODE = "Decode"
 
 # Supported /BitsPerSample values per PDF 32000-1 §7.10.2 Table 38.
-_SUPPORTED_BITS = frozenset({1, 2, 4, 8, 16, 24, 32})
+_SUPPORTED_BITS = frozenset({1, 2, 4, 8, 12, 16, 24, 32})
 
 
 class PDFunctionType0(PDFunction):
@@ -141,7 +141,10 @@ class PDFunctionType0(PDFunction):
 
         Sample layout per §7.10.2: the table is row-major over input
         dimensions (first dim varies fastest), with ``num_outputs`` samples
-        per cell, each ``bits`` wide and packed MSB-first big-endian.
+        per cell, each ``bits`` wide. Successive sample values are adjacent
+        in the bit stream with no padding at byte boundaries; bits are
+        packed MSB-first (PDF spec p.171). Mirrors upstream
+        ``MemoryCacheImageInputStream.readBits(bitsPerSample)``.
         """
         # Linearise coords → cell index. PDF spec: first dim varies fastest.
         linear = 0
@@ -151,33 +154,143 @@ class PDFunctionType0(PDFunction):
             stride *= sizes[i]
         bit_offset = (linear * num_outputs + output_index) * bits
 
-        if bits % 8 == 0:
-            byte_offset = bit_offset // 8
-            byte_count = bits // 8
-            chunk = body[byte_offset : byte_offset + byte_count]
-            if len(chunk) < byte_count:
-                # Out-of-range read → treat as zero (lenient).
-                return 0
-            return int.from_bytes(chunk, "big")
-
-        # Sub-byte bits: 1, 2, or 4. Read across at most two bytes (since
-        # bits <= 4 ≤ 8) MSB-first.
+        # Generic MSB-first bit-stream read — handles 1, 2, 4, 8, 12, 16,
+        # 24, 32 (and any other width) uniformly. Out-of-range bytes are
+        # treated as zero so a truncated body yields zero-padded samples
+        # rather than crashing — matches PDFBox's lenient-on-IOException
+        # behaviour (it logs and returns the partially-built ``samples``
+        # array which is zero-initialised by ``new int[][]``).
+        body_len = len(body)
         byte_offset = bit_offset // 8
         bit_in_byte = bit_offset % 8
-        if byte_offset >= len(body):
-            return 0
-        first = body[byte_offset]
-        if bit_in_byte + bits <= 8:
-            shift = 8 - bit_in_byte - bits
-            return (first >> shift) & ((1 << bits) - 1)
-        # Crosses a byte boundary (only possible for bits=2 starting at
-        # bit-7 or bits=4 starting at bit-5/6/7; defensive).
-        if byte_offset + 1 >= len(body):
-            return 0
-        second = body[byte_offset + 1]
-        combined = (first << 8) | second
-        shift = 16 - bit_in_byte - bits
-        return (combined >> shift) & ((1 << bits) - 1)
+        # Number of bytes we may need to span: 1 + ceil((bit_in_byte + bits) / 8) - 1
+        span = (bit_in_byte + bits + 7) // 8
+        value = 0
+        for k in range(span):
+            value <<= 8
+            idx = byte_offset + k
+            if 0 <= idx < body_len:
+                value |= body[idx]
+        # Strip trailing bits past the value we care about, then mask off
+        # the leading bits that belonged to the previous sample.
+        trailing = span * 8 - bit_in_byte - bits
+        value >>= trailing
+        return value & ((1 << bits) - 1)
+
+    def decode_sample_grid(self) -> list[list[float]]:
+        """Decode the bit-packed sample stream into a flat list of cells.
+
+        Each entry is a list of ``num_outputs`` floats. The outer index is
+        the linearised input coordinate (first input dimension varies
+        fastest, mirroring upstream's ``calcSampleIndex`` layout). Sample
+        codes are returned as raw integers cast to ``float`` — the
+        ``/Decode`` mapping into the function's output range happens later
+        during :meth:`eval`. Provided as a public diagnostic / parity
+        helper; eval reads samples on demand via :meth:`_read_sample`
+        without materialising the full grid.
+        """
+        num_in = self.get_number_of_input_parameters()
+        num_out = self.get_number_of_output_parameters()
+        bits = self.get_bits_per_sample()
+        if bits not in _SUPPORTED_BITS:
+            raise ValueError(
+                f"unsupported /BitsPerSample={bits}; expected one of {sorted(_SUPPORTED_BITS)}"
+            )
+        sizes = self._get_size_list()
+        if len(sizes) < num_in or any(s < 1 for s in sizes[:num_in]):
+            raise ValueError("/Size missing or invalid for declared input dimensions")
+        body = self._get_sample_bytes()
+
+        total_cells = 1
+        for i in range(num_in):
+            total_cells *= sizes[i]
+        grid: list[list[float]] = []
+        for cell in range(total_cells):
+            # Reconstruct per-axis coords for this linear index.
+            coords: list[int] = []
+            tmp = cell
+            for i in range(num_in):
+                coords.append(tmp % sizes[i])
+                tmp //= sizes[i]
+            row: list[float] = []
+            for j in range(num_out):
+                row.append(
+                    float(
+                        self._read_sample(
+                            tuple(coords), j, sizes, num_out, bits, body
+                        )
+                    )
+                )
+            grid.append(row)
+        return grid
+
+    def _interpolate_linear(
+        self,
+        coords: list[float],
+        sizes: list[int],
+        num_out: int,
+        bits: int,
+        body: bytes,
+    ) -> list[float]:
+        """Multi-linear (n-linear) interpolation at fractional ``coords``.
+
+        ``coords[i]`` is an already-encoded, sample-grid coordinate in
+        ``[0, sizes[i]-1]``. Returns one float per output dimension —
+        each is the n-linear blend of the 2^n surrounding integer-coord
+        samples (raw sample codes, not yet ``/Decode``-mapped). Mirrors
+        the upstream ``Rinterpol.rinterpolate()`` recursive collapse, but
+        unrolled into a flat-index gather + per-axis fold.
+        """
+        n = len(coords)
+        floors: list[int] = []
+        fracs: list[float] = []
+        for i in range(n):
+            c = coords[i]
+            upper = sizes[i] - 1
+            if c < 0.0:
+                c = 0.0
+            elif c > upper:
+                c = float(upper)
+            f = int(c)
+            if f >= upper:
+                # Right-edge sample: no neighbour to the right.
+                f = upper
+                frac = 0.0
+            else:
+                frac = c - f
+            floors.append(f)
+            fracs.append(frac)
+
+        result: list[float] = []
+        for j in range(num_out):
+            total = 1 << n  # 2^n corners
+            corners: list[float] = []
+            for idx in range(total):
+                pt: list[int] = []
+                for i in range(n):
+                    pos = (idx >> i) & 1
+                    raw = floors[i] + pos
+                    upper = sizes[i] - 1
+                    if raw > upper:
+                        raw = upper
+                    pt.append(raw)
+                corners.append(
+                    float(
+                        self._read_sample(
+                            tuple(pt), j, sizes, num_out, bits, body
+                        )
+                    )
+                )
+            # Fold one axis at a time using the per-axis fraction.
+            for i in range(n):
+                t = fracs[i]
+                next_corners: list[float] = []
+                for k in range(0, len(corners), 2):
+                    a, b = corners[k], corners[k + 1]
+                    next_corners.append(a + t * (b - a))
+                corners = next_corners
+            result.append(corners[0])
+        return result
 
     def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
         """N-dimensional interpolation over the sample table per §7.10.2.

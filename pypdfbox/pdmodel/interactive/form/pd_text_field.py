@@ -104,11 +104,25 @@ class PDTextField(PDVariableText):
             return item.get_string()
         return ""
 
-    def set_value(self, value: str | None) -> None:
+    def set_value(
+        self, value: str | None, regenerate_appearance: bool = False
+    ) -> None:
+        """Set the field's ``/V`` value.
+
+        When ``regenerate_appearance=True``, also rebuilds each widget's
+        ``/AP /N`` normal appearance via :class:`PDAppearanceGenerator`.
+        The default (``False``) preserves the historical lite-port behaviour
+        of writing the value alone — the existing object graph is untouched
+        for callers that flatten or re-render externally.
+        """
         if value is None:
             self._field.remove_item(_V)
         else:
             self._field.set_string(_V, value)
+        if regenerate_appearance:
+            from .pd_appearance_generator import PDAppearanceGenerator
+
+            PDAppearanceGenerator().generate(self)
 
     def get_default_value(self) -> str:
         item = self.get_inheritable_attribute(_DV)

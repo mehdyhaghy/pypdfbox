@@ -328,3 +328,84 @@ def test_sort_by_position_default_off_preserves_stream_order() -> None:
     s = PDFTextStripper()
     out = s.get_text(doc)
     assert out.index("alpha") < out.index("beta")
+
+
+def test_sort_by_position_reorders_same_line_x() -> None:
+    """Mirrors upstream ``TextPositionComparator`` X-tie-break: when two
+    runs share a line (same ``y``) but are emitted out of left-to-right
+    order, ``set_sort_by_position(True)`` should reorder them ascending
+    by ``x``."""
+    doc = PDDocument()
+    # Same y (700). Stream order paints right-of-page first, then
+    # left-of-page. Without sort, "right" emits before "left".
+    _make_page_with_stream(
+        doc,
+        (
+            b"BT /F0 12 Tf "
+            b"1 0 0 1 400 700 Tm (right) Tj "
+            b"1 0 0 1 100 700 Tm (left) Tj "
+            b"ET"
+        ),
+    )
+
+    unsorted = PDFTextStripper()
+    unsorted_out = unsorted.get_text(doc)
+    assert unsorted_out.index("right") < unsorted_out.index("left")
+
+    sorted_stripper = PDFTextStripper()
+    sorted_stripper.set_sort_by_position(True)
+    sorted_out = sorted_stripper.get_text(doc)
+    assert sorted_out.index("left") < sorted_out.index("right")
+
+
+def test_sort_by_position_full_reading_order_grid() -> None:
+    """Multi-line, multi-column synthesis: stream order is scrambled,
+    but with sort enabled the output should walk top-to-bottom, then
+    left-to-right within each line — i.e. canonical reading order."""
+    doc = PDDocument()
+    # Stream order (intentionally scrambled):
+    #   bottom-right (100,100) "D"
+    #   top-left     (100,700) "A"
+    #   bottom-left  (50,100)  "C"
+    #   top-right    (400,700) "B"
+    # Geometric reading order (top→bottom, left→right): A, B, C, D.
+    _make_page_with_stream(
+        doc,
+        (
+            b"BT /F0 12 Tf "
+            b"1 0 0 1 100 100 Tm (D) Tj "
+            b"1 0 0 1 100 700 Tm (A) Tj "
+            b"1 0 0 1 50 100 Tm (C) Tj "
+            b"1 0 0 1 400 700 Tm (B) Tj "
+            b"ET"
+        ),
+    )
+
+    s = PDFTextStripper()
+    s.set_sort_by_position(True)
+    out = s.get_text(doc)
+    # Each glyph appears exactly once; their relative order matches the
+    # canonical reading order.
+    assert out.index("A") < out.index("B") < out.index("C") < out.index("D")
+
+
+def test_sort_by_position_is_stable_for_equal_y_equal_x() -> None:
+    """When two positions share both ``y`` and ``x``, Python's
+    ``sorted`` is stable so they should retain their emission order
+    even with sort enabled. This pins the upstream behaviour where
+    ``TextPositionComparator`` returns 0 for equal keys and the
+    surrounding sort preserves insertion order."""
+    doc = PDDocument()
+    _make_page_with_stream(
+        doc,
+        (
+            b"BT /F0 12 Tf "
+            b"1 0 0 1 100 700 Tm (one) Tj "
+            b"1 0 0 1 100 700 Tm (two) Tj "
+            b"ET"
+        ),
+    )
+    s = PDFTextStripper()
+    s.set_sort_by_position(True)
+    out = s.get_text(doc)
+    assert out.index("one") < out.index("two")

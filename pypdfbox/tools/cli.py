@@ -22,7 +22,9 @@ from . import (
     merge,
     pdfdebugger,
     split,
+    texttopdf,
     version,
+    writedecodedstream,
 )
 
 # Order matters only for ``--help`` rendering; argparse dispatches by name.
@@ -35,7 +37,9 @@ _SUBCOMMANDS = (
     encrypt,
     extracttext,
     imagetopdf,
+    texttopdf,
     pdfdebugger,
+    writedecodedstream,
 )
 
 

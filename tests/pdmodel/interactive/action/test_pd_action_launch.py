@@ -11,6 +11,9 @@ from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification impo
     PDSimpleFileSpecification,
 )
 from pypdfbox.pdmodel.interactive.action.pd_action_launch import PDActionLaunch
+from pypdfbox.pdmodel.interactive.action.pd_windows_launch_params import (
+    PDWindowsLaunchParams,
+)
 
 
 def test_defaults_on_fresh_action() -> None:
@@ -94,13 +97,14 @@ def test_win_launch_params_round_trip_raw_dict() -> None:
     win.set_item(COSName.get_pdf_name("D"), COSString("C:\\\\Users"))
     win.set_item(COSName.get_pdf_name("O"), COSString("open"))
     win.set_item(COSName.get_pdf_name("P"), COSString("/A"))
+    # Backwards-compatible: passing a raw COSDictionary still works.
     action.set_win_launch_params(win)
 
     resolved = action.get_win_launch_params()
-    assert isinstance(resolved, COSDictionary)
-    assert resolved is win
-    assert resolved.get_string("F") == "notepad.exe"
-    assert resolved.get_string("O") == "open"
+    assert isinstance(resolved, PDWindowsLaunchParams)
+    assert resolved.get_cos_object() is win
+    assert resolved.get_filename() == "notepad.exe"
+    assert resolved.get_operation() == "open"
 
     action.set_win_launch_params(None)
     assert action.get_win_launch_params() is None

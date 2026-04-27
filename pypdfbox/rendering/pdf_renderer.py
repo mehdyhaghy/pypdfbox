@@ -81,6 +81,13 @@ class _GState:
     stroke_rgb: tuple[int, int, int] = (0, 0, 0)
     fill_rgb: tuple[int, int, int] = (0, 0, 0)
     line_width: float = 1.0
+    # ---- pattern / shading paints (non-stroking + stroking) ----
+    # When non-None, the corresponding paint is sourced from a
+    # ``PDAbstractPattern`` (tiling or shading) instead of the solid RGB
+    # above. The solid ``*_rgb`` is left untouched as a fallback for paths
+    # that don't yet support the requested pattern type.
+    fill_pattern: Any | None = None
+    stroke_pattern: Any | None = None
     # ---- text state (PDF spec §9.3) ----
     text_font: Any | None = None  # PDFont subclass or None
     text_font_size: float = 0.0
@@ -105,6 +112,8 @@ class _GState:
             stroke_rgb=self.stroke_rgb,
             fill_rgb=self.fill_rgb,
             line_width=self.line_width,
+            fill_pattern=self.fill_pattern,
+            stroke_pattern=self.stroke_pattern,
             text_font=self.text_font,
             text_font_size=self.text_font_size,
             text_matrix=self.text_matrix,
@@ -491,6 +500,99 @@ class PDFRenderer(PDFStreamEngine):
         c, m, y, k = (_to_float(operands[i]) for i in range(4))
         self._gs.fill_rgb = _cmyk_to_rgb_bytes(c, m, y, k)
 
+    # ---- pattern / shading colour selection (cs / CS / scn / SCN) ----
+
+    def _op_set_stroke_color_space(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        # CS — selects the stroking colour space. We only special-case the
+        # /Pattern colour space here (so a subsequent ``SCN /Name`` can be
+        # routed to the named pattern). Other colour spaces fall through to
+        # the existing solid-colour state.
+        if not operands or not isinstance(operands[0], COSName):
+            self._gs.stroke_pattern = None
+            return
+        name: COSName = operands[0]
+        if name.name != "Pattern":
+            self._gs.stroke_pattern = None
+
+    def _op_set_fill_color_space(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        # cs — non-stroking colour space. Mirrors ``_op_set_stroke_color_space``.
+        if not operands or not isinstance(operands[0], COSName):
+            self._gs.fill_pattern = None
+            return
+        name: COSName = operands[0]
+        if name.name != "Pattern":
+            self._gs.fill_pattern = None
+
+    def _op_set_stroke_color_n(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        # SCN — last operand is a /PatternName when the current colour space
+        # is /Pattern; preceding operands are tint components for an
+        # uncoloured tiling pattern's underlying colour space. Only the
+        # pattern lookup is wired here; the underlying tint isn't applied
+        # (uncoloured tiling patterns paint via their content stream's own
+        # colour ops).
+        self._gs.stroke_pattern = self._resolve_pattern_operand(operands)
+
+    def _op_set_fill_color_n(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        # scn — non-stroking equivalent of SCN.
+        self._gs.fill_pattern = self._resolve_pattern_operand(operands)
+
+    def _resolve_pattern_operand(
+        self, operands: list[COSBase]
+    ) -> Any | None:
+        """Look up a ``/Pattern`` resource named by the trailing operand of
+        a ``scn`` / ``SCN`` call. Returns ``None`` when the operand isn't a
+        name, the resource is missing, or the pattern can't be wrapped."""
+        if not operands:
+            return None
+        last = operands[-1]
+        if not isinstance(last, COSName):
+            return None
+        resources = self._resources
+        if resources is None:
+            return None
+        try:
+            return resources.get_pattern(last)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: cannot resolve pattern %s: %s", last.name, exc
+            )
+            return None
+
+    # ---- shading-fill operator (sh) ----
+
+    def _op_shading_fill(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        # sh /Name — paint the named shading over the current clipping
+        # region. The shading is fetched from the current /Resources
+        # /Shading sub-dict.
+        if not operands or not isinstance(operands[0], COSName):
+            return
+        if self._draw is None or self._image is None:
+            return
+        name: COSName = operands[0]
+        resources = self._resources
+        if resources is None:
+            return
+        try:
+            shading = resources.get_shading(name)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: cannot resolve shading %s: %s", name.name, exc
+            )
+            return
+        if shading is None:
+            return
+        self._paint_shading(shading, region_mask=None)
+
     # ---- line state ----
 
     def _op_line_width(self, _op: Any, operands: list[COSBase]) -> None:
@@ -644,6 +746,26 @@ class PDFRenderer(PDFStreamEngine):
             self._apply_pending_clip(default_even_odd=even_odd)
             return
         if self._draw is None or self._image is None:
+            return
+
+        # Pattern / shading fill — handled separately so the path mask is
+        # filled with tile/gradient pixels rather than a solid colour. The
+        # stroke (if any) still goes through aggdraw with the solid stroke
+        # colour after the pattern fill commits.
+        if fill and self._gs.fill_pattern is not None:
+            self._paint_pattern_fill(even_odd=even_odd)
+            if stroke:
+                clip_mask = self._gs.clip_mask
+                if clip_mask is not None:
+                    # Re-feed through the clip path for the stroke.
+                    self._paint_through_clip(
+                        stroke=True, fill=False, even_odd=False,
+                        clip_mask=clip_mask,
+                    )
+                else:
+                    self._stroke_via_aggdraw()
+            self._apply_pending_clip(default_even_odd=even_odd)
+            self._reset_path()
             return
 
         clip_mask = self._gs.clip_mask
@@ -862,6 +984,662 @@ class PDFRenderer(PDFStreamEngine):
         a, b, c, d, e, f = m
         return (a * x + c * y + e, b * x + d * y + f)
 
+    # ---- pattern + shading fill helpers ----
+
+    def _build_path_mask(self, *, even_odd: bool) -> Image.Image | None:
+        """Rasterise the current path into a same-size ``"L"`` PIL mask.
+
+        Used by tiling-pattern and shading fill to bound the painted region
+        to the path's interior. Returns ``None`` when no subpaths produce a
+        polygon (degenerate / empty path)."""
+        if self._image is None:
+            return None
+        ctm = self._full_ctm()
+        width_px, height_px = self._image.size
+        if even_odd:
+            accumulator = Image.new("1", (width_px, height_px), 0)
+            any_polygon = False
+            for subpath in self._subpaths:
+                polygon = self._flatten_subpath_to_device(subpath, ctm)
+                if len(polygon) < 3:
+                    continue
+                sub_mask = Image.new("1", (width_px, height_px), 0)
+                ImageDraw.Draw(sub_mask).polygon(polygon, fill=1, outline=1)
+                accumulator = ImageChops.logical_xor(accumulator, sub_mask)
+                any_polygon = True
+            if not any_polygon:
+                return None
+            return accumulator.convert("L").point(
+                lambda v: 255 if v else 0
+            )
+        # Non-zero fill — union of subpaths is a good approximation when
+        # subpaths don't self-intersect (matches existing clip path code).
+        mask = Image.new("L", (width_px, height_px), 0)
+        cdraw = ImageDraw.Draw(mask)
+        any_polygon = False
+        for subpath in self._subpaths:
+            polygon = self._flatten_subpath_to_device(subpath, ctm)
+            if len(polygon) < 3:
+                continue
+            cdraw.polygon(polygon, fill=255, outline=255)
+            any_polygon = True
+        if not any_polygon:
+            return None
+        return mask
+
+    def _paint_pattern_fill(self, *, even_odd: bool) -> None:
+        """Dispatch a pattern fill to the right helper. Tiling vs. shading
+        is decided on the resolved ``PDAbstractPattern`` instance.
+        Falls back to a solid fill (using the GS ``fill_rgb``) for any
+        pattern type we don't yet rasterise."""
+        # Local import — pattern types live in pdmodel.graphics.pattern and
+        # we don't want to drag them into renderer module load time.
+        from pypdfbox.pdmodel.graphics.pattern import (  # noqa: PLC0415
+            PDShadingPattern,
+            PDTilingPattern,
+        )
+
+        pattern = self._gs.fill_pattern
+        if pattern is None:
+            return
+        mask = self._build_path_mask(even_odd=even_odd)
+        if mask is None:
+            return
+        # Compose with current clip mask, if any.
+        clip_mask = self._gs.clip_mask
+        if clip_mask is not None:
+            mask = ImageChops.multiply(mask, clip_mask)
+
+        if isinstance(pattern, PDTilingPattern):
+            self._paint_tiling_pattern(pattern, region_mask=mask)
+            return
+        if isinstance(pattern, PDShadingPattern):
+            shading = pattern.get_shading()
+            if shading is not None:
+                self._paint_shading(shading, region_mask=mask)
+                return
+        # Unknown / unsupported — fall back to solid fill.
+        _log.debug(
+            "rendering: unsupported pattern type %s; falling back to solid",
+            type(pattern).__name__,
+        )
+        self._fill_mask_with_rgb(mask, self._gs.fill_rgb)
+
+    def _fill_mask_with_rgb(
+        self, mask: Image.Image, rgb: tuple[int, int, int]
+    ) -> None:
+        """Paint ``rgb`` onto the canvas wherever ``mask`` is non-zero."""
+        if self._image is None or self._draw is None:
+            return
+        self._draw.flush()
+        if self._image.mode == "RGBA":
+            r, g, b = rgb
+            layer = Image.new("RGBA", self._image.size, (r, g, b, 255))
+        else:
+            layer = Image.new("RGB", self._image.size, rgb)
+        self._image.paste(layer, (0, 0), mask)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+
+    def _paint_tiling_pattern(
+        self,
+        pattern: Any,
+        *,
+        region_mask: Image.Image | None,
+    ) -> None:
+        """Render a ``PDTilingPattern`` onto the canvas, bounded by
+        ``region_mask`` (the path interior in device space).
+
+        Strategy: rasterise one cell of the pattern's content stream into a
+        Pillow tile sized by ``/BBox``+``/XStep``+``/YStep``, then tile that
+        tile across the canvas via repeated ``Image.paste`` and composite
+        through ``region_mask``.
+        """
+        if self._image is None or self._draw is None or region_mask is None:
+            return
+        bbox = pattern.get_b_box()
+        x_step = pattern.get_x_step()
+        y_step = pattern.get_y_step()
+        if bbox is None or x_step <= 0.0 or y_step <= 0.0:
+            _log.debug(
+                "rendering: tiling pattern missing /BBox or /XStep/YStep"
+            )
+            return
+        # Render one cell. We want the cell as it appears under the page's
+        # current CTM scaled by the device CTM, so the tile pixel
+        # dimensions match the on-page dimensions (i.e. one device pixel per
+        # device pixel).
+        full_ctm = self._full_ctm()
+        # Tile bounding-box dimensions in user space.
+        bbox_w = bbox.get_width()
+        bbox_h = bbox.get_height()
+        if bbox_w <= 0.0 or bbox_h <= 0.0:
+            return
+        # Scale factor from user space to device pixels (same metric used
+        # for stroke-width up-conversion).
+        scale = self._approx_scale(full_ctm)
+        # Tile size in device pixels — at least 1 px to avoid zero-size
+        # PIL images.
+        tile_w_px = max(1, int(round(x_step * scale)))
+        tile_h_px = max(1, int(round(y_step * scale)))
+
+        try:
+            tile = self._render_tiling_cell(
+                pattern, bbox=bbox, tile_size=(tile_w_px, tile_h_px)
+            )
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: tiling pattern cell render failed: %s", exc)
+            return
+        if tile is None:
+            return
+
+        # Build a same-size composed canvas of repeated tiles, then paste
+        # through ``region_mask``.
+        self._draw.flush()
+        canvas_w, canvas_h = self._image.size
+        tiled = Image.new("RGB", (canvas_w, canvas_h), (255, 255, 255))
+        for ty in range(0, canvas_h, tile_h_px):
+            for tx in range(0, canvas_w, tile_w_px):
+                tiled.paste(tile, (tx, ty))
+        # Place under the region mask.
+        self._image.paste(tiled, (0, 0), region_mask)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+
+    def _render_tiling_cell(
+        self,
+        pattern: Any,
+        *,
+        bbox: Any,
+        tile_size: tuple[int, int],
+    ) -> Image.Image | None:
+        """Render one cell of ``pattern`` to a fresh PIL image of size
+        ``tile_size``.
+
+        Internally swaps in a sub-renderer state targeting the tile image
+        and feeds the pattern's content stream through the existing
+        operator dispatch loop. The page state is saved + restored around
+        the recursion so the outer render isn't disturbed.
+        """
+        cos_stream = pattern.get_cos_object()
+        if not isinstance(cos_stream, COSStream):
+            return None
+        data = cos_stream.to_byte_array()
+        if not data:
+            # Empty content stream — produce a transparent-white tile so
+            # the caller still tiles a uniform field instead of skipping.
+            return Image.new("RGB", tile_size, (255, 255, 255))
+
+        tile_w, tile_h = tile_size
+        tile_image = Image.new("RGB", (tile_w, tile_h), (255, 255, 255))
+        bbox_w = bbox.get_width()
+        bbox_h = bbox.get_height()
+        if bbox_w <= 0.0 or bbox_h <= 0.0:
+            return None
+        bbox_x = bbox.get_lower_left_x()
+        bbox_y = bbox.get_lower_left_y()
+        # Affine that maps the pattern's /BBox onto the tile pixel grid
+        # with the standard PDF y-flip baked in.
+        sx = tile_w / bbox_w
+        sy = tile_h / bbox_h
+        tile_device_ctm: _Matrix = (
+            sx, 0.0,
+            0.0, -sy,
+            -bbox_x * sx, bbox_y * sy + tile_h,
+        )
+
+        # Snapshot + replace per-render state for the recursion.
+        prev_image = self._image
+        prev_draw = self._draw
+        prev_device_ctm = self._device_ctm
+        prev_page_height = self._page_height_px
+        prev_gs_stack = self._gs_stack
+        prev_subpaths = self._subpaths
+        prev_current_subpath = self._current_subpath
+        prev_current_point = self._current_point
+        prev_pending_clip = self._pending_clip
+        prev_resources = self._resources
+
+        self._image = tile_image
+        self._draw = aggdraw.Draw(tile_image)
+        self._draw.setantialias(True)
+        self._device_ctm = tile_device_ctm
+        self._page_height_px = float(tile_h)
+        self._gs_stack = [_GState()]
+        self._subpaths = []
+        self._current_subpath = None
+        self._current_point = (0.0, 0.0)
+        self._pending_clip = None
+        # Pattern resources live on the pattern's own /Resources dict.
+        try:
+            pattern_res = pattern.get_resources()
+        except Exception:  # noqa: BLE001
+            pattern_res = None
+        if pattern_res is not None:
+            self._resources = pattern_res
+
+        try:
+            self._process_form_bytes(data)
+            current = self._draw
+            if current is not None:
+                current.flush()
+        finally:
+            self._image = prev_image
+            self._draw = prev_draw
+            self._device_ctm = prev_device_ctm
+            self._page_height_px = prev_page_height
+            self._gs_stack = prev_gs_stack
+            self._subpaths = prev_subpaths
+            self._current_subpath = prev_current_subpath
+            self._current_point = prev_current_point
+            self._pending_clip = prev_pending_clip
+            self._resources = prev_resources
+
+        return tile_image
+
+    def _paint_shading(
+        self,
+        shading: Any,
+        *,
+        region_mask: Image.Image | None,
+    ) -> None:
+        """Render a ``PDShading`` onto the canvas. ``region_mask`` (when
+        provided) restricts output to the path interior; ``None`` means
+        "paint over the current clip / whole page" which is what the
+        ``sh`` operator wants."""
+        if self._image is None or self._draw is None:
+            return
+        # Local import to keep cluster boundaries explicit.
+        from pypdfbox.pdmodel.graphics.shading import (  # noqa: PLC0415
+            PDShading,
+            PDShadingType2,
+            PDShadingType3,
+        )
+
+        # Region mask — for `sh`, default to the current clip if any, else
+        # the full canvas.
+        if region_mask is None:
+            clip_mask = self._gs.clip_mask
+            if clip_mask is not None:
+                region_mask = clip_mask
+            else:
+                region_mask = Image.new("L", self._image.size, 255)
+
+        if isinstance(shading, PDShadingType2):
+            self._paint_axial_shading(shading, region_mask=region_mask)
+            return
+        if isinstance(shading, PDShadingType3):
+            self._paint_radial_shading(shading, region_mask=region_mask)
+            return
+        # Type 1 / 4 / 5 / 6 / 7 — fall back to a solid fill at the
+        # function's value at u=0.
+        _log.debug(
+            "rendering: unsupported shading type %s; falling back to f(0)",
+            type(shading).__name__,
+        )
+        rgb = self._evaluate_shading_rgb(shading, 0.0)
+        if rgb is None:
+            return
+        self._fill_mask_with_rgb(region_mask, _rgb_bytes(*rgb))
+
+    def _evaluate_shading_rgb(
+        self, shading: Any, t: float
+    ) -> tuple[float, float, float] | None:
+        """Evaluate the shading's ``/Function`` at ``t`` and return an
+        sRGB triple in [0, 1]. Returns ``None`` on failure (e.g. function
+        type 0 / 4 — eval not yet implemented)."""
+        try:
+            fn = shading.get_function()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: shading get_function failed: %s", exc)
+            return None
+        if fn is None:
+            return None
+        # Some shading subclasses (Type 2) return the raw ``/Function`` COS
+        # object; others (Type 3) wrap into a typed ``PDFunction`` already.
+        # Normalise via PDFunction.create() when ``fn`` lacks ``eval``.
+        if not hasattr(fn, "eval"):
+            try:
+                from pypdfbox.pdmodel.common.function import (  # noqa: PLC0415
+                    PDFunction,
+                )
+
+                fn = PDFunction.create(fn)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: PDFunction.create failed: %s", exc)
+                return None
+            if fn is None:
+                return None
+        try:
+            out = fn.eval([float(t)])
+        except (NotImplementedError, Exception) as exc:  # noqa: BLE001
+            _log.debug("rendering: shading function eval failed: %s", exc)
+            return None
+        if not out:
+            return None
+        # Honour the shading's /ColorSpace where possible. For DeviceRGB,
+        # output is already 3 components in [0,1]. DeviceGray expands to
+        # (g, g, g); DeviceCMYK uses the standard 1-x conversion. Anything
+        # else falls back to padding/truncating to 3 channels.
+        cs = None
+        try:
+            cs = shading.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs = None
+        cs_name = cs.name if isinstance(cs, COSName) else None
+        if cs_name == "DeviceGray" or len(out) == 1:
+            g = float(out[0])
+            return (g, g, g)
+        if cs_name == "DeviceCMYK" or len(out) == 4:
+            c, m, y, k = (float(v) for v in out[:4])
+            r = (1.0 - c) * (1.0 - k)
+            g = (1.0 - m) * (1.0 - k)
+            b = (1.0 - y) * (1.0 - k)
+            return (r, g, b)
+        # DeviceRGB / unknown 3-channel — pad with zeros if too short.
+        padded = list(out) + [0.0, 0.0, 0.0]
+        return (float(padded[0]), float(padded[1]), float(padded[2]))
+
+    def _paint_axial_shading(
+        self,
+        shading: Any,
+        *,
+        region_mask: Image.Image,
+    ) -> None:
+        """Type 2 (axial) shading per PDF 32000-1 §8.7.4.5.3.
+
+        ``/Coords`` = ``[x0 y0 x1 y1]`` in pattern user space. For each
+        pixel in the region mask, project onto the axis to obtain
+        ``u = ((x-x0)*(x1-x0) + (y-y0)*(y1-y0)) / |axis|^2``, clamp by
+        ``/Extend``, then evaluate the function over ``/Domain``.
+        """
+        if self._image is None:
+            return
+        coords = shading.get_coords()
+        if coords is None or coords.size() < 4:
+            return
+        x0 = _to_float(coords.get_object(0))
+        y0 = _to_float(coords.get_object(1))
+        x1 = _to_float(coords.get_object(2))
+        y1 = _to_float(coords.get_object(3))
+        dx = x1 - x0
+        dy = y1 - y0
+        denom = dx * dx + dy * dy
+        if denom <= 0.0:
+            return
+        # Domain — default [0, 1] per spec.
+        domain_lo, domain_hi = self._shading_domain(shading)
+        # Extend — default [false, false] per spec.
+        extend_start, extend_end = self._shading_extend(shading)
+
+        # Inverse of the full CTM so device pixels can be mapped back to
+        # pattern (user) space for axis projection.
+        inv = self._invert_matrix(self._full_ctm())
+        if inv is None:
+            return
+
+        canvas_w, canvas_h = self._image.size
+        # Build an RGB pixel buffer for the painted region. Sample once
+        # per pixel — straightforward and well within Pillow's sweet spot
+        # for the small synthetic pages we render in tests. Larger pages
+        # would benefit from numpy vectorisation; that's a perf cluster.
+        pixels: list[int] = []
+        mask_data = region_mask.tobytes()
+        # Default fallback colour when function eval fails.
+        fallback = (0, 0, 0)
+        # Pre-evaluate a small ramp of colours and lerp. Cheap and
+        # reasonably accurate for monotone Type 2 functions like
+        # exponential interpolation.
+        ramp_steps = 256
+        ramp: list[tuple[int, int, int]] = []
+        for i in range(ramp_steps):
+            t = domain_lo + (domain_hi - domain_lo) * (i / (ramp_steps - 1))
+            rgb = self._evaluate_shading_rgb(shading, t)
+            if rgb is None:
+                ramp.append(fallback)
+            else:
+                ramp.append(_rgb_bytes(*rgb))
+        # Precompute the affine for inverse CTM application.
+        ia, ib, ic, id_, ie, if_ = inv
+        for py in range(canvas_h):
+            row_off = py * canvas_w
+            for px in range(canvas_w):
+                if mask_data[row_off + px] == 0:
+                    pixels.extend((255, 255, 255))
+                    continue
+                # Map device pixel -> pattern (user) space.
+                ux = ia * px + ic * py + ie
+                uy = ib * px + id_ * py + if_
+                u = ((ux - x0) * dx + (uy - y0) * dy) / denom
+                # Apply /Extend handling per §8.7.4.5.3.
+                if u < 0.0:
+                    if not extend_start:
+                        pixels.extend((255, 255, 255))
+                        continue
+                    u = 0.0
+                elif u > 1.0:
+                    if not extend_end:
+                        pixels.extend((255, 255, 255))
+                        continue
+                    u = 1.0
+                # Map u in [0,1] to /Domain.
+                t = domain_lo + (domain_hi - domain_lo) * u
+                # Lerp into pre-evaluated ramp.
+                if domain_hi == domain_lo:
+                    idx = 0
+                else:
+                    idx = int(round(
+                        (t - domain_lo) / (domain_hi - domain_lo)
+                        * (ramp_steps - 1)
+                    ))
+                if idx < 0:
+                    idx = 0
+                elif idx >= ramp_steps:
+                    idx = ramp_steps - 1
+                r, g, b = ramp[idx]
+                pixels.extend((r, g, b))
+
+        gradient = Image.frombytes(
+            "RGB", (canvas_w, canvas_h), bytes(pixels)
+        )
+        # Compose: use ``region_mask`` as the paste mask so only the
+        # interior of the region picks up the gradient.
+        self._draw.flush() if self._draw is not None else None
+        self._image.paste(gradient, (0, 0), region_mask)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+
+    def _paint_radial_shading(
+        self,
+        shading: Any,
+        *,
+        region_mask: Image.Image,
+    ) -> None:
+        """Type 3 (radial) shading per PDF 32000-1 §8.7.4.5.4.
+
+        ``/Coords`` = ``[x0 y0 r0 x1 y1 r1]`` defines two circles. For
+        each pixel, find the parameter ``s`` such that the pixel sits on
+        the circle ``c(s) = ((1-s)*c0 + s*c1, (1-s)*r0 + s*r1)``. We solve
+        the standard quadratic in ``s`` and pick the larger valid root
+        (matches Adobe / Java2D behaviour).
+        """
+        if self._image is None:
+            return
+        coords = shading.get_coords()
+        if coords is None or coords.size() < 6:
+            return
+        x0 = _to_float(coords.get_object(0))
+        y0 = _to_float(coords.get_object(1))
+        r0 = _to_float(coords.get_object(2))
+        x1 = _to_float(coords.get_object(3))
+        y1 = _to_float(coords.get_object(4))
+        r1 = _to_float(coords.get_object(5))
+
+        domain_lo, domain_hi = self._shading_domain(shading)
+        extend_start, extend_end = self._shading_extend(shading)
+        inv = self._invert_matrix(self._full_ctm())
+        if inv is None:
+            return
+
+        canvas_w, canvas_h = self._image.size
+        ramp_steps = 256
+        ramp: list[tuple[int, int, int]] = []
+        for i in range(ramp_steps):
+            t = domain_lo + (domain_hi - domain_lo) * (i / (ramp_steps - 1))
+            rgb = self._evaluate_shading_rgb(shading, t)
+            ramp.append(_rgb_bytes(*rgb) if rgb is not None else (0, 0, 0))
+
+        ia, ib, ic, id_, ie, if_ = inv
+        dx = x1 - x0
+        dy = y1 - y0
+        dr = r1 - r0
+        # Quadratic coefficients in s for ((x-cs)^2 + (y-cs')^2 = r(s)^2).
+        a = dx * dx + dy * dy - dr * dr
+
+        pixels: list[int] = []
+        mask_data = region_mask.tobytes()
+        for py in range(canvas_h):
+            row_off = py * canvas_w
+            for px in range(canvas_w):
+                if mask_data[row_off + px] == 0:
+                    pixels.extend((255, 255, 255))
+                    continue
+                ux = ia * px + ic * py + ie
+                uy = ib * px + id_ * py + if_
+                # Solve a*s^2 + b*s + c = 0 where:
+                # b = -2*((ux-x0)*dx + (uy-y0)*dy + r0*dr)
+                # c = (ux-x0)^2 + (uy-y0)^2 - r0^2
+                bx = ux - x0
+                by = uy - y0
+                bcoef = -2.0 * (bx * dx + by * dy + r0 * dr)
+                ccoef = bx * bx + by * by - r0 * r0
+                s: float | None = None
+                if abs(a) < 1e-12:
+                    # Degenerate (parallel circles, equal radii) — linear.
+                    if abs(bcoef) > 1e-12:
+                        cand = -ccoef / bcoef
+                        s = cand
+                else:
+                    disc = bcoef * bcoef - 4.0 * a * ccoef
+                    if disc >= 0.0:
+                        sqrt_disc = disc ** 0.5
+                        s_plus = (-bcoef + sqrt_disc) / (2.0 * a)
+                        s_minus = (-bcoef - sqrt_disc) / (2.0 * a)
+                        # Pick the larger root that is in-range, falling
+                        # back to the smaller one when it is.
+                        candidates = sorted(
+                            (s_minus, s_plus), reverse=True
+                        )
+                        for cand in candidates:
+                            # Radius at this parameter must be non-negative.
+                            radius = r0 + cand * dr
+                            if radius < 0.0:
+                                continue
+                            s = cand
+                            break
+                if s is None:
+                    pixels.extend((255, 255, 255))
+                    continue
+                if s < 0.0:
+                    if not extend_start:
+                        pixels.extend((255, 255, 255))
+                        continue
+                    s = 0.0
+                elif s > 1.0:
+                    if not extend_end:
+                        pixels.extend((255, 255, 255))
+                        continue
+                    s = 1.0
+                t = domain_lo + (domain_hi - domain_lo) * s
+                if domain_hi == domain_lo:
+                    idx = 0
+                else:
+                    idx = int(round(
+                        (t - domain_lo) / (domain_hi - domain_lo)
+                        * (ramp_steps - 1)
+                    ))
+                if idx < 0:
+                    idx = 0
+                elif idx >= ramp_steps:
+                    idx = ramp_steps - 1
+                r, g, b = ramp[idx]
+                pixels.extend((r, g, b))
+
+        gradient = Image.frombytes(
+            "RGB", (canvas_w, canvas_h), bytes(pixels)
+        )
+        if self._draw is not None:
+            self._draw.flush()
+        self._image.paste(gradient, (0, 0), region_mask)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+
+    @staticmethod
+    def _shading_domain(shading: Any) -> tuple[float, float]:
+        try:
+            domain = shading.get_domain()
+        except Exception:  # noqa: BLE001
+            return (0.0, 1.0)
+        if domain is None:
+            return (0.0, 1.0)
+        # PDShadingType3.get_domain may return a synthesised default;
+        # PDShadingType2 returns the raw COSArray or None. Both expose
+        # to_float_array via COSArray.
+        try:
+            flat = domain.to_float_array()
+        except Exception:  # noqa: BLE001
+            return (0.0, 1.0)
+        if len(flat) < 2:
+            return (0.0, 1.0)
+        return (float(flat[0]), float(flat[1]))
+
+    @staticmethod
+    def _shading_extend(shading: Any) -> tuple[bool, bool]:
+        # PDShadingType3 returns a 2-tuple of bools. PDShadingType2 returns
+        # a COSArray (or None). Adapt both shapes.
+        try:
+            ext = shading.get_extend()
+        except Exception:  # noqa: BLE001
+            return (False, False)
+        if ext is None:
+            return (False, False)
+        if isinstance(ext, tuple) and len(ext) == 2:
+            return (bool(ext[0]), bool(ext[1]))
+        # COSArray path.
+        try:
+            from pypdfbox.cos import COSBoolean  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            return (False, False)
+        try:
+            size = ext.size()
+        except Exception:  # noqa: BLE001
+            return (False, False)
+        if size < 2:
+            return (False, False)
+        a = ext.get_object(0)
+        b = ext.get_object(1)
+        return (
+            isinstance(a, COSBoolean) and a.get_value(),
+            isinstance(b, COSBoolean) and b.get_value(),
+        )
+
+    @staticmethod
+    def _invert_matrix(m: _Matrix) -> _Matrix | None:
+        a, b, c, d, e, f = m
+        det = a * d - b * c
+        if abs(det) < 1e-12:
+            return None
+        inv_det = 1.0 / det
+        # Inverse of the 2x2 block.
+        ia = d * inv_det
+        ib = -b * inv_det
+        ic = -c * inv_det
+        id_ = a * inv_det
+        # Translate back: -CTM_inv * (e, f)
+        ie = -(ia * e + ic * f)
+        if_ = -(ib * e + id_ * f)
+        return (ia, ib, ic, id_, ie, if_)
+
     # ---- clip path ----
 
     def _apply_pending_clip(self, *, default_even_odd: bool) -> None:
@@ -944,11 +1722,29 @@ class PDFRenderer(PDFStreamEngine):
                 return
             if pil_image is None:
                 return
+            # PDF spec §11.6.5: an image XObject with /SMask carries a
+            # separate grayscale alpha mask. Decode it and convert the
+            # paste image to RGBA so the paste path can honour the alpha.
+            try:
+                smask = xobject.get_soft_mask()
+            except Exception:  # noqa: BLE001
+                smask = None
+            if smask is not None:
+                pil_image = self._apply_smask(pil_image, smask)
             self._paste_image(pil_image)
             return
 
         if isinstance(xobject, PDFormXObject):
-            self._render_form_xobject(xobject)
+            # PDF spec §11.4.7: a Form XObject with a /Group dict whose
+            # /S is /Transparency is rendered onto its own backdrop and
+            # alpha-composited onto the parent. Detect via the helper if
+            # present (upstream PDFormXObject in newer versions exposes
+            # is_transparency_group()), else fall back to inspecting
+            # /Group/S directly.
+            if self._is_transparency_group(xobject):
+                self._render_transparency_group(xobject)
+            else:
+                self._render_form_xobject(xobject)
             return
 
     def _render_form_xobject(self, form: Any) -> None:
@@ -1012,6 +1808,115 @@ class PDFRenderer(PDFStreamEngine):
                 self._resources = prev_resources
         finally:
             self._pop_gs()
+
+    @staticmethod
+    def _is_transparency_group(form: Any) -> bool:
+        """Return True if ``form`` carries a ``/Group`` dict with
+        ``/S /Transparency``. Honours an upstream-style
+        :meth:`is_transparency_group` helper when present so a future
+        ported variant of ``PDFormXObject`` plugs in seamlessly."""
+        helper = getattr(form, "is_transparency_group", None)
+        if callable(helper):
+            try:
+                return bool(helper())
+            except Exception:  # noqa: BLE001 — defensive
+                pass
+        try:
+            group = form.get_group()
+        except Exception:  # noqa: BLE001
+            return False
+        if not isinstance(group, COSDictionary):
+            return False
+        s = group.get_dictionary_object(COSName.get_pdf_name("S"))
+        if isinstance(s, COSName) and s.name == "Transparency":
+            return True
+        return False
+
+    def _apply_smask(self, image: Image.Image, smask: Any) -> Image.Image:
+        """Return ``image`` with the SMask Image XObject applied as alpha.
+
+        The mask is decoded as 8-bit grayscale via the existing
+        :meth:`PDImageXObject.to_pil_image` helper and resized to match
+        the cover image. Any failure logs at debug level and returns the
+        original image unchanged — alpha-mask compositing is best-effort
+        in the lite renderer (PDF spec §11.6.5)."""
+        try:
+            mask_image = smask.to_pil_image()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: cannot decode SMask: %s", exc)
+            return image
+        if mask_image is None:
+            return image
+        # Spec mandates the SMask be evaluated as luminance (single-channel
+        # grayscale). PIL's "L" conversion handles RGB → luminance for us.
+        if mask_image.mode != "L":
+            mask_image = mask_image.convert("L")
+        if mask_image.size != image.size:
+            mask_image = mask_image.resize(image.size, Image.BILINEAR)
+        rgba = image.convert("RGBA")
+        rgba.putalpha(mask_image)
+        return rgba
+
+    def _render_transparency_group(self, form: Any) -> None:
+        """Render a transparency-group Form XObject onto an isolated
+        RGBA canvas and alpha-composite onto the page.
+
+        Knockout (``/K true``) and non-isolated (``/I false``) groups
+        are not yet modelled — both fall back to the standard isolated
+        non-knockout path with a debug log. PDF spec §11.4.7."""
+        assert self._image is not None
+        assert self._draw is not None
+
+        try:
+            group = form.get_group()
+        except Exception:  # noqa: BLE001
+            group = None
+        if isinstance(group, COSDictionary):
+            knockout = group.get_dictionary_object(COSName.get_pdf_name("K"))
+            isolated = group.get_dictionary_object(COSName.get_pdf_name("I"))
+            if knockout is not None or isolated is not None:
+                _log.debug(
+                    "rendering: knockout/isolated transparency group flags "
+                    "ignored (K=%r, I=%r)", knockout, isolated,
+                )
+
+        # Flush any pending aggdraw strokes onto the parent canvas before
+        # we redirect to a fresh group canvas — otherwise they'd be
+        # silently dropped on the floor when we replace ``self._draw``.
+        self._draw.flush()
+
+        parent_image = self._image
+        parent_draw = self._draw
+        # Group canvas matches the page in size + scale; transparent
+        # backdrop so the group's own paints determine final alpha.
+        group_canvas = Image.new("RGBA", parent_image.size, (0, 0, 0, 0))
+        # The renderer's path/text helpers blit through aggdraw which
+        # only supports RGB(A) PIL images — RGBA works.
+        self._image = group_canvas
+        self._draw = aggdraw.Draw(group_canvas)
+        self._draw.setantialias(True)
+        try:
+            self._render_form_xobject(form)
+        finally:
+            # Commit any final group strokes, then composite back.
+            current = self._draw
+            if current is not None:
+                current.flush()
+            self._image = parent_image
+            self._draw = parent_draw
+
+        # Alpha-composite the group result onto the parent. Pillow's
+        # alpha_composite needs both images in RGBA; convert and back.
+        parent_rgba = parent_image.convert("RGBA")
+        parent_rgba.alpha_composite(group_canvas)
+        composited = parent_rgba.convert("RGB")
+        # In-place pixel copy keeps ``self._image`` identity stable
+        # across the rest of the page render.
+        parent_image.paste(composited, (0, 0))
+        # Re-attach the aggdraw wrapper so further drawing sees the
+        # composited pixels.
+        self._draw = aggdraw.Draw(parent_image)
+        self._draw.setantialias(True)
 
     def _process_form_bytes(self, data: bytes) -> None:
         """Internal: feed a Form XObject's content-stream bytes through
@@ -1111,17 +2016,36 @@ class PDFRenderer(PDFStreamEngine):
         resized = pil_image.resize((target_w, target_h), Image.BILINEAR)
         flipped = resized.transpose(Image.FLIP_TOP_BOTTOM)
 
+        # If the source image carries an alpha channel (e.g. an SMask
+        # was applied upstream), split it off and use it as the paste
+        # mask so transparent pixels don't overwrite the canvas.
+        alpha: Image.Image | None = None
+        if flipped.mode == "RGBA":
+            alpha = flipped.split()[3]
+            flipped_rgb = flipped.convert("RGB")
+        else:
+            flipped_rgb = flipped
+
         clip_mask = self._gs.clip_mask
         if clip_mask is None:
-            self._image.paste(flipped, (x0, y0))
+            if alpha is None:
+                self._image.paste(flipped_rgb, (x0, y0))
+            else:
+                self._image.paste(flipped_rgb, (x0, y0), alpha)
         else:
             # Build a mask of the image bbox inside the clip and composite.
             paste_mask = Image.new("L", self._image.size, 0)
             paste_mask.paste(255, (x0, y0, x0 + target_w, y0 + target_h))
             combined = ImageChops.multiply(paste_mask, clip_mask)
+            if alpha is not None:
+                # Multiply the per-pixel alpha into the bbox-restricted mask
+                # so transparent SMask regions don't over-paint the clip.
+                full_alpha = Image.new("L", self._image.size, 0)
+                full_alpha.paste(alpha, (x0, y0))
+                combined = ImageChops.multiply(combined, full_alpha)
             # Place the image into a same-size buffer to align with mask.
             staging = Image.new("RGB", self._image.size, (255, 255, 255))
-            staging.paste(flipped, (x0, y0))
+            staging.paste(flipped_rgb, (x0, y0))
             self._image.paste(staging, (0, 0), combined)
 
         # Re-attach the aggdraw wrapper so further drawing sees the new
@@ -1143,11 +2067,47 @@ class PDFRenderer(PDFStreamEngine):
         data = op.get_image_data()
         if params is None or data is None:
             return
+        from pypdfbox.pdmodel.graphics.image.pd_inline_image import (  # noqa: PLC0415
+            PDInlineImage,
+        )
+
         try:
-            pil_image = self._decode_inline_image(params, data)
+            inline_image = PDInlineImage(params, data, self._resources)
         except Exception as exc:  # noqa: BLE001
-            _log.debug("rendering: cannot decode inline image: %s", exc)
+            _log.debug("rendering: cannot construct inline image: %s", exc)
             return
+        self.show_inline_image(inline_image)
+
+    def show_inline_image(self, inline_image: Any) -> None:
+        """Paste a fully-constructed :class:`PDInlineImage` onto the
+        current canvas honouring the active CTM.
+
+        Mirrors upstream's
+        ``PDFGraphicsStreamEngine.showInlineImage``-via-``drawImage``
+        path: an inline image is rendered through the same paste
+        pipeline as an XObject image. We first try the
+        :meth:`PDInlineImage.to_pil_image` helper (handles JPEG / JPX /
+        plain DeviceRGB / DeviceGray) and fall back to the legacy
+        :meth:`_decode_inline_image` path for parameter shapes the
+        helper doesn't yet cover (so previously-rendering inline images
+        keep rendering).
+        """
+        if self._draw is None or self._image is None:
+            return
+        pil_image: Image.Image | None
+        try:
+            pil_image = inline_image.to_pil_image()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: cannot decode inline image (helper): %s", exc)
+            pil_image = None
+        if pil_image is None:
+            try:
+                pil_image = self._decode_inline_image(
+                    inline_image.get_cos_object(), inline_image.get_stream()
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: cannot decode inline image: %s", exc)
+                return
         if pil_image is None:
             return
         self._paste_image(pil_image)
@@ -1957,6 +2917,12 @@ _DISPATCH: dict[str, Any] = {
     "g": PDFRenderer._op_set_fill_gray,
     "K": PDFRenderer._op_set_stroke_cmyk,
     "k": PDFRenderer._op_set_fill_cmyk,
+    # pattern + shading colour selection
+    "CS": PDFRenderer._op_set_stroke_color_space,
+    "cs": PDFRenderer._op_set_fill_color_space,
+    "SCN": PDFRenderer._op_set_stroke_color_n,
+    "scn": PDFRenderer._op_set_fill_color_n,
+    "sh": PDFRenderer._op_shading_fill,
     # path construction
     "m": PDFRenderer._op_move_to,
     "l": PDFRenderer._op_line_to,

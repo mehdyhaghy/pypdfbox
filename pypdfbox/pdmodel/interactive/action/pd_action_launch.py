@@ -6,6 +6,7 @@ from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
 )
 
 from .pd_action import PDAction
+from .pd_windows_launch_params import PDWindowsLaunchParams
 
 _F: COSName = COSName.get_pdf_name("F")
 _D: COSName = COSName.D  # type: ignore[attr-defined]
@@ -64,17 +65,31 @@ class PDActionLaunch(PDAction):
     def set_open_in_new_window(self, value: bool) -> None:
         self._action.set_boolean(_NEW_WINDOW, value)
 
-    # /Win — Windows launch parameters dict (Table 197). Typed
-    # ``PDWindowsLaunchParams`` wrapper is deferred — see CHANGES.md.
-    def get_win_launch_params(self) -> COSDictionary | None:
+    # /Win — Windows launch parameters dict (Table 197).
+    def get_win_launch_params(self) -> PDWindowsLaunchParams | None:
+        """Return the typed ``/Win`` sub-dict wrapper, or ``None``.
+
+        Mirrors upstream ``PDActionLaunch#getWinLaunchParams``.
+        """
         v = self._action.get_dictionary_object(_WIN)
         if isinstance(v, COSDictionary):
-            return v
+            return PDWindowsLaunchParams(v)
         return None
 
-    def set_win_launch_params(self, value: COSDictionary | None) -> None:
+    def set_win_launch_params(
+        self, value: PDWindowsLaunchParams | COSDictionary | None
+    ) -> None:
+        """Set or clear the ``/Win`` sub-dict.
+
+        Accepts a typed :class:`PDWindowsLaunchParams`, a raw
+        :class:`COSDictionary` (for backwards compatibility with code written
+        before the typed wrapper existed), or ``None`` to remove the entry.
+        """
         if value is None:
             self._action.remove_item(_WIN)
+            return
+        if isinstance(value, PDWindowsLaunchParams):
+            self._action.set_item(_WIN, value.get_cos_object())
             return
         self._action.set_item(_WIN, value)
 

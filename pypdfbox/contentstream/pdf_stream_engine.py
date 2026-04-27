@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from pypdfbox.cos import COSArray, COSBase, COSName, COSNumber
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSNumber
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import (
     Operator as _ParserOperator,
@@ -18,6 +18,7 @@ from .pd_content_stream import PDContentStream
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+    from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
     from pypdfbox.pdmodel.pd_page import PDPage
     from pypdfbox.pdmodel.pd_resources import PDResources
 
@@ -185,12 +186,25 @@ class PDFStreamEngine:
         of overloads: pass an :class:`Operator` (the engine's own loop
         path) or a bare ``str`` (the convenience path used by composite
         handlers like ``'`` and ``"`` to re-enter the engine).
+
+        ``BI`` is intercepted here: the parser pre-collates ``BI`` /
+        ``ID`` / ``EI`` into a single ``BI`` :class:`Operator` carrying
+        both the parameter dictionary (``image_parameters``) and the raw
+        image bytes (``image_data``). We construct a
+        :class:`PDInlineImage` from those and forward it to the
+        :meth:`show_inline_image` hook before falling through to the
+        registered lite stub. Mirrors upstream
+        ``BeginInlineImage.process`` which builds the inline image and
+        forwards to ``PDFStreamEngine.showInlineImage``.
         """
         if operands is None:
             operands = []
         if isinstance(operator, str):
             operator = Operator.get_operator(operator)
         name = operator.get_name()
+        if name == "BI":
+            self._dispatch_inline_image(operator, operands)
+            return
         processor = self._operators.get(name)
         if processor is not None:
             try:
@@ -199,6 +213,53 @@ class PDFStreamEngine:
                 self.operator_exception(operator, operands, exc)
         else:
             self.unsupported_operator(operator, operands)
+
+    def _dispatch_inline_image(
+        self, operator: Operator, operands: list[COSBase]
+    ) -> None:
+        """Build a :class:`PDInlineImage` from the parser-collated ``BI``
+        operator and forward to :meth:`show_inline_image`.
+
+        Falls through to the lite ``BI`` stub afterwards so
+        registry-level observers (e.g. parity test fixtures hooked via
+        :meth:`add_operator`) still see the operator. If the parser did
+        not attach a parameter dict (malformed stream) we synthesise an
+        empty :class:`COSDictionary` so the PDInlineImage constructor
+        receives a valid argument shape — :class:`PDInlineImage`
+        validates the contents (zero-dimension images surface as
+        ``get_width() == -1`` and the renderer's ``draw_image`` skips
+        them).
+        """
+        from pypdfbox.pdmodel.graphics.image.pd_inline_image import (  # noqa: PLC0415
+            PDInlineImage,
+        )
+
+        params = operator.get_image_parameters()
+        if params is None:
+            params = COSDictionary()
+        data = operator.get_image_data()
+        if data is None:
+            data = b""
+        try:
+            image = PDInlineImage(params, data, self.get_resources())
+        except OSError as exc:
+            # Malformed inline image — log via the standard operator
+            # exception triage and stop.
+            self.operator_exception(operator, operands, exc)
+            return
+        try:
+            self.show_inline_image(image)
+        except OSError as exc:
+            self.operator_exception(operator, operands, exc)
+            return
+        # Keep the lite-stub log path live for parity with upstream's
+        # ``addOperator(BeginInlineImage)`` registration surface.
+        processor = self._operators.get("BI")
+        if processor is not None:
+            try:
+                processor.process(operator, operands)
+            except OSError as exc:
+                self.operator_exception(operator, operands, exc)
 
     def unsupported_operator(
         self, operator: Operator, operands: list[COSBase]
@@ -356,6 +417,16 @@ class PDFStreamEngine:
         """``TJ`` notification — cluster #2 no-op. Subclasses iterate
         the array, dispatching numbers as positioning adjustments and
         strings as glyph runs."""
+
+    def show_inline_image(self, inline_image: PDInlineImage) -> None:
+        """``BI`` / ``ID`` / ``EI`` notification — base no-op.
+
+        Invoked once per inline image with a fully constructed
+        :class:`PDInlineImage` (the constructor has already decoded the
+        filter chain). The rendering subclass overrides to delegate to
+        :meth:`draw_image`. Mirrors upstream's
+        ``PDFStreamEngine.showInlineImage(PDInlineImage)``.
+        """
 
     def get_text_matrix(self) -> Any:
         """Cluster #2 always reports ``None`` (no text state). The

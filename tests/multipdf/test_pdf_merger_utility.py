@@ -1,0 +1,353 @@
+from __future__ import annotations
+
+import io
+from pathlib import Path
+
+import pytest
+
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSName,
+    COSStream,
+)
+from pypdfbox.multipdf import (
+    AcroFormMergeMode,
+    DocumentMergeMode,
+    PDFMergerUtility,
+)
+from pypdfbox.pdmodel import PDDocument, PDPage
+
+
+# ---------- helpers ----------
+
+
+def _seed_page_contents(page: PDPage, body: bytes = b"q\n1 0 0 1 0 0 cm Q\n") -> None:
+    stream = COSStream()
+    stream.set_raw_data(body)
+    page.set_contents(stream)
+
+
+def _build_doc(num_pages: int, body: bytes = b"q Q\n") -> PDDocument:
+    doc = PDDocument()
+    for _ in range(num_pages):
+        page = PDPage()
+        _seed_page_contents(page, body)
+        doc.add_page(page)
+    return doc
+
+
+def _save_to_path(doc: PDDocument, path: Path) -> None:
+    doc.save(path)
+    doc.close()
+
+
+# ---------- destination configuration ----------
+
+
+def test_merge_documents_requires_destination(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    _save_to_path(_build_doc(1), a)
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    with pytest.raises(ValueError):
+        util.merge_documents()
+
+
+def test_merge_documents_no_sources_is_a_noop(tmp_path: Path) -> None:
+    out = tmp_path / "out.pdf"
+    util = PDFMergerUtility()
+    util.set_destination_file_name(str(out))
+    util.merge_documents()  # no sources => silent no-op
+    assert not out.exists()
+
+
+# ---------- happy path ----------
+
+
+def test_two_pdf_page_tree_merge(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(2, body=b"q 1 0 0 1 0 0 cm Q\n"), a)
+    _save_to_path(_build_doc(3, body=b"q 2 0 0 2 0 0 cm Q\n"), b)
+
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.add_source(str(b))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    assert out.exists() and out.stat().st_size > 0
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_number_of_pages() == 5
+
+
+def test_three_pdf_page_tree_merge_preserves_order(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    c = tmp_path / "c.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(1, body=b"% A\n"), a)
+    _save_to_path(_build_doc(2, body=b"% B\n"), b)
+    _save_to_path(_build_doc(4, body=b"% C\n"), c)
+
+    util = PDFMergerUtility()
+    util.add_sources([str(a), str(b), str(c)])
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_number_of_pages() == 1 + 2 + 4
+
+
+def test_merge_to_destination_stream(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    _save_to_path(_build_doc(1), a)
+    _save_to_path(_build_doc(1), b)
+
+    sink = io.BytesIO()
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.add_source(str(b))
+    util.set_destination_stream(sink)
+    util.merge_documents()
+    payload = sink.getvalue()
+    assert payload.startswith(b"%PDF-")
+    sink.seek(0)
+    with PDDocument.load(payload) as merged:
+        assert merged.get_number_of_pages() == 2
+
+
+def test_merge_with_open_pddocument_source_keeps_caller_doc_open(tmp_path: Path) -> None:
+    out = tmp_path / "out.pdf"
+    src_a = _build_doc(1)
+    src_b = _build_doc(2)
+    util = PDFMergerUtility()
+    util.add_source(src_a)
+    util.add_source(src_b)
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+    # Caller-provided open PDDocuments must NOT be closed by the utility.
+    assert not src_a.is_closed()
+    assert not src_b.is_closed()
+    src_a.close()
+    src_b.close()
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_number_of_pages() == 3
+
+
+# ---------- shared font / resource cloning ----------
+
+
+def test_shared_font_resource_cloned_per_source(tmp_path: Path) -> None:
+    """Two sources each carrying an identically-named /F1 font must end up
+    with the merged document holding TWO distinct font subgraphs (one per
+    source) — the cloner should not collapse equally-named-but-different
+    indirect resources."""
+    out = tmp_path / "out.pdf"
+
+    def _build_with_font(font_basefont: str) -> PDDocument:
+        doc = PDDocument()
+        page = PDPage()
+        _seed_page_contents(page)
+        # Attach a /Resources /Font /F1 font dict to the page so each source
+        # has its own /F1 referenced under the same logical key.
+        font = COSDictionary()
+        font.set_name("Type", "Font")
+        font.set_name("Subtype", "Type1")
+        font.set_name("BaseFont", font_basefont)
+        font_map = COSDictionary()
+        font_map.set_item(COSName.get_pdf_name("F1"), font)
+        resources = COSDictionary()
+        resources.set_item(COSName.get_pdf_name("Font"), font_map)
+        page.get_cos_object().set_item(COSName.get_pdf_name("Resources"), resources)
+        doc.add_page(page)
+        return doc
+
+    a_path = tmp_path / "a.pdf"
+    b_path = tmp_path / "b.pdf"
+    _save_to_path(_build_with_font("Helvetica"), a_path)
+    _save_to_path(_build_with_font("Times-Roman"), b_path)
+
+    util = PDFMergerUtility()
+    util.add_source(str(a_path))
+    util.add_source(str(b_path))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_number_of_pages() == 2
+        page0 = merged.get_page(0)
+        page1 = merged.get_page(1)
+        font0 = (
+            page0.get_cos_object()
+            .get_dictionary_object(COSName.get_pdf_name("Resources"))
+            .get_dictionary_object(COSName.get_pdf_name("Font"))
+            .get_dictionary_object(COSName.get_pdf_name("F1"))
+        )
+        font1 = (
+            page1.get_cos_object()
+            .get_dictionary_object(COSName.get_pdf_name("Resources"))
+            .get_dictionary_object(COSName.get_pdf_name("Font"))
+            .get_dictionary_object(COSName.get_pdf_name("F1"))
+        )
+        assert font0.get_name("BaseFont") == "Helvetica"
+        assert font1.get_name("BaseFont") == "Times-Roman"
+        # And they're truly distinct dicts in the merged doc.
+        assert font0 is not font1
+
+
+# ---------- AcroForm field-name uniquification ----------
+
+
+def _build_doc_with_acroform(field_name: str, partial_value: str = "v") -> PDDocument:
+    """Build a 1-page PDDocument with an AcroForm carrying one text field
+    of fully-qualified name ``field_name``."""
+    doc = PDDocument()
+    page = PDPage()
+    _seed_page_contents(page)
+    doc.add_page(page)
+
+    field_dict = COSDictionary()
+    field_dict.set_name("FT", "Tx")  # text field
+    field_dict.set_string(COSName.get_pdf_name("T"), field_name)
+    field_dict.set_string(COSName.get_pdf_name("V"), partial_value)
+
+    fields_array = COSArray()
+    fields_array.add(field_dict)
+
+    acro_form = COSDictionary()
+    acro_form.set_item(COSName.get_pdf_name("Fields"), fields_array)
+
+    doc.get_document_catalog().get_cos_object().set_item(
+        COSName.get_pdf_name("AcroForm"), acro_form
+    )
+    return doc
+
+
+def test_acroform_field_name_uniquification(tmp_path: Path) -> None:
+    """Two sources, each with a /T = 'name' text field, must collide and
+    the second copy gets renamed to dummyFieldName1 (legacy mode)."""
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc_with_acroform("Name", "alice"), a)
+    _save_to_path(_build_doc_with_acroform("Name", "bob"), b)
+
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.add_source(str(b))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        form = merged.get_document_catalog().get_acro_form()
+        assert form is not None
+        names = sorted(f.get_partial_name() for f in form.get_fields())
+        assert "Name" in names
+        # dummyFieldName1 from collision uniquification.
+        assert any(n.startswith("dummyFieldName") for n in names if n is not None)
+
+
+def test_acroform_no_collision_keeps_names_intact(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc_with_acroform("FieldA"), a)
+    _save_to_path(_build_doc_with_acroform("FieldB"), b)
+
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.add_source(str(b))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        form = merged.get_document_catalog().get_acro_form()
+        names = sorted(f.get_partial_name() for f in form.get_fields())
+        assert names == ["FieldA", "FieldB"]
+
+
+def test_acroform_only_in_source_is_carried_over(tmp_path: Path) -> None:
+    """Destination has no AcroForm; source's AcroForm must be cloned
+    wholesale into destination."""
+    a = tmp_path / "a.pdf"  # plain
+    b = tmp_path / "b.pdf"  # has form
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(1), a)
+    _save_to_path(_build_doc_with_acroform("OnlyField"), b)
+
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.add_source(str(b))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        form = merged.get_document_catalog().get_acro_form()
+        assert form is not None
+        names = [f.get_partial_name() for f in form.get_fields()]
+        assert names == ["OnlyField"]
+
+
+# ---------- enums / properties ----------
+
+
+def test_default_modes() -> None:
+    util = PDFMergerUtility()
+    assert util.get_document_merge_mode() == DocumentMergeMode.PDFBOX_LEGACY_MODE
+    assert util.get_acro_form_merge_mode() == AcroFormMergeMode.PDFBOX_LEGACY_MODE
+
+
+def test_property_setters() -> None:
+    util = PDFMergerUtility()
+    util.document_merge_mode_property = DocumentMergeMode.OPTIMIZE_RESOURCES_MODE
+    assert (
+        util.document_merge_mode_property == DocumentMergeMode.OPTIMIZE_RESOURCES_MODE
+    )
+    util.acro_form_merge_mode_property = AcroFormMergeMode.JOIN_FORM_FIELDS_MODE
+    assert (
+        util.acro_form_merge_mode_property
+        == AcroFormMergeMode.JOIN_FORM_FIELDS_MODE
+    )
+
+
+def test_optimize_resources_mode_falls_back_to_legacy(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(1), a)
+    _save_to_path(_build_doc(1), b)
+    util = PDFMergerUtility()
+    util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
+    util.add_sources([str(a), str(b)])
+    util.set_destination_file_name(str(out))
+    util.merge_documents()  # must not crash; legacy fallback path
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_number_of_pages() == 2
+
+
+def test_destination_document_information_overrides(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    out = tmp_path / "out.pdf"
+    src_a = _build_doc(1)
+    src_a.get_document_information().set_title("source-a")
+    _save_to_path(src_a, a)
+    _save_to_path(_build_doc(1), b)
+
+    from pypdfbox.pdmodel.pd_document_information import PDDocumentInformation
+
+    info = PDDocumentInformation()
+    info.set_title("merged-title")
+
+    util = PDFMergerUtility()
+    util.add_sources([str(a), str(b)])
+    util.set_destination_file_name(str(out))
+    util.set_destination_document_information(info)
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged:
+        assert merged.get_document_information().get_title() == "merged-title"

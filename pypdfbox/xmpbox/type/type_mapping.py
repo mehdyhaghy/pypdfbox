@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from .abstract_simple_property import AbstractSimpleProperty
+from .agent_name_type import AgentNameType
+from .array_property import ArrayProperty, Cardinality
+from .boolean_type import BooleanType
+from .choice_type import ChoiceType
+from .date_type import DateType
+from .guid_type import GUIDType
+from .integer_type import IntegerType
+from .lang_alt import LangAlt
+from .mime_type import MIMEType
+from .proper_name_type import ProperNameType
+from .real_type import RealType
+from .text_type import TextType
+from .uri_type import URIType
+
+if TYPE_CHECKING:
+    from ..xmp_metadata import XMPMetadata
+
+
+_SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
+    "Text": TextType,
+    "Integer": IntegerType,
+    "Boolean": BooleanType,
+    "Date": DateType,
+    "Real": RealType,
+    "URI": URIType,
+    "URL": URIType,
+    "ProperName": ProperNameType,
+    "AgentName": AgentNameType,
+    "MIMEType": MIMEType,
+    "GUID": GUIDType,
+    "Choice": ChoiceType,
+}
+
+
+class TypeMapping:
+    """
+    Registry that instantiates typed XMP properties by short type name.
+
+    Ported (subset) from ``org.apache.xmpbox.type.TypeMapping``. Upstream
+    additionally maintains schema factories and structured-type metadata
+    keyed off Java reflection annotations; this port keeps the type registry
+    and the per-type ``createXxx`` helpers, which are the surface the parser
+    and schema callers actually need. Structured-type and defined-type
+    plumbing land in a later wave.
+    """
+
+    def __init__(self, metadata: XMPMetadata) -> None:
+        self._metadata = metadata
+
+    def get_metadata(self) -> XMPMetadata:
+        return self._metadata
+
+    def is_simple_type_known(self, type_name: str) -> bool:
+        return type_name in _SIMPLE_TYPE_REGISTRY
+
+    def instanciate_simple_property(
+        self,
+        ns_uri: str | None,
+        prefix: str | None,
+        name: str,
+        value: object,
+        type_name: str,
+    ) -> AbstractSimpleProperty:
+        cls = _SIMPLE_TYPE_REGISTRY.get(type_name)
+        if cls is None:
+            raise ValueError(f"Unknown simple property type: {type_name!r}")
+        try:
+            return cls(self._metadata, ns_uri, prefix, name, value)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"Failed to instantiate {cls.__name__} property with value {value!r}"
+            ) from exc
+
+    def create_text(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> TextType:
+        return TextType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_integer(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: int
+    ) -> IntegerType:
+        return IntegerType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_boolean(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: bool
+    ) -> BooleanType:
+        return BooleanType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_date(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: datetime
+    ) -> DateType:
+        return DateType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_real(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: float
+    ) -> RealType:
+        return RealType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_uri(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> URIType:
+        return URIType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_url(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> URIType:
+        return URIType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_proper_name(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> ProperNameType:
+        return ProperNameType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_agent_name(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> AgentNameType:
+        return AgentNameType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_mime_type(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> MIMEType:
+        return MIMEType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_guid(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> GUIDType:
+        return GUIDType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_choice(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> ChoiceType:
+        return ChoiceType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_array_property(
+        self,
+        ns_uri: str | None,
+        prefix: str | None,
+        name: str,
+        cardinality: Cardinality,
+    ) -> ArrayProperty:
+        return ArrayProperty(self._metadata, ns_uri, prefix, name, cardinality)
+
+    def create_lang_alt(
+        self, ns_uri: str | None, prefix: str | None, name: str
+    ) -> LangAlt:
+        return LangAlt(self._metadata, ns_uri, prefix, name)

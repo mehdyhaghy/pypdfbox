@@ -103,6 +103,11 @@ def run(args: argparse.Namespace) -> int:
             print(f"merge: {raw}: not a file", flush=True)
             return 4
 
+    # NOTE: this CLI keeps a richer reconciliation path than the
+    # upstream-faithful :class:`PDFMergerUtility` (intra-batch link
+    # remap, name-tree ``#2``-suffix deduplication). Library callers
+    # who want PDFBox-parity merge semantics should use
+    # ``pypdfbox.multipdf.PDFMergerUtility`` directly.
     out_doc = PDDocument()
     # Keep input documents open until save completes — import_page deep-
     # copies streams' raw bytes already, but holding the source open is

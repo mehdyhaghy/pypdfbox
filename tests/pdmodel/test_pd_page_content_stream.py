@@ -276,6 +276,179 @@ def test_draw_image_reuses_existing_key() -> None:
     assert [n.get_name() for n in res.get_xobject_names()] == ["Im0"]
 
 
+def test_draw_image_native_size_two_arg_position() -> None:
+    """``draw_image(image, x, y)`` overload: width/height default to the
+    image's intrinsic ``/Width`` × ``/Height`` (1 pt per pixel)."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()  # 100 x 50
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_image(img, 7, 8)
+    body = _stream_bytes(page)
+    assert body == b"q\n100 0 0 50 7 8 cm\n/Im0 Do\nQ\n"
+
+
+def test_draw_image_with_explicit_scaled_dimensions() -> None:
+    """``draw_image(image, x, y, width, height)`` overload — scaled CTM."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_image(img, 1.5, 2.5, 200, 100)
+    body = _stream_bytes(page)
+    # CTM order matches ``a b c d e f cm`` (= width 0 0 height x y).
+    assert body == b"q\n200 0 0 100 1.5 2.5 cm\n/Im0 Do\nQ\n"
+
+
+def test_draw_image_full_custom_ctm_tuple() -> None:
+    """``draw_image(image, transform_matrix)`` overload — passes the full
+    affine ``(a, b, c, d, e, f)`` straight through to ``cm``."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()
+    matrix = (50, 0, 0, 25, 100, 200)  # 50x25 anchored at (100,200)
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_image(img, matrix)
+    body = _stream_bytes(page)
+    # CTM bytes preserve the input matrix verbatim, wrapped in q/Q.
+    assert body == b"q\n50 0 0 25 100 200 cm\n/Im0 Do\nQ\n"
+
+
+def test_draw_image_full_custom_ctm_list_with_rotation() -> None:
+    """List form is accepted and rotation/skew components round-trip."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()
+    # 90° rotation + 100x100 scale anchored at (50,60):
+    # (a,b,c,d,e,f) = (0, 100, -100, 0, 50, 60)
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_image(img, [0, 100, -100, 0, 50, 60])
+    body = _stream_bytes(page)
+    assert body == b"q\n0 100 -100 0 50 60 cm\n/Im0 Do\nQ\n"
+
+
+def test_draw_image_matrix_overload_rejects_wrong_arity() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(ValueError):
+            cs.draw_image(img, (1, 0, 0, 1, 0))  # only 5 components
+
+
+def test_draw_image_inside_text_block_raises() -> None:
+    """Mirrors upstream's ``IllegalStateException`` when drawing between
+    BT and ET — translated to :class:`RuntimeError`."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        with pytest.raises(RuntimeError):
+            cs.draw_image(img, 0, 0)
+        cs.end_text()
+
+
+def test_draw_image_requires_x_or_matrix() -> None:
+    """Calling ``draw_image(image)`` with no positional info is rejected."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    img = _make_image()
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(TypeError):
+            cs.draw_image(img)  # type: ignore[call-arg]
+
+
+def test_draw_image_path_without_factories_raises_not_implemented(
+    tmp_path,
+) -> None:
+    """When neither JPEGFactory nor LosslessFactory ship, passing a
+    non-PDImageXObject (here, a path) must raise NotImplementedError
+    with the documented guidance string."""
+    import sys
+    import types
+
+    # Stub out both factory modules with empty namespaces so the
+    # lazy-import lands on a module that has no factory symbol.
+    saved = {
+        name: sys.modules.get(name)
+        for name in (
+            "pypdfbox.pdmodel.graphics.image.jpeg_factory",
+            "pypdfbox.pdmodel.graphics.image.lossless_factory",
+        )
+    }
+    dummy_jpeg = types.ModuleType(
+        "pypdfbox.pdmodel.graphics.image.jpeg_factory"
+    )
+    dummy_lossless = types.ModuleType(
+        "pypdfbox.pdmodel.graphics.image.lossless_factory"
+    )
+    # Module exists but the JPEGFactory / LosslessFactory attributes are
+    # absent — matches the "modules import but factories not yet wired"
+    # state the lazy-import path is designed to handle.
+    sys.modules["pypdfbox.pdmodel.graphics.image.jpeg_factory"] = dummy_jpeg
+    sys.modules["pypdfbox.pdmodel.graphics.image.lossless_factory"] = dummy_lossless
+    try:
+        src = tmp_path / "pretend.png"
+        src.write_bytes(b"\x89PNG\r\n\x1a\n")
+        doc = PDDocument()
+        page = _make_page(doc)
+        with PDPageContentStream(doc, page) as cs:
+            with pytest.raises(NotImplementedError) as excinfo:
+                cs.draw_image(src, 0, 0)
+            assert "JPEGFactory" in str(excinfo.value)
+    finally:
+        # Restore whatever was there originally.
+        for name, mod in saved.items():
+            if mod is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
+
+
+def test_draw_image_with_path_uses_lossless_factory(tmp_path) -> None:
+    """End-to-end: passing a PNG path to ``draw_image`` lazy-imports the
+    factories, builds a PDImageXObject under the hood, and emits the
+    expected ``q ... cm /Im0 Do Q`` byte sequence."""
+    from PIL import Image as _PILImage
+
+    src = tmp_path / "tile.png"
+    _PILImage.new("RGB", (10, 4), (200, 0, 100)).save(src, format="PNG")
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_image(src, 5, 5, 100, 50)
+    body = _stream_bytes(page)
+    # Width 100, height 50, anchor (5,5) — single XObject auto-named Im0.
+    assert body == b"q\n100 0 0 50 5 5 cm\n/Im0 Do\nQ\n"
+    res = page.get_resources()
+    names = [n.get_name() for n in res.get_xobject_names()]
+    assert names == ["Im0"]
+
+
+def test_draw_image_with_jpeg_bytes_uses_jpeg_factory(tmp_path) -> None:
+    """Sniffing the JPEG SOI marker routes raw bytes through the
+    JPEG factory (verbatim ``/DCTDecode`` embed)."""
+    from PIL import Image as _PILImage
+
+    buf = tmp_path / "tile.jpg"
+    _PILImage.new("RGB", (8, 8), (10, 20, 30)).save(buf, format="JPEG")
+    raw = buf.read_bytes()
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_image(raw, 0, 0)  # native size (8x8)
+    body = _stream_bytes(page)
+    assert body == b"q\n8 0 0 8 0 0 cm\n/Im0 Do\nQ\n"
+    img = page.get_resources().get_x_object(
+        COSName.get_pdf_name("Im0")
+    )
+    filters = [n.get_name() for n in img.get_cos_object().get_filter_list()]
+    assert filters == ["DCTDecode"]
+
+
 def test_draw_form_emits_do_with_form_key() -> None:
     doc = PDDocument()
     page = _make_page(doc)

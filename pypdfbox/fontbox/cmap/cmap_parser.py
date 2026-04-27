@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import BinaryIO
 
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .cmap import CMap, _to_int
 from .codespace_range import CodespaceRange
+
+_RESOURCES_DIR = Path(__file__).parent / "resources"
 
 _MARK_END_OF_DICTIONARY = ">>"
 _MARK_END_OF_ARRAY = "]"
@@ -76,16 +79,31 @@ class CMapParser:
 
     @classmethod
     def parse_predefined(cls, name: str) -> CMap:
-        """Load a predefined CMap by name. Cluster #4 ships only
-        ``Identity-H`` and ``Identity-V`` programmatically; other
-        predefined CMaps are added in a follow-up cluster."""
+        """Load a predefined CMap by name.
+
+        Resolution order mirrors upstream ``CMapParser.parsePredefined``:
+
+        1. Programmatic ``Identity-H`` / ``Identity-V`` builders — these
+           are full 0..0xFFFF identity mappings that don't depend on a
+           bundled resource file.
+        2. File-backed lookup against the bundled resources directory
+           ``pypdfbox/fontbox/cmap/resources/``. Only a small subset of
+           the upstream Adobe predefined CMaps is bundled (the CJK
+           Unicode-mapping ones plus ``Identity-H`` / ``Identity-V``);
+           any other name raises :class:`OSError` matching the upstream
+           "Could not find referenced cmap stream" message.
+        """
         identity = _build_identity_cmap(name)
         if identity is not None:
             return identity
-        # Future clusters will add file-backed predefined CMap loading.
-        raise OSError(
-            f"Error: Could not find referenced cmap stream {name}"
-        )
+        resource = _RESOURCES_DIR / name
+        if not resource.is_file():
+            raise OSError(
+                f"Error: Could not find referenced cmap stream {name}"
+            )
+        # Strict mode is deactivated for predefined CMaps (matches upstream).
+        parser = cls(strict_mode=False)
+        return parser.parse(resource.read_bytes())
 
     def parse_unicode_cmap(
         self, cmap_bytes: bytes | bytearray | memoryview
