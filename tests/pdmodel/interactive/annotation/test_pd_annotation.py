@@ -84,12 +84,12 @@ def test_create_unknown_for_missing_subtype() -> None:
 
 
 def test_create_unknown_for_unsupported_subtype() -> None:
-    # Screen, Sound, 3D and other §12.5 subtypes still fall back to Unknown.
+    # 3D, Watermark, Redact and other §12.5 subtypes still fall back to Unknown.
     d = COSDictionary()
-    d.set_name(COSName.SUBTYPE, "Screen")  # type: ignore[attr-defined]
+    d.set_name(COSName.SUBTYPE, "3D")  # type: ignore[attr-defined]
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationUnknown)
-    assert ann.get_subtype() == "Screen"
+    assert ann.get_subtype() == "3D"
 
 
 def test_create_rejects_non_dict() -> None:

@@ -90,13 +90,37 @@ class PDShadingType3(PDShading):
         """Returns the ``/Function`` entry wrapped as a ``PDFunction``
         (dispatched on ``/FunctionType``), or ``None`` when ``/Function``
         is absent. Mirrors upstream ``PDShading.getFunction()`` which
-        returns a ``PDFunction``."""
+        returns a ``PDFunction``.
+
+        When ``/Function`` is an array of single-output functions (one per
+        color component), this returns the raw ``COSArray`` — callers should
+        use ``get_functions_array()`` for explicit per-component access."""
         from pypdfbox.pdmodel.common.function import PDFunction
 
         item = self._dict.get_dictionary_object(_FUNCTION)
         if item is None:
             return None
+        if isinstance(item, COSArray):
+            return item
         return PDFunction.create(item)
+
+    def get_functions_array(self) -> list:
+        """Returns the per-component ``/Function`` entries wrapped as
+        ``PDFunction`` instances. When ``/Function`` is a single function,
+        returns a one-element list. Returns an empty list when absent."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        item = self._dict.get_dictionary_object(_FUNCTION)
+        if item is None:
+            return []
+        if isinstance(item, COSArray):
+            out = []
+            for i in range(item.size()):
+                entry = item.get_object(i)
+                if entry is not None:
+                    out.append(PDFunction.create(entry))
+            return out
+        return [PDFunction.create(item)]
 
     def set_function(self, value) -> None:
         """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS

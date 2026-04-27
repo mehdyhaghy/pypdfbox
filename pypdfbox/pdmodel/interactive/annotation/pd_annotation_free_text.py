@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
-from .pd_annotation import PDAnnotation
 from .pd_annotation_line import PDAnnotationLine
+from .pd_annotation_markup import PDAnnotationMarkup
 from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 _DA: COSName = COSName.get_pdf_name("DA")
@@ -18,7 +18,7 @@ _BE: COSName = COSName.get_pdf_name("BE")
 _RD: COSName = COSName.get_pdf_name("RD")
 
 
-class PDAnnotationFreeText(PDAnnotation):
+class PDAnnotationFreeText(PDAnnotationMarkup):
     """
     FreeText annotation — ``/Subtype /FreeText``. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationFreeText``.

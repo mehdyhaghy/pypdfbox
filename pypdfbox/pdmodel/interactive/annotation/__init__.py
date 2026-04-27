@@ -13,6 +13,9 @@ from .pd_annotation_polygon import PDAnnotationPolygon
 from .pd_annotation_polyline import PDAnnotationPolyline
 from .pd_annotation_popup import PDAnnotationPopup
 from .pd_annotation_rubber_stamp import PDAnnotationRubberStamp
+from .pd_annotation_screen import PDAnnotationScreen
+from .pd_annotation_sound import PDAnnotationSound
+from .pd_annotation_stamp import PDAnnotationStamp
 from .pd_annotation_square_circle import (
     PDAnnotationCircle,
     PDAnnotationSquare,
@@ -51,6 +54,9 @@ __all__ = [
     "PDAnnotationPolyline",
     "PDAnnotationPopup",
     "PDAnnotationRubberStamp",
+    "PDAnnotationScreen",
+    "PDAnnotationSound",
+    "PDAnnotationStamp",
     "PDAnnotationSquare",
     "PDAnnotationSquareCircle",
     "PDAnnotationSquiggly",

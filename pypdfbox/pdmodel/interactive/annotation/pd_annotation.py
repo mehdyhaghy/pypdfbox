@@ -139,6 +139,8 @@ class PDAnnotation:
         from .pd_annotation_polyline import PDAnnotationPolyline
         from .pd_annotation_popup import PDAnnotationPopup
         from .pd_annotation_rubber_stamp import PDAnnotationRubberStamp
+        from .pd_annotation_screen import PDAnnotationScreen
+        from .pd_annotation_sound import PDAnnotationSound
         from .pd_annotation_square_circle import (
             PDAnnotationCircle,
             PDAnnotationSquare,
@@ -191,6 +193,10 @@ class PDAnnotation:
             return PDAnnotationPolyline(cos_dict)
         if subtype == PDAnnotationMovie.SUB_TYPE:
             return PDAnnotationMovie(cos_dict)
+        if subtype == PDAnnotationSound.SUB_TYPE:
+            return PDAnnotationSound(cos_dict)
+        if subtype == PDAnnotationScreen.SUB_TYPE:
+            return PDAnnotationScreen(cos_dict)
         return PDAnnotationUnknown(cos_dict)
 
     # ---------- /Rect ----------

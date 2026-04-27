@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary, COSName
 
-from .pd_annotation import PDAnnotation
+from .pd_annotation_markup import PDAnnotationMarkup
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
@@ -15,14 +15,16 @@ _FS: COSName = COSName.get_pdf_name("FS")
 _NAME: COSName = COSName.get_pdf_name("Name")
 
 
-class PDAnnotationFileAttachment(PDAnnotation):
+class PDAnnotationFileAttachment(PDAnnotationMarkup):
     """
     File attachment annotation — ``/Subtype /FileAttachment``. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationFileAttachment``.
 
     A file attachment annotation embeds (or references) an external file
     via ``/FS`` and renders an icon selected by ``/Name``
-    (PDF 32000-1:2008 §12.5.6.15).
+    (PDF 32000-1:2008 §12.5.6.15). Extends :class:`PDAnnotationMarkup` so
+    review-workflow fields (``/CreationDate``, ``/Subj``, ``/IRT``, ``/IT``,
+    ``/CA``, ``/RT``) come for free.
     """
 
     SUB_TYPE: str = "FileAttachment"

@@ -872,3 +872,26 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/filter/lzw_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java` (alias module; codec body in `lzw_decode.py`) |
 | `pypdfbox/filter/run_length_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/RunLengthDecodeFilter.java` (alias module; codec body in `run_length_decode.py`) |
 | `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value_time_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueTimeStamp.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_data.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/GsubData.java` |
+| `pypdfbox/fontbox/ttf/gsub/lookup_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/LookupTable.java` |
+| `pypdfbox/fontbox/ttf/gsub/lookup_subtable.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/LookupSubTable.java` |
+| `tests/fontbox/ttf/gsub/upstream/test_lookup_subtable.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GsubWorkerForLatinTest.java` |
+| `tests/fontbox/ttf/gsub/upstream/test_gsub_data.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GlyphSubstitutionDataExtractorTest.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationRubberStamp.java` (renamed Stamp per PDF spec) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_polygon.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPolygon.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_polyline.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPolyline.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_file_attachment.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationFileAttachment.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_sound.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationSound.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_screen.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationScreen.java` |
+| `tests/pdmodel/common/function/upstream/test_pd_function_type_4.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/TestPDFunctionType4.java` |
+| `pypdfbox/pdmodel/common/function/pd_function_type3.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType3.java` |
+| `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_fit_bounding_box_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitBoundingBoxDestination.java` |
+| `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_fit_bounding_box_height_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitBoundingBoxHeightDestination.java` |
+| `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_fit_bounding_box_width_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitBoundingBoxWidthDestination.java` |
+| `pypdfbox/text/pdf_marked_content_extractor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PDFMarkedContentExtractor.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationText.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_free_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationFreeText.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_square.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationSquare.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_circle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationCircle.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_line.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationLine.java` |
+| `tests/pdmodel/upstream/test_pd_page_content_stream.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageContentStreamTest.java` |

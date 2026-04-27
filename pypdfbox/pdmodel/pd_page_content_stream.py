@@ -25,6 +25,10 @@ _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _FONT: COSName = COSName.get_pdf_name("Font")
 _X_OBJECT: COSName = COSName.get_pdf_name("XObject")
 _PROPERTIES: COSName = COSName.get_pdf_name("Properties")
+_COLOR_SPACE: COSName = COSName.get_pdf_name("ColorSpace")
+_DEVICE_COLOR_SPACES: frozenset[str] = frozenset(
+    {"DeviceGray", "DeviceRGB", "DeviceCMYK"}
+)
 
 
 class AppendMode(Enum):
@@ -265,6 +269,37 @@ class PDPageContentStream:
         """Emit ``W*`` — set the clipping path using the even-odd rule."""
         self._write_operator(b"W*")
 
+    def clip(self) -> None:
+        """Emit ``W n`` — intersect clipping path (non-zero) and end the
+        path. Mirrors upstream's ``clip()``, which writes the clip
+        operator followed by the no-op path terminator so the path is
+        consumed without painting."""
+        self._write_operator(b"W")
+        self._write_operator(b"n")
+
+    def clip_even_odd(self) -> None:
+        """Emit ``W* n`` — intersect clipping path (even-odd) and end the
+        path. Mirrors upstream's ``clipEvenOdd()``."""
+        self._write_operator(b"W*")
+        self._write_operator(b"n")
+
+    def end_path(self) -> None:
+        """Emit ``n`` — end the path without filling or stroking. Used
+        after a clipping operator (``W``/``W*``) or to discard a path."""
+        self._write_operator(b"n")
+
+    # Alias spelling matching upstream's ``fillEvenOddAndStroke`` Java
+    # method name (current ``fill_and_stroke_even_odd`` keeps working).
+    def fill_even_odd_and_stroke(self) -> None:
+        """Alias for :meth:`fill_and_stroke_even_odd` matching upstream's
+        ``fillEvenOddAndStroke`` ordering."""
+        self.fill_and_stroke_even_odd()
+
+    def close_fill_even_odd_and_stroke(self) -> None:
+        """Alias for :meth:`close_fill_and_stroke_even_odd` matching
+        upstream's ``closeFillEvenOddAndStroke`` ordering."""
+        self.close_fill_and_stroke_even_odd()
+
     def add_rect(self, x: float, y: float, width: float, height: float) -> None:
         self._write_operands(x, y, width, height)
         self._write_operator(b"re")
@@ -300,6 +335,126 @@ class PDPageContentStream:
     ) -> None:
         self._write_operands(c, m, y, k)
         self._write_operator(b"k")
+
+    # ---- polymorphic set_stroking_color / set_non_stroking_color ----
+
+    def set_stroking_color(self, *args: Any) -> None:
+        """Polymorphic stroking-color setter mirroring upstream's
+        ``setStrokingColor`` overloads:
+
+        - ``set_stroking_color(gray)`` → ``<g> G``
+        - ``set_stroking_color(r, g, b)`` → ``<r> <g> <b> RG``
+        - ``set_stroking_color(c, m, y, k)`` → ``<c> <m> <y> <k> K``
+        - ``set_stroking_color(PDColor)`` → components followed by ``SCN``
+          (or the device equivalent ``G``/``RG``/``K`` when the color
+          space is a device color space).
+
+        The PDColor overload writes the pattern name (when present) after
+        the numeric components, matching upstream's behaviour for
+        Pattern color spaces.
+        """
+        self._set_color(args, stroking=True)
+
+    def set_non_stroking_color(self, *args: Any) -> None:
+        """Polymorphic non-stroking-color setter — see
+        :meth:`set_stroking_color` for the overload menu. Emits the
+        lowercase variants (``g``, ``rg``, ``k``, ``scn``)."""
+        self._set_color(args, stroking=False)
+
+    def _set_color(self, args: tuple[Any, ...], *, stroking: bool) -> None:
+        # Single-argument forms: PDColor or scalar gray.
+        if len(args) == 1:
+            arg = args[0]
+            from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+
+            if isinstance(arg, PDColor):
+                self._emit_pd_color(arg, stroking=stroking)
+                return
+            if isinstance(arg, (int, float)) and not isinstance(arg, bool):
+                if stroking:
+                    self.set_stroking_color_gray(float(arg))
+                else:
+                    self.set_non_stroking_color_gray(float(arg))
+                return
+            raise TypeError(
+                "set_(non_)stroking_color expects PDColor or numeric "
+                f"components; got {type(arg).__name__}"
+            )
+        if len(args) == 3:
+            r, g, b = (float(v) for v in args)
+            if stroking:
+                self.set_stroking_color_rgb(r, g, b)
+            else:
+                self.set_non_stroking_color_rgb(r, g, b)
+            return
+        if len(args) == 4:
+            c, m, y, k = (float(v) for v in args)
+            if stroking:
+                self.set_stroking_color_cmyk(c, m, y, k)
+            else:
+                self.set_non_stroking_color_cmyk(c, m, y, k)
+            return
+        raise TypeError(
+            "set_(non_)stroking_color expects 1 (PDColor or gray), 3 (rgb), "
+            f"or 4 (cmyk) arguments; got {len(args)}"
+        )
+
+    def _emit_pd_color(self, color: Any, *, stroking: bool) -> None:
+        cs = color.get_color_space()
+        cs_name = cs.get_name() if cs is not None else None
+        components = color.get_components()
+        pattern_name = color.get_pattern_name()
+
+        # Device color spaces use the dedicated single-byte operators.
+        if cs_name == "DeviceGray" and pattern_name is None:
+            if stroking:
+                self.set_stroking_color_gray(components[0])
+            else:
+                self.set_non_stroking_color_gray(components[0])
+            return
+        if cs_name == "DeviceRGB" and pattern_name is None:
+            if stroking:
+                self.set_stroking_color_rgb(*components[:3])
+            else:
+                self.set_non_stroking_color_rgb(*components[:3])
+            return
+        if cs_name == "DeviceCMYK" and pattern_name is None:
+            if stroking:
+                self.set_stroking_color_cmyk(*components[:4])
+            else:
+                self.set_non_stroking_color_cmyk(*components[:4])
+            return
+
+        # Non-device or pattern: emit components (and optional pattern
+        # name) followed by SCN / scn.
+        for value in components:
+            self._write_operands(float(value))
+        if pattern_name is not None:
+            self._write_name(pattern_name)
+            self._buffer.append(0x20)
+        self._write_operator(b"SCN" if stroking else b"scn")
+
+    def set_stroking_color_space(self, color_space: Any) -> None:
+        """Emit ``/<key> CS`` — set the stroking color space.
+
+        Device color spaces (DeviceGray/RGB/CMYK) are emitted by their
+        well-known names without registering a resource entry; named
+        spaces like ICCBased / Indexed / Lab / Pattern are registered
+        under ``/Resources/ColorSpace`` (key ``Cs<n>``) if not already
+        present, then referenced by that key.
+        """
+        key = self._resource_key_for_color_space(color_space)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"CS")
+
+    def set_non_stroking_color_space(self, color_space: Any) -> None:
+        """Emit ``/<key> cs`` — non-stroking variant of
+        :meth:`set_stroking_color_space`."""
+        key = self._resource_key_for_color_space(color_space)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"cs")
 
     # ------------------------------------------------------------------
     # line width / dash
@@ -531,6 +686,73 @@ class PDPageContentStream:
     def set_text_leading(self, leading: float) -> None:
         self._write_operands(leading)
         self._write_operator(b"TL")
+
+    def set_leading(self, leading: float) -> None:
+        """Alias for :meth:`set_text_leading` matching upstream's
+        ``setLeading`` Java method name."""
+        self.set_text_leading(leading)
+
+    def set_text_matrix(
+        self,
+        a: float,
+        b: float = 0.0,
+        c: float = 0.0,
+        d: float = 1.0,
+        e: float = 0.0,
+        f: float = 0.0,
+    ) -> None:
+        """Emit ``a b c d e f Tm`` — set the text matrix and the text
+        line matrix.
+
+        Accepts either the six matrix components individually, or a
+        single iterable / object exposing ``get_value(row, col)`` (the
+        upstream ``Matrix`` shape). The 6-tuple form mirrors
+        ``setTextMatrix(Matrix)`` after Matrix has been decomposed.
+        """
+        if not isinstance(a, (int, float)):
+            # Single non-numeric arg: treat as Matrix-like or 6-element seq.
+            matrix_arg = a
+            components = self._extract_matrix_components(matrix_arg)
+            a, b, c, d, e, f = components
+        self._write_operands(a, b, c, d, e, f)
+        self._write_operator(b"Tm")
+
+    @staticmethod
+    def _extract_matrix_components(matrix: Any) -> tuple[float, ...]:
+        """Decompose ``matrix`` into the six PDF affine components
+        ``(a, b, c, d, e, f)``.
+
+        Accepts:
+        - An iterable (list/tuple) of length 6.
+        - An object with ``get_value(row, col)`` — the pypdfbox port of
+          upstream's ``org.apache.pdfbox.util.Matrix``.
+        - An object with ``get_a``..``get_f`` accessor methods.
+        """
+        if isinstance(matrix, (list, tuple)):
+            if len(matrix) != 6:
+                raise ValueError(
+                    "set_text_matrix iterable form requires 6 components "
+                    f"(a, b, c, d, e, f); got {len(matrix)}"
+                )
+            return tuple(float(v) for v in matrix)
+        getters = ("get_a", "get_b", "get_c", "get_d", "get_e", "get_f")
+        if all(callable(getattr(matrix, name, None)) for name in getters):
+            return tuple(float(getattr(matrix, name)()) for name in getters)
+        get_value = getattr(matrix, "get_value", None)
+        if callable(get_value):
+            return (
+                float(get_value(0, 0)),
+                float(get_value(0, 1)),
+                float(get_value(1, 0)),
+                float(get_value(1, 1)),
+                float(get_value(2, 0)),
+                float(get_value(2, 1)),
+            )
+        raise TypeError(
+            "set_text_matrix expects 6 numeric components, an iterable of "
+            "length 6, or a Matrix-like object with get_value(row, col); "
+            f"got {type(matrix).__name__}"
+        )
 
     def set_horizontal_scaling(self, scaling: float) -> None:
         self._write_operands(scaling)
@@ -877,6 +1099,45 @@ class PDPageContentStream:
                 if sub.get_dictionary_object(key) is x_cos:
                     return key
         return self._resources.add_x_object(xobject)
+
+    def _resource_key_for_color_space(self, color_space: Any) -> COSName:
+        """Return the ``COSName`` to reference ``color_space`` in a
+        ``CS``/``cs`` operator.
+
+        Device color spaces are referenced by their well-known names
+        (``DeviceGray``/``DeviceRGB``/``DeviceCMYK``) without a resource
+        entry; named/array color spaces are registered under
+        ``/Resources/ColorSpace`` (key ``Cs<n>``) when not already
+        present. Mirrors upstream's ``getName(PDColorSpace)`` helper
+        inside ``PDPageContentStream``.
+        """
+        cs_name = (
+            color_space.get_name() if hasattr(color_space, "get_name") else None
+        )
+        if cs_name in _DEVICE_COLOR_SPACES:
+            return COSName.get_pdf_name(cs_name)
+        # Pattern color space without an underlying CS — emit /Pattern
+        # directly (no resource entry needed for the colored form).
+        cos = (
+            color_space.get_cos_object()
+            if hasattr(color_space, "get_cos_object")
+            else None
+        )
+        if cs_name == "Pattern" and cos is None:
+            return COSName.get_pdf_name("Pattern")
+        if cos is None:
+            raise TypeError(
+                f"set_(non_)stroking_color_space: color space {cs_name!r} "
+                "has no COS representation to register"
+            )
+        sub = self._resources.get_cos_object().get_dictionary_object(
+            _COLOR_SPACE
+        )
+        if sub is not None:
+            for key in sub.key_set():
+                if sub.get_dictionary_object(key) is cos:
+                    return key
+        return self._resources.add(_COLOR_SPACE, cos)
 
     def _resource_key_for_property_list(
         self, property_list: PDPropertyList

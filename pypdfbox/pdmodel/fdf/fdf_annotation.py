@@ -155,6 +155,45 @@ class FDFAnnotation:
     def set_modified_date(self, date: str | None) -> None:
         self._annot.set_string(_M, date)
 
+    # ---------- factory ----------
+
+    @classmethod
+    def create(cls, annot: COSDictionary) -> "FDFAnnotation":
+        """Dispatch to the concrete ``FDFAnnotation`` subtype based on
+        ``/Subtype``. Mirrors ``FDFAnnotation.create(COSDictionary)`` upstream.
+
+        Falls back to the bare ``FDFAnnotation`` base when the subtype is
+        unknown or absent so callers always receive a usable wrapper.
+        """
+        sub = annot.get_dictionary_object(_SUBTYPE)
+        if isinstance(sub, COSName):
+            name = sub.name
+        else:
+            name = None
+
+        # Lazy-import to avoid an import cycle: subtypes import this module.
+        if name == "Text":
+            from .fdf_annotation_text import FDFAnnotationText
+
+            return FDFAnnotationText(annot)
+        if name == "FreeText":
+            from .fdf_annotation_free_text import FDFAnnotationFreeText
+
+            return FDFAnnotationFreeText(annot)
+        if name == "Square":
+            from .fdf_annotation_square import FDFAnnotationSquare
+
+            return FDFAnnotationSquare(annot)
+        if name == "Circle":
+            from .fdf_annotation_circle import FDFAnnotationCircle
+
+            return FDFAnnotationCircle(annot)
+        if name == "Line":
+            from .fdf_annotation_line import FDFAnnotationLine
+
+            return FDFAnnotationLine(annot)
+        return cls(annot)
+
 
 def _as_float(v: COSBase | Any) -> float:
     val = getattr(v, "value", None)

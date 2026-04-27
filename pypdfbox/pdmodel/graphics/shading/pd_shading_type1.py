@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from collections.abc import Iterable
+
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSName
 
 from .pd_shading import PDShading
 
@@ -11,9 +13,14 @@ _FUNCTION: COSName = COSName.get_pdf_name("Function")
 
 
 class PDShadingType1(PDShading):
-    """Function-based shading. Mirrors PDFBox ``PDShadingType1`` lite surface.
+    """Function-based shading. Mirrors PDFBox ``PDShadingType1``.
 
-    Function evaluation is deferred until the function module lands.
+    Per PDF 32000-1 §8.7.4.5.2 (Table 79): ``/Domain`` is a 4-element
+    parametric range ``[xmin xmax ymin ymax]`` (default ``[0 1 0 1]``),
+    ``/Matrix`` is an optional 6-element transformation matrix mapping the
+    domain rectangle into the target coordinate space (default identity),
+    and ``/Function`` is required — it may be a single function or an array
+    of ``n`` functions where ``n`` is the number of color components.
     """
 
     def __init__(self, dictionary_or_stream: COSDictionary | None = None) -> None:
@@ -24,15 +31,37 @@ class PDShadingType1(PDShading):
     def get_shading_type(self) -> int:
         return PDShading.SHADING_TYPE1
 
-    def get_domain(self) -> COSArray | None:
-        v = self._dict.get_dictionary_object(_DOMAIN)
-        return v if isinstance(v, COSArray) else None
+    # ---------- /Domain ----------
 
-    def set_domain(self, domain: COSArray | None) -> None:
+    def get_domain(self) -> COSArray | None:
+        """Returns ``/Domain`` (a 4-element ``[xmin xmax ymin ymax]`` array).
+        When absent, materializes the spec default ``[0 1 0 1]`` as a fresh
+        ``COSArray`` — the entry is *not* written back to the underlying
+        dictionary, so callers can detect "explicit vs defaulted" via
+        ``get_cos_object().get_dictionary_object('Domain')``."""
+        v = self._dict.get_dictionary_object(_DOMAIN)
+        if isinstance(v, COSArray):
+            return v
+        default = COSArray()
+        for f in (0.0, 1.0, 0.0, 1.0):
+            default.add(COSFloat(f))
+        return default
+
+    def set_domain(self, domain: COSArray | Iterable[float] | None) -> None:
+        """Set ``/Domain``. Accepts a ``COSArray`` (stored as-is, preserving
+        indirect references) or any iterable of floats (wrapped into a fresh
+        ``COSArray`` of ``COSFloat`` entries). ``None`` removes the entry."""
         if domain is None:
             self._dict.remove_item(_DOMAIN)
             return
-        self._dict.set_item(_DOMAIN, domain)
+        if isinstance(domain, COSArray):
+            self._dict.set_item(_DOMAIN, domain)
+            return
+        array = COSArray()
+        array.set_float_array(domain)
+        self._dict.set_item(_DOMAIN, array)
+
+    # ---------- /Matrix ----------
 
     def get_matrix(self) -> COSArray | None:
         v = self._dict.get_dictionary_object(_MATRIX)
@@ -44,14 +73,82 @@ class PDShadingType1(PDShading):
             return
         self._dict.set_item(_MATRIX, matrix)
 
-    def get_function(self) -> COSBase | None:
-        return self._dict.get_dictionary_object(_FUNCTION)
+    # ---------- /Function ----------
 
-    def set_function(self, function: COSBase | None) -> None:
-        if function is None:
+    def get_function(self):
+        """Returns the ``/Function`` entry wrapped as a ``PDFunction``
+        (dispatched on ``/FunctionType``), or ``None`` when ``/Function``
+        is absent. Mirrors upstream ``PDShading.getFunction()``.
+
+        When ``/Function`` is an array of single-output functions (one per
+        color component), this returns the raw ``COSArray`` — callers should
+        use ``get_functions_array()`` to enumerate the per-component
+        functions explicitly."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        item = self._dict.get_dictionary_object(_FUNCTION)
+        if item is None:
+            return None
+        if isinstance(item, COSArray):
+            return item
+        return PDFunction.create(item)
+
+    def get_functions_array(self) -> list:
+        """Returns the per-component ``/Function`` entries wrapped as
+        ``PDFunction`` instances. When ``/Function`` is a single function,
+        returns a one-element list. Returns an empty list when absent."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        item = self._dict.get_dictionary_object(_FUNCTION)
+        if item is None:
+            return []
+        if isinstance(item, COSArray):
+            out = []
+            for i in range(item.size()):
+                entry = item.get_object(i)
+                if entry is not None:
+                    out.append(PDFunction.create(entry))
+            return out
+        return [PDFunction.create(item)]
+
+    def set_function(self, value) -> None:
+        """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS
+        object is stored), a raw ``COSDictionary`` / ``COSStream``, a
+        ``COSArray`` of per-component functions, an iterable of
+        ``PDFunction`` instances (wrapped into a fresh ``COSArray``), or
+        ``None`` to remove."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        if value is None:
             self._dict.remove_item(_FUNCTION)
             return
-        self._dict.set_item(_FUNCTION, function)
+        if isinstance(value, PDFunction):
+            self._dict.set_item(_FUNCTION, value.get_cos_object())
+            return
+        if isinstance(value, COSBase):
+            self._dict.set_item(_FUNCTION, value)
+            return
+        # Treat as iterable of PDFunction.
+        try:
+            iterator = iter(value)
+        except TypeError as exc:
+            raise TypeError(
+                "set_function expects PDFunction, COSDictionary, COSStream, "
+                f"COSArray, iterable of PDFunction, or None; got "
+                f"{type(value).__name__}"
+            ) from exc
+        array = COSArray()
+        for entry in iterator:
+            if isinstance(entry, PDFunction):
+                array.add(entry.get_cos_object())
+            elif isinstance(entry, COSBase):
+                array.add(entry)
+            else:
+                raise TypeError(
+                    "set_function iterable entries must be PDFunction or "
+                    f"COSBase; got {type(entry).__name__}"
+                )
+        self._dict.set_item(_FUNCTION, array)
 
 
 __all__ = ["PDShadingType1"]

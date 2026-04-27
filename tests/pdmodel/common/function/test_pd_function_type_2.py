@@ -1,0 +1,285 @@
+"""Hand-written coverage for ``PDFunctionType2`` (exponential interpolation).
+
+Complements the broader Type-2 coverage in ``test_pd_function.py`` and the
+upstream-ported tests in ``upstream/test_pd_function_type_2.py``. Focuses
+on the accessor/setter surface (including the ``COSArray``-returning
+parity helpers ``get_c0_array`` / ``get_c1_array``), default-value
+behaviour when ``/C0`` / ``/C1`` / ``/N`` are absent, and the eval-shape
+contract (output dimension follows ``/C0``, ``/Range`` clipping when
+present, exponent semantics for negative bases).
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat
+from pypdfbox.pdmodel.common.function import PDFunction, PDFunctionType2
+
+
+# --------------------------------------------------------------------------
+# Constructor / type
+# --------------------------------------------------------------------------
+
+
+def test_default_construction_starts_empty() -> None:
+    fn = PDFunctionType2()
+    assert isinstance(fn.get_cos_object(), COSDictionary)
+    # Spec defaults — no keys present means C0=[0], C1=[1], N=1.
+    assert fn.get_c0() == [0.0]
+    assert fn.get_c1() == [1.0]
+    assert fn.get_n() == pytest.approx(1.0)
+
+
+def test_get_function_type_is_2() -> None:
+    assert PDFunctionType2().get_function_type() == 2
+
+
+def test_factory_dispatches_to_type2() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    fn = PDFunction.create(raw)
+    assert isinstance(fn, PDFunctionType2)
+
+
+# --------------------------------------------------------------------------
+# /C0
+# --------------------------------------------------------------------------
+
+
+def test_set_c0_with_list_round_trips() -> None:
+    fn = PDFunctionType2()
+    fn.set_c0([0.1, 0.2, 0.3])
+    assert fn.get_c0() == pytest.approx([0.1, 0.2, 0.3])
+
+
+def test_set_c0_with_tuple_round_trips() -> None:
+    fn = PDFunctionType2()
+    fn.set_c0((0.4, 0.5))
+    assert fn.get_c0() == pytest.approx([0.4, 0.5])
+
+
+def test_set_c0_with_cosarray_stores_in_place() -> None:
+    """Passing a pre-built COSArray must store that exact object —
+    parity with upstream ``setC0(COSArray)``."""
+    fn = PDFunctionType2()
+    arr = COSArray()
+    arr.set_float_array([0.7, 0.8])
+    fn.set_c0(arr)
+    assert fn.get_c0_array() is arr
+
+
+def test_get_c0_array_returns_cosarray() -> None:
+    fn = PDFunctionType2()
+    fn.set_c0([0.25, 0.5])
+    arr = fn.get_c0_array()
+    assert isinstance(arr, COSArray)
+    assert arr.to_float_array() == pytest.approx([0.25, 0.5])
+
+
+def test_get_c0_array_default_is_zero() -> None:
+    """Absent /C0 must materialise as [0.0] per spec."""
+    fn = PDFunctionType2()
+    arr = fn.get_c0_array()
+    assert isinstance(arr, COSArray)
+    assert arr.to_float_array() == pytest.approx([0.0])
+
+
+# --------------------------------------------------------------------------
+# /C1
+# --------------------------------------------------------------------------
+
+
+def test_set_c1_with_list_round_trips() -> None:
+    fn = PDFunctionType2()
+    fn.set_c1([0.6, 0.7])
+    assert fn.get_c1() == pytest.approx([0.6, 0.7])
+
+
+def test_set_c1_with_cosarray_stores_in_place() -> None:
+    fn = PDFunctionType2()
+    arr = COSArray()
+    arr.set_float_array([1.0, 2.0])
+    fn.set_c1(arr)
+    assert fn.get_c1_array() is arr
+
+
+def test_get_c1_array_default_is_one() -> None:
+    """Absent /C1 must materialise as [1.0] per spec."""
+    fn = PDFunctionType2()
+    arr = fn.get_c1_array()
+    assert isinstance(arr, COSArray)
+    assert arr.to_float_array() == pytest.approx([1.0])
+
+
+# --------------------------------------------------------------------------
+# /N
+# --------------------------------------------------------------------------
+
+
+def test_set_n_round_trips() -> None:
+    fn = PDFunctionType2()
+    fn.set_n(2.5)
+    assert fn.get_n() == pytest.approx(2.5)
+
+
+def test_get_n_default_is_one() -> None:
+    fn = PDFunctionType2()
+    assert fn.get_n() == pytest.approx(1.0)
+
+
+def test_set_n_uses_cosfloat_storage() -> None:
+    fn = PDFunctionType2()
+    fn.set_n(3.0)
+    stored = fn.get_cos_object().get_dictionary_object("N")
+    assert isinstance(stored, COSFloat)
+
+
+# --------------------------------------------------------------------------
+# eval — basic shape
+# --------------------------------------------------------------------------
+
+
+def _make(
+    c0: list[float],
+    c1: list[float],
+    n: float,
+    *,
+    domain: list[float] | None = None,
+    rng: list[float] | None = None,
+) -> PDFunctionType2:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    c0_arr = COSArray()
+    c0_arr.set_float_array(c0)
+    raw.set_item("C0", c0_arr)
+    c1_arr = COSArray()
+    c1_arr.set_float_array(c1)
+    raw.set_item("C1", c1_arr)
+    raw.set_item("N", COSFloat(n))
+    if domain is not None:
+        d = COSArray()
+        d.set_float_array(domain)
+        raw.set_item("Domain", d)
+    if rng is not None:
+        r = COSArray()
+        r.set_float_array(rng)
+        raw.set_item("Range", r)
+    return PDFunctionType2(raw)
+
+
+def test_eval_at_zero_returns_c0_for_any_n() -> None:
+    """x=0 → x**N=0 (for N>0) → result == C0."""
+    for n in (0.5, 1.0, 2.0, 3.0):
+        fn = _make([0.2, 0.4], [0.8, 1.0], n, domain=[0.0, 1.0])
+        assert fn.eval([0.0]) == pytest.approx([0.2, 0.4]), f"failed for N={n}"
+
+
+def test_eval_at_one_returns_c1_for_any_n() -> None:
+    """x=1 → x**N=1 → result == C1."""
+    for n in (0.5, 1.0, 2.0, 3.0):
+        fn = _make([0.2, 0.4], [0.8, 1.0], n, domain=[0.0, 1.0])
+        assert fn.eval([1.0]) == pytest.approx([0.8, 1.0]), f"failed for N={n}"
+
+
+def test_eval_uses_only_first_input() -> None:
+    """Type 2 has 1 input dimension by spec; trailing inputs are ignored."""
+    fn = _make([0.0], [1.0], 1.0, domain=[0.0, 1.0, 0.0, 1.0])
+    # Even with two domain pairs, Type 2 reads input[0].
+    assert fn.eval([0.5, 99.0]) == pytest.approx([0.5])
+
+
+def test_eval_output_dim_follows_c0() -> None:
+    """If /C1 is longer than /C0 (malformed), output is still sized by /C0."""
+    # /C0 = [0,0,0]  /C1 = [1,1,1,1,1] — extra C1 entries get ignored.
+    fn = _make([0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], 1.0, domain=[0.0, 1.0])
+    out = fn.eval([0.5])
+    assert len(out) == 3
+    assert out == pytest.approx([0.5, 0.5, 0.5])
+
+
+def test_eval_pads_when_c1_shorter_than_c0() -> None:
+    """If /C1 is shorter than /C0, missing entries treated as 0.0 — defensive
+    fallback (upstream would raise IndexError on a malformed dictionary)."""
+    fn = _make([0.5, 0.5, 0.5], [1.0], 1.0, domain=[0.0, 1.0])
+    # j=0: 0.5 + 1.0*(1.0-0.5) = 1.0
+    # j=1: 0.5 + 1.0*(0.0-0.5) = 0.0
+    # j=2: 0.5 + 1.0*(0.0-0.5) = 0.0
+    assert fn.eval([1.0]) == pytest.approx([1.0, 0.0, 0.0])
+
+
+# --------------------------------------------------------------------------
+# eval — exponent semantics
+# --------------------------------------------------------------------------
+
+
+def test_eval_exponent_quarter_at_half() -> None:
+    """N=2 at x=0.5 → x**N = 0.25."""
+    fn = _make([0.0], [1.0], 2.0, domain=[0.0, 1.0])
+    assert fn.eval([0.5]) == pytest.approx([0.25])
+
+
+def test_eval_exponent_eighth_at_half() -> None:
+    """N=3 at x=0.5 → x**N = 0.125."""
+    fn = _make([0.0], [1.0], 3.0, domain=[0.0, 1.0])
+    assert fn.eval([0.5]) == pytest.approx([0.125])
+
+
+def test_eval_fractional_exponent() -> None:
+    """N=0.5 at x=0.25 → x**N = 0.5 → midpoint of C0..C1."""
+    fn = _make([0.0], [1.0], 0.5, domain=[0.0, 1.0])
+    assert fn.eval([0.25]) == pytest.approx([0.5])
+
+
+# --------------------------------------------------------------------------
+# eval — clipping
+# --------------------------------------------------------------------------
+
+
+def test_eval_clips_input_to_domain() -> None:
+    """Input above /Domain max gets clamped before exponent applies."""
+    fn = _make([0.0], [1.0], 1.0, domain=[0.0, 0.5])
+    # Input 5.0 clamps to 0.5 → result = 0 + 0.5*(1-0) = 0.5
+    assert fn.eval([5.0]) == pytest.approx([0.5])
+
+
+def test_eval_clips_input_below_domain() -> None:
+    fn = _make([0.0], [1.0], 1.0, domain=[0.2, 1.0])
+    # Input -1.0 clamps to 0.2 → result = 0 + 0.2*(1-0) = 0.2
+    assert fn.eval([-1.0]) == pytest.approx([0.2])
+
+
+def test_eval_clips_output_to_range() -> None:
+    """Output above /Range max gets clamped (here C1=2 with range cap 1)."""
+    fn = _make([0.0], [2.0], 1.0, domain=[0.0, 1.0], rng=[0.0, 1.0])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+def test_eval_clips_output_below_range_min() -> None:
+    fn = _make([-1.0], [-2.0], 1.0, domain=[0.0, 1.0], rng=[0.0, 1.0])
+    # Without clipping: 0+1*(-2- -1) = -2 → clamped to /Range min 0.
+    assert fn.eval([1.0]) == pytest.approx([0.0])
+
+
+def test_eval_no_range_no_clip() -> None:
+    """When /Range is absent the raw eval result is returned unmodified."""
+    fn = _make([0.0], [10.0], 1.0, domain=[0.0, 1.0])
+    assert fn.eval([1.0]) == pytest.approx([10.0])
+
+
+# --------------------------------------------------------------------------
+# Defaults at eval time
+# --------------------------------------------------------------------------
+
+
+def test_eval_with_default_c0_c1_n_is_identity() -> None:
+    """No /C0, /C1, or /N → defaults C0=[0], C1=[1], N=1 → eval(x) = [x]."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.set_float_array([0.0, 1.0])
+    raw.set_item("Domain", domain)
+    fn = PDFunctionType2(raw)
+    assert fn.eval([0.0]) == pytest.approx([0.0])
+    assert fn.eval([0.5]) == pytest.approx([0.5])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
