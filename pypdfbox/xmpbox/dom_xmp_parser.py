@@ -5,6 +5,7 @@ from typing import IO
 from xml.etree import ElementTree as ET
 
 from .dublin_core_schema import DublinCoreSchema
+from .pdfa_identification_schema import PDFAIdentificationSchema
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_metadata import RDF_NAMESPACE, XMPMetadata
 from .xmp_schema import X_DEFAULT, XMPSchema
@@ -22,6 +23,7 @@ _XML_NS = "http://www.w3.org/XML/1998/namespace"
 _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
     DublinCoreSchema.NAMESPACE: DublinCoreSchema,
     XMPBasicSchema.NAMESPACE: XMPBasicSchema,
+    PDFAIdentificationSchema.NAMESPACE: PDFAIdentificationSchema,
 }
 
 

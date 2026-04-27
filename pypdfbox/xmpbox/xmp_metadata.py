@@ -134,3 +134,9 @@ class XMPMetadata:
         from .xmp_basic_schema import XMPBasicSchema
 
         return self.get_schema(XMPBasicSchema)
+
+    def get_pdf_identification_schema(self) -> XMPSchema | None:
+        # Mirror of upstream ``XMPMetadata.getPDFIdentificationSchema``.
+        from .pdfa_identification_schema import PDFAIdentificationSchema
+
+        return self.get_schema(PDFAIdentificationSchema)

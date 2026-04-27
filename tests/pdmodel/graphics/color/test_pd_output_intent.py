@@ -45,7 +45,9 @@ def test_dest_output_profile_round_trip_cos_stream() -> None:
     intent = PDOutputIntent()
     profile = COSStream()
     intent.set_dest_output_profile(profile)
-    assert intent.get_dest_output_profile() is profile
+    # get_dest_output_profile now returns a typed PDStream wrapping the
+    # underlying COSStream; raw access is via get_dest_output_profile_cos.
+    assert intent.get_dest_output_profile_cos() is profile
 
 
 def test_wrap_existing_dictionary_preserves_type() -> None:

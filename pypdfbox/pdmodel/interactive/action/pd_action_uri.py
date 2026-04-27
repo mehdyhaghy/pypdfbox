@@ -5,6 +5,7 @@ from pypdfbox.cos import COSDictionary, COSName
 from .pd_action import PDAction
 
 _URI: COSName = COSName.get_pdf_name("URI")
+_IS_MAP: COSName = COSName.get_pdf_name("IsMap")
 
 
 class PDActionURI(PDAction):
@@ -20,6 +21,12 @@ class PDActionURI(PDAction):
 
     def set_uri(self, uri: str | None) -> None:
         self._action.set_string(_URI, uri)
+
+    def should_track_mouse_position(self) -> bool:
+        return self._action.get_boolean(_IS_MAP, False)
+
+    def set_track_mouse_position(self, value: bool) -> None:
+        self._action.set_boolean(_IS_MAP, value)
 
 
 __all__ = ["PDActionURI"]

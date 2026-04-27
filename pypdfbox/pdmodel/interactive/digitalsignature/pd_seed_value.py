@@ -6,19 +6,33 @@ _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SV: COSName = COSName.get_pdf_name("SV")
 _FILTER: COSName = COSName.get_pdf_name("Filter")
 _SUB_FILTER: COSName = COSName.get_pdf_name("SubFilter")
+_DIGEST_METHOD: COSName = COSName.get_pdf_name("DigestMethod")
 _V: COSName = COSName.get_pdf_name("V")
+_CERT: COSName = COSName.get_pdf_name("Cert")
 _REASONS: COSName = COSName.get_pdf_name("Reasons")
 _MDP: COSName = COSName.get_pdf_name("MDP")
 _TIME_STAMP: COSName = COSName.get_pdf_name("TimeStamp")
+_LEGAL_ATTESTATION: COSName = COSName.get_pdf_name("LegalAttestation")
+_ADD_REV_INFO: COSName = COSName.get_pdf_name("AddRevInfo")
+_FF: COSName = COSName.get_pdf_name("Ff")
+
+# /Ff required-flag bit positions (PDF 32000-1 Table 234).
+_FLAG_FILTER = 1 << 0  # bit 1
+_FLAG_SUB_FILTER = 1 << 1  # bit 2
+_FLAG_V = 1 << 2  # bit 3
+_FLAG_REASON = 1 << 3  # bit 4
+_FLAG_LEGAL_ATTESTATION = 1 << 4  # bit 5
+_FLAG_ADD_REV_INFO = 1 << 5  # bit 6
+_FLAG_DIGEST_METHOD = 1 << 6  # bit 7
 
 
 class PDSeedValue:
     """Seed value dictionary (``/Type /SV``). Mirrors PDFBox ``PDSeedValue``
-    lite surface (PDF 32000-1 §12.7.4.5, Table 234).
+    (PDF 32000-1 §12.7.4.5, Table 234).
 
-    Deferred upstream behavior: typed wrappers for ``/MDP``, ``/TimeStamp``,
-    ``/CertificateSeedValue``, ``/LegalAttestation`` and the ``/Ff`` flags
-    helpers are not implemented — accessors return raw COS or basic values.
+    Deferred upstream behavior: typed wrappers for ``/MDP``, ``/TimeStamp``
+    and ``/Cert`` (``PDSeedValueCertificate``) are not implemented yet —
+    those accessors return raw ``COSDictionary``.
     """
 
     TYPE = "SV"
@@ -119,6 +133,101 @@ class PDSeedValue:
             self._dict.remove_item(_TIME_STAMP)
             return
         self._dict.set_item(_TIME_STAMP, time_stamp)
+
+    # ---------- /DigestMethod (array of names) ----------
+
+    def get_digest_method(self) -> list[str]:
+        v = self._dict.get_dictionary_object(_DIGEST_METHOD)
+        if not isinstance(v, COSArray):
+            return []
+        names = v.to_cos_name_string_list()
+        return [str(n) for n in names if n is not None]
+
+    def set_digest_method(self, names: list[str] | None) -> None:
+        if names is None:
+            self._dict.remove_item(_DIGEST_METHOD)
+            return
+        self._dict.set_item(_DIGEST_METHOD, COSArray.of_cos_names(names))
+
+    # ---------- /LegalAttestation (array of text strings) ----------
+
+    def get_legal_attestation(self) -> list[str]:
+        v = self._dict.get_dictionary_object(_LEGAL_ATTESTATION)
+        if not isinstance(v, COSArray):
+            return []
+        out = v.to_cos_string_string_list()
+        return [str(s) for s in out if s is not None]
+
+    def set_legal_attestation(self, values: list[str] | None) -> None:
+        if values is None:
+            self._dict.remove_item(_LEGAL_ATTESTATION)
+            return
+        self._dict.set_item(_LEGAL_ATTESTATION, COSArray.of_cos_strings(values))
+
+    # ---------- /Cert (certificate seed value sub-dict) ----------
+    # Note: typed PDSeedValueCertificate wrapper deferred — return raw COS dict.
+
+    def get_seed_value_certificate(self) -> COSDictionary | None:
+        v = self._dict.get_dictionary_object(_CERT)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_seed_value_certificate(self, cert: COSDictionary | None) -> None:
+        if cert is None:
+            self._dict.remove_item(_CERT)
+            return
+        self._dict.set_item(_CERT, cert)
+
+    # ---------- /Ff required-flag helpers ----------
+
+    def _is_flag(self, bit: int) -> bool:
+        v = self._dict.get_dictionary_object(_FF)
+        if isinstance(v, COSInteger):
+            return (v.value & bit) != 0
+        return False
+
+    def _set_flag(self, bit: int, value: bool) -> None:
+        v = self._dict.get_dictionary_object(_FF)
+        current = v.value if isinstance(v, COSInteger) else 0
+        new = (current | bit) if value else (current & ~bit)
+        self._dict.set_int(_FF, new)
+
+    def is_filter_required(self) -> bool:
+        return self._is_flag(_FLAG_FILTER)
+
+    def set_filter_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_FILTER, b)
+
+    def is_sub_filter_required(self) -> bool:
+        return self._is_flag(_FLAG_SUB_FILTER)
+
+    def set_sub_filter_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_SUB_FILTER, b)
+
+    def is_reason_required(self) -> bool:
+        return self._is_flag(_FLAG_REASON)
+
+    def set_reason_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_REASON, b)
+
+    def is_legal_attestation_required(self) -> bool:
+        return self._is_flag(_FLAG_LEGAL_ATTESTATION)
+
+    def set_legal_attestation_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_LEGAL_ATTESTATION, b)
+
+    def is_add_rev_info_required(self) -> bool:
+        return self._is_flag(_FLAG_ADD_REV_INFO)
+
+    def set_add_rev_info_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_ADD_REV_INFO, b)
+
+    def is_digest_method_required(self) -> bool:
+        return self._is_flag(_FLAG_DIGEST_METHOD)
+
+    def set_digest_method_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_DIGEST_METHOD, b)
 
 
 __all__ = ["PDSeedValue"]

@@ -192,5 +192,165 @@ class PDStandardAttributeObject(PDAttributeObject):
         else:
             self._dictionary.set_item(name, value)
 
+    # ---------- public typed helpers (PDFBox parity) ----------
+    #
+    # Mirror the protected ``getXxx``/``setXxx`` helpers on upstream
+    # ``PDStandardAttributeObject``. The legacy ``_get_*`` / ``_set_*``
+    # variants above remain unchanged for the existing typed subclasses.
+    # These public wrappers add the PDFBox-style "set to default removes
+    # the key" semantics for the value-typed setters.
+
+    def has_attribute(self, name: str) -> bool:
+        """Return ``True`` if ``name`` is present in the underlying dictionary."""
+        return self._dictionary.get_dictionary_object(name) is not None
+
+    def remove_attribute(self, name: str) -> None:
+        """Remove ``name`` from the underlying dictionary if present."""
+        self._dictionary.remove_item(name)
+
+    # ---- string ----
+
+    def get_string(self, name: str, default: str | None = None) -> str | None:
+        value = self._dictionary.get_string(name)
+        return value if value is not None else default
+
+    def set_string(
+        self, name: str, value: str | None, default: str | None = None
+    ) -> None:
+        if value is None or value == default:
+            self._dictionary.remove_item(name)
+        else:
+            self._dictionary.set_string(name, value)
+
+    # ---- name ----
+
+    def get_name(self, name: str, default: str | None = None) -> str | None:
+        return self._dictionary.get_name(name, default)
+
+    def set_name(
+        self, name: str, value: str | None, default: str | None = None
+    ) -> None:
+        if value is None or value == default:
+            self._dictionary.remove_item(name)
+        else:
+            self._dictionary.set_name(name, value)
+
+    # ---- integer / number ----
+
+    def get_integer(self, name: str, default: int = 0) -> int:
+        return self._dictionary.get_int(name, default)
+
+    def set_integer(self, name: str, value: int, default: int = 0) -> None:
+        if value == default:
+            self._dictionary.remove_item(name)
+        else:
+            self._dictionary.set_int(name, value)
+
+    def get_number(self, name: str, default: float = 0.0) -> float:
+        return self._dictionary.get_float(name, default)
+
+    def set_number(
+        self, name: str, value: float | int, default: float = 0.0
+    ) -> None:
+        if float(value) == float(default):
+            self._dictionary.remove_item(name)
+        elif isinstance(value, int) and not isinstance(value, bool):
+            self._dictionary.set_int(name, value)
+        else:
+            self._dictionary.set_float(name, float(value))
+
+    # ---- arrays ----
+
+    def get_array_of_string(self, name: str) -> list[str] | None:
+        return self._get_array_of_string(name)
+
+    def set_array_of_string(self, name: str, values: list[str] | None) -> None:
+        if values is None:
+            self._dictionary.remove_item(name)
+        else:
+            self._set_array_of_string(name, values)
+
+    def get_array_of_name(self, name: str) -> list[str] | None:
+        # Same shape as get_array_of_string but only collects COSName entries.
+        v = self._dictionary.get_dictionary_object(name)
+        if not isinstance(v, COSArray):
+            return None
+        out: list[str] = []
+        for index in range(v.size()):
+            item = v.get_object(index)
+            if isinstance(item, COSName):
+                out.append(item.name)
+        return out
+
+    def set_array_of_name(self, name: str, values: list[str] | None) -> None:
+        if values is None:
+            self._dictionary.remove_item(name)
+        else:
+            self._set_array_of_name(name, values)
+
+    # ---- single-color and color-or-four-colours ----
+
+    def get_color(self, name: str) -> tuple[float, ...] | None:
+        return self._get_color_value(name)
+
+    def set_color(self, name: str, rgb: tuple[float, ...] | None) -> None:
+        self._set_color_value(name, rgb)
+
+    def get_color_or_four_colors(
+        self, name: str
+    ) -> tuple[float, ...] | PDFourColours | None:
+        v = self._dictionary.get_dictionary_object(name)
+        if not isinstance(v, COSArray):
+            return None
+        if v.size() == 3:
+            return self._get_color_value(name)
+        if v.size() == 4:
+            return PDFourColours(v)
+        return None
+
+    # ---- polymorphic name/number combinators ----
+
+    def get_name_or_array_of_name(
+        self, name: str, default: str | None = None
+    ) -> str | list[str] | None:
+        v = self._dictionary.get_dictionary_object(name)
+        if isinstance(v, COSArray):
+            out: list[str] = []
+            for index in range(v.size()):
+                item = v.get_object(index)
+                if isinstance(item, COSName):
+                    out.append(item.name)
+            return out
+        if isinstance(v, COSName):
+            return v.name
+        return default
+
+    def get_number_or_array_of_number(
+        self, name: str, default: float | None = None
+    ) -> float | list[float] | None:
+        v = self._dictionary.get_dictionary_object(name)
+        if isinstance(v, COSArray):
+            out: list[float] = []
+            for index in range(v.size()):
+                item = v.get_object(index)
+                if isinstance(item, (COSInteger, COSFloat)):
+                    out.append(float(item.value))
+            return out
+        if isinstance(v, (COSInteger, COSFloat)):
+            return float(v.value)
+        if default is None or default == self.UNSPECIFIED:
+            return None
+        return default
+
+    def get_number_or_name(
+        self, name: str, default: str | None = None
+    ) -> float | str | None:
+        v = self._dictionary.get_dictionary_object(name)
+        if isinstance(v, (COSInteger, COSFloat)):
+            return float(v.value)
+        if isinstance(v, COSName):
+            return v.name
+        return default
+
 
 __all__ = ["PDStandardAttributeObject"]

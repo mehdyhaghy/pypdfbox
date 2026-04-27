@@ -16,6 +16,9 @@ from pypdfbox.pdmodel.interactive.action import (
     PDActionUnknown,
     PDActionURI,
 )
+from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+    PDSimpleFileSpecification,
+)
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
 )
@@ -70,8 +73,12 @@ def test_uri_named_launch_remote_and_javascript_accessors() -> None:
     assert named.get_n() == "NextPage"
 
     launch = PDActionLaunch()
-    launch.set_file("open-me.pdf")
-    assert launch.get_file() == "open-me.pdf"
+    launch_fs = PDSimpleFileSpecification()
+    launch_fs.set_file("open-me.pdf")
+    launch.set_file(launch_fs)
+    resolved_launch_fs = launch.get_file()
+    assert resolved_launch_fs is not None
+    assert resolved_launch_fs.get_file() == "open-me.pdf"
 
     remote = PDActionRemoteGoTo()
     remote.set_file("other.pdf")

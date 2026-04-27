@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary
+from pypdfbox.cos import COSArray, COSDictionary, COSString
 
 from .pd_standard_attribute_object import PDStandardAttributeObject
 
@@ -13,7 +13,9 @@ class PDExportFormatAttributeObject(PDStandardAttributeObject):
     ``CSS-2.00``). Mirrors PDFBox ``PDExportFormatAttributeObject``.
 
     The accessors mirror the layout / list / table cross-cutting subset
-    upstream exposes here.
+    upstream exposes here. Constants for the cross-cutting attribute values
+    (``ListNumbering``, ``Scope``) are re-exposed locally so callers can
+    avoid importing the sibling owner classes solely for the constant.
     """
 
     OWNER: str = "XML-1.00"
@@ -38,6 +40,24 @@ class PDExportFormatAttributeObject(PDStandardAttributeObject):
         }
     )
 
+    # ---------- /ListNumbering values (mirrors PDListAttributeObject) ----------
+
+    LIST_NUMBERING_NONE: str = "None"
+    LIST_NUMBERING_DISC: str = "Disc"
+    LIST_NUMBERING_CIRCLE: str = "Circle"
+    LIST_NUMBERING_SQUARE: str = "Square"
+    LIST_NUMBERING_DECIMAL: str = "Decimal"
+    LIST_NUMBERING_UPPER_ROMAN: str = "UpperRoman"
+    LIST_NUMBERING_LOWER_ROMAN: str = "LowerRoman"
+    LIST_NUMBERING_UPPER_ALPHA: str = "UpperAlpha"
+    LIST_NUMBERING_LOWER_ALPHA: str = "LowerAlpha"
+
+    # ---------- /Scope values (mirrors PDTableAttributeObject) ----------
+
+    SCOPE_ROW: str = "Row"
+    SCOPE_COLUMN: str = "Column"
+    SCOPE_BOTH: str = "Both"
+
     def __init__(
         self,
         dictionary: COSDictionary | None = None,
@@ -49,8 +69,9 @@ class PDExportFormatAttributeObject(PDStandardAttributeObject):
 
     # ---------- /ListNumbering ----------
 
-    def get_list_numbering(self) -> str | None:
-        return self._get_name("ListNumbering", "None")
+    def get_list_numbering(self) -> str:
+        value = self._get_name("ListNumbering", self.LIST_NUMBERING_NONE)
+        return value if value is not None else self.LIST_NUMBERING_NONE
 
     def set_list_numbering(self, list_numbering: str) -> None:
         self._set_name("ListNumbering", list_numbering)
@@ -73,18 +94,36 @@ class PDExportFormatAttributeObject(PDStandardAttributeObject):
 
     # ---------- /Headers ----------
 
-    def get_headers(self) -> COSArray | None:
-        return self._get_array("Headers")
+    def get_headers(self) -> list[str]:
+        array = self._get_array("Headers")
+        if array is None:
+            return []
+        out: list[str] = []
+        for index in range(array.size()):
+            item = array.get_object(index)
+            if isinstance(item, COSString):
+                raw = item.get_bytes()
+                try:
+                    out.append(raw.decode("utf-8"))
+                except UnicodeDecodeError:
+                    out.append(raw.decode("latin-1"))
+        return out
 
     def set_headers(self, headers: list[str]) -> None:
-        self._set_array_of_string("Headers", headers)
+        if not headers:
+            self._dictionary.remove_item("Headers")
+            return
+        array = COSArray()
+        for value in headers:
+            array.add(COSString(value.encode("utf-8")))
+        self._dictionary.set_item("Headers", array)
 
     # ---------- /Scope ----------
 
     def get_scope(self) -> str | None:
         return self._get_name("Scope")
 
-    def set_scope(self, scope: str) -> None:
+    def set_scope(self, scope: str | None) -> None:
         self._set_name("Scope", scope)
 
     # ---------- /Summary ----------
@@ -92,7 +131,7 @@ class PDExportFormatAttributeObject(PDStandardAttributeObject):
     def get_summary(self) -> str | None:
         return self._get_string("Summary")
 
-    def set_summary(self, summary: str) -> None:
+    def set_summary(self, summary: str | None) -> None:
         self._set_string("Summary", summary)
 
     def __repr__(self) -> str:
