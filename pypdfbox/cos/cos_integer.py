@@ -55,6 +55,15 @@ class COSInteger(COSNumber):
     def float_value(self) -> float:
         return float(self._value)
 
+    def double_value(self) -> float:
+        # Python has a single float type (IEEE-754 double); ``double_value``
+        # is provided for PDFBox API parity.
+        return float(self._value)
+
+    def get_value(self) -> int:
+        """Mirror PDFBox's ``COSInteger.getValue()`` accessor."""
+        return self._value
+
     def is_valid(self) -> bool:
         return self._valid
 
@@ -63,6 +72,22 @@ class COSInteger(COSNumber):
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_integer(self)
+
+    def equals(self, other: object) -> bool:
+        """Java-style value-equality predicate. Mirrors ``COSInteger.equals``."""
+        return isinstance(other, COSInteger) and self._value == other._value
+
+    def compare_to(self, other: COSInteger) -> int:
+        """Numeric comparison returning -1, 0, or 1 — mirrors
+        ``COSInteger.compareTo(COSInteger)`` (Java's ``Comparable`` contract).
+        """
+        if not isinstance(other, COSInteger):
+            raise TypeError("compare_to requires another COSInteger")
+        if self._value < other._value:
+            return -1
+        if self._value > other._value:
+            return 1
+        return 0
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSInteger):

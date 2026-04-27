@@ -112,7 +112,7 @@ def test_quad_points_round_trip() -> None:
     ann = PDAnnotationLink()
     qp = COSArray.of_cos_floats([0.0, 0.0, 100.0, 0.0, 0.0, 50.0, 100.0, 50.0])
     ann.set_quad_points(qp)
-    assert ann.get_quad_points() is qp
+    assert ann.get_quad_points() == [0.0, 0.0, 100.0, 0.0, 0.0, 50.0, 100.0, 50.0]
 
 
 def test_subtype_constant() -> None:

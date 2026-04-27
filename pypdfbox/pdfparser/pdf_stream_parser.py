@@ -170,6 +170,36 @@ class PDFStreamParser(COSParser):
                 return
             yield tok
 
+    # ---------- upstream-named aliases ----------
+
+    def get_tokens(self) -> list[COSBase | Operator]:
+        """Eager list form — drains the parser. Mirrors PDFBox's
+        ``getTokens()`` (which returns ``List<Object>`` of operands and
+        operators)."""
+        return list(self.tokens())
+
+    def parse_stream(self) -> list[COSBase | Operator]:
+        """Alias for :meth:`parse` — the public PDFBox entry point on
+        ``PDFStreamParser`` is named ``parse``; some upstream callers
+        spelled the action as ``parseStream`` for clarity."""
+        return self.parse()
+
+    def is_in_inline_image(self) -> bool:
+        """``True`` while the parser is inside a ``BI``/``ID``/``EI``
+        inline-image segment. Tracks the same flag PDFBox surfaces via
+        its inline-image bookkeeping."""
+        return self._inline_image_depth > 0
+
+    def seek_to(self, offset: int) -> None:
+        """Reposition the underlying source. Wraps :meth:`seek` from
+        ``BaseParser``; named to match upstream convenience helpers."""
+        self.seek(offset)
+
+    def get_position(self) -> int:
+        """Return the current source read position. Mirrors PDFBox's
+        ``getPosition()`` accessor."""
+        return self.position
+
     # ---------- numbers ----------
 
     def _parse_number_token(self) -> COSBase:

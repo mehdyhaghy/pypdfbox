@@ -6,6 +6,7 @@ from pypdfbox.cos import (
     COSName,
     COSStream,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 from .pd_abstract_pattern import PDAbstractPattern
@@ -31,9 +32,18 @@ class PDTilingPattern(PDAbstractPattern):
     ``PDContentStream`` mixin (``get_contents`` / ``getContentsForRandomAccess``)
     is deferred to the contentstream parsing cluster."""
 
+    # Upstream PDFBox spelling — keep both ``PAINT_TYPE_*`` (canonical) and
+    # the older ``PAINT_*`` aliases for back-compat with earlier callers.
+    PAINT_TYPE_COLORED: int = 1
+    PAINT_TYPE_UNCOLORED: int = 2
     PAINT_COLORED: int = 1
     PAINT_UNCOLORED: int = 2
 
+    # Upstream PDFBox spelling — ``TILING_TYPE_*`` (canonical) plus the
+    # older shorter aliases.
+    TILING_TYPE_CONSTANT_SPACING: int = 1
+    TILING_TYPE_NO_DISTORTION: int = 2
+    TILING_TYPE_CONSTANT_SPACING_AND_FASTER_TILING: int = 3
     TILING_CONSTANT_SPACING: int = 1
     TILING_NO_DISTORTION: int = 2
     TILING_CONSTANT_SPACING_FASTER_TILING: int = 3
@@ -74,19 +84,31 @@ class PDTilingPattern(PDAbstractPattern):
 
     # ---------- /BBox ----------
 
-    def get_b_box(self) -> COSArray | None:
-        """Raw ``/BBox`` array; typed ``PDRectangle`` wrapping is left to
-        callers (mirrors PDPage/PDFormXObject surface conventions)."""
+    def get_b_box(self) -> PDRectangle | None:
+        """``/BBox`` as a typed ``PDRectangle``, or ``None`` when missing /
+        not a 4-entry numeric array. Mirrors upstream
+        ``PDTilingPattern.getBBox``."""
         value = self._dict.get_dictionary_object(_BBOX)
-        if isinstance(value, COSArray):
-            return value
+        if isinstance(value, COSArray) and value.size() >= 4:
+            return PDRectangle.from_cos_array(value)
         return None
 
-    def set_b_box(self, bbox: COSArray | None) -> None:
+    def set_b_box(self, bbox: PDRectangle | COSArray | None) -> None:
+        """Accepts a typed ``PDRectangle``, a raw ``COSArray``, or ``None``
+        (clears the entry)."""
         if bbox is None:
             self._dict.remove_item(_BBOX)
             return
-        self._dict.set_item(_BBOX, bbox)
+        if isinstance(bbox, PDRectangle):
+            self._dict.set_item(_BBOX, bbox.to_cos_array())
+            return
+        if isinstance(bbox, COSArray):
+            self._dict.set_item(_BBOX, bbox)
+            return
+        raise TypeError(
+            "set_b_box expects PDRectangle, COSArray, or None; got "
+            f"{type(bbox).__name__}"
+        )
 
     # ---------- /XStep / /YStep ----------
 

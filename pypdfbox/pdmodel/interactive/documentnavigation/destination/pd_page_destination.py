@@ -28,12 +28,28 @@ class PDPageDestination(PDDestination):
     def get_cos_object(self) -> COSArray:
         return self._array
 
+    def get_cos_array(self) -> COSArray:
+        """Return the underlying ``COSArray``. Mirrors upstream
+        ``PDPageDestination.getCOSArray()``."""
+        return self._array
+
     def get_page(self) -> COSDictionary | None:
         page = self._array.get_object(0)
         return page if isinstance(page, COSDictionary) else None
 
-    def set_page(self, page: COSBase | None) -> None:
-        self._array.set(0, page if page is not None else COSNull.NULL)
+    def set_page(self, page: Any) -> None:
+        if page is None:
+            self._array.set(0, COSNull.NULL)
+            return
+        if isinstance(page, COSBase):
+            self._array.set(0, page)
+            return
+        # PDPage (or any wrapper exposing get_cos_object()).
+        get_cos = getattr(page, "get_cos_object", None)
+        if callable(get_cos):
+            self._array.set(0, get_cos())
+            return
+        raise TypeError(f"Cannot set page from {type(page).__name__}")
 
     def get_page_number(self) -> int:
         page = self._array.get_object(0)

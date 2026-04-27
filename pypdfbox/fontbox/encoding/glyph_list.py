@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import logging
+import re
 from threading import Lock
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Matches "uniXXXX" (4 hex digits) and "uXXXX"/"uXXXXX"/"uXXXXXX" (4-6 hex
+# digits) — the synthesized Unicode glyph-name patterns recognized by
+# upstream :class:`org.apache.fontbox.encoding.GlyphList`.
+_UNI_NAME_RE = re.compile(r"^(?:uni[0-9A-Fa-f]{4}|u[0-9A-Fa-f]{4,6})$")
 
 # Adobe Glyph List (AGL) — 4281 entries derived from upstream
 # `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/glyphlist.txt`.
@@ -4519,11 +4525,19 @@ class GlyphList:
         # Cache for synthesized uniXXXX / uXXXXX lookups (computed lazily).
         self._uni_cache: dict[str, str] = {}
         self._cache_lock = Lock()
+        # Reverse map (Unicode string -> first glyph name) is built lazily on
+        # first call to :meth:`code_point_to_name` / :meth:`unicode_to_name`.
+        self._unicode_to_name: Optional[dict[str, str]] = None
 
     # -- factories ---------------------------------------------------------
 
     @classmethod
     def get_adobe_glyph_list(cls) -> "GlyphList":
+        return cls.DEFAULT
+
+    @classmethod
+    def get_default(cls) -> "GlyphList":
+        """Upstream-named alias for :meth:`get_adobe_glyph_list`."""
         return cls.DEFAULT
 
     @classmethod
@@ -4555,7 +4569,72 @@ class GlyphList:
                     self._uni_cache[name] = unicode
         return unicode
 
+    def name_to_code_points(self, name: Optional[str]) -> Optional[str]:
+        """Return the Unicode character sequence for glyph ``name``.
+
+        Mirrors upstream ``GlyphList.toUnicode(String)``; identical to
+        :meth:`to_unicode` and provided under the upstream method name. May
+        return a multi-code-point string for ligature glyphs.
+        """
+        return self.to_unicode(name)
+
+    def code_point_to_name(self, code_point: int) -> Optional[str]:
+        """Return the first glyph name that maps to the single ``code_point``.
+
+        The reverse map is built on first access from the underlying
+        name->unicode table; only single-code-point entries participate.
+        Where multiple glyph names share a code point (e.g. ``Cdot`` /
+        ``Cdotaccent`` for U+010A) the result is whichever name was
+        encountered first while iterating the underlying dict.
+        """
+        try:
+            ch = chr(code_point)
+        except (ValueError, OverflowError):
+            return None
+        return self._reverse_map().get(ch)
+
+    def code_point_to_string(self, code_point: int) -> Optional[str]:
+        """Alias for :meth:`code_point_to_name`."""
+        return self.code_point_to_name(code_point)
+
+    @staticmethod
+    def is_unicode_lookup(name: Optional[str]) -> bool:
+        """Return True if ``name`` matches the synthesized uniXXXX / uXXXX(XX)
+        Unicode glyph-name pattern recognized by :meth:`to_unicode`.
+        """
+        if not name:
+            return False
+        return _UNI_NAME_RE.match(name) is not None
+
+    def get_or_unicode_lookup(self, name: Optional[str]) -> Optional[str]:
+        """Return the unicode for ``name``, falling back to the uniXXXX /
+        uXXXX(XX) pattern even when the name is not present in the table.
+
+        Equivalent to :meth:`to_unicode` for known glyph names, but always
+        attempts the synthesized lookup when the name matches the pattern.
+        """
+        if name is None:
+            return None
+        result = self.to_unicode(name)
+        if result is not None:
+            return result
+        if self.is_unicode_lookup(name):
+            return self._derive(name)
+        return None
+
     # -- internal ----------------------------------------------------------
+
+    def _reverse_map(self) -> dict[str, str]:
+        with self._cache_lock:
+            if self._unicode_to_name is None:
+                reverse: dict[str, str] = {}
+                for glyph_name, unicode_str in self._name_to_unicode.items():
+                    # First-wins; mirrors how upstream populates the reverse map
+                    # while iterating the glyph list resource in order.
+                    if unicode_str not in reverse:
+                        reverse[unicode_str] = glyph_name
+                self._unicode_to_name = reverse
+            return self._unicode_to_name
 
     def _derive(self, name: str) -> Optional[str]:
         # foo.suffix -> foo

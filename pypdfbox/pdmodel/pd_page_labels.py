@@ -100,6 +100,10 @@ class PDPageLabels:
         dict_: COSDictionary | None = None,
     ) -> None:
         self._doc = document
+        # Optional explicit override of the page count used when computing
+        # labels. ``None`` means "ask the document". Mirrors the typed
+        # accessor pair :meth:`get_number_of_pages` / :meth:`set_number_of_pages`.
+        self._number_of_pages: int | None = None
         self._labels: dict[int, PDPageLabelRange] = {}
         # Required default range starting at page 0 (PDF 32000-1 p. 375).
         default_range = PDPageLabelRange()
@@ -171,6 +175,59 @@ class PDPageLabels:
     def get_page_indices(self) -> list[int]:
         """Sorted list of start-page indices (one per defined range)."""
         return sorted(self._labels)
+
+    def find_label_range_containing(
+        self, page_index: int
+    ) -> PDPageLabelRange | None:
+        """Return the :class:`PDPageLabelRange` whose span covers
+        ``page_index`` (0-based), or ``None`` if ``page_index`` is negative
+        or no range starts at or before it.
+
+        Selects the range with the greatest ``start_index`` that is still
+        ``<= page_index`` — same algorithm as :meth:`get_label_for_page`.
+        """
+        if page_index < 0:
+            return None
+        sorted_starts = sorted(self._labels)
+        if not sorted_starts:
+            return None
+        if page_index < sorted_starts[0]:
+            return None
+        chosen = sorted_starts[0]
+        for s in sorted_starts:
+            if s <= page_index:
+                chosen = s
+            else:
+                break
+        return self._labels[chosen]
+
+    # ---------- typed page-count accessor ----------
+
+    def get_number_of_pages(self) -> int:
+        """Return the page count used when materialising the full label
+        list. Returns the explicit override set via
+        :meth:`set_number_of_pages` if present, else the wrapped document's
+        page count, else 0 when neither is available.
+        """
+        if self._number_of_pages is not None:
+            return self._number_of_pages
+        if self._doc is not None:
+            try:
+                return self._doc.get_number_of_pages()
+            except Exception:
+                return 0
+        return 0
+
+    def set_number_of_pages(self, count: int) -> None:
+        """Override the page count used by :meth:`get_labels_by_page_indices`
+        and friends. Pass ``None`` via :meth:`set_number_of_pages` is not
+        supported — clear by re-binding to a document if needed.
+        """
+        if count < 0:
+            raise ValueError(
+                "count parameter of set_number_of_pages may not be < 0"
+            )
+        self._number_of_pages = count
 
     # ---------- computed labels ----------
 

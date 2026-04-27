@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Union
+from typing import Optional, Union, overload
 
 from pypdfbox.cos import COSBase, COSName
 
@@ -65,14 +65,41 @@ class Encoding:
 
     # -- public read API ---------------------------------------------------
 
-    def get_name(self, code: int) -> str:
-        """Return the glyph name for ``code``, or ``".notdef"`` if unmapped.
-        Never returns ``None`` (matches upstream ``getName(int)``)."""
+    @overload
+    def get_name(self) -> str | None: ...
+    @overload
+    def get_name(self, code: int) -> str: ...
+    def get_name(self, code: Optional[int] = None) -> str | None:
+        """Polymorphic ``getName``.
+
+        With no argument, returns the encoding name (e.g.
+        ``"StandardEncoding"``). Equivalent to :meth:`get_encoding_name`;
+        kept as ``get_name()`` so call sites mirror upstream patterns where
+        the no-arg form is intuitive.
+
+        With an ``int`` argument, returns the PostScript glyph name for
+        ``code`` or ``".notdef"`` when unmapped (matches upstream
+        ``getName(int)``).
+        """
+        if code is None:
+            return self.get_encoding_name()
         return self._code_to_name.get(code, ".notdef")
 
     def get_code(self, name: str) -> int | None:
-        """Return the character code for ``name``, or ``None`` if unmapped."""
+        """Return the character code for ``name``, or ``None`` if unmapped.
+
+        Backed by the reverse map populated during construction, so each
+        lookup is already O(1); no extra cache layer is needed.
+        """
         return self._name_to_code.get(name)
+
+    def to_glyph_name(self, code: int) -> str:
+        """Return the glyph name for ``code`` with the ``".notdef"`` fallback.
+
+        Equivalent to ``get_name(code)``; provided as a self-documenting
+        alias for sites that consume glyph names directly.
+        """
+        return self._code_to_name.get(code, ".notdef")
 
     def contains_name(self, name: str) -> bool:
         """``True`` if ``name`` has a mapping. Mirrors ``contains(String)``."""

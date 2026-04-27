@@ -76,8 +76,12 @@ def test_shading_set_shading_round_trip() -> None:
     raw_shading.set_int("ShadingType", 2)
     pattern.set_shading(raw_shading)
 
+    # ``get_shading`` now returns a typed ``PDShading`` (dispatched on
+    # ``/ShadingType``); the raw dictionary is reachable via
+    # ``get_cos_object()`` on the wrapper or the pattern.
     out = pattern.get_shading()
-    assert out is raw_shading
+    assert out is not None
+    assert out.get_cos_object() is raw_shading
     assert pattern.get_cos_object().get_dictionary_object(_SHADING) is raw_shading
 
     pattern.set_shading(None)

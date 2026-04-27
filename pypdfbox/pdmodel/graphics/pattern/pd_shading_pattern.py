@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSBase, COSDictionary, COSName
 
 from .pd_abstract_pattern import PDAbstractPattern
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.graphics.shading.pd_shading import PDShading
 
 _PATTERN_TYPE: COSName = COSName.get_pdf_name("PatternType")
 _SHADING: COSName = COSName.get_pdf_name("Shading")
@@ -10,12 +15,12 @@ _SHADING: COSName = COSName.get_pdf_name("Shading")
 
 class PDShadingPattern(PDAbstractPattern):
     """Shading pattern (``/PatternType 2``). Mirrors PDFBox
-    ``PDShadingPattern`` lite surface.
+    ``PDShadingPattern``.
 
-    Lite: ``/Shading`` is exposed as the raw ``COSBase`` (a typed
-    ``PDShading`` wrapper is delivered by a sibling cluster); the
-    ``/ExtGState`` accessors inherited from ``PDAbstractPattern`` return
-    the raw dictionary."""
+    ``/Shading`` is exposed as a typed ``PDShading`` (dispatched on
+    ``/ShadingType``); ``/Matrix`` and ``/ExtGState`` accessors are
+    inherited from ``PDAbstractPattern`` (the ``ExtGState`` accessor on
+    the base now also returns a typed ``PDExtendedGraphicsState``)."""
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         super().__init__(dictionary)
@@ -34,17 +39,45 @@ class PDShadingPattern(PDAbstractPattern):
 
     # ---------- /Shading ----------
 
-    def get_shading(self) -> COSBase | None:
-        """Raw ``/Shading`` entry — typically a ``COSDictionary`` (shading
-        types 1–3) or a ``COSStream`` (shading types 4–7). The typed
-        ``PDShading`` wrapper is delivered by a sibling cluster."""
-        return self._dict.get_dictionary_object(_SHADING)
+    def get_shading(self) -> PDShading | None:
+        """Typed ``/Shading`` accessor — mirrors upstream
+        ``PDShadingPattern.getShading``. Returns a ``PDShading`` subclass
+        (dispatched on ``/ShadingType`` by ``PDShading.create``) or
+        ``None`` when the entry is absent."""
+        # Local import — avoids dragging the shading subclass tree into
+        # the pattern module's import graph at load time.
+        from pypdfbox.pdmodel.graphics.shading.pd_shading import (  # noqa: PLC0415
+            PDShading as _PDShading,
+        )
 
-    def set_shading(self, shading: COSBase | None) -> None:
+        value = self._dict.get_dictionary_object(_SHADING)
+        if value is None:
+            return None
+        if not isinstance(value, COSDictionary):
+            return None
+        return _PDShading.create(value)
+
+    def set_shading(self, shading: PDShading | COSBase | None) -> None:
+        """Accepts a typed ``PDShading``, a raw ``COSBase`` (typically
+        ``COSDictionary`` / ``COSStream``), or ``None`` (clears the
+        entry)."""
+        from pypdfbox.pdmodel.graphics.shading.pd_shading import (  # noqa: PLC0415
+            PDShading as _PDShading,
+        )
+
         if shading is None:
             self._dict.remove_item(_SHADING)
             return
-        self._dict.set_item(_SHADING, shading)
+        if isinstance(shading, _PDShading):
+            self._dict.set_item(_SHADING, shading.get_cos_object())
+            return
+        if isinstance(shading, COSBase):
+            self._dict.set_item(_SHADING, shading)
+            return
+        raise TypeError(
+            "set_shading expects PDShading, COSBase, or None; got "
+            f"{type(shading).__name__}"
+        )
 
 
 __all__ = ["PDShadingPattern"]

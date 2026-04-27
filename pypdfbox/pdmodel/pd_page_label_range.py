@@ -100,6 +100,12 @@ class PDPageLabelRange:
 
     # ---------- computed labels ----------
 
+    def format_label_index(self, index: int) -> str:
+        """Alias for :meth:`compute_label_for_offset`. Mirrors the upstream
+        helper name used in some downstream callers (PDF 32000-1 §12.4.2).
+        """
+        return self.compute_label_for_offset(index)
+
     def compute_label_for_offset(self, offset: int) -> str:
         """Render the label for a 0-based ``offset`` within this range.
 

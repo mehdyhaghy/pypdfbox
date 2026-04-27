@@ -4,6 +4,7 @@ from pypdfbox.cos import (
     COSArray,
     COSBase,
     COSDictionary,
+    COSInteger,
     COSName,
     COSNumber,
 )
@@ -111,8 +112,40 @@ class DictionaryEncoding(Encoding):
     def get_cos_object(self) -> COSDictionary:
         return self._encoding
 
+    def to_cos_object(self) -> COSDictionary:
+        """Alias for :meth:`get_cos_object`. Convenience for callers that
+        prefer the writer-style ``to_*`` naming."""
+        return self._encoding
+
     def get_base_encoding(self) -> Encoding | None:
         return self._base_encoding
+
+    def set_base_encoding(self, value: Encoding | COSName | str | None) -> None:
+        """Replace the ``/BaseEncoding`` entry on the underlying dictionary
+        and refresh the cached resolved encoding.
+
+        Accepts a resolved :class:`Encoding`, a ``COSName``, a plain encoding
+        name, or ``None`` to remove the entry.
+        """
+        if value is None:
+            self._encoding.remove_item(_BASE_ENCODING)
+            self._base_encoding = None
+            return
+        if isinstance(value, Encoding):
+            name = value.get_encoding_name()
+            self._base_encoding = value
+            if name is not None:
+                self._encoding.set_item(_BASE_ENCODING, COSName.get_pdf_name(name))
+            else:
+                self._encoding.remove_item(_BASE_ENCODING)
+            return
+        if isinstance(value, COSName):
+            self._encoding.set_item(_BASE_ENCODING, value)
+            self._base_encoding = Encoding.get_instance(value)
+            return
+        # Plain string.
+        self._encoding.set_item(_BASE_ENCODING, COSName.get_pdf_name(value))
+        self._base_encoding = Encoding.get_instance(value)
 
     def get_differences(self) -> dict[int, str]:
         return dict(self._differences)
@@ -134,9 +167,35 @@ class DictionaryEncoding(Encoding):
 
     # -- helpers for writers ----------------------------------------------
 
-    def set_differences(self, differences: COSArray) -> None:
-        """Replace the ``/Differences`` array on the underlying dictionary."""
-        self._encoding.set_item(_DIFFERENCES, differences)
+    def set_differences(self, differences: COSArray | dict[int, str]) -> None:
+        """Replace the ``/Differences`` entry on the underlying dictionary.
+
+        Accepts either a fully prepared :class:`COSArray` (writer-side wire
+        form) or a ``{code: name}`` mapping which is converted to the
+        canonical PDF differences array — runs of consecutive codes are
+        coalesced under a single leading integer marker, matching the
+        spec's compact representation.
+        """
+        if isinstance(differences, COSArray):
+            self._encoding.set_item(_DIFFERENCES, differences)
+            self._differences = {}
+            self._apply_differences(differences)
+            return
+
+        # Build a COSArray from a {code: name} mapping. Sort by code and
+        # coalesce consecutive runs.
+        arr = COSArray()
+        prev_code: int | None = None
+        for code in sorted(differences):
+            name = differences[code]
+            if prev_code is None or code != prev_code + 1:
+                arr.add(COSInteger.get(code))
+            arr.add(COSName.get_pdf_name(name))
+            prev_code = code
+        self._encoding.set_item(_DIFFERENCES, arr)
+        # Refresh the cached differences view.
+        self._differences = {}
+        self._apply_differences(arr)
 
 
 __all__ = ["DictionaryEncoding"]

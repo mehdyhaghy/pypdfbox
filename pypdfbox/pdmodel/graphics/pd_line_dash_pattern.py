@@ -99,14 +99,39 @@ class PDLineDashPattern:
             out.add(COSFloat(float(self._phase)))
         return out
 
+    def to_cos_array(self) -> COSArray:
+        """Alias for :meth:`get_cos_array`."""
+        return self.get_cos_array()
+
     # ---------- accessors ----------
 
     def get_dash_array(self) -> list[float]:
         """Defensive copy of the dash/gap lengths."""
         return list(self._array)
 
+    def set_dash_array(self, values: list[float]) -> None:
+        """Replace the dash/gap lengths with ``values`` (defensive copy)."""
+        if values is None:
+            self._array = []
+            return
+        self._array = [float(v) for v in values]
+
     def get_phase(self) -> _Number:
         return self._phase
+
+    def set_phase(self, value: _Number) -> None:
+        """Replace the dash phase with ``value``."""
+        self._phase = value
+
+    def is_solid(self) -> bool:
+        """True when the dash array is empty (solid line)."""
+        return len(self._array) == 0
+
+    def is_zero_pattern(self) -> bool:
+        """True when every entry in the dash array is zero (treat as solid)."""
+        if len(self._array) == 0:
+            return False
+        return all(v == 0 for v in self._array)
 
     # ---------- python protocols ----------
 

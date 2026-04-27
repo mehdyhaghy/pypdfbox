@@ -97,6 +97,11 @@ class PDOutlineNode:
         without descendants."""
         return self._dictionary.get_int(_COUNT, 0)
 
+    def set_open_count(self, count: int) -> None:
+        """Public setter for ``/Count``. Mirrors upstream
+        ``PDOutlineNode#setOpenCount``."""
+        self._dictionary.set_int(_COUNT, count)
+
     def _set_open_count(self, count: int) -> None:
         self._dictionary.set_int(_COUNT, count)
 
@@ -193,6 +198,17 @@ class PDOutlineNode:
 
         Returns an iterable that can be consumed multiple times — each
         ``iter()`` call walks from ``/First`` again."""
+        return _OutlineChildren(self)
+
+    def iterator(self) -> PDOutlineItemIterator:
+        """Return a forward iterator over children in ``/First`` →
+        ``/Next`` chain order. Mirrors upstream
+        ``PDOutlineNode#iterator``."""
+        return PDOutlineItemIterator(self.get_first_child())
+
+    def nodes(self) -> _OutlineChildren:
+        """Alias for :meth:`children`. Mirrors upstream
+        ``PDOutlineNode#nodes``."""
         return _OutlineChildren(self)
 
     def __iter__(self) -> Iterator[PDOutlineItem]:

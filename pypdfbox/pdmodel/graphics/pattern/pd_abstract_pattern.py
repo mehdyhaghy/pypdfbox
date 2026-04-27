@@ -118,9 +118,10 @@ class PDAbstractPattern:
     # ---------- /ExtGState ----------
 
     def get_extended_graphics_state(self) -> COSDictionary | None:
-        """Raw ``/ExtGState`` dictionary if present, else ``None``. The
-        typed ``PDExtendedGraphicsState`` wrapper is provided on
-        ``PDShadingPattern`` (upstream API surface)."""
+        """Raw ``/ExtGState`` dictionary if present, else ``None``.
+
+        Kept as a back-compat raw accessor; prefer the typed
+        ``get_ext_g_state`` (upstream's ``getExtGState`` spelling)."""
         value = self._dict.get_dictionary_object(_EXT_G_STATE)
         if isinstance(value, COSDictionary):
             return value
@@ -129,10 +130,60 @@ class PDAbstractPattern:
     def set_extended_graphics_state(
         self, extgs: COSDictionary | None
     ) -> None:
+        """Back-compat raw setter. Prefer ``set_ext_g_state``."""
         if extgs is None:
             self._dict.remove_item(_EXT_G_STATE)
             return
         self._dict.set_item(_EXT_G_STATE, extgs)
+
+    def get_ext_g_state(self):  # type: ignore[no-untyped-def]
+        """Typed ``/ExtGState`` accessor — mirrors upstream
+        ``PDAbstractPattern.getExtGState``. Returns a
+        ``PDExtendedGraphicsState`` wrapper around the raw dictionary, or
+        ``None`` when the entry is missing or not a dictionary."""
+        # Local import — PDExtendedGraphicsState lives under graphics.state
+        # which we don't want to drag in at module-load time (keeps the
+        # pattern module dependency-light).
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (  # noqa: PLC0415
+            PDExtendedGraphicsState,
+        )
+
+        value = self._dict.get_dictionary_object(_EXT_G_STATE)
+        if isinstance(value, COSDictionary):
+            return PDExtendedGraphicsState(value)
+        return None
+
+    def set_ext_g_state(self, ext_g_state) -> None:  # type: ignore[no-untyped-def]
+        """Typed ``/ExtGState`` setter. Accepts a
+        ``PDExtendedGraphicsState``, a raw ``COSDictionary``, or ``None``
+        (clears the entry)."""
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (  # noqa: PLC0415
+            PDExtendedGraphicsState,
+        )
+
+        if ext_g_state is None:
+            self._dict.remove_item(_EXT_G_STATE)
+            return
+        if isinstance(ext_g_state, PDExtendedGraphicsState):
+            self._dict.set_item(_EXT_G_STATE, ext_g_state.get_cos_object())
+            return
+        if isinstance(ext_g_state, COSDictionary):
+            self._dict.set_item(_EXT_G_STATE, ext_g_state)
+            return
+        raise TypeError(
+            "set_ext_g_state expects PDExtendedGraphicsState, COSDictionary, "
+            f"or None; got {type(ext_g_state).__name__}"
+        )
+
+    # ---------- type predicates ----------
+
+    def is_tiling_pattern(self) -> bool:
+        """``True`` when this is a tiling pattern (``/PatternType 1``)."""
+        return self.get_pattern_type() == PDAbstractPattern.TYPE_TILING_PATTERN
+
+    def is_shading_pattern(self) -> bool:
+        """``True`` when this is a shading pattern (``/PatternType 2``)."""
+        return self.get_pattern_type() == PDAbstractPattern.TYPE_SHADING_PATTERN
 
 
 __all__ = ["PDAbstractPattern"]

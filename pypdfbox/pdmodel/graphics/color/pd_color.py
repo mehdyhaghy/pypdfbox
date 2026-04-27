@@ -52,14 +52,36 @@ class PDColor:
     def get_components(self) -> list[float]:
         return list(self._components)
 
+    def set_components(self, values: list[float]) -> None:
+        """Replace the color components in place. Upstream ``PDColor`` is
+        effectively immutable (constructor-only); we expose this setter
+        as a parity hook that re-runs the same defensive copy used by
+        ``__init__``.
+        """
+        self._components = [float(v) for v in values]
+
     def get_color_space(self) -> PDColorSpace:
         return self._color_space
+
+    def get_color_space_name(self) -> str | None:
+        if self._color_space is None:
+            return None
+        get_name = getattr(self._color_space, "get_name", None)
+        if get_name is None:
+            return None
+        return get_name()
 
     def get_pattern_name(self) -> COSName | None:
         return self._pattern_name
 
     def is_pattern(self) -> bool:
-        return self._pattern_name is not None
+        # Upstream test: pattern when color space is a PDPattern. Keep the
+        # historical "pattern_name set" trigger too so existing callers
+        # constructing a PDColor with just a name still report True.
+        if self._pattern_name is not None:
+            return True
+        cs_name = self.get_color_space_name()
+        return cs_name == "Pattern"
 
     # ---------- conversion ----------
 
@@ -201,6 +223,27 @@ class PDColor:
             (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
         )
 
+    def to_rgb_image(self, *args: object, **kwargs: object) -> object:
+        """Render this color as an sRGB raster. Upstream returns a
+        ``BufferedImage``; rendering raster output is a renderer-module
+        concern, so this is intentionally unimplemented at the model
+        layer.
+        """
+        raise NotImplementedError(
+            "PDColor.to_rgb_image() is not implemented; rendering belongs to "
+            "the rendering module"
+        )
+
+    def to_raw_image(self, *args: object, **kwargs: object) -> object:
+        """Render this color in its native color space as a raster.
+        Upstream returns a ``BufferedImage``; deferred to the rendering
+        module.
+        """
+        raise NotImplementedError(
+            "PDColor.to_raw_image() is not implemented; rendering belongs to "
+            "the rendering module"
+        )
+
     # ---------- COS surface ----------
 
     def to_cos_array(self) -> COSArray:
@@ -210,6 +253,26 @@ class PDColor:
         if self._pattern_name is not None:
             array.add(self._pattern_name)
         return array
+
+    # ---------- value semantics ----------
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PDColor):
+            return NotImplemented
+        return (
+            self._components == other._components
+            and self._color_space is other._color_space
+            and self._pattern_name == other._pattern_name
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                tuple(self._components),
+                id(self._color_space),
+                self._pattern_name,
+            )
+        )
 
     @classmethod
     def from_cos_array(

@@ -80,11 +80,20 @@ class PDComplexFileSpecification(PDFileSpecification):
     def get_file_dos(self) -> str | None:
         return self._fs.get_string(_DOS)
 
+    def set_file_dos(self, file: str | None) -> None:
+        self._fs.set_string(_DOS, file)
+
     def get_file_mac(self) -> str | None:
         return self._fs.get_string(_MAC)
 
+    def set_file_mac(self, file: str | None) -> None:
+        self._fs.set_string(_MAC, file)
+
     def get_file_unix(self) -> str | None:
         return self._fs.get_string(_UNIX)
+
+    def set_file_unix(self, file: str | None) -> None:
+        self._fs.set_string(_UNIX, file)
 
     # ---------- /V volatile ----------
 

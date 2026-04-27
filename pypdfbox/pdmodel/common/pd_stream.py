@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, BinaryIO
 from pypdfbox.cos import COSArray, COSDictionary, COSDocument, COSName, COSStream
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.filespecification import PDFileSpecification
     from pypdfbox.pdmodel.pd_document import PDDocument
 
 
@@ -15,6 +16,9 @@ _LENGTH: COSName = COSName.LENGTH  # type: ignore[attr-defined]
 _METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _DL: COSName = COSName.get_pdf_name("DL")
 _DECODE_PARMS: COSName = COSName.get_pdf_name("DecodeParms")
+_F: COSName = COSName.get_pdf_name("F")
+_FFILTER: COSName = COSName.get_pdf_name("FFilter")
+_FDECODE_PARMS: COSName = COSName.get_pdf_name("FDecodeParms")
 
 
 class PDStream:
@@ -108,6 +112,16 @@ class PDStream:
     def get_cos_object(self) -> COSStream:
         return self._stream
 
+    def get_cos_stream(self) -> COSStream:
+        """Alias for :meth:`get_cos_object` — mirrors upstream
+        ``getCOSStream()``."""
+        return self._stream
+
+    def get_stream(self) -> COSStream:
+        """Alias for :meth:`get_cos_object` — mirrors upstream
+        ``getStream()``."""
+        return self._stream
+
     # ---------- output streams ----------
 
     def create_output_stream(
@@ -173,6 +187,16 @@ class PDStream:
             return None
         return 0
 
+    def set_length(self, length: int) -> None:
+        """Write ``/Length`` directly. Mirrors upstream ``setLength(int)``.
+
+        Note: PDF writers re-compute ``/Length`` from the actual encoded
+        body on serialisation, so this setter is mostly a placeholder for
+        round-trip parity with upstream. Callers that just want the
+        encoded length to reflect the body should leave ``/Length`` alone
+        and let the writer fill it in."""
+        self._stream.set_int(_LENGTH, int(length))
+
     def get_decoded_stream_length(self) -> int:
         """``/DL`` — decoded body length hint (may be absent → -1)."""
         return self._stream.get_int(_DL, -1)
@@ -222,6 +246,12 @@ class PDStream:
             names = [_to_name(n) for n in filters]
         arr = COSArray(names)
         self._stream.set_item(_FILTER, arr)
+
+    def is_filter_undefined(self) -> bool:
+        """``True`` when ``/Filter`` is absent from the dictionary.
+        Mirrors upstream ``isFilterUndefined()`` — used by callers that
+        need to skip filter wiring when the stream has no encoding chain."""
+        return not self._stream.contains_key(_FILTER)
 
     # ---------- decode parameters ----------
 
@@ -291,6 +321,78 @@ class PDStream:
             self._stream.remove_item(_METADATA)
             return
         self._stream.set_item(_METADATA, stream)
+
+    # ---------- /F external file spec ----------
+
+    def get_file(self) -> PDFileSpecification | None:
+        """``/F`` — external file specification. Returns ``None`` when the
+        entry is absent. Mirrors upstream
+        ``getFile() : PDFileSpecification``."""
+        from pypdfbox.pdmodel.common.filespecification import (  # noqa: PLC0415
+            PDFileSpecification,
+        )
+
+        base = self._stream.get_dictionary_object(_F)
+        if base is None:
+            return None
+        return PDFileSpecification.create_fs(base)
+
+    def set_file(self, file: PDFileSpecification | None) -> None:
+        """Write the ``/F`` external file specification entry. Mirrors
+        upstream ``setFile(PDFileSpecification)``."""
+        if file is None:
+            self._stream.remove_item(_F)
+            return
+        self._stream.set_item(_F, file.get_cos_object())
+
+    def get_file_filters(self) -> list[COSName]:
+        """``/FFilter`` chain — filter chain to apply when the body is
+        sourced from the external file referenced by ``/F``. Same shape
+        rules as ``/Filter``. Empty when absent. Mirrors upstream
+        ``getFileFilters() : List<COSName>``."""
+        f = self._stream.get_dictionary_object(_FFILTER)
+        if f is None:
+            return []
+        if isinstance(f, COSName):
+            return [f]
+        if isinstance(f, COSArray):
+            out: list[COSName] = []
+            for entry in f:
+                if isinstance(entry, COSName):
+                    out.append(entry)
+                else:
+                    raise TypeError(
+                        f"non-name entry in /FFilter array: {type(entry).__name__}"
+                    )
+            return out
+        raise TypeError(f"unexpected /FFilter type: {type(f).__name__}")
+
+    def get_file_decode_parms(self) -> list[COSDictionary] | None:
+        """``/FDecodeParms`` — decode-parameter chain paired with
+        ``/FFilter`` (one dict per file-filter, in matching order).
+        Returns ``None`` when absent. Mirrors upstream
+        ``getFileDecodeParams() : List<COSDictionary>``."""
+        from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
+
+        parms = self._stream.get_dictionary_object(_FDECODE_PARMS)
+        if parms is None:
+            return None
+        if isinstance(parms, COSDictionary):
+            return [parms]
+        if isinstance(parms, COSArray):
+            out: list[COSDictionary] = []
+            for entry in parms:
+                if isinstance(entry, COSDictionary):
+                    out.append(entry)
+                elif entry is None or isinstance(entry, COSNull):
+                    out.append(COSDictionary())
+                else:
+                    raise TypeError(
+                        f"unexpected /FDecodeParms entry type: "
+                        f"{type(entry).__name__}"
+                    )
+            return out
+        raise TypeError(f"unexpected /FDecodeParms type: {type(parms).__name__}")
 
     # ---------- bytes convenience ----------
 

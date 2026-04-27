@@ -34,6 +34,10 @@ _T: COSName = COSName.get_pdf_name("T")
 _BORDER: COSName = COSName.get_pdf_name("Border")
 _C: COSName = COSName.get_pdf_name("C")
 _AP: COSName = COSName.get_pdf_name("AP")
+_AS: COSName = COSName.get_pdf_name("AS")
+_P: COSName = COSName.get_pdf_name("P")
+_STRUCT_PARENT: COSName = COSName.get_pdf_name("StructParent")
+_OC: COSName = COSName.get_pdf_name("OC")
 
 
 class PDAnnotation:
@@ -90,6 +94,15 @@ class PDAnnotation:
 
     def get_subtype(self) -> str | None:
         return self._dict.get_name(_SUBTYPE)
+
+    def set_subtype(self, subtype: str | None) -> None:
+        """Public ``/Subtype`` setter. Upstream PDFBox keeps this protected
+        but exposing it here is harmless and useful for callers that want
+        to repurpose a base wrapper around an existing dictionary."""
+        if subtype is None:
+            self._dict.remove_item(_SUBTYPE)
+            return
+        self._dict.set_item(_SUBTYPE, COSName.get_pdf_name(subtype))
 
     def _set_subtype(self, subtype: str) -> None:
         """Protected upstream — subclasses set this in their constructor."""
@@ -193,6 +206,12 @@ class PDAnnotation:
             self._dict.remove_item(_RECT)
             return
         self._dict.set_item(_RECT, rectangle.to_cos_array())
+
+    def get_rect(self) -> PDRectangle | None:
+        """Alias for :meth:`get_rectangle`. Some upstream call-sites use the
+        shorter ``getRect`` form even though the canonical method is
+        ``getRectangle``."""
+        return self.get_rectangle()
 
     # ---------- /Contents ----------
 
@@ -361,11 +380,27 @@ class PDAnnotation:
             return value
         return None
 
-    def set_color(self, color: COSArray | None) -> None:
+    def set_color(
+        self, color: COSArray | list[float] | tuple[float, ...] | None
+    ) -> None:
+        """Set ``/C``. Accepts ``None`` to clear, a raw ``COSArray``, or a
+        sequence of floats (the typed ``PDColor`` wrapper lands with the
+        rendering cluster — see ``CHANGES.md``)."""
         if color is None:
             self._dict.remove_item(_C)
             return
-        self._dict.set_item(_C, color)
+        if isinstance(color, COSArray):
+            self._dict.set_item(_C, color)
+            return
+        if isinstance(color, (list, tuple)):
+            self._dict.set_item(
+                _C, COSArray([COSFloat(float(c)) for c in color])
+            )
+            return
+        raise TypeError(
+            "set_color expects None, COSArray, list, or tuple; got "
+            f"{type(color).__name__}"
+        )
 
     def set_color_components(self, components: list[float] | tuple[float, ...]) -> None:
         """Convenience alternative to ``set_color`` taking raw floats — no
@@ -393,6 +428,106 @@ class PDAnnotation:
         self._dict.set_item(
             _AP,
             ap.get_cos_object() if hasattr(ap, "get_cos_object") else ap,
+        )
+
+    # ---------- /AS (appearance state) ----------
+
+    def get_appearance_state(self) -> str | None:
+        """Return the active appearance state name (``/AS``) — used together
+        with state-based ``/AP /N`` subdictionaries (checkbox on/off,
+        radio button selected, …). ``None`` when absent."""
+        return self._dict.get_name(_AS)
+
+    def set_appearance_state(self, value: str | None) -> None:
+        if value is None:
+            self._dict.remove_item(_AS)
+            return
+        self._dict.set_item(_AS, COSName.get_pdf_name(value))
+
+    # ---------- /P (parent page back-pointer) ----------
+
+    def get_p(self) -> COSDictionary | None:
+        """Return the raw ``/P`` page-dictionary back-pointer.
+
+        Upstream returns a ``PDPage``; we return the raw ``COSDictionary``
+        here to avoid pulling ``PDPage`` into the import graph of every
+        annotation. Callers that want a typed wrapper can call
+        ``PDPage(get_p())``."""
+        value = self._dict.get_dictionary_object(_P)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_p(self, page: object) -> None:
+        """Set the ``/P`` parent page back-pointer.
+
+        Accepts ``None``, a ``COSDictionary``, or any object exposing
+        ``get_cos_object()`` (e.g. a ``PDPage``)."""
+        if page is None:
+            self._dict.remove_item(_P)
+            return
+        if isinstance(page, COSDictionary):
+            self._dict.set_item(_P, page)
+            return
+        if hasattr(page, "get_cos_object"):
+            cos = page.get_cos_object()
+            if not isinstance(cos, COSDictionary):
+                raise TypeError(
+                    "set_p expects a page whose COS object is a "
+                    "COSDictionary"
+                )
+            self._dict.set_item(_P, cos)
+            return
+        raise TypeError(
+            "set_p expects None, COSDictionary, or an object with "
+            f"get_cos_object(); got {type(page).__name__}"
+        )
+
+    # ---------- /StructParent ----------
+
+    def get_struct_parent(self) -> int:
+        """Return the ``/StructParent`` integer key into the structure
+        parent tree. Default ``-1`` when absent (mirrors upstream)."""
+        return self._dict.get_int(_STRUCT_PARENT, -1)
+
+    def set_struct_parent(self, value: int) -> None:
+        self._dict.set_int(_STRUCT_PARENT, int(value))
+
+    # ---------- /OC (optional content) ----------
+
+    def get_optional_content(self) -> "PDPropertyList | None":
+        """Return the ``/OC`` optional content dictionary as a typed
+        :class:`PDPropertyList` (PDOptionalContentGroup or
+        PDOptionalContentMembershipDictionary). ``None`` when absent or
+        unrecognised."""
+        from ...graphics.pd_property_list import PDPropertyList
+
+        value = self._dict.get_dictionary_object(_OC)
+        if isinstance(value, COSDictionary):
+            return PDPropertyList.create(value)
+        return None
+
+    def set_optional_content(
+        self, oc: "PDPropertyList | COSDictionary | None"
+    ) -> None:
+        if oc is None:
+            self._dict.remove_item(_OC)
+            return
+        if isinstance(oc, COSDictionary):
+            self._dict.set_item(_OC, oc)
+            return
+        if hasattr(oc, "get_cos_object"):
+            cos = oc.get_cos_object()
+            if not isinstance(cos, COSDictionary):
+                raise TypeError(
+                    "set_optional_content expects a COSDictionary-backed "
+                    "PDPropertyList"
+                )
+            self._dict.set_item(_OC, cos)
+            return
+        raise TypeError(
+            "set_optional_content expects None, COSDictionary, or "
+            f"PDPropertyList; got {type(oc).__name__}"
         )
 
     # ---------- equality / repr ----------
