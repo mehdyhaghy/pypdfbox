@@ -238,6 +238,103 @@ class TrueTypeFont:
         self._hmtx = t
         return t
 
+    # ---------- name-table accessors -----------------------------------
+
+    def _get_name_string(self, name_id: int) -> str | None:
+        """Look up a name-table record by ``nameID``.
+
+        Defers to fontTools' ``name.getDebugName``, which walks the
+        PDFBox-equivalent priority order (Windows Unicode first, then
+        Macintosh Roman) and returns ``None`` when no record matches.
+        """
+        if "name" not in self._tt:
+            return None
+        value = self._tt["name"].getDebugName(name_id)
+        if value is None:
+            return None
+        return str(value)
+
+    def get_name(self) -> str | None:
+        """PostScript name of the font (name table, nameID 6)."""
+        return self._get_name_string(6)
+
+    def get_family_name(self) -> str | None:
+        """Font family name (name table, nameID 1)."""
+        return self._get_name_string(1)
+
+    def get_full_name(self) -> str | None:
+        """Full font name (name table, nameID 4)."""
+        return self._get_name_string(4)
+
+    def get_version(self) -> str | None:
+        """Version string (name table, nameID 5)."""
+        return self._get_name_string(5)
+
+    # ---------- head / post / OS/2 scalar accessors --------------------
+
+    def get_font_bbox(self) -> tuple[int, int, int, int]:
+        """Font bounding box (xMin, yMin, xMax, yMax) from the ``head`` table.
+
+        Returns ``(0, 0, 0, 0)`` when the font has no ``head`` table —
+        matches upstream's defensive zero-rect fallback.
+        """
+        if "head" not in self._tt:
+            return (0, 0, 0, 0)
+        h = self._tt["head"]
+        return (int(h.xMin), int(h.yMin), int(h.xMax), int(h.yMax))
+
+    def get_italic_angle(self) -> float:
+        """Italic angle in degrees from the ``post`` table (0.0 if absent)."""
+        if "post" not in self._tt:
+            return 0.0
+        return float(self._tt["post"].italicAngle)
+
+    def get_underline_position(self) -> int:
+        """Underline position from the ``post`` table (0 if absent)."""
+        if "post" not in self._tt:
+            return 0
+        return int(self._tt["post"].underlinePosition)
+
+    def get_underline_thickness(self) -> int:
+        """Underline thickness from the ``post`` table (0 if absent)."""
+        if "post" not in self._tt:
+            return 0
+        return int(self._tt["post"].underlineThickness)
+
+    def is_fixed_pitch(self) -> bool:
+        """Whether the font is monospaced (``post.isFixedPitch != 0``)."""
+        if "post" not in self._tt:
+            return False
+        return int(self._tt["post"].isFixedPitch) != 0
+
+    def get_weight(self) -> int:
+        """``OS/2.usWeightClass`` (typically 100..900). Defaults to 400
+        (Regular) when the font omits the ``OS/2`` table."""
+        if "OS/2" not in self._tt:
+            return 400
+        return int(self._tt["OS/2"].usWeightClass)
+
+    def get_width(self) -> int:
+        """``OS/2.usWidthClass`` (1..9). Defaults to 5 (Medium) when the
+        font omits the ``OS/2`` table."""
+        if "OS/2" not in self._tt:
+            return 5
+        return int(self._tt["OS/2"].usWidthClass)
+
+    # ---------- table-presence accessors -------------------------------
+
+    def get_capabilities(self) -> dict[str, bool]:
+        """Return a ``{tag: True}`` map of every SFNT table present.
+
+        Convenience wrapper over :meth:`get_table_map` for callers that
+        only care about which optional tables exist.
+        """
+        return {tag: True for tag in self.get_table_map()}
+
+    def has_table(self, tag: str) -> bool:
+        """``True`` iff the SFNT directory contains a table with ``tag``."""
+        return tag in self.get_table_map()
+
     # ---------- cmap (Unicode subtable) ---------------------------------
 
     def get_unicode_cmap_subtable(self) -> CmapSubtable | None:

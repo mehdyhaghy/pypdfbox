@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import io
-from collections.abc import Sequence
-from typing import BinaryIO
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, BinaryIO
 
 from PIL import Image
 
-from pypdfbox.cos import COSArray, COSBase, COSName, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.graphics.color import PDColorSpace
 from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+    from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
 
 _IMAGE: COSName = COSName.get_pdf_name("Image")
 _WIDTH: COSName = COSName.get_pdf_name("Width")
@@ -19,6 +23,14 @@ _BPC: COSName = COSName.get_pdf_name("BPC")
 _COLORSPACE: COSName = COSName.get_pdf_name("ColorSpace")
 _CS: COSName = COSName.get_pdf_name("CS")
 _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
+_MASK: COSName = COSName.get_pdf_name("Mask")
+_SMASK: COSName = COSName.get_pdf_name("SMask")
+_DECODE: COSName = COSName.get_pdf_name("Decode")
+_INTERPOLATE: COSName = COSName.get_pdf_name("Interpolate")
+_IMAGE_MASK: COSName = COSName.get_pdf_name("ImageMask")
+_STRUCT_PARENT: COSName = COSName.get_pdf_name("StructParent")
+_METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
+_OC: COSName = COSName.get_pdf_name("OC")
 
 
 class PDImageXObject(PDXObject):
@@ -112,6 +124,167 @@ class PDImageXObject(PDXObject):
         the same stop-filter semantics apply (e.g. images stop at
         ``DCTDecode`` to keep JPEG bytes intact for downstream encoders)."""
         return self.get_stream().create_input_stream(stop_filters)
+
+    # ---------- /Mask (explicit-mask Image XObject) ----------
+
+    def get_mask(self) -> PDImageXObject | None:
+        """Return the explicit-mask ``/Mask`` Image XObject when ``/Mask`` is
+        a stream. When ``/Mask`` is a COSArray (color-key mask) this returns
+        ``None`` — use :meth:`get_color_key_mask` for that form.
+
+        Mirrors upstream ``PDImageXObject.getMask()``.
+        """
+        value = self.get_cos_object().get_dictionary_object(_MASK)
+        if isinstance(value, COSStream):
+            return PDImageXObject(value)
+        return None
+
+    def set_mask(self, value: PDImageXObject | None) -> None:
+        """Set ``/Mask`` to an explicit-mask Image XObject (stream form).
+        Pass ``None`` to remove the entry. Removes any previous color-key
+        ``/Mask`` array as well — only one form may be present at a time."""
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_MASK)
+            return
+        cos.set_item(_MASK, value.get_cos_object())
+
+    # ---------- /Mask (color-key mask) ----------
+
+    def get_color_key_mask(self) -> list[int] | None:
+        """Return the ``/Mask`` color-key range list when ``/Mask`` is a
+        COSArray of ``[min1 max1 min2 max2 ...]`` integers; returns ``None``
+        when ``/Mask`` is absent or carries an explicit-mask stream.
+
+        Mirrors upstream ``PDImageXObject.getColorKeyMask()``.
+        """
+        value = self.get_cos_object().get_dictionary_object(_MASK)
+        if not isinstance(value, COSArray):
+            return None
+        out: list[int] = []
+        for item in value:
+            if isinstance(item, (COSInteger, COSFloat)):
+                out.append(int(item.value))
+            else:
+                # Per spec entries are integers; bail out rather than guess.
+                return None
+        return out
+
+    def set_color_key_mask(self, values: Iterable[int] | None) -> None:
+        """Replace ``/Mask`` with a color-key mask COSArray of integers.
+        Pass ``None`` to remove the entry."""
+        cos = self.get_cos_object()
+        if values is None:
+            cos.remove_item(_MASK)
+            return
+        array = COSArray()
+        for v in values:
+            array.add(COSInteger.get(int(v)))
+        cos.set_item(_MASK, array)
+
+    # ---------- /SMask ----------
+
+    def get_soft_mask(self) -> PDImageXObject | None:
+        """Return the ``/SMask`` soft-mask Image XObject, or ``None``."""
+        value = self.get_cos_object().get_dictionary_object(_SMASK)
+        if isinstance(value, COSStream):
+            return PDImageXObject(value)
+        return None
+
+    def set_soft_mask(self, value: PDImageXObject | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_SMASK)
+            return
+        cos.set_item(_SMASK, value.get_cos_object())
+
+    # ---------- /Decode ----------
+
+    def get_decode(self) -> list[float] | None:
+        """``/Decode`` color-component min/max pairs, or ``None`` when absent."""
+        value = self.get_cos_object().get_dictionary_object(_DECODE)
+        if not isinstance(value, COSArray):
+            return None
+        return value.to_float_array()
+
+    def set_decode(self, values: Iterable[float] | None) -> None:
+        cos = self.get_cos_object()
+        if values is None:
+            cos.remove_item(_DECODE)
+            return
+        array = COSArray()
+        for v in values:
+            array.add(COSFloat(float(v)))
+        cos.set_item(_DECODE, array)
+
+    # ---------- /Interpolate ----------
+
+    def is_interpolate(self) -> bool:
+        """``/Interpolate`` flag; default ``False`` per PDF 32000-1 Table 89."""
+        return self.get_cos_object().get_boolean(_INTERPOLATE, False)
+
+    def set_interpolate(self, value: bool) -> None:
+        self.get_cos_object().set_boolean(_INTERPOLATE, bool(value))
+
+    # ---------- /ImageMask ----------
+
+    def is_image_mask(self) -> bool:
+        """``/ImageMask`` flag; default ``False`` per PDF 32000-1 Table 89."""
+        return self.get_cos_object().get_boolean(_IMAGE_MASK, False)
+
+    def set_image_mask(self, value: bool) -> None:
+        self.get_cos_object().set_boolean(_IMAGE_MASK, bool(value))
+
+    # ---------- /StructParent ----------
+
+    def get_struct_parent(self) -> int:
+        """``/StructParent`` integer key into the structure parent tree;
+        default ``-1`` when absent (mirrors upstream)."""
+        return self.get_cos_object().get_int(_STRUCT_PARENT, -1)
+
+    def set_struct_parent(self, value: int) -> None:
+        self.get_cos_object().set_int(_STRUCT_PARENT, int(value))
+
+    # ---------- /Metadata ----------
+
+    def get_metadata(self) -> PDMetadata | None:
+        """Typed ``/Metadata`` XMP wrapper; ``None`` when absent."""
+        # Local import to avoid an import cycle with PDMetadata's PDDocument
+        # dependency at package import time.
+        from pypdfbox.pdmodel.common.pd_metadata import PDMetadata  # noqa: PLC0415
+
+        value = self.get_cos_object().get_dictionary_object(_METADATA)
+        if isinstance(value, COSStream):
+            return PDMetadata(value)
+        return None
+
+    def set_metadata(self, value: PDMetadata | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_METADATA)
+            return
+        cos.set_item(_METADATA, value.get_cos_object())
+
+    # ---------- /OC ----------
+
+    def get_oc(self) -> PDPropertyList | None:
+        """Typed ``/OC`` optional content membership; ``None`` when absent
+        or carries an unrecognised /Type."""
+        # Local import to avoid an import cycle with the optionalcontent
+        # subpackage (which itself imports image-cluster types in places).
+        from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList  # noqa: PLC0415
+
+        value = self.get_cos_object().get_dictionary_object(_OC)
+        if isinstance(value, COSDictionary):
+            return PDPropertyList.create(value)
+        return None
+
+    def set_oc(self, value: PDPropertyList | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_OC)
+            return
+        cos.set_item(_OC, value.get_cos_object())
 
     # ---------- PIL image helper ----------
 

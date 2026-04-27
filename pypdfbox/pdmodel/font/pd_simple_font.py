@@ -5,6 +5,17 @@ from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 
 from .encoding import DictionaryEncoding, Encoding, ZapfDingbatsEncoding
 from .pd_font import PDFont
+from .pd_font_descriptor import (
+    FLAG_ALL_CAP,
+    FLAG_FIXED_PITCH,
+    FLAG_FORCE_BOLD,
+    FLAG_ITALIC,
+    FLAG_SCRIPT,
+    FLAG_SERIF,
+    FLAG_SMALL_CAP,
+    FLAG_SYMBOLIC,
+)
+from .standard14_fonts import Standard14Fonts
 
 _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
 _LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
@@ -78,6 +89,70 @@ class PDSimpleFont(PDFont):
             if isinstance(item, (COSInteger, COSFloat)):
                 widths.append(float(item.value))
         return widths
+
+    # ---------- /FontDescriptor /Flags accessors ----------
+    #
+    # Thin wrappers around ``get_font_descriptor()`` + the flag-bit constants
+    # in :mod:`pd_font_descriptor`. Mirrors the convenience accessors on
+    # upstream ``PDFontLike`` / ``PDFontDescriptor``. Each returns ``False``
+    # when the font has no ``/FontDescriptor`` (i.e. defaults are absent =
+    # nonsymbolic / non-italic / non-bold per PDF 32000-1 §9.8.2).
+    #
+    # ``is_symbolic`` is the only bit upstream documents as defaulting to
+    # *True* when ambiguous (some viewers assume nonsymbolic when /Flags is
+    # missing); we follow the user contract here and return False when no
+    # descriptor is present.
+    #
+    # ``is_bold`` has no dedicated /Flags bit in PDF 32000-1 — boldness is
+    # signalled via the font name (e.g. ``-Bold``) or ``/FontWeight >= 700``
+    # on the descriptor. ``is_force_bold`` reads the dedicated bit 19
+    # (1<<18 = 262144) which forces bold rendering at small sizes.
+
+    def _flag(self, mask: int) -> bool:
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return False
+        return bool(fd.get_flags() & mask)
+
+    def is_symbolic(self) -> bool:
+        return self._flag(FLAG_SYMBOLIC)
+
+    def is_italic(self) -> bool:
+        return self._flag(FLAG_ITALIC)
+
+    def is_bold(self) -> bool:
+        # No dedicated /Flags bit — derive from /FontWeight (>=700 = bold)
+        # per PDF 32000-1 §9.8.1 Table 122.
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return False
+        return fd.get_font_weight() >= 700
+
+    def is_fixed_pitch(self) -> bool:
+        return self._flag(FLAG_FIXED_PITCH)
+
+    def is_serif(self) -> bool:
+        return self._flag(FLAG_SERIF)
+
+    def is_script(self) -> bool:
+        return self._flag(FLAG_SCRIPT)
+
+    def is_force_bold(self) -> bool:
+        return self._flag(FLAG_FORCE_BOLD)
+
+    def is_all_cap(self) -> bool:
+        return self._flag(FLAG_ALL_CAP)
+
+    def is_small_cap(self) -> bool:
+        return self._flag(FLAG_SMALL_CAP)
+
+    # ---------- Standard 14 ----------
+
+    def is_standard_14(self) -> bool:
+        """True iff this font's ``/BaseFont`` is one of the 14 PDF Standard
+        fonts (or a known alias). Mirrors PDFBox ``PDFont.isStandard14``.
+        """
+        return Standard14Fonts.containsName(self.get_name())
 
     def get_average_font_width(self) -> float:
         """Return the average glyph advance for this font in *thousandths

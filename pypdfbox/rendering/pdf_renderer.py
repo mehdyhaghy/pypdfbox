@@ -230,6 +230,14 @@ class PDFRenderer(PDFStreamEngine):
         # PDFont instances pointing at the same dict still warrant separate
         # warnings (different content streams may have referenced them).
         self._warned_standard14_fonts: set[int] = set()
+        # ---- public render-config flags (mirror upstream PDFRenderer) ----
+        # These are stored only — the lite renderer doesn't yet consult them,
+        # but downstream tooling that ports from PDFBox calls these setters
+        # unconditionally and would crash on AttributeError. Defaults match
+        # upstream ``PDFRenderer`` field initialisers in PDFBox 3.0.x.
+        self._subsampling_allowed: bool = False
+        self._default_destination: str = "View"
+        self._image_downscaling_optimization_threshold: float = 0.5
 
     # ------------------------------------------------------------------
     # public API (mirrors PDFRenderer.java)
@@ -311,6 +319,63 @@ class PDFRenderer(PDFStreamEngine):
             self._image = None
 
         return image
+
+    # ------------------------------------------------------------------
+    # public config surface (mirrors upstream PDFRenderer setters/getters)
+    # ------------------------------------------------------------------
+
+    def is_page_image_with_annotations(self, page_index: int) -> bool:
+        """Return True when the page at ``page_index`` carries any
+        annotations whose appearance should be rendered. Mirrors upstream
+        ``PDFRenderer.isPageImageWithAnnotations(int)``.
+
+        Lite implementation: True iff ``/Annots`` is present and non-empty.
+        Upstream additionally honours per-annotation flags (``/Hidden``,
+        ``/NoView``); see ``CHANGES.md`` for the deviation note when the
+        full check is wired up.
+        """
+        page = self._document.get_pages()[page_index]
+        return bool(page.get_annotations())
+
+    def set_subsampling_allowed(self, allowed: bool) -> None:
+        """Set whether image XObjects may be subsampled at decode time.
+        Mirrors upstream ``PDFRenderer.setSubsamplingAllowed(boolean)``.
+
+        Stored only — the lite renderer's image pipeline does not yet
+        consult this flag (tracked in ``CHANGES.md``)."""
+        self._subsampling_allowed = bool(allowed)
+
+    def is_subsampling_allowed(self) -> bool:
+        """Mirror of upstream ``PDFRenderer.isSubsamplingAllowed()``."""
+        return self._subsampling_allowed
+
+    def set_default_destination(self, destination: str) -> None:
+        """Set the default render destination used for OCG visibility and
+        annotation appearance selection. Upstream uses an enum
+        (``RenderDestination.VIEW`` / ``PRINT`` / ``EXPORT``); we accept
+        the bare string equivalent ``"View"`` / ``"Print"`` / ``"Export"``
+        to stay dependency-free. Mirrors
+        ``PDFRenderer.setDefaultDestination(RenderDestination)``."""
+        self._default_destination = destination
+
+    def get_default_destination(self) -> str:
+        """Mirror of upstream ``PDFRenderer.getDefaultDestination()``."""
+        return self._default_destination
+
+    def set_image_downscaling_optimization_threshold(
+        self, threshold: float
+    ) -> None:
+        """Threshold below which an image XObject is downscaled before
+        rasterisation as a perf optimisation. Mirrors upstream
+        ``PDFRenderer.setImageDownscalingOptimizationThreshold(float)``.
+
+        Stored only in the lite renderer (tracked in ``CHANGES.md``)."""
+        self._image_downscaling_optimization_threshold = float(threshold)
+
+    def get_image_downscaling_optimization_threshold(self) -> float:
+        """Mirror of upstream
+        ``PDFRenderer.getImageDownscalingOptimizationThreshold()``."""
+        return self._image_downscaling_optimization_threshold
 
     # ------------------------------------------------------------------
     # graphics-state helpers

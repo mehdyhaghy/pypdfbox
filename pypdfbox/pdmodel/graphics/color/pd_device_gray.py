@@ -26,6 +26,9 @@ class PDDeviceGray(PDDeviceColorSpace):
     def get_initial_color(self) -> PDColor:
         return self._initial_color
 
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        return [0.0, 1.0]
+
 
 PDDeviceGray.INSTANCE = PDDeviceGray()
 

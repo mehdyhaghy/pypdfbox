@@ -82,6 +82,44 @@ class PDOptionalContentGroup(PDPropertyList):
             arr.add(intent)
         self._dict.set_item(_INTENT, arr)
 
+    def get_intent(self) -> str | list[str]:
+        """Return the OCG ``/Intent`` as a string or list of strings.
+
+        Mirrors PDFBox ``PDOptionalContentGroup.getIntent()``. Per PDF 32000-1
+        §8.11.4.3 Table 100, ``/Intent`` defaults to ``"View"`` when absent.
+        A single name returns as ``str``; an array of names returns as
+        ``list[str]``.
+        """
+        item = self._dict.get_dictionary_object(_INTENT)
+        if item is None:
+            return "View"
+        if isinstance(item, COSName):
+            return item.name
+        if isinstance(item, COSArray):
+            return [v.name for v in item if isinstance(v, COSName)]
+        return "View"
+
+    def set_intent(self, value: str | list[str]) -> None:
+        """Set the OCG ``/Intent``. Accepts a single name string or a list of
+        name strings. Mirrors PDFBox ``PDOptionalContentGroup.setIntent()``.
+        """
+        if isinstance(value, str):
+            self._dict.set_item(_INTENT, COSName.get_pdf_name(value))
+            return
+        if isinstance(value, list):
+            arr = COSArray()
+            for entry in value:
+                if not isinstance(entry, str):
+                    raise TypeError(
+                        f"intent entries must be str, got {type(entry).__name__}"
+                    )
+                arr.add(COSName.get_pdf_name(entry))
+            self._dict.set_item(_INTENT, arr)
+            return
+        raise TypeError(
+            f"intent must be str or list[str], got {type(value).__name__}"
+        )
+
     def get_render_state(self, destination: str | None = None) -> str | None:
         """Return /Usage state name ("ON"/"OFF") for ``destination`` ("Print",
         "View", "Export"). Falls back to /Export if the targeted entry is

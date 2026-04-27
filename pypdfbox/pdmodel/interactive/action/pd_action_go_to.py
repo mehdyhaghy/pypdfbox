@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
 
 from .pd_action import PDAction
@@ -9,24 +9,50 @@ _D: COSName = COSName.D  # type: ignore[attr-defined]
 
 
 class PDActionGoTo(PDAction):
-    """GoTo action. Mirrors PDFBox ``PDActionGoTo``."""
+    """GoTo action. Mirrors PDFBox ``PDActionGoTo``.
+
+    Per PDF 32000-1 §12.6.4.2 Table 198 the action carries a single typed
+    entry, ``/D``, which may be an explicit page-target ``COSArray`` or a
+    named destination encoded as ``COSString`` or ``COSName``.
+    """
 
     SUB_TYPE = "GoTo"
 
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
-    def get_destination(self) -> PDDestination | None:
-        return PDDestination.create(self._action.get_dictionary_object(_D))
+    def get_destination(self) -> PDDestination | str | None:
+        """Return ``/D`` dispatched to its appropriate type:
 
-    def set_destination(self, destination: PDDestination | COSBase | None) -> None:
+        - ``PDDestination`` instance for explicit page-target arrays
+          (``COSArray`` form);
+        - ``str`` for named destinations (``COSString`` or ``COSName`` form);
+        - ``None`` when ``/D`` is absent.
+        """
+        d = self._action.get_dictionary_object(_D)
+        if d is None:
+            return None
+        if isinstance(d, COSArray):
+            return PDDestination.create(d)
+        if isinstance(d, COSString):
+            return d.get_string()
+        if isinstance(d, COSName):
+            return d.get_name()
+        return None
+
+    def set_destination(self, destination: PDDestination | str | COSBase | None) -> None:
+        """Write ``/D`` from a typed destination, a named-destination
+        string, a raw ``COSBase``, or ``None`` (which removes the entry)."""
         if destination is None:
             self._action.remove_item(_D)
             return
         if isinstance(destination, PDDestination):
             self._action.set_item(_D, destination.get_cos_object())
-        else:
-            self._action.set_item(_D, destination)
+            return
+        if isinstance(destination, str):
+            self._action.set_string(_D, destination)
+            return
+        self._action.set_item(_D, destination)
 
 
 __all__ = ["PDActionGoTo"]

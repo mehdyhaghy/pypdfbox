@@ -269,7 +269,8 @@ class PDAcroForm:
 
         for field in terminal_fields:
             for widget in field.get_widgets():
-                self._flatten_widget(widget)
+                widget_cos = widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
+                self._flatten_widget(widget_cos)
 
         # Drop the flattened fields from /Fields (or wipe the entry when
         # the caller asked for "everything").

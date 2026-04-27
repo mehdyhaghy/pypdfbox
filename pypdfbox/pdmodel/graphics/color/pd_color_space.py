@@ -102,6 +102,18 @@ class PDColorSpace(ABC):
     def get_initial_color(self) -> PDColor:
         """Return the initial (default) color value for this color space."""
 
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Return the default ``/Decode`` array for image XObjects in this
+        color space (PDF 32000-1 §8.9.5.1, Table 90).
+
+        Base implementation raises :class:`NotImplementedError`; concrete
+        subclasses override (for most spaces this is ``[0, 1]`` repeated
+        per component, but ``DeviceCMYK``, ``Indexed`` and ``Lab`` differ).
+        """
+        raise NotImplementedError(
+            f"get_default_decode is not implemented for {self.get_name()!r}"
+        )
+
     def __str__(self) -> str:
         return self.get_name()
 

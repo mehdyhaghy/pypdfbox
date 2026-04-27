@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_cid_system_info import PDCIDSystemInfo
 from .pd_font import PDFont
@@ -330,6 +331,129 @@ class PDCIDFont(PDFont):
             "set_cid_to_gid_map expects COSStream, str, or None; "
             f"got {type(value).__name__}"
         )
+
+    # ---------- embedded font program ----------
+
+    def is_embedded(self) -> bool:
+        """``True`` when the descriptor carries a ``/FontFile``, ``/FontFile2``
+        or ``/FontFile3`` stream. Mirrors upstream ``PDCIDFont.isEmbedded``.
+        """
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return False
+        return (
+            fd.get_font_file() is not None
+            or fd.get_font_file2() is not None
+            or fd.get_font_file3() is not None
+        )
+
+    def get_program(self) -> bytes | None:
+        """Decoded bytes of the embedded font program, or ``None`` if not
+        embedded. Reads the first non-null stream from ``/FontFile``,
+        ``/FontFile2``, then ``/FontFile3`` (the order PDFBox tries).
+        """
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return None
+        for getter in (fd.get_font_file, fd.get_font_file2, fd.get_font_file3):
+            stream = getter()
+            if stream is None:
+                continue
+            with stream.create_input_stream() as fh:
+                return fh.read()
+        return None
+
+    # ---------- bounding box ----------
+
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the descriptor's ``/FontBBox`` as a :class:`PDRectangle`.
+
+        Mirrors upstream ``PDCIDFont.getBoundingBox`` when the bounding box
+        is sourced from the descriptor; ``None`` when no descriptor / bbox
+        is present. Returns ``None`` for malformed (non-4-entry) arrays.
+        """
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return None
+        bbox = fd.get_font_b_box()
+        if bbox is None or bbox.size() < 4:
+            return None
+        try:
+            return PDRectangle.from_cos_array(bbox)
+        except (TypeError, ValueError):
+            return None
+
+    # ---------- average advance ----------
+
+    def get_average_font_width(self) -> float:
+        """Mean glyph advance across the parsed ``/W`` table, falling back
+        to ``/DW`` when ``/W`` contributes no positive entries. Matches the
+        scale upstream ``PDCIDFont.getAverageFontWidth`` returns (1/1000 em).
+        """
+        widths = self.get_widths()
+        positive = [w for w in widths.values() if w > 0.0]
+        if positive:
+            return sum(positive) / len(positive)
+        return float(self.get_default_width())
+
+    # ---------- glyph queries ----------
+
+    def has_glyph(self, cid: int) -> bool:
+        """``True`` when ``cid`` resolves to a non-zero advance — either
+        explicitly via ``/W`` or via a non-zero ``/DW`` fallback.
+        """
+        widths = self.get_widths()
+        w = widths.get(cid)
+        if w is not None:
+            return w > 0.0
+        return self.get_default_width() > 0.0
+
+    # ---------- displacement / vertical metrics ----------
+
+    def get_displacement(self, cid: int) -> tuple[float, float]:
+        """Glyph displacement vector in em (1/1000 em scaled to em).
+
+        Horizontal default: ``(width/1000, 0)``. Subclasses (or future
+        vertical-writing wiring) may override.
+        """
+        return (self.get_glyph_width(cid) / 1000.0, 0.0)
+
+    def get_position_vector(self, cid: int) -> tuple[float, float]:
+        """Position vector ``(v_x, v_y)`` for ``cid`` in 1/1000 em.
+
+        Looks up ``/W2`` triples ``(w1y, v_x, v_y)``; CIDs outside the
+        table fall back to ``/DW2``'s ``(v_y, v_x)`` per spec default
+        ``(880, -1000)``. Mirrors upstream ``PDCIDFont.getPositionVector``.
+        """
+        triple = self.get_widths2().get(cid)
+        if triple is not None:
+            _, v_x, v_y = triple
+            return (v_x, v_y)
+        v_y_default, v_x_default = self.get_default_position_vector()
+        return (v_x_default, v_y_default)
+
+    def get_height(self, cid: int) -> float:
+        """Vertical advance for ``cid`` (the ``w1y`` component of ``/W2``).
+
+        Returns ``0.0`` when the font has no ``/W2`` entry for ``cid`` —
+        matches PDFBox behaviour for horizontally-written CID fonts.
+        """
+        triple = self.get_widths2().get(cid)
+        if triple is None:
+            return 0.0
+        return triple[0]
+
+    # ---------- code -> CID ----------
+
+    def code_to_cid(self, code: int) -> int:
+        """Map a character code to a CID.
+
+        For a bare ``PDCIDFont`` outside a Type0 parent, the code is the CID
+        — there is no CMap to consult. Subclasses or the parent
+        :class:`PDType0Font` perform the real mapping; this default keeps
+        the upstream signature usable on either subtype.
+        """
+        return int(code)
 
 
 __all__ = ["PDCIDFont"]

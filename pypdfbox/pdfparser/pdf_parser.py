@@ -70,6 +70,17 @@ class PDFParser:
         # carries an ``/Encrypt`` entry. Diagnostic surface for callers
         # that want to know whether the early-handler path was exercised.
         self._has_encrypted_xref_streams: bool = False
+        # Lenient parsing toggle. Mirrors upstream
+        # ``PDFParser.setLenient(boolean)``. The pypdfbox parser already
+        # operates in a permissive (lenient) mode — this flag is exposed
+        # for API parity so callers staging documents through PDFBox-style
+        # entry points can round-trip the value. Stored only; no behaviour
+        # branches off it yet.
+        self._lenient: bool = True
+        # Lazy ``PDDocument`` wrapper around the parsed ``COSDocument``.
+        # Built on first call to :meth:`get_pd_document`; mirrors upstream
+        # ``PDFParser.getPDDocument()``.
+        self._pd_document: Any | None = None
 
     # ---------- public entry point ----------
 
@@ -90,6 +101,47 @@ class PDFParser:
             self._document.set_trailer(trailer)
         self.populate_document()
         return self._document
+
+    # ---------- document accessors ----------
+
+    def get_document(self) -> COSDocument | None:
+        """Return the parsed ``COSDocument`` or ``None`` if :meth:`parse`
+        has not been called yet. Mirrors upstream
+        ``PDFParser.getDocument()``."""
+        return self._document
+
+    def get_pd_document(self) -> Any:
+        """Return a ``PDDocument`` wrapper around the parsed
+        ``COSDocument``. Lazily constructed and cached on the parser
+        instance so repeated calls return the same wrapper. Mirrors
+        upstream ``PDFParser.getPDDocument()``.
+
+        Must be called after :meth:`parse`."""
+        if self._pd_document is not None:
+            return self._pd_document
+        if self._document is None:
+            raise PDFParseError(
+                "get_pd_document() called before parse(); no document yet"
+            )
+        # Local import — pdfparser must not depend on pdmodel at import
+        # time (PDDocument lives one layer up).
+        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+
+        self._pd_document = PDDocument(self._document)
+        return self._pd_document
+
+    # ---------- lenient mode ----------
+
+    def set_lenient(self, lenient: bool) -> None:
+        """Toggle lenient parsing mode. Mirrors upstream
+        ``PDFParser.setLenient(boolean)``. The pypdfbox parser is already
+        permissive by default — the flag is stored for API parity."""
+        self._lenient = bool(lenient)
+
+    def is_lenient(self) -> bool:
+        """Return whether lenient parsing is enabled. Mirrors upstream
+        ``PDFParser.isLenient()``."""
+        return self._lenient
 
     # ---------- encryption / id introspection ----------
 

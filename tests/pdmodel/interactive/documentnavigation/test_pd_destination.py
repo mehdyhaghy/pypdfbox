@@ -102,11 +102,11 @@ def test_destination_name_tree_get_set_and_names() -> None:
     tree.set_value("chapter-2", second)
     tree.set_value("chapter-1", first)
 
-    assert tree.get_names() == ["chapter-1", "chapter-2"]
+    assert sorted(tree.get_names() or {}) == ["chapter-1", "chapter-2"]
     resolved = tree.get_value("chapter-1")
     assert isinstance(resolved, PDPageXYZDestination)
     assert resolved.get_page_number() == 0
 
     tree.set_value("chapter-2", None)
-    assert tree.get_names() == ["chapter-1"]
+    assert list(tree.get_names() or {}) == ["chapter-1"]
     assert tree.get_value("chapter-2") is None

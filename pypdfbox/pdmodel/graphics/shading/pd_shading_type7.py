@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
 
 from .pd_shading import PDShading
@@ -16,8 +18,11 @@ class PDShadingType7(PDShading):
     """Tensor-product patch mesh shading. Mirrors PDFBox ``PDShadingType7``
     lite surface.
 
-    Patch decoding (16 control points + colors → tensor-product patches)
-    is deferred until the rendering cluster lands.
+    Per PDF 32000-1 §8.7.4.5.8 (Table 89), tensor-product patch mesh
+    streams require ``/BitsPerCoordinate``, ``/BitsPerComponent``,
+    ``/BitsPerFlag``, and ``/Decode``; ``/Function`` is optional. Patch
+    decoding (16 control points + colors → tensor-product patches) is
+    deferred until the rendering cluster lands.
     """
 
     def __init__(self, dictionary_or_stream: COSDictionary | None = None) -> None:
@@ -31,42 +36,100 @@ class PDShadingType7(PDShading):
     def get_shading_type(self) -> int:
         return PDShading.SHADING_TYPE7
 
+    # ---------- /BitsPerCoordinate ----------
+
     def get_bits_per_coordinate(self) -> int:
+        """Returns ``/BitsPerCoordinate``. Per Table 89 the legal values are
+        1, 2, 4, 8, 12, 16, 24, 32. Returns ``-1`` when the entry is absent
+        (mirrors upstream's ``COSDictionary.getInt`` default)."""
         return self._dict.get_int(_BITS_PER_COORDINATE)
 
     def set_bits_per_coordinate(self, bits: int) -> None:
         self._dict.set_int(_BITS_PER_COORDINATE, bits)
 
+    # ---------- /BitsPerComponent ----------
+
     def get_bits_per_component(self) -> int:
+        """Returns ``/BitsPerComponent``. Per Table 89 the legal values are
+        1, 2, 4, 8, 12, 16. Returns ``-1`` when the entry is absent."""
         return self._dict.get_int(_BITS_PER_COMPONENT)
 
     def set_bits_per_component(self, bits: int) -> None:
         self._dict.set_int(_BITS_PER_COMPONENT, bits)
 
+    # ---------- /BitsPerFlag ----------
+
     def get_bits_per_flag(self) -> int:
+        """Returns ``/BitsPerFlag``. Per Table 89 the legal values are
+        2, 4, 8. Returns ``-1`` when the entry is absent."""
         return self._dict.get_int(_BITS_PER_FLAG)
 
     def set_bits_per_flag(self, bits: int) -> None:
         self._dict.set_int(_BITS_PER_FLAG, bits)
 
-    def get_decode(self) -> COSArray | None:
-        v = self._dict.get_dictionary_object(_DECODE)
-        return v if isinstance(v, COSArray) else None
+    # ---------- /Decode ----------
 
-    def set_decode(self, decode: COSArray | None) -> None:
-        if decode is None:
+    def get_decode(self) -> list[float] | None:
+        """Returns ``/Decode`` as a flat ``list[float]`` of length
+        ``2 * (2 + N)`` (xy pair + ``N`` color components, each ``min, max``).
+
+        Returns ``None`` when ``/Decode`` is absent or the entry is not a
+        ``COSArray``. The companion COSArray is reachable via
+        ``get_cos_object().get_dictionary_object("Decode")`` for callers
+        that need the indirect-ref-preserving form.
+        """
+        v = self._dict.get_dictionary_object(_DECODE)
+        if not isinstance(v, COSArray):
+            return None
+        return v.to_float_array()
+
+    def set_decode(self, values: COSArray | Iterable[float] | None) -> None:
+        """Set ``/Decode``. Accepts a ``COSArray`` (stored as-is, preserving
+        indirect references) or any iterable of floats (wrapped into a fresh
+        ``COSArray`` of ``COSFloat`` entries). ``None`` removes the entry."""
+        if values is None:
             self._dict.remove_item(_DECODE)
             return
-        self._dict.set_item(_DECODE, decode)
+        if isinstance(values, COSArray):
+            self._dict.set_item(_DECODE, values)
+            return
+        array = COSArray()
+        array.set_float_array(values)
+        self._dict.set_item(_DECODE, array)
 
-    def get_function(self) -> COSBase | None:
-        return self._dict.get_dictionary_object(_FUNCTION)
+    # ---------- /Function ----------
 
-    def set_function(self, function: COSBase | None) -> None:
-        if function is None:
+    def get_function(self):
+        """Returns the ``/Function`` entry wrapped as a ``PDFunction``
+        (dispatched on ``/FunctionType``), or ``None`` when ``/Function``
+        is absent. Mirrors upstream ``PDShading.getFunction()`` which
+        returns a ``PDFunction``."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        item = self._dict.get_dictionary_object(_FUNCTION)
+        if item is None:
+            return None
+        return PDFunction.create(item)
+
+    def set_function(self, value) -> None:
+        """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS
+        object is stored), a raw ``COSDictionary`` / ``COSStream``, or
+        ``None`` to remove."""
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        if value is None:
             self._dict.remove_item(_FUNCTION)
             return
-        self._dict.set_item(_FUNCTION, function)
+        if isinstance(value, PDFunction):
+            self._dict.set_item(_FUNCTION, value.get_cos_object())
+            return
+        if isinstance(value, COSBase):
+            self._dict.set_item(_FUNCTION, value)
+            return
+        raise TypeError(
+            "set_function expects PDFunction, COSDictionary, COSStream, "
+            f"or None; got {type(value).__name__}"
+        )
 
 
 __all__ = ["PDShadingType7"]

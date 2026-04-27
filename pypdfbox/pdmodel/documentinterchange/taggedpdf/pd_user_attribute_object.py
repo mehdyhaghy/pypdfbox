@@ -109,6 +109,76 @@ class PDUserAttributeObject(PDStandardAttributeObject):
             entry.set_boolean("H", True)
         array.add(entry)
 
+    # ---------- PDFBox parity surface ----------
+    #
+    # Upstream ``PDUserAttributeObject`` exposes ``getOwnerProperties`` /
+    # ``setOwnerProperties``. We add snake_case mirrors plus convenience
+    # ``add_owner_property`` / ``remove_owner_property`` helpers. These read
+    # and write the same ``/P`` array as the legacy ``get_property`` /
+    # ``set_property`` accessors, which remain for back-compat.
+
+    def get_owner_properties(self) -> list[dict[str, Any]]:
+        """Return the ``/P`` user-property entries as plain dicts.
+
+        Mirrors PDFBox ``PDUserAttributeObject.getOwnerProperties`` (which
+        returns ``List<PDUserProperty>``). Each dict has keys ``N``, ``V``,
+        ``F``, ``H``; ``H`` defaults to ``False`` when absent.
+        """
+        return self.get_property()
+
+    def set_owner_properties(self, values: list[dict[str, Any]]) -> None:
+        """Replace the ``/P`` array with ``values``.
+
+        Mirrors PDFBox ``PDUserAttributeObject.setOwnerProperties``. Each
+        dict in ``values`` is expected to carry an ``N`` key (property
+        name) and a ``V`` key (value); ``F`` (formatted display) and ``H``
+        (hidden) are optional.
+        """
+        array = COSArray()
+        self._dictionary.set_item("P", array)
+        for entry in values:
+            name = entry.get("N")
+            if name is None:
+                raise ValueError("user property entry missing required 'N' key")
+            value = entry.get("V")
+            cos_entry = COSDictionary()
+            cos_entry.set_string("N", str(name))
+            cos_entry.set_item("V", _py_to_cos(value))
+            formatted = entry.get("F")
+            if formatted is not None:
+                cos_entry.set_string("F", str(formatted))
+            hidden = entry.get("H", False)
+            if hidden:
+                cos_entry.set_boolean("H", True)
+            array.add(cos_entry)
+
+    def add_owner_property(
+        self,
+        name: str,
+        value: Any,
+        formatted: str | None = None,
+        hidden: bool = False,
+    ) -> None:
+        """Append a single user-property entry to ``/P`` (convenience)."""
+        self.set_property(name, value, format=formatted, hidden=hidden)
+
+    def remove_owner_property(self, name: str) -> bool:
+        """Remove the first ``/P`` entry whose ``/N`` equals ``name``.
+
+        Returns ``True`` when an entry was removed, ``False`` otherwise.
+        """
+        v = self._dictionary.get_dictionary_object("P")
+        if not isinstance(v, COSArray):
+            return False
+        for index in range(v.size()):
+            entry = v.get_object(index)
+            if not isinstance(entry, COSDictionary):
+                continue
+            if entry.get_string("N") == name:
+                v.remove_at(index)
+                return True
+        return False
+
     def __repr__(self) -> str:
         return (
             f"PDUserAttributeObject(O={self.get_owner()}, "

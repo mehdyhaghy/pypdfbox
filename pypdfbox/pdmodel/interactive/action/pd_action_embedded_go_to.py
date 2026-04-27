@@ -74,11 +74,35 @@ class PDActionEmbeddedGoTo(PDAction):
             return
         self._action.set_item(_D, destination.get_cos_object())
 
+    # PDFBox spec-named accessors for /D — alias of get_d / set_d.
+    def get_destination(self) -> PDDestination | None:
+        """Spec-named accessor for the ``/D`` destination entry. Mirrors
+        upstream PDFBox ``getDestination()``."""
+        return self.get_d()
+
+    def set_destination(self, destination: PDDestination | None) -> None:
+        """Spec-named setter for the ``/D`` destination entry. Mirrors
+        upstream PDFBox ``setDestination(PDDestination)``."""
+        self.set_d(destination)
+
     def is_new_window(self) -> bool:
         return self._action.get_boolean(_NEW_WINDOW, False)
 
     def set_new_window(self, new_window: bool) -> None:
         self._action.set_boolean(_NEW_WINDOW, new_window)
+
+    # PDFBox spec-named accessors for /NewWindow — alias of is_new_window /
+    # set_new_window. Default per PDF 32000-1 §12.6.4.4 is ``False``.
+    def get_open_in_new_window(self) -> bool:
+        """Spec-named accessor for the ``/NewWindow`` boolean. Defaults to
+        ``False`` when the entry is absent. Mirrors upstream PDFBox
+        ``getOpenInNewWindow()``."""
+        return self._action.get_boolean(_NEW_WINDOW, False)
+
+    def set_open_in_new_window(self, value: bool) -> None:
+        """Spec-named setter for the ``/NewWindow`` boolean. Mirrors
+        upstream PDFBox ``setOpenInNewWindow(boolean)``."""
+        self._action.set_boolean(_NEW_WINDOW, value)
 
     def get_target(self) -> PDTargetDirectory | None:
         d = self._action.get_dictionary_object(_T)
@@ -96,6 +120,19 @@ class PDActionEmbeddedGoTo(PDAction):
             _T,
             target.get_cos_object() if hasattr(target, "get_cos_object") else target,
         )
+
+    # PDFBox spec-named accessors for /T — alias of get_target / set_target.
+    def get_target_directory(self) -> PDTargetDirectory | None:
+        """Spec-named accessor for the ``/T`` target directory. Mirrors
+        upstream PDFBox ``getTargetDirectory()``."""
+        return self.get_target()
+
+    def set_target_directory(
+        self, value: PDTargetDirectory | COSDictionary | None
+    ) -> None:
+        """Spec-named setter for the ``/T`` target directory. Mirrors
+        upstream PDFBox ``setTargetDirectory(PDTargetDirectory)``."""
+        self.set_target(value)
 
     def resolve_target(
         self,

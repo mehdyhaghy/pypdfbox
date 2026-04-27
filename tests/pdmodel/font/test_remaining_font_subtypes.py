@@ -60,23 +60,12 @@ def test_type3_font_font_b_box_round_trip() -> None:
 
 def test_type3_font_font_matrix_round_trip() -> None:
     font = PDType3Font()
-    assert font.get_font_matrix() is None
+    # Default per PDF 32000-1 §9.2.4 when /FontMatrix is absent.
+    assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
 
-    matrix = COSArray(
-        [
-            COSFloat(0.001),
-            COSInteger.get(0),
-            COSInteger.get(0),
-            COSFloat(0.001),
-            COSInteger.get(0),
-            COSInteger.get(0),
-        ]
-    )
-    font.set_font_matrix(matrix)
-    assert font.get_font_matrix() is matrix
-
-    font.set_font_matrix(None)
-    assert font.get_font_matrix() is None
+    # Use exactly-representable IEEE-754 single-precision values (COSFloat is 32-bit).
+    font.set_font_matrix([0.5, 0.0, 0.0, 0.5, 0.0, 0.0])
+    assert font.get_font_matrix() == [0.5, 0.0, 0.0, 0.5, 0.0, 0.0]
 
 
 def test_type3_font_resources_round_trip() -> None:

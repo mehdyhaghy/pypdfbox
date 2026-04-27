@@ -49,8 +49,9 @@ class PDVariableText(PDTerminalField):
         if not self._field.contains_key("Kids"):
             return
         for widget in self.get_widgets():
-            if widget.contains_key(_DA):
-                widget.set_string(_DA, da_value)
+            widget_cos = widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
+            if widget_cos.contains_key(_DA):
+                widget_cos.set_string(_DA, da_value)
 
     # ---------- /DS ----------
 
