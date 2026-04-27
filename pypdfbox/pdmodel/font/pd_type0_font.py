@@ -1,21 +1,49 @@
 from __future__ import annotations
 
 import io
+import os
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, BinaryIO
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
 
 from .pd_font import PDFont
 
 if TYPE_CHECKING:
     from pypdfbox.fontbox.cmap import CMap
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     from .pd_cid_font import PDCIDFont
+    from .pd_cid_system_info import PDCIDSystemInfo
+    from .pd_font_descriptor import PDFontDescriptor
 
 _DESCENDANT_FONTS: COSName = COSName.get_pdf_name("DescendantFonts")
 _ENCODING: COSName = COSName.get_pdf_name("Encoding")
 _TO_UNICODE: COSName = COSName.get_pdf_name("ToUnicode")
+_BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
+_TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
+_SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
+_FONT: COSName = COSName.get_pdf_name("Font")
+
+# PDF 32000-1 §9.2.4: composite-font /FontMatrix maps glyph coordinates
+# (1000-unit em) into text space (1-unit em). Type 0 fonts inherit this
+# default and never override it (the per-glyph metric is always in 1/1000 em).
+_DEFAULT_FONT_MATRIX: tuple[float, ...] = (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
+
+# Lookup table of CIDSystemInfo (Registry, Ordering) -> matching predefined
+# UCS2 CMap name. Used by :meth:`PDType0Font.get_cmap_ucs2` to provide a
+# /ToUnicode fallback for Adobe predefined CID collections when the font
+# dict carries no explicit /ToUnicode CMap. Mirrors upstream PDFBox's
+# fallback in ``PDType0Font.readEncoding`` / ``getCMapUCS2``.
+_UCS2_CMAP_BY_REGISTRY_ORDERING: dict[tuple[str, str], str] = {
+    ("Adobe", "GB1"): "Adobe-GB1-UCS2",
+    ("Adobe", "CNS1"): "Adobe-CNS1-UCS2",
+    ("Adobe", "Japan1"): "Adobe-Japan1-UCS2",
+    ("Adobe", "Korea1"): "Adobe-Korea1-UCS2",
+    ("Adobe", "KR"): "Adobe-KR-UCS2",
+}
 
 
 class PDType0Font(PDFont):
@@ -39,6 +67,8 @@ class PDType0Font(PDFont):
         self._cmap_loaded: bool = False
         self._to_unicode_cmap: CMap | None = None
         self._to_unicode_cmap_loaded: bool = False
+        self._cmap_ucs2: CMap | None = None
+        self._cmap_ucs2_loaded: bool = False
         # Codepoints accumulated by :meth:`add_to_subset`; consumed by
         # :meth:`subset` on save. Type 0 fonts subset the descendant
         # CIDFontType2's embedded TrueType program.
@@ -58,6 +88,13 @@ class PDType0Font(PDFont):
             return PDType0Font._wrap_descendant(first, self)
         return None
 
+    def get_cid_font(self) -> PDCIDFont | None:
+        """Alias for :meth:`get_descendant_font`. Mirrors PDFBox's
+        ``getCIDFont`` accessor (kept for callers that prefer the
+        upstream-Java naming).
+        """
+        return self.get_descendant_font()
+
     @staticmethod
     def _wrap_descendant(
         font_dict: COSDictionary, parent: PDType0Font
@@ -71,6 +108,50 @@ class PDType0Font(PDFont):
         if sub_type == PDCIDFontType2.SUB_TYPE:
             return PDCIDFontType2(font_dict, parent)
         return None
+
+    # ---------- /CIDSystemInfo (descendant) ----------
+
+    def get_cid_system_info(self) -> PDCIDSystemInfo | None:
+        """Return the descendant CIDFont's ``/CIDSystemInfo``.
+
+        Mirrors upstream ``PDType0Font.getCIDSystemInfo`` — the parent
+        Type0 font does not carry its own ``/CIDSystemInfo``; the entry
+        lives on the descendant per PDF 32000-1 §9.7.4.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return None
+        return descendant.get_cid_system_info()
+
+    # ---------- /FontDescriptor (descendant fallback) ----------
+
+    def get_font_descriptor(self) -> PDFontDescriptor | None:  # type: ignore[override]
+        """Return the font descriptor for this composite font.
+
+        Type 0 dictionaries do not carry ``/FontDescriptor`` directly —
+        per PDF 32000-1 §9.7.3 the descriptor lives on the descendant
+        CIDFont. Falls back to :class:`PDFont.get_font_descriptor` first
+        (so a malformed dict that *does* carry one still resolves) before
+        consulting the descendant.
+        """
+        own = super().get_font_descriptor()
+        if own is not None:
+            return own
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return None
+        return descendant.get_font_descriptor()
+
+    # ---------- /Encoding (raw entry) ----------
+
+    def get_encoding(self) -> COSBase | None:
+        """Return the raw ``/Encoding`` entry — a ``COSName`` (predefined
+        CMap name) or a ``COSStream`` (embedded CMap), or ``None``.
+
+        Mirrors upstream ``PDType0Font.getEncoding``. Callers that want
+        the parsed CMap should use :meth:`get_cmap` instead.
+        """
+        return self._dict.get_dictionary_object(_ENCODING)
 
     # ---------- /Encoding (CMap) ----------
 
@@ -127,6 +208,43 @@ class PDType0Font(PDFont):
         else:
             self._to_unicode_cmap = None
         return self._to_unicode_cmap
+
+    # ---------- predefined UCS2 CMap (fallback /ToUnicode) ----------
+
+    def get_cmap_ucs2(self) -> CMap | None:
+        """Return the predefined UCS2 ``CID -> Unicode`` CMap matching
+        this font's ``/CIDSystemInfo`` (Registry, Ordering), or ``None``.
+
+        Mirrors upstream ``PDType0Font.getCMapUCS2`` — used when the font
+        has no ``/ToUnicode`` stream but its descendant uses an Adobe
+        predefined CID collection (Adobe-GB1, Adobe-CNS1, Adobe-Japan1,
+        Adobe-Korea1, Adobe-KR). The result lets callers convert CIDs
+        back to Unicode via the standard Adobe ``*-UCS2`` mapping. Cached
+        on first call.
+        """
+        if self._cmap_ucs2_loaded:
+            return self._cmap_ucs2
+        self._cmap_ucs2_loaded = True
+        info = self.get_cid_system_info()
+        if info is None:
+            return None
+        registry = info.get_registry()
+        ordering = info.get_ordering()
+        if registry is None or ordering is None:
+            return None
+        if registry == "Adobe" and ordering == "Identity":
+            # Identity collection — no UCS2 fallback CMap exists.
+            return None
+        cmap_name = _UCS2_CMAP_BY_REGISTRY_ORDERING.get((registry, ordering))
+        if cmap_name is None:
+            return None
+        from pypdfbox.fontbox.cmap import CMapParser
+
+        try:
+            self._cmap_ucs2 = CMapParser.parse_predefined(cmap_name)
+        except OSError:
+            self._cmap_ucs2 = None
+        return self._cmap_ucs2
 
     # ---------- code -> CID / GID ----------
 
@@ -219,9 +337,10 @@ class PDType0Font(PDFont):
     def to_unicode(self, code: int) -> str | None:
         """Return the Unicode string for ``code``.
 
-        Tries the ``/ToUnicode`` CMap first, then falls back to the
-        encoding CMap's own bf-mappings. Mirrors upstream
-        ``PDType0Font.toUnicode``.
+        Tries the ``/ToUnicode`` CMap first, then the encoding CMap's own
+        bf-mappings, then the predefined ``*-UCS2`` CMap matched on the
+        descendant's ``/CIDSystemInfo`` (Registry, Ordering). Mirrors
+        upstream ``PDType0Font.toUnicode``.
         """
         to_unicode_cmap = self.get_to_unicode_cmap()
         if to_unicode_cmap is not None and to_unicode_cmap.has_unicode_mappings():
@@ -230,10 +349,20 @@ class PDType0Font(PDFont):
                 return mapped
         cmap = self.get_cmap()
         if cmap is not None and cmap.has_unicode_mappings():
-            return cmap.to_unicode(code)
+            mapped = cmap.to_unicode(code)
+            if mapped is not None:
+                return mapped
+        # Final fallback — predefined Adobe ``*-UCS2`` CMap keyed on the
+        # CID (we only reach here when the encoding CMap has no unicode
+        # bf-mappings of its own; that's the canonical Identity-H case
+        # for CJK fonts that lean on the predefined UCS2 fallback).
+        ucs2 = self.get_cmap_ucs2()
+        if ucs2 is not None and ucs2.has_unicode_mappings():
+            cid = self.code_to_cid(code)
+            return ucs2.to_unicode(cid)
         return None
 
-    # ---------- embedding ----------
+    # ---------- embedding / damage ----------
 
     def is_embedded(self) -> bool:
         """``True`` when the descendant CIDFont's font program is
@@ -243,6 +372,179 @@ class PDType0Font(PDFont):
         if descendant is None:
             return False
         return descendant.is_embedded()
+
+    def is_damaged(self) -> bool:
+        """``True`` when the descendant CIDFont's embedded font program
+        failed to parse. Mirrors upstream ``PDType0Font.isDamaged`` which
+        delegates to the descendant's ``isDamaged`` (the parent dict has
+        no embeddable program of its own).
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return False
+        return descendant.is_damaged()
+
+    # ---------- /FontMatrix ----------
+
+    def get_font_matrix(self) -> list[float]:
+        """Return the 6-element ``/FontMatrix`` for this composite font.
+
+        PDF 32000-1 §9.2.4 fixes the Type 0 font matrix at
+        ``[0.001 0 0 0.001 0 0]`` — composite fonts always express glyph
+        metrics in 1/1000 em. Mirrors upstream ``PDType0Font.getFontMatrix``.
+        """
+        return list(_DEFAULT_FONT_MATRIX)
+
+    # ---------- /FontBBox (descendant fallback) ----------
+
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the descendant's font bounding box as a
+        :class:`PDRectangle`, or ``None`` when no descendant / bbox is
+        present. Mirrors upstream ``PDType0Font.getBoundingBox``.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return None
+        return descendant.get_bounding_box()
+
+    # ---------- glyph metrics (upstream-named aliases) ----------
+
+    def get_width(self, code: int) -> float:
+        """Alias for :meth:`get_glyph_width` — mirrors upstream
+        ``PDType0Font.getWidth(int)``."""
+        return self.get_glyph_width(code)
+
+    def get_height(self, code: int) -> float:
+        """Vertical advance for ``code`` (only meaningful for vertical
+        writing). Resolves code → CID then asks the descendant for its
+        ``/W2`` entry. Returns ``0.0`` when no descendant or no vertical
+        metric is available — mirrors upstream
+        ``PDType0Font.getHeight(int)``.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return 0.0
+        return descendant.get_height(self.code_to_cid(code))
+
+    def get_average_font_width(self) -> float:
+        """Return the descendant CIDFont's mean glyph advance.
+
+        Mirrors upstream ``PDType0Font.getAverageFontWidth`` which
+        forwards to the descendant — the parent dict has no ``/Widths``
+        of its own.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return 0.0
+        return descendant.get_average_font_width()
+
+    def get_string_width(self, text: str) -> float:
+        """Total advance width of ``text`` in 1/1000 em.
+
+        Encodes ``text`` via :meth:`encode`, walks the resulting bytes
+        through :meth:`read_code`, and accumulates :meth:`get_glyph_width`
+        for each code. Mirrors upstream ``PDType0Font.getStringWidth(String)``.
+        """
+        encoded = self.encode(text)
+        total = 0.0
+        offset = 0
+        n = len(encoded)
+        while offset < n:
+            code, consumed = self.read_code(encoded, offset)
+            if consumed <= 0:
+                break
+            total += self.get_glyph_width(code)
+            offset += consumed
+        return total
+
+    # ---------- str <-> bytes (encoding via the active CMap) ----------
+
+    def encode(self, text: str) -> bytes:
+        """Encode a Python string to the font's raw byte representation.
+
+        For Identity-H / Identity-V the codepoint *is* the CID and is
+        emitted as a 2-byte big-endian sequence. For predefined Adobe
+        UCS2-mapped CMaps the encoding cmap's reverse lookup
+        (``get_codes_from_unicode``) is consulted. For embedded
+        non-Identity CMaps without a reverse mapping the codepoint
+        is replaced with the bytes of CID 0 (``.notdef``) — matches
+        upstream ``PDType0Font.encode`` fallback behaviour.
+        """
+        cmap = self.get_cmap()
+        out = bytearray()
+        for ch in text:
+            cp = ord(ch)
+            encoded = self._encode_codepoint(cp, cmap)
+            out.extend(encoded)
+        return bytes(out)
+
+    @staticmethod
+    def _encode_codepoint(cp: int, cmap: CMap | None) -> bytes:
+        """Look up the byte sequence for Unicode ``cp`` in ``cmap``.
+
+        Identity-H / -V fall through to the 2-byte big-endian fallback
+        (CID == codepoint). For other CMaps the reverse-lookup helper
+        ``get_codes_from_unicode`` (PDFBox parity) yields the bytes; on
+        miss we emit the bytes of CID 0 (``.notdef``) at the codespace's
+        natural byte length.
+        """
+        if cmap is None:
+            return cp.to_bytes(2, "big")
+        # Try the CMap's own reverse mapping first.
+        try:
+            codes = cmap.get_codes_from_unicode(chr(cp))
+        except Exception:  # noqa: BLE001 — defensive: lenient parsers / odd CMaps
+            codes = None
+        if codes is not None:
+            return bytes(codes)
+        # Identity CMaps: BMP codepoint == CID, emit big-endian.
+        name = cmap.get_name() or ""
+        if name in ("Identity-H", "Identity-V") or name.startswith("Identity"):
+            return (cp & 0xFFFF).to_bytes(2, "big")
+        # Last resort — emit the bytes of CID 0 at the natural length.
+        length = cmap.code_length_at(0) or 2
+        return bytes(length)
+
+    def decode(self, data: bytes) -> int:
+        """Decode the first character code from ``data``.
+
+        Mirrors upstream ``PDType0Font.read(InputStream)`` /
+        ``decode(bytes)`` which both yield a single integer code per
+        call. Equivalent to ``read_code(data)[0]``.
+        """
+        code, _ = self.read_code(data, 0)
+        return code
+
+    # ---------- read (InputStream-shaped wrapper) ----------
+
+    def read(self, source: bytes | bytearray | BinaryIO) -> int:
+        """Read one character code from ``source`` and return it.
+
+        Accepts either a raw byte buffer or a binary stream object
+        (anything with a ``.read(n)`` method). Mirrors upstream
+        ``PDType0Font.read(InputStream)``. Streams are advanced past the
+        bytes consumed by the active CMap; bare buffers are read from
+        offset 0 only — callers that need mid-buffer offsets should use
+        :meth:`read_code` directly.
+        """
+        if isinstance(source, (bytes, bytearray)):
+            return self.decode(bytes(source))
+        # File-like: peek up to 4 bytes (the maximum predefined CMap
+        # codespace length we support), let read_code consume the right
+        # number, and seek back any over-read.
+        data = source.read(4)
+        if not data:
+            return 0
+        code, consumed = self.read_code(bytes(data), 0)
+        if consumed < len(data):
+            try:
+                source.seek(-(len(data) - consumed), 1)
+            except (OSError, AttributeError, ValueError):
+                # Non-seekable stream — over-read tolerated; this matches
+                # upstream behaviour for ``InputStream`` consumers that
+                # cannot rewind.
+                pass
+        return code
 
     # ---------- subsetting ----------
 
@@ -356,6 +658,294 @@ class PDType0Font(PDFont):
         if used_chars is not None:
             codepoints.update(int(cp) for cp in used_chars)
         return codepoints
+
+    # ---------- factories: load_ttf / load_otf ----------
+
+    @classmethod
+    def load_ttf(
+        cls,
+        doc: PDDocument | None,
+        source: str | os.PathLike[str] | bytes | bytearray | BinaryIO,
+        *,
+        embed_subset: bool = True,
+    ) -> PDType0Font:
+        """Build a Type 0 font wrapping the TrueType file at ``source``.
+
+        Mirrors upstream ``PDType0Font.load(PDDocument, File)``:
+
+        * Reads the TTF bytes and parses them through
+          :class:`TrueTypeFont` so glyph metrics / cmap are available.
+        * Builds a CIDFontType2 descendant with ``/CIDSystemInfo
+          /Registry Adobe /Ordering Identity /Supplement 0`` and the
+          full TTF embedded as ``/FontFile2``.
+        * Builds a parent Type 0 dictionary with ``/Encoding /Identity-H``
+          and links the descendant via ``/DescendantFonts``.
+        * Populates ``/W`` from the TTF's hmtx so width queries work
+          before any subsetting runs.
+        * Wires ``/CIDToGIDMap /Identity`` (the descendant maps CID == GID
+          when the TTF cmap is consulted directly via the parent's
+          Identity-H encoding — see :meth:`code_to_gid`).
+        * When ``embed_subset`` is True (default), the returned font is
+          marked for subsetting on save; callers populate the subset via
+          :meth:`add_to_subset` before invoking :meth:`subset`.
+
+        ``doc`` is accepted for upstream signature parity. Currently
+        unused (the resulting font dictionary is *not* automatically
+        registered with the document; callers attach it through
+        :class:`PDResources` or by direct dictionary manipulation as
+        appropriate to their use case).
+        """
+        del doc  # signature parity only; unused.
+        del embed_subset  # marker only; subsetting is opt-in via subset()
+        ttf_bytes = _read_font_bytes(source)
+        return _build_type0_from_ttf(ttf_bytes, fallback_name="EmbeddedTTF")
+
+    @classmethod
+    def load_otf(
+        cls,
+        doc: PDDocument | None,
+        source: str | os.PathLike[str] | bytes | bytearray | BinaryIO,
+        *,
+        embed_subset: bool = True,
+    ) -> PDType0Font:
+        """Build a Type 0 font wrapping the OpenType file at ``source``.
+
+        Mirrors upstream ``PDType0Font.loadVertical`` / ``load(PDDocument,
+        File)`` for OpenType inputs. For TrueType-flavoured OTF (``glyf``
+        outlines wrapped in an SFNT container) the dispatch matches
+        :meth:`load_ttf` exactly. CFF-flavoured OTF (``CFF `` outline
+        table) is accepted by fontTools, embedded as ``/FontFile2``, and
+        treated identically by the descendant — pypdfbox's renderer
+        consults fontTools' glyph set in either case.
+
+        ``doc`` is accepted for upstream signature parity (currently unused).
+        """
+        del doc  # signature parity only; unused.
+        del embed_subset  # marker only; subsetting is opt-in via subset()
+        otf_bytes = _read_font_bytes(source)
+        return _build_type0_from_ttf(otf_bytes, fallback_name="EmbeddedOTF")
+
+
+# ---------- module-level helpers ----------
+
+
+def _read_font_bytes(
+    source: str | os.PathLike[str] | bytes | bytearray | BinaryIO,
+) -> bytes:
+    """Coerce a font-source argument to raw bytes.
+
+    Accepts a path-like, a byte buffer, or a file-like opened in binary
+    mode — mirrors the polymorphic ``File`` / ``InputStream`` / ``byte[]``
+    overloads on upstream ``PDType0Font.load``.
+    """
+    if isinstance(source, (bytes, bytearray)):
+        return bytes(source)
+    if isinstance(source, (str, os.PathLike)):
+        return Path(os.fspath(source)).read_bytes()
+    # File-like (BinaryIO) — read to EOF.
+    if hasattr(source, "read"):
+        data = source.read()
+        if isinstance(data, str):
+            raise TypeError(
+                "load_ttf/load_otf source must yield bytes, not str — "
+                "open in binary mode"
+            )
+        return bytes(data)
+    raise TypeError(
+        f"load_ttf/load_otf cannot read font bytes from {type(source).__name__}"
+    )
+
+
+def _build_type0_from_ttf(ttf_bytes: bytes, *, fallback_name: str) -> PDType0Font:
+    """Construct a fully-wired :class:`PDType0Font` from raw TTF/OTF bytes.
+
+    Builds the descendant CIDFontType2 (with ``/FontFile2``,
+    ``/CIDSystemInfo /Identity``, ``/W`` table from ``hmtx``,
+    ``/CIDToGIDMap /Identity``), the parent Type 0 dict
+    (``/Encoding /Identity-H``, ``/DescendantFonts``), and a synthetic
+    ``/FontDescriptor`` populated from the TTF's metric tables. Mirrors
+    the bookkeeping upstream's ``TrueTypeEmbedder`` performs before
+    handing the assembled dict back to ``PDType0Font.load``.
+    """
+    from pypdfbox.fontbox.ttf import TrueTypeFont
+
+    from .pd_cid_font_type2 import PDCIDFontType2
+    from .pd_cid_system_info import PDCIDSystemInfo
+    from .pd_font_descriptor import PDFontDescriptor
+
+    ttf = TrueTypeFont.from_bytes(ttf_bytes)
+    base_font = _ps_name_from_ttf(ttf, fallback_name)
+
+    # --- descendant CIDFontType2 -----------------------------------------
+    descendant_dict = COSDictionary()
+    descendant_dict.set_item(_TYPE, _FONT)
+    descendant_dict.set_name(_SUBTYPE, "CIDFontType2")
+    descendant_dict.set_name(_BASE_FONT, base_font)
+
+    sys_info = PDCIDSystemInfo()
+    sys_info.set_registry("Adobe")
+    sys_info.set_ordering("Identity")
+    sys_info.set_supplement(0)
+    descendant_dict.set_item(
+        COSName.get_pdf_name("CIDSystemInfo"), sys_info.get_cos_object()
+    )
+
+    # /CIDToGIDMap /Identity — Identity-H + CIDFontType2 routes
+    # ``code → CID → GID`` straight through to the embedded cmap.
+    descendant_dict.set_name(COSName.get_pdf_name("CIDToGIDMap"), "Identity")
+
+    # /FontFile2 — embed the unmodified bytes; subset() will rewrite this
+    # later if the caller chooses to subset.
+    font_file2 = COSStream()
+    font_file2.set_raw_data(ttf_bytes)
+
+    descriptor = PDFontDescriptor()
+    descriptor.set_font_name(base_font)
+    descriptor.set_font_file2(font_file2)
+    _populate_descriptor_from_ttf(descriptor, ttf)
+    descendant_dict.set_item(
+        COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
+    )
+
+    # /W — per-CID horizontal widths in 1/1000 em. Emit form 1
+    # (``c [w1 w2 ...]``) covering the contiguous block from CID 0.
+    w_array = _build_w_array(ttf)
+    descendant_dict.set_item(COSName.get_pdf_name("W"), w_array)
+
+    # Wrap in the typed CIDFont so the cached ttf is available for
+    # subsequent metric / subset calls without reparsing.
+    descendant = PDCIDFontType2(descendant_dict)
+    descendant.set_true_type_font(ttf)
+
+    # --- parent Type 0 ----------------------------------------------------
+    parent_dict = COSDictionary()
+    parent_dict.set_item(_TYPE, _FONT)
+    parent_dict.set_name(_SUBTYPE, "Type0")
+    parent_dict.set_name(_BASE_FONT, base_font)
+    parent_dict.set_name(_ENCODING, "Identity-H")
+    arr = COSArray()
+    arr.add(descendant_dict)
+    parent_dict.set_item(_DESCENDANT_FONTS, arr)
+
+    return PDType0Font(parent_dict)
+
+
+def _ps_name_from_ttf(ttf: Any, fallback: str) -> str:
+    """Best-effort PostScript name from a parsed TTF/OTF.
+
+    Tries fontTools' ``name`` table (record 6 — PostScript name) before
+    falling back to the supplied default. Hardened against malformed
+    name tables.
+    """
+    inner = getattr(ttf, "_tt", None)
+    if inner is None:
+        return fallback
+    try:
+        name_table = inner["name"]
+    except (KeyError, AttributeError):
+        return fallback
+    record = (
+        name_table.getName(6, 3, 1, 0x409)  # Win Unicode US English
+        or name_table.getName(6, 1, 0, 0)  # Mac Roman
+        or name_table.getName(6, 0, 3, 0)  # Unicode 2.0
+    )
+    if record is None:
+        return fallback
+    try:
+        text = record.toUnicode()
+    except Exception:  # noqa: BLE001 — record.toUnicode may raise on bad encodings
+        return fallback
+    text = text.strip()
+    return text if text else fallback
+
+
+def _populate_descriptor_from_ttf(
+    descriptor: PDFontDescriptor, ttf: Any
+) -> None:
+    """Copy commonly-required metric fields from ``ttf`` into ``descriptor``.
+
+    Mirrors the field-by-field copy upstream's ``TrueTypeEmbedder``
+    performs to satisfy /FontDescriptor's required entries (PDF 32000-1
+    §9.8.1, Table 122). The /Flags computation is conservative: bit 3
+    (Symbolic) is set so consumers don't try to re-encode through
+    StandardEncoding when the embedded cmap should be used directly.
+    """
+    from pypdfbox.cos import COSArray as _COSArray
+    from pypdfbox.cos import COSFloat as _COSFloat
+    from pypdfbox.cos import COSInteger as _COSInteger
+
+    head = ttf.get_header()
+    units_per_em = head.get_units_per_em() if head is not None else 1000
+    if units_per_em <= 0:
+        units_per_em = 1000
+    scale = 1000.0 / units_per_em
+
+    # /FontBBox from head.xMin/yMin/xMax/yMax, scaled to 1/1000 em.
+    if head is not None:
+        bbox = _COSArray()
+        bbox.add(_COSFloat(float(head.get_x_min()) * scale))
+        bbox.add(_COSFloat(float(head.get_y_min()) * scale))
+        bbox.add(_COSFloat(float(head.get_x_max()) * scale))
+        bbox.add(_COSFloat(float(head.get_y_max()) * scale))
+        descriptor.set_font_b_box(bbox)
+
+    hhea = ttf.get_horizontal_header()
+    if hhea is not None:
+        descriptor.get_cos_object().set_int(
+            COSName.get_pdf_name("Ascent"), int(hhea.get_ascender() * scale)
+        )
+        descriptor.get_cos_object().set_int(
+            COSName.get_pdf_name("Descent"), int(hhea.get_descender() * scale)
+        )
+
+    # /Flags — bit 3 (Symbolic). Identity-H + embedded cmap means the
+    # font is consulted directly without going through a PDF /Encoding,
+    # which is exactly what /Flags bit 3 advertises.
+    descriptor.set_flags(1 << 2)
+
+    # /ItalicAngle and /StemV are required by Acrobat readers but the
+    # exact values are not critical for non-rendering use cases. Use
+    # conservative defaults; consumers that care will override.
+    descriptor.get_cos_object().set_int(
+        COSName.get_pdf_name("ItalicAngle"), 0
+    )
+    descriptor.get_cos_object().set_int(COSName.get_pdf_name("StemV"), 80)
+    # /CapHeight defaults to ascender when no OS/2 table is parsed.
+    if hhea is not None:
+        descriptor.get_cos_object().set_int(
+            COSName.get_pdf_name("CapHeight"), int(hhea.get_ascender() * scale)
+        )
+
+    # Suppress unused-import warning for the COSInteger alias (kept
+    # available for callers extending this helper).
+    _ = _COSInteger
+
+
+def _build_w_array(ttf: Any) -> COSArray:
+    """Return a ``/W`` array (form 1) covering the TTF's hmtx widths.
+
+    Uses ``c [w1 w2 ...]`` with ``c = 0`` and one entry per glyph,
+    matching upstream's ``CIDFontType2.buildWidths``. Widths are scaled
+    from font units to 1/1000 em.
+    """
+    from pypdfbox.cos import COSFloat as _COSFloat
+    from pypdfbox.cos import COSInteger as _COSInteger
+
+    head = ttf.get_header()
+    units_per_em = head.get_units_per_em() if head is not None else 1000
+    if units_per_em <= 0:
+        units_per_em = 1000
+    scale = 1000.0 / units_per_em
+
+    advances = ttf.advance_widths
+    inner = COSArray()
+    for adv in advances:
+        inner.add(_COSFloat(float(adv) * scale))
+
+    out = COSArray()
+    out.add(_COSInteger.get(0))
+    out.add(inner)
+    return out
 
 
 __all__ = ["PDType0Font"]

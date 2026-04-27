@@ -902,3 +902,21 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/type1/type1_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Parser.java` + `Type1Lexer.java` (lite — top-level keys + FontInfo only) |
 | `pypdfbox/fontbox/type1/type1_mapping.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Mapping.java` |
 | `tests/fontbox/type1/upstream/test_type1_font_util.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/type1/Type1FontUtilTest.java` |
+| `tests/pdmodel/font/upstream/test_pd_type0_font.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDType0FontTest.java` |
+| `tests/pdmodel/font/upstream/test_pd_cid_font_type0.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType0Test.java` |
+| `tests/pdmodel/font/upstream/test_pd_cid_font_type2.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDCIDFontType2Test.java` |
+| `pypdfbox/pdmodel/font/pd_type3_char_proc.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3CharProc.java` |
+| `tests/pdmodel/font/upstream/test_pd_type3_font.py` | 3.0.x | combined `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDType3FontTest.java` + `PDType3CharProcTest.java` |
+| `tests/pdmodel/font/upstream/test_pd_font_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDFontTest.java` (factory subset) |
+| `tests/fontbox/cmap/upstream/test_cmap_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/cmap/CMapParserTest.java` |
+| `pypdfbox/contentstream/operator/state/set_line_width.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineWidth.java` |
+| `pypdfbox/contentstream/operator/state/set_line_cap_style.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineCapStyle.java` |
+| `pypdfbox/contentstream/operator/state/set_line_join_style.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineJoinStyle.java` |
+| `pypdfbox/contentstream/operator/state/set_line_miter_limit.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineMiterLimit.java` |
+| `pypdfbox/contentstream/operator/text/set_char_spacing.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetCharSpacing.java` |
+| `pypdfbox/contentstream/operator/text/set_word_spacing_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetWordSpacing.java` |
+| `pypdfbox/contentstream/operator/text/set_horizontal_text_scaling.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetHorizontalTextScaling.java` |
+| `pypdfbox/contentstream/operator/text/set_text_leading_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextLeading.java` |
+| `pypdfbox/contentstream/operator/text/set_text_rendering_mode_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextRenderingMode.java` |
+| `pypdfbox/contentstream/operator/text/set_text_rise_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextRise.java` |
+| `pypdfbox/contentstream/operator/text/next_line_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/NextLine.java` |

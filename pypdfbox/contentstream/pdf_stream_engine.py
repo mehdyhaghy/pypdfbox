@@ -63,6 +63,23 @@ class PDFStreamEngine:
         self._current_page: PDPage | None = None
         self._is_processing_page: bool = False
         self._level: int = 0
+        # Graphics state stack — base engine carries an opaque sentinel
+        # frame so subclasses (PDFGraphicsStreamEngine / page renderer)
+        # can override :meth:`get_graphics_state` /
+        # :meth:`save_graphics_state` / :meth:`restore_graphics_state`
+        # without having to re-implement the dispatch surface. The base
+        # engine itself never inspects the stack contents — see the
+        # docstring on :meth:`get_graphics_state`.
+        self._graphics_stack: list[Any] = []
+        # Text matrix + text line matrix as Matrix-like objects (any type
+        # the subclass cares to store; base engine treats them as opaque).
+        # Distinct from the flat-list ``set_text_matrix`` notification
+        # hook below — that one fires from BT/ET reset paths and is a
+        # pure callback, while these accessors mirror upstream's
+        # ``getTextMatrix`` / ``getTextLineMatrix`` shape used by the
+        # text-extraction subclasses.
+        self._text_matrix_obj: Any | None = None
+        self._text_line_matrix_obj: Any | None = None
 
     # ---------- registration ----------
 
@@ -88,6 +105,13 @@ class PDFStreamEngine:
         """Return the registered-processor map (live reference, not a
         copy — matches upstream's ``getOperators``)."""
         return self._operators
+
+    def get_operator(self, name: str) -> OperatorProcessor | None:
+        """Return the processor registered under ``name``, or ``None``
+        when no processor handles that operator. Convenience surface
+        matching the conceptual ``getOperator(opName)`` lookup that
+        upstream callers often phrase via ``getOperators().get(name)``."""
+        return self._operators.get(name)
 
     # ---------- entry points ----------
 
@@ -135,6 +159,31 @@ class PDFStreamEngine:
         finally:
             self._resources = prev_resources
             self._level -= 1
+
+    def process_child_stream(
+        self,
+        contents: PDContentStream,
+        page: PDPage | None = None,
+    ) -> None:
+        """Process a nested content stream (e.g. an annotation appearance,
+        an XObject, or a Type3 charproc) in the context of ``page``.
+        Mirrors upstream ``processChildStream(PDContentStream, PDPage)``.
+
+        Sets the engine's current-page context to ``page`` for the
+        duration of the inner :meth:`process_stream` so the registered
+        operator processors see the same :meth:`get_current_page` they
+        would during a top-level :meth:`process_page` walk.
+        """
+        prev_page = self._current_page
+        prev_is_processing = self._is_processing_page
+        if page is not None:
+            self._current_page = page
+            self._is_processing_page = True
+        try:
+            self.process_stream(contents)
+        finally:
+            self._current_page = prev_page
+            self._is_processing_page = prev_is_processing
 
     def _process_bytes(self, data: bytes) -> None:
         """Internal: feed raw content-stream bytes through the parser."""
@@ -320,6 +369,33 @@ class PDFStreamEngine:
         self._resources_stack.append(self._resources)
         self._resources = res
 
+    # ---------- graphics-state stack (overridable in renderer) ----------
+
+    def get_graphics_state(self) -> Any:
+        """Return the current graphics-state frame — top of the stack.
+
+        Mirrors upstream's ``getGraphicsState``. The base engine carries
+        the stack as opaque ``Any`` entries (cluster #2 has no concrete
+        ``PDGraphicsState`` class to instantiate); subclasses with a
+        real graphics-state push a typed object via
+        :meth:`save_graphics_state` and return it from this method.
+        Returns ``None`` when the stack is empty (matches the cluster #2
+        default since the base never pushes on its own)."""
+        if not self._graphics_stack:
+            return None
+        return self._graphics_stack[-1]
+
+    def get_graphics_stack_size(self) -> int:
+        """Return the depth of the graphics-state stack. Mirrors
+        upstream's ``getGraphicsStackSize``."""
+        return len(self._graphics_stack)
+
+    def transform(self, matrix: Any) -> None:
+        """Concatenate ``matrix`` onto the current CTM. Base no-op; the
+        rendering subclass overrides to multiply ``matrix`` into the
+        active graphics-state CTM. Mirrors upstream's ``transform``
+        (the ``cm`` operator handler delegates here)."""
+
     # ---------- nested-stream entry points (upstream parity surface) ----------
 
     def process_form(self, form_xobject: PDFormXObject) -> None:
@@ -429,11 +505,150 @@ class PDFStreamEngine:
         """
 
     def get_text_matrix(self) -> Any:
-        """Cluster #2 always reports ``None`` (no text state). The
+        """Return the current text matrix (or ``None`` outside BT/ET).
+
+        Cluster #2 returns whatever was last passed to
+        :meth:`set_text_matrix_object` — base default is ``None``. The
         ``Tj`` / ``TJ`` / ``'`` / ``"`` handlers consult this to decide
         whether a text object is currently open. Subclasses in cluster
-        #3 return a real ``Matrix``."""
-        return None
+        #3 override to return a real ``Matrix`` from the graphics-state
+        text-matrix slot.
+
+        Mirrors upstream ``PDFStreamEngine.getTextMatrix``."""
+        return self._text_matrix_obj
+
+    def set_text_matrix_object(self, matrix: Any) -> None:
+        """Companion writer for :meth:`get_text_matrix` carrying a full
+        ``Matrix``-like object (rather than the flat 6-element list the
+        notification hook :meth:`set_text_matrix` receives). Subclasses
+        with a real text-state may override; base stores opaquely.
+
+        The split-name (``set_text_matrix_object`` vs upstream's
+        ``setTextMatrix(Matrix)``) avoids colliding with the existing
+        :meth:`set_text_matrix(list[float] | None)` notification hook
+        — they signal different things and have different operand
+        shapes."""
+        self._text_matrix_obj = matrix
+
+    def get_text_line_matrix(self) -> Any:
+        """Return the current text-line matrix. Mirrors upstream's
+        ``getTextLineMatrix``. Base default tracks whatever was last
+        passed to :meth:`set_text_line_matrix_object`."""
+        return self._text_line_matrix_obj
+
+    def set_text_line_matrix_object(self, matrix: Any) -> None:
+        """Companion writer for :meth:`get_text_line_matrix`. See
+        :meth:`set_text_matrix_object` for the rationale on the
+        ``_object`` suffix."""
+        self._text_line_matrix_obj = matrix
+
+    # ---------- per-glyph hooks (overridable in text + renderer) ----------
+
+    def show_text(self, string: bytes) -> None:
+        """Process ``string`` as a sequence of glyph codes through the
+        currently active font, dispatching one :meth:`show_font_glyph`
+        per code. Mirrors upstream ``PDFStreamEngine.showText(byte[])``.
+
+        Cluster #2 ships a structural decode loop only: we walk the
+        bytes, ask the active font (if any) to ``read_code`` from the
+        stream so multi-byte fonts are honoured, and call
+        :meth:`show_font_glyph` per code. When no font is set or the
+        font lacks a ``read_code`` method we fall back to per-byte
+        dispatch. Text-state mutation (advancing the text matrix by the
+        glyph displacement, applying char/word spacing) lives in the
+        rendering subclass — this base implementation is purely
+        callback-driven so subclasses that don't care about glyph
+        positioning can override :meth:`show_text_string` instead and
+        ignore the glyph-level pipeline entirely."""
+        font = self._get_active_font()
+        codes: list[int]
+        if font is not None and hasattr(font, "read_code"):
+            codes = self._decode_codes_via_font(string, font)
+        else:
+            codes = list(string)
+        for code in codes:
+            displacement = self._glyph_displacement(font, code)
+            self.show_font_glyph(self.get_text_matrix(), font, code, displacement)
+
+    def _get_active_font(self) -> Any | None:
+        """Return the font currently selected via ``Tf`` if the subclass
+        tracks one (the base engine doesn't); ``None`` otherwise."""
+        gs = self.get_graphics_state()
+        if gs is None:
+            return None
+        # Probe a couple of common attribute shapes — subclasses are
+        # free to override :meth:`_get_active_font` directly.
+        text_state = getattr(gs, "text_state", None)
+        if text_state is not None:
+            return getattr(text_state, "font", None)
+        return getattr(gs, "text_font", None)
+
+    @staticmethod
+    def _decode_codes_via_font(string: bytes, font: Any) -> list[int]:
+        """Drive ``font.read_code`` over a BytesIO of ``string`` until
+        EOF. Returns the list of codes (one per glyph)."""
+        import io as _stdio  # noqa: PLC0415
+
+        codes: list[int] = []
+        buf = _stdio.BytesIO(string)
+        while True:
+            pos = buf.tell()
+            try:
+                code = font.read_code(buf)
+            except (OSError, EOFError, ValueError):
+                break
+            if code is None:
+                break
+            if buf.tell() == pos:
+                # No progress — break to avoid infinite loop on a
+                # misbehaving font implementation.
+                break
+            codes.append(int(code))
+        return codes
+
+    @staticmethod
+    def _glyph_displacement(font: Any | None, code: int) -> Any:
+        """Return the advance vector for ``code`` if the font exposes
+        one. Default returns ``None`` — subclasses with a real text
+        state override :meth:`show_text` to use real geometry."""
+        if font is None:
+            return None
+        getter = getattr(font, "get_displacement", None)
+        if getter is None:
+            return None
+        try:
+            return getter(code)
+        except (OSError, ValueError, KeyError):
+            return None
+
+    def show_font_glyph(
+        self,
+        text_rendering_matrix: Any,
+        font: Any,
+        code: int,
+        displacement: Any,
+    ) -> None:
+        """Per-glyph hook invoked once per code by :meth:`show_text`.
+
+        Mirrors upstream ``PDFStreamEngine.showFontGlyph(Matrix, PDFont,
+        int, Vector)``. Base default: forwards to :meth:`show_glyph`,
+        matching upstream's split where ``showFontGlyph`` is the
+        font-aware overload and ``showGlyph`` is the
+        font-and-graphics-state-aware overload that the rendering
+        subclass overrides."""
+        self.show_glyph(text_rendering_matrix, font, code, displacement)
+
+    def show_glyph(
+        self,
+        text_rendering_matrix: Any,
+        font: Any,
+        code: int,
+        displacement: Any,
+    ) -> None:
+        """Most-derived per-glyph hook. Base no-op. The rendering
+        subclass overrides to actually paint the glyph; the
+        text-extraction subclass overrides to record the glyph + its
+        position. Mirrors upstream ``showGlyph``."""
 
     # ---------- helpers used by handlers ----------
 

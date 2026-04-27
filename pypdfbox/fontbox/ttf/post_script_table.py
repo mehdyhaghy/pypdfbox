@@ -52,6 +52,8 @@ class PostScriptTable(TTFTable):
             self._read_format_2_5(ttf, data)
         elif self._format_type == 3.0:
             _LOG.debug("No PostScript name information is provided for the font %s", ttf.get_name())
+        elif self._format_type == 4.0:
+            self._read_format_4(ttf, data)
 
         self.initialized = True
 
@@ -121,6 +123,28 @@ class PostScriptTable(TTFTable):
                     index,
                     wgl4_names.NUMBER_OF_MAC_GLYPHS,
                 )
+        self._glyph_names = names
+
+    def _read_format_4(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
+        """Format 4.0 — used for CID fonts on Mac. Per-glyph 16-bit CIDs.
+
+        The names are synthesized as ``"aN"`` where N is the CID, mirroring the
+        convention upstream uses for these glyphs.
+        """
+        num_glyphs = ttf.get_number_of_glyphs()
+        names: list[str] = [".undefined"] * num_glyphs
+        for i in range(num_glyphs):
+            try:
+                cid = data.read_unsigned_short()
+            except (OSError, EOFError) as exc:
+                _LOG.warning(
+                    "Error reading CIDs in PostScript table at entry %d of %d: %s",
+                    i,
+                    num_glyphs,
+                    exc,
+                )
+                break
+            names[i] = f"a{cid}"
         self._glyph_names = names
 
     # ---- accessors ----

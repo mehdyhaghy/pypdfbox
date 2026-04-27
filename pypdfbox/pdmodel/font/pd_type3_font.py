@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 from pypdfbox.cos import (
     COSArray,
@@ -16,6 +16,8 @@ from .pd_simple_font import PDSimpleFont
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: F401
     from pypdfbox.pdmodel.pd_resources import PDResources
+
+    from .pd_type3_char_proc import PDType3CharProc
 
 _CHAR_PROCS: COSName = COSName.get_pdf_name("CharProcs")
 _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
@@ -34,10 +36,11 @@ class PDType3Font(PDSimpleFont):
     """PDF Type 3 font — glyph shapes are defined by inline content streams.
 
     Mirrors PDFBox ``PDType3Font``. Wires the dictionary accessors from PDF
-    32000-1 §9.6.5 Table 113. Typed ``PDType3CharProc`` and the
-    ``Matrix`` / glyph-paint pipeline are deferred until the contentstream
-    renderer cluster — ``get_font_matrix`` returns the raw 6-float list
-    rather than a typed ``Matrix`` object until then.
+    32000-1 §9.6.5 Table 113. ``get_char_proc(code)`` returns a typed
+    :class:`PDType3CharProc` wrapper around the per-glyph content stream;
+    the ``Matrix`` / glyph-paint pipeline lands with the rendering
+    cluster — ``get_font_matrix`` returns the raw 6-float list rather than
+    a typed ``Matrix`` object until then.
     """
 
     SUB_TYPE = "Type3"
@@ -59,20 +62,57 @@ class PDType3Font(PDSimpleFont):
             return
         self._dict.set_item(_CHAR_PROCS, value)
 
-    def get_char_proc(self, name: str) -> COSStream | None:
-        """Look up a single glyph's content stream by glyph name.
+    @overload
+    def get_char_proc(self, key: int) -> PDType3CharProc | None: ...
+    @overload
+    def get_char_proc(self, key: str) -> COSStream | None: ...
+    def get_char_proc(
+        self, key: int | str
+    ) -> PDType3CharProc | COSStream | None:
+        """Look up a single glyph procedure.
 
-        Returns ``None`` when ``/CharProcs`` is missing or the glyph name is
-        not present (or its entry is not a stream). Unlike upstream's
-        ``getCharProc(int code)`` this takes the glyph *name* directly so it
-        works without resolving the font's ``/Encoding`` first — the encoded
-        lookup will land alongside the typed ``PDType3CharProc`` port.
+        Polymorphic — mirrors both upstream call shapes:
+
+        - ``get_char_proc(int code)``: resolves the character ``code``
+          through the font's ``/Encoding`` to a glyph name, then returns
+          the per-glyph content stream wrapped as
+          :class:`PDType3CharProc` (matches upstream
+          ``getCharProc(int) : PDType3CharProc``).
+        - ``get_char_proc(str name)``: convenience form that takes the
+          glyph name directly and returns the raw ``COSStream`` (kept
+          from the lite surface for callers that already have the name).
+
+        Returns ``None`` when ``/CharProcs`` is missing, the glyph name
+        is not present, or its entry is not a stream.
         """
+        if isinstance(key, bool):  # bool is an int — disallow.
+            raise TypeError("get_char_proc(bool) is not a valid call")
+        if isinstance(key, int):
+            return self._get_char_proc_by_code(key)
+        return self._get_char_proc_by_name(key)
+
+    def _get_char_proc_by_name(self, name: str) -> COSStream | None:
         char_procs = self.get_char_procs()
         if char_procs is None:
             return None
         entry = char_procs.get_dictionary_object(COSName.get_pdf_name(name))
         return entry if isinstance(entry, COSStream) else None
+
+    def _get_char_proc_by_code(self, code: int) -> PDType3CharProc | None:
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return None
+        name = encoding.get_name(code)
+        if name is None or name == ".notdef":
+            return None
+        stream = self._get_char_proc_by_name(name)
+        if stream is None:
+            return None
+        # Local import to break the file-level cycle (pd_type3_char_proc
+        # imports PDType3Font for typing).
+        from .pd_type3_char_proc import PDType3CharProc  # noqa: PLC0415
+
+        return PDType3CharProc(self, stream)
 
     # ---------- /Resources (typed via PDResources) ----------
 
@@ -173,6 +213,49 @@ class PDType3Font(PDSimpleFont):
         """Replace the ``/Widths`` array with the given glyph widths."""
         arr = COSArray([COSFloat(float(v)) for v in values])
         self._dict.set_item(_WIDTHS, arr)
+
+    # ---------- per-glyph width / embedding state ----------
+
+    def get_width(self, code: int) -> float:
+        """Return the advance width for ``code`` from the font's
+        ``/Widths`` array. Mirrors upstream
+        ``PDType3Font.getWidth(int code)``.
+
+        ``/Widths`` is indexed by ``(code - /FirstChar)``; out-of-range
+        codes (below ``/FirstChar``, beyond the array) return ``0.0`` —
+        upstream returns 0 in the same case (Type 3 fonts have no font
+        descriptor /MissingWidth fallback)."""
+        widths = self.get_widths()
+        if not widths:
+            return 0.0
+        first = self.get_first_char()
+        if first < 0:
+            first = 0
+        index = int(code) - first
+        if 0 <= index < len(widths):
+            return widths[index]
+        return 0.0
+
+    def has_glyph(self, code: int) -> bool:
+        """``True`` when the font defines a paintable glyph for ``code``.
+
+        A Type 3 glyph exists iff (a) ``/Encoding`` maps ``code`` to a
+        glyph name other than ``.notdef`` and (b) ``/CharProcs`` carries
+        a stream for that name. Mirrors upstream ``hasGlyph(int)``."""
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return False
+        name = encoding.get_name(int(code))
+        if name is None or name == ".notdef":
+            return False
+        return self._get_char_proc_by_name(name) is not None
+
+    def is_embedded(self) -> bool:
+        """Type 3 fonts are *always* embedded — the glyphs are inline
+        content streams in ``/CharProcs``, there is no external font
+        program to reference. Mirrors upstream
+        ``PDType3Font.isEmbedded() → true``."""
+        return True
 
 
 __all__ = ["PDType3Font"]

@@ -340,3 +340,271 @@ def test_process_page_no_contents_is_noop() -> None:
     _register_all_text_ops(engine)
     engine.process_page(PDPage())
     assert engine.events == []
+
+
+# ---------- get_operator / get_operators ----------
+
+
+def test_get_operator_returns_registered_processor() -> None:
+    engine = PDFStreamEngine()
+    proc = _Recorder("Tj")
+    engine.add_operator(proc)
+    assert engine.get_operator("Tj") is proc
+
+
+def test_get_operator_returns_none_for_unknown() -> None:
+    engine = PDFStreamEngine()
+    assert engine.get_operator("ZZ") is None
+
+
+# ---------- graphics-state surface ----------
+
+
+def test_get_graphics_state_default_is_none() -> None:
+    """Base engine reports no current graphics-state frame."""
+    engine = PDFStreamEngine()
+    assert engine.get_graphics_state() is None
+    assert engine.get_graphics_stack_size() == 0
+
+
+def test_save_restore_graphics_state_base_is_noop() -> None:
+    """Base ``save`` / ``restore`` are observable no-ops — they don't
+    push/pop the stack themselves; only subclasses do."""
+    engine = PDFStreamEngine()
+    engine.save_graphics_state()
+    engine.save_graphics_state()
+    assert engine.get_graphics_stack_size() == 0
+    engine.restore_graphics_state()
+    assert engine.get_graphics_stack_size() == 0
+
+
+def test_subclass_can_drive_graphics_state_stack() -> None:
+    """Subclasses with a real graphics state push frames into the
+    inherited ``_graphics_stack`` and override the hooks; the base
+    accessor returns the top of the stack as-is."""
+
+    class _GfxEngine(PDFStreamEngine):
+        def save_graphics_state(self) -> None:
+            top = self.get_graphics_state()
+            self._graphics_stack.append({"depth": (top or {}).get("depth", 0) + 1})
+
+        def restore_graphics_state(self) -> None:
+            self._graphics_stack.pop()
+
+    engine = _GfxEngine()
+    engine.save_graphics_state()
+    engine.save_graphics_state()
+    assert engine.get_graphics_stack_size() == 2
+    assert engine.get_graphics_state() == {"depth": 2}
+    engine.restore_graphics_state()
+    assert engine.get_graphics_state() == {"depth": 1}
+
+
+def test_transform_default_is_noop() -> None:
+    """Base ``transform`` is a no-op — the rendering subclass overrides
+    to multiply the matrix into the active CTM."""
+    engine = PDFStreamEngine()
+    # Should not raise and should not affect any observable state.
+    engine.transform([1, 0, 0, 1, 10, 20])
+    assert engine.get_graphics_state() is None
+
+
+# ---------- text-matrix accessors ----------
+
+
+def test_text_matrix_object_round_trip() -> None:
+    engine = PDFStreamEngine()
+    assert engine.get_text_matrix() is None
+    sentinel = object()
+    engine.set_text_matrix_object(sentinel)
+    assert engine.get_text_matrix() is sentinel
+    engine.set_text_matrix_object(None)
+    assert engine.get_text_matrix() is None
+
+
+def test_text_line_matrix_object_round_trip() -> None:
+    engine = PDFStreamEngine()
+    assert engine.get_text_line_matrix() is None
+    sentinel = object()
+    engine.set_text_line_matrix_object(sentinel)
+    assert engine.get_text_line_matrix() is sentinel
+
+
+# ---------- show_text / show_font_glyph / show_glyph hooks ----------
+
+
+class _GlyphRecorder(PDFStreamEngine):
+    """Subclass that records each ``show_font_glyph`` / ``show_glyph``
+    invocation so tests can assert the per-byte dispatch path."""
+
+    glyphs: ClassVar[list[tuple[int, Any]]]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.font_glyphs: list[tuple[Any, Any, int, Any]] = []
+        self.glyphs_called: list[tuple[Any, Any, int, Any]] = []
+
+    def show_font_glyph(
+        self, text_rendering_matrix: Any, font: Any, code: int, displacement: Any
+    ) -> None:
+        self.font_glyphs.append((text_rendering_matrix, font, code, displacement))
+        super().show_font_glyph(text_rendering_matrix, font, code, displacement)
+
+    def show_glyph(
+        self, text_rendering_matrix: Any, font: Any, code: int, displacement: Any
+    ) -> None:
+        self.glyphs_called.append((text_rendering_matrix, font, code, displacement))
+
+
+def test_show_text_dispatches_one_show_font_glyph_per_byte_when_no_font() -> None:
+    """No active font ⇒ fall-back per-byte dispatch (one code per byte)."""
+    engine = _GlyphRecorder()
+    engine.show_text(b"AB")
+    codes = [c for _, _, c, _ in engine.font_glyphs]
+    assert codes == [ord("A"), ord("B")]
+    # show_font_glyph base implementation forwards to show_glyph.
+    forwarded = [c for _, _, c, _ in engine.glyphs_called]
+    assert forwarded == codes
+
+
+def test_show_text_uses_font_read_code_when_available() -> None:
+    """When a font with ``read_code`` is on the graphics state, decode
+    via that — proves multi-byte fonts would be honoured."""
+
+    class _TwoByteFont:
+        def read_code(self, src: Any) -> int | None:
+            chunk = src.read(2)
+            if len(chunk) < 2:
+                return None
+            return (chunk[0] << 8) | chunk[1]
+
+    class _GS:
+        text_font = _TwoByteFont()
+
+    engine = _GlyphRecorder()
+    engine._graphics_stack.append(_GS())
+    engine.show_text(b"\x00\x41\x00\x42\x00\x43")
+    codes = [c for _, _, c, _ in engine.font_glyphs]
+    assert codes == [0x41, 0x42, 0x43]
+
+
+def test_show_text_empty_bytes_dispatches_nothing() -> None:
+    engine = _GlyphRecorder()
+    engine.show_text(b"")
+    assert engine.font_glyphs == []
+    assert engine.glyphs_called == []
+
+
+def test_show_font_glyph_default_forwards_to_show_glyph() -> None:
+    """The base ``show_font_glyph`` implementation defers to
+    ``show_glyph`` so a subclass can override either layer."""
+
+    class _OnlyShowGlyph(PDFStreamEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            self.codes: list[int] = []
+
+        def show_glyph(
+            self,
+            text_rendering_matrix: Any,
+            font: Any,
+            code: int,
+            displacement: Any,
+        ) -> None:
+            self.codes.append(code)
+
+    engine = _OnlyShowGlyph()
+    engine.show_font_glyph(None, None, 0x41, None)
+    engine.show_font_glyph(None, None, 0x42, None)
+    assert engine.codes == [0x41, 0x42]
+
+
+# ---------- process_child_stream ----------
+
+
+def test_process_child_stream_dispatches_through_engine() -> None:
+    """A nested content stream walks through the same dispatch
+    pipeline; the operator processors see operators from the child."""
+    engine = _RecordingEngine()
+    _register_all_text_ops(engine)
+    page = PDPage()
+    page.set_resources(PDResources())
+    child = _BytesContentStream(b"BT (Inner) Tj ET")
+
+    engine.process_child_stream(child, page)
+
+    assert ("show_text_string", (b"Inner",)) in engine.events
+
+
+def test_process_child_stream_sets_current_page_for_duration() -> None:
+    """``get_current_page`` reflects ``page`` while the child stream
+    runs and restores after."""
+
+    class _PageProbe(OperatorProcessor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.seen: list[Any] = []
+
+        def process(self, operator: Operator, operands: list[COSBase]) -> None:
+            self.seen.append(self.get_context().get_current_page())
+
+        def get_name(self) -> str:
+            return "Tj"
+
+    engine = PDFStreamEngine()
+    probe = _PageProbe()
+    engine.add_operator(probe)
+    page = PDPage()
+    page.set_resources(PDResources())
+    child = _BytesContentStream(b"(X) Tj")
+    assert engine.get_current_page() is None
+    engine.process_child_stream(child, page)
+    assert probe.seen == [page]
+    # After child stream, the engine resets to the prior context.
+    assert engine.get_current_page() is None
+    assert engine.is_processing_page() is False
+
+
+def test_process_child_stream_increments_level() -> None:
+    """A nested stream bumps ``get_level`` by one (matches
+    ``process_stream`` parity)."""
+
+    class _LevelProbe(OperatorProcessor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.levels: list[int] = []
+
+        def process(self, operator: Operator, operands: list[COSBase]) -> None:
+            self.levels.append(self.get_context().get_level())
+
+        def get_name(self) -> str:
+            return "Tj"
+
+    engine = PDFStreamEngine()
+    probe = _LevelProbe()
+    engine.add_operator(probe)
+    child = _BytesContentStream(b"(X) Tj")
+    engine.process_child_stream(child, None)
+    assert probe.levels == [1]
+    assert engine.get_level() == 0
+
+
+def test_process_child_stream_without_page_preserves_outer_context() -> None:
+    """``page=None`` runs the child without disturbing the outer
+    current-page state. (This matches our use for annotation appearances
+    that don't override the page reference.)"""
+    engine = PDFStreamEngine()
+    page = PDPage()
+    page.set_resources(PDResources())
+    cs = _BytesContentStream(b"(A) Tj")
+    # Simulate already being inside process_page.
+    engine._current_page = page
+    engine._is_processing_page = True
+    try:
+        engine.process_child_stream(cs, None)
+    finally:
+        engine._current_page = None
+        engine._is_processing_page = False
+    # The outer state was preserved across the child run.
+    assert engine.get_current_page() is None
+    assert engine.is_processing_page() is False

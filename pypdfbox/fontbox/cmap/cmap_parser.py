@@ -71,6 +71,10 @@ class CMapParser:
                         self._parse_begincidchar(int(previous_token), ras, result)
                     elif op == "begincidrange" and isinstance(previous_token, int):
                         self._parse_begincidrange(int(previous_token), ras, result)
+                    elif op == "beginnotdefchar":
+                        self._parse_beginnotdefchar(int(previous_token), ras, result)
+                    elif op == "beginnotdefrange":
+                        self._parse_beginnotdefrange(int(previous_token), ras, result)
             elif isinstance(token, _LiteralName):
                 self._parse_literal_name(token, ras, result)
             previous_token = token
@@ -217,6 +221,23 @@ class CMapParser:
             nxt = self._parse_next_token(ras)
             if isinstance(nxt, int) and not isinstance(nxt, bool):
                 result.set_supplement(nxt)
+        elif name == "CIDSystemInfo":
+            # Some CMaps express the CIDSystemInfo as a single dict
+            # ``/CIDSystemInfo << /Registry (...) /Ordering (...) /Supplement N >> def``
+            # rather than three top-level literals. Extract the inner
+            # values when we see the dict form so downstream callers
+            # observe identical CMap state either way.
+            nxt = self._parse_next_token(ras)
+            if isinstance(nxt, dict):
+                registry = nxt.get("Registry")
+                if isinstance(registry, str):
+                    result.set_registry(registry)
+                ordering = nxt.get("Ordering")
+                if isinstance(ordering, str):
+                    result.set_ordering(ordering)
+                supplement = nxt.get("Supplement")
+                if isinstance(supplement, int) and not isinstance(supplement, bool):
+                    result.set_supplement(supplement)
 
     # ---------- range / char body parsers ----------
 
@@ -306,6 +327,67 @@ class CMapParser:
             input_code = bytes(nxt)
             mapped_cid = self._parse_integer(ras)
             result.add_cid_mapping(input_code, mapped_cid)
+
+    def _parse_beginnotdefchar(
+        self, count: int, ras: RandomAccessRead, result: CMap
+    ) -> None:
+        """Parse a ``beginnotdefchar`` block.
+
+        Each entry is ``<inputCode> <substituteCID>`` and registers a
+        substitute CID for an undefined character code. Upstream PDFBox
+        stores these via ``addCIDMapping`` — we follow suit so that
+        ``CMap.to_cid`` returns the .notdef CID for unmapped codes that
+        fall in a notdef range.
+        """
+        for _ in range(count):
+            nxt = self._parse_next_token(ras)
+            if isinstance(nxt, _Operator):
+                self._check_expected_operator(nxt, "endnotdefchar", "notdefchar")
+                break
+            if not isinstance(nxt, (bytes, bytearray)):
+                raise OSError("input code missing")
+            input_code = bytes(nxt)
+            mapped_cid = self._parse_integer(ras)
+            result.add_cid_mapping(input_code, mapped_cid)
+
+    def _parse_beginnotdefrange(
+        self, count: int, ras: RandomAccessRead, result: CMap
+    ) -> None:
+        """Parse a ``beginnotdefrange`` block.
+
+        Each entry is ``<startCode> <endCode> <substituteCID>`` and
+        assigns the *same* substitute CID to every input code in the
+        range (as opposed to ``begincidrange`` which increments). We
+        therefore expand the range into individual ``add_cid_mapping``
+        calls rather than reusing ``add_cid_range``.
+        """
+        for _ in range(count):
+            nxt = self._parse_next_token(ras)
+            if isinstance(nxt, _Operator):
+                self._check_expected_operator(nxt, "endnotdefrange", "notdefrange")
+                break
+            if not isinstance(nxt, (bytes, bytearray)):
+                raise OSError("start code missing")
+            start_code = bytes(nxt)
+            end_code = self._parse_byte_array(ras)
+            mapped_cid = self._parse_integer(ras)
+            if len(start_code) != len(end_code):
+                raise OSError(
+                    "Error : ~notdefrange values must not have different byte lengths"
+                )
+            start_int = _to_int(start_code)
+            end_int = _to_int(end_code)
+            if end_int < start_int:
+                # Corrupt range — skip silently (matches PDFBOX-4550 spirit).
+                continue
+            length = len(start_code)
+            for code_int in range(start_int, end_int + 1):
+                code_bytes = bytearray(length)
+                v = code_int
+                for i in range(length - 1, -1, -1):
+                    code_bytes[i] = v & 0xFF
+                    v >>= 8
+                result.add_cid_mapping(bytes(code_bytes), mapped_cid)
 
     def _parse_beginbfrange(
         self, count: int, ras: RandomAccessRead, result: CMap

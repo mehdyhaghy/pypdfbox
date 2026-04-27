@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.ttf import TrueTypeFont
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_cid_font import PDCIDFont
 
@@ -15,6 +16,13 @@ _LOG = logging.getLogger(__name__)
 
 _CID_TO_GID_MAP: COSName = COSName.get_pdf_name("CIDToGIDMap")
 _IDENTITY: COSName = COSName.get_pdf_name("Identity")
+_OPEN_TYPE: str = "OpenType"
+
+# Default TrueType units-per-em — matches upstream's fallback when the
+# font program is missing or could not be parsed (PDF coordinate space
+# is 1000-unit, the actual em is recovered from the embedded /head when
+# the program is available).
+_DEFAULT_UNITS_PER_EM: int = 1000
 
 
 class PDCIDFontType2(PDCIDFont):
@@ -155,9 +163,14 @@ class PDCIDFontType2(PDCIDFont):
 
     def get_true_type_font(self) -> TrueTypeFont | None:
         """Return the parsed :class:`TrueTypeFont` for this font's
-        ``/FontFile2`` stream, or ``None`` if the descriptor lacks one
-        or the program cannot be parsed. Result is cached on the
-        instance. Mirrors upstream ``PDCIDFontType2.getTrueTypeFont``.
+        embedded program, or ``None`` if no embedded program exists or
+        it cannot be parsed. Result is cached on the instance.
+
+        Mirrors upstream ``PDCIDFontType2.getTrueTypeFont``. Tries
+        ``/FontFile2`` first (the canonical form per PDF 32000-1
+        §9.6.2 Table 122); falls back to ``/FontFile3`` with
+        ``/Subtype /OpenType`` (the OpenType-flavoured form permitted
+        by §9.9.1 for CIDFontType2 descendants).
         """
         if self._ttf is not None:
             return self._ttf if isinstance(self._ttf, TrueTypeFont) else None
@@ -166,15 +179,23 @@ class PDCIDFontType2(PDCIDFont):
         if descriptor is None:
             self._ttf = False
             return None
-        font_file2 = descriptor.get_font_file2()
-        if font_file2 is None:
+        program_stream = descriptor.get_font_file2()
+        if program_stream is None:
+            font_file3 = descriptor.get_font_file3()
+            if font_file3 is not None:
+                subtype = font_file3.get_cos_object().get_name(
+                    COSName.SUBTYPE  # type: ignore[attr-defined]
+                )
+                if subtype == _OPEN_TYPE:
+                    program_stream = font_file3
+        if program_stream is None:
             self._ttf = False
             return None
         try:
-            raw = font_file2.to_byte_array()
+            raw = program_stream.to_byte_array()
             self._ttf = TrueTypeFont.from_bytes(raw)
         except Exception:  # noqa: BLE001
-            _LOG.exception("failed to parse /FontFile2 for %s", self.get_name())
+            _LOG.exception("failed to parse font program for %s", self.get_name())
             self._ttf = False
             return None
         return self._ttf
@@ -186,13 +207,175 @@ class PDCIDFontType2(PDCIDFont):
         self._ttf = ttf if ttf is not None else False
 
     def is_embedded(self) -> bool:
-        """``True`` when the descriptor carries a ``/FontFile2`` stream
-        — the only embedding form a CIDFontType2 may legally use per
-        PDF 32000-1 §9.6.2 (Table 122 / §9.9.1)."""
+        """``True`` when the descriptor carries an embedded font program
+        usable as a CIDFontType2.
+
+        Mirrors upstream ``PDCIDFontType2.isEmbedded``. Accepts the
+        canonical ``/FontFile2`` form (PDF 32000-1 §9.6.2 Table 122)
+        and the OpenType-flavoured ``/FontFile3`` with
+        ``/Subtype /OpenType`` form permitted by §9.9.1 for
+        CIDFontType2 descendants of a Type 0 composite.
+        """
         descriptor = self.get_font_descriptor()
         if descriptor is None:
             return False
-        return descriptor.get_font_file2() is not None
+        if descriptor.get_font_file2() is not None:
+            return True
+        font_file3 = descriptor.get_font_file3()
+        if font_file3 is None:
+            return False
+        subtype = font_file3.get_cos_object().get_name(
+            COSName.SUBTYPE  # type: ignore[attr-defined]
+        )
+        return subtype == _OPEN_TYPE
+
+    def is_damaged(self) -> bool:
+        """``True`` when the descriptor advertises an embedded font
+        program but the program could not be parsed.
+
+        Mirrors upstream ``PDCIDFontType2.isDamaged``. Returns ``False``
+        when the font is not embedded (nothing to parse, nothing
+        damaged) and ``False`` when the parse succeeded.
+        """
+        if not self.is_embedded():
+            return False
+        # Force the lazy parse and check whether it surfaced a real TTF.
+        self.get_true_type_font()
+        return self._ttf is False
+
+    # ---------- glyph metrics from the embedded program ----------
+
+    def get_width_from_font(self, cid: int) -> float:
+        """Glyph advance for ``cid`` read directly from the embedded
+        TrueType program, in 1/1000 em.
+
+        Mirrors upstream ``PDCIDFontType2.getWidthFromFont``. Resolves
+        ``cid`` to a GID via :meth:`cid_to_gid`, asks the embedded
+        ``hmtx`` table for the advance, then scales by
+        ``1000 / unitsPerEm`` so the result is in PDF text-space units.
+        Returns ``0.0`` when no embedded program is available.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return 0.0
+        try:
+            gid = self.cid_to_gid(cid)
+            advance = ttf.get_advance_width(gid)
+            units_per_em = ttf.get_units_per_em()
+        except Exception:  # noqa: BLE001
+            return 0.0
+        if units_per_em <= 0:
+            return 0.0
+        return float(advance) * 1000.0 / float(units_per_em)
+
+    def get_height(self, cid: int) -> float:  # type: ignore[override]
+        """Vertical extent of glyph ``cid`` in 1/1000 em.
+
+        Mirrors upstream ``PDCIDFontType2.getHeight``. Reads
+        ``yMax - yMin`` from the embedded ``glyf`` table for the
+        resolved GID, scaled by ``1000 / unitsPerEm``. Falls back to
+        the parent's ``/W2`` lookup when no embedded program is
+        available.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return super().get_height(cid)
+        try:
+            gid = self.cid_to_gid(cid)
+        except Exception:  # noqa: BLE001
+            return super().get_height(cid)
+        if gid <= 0:
+            return super().get_height(cid)
+        units_per_em = ttf.get_units_per_em()
+        if units_per_em <= 0:
+            return 0.0
+        inner = getattr(ttf, "_tt", None)
+        if inner is None or "glyf" not in inner:
+            return 0.0
+        try:
+            order = inner.getGlyphOrder()
+            if not 0 <= gid < len(order):
+                return 0.0
+            name = order[gid]
+            glyph = inner["glyf"][name]
+            y_min = int(getattr(glyph, "yMin", 0))
+            y_max = int(getattr(glyph, "yMax", 0))
+        except (KeyError, AttributeError):
+            return 0.0
+        return float(y_max - y_min) * 1000.0 / float(units_per_em)
+
+    def get_average_font_width(self) -> float:  # type: ignore[override]
+        """Mean glyph advance across the embedded program (1/1000 em).
+
+        Mirrors upstream ``PDCIDFontType2.getAverageFontWidth``. Walks
+        the embedded ``hmtx`` table and averages the *positive* advance
+        widths (zero-width slots, typically ``.notdef`` and combining
+        marks, are excluded so they don't drag the mean toward zero).
+        Falls back to the parent's ``/W``-based average — and ultimately
+        to ``/DW`` — when no embedded program is available.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return super().get_average_font_width()
+        units_per_em = ttf.get_units_per_em()
+        if units_per_em <= 0:
+            return super().get_average_font_width()
+        try:
+            advances = ttf.advance_widths
+        except Exception:  # noqa: BLE001
+            return super().get_average_font_width()
+        positive = [w for w in advances if w > 0]
+        if not positive:
+            return super().get_average_font_width()
+        mean_units = sum(positive) / float(len(positive))
+        return mean_units * 1000.0 / float(units_per_em)
+
+    def get_font_matrix(self) -> list[float]:
+        """Return the 6-element font matrix mapping glyph space to text
+        space (``[1/upem 0 0 1/upem 0 0]`` for TrueType).
+
+        Mirrors upstream ``PDCIDFontType2.getFontMatrix``. Falls back to
+        a 1000-unit em (``1/1000``) when no embedded program is
+        available — that matches PDF 32000-1's default for fonts with
+        no explicit matrix and keeps callers from dividing by zero.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is not None:
+            try:
+                upem = ttf.get_units_per_em()
+            except Exception:  # noqa: BLE001
+                upem = _DEFAULT_UNITS_PER_EM
+            if upem <= 0:
+                upem = _DEFAULT_UNITS_PER_EM
+        else:
+            upem = _DEFAULT_UNITS_PER_EM
+        scale = 1.0 / float(upem)
+        return [scale, 0.0, 0.0, scale, 0.0, 0.0]
+
+    def get_bounding_box(self) -> PDRectangle | None:  # type: ignore[override]
+        """Return the font's bounding box.
+
+        Mirrors upstream ``PDCIDFontType2.getBoundingBox``. Prefers the
+        embedded TTF ``head`` table's ``[xMin yMin xMax yMax]`` (the
+        true glyph-space bbox), falling back to the descriptor's
+        ``/FontBBox`` when no program is available — matching the
+        upstream lookup order.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is not None:
+            inner = getattr(ttf, "_tt", None)
+            if inner is not None and "head" in inner:
+                try:
+                    head = inner["head"]
+                    return PDRectangle(
+                        float(head.xMin),
+                        float(head.yMin),
+                        float(head.xMax),
+                        float(head.yMax),
+                    )
+                except (KeyError, AttributeError):
+                    pass
+        return super().get_bounding_box()
 
     def has_glyph(self, cid: int) -> bool:  # type: ignore[override]
         """``True`` when ``cid`` resolves to a non-``.notdef`` glyph.

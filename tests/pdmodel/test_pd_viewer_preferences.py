@@ -171,6 +171,100 @@ def test_catalog_set_none_removes_entry() -> None:
     assert cat.get_viewer_preferences() is None
 
 
+def test_get_boolean_accessors_default_false() -> None:
+    p = PDViewerPreferences()
+    assert p.get_hide_toolbar() is False
+    assert p.get_hide_menubar() is False
+    assert p.get_hide_window_ui() is False
+    assert p.get_fit_window() is False
+    assert p.get_center_window() is False
+    assert p.get_display_doc_title() is False
+    assert p.get_pick_tray_by_pdf_size() is False
+
+
+def test_get_boolean_accessors_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_hide_toolbar(True)
+    p.set_hide_menubar(True)
+    p.set_hide_window_ui(True)
+    p.set_fit_window(True)
+    p.set_center_window(True)
+    p.set_display_doc_title(True)
+    p.set_pick_tray_by_pdf_size(True)
+    assert p.get_hide_toolbar() is True
+    assert p.get_hide_menubar() is True
+    assert p.get_hide_window_ui() is True
+    assert p.get_fit_window() is True
+    assert p.get_center_window() is True
+    assert p.get_display_doc_title() is True
+    assert p.get_pick_tray_by_pdf_size() is True
+
+
+def test_get_boolean_accessors_track_legacy_forms() -> None:
+    p = PDViewerPreferences()
+    p.set_hide_toolbar(True)
+    p.set_fit_window(True)
+    assert p.get_hide_toolbar() == p.hide_toolbar() == p.is_hide_toolbar()
+    assert p.get_fit_window() == p.fit_window() == p.is_fit_window()
+
+
+def test_print_page_range_pairs_empty_default() -> None:
+    p = PDViewerPreferences()
+    assert p.get_print_page_range_pairs() == []
+
+
+def test_print_page_range_pairs_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_print_page_range_pairs([(1, 3), (5, 7), (10, 10)])
+    assert p.get_print_page_range_pairs() == [(1, 3), (5, 7), (10, 10)]
+    arr = p.get_print_page_range()
+    assert arr is not None
+    assert arr.size() == 6
+    assert arr.get_int(0) == 1
+    assert arr.get_int(1) == 3
+    assert arr.get_int(4) == 10
+
+
+def test_print_page_range_pairs_set_none_removes() -> None:
+    p = PDViewerPreferences()
+    p.set_print_page_range_pairs([(1, 5)])
+    assert p.get_print_page_range() is not None
+    p.set_print_page_range_pairs(None)
+    assert p.get_print_page_range() is None
+    assert p.get_print_page_range_pairs() == []
+
+
+def test_print_page_range_pairs_set_empty_removes() -> None:
+    p = PDViewerPreferences()
+    p.set_print_page_range_pairs([(2, 4)])
+    p.set_print_page_range_pairs([])
+    assert p.get_print_page_range() is None
+
+
+def test_print_page_range_pairs_odd_length_returns_empty() -> None:
+    """Odd-length /PrintPageRange arrays are invalid per PDF 32000-2 §12.4.4."""
+    p = PDViewerPreferences()
+    arr = COSArray.of_cos_integers([1, 3, 5])
+    p.set_print_page_range(arr)
+    assert p.get_print_page_range_pairs() == []
+
+
+def test_set_view_area_with_string() -> None:
+    """Verify set_view_area(name) accepts a plain string."""
+    p = PDViewerPreferences()
+    p.set_view_area("BleedBox")
+    assert p.get_view_area() == "BleedBox"
+
+
+def test_num_copies_clamps_below_one() -> None:
+    """Per PDF 32000-1 Table 150, /NumCopies < 1 must be treated as 1."""
+    p = PDViewerPreferences()
+    p.get_cos_object().set_int(COSName.get_pdf_name("NumCopies"), 0)
+    assert p.get_num_copies() == 1
+    p.get_cos_object().set_int(COSName.get_pdf_name("NumCopies"), -3)
+    assert p.get_num_copies() == 1
+
+
 def test_construct_from_existing_dict() -> None:
     raw = COSDictionary()
     raw.set_boolean(COSName.get_pdf_name("HideToolbar"), True)

@@ -191,16 +191,26 @@ def test_set_glyph_names_round_trip() -> None:
     assert t.get_name(0) is None
 
 
-def test_format_4_smoke_does_not_crash() -> None:
-    # Format 4.0 isn't explicitly handled; the read() should still complete the
-    # header and leave initialized = True. There are no payload bytes after the
-    # header so no name list is built. (We add one byte to skip the EOF-warning
-    # branch and exercise the "fall through unhandled format" path.)
-    blob = _pack_header(4) + b"\x00"
-    t = _read(blob)
+def test_format_4_synthesizes_a_names_from_cids() -> None:
+    # Format 4.0 (CID Mac fonts): per-glyph 16-bit CID. Names are "aN".
+    cids = [0, 42, 65535]
+    body = b"".join(struct.pack(">H", c) for c in cids)
+    blob = _pack_header(4) + body
+    t = _read(blob, _StubTTF(num_glyphs=len(cids)))
     assert t.get_format_type() == 4.0
-    assert t.get_glyph_names() is None
+    names = t.get_glyph_names()
+    assert names == ["a0", "a42", "a65535"]
+    assert t.get_name(1) == "a42"
     assert t.get_initialized() is True
+
+
+def test_format_4_truncated_keeps_remaining_undefined() -> None:
+    # Claim 3 glyphs but only supply 2 CIDs; the third stays as .undefined.
+    body = struct.pack(">HH", 7, 8)
+    blob = _pack_header(4) + body
+    t = _read(blob, _StubTTF(num_glyphs=3))
+    names = t.get_glyph_names()
+    assert names == ["a7", "a8", ".undefined"]
 
 
 def test_format_3_with_extra_bytes_does_not_create_names() -> None:
@@ -208,3 +218,51 @@ def test_format_3_with_extra_bytes_does_not_create_names() -> None:
     t = _read(blob)
     assert t.get_format_type() == 3.0
     assert t.get_glyph_names() is None
+
+
+def test_initial_state_before_read() -> None:
+    t = PostScriptTable()
+    assert t.get_format_type() == 0.0
+    assert t.get_italic_angle() == 0.0
+    assert t.get_underline_position() == 0
+    assert t.get_underline_thickness() == 0
+    assert t.get_is_fixed_pitch() == 0
+    assert t.get_min_mem_type42() == 0
+    assert t.get_max_mem_type42() == 0
+    assert t.get_min_mem_type1() == 0
+    assert t.get_max_mem_type1() == 0
+    assert t.get_glyph_names() is None
+    assert t.get_name(0) is None
+    assert t.get_initialized() is False
+
+
+def test_table_tag_constant() -> None:
+    assert PostScriptTable.TAG == "post"
+
+
+def test_format_1_only_header_warns_and_skips_names() -> None:
+    # When the parser reaches end-of-stream right after the header it logs a
+    # warning and does NOT populate glyph_names, regardless of format.
+    blob = _pack_header(1)
+    t = _read(blob)
+    assert t.get_format_type() == 1.0
+    assert t.get_glyph_names() is None
+
+
+def test_format_2_empty_table_zero_glyphs() -> None:
+    body = struct.pack(">H", 0)
+    blob = _pack_header(2) + body
+    t = _read(blob)
+    assert t.get_format_type() == 2.0
+    assert t.get_glyph_names() == []
+
+
+def test_format_2_truncated_index_table_raises() -> None:
+    # Claim 5 glyphs but supply only one index — the parser should raise an
+    # OSError/EOFError from the underlying stream.
+    import pytest as _pytest
+
+    body = struct.pack(">HH", 5, 0)
+    blob = _pack_header(2) + body
+    with _pytest.raises((OSError, EOFError)):
+        _read(blob)

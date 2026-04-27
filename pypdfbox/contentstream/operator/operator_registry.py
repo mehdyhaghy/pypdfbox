@@ -64,6 +64,10 @@ from .state.save_graphics_state import SaveGraphicsState
 from .state.set_dash_pattern import SetDashPattern
 from .state.set_flatness import SetFlatness
 from .state.set_graphics_state_parameters import SetGraphicsStateParameters
+from .state.set_line_cap_style import SetLineCapStyle
+from .state.set_line_join_style import SetLineJoinStyle
+from .state.set_line_miter_limit import SetLineMiterLimit
+from .state.set_line_width import SetLineWidth
 from .state.set_rendering_intent import SetRenderingIntent
 from .text.move_text_position import MoveTextPosition
 from .text.move_text_set_leading_handler import MoveTextSetLeading
@@ -132,6 +136,10 @@ class OperatorRegistry:
         SetFlatness.OPERATOR_NAME: SetFlatness,
         SetRenderingIntent.OPERATOR_NAME: SetRenderingIntent,
         SetGraphicsStateParameters.OPERATOR_NAME: SetGraphicsStateParameters,
+        SetLineWidth.OPERATOR_NAME: SetLineWidth,
+        SetLineCapStyle.OPERATOR_NAME: SetLineCapStyle,
+        SetLineJoinStyle.OPERATOR_NAME: SetLineJoinStyle,
+        SetLineMiterLimit.OPERATOR_NAME: SetLineMiterLimit,
         # XObject invocation
         InvokeNamedXObject.OPERATOR_NAME: InvokeNamedXObject,
         # inline-image operators

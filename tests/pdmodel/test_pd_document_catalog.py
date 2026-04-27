@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDDocumentCatalog
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
@@ -152,3 +152,166 @@ def test_get_dests_wraps_destination_name_tree() -> None:
     fetched = resolved.get_value("Chapter1")
     assert isinstance(fetched, PDPageXYZDestination)
     assert fetched.get_page_number() == 1
+
+
+# ---------- /URI dictionary ----------
+
+
+def test_get_uri_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_uri() is None
+
+
+def test_uri_round_trip() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+
+    uri_dict = COSDictionary()
+    uri_dict.set_item(COSName.get_pdf_name("Base"), COSString("https://example.test/"))
+    catalog.set_uri(uri_dict)
+
+    resolved = catalog.get_uri()
+    assert isinstance(resolved, COSDictionary)
+    assert resolved is uri_dict
+    assert resolved.get_string(COSName.get_pdf_name("Base")) == "https://example.test/"
+
+    catalog.set_uri(None)
+    assert catalog.get_uri() is None
+
+
+def test_get_uri_returns_none_when_entry_is_not_a_dictionary() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    catalog.get_cos_object().set_item(
+        COSName.get_pdf_name("URI"), COSString("not-a-dict")
+    )
+    assert catalog.get_uri() is None
+
+
+# ---------- /Requirements ----------
+
+
+def test_get_requirements_absent_returns_empty_list() -> None:
+    doc = PDDocument()
+    reqs = doc.get_document_catalog().get_requirements()
+    assert reqs == []
+    assert isinstance(reqs, list)
+
+
+def test_add_requirement_creates_array_on_demand() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+
+    req = COSDictionary()
+    req.set_item(COSName.TYPE, COSName.get_pdf_name("Requirement"))  # type: ignore[attr-defined]
+    req.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("EnableJavaScripts"))
+
+    catalog.add_requirement(req)
+
+    arr = catalog.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Requirements")
+    )
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 1
+
+    fetched = catalog.get_requirements()
+    assert len(fetched) == 1
+    assert fetched[0] is req
+
+
+def test_set_requirements_replaces_array() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+
+    req1 = COSDictionary()
+    req1.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("R1"))
+    req2 = COSDictionary()
+    req2.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("R2"))
+
+    catalog.set_requirements([req1, req2])
+    fetched = catalog.get_requirements()
+    assert len(fetched) == 2
+    assert fetched[0] is req1
+    assert fetched[1] is req2
+
+    # Replace with new list.
+    req3 = COSDictionary()
+    req3.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("R3"))
+    catalog.set_requirements([req3])
+    fetched = catalog.get_requirements()
+    assert len(fetched) == 1
+    assert fetched[0] is req3
+
+
+def test_set_requirements_none_or_empty_removes_entry() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+
+    req = COSDictionary()
+    catalog.add_requirement(req)
+    assert COSName.get_pdf_name("Requirements") in catalog
+
+    catalog.set_requirements(None)
+    assert COSName.get_pdf_name("Requirements") not in catalog
+
+    catalog.add_requirement(req)
+    catalog.set_requirements([])
+    assert COSName.get_pdf_name("Requirements") not in catalog
+
+
+def test_set_requirements_rejects_non_cos_dict() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    with pytest.raises(TypeError):
+        catalog.set_requirements(["not-a-dict"])  # type: ignore[list-item]
+
+
+def test_add_requirement_rejects_non_cos_dict() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    with pytest.raises(TypeError):
+        catalog.add_requirement("not-a-dict")  # type: ignore[arg-type]
+
+
+def test_get_requirements_skips_non_dict_entries() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+
+    arr = COSArray()
+    arr.add(COSString("not-a-dict"))
+    good = COSDictionary()
+    arr.add(good)
+    catalog.get_cos_object().set_item(COSName.get_pdf_name("Requirements"), arr)
+
+    fetched = catalog.get_requirements()
+    assert len(fetched) == 1
+    assert fetched[0] is good
+
+
+# ---------- set_pages ----------
+
+
+def test_set_pages_swaps_page_tree() -> None:
+    from pypdfbox.pdmodel import PDPageTree
+
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    original = catalog.get_pages()
+
+    replacement = PDPageTree(document=doc)
+    catalog.set_pages(replacement)
+
+    fetched = catalog.get_cos_object().get_dictionary_object(COSName.PAGES)  # type: ignore[attr-defined]
+    assert fetched is replacement.get_cos_object()
+    assert fetched is not original.get_cos_object()
+
+
+def test_set_pages_none_removes_entry() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    # Force /Pages population.
+    catalog.get_pages()
+    assert COSName.PAGES in catalog  # type: ignore[attr-defined]
+
+    catalog.set_pages(None)
+    assert COSName.PAGES not in catalog  # type: ignore[attr-defined]

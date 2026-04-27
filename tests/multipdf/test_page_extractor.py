@@ -4,6 +4,8 @@ import io
 
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.multipdf import PageExtractor
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
 
 
 def _make_doc(n_pages: int) -> PDDocument:
@@ -98,3 +100,91 @@ def test_getters_and_setters_round_trip() -> None:
     assert extractor.get_end_page() == 2
     assert extractor.extract().get_number_of_pages() == 1
     src.close()
+
+
+def test_extract_copies_document_information() -> None:
+    """Upstream sets the new doc's /Info from the source's. Verify the
+    extracted document round-trips title and author."""
+    src = _make_doc(3)
+    info = src.get_document_information()
+    info.set_title("Sample Title")
+    info.set_author("Jane Doe")
+    result = PageExtractor(src, 1, 1).extract()
+    out_info = result.get_document_information()
+    assert out_info.get_title() == "Sample Title"
+    assert out_info.get_author() == "Jane Doe"
+    src.close()
+    result.close()
+
+
+def test_extract_copies_viewer_preferences() -> None:
+    """Upstream copies /ViewerPreferences from source catalog onto the
+    extracted catalog."""
+    src = _make_doc(3)
+    src_catalog = src.get_document_catalog()
+    prefs = PDViewerPreferences()
+    prefs.set_hide_toolbar(True)
+    src_catalog.set_viewer_preferences(prefs)
+    result = PageExtractor(src, 1, 2).extract()
+    out_prefs = result.get_document_catalog().get_viewer_preferences()
+    assert out_prefs is not None
+    assert out_prefs.hide_toolbar() is True
+    src.close()
+    result.close()
+
+
+def test_extract_preserves_page_media_box_via_setter() -> None:
+    """The defensive ``set_media_box`` re-application means the
+    extracted page's dict carries the source rectangle even when the
+    source page inherited it."""
+    src = PDDocument()
+    page = PDPage()
+    page.set_media_box(PDRectangle(0.0, 0.0, 200.0, 300.0))
+    src.add_page(page)
+    result = PageExtractor(src, 1, 1).extract()
+    out_box = result.get_page(0).get_media_box()
+    assert out_box.get_width() == 200.0
+    assert out_box.get_height() == 300.0
+    src.close()
+    result.close()
+
+
+def test_extract_preserves_rotation() -> None:
+    src = PDDocument()
+    page = PDPage()
+    page.set_rotation(90)
+    src.add_page(page)
+    result = PageExtractor(src, 1, 1).extract()
+    assert result.get_page(0).get_rotation() == 90
+    src.close()
+    result.close()
+
+
+def test_extract_with_none_end_page_treats_as_full_doc() -> None:
+    """``end_page=None`` should mirror the no-arg constructor: extract
+    every page in the document."""
+    src = _make_doc(4)
+    result = PageExtractor(src, 1, None).extract()
+    assert result.get_number_of_pages() == 4
+    src.close()
+    result.close()
+
+
+def test_extract_does_not_mutate_source_page_count() -> None:
+    """Extraction must not mutate the source document's page count."""
+    src = _make_doc(5)
+    PageExtractor(src, 2, 4).extract().close()
+    assert src.get_number_of_pages() == 5
+    src.close()
+
+
+def test_extract_pages_are_detached_from_source_tree() -> None:
+    """Extracted pages must be deep copies — mutating the new page must
+    not leak back into the source page dictionary."""
+    src = _make_doc(2)
+    src.get_page(0).set_rotation(0)
+    result = PageExtractor(src, 1, 1).extract()
+    result.get_page(0).set_rotation(180)
+    assert src.get_page(0).get_rotation() == 0
+    src.close()
+    result.close()

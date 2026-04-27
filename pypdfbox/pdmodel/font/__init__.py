@@ -13,6 +13,7 @@ from .pd_true_type_font import PDTrueTypeFont
 from .pd_type0_font import PDType0Font
 from .pd_type1_font import PDType1Font
 from .pd_type1c_font import PDType1CFont
+from .pd_type3_char_proc import PDType3CharProc
 from .pd_type3_font import PDType3Font
 from .standard14_fonts import Standard14Fonts
 
@@ -30,6 +31,7 @@ __all__ = [
     "PDType0Font",
     "PDType1CFont",
     "PDType1Font",
+    "PDType3CharProc",
     "PDType3Font",
     "Standard14Fonts",
 ]

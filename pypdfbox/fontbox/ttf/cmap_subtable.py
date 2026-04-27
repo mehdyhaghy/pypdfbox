@@ -20,10 +20,20 @@ class CmapSubtable(CmapLookup):
 
     Mirrors ``org.apache.fontbox.ttf.CmapSubtable``.
 
-    Cluster #1 implements formats 0, 4, 6, and 12 (the formats present in
-    >99% of real-world fonts). Format 2 (DBCS subheader) is also implemented
-    so we don't break on legacy CJK TrueType. Formats 8, 10, 13, 14 raise
-    :class:`NotImplementedError` pointing at fontbox cluster #3.
+    Implements all OpenType ``cmap`` subtable formats:
+
+    * Format 0  — byte encoding table
+    * Format 2  — high-byte mapping (DBCS / legacy CJK)
+    * Format 4  — segment mapping to delta values (BMP)
+    * Format 6  — trimmed table mapping
+    * Format 8  — mixed 16/32-bit coverage (legacy)
+    * Format 10 — trimmed array
+    * Format 12 — segmented coverage (full Unicode)
+    * Format 13 — many-to-one mappings (Last Resort font)
+    * Format 14 — Unicode Variation Sequences (UVS) — parsed but not
+      surfaced through ``get_glyph_id`` (UVS lookup uses a separate
+      ``get_glyph_id_uvs`` helper because a base codepoint plus a variation
+      selector together resolve to a glyph).
     """
 
     def __init__(self) -> None:
@@ -33,6 +43,11 @@ class CmapSubtable(CmapLookup):
         self._glyph_id_to_character_code: list[int] | None = None
         self._glyph_id_to_character_code_multiple: dict[int, list[int]] = {}
         self._character_code_to_glyph_id: dict[int, int] = {}
+        # Format 14 (UVS) state — keyed by (base_codepoint, variation_selector)
+        # → glyph_id. ``_default_uvs`` lists (selector, start, end) ranges for
+        # which the variation defaults to the underlying base glyph.
+        self._uvs_mapping: dict[tuple[int, int], int] = {}
+        self._default_uvs: list[tuple[int, int, int]] = []
 
     def init_data(self, data: TTFDataStream) -> None:
         self._platform_id = data.read_unsigned_short()
@@ -42,9 +57,17 @@ class CmapSubtable(CmapLookup):
     def init_subtable(self, cmap: CmapTable, num_glyphs: int, data: TTFDataStream) -> None:
         data.seek(cmap.get_offset() + self._sub_table_offset)
         subtable_format = data.read_unsigned_short()
+        # Header bytes after the format word vary across formats:
+        # * formats < 8           : length(uint16), version(uint16)
+        # * format 14             : length(uint32) — and numVarSelectorRecords
+        #                           (uint32) is consumed by the format-14 reader
+        #                           itself (it needs the value).
+        # * other formats >= 8    : reserved(uint16), length(uint32), language(uint32)
         if subtable_format < 8:
             length = data.read_unsigned_short()  # noqa: F841
             version = data.read_unsigned_short()  # noqa: F841
+        elif subtable_format == 14:
+            length = data.read_unsigned_int()  # noqa: F841
         else:
             data.read_unsigned_short()
             length = data.read_unsigned_int()  # noqa: F841
@@ -58,14 +81,16 @@ class CmapSubtable(CmapLookup):
             self._process_subtype_4(data, num_glyphs)
         elif subtable_format == 6:
             self._process_subtype_6(data, num_glyphs)
+        elif subtable_format == 8:
+            self._process_subtype_8(data, num_glyphs)
+        elif subtable_format == 10:
+            self._process_subtype_10(data, num_glyphs)
         elif subtable_format == 12:
             self._process_subtype_12(data, num_glyphs)
-        elif subtable_format in (8, 10, 13, 14):
-            # PDFBox supports these but they are exotic; deferred to cluster #3
-            # so we don't have to ship the full conformance tests yet.
-            raise NotImplementedError(
-                f"CMap format {subtable_format} — fontbox cluster #3"
-            )
+        elif subtable_format == 13:
+            self._process_subtype_13(data, num_glyphs)
+        elif subtable_format == 14:
+            self._process_subtype_14(data)
         else:
             raise OSError(f"Unknown cmap format:{subtable_format}")
 
@@ -142,6 +167,61 @@ class CmapSubtable(CmapLookup):
             self._character_code_to_glyph_id[first_code + i] = glyph_id_array[i]
         self._build_glyph_id_to_character_code_lookup(max_glyph_id)
 
+    # ----- format 8 (mixed 16-/32-bit coverage) -----
+
+    def _process_subtype_8(self, data: TTFDataStream, num_glyphs: int) -> None:
+        # is32: 8192 bytes (= 65536 bits), one bit per BMP code unit indicating
+        # whether that unit is the high half of a surrogate pair. We read but do
+        # not need to interpret it: groups carry full 32-bit start/end codes.
+        data.read_bytes(8192)
+        nb_groups = data.read_unsigned_int()
+        self._character_code_to_glyph_id = {}
+        max_glyph_id = 0
+        for _ in range(nb_groups):
+            first_code = data.read_unsigned_int()
+            end_code = data.read_unsigned_int()
+            start_glyph = data.read_unsigned_int()
+            if first_code > 0x0010FFFF or 0xD800 <= first_code <= 0xDFFF:
+                raise OSError(f"Invalid character code 0x{first_code:X}")
+            if (
+                (end_code > 0 and end_code < first_code)
+                or end_code > 0x0010FFFF
+                or 0xD800 <= end_code <= 0xDFFF
+            ):
+                raise OSError(f"Invalid character code 0x{end_code:X}")
+            for j in range(end_code - first_code + 1):
+                glyph_index = start_glyph + j
+                if glyph_index >= num_glyphs:
+                    _LOG.warning("Format 8 cmap contains an invalid glyph index")
+                    break
+                if glyph_index > max_glyph_id:
+                    max_glyph_id = glyph_index
+                self._character_code_to_glyph_id[first_code + j] = glyph_index
+        if self._character_code_to_glyph_id:
+            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    # ----- format 10 (trimmed array — UCS-4) -----
+
+    def _process_subtype_10(self, data: TTFDataStream, num_glyphs: int) -> None:
+        start_char_code = data.read_unsigned_int()
+        num_chars = data.read_unsigned_int()
+        if num_chars == 0:
+            return
+        self._character_code_to_glyph_id = {}
+        max_glyph_id = 0
+        for i in range(num_chars):
+            glyph_id = data.read_unsigned_short()
+            if glyph_id == 0:
+                continue
+            if glyph_id >= num_glyphs:
+                _LOG.warning("Format 10 cmap contains an invalid glyph index")
+                continue
+            if glyph_id > max_glyph_id:
+                max_glyph_id = glyph_id
+            self._character_code_to_glyph_id[start_char_code + i] = glyph_id
+        if self._character_code_to_glyph_id:
+            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+
     # ----- format 12 (segmented coverage UCS-4) -----
 
     def _process_subtype_12(self, data: TTFDataStream, num_glyphs: int) -> None:
@@ -177,6 +257,112 @@ class CmapSubtable(CmapLookup):
                     max_glyph_id = glyph_index
                 self._character_code_to_glyph_id[first_code + j] = glyph_index
         self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    # ----- format 13 (many-to-one mappings) -----
+
+    def _process_subtype_13(self, data: TTFDataStream, num_glyphs: int) -> None:
+        nb_groups = data.read_unsigned_int()
+        self._character_code_to_glyph_id = {}
+        if num_glyphs == 0:
+            _LOG.warning("subtable has no glyphs")
+            return
+        max_glyph_id = 0
+        for _ in range(nb_groups):
+            first_code = data.read_unsigned_int()
+            end_code = data.read_unsigned_int()
+            glyph_id = data.read_unsigned_int()
+            if first_code > 0x0010FFFF or 0xD800 <= first_code <= 0xDFFF:
+                raise OSError(f"Invalid character code 0x{first_code:X}")
+            if (
+                (end_code > 0 and end_code < first_code)
+                or end_code > 0x0010FFFF
+                or 0xD800 <= end_code <= 0xDFFF
+            ):
+                raise OSError(f"Invalid character code 0x{end_code:X}")
+            if glyph_id >= num_glyphs:
+                _LOG.warning("Format 13 cmap contains an invalid glyph index")
+                continue
+            if glyph_id > max_glyph_id:
+                max_glyph_id = glyph_id
+            # ALL codes in [first_code, end_code] map to the same glyph_id
+            for code in range(first_code, end_code + 1):
+                self._character_code_to_glyph_id[code] = glyph_id
+        if self._character_code_to_glyph_id:
+            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    # ----- format 14 (Unicode Variation Sequences) -----
+
+    def _process_subtype_14(self, data: TTFDataStream) -> None:
+        # Subtable layout (see OpenType spec 'cmap' format 14):
+        #   uint32  numVarSelectorRecords
+        #   N times:
+        #     uint24 varSelector
+        #     uint32 defaultUVSOffset   (0 if absent)
+        #     uint32 nonDefaultUVSOffset (0 if absent)
+        # Offsets are relative to the start of the format-14 subtable, *which
+        # begins at the format word*. We've already consumed the 6-byte header
+        # (format uint16 + length uint32), so the subtable start is six bytes
+        # before our current position.
+        # The numVarSelectorRecords field has been consumed by init_subtable
+        # — wait, no: format-14 path reads only ``length`` in init_subtable, so
+        # the next read here is ``numVarSelectorRecords``.
+        subtable_start = data.get_current_position() - 6
+        num_records = data.read_unsigned_int()
+
+        records: list[tuple[int, int, int]] = []
+        for _ in range(num_records):
+            var_selector = self._read_uint24(data)
+            default_uvs_offset = data.read_unsigned_int()
+            non_default_uvs_offset = data.read_unsigned_int()
+            records.append((var_selector, default_uvs_offset, non_default_uvs_offset))
+
+        self._uvs_mapping = {}
+        self._default_uvs = []
+        for var_selector, default_off, non_default_off in records:
+            if default_off != 0:
+                data.seek(subtable_start + default_off)
+                num_unicode_value_ranges = data.read_unsigned_int()
+                for _ in range(num_unicode_value_ranges):
+                    start_unicode = self._read_uint24(data)
+                    additional_count = data.read_unsigned_byte()
+                    end_unicode = start_unicode + additional_count
+                    self._default_uvs.append(
+                        (var_selector, start_unicode, end_unicode)
+                    )
+            if non_default_off != 0:
+                data.seek(subtable_start + non_default_off)
+                num_uvs_mappings = data.read_unsigned_int()
+                for _ in range(num_uvs_mappings):
+                    unicode_value = self._read_uint24(data)
+                    glyph_id = data.read_unsigned_short()
+                    self._uvs_mapping[(unicode_value, var_selector)] = glyph_id
+
+    @staticmethod
+    def _read_uint24(data: TTFDataStream) -> int:
+        b1 = data.read_unsigned_byte()
+        b2 = data.read_unsigned_byte()
+        b3 = data.read_unsigned_byte()
+        return (b1 << 16) | (b2 << 8) | b3
+
+    def get_glyph_id_uvs(self, code_point: int, variation_selector: int) -> int:
+        """Return the glyph for ``(code_point, variation_selector)``.
+
+        For format-14 subtables only. Returns 0 if the pair is not mapped and
+        is not a default UVS entry; for default UVS pairs the caller should
+        fall back to the regular ``get_glyph_id(code_point)``.
+        """
+        gid = self._uvs_mapping.get((code_point, variation_selector), 0)
+        if gid != 0:
+            return gid
+        for sel, start, end in self._default_uvs:
+            if sel == variation_selector and start <= code_point <= end:
+                # Default UVS: caller should use the base glyph.
+                return 0
+        return 0
+
+    def has_uvs(self) -> bool:
+        """Return ``True`` if this subtable carries UVS (format-14) data."""
+        return bool(self._uvs_mapping) or bool(self._default_uvs)
 
     # ----- format 2 (high-byte mapping through table — DBCS) -----
 

@@ -1,0 +1,234 @@
+from __future__ import annotations
+
+from typing import IO, TYPE_CHECKING, Any
+
+from pypdfbox.cos import COSStream
+from pypdfbox.io.random_access_read import RandomAccessRead
+from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
+from pypdfbox.pdmodel.common.pd_stream import PDStream
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    from .pd_type3_font import PDType3Font
+
+
+# PDF 32000-1 §9.6.5 — the two glyph-metric operators that must be the
+# first operator inside a Type 3 char proc content stream:
+#
+#   wx wy  d0                       (set glyph width, no bounding box)
+#   wx wy  llx lly urx ury  d1      (set glyph width and bounding box)
+#
+# d1 is the only way for a char proc to declare its own /BBox; with d0
+# the glyph is "transparent" (no painting bounds) and the consumer must
+# fall back to the font's /FontBBox for clipping.
+_D0: bytes = b"d0"
+_D1: bytes = b"d1"
+
+
+class PDType3CharProc(PDStream):
+    """A single Type 3 glyph procedure — a content stream that paints one
+    glyph. Mirrors PDFBox ``PDType3CharProc``.
+
+    Each entry of the parent ``PDType3Font``'s ``/CharProcs`` dictionary is
+    a stream conforming to this shape: the first content-stream operator
+    must be ``d0`` or ``d1`` (PDF 32000-1 §9.6.5), which together set the
+    glyph width and (for ``d1``) its bounding box. The remaining operators
+    paint the glyph using the standard graphics operators, but with the
+    colour operators ``rg/RG/g/G/k/K/sc/SC/scn/SCN/cs/CS`` reserved (only
+    allowed when the parent font's ``/CharProcs`` paints uncoloured glyphs).
+
+    Implements :class:`PDContentStream` so the content-stream engine can
+    drive a char proc the same way it drives a page or form XObject — but
+    we don't formally subclass the ABC because :class:`PDStream` is the
+    canonical base in upstream and the ABC is a duck-type contract.
+    """
+
+    def __init__(self, font: PDType3Font, stream: COSStream) -> None:
+        """Wrap ``stream`` (a ``COSStream`` from the font's ``/CharProcs``)
+        and remember the parent ``font`` so :meth:`get_resources` /
+        :meth:`get_matrix` can fall back to the font when the char proc
+        carries no local entries (which is the common case).
+        """
+        super().__init__(stream)
+        self._font = font
+
+    # ---------- back-pointer ----------
+
+    def get_font(self) -> PDType3Font:
+        """Return the parent :class:`PDType3Font`. Mirrors upstream
+        ``getFont()``."""
+        return self._font
+
+    def get_content_stream(self) -> COSStream:
+        """Return the underlying ``COSStream`` — mirror of upstream
+        ``getContentStream()``."""
+        return self.get_cos_object()
+
+    # ---------- PDContentStream surface ----------
+
+    def get_contents(self) -> IO[bytes]:
+        """Decoded content-stream bytes as a readable stream. Mirrors
+        upstream ``getContents() : InputStream``."""
+        return self.create_input_stream()
+
+    def get_contents_for_random_access(self) -> RandomAccessRead:
+        """Random-access view over the decoded content-stream bytes —
+        needed by the token parser. Mirrors upstream
+        ``getContentsForRandomAccess()``."""
+        return RandomAccessReadBuffer(self.to_byte_array())
+
+    def get_resources(self) -> PDResources | None:
+        """Char-procs do not carry their own ``/Resources`` — fall back to
+        the parent font's ``/Resources``. Mirrors upstream
+        ``getResources()``."""
+        return self._font.get_resources()
+
+    def get_bbox(self) -> PDRectangle:
+        """Return the glyph's bounding box.
+
+        A Type 3 glyph with a leading ``d1`` operator declares its own
+        bounding box on that operator (operands 3-6: ``llx lly urx ury``).
+        With a leading ``d0`` operator (or no recognisable leading metric
+        op) the glyph has no declared bounds and we fall back to the
+        font's ``/FontBBox``. Mirrors upstream ``getBBox()`` /
+        ``getGlyphBBox()`` minus the antialiasing-padding adjustments
+        (those land with the rendering cluster).
+        """
+        bbox = self.get_glyph_bbox()
+        if bbox is not None:
+            return bbox
+        # Fall back to the font's /FontBBox; if that's also missing,
+        # return an empty rect at the origin so callers always have a
+        # PDRectangle to work with.
+        font_bbox = self._font.get_font_bbox()
+        if font_bbox is not None:
+            return font_bbox
+        return PDRectangle()
+
+    def get_matrix(self) -> Any:
+        """Return the parent font's ``/FontMatrix``. Char procs are
+        rendered in the font's coordinate system; they have no matrix of
+        their own. Mirrors upstream ``getMatrix()``."""
+        return self._font.get_font_matrix()
+
+    # ---------- glyph-metric parsing (d0 / d1) ----------
+
+    def get_glyph_bbox(self) -> PDRectangle | None:
+        """Parse the leading ``d1`` operator and return its declared
+        bounding box, or ``None`` when the glyph uses ``d0`` (no bbox) or
+        the content stream is malformed. Mirrors upstream
+        ``getGlyphBBox()``.
+
+        Behaviour deviation: upstream uses ``PDFStreamParser`` to walk
+        the entire stream; we lift the operands of just the first metric
+        operator from the decoded bytes since that's all the bounding box
+        needs. The two paths agree on well-formed streams; on malformed
+        streams we are slightly more lenient (``None`` instead of
+        raising).
+        """
+        op_name, operands = self._first_metric_operator()
+        if op_name != _D1 or len(operands) < 6:
+            return None
+        try:
+            llx = float(operands[2])
+            lly = float(operands[3])
+            urx = float(operands[4])
+            ury = float(operands[5])
+        except ValueError:
+            return None
+        # PDRectangle takes the four corners directly:
+        # (lower_left_x, lower_left_y, upper_right_x, upper_right_y).
+        return PDRectangle(llx, lly, urx, ury)
+
+    def get_width(self) -> float:
+        """Return the glyph advance ``wx`` declared by the leading ``d0``
+        / ``d1`` operator, or ``0.0`` when neither is present. Mirrors
+        upstream ``getWidth()``."""
+        op_name, operands = self._first_metric_operator()
+        if op_name not in (_D0, _D1) or len(operands) < 1:
+            return 0.0
+        try:
+            return float(operands[0])
+        except ValueError:
+            return 0.0
+
+    def _first_metric_operator(self) -> tuple[bytes | None, list[bytes]]:
+        """Tokenise the head of the decoded content stream until the first
+        operator is found. Returns ``(operator_name, operands)`` where
+        operator_name is the operator's bytes (``b"d0"`` / ``b"d1"`` for
+        well-formed streams) or ``None`` when the stream is empty.
+
+        Numbers are kept as raw byte strings; the caller decides whether
+        to coerce them to ``float``. This keeps the helper free of any
+        PDF-token-parser dependency."""
+        data = self.to_byte_array()
+        if not data:
+            return None, []
+
+        operands: list[bytes] = []
+        i = 0
+        n = len(data)
+        while i < n:
+            byte = data[i:i + 1]
+            # Whitespace — skip (PDF whitespace = NUL HT LF FF CR SP).
+            if byte in (b"\x00", b"\t", b"\n", b"\x0c", b"\r", b" "):
+                i += 1
+                continue
+            # Comment — runs to EOL.
+            if byte == b"%":
+                while i < n and data[i:i + 1] not in (b"\n", b"\r"):
+                    i += 1
+                continue
+            # Token start — read until the next whitespace or delimiter.
+            start = i
+            while i < n:
+                tail = data[i:i + 1]
+                if tail in (
+                    b"\x00", b"\t", b"\n", b"\x0c", b"\r", b" ",
+                    b"%", b"(", b")", b"<", b">", b"[", b"]", b"{", b"}", b"/",
+                ):
+                    break
+                i += 1
+            token = data[start:i]
+            if not token:
+                # Hit a delimiter we don't handle (e.g. a string literal
+                # before any operator) — bail out, not a valid d0/d1
+                # leading sequence.
+                return None, operands
+            # Numbers: optional sign + digits/dot.
+            if _is_numeric_token(token):
+                operands.append(token)
+                continue
+            # First non-numeric, non-whitespace token is an operator.
+            return token, operands
+        return None, operands
+
+
+def _is_numeric_token(token: bytes) -> bool:
+    """Return ``True`` if ``token`` is a PDF number literal (signed or
+    unsigned, integer or real). Mirrors upstream's parser-level
+    classification well enough for the d0/d1 operand-extraction path."""
+    if not token:
+        return False
+    start = 0
+    if token[0:1] in (b"+", b"-"):
+        start = 1
+    body = token[start:]
+    if not body:
+        return False
+    seen_digit = False
+    seen_dot = False
+    for byte in body:
+        ch = bytes([byte])
+        if ch.isdigit():
+            seen_digit = True
+        elif ch == b"." and not seen_dot:
+            seen_dot = True
+        else:
+            return False
+    return seen_digit
+
+
+__all__ = ["PDType3CharProc"]

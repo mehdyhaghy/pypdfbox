@@ -40,6 +40,8 @@ _PERMS: COSName = COSName.get_pdf_name("Perms")
 _LEGAL: COSName = COSName.get_pdf_name("Legal")
 _COLLECTION: COSName = COSName.get_pdf_name("Collection")
 _EXTENSIONS: COSName = COSName.get_pdf_name("Extensions")
+_URI: COSName = COSName.get_pdf_name("URI")
+_REQUIREMENTS: COSName = COSName.get_pdf_name("Requirements")
 
 
 class PDDocumentCatalog:
@@ -93,6 +95,22 @@ class PDDocumentCatalog:
             self._catalog.set_item(_PAGES, tree.get_cos_object())
             return tree
         return PDPageTree(pages, document=self._document)
+
+    def set_pages(self, pages: PDPageTree | None) -> None:
+        """Set the catalog's ``/Pages`` entry to a page tree, or remove
+        it when ``None``.
+
+        Upstream PDFBox does not currently expose a public ``setPages``
+        — the catalog wires a fresh page tree internally on document
+        construction. Surfaced here for callers that swap in a custom
+        tree (e.g. multipdf merge / split flows). Pass ``None`` only if
+        you intend to leave the catalog without a pages root (rarely
+        legal — most consumers will then re-create one via
+        :meth:`get_pages`)."""
+        if pages is None:
+            self._catalog.remove_item(_PAGES)
+            return
+        self._catalog.set_item(_PAGES, pages.get_cos_object())
 
     # ---------- version ----------
 
@@ -545,6 +563,88 @@ class PDDocumentCatalog:
         v.remove_item(COSName.get_pdf_name(prefix))
         if v.is_empty():
             self._catalog.remove_item(_EXTENSIONS)
+
+    # ---------- /URI (URI dictionary, PDF 32000-1 §12.6.4.7) ----------
+
+    def get_uri(self) -> COSDictionary | None:
+        """Return the catalog's ``/URI`` dictionary (PDF 32000-1
+        §12.6.4.7) or ``None`` when absent.
+
+        The ``/URI`` dictionary holds document-level URI information,
+        most notably the ``/Base`` entry — a string used as the base
+        URI for resolving any relative URIs in URI actions. Upstream
+        PDFBox returns a typed ``PDURIDictionary`` wrapper; pypdfbox
+        currently surfaces the raw ``COSDictionary`` until the typed
+        wrapper is ported (deferred to the URI dictionary cluster)."""
+        v = self._catalog.get_dictionary_object(_URI)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_uri(self, uri_dict: COSDictionary | None) -> None:
+        """Set the catalog's ``/URI`` dictionary. Pass ``None`` to
+        remove the entry."""
+        if uri_dict is None:
+            self._catalog.remove_item(_URI)
+            return
+        self._catalog.set_item(_URI, uri_dict)
+
+    # ---------- /Requirements (PDF 32000-1 §12.10) ----------
+
+    def get_requirements(self) -> list[COSDictionary]:
+        """Return the catalog's ``/Requirements`` array as a list of
+        requirement-handler dictionaries (PDF 32000-1 §12.10).
+
+        Each entry declares processor capabilities the document expects
+        (e.g. ``EnableJavaScripts``). Returns an empty list when the
+        entry is absent. Non-dictionary array entries are skipped under
+        defensive parsing.
+
+        Upstream PDFBox does not yet expose a typed
+        ``PDRequirementsDictionary`` wrapper; pypdfbox surfaces the raw
+        ``COSDictionary`` entries until the requirements cluster is
+        ported."""
+        arr = self._catalog.get_dictionary_object(_REQUIREMENTS)
+        if not isinstance(arr, COSArray):
+            return []
+        result: list[COSDictionary] = []
+        for i in range(arr.size()):
+            entry = arr.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(entry)
+        return result
+
+    def set_requirements(
+        self, requirements: list[COSDictionary] | None
+    ) -> None:
+        """Replace the catalog's ``/Requirements`` array. Pass ``None``
+        or an empty list to remove the entry entirely."""
+        if not requirements:
+            self._catalog.remove_item(_REQUIREMENTS)
+            return
+        arr = COSArray()
+        for req in requirements:
+            if not isinstance(req, COSDictionary):
+                raise TypeError(
+                    "PDDocumentCatalog.set_requirements entries must be "
+                    f"COSDictionary; got {type(req).__name__}"
+                )
+            arr.add(req)
+        self._catalog.set_item(_REQUIREMENTS, arr)
+
+    def add_requirement(self, requirement: COSDictionary) -> None:
+        """Append a single requirement-handler dictionary to
+        ``/Requirements``. Creates the array on demand."""
+        if not isinstance(requirement, COSDictionary):
+            raise TypeError(
+                "PDDocumentCatalog.add_requirement expected COSDictionary; "
+                f"got {type(requirement).__name__}"
+            )
+        arr = self._catalog.get_dictionary_object(_REQUIREMENTS)
+        if not isinstance(arr, COSArray):
+            arr = COSArray()
+            self._catalog.set_item(_REQUIREMENTS, arr)
+        arr.add(requirement)
 
     # ---------- raw COS passthrough used by tests ----------
 

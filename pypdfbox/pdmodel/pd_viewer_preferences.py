@@ -115,6 +115,10 @@ class PDViewerPreferences:
     def is_hide_toolbar(self) -> bool:
         return self.hide_toolbar()
 
+    # Upstream-named accessor (``getHideToolbar`` → ``get_hide_toolbar``).
+    def get_hide_toolbar(self) -> bool:
+        return self.hide_toolbar()
+
     def hide_menubar(self) -> bool:
         return self._prefs.get_boolean(_HIDE_MENUBAR, False)
 
@@ -122,6 +126,9 @@ class PDViewerPreferences:
         self._prefs.set_boolean(_HIDE_MENUBAR, value)
 
     def is_hide_menubar(self) -> bool:
+        return self.hide_menubar()
+
+    def get_hide_menubar(self) -> bool:
         return self.hide_menubar()
 
     def hide_window_ui(self) -> bool:
@@ -133,6 +140,9 @@ class PDViewerPreferences:
     def is_hide_window_ui(self) -> bool:
         return self.hide_window_ui()
 
+    def get_hide_window_ui(self) -> bool:
+        return self.hide_window_ui()
+
     def fit_window(self) -> bool:
         return self._prefs.get_boolean(_FIT_WINDOW, False)
 
@@ -140,6 +150,9 @@ class PDViewerPreferences:
         self._prefs.set_boolean(_FIT_WINDOW, value)
 
     def is_fit_window(self) -> bool:
+        return self.fit_window()
+
+    def get_fit_window(self) -> bool:
         return self.fit_window()
 
     def center_window(self) -> bool:
@@ -151,6 +164,9 @@ class PDViewerPreferences:
     def is_center_window(self) -> bool:
         return self.center_window()
 
+    def get_center_window(self) -> bool:
+        return self.center_window()
+
     def display_doc_title(self) -> bool:
         return self._prefs.get_boolean(_DISPLAY_DOC_TITLE, False)
 
@@ -160,6 +176,9 @@ class PDViewerPreferences:
     def is_display_doc_title(self) -> bool:
         return self.display_doc_title()
 
+    def get_display_doc_title(self) -> bool:
+        return self.display_doc_title()
+
     def pick_tray_by_pdf_size(self) -> bool:
         return self._prefs.get_boolean(_PICK_TRAY_BY_PDF_SIZE, False)
 
@@ -167,6 +186,9 @@ class PDViewerPreferences:
         self._prefs.set_boolean(_PICK_TRAY_BY_PDF_SIZE, value)
 
     def is_pick_tray_by_pdf_size(self) -> bool:
+        return self.pick_tray_by_pdf_size()
+
+    def get_pick_tray_by_pdf_size(self) -> bool:
         return self.pick_tray_by_pdf_size()
 
     # ---------- name-valued accessors (with documented defaults) ----------
@@ -265,6 +287,37 @@ class PDViewerPreferences:
             self._prefs.remove_item(_PRINT_PAGE_RANGE)
         else:
             self._prefs.set_item(_PRINT_PAGE_RANGE, value)
+
+    def get_print_page_range_pairs(self) -> list[tuple[int, int]]:
+        """Decode ``/PrintPageRange`` as a list of ``(start, end)`` 1-based
+        page-number pairs. Returns an empty list when the entry is absent or
+        contains an odd number of elements (per PDF 32000-2 §12.4.4: invalid
+        ranges shall be ignored)."""
+        arr = self.get_print_page_range()
+        if arr is None:
+            return []
+        n = arr.size()
+        if n % 2 != 0:
+            return []
+        out: list[tuple[int, int]] = []
+        for i in range(0, n, 2):
+            out.append((arr.get_int(i), arr.get_int(i + 1)))
+        return out
+
+    def set_print_page_range_pairs(
+        self, pairs: list[tuple[int, int]] | None
+    ) -> None:
+        """Encode a list of ``(start, end)`` 1-based page-number pairs into
+        ``/PrintPageRange``. Passing ``None`` or an empty list removes the
+        entry."""
+        if not pairs:
+            self._prefs.remove_item(_PRINT_PAGE_RANGE)
+            return
+        flat: list[int] = []
+        for start, end in pairs:
+            flat.append(int(start))
+            flat.append(int(end))
+        self._prefs.set_item(_PRINT_PAGE_RANGE, COSArray.of_cos_integers(flat))
 
     def get_enforce(self) -> COSArray | None:
         """Raw ``/Enforce`` array (PDF 2.0 Table 150) — names of viewer

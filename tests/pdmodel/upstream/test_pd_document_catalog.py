@@ -55,11 +55,15 @@ def test_handle_boolean_in_open_action() -> None:
         assert catalog.get_open_action() is None
 
 
-# ``testNullThreads`` — needs catalog ``get_threads`` (article threads —
-# pdmodel cluster #5/#7).
-@pytest.mark.skip(reason="needs PDThread get_threads — pdmodel cluster #5/#7")
-def test_null_threads() -> None:  # pragma: no cover
-    pass
+def test_null_threads() -> None:
+    """``testNullThreads`` — get_threads on a fresh document with no
+    ``/Threads`` entry must return an empty list, not crash. Mirrors
+    upstream's null-tolerant assertion (upstream returns ``null`` /
+    we return an empty ``list`` per Python idiom — both are ``not
+    truthy``)."""
+    with PDDocument() as doc:
+        threads = doc.get_document_catalog().get_threads()
+        assert threads == []
 
 
 # Even though every upstream test in this file targets later clusters,

@@ -286,20 +286,6 @@ def test_format_6_multiple_char_codes_to_same_glyph_returns_sorted_list() -> Non
 # ---------------------------------------------------------------------------
 
 
-def _build_format_ge8(format_id: int) -> bytes:
-    # For format >= 8: format(uint16), reserved(uint16), length(uint32), version(uint32).
-    return struct.pack(">HHII", format_id, 0, 0, 0)
-
-
-@pytest.mark.parametrize("fmt", [8, 10, 13, 14])
-def test_unsupported_formats_raise_not_implemented(fmt: int) -> None:
-    blob = _build_format_ge8(fmt)
-    data = MemoryTTFDataStream(blob)
-    sub = CmapSubtable()
-    with pytest.raises(NotImplementedError):
-        sub.init_subtable(_CmapStub(), num_glyphs=10, data=data)
-
-
 def test_unknown_format_raises_oserror() -> None:
     # Format 99 is not a real OpenType cmap format.
     # Format >=8 -> reads reserved(uint16), length(uint32), version(uint32) before raising.

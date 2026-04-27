@@ -32,6 +32,8 @@ _LOG = logging.getLogger(__name__)
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _OC: COSName = COSName.get_pdf_name("OC")
 _FLATE_DECODE: COSName = COSName.FLATE_DECODE  # type: ignore[attr-defined]
+_RESOURCES: COSName = COSName.get_pdf_name("Resources")
+_XOBJECT: COSName = COSName.get_pdf_name("XObject")
 
 # Page-dict keys carried over to the form-XObject dict. Mirrors upstream's
 # private ``PAGE_TO_FORM_FILTER`` set in ``LayerUtility``.
@@ -262,6 +264,71 @@ class LayerUtility:
             content_stream.end_marked_content()
 
         return layer
+
+    # ---------- resource-name allocation helpers ----------
+
+    def create_overlay_x_object(
+        self,
+        page: PDPage,
+        form: PDFormXObject,
+        desired_name: str | None = None,
+    ) -> COSName:
+        """Register ``form`` as a Form XObject on ``page``'s resources and
+        return the allocated resource name.
+
+        When ``desired_name`` is omitted (the typical path), allocation
+        falls through to :meth:`PDResources.add_x_object` which mirrors
+        upstream ``createKey`` and picks ``Form0``/``Form1``/… — guaranteed
+        unique within the page's ``/XObject`` subdictionary.
+
+        When ``desired_name`` is supplied the call fails fast if the name
+        is already registered on the page, mirroring upstream's behaviour
+        of letting the caller specify a stable resource key for the
+        overlay (handy when emitting deterministic output).
+        """
+        # ``PDPage.get_resources`` returns a *fresh* PDResources wrapper
+        # around an unattached empty dict when /Resources is missing — so
+        # we must materialise + reattach it so subsequent writes persist
+        # on the page. Mirrors what upstream callers tend to do manually.
+        page_dict = page.get_cos_object()
+        resources_cos = page_dict.get_dictionary_object(_RESOURCES)
+        if not isinstance(resources_cos, COSDictionary):
+            resources_cos = COSDictionary()
+            page_dict.set_item(_RESOURCES, resources_cos)
+        resources = PDResources(resources_cos)
+
+        if desired_name is None:
+            return resources.add_x_object(form)
+        if self.name_already_used(page, desired_name):
+            raise ValueError(
+                f"XObject name already used on page resources: {desired_name}"
+            )
+        # Manual placement under the requested key, bypassing the
+        # auto-allocator. Upstream's LayerUtility doesn't expose this
+        # path directly but we keep it on the helper surface for callers
+        # that need stable names (e.g. deterministic regression PDFs).
+        key = COSName.get_pdf_name(desired_name)
+        x_object_dict = resources_cos.get_dictionary_object(_XOBJECT)
+        if not isinstance(x_object_dict, COSDictionary):
+            x_object_dict = COSDictionary()
+            resources_cos.set_item(_XOBJECT, x_object_dict)
+        x_object_dict.set_item(key, form.get_cos_object())
+        return key
+
+    @staticmethod
+    def name_already_used(page: PDPage, name: str) -> bool:
+        """Return ``True`` when ``name`` is already registered as an
+        ``/XObject`` resource on ``page``. Used by callers who want to
+        guard a custom :meth:`create_overlay_x_object` allocation.
+        """
+        page_dict = page.get_cos_object()
+        resources_cos = page_dict.get_dictionary_object(_RESOURCES)
+        if not isinstance(resources_cos, COSDictionary):
+            return False
+        x_object_dict = resources_cos.get_dictionary_object(_XOBJECT)
+        if not isinstance(x_object_dict, COSDictionary):
+            return False
+        return x_object_dict.contains_key(COSName.get_pdf_name(name))
 
     # ---------- internal helpers ----------
 

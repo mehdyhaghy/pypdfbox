@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.font_box_font import FontBoxFont
 from pypdfbox.fontbox.font_mapper import FontMapper
@@ -19,9 +21,12 @@ from .pd_type1c_font import PDType1CFont
 from .pd_type3_font import PDType3Font
 from .standard14_fonts import Standard14Fonts
 
+_LOG = logging.getLogger(__name__)
+
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 _BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
+_FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
 _TYPE1C: str = "Type1C"
 _CID_FONT_TYPE0C: str = "CIDFontType0C"
@@ -59,6 +64,20 @@ def _font_file3_subtype(font_dict: COSDictionary) -> str | None:
     if not isinstance(font_file3, COSStream):
         return None
     return font_file3.get_name(_SUBTYPE)
+
+
+def _has_font_file2(font_dict: COSDictionary) -> bool:
+    """Return ``True`` when ``font_dict /FontDescriptor /FontFile2`` is a
+    stream — i.e. the descriptor carries an embedded TrueType program.
+    Used to disambiguate top-level /CIDFontType2 dispatch (the bare
+    /CIDFontType2 case is reached via the /Type0 descendant path; only
+    when the descriptor proves a TrueType program is embedded do we
+    wrap it directly here).
+    """
+    descriptor = font_dict.get_dictionary_object(_FONT_DESCRIPTOR)
+    if not isinstance(descriptor, COSDictionary):
+        return False
+    return isinstance(descriptor.get_dictionary_object(_FONT_FILE2), COSStream)
 
 
 class PDFontFactory:
@@ -113,8 +132,33 @@ class PDFontFactory:
             if _font_file3_subtype(font_dict) == _CID_FONT_TYPE0C:
                 return PDCIDFontType0(font_dict)
             return None
-        # CIDFontType2 dispatch deferred (descendant of /Type0; reachable
-        # via PDType0Font.get_descendant_font).
+        if sub_type == PDCIDFontType2.SUB_TYPE:
+            # Symmetric to the CIDFontType0 arm: bare /CIDFontType2 is
+            # reached via PDType0Font.get_descendant_font; only when the
+            # descriptor carries an embedded TrueType program (/FontFile2)
+            # do we wrap it directly here. Without that marker we return
+            # ``None`` so the Type0 descendant path stays authoritative.
+            if _has_font_file2(font_dict):
+                return PDCIDFontType2(font_dict)
+            return None
+        if sub_type is None:
+            # Mirrors upstream PDFontFactory: missing /Subtype is a
+            # malformed font dictionary; rather than fail outright PDFBox
+            # logs a warning and falls back to PDType1Font so callers can
+            # still attempt rendering / text extraction with the Standard
+            # 14 metrics for whatever /BaseFont might be present.
+            _LOG.warning(
+                "Invalid font subtype 'None', will be handled as Type1"
+            )
+            return PDType1Font(font_dict)
+        # Unknown subtype — log and return ``None`` so the caller can
+        # decide whether to skip this font dictionary entirely. (Upstream
+        # falls back to PDType1Font here as well, but that would mask
+        # /CIDFontType2 dispatch for callers relying on the bare-CID
+        # contract documented above.)
+        _LOG.warning(
+            "Invalid font subtype '%s', skipping font dictionary", sub_type
+        )
         return None
 
     # ---------- typed-result convenience wrappers ----------
