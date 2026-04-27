@@ -1389,9 +1389,12 @@ class PDFRenderer(PDFStreamEngine):
     # ---- glyph drawing ----
 
     def _show_string(self, data: bytes) -> None:
-        """Render each byte of ``data`` as a glyph and advance the text
-        matrix. Standard 14 / non-TTF / un-resolvable glyphs degrade to a
-        small placeholder rectangle so the page still completes."""
+        """Render the bytes of ``data`` as a sequence of glyphs, advancing
+        the text matrix after each one. Codes are read via the font's own
+        ``read_code`` when present (Type0 / composite fonts use multi-byte
+        codes through their encoding CMap); simple fonts fall back to one
+        byte per code. Standard 14 / non-TTF / un-resolvable glyphs degrade
+        to a small placeholder rectangle so the page still completes."""
         font = self._gs.text_font
         if font is None or self._gs.text_font_size <= 0:
             return
@@ -1402,12 +1405,37 @@ class PDFRenderer(PDFStreamEngine):
         # ``font.get_glyph_path(code)`` rather than fontTools' glyphSet.
         type1_units_per_em = self._get_type1_units_per_em(font)
 
-        for code in data:
+        # Type0 (composite) fonts read multi-byte codes through their
+        # encoding CMap. Other fonts treat each byte as a single code.
+        read_code = getattr(font, "read_code", None)
+        offset = 0
+        n = len(data)
+        while offset < n:
+            if callable(read_code):
+                try:
+                    code, consumed = read_code(data, offset)
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug(
+                        "rendering: Type0 read_code failed at offset %d: %s",
+                        offset,
+                        exc,
+                    )
+                    code = data[offset]
+                    consumed = 1
+                if consumed <= 0:
+                    consumed = 1
+            else:
+                code = data[offset]
+                consumed = 1
+            offset += consumed
             advance_units = self._draw_glyph(
                 font, code, ttf, glyph_set, type1_units_per_em
             )
-            # Word spacing applies to the space character (0x20) per spec.
-            wordspace = self._gs.text_wordspace if code == 0x20 else 0.0
+            # Word spacing applies to the space character (0x20) per spec —
+            # for Type0 fonts it only applies when the encoded code
+            # represents a single-byte 0x20, matching upstream PDFBox.
+            is_space = consumed == 1 and code == 0x20
+            wordspace = self._gs.text_wordspace if is_space else 0.0
             tx = (
                 (advance_units / 1000.0) * self._gs.text_font_size
                 + self._gs.text_charspace
@@ -1523,9 +1551,16 @@ class PDFRenderer(PDFStreamEngine):
                 glyph = glyph_set[glyph_name]
                 pen = _AggdrawPathPen(scale=1.0 / ttf.get_units_per_em())
                 glyph.draw(pen)
-                advance_units = ttf.get_advance_width(gid) * (
-                    1000.0 / ttf.get_units_per_em()
-                )
+                # Prefer the PDFont's declared advance width (already in
+                # 1/1000 em — populated from /Widths for simple TTF fonts
+                # and from the descendant CIDFont's /W array for Type0
+                # composites). Only when the font omits the entry do we
+                # fall back to the TTF program's own hmtx table.
+                advance_units = self._font_width_units(font, code)
+                if advance_units <= 0.0:
+                    advance_units = ttf.get_advance_width(gid) * (
+                        1000.0 / ttf.get_units_per_em()
+                    )
                 if pen.has_segments and self._draw is not None:
                     self._fill_aggdraw_path(
                         pen.path,
@@ -1646,11 +1681,26 @@ class PDFRenderer(PDFStreamEngine):
 
     @staticmethod
     def _code_to_gid(font: Any, code: int, ttf: Any) -> int:
-        """Return the glyph ID for ``code`` in ``font``. Reuses the
-        font's own ``_code_to_gid`` when available (PDTrueTypeFont)."""
+        """Return the glyph ID for ``code`` in ``font``. Prefers the
+        font's own ``_code_to_gid(code, ttf)`` when present
+        (:class:`PDTrueTypeFont`, :class:`PDCIDFontType2`); falls back to
+        the public ``code_to_gid(code)`` (:class:`PDType0Font` —
+        composite-font code → CID → GID through ``/CIDToGIDMap``); finally
+        consults the TTF's own Unicode cmap as a last resort."""
         method = getattr(font, "_code_to_gid", None)
         if method is not None:
-            return method(code, ttf)
+            try:
+                return method(code, ttf)
+            except TypeError:
+                # Some implementations ignore the ttf arg (signature may
+                # be ``(code)`` only on subclasses).
+                return method(code)
+        public = getattr(font, "code_to_gid", None)
+        if callable(public):
+            try:
+                return public(code)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: code_to_gid failed for %d: %s", code, exc)
         cmap = ttf.get_unicode_cmap_subtable()
         if cmap is not None:
             return cmap.get_glyph_id(code)

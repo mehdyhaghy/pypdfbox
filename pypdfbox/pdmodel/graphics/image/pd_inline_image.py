@@ -234,6 +234,26 @@ class PDInlineImage:
                 if resolved is None:
                     raise OSError("unsupported indexed color space in inline image")
                 return resolved
+            # Separation / DeviceN / ICCBased / Lab / CalGray / CalRGB —
+            # PDColorSpace.create handles all of these directly when the
+            # head is the long-form name. Inline images reach this path
+            # for ``[/Separation ...]`` and ``[/DeviceN ...]`` rasters
+            # whose tint transforms compose to RGB via the alternate CS.
+            if isinstance(cs_type, COSName) and cs_type.get_name() in (
+                "Separation",
+                "DeviceN",
+                "ICCBased",
+                "Lab",
+                "CalGray",
+                "CalRGB",
+                "Pattern",
+            ):
+                resolved = PDColorSpace.create(cs)
+                if resolved is None:
+                    raise OSError(
+                        f"unsupported inline image color space: {cs_type.get_name()!r}"
+                    )
+                return resolved
             raise OSError(
                 f"Illegal type of inline image color space: {cs_type!r}"
             )
@@ -453,6 +473,12 @@ class PDInlineImage:
             if len(data) < gray_len:
                 return None
             return Image.frombytes("L", (width, height), data[:gray_len]).convert("RGB")
+        if color_space_name in ("Separation", "DeviceN") and color_space is not None:
+            from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+                _decode_devicen_to_rgb,
+            )
+
+            return _decode_devicen_to_rgb(color_space, data, width, height)
         return None
 
 

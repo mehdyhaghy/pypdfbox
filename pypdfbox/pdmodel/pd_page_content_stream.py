@@ -387,6 +387,13 @@ class PDPageContentStream:
         the WinAnsi standard 14-font mapping for ASCII) and falls back to
         UTF-16BE hex form for non-Latin-1 input.
         """
+        self._show_text_internal(text)
+        self._buffer.append(0x20)
+        self._write_operator(b"Tj")
+
+    def _show_text_internal(self, text: str | bytes) -> None:
+        """Encode ``text`` and append the PDF string literal (no operator,
+        no trailing space). Mirrors upstream's ``showTextInternal``."""
         if isinstance(text, (bytes, bytearray)):
             data = bytes(text)
             ascii_safe = all(0x20 <= b < 0x80 or b == 0x09 for b in data)
@@ -408,15 +415,106 @@ class PDPageContentStream:
             self._buffer.append(0x3C)  # <
             self._buffer.extend(data.hex().upper().encode("ascii"))
             self._buffer.append(0x3E)  # >
-        self._buffer.append(0x20)
-        self._write_operator(b"Tj")
 
     def new_line_at_offset(self, tx: float, ty: float) -> None:
         self._write_operands(tx, ty)
         self._write_operator(b"Td")
 
+    def move_text_position_by_amount(self, x: float, y: float) -> None:
+        """Emit ``x y Td`` — move to start of next line offset by ``(x,y)``
+        from start of current line. Legacy upstream alias for
+        :meth:`new_line_at_offset` (kept for callers porting from PDFBox
+        1.x / 2.x where this was the canonical method)."""
+        self.new_line_at_offset(x, y)
+
+    def move_text_position_and_set_leading(self, x: float, y: float) -> None:
+        """Emit ``x y TD`` — move to start of next line offset by
+        ``(x,y)`` and set the leading parameter to ``-y``. Equivalent to::
+
+            -y TL
+            x y Td
+
+        but emitted as a single ``TD`` operator."""
+        self._write_operands(x, y)
+        self._write_operator(b"TD")
+
     def new_line(self) -> None:
         self._write_operator(b"T*")
+
+    def move_to_next_line(self) -> None:
+        """Emit ``T*`` — move to the start of the next line. Alias for
+        :meth:`new_line` matching the upstream Java method name."""
+        self.new_line()
+
+    def move_to_next_line_show_text(self, text: str | bytes) -> None:
+        """Emit ``(text) '`` — move to next line and show ``text``.
+        Equivalent to ``T*`` followed by ``(text) Tj`` but emitted as a
+        single ``'`` operator."""
+        self._show_text_internal(text)
+        self._buffer.append(0x20)
+        self._write_operator(b"'")
+
+    def set_spacings_show_text(
+        self,
+        word_spacing: float,
+        char_spacing: float,
+        text: str | bytes,
+    ) -> None:
+        """Emit ``aw ac (text) "`` — set word spacing to ``word_spacing``,
+        character spacing to ``char_spacing``, then move to the next line
+        and show ``text``. Equivalent to ``aw Tw``, ``ac Tc``, ``T*``,
+        ``(text) Tj`` but emitted as a single ``"`` operator."""
+        self._write_operands(word_spacing, char_spacing)
+        self._show_text_internal(text)
+        self._buffer.append(0x20)
+        self._write_operator(b'"')
+
+    def show_text_with_positioning(
+        self,
+        text_with_positioning: list[str | bytes | float | int],
+    ) -> None:
+        """Emit ``[ ... ] TJ`` — show one or more strings with optional
+        numeric horizontal-position adjustments interleaved.
+
+        Each item is either:
+
+        - ``str`` / ``bytes`` — a string to show (encoded the same way
+          :meth:`show_text` encodes its argument).
+        - ``int`` / ``float`` — a position adjustment expressed in
+          thousandths of a unit of text space (PDF 32000-1 §9.4.3).
+          Positive values move the text *backwards*, i.e. tighten the
+          spacing.
+
+        Mirrors upstream's ``showTextWithPositioning(Object[])``.
+        """
+        if not isinstance(text_with_positioning, (list, tuple)):
+            raise TypeError(
+                "show_text_with_positioning expects a list/tuple of str | "
+                f"float items; got {type(text_with_positioning).__name__}"
+            )
+        self._buffer.append(0x5B)  # [
+        for item in text_with_positioning:
+            if isinstance(item, (str, bytes, bytearray)):
+                self._show_text_internal(item)
+            elif isinstance(item, bool):
+                # bool is a subclass of int — reject explicitly to match
+                # upstream's IllegalArgumentException for non-string,
+                # non-Float types.
+                raise TypeError(
+                    "show_text_with_positioning items must be str or "
+                    "numeric; got bool"
+                )
+            elif isinstance(item, (int, float)):
+                self._buffer.extend(_format_number(item))
+                self._buffer.append(0x20)
+            else:
+                raise TypeError(
+                    "show_text_with_positioning items must be str or "
+                    f"numeric; got {type(item).__name__}"
+                )
+        self._buffer.append(0x5D)  # ]
+        self._buffer.append(0x20)
+        self._write_operator(b"TJ")
 
     def set_text_rise(self, rise: float) -> None:
         self._write_operands(rise)

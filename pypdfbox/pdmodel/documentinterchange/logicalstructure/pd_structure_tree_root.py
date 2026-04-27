@@ -6,6 +6,7 @@ from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
+from .pd_parent_tree_value import PDParentTreeValue
 from .pd_structure_class_map import PDStructureClassMap
 from .pd_structure_element import PDStructureElement
 from .pd_structure_node import PDStructureNode
@@ -133,12 +134,24 @@ class PDStructureTreeRoot(PDStructureNode):
     # ---------- /ParentTree ----
 
     def get_parent_tree(self) -> PDStructureElementNumberTreeNode | None:
+        """Return the ``/ParentTree`` as a typed number-tree wrapper.
+
+        Mirrors upstream ``PDStructureTreeRoot.getParentTree()``. Values are
+        exposed as raw COS entries (either a structure-element
+        :class:`COSDictionary` or a :class:`COSArray` indexed by MCID) — use
+        :meth:`get_parent_tree_value` for a :class:`PDParentTreeValue`-typed
+        convenience lookup.
+        """
         parent_tree = self._dictionary.get_dictionary_object(_PARENT_TREE)
         if not isinstance(parent_tree, COSDictionary):
             return None
         return PDStructureElementNumberTreeNode(parent_tree)
 
-    def set_parent_tree(self, parent_tree: Any) -> None:
+    def set_parent_tree(self, parent_tree: PDNumberTreeNode[Any] | Any) -> None:
+        """Set the ``/ParentTree`` entry. Accepts a :class:`PDNumberTreeNode`,
+        a raw :class:`COSDictionary`, anything with ``get_cos_object``, or
+        ``None`` to remove. Mirrors upstream
+        ``PDStructureTreeRoot.setParentTree(PDNumberTreeNode)``."""
         if parent_tree is None:
             self._dictionary.remove_item(_PARENT_TREE)
             return
@@ -149,12 +162,35 @@ class PDStructureTreeRoot(PDStructureNode):
         )
         self._dictionary.set_item(_PARENT_TREE, cos)
 
+    def get_parent_tree_value(self, key: int) -> PDParentTreeValue | None:
+        """Look up a ``/ParentTree`` entry by integer key and return it as a
+        :class:`PDParentTreeValue` wrapper, or ``None`` when the parent tree
+        is absent or the key is unknown.
+
+        Per PDF 32000-1 §14.7.4.4 the value is either a structure-element
+        dictionary (annotations / XObjects) or an array indexed by MCID
+        (page objects / content streams); :class:`PDParentTreeValue` keeps
+        either shape addressable as a single typed wrapper.
+        """
+        parent_tree = self.get_parent_tree()
+        if parent_tree is None:
+            return None
+        value = parent_tree.get_value(key)
+        if not isinstance(value, (COSArray, COSDictionary)):
+            return None
+        return PDParentTreeValue(value)
+
     # ---------- /ParentTreeNextKey ----------
 
     def get_parent_tree_next_key(self) -> int:
+        """Return ``/ParentTreeNextKey`` (the next-available integer key for
+        the parent tree). Defaults to ``0`` when the entry is absent.
+        Mirrors upstream ``PDStructureTreeRoot.getParentTreeNextKey()``."""
         return self._dictionary.get_int(_PARENT_TREE_NEXT_KEY, 0)
 
     def set_parent_tree_next_key(self, key: int) -> None:
+        """Set ``/ParentTreeNextKey``. Mirrors upstream
+        ``PDStructureTreeRoot.setParentTreeNextKey(int)``."""
         self._dictionary.set_int(_PARENT_TREE_NEXT_KEY, key)
 
     # ---------- convenience lookups ----------

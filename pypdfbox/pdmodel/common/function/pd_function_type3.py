@@ -17,7 +17,9 @@ class PDFunctionType3(PDFunction):
     Combines a sequence of 1-input subfunctions over partitioned subdomains
     of ``/Domain``. Defining keys: ``/Functions`` (the subfunction array),
     ``/Bounds`` (subdomain boundaries), and ``/Encode`` (per-subfunction
-    input mapping). Subfunction selection / eval is deferred.
+    input mapping). ``eval`` selects the partition that ``input[0]`` falls
+    into, linearly maps the input through the matching ``/Encode`` pair,
+    and dispatches to the matching child function.
     """
 
     def __init__(self, function: COSBase | None = None) -> None:

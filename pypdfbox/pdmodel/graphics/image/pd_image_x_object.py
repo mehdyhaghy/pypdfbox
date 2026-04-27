@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, BinaryIO
 
@@ -10,6 +11,8 @@ from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSInteger,
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.graphics.color import PDColorSpace
 from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
+
+_LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
@@ -303,10 +306,16 @@ class PDImageXObject(PDXObject):
     def to_pil_image(self) -> Image.Image | None:
         """Best-effort conversion to a PIL image.
 
-        Supports DCT/JPX payloads via Pillow and raw 8-bit DeviceRGB or
-        DeviceGray rasters. More complex PDF image features such as decode
-        arrays, masks, Indexed expansion, and non-8bpc samples remain
-        rendering-cluster work and return ``None`` here.
+        Supports DCT/JPX payloads via Pillow and raw 8-bit DeviceRGB,
+        DeviceGray, ``Separation``, and ``DeviceN`` rasters. ``Separation``
+        and ``DeviceN`` evaluate the colour space's tint transform via
+        :class:`PDFunction` and forward the result to the alternate
+        colour space (typically DeviceCMYK or DeviceRGB) before
+        compositing into sRGB.
+
+        More complex PDF image features such as decode arrays, masks,
+        Indexed expansion, and non-8bpc samples remain rendering-cluster
+        work and return ``None`` here.
         """
         cos = self.get_cos_object()
         if not isinstance(cos, COSStream):
@@ -343,4 +352,110 @@ class PDImageXObject(PDXObject):
             if len(data) < gray_len:
                 return None
             return Image.frombytes("L", (width, height), data[:gray_len]).convert("RGB")
+        if color_space_name in ("Separation", "DeviceN"):
+            return _decode_devicen_to_rgb(
+                color_space, data, width, height
+            )
         return None
+
+
+def _decode_devicen_to_rgb(
+    color_space: PDColorSpace,
+    data: bytes,
+    width: int,
+    height: int,
+) -> Image.Image | None:
+    """Decode an 8-bit DeviceN/Separation raster into an sRGB PIL image.
+
+    For each pixel, reads ``n`` tint bytes (one per colorant), normalises
+    each to ``[0, 1]``, and forwards through the colour space's ``to_rgb``
+    helper (which evaluates the tint transform and converts via the
+    alternate colour space). Falls back to a luminance-only display
+    when any step fails — emitted at debug level rather than raising
+    so a single bad pixel cannot abort decoding of the whole page.
+    """
+    n = color_space.get_number_of_components()
+    if n <= 0:
+        _LOG.debug(
+            "DeviceN/Separation image: zero components, falling back to luminance"
+        )
+        return _luminance_fallback(data, width, height, max(1, n))
+    expected = width * height * n
+    if len(data) < expected:
+        _LOG.debug(
+            "DeviceN/Separation image: short raster (%d < %d), aborting",
+            len(data), expected,
+        )
+        return None
+    cs_to_rgb = getattr(color_space, "to_rgb", None)
+    if cs_to_rgb is None:
+        _LOG.debug(
+            "DeviceN/Separation image: %r has no to_rgb(), falling back to luminance",
+            color_space.get_name(),
+        )
+        return _luminance_fallback(data, width, height, n)
+
+    out = bytearray(width * height * 3)
+    cache: dict[tuple[int, ...], tuple[int, int, int]] = {}
+    fallback_used = False
+    for pixel in range(width * height):
+        offset = pixel * n
+        sample = tuple(data[offset : offset + n])
+        rgb = cache.get(sample)
+        if rgb is None:
+            try:
+                components = [b / 255.0 for b in sample]
+                triple = cs_to_rgb(components)
+            except Exception:  # noqa: BLE001 - defensive: any eval/alt-space failure
+                triple = None
+            if triple is None:
+                fallback_used = True
+                # Per-pixel luminance fallback: average the tint bytes.
+                avg = sum(sample) // n if n > 0 else 0
+                rgb = (avg, avg, avg)
+            else:
+                r, g, b = triple
+                rgb = (
+                    int(round(_clamp01(r) * 255.0)),
+                    int(round(_clamp01(g) * 255.0)),
+                    int(round(_clamp01(b) * 255.0)),
+                )
+            cache[sample] = rgb
+        out_offset = pixel * 3
+        out[out_offset] = rgb[0]
+        out[out_offset + 1] = rgb[1]
+        out[out_offset + 2] = rgb[2]
+    if fallback_used:
+        _LOG.debug(
+            "DeviceN/Separation image: tint transform failed for one or more "
+            "samples; affected pixels rendered as luminance"
+        )
+    return Image.frombytes("RGB", (width, height), bytes(out))
+
+
+def _luminance_fallback(
+    data: bytes, width: int, height: int, n: int
+) -> Image.Image | None:
+    """Render an N-component raster as a grayscale image by averaging
+    the per-pixel tint bytes. Used only when the tint transform cannot
+    be evaluated."""
+    expected = width * height * n
+    if len(data) < expected:
+        return None
+    if n == 1:
+        return Image.frombytes(
+            "L", (width, height), data[:expected]
+        ).convert("RGB")
+    out = bytearray(width * height)
+    for pixel in range(width * height):
+        offset = pixel * n
+        out[pixel] = sum(data[offset : offset + n]) // n
+    return Image.frombytes("L", (width, height), bytes(out)).convert("RGB")
+
+
+def _clamp01(value: float) -> float:
+    if value < 0.0:
+        return 0.0
+    if value > 1.0:
+        return 1.0
+    return value

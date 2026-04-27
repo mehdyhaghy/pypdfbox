@@ -4,6 +4,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDMarkInfo,
+    PDParentTreeValue,
     PDStructureElement,
     PDStructureElementNumberTreeNode,
     PDStructureTreeRoot,
@@ -68,6 +69,46 @@ def test_struct_tree_root_parent_tree_next_key_round_trip() -> None:
     assert root.get_parent_tree_next_key() == 0
     root.set_parent_tree_next_key(7)
     assert root.get_parent_tree_next_key() == 7
+
+
+def test_struct_tree_root_get_parent_tree_value_returns_none_when_tree_absent() -> None:
+    root = PDStructureTreeRoot()
+    assert root.get_parent_tree_value(0) is None
+
+
+def test_struct_tree_root_get_parent_tree_value_returns_none_for_unknown_key() -> None:
+    root = PDStructureTreeRoot()
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({0: COSDictionary()})
+    root.set_parent_tree(parent_tree)
+    assert root.get_parent_tree_value(99) is None
+
+
+def test_struct_tree_root_get_parent_tree_value_wraps_dictionary_entry() -> None:
+    root = PDStructureTreeRoot()
+    elem = COSDictionary()
+    elem.set_name(COSName.TYPE, "StructElem")  # type: ignore[attr-defined]
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({3: elem})
+    root.set_parent_tree(parent_tree)
+
+    value = root.get_parent_tree_value(3)
+    assert isinstance(value, PDParentTreeValue)
+    assert value.get_cos_object() is elem
+
+
+def test_struct_tree_root_get_parent_tree_value_wraps_array_entry() -> None:
+    root = PDStructureTreeRoot()
+    arr = COSArray()
+    arr.add(COSDictionary())
+    arr.add(COSDictionary())
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({5: arr})
+    root.set_parent_tree(parent_tree)
+
+    value = root.get_parent_tree_value(5)
+    assert isinstance(value, PDParentTreeValue)
+    assert value.get_cos_object() is arr
 
 
 def test_struct_tree_root_class_map_round_trip() -> None:

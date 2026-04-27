@@ -13,10 +13,30 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from . import decrypt, encrypt, extracttext, info, merge, split, version
+from . import (
+    decrypt,
+    encrypt,
+    extracttext,
+    imagetopdf,
+    info,
+    merge,
+    pdfdebugger,
+    split,
+    version,
+)
 
 # Order matters only for ``--help`` rendering; argparse dispatches by name.
-_SUBCOMMANDS = (info, merge, split, version, decrypt, encrypt, extracttext)
+_SUBCOMMANDS = (
+    info,
+    merge,
+    split,
+    version,
+    decrypt,
+    encrypt,
+    extracttext,
+    imagetopdf,
+    pdfdebugger,
+)
 
 
 def _build_root_parser() -> argparse.ArgumentParser:

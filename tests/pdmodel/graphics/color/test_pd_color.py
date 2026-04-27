@@ -177,3 +177,113 @@ def test_to_rgb_pattern_raises_not_implemented() -> None:
     color = PDColor([], PDPattern(), COSName.get_pdf_name("P1"))
     with pytest.raises(NotImplementedError):
         color.to_rgb()
+
+
+# ---------- PDColor.to_rgba ----------
+
+
+def test_to_rgba_default_alpha_is_opaque() -> None:
+    rgba = PDColor([1.0, 0.5, 0.0], PDDeviceRGB.INSTANCE).to_rgba()
+    assert rgba == (1.0, 0.5, 0.0, 1.0)
+
+
+def test_to_rgba_explicit_alpha_round_trip() -> None:
+    color = PDColor([0.25, 0.5, 0.75], PDDeviceRGB.INSTANCE)
+    rgba = color.to_rgba(0.4)
+    assert rgba[:3] == color.to_rgb()
+    assert rgba[3] == pytest.approx(0.4, abs=1e-12)
+
+
+def test_to_rgba_alpha_zero_and_one_boundaries() -> None:
+    color = PDColor([0.5], PDDeviceGray.INSTANCE)
+    assert color.to_rgba(0.0) == (0.5, 0.5, 0.5, 0.0)
+    assert color.to_rgba(1.0) == (0.5, 0.5, 0.5, 1.0)
+
+
+def test_to_rgba_alpha_below_zero_raises() -> None:
+    color = PDColor([0.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
+    with pytest.raises(ValueError):
+        color.to_rgba(-0.01)
+
+
+def test_to_rgba_alpha_above_one_raises() -> None:
+    color = PDColor([0.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
+    with pytest.raises(ValueError):
+        color.to_rgba(1.01)
+
+
+def test_to_rgba_alpha_nan_raises() -> None:
+    color = PDColor([0.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
+    with pytest.raises(ValueError):
+        color.to_rgba(float("nan"))
+
+
+def test_to_rgba_cmyk_uses_to_rgb_then_appends() -> None:
+    color = PDColor([0.0, 1.0, 1.0, 0.0], PDDeviceCMYK.INSTANCE)
+    rgba = color.to_rgba(0.5)
+    assert rgba[0] == pytest.approx(1.0, abs=1e-6)
+    assert rgba[1] == pytest.approx(0.0, abs=1e-6)
+    assert rgba[2] == pytest.approx(0.0, abs=1e-6)
+    assert rgba[3] == pytest.approx(0.5, abs=1e-12)
+
+
+# ---------- PDColor.composite_over ----------
+
+
+def test_composite_over_full_alpha_returns_top() -> None:
+    out = PDColor.composite_over((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 1.0)
+    assert out == (1.0, 0.0, 0.0)
+
+
+def test_composite_over_zero_alpha_returns_bottom() -> None:
+    out = PDColor.composite_over((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.0)
+    assert out == (0.0, 0.0, 1.0)
+
+
+def test_composite_over_half_alpha_blends_evenly() -> None:
+    out = PDColor.composite_over((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 0.5)
+    assert out[0] == pytest.approx(0.5, abs=1e-12)
+    assert out[1] == pytest.approx(0.0, abs=1e-12)
+    assert out[2] == pytest.approx(0.5, abs=1e-12)
+
+
+def test_composite_over_quarter_alpha_blends_proportionally() -> None:
+    out = PDColor.composite_over((0.8, 0.4, 0.2), (0.0, 0.0, 0.0), 0.25)
+    assert out[0] == pytest.approx(0.2, abs=1e-12)
+    assert out[1] == pytest.approx(0.1, abs=1e-12)
+    assert out[2] == pytest.approx(0.05, abs=1e-12)
+
+
+def test_composite_over_clamps_inputs() -> None:
+    # Out-of-range components are clamped to [0,1] before blending.
+    out = PDColor.composite_over((2.0, -0.5, 0.5), (0.0, 0.0, 0.0), 1.0)
+    assert out == (1.0, 0.0, 0.5)
+
+
+def test_composite_over_supports_cmyk_arity() -> None:
+    out = PDColor.composite_over(
+        (0.0, 1.0, 1.0, 0.0), (1.0, 0.0, 0.0, 0.0), 0.5
+    )
+    assert out[0] == pytest.approx(0.5, abs=1e-12)
+    assert out[1] == pytest.approx(0.5, abs=1e-12)
+    assert out[2] == pytest.approx(0.5, abs=1e-12)
+    assert out[3] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_composite_over_mismatched_arities_raises() -> None:
+    with pytest.raises(ValueError):
+        PDColor.composite_over((1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), 0.5)
+
+
+def test_composite_over_alpha_out_of_range_raises() -> None:
+    with pytest.raises(ValueError):
+        PDColor.composite_over((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), -0.1)
+    with pytest.raises(ValueError):
+        PDColor.composite_over((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), 1.1)
+
+
+def test_composite_over_alpha_nan_raises() -> None:
+    with pytest.raises(ValueError):
+        PDColor.composite_over(
+            (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), float("nan")
+        )

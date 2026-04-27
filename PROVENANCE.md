@@ -717,3 +717,30 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/pdmodel/upstream/test_page_mode.py` | 3.0 | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PageModeTest.java` |
 | `tests/fontbox/cmap/upstream/test_cid_range.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/cmap/CIDRangeTest.java` |
 | `tests/pdmodel/graphics/image/upstream/test_pd_inline_image.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDInlineImageTest.java` |
+
+### Wave 30 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/text/pdf_marked_content_extractor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PDFMarkedContentExtractor.java` (subclasses `PDFTextStripper` rather than upstream's `LegacyPDFStreamEngine`) |
+| `pypdfbox/pdmodel/common/pdfdoc_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/PDFDocEncoding.java` (relocated to `pdmodel/common` per task brief; upstream is in `cos`) |
+| `pypdfbox/pdmodel/font/encoding/built_in_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/BuiltInEncoding.java` |
+| `pypdfbox/fontbox/font_box_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/FontBoxFont.java` |
+| `pypdfbox/fontbox/font_mapping.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMapping.java` (relocated to `fontbox` package per task brief; upstream is in `pdfbox.pdmodel.font`) |
+| `pypdfbox/fontbox/font_mappers.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMappers.java` (relocated to `fontbox` package) |
+| `pypdfbox/fontbox/font_mapper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/{FontMapper.java,FontMapperImpl.java}` (default impl trimmed to Standard 14 — system-font scanner deferred since matplotlib/font_manager / fontconfig would be a new dep) |
+| `pypdfbox/multipdf/__init__.py` | 3.0.x | new package — sibling files below |
+| `pypdfbox/multipdf/overlay.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Overlay.java` (PDFBOX-6048 lower-left positioning per CLAUDE.md alignment note) |
+| `pypdfbox/multipdf/pdf_clone_utility.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFCloneUtility.java` |
+| `pypdfbox/multipdf/layer_utility.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/LayerUtility.java` |
+| `pypdfbox/multipdf/page_extractor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PageExtractor.java` (delegates to direct page-tree append since `Splitter` is not yet ported) |
+| `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThread.java` |
+| `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread_bead.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThreadBead.java` |
+| `pypdfbox/tools/pdfdebugger.py` | 3.0.x | original (upstream `PDFDebugger` is a Swing GUI — pypdfbox provides a CLI-only lite version per CLAUDE.md "no GUI subsystems") |
+| `pypdfbox/tools/imagetopdf.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/tools/ImageToPDF.java` (image embedding inline via Pillow + zlib since `JPEGFactory` / `LosslessFactory` are not yet ported) |
+| `tests/pdmodel/common/upstream/test_pdfdoc_encoding.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/cos/PDFDocEncodingTest.java` |
+| `tests/pdmodel/common/function/upstream/test_pd_function_type4.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/type4/TestOperators.java` |
+| `tests/multipdf/upstream/test_overlay.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/OverlayTest.java` (rendering-comparison tests skipped — depend on bundled fixture PDFs we don't carry) |
+| `tests/multipdf/upstream/test_pdf_clone_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFCloneUtilityTest.java` (only `testClonePDFWithCosArrayStream` ported — other two depend on `PDFMergerUtility` not yet ported) |
+| `tests/multipdf/upstream/test_layer_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/TestLayerUtility.java` |
+| `tests/multipdf/upstream/test_page_extractor.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PageExtractorTest.java` |

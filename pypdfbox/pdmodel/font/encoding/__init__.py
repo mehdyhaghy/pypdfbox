@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .built_in_encoding import BuiltInEncoding
 from .dictionary_encoding import DictionaryEncoding
 from .encoding import Encoding
 from .mac_expert_encoding import MacExpertEncoding
@@ -10,6 +11,7 @@ from .win_ansi_encoding import WinAnsiEncoding
 from .zapf_dingbats_encoding import ZapfDingbatsEncoding
 
 __all__ = [
+    "BuiltInEncoding",
     "DictionaryEncoding",
     "Encoding",
     "MacExpertEncoding",

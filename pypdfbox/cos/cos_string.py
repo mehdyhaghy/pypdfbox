@@ -20,11 +20,18 @@ class COSString(COSBase):
     def __init__(self, value: bytes | bytearray | memoryview | str) -> None:
         super().__init__()
         if isinstance(value, str):
-            # Convenience for ASCII literals — mirrors PDFBox's
-            # ``new COSString(String)`` constructor that encodes via
-            # PDFDocEncoding. We approximate with latin-1 for ASCII-only
-            # input; non-ASCII text should be encoded by the caller.
-            value = value.encode("latin-1")
+            # Mirrors PDFBox's ``new COSString(String)`` constructor: if
+            # every character can be represented in PDFDocEncoding, encode
+            # there; otherwise upstream uses UTF-16BE with a BOM.
+            from pypdfbox.pdmodel.common.pdfdoc_encoding import (
+                contains_char,
+                encode_bytes,
+            )
+
+            if all(contains_char(c) for c in value):
+                value = encode_bytes(value)
+            else:
+                value = b"\xfe\xff" + value.encode("utf-16-be")
         self._bytes = bytes(value)
         self._force_hex_form = False
 
@@ -38,14 +45,16 @@ class COSString(COSBase):
     def get_string(self) -> str:
         """Decode using the same fallback PDFBox uses for text strings:
         UTF-16BE if the BOM is present, UTF-8 if the UTF-8 BOM is present
-        (PDF 2.0 §7.9.2.2), else PDFDocEncoding (approximated as latin-1)."""
+        (PDF 2.0 §7.9.2.2), else PDFDocEncoding (PDF 32000-1 §D.3)."""
         if self._bytes.startswith(b"\xfe\xff"):
             return self._bytes[2:].decode("utf-16-be")
         if self._bytes.startswith(b"\xff\xfe"):
             return self._bytes[2:].decode("utf-16-le")
         if self._bytes.startswith(b"\xef\xbb\xbf"):
             return self._bytes[3:].decode("utf-8")
-        return self._bytes.decode("latin-1")
+        from pypdfbox.pdmodel.common.pdfdoc_encoding import decode_bytes
+
+        return decode_bytes(self._bytes)
 
     def is_force_hex_form(self) -> bool:
         return self._force_hex_form

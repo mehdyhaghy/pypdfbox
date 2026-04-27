@@ -549,3 +549,156 @@ def test_marked_content_property_list_reuses_existing_key() -> None:
         COSName.get_pdf_name("Properties")
     )
     assert len(list(res.key_set())) == 1
+
+
+# ------------------------------------------------------------------
+# text positioning operators (Td / TD / T* / ' / " / TJ)
+# ------------------------------------------------------------------
+
+
+def test_move_text_position_by_amount_emits_td() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.move_text_position_by_amount(15, 25)
+        cs.end_text()
+    assert _stream_bytes(page) == b"BT\n15 25 Td\nET\n"
+
+
+def test_move_text_position_and_set_leading_emits_td_uppercase() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.move_text_position_and_set_leading(10, -14)
+        cs.end_text()
+    assert _stream_bytes(page) == b"BT\n10 -14 TD\nET\n"
+
+
+def test_move_to_next_line_emits_t_star() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.move_to_next_line()
+        cs.end_text()
+    assert _stream_bytes(page) == b"BT\nT*\nET\n"
+
+
+def test_move_to_next_line_show_text_emits_apostrophe() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(font, 12)
+        cs.move_to_next_line_show_text("Hi")
+        cs.end_text()
+    body = _stream_bytes(page)
+    assert b"(Hi) '\n" in body
+
+
+def test_move_to_next_line_show_text_escapes_specials() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.move_to_next_line_show_text("a(b)c\\d")
+    assert _stream_bytes(page) == b"(a\\(b\\)c\\\\d) '\n"
+
+
+def test_move_to_next_line_show_text_non_ascii_uses_hex() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.move_to_next_line_show_text("中")
+    assert _stream_bytes(page) == b"<4E2D> '\n"
+
+
+def test_set_spacings_show_text_emits_double_quote() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(font, 12)
+        cs.set_spacings_show_text(2, 0.5, "Hi")
+        cs.end_text()
+    body = _stream_bytes(page)
+    assert b'2 0.5 (Hi) "\n' in body
+
+
+def test_set_spacings_show_text_with_bytes_payload() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_spacings_show_text(1, 2, b"ok")
+    assert _stream_bytes(page) == b'1 2 (ok) "\n'
+
+
+def test_show_text_with_positioning_string_only() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text_with_positioning(["Hello"])
+    assert _stream_bytes(page) == b"[(Hello)] TJ\n"
+
+
+def test_show_text_with_positioning_mixed_strings_and_offsets() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text_with_positioning(["Hel", -120, "lo", 250.5, "!"])
+    # Numeric items emit number + space; strings emit a parenthesized
+    # literal directly. Outer bracket pair plus trailing " TJ".
+    assert _stream_bytes(page) == b"[(Hel)-120 (lo)250.5 (!)] TJ\n"
+
+
+def test_show_text_with_positioning_accepts_tuple() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text_with_positioning(("a", -10, "b"))
+    assert _stream_bytes(page) == b"[(a)-10 (b)] TJ\n"
+
+
+def test_show_text_with_positioning_rejects_non_sequence() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(TypeError):
+            cs.show_text_with_positioning("not a list")  # type: ignore[arg-type]
+
+
+def test_show_text_with_positioning_rejects_invalid_item_type() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(TypeError):
+            cs.show_text_with_positioning(["ok", object()])  # type: ignore[list-item]
+
+
+def test_show_text_with_positioning_rejects_bool_item() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(TypeError):
+            cs.show_text_with_positioning(["ok", True])  # type: ignore[list-item]
+
+
+def test_show_text_with_positioning_non_ascii_uses_hex_form() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text_with_positioning(["中", -100, "国"])
+    assert _stream_bytes(page) == b"[<4E2D>-100 <56FD>] TJ\n"
+
+
+def test_show_text_with_positioning_empty_list() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.show_text_with_positioning([])
+    assert _stream_bytes(page) == b"[] TJ\n"

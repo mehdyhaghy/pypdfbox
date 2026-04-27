@@ -223,6 +223,59 @@ class PDColor:
             (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
         )
 
+    def to_rgba(
+        self, alpha: float = 1.0
+    ) -> tuple[float, float, float, float]:
+        """Return this color as ``(r, g, b, a)`` floats clamped to
+        ``[0.0, 1.0]``. Convenience over :meth:`to_rgb` — the RGB triple
+        is computed via the existing dispatcher and ``alpha`` is appended
+        unchanged after a 0..1 range check.
+
+        ``alpha`` defaults to ``1.0`` (fully opaque). Out-of-range values
+        raise :class:`ValueError`; ``NaN`` is also rejected.
+        """
+        if alpha != alpha:  # NaN check
+            raise ValueError("alpha must be a real number in [0.0, 1.0]")
+        if alpha < 0.0 or alpha > 1.0:
+            raise ValueError(
+                f"alpha must be in [0.0, 1.0], got {alpha!r}"
+            )
+        r, g, b = self.to_rgb()
+        return (r, g, b, float(alpha))
+
+    @staticmethod
+    def composite_over(
+        top: tuple[float, ...],
+        bottom: tuple[float, ...],
+        alpha: float,
+    ) -> tuple[float, ...]:
+        """Standard "over" alpha composite per PDF 32000-1 §11.6.5
+        (Porter-Duff source-over with an opaque backdrop).
+
+        ``top`` and ``bottom`` must have the same arity (e.g. both length
+        3 for RGB or both length 4 for CMYK); component-wise blend is
+        ``alpha * top[i] + (1 - alpha) * bottom[i]``. ``alpha`` is the
+        source coverage in ``[0.0, 1.0]``. Components and alpha are
+        clamped to ``[0.0, 1.0]`` on input and output.
+        """
+        if alpha != alpha:  # NaN check
+            raise ValueError("alpha must be a real number in [0.0, 1.0]")
+        if alpha < 0.0 or alpha > 1.0:
+            raise ValueError(
+                f"alpha must be in [0.0, 1.0], got {alpha!r}"
+            )
+        if len(top) != len(bottom):
+            raise ValueError(
+                "composite_over requires top and bottom of equal length, "
+                f"got {len(top)} and {len(bottom)}"
+            )
+        a = float(alpha)
+        inv = 1.0 - a
+        return tuple(
+            _clamp_unit(a * _clamp_unit(t) + inv * _clamp_unit(b))
+            for t, b in zip(top, bottom)
+        )
+
     def to_rgb_image(self, *args: object, **kwargs: object) -> object:
         """Render this color as an sRGB raster. Upstream returns a
         ``BufferedImage``; rendering raster output is a renderer-module

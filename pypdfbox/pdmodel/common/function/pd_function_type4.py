@@ -520,7 +520,12 @@ def _op_not(s: list) -> None:
     if isinstance(a, bool):
         s.append(not a)
     elif isinstance(a, (int, float)):
-        s.append(float(~int(a)))
+        # Mirrors upstream PDFBox semantics: ``not`` on an integer is
+        # arithmetic negation, NOT bitwise complement. The PostScript
+        # Reference does specify bit-invert here, but PDFBox 3.0 negates
+        # (``-int1`` in BitwiseOperators$Not), and parity with PDFBox
+        # behavior is the contract — see CLAUDE.md "Behavior over style".
+        s.append(-float(a))
     else:
         raise OSError("type mismatch: not operand must be bool or int")
 

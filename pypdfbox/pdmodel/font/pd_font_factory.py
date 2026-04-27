@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.fontbox.font_box_font import FontBoxFont
+from pypdfbox.fontbox.font_mapper import FontMapper
+from pypdfbox.fontbox.font_mappers import FontMappers
+from pypdfbox.fontbox.font_mapping import FontMapping
 
 from .pd_cid_font import PDCIDFont
 from .pd_cid_font_type0 import PDCIDFontType0
@@ -162,6 +166,46 @@ class PDFontFactory:
         font_dict.set_name(_SUBTYPE, PDType1Font.SUB_TYPE)
         font_dict.set_name(_BASE_FONT, canonical)
         return PDType1Font(font_dict)
+
+    # ---------- font-mapper hooks ----------
+
+    @staticmethod
+    def get_font_mapper() -> FontMapper:
+        """Return the active :class:`FontMapper` singleton.
+
+        Thin convenience over :meth:`FontMappers.instance`; lets callers
+        reach the mapper without importing the fontbox package. Mirrors
+        the spirit of upstream callers that do
+        ``FontMappers.instance().getFontBoxFont(...)`` directly.
+        """
+        return FontMappers.instance()
+
+    @staticmethod
+    def set_font_mapper(font_mapper: FontMapper | None) -> None:
+        """Install ``font_mapper`` as the active mapper.
+
+        Pass-through to :meth:`FontMappers.set`. ``None`` resets to the
+        default mapper. Callers that need to swap in a richer
+        substitution policy (for example one backed by a real on-disk
+        font scanner) should use this rather than monkey-patching.
+        """
+        FontMappers.set(font_mapper)
+
+    @staticmethod
+    def find_font_box_font(
+        base_font: str,
+        font_descriptor: object | None = None,
+    ) -> FontMapping[FontBoxFont] | None:
+        """Resolve ``base_font`` through the active mapper.
+
+        Convenience wrapper used by appearance-stream generators / text
+        extraction when they only need *some* FontBox font for a given
+        PostScript name (Standard 14 hits the bundled AFMs; misses
+        return a style-driven Helvetica fallback). Returns ``None``
+        only if a future replacement mapper does — the default mapper
+        always returns a mapping.
+        """
+        return FontMappers.instance().get_font_box_font(base_font, font_descriptor)
 
     # ---------- subtype predicate ----------
 

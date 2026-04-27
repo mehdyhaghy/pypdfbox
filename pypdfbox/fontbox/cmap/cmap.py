@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import BinaryIO
+from typing import BinaryIO, overload
 
 from pypdfbox.io import RandomAccessRead
 
@@ -17,14 +17,46 @@ _SPACE = " "
 _CIDRange = CIDRange
 
 
-def _to_int(data: bytes | bytearray | memoryview, data_len: int | None = None) -> int:
-    """Big-endian byte sequence to int."""
+class CMapMappingError(KeyError):
+    """Raised by :meth:`CMap.to_unicode` in ``strict=True`` mode when the
+    requested code has no Unicode mapping defined."""
+
+
+def _to_int(
+    data: bytes | bytearray | memoryview,
+    data_len: int | None = None,
+    *,
+    _offset: int = 0,
+) -> int:
+    """Big-endian byte sequence to int.
+
+    ``_offset`` (keyword-only) lets callers slice without copying when
+    walking a buffer — used by the bytes-form ``read_code``.
+    """
     if data_len is None:
-        data_len = len(data)
+        data_len = len(data) - _offset
     code = 0
     for i in range(data_len):
-        code = (code << 8) | (data[i] & 0xFF)
+        code = (code << 8) | (data[_offset + i] & 0xFF)
     return code
+
+
+def _codespace_full_match(
+    rng: CodespaceRange,
+    data: bytes,
+    offset: int,
+    code_len: int,
+) -> bool:
+    """``rng.is_full_match`` against a slice of ``data`` without copying."""
+    if rng.get_code_length() != code_len:
+        return False
+    start = rng._start  # noqa: SLF001 — intentional internal access for hot path
+    end = rng._end  # noqa: SLF001
+    for i in range(code_len):
+        b = data[offset + i] & 0xFF
+        if b < start[i] or b > end[i]:
+            return False
+    return True
 
 
 def _bytes_for_code(code: int, length: int) -> bytes:
@@ -89,21 +121,39 @@ class CMap:
             or bool(self._char_to_unicode_more_bytes)
         )
 
+    def has_unicode_mapping(self) -> bool:
+        """Singular alias for :meth:`has_unicode_mappings` — convenient when
+        callers think of "does this CMap define any bfchar/bfrange data?"
+        as a yes/no predicate. Equivalent to ``has_unicode_mappings()``."""
+        return self.has_unicode_mappings()
+
     # ---------- to_unicode ----------
 
-    def to_unicode(self, code: int) -> str | None:
+    def to_unicode(self, code: int, strict: bool = False) -> str | None:
         """Return the Unicode string for the given character code, or
         ``None`` if no mapping is defined.
 
         This convenience overload guesses the byte length from the value:
-        codes < 256 are tried as 1-byte first, then 2-byte, etc."""
+        codes < 256 are tried as 1-byte first, then 2-byte, etc.
+
+        :param strict: when ``True`` raise :class:`CMapMappingError` instead
+            of returning ``None`` if the code has no bfchar/bfrange mapping.
+            Default ``False`` preserves the lenient upstream PDFBox
+            behaviour (callers fall back to font-level encoding).
+        """
         unicode_ = self._to_unicode_with_len(code, 1) if code < 256 else None
         if unicode_ is None:
             if code <= 0xFFFF:
-                return self._to_unicode_with_len(code, 2)
-            if code <= 0xFFFFFF:
-                return self._to_unicode_with_len(code, 3)
-            return self._to_unicode_with_len(code, 4)
+                unicode_ = self._to_unicode_with_len(code, 2)
+            elif code <= 0xFFFFFF:
+                unicode_ = self._to_unicode_with_len(code, 3)
+            else:
+                unicode_ = self._to_unicode_with_len(code, 4)
+        if unicode_ is None and strict:
+            raise CMapMappingError(
+                f"No Unicode mapping for code 0x{code:X} in CMap "
+                f"{self._cmap_name!r}"
+            )
         return unicode_
 
     def _to_unicode_with_len(self, code: int, length: int) -> str | None:
@@ -120,14 +170,53 @@ class CMap:
 
     # ---------- read_code / read_cid ----------
 
-    def read_code(self, input_stream: RandomAccessRead | BinaryIO) -> int:
-        """Read enough bytes from ``input_stream`` to match a codespace
-        range and return the matched code as an int.
+    @overload
+    def read_code(self, input_stream: RandomAccessRead | BinaryIO) -> int: ...
 
-        Per ISO 32000-1 §9.7.6.2 — start with ``min_code_length`` bytes,
-        check against codespace ranges; on failure read one more byte and
-        retry, up to ``max_code_length``. On total failure, fall back to
-        the first ``min_code_length`` bytes (Adobe Reader behavior)."""
+    @overload
+    def read_code(
+        self,
+        input_stream: bytes | bytearray | memoryview,
+        offset: int = 0,
+    ) -> tuple[int, int]: ...
+
+    def read_code(
+        self,
+        input_stream: RandomAccessRead | BinaryIO | bytes | bytearray | memoryview,
+        offset: int = 0,
+    ) -> int | tuple[int, int]:
+        """Read a character code, dispatching on input type.
+
+        * **Stream form** (``RandomAccessRead`` / ``BinaryIO``): mirrors
+          upstream ``CMap.readCode(InputStream)`` — returns the matched
+          code as an int. Reads ``min_code_length`` bytes, walks the
+          codespace ranges, extending up to ``max_code_length`` on miss.
+          On total failure, falls back to the first ``min_code_length``
+          bytes (Adobe Reader behaviour).
+        * **Bytes form** (``bytes`` / ``bytearray`` / ``memoryview``):
+          pypdfbox enrichment — returns ``(code, code_byte_length)``
+          starting at ``offset``. Useful for content-stream tokenisers
+          that already have the bytes in hand and want both the int code
+          AND the number of bytes consumed.
+
+        Per ISO 32000-1 §9.7.6.2 — codespace ranges decide where one
+        code ends and the next begins.
+
+        :param input_stream: stream or bytes-like buffer to decode from.
+        :param offset: starting byte offset (bytes form only).
+        :raises TypeError: when ``offset`` is provided alongside a stream.
+        """
+        if isinstance(input_stream, (bytes, bytearray, memoryview)):
+            return self._read_code_from_bytes(bytes(input_stream), offset)
+        if offset:
+            raise TypeError(
+                "offset is only supported with bytes-like input"
+            )
+        return self._read_code_from_stream(input_stream)
+
+    def _read_code_from_stream(
+        self, input_stream: RandomAccessRead | BinaryIO
+    ) -> int:
         max_len = self._max_code_length
         min_len = self._min_code_length
         if max_len <= 0:
@@ -159,6 +248,78 @@ class CMap:
                 self._cmap_name,
             )
         return _to_int(bytes_buf, min_len)
+
+    def _read_code_from_bytes(
+        self, data: bytes, offset: int
+    ) -> tuple[int, int]:
+        """Bytes-form ``read_code`` — returns ``(code, code_byte_length)``.
+
+        ``code_byte_length`` is the number of input bytes consumed, so
+        callers can advance their cursor as ``offset += length``.
+        """
+        if offset < 0 or offset > len(data):
+            raise ValueError(
+                f"offset {offset} out of range for buffer of length "
+                f"{len(data)}"
+            )
+        max_len = self._max_code_length
+        min_len = self._min_code_length
+        available = len(data) - offset
+
+        # No codespace ranges defined — fall back to the first available byte.
+        if max_len <= 0:
+            if available <= 0:
+                return 0, 0
+            return data[offset] & 0xFF, 1
+
+        if available <= 0:
+            return 0, 0
+
+        # Truncated tail — return whatever we have so the caller can stop.
+        if available < min_len:
+            return _to_int(data, available, _offset=offset), available
+
+        for byte_count in range(min_len, min(max_len, available) + 1):
+            for r in self._codespace_ranges:
+                if _codespace_full_match(r, data, offset, byte_count):
+                    return _to_int(data, byte_count, _offset=offset), byte_count
+
+        if _log.isEnabledFor(logging.WARNING):
+            end = min(offset + max_len, len(data))
+            sb = " ".join(
+                f"0x{data[i] & 0xFF:02X}" for i in range(offset, end)
+            )
+            _log.warning(
+                "Invalid character code sequence %s in CMap %s",
+                sb,
+                self._cmap_name,
+            )
+        return _to_int(data, min_len, _offset=offset), min_len
+
+    def code_length_at(self, byte_value: int) -> int | None:
+        """Return the expected byte length of a code beginning with
+        ``byte_value`` according to the codespace tree, or ``None`` if no
+        codespace range starts with that byte.
+
+        For most CJK CMaps a leading byte uniquely determines whether the
+        whole code is 1 or 2 bytes (e.g. Adobe-Japan1: 0x00–0x7F → 1 byte,
+        0x81–0x9F / 0xE0–0xFC → 2 bytes). When multiple codespace ranges
+        are compatible with the same leading byte, the **shortest** match
+        wins — that is the byte length the parser would commit to first
+        per ISO 32000-1 §9.7.6.2.
+        """
+        if not self._codespace_ranges:
+            return None
+        b = byte_value & 0xFF
+        best: int | None = None
+        for r in self._codespace_ranges:
+            start_byte = r._start[0]
+            end_byte = r._end[0]
+            if start_byte <= b <= end_byte:
+                cl = r.get_code_length()
+                if best is None or cl < best:
+                    best = cl
+        return best
 
     @staticmethod
     def _read_one(stream: RandomAccessRead | BinaryIO) -> int:

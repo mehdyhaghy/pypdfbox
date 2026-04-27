@@ -104,6 +104,52 @@ class PDOptionalContentProperties:
             d.set_item(_ORDER, order)
         order.add(cos)
 
+    def remove_group(
+        self, name_or_group: str | PDOptionalContentGroup
+    ) -> bool:
+        """Deregister an OCG from ``/OCProperties/OCGs`` and scrub references
+        to it from the default config (``/D``) — ``/Order``, ``/ON``, and
+        ``/OFF``. Returns ``True`` when at least one ``/OCGs`` entry was
+        removed.
+
+        Not part of upstream PDFBox 3.0 — pypdfbox enrichment for symmetric
+        write-side handling. The entry is matched by *identity* of the
+        wrapped ``COSDictionary`` (so duplicates with the same /Name aren't
+        accidentally collapsed); the string overload removes every group
+        whose ``/Name`` equals ``name_or_group``."""
+        if isinstance(name_or_group, str):
+            removed = False
+            for ocg in [
+                self._to_dictionary(e) for e in list(self._get_ocgs())
+            ]:
+                if ocg is None:
+                    continue
+                if (
+                    ocg.get_string(_NAME) == name_or_group
+                    and self._remove_group_dict(ocg)
+                ):
+                    removed = True
+            return removed
+        return self._remove_group_dict(name_or_group.get_cos_object())
+
+    def _remove_group_dict(self, target: COSDictionary) -> bool:
+        ocgs = self._get_ocgs()
+        removed_any = False
+        for entry in list(ocgs):
+            if self._to_dictionary(entry) is target:
+                ocgs.remove(entry)
+                removed_any = True
+        if not removed_any:
+            return False
+        d = self._get_d()
+        for key in (_ORDER, _ON, _OFF):
+            arr = d.get_dictionary_object(key)
+            if isinstance(arr, COSArray):
+                for entry in list(arr):
+                    if self._to_dictionary(entry) is target:
+                        arr.remove(entry)
+        return True
+
     # ---------- visibility ----------
 
     def is_group_enabled(self, name_or_group: str | PDOptionalContentGroup) -> bool:
@@ -182,6 +228,48 @@ class PDOptionalContentProperties:
             else:
                 off.add(target)
         return found
+
+    def set_visibility(
+        self, name_or_group: str | PDOptionalContentGroup, visible: bool
+    ) -> bool:
+        """Visibility-flavoured alias for :meth:`set_group_enabled`. Mirrors
+        the user-facing terminology of PDF readers (Acrobat's "Show/Hide
+        Layer") while routing through the same ``/D /ON`` / ``/D /OFF``
+        bookkeeping. Not part of upstream PDFBox 3.0 — pypdfbox
+        convenience.
+
+        Returns ``True`` when the OCG was already tracked in /D /ON or /D
+        /OFF (i.e. the call moved an existing entry); ``False`` when the
+        group was added to the array for the first time. Same return
+        contract as :meth:`set_group_enabled`."""
+        return self.set_group_enabled(name_or_group, visible)
+
+    def set_visible(
+        self, name_or_group: str | PDOptionalContentGroup
+    ) -> bool:
+        """Convenience wrapper: ``set_visibility(name_or_group, True)``."""
+        return self.set_group_enabled(name_or_group, True)
+
+    def set_hidden(
+        self, name_or_group: str | PDOptionalContentGroup
+    ) -> bool:
+        """Convenience wrapper: ``set_visibility(name_or_group, False)``."""
+        return self.set_group_enabled(name_or_group, False)
+
+    # ---------- group names (upstream parity) ----------
+
+    def get_group_names(self) -> list[str]:
+        """Mirrors upstream ``getGroupNames()`` — returns each /OCGs entry's
+        /Name in array order, substituting the empty string for entries
+        that do not resolve to a dictionary."""
+        names: list[str] = []
+        for entry in self._get_ocgs():
+            ocg = self._to_dictionary(entry)
+            if ocg is None:
+                names.append("")
+            else:
+                names.append(ocg.get_string(_NAME) or "")
+        return names
 
     # ---------- base state ----------
 

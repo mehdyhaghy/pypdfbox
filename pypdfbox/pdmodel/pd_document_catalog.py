@@ -404,11 +404,42 @@ class PDDocumentCatalog:
     # ---------- /Threads ----------
 
     def get_threads(self) -> list[Any]:
-        """Return the article-thread list. ``PDThread`` is not yet ported,
-        so this currently returns an empty list — mirrors the upstream
-        accessor name so callers can detect the entry's absence."""
-        # PDThread typed wrapper not yet ported; placeholder per task plan.
-        return []
+        """Return the article-thread list as :class:`PDThread` wrappers.
+
+        ``/Threads`` is an array of indirect references to thread
+        dictionaries. Returns an empty list when the entry is absent.
+        Non-dictionary entries (rare but legal under defensive parsing)
+        are skipped.
+        """
+        from pypdfbox.pdmodel.interactive.pagenavigation import PDThread
+
+        arr = self._catalog.get_dictionary_object(_THREADS)
+        if not isinstance(arr, COSArray):
+            return []
+        result: list[Any] = []
+        for i in range(arr.size()):
+            entry = arr.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(PDThread(entry))
+        return result
+
+    def set_threads(self, threads: list[Any] | None) -> None:
+        """Replace ``/Threads`` with a fresh array. ``None`` removes the
+        entry. Each item must be a :class:`PDThread`."""
+        from pypdfbox.pdmodel.interactive.pagenavigation import PDThread
+
+        if threads is None:
+            self._catalog.remove_item(_THREADS)
+            return
+        arr = COSArray()
+        for thread in threads:
+            if not isinstance(thread, PDThread):
+                raise TypeError(
+                    "PDDocumentCatalog.set_threads entries must be PDThread; "
+                    f"got {type(thread).__name__}"
+                )
+            arr.add(thread.get_cos_object())
+        self._catalog.set_item(_THREADS, arr)
 
     # ---------- /Perms ----------
 

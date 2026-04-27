@@ -34,6 +34,7 @@ _AA: COSName = COSName.get_pdf_name("AA")
 _THUMB: COSName = COSName.get_pdf_name("Thumb")
 _TRANS: COSName = COSName.get_pdf_name("Trans")
 _STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
+_BEADS: COSName = COSName.get_pdf_name("B")
 
 
 class PDPage:
@@ -368,6 +369,48 @@ class PDPage:
         if isinstance(v, COSDictionary):
             return PDTransition(v)
         return None
+
+    # ---------- thread beads ----------
+
+    def get_thread_beads(self) -> list[Any]:
+        """Resolve ``/B`` into a list of :class:`PDThreadBead`.
+
+        Returns an empty list when ``/B`` is absent. Non-dictionary entries
+        are surfaced as ``None`` placeholders so the caller can preserve the
+        positional alignment with the underlying array (mirrors upstream's
+        defensive treatment where a malformed bead becomes a ``null`` slot).
+        """
+        from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
+
+        beads = self._page.get_dictionary_object(_BEADS)
+        if not isinstance(beads, COSArray):
+            return []
+        result: list[Any] = []
+        for i in range(beads.size()):
+            entry = beads.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(PDThreadBead(entry))
+            else:
+                result.append(None)
+        return result
+
+    def set_thread_beads(self, beads: list[Any] | None) -> None:
+        """Replace ``/B`` with an array built from ``beads``. ``None``
+        removes the entry. Each item must be a :class:`PDThreadBead`."""
+        from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
+
+        if beads is None:
+            self._page.remove_item(_BEADS)
+            return
+        arr = COSArray()
+        for bead in beads:
+            if not isinstance(bead, PDThreadBead):
+                raise TypeError(
+                    "PDPage.set_thread_beads entries must be PDThreadBead; "
+                    f"got {type(bead).__name__}"
+                )
+            arr.add(bead.get_cos_object())
+        self._page.set_item(_BEADS, arr)
 
     def set_transition(self, trans: Any) -> None:
         if trans is None:

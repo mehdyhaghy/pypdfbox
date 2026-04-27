@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+    PDParentTreeValue,
     PDStructureElement,
     PDStructureElementNumberTreeNode,
     PDStructureTreeRoot,
@@ -22,6 +23,76 @@ def test_parent_tree_next_key_round_trip() -> None:
     assert root.get_parent_tree_next_key() == 42
     root.set_parent_tree_next_key(0)
     assert root.get_parent_tree_next_key() == 0
+
+
+# ---------- /ParentTree typed round-trip ----------
+
+
+def test_parent_tree_round_trip_via_setter() -> None:
+    root = PDStructureTreeRoot()
+    assert root.get_parent_tree() is None
+
+    elem = COSDictionary()
+    elem.set_name(COSName.TYPE, "StructElem")  # type: ignore[attr-defined]
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({1: elem})
+
+    root.set_parent_tree(parent_tree)
+
+    fetched = root.get_parent_tree()
+    assert isinstance(fetched, PDStructureElementNumberTreeNode)
+    assert fetched.get_value(1) is elem
+
+
+def test_parent_tree_set_none_removes_entry() -> None:
+    root = PDStructureTreeRoot()
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({0: COSDictionary()})
+    root.set_parent_tree(parent_tree)
+    root.set_parent_tree(None)
+    assert root.get_parent_tree() is None
+    assert root.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("ParentTree")
+    ) is None
+
+
+def test_get_parent_tree_value_dictionary() -> None:
+    root = PDStructureTreeRoot()
+    elem = COSDictionary()
+    elem.set_name(COSName.TYPE, "StructElem")  # type: ignore[attr-defined]
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({7: elem})
+    root.set_parent_tree(parent_tree)
+
+    value = root.get_parent_tree_value(7)
+    assert isinstance(value, PDParentTreeValue)
+    assert value.get_cos_object() is elem
+
+
+def test_get_parent_tree_value_array() -> None:
+    root = PDStructureTreeRoot()
+    arr = COSArray()
+    arr.add(COSDictionary())
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({0: arr})
+    root.set_parent_tree(parent_tree)
+
+    value = root.get_parent_tree_value(0)
+    assert isinstance(value, PDParentTreeValue)
+    assert value.get_cos_object() is arr
+
+
+def test_get_parent_tree_value_returns_none_for_missing_tree() -> None:
+    root = PDStructureTreeRoot()
+    assert root.get_parent_tree_value(0) is None
+
+
+def test_get_parent_tree_value_returns_none_for_missing_key() -> None:
+    root = PDStructureTreeRoot()
+    parent_tree = PDStructureElementNumberTreeNode()
+    parent_tree.set_numbers({0: COSDictionary()})
+    root.set_parent_tree(parent_tree)
+    assert root.get_parent_tree_value(123) is None
 
 
 # ---------- /K kids ----------
