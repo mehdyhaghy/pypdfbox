@@ -55,6 +55,21 @@ _TYPE: COSName = COSName.get_pdf_name("Type")
 _PAGE: COSName = COSName.get_pdf_name("Page")
 _OPEN_ACTION: COSName = COSName.get_pdf_name("OpenAction")
 _OUTPUT_INTENTS: COSName = COSName.get_pdf_name("OutputIntents")
+_STRUCT_TREE_ROOT: COSName = COSName.get_pdf_name("StructTreeRoot")
+_PARENT_TREE: COSName = COSName.get_pdf_name("ParentTree")
+_PARENT_TREE_NEXT_KEY: COSName = COSName.get_pdf_name("ParentTreeNextKey")
+_ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
+_K: COSName = COSName.get_pdf_name("K")
+_S: COSName = COSName.get_pdf_name("S")
+_P: COSName = COSName.get_pdf_name("P")
+_PG: COSName = COSName.get_pdf_name("Pg")
+_OBJ: COSName = COSName.get_pdf_name("Obj")
+_NUMS: COSName = COSName.get_pdf_name("Nums")
+_KIDS: COSName = COSName.get_pdf_name("Kids")
+_NAMES_TREE: COSName = COSName.get_pdf_name("Names")
+_DOCUMENT: COSName = COSName.get_pdf_name("Document")
+_PART: COSName = COSName.get_pdf_name("Part")
+_ANNOTS: COSName = COSName.get_pdf_name("Annots")
 
 
 # ---------- enums ----------
@@ -106,11 +121,16 @@ class PDFMergerUtility:
       shift), ``/Threads``, ``/Metadata``, ``/OCProperties``, ``/PageMode``,
       ``/Lang``, ``/ViewerPreferences``, document information, and the PDF
       version are merged.
-    - **Structure-tree merging is deferred** — ``/StructParents`` /
-      ``/StructParent`` entries are stripped from imported pages /
-      annotations so the destination is structurally consistent. Tagged-PDF
-      reflow across merges is NOT preserved. Upstream ``PDFMergerUtility``
-      keeps the structure tree intact; this is the most-deferred chunk.
+    - Structure-tree merging is supported. ``/StructTreeRoot`` is cloned
+      into the destination, ``/ParentTree`` keys are re-keyed by the
+      destination's ``/ParentTreeNextKey`` so source/dest never collide,
+      ``/StructParents`` on imported pages and ``/StructParent`` on
+      imported annotations are bumped by the same offset, ``/IDTree``
+      entries are folded in (a duplicated id logs a warning and the
+      source entry is dropped, mirroring upstream), and ``/RoleMap`` is
+      overlaid (dest wins on conflict). When the destination has no
+      tree but a source does, a fresh empty ``/StructTreeRoot`` is
+      created on the destination so the source tree can be cloned in.
     - ``OPTIMIZE_RESOURCES_MODE`` recognised but routes to the legacy path.
     - Dynamic XFA documents are rejected.
     """
@@ -289,7 +309,7 @@ class PDFMergerUtility:
                         _LOG.exception("error closing source PDDocument")
 
     @staticmethod
-    def _open_source(source: SourceLike) -> "tuple[PDDocument, bool]":
+    def _open_source(source: SourceLike) -> tuple[PDDocument, bool]:
         """Resolve ``source`` to a (PDDocument, owns_doc) pair."""
         from pypdfbox.pdmodel.pd_document import PDDocument
 
@@ -307,7 +327,7 @@ class PDFMergerUtility:
     # ---------- core append ----------
 
     def append_document(
-        self, destination: "PDDocument", source: "PDDocument"
+        self, destination: PDDocument, source: PDDocument
     ) -> None:
         """Append every page of ``source`` to ``destination`` and merge
         the supported catalog substructures.
@@ -407,23 +427,86 @@ class PDFMergerUtility:
         # ----- /OutputIntents -----
         self._merge_output_intents(cloner, src_catalog, dest_catalog)
 
+        # ----- structure-tree merge prep -----
+        # Decide up-front whether we'll merge the structure tree, and if so
+        # what offset to add to imported /StructParents and /StructParent
+        # values so they don't collide with the destination's existing
+        # parent-tree keys. Mirrors upstream PDFMergerUtility.appendDocument.
+        (
+            merge_struct_tree,
+            dest_parent_tree_next_key,
+            src_number_tree_as_map,
+            dest_number_tree_as_map,
+            src_struct_tree,
+            dest_struct_tree,
+        ) = self._prepare_struct_tree_merge(src_catalog, dest_catalog, destination)
+
         # ----- pages -----
-        # Structure-tree merging is deferred — strip /StructParents and
-        # /StructParent on imported pages / annotations so the destination
+        # When merging the structure tree, we offset /StructParents on the
+        # cloned page and /StructParent on its annotations by
+        # ``dest_parent_tree_next_key`` and record cloned-from / cloned-to
+        # mappings so the source ParentTree's /Pg /Obj references can be
+        # re-routed afterwards. When NOT merging the structure tree we fall
+        # back to the legacy strip-the-keys behaviour so the destination
         # stays structurally consistent.
         from pypdfbox.pdmodel.pd_page import PDPage
 
         dest_pages = destination.get_pages()
+        obj_mapping: dict[int, COSDictionary] = {}
         for page in src_catalog.get_pages():
-            new_page_dict = cloner.clone_for_new_document(page.get_cos_object())
+            old_page_dict = page.get_cos_object()
+            old_annots_dicts: list[COSDictionary] = []
+            if merge_struct_tree:
+                old_annots_raw = old_page_dict.get_dictionary_object(_ANNOTS)
+                if isinstance(old_annots_raw, COSArray):
+                    for i in range(old_annots_raw.size()):
+                        entry = old_annots_raw.get_object(i)
+                        if isinstance(entry, COSDictionary):
+                            old_annots_dicts.append(entry)
+
+            new_page_dict = cloner.clone_for_new_document(old_page_dict)
             assert isinstance(new_page_dict, COSDictionary)
             new_page_dict.remove_item(_PARENT)
-            new_page_dict.remove_item(_STRUCT_PARENTS)
-            self._strip_struct_parent_from_annots(new_page_dict)
+
+            if merge_struct_tree:
+                self._update_struct_parent_entries(
+                    new_page_dict, dest_parent_tree_next_key
+                )
+                # Build object-mapping rows so updatePageReferences can
+                # rewrite /Pg and /Obj on cloned ParentTree leaves to point
+                # at the *new* page / annotation dictionaries.
+                obj_mapping[id(old_page_dict)] = new_page_dict
+                new_annots_raw = new_page_dict.get_dictionary_object(_ANNOTS)
+                new_annots_dicts: list[COSDictionary] = []
+                if isinstance(new_annots_raw, COSArray):
+                    for i in range(new_annots_raw.size()):
+                        entry = new_annots_raw.get_object(i)
+                        if isinstance(entry, COSDictionary):
+                            new_annots_dicts.append(entry)
+                for old_a, new_a in zip(
+                    old_annots_dicts, new_annots_dicts, strict=False
+                ):
+                    obj_mapping[id(old_a)] = new_a
+            else:
+                new_page_dict.remove_item(_STRUCT_PARENTS)
+                self._strip_struct_parent_from_annots(new_page_dict)
+
             dest_pages.add(PDPage(new_page_dict))
 
         # ----- /OpenAction -----
         self._merge_open_action(cloner, src_catalog, dest_catalog)
+
+        # ----- structure-tree merge proper -----
+        if merge_struct_tree:
+            self._finish_struct_tree_merge(
+                cloner,
+                src_struct_tree,
+                dest_struct_tree,
+                src_number_tree_as_map,
+                dest_number_tree_as_map,
+                dest_parent_tree_next_key,
+                obj_mapping,
+            )
 
     # ---------- helpers ----------
 
@@ -444,7 +527,7 @@ class PDFMergerUtility:
         src: COSDictionary,
         dst: COSDictionary,
         cloner: PDFCloneUtility,
-        exclude: "frozenset[COSName] | set[COSName]",
+        exclude: frozenset[COSName] | set[COSName],
     ) -> None:
         for key, value in list(src.entry_set()):
             if key in exclude:
@@ -660,8 +743,8 @@ class PDFMergerUtility:
     def _merge_page_labels(
         self,
         cloner: PDFCloneUtility,
-        source: "PDDocument",
-        destination: "PDDocument",
+        source: PDDocument,
+        destination: PDDocument,
     ) -> None:
         from pypdfbox.cos import COSInteger, COSNumber
 
@@ -714,7 +797,7 @@ class PDFMergerUtility:
         cloner: PDFCloneUtility,
         src_catalog: Any,
         dest_catalog: Any,
-        destination: "PDDocument",
+        destination: PDDocument,
     ) -> None:
         dest_dict = dest_catalog.get_cos_object()
         src_dict = src_catalog.get_cos_object()
@@ -793,6 +876,468 @@ class PDFMergerUtility:
             entry = annots.get_object(i)
             if isinstance(entry, COSDictionary):
                 entry.remove_item(_STRUCT_PARENT)
+
+    # ---------- structure tree ----------
+
+    @staticmethod
+    def get_number_tree_as_map(tree: Any) -> dict[int, COSBase]:
+        """Flatten a ``PDNumberTreeNode`` (or anything with ``get_numbers`` /
+        ``get_kids``) into an ordered ``int -> COSBase`` map.
+
+        Mirrors upstream ``PDFMergerUtility.getNumberTreeAsMap``. Walks the
+        node and every kid recursively, returning the union of all leaf
+        ``/Nums`` arrays. Returns an empty dict when ``tree`` is ``None``.
+        Values are returned as raw COS objects so callers can re-clone them
+        without an extra wrapper bounce.
+        """
+        if tree is None:
+            return {}
+        numbers: dict[int, COSBase] = {}
+        getter = getattr(tree, "get_numbers", None)
+        if callable(getter):
+            local = getter()
+            if local:
+                for k, v in local.items():
+                    numbers[int(k)] = (
+                        v.get_cos_object() if hasattr(v, "get_cos_object") else v
+                    )
+        kids_getter = getattr(tree, "get_kids", None)
+        if callable(kids_getter):
+            kids = kids_getter()
+            if kids:
+                for kid in kids:
+                    numbers.update(PDFMergerUtility.get_number_tree_as_map(kid))
+        return numbers
+
+    @staticmethod
+    def get_id_tree_as_map(tree: Any) -> dict[str, COSBase]:
+        """Flatten a name-tree node (typically the ``/IDTree`` of a
+        ``PDStructureTreeRoot``) into an ordered ``str -> COSBase`` map.
+
+        Mirrors upstream ``PDFMergerUtility.getIDTreeAsMap``. Returns raw
+        COS values rather than typed ``PDStructureElement`` instances so
+        the merger can clone-and-rewrap without losing identity-table
+        coalescing in :class:`PDFCloneUtility`.
+        """
+        if tree is None:
+            return {}
+        names: dict[str, COSBase] = {}
+        getter = getattr(tree, "get_names", None)
+        if callable(getter):
+            local = getter()
+            if local:
+                for k, v in local.items():
+                    names[str(k)] = (
+                        v.get_cos_object() if hasattr(v, "get_cos_object") else v
+                    )
+        kids_getter = getattr(tree, "get_kids", None)
+        if callable(kids_getter):
+            kids = kids_getter()
+            if kids:
+                for kid in kids:
+                    names.update(PDFMergerUtility.get_id_tree_as_map(kid))
+        return names
+
+    def _prepare_struct_tree_merge(
+        self,
+        src_catalog: Any,
+        dest_catalog: Any,
+        destination: PDDocument,
+    ) -> tuple[bool, int, dict[int, COSBase], dict[int, COSBase], Any, Any]:
+        """Decide whether a struct-tree merge is needed and build the prep
+        state: ``(merge?, dest_parent_tree_next_key, src_map, dest_map,
+        src_root, dest_root)``.
+
+        Mirrors the head of upstream ``appendDocument``'s structure-tree
+        section verbatim, including the dummy-tree creation when the
+        destination has no ``/StructTreeRoot`` but the source does.
+        """
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+            PDStructureTreeRoot,
+        )
+
+        src_struct_tree = src_catalog.get_struct_tree_root()
+        dest_struct_tree = dest_catalog.get_struct_tree_root()
+
+        # Bootstrap an empty dest tree when the source has one. We also
+        # strip bogus /StructParents on existing dest pages so they don't
+        # accidentally point at the brand-new (empty) parent tree
+        # (PDFBOX-4429).
+        if dest_struct_tree is None and src_struct_tree is not None:
+            dest_struct_tree = PDStructureTreeRoot()
+            dest_struct_tree.set_parent_tree(COSDictionary())
+            dest_catalog.set_struct_tree_root(dest_struct_tree)
+            dest_pt = dest_struct_tree.get_parent_tree()
+            if dest_pt is not None:
+                dest_pt.get_cos_object().set_item(_NUMS, COSArray())
+            for page in dest_catalog.get_pages():
+                page.get_cos_object().remove_item(_STRUCT_PARENTS)
+                annots = page.get_cos_object().get_dictionary_object(_ANNOTS)
+                if isinstance(annots, COSArray):
+                    for i in range(annots.size()):
+                        entry = annots.get_object(i)
+                        if isinstance(entry, COSDictionary):
+                            entry.remove_item(_STRUCT_PARENT)
+
+        merge_struct_tree = False
+        dest_parent_tree_next_key = -1
+        src_map: dict[int, COSBase] = {}
+        dest_map: dict[int, COSBase] = {}
+
+        if dest_struct_tree is not None:
+            dest_parent_tree = dest_struct_tree.get_parent_tree()
+            dest_parent_tree_next_key = dest_struct_tree.get_parent_tree_next_key()
+            if dest_parent_tree is not None:
+                dest_map = self.get_number_tree_as_map(dest_parent_tree)
+                if dest_parent_tree_next_key < 0:
+                    dest_parent_tree_next_key = (
+                        0 if not dest_map else max(dest_map.keys()) + 1
+                    )
+                if dest_parent_tree_next_key >= 0 and src_struct_tree is not None:
+                    src_parent_tree = src_struct_tree.get_parent_tree()
+                    if src_parent_tree is not None:
+                        src_map = self.get_number_tree_as_map(src_parent_tree)
+                        if src_map:
+                            merge_struct_tree = True
+
+        return (
+            merge_struct_tree,
+            dest_parent_tree_next_key,
+            src_map,
+            dest_map,
+            src_struct_tree,
+            dest_struct_tree,
+        )
+
+    def _finish_struct_tree_merge(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+        src_number_tree_as_map: dict[int, COSBase],
+        dest_number_tree_as_map: dict[int, COSBase],
+        dest_parent_tree_next_key: int,
+        obj_mapping: dict[int, COSDictionary],
+    ) -> None:
+        """Merge ``/ParentTree``, ``/K``, ``/RoleMap``, and ``/IDTree``
+        from ``src_struct_tree`` into ``dest_struct_tree``.
+
+        ``obj_mapping`` maps ``id(old_dict) -> new_dict`` for every page
+        and annotation we just imported, used by
+        :meth:`_update_page_references` to rewrite ``/Pg`` / ``/Obj``
+        references on cloned parent-tree leaves.
+        """
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+            PDStructureElementNumberTreeNode,
+        )
+
+        # Update /Pg, /Obj references on every source ParentTree leaf so
+        # they point at the freshly-cloned destination page / annotation
+        # dictionaries. We do this BEFORE re-keying so the leaves we
+        # promote into dest_number_tree_as_map already carry destination
+        # references.
+        self._update_page_references_map(
+            cloner, src_number_tree_as_map, obj_mapping
+        )
+
+        max_src_key = -1
+        for src_key, value in src_number_tree_as_map.items():
+            max_src_key = max(max_src_key, src_key)
+            if value is not None:
+                cloned = cloner.clone_for_new_document(value)
+                if cloned is not None:
+                    dest_number_tree_as_map[
+                        dest_parent_tree_next_key + src_key
+                    ] = cloned
+        dest_parent_tree_next_key += max_src_key + 1
+
+        # Rebuild /ParentTree as a flat /Nums leaf. PDFBox does the same
+        # and notes that this is suboptimal for very large files; we
+        # follow upstream's choice and document the trade-off in
+        # CHANGES.md.
+        new_parent_tree = PDStructureElementNumberTreeNode()
+        new_parent_tree.set_numbers(dest_number_tree_as_map)
+        dest_struct_tree.set_parent_tree(new_parent_tree)
+        dest_struct_tree.set_parent_tree_next_key(dest_parent_tree_next_key)
+
+        self._merge_k_entries(cloner, src_struct_tree, dest_struct_tree)
+        self._merge_role_map(cloner, src_struct_tree, dest_struct_tree)
+        self._merge_id_tree(cloner, src_struct_tree, dest_struct_tree)
+
+    def _update_page_references_map(
+        self,
+        cloner: PDFCloneUtility,
+        number_tree_as_map: dict[int, COSBase],
+        obj_mapping: dict[int, COSDictionary],
+    ) -> None:
+        """Walk every value in a flattened parent-tree map and rewrite
+        ``/Pg`` / ``/Obj`` references using ``obj_mapping``. Mirrors the
+        ``Map<Integer, COSObjectable>`` overload of upstream
+        ``updatePageReferences``."""
+        for value in number_tree_as_map.values():
+            if value is None:
+                continue
+            if isinstance(value, COSArray):
+                self._update_page_references_array(cloner, value, obj_mapping)
+            elif isinstance(value, COSDictionary):
+                self._update_page_references_dict(cloner, value, obj_mapping)
+
+    def _update_page_references_dict(
+        self,
+        cloner: PDFCloneUtility,
+        parent_tree_entry: COSDictionary,
+        obj_mapping: dict[int, COSDictionary],
+    ) -> None:
+        """Rewrite ``/Pg`` and ``/Obj`` on a single parent-tree dict leaf.
+        Recurses into ``/K`` when present."""
+        page_dict = parent_tree_entry.get_dictionary_object(_PG)
+        if isinstance(page_dict, COSDictionary) and id(page_dict) in obj_mapping:
+            parent_tree_entry.set_item(_PG, obj_mapping[id(page_dict)])
+
+        obj_dict = parent_tree_entry.get_dictionary_object(_OBJ)
+        if isinstance(obj_dict, COSDictionary):
+            if id(obj_dict) in obj_mapping:
+                parent_tree_entry.set_item(_OBJ, obj_mapping[id(obj_dict)])
+            else:
+                # Orphan reference — clone it into the destination so the
+                # new struct-tree leaf doesn't dangle into the source doc.
+                _LOG.debug(
+                    "clone potential orphan object in structure tree: "
+                    "Type=%s Subtype=%s",
+                    obj_dict.get_name(_TYPE),
+                    obj_dict.get_name(COSName.get_pdf_name("Subtype")),
+                )
+                cloned = cloner.clone_for_new_document(obj_dict)
+                if cloned is not None:
+                    parent_tree_entry.set_item(_OBJ, cloned)
+
+        k_sub_entry = parent_tree_entry.get_dictionary_object(_K)
+        if isinstance(k_sub_entry, COSArray):
+            self._update_page_references_array(cloner, k_sub_entry, obj_mapping)
+        elif isinstance(k_sub_entry, COSDictionary):
+            self._update_page_references_dict(cloner, k_sub_entry, obj_mapping)
+
+    def _update_page_references_array(
+        self,
+        cloner: PDFCloneUtility,
+        parent_tree_entry: COSArray,
+        obj_mapping: dict[int, COSDictionary],
+    ) -> None:
+        for i in range(parent_tree_entry.size()):
+            sub_entry = parent_tree_entry.get_object(i)
+            if isinstance(sub_entry, COSArray):
+                self._update_page_references_array(cloner, sub_entry, obj_mapping)
+            elif isinstance(sub_entry, COSDictionary):
+                self._update_page_references_dict(cloner, sub_entry, obj_mapping)
+
+    @staticmethod
+    def _update_struct_parent_entries(
+        page_dict: COSDictionary, struct_parent_offset: int
+    ) -> None:
+        """Bump ``/StructParents`` on a page and ``/StructParent`` on each
+        of its annotations by ``struct_parent_offset`` so the imported
+        page now points at the relocated parent-tree slot.
+
+        Mirrors upstream ``updateStructParentEntries``. Negative existing
+        values (sentinel "no parent tree entry") are left alone."""
+        from pypdfbox.cos import COSInteger, COSNumber
+
+        sp = page_dict.get_dictionary_object(_STRUCT_PARENTS)
+        if isinstance(sp, COSNumber):
+            current = sp.int_value()
+            if current >= 0:
+                page_dict.set_item(
+                    _STRUCT_PARENTS, COSInteger.get(current + struct_parent_offset)
+                )
+
+        annots = page_dict.get_dictionary_object(_ANNOTS)
+        if isinstance(annots, COSArray):
+            for i in range(annots.size()):
+                entry = annots.get_object(i)
+                if not isinstance(entry, COSDictionary):
+                    continue
+                ap = entry.get_dictionary_object(_STRUCT_PARENT)
+                if isinstance(ap, COSNumber):
+                    current = ap.int_value()
+                    if current >= 0:
+                        entry.set_item(
+                            _STRUCT_PARENT,
+                            COSInteger.get(current + struct_parent_offset),
+                        )
+
+    def _merge_k_entries(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+    ) -> None:
+        """Merge ``/K`` arrays under the destination ``/StructTreeRoot``.
+
+        Mirrors upstream ``mergeKEntries``: if the destination's existing
+        top-level /K is a single ``/Document`` whose own /K is a list of
+        only Documents-or-Parts, the source's /K children are appended
+        directly. Otherwise the source and destination /K entries are
+        wrapped under a fresh top-level ``/Document`` dict."""
+        src_root = src_struct_tree.get_cos_object()
+        dest_root = dest_struct_tree.get_cos_object()
+        src_k_entry = src_root.get_dictionary_object(_K)
+
+        src_k_array = COSArray()
+        cloned_src_k = cloner.clone_for_new_document(src_k_entry)
+        if isinstance(cloned_src_k, COSArray):
+            for i in range(cloned_src_k.size()):
+                src_k_array.add(cloned_src_k.get(i))
+        elif isinstance(cloned_src_k, COSDictionary):
+            src_k_array.add(cloned_src_k)
+
+        if src_k_array.size() == 0:
+            return
+
+        dst_k_array = COSArray()
+        dst_k_entry = dest_root.get_dictionary_object(_K)
+        if isinstance(dst_k_entry, COSArray):
+            for i in range(dst_k_entry.size()):
+                dst_k_array.add(dst_k_entry.get(i))
+        elif isinstance(dst_k_entry, COSDictionary):
+            dst_k_array.add(dst_k_entry)
+
+        if dst_k_array.size() == 1 and isinstance(
+            dst_k_array.get_object(0), COSDictionary
+        ):
+            top_k_dict = dst_k_array.get_object(0)
+            assert isinstance(top_k_dict, COSDictionary)
+            if top_k_dict.get_name(_S) == _DOCUMENT.get_name():
+                k_level_one = top_k_dict.get_dictionary_object(_K)
+                if isinstance(
+                    k_level_one, COSArray
+                ) and self._has_only_documents_or_parts(k_level_one):
+                    for i in range(src_k_array.size()):
+                        k_level_one.add(src_k_array.get(i))
+                    self._update_parent_entry(k_level_one, top_k_dict, _PART)
+                    return
+
+        if dst_k_array.size() == 0:
+            self._update_parent_entry(src_k_array, dest_root, None)
+            dest_root.set_item(_K, src_k_array)
+            return
+
+        for i in range(src_k_array.size()):
+            dst_k_array.add(src_k_array.get(i))
+        k_level_zero = COSDictionary()
+        new_struct_type = (
+            _PART if self._has_only_documents_or_parts(dst_k_array) else None
+        )
+        self._update_parent_entry(dst_k_array, k_level_zero, new_struct_type)
+        k_level_zero.set_item(_K, dst_k_array)
+        k_level_zero.set_item(_P, dest_root)
+        k_level_zero.set_item(_S, _DOCUMENT)
+        dest_root.set_item(_K, k_level_zero)
+
+    @staticmethod
+    def _has_only_documents_or_parts(k_array: COSArray) -> bool:
+        for i in range(k_array.size()):
+            base = k_array.get_object(i)
+            if not isinstance(base, COSDictionary):
+                return False
+            s = base.get_name(_S)
+            if s != _DOCUMENT.get_name() and s != _PART.get_name():
+                return False
+        return True
+
+    @staticmethod
+    def _update_parent_entry(
+        k_array: COSArray,
+        new_parent: COSDictionary,
+        new_structure_type: COSName | None,
+    ) -> None:
+        """Re-point each ``/P`` entry under ``k_array``'s child dicts at
+        ``new_parent``, and (when given) overwrite their ``/S`` with
+        ``new_structure_type``. Mirrors upstream ``updateParentEntry``."""
+        for i in range(k_array.size()):
+            sub = k_array.get_object(i)
+            if isinstance(sub, COSDictionary):
+                sub.set_item(_P, new_parent)
+                if new_structure_type is not None:
+                    sub.set_item(_S, new_structure_type)
+
+    def _merge_role_map(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+    ) -> None:
+        """Overlay the source ``/RoleMap`` on the destination's. The
+        destination wins on conflict — duplicate keys log a warning and
+        the source value is dropped, matching upstream
+        ``mergeRoleMap``."""
+        src_dict = src_struct_tree.get_cos_object().get_dictionary_object(_ROLE_MAP)
+        if not isinstance(src_dict, COSDictionary):
+            return
+        dest_root = dest_struct_tree.get_cos_object()
+        dest_dict = dest_root.get_dictionary_object(_ROLE_MAP)
+        if not isinstance(dest_dict, COSDictionary):
+            cloned = cloner.clone_for_new_document(src_dict)
+            if cloned is not None:
+                dest_root.set_item(_ROLE_MAP, cloned)
+            return
+        for key, value in list(src_dict.entry_set()):
+            existing = dest_dict.get_dictionary_object(key)
+            if existing is not None and existing == value:
+                continue
+            if dest_dict.contains_key(key):
+                _LOG.warning(
+                    "key '%s' already exists in destination RoleMap", key
+                )
+            else:
+                cloned = cloner.clone_for_new_document(value)
+                if cloned is not None:
+                    dest_dict.set_item(key, cloned)
+
+    def _merge_id_tree(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+    ) -> None:
+        """Fold the source ``/IDTree`` into the destination's. Duplicate
+        keys log a warning and the source entry is dropped (dest wins),
+        matching upstream ``mergeIDTree``."""
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (
+            PDStructureElementNameTreeNode,
+        )
+
+        src_id_tree = src_struct_tree.get_id_tree()
+        if src_id_tree is None:
+            return
+        dest_id_tree = dest_struct_tree.get_id_tree()
+        src_names = self.get_id_tree_as_map(src_id_tree)
+        dest_names = (
+            self.get_id_tree_as_map(dest_id_tree) if dest_id_tree is not None else {}
+        )
+        for key, value in src_names.items():
+            if key in dest_names:
+                _LOG.warning(
+                    "key '%s' already exists in destination IDTree", key
+                )
+                continue
+            if value is None:
+                continue
+            cloned = cloner.clone_for_new_document(value)
+            if cloned is not None:
+                dest_names[key] = cloned
+        new_id_tree = PDStructureElementNameTreeNode()
+        # set_names on a name-tree wraps into PDStructureElement; feed it
+        # the raw COS dict so the wrap step is a no-op.
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+            PDStructureElement,
+        )
+
+        wrapped = {
+            k: PDStructureElement(v) if isinstance(v, COSDictionary) else v
+            for k, v in dest_names.items()
+        }
+        new_id_tree.set_names(wrapped)
+        dest_struct_tree.set_id_tree(new_id_tree)
 
 
 __all__ = [

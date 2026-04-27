@@ -87,11 +87,16 @@ class CMapParser:
            are full 0..0xFFFF identity mappings that don't depend on a
            bundled resource file.
         2. File-backed lookup against the bundled resources directory
-           ``pypdfbox/fontbox/cmap/resources/``. Only a small subset of
-           the upstream Adobe predefined CMaps is bundled (the CJK
-           Unicode-mapping ones plus ``Identity-H`` / ``Identity-V``);
-           any other name raises :class:`OSError` matching the upstream
-           "Could not find referenced cmap stream" message.
+           ``pypdfbox/fontbox/cmap/resources/``. A curated subset of the
+           upstream Adobe predefined CMaps is bundled (the four
+           ``*-UCS2`` Unicode-mapping CMaps, ``Identity-H`` /
+           ``Identity-V``, and the most commonly referenced CJK
+           encoding CMaps — ``UniCNS-UTF16-H/V``, ``UniGB-UTF16-H/V``,
+           ``UniJIS-UTF16-H/V``, ``UniKS-UTF16-H/V``, plus the legacy
+           ``GB-EUC-H/V``, ``B5pc-H/V``, ``90ms-RKSJ-H/V``,
+           ``KSC-EUC-H/V``); any other name raises :class:`OSError`
+           matching the upstream "Could not find referenced cmap stream"
+           message.
         """
         identity = _build_identity_cmap(name)
         if identity is not None:
@@ -171,9 +176,10 @@ class CMapParser:
     # ---------- usecmap / literal name handling ----------
 
     def _parse_usecmap(self, use_cmap_name: _LiteralName, result: CMap) -> None:
-        # Recursive predefined-CMap load. Cluster #4 only ships Identity-H/V,
-        # so any other usecmap target raises here — extending this is the job
-        # of the predefined-CMap follow-up cluster.
+        # Recursive predefined-CMap load. Bundled set covers the H/V pairs the
+        # V variants reference (Uni*-UTF16-V → Uni*-UTF16-H, GB-EUC-V → GB-EUC-H,
+        # etc.). Names outside the bundled set raise OSError here, matching
+        # upstream's behaviour when the referenced cmap stream is not found.
         use_cmap = type(self).parse_predefined(use_cmap_name.name)
         result.use_cmap(use_cmap)
 

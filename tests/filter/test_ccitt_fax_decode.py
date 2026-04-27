@@ -209,6 +209,9 @@ def test_garbage_payload_raises() -> None:
         _decode(b"\x00\x00\x00\x00\x00", params)
 
 
-def test_encode_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
+def test_encode_requires_columns_and_rows() -> None:
+    """Encode mirrors decode's parameter shape: /DecodeParms must
+    declare /Columns and /Rows. A bare call with no parameters fails
+    fast rather than guessing geometry."""
+    with pytest.raises(OSError):
         CCITTFaxDecode().encode(io.BytesIO(b""), io.BytesIO())

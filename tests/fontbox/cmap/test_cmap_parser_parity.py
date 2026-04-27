@@ -26,7 +26,10 @@ def test_parse_predefined_identity_v_returns_vertical_cmap() -> None:
 
 def test_parse_predefined_unknown_raises() -> None:
     with pytest.raises(OSError):
-        CMapParser.parse_predefined("UniGB-UTF16-H")
+        # Adobe-CNS1-H is not in the bundled subset (the upstream resource
+        # is the 1-byte→CID horizontal CMap; pypdfbox only ships the UCS2
+        # and a curated set of encoding CMaps).
+        CMapParser.parse_predefined("Adobe-CNS1-H")
 
 
 # ---------- get_cmap_for_name ----------

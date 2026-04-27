@@ -474,5 +474,35 @@ class Type1Font:
         self._widths.setdefault(name, float(getattr(cs, "width", 0.0) or 0.0))
         return list(pen.commands)  # type: ignore[attr-defined]
 
+    def get_type1_char_string(self, name: str) -> Any:
+        """PDFBox: ``Type1Font.getType1CharString(String name)`` —
+        return a :class:`~pypdfbox.fontbox.cff.type1_char_string.Type1CharString`
+        wrapper for glyph ``name``.
+
+        Falls back to ``.notdef`` when ``name`` is missing — matching
+        the upstream behaviour. Upstream raises ``IOException`` when
+        ``.notdef`` itself is undefined; we deliberately diverge for
+        ergonomics and instead return an empty wrapper whose
+        ``get_path() == []``.
+        """
+        from ..cff.type1_char_string import Type1CharString  # noqa: PLC0415
+
+        cs_map: dict[str, Any]
+        try:
+            cs_map = self._charstrings_dict()
+        except AssertionError:
+            cs_map = {}
+        cs = cs_map.get(name)
+        glyph_name = name
+        if cs is None:
+            cs = cs_map.get(".notdef")
+            glyph_name = ".notdef" if cs is not None else name
+        return Type1CharString(
+            font=self,
+            font_name=self.get_name(),
+            glyph_name=glyph_name,
+            sequence=cs,
+        )
+
 
 __all__ = ["Type1Font"]

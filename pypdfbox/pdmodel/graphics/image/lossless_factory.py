@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import zlib
 from typing import TYPE_CHECKING
 
@@ -7,11 +8,13 @@ from PIL import Image
 
 from pypdfbox.cos import (
     COSArray,
+    COSDictionary,
     COSInteger,
     COSName,
     COSStream,
     COSString,
 )
+from pypdfbox.filter import CCITTFaxDecode
 
 from .pd_image_x_object import PDImageXObject
 
@@ -32,10 +35,23 @@ _COLORSPACE: COSName = COSName.get_pdf_name("ColorSpace")
 _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
 _LENGTH: COSName = COSName.get_pdf_name("Length")
 _SMASK: COSName = COSName.get_pdf_name("SMask")
+_DECODE_PARMS: COSName = COSName.get_pdf_name("DecodeParms")
 _FLATE_DECODE: COSName = COSName.FLATE_DECODE  # type: ignore[attr-defined]
+_CCITT_FAX_DECODE: COSName = COSName.get_pdf_name("CCITTFaxDecode")
+_K: COSName = COSName.get_pdf_name("K")
+_COLUMNS: COSName = COSName.get_pdf_name("Columns")
+_ROWS: COSName = COSName.get_pdf_name("Rows")
 _DEVICE_GRAY: COSName = COSName.get_pdf_name("DeviceGray")
 _DEVICE_RGB: COSName = COSName.get_pdf_name("DeviceRGB")
 _INDEXED: COSName = COSName.get_pdf_name("Indexed")
+
+# Heuristic threshold: bitmaps with at least this many pixels go through
+# CCITT G4 (typically halves stream size on real fax-style content).
+# Below the threshold the per-stream overhead of /Filter switching plus
+# the CCITT decode-params dict outweighs the modest compression win, so
+# we stay on flate for tiny bitmaps. 64x64 = 4096 pixels = 512 bytes raw
+# is the rough break-even on a sparse pattern.
+_CCITT_PIXEL_THRESHOLD: int = 64 * 64
 
 
 class LosslessFactory:
@@ -52,11 +68,13 @@ class LosslessFactory:
 
     Behaviour parity with upstream:
 
-    - 1-bit images (``mode == "1"``) → ``/DeviceGray`` with 1 BPC,
-      flate-encoded. (CCITT fax encoding is not implemented in
-      :class:`pypdfbox.filter.CCITTFaxDecode` — :pep:`8` "behaviour
-      over style"; the spec equivalent is FlateDecode of the packed
-      bitstream.)
+    - 1-bit images (``mode == "1"``) → ``/DeviceGray`` with 1 BPC.
+      Large bitmaps (≥ ``_CCITT_PIXEL_THRESHOLD`` pixels) use
+      ``/CCITTFaxDecode`` Group 4 — the natural choice for fax-style
+      monochrome content and what upstream's ``CCITTFactory`` produces.
+      Smaller bitmaps stay on ``/FlateDecode`` of the packed bitstream
+      (avoids the per-stream overhead of CCITT params for trivial
+      images).
     - 8-bit grayscale (``mode == "L"``) → ``/DeviceGray`` 8 BPC.
     - 16-bit grayscale (``mode == "I;16"``) → ``/DeviceGray`` 16 BPC.
     - RGB → ``/DeviceRGB`` 8 BPC.
@@ -150,11 +168,27 @@ def _create_from_one_bit(document: PDDocument, image: Image.Image) -> PDImageXOb
     in the ISO 32000-1 §8.9.5.1 layout: rows packed MSB-first with each
     row starting on a fresh byte boundary, ``1`` meaning the larger
     value (white). No repacking needed.
+
+    Large bitmaps are routed through CCITT Group 4 — the spec-preferred
+    encoding for fax-style monochrome content and the format upstream
+    PDFBox emits via ``CCITTFactory.createFromImage``. Small bitmaps
+    stay on flate (the CCITT framing overhead doesn't pay off below the
+    threshold and exact-output round-trips on tiny test images are
+    easier to reason about with flate's raw bit layout).
     """
     width, height = image.size
+    raw = image.tobytes()
+    if width * height >= _CCITT_PIXEL_THRESHOLD:
+        try:
+            return _prepare_ccitt_image_x_object(document, raw, width, height)
+        except Exception:
+            # Defensive: any libtiff hiccup falls back to the flate path
+            # so we never lose an image to encoding failure. Upstream
+            # CCITTFactory makes the same fallback decision.
+            pass
     return _prepare_image_x_object(
         document,
-        image.tobytes(),
+        raw,
         width,
         height,
         bits_per_component=1,
@@ -370,6 +404,54 @@ def _build_indexed_colorspace(hival: int, palette_bytes: bytes) -> COSArray:
 
 
 # ---------- shared stream-building helper ----------
+
+
+def _prepare_ccitt_image_x_object(
+    document: PDDocument,
+    raw_bytes: bytes,
+    width: int,
+    height: int,
+) -> PDImageXObject:
+    """Build a 1 BPC ``/DeviceGray`` image XObject with
+    ``/CCITTFaxDecode`` Group 4 encoding.
+
+    Mirrors upstream ``org.apache.pdfbox.pdmodel.graphics.image.
+    CCITTFactory.createFromImage`` — both go through a libtiff Group 4
+    round-trip to produce the encoded payload.
+
+    The ``/DecodeParms`` carries the canonical G4 quartet:
+    ``/K -1`` (Group 4), ``/Columns width``, ``/Rows height``, and
+    ``/BlackIs1 false`` (default; PIL ``"1"`` already maps 1=white).
+    """
+    decode_params = COSDictionary()
+    decode_params.set_int("K", -1)
+    decode_params.set_int("Columns", int(width))
+    decode_params.set_int("Rows", int(height))
+
+    # Wrap the raw pixel data in a one-element stream dict so
+    # CCITTFaxDecode.encode resolves /DecodeParms the same way the
+    # decoder does. Mirrors the producer convention upstream uses for
+    # all single-filter encodes.
+    stream_shell = COSDictionary()
+    stream_shell.set_item(_DECODE_PARMS, decode_params)
+
+    enc_buf = io.BytesIO()
+    CCITTFaxDecode().encode(io.BytesIO(raw_bytes), enc_buf, stream_shell)
+    encoded = enc_buf.getvalue()
+
+    cos_doc = document.get_document()
+    stream = COSStream(cos_doc.scratch_file)
+    stream.set_item(_TYPE, _XOBJECT)
+    stream.set_item(_SUBTYPE, _IMAGE)
+    stream.set_int(_WIDTH, int(width))
+    stream.set_int(_HEIGHT, int(height))
+    stream.set_int(_BITS_PER_COMPONENT, 1)
+    stream.set_item(_COLORSPACE, _DEVICE_GRAY)
+    stream.set_item(_FILTER, _CCITT_FAX_DECODE)
+    stream.set_item(_DECODE_PARMS, decode_params)
+    stream.set_int(_LENGTH, len(encoded))
+    stream.set_raw_data(encoded)
+    return PDImageXObject(stream)
 
 
 def _prepare_image_x_object(

@@ -8,18 +8,28 @@ from .agent_name_type import AgentNameType
 from .array_property import ArrayProperty, Cardinality
 from .boolean_type import BooleanType
 from .choice_type import ChoiceType
+from .colorant_type import ColorantType
 from .date_type import DateType
+from .dimensions_type import DimensionsType
+from .font_type import FontType
 from .guid_type import GUIDType
 from .integer_type import IntegerType
+from .job_type import JobType
 from .lang_alt import LangAlt
+from .layer_type import LayerType
 from .mime_type import MIMEType
 from .proper_name_type import ProperNameType
+from .rational_type import RationalType
 from .real_type import RealType
+from .resource_event_type import ResourceEventType
+from .resource_ref_type import ResourceRefType
 from .text_type import TextType
+from .thumbnail_type import ThumbnailType
 from .uri_type import URIType
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
+    from .abstract_structured_type import AbstractStructuredType
 
 
 _SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
@@ -35,6 +45,19 @@ _SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
     "MIMEType": MIMEType,
     "GUID": GUIDType,
     "Choice": ChoiceType,
+    "Rational": RationalType,
+}
+
+
+_STRUCTURED: dict[str, type] = {
+    "Dimensions": DimensionsType,
+    "Colorant": ColorantType,
+    "Font": FontType,
+    "ResourceRef": ResourceRefType,
+    "ResourceEvent": ResourceEventType,
+    "Thumbnail": ThumbnailType,
+    "Layer": LayerType,
+    "Job": JobType,
 }
 
 
@@ -43,11 +66,12 @@ class TypeMapping:
     Registry that instantiates typed XMP properties by short type name.
 
     Ported (subset) from ``org.apache.xmpbox.type.TypeMapping``. Upstream
-    additionally maintains schema factories and structured-type metadata
-    keyed off Java reflection annotations; this port keeps the type registry
-    and the per-type ``createXxx`` helpers, which are the surface the parser
-    and schema callers actually need. Structured-type and defined-type
-    plumbing land in a later wave.
+    additionally maintains schema factories and per-property
+    ``PropertiesDescription`` annotation maps keyed off Java reflection;
+    this port keeps the type registry, the per-type ``createXxx`` helpers,
+    and a structured-type lookup keyed by upstream type-name strings. Schema
+    factories and the ``PropertiesDescription`` machinery land in a later
+    wave when typed-property writes flow through the parser.
     """
 
     def __init__(self, metadata: XMPMetadata) -> None:
@@ -58,6 +82,15 @@ class TypeMapping:
 
     def is_simple_type_known(self, type_name: str) -> bool:
         return type_name in _SIMPLE_TYPE_REGISTRY
+
+    def is_structured_type_known(self, type_name: str) -> bool:
+        return type_name in _STRUCTURED
+
+    def is_structured_type_namespace(self, namespace: str) -> bool:
+        return any(
+            getattr(cls, "NAMESPACE", None) == namespace
+            for cls in _STRUCTURED.values()
+        )
 
     def instanciate_simple_property(
         self,
@@ -76,6 +109,17 @@ class TypeMapping:
             raise ValueError(
                 f"Failed to instantiate {cls.__name__} property with value {value!r}"
             ) from exc
+
+    def instanciate_structured_type(
+        self, type_name: str, property_name: str | None = None
+    ) -> AbstractStructuredType:
+        cls = _STRUCTURED.get(type_name)
+        if cls is None:
+            raise ValueError(f"Unknown structured property type: {type_name!r}")
+        instance = cls(self._metadata)
+        if property_name is not None:
+            instance.set_property_name(property_name)
+        return instance
 
     def create_text(
         self, ns_uri: str | None, prefix: str | None, name: str, value: str
@@ -136,6 +180,11 @@ class TypeMapping:
         self, ns_uri: str | None, prefix: str | None, name: str, value: str
     ) -> ChoiceType:
         return ChoiceType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_rational(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> RationalType:
+        return RationalType(self._metadata, ns_uri, prefix, name, value)
 
     def create_array_property(
         self,

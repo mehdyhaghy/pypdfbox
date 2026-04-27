@@ -132,16 +132,17 @@ def test_generate_sets_form_xobject_metadata() -> None:
     assert abs(floats[3] - 20.0) < 1e-6
 
 
-def test_generate_skips_non_text_fields() -> None:
-    """Non-text fields are deferred — generator silently skips them."""
-    from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
+def test_generate_skips_signature_fields() -> None:
+    """Signature fields (``/Sig``) — visual signature appearance is deferred."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
 
     form = PDAcroForm()
-    cb = PDCheckBox(form)
-    cb.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
-    PDAppearanceGenerator().generate(cb)
-    # No /AP installed on the widget.
-    widget_cos = cb.get_widgets()[0].get_cos_object()
+    sig = PDSignatureField(form)
+    sig.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
+    PDAppearanceGenerator().generate(sig)
+    widget_cos = sig.get_widgets()[0].get_cos_object()
     assert widget_cos.get_dictionary_object(_AP) is None
 
 

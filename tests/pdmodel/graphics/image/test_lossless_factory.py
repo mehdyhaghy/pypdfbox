@@ -9,14 +9,15 @@ metadata and a flate-encoded body that round-trips.
 """
 from __future__ import annotations
 
+import io
 import zlib
 
 from PIL import Image
 
-from pypdfbox.cos import COSArray, COSName, COSStream, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
+from pypdfbox.filter import CCITTFaxDecode
 from pypdfbox.pdmodel.graphics.image import LosslessFactory, PDImageXObject
 from pypdfbox.pdmodel.pd_document import PDDocument
-
 
 # ---------- helpers ----------
 
@@ -31,6 +32,11 @@ def _decoded_body(image_x: PDImageXObject) -> bytes:
 def _is_flate_filter(image_x: PDImageXObject) -> bool:
     f = image_x.get_filter()
     return isinstance(f, COSName) and f.name == "FlateDecode"
+
+
+def _is_ccitt_filter(image_x: PDImageXObject) -> bool:
+    f = image_x.get_filter()
+    return isinstance(f, COSName) and f.name == "CCITTFaxDecode"
 
 
 # ---------- public-API guards ----------
@@ -49,7 +55,8 @@ def test_static_factory_cannot_be_instantiated() -> None:
 
 def test_create_from_one_bit_image() -> None:
     document = PDDocument()
-    # 13 px wide forces row padding (not multiple of 8).
+    # 13 px wide forces row padding (not multiple of 8). 13×4 = 52
+    # pixels, well below the CCITT threshold so this stays on flate.
     src = Image.new("1", (13, 4), color=0)
     # Set a couple pixels white.
     src.putpixel((0, 0), 1)
@@ -71,6 +78,63 @@ def test_create_from_one_bit_image() -> None:
     # First bit of row 0 set, last bit of row 3 set.
     assert body[0] == 0b1000_0000
     assert body[7] == 0b0000_1000  # bit 12: byte 1, position 12 % 8 = 4 → 0x08
+
+
+def test_create_from_one_bit_large_image_uses_ccitt() -> None:
+    """1-bit images at or above the CCITT pixel threshold use Group 4
+    instead of flate. The /DecodeParms must declare K=-1 plus the real
+    columns/rows, and the body must round-trip through the matching
+    /CCITTFaxDecode decoder."""
+    document = PDDocument()
+    # 128×128 = 16384 px > 4096 threshold.
+    src = Image.new("1", (128, 128), color=1)
+    # Sparse pattern → highly compressible.
+    for x in range(128):
+        src.putpixel((x, x), 0)
+
+    image_x = LosslessFactory.create_from_image(document, src)
+    assert image_x.get_width() == 128
+    assert image_x.get_height() == 128
+    assert image_x.get_bits_per_component() == 1
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceGray"
+    assert _is_ccitt_filter(image_x)
+
+    cos = image_x.get_cos_object()
+    assert isinstance(cos, COSStream)
+    decode_parms = cos.get_dictionary_object("DecodeParms")
+    assert isinstance(decode_parms, COSDictionary)
+    assert decode_parms.get_int("K", 0) == -1
+    assert decode_parms.get_int("Columns", 0) == 128
+    assert decode_parms.get_int("Rows", 0) == 128
+
+    # Round-trip the encoded body through CCITTFaxDecode.decode and
+    # confirm we recover the original packed bitstream.
+    raw = cos.get_raw_data()
+    out = io.BytesIO()
+    CCITTFaxDecode().decode(io.BytesIO(raw), out, cos)
+    assert out.getvalue() == src.tobytes()
+
+
+def test_create_from_one_bit_large_image_emits_compact_stream() -> None:
+    """G4 emits a compact stream: a 200×200 mostly-white bitmap with a
+    diagonal line should compress to a fraction of the raw size. This
+    pins the heuristic's payoff without micro-comparing G4 vs flate
+    (flate occasionally wins on uniform bitmaps; G4's value is on
+    text/line-art content)."""
+    document = PDDocument()
+    src = Image.new("1", (200, 200), color=1)
+    for x in range(200):
+        src.putpixel((x, x), 0)
+
+    image_x = LosslessFactory.create_from_image(document, src)
+    assert _is_ccitt_filter(image_x)
+    cos = image_x.get_cos_object()
+    assert isinstance(cos, COSStream)
+    raw = src.tobytes()  # 200/8 * 200 = 5000 bytes
+    encoded_size = len(cos.get_raw_data())
+    # G4 should compress this comfortably under 25% of the raw size.
+    assert encoded_size < len(raw) // 4
 
 
 # ---------- 8-bit grayscale ----------

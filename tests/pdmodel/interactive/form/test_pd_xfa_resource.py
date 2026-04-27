@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSStream, COSString
+from pypdfbox.cos import COSArray, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.form.pd_xfa_resource import PDXFAResource
 
 
@@ -212,3 +212,114 @@ def test_is_dynamic_is_cached() -> None:
     assert first is True
     assert second is True
     assert first == second
+
+
+# ---------- get_xfa_packet ----------
+
+
+def test_get_xfa_packet_returns_named_stream_body() -> None:
+    arr = COSArray()
+    arr.add(COSString("template"))
+    arr.add(_stream(b"<template-body/>"))
+    arr.add(COSString("datasets"))
+    arr.add(_stream(b"<datasets-body/>"))
+    arr.add(COSString("config"))
+    arr.add(_stream(b"<config-body/>"))
+    xfa = PDXFAResource(arr)
+
+    assert xfa.get_xfa_packet("template") == b"<template-body/>"
+    assert xfa.get_xfa_packet("datasets") == b"<datasets-body/>"
+    assert xfa.get_xfa_packet("config") == b"<config-body/>"
+
+
+def test_get_xfa_packet_accepts_cos_name_label() -> None:
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("form"))
+    arr.add(_stream(b"<form-body/>"))
+    xfa = PDXFAResource(arr)
+
+    assert xfa.get_xfa_packet("form") == b"<form-body/>"
+
+
+def test_get_xfa_packet_returns_none_when_label_missing() -> None:
+    arr = COSArray()
+    arr.add(COSString("template"))
+    arr.add(_stream(b"<template-body/>"))
+    xfa = PDXFAResource(arr)
+
+    assert xfa.get_xfa_packet("datasets") is None
+
+
+def test_get_xfa_packet_returns_none_for_single_stream_form() -> None:
+    xfa = PDXFAResource(_stream(b"<xdp/>"))
+
+    assert xfa.get_xfa_packet("datasets") is None
+
+
+def test_get_xfa_packet_returns_none_when_paired_entry_not_stream() -> None:
+    # Malformed pair: label is correct but the slot after it is a string,
+    # not a stream.
+    arr = COSArray()
+    arr.add(COSString("template"))
+    arr.add(COSString("not-a-stream"))
+    xfa = PDXFAResource(arr)
+
+    assert xfa.get_xfa_packet("template") is None
+
+
+def test_get_xfa_packet_handles_unpaired_trailing_label() -> None:
+    arr = COSArray()
+    arr.add(COSString("template"))  # no following stream — odd-length array
+    xfa = PDXFAResource(arr)
+
+    assert xfa.get_xfa_packet("template") is None
+
+
+# ---------- get_dom_document ----------
+
+
+def test_get_dom_document_returns_element_tree() -> None:
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><foo/></xdp:xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    tree = xfa.get_dom_document()
+
+    assert isinstance(tree, ET.ElementTree)
+    root = tree.getroot()
+    assert root.tag == "{http://ns.adobe.com/xdp/}xdp"
+    assert [child.tag for child in root] == ["foo"]
+
+
+def test_get_dom_document_returns_none_for_empty_payload() -> None:
+    xfa = PDXFAResource(COSArray())
+
+    assert xfa.get_dom_document() is None
+
+
+def test_get_dom_document_returns_none_for_malformed_xml() -> None:
+    xfa = PDXFAResource(_stream(b"<not-closed>"))
+
+    assert xfa.get_dom_document() is None
+
+
+def test_get_dom_document_shares_root_with_get_document() -> None:
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><foo/></xdp:xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    tree = xfa.get_dom_document()
+    assert tree is not None
+    root_via_tree = tree.getroot()
+    root_via_element = xfa.get_document()
+
+    assert root_via_tree is root_via_element
+
+
+def test_get_dom_document_after_get_document_uses_cached_root() -> None:
+    body = b'<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"><foo/></xdp:xdp>'
+    xfa = PDXFAResource(_stream(body))
+
+    cached = xfa.get_document()
+    tree = xfa.get_dom_document()
+
+    assert tree is not None
+    assert tree.getroot() is cached

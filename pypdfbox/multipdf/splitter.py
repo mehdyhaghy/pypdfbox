@@ -3,7 +3,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Callable
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSInteger,
+    COSName,
+    COSObject,
+)
 
 if TYPE_CHECKING:
     from pypdfbox.io import MemoryUsageSetting
@@ -19,6 +26,21 @@ _B: COSName = COSName.get_pdf_name("B")
 _PARENT: COSName = COSName.get_pdf_name("Parent")
 _POPUP: COSName = COSName.get_pdf_name("Popup")
 _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
+
+# struct-tree clone helpers
+_K: COSName = COSName.get_pdf_name("K")
+_P: COSName = COSName.get_pdf_name("P")
+_PG: COSName = COSName.get_pdf_name("Pg")
+_S: COSName = COSName.get_pdf_name("S")
+_ID: COSName = COSName.get_pdf_name("ID")
+_OBJ: COSName = COSName.get_pdf_name("Obj")
+_OBJR: COSName = COSName.get_pdf_name("OBJR")
+_MCR: COSName = COSName.get_pdf_name("MCR")
+_ANNOT: COSName = COSName.get_pdf_name("Annot")
+_LINK: COSName = COSName.get_pdf_name("Link")
+_ANNOTS: COSName = COSName.get_pdf_name("Annots")
+_ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
+_CLASS_MAP: COSName = COSName.get_pdf_name("ClassMap")
 
 
 class Splitter:
@@ -41,12 +63,12 @@ class Splitter:
     :meth:`process_page`, :meth:`get_source_document`,
     :meth:`get_destination_document`.
 
-    The structure-tree / parent-tree / id-tree cloning that upstream
-    performs after the page walk depends on PDFMergerUtility helpers
-    (``getNumberTreeAsMap`` / ``getIDTreeAsMap``) that are not yet ported.
-    When the source document carries a ``/StructTreeRoot`` we skip cloning
-    it rather than emit a half-built one — the per-page COS payload still
-    splits correctly. See ``CHANGES.md`` for the deviation.
+    The structure-tree / parent-tree / id-tree / role-map cloning that
+    upstream performs after the page walk is implemented here in full —
+    see :meth:`_clone_structure_tree`. Cross-chunk link-annotation
+    destinations are nulled out in :meth:`_fix_destinations` so the
+    chunk's `/Dest` payloads don't carry refs to pages that didn't
+    follow the split.
     """
 
     def __init__(self) -> None:
@@ -64,6 +86,17 @@ class Splitter:
         self._page_dict_maps: list[dict[int, COSDictionary]] = []
         self._annot_dict_map: dict[int, COSDictionary] = {}
         self._annot_dict_maps: list[dict[int, COSDictionary]] = []
+        # struct-tree clone state, reset per chunk
+        self._struct_dict_map: dict[int, COSDictionary] = {}
+        self._id_set: set[str] = set()
+        self._role_set: set[str] = set()
+        # destToFixMap mirror — list of (cloned_dest_array, source_page_dict)
+        # per chunk. Deferred to after the page walk so we can decide
+        # whether each destination's target page lives in the chunk.
+        self._dest_to_fix: list[tuple[COSArray, COSDictionary]] = []
+        self._dest_to_fix_per_chunk: list[
+            list[tuple[COSArray, COSDictionary]]
+        ] = []
 
         self._current_page_number: int = 0
 
@@ -125,10 +158,33 @@ class Splitter:
         self._source_document = document
         self._page_dict_maps = []
         self._annot_dict_maps = []
+        self._dest_to_fix_per_chunk = []
+        self._id_set = set()
+        self._role_set = set()
 
         self._process_pages()
-        # Structure-tree cloning is deferred — see class docstring and
-        # CHANGES.md. We still return the fully-populated per-chunk docs.
+
+        # Post-pass per chunk: structure tree clone + destination fix-up.
+        for index, destination_document in enumerate(self._destination_documents):
+            self._page_dict_map = self._page_dict_maps[index]
+            self._annot_dict_map = self._annot_dict_maps[index]
+            self._dest_to_fix = self._dest_to_fix_per_chunk[index]
+            try:
+                self._clone_structure_tree(destination_document)
+            except Exception:  # noqa: BLE001
+                _LOG.exception(
+                    "structure-tree clone failed for chunk %d; chunk will "
+                    "ship without /StructTreeRoot",
+                    index,
+                )
+            try:
+                self._fix_destinations(destination_document)
+            except Exception:  # noqa: BLE001
+                _LOG.exception(
+                    "destination fix-up failed for chunk %d; cross-chunk "
+                    "/Dest links may dangle",
+                    index,
+                )
         return self._destination_documents
 
     # ---------- pagination loop ----------
@@ -250,7 +306,7 @@ class Splitter:
             imported.get_cos_object().remove_item(_B)
             _LOG.warning("/B entry (beads) removed by splitter")
 
-        self._process_annotations(imported)
+        self._process_annotations(page, imported)
 
         self._page_dict_map[id(page.get_cos_object())] = imported.get_cos_object()
 
@@ -275,15 +331,19 @@ class Splitter:
             self._page_dict_maps.append(self._page_dict_map)
             self._annot_dict_map = {}
             self._annot_dict_maps.append(self._annot_dict_map)
+            self._dest_to_fix = []
+            self._dest_to_fix_per_chunk.append(self._dest_to_fix)
 
-    def _process_annotations(self, imported: PDPage) -> None:
+    def _process_annotations(self, source_page: PDPage, imported: PDPage) -> None:
         """Shallow-clone every annotation on ``imported`` so structure-tree
         edits and ``/Parent`` rewrites (e.g. for widget annotations) don't
-        bleed back into the source document. Mirrors upstream's first
-        loop in ``processAnnotations`` — destination remap of /Dest links
-        is deferred (see CHANGES.md)."""
+        bleed back into the source document. Mirrors upstream's
+        ``processAnnotations``."""
         from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
             PDAnnotation,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+            PDAnnotationLink,
         )
 
         try:
@@ -309,6 +369,15 @@ class Splitter:
             if subtype == "Widget" and cloned_dict.contains_key(_PARENT):
                 cloned_dict.remove_item(_PARENT)
 
+            # Link annotations: clone /Dest (or the action's /D) and
+            # remember the cloned destination so the post-pass can either
+            # rewrite its /D[0] to the cloned destination page or null it
+            # out when the target page is in a different chunk.
+            if isinstance(cloned_ann, PDAnnotationLink):
+                self._stage_link_destination(
+                    cloned_ann, source_page.get_cos_object()
+                )
+
         # Second pass: rewrite /Popup → cloned popup dict references
         # so popup/markup annotation pairs stay internally consistent.
         for ann in cloned:
@@ -326,6 +395,554 @@ class Splitter:
             # cloned dicts still live in the imported page's /Annots
             # (since we mutated in place), so this is a no-op fallback.
             pass
+
+    def _stage_link_destination(
+        self, link: Any, source_page_dict: COSDictionary
+    ) -> None:
+        """Clone the link's destination array, install the clone, and
+        remember it for the :meth:`_fix_destinations` post-pass.
+
+        Mirrors upstream's ``destToFixMap`` book-keeping. We don't try to
+        resolve named destinations here — the catalog name-tree lookup
+        is wider than what the lite ``PDDocumentCatalog`` exposes — and
+        leave named-target links untouched.
+        """
+        from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
+            PDActionGoTo,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDDestination,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+            PDPageDestination,
+        )
+
+        try:
+            src_destination = link.get_destination()
+        except Exception:  # noqa: BLE001
+            _LOG.warning(
+                "Incorrect destination in link annotation on page %d "
+                "is removed",
+                self._current_page_number + 1,
+            )
+            link.set_destination(None)
+            return
+
+        action = None
+        if src_destination is None:
+            try:
+                action = link.get_action()
+            except Exception:  # noqa: BLE001
+                action = None
+            if isinstance(action, PDActionGoTo):
+                try:
+                    src_destination = action.get_destination()
+                except Exception:  # noqa: BLE001
+                    _LOG.warning(
+                        "GoToAction with incorrect destination in link "
+                        "annotation on page %d is removed",
+                        self._current_page_number + 1,
+                    )
+                    link.set_action(None)
+                    src_destination = None
+
+        # Skip named destinations entirely — see method docstring.
+        if not isinstance(src_destination, PDPageDestination):
+            return
+
+        src_dest_array = src_destination.get_cos_object()
+        if not isinstance(src_dest_array, COSArray):
+            return
+
+        # Clone destination as a flat shallow array (just rewrite /D[0]
+        # later — leave fit / params alone).
+        cloned_array = COSArray()
+        for i in range(src_dest_array.size()):
+            cloned_array.add(src_dest_array.get(i))
+        try:
+            cloned_destination = PDDestination.create(cloned_array)
+        except Exception:  # noqa: BLE001
+            return
+        if cloned_destination is None:
+            return
+
+        if isinstance(action, PDActionGoTo):
+            cloned_action_dict = COSDictionary(list(action.get_cos_object().entry_set()))
+            cloned_action = PDActionGoTo(cloned_action_dict)
+            cloned_action.set_destination(cloned_destination)
+            try:
+                link.set_action(cloned_action)
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            try:
+                link.set_destination(cloned_destination)
+            except Exception:  # noqa: BLE001
+                pass
+
+        self._dest_to_fix.append((cloned_array, source_page_dict))
+
+    # ---------- destination fix-up post-pass ----------
+
+    def _fix_destinations(self, destination_document: PDDocument) -> None:
+        """Rewrite or null out staged ``/Dest`` arrays per upstream's
+        ``fixDestinations``. For each cloned destination array:
+
+        - if the *source page that hosts the link* doesn't live in this
+          chunk, leave it (caller already discarded the link as part of
+          a different chunk's import);
+        - if the *destination page the link points to* lives in this
+          chunk, rewrite the array's first slot to the cloned page dict;
+        - otherwise null out the array's first slot so the destination
+          becomes a no-op rather than dangling into the source doc.
+        """
+        if not self._dest_to_fix:
+            return
+        from pypdfbox.cos import COSNull
+
+        page_tree = destination_document.get_pages()
+        for cloned_array, source_page_dict in self._dest_to_fix:
+            # Where did the link itself originate? If the host page isn't
+            # in this chunk, skip — another chunk owns this rewrite.
+            cloned_host_dict = self._page_dict_map.get(id(source_page_dict))
+            if cloned_host_dict is None:
+                continue
+            if page_tree.index_of(cloned_host_dict) < 0:
+                continue
+            # /D[0] is currently the *source* page dict (verbatim copy).
+            # Look up its clone via the page-dict map, and decide whether
+            # the cloned page is in this chunk.
+            target = cloned_array.get_object(0) if cloned_array.size() > 0 else None
+            if not isinstance(target, COSDictionary):
+                # Already an integer or null target — nothing to fix.
+                continue
+            cloned_target = self._page_dict_map.get(id(target))
+            if cloned_target is not None and page_tree.index_of(cloned_target) >= 0:
+                cloned_array.set(0, cloned_target)
+            else:
+                cloned_array.set(0, COSNull.NULL)
+
+    # ---------- structure-tree cloning ----------
+
+    def _clone_structure_tree(self, destination_document: PDDocument) -> None:
+        """Clone the source ``/StructTreeRoot`` into ``destination_document``,
+        keeping only structure elements that pertain to pages in this
+        chunk. Mirrors upstream ``Splitter.cloneStructureTree``.
+
+        Uses the per-chunk ``_page_dict_map`` / ``_annot_dict_map`` to
+        translate page and annotation references; produces a fresh
+        ``/ParentTree``, ``/IDTree``, ``/RoleMap``, and ``/ClassMap`` for
+        the chunk.
+        """
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
+            PDStructureElementNameTreeNode,
+            PDStructureElementNumberTreeNode,
+            PDStructureTreeRoot,
+        )
+
+        src_catalog = self.get_source_document().get_document_catalog()
+        src_struct_root = src_catalog.get_struct_tree_root()
+        if src_struct_root is None:
+            return
+
+        # Reset per-chunk struct-clone state.
+        self._struct_dict_map = {}
+        self._id_set = set()
+        self._role_set = set()
+
+        dst_struct_root = PDStructureTreeRoot()
+        dst_struct_root_cos = dst_struct_root.get_cos_object()
+        page_tree = destination_document.get_pages()
+
+        # Clone /K, also fills _struct_dict_map.
+        src_k = src_struct_root.get_cos_object().get_dictionary_object(_K)
+        cloned_k = self._k_create_clone(
+            src_k, dst_struct_root_cos, None, page_tree
+        )
+        if cloned_k is not None:
+            dst_struct_root_cos.set_item(_K, cloned_k)
+
+        # Build a fresh /ParentTree containing only entries referenced by
+        # this chunk's pages.
+        src_parent_tree = src_struct_root.get_parent_tree()
+        if src_parent_tree is not None:
+            src_numbers = self._get_number_tree_as_map(src_parent_tree)
+        else:
+            src_numbers = {}
+        dst_numbers: dict[int, COSBase] = {}
+
+        for page_index in range(page_tree.get_count()):
+            page = page_tree.get(page_index)
+            try:
+                sp1 = page.get_struct_parents()
+            except Exception:  # noqa: BLE001
+                sp1 = -1
+            if sp1 != -1:
+                self._clone_tree_element(src_numbers, dst_numbers, sp1)
+            try:
+                annots = page.get_annotations()
+            except Exception:  # noqa: BLE001
+                annots = []
+            for ann in annots:
+                try:
+                    sp2 = ann.get_struct_parent()
+                except Exception:  # noqa: BLE001
+                    sp2 = -1
+                if sp2 != -1:
+                    self._clone_tree_element(src_numbers, dst_numbers, sp2)
+
+        if dst_numbers:
+            # Build a fresh number-tree leaf node from the filtered map.
+            dst_pt_dict = COSDictionary()
+            dst_pt_node = PDStructureElementNumberTreeNode(dst_pt_dict)
+            # Wrap raw COS values so the number-tree set_numbers path
+            # stores them verbatim (PDStructureElementNumberTreeNode
+            # convert_value_to_cos returns the value unchanged for
+            # COSBase inputs).
+            dst_pt_node.set_numbers(dst_numbers)
+            dst_struct_root.set_parent_tree(dst_pt_node)
+            upper = dst_pt_node.get_upper_limit()
+            if upper is not None:
+                dst_struct_root.set_parent_tree_next_key(upper + 1)
+
+        # /ClassMap — carry verbatim from source. Class entries may be
+        # referenced by retained struct elements via /C.
+        src_class_map = src_struct_root.get_cos_object().get_dictionary_object(
+            _CLASS_MAP
+        )
+        if isinstance(src_class_map, COSDictionary):
+            dst_struct_root_cos.set_item(_CLASS_MAP, src_class_map)
+
+        # /RoleMap — narrow to roles actually used by retained elements.
+        self._clone_role_map(src_struct_root, dst_struct_root)
+
+        # /IDTree — filter to ids actually referenced by retained
+        # elements, mapped through _struct_dict_map.
+        self._clone_id_tree(
+            src_struct_root, dst_struct_root, PDStructureElementNameTreeNode
+        )
+
+        destination_document.get_document_catalog().set_struct_tree_root(
+            dst_struct_root
+        )
+
+    # ---- structure-tree helpers (private; mirror upstream KCloner) ----
+
+    def _k_create_clone(
+        self,
+        src: COSBase | None,
+        dst_parent: COSBase,
+        current_page_dict: COSDictionary | None,
+        page_tree: Any,
+    ) -> COSBase | None:
+        if src is None:
+            return None
+        if isinstance(src, COSObject):
+            return self._k_create_clone(
+                src.get_object(), dst_parent, current_page_dict, page_tree
+            )
+        if isinstance(src, COSArray):
+            return self._k_clone_array(src, dst_parent, current_page_dict, page_tree)
+        if isinstance(src, COSDictionary):
+            return self._k_clone_dictionary(
+                src, dst_parent, current_page_dict, page_tree
+            )
+        return src
+
+    def _k_clone_array(
+        self,
+        src: COSArray,
+        dst_parent: COSBase,
+        current_page_dict: COSDictionary | None,
+        page_tree: Any,
+    ) -> COSBase | None:
+        dst = COSArray()
+        for i in range(src.size()):
+            entry = src.get(i)
+            if isinstance(entry, COSObject):
+                cloned = self._k_create_clone(
+                    entry.get_object(), dst_parent, current_page_dict, page_tree
+                )
+            else:
+                cloned = self._k_create_clone(
+                    entry, dst_parent, current_page_dict, page_tree
+                )
+            if cloned is not None:
+                dst.add(cloned)
+        return dst if dst.size() > 0 else None
+
+    def _k_clone_dictionary(
+        self,
+        src: COSDictionary,
+        dst_parent: COSBase,
+        current_page_dict: COSDictionary | None,
+        page_tree: Any,
+    ) -> COSDictionary | None:
+        existing = self._struct_dict_map.get(id(src))
+        if existing is not None:
+            return existing
+
+        src_page_dict = src.get_dictionary_object(_PG)
+        if not isinstance(src_page_dict, COSDictionary):
+            src_page_dict = None
+        dst_page_dict: COSDictionary | None = None
+        kid = src.get_dictionary_object(_K)
+        type_name = src.get_name(_TYPE)
+
+        if src_page_dict is not None:
+            dst_page_dict = self._page_dict_map.get(id(src_page_dict))
+            if dst_page_dict is not None:
+                if page_tree.index_of(dst_page_dict) == -1:
+                    return None
+            else:
+                # PDFBOX-6009: src has /Pg pointing somewhere not in this
+                # chunk. Quit on MCID/MCR/OBJR — they need a /Pg — else
+                # keep as an intermediate.
+                if (
+                    type_name == "MCR"
+                    or type_name == "OBJR"
+                    or self._has_mcids(kid)
+                ):
+                    return None
+
+        # MCR with no resolvable destination page and no inherited /Pg
+        # from parent — drop it (PAC rule).
+        if (
+            type_name == "MCR"
+            and dst_page_dict is None
+            and isinstance(dst_parent, COSDictionary)
+            and dst_parent.get_dictionary_object(_PG) is None
+        ):
+            return None
+
+        dst = COSDictionary()
+        self._struct_dict_map[id(src)] = dst
+        for key, value in src.entry_set():
+            if key != _K and key != _PG and key != _P:
+                dst.set_item(key, value)
+
+        # OBJR special handling — replace /Obj with the cloned annotation
+        # dict (or remove when the source annotation isn't on the page).
+        if type_name == "OBJR":
+            src_obj = src.get_dictionary_object(_OBJ)
+            if isinstance(src_obj, COSDictionary):
+                dst_obj = self._annot_dict_map.get(id(src_obj))
+                if dst_obj is not None:
+                    dst.set_item(_OBJ, dst_obj)
+                else:
+                    self._remove_possible_orphan_annotation(
+                        src_obj, src, current_page_dict, dst
+                    )
+            if dst.size() == 1:
+                # Only a /Type entry remains — no useful payload.
+                return None
+            if (
+                dst_page_dict is None
+                and isinstance(dst_parent, COSDictionary)
+                and dst_parent.get_dictionary_object(_PG) is None
+            ):
+                return None
+
+        if type_name != "OBJR" and type_name != "MCR":
+            dst.set_item(_P, dst_parent)
+
+        if dst_page_dict is not None:
+            dst.set_item(_PG, dst_page_dict)
+
+        next_page_dict = dst_page_dict if dst_page_dict is not None else current_page_dict
+        cloned_kid = self._k_create_clone(kid, dst, next_page_dict, page_tree)
+        if cloned_kid is None and kid is not None:
+            return None
+
+        # Orphan check: no parent page, no own page, and no kids.
+        if dst_page_dict is None and cloned_kid is None and current_page_dict is None:
+            return None
+
+        if cloned_kid is not None:
+            dst.set_item(_K, cloned_kid)
+
+        # Track ids and roles for /IDTree / /RoleMap narrowing.
+        id_value = dst.get_string(_ID)
+        if id_value is not None:
+            self._id_set.add(id_value)
+        role = dst.get_name(_S)
+        if role is not None:
+            self._role_set.add(role)
+        return dst
+
+    @staticmethod
+    def _has_mcids(kid: COSBase | None) -> bool:
+        if isinstance(kid, COSInteger):
+            return True
+        if isinstance(kid, COSArray):
+            for i in range(kid.size()):
+                entry = kid.get_object(i)
+                if isinstance(entry, COSInteger):
+                    return True
+        return False
+
+    def _remove_possible_orphan_annotation(
+        self,
+        src_obj: COSDictionary,
+        src_dict: COSDictionary,
+        current_page_dict: COSDictionary | None,
+        dst_dict: COSDictionary,
+    ) -> None:
+        obj_type = src_obj.get_dictionary_object(_TYPE)
+        obj_subtype = src_obj.get_dictionary_object(_SUBTYPE)
+        is_annot = isinstance(obj_type, COSName) and obj_type.get_name() == "Annot"
+        is_link = isinstance(obj_subtype, COSName) and obj_subtype.get_name() == "Link"
+        if not is_annot and not is_link:
+            return
+        host_page = src_dict.get_dictionary_object(_PG)
+        if not isinstance(host_page, COSDictionary):
+            host_page = current_page_dict
+        if host_page is None:
+            return
+        annots_array = host_page.get_dictionary_object(_ANNOTS)
+        if not isinstance(annots_array, COSArray):
+            _LOG.warning(
+                "An annotation OBJ that isn't in the page has been removed "
+                "from the structure tree"
+            )
+            dst_dict.remove_item(_OBJ)
+            return
+        for i in range(annots_array.size()):
+            if annots_array.get_object(i) is src_obj:
+                return
+        _LOG.warning(
+            "An annotation OBJ that isn't in the page has been removed "
+            "from the structure tree"
+        )
+        dst_dict.remove_item(_OBJ)
+
+    def _clone_tree_element(
+        self,
+        src_numbers: dict[int, COSBase],
+        dst_numbers: dict[int, COSBase],
+        sp: int,
+    ) -> None:
+        src_obj = src_numbers.get(sp)
+        if src_obj is None:
+            return
+        if isinstance(src_obj, COSArray):
+            cloned_arr = COSArray()
+            for i in range(src_obj.size()):
+                element = src_obj.get_object(i)
+                cloned_entry = self._struct_dict_map.get(id(element))
+                if cloned_entry is not None:
+                    cloned_arr.add(cloned_entry)
+                else:
+                    # null placeholder — the array is indexed by MCID, so
+                    # holes must be preserved.
+                    from pypdfbox.cos import COSNull
+
+                    cloned_arr.add(COSNull.NULL)
+            dst_numbers[sp] = cloned_arr
+        elif isinstance(src_obj, COSDictionary):
+            cloned_entry = self._struct_dict_map.get(id(src_obj))
+            if cloned_entry is None:
+                _LOG.warning("ParentTree index %d dictionary not found in /K", sp)
+                return
+            dst_numbers[sp] = cloned_entry
+        else:
+            _LOG.warning(
+                "tree element neither dictionary nor array, but %s",
+                type(src_obj).__name__,
+            )
+
+    def _clone_role_map(self, src_root: Any, dst_root: Any) -> None:
+        src_dict = src_root.get_cos_object().get_dictionary_object(_ROLE_MAP)
+        if not isinstance(src_dict, COSDictionary):
+            return
+        dst_dict = COSDictionary()
+        for key, value in src_dict.entry_set():
+            if key.get_name() in self._role_set:
+                dst_dict.set_item(key, value)
+        dst_root.get_cos_object().set_item(_ROLE_MAP, dst_dict)
+
+    def _clone_id_tree(
+        self, src_root: Any, dst_root: Any, name_tree_cls: type
+    ) -> None:
+        src_id_tree = src_root.get_id_tree()
+        if src_id_tree is None:
+            return
+        src_id_map = self._get_id_tree_as_map(src_id_tree)
+        if not src_id_map:
+            return
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (  # noqa: E501
+            PDStructureElement,
+        )
+
+        dst_names: dict[str, PDStructureElement] = {}
+        for key, val in src_id_map.items():
+            if key not in self._id_set:
+                continue
+            src_dict = (
+                val.get_cos_object() if hasattr(val, "get_cos_object") else val
+            )
+            cloned_dict = self._struct_dict_map.get(id(src_dict))
+            if cloned_dict is not None:
+                dst_names[key] = PDStructureElement(cloned_dict)
+        if not dst_names:
+            return
+        dst_id_tree = name_tree_cls()
+        dst_id_tree.set_names(dst_names)
+        dst_root.set_id_tree(dst_id_tree)
+
+    @staticmethod
+    def _get_number_tree_as_map(node: Any) -> dict[int, COSBase]:
+        """Walk a number-tree node into a flat ``{int: COSBase}`` map.
+        Local mirror of upstream ``PDFMergerUtility.getNumberTreeAsMap``
+        — kept private so we don't have to wait on the merger-utility
+        helper to land."""
+        out: dict[int, COSBase] = {}
+        Splitter._walk_number_tree(node, out)
+        return out
+
+    @staticmethod
+    def _walk_number_tree(node: Any, out: dict[int, COSBase]) -> None:
+        try:
+            numbers = node.get_numbers()
+        except Exception:  # noqa: BLE001
+            numbers = None
+        if numbers:
+            for key, value in numbers.items():
+                base = value.get_cos_object() if hasattr(value, "get_cos_object") else value
+                out[int(key)] = base
+            return
+        try:
+            kids = node.get_kids()
+        except Exception:  # noqa: BLE001
+            kids = None
+        if kids:
+            for child in kids:
+                Splitter._walk_number_tree(child, out)
+
+    @staticmethod
+    def _get_id_tree_as_map(node: Any) -> dict[str, Any]:
+        """Walk an ID name-tree into a flat ``{str: PDStructureElement}``
+        map. Local mirror of upstream ``PDFMergerUtility.getIDTreeAsMap``."""
+        out: dict[str, Any] = {}
+        Splitter._walk_id_tree(node, out)
+        return out
+
+    @staticmethod
+    def _walk_id_tree(node: Any, out: dict[str, Any]) -> None:
+        try:
+            names = node.get_names()
+        except Exception:  # noqa: BLE001
+            names = None
+        if names:
+            out.update(names)
+            return
+        try:
+            kids = node.get_kids()
+        except Exception:  # noqa: BLE001
+            kids = None
+        if kids:
+            for child in kids:
+                Splitter._walk_id_tree(child, out)
 
 
 __all__ = ["Splitter"]

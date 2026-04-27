@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from pypdfbox.xmpbox import (
+    DateType,
     DomXmpParser,
+    IntegerType,
     PhotoshopSchema,
+    ProperNameType,
+    TextType,
+    URIType,
     XMPMetadata,
 )
 
@@ -245,3 +250,168 @@ def test_dom_parser_dispatches_document_ancestors_bag_onto_typed_schema() -> Non
 def test_dom_parser_get_namespace_table_includes_photoshop() -> None:
     table = DomXmpParser().get_namespace_table()
     assert table.get("photoshop") == "http://ns.adobe.com/photoshop/1.0/"
+
+
+# --- Wave 32: typed *_property accessors -----------------------------
+
+
+def _typed_text_field(metadata: XMPMetadata, name: str, value: str) -> TextType:
+    return TextType(metadata, PhotoshopSchema.NAMESPACE, "photoshop", name, value)
+
+
+def test_ancestor_id_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    assert schema.get_ancestor_id_property() is None
+    field = URIType(
+        metadata, PhotoshopSchema.NAMESPACE, "photoshop", PhotoshopSchema.ANCESTORID, "uuid:1"
+    )
+    schema.set_ancestor_id_property(field)
+    # typed getter returns the same instance.
+    assert schema.get_ancestor_id_property() is field
+    # string-form getter reflects the typed value.
+    assert schema.get_ancestor_id() == "uuid:1"
+    schema.set_ancestor_id_property(None)
+    assert schema.get_ancestor_id_property() is None
+    assert schema.get_ancestor_id() is None
+
+
+def test_authors_position_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    assert schema.get_authors_position_property() is None
+    field = _typed_text_field(metadata, PhotoshopSchema.AUTHORS_POSITION, "Photographer")
+    schema.set_authors_position_property(field)
+    assert schema.get_authors_position_property() is field
+    assert schema.get_authors_position() == "Photographer"
+
+
+def test_caption_writer_typed_round_trip_returns_proper_name_type() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    field = ProperNameType(
+        metadata,
+        PhotoshopSchema.NAMESPACE,
+        "photoshop",
+        PhotoshopSchema.CAPTION_WRITER,
+        "Alice Editor",
+    )
+    schema.set_caption_writer_property(field)
+    typed = schema.get_caption_writer_property()
+    assert typed is field
+    assert isinstance(typed, ProperNameType)
+    assert typed.get_value() == "Alice Editor"
+
+
+def test_simple_text_setter_then_typed_getter_wraps_on_the_fly() -> None:
+    """String-form setter writes a plain string; typed getter wraps it."""
+    schema = PhotoshopSchema(XMPMetadata.create_xmp_metadata())
+    schema.set_city("Paris")
+    typed = schema.get_city_property()
+    assert isinstance(typed, TextType)
+    assert typed.get_value() == "Paris"
+    assert typed.get_property_name() == PhotoshopSchema.CITY
+
+
+def test_color_mode_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    assert schema.get_color_mode_property() is None
+    field = IntegerType(
+        metadata, PhotoshopSchema.NAMESPACE, "photoshop", PhotoshopSchema.COLOR_MODE, 3
+    )
+    schema.set_color_mode_property(field)
+    assert schema.get_color_mode_property() is field
+    # string-form integer getter still returns int.
+    assert schema.get_color_mode() == 3
+
+
+def test_color_mode_typed_getter_wraps_string_storage() -> None:
+    schema = PhotoshopSchema(XMPMetadata.create_xmp_metadata())
+    schema.set_color_mode(4)
+    typed = schema.get_color_mode_property()
+    assert isinstance(typed, IntegerType)
+    assert typed.get_value() == 4
+
+
+def test_date_created_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    assert schema.get_date_created_property() is None
+    field = DateType(
+        metadata,
+        PhotoshopSchema.NAMESPACE,
+        "photoshop",
+        PhotoshopSchema.DATE_CREATED,
+        "2026-04-27T12:00:00Z",
+    )
+    schema.set_date_created_property(field)
+    assert schema.get_date_created_property() is field
+    # String getter surfaces the original string-form storage.
+    assert schema.get_date_created() == field.get_string_value()
+
+
+def test_urgency_typed_round_trip_int_and_string_construction() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    field_int = IntegerType(
+        metadata, PhotoshopSchema.NAMESPACE, "photoshop", PhotoshopSchema.URGENCY, 1
+    )
+    schema.set_urgency_property(field_int)
+    assert schema.get_urgency() == 1
+    assert schema.get_urgency_property() is field_int
+    # IntegerType also accepts decimal strings.
+    field_str = IntegerType(
+        metadata, PhotoshopSchema.NAMESPACE, "photoshop", PhotoshopSchema.URGENCY, "8"
+    )
+    schema.set_urgency_property(field_str)
+    assert schema.get_urgency() == 8
+
+
+def test_typed_property_setter_with_none_clears_property() -> None:
+    schema = PhotoshopSchema(XMPMetadata.create_xmp_metadata())
+    schema.set_city("Paris")
+    schema.set_city_property(None)
+    assert schema.get_city() is None
+    assert schema.get_city_property() is None
+
+
+def test_typed_round_trip_for_all_simple_text_accessors() -> None:
+    """Sweep every simple-Text typed accessor, mirroring upstream's parameter set."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    # Map upstream local-name -> pypdfbox snake_case accessor stem.
+    text_accessors: tuple[tuple[str, str], ...] = (
+        (PhotoshopSchema.AUTHORS_POSITION, "authors_position"),
+        (PhotoshopSchema.CATEGORY, "category"),
+        (PhotoshopSchema.CITY, "city"),
+        (PhotoshopSchema.COUNTRY, "country"),
+        (PhotoshopSchema.CREDIT, "credit"),
+        (PhotoshopSchema.HEADLINE, "headline"),
+        (PhotoshopSchema.HISTORY, "history"),
+        (PhotoshopSchema.ICC_PROFILE, "icc_profile"),
+        (PhotoshopSchema.INSTRUCTIONS, "instructions"),
+        (PhotoshopSchema.SOURCE, "source"),
+        (PhotoshopSchema.STATE, "state"),
+        (PhotoshopSchema.SUPPLEMENTAL_CATEGORIES, "supplemental_categories"),
+        (PhotoshopSchema.TRANSMISSION_REFERENCE, "transmission_reference"),
+    )
+    for name, stem in text_accessors:
+        getter = "get_" + stem + "_property"
+        setter = "set_" + stem + "_property"
+        field = _typed_text_field(metadata, name, f"value-for-{name}")
+        getattr(schema, setter)(field)
+        assert getattr(schema, getter)() is field
+
+
+def test_text_layers_layer_type_migration_deferred() -> None:
+    """
+    LayerType structured-type wrapper has not landed; ``TextLayers`` typed
+    accessors stay deferred. Pinned here so future waves notice the gap.
+    """
+    schema = PhotoshopSchema(XMPMetadata.create_xmp_metadata())
+    # No typed accessor exists yet — generic get_property remains the only way
+    # to introspect the slot.
+    assert schema.get_property(PhotoshopSchema.TEXT_LAYERS) is None
+    assert not hasattr(schema, "set_text_layers")
+    assert not hasattr(schema, "get_text_layers")

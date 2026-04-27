@@ -4,20 +4,27 @@ Ported from Apache PDFBox 3.0:
 
 Upstream's tests rely on a reflection-driven ``SchemaTester`` helper that
 exercises generic ``getXxxProperty`` / ``setXxxProperty`` accessors plus the
-typed ``addProperty(AbstractField)`` machinery. Cluster #1 in pypdfbox stores
-property values as Python primitives (str / list / dict); the typed
-``AbstractField`` hierarchy is deferred. The translation below follows the
-upstream parameterisation (one entry per property) but exercises only the
-behaviors we actually ship: default-null, simple value round-trip, and
-per-type integer/text shape preservation.
+typed ``addProperty(AbstractField)`` machinery. Wave 32 lands the typed
+``*_property`` accessors so the upstream parameterisation can run end-to-end
+against the new wrappers; the translation below covers the simple-cardinality
+parameter rows. ``*InArray`` rows that depend on ``getContainer().getAllProperties()``
+introspection (none for PhotoshopSchema in upstream — the schema has no
+array-cardinality entries) are left as no-op skips with a one-line marker.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from pypdfbox.xmpbox import PhotoshopSchema, XMPMetadata
-
+from pypdfbox.xmpbox import (
+    DateType,
+    IntegerType,
+    PhotoshopSchema,
+    ProperNameType,
+    TextType,
+    URIType,
+    XMPMetadata,
+)
 
 # Upstream initializeParameters() — kept verbatim so future re-syncs are diffable.
 _PARAMETERS: tuple[tuple[str, str, str], ...] = (
@@ -152,37 +159,155 @@ def test_property_setter_simple(metadata: XMPMetadata, field_name: str, type_tok
     assert raw is not None
 
 
-# Upstream ``testSettingValueInArray`` / ``testRandomSettingValueInArray`` /
-# ``testPropertySetterInArray`` / ``testRandomPropertySetterInArray`` /
-# ``testRandomPropertySetterSimple`` / ``testRandomSetterSimple`` all rely on
-# the typed ``AbstractField`` hierarchy and the ``ArrayProperty`` container,
-# neither of which has landed in cluster #1. Skip with a one-line marker so
-# the parity log stays one-to-one with upstream.
-@pytest.mark.skip(reason="cluster #1 defers AbstractField / ArrayProperty hierarchy")
+# --- Wave 32: typed *_property accessors landed --------------------
+#
+# PhotoshopSchema has no array-cardinality simple-typed parameter rows in
+# upstream's parameter set (DocumentAncestors is bag-of-text and exposes its
+# own dedicated accessors, not the typed *_property pair). The upstream
+# ``*InArray`` SchemaTester branches therefore short-circuit on Cardinality
+# checks and never run for PhotoshopSchema; we mirror that with a one-line
+# skip marker so the parity log stays one-to-one with upstream.
+
+# Map upstream PropertyType field names to (typed_getter, typed_setter,
+# wrapper class) for the ``*Property`` form covered by SchemaTester
+# ``testPropertySetterSimple``.
+_TYPED_ACCESSORS: dict[str, tuple[str, str, type]] = {
+    "AncestorID": ("get_ancestor_id_property", "set_ancestor_id_property", URIType),
+    "AuthorsPosition": (
+        "get_authors_position_property",
+        "set_authors_position_property",
+        TextType,
+    ),
+    "CaptionWriter": (
+        "get_caption_writer_property",
+        "set_caption_writer_property",
+        ProperNameType,
+    ),
+    "Category": ("get_category_property", "set_category_property", TextType),
+    "City": ("get_city_property", "set_city_property", TextType),
+    "ColorMode": ("get_color_mode_property", "set_color_mode_property", IntegerType),
+    "Country": ("get_country_property", "set_country_property", TextType),
+    "Credit": ("get_credit_property", "set_credit_property", TextType),
+    "DateCreated": ("get_date_created_property", "set_date_created_property", DateType),
+    "Headline": ("get_headline_property", "set_headline_property", TextType),
+    "History": ("get_history_property", "set_history_property", TextType),
+    "ICCProfile": ("get_icc_profile_property", "set_icc_profile_property", TextType),
+    "Instructions": (
+        "get_instructions_property",
+        "set_instructions_property",
+        TextType,
+    ),
+    "Source": ("get_source_property", "set_source_property", TextType),
+    "State": ("get_state_property", "set_state_property", TextType),
+    "SupplementalCategories": (
+        "get_supplemental_categories_property",
+        "set_supplemental_categories_property",
+        TextType,
+    ),
+    "TransmissionReference": (
+        "get_transmission_reference_property",
+        "set_transmission_reference_property",
+        TextType,
+    ),
+    "Urgency": ("get_urgency_property", "set_urgency_property", IntegerType),
+}
+
+
+def _wrapper_sample_value(type_token: str) -> object:
+    """
+    Pick a sample value the upstream wrapper constructor accepts. ``Date``
+    requires an ISO 8601 string (or :class:`datetime`); the other simple-typed
+    properties accept plain strings (or ints for ``Integer``).
+    """
+    if type_token == "Integer":
+        return 7
+    if type_token == "Date":
+        return "2026-04-27T12:00:00Z"
+    return "sample-value"
+
+
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+def test_property_setter_simple_typed_round_trip(
+    metadata: XMPMetadata, field_name: str, type_token: str, card: str
+) -> None:
+    """
+    Wave 32 typed-property variant of upstream ``testPropertySetterSimple``:
+    instantiate a typed field via the wrapper constructor (the pypdfbox
+    equivalent of ``typeMapping.instanciateSimpleProperty``), call
+    ``setXxxProperty`` and verify the typed getter returns it back. Lives
+    alongside the original-named ``test_property_setter_simple`` (cluster #1's
+    string-form pin) so both shapes stay covered.
+    """
+    del card
+    schema = PhotoshopSchema(metadata)
+    getter_name, setter_name, wrapper_cls = _TYPED_ACCESSORS[field_name]
+    value = _wrapper_sample_value(type_token)
+    field = wrapper_cls(
+        metadata,
+        PhotoshopSchema.NAMESPACE,
+        "photoshop",
+        field_name,
+        value,
+    )
+    getattr(schema, setter_name)(field)
+    stored = schema.get_property(field_name)
+    assert stored is field
+    typed = getattr(schema, getter_name)()
+    assert typed is field
+    # Wrapper class must match upstream's expected implementing class.
+    assert isinstance(typed, wrapper_cls)
+
+
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+def test_random_property_setter_simple(
+    metadata: XMPMetadata, field_name: str, type_token: str, card: str
+) -> None:
+    """
+    Translated from upstream ``testRandomPropertySetterSimple``: upstream
+    runs the simple variant in a loop with random values; we substitute a
+    deterministic alternate sample so the parity coverage stays reproducible
+    and exercise the same typed-property setter path.
+    """
+    del card
+    schema = PhotoshopSchema(metadata)
+    getter_name, setter_name, wrapper_cls = _TYPED_ACCESSORS[field_name]
+    if type_token == "Integer":
+        value: object = 42
+    elif type_token == "Date":
+        value = "1999-12-31T23:59:59Z"
+    else:
+        value = "another-value"
+    field = wrapper_cls(
+        metadata,
+        PhotoshopSchema.NAMESPACE,
+        "photoshop",
+        field_name,
+        value,
+    )
+    getattr(schema, setter_name)(field)
+    assert getattr(schema, getter_name)() is field
+
+
+@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
 def test_setting_value_in_array() -> None:
     pass
 
 
-@pytest.mark.skip(reason="cluster #1 defers AbstractField / ArrayProperty hierarchy")
+@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
 def test_random_setting_value_in_array() -> None:
     pass
 
 
-@pytest.mark.skip(reason="cluster #1 defers AbstractField / ArrayProperty hierarchy")
+@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
 def test_property_setter_in_array() -> None:
     pass
 
 
-@pytest.mark.skip(reason="cluster #1 defers AbstractField / ArrayProperty hierarchy")
+@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
 def test_random_property_setter_in_array() -> None:
     pass
 
 
-@pytest.mark.skip(reason="cluster #1 defers AbstractField / ArrayProperty hierarchy")
-def test_random_property_setter_simple() -> None:
-    pass
-
-
-@pytest.mark.skip(reason="cluster #1 defers AbstractField / ArrayProperty hierarchy")
+@pytest.mark.skip(reason="random sampling collapsed into deterministic typed variant above")
 def test_random_setter_simple() -> None:
     pass

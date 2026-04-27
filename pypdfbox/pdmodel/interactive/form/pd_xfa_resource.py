@@ -3,7 +3,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import ClassVar
 
-from pypdfbox.cos import COSArray, COSBase, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSName, COSStream, COSString
 
 
 class PDXFAResource:
@@ -63,6 +63,45 @@ class PDXFAResource:
         with stream.create_input_stream() as src:
             return src.read()
 
+    def get_xfa_packet(self, name: str) -> bytes | None:
+        """Return the bytes of a single XFA packet by name.
+
+        XFA payloads stored in the tagged-stream array form per
+        ISO 32000-1 §12.7.8 alternate ``[name, stream, name, stream, ...]``
+        where each ``name`` labels the packet that follows (e.g.
+        ``"datasets"``, ``"form"``, ``"config"``, ``"template"``,
+        ``"xdp"``). This helper locates the entry whose label equals
+        ``name`` (matching against ``COSString`` or ``COSName`` labels)
+        and returns the body of the immediately-following ``COSStream``.
+
+        Returns ``None`` when:
+
+        - the XFA entry is not in array form (e.g. a single packed
+          stream), or
+        - no packet labeled ``name`` is present, or
+        - the entry following the matching label is not a stream.
+        """
+        xfa = self._xfa
+        if not isinstance(xfa, COSArray):
+            return None
+        size = xfa.size()
+        # Pairs live at (label = i, stream = i+1). Scan even indices.
+        for i in range(0, size - 1, 2):
+            label = xfa.get_object(i)
+            if isinstance(label, COSString):
+                label_text: str | None = label.get_string()
+            elif isinstance(label, COSName):
+                label_text = label.get_name()
+            else:
+                label_text = None
+            if label_text != name:
+                continue
+            entry = xfa.get_object(i + 1)
+            if isinstance(entry, COSStream):
+                return self._bytes_from_stream(entry)
+            return None
+        return None
+
     def get_document_as_xml(self) -> str:
         """Return the concatenated XFA payload decoded as a UTF-8 string."""
         return self.get_bytes().decode(encoding="utf-8")
@@ -81,6 +120,35 @@ class PDXFAResource:
         if self._document is None:
             self._document = ET.fromstring(self.get_bytes())
         return self._document
+
+    def get_dom_document(self) -> ET.ElementTree | None:
+        """Return the parsed XFA payload as an ``ElementTree`` wrapper.
+
+        Whereas :meth:`get_document` returns the root ``Element`` (and
+        propagates parse errors), this returns a full ``ElementTree``
+        (which carries root + parse context, matching upstream's W3C
+        ``Document`` shape more faithfully) and degrades gracefully:
+
+        - returns ``None`` when the payload is empty (``b""``), and
+        - returns ``None`` when the payload is malformed XML (caught
+          ``ParseError``) — callers that want strict behavior should use
+          :meth:`get_document` instead.
+
+        On success the call also primes :meth:`get_document`'s cache so
+        the two views stay in sync.
+        """
+        data = self.get_bytes()
+        if not data:
+            return None
+        try:
+            root = ET.fromstring(data)
+        except ET.ParseError:
+            return None
+        # Keep the two accessors in sync so either entry point returns
+        # the same parsed Element identity.
+        if self._document is None:
+            self._document = root
+        return ET.ElementTree(self._document)
 
     def is_dynamic(self) -> bool:
         """Detect a dynamic-XFA payload.

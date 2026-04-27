@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
@@ -38,6 +39,10 @@ class PDType0Font(PDFont):
         self._cmap_loaded: bool = False
         self._to_unicode_cmap: CMap | None = None
         self._to_unicode_cmap_loaded: bool = False
+        # Codepoints accumulated by :meth:`add_to_subset`; consumed by
+        # :meth:`subset` on save. Type 0 fonts subset the descendant
+        # CIDFontType2's embedded TrueType program.
+        self._subset_codepoints: set[int] = set()
 
     # ---------- /DescendantFonts ----------
 
@@ -238,6 +243,119 @@ class PDType0Font(PDFont):
         if descendant is None:
             return False
         return descendant.is_embedded()
+
+    # ---------- subsetting ----------
+
+    def add_to_subset(self, code_point: int) -> None:
+        """Register a Unicode codepoint to keep when :meth:`subset` runs.
+
+        Mirrors upstream ``PDType0Font.addToSubset(int)``. The codepoint
+        is the *Unicode* value (not the CID) — :meth:`subset` resolves
+        Unicode → GID via the descendant's embedded cmap.
+        """
+        self._subset_codepoints.add(int(code_point))
+
+    def add_text_to_subset(self, text: str) -> None:
+        """Convenience: register every codepoint of ``text``."""
+        for ch in text:
+            self._subset_codepoints.add(ord(ch))
+
+    def subset(
+        self,
+        text_or_codepoints: str | Iterable[int] | None = None,
+        *,
+        used_chars: Iterable[int] | None = None,
+        prefix: str | None = None,
+    ) -> bytes:
+        """Build a TrueType subset for the descendant CIDFontType2 and
+        embed it on save.
+
+        Mirrors upstream ``PDType0Font.subset()``. The descendant's
+        ``/FontFile2`` is replaced with the freshly-built subset, and a
+        six-letter random tag is prepended to ``/BaseFont`` (on this
+        Type 0 font *and* the descendant's font dictionary) and to
+        ``/FontName`` on the descendant's descriptor — per
+        PDF 32000-1 §9.6.4.
+
+        Raises ``ValueError`` when no descendant CIDFont is present, the
+        descendant lacks an embedded TrueType program, or the descendant
+        is not a CIDFontType2 (CIDFontType0 wraps CFF, not TTF — those
+        subset through a different code path that fontTools does not
+        cover via :class:`TTFSubsetter`).
+        """
+        from pypdfbox.fontbox.ttf import TTFSubsetter
+
+        from .pd_cid_font_type2 import PDCIDFontType2
+        from .pd_true_type_font import (
+            _embed_subset_bytes,
+            _random_subset_tag,
+        )
+
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            raise ValueError(
+                "PDType0Font has no descendant CIDFont; cannot subset"
+            )
+        if not isinstance(descendant, PDCIDFontType2):
+            raise ValueError(
+                "subset() supports only TrueType-backed Type 0 fonts "
+                "(/Subtype /CIDFontType2); got "
+                f"{type(descendant).__name__}"
+            )
+
+        ttf = descendant.get_true_type_font()
+        if ttf is None:
+            raise ValueError(
+                "descendant CIDFontType2 has no embedded /FontFile2; "
+                "cannot subset"
+            )
+
+        codepoints = self._collect_subset_codepoints(text_or_codepoints, used_chars)
+        tag = prefix if prefix is not None else _random_subset_tag()
+
+        subsetter = TTFSubsetter(ttf)
+        subsetter.add_all(codepoints)
+        subsetter.set_prefix(tag)
+        subset_bytes = subsetter.to_bytes()
+
+        # Embed onto the descendant (where /FontFile2 lives).
+        _embed_subset_bytes(descendant, subset_bytes, tag)
+        # Mirror the tag onto our own /BaseFont — per PDF 32000-1 §9.7.6.2
+        # the parent and descendant must share the tagged PostScript name.
+        from .pd_true_type_font import _BASE_FONT  # noqa: PLC0415
+
+        current_base = self.get_name()
+        if current_base:
+            if (
+                len(current_base) >= 7
+                and current_base[6] == "+"
+                and current_base[:6].isalpha()
+                and current_base[:6].isupper()
+            ):
+                new_base = current_base
+            else:
+                new_base = f"{tag}+{current_base}"
+            self.get_cos_object().set_name(_BASE_FONT, new_base)
+
+        # Drop the descendant's parsed-TTF cache so subsequent metric
+        # lookups re-read the subset bytes.
+        descendant._ttf = None  # noqa: SLF001
+        self._subset_codepoints.clear()
+        return subset_bytes
+
+    def _collect_subset_codepoints(
+        self,
+        text_or_codepoints: str | Iterable[int] | None,
+        used_chars: Iterable[int] | None,
+    ) -> set[int]:
+        codepoints: set[int] = set(self._subset_codepoints)
+        if isinstance(text_or_codepoints, str):
+            codepoints.update(ord(ch) for ch in text_or_codepoints)
+        elif text_or_codepoints is not None:
+            codepoints.update(int(cp) for cp in text_or_codepoints)
+        if used_chars is not None:
+            codepoints.update(int(cp) for cp in used_chars)
+        return codepoints
 
 
 __all__ = ["PDType0Font"]

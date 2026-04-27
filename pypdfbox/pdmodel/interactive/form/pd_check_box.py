@@ -94,5 +94,24 @@ class PDCheckBox(PDButton):
     def un_check(self) -> None:
         self.set_value("Off")
 
+    # ---------- /V + appearance ----------
+
+    def set_value(
+        self, value: str | None, regenerate_appearance: bool = False
+    ) -> None:
+        """Set the field's ``/V`` value.
+
+        When ``regenerate_appearance=True``, also rebuilds each widget's
+        ``/AP /N`` two-state on/off appearance subdictionary via
+        :class:`PDAppearanceGenerator` and syncs ``/AS`` to either the
+        on-state name or ``/Off``. The default (``False``) preserves the
+        historical lite-port behaviour of writing the value alone.
+        """
+        super().set_value(value)
+        if regenerate_appearance:
+            from .pd_appearance_generator import PDAppearanceGenerator
+
+            PDAppearanceGenerator().generate(self)
+
 
 __all__ = ["PDCheckBox"]

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import logging
+import secrets
+import string
+from collections.abc import Iterable
 from typing import Any
 
-from pypdfbox.cos import COSDictionary
-from pypdfbox.fontbox.ttf import TrueTypeFont
+from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.fontbox.ttf import TrueTypeFont, TTFSubsetter
 
 from .pd_simple_font import PDSimpleFont
 
 _LOG = logging.getLogger(__name__)
+
+_BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
 
 
 class PDTrueTypeFont(PDSimpleFont):
@@ -23,6 +28,10 @@ class PDTrueTypeFont(PDSimpleFont):
         self._ttf: TrueTypeFont | None | bool = None
         self._cmap_subtable = None
         self._cmap_resolved: bool = False
+        # Codepoints accumulated by :meth:`add_to_subset` during text
+        # rendering / construction; consumed by :meth:`subset` on save.
+        # ``.notdef`` (GID 0) is implicitly preserved by the subsetter.
+        self._subset_codepoints: set[int] = set()
 
     # ---------- font identity ----------
 
@@ -74,6 +83,86 @@ class PDTrueTypeFont(PDSimpleFont):
         that already have the font program in hand (avoids a redundant
         re-parse) and by tests that bypass ``/FontFile2``."""
         self._ttf = ttf if ttf is not None else False
+
+    # ---------- subsetting ----------
+
+    def add_to_subset(self, code_point: int) -> None:
+        """Register a Unicode codepoint to keep when :meth:`subset` runs.
+
+        Mirrors upstream ``PDTrueTypeFont.addToSubset(int)``. Idempotent;
+        callers (typically the text-rendering pipeline) may register the
+        same codepoint many times. The accumulated set is consumed (and
+        cleared) by :meth:`subset`.
+        """
+        self._subset_codepoints.add(int(code_point))
+
+    def add_text_to_subset(self, text: str) -> None:
+        """Convenience: register every codepoint of ``text``."""
+        for ch in text:
+            self._subset_codepoints.add(ord(ch))
+
+    def subset(
+        self,
+        text_or_codepoints: str | Iterable[int] | None = None,
+        *,
+        used_chars: Iterable[int] | None = None,
+        prefix: str | None = None,
+    ) -> bytes:
+        """Build a TrueType subset for this font and embed it on save.
+
+        Mirrors upstream ``PDTrueTypeFont.subset()``. Resolves the source
+        TrueType program (the parsed embedded ``/FontFile2``), builds a
+        :class:`TTFSubsetter`, registers the requested codepoints (any
+        combination of ``text_or_codepoints``, ``used_chars``, and
+        previously-accumulated :meth:`add_to_subset` calls), generates
+        the subset bytes, embeds them back into the descriptor's
+        ``/FontFile2`` stream, and prepends a six-letter random tag to
+        ``/BaseFont`` and the descriptor's ``/FontName`` per
+        PDF 32000-1 §9.6.4. Returns the subset font bytes.
+
+        Raises ``ValueError`` when the font has no parsed TrueType program
+        to subset (no ``/FontFile2`` and no ``set_true_type_font`` call).
+        """
+        codepoints = self._collect_subset_codepoints(text_or_codepoints, used_chars)
+
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            raise ValueError(
+                "cannot subset PDTrueTypeFont without an embedded /FontFile2 "
+                "(or a TrueTypeFont injected via set_true_type_font)"
+            )
+
+        tag = prefix if prefix is not None else _random_subset_tag()
+        subsetter = TTFSubsetter(ttf)
+        subsetter.add_all(codepoints)
+        subsetter.set_prefix(tag)
+        subset_bytes = subsetter.to_bytes()
+
+        _embed_subset_bytes(self, subset_bytes, tag)
+        # Drop our local TTF cache so subsequent get_true_type_font calls
+        # reparse the *subset* bytes — keeps glyph metrics consistent
+        # with what's now on disk.
+        self._ttf = None
+        self._cmap_subtable = None
+        self._cmap_resolved = False
+        # Consume the accumulated set — callers re-register codepoints
+        # for the next save cycle if they want to subset again.
+        self._subset_codepoints.clear()
+        return subset_bytes
+
+    def _collect_subset_codepoints(
+        self,
+        text_or_codepoints: str | Iterable[int] | None,
+        used_chars: Iterable[int] | None,
+    ) -> set[int]:
+        codepoints: set[int] = set(self._subset_codepoints)
+        if isinstance(text_or_codepoints, str):
+            codepoints.update(ord(ch) for ch in text_or_codepoints)
+        elif text_or_codepoints is not None:
+            codepoints.update(int(cp) for cp in text_or_codepoints)
+        if used_chars is not None:
+            codepoints.update(int(cp) for cp in used_chars)
+        return codepoints
 
     # ---------- glyph widths ----------
 
@@ -332,6 +421,85 @@ def _glyph_bbox_height(ttf: TrueTypeFont, gid: int) -> float:
         return float(y_max - y_min)
     except Exception:  # noqa: BLE001
         return 0.0
+
+
+def _random_subset_tag() -> str:
+    """Return a fresh six-uppercase-letter PDF subset tag.
+
+    Per PDF 32000-1 §9.6.4 the tag is six uppercase ASCII letters chosen
+    arbitrarily. We use ``secrets`` so concurrent subsetters in the same
+    process don't collide on a deterministic seed.
+    """
+    alphabet = string.ascii_uppercase
+    return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def _embed_subset_bytes(
+    font: Any,
+    subset_bytes: bytes,
+    tag: str,
+) -> None:
+    """Embed ``subset_bytes`` into ``font``'s ``/FontFile2`` stream and
+    rename ``/BaseFont`` / ``/FontName`` with the six-letter ``tag``.
+
+    Shared between :class:`PDTrueTypeFont` and the Type 0 / CIDFontType2
+    subset path, where the dictionary surface is identical (a font dict
+    with ``/BaseFont`` plus a descriptor with ``/FontName`` and
+    ``/FontFile2``).
+    """
+    descriptor = font.get_font_descriptor()
+    if descriptor is None:
+        # Caller invariant: subset() guarantees we found a TTF, which
+        # means the descriptor existed at lookup time. Defensive guard
+        # in case a caller mutates state mid-subset.
+        raise ValueError("font has no /FontDescriptor; cannot embed subset")
+
+    # Replace /FontFile2 contents in-place when one already exists, so
+    # any existing object reference (e.g. shared with another font) keeps
+    # pointing at the same COSStream instance. Otherwise create a fresh
+    # stream and attach it to the descriptor.
+    existing = descriptor.get_font_file2()
+    if existing is not None:
+        cos_stream = existing.get_cos_object()
+        # Drop any pre-existing /Filter — set_raw_data writes the raw
+        # body; without clearing the filter chain, downstream readers
+        # would attempt to FlateDecode an already-uncompressed TTF.
+        cos_stream.remove_item(COSName.FILTER)  # type: ignore[attr-defined]
+        cos_stream.set_raw_data(subset_bytes)
+    else:
+        new_stream = COSStream()
+        new_stream.set_raw_data(subset_bytes)
+        descriptor.set_font_file2(new_stream)
+
+    # Update /BaseFont — prepend the six-letter tag if it isn't already
+    # carrying one (mirrors :meth:`TTFSubsetter._apply_prefix`).
+    current_base = font.get_name()
+    if current_base:
+        if (
+            len(current_base) >= 7
+            and current_base[6] == "+"
+            and current_base[:6].isalpha()
+            and current_base[:6].isupper()
+        ):
+            new_base = current_base  # already tagged
+        else:
+            new_base = f"{tag}+{current_base}"
+        font.get_cos_object().set_name(_BASE_FONT, new_base)
+
+    # Mirror onto /FontName so the descriptor agrees with /BaseFont
+    # (PDF 32000-1 §9.8.2 requires the two to match, including the tag).
+    current_font_name = descriptor.get_font_name()
+    if current_font_name:
+        if (
+            len(current_font_name) >= 7
+            and current_font_name[6] == "+"
+            and current_font_name[:6].isalpha()
+            and current_font_name[:6].isupper()
+        ):
+            new_font_name = current_font_name
+        else:
+            new_font_name = f"{tag}+{current_font_name}"
+        descriptor.set_font_name(new_font_name)
 
 
 __all__ = ["PDTrueTypeFont"]

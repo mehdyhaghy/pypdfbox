@@ -11,13 +11,10 @@ implement and are explicitly skipped:
   enumerable ``PDDocumentNameDictionary``; the ``-addFileName`` and
   basic ``-console`` semantics are still covered against a hand-built
   fixture below.
-* ``testRotationMagic`` — needs the ``AngleCollector`` /
-  ``FilteredTextStripper`` cluster (``-rotationMagic``), which pypdfbox
-  has chosen not to port. See ``CHANGES.md``.
 
-The two scenarios we *can* faithfully reproduce — ``-console`` round-trip
-and ``-addFileName`` prefix — are translated into pytest below using a
-locally built single-page fixture (no upstream binary required).
+The ``-console`` round-trip, ``-addFileName`` prefix, and
+``-rotationMagic`` paths are translated into pytest below using
+locally-built fixtures (no upstream binary required).
 """
 from __future__ import annotations
 
@@ -126,7 +123,41 @@ def test_outfile_append(tmp_path: Path) -> None:
     assert f"PDF file: {pdf2}" in text
 
 
-def test_rotation_magic_skipped() -> None:
-    """upstream: testRotationMagic — pypdfbox does not implement
-    ``-rotationMagic``; recorded here as an explicit skip."""
-    pytest.skip("rotationMagic deferred — needs FilteredTextStripper port")
+def _build_mixed_rotation_pdf(path: Path) -> Path:
+    """Single-page PDF carrying ``Horizontal Text`` at 0 degrees and
+    ``Vertical Text`` at 90 degrees, mirroring the upstream
+    ``AngledExample.pdf`` fixture (which we cannot ship).
+    """
+    doc = PDDocument()
+    try:
+        page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+        stream = COSStream()
+        # Two text objects: one upright, one rotated 90 degrees.
+        body = (
+            b"BT /F0 12 Tf 1 0 0 1 100 700 Tm (Horizontal Text) Tj ET\n"
+            b"BT /F0 12 Tf 0 1 -1 0 200 500 Tm (Vertical Text) Tj ET\n"
+        )
+        stream.set_data(body)
+        page.set_contents(stream)
+        doc.add_page(page)
+        doc.save(path)
+    finally:
+        doc.close()
+    return path
+
+
+# upstream: testRotationMagic
+def test_rotation_magic(tmp_path: Path) -> None:
+    """``-rotationMagic`` should pull both upright and rotated text out of
+    a page that mixes orientations. Mirrors upstream's ``testRotationMagic``
+    using a hand-built fixture in place of ``AngledExample.pdf``.
+    """
+    pdf = _build_mixed_rotation_pdf(tmp_path / "angled.pdf")
+    out = tmp_path / "outfile.txt"
+    rc = cli.run_cli(
+        ["extracttext", "-rotationMagic", "-i", str(pdf), "-o", str(out)]
+    )
+    assert rc == 0
+    text = out.read_text(encoding="utf-8")
+    assert "Horizontal Text" in text
+    assert "Vertical Text" in text

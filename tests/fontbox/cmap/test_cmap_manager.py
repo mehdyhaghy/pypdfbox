@@ -176,6 +176,227 @@ class TestCacheAndMissing:
 
 
 # ---------------------------------------------------------------------- #
+# Bundled CJK encoding CMaps — H/V pairs (Wave 32)                       #
+#                                                                        #
+# Each entry asserts: the CMap loads, has the expected metadata          #
+# (registry / ordering / supplement / wmode), the codespace structure    #
+# is right (via ``code_length_at`` on a representative leading byte),    #
+# and a known multi-byte code resolves to the expected CID. Probe codes  #
+# were chosen to be stable upstream-published mappings (e.g. ASCII / CJK #
+# Unified Ideograph U+4E00 / first GB / Big5 / Shift_JIS / KSC code).    #
+# ---------------------------------------------------------------------- #
+
+
+_ENCODING_CMAP_METADATA = {
+    # name: (registry, ordering, supplement, wmode)
+    "UniCNS-UTF16-H": ("Adobe", "CNS1", 6, 0),
+    "UniCNS-UTF16-V": ("Adobe", "CNS1", 6, 1),
+    "UniGB-UTF16-H": ("Adobe", "GB1", 5, 0),
+    "UniGB-UTF16-V": ("Adobe", "GB1", 5, 1),
+    "UniJIS-UTF16-H": ("Adobe", "Japan1", 6, 0),
+    "UniJIS-UTF16-V": ("Adobe", "Japan1", 6, 1),
+    "UniKS-UTF16-H": ("Adobe", "Korea1", 1, 0),
+    "UniKS-UTF16-V": ("Adobe", "Korea1", 1, 1),
+    "GB-EUC-H": ("Adobe", "GB1", 0, 0),
+    "GB-EUC-V": ("Adobe", "GB1", 0, 1),
+    "B5pc-H": ("Adobe", "CNS1", 0, 0),
+    "B5pc-V": ("Adobe", "CNS1", 0, 1),
+    "90ms-RKSJ-H": ("Adobe", "Japan1", 2, 0),
+    "90ms-RKSJ-V": ("Adobe", "Japan1", 2, 1),
+    "KSC-EUC-H": ("Adobe", "Korea1", 0, 0),
+    "KSC-EUC-V": ("Adobe", "Korea1", 0, 1),
+}
+
+
+class TestBundledEncodingCMaps:
+    @pytest.mark.parametrize("name", list(_ENCODING_CMAP_METADATA.keys()))
+    def test_loads_with_expected_name(self, name):
+        cmap = CMapManager.get_predefined_cmap(name)
+        assert cmap is not None
+        assert cmap.get_name() == name
+
+    @pytest.mark.parametrize(
+        "name,expected", list(_ENCODING_CMAP_METADATA.items())
+    )
+    def test_metadata(self, name, expected):
+        registry, ordering, supplement, wmode = expected
+        cmap = CMapManager.get_predefined_cmap(name)
+        assert cmap is not None
+        assert cmap.get_registry() == registry
+        assert cmap.get_ordering() == ordering
+        assert cmap.get_supplement() == supplement
+        assert cmap.get_wmode() == wmode
+
+
+class TestUniCNSUTF16H:
+    """``UniCNS-UTF16-H`` — UTF-16 → Adobe-CNS1 (Traditional Chinese)."""
+
+    def test_codespace_is_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("UniCNS-UTF16-H")
+        assert cmap is not None
+        # Full UTF-16 plane: every leading byte yields a 2-byte code.
+        assert cmap.code_length_at(0x21) == 2
+        assert cmap.code_length_at(0xA1) == 2
+        assert cmap.code_length_at(0x4E) == 2
+
+    def test_ascii_space_maps_to_cid_1(self):
+        cmap = CMapManager.get_predefined_cmap("UniCNS-UTF16-H")
+        assert cmap is not None
+        # Adobe-CNS1: U+0020 → CID 1.
+        assert cmap.to_cid(0x0020) == 1
+
+    def test_cjk_ideograph_one_maps(self):
+        cmap = CMapManager.get_predefined_cmap("UniCNS-UTF16-H")
+        assert cmap is not None
+        # U+4E00 (一) → CID 595 in Adobe-CNS1.
+        assert cmap.to_cid(0x4E00) == 595
+
+
+class TestUniGBUTF16H:
+    """``UniGB-UTF16-H`` — UTF-16 → Adobe-GB1 (Simplified Chinese)."""
+
+    def test_codespace_is_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("UniGB-UTF16-H")
+        assert cmap is not None
+        assert cmap.code_length_at(0x21) == 2
+
+    def test_cjk_ideograph_one_maps(self):
+        cmap = CMapManager.get_predefined_cmap("UniGB-UTF16-H")
+        assert cmap is not None
+        # U+4E00 (一) → CID 4162 in Adobe-GB1.
+        assert cmap.to_cid(0x4E00) == 4162
+
+
+class TestUniJISUTF16H:
+    """``UniJIS-UTF16-H`` — UTF-16 → Adobe-Japan1."""
+
+    def test_codespace_is_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("UniJIS-UTF16-H")
+        assert cmap is not None
+        assert cmap.code_length_at(0x21) == 2
+
+    def test_cjk_ideograph_one_maps(self):
+        cmap = CMapManager.get_predefined_cmap("UniJIS-UTF16-H")
+        assert cmap is not None
+        # U+4E00 → CID 1200 in Adobe-Japan1.
+        assert cmap.to_cid(0x4E00) == 1200
+
+
+class TestUniKSUTF16H:
+    """``UniKS-UTF16-H`` — UTF-16 → Adobe-Korea1."""
+
+    def test_codespace_is_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("UniKS-UTF16-H")
+        assert cmap is not None
+        assert cmap.code_length_at(0x21) == 2
+
+    def test_cjk_ideograph_one_maps(self):
+        cmap = CMapManager.get_predefined_cmap("UniKS-UTF16-H")
+        assert cmap is not None
+        # U+4E00 → CID 6460 in Adobe-Korea1.
+        assert cmap.to_cid(0x4E00) == 6460
+
+
+class TestGBEUCH:
+    """``GB-EUC-H`` — GB 2312-80 EUC encoding → Adobe-GB1."""
+
+    def test_codespace_is_mixed_one_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("GB-EUC-H")
+        assert cmap is not None
+        # ASCII range: 1 byte; high-byte lead 0xA1 starts a 2-byte code.
+        assert cmap.code_length_at(0x21) == 1
+        assert cmap.code_length_at(0xA1) == 2
+
+    def test_first_gb_two_byte_code(self):
+        cmap = CMapManager.get_predefined_cmap("GB-EUC-H")
+        assert cmap is not None
+        # GB-EUC: 0xA1A1 (full-width space) → CID 96.
+        assert cmap.to_cid(0xA1A1) == 96
+        # 0xA1A2 → CID 97 (sequential mapping).
+        assert cmap.to_cid(0xA1A2) == 97
+
+
+class TestB5pcH:
+    """``B5pc-H`` — Big5 (Mac OS Traditional Chinese) → Adobe-CNS1."""
+
+    def test_codespace_is_mixed_one_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("B5pc-H")
+        assert cmap is not None
+        assert cmap.code_length_at(0x21) == 1
+        assert cmap.code_length_at(0xA1) == 2
+
+    def test_first_big5_codes(self):
+        cmap = CMapManager.get_predefined_cmap("B5pc-H")
+        assert cmap is not None
+        # Big5 0xA1A1 → CID 162 (first non-ASCII Big5 row leader).
+        assert cmap.to_cid(0xA1A1) == 162
+        assert cmap.to_cid(0xA1A2) == 163
+        # Big5 0xA440 → CID 595 (start of common-use ideographs).
+        assert cmap.to_cid(0xA440) == 595
+
+
+class Test90msRKSJH:
+    """``90ms-RKSJ-H`` — Microsoft Shift_JIS → Adobe-Japan1."""
+
+    def test_codespace_includes_shift_jis_lead(self):
+        cmap = CMapManager.get_predefined_cmap("90ms-RKSJ-H")
+        assert cmap is not None
+        # ASCII range: 1 byte.
+        assert cmap.code_length_at(0x21) == 1
+        # Shift_JIS first lead-byte block 0x81-0x9F: 2 bytes.
+        assert cmap.code_length_at(0x81) == 2
+        # Half-width katakana 0xA1-0xDF: 1 byte.
+        assert cmap.code_length_at(0xA1) == 1
+
+    def test_shift_jis_two_byte_code(self):
+        cmap = CMapManager.get_predefined_cmap("90ms-RKSJ-H")
+        assert cmap is not None
+        # Shift_JIS 0x8140 (full-width space) → CID 633 in Adobe-Japan1.
+        assert cmap.to_cid(0x8140) == 633
+
+
+class TestKSCEUCH:
+    """``KSC-EUC-H`` — KS X 1001 EUC → Adobe-Korea1."""
+
+    def test_codespace_is_mixed_one_two_byte(self):
+        cmap = CMapManager.get_predefined_cmap("KSC-EUC-H")
+        assert cmap is not None
+        assert cmap.code_length_at(0x21) == 1
+        assert cmap.code_length_at(0xA1) == 2
+
+    def test_first_ksc_two_byte_codes(self):
+        cmap = CMapManager.get_predefined_cmap("KSC-EUC-H")
+        assert cmap is not None
+        # KSC 0xA1A1 → CID 101 (first KS X 1001 row leader).
+        assert cmap.to_cid(0xA1A1) == 101
+        assert cmap.to_cid(0xA1A2) == 102
+
+
+class TestVariantsInheritFromHorizontal:
+    """V variants ``usecmap`` their H counterparts. Verify a known H
+    mapping is reachable through the V cmap (proves usecmap recursion
+    succeeded against the bundled resource set)."""
+
+    @pytest.mark.parametrize(
+        "v_name,probe_code,expected_cid",
+        [
+            ("UniCNS-UTF16-V", 0x4E00, 595),
+            ("UniGB-UTF16-V", 0x4E00, 4162),
+            ("UniJIS-UTF16-V", 0x4E00, 1200),
+            ("UniKS-UTF16-V", 0x4E00, 6460),
+            ("GB-EUC-V", 0xA1A1, 96),
+            ("B5pc-V", 0xA1A1, 162),
+            ("90ms-RKSJ-V", 0x8140, 633),
+            ("KSC-EUC-V", 0xA1A1, 101),
+        ],
+    )
+    def test_inherited_h_mapping(self, v_name, probe_code, expected_cid):
+        cmap = CMapManager.get_predefined_cmap(v_name)
+        assert cmap is not None
+        assert cmap.to_cid(probe_code) == expected_cid
+
+
+# ---------------------------------------------------------------------- #
 # parse_cmap — arbitrary-input parser hook                               #
 # ---------------------------------------------------------------------- #
 

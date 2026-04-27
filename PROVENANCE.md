@@ -788,3 +788,49 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/pdmodel/graphics/image/upstream/test_lossless_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactoryTest.java` (rendering-comparison parts skipped) |
 | `tests/multipdf/upstream/test_pdf_merger_utility.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/PDFMergerUtilityTest.java` (4 active + 25 skipped — rendering / fixture-dependent) |
 | `tests/fontbox/ttf/upstream/test_ttf_subsetter.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/TTFSubsetterTest.java` (4 active + 5 skipped — system-font / `forceInvisible`) |
+
+### Wave 32 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/xmpbox/type/abstract_structured_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AbstractStructuredType.java` (+ `AbstractComplexProperty.java` + `ComplexPropertyContainer.java` folded in) |
+| `pypdfbox/xmpbox/type/rational_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/RationalType.java` |
+| `pypdfbox/xmpbox/type/dimensions_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/DimensionsType.java` |
+| `pypdfbox/xmpbox/type/colorant_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ColorantType.java` |
+| `pypdfbox/xmpbox/type/font_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/FontType.java` |
+| `pypdfbox/xmpbox/type/resource_ref_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ResourceRefType.java` |
+| `pypdfbox/xmpbox/type/resource_event_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ResourceEventType.java` |
+| `pypdfbox/xmpbox/type/thumbnail_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ThumbnailType.java` |
+| `pypdfbox/xmpbox/type/layer_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/LayerType.java` |
+| `pypdfbox/xmpbox/type/job_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/JobType.java` (promoted to real `AbstractStructuredType`; lite cluster-#1 form retained as alias) |
+| `pypdfbox/fontbox/cff/type1_char_string.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/Type1CharString.java` (API surface only — opcode interpretation delegated to `fontTools.misc.psCharStrings.T1CharString`) |
+| `pypdfbox/fontbox/afm/afm_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/AFMParser.java` |
+| `pypdfbox/fontbox/afm/font_metrics.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/FontMetrics.java` |
+| `pypdfbox/fontbox/afm/char_metric.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/CharMetric.java` |
+| `pypdfbox/fontbox/afm/kern_pair.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/KernPair.java` |
+| `pypdfbox/fontbox/afm/ligature.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/Ligature.java` |
+| `pypdfbox/fontbox/afm/composite.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/Composite.java` |
+| `pypdfbox/fontbox/afm/composite_part.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/CompositePart.java` |
+| `pypdfbox/fontbox/afm/track_kern.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/TrackKern.java` |
+| `pypdfbox/text/filtered_text_stripper.py` | 3.0.x | derived from `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/ExtractText.java#getAngle` + `AngleCollector` / `FilteredTextStripper` inner classes |
+| `pypdfbox/fontbox/cmap/resources/UniCNS-UTF16-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniCNS-UTF16-H` |
+| `pypdfbox/fontbox/cmap/resources/UniCNS-UTF16-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniCNS-UTF16-V` |
+| `pypdfbox/fontbox/cmap/resources/UniGB-UTF16-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniGB-UTF16-H` |
+| `pypdfbox/fontbox/cmap/resources/UniGB-UTF16-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniGB-UTF16-V` |
+| `pypdfbox/fontbox/cmap/resources/UniJIS-UTF16-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniJIS-UTF16-H` |
+| `pypdfbox/fontbox/cmap/resources/UniJIS-UTF16-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniJIS-UTF16-V` |
+| `pypdfbox/fontbox/cmap/resources/UniKS-UTF16-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniKS-UTF16-H` |
+| `pypdfbox/fontbox/cmap/resources/UniKS-UTF16-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/UniKS-UTF16-V` |
+| `pypdfbox/fontbox/cmap/resources/GB-EUC-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/GB-EUC-H` |
+| `pypdfbox/fontbox/cmap/resources/GB-EUC-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/GB-EUC-V` |
+| `pypdfbox/fontbox/cmap/resources/B5pc-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/B5pc-H` |
+| `pypdfbox/fontbox/cmap/resources/B5pc-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/B5pc-V` |
+| `pypdfbox/fontbox/cmap/resources/90ms-RKSJ-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/90ms-RKSJ-H` |
+| `pypdfbox/fontbox/cmap/resources/90ms-RKSJ-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/90ms-RKSJ-V` |
+| `pypdfbox/fontbox/cmap/resources/KSC-EUC-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/KSC-EUC-H` |
+| `pypdfbox/fontbox/cmap/resources/KSC-EUC-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/KSC-EUC-V` |
+| `tests/xmpbox/type/upstream/test_abstract_structured_type.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestAbstractStructuredType.java` |
+| `tests/xmpbox/type/upstream/test_structured_type.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestStructuredType.java` |
+| `tests/xmpbox/upstream/test_xmp_basic_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPBasicTest.java` |
+| `tests/xmpbox/upstream/test_dublin_core_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/DublinCoreTest.java` |
+| `tests/fontbox/afm/upstream/test_afm_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/AFMParserTest.java` |

@@ -13,8 +13,6 @@ Skipped flags (require subsystems pypdfbox does not yet ship):
 
 * ``-html``  — needs ``PDFText2HTML``.
 * ``-md``    — needs ``PDFText2Markdown``.
-* ``-rotationMagic`` — needs the AngleCollector / FilteredTextStripper
-  cluster.
 * ``-debug`` — upstream uses it to log timings; we leave that to callers.
 * ``-alwaysNext`` — error-recovery flag for a multi-page extraction loop;
   pypdfbox's stripper already raises rather than aborting silently, so
@@ -44,7 +42,7 @@ from typing import IO, Iterator, TextIO
 
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
-from pypdfbox.text import PDFTextStripper
+from pypdfbox.text import AngleCollector, FilteredTextStripper, PDFTextStripper
 
 _STD_ENCODING = "UTF-8"
 
@@ -102,6 +100,14 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         "-append", "--append", dest="append", action="store_true",
         help="append to the output file instead of overwriting it",
     )
+    p.add_argument(
+        "-rotationMagic", "--rotationMagic", dest="rotation_magic",
+        action="store_true",
+        help=(
+            "analyse each page for rotated/skewed text and emit the runs "
+            "for each rotation in turn (uses FilteredTextStripper)"
+        ),
+    )
     p.set_defaults(func=run)
 
 
@@ -140,6 +146,7 @@ def extract_text(
     start_page: int = 1,
     end_page: int = sys.maxsize,
     sort: bool = False,
+    rotation_magic: bool = False,
 ) -> None:
     """Run ``PDFTextStripper`` over ``document`` and write the resulting
     text into ``output`` (any file-like object with a ``.write(str)``).
@@ -148,15 +155,65 @@ def extract_text(
     ``setSortByPosition`` / ``setStartPage`` / ``setEndPage`` calls from
     ``call``. Page bounds are clamped to ``[1, document.page_count]``,
     matching upstream's ``Math.min(endPage, getNumberOfPages())``.
+
+    When ``rotation_magic`` is set, each page is first scanned by an
+    :class:`~pypdfbox.text.AngleCollector` to discover the rotations
+    actually used; then a :class:`~pypdfbox.text.FilteredTextStripper`
+    runs once per discovered angle, emitting only text whose text matrix
+    matches that rotation. Output preserves the upstream ordering: angle
+    0 first, then 90, 180, 270 (rotation values are sorted ascending).
     """
-    stripper = PDFTextStripper()
-    stripper.set_sort_by_position(bool(sort))
     total = document.get_number_of_pages()
     first = max(1, int(start_page))
     last = min(int(end_page), total)
+    if rotation_magic:
+        _extract_text_rotation_magic(
+            document, output, first=first, last=last, sort=bool(sort)
+        )
+        return
+    stripper = PDFTextStripper()
+    stripper.set_sort_by_position(bool(sort))
     stripper.set_start_page(first)
     stripper.set_end_page(last)
     output.write(stripper.get_text(document))
+
+
+def _extract_text_rotation_magic(
+    document: PDDocument, output, *, first: int, last: int, sort: bool,
+) -> None:
+    """Per-page rotation-aware extraction loop.
+
+    Mirrors the ``rotationMagic`` branch of upstream
+    ``ExtractText.extractPages``: for every page in ``[first, last]``,
+    discover the rotations present via :class:`AngleCollector`, then run
+    :class:`FilteredTextStripper` once per rotation. Upstream prepends a
+    ``cm`` to the content stream to "un-rotate" the page before each
+    pass; pypdfbox's lite stripper checks the text-matrix angle directly
+    on emit, so the prepend dance is unnecessary.
+    """
+    if first > last:
+        return
+    for page_number in range(first, last + 1):
+        collector = AngleCollector()
+        collector.set_sort_by_position(sort)
+        collector.set_start_page(page_number)
+        collector.set_end_page(page_number)
+        # Run the collector for its side effect of populating the angle
+        # set; the text it returns is intentionally discarded.
+        collector.get_text(document)
+        angles = sorted(collector.get_angles())
+        if not angles:
+            # Upstream still calls ``writeText`` even when no glyphs were
+            # seen so the page-start/page-end markers fire. Run a
+            # zero-target stripper on the page so the output shape
+            # matches the non-rotation-magic path.
+            angles = [0]
+        for angle in angles:
+            stripper = FilteredTextStripper(target_angle=angle)
+            stripper.set_sort_by_position(sort)
+            stripper.set_start_page(page_number)
+            stripper.set_end_page(page_number)
+            output.write(stripper.get_text(document))
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +260,7 @@ def run(args: argparse.Namespace) -> int:
                 start_page=args.start_page,
                 end_page=args.end_page,
                 sort=args.sort,
+                rotation_magic=args.rotation_magic,
             )
     finally:
         doc.close()

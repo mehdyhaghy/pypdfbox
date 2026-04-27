@@ -102,6 +102,13 @@ class _GState:
     # A PIL "L" image of the same size as the canvas, or None for "no clip".
     # Each pixel is the alpha multiplier (0 = clipped out, 255 = fully visible).
     clip_mask: Any | None = field(default=None)
+    # ---- blend mode (PDF 32000-1 §11.3.5) ----
+    # Active /BM from ExtGState (set via the ``gs`` operator). ``None`` means
+    # the spec-default ``Normal`` (plain alpha-over). Only the separable
+    # blend modes (§11.3.5.1) are honoured by the lite renderer; the
+    # non-separable HSL family (§11.3.5.2) falls back to ``Normal`` with a
+    # one-time debug log inside ``_blend``.
+    blend_mode: Any | None = None
 
     def clone(self) -> _GState:
         # ``replace`` would re-share the field defaults — manually copy mutable
@@ -124,6 +131,7 @@ class _GState:
             text_rise=self.text_rise,
             text_horizontal_scaling=self.text_horizontal_scaling,
             clip_mask=self.clip_mask,
+            blend_mode=self.blend_mode,
         )
 
 
@@ -239,6 +247,12 @@ class PDFRenderer(PDFStreamEngine):
         # PDFont instances pointing at the same dict still warrant separate
         # warnings (different content streams may have referenced them).
         self._warned_standard14_fonts: set[int] = set()
+        # Cache of resolved fallback FontBoxFont programs (Standard 14 /
+        # system substitutes) for fonts whose own program isn't embedded.
+        # Keyed by ``id(font)``; ``None`` means "we tried and the mapper
+        # had nothing", so we don't re-walk the mapper per-glyph. Filled
+        # by ``_resolve_font_program`` (PDF 32000-1 §9.8 / §9.10).
+        self._font_program_cache: dict[int, Any | None] = {}
         # ---- public render-config flags (mirror upstream PDFRenderer) ----
         # These are stored only — the lite renderer doesn't yet consult them,
         # but downstream tooling that ports from PDFBox calls these setters
@@ -247,6 +261,17 @@ class PDFRenderer(PDFStreamEngine):
         self._subsampling_allowed: bool = False
         self._default_destination: str = "View"
         self._image_downscaling_optimization_threshold: float = 0.5
+        # ---- transparency-group state (PDF spec §11.4.7) ----
+        # When ``_knockout_active`` is True we restore ``_knockout_snapshot``
+        # over the active group canvas before each top-level painting
+        # operator, mirroring the spec's "each child object replaces (rather
+        # than composites with) prior contents at the group level" rule.
+        # ``_knockout_form_depth`` counts nested form-XObject Do invocations
+        # so the snapshot reset only fires for *top-level* group children,
+        # not for paints inside nested forms.
+        self._knockout_active: bool = False
+        self._knockout_snapshot: Image.Image | None = None
+        self._knockout_form_depth: int = 0
 
     # ------------------------------------------------------------------
     # public API (mirrors PDFRenderer.java)
@@ -311,6 +336,7 @@ class PDFRenderer(PDFStreamEngine):
         self._pending_clip = None
         self._font_cache = {}
         self._warned_standard14_fonts = set()
+        self._font_program_cache = {}
 
         try:
             self.process_page(page)
@@ -434,6 +460,15 @@ class PDFRenderer(PDFStreamEngine):
         if handler is None:
             # Unmodelled — silently skip (matches engine default).
             return
+        # Knockout-group reset: before each top-level painting operator
+        # inside a /K=true transparency group, restore the group canvas to
+        # the snapshot taken at group entry. PDF spec §11.4.7.3.
+        if (
+            self._knockout_active
+            and self._knockout_form_depth == 0
+            and name in _KNOCKOUT_PAINT_OPS
+        ):
+            self._restore_knockout_snapshot()
         try:
             handler(self, op, operands)
         except (OSError, ValueError, TypeError, IndexError) as exc:
@@ -599,6 +634,45 @@ class PDFRenderer(PDFStreamEngine):
         if not operands:
             return
         self._gs.line_width = max(0.0, _to_float(operands[0]))
+
+    # ---- ExtGState (gs operator — PDF spec §8.4.5 / §11.3.5) ----
+
+    def _op_set_graphics_state_parameters(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        """``gs`` — apply the named ExtGState dictionary's parameters.
+
+        The lite renderer only consumes ``/BM`` (blend mode) here; other
+        ExtGState entries (line dash, alpha constants, soft-mask
+        dictionaries, smoothness, …) are deferred — see ``CHANGES.md``."""
+        if not operands or not isinstance(operands[0], COSName):
+            return
+        if self._resources is None:
+            return
+        name = operands[0]
+        try:
+            ext_gstate = self._resources.get_ext_gstate(name)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: cannot resolve ExtGState %s: %s", name.name, exc
+            )
+            return
+        if ext_gstate is None:
+            return
+        try:
+            bm = ext_gstate.get_blend_mode()
+        except Exception:  # noqa: BLE001
+            bm = None
+        # ``Normal`` (or unset) → leave blend_mode as None for the cheap
+        # alpha-over hot path; only stash the wrapper for non-Normal modes.
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
+        if bm is None or bm is BlendMode.NORMAL:
+            self._gs.blend_mode = None
+        else:
+            self._gs.blend_mode = bm
 
     # ---- path construction ----
 
@@ -1832,6 +1906,183 @@ class PDFRenderer(PDFStreamEngine):
             return True
         return False
 
+    @staticmethod
+    def _blend(
+        source: Image.Image, backdrop: Image.Image, mode: Any
+    ) -> Image.Image:
+        """Composite ``source`` over ``backdrop`` honouring a PDF blend mode.
+
+        Implements the separable blend functions of PDF 32000-1 §11.3.5.1
+        (``Normal`` / ``Multiply`` / ``Screen`` / ``Overlay`` / ``Darken`` /
+        ``Lighten`` / ``ColorDodge`` / ``ColorBurn`` / ``HardLight`` /
+        ``SoftLight`` / ``Difference`` / ``Exclusion``). The non-separable
+        HSL family (§11.3.5.2: ``Hue`` / ``Saturation`` / ``Color`` /
+        ``Luminosity``) currently falls back to ``Normal`` with a debug
+        log — they require RGB→HSL round-tripping that the lite renderer
+        defers (tracked in ``CHANGES.md``).
+
+        Both inputs are converted to RGBA and the result is RGBA. The
+        formula is applied per channel on the *colour* components only;
+        the result alpha is the standard Porter-Duff "source over" alpha
+        ``a_s + a_b * (1 - a_s)`` so transparent source pixels never
+        affect the backdrop. Mirrors upstream PDFBox's
+        ``BlendComposite`` per-channel formulas in
+        ``org.apache.pdfbox.rendering`` (PageDrawer dispatches to a
+        Java2D ``Composite`` whose ``compose`` method evaluates the same
+        equations).
+        """
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
+        if source.mode != "RGBA":
+            source = source.convert("RGBA")
+        if backdrop.mode != "RGBA":
+            backdrop = backdrop.convert("RGBA")
+        if source.size != backdrop.size:
+            source = source.resize(backdrop.size, Image.BILINEAR)
+
+        if mode is None or mode is BlendMode.NORMAL:
+            out = backdrop.copy()
+            out.alpha_composite(source)
+            return out
+
+        # Non-separable modes are not yet implemented — fall back to
+        # Normal compositing with a debug breadcrumb.
+        if not getattr(mode, "is_separable", lambda: True)():
+            _log.debug(
+                "rendering: non-separable blend mode %r → Normal fallback",
+                getattr(mode, "name", mode),
+            )
+            out = backdrop.copy()
+            out.alpha_composite(source)
+            return out
+
+        sr, sg, sb, sa = source.split()
+        br, bg, bb, ba = backdrop.split()
+        name = getattr(mode, "name", None)
+
+        # ImageChops paths are vectorised in C — prefer them whenever the
+        # blend formula maps cleanly to a single primitive.
+        if name == "Multiply":
+            cr = ImageChops.multiply(br, sr)
+            cg = ImageChops.multiply(bg, sg)
+            cb = ImageChops.multiply(bb, sb)
+        elif name == "Screen":
+            cr = ImageChops.screen(br, sr)
+            cg = ImageChops.screen(bg, sg)
+            cb = ImageChops.screen(bb, sb)
+        elif name == "Darken":
+            cr = ImageChops.darker(br, sr)
+            cg = ImageChops.darker(bg, sg)
+            cb = ImageChops.darker(bb, sb)
+        elif name == "Lighten":
+            cr = ImageChops.lighter(br, sr)
+            cg = ImageChops.lighter(bg, sg)
+            cb = ImageChops.lighter(bb, sb)
+        elif name == "Difference":
+            cr = ImageChops.difference(br, sr)
+            cg = ImageChops.difference(bg, sg)
+            cb = ImageChops.difference(bb, sb)
+        else:
+            # Per-pixel fallback for the remaining separable modes. Pure
+            # Python loops are slow but lite-renderer canvases are small
+            # at the rendering DPI; correctness over throughput here.
+            cr = PDFRenderer._blend_channel(br, sr, name)
+            cg = PDFRenderer._blend_channel(bg, sg, name)
+            cb = PDFRenderer._blend_channel(bb, sb, name)
+
+        # Porter-Duff alpha-over for the resulting alpha channel:
+        #   a_out = a_s + a_b * (1 - a_s)
+        inv_sa = ImageChops.invert(sa)
+        ba_keep = ImageChops.multiply(ba, inv_sa)
+        out_a = ImageChops.add(sa, ba_keep)
+
+        # Where source is fully transparent the backdrop colour wins; where
+        # source is fully opaque the blend result wins. For partial alpha
+        # interpolate the per-channel blend back toward the backdrop using
+        # ``a_s`` as the weight (the simplified compositing equation when
+        # no shape coverage is involved):
+        #   c_out = (1 - a_s) * c_b + a_s * blend(c_b, c_s)
+        cr = Image.composite(cr, br, sa)
+        cg = Image.composite(cg, bg, sa)
+        cb = Image.composite(cb, bb, sa)
+
+        return Image.merge("RGBA", (cr, cg, cb, out_a))
+
+    @staticmethod
+    def _blend_channel(
+        backdrop: Image.Image, source: Image.Image, mode_name: str | None
+    ) -> Image.Image:
+        """Per-pixel blend for separable modes that don't map to a single
+        :mod:`PIL.ImageChops` primitive.
+
+        Inputs are 8-bit ``L`` images of identical size; output is an
+        8-bit ``L`` image. ``mode_name`` is the PDF blend-mode name
+        (``Overlay`` / ``ColorDodge`` / ``ColorBurn`` / ``HardLight`` /
+        ``SoftLight``); unknown names leave the backdrop unchanged."""
+        if mode_name is None:
+            return backdrop
+        bd = backdrop.load()
+        sd = source.load()
+        w, h = backdrop.size
+        out = Image.new("L", (w, h))
+        od = out.load()
+        for y in range(h):
+            for x in range(w):
+                b = bd[x, y] / 255.0
+                s = sd[x, y] / 255.0
+                v = PDFRenderer._blend_scalar(b, s, mode_name)
+                if v < 0.0:
+                    v = 0.0
+                elif v > 1.0:
+                    v = 1.0
+                od[x, y] = int(round(v * 255.0))
+        return out
+
+    @staticmethod
+    def _blend_scalar(b: float, s: float, mode_name: str) -> float:
+        """Single-channel blend formula in [0, 1] space (PDF 32000-1
+        §11.3.5.1 Table 136). ``b`` = backdrop, ``s`` = source."""
+        if mode_name == "Overlay":
+            # Overlay(b, s) = HardLight(s, b)
+            return PDFRenderer._blend_scalar(s, b, "HardLight")
+        if mode_name == "HardLight":
+            if s <= 0.5:
+                return 2.0 * b * s
+            return 1.0 - 2.0 * (1.0 - b) * (1.0 - s)
+        if mode_name == "ColorDodge":
+            if s >= 1.0:
+                return 1.0
+            return min(1.0, b / (1.0 - s))
+        if mode_name == "ColorBurn":
+            if s <= 0.0:
+                return 0.0
+            return 1.0 - min(1.0, (1.0 - b) / s)
+        if mode_name == "SoftLight":
+            # PDF spec form (matches Adobe's): two-piece quadratic.
+            if s <= 0.5:
+                return b - (1.0 - 2.0 * s) * b * (1.0 - b)
+            if b <= 0.25:
+                d = ((16.0 * b - 12.0) * b + 4.0) * b
+            else:
+                d = b ** 0.5
+            return b + (2.0 * s - 1.0) * (d - b)
+        if mode_name == "Exclusion":
+            return b + s - 2.0 * b * s
+        if mode_name == "Multiply":
+            return b * s
+        if mode_name == "Screen":
+            return b + s - b * s
+        if mode_name == "Darken":
+            return min(b, s)
+        if mode_name == "Lighten":
+            return max(b, s)
+        if mode_name == "Difference":
+            return abs(b - s)
+        # Fallback — leave backdrop unchanged for unknown / non-separable.
+        return b
+
     def _apply_smask(self, image: Image.Image, smask: Any) -> Image.Image:
         """Return ``image`` with the SMask Image XObject applied as alpha.
 
@@ -1858,27 +2109,32 @@ class PDFRenderer(PDFStreamEngine):
         return rgba
 
     def _render_transparency_group(self, form: Any) -> None:
-        """Render a transparency-group Form XObject onto an isolated
-        RGBA canvas and alpha-composite onto the page.
+        """Render a transparency-group Form XObject onto its own RGBA
+        canvas and alpha-composite onto the parent.
 
-        Knockout (``/K true``) and non-isolated (``/I false``) groups
-        are not yet modelled — both fall back to the standard isolated
-        non-knockout path with a debug log. PDF spec §11.4.7."""
+        Honours PDF spec §11.4.7 group attributes:
+
+        - ``/I`` (isolated, default false): when true the group is
+          painted onto a fully transparent backdrop; when false the
+          backdrop is the parent canvas's contents at group entry so
+          paints inside the group can mix with what's already there.
+        - ``/K`` (knockout, default false): when true each top-level
+          painted child fully replaces (rather than composites with)
+          prior contents at the group level. We snapshot the group
+          canvas at group entry and restore it before each top-level
+          painting operator (see :meth:`process_operator`)."""
         assert self._image is not None
         assert self._draw is not None
 
+        isolated = False
+        knockout = False
         try:
             group = form.get_group()
         except Exception:  # noqa: BLE001
             group = None
         if isinstance(group, COSDictionary):
-            knockout = group.get_dictionary_object(COSName.get_pdf_name("K"))
-            isolated = group.get_dictionary_object(COSName.get_pdf_name("I"))
-            if knockout is not None or isolated is not None:
-                _log.debug(
-                    "rendering: knockout/isolated transparency group flags "
-                    "ignored (K=%r, I=%r)", knockout, isolated,
-                )
+            isolated = group.get_boolean(COSName.get_pdf_name("I"), default=False)
+            knockout = group.get_boolean(COSName.get_pdf_name("K"), default=False)
 
         # Flush any pending aggdraw strokes onto the parent canvas before
         # we redirect to a fresh group canvas — otherwise they'd be
@@ -1887,14 +2143,35 @@ class PDFRenderer(PDFStreamEngine):
 
         parent_image = self._image
         parent_draw = self._draw
-        # Group canvas matches the page in size + scale; transparent
-        # backdrop so the group's own paints determine final alpha.
-        group_canvas = Image.new("RGBA", parent_image.size, (0, 0, 0, 0))
+        # Initial group backdrop:
+        #   isolated → fully transparent (group's own paints determine
+        #     final alpha; matches the §11.4.7.2 isolated rule).
+        #   non-isolated → an RGBA copy of the parent so the group's
+        #     paints mix with the existing page contents during its
+        #     own rendering (§11.4.7.2 non-isolated rule).
+        if isolated:
+            group_canvas = Image.new("RGBA", parent_image.size, (0, 0, 0, 0))
+        else:
+            group_canvas = parent_image.convert("RGBA")
         # The renderer's path/text helpers blit through aggdraw which
         # only supports RGB(A) PIL images — RGBA works.
         self._image = group_canvas
         self._draw = aggdraw.Draw(group_canvas)
         self._draw.setantialias(True)
+
+        # Knockout setup: capture the group-entry pixels so subsequent
+        # top-level paints can revert to them (see process_operator).
+        prev_knockout_active = self._knockout_active
+        prev_knockout_snapshot = self._knockout_snapshot
+        prev_knockout_form_depth = self._knockout_form_depth
+        if knockout:
+            self._knockout_active = True
+            self._knockout_snapshot = group_canvas.copy()
+            # Start at -1 so the first ``_process_form_bytes`` increment
+            # lands on 0 (the group's own top-level operators); nested
+            # form Do calls then run at depth >= 1 and don't fire the
+            # snapshot reset.
+            self._knockout_form_depth = -1
         try:
             self._render_form_xobject(form)
         finally:
@@ -1904,12 +2181,24 @@ class PDFRenderer(PDFStreamEngine):
                 current.flush()
             self._image = parent_image
             self._draw = parent_draw
+            # Restore prior knockout state (handles nested groups).
+            self._knockout_active = prev_knockout_active
+            self._knockout_snapshot = prev_knockout_snapshot
+            self._knockout_form_depth = prev_knockout_form_depth
 
-        # Alpha-composite the group result onto the parent. Pillow's
-        # alpha_composite needs both images in RGBA; convert and back.
+        # Composite the group result onto the parent. When the active
+        # ExtGState blend mode is non-Normal (PDF 32000-1 §11.4.7.4 +
+        # §11.3.5) the group is treated as the source and the parent as
+        # the backdrop in the chosen blend formula; otherwise plain
+        # alpha-over via Pillow's native ``alpha_composite``.
         parent_rgba = parent_image.convert("RGBA")
-        parent_rgba.alpha_composite(group_canvas)
-        composited = parent_rgba.convert("RGB")
+        blend_mode = self._gs.blend_mode
+        if blend_mode is not None:
+            blended = PDFRenderer._blend(group_canvas, parent_rgba, blend_mode)
+            composited = blended.convert("RGB")
+        else:
+            parent_rgba.alpha_composite(group_canvas)
+            composited = parent_rgba.convert("RGB")
         # In-place pixel copy keeps ``self._image`` identity stable
         # across the rest of the page render.
         parent_image.paste(composited, (0, 0))
@@ -1918,16 +2207,44 @@ class PDFRenderer(PDFStreamEngine):
         self._draw = aggdraw.Draw(parent_image)
         self._draw.setantialias(True)
 
+    def _restore_knockout_snapshot(self) -> None:
+        """Restore the group canvas to the snapshot taken at knockout-
+        group entry. Called immediately before each top-level painting
+        operator inside a ``/K true`` group so each child object fully
+        replaces prior contents (PDF spec §11.4.7.3)."""
+        if self._knockout_snapshot is None or self._image is None:
+            return
+        # Flush any aggdraw work to the canvas first so we don't drop
+        # buffered strokes as we replace pixels underneath them.
+        if self._draw is not None:
+            self._draw.flush()
+        # In-place pixel copy keeps ``self._image`` identity stable.
+        self._image.paste(self._knockout_snapshot, (0, 0))
+        # Re-bind the aggdraw wrapper to see the restored pixels.
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+
     def _process_form_bytes(self, data: bytes) -> None:
         """Internal: feed a Form XObject's content-stream bytes through
-        the same dispatch loop ``process_page`` uses."""
+        the same dispatch loop ``process_page`` uses.
+
+        While inside a knockout group the depth counter is bumped so
+        :meth:`process_operator` only fires the snapshot reset for the
+        *top-level* group children, not for paints inside nested forms
+        (PDF spec §11.4.7.3)."""
         from pypdfbox.pdfparser.pdf_stream_parser import (  # noqa: PLC0415
             PDFStreamParser,
         )
 
-        with RandomAccessReadBuffer(data) as src:
-            parser = PDFStreamParser(src)
-            self._dispatch_tokens(parser)
+        if self._knockout_active:
+            self._knockout_form_depth += 1
+        try:
+            with RandomAccessReadBuffer(data) as src:
+                parser = PDFStreamParser(src)
+                self._dispatch_tokens(parser)
+        finally:
+            if self._knockout_active:
+                self._knockout_form_depth -= 1
 
     def _decode_image_xobject(self, image: Any) -> Image.Image | None:
         """Decode a :class:`PDImageXObject` into a PIL image. v1 supports:
@@ -2027,7 +2344,21 @@ class PDFRenderer(PDFStreamEngine):
             flipped_rgb = flipped
 
         clip_mask = self._gs.clip_mask
-        if clip_mask is None:
+        blend_mode = self._gs.blend_mode
+        if blend_mode is not None:
+            # Non-Normal blend mode active — route through ``_blend`` so the
+            # source image's RGB components are combined with the backdrop
+            # via the chosen separable blend formula instead of plain
+            # alpha-over. The clip / SMask alpha pipeline still runs but
+            # gates the *blended* pixels rather than the raw ones.
+            self._paste_image_with_blend(
+                flipped_rgb,
+                alpha,
+                (x0, y0, target_w, target_h),
+                clip_mask,
+                blend_mode,
+            )
+        elif clip_mask is None:
             if alpha is None:
                 self._image.paste(flipped_rgb, (x0, y0))
             else:
@@ -2052,6 +2383,46 @@ class PDFRenderer(PDFStreamEngine):
         # pixels.
         self._draw = aggdraw.Draw(self._image)
         self._draw.setantialias(True)
+
+    def _paste_image_with_blend(
+        self,
+        flipped_rgb: Image.Image,
+        alpha: Image.Image | None,
+        bbox: tuple[int, int, int, int],
+        clip_mask: Image.Image | None,
+        blend_mode: Any,
+    ) -> None:
+        """Paste ``flipped_rgb`` through a non-Normal blend mode.
+
+        Builds a full-canvas RGBA source layer with the image staged at
+        the bbox (transparent elsewhere), runs :meth:`_blend` against the
+        current canvas as backdrop, then commits the result back to
+        ``self._image``. ``clip_mask`` (if any) and ``alpha`` (if any)
+        compose into the source's per-pixel alpha so the blend only
+        affects the visible region — outside the clip / where the image
+        is transparent the backdrop pixel is preserved unchanged.
+        """
+        assert self._image is not None
+        x0, y0, target_w, target_h = bbox
+        # Build a full-canvas source: opaque only inside the bbox.
+        source = Image.new("RGBA", self._image.size, (0, 0, 0, 0))
+        source_alpha = Image.new("L", self._image.size, 0)
+        if alpha is None:
+            source_alpha.paste(255, (x0, y0, x0 + target_w, y0 + target_h))
+        else:
+            source_alpha.paste(alpha, (x0, y0))
+        if clip_mask is not None:
+            source_alpha = ImageChops.multiply(source_alpha, clip_mask)
+        source.paste(flipped_rgb, (x0, y0))
+        source.putalpha(source_alpha)
+
+        backdrop = self._image.convert("RGBA")
+        blended = PDFRenderer._blend(source, backdrop, blend_mode)
+        # Commit back to the page canvas, preserving its mode (RGB / RGBA).
+        if self._image.mode == "RGB":
+            self._image.paste(blended.convert("RGB"), (0, 0))
+        else:
+            self._image.paste(blended, (0, 0))
 
     # ---- inline image (BI / ID / EI) ----
     #
@@ -2359,6 +2730,19 @@ class PDFRenderer(PDFStreamEngine):
         if font is None or self._gs.text_font_size <= 0:
             return
 
+        # Type 3 fonts (PDF 32000-1 §9.6.5): each glyph is a /CharProcs
+        # content stream painted in glyph space, then mapped through
+        # /FontMatrix into text space. Route to the dedicated handler so
+        # the TTF / Type1 / Type1C branches below don't have to learn the
+        # charproc protocol.
+        from pypdfbox.pdmodel.font.pd_type3_font import (  # noqa: PLC0415
+            PDType3Font,
+        )
+
+        if isinstance(font, PDType3Font):
+            self._show_type3_string(font, data)
+            return
+
         # Resolve the embedded TrueType only once per character run.
         ttf, glyph_set = self._get_ttf_glyph_set(font)
         # Detect Type1 / Type1C (CFF) so the per-glyph path source is
@@ -2473,6 +2857,90 @@ class PDFRenderer(PDFStreamEngine):
             return None
         return None
 
+    def _resolve_font_program(self, font: Any) -> Any | None:
+        """Return a :class:`FontBoxFont` program for ``font``, falling back
+        through the substitution chain when the PDF didn't embed a program.
+
+        Implements the resolution order from PDF 32000-1 §9.8 / §9.10:
+
+        1. Embedded program — ``/FontFile`` (Type 1), ``/FontFile2``
+           (TrueType) or ``/FontFile3`` (CFF / OpenType). Returned via
+           the existing ``_get_*`` helpers when present.
+        2. :class:`FontMappers` lookup by PostScript name + descriptor
+           flags (Wave 30). Resolves Standard 14 references and any
+           system-font substitution the active mapper provides.
+        3. Style-only fallback by descriptor flags — Helvetica for
+           proportional, Courier for fixed-pitch, italic / bold variants
+           when those flags are set. The default
+           :class:`DefaultFontMapper` already implements this last leg as
+           the universal-fallback contract on
+           :meth:`get_font_box_font`, so the call in step 2 always
+           returns *something* unless the mapper has been replaced.
+
+        Returns ``None`` only when every step fails (no embedded program,
+        no mapper match, and the active mapper opted out of fallback).
+        Cached per-font to avoid re-walking the mapper for every glyph.
+        """
+        key = id(font)
+        if key in self._font_program_cache:
+            return self._font_program_cache[key]
+
+        # Step 1 — embedded program. Reuse the existing detectors so any
+        # caller-side caching they do (TTF parse cache etc.) is preserved.
+        ttf, _glyph_set = self._get_ttf_glyph_set(font)
+        if ttf is not None:
+            self._font_program_cache[key] = ttf
+            return ttf
+
+        # Type1 / Type1C — pull the embedded program directly. ``ttf``
+        # was None above, so this is only hit for Type1 / CFF fonts.
+        try:
+            from pypdfbox.pdmodel.font.pd_type1_font import (  # noqa: PLC0415
+                PDType1Font,
+            )
+            from pypdfbox.pdmodel.font.pd_type1c_font import (  # noqa: PLC0415
+                PDType1CFont,
+            )
+
+            if isinstance(font, PDType1CFont):
+                program = font._get_cff_font()  # noqa: SLF001
+                if program is not None:
+                    self._font_program_cache[key] = program
+                    return program
+            elif isinstance(font, PDType1Font):
+                program = font._get_type1_font()  # noqa: SLF001
+                if program is not None:
+                    self._font_program_cache[key] = program
+                    return program
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: embedded Type1/CFF probe failed: %s", exc)
+
+        # Step 2 / 3 — FontMappers substitution chain.
+        try:
+            from pypdfbox.fontbox.font_mappers import (  # noqa: PLC0415
+                FontMappers,
+            )
+
+            base_font = (
+                font.get_name() if hasattr(font, "get_name") else None
+            )
+            descriptor = (
+                font.get_font_descriptor()
+                if hasattr(font, "get_font_descriptor")
+                else None
+            )
+            mapper = FontMappers.instance()
+            mapping = mapper.get_font_box_font(base_font or "", descriptor)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: FontMappers lookup failed for %r: %s", font, exc
+            )
+            mapping = None
+
+        substitute = mapping.get_font() if mapping is not None else None
+        self._font_program_cache[key] = substitute
+        return substitute
+
     def _draw_glyph(
         self,
         font: Any,
@@ -2570,6 +3038,24 @@ class PDFRenderer(PDFStreamEngine):
             advance_units = self._font_width_units(font, code)
         except Exception:  # noqa: BLE001
             advance_units = 500.0
+        # Walk the substitution chain (PDF 32000-1 §9.8 / §9.10) to upgrade
+        # the placeholder advance with metrics from a Standard 14 / system
+        # fallback when the PDFont itself couldn't supply a width for
+        # ``code``. ``_font_width_units`` returns 500.0 as a hard default
+        # for fonts with no ``get_glyph_width`` accessor; ``PDType1Font``
+        # without an embedded program and without a Standard 14 BaseFont
+        # match returns ``0.0`` from step 4 of its lookup. Both are signs
+        # the caller has nothing better, so route through the FontMappers
+        # fallback for a real metric.
+        if advance_units == 500.0 or advance_units <= 0.0:
+            substitute = self._resolve_font_program(font)
+            if substitute is not None:
+                with contextlib.suppress(Exception):
+                    upgraded = self._fallback_advance_units(
+                        substitute, code, advance_units
+                    )
+                    if upgraded > 0.0:
+                        advance_units = upgraded
         # Once-per-font debug for Standard 14 references whose glyph
         # outlines we currently can't synthesise (no /FontFile and we
         # don't yet bundle Liberation TTFs as substitution targets).
@@ -2580,6 +3066,50 @@ class PDFRenderer(PDFStreamEngine):
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
         return advance_units
+
+    @staticmethod
+    def _fallback_advance_units(
+        substitute: Any, code: int, default_units: float
+    ) -> float:
+        """Return ``substitute``'s advance width for ``code`` in 1/1000-em
+        PDF units, or ``default_units`` when the lookup can't be resolved.
+
+        ``substitute`` is a :class:`FontBoxFont` (typically a
+        :class:`Standard14FontWrapper` for Type1 / Standard 14 fallbacks
+        or a real :class:`TrueTypeFont` when a system font was matched).
+        Both expose ``get_width(name)`` returning advance in font units —
+        AFM widths are already in 1/1000-em, TTF widths need scaling by
+        ``1000 / units_per_em``. We sniff the source by checking for
+        ``get_units_per_em``.
+        """
+        # Map ``code`` to a glyph name via the standard PostScript
+        # encoding. The default mapper always returns a Standard 14
+        # wrapper, whose ``get_width`` keys on PostScript glyph names
+        # (``"A"``, ``"space"``, ``".notdef"``, …) — so a code-to-name
+        # round trip is unavoidable.
+        from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+            StandardEncoding,
+        )
+
+        glyph_name = StandardEncoding.INSTANCE.get_name(code)
+        if glyph_name == ".notdef":
+            return default_units
+        try:
+            width = float(substitute.get_width(glyph_name))
+        except Exception:  # noqa: BLE001
+            return default_units
+        if width <= 0.0:
+            return default_units
+        # TTF / system-font path — scale design units to 1/1000-em.
+        upem = getattr(substitute, "get_units_per_em", None)
+        if callable(upem):
+            try:
+                units = int(upem())
+            except Exception:  # noqa: BLE001
+                units = 0
+            if units > 0:
+                return width * (1000.0 / units)
+        return width
 
     def _maybe_warn_standard14(self, font: Any) -> None:
         """Emit a one-time debug log for Standard 14 fonts without an
@@ -2742,6 +3272,163 @@ class PDFRenderer(PDFStreamEngine):
             )
         finally:
             self._draw.settransform()
+
+    # ------------------------------------------------------------------
+    # Type 3 font (charproc) rendering — PDF 32000-1 §9.6.5
+    # ------------------------------------------------------------------
+
+    def _show_type3_string(self, font: Any, data: bytes) -> None:
+        """Render a Tj / TJ string against a :class:`PDType3Font` by
+        recursively driving each glyph's /CharProcs content stream.
+
+        Type 3 fonts always use single-byte codes (PDF 32000-1 §9.6.5):
+        ``/CharProcs`` is a name -> content-stream map, looked up via the
+        font's ``/Encoding``. The charproc paints in glyph space; the
+        glyph -> user transform is ``FontMatrix * text_local`` where
+        ``text_local`` already folds in font_size + horizontal scale +
+        rise, exactly as the TTF / Type1 path constructs it. The
+        non-stroking colour from the page-level graphics state seeds the
+        charproc's painting ops (``f`` / ``F`` / ``B`` etc.).
+        """
+        font_size = self._gs.text_font_size
+        h_scale = self._gs.text_horizontal_scaling / 100.0
+        font_matrix = font.get_font_matrix()
+        # Per the spec, the glyph advance for a Type 3 code at code-point
+        # ``c`` is ``W * font_matrix[0]`` user-space units at unit
+        # font-size. Pre-compute the multiplier to match the existing
+        # ``_show_string`` advance formula (which expects 1/1000-em units):
+        #   advance_units = W * font_matrix[0] * 1000
+        width_to_advance_units = float(font_matrix[0]) * 1000.0
+
+        encoding = None
+        with contextlib.suppress(Exception):
+            encoding = font.get_encoding_typed()
+        first_char = font.get_first_char()
+        if first_char < 0:
+            first_char = 0
+        widths = font.get_widths()
+
+        for code in data:
+            # Glyph name lookup via /Encoding; fall back to .notdef when
+            # the font carries no typed encoding (real-world Type 3 fonts
+            # always declare one, but we guard for malformed PDFs).
+            glyph_name = ".notdef"
+            if encoding is not None:
+                with contextlib.suppress(Exception):
+                    resolved = encoding.get_name(int(code))
+                    if resolved is not None:
+                        glyph_name = resolved
+
+            charproc = None
+            with contextlib.suppress(Exception):
+                charproc = font.get_char_proc(glyph_name)
+
+            if charproc is not None:
+                self._render_type3_charproc(font, charproc, font_matrix)
+
+            # Advance — /Widths is indexed by (code - FirstChar). When the
+            # entry is missing or zero, use 0.0 (the upstream fallback
+            # for Type 3 — there's no implicit metric source).
+            advance_units = 0.0
+            idx = int(code) - first_char
+            if 0 <= idx < len(widths):
+                advance_units = widths[idx] * width_to_advance_units
+
+            wordspace = self._gs.text_wordspace if code == 0x20 else 0.0
+            tx = (
+                (advance_units / 1000.0) * font_size
+                + self._gs.text_charspace
+                + wordspace
+            ) * h_scale
+            trans: _Matrix = (1.0, 0.0, 0.0, 1.0, tx, 0.0)
+            self._gs.text_matrix = _matmul(trans, self._gs.text_matrix)
+
+    def _render_type3_charproc(
+        self,
+        font: Any,
+        charproc: COSStream,
+        font_matrix: list[float],
+    ) -> None:
+        """Run a Type 3 charproc through the engine's dispatch so its
+        path-painting ops drop fills/strokes onto the canvas, scaled by
+        the font's /FontMatrix into text space and positioned by the
+        active text matrix.
+
+        Restores graphics state, current path, and resources around the
+        charproc so it cannot leak its own state into the surrounding
+        page. ``d0`` / ``d1`` (glyph metric setters) are silently ignored
+        — the lite renderer doesn't model coloured-vs-uncoloured Type 3
+        distinctions; the paint always uses the current non-stroking
+        colour. Mirrors PDFBox's ``PageDrawer.processType3Stream``.
+        """
+        font_size = self._gs.text_font_size
+        h_scale = self._gs.text_horizontal_scaling / 100.0
+        rise = self._gs.text_rise
+        # text_local mirrors the matrix used by ``_draw_glyph`` — applied
+        # *after* /FontMatrix so glyph-space units flow through font
+        # matrix -> 1-em text space -> font-size-scaled user space.
+        text_local: _Matrix = (
+            font_size * h_scale, 0.0,
+            0.0, font_size,
+            0.0, rise,
+        )
+        fm: _Matrix = (
+            float(font_matrix[0]),
+            float(font_matrix[1]),
+            float(font_matrix[2]),
+            float(font_matrix[3]),
+            float(font_matrix[4]),
+            float(font_matrix[5]),
+        )
+        # glyph_to_user = font_matrix * text_local * text_matrix —
+        # composes through ``_matmul``'s "apply m1 first" convention.
+        glyph_to_user = _matmul(fm, text_local)
+        glyph_to_user = _matmul(glyph_to_user, self._gs.text_matrix)
+
+        # Save graphics state so the charproc can freely emit q/Q,
+        # colour-set ops, etc. without escaping the glyph scope.
+        self._push_gs()
+        # Stash and reset the current path so charproc path-construction
+        # ops don't merge into a half-built page path.
+        prev_subpaths = self._subpaths
+        prev_current_subpath = self._current_subpath
+        prev_current_point = self._current_point
+        prev_pending_clip = self._pending_clip
+        self._subpaths = []
+        self._current_subpath = None
+        self._current_point = (0.0, 0.0)
+        self._pending_clip = None
+        # Switch resources to the font's own /Resources for the duration
+        # of the charproc — required because charprocs may reference
+        # XObjects / patterns / nested fonts via the font's own dict.
+        prev_resources = self._resources
+        try:
+            font_resources = font.get_resources()
+            if font_resources is not None:
+                self._resources = font_resources
+
+            # Fold the glyph -> user transform onto the CTM and run the
+            # charproc bytes through the same dispatch loop a Form
+            # XObject uses. Path painting ops will fill with the current
+            # non-stroking colour (seeded by the surrounding rg / k / g),
+            # so the rectangle / polygon glyph drops onto the page in
+            # the right pixels and right colour without further wiring.
+            self._gs.ctm = _matmul(glyph_to_user, self._gs.ctm)
+            try:
+                data = charproc.to_byte_array()
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: cannot read Type 3 charproc: %s", exc)
+                data = b""
+            if data:
+                with contextlib.suppress(Exception):
+                    self._process_form_bytes(data)
+        finally:
+            self._resources = prev_resources
+            self._subpaths = prev_subpaths
+            self._current_subpath = prev_current_subpath
+            self._current_point = prev_current_point
+            self._pending_clip = prev_pending_clip
+            self._pop_gs()
 
 
 class _AggdrawPathPen:
@@ -2910,6 +3597,7 @@ _DISPATCH: dict[str, Any] = {
     "Q": PDFRenderer._op_restore,
     "cm": PDFRenderer._op_concat_matrix,
     "w": PDFRenderer._op_line_width,
+    "gs": PDFRenderer._op_set_graphics_state_parameters,
     # colour
     "RG": PDFRenderer._op_set_stroke_rgb,
     "rg": PDFRenderer._op_set_fill_rgb,
@@ -2966,6 +3654,22 @@ _DISPATCH: dict[str, Any] = {
     "'": PDFRenderer._op_show_text_line,
     '"': PDFRenderer._op_show_text_line_with_spacing,
 }
+
+
+# Painting operators that draw new pixels at the group level; used by
+# :meth:`PDFRenderer.process_operator` to fire a knockout snapshot reset
+# before each top-level child paint inside a ``/K true`` transparency
+# group (PDF spec §11.4.7.3).
+_KNOCKOUT_PAINT_OPS: frozenset[str] = frozenset({
+    # path painting
+    "S", "s", "f", "F", "f*", "B", "B*", "b", "b*",
+    # shading + XObject (image / form) painting
+    "sh", "Do",
+    # inline image
+    "BI",
+    # text show
+    "Tj", "TJ", "'", '"',
+})
 
 
 __all__ = ["PDFRenderer"]

@@ -36,5 +36,25 @@ class PDRadioButton(PDButton):
     def set_radios_in_unison(self, value: bool) -> None:
         self._set_flag(self.FLAG_RADIOS_IN_UNISON, value)
 
+    # ---------- /V + appearance ----------
+
+    def set_value(
+        self, value: str | None, regenerate_appearance: bool = False
+    ) -> None:
+        """Set the field's ``/V`` value.
+
+        When ``regenerate_appearance=True``, also rebuilds each widget's
+        ``/AP /N`` two-state on/off appearance subdictionary via
+        :class:`PDAppearanceGenerator` (radio kids draw a filled circle
+        on the on-state) and syncs ``/AS`` per widget. The default
+        (``False``) preserves the historical lite-port behaviour of
+        writing the value alone.
+        """
+        super().set_value(value)
+        if regenerate_appearance:
+            from .pd_appearance_generator import PDAppearanceGenerator
+
+            PDAppearanceGenerator().generate(self)
+
 
 __all__ = ["PDRadioButton"]

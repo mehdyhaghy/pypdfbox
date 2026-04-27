@@ -7,13 +7,17 @@ the loader co-located with the resources directory under
 ``pypdfbox.fontbox.cmap`` so the cache and the on-disk fixtures sit
 together.
 
-Only a small subset of the Adobe predefined CMaps is bundled (the CJK
-Unicode-mapping ones plus ``Identity-H`` / ``Identity-V``). The full set
-is ~50 files / tens of megabytes — too heavy to ship with the wheel by
-default. PDFs referencing other predefined CMaps fall through to a
-``None`` return from :meth:`CMapManager.get_predefined_cmap`, which the
-caller can degrade gracefully on (matching upstream's
-``IOException``-as-control-flow behaviour without forcing the exception).
+A curated subset of the Adobe predefined CMaps is bundled — the four
+``*-UCS2`` Unicode-mapping CMaps, ``Identity-H`` / ``Identity-V``, and
+the H/V encoding CMaps that the vast majority of CJK PDFs reference
+(``UniCNS-UTF16-H/V``, ``UniGB-UTF16-H/V``, ``UniJIS-UTF16-H/V``,
+``UniKS-UTF16-H/V``, plus the legacy ``GB-EUC-H/V``, ``B5pc-H/V``,
+``90ms-RKSJ-H/V``, ``KSC-EUC-H/V``). The full upstream set is ~50 files
+/ tens of megabytes — too heavy to ship with the wheel in full. PDFs
+referencing other predefined CMaps fall through to a ``None`` return
+from :meth:`CMapManager.get_predefined_cmap`, which the caller can
+degrade gracefully on (matching upstream's ``IOException``-as-control-flow
+behaviour without forcing the exception).
 """
 
 from __future__ import annotations

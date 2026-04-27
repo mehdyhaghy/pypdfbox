@@ -301,6 +301,10 @@ class PDFTextStripper:
             state.text_y = 0.0
             state.line_x = 0.0
             state.line_y = 0.0
+            state.tm_a = 1.0
+            state.tm_b = 0.0
+            state.tm_c = 0.0
+            state.tm_d = 1.0
         elif op == "ET":
             # End text object — nothing to flush in lite mode; positions
             # are emitted as Tj/TJ/'/" operators run.
@@ -347,14 +351,24 @@ class PDFTextStripper:
             state.text_y = state.line_y
         elif op == "Tm":
             # ``a b c d e f Tm`` — set both text matrix and line matrix to
-            # the supplied 3x3 affine. Lite mode tracks just the
-            # translation components (e, f); rotation/scale would only
-            # matter once we move to glyph-aware extraction.
+            # the supplied 3x3 affine. We track translation (e, f) for
+            # the position cursor and the scale/shear components
+            # (a, b, c, d) so emitted runs can report their text-matrix
+            # rotation (used by ``FilteredTextStripper`` /
+            # ``AngleCollector`` for ``-rotationMagic``).
             if len(operands) >= 6 and all(
                 isinstance(o, COSNumber) for o in operands[:6]
             ):
+                a = operands[0].float_value()  # type: ignore[union-attr]
+                b = operands[1].float_value()  # type: ignore[union-attr]
+                c = operands[2].float_value()  # type: ignore[union-attr]
+                d = operands[3].float_value()  # type: ignore[union-attr]
                 e = operands[4].float_value()  # type: ignore[union-attr]
                 f = operands[5].float_value()  # type: ignore[union-attr]
+                state.tm_a = a
+                state.tm_b = b
+                state.tm_c = c
+                state.tm_d = d
                 state.line_x = e
                 state.line_y = f
                 state.text_x = e
@@ -434,6 +448,14 @@ class PDFTextStripper:
                 width_of_space=width_of_space,
                 char_spacing=state.char_spacing,
                 word_spacing=state.word_spacing,
+                text_matrix=[
+                    state.tm_a,
+                    state.tm_b,
+                    state.tm_c,
+                    state.tm_d,
+                    state.text_x,
+                    state.text_y,
+                ],
             )
         )
         # Advance the text origin by an approximation of the run width.
@@ -683,6 +705,10 @@ class _TextState:
         "font_name",
         "char_spacing",
         "word_spacing",
+        "tm_a",
+        "tm_b",
+        "tm_c",
+        "tm_d",
     )
 
     def __init__(self) -> None:
@@ -695,6 +721,14 @@ class _TextState:
         self.font_name: str | None = None
         self.char_spacing: float = 0.0
         self.word_spacing: float = 0.0
+        # Text-matrix scale/shear components — only ``Tm`` mutates these
+        # (Td/TD/T*/'/" affect translation only, leaving a/b/c/d alone),
+        # so tracking them here is enough to recover the run's rotation
+        # at emit time. Identity by default per PDF 1.7 §9.4.1 ``BT``.
+        self.tm_a: float = 1.0
+        self.tm_b: float = 0.0
+        self.tm_c: float = 0.0
+        self.tm_d: float = 1.0
 
 
 def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:

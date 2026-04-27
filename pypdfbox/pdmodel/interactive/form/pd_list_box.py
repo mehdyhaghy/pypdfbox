@@ -30,5 +30,26 @@ class PDListBox(PDChoice):
         if new_field:
             self.set_combo(False)
 
+    # ---------- /V + appearance ----------
+
+    def set_value(
+        self,
+        value: list[str] | str | None,
+        regenerate_appearance: bool = False,
+    ) -> None:
+        """Set the field's ``/V`` value.
+
+        When ``regenerate_appearance=True``, also rebuilds each widget's
+        ``/AP /N`` flat-text appearance via :class:`PDAppearanceGenerator`
+        — for list boxes the selected values are rendered one per line.
+        The default (``False``) preserves the historical lite-port
+        behaviour of writing the value alone.
+        """
+        super().set_value(value)
+        if regenerate_appearance:
+            from .pd_appearance_generator import PDAppearanceGenerator
+
+            PDAppearanceGenerator().generate(self)
+
 
 __all__ = ["PDListBox"]

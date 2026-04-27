@@ -168,9 +168,13 @@ class CCITTFaxDecode(Filter):
     within each byte) — the same shape the PDF image XObject expects in
     its decoded body.
 
-    Decoder-only: PDF rarely *encodes* CCITT (the upstream PDFBox
-    encoder is a TIFF round-trip too, and we have no producer use case
-    yet). ``encode()`` raises ``NotImplementedError``.
+    Encoding goes the other direction through the same TIFF wrapper:
+    raw 1-bit packed scanlines are wrapped in a 1-bit Pillow ``"1"``
+    image, saved as a Group 4 (T.6) TIFF, and the encoded strip bytes
+    are extracted as the ``/CCITTFaxDecode`` payload. Mirrors upstream
+    ``CCITTFactory.createFromImage`` — Pillow's libtiff backend does
+    exactly the same TIFF round-trip the upstream Java code does
+    against ``com.sun.imageio`` / Bouncy Castle.
 
     Mirrors `org.apache.pdfbox.filter.CCITTFaxFilter`.
     """
@@ -259,13 +263,86 @@ class CCITTFaxDecode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
-        # Encoding is not part of the read-side image pipeline. We have
-        # no producer use case yet, and Pillow's TIFF writer would force
-        # a temporary in-memory TIFF round-trip just to extract the
-        # strip data. Defer until a real caller appears.
-        raise NotImplementedError(
-            "CCITTFaxDecode.encode is not implemented (decode-only)"
-        )
+        """Encode raw 1-bit packed scanlines as a CCITT fax stream.
+
+        The ``parameters`` argument is the *stream dictionary* — same
+        convention :meth:`decode` uses — and ``/DecodeParms`` supplies
+        ``/Columns``, ``/Rows`` and ``/K``. Unlike :meth:`decode` which
+        can fall back to libtiff's row-discovery, encode requires both
+        ``/Columns`` and ``/Rows`` to be known up front (we cannot
+        introspect the row count from raw packed bits without it).
+
+        Only Group 4 (``K = -1``) is currently emitted: it's the only
+        polarity the modern PDF tooling cares about and the only one
+        :class:`pypdfbox.pdmodel.graphics.image.LosslessFactory` uses.
+        Group 3 1D / 2D could be added by routing through Pillow's
+        ``compression='group3'`` codec but no producer needs it yet.
+        """
+        decode_params = _resolve_decode_params(parameters, 0)
+
+        k = decode_params.get_int(_K, -1)
+        columns = decode_params.get_int(_COLUMNS, 0)
+        rows = decode_params.get_int(_ROWS, 0)
+        black_is_1 = decode_params.get_boolean(_BLACK_IS_1, False)
+
+        if columns <= 0:
+            raise OSError(
+                f"CCITTFaxDecode.encode: /Columns must be > 0, got {columns}"
+            )
+        if rows <= 0:
+            raise OSError(
+                f"CCITTFaxDecode.encode: /Rows must be > 0, got {rows}"
+            )
+        if k != -1:
+            raise NotImplementedError(
+                f"CCITTFaxDecode.encode: only Group 4 (K=-1) is supported, got K={k}"
+            )
+
+        raw_bytes = raw.read()
+        row_bytes = (columns + 7) // 8
+        expected = row_bytes * rows
+        if len(raw_bytes) < expected:
+            raise OSError(
+                f"CCITTFaxDecode.encode: raw scanline buffer too short "
+                f"({len(raw_bytes)} bytes, need {expected})"
+            )
+        # Trim any trailing padding (callers sometimes pad to a flate
+        # boundary). Excess bytes past the declared row*rows footprint
+        # are not part of the image.
+        raw_bytes = raw_bytes[:expected]
+
+        # PDF default polarity is BlackIs0 (0=black, 1=white). Pillow's
+        # "1" mode treats 0=black/1=white the same way, so the bytes go
+        # straight into ``Image.frombytes`` without inversion. With
+        # /BlackIs1 we invert before encoding so the resulting CCITT
+        # stream still represents BlackIs0 to libtiff (which is what we
+        # told it via the TIFF photometric tag during decode); upstream
+        # PDFBox does the equivalent flip in CCITTFactory.
+        if black_is_1:
+            raw_bytes = bytes(b ^ 0xFF for b in raw_bytes)
+
+        try:
+            image = Image.frombytes("1", (columns, rows), raw_bytes)
+            buf = io.BytesIO()
+            image.save(buf, format="TIFF", compression="group4")
+            tiff_bytes = buf.getvalue()
+        except Exception as exc:
+            raise OSError(f"CCITTFaxDecode.encode: libtiff encode failed: {exc}") from exc
+
+        # Extract the single encoded strip from the synthetic TIFF.
+        try:
+            with Image.open(io.BytesIO(tiff_bytes)) as parsed:
+                offsets = parsed.tag_v2[_TIFF_STRIP_OFFSETS]
+                counts = parsed.tag_v2[_TIFF_STRIP_BYTE_COUNTS]
+        except Exception as exc:
+            raise OSError(
+                f"CCITTFaxDecode.encode: failed to parse TIFF strip: {exc}"
+            ) from exc
+
+        offset = offsets[0] if isinstance(offsets, tuple) else offsets
+        count = counts[0] if isinstance(counts, tuple) else counts
+        strip = tiff_bytes[offset : offset + count]
+        encoded.write(strip)
 
 
 def _estimate_rows(encoded_bytes: bytes, columns: int) -> int:
