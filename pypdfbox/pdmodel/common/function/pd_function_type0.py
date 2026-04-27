@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import logging
+
 from pypdfbox.cos import COSArray, COSBase, COSStream
 
 from .pd_function import PDFunction
+
+_LOG = logging.getLogger(__name__)
 
 _SIZE = "Size"
 _BITS_PER_SAMPLE = "BitsPerSample"
@@ -11,8 +15,6 @@ _ENCODE = "Encode"
 _DECODE = "Decode"
 
 # Supported /BitsPerSample values per PDF 32000-1 §7.10.2 Table 38.
-# Cubic-spline interpolation (/Order = 3) is not implemented; we silently
-# fall back to linear (/Order = 1) per PDFBox parity.
 _SUPPORTED_BITS = frozenset({1, 2, 4, 8, 16, 24, 32})
 
 
@@ -24,8 +26,9 @@ class PDFunctionType0(PDFunction):
     Backed by a ``COSStream`` whose binary body holds the sample table.
     Evaluation reads the surrounding 2^n samples for an n-dimensional input
     and combines them with n-linear interpolation per PDF 32000-1 §7.10.2.
-    Cubic-spline interpolation (``/Order = 3``) is deferred — we fall back
-    to linear (``/Order = 1``) regardless of the dictionary value.
+    Cubic-spline interpolation (``/Order = 3``) is implemented as a Catmull-
+    Rom Hermite spline (4 surrounding samples per axis, edge-clamped). Any
+    other ``/Order`` value falls back to linear with a debug log.
     """
 
     def __init__(self, function: COSBase | None = None) -> None:
@@ -177,9 +180,12 @@ class PDFunctionType0(PDFunction):
         return (combined >> shift) & ((1 << bits) - 1)
 
     def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
-        """N-linear interpolation over the sample table per §7.10.2.
+        """N-dimensional interpolation over the sample table per §7.10.2.
 
-        Cubic-spline (/Order = 3) is not implemented — falls back to linear.
+        ``/Order = 1`` (linear, default) folds 2^n surrounding samples per
+        output dim. ``/Order = 3`` (cubic Catmull-Rom Hermite) folds 4^n
+        samples per output dim with edge-clamped neighbour lookups. Any
+        other order value falls back to linear with a debug log.
         """
         num_in = self.get_number_of_input_parameters()
         num_out = self.get_number_of_output_parameters()
@@ -194,6 +200,13 @@ class PDFunctionType0(PDFunction):
         sizes = self._get_size_list()
         if len(sizes) < num_in or any(s < 1 for s in sizes[:num_in]):
             raise ValueError("/Size missing or invalid for declared input dimensions")
+
+        order = self.get_order()
+        if order not in (1, 3):
+            _LOG.debug(
+                "PDFunctionType0: unsupported /Order=%s — falling back to linear", order
+            )
+            order = 1
 
         clipped = self.clip_input(input)
         domain = self.get_ranges_for_inputs()
@@ -229,37 +242,62 @@ class PDFunctionType0(PDFunction):
 
         body = self._get_sample_bytes()
         sample_max = (1 << bits) - 1
-
-        # Step 4: read 2^n surrounding samples per output dim and n-linearly
-        # interpolate. We fold one dim at a time: at iteration i we keep
-        # 2^(n-i) interpolated values; final pass leaves a single value.
-        output: list[float] = []
         n = num_in
+
+        # Per-axis stencil: 2 samples (linear) or 4 samples (cubic).
+        if order == 3:
+            # Cubic Catmull-Rom: per axis we need samples at floor-1, floor,
+            # floor+1, floor+2 — clamped to [0, size-1].
+            stencil_offsets = (-1, 0, 1, 2)
+        else:
+            stencil_offsets = (0, 1)
+        stencil_w = len(stencil_offsets)
+
+        output: list[float] = []
         for j in range(num_out):
-            # Gather all 2^n corner samples into a flat list. Index encodes
-            # the binary corner offset: bit i = 0 → floor, bit i = 1 → ceil.
+            # Gather stencil_w**n corner samples. The flat index encodes the
+            # per-axis offset position (0..stencil_w-1) as a base-stencil_w
+            # number with axis 0 as the least-significant digit.
+            total = stencil_w**n
             corners: list[float] = []
-            for mask in range(1 << n):
-                coords = tuple(
-                    floors[i] + ((mask >> i) & 1) for i in range(n)
-                )
+            for idx in range(total):
+                coords: list[int] = []
+                tmp = idx
+                for i in range(n):
+                    pos = tmp % stencil_w
+                    tmp //= stencil_w
+                    upper = sizes[i] - 1
+                    raw = floors[i] + stencil_offsets[pos]
+                    # Edge clamp — mirrors PDFBox cubic neighbour handling.
+                    if raw < 0:
+                        raw = 0
+                    elif raw > upper:
+                        raw = upper
+                    coords.append(raw)
                 corners.append(
                     float(
                         self._read_sample(
-                            coords, j, sizes, num_out, bits, body
+                            tuple(coords), j, sizes, num_out, bits, body
                         )
                     )
                 )
+
             # Collapse one dimension at a time using the per-axis fraction.
             for i in range(n):
                 t = fracs[i]
                 next_corners: list[float] = []
-                for k in range(0, len(corners), 2):
-                    a, b = corners[k], corners[k + 1]
-                    next_corners.append(a + t * (b - a))
+                if order == 3:
+                    for k in range(0, len(corners), 4):
+                        s0, s1, s2, s3 = corners[k : k + 4]
+                        next_corners.append(_catmull_rom(s0, s1, s2, s3, t))
+                else:
+                    for k in range(0, len(corners), 2):
+                        a, b = corners[k], corners[k + 1]
+                        next_corners.append(a + t * (b - a))
                 corners = next_corners
             sample = corners[0]
-            # Step 5: map [0, 2^bits-1] → /Decode
+            # Step 5: map [0, 2^bits-1] → /Decode (and clamp to it — cubic
+            # Catmull-Rom can overshoot the sample envelope).
             d_lo, d_hi = decode_pairs[j]
             if sample_max == 0:
                 decoded = d_lo
@@ -269,6 +307,25 @@ class PDFunctionType0(PDFunction):
 
         # Step 6: clip to /Range.
         return self.clip_output(output)
+
+
+def _catmull_rom(s0: float, s1: float, s2: float, s3: float, t: float) -> float:
+    """Cubic Hermite (Catmull-Rom flavour) at fraction ``t`` ∈ [0, 1].
+
+    Tangents at the bracketing samples are central differences:
+    ``m1 = (s2 - s0) / 2`` at ``s1`` and ``m2 = (s3 - s1) / 2`` at ``s2``.
+    Standard Hermite basis gives the closed form below — equivalent to
+    PDFBox's `PDFunctionType0` cubic interpolation step.
+    """
+    t2 = t * t
+    t3 = t2 * t
+    h00 = 2.0 * t3 - 3.0 * t2 + 1.0
+    h10 = t3 - 2.0 * t2 + t
+    h01 = -2.0 * t3 + 3.0 * t2
+    h11 = t3 - t2
+    m1 = 0.5 * (s2 - s0)
+    m2 = 0.5 * (s3 - s1)
+    return h00 * s1 + h10 * m1 + h01 * s2 + h11 * m2
 
 
 __all__ = ["PDFunctionType0"]

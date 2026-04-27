@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream
+from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 
 from .pd_action import PDAction
 
@@ -12,22 +13,37 @@ _MIX: COSName = COSName.get_pdf_name("Mix")
 
 
 class PDActionSound(PDAction):
-    """Sound action. Mirrors PDFBox ``PDActionSound`` lite surface.
+    """Sound action. Mirrors PDFBox ``PDActionSound``.
 
-    The ``/Sound`` entry is exposed as a raw ``COSBase`` for now; a typed
-    ``PDSoundStream`` wrapper is deferred."""
+    The ``/Sound`` entry is exposed both as the raw ``COSBase``
+    (:meth:`get_sound`/:meth:`set_sound` legacy back-compat surface, kept
+    accepting raw COS) and as a typed :class:`PDSoundStream` via
+    :meth:`get_sound`."""
 
     SUB_TYPE = "Sound"
 
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
-    def get_sound(self) -> COSBase | None:
-        return self._action.get_dictionary_object(_SOUND)
+    def get_sound(self) -> PDSoundStream | None:
+        """Return ``/Sound`` as a typed :class:`PDSoundStream`, or
+        ``None`` when the entry is absent or not a stream."""
+        entry = self._action.get_dictionary_object(_SOUND)
+        if entry is None:
+            return None
+        if isinstance(entry, COSStream):
+            return PDSoundStream(entry)
+        return None
 
-    def set_sound(self, sound: COSBase | None) -> None:
+    def set_sound(self, sound: PDSoundStream | COSBase | None) -> None:
+        """Replace ``/Sound``. Accepts ``None`` (removes the entry), a
+        :class:`PDSoundStream` (stores its underlying COSStream), or a
+        raw ``COSBase`` (stored as-is for back-compat)."""
         if sound is None:
             self._action.remove_item(_SOUND)
+            return
+        if isinstance(sound, PDSoundStream):
+            self._action.set_item(_SOUND, sound.get_cos_object())
             return
         self._action.set_item(_SOUND, sound)
 

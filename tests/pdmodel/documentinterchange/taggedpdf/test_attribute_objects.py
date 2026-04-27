@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray
+from pypdfbox.cos import COSArray, COSName, COSString
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDExportFormatAttributeObject,
     PDFourColours,
@@ -111,6 +111,37 @@ def test_list_round_trip_list_numbering() -> None:
     assert obj.get_list_numbering() == "Decimal"
 
 
+def test_list_numbering_default_is_none_when_absent() -> None:
+    obj = PDListAttributeObject()
+    assert obj.get_list_numbering() == PDListAttributeObject.LIST_NUMBERING_NONE
+    assert obj.get_list_numbering() == "None"
+
+
+def test_list_numbering_round_trip_all_non_default_values() -> None:
+    non_default_values = [
+        PDListAttributeObject.LIST_NUMBERING_DISC,
+        PDListAttributeObject.LIST_NUMBERING_CIRCLE,
+        PDListAttributeObject.LIST_NUMBERING_SQUARE,
+        PDListAttributeObject.LIST_NUMBERING_DECIMAL,
+        PDListAttributeObject.LIST_NUMBERING_UPPER_ROMAN,
+        PDListAttributeObject.LIST_NUMBERING_LOWER_ROMAN,
+        PDListAttributeObject.LIST_NUMBERING_UPPER_ALPHA,
+        PDListAttributeObject.LIST_NUMBERING_LOWER_ALPHA,
+    ]
+    for value in non_default_values:
+        obj = PDListAttributeObject()
+        obj.set_list_numbering(value)
+        assert obj.get_list_numbering() == value
+
+
+def test_list_numbering_writes_cos_name() -> None:
+    obj = PDListAttributeObject()
+    obj.set_list_numbering(PDListAttributeObject.LIST_NUMBERING_DECIMAL)
+    raw = obj.get_cos_object().get_dictionary_object("ListNumbering")
+    assert isinstance(raw, COSName)
+    assert raw.name == "Decimal"
+
+
 def test_print_field_round_trip_role() -> None:
     obj = PDPrintFieldAttributeObject()
     obj.set_role("rb")
@@ -140,8 +171,72 @@ def test_table_scope_summary_headers() -> None:
     obj.set_headers(["h1", "h2"])
     assert obj.get_scope() == "Row"
     assert obj.get_summary() == "financials"
-    assert isinstance(obj.get_headers(), COSArray)
-    assert obj.get_headers().size() == 2
+    assert obj.get_headers() == ["h1", "h2"]
+
+
+def test_table_defaults_when_absent() -> None:
+    obj = PDTableAttributeObject()
+    assert obj.get_row_span() == 1
+    assert obj.get_col_span() == 1
+    assert obj.get_headers() == []
+    assert obj.get_scope() is None
+    assert obj.get_summary() is None
+
+
+def test_table_row_col_span_round_trip_non_default() -> None:
+    obj = PDTableAttributeObject()
+    obj.set_row_span(4)
+    obj.set_col_span(7)
+    assert obj.get_row_span() == 4
+    assert obj.get_col_span() == 7
+
+
+def test_table_summary_round_trip_non_default() -> None:
+    obj = PDTableAttributeObject()
+    obj.set_summary("quarterly results")
+    assert obj.get_summary() == "quarterly results"
+
+
+def test_table_headers_round_trip_non_default() -> None:
+    obj = PDTableAttributeObject()
+    obj.set_headers(["alpha", "beta", "gamma"])
+    assert obj.get_headers() == ["alpha", "beta", "gamma"]
+
+
+def test_table_set_headers_empty_removes_entry() -> None:
+    obj = PDTableAttributeObject()
+    obj.set_headers(["x", "y"])
+    assert obj.get_cos_object().get_dictionary_object("Headers") is not None
+    obj.set_headers([])
+    assert obj.get_cos_object().get_dictionary_object("Headers") is None
+    assert obj.get_headers() == []
+
+
+def test_table_set_scope_writes_cos_name() -> None:
+    obj = PDTableAttributeObject()
+    obj.set_scope(PDTableAttributeObject.SCOPE_ROW)
+    raw = obj.get_cos_object().get_dictionary_object("Scope")
+    assert isinstance(raw, COSName)
+    assert raw.name == "Row"
+
+
+def test_table_scope_constants_round_trip() -> None:
+    for scope in (
+        PDTableAttributeObject.SCOPE_ROW,
+        PDTableAttributeObject.SCOPE_COLUMN,
+        PDTableAttributeObject.SCOPE_BOTH,
+    ):
+        obj = PDTableAttributeObject()
+        obj.set_scope(scope)
+        assert obj.get_scope() == scope
+
+
+def test_table_get_headers_decodes_utf8_cos_string() -> None:
+    obj = PDTableAttributeObject()
+    array = COSArray()
+    array.add(COSString("café".encode("utf-8")))
+    obj.get_cos_object().set_item("Headers", array)
+    assert obj.get_headers() == ["café"]
 
 
 def test_user_set_and_get_property() -> None:

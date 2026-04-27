@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
 _FONT_NAME: COSName = COSName.get_pdf_name("FontName")
+_FONT_FAMILY: COSName = COSName.get_pdf_name("FontFamily")
+_FONT_STRETCH: COSName = COSName.get_pdf_name("FontStretch")
+_FONT_WEIGHT: COSName = COSName.get_pdf_name("FontWeight")
 _FLAGS: COSName = COSName.get_pdf_name("Flags")
 _FONT_BBOX: COSName = COSName.get_pdf_name("FontBBox")
 _ASCENT: COSName = COSName.get_pdf_name("Ascent")
@@ -16,6 +20,7 @@ _STEM_V: COSName = COSName.get_pdf_name("StemV")
 _FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
+_CHAR_SET: COSName = COSName.get_pdf_name("CharSet")
 
 
 # Flag bit constants (PDF 32000-1 §9.8.2, Table 123).
@@ -33,9 +38,11 @@ FLAG_FORCE_BOLD = 1 << 18  # 262144
 class PDFontDescriptor:
     """PDF font descriptor wrapper. Mirrors PDFBox ``PDFontDescriptor``.
 
-    Lite surface — exposes the metric/flag accessors needed by the font
-    cluster scaffold. Lesser-used metrics (Leading, StemH, AvgWidth,
-    MaxWidth, MissingWidth, FontFamily, FontStretch, CharSet) are deferred.
+    Exposes metric/flag accessors plus typed access to the embedded font
+    program streams (``/FontFile``, ``/FontFile2``, ``/FontFile3``) and
+    descriptive entries (``/FontFamily``, ``/FontStretch``, ``/FontWeight``,
+    ``/CharSet``). Lesser-used numeric metrics (Leading, StemH, AvgWidth,
+    MaxWidth, MissingWidth) are deferred.
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
@@ -137,43 +144,77 @@ class PDFontDescriptor:
     def set_stem_v(self, value: float) -> None:
         self._dict.set_float(_STEM_V, float(value))
 
+    # ---------- /FontFamily, /FontStretch, /FontWeight ----------
+
+    def get_font_family(self) -> str | None:
+        return self._dict.get_string(_FONT_FAMILY)
+
+    def set_font_family(self, value: str | None) -> None:
+        if value is None:
+            self._dict.remove_item(_FONT_FAMILY)
+            return
+        self._dict.set_string(_FONT_FAMILY, value)
+
+    def get_font_stretch(self) -> str | None:
+        return self._dict.get_name(_FONT_STRETCH)
+
+    def set_font_stretch(self, value: str | None) -> None:
+        if value is None:
+            self._dict.remove_item(_FONT_STRETCH)
+            return
+        self._dict.set_name(_FONT_STRETCH, value)
+
+    def get_font_weight(self) -> float:
+        return self._dict.get_float(_FONT_WEIGHT, 0.0)
+
+    def set_font_weight(self, value: float) -> None:
+        self._dict.set_float(_FONT_WEIGHT, float(value))
+
+    # ---------- /CharSet ----------
+
+    def get_char_set(self) -> str | None:
+        return self._dict.get_string(_CHAR_SET)
+
+    def set_char_set(self, value: str | None) -> None:
+        if value is None:
+            self._dict.remove_item(_CHAR_SET)
+            return
+        self._dict.set_string(_CHAR_SET, value)
+
     # ---------- font program streams ----------
 
-    def get_font_file(self) -> COSStream | None:
-        v = self._dict.get_dictionary_object(_FONT_FILE)
+    def _get_font_file(self, key: COSName) -> PDStream | None:
+        v = self._dict.get_dictionary_object(key)
         if isinstance(v, COSStream):
-            return v
+            return PDStream(v)
         return None
 
-    def set_font_file(self, stream: COSStream | None) -> None:
+    def _set_font_file(self, key: COSName, stream: PDStream | COSStream | None) -> None:
         if stream is None:
-            self._dict.remove_item(_FONT_FILE)
+            self._dict.remove_item(key)
             return
-        self._dict.set_item(_FONT_FILE, stream)
+        if isinstance(stream, PDStream):
+            self._dict.set_item(key, stream.get_cos_object())
+        else:
+            self._dict.set_item(key, stream)
 
-    def get_font_file2(self) -> COSStream | None:
-        v = self._dict.get_dictionary_object(_FONT_FILE2)
-        if isinstance(v, COSStream):
-            return v
-        return None
+    def get_font_file(self) -> PDStream | None:
+        return self._get_font_file(_FONT_FILE)
 
-    def set_font_file2(self, stream: COSStream | None) -> None:
-        if stream is None:
-            self._dict.remove_item(_FONT_FILE2)
-            return
-        self._dict.set_item(_FONT_FILE2, stream)
+    def set_font_file(self, stream: PDStream | COSStream | None) -> None:
+        self._set_font_file(_FONT_FILE, stream)
 
-    def get_font_file3(self) -> COSStream | None:
-        v = self._dict.get_dictionary_object(_FONT_FILE3)
-        if isinstance(v, COSStream):
-            return v
-        return None
+    def get_font_file2(self) -> PDStream | None:
+        return self._get_font_file(_FONT_FILE2)
 
-    def set_font_file3(self, stream: COSStream | None) -> None:
-        if stream is None:
-            self._dict.remove_item(_FONT_FILE3)
-            return
-        self._dict.set_item(_FONT_FILE3, stream)
+    def set_font_file2(self, stream: PDStream | COSStream | None) -> None:
+        self._set_font_file(_FONT_FILE2, stream)
+
+    def get_font_file3(self) -> PDStream | None:
+        return self._get_font_file(_FONT_FILE3)
+
+    def set_font_file3(self, stream: PDStream | COSStream | None) -> None:
+        self._set_font_file(_FONT_FILE3, stream)
 
 
 __all__ = [

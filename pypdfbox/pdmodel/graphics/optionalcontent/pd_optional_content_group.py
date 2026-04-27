@@ -17,6 +17,13 @@ _VIEW_STATE: COSName = COSName.get_pdf_name("ViewState")
 _EXPORT_STATE: COSName = COSName.get_pdf_name("ExportState")
 _ON: COSName = COSName.get_pdf_name("ON")
 _OFF: COSName = COSName.get_pdf_name("OFF")
+_CREATOR_INFO: COSName = COSName.get_pdf_name("CreatorInfo")
+_CREATOR: COSName = COSName.get_pdf_name("Creator")
+_LANGUAGE: COSName = COSName.get_pdf_name("Language")
+_LANG: COSName = COSName.get_pdf_name("Lang")
+
+USAGE_STATE_ON = "ON"
+USAGE_STATE_OFF = "OFF"
 
 
 class PDOptionalContentGroup(PDPropertyList):
@@ -120,9 +127,128 @@ class PDOptionalContentGroup(PDPropertyList):
             usage.set_item(sub_key, sub)
         sub.set_item(state_key, _ON if upper == "ON" else _OFF)
 
+    # ---- /Usage typed accessors (PDF 32000-1 §8.11.4.4 Table 102) ------------
+
+    def _get_usage_subdict_chain(
+        self, *keys: COSName, create: bool = False
+    ) -> COSDictionary | None:
+        """Walk /Usage/<keys[0]>/<keys[1]>/... starting at the OCG dict.
+
+        When ``create`` is False, returns ``None`` if any link in the chain is
+        missing or not a dictionary. When ``create`` is True, missing
+        intermediate dictionaries are created and stored in their parent.
+        """
+        parent = self._dict
+        for key in (_USAGE, *keys):
+            child = parent.get_dictionary_object(key)
+            if not isinstance(child, COSDictionary):
+                if not create:
+                    return None
+                child = COSDictionary()
+                parent.set_item(key, child)
+            parent = child
+        return parent
+
+    def _set_usage_state_entry(
+        self, sub_key: COSName, state_key: COSName, state: str | None
+    ) -> None:
+        """Round-trip an ON/OFF state name under /Usage/<sub_key>/<state_key>.
+
+        Setting ``None`` removes only the targeted state entry; if the
+        containing sub-dict and /Usage become empty as a result, they are
+        removed too so the OCG dict does not retain empty husks.
+        """
+        if state is None:
+            sub = self._get_usage_subdict_chain(sub_key)
+            if sub is None:
+                return
+            sub.remove_item(state_key)
+            self._prune_usage_chain(sub_key)
+            return
+        upper = state.upper()
+        if upper not in (USAGE_STATE_ON, USAGE_STATE_OFF):
+            raise ValueError(
+                f"usage state must be 'ON' or 'OFF', got {state!r}"
+            )
+        sub = self._get_usage_subdict_chain(sub_key, create=True)
+        assert sub is not None
+        sub.set_item(state_key, _ON if upper == USAGE_STATE_ON else _OFF)
+
+    def _set_usage_string_entry(
+        self, sub_key: COSName, value_key: COSName, value: str | None
+    ) -> None:
+        """Round-trip a string under /Usage/<sub_key>/<value_key>."""
+        if value is None:
+            sub = self._get_usage_subdict_chain(sub_key)
+            if sub is None:
+                return
+            sub.remove_item(value_key)
+            self._prune_usage_chain(sub_key)
+            return
+        sub = self._get_usage_subdict_chain(sub_key, create=True)
+        assert sub is not None
+        sub.set_string(value_key, value)
+
+    def _prune_usage_chain(self, sub_key: COSName) -> None:
+        """Drop /Usage/<sub_key> if empty, then drop /Usage if empty."""
+        usage = self._dict.get_dictionary_object(_USAGE)
+        if not isinstance(usage, COSDictionary):
+            return
+        sub = usage.get_dictionary_object(sub_key)
+        if isinstance(sub, COSDictionary) and sub.is_empty():
+            usage.remove_item(sub_key)
+        if usage.is_empty():
+            self._dict.remove_item(_USAGE)
+
+    @staticmethod
+    def _read_state(sub: COSDictionary, key: COSName) -> str | None:
+        value = sub.get_dictionary_object(key)
+        if not isinstance(value, COSName):
+            return None
+        return value.name.upper()
+
+    def get_usage_view_state(self) -> str | None:
+        sub = self._get_usage_subdict_chain(_VIEW)
+        return self._read_state(sub, _VIEW_STATE) if sub is not None else None
+
+    def set_usage_view_state(self, state: str | None) -> None:
+        self._set_usage_state_entry(_VIEW, _VIEW_STATE, state)
+
+    def get_usage_print_state(self) -> str | None:
+        sub = self._get_usage_subdict_chain(_PRINT)
+        return self._read_state(sub, _PRINT_STATE) if sub is not None else None
+
+    def set_usage_print_state(self, state: str | None) -> None:
+        self._set_usage_state_entry(_PRINT, _PRINT_STATE, state)
+
+    def get_usage_export_state(self) -> str | None:
+        sub = self._get_usage_subdict_chain(_EXPORT)
+        return self._read_state(sub, _EXPORT_STATE) if sub is not None else None
+
+    def set_usage_export_state(self, state: str | None) -> None:
+        self._set_usage_state_entry(_EXPORT, _EXPORT_STATE, state)
+
+    def get_usage_creator(self) -> str | None:
+        sub = self._get_usage_subdict_chain(_CREATOR_INFO)
+        if sub is None:
+            return None
+        return sub.get_string(_CREATOR)
+
+    def set_usage_creator(self, creator: str | None) -> None:
+        self._set_usage_string_entry(_CREATOR_INFO, _CREATOR, creator)
+
+    def get_usage_language(self) -> str | None:
+        sub = self._get_usage_subdict_chain(_LANGUAGE)
+        if sub is None:
+            return None
+        return sub.get_string(_LANG)
+
+    def set_usage_language(self, lang: str | None) -> None:
+        self._set_usage_string_entry(_LANGUAGE, _LANG, lang)
+
 
 def _coerce_name(value: object) -> COSName | None:
     return value if isinstance(value, COSName) else None
 
 
-__all__ = ["PDOptionalContentGroup"]
+__all__ = ["PDOptionalContentGroup", "USAGE_STATE_ON", "USAGE_STATE_OFF"]

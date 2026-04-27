@@ -16,6 +16,7 @@ from pypdfbox.pdmodel.interactive.action.pd_action_rendition import PDActionRend
 from pypdfbox.pdmodel.interactive.action.pd_action_sound import PDActionSound
 from pypdfbox.pdmodel.interactive.action.pd_action_transition import PDActionTransition
 from pypdfbox.pdmodel.interactive.action.pd_target_directory import PDTargetDirectory
+from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
 )
@@ -46,7 +47,9 @@ def test_pd_action_sound_round_trip() -> None:
     action.set_repeat(True)
     action.set_mix(True)
 
-    assert action.get_sound() is sound_stream
+    resolved = action.get_sound()
+    assert isinstance(resolved, PDSoundStream)
+    assert resolved.get_cos_object() is sound_stream
     assert action.get_volume() == 0.5
     assert action.is_synchronous() is True
     assert action.is_repeat() is True
@@ -62,6 +65,10 @@ def test_pd_action_sound_round_trip() -> None:
 
 
 def test_pd_action_movie_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_movie import (
+        PDAnnotationMovie,
+    )
+
     action = PDActionMovie()
     assert _sub_type(action) == "Movie"
 
@@ -72,12 +79,23 @@ def test_pd_action_movie_round_trip() -> None:
 
     assert action.get_t() == "Intro Clip"
     assert action.get_operation() == "Play"
-    assert action.get_annotation() is annotation
+    # Raw back-compat accessor returns the dict that was stored.
+    assert action.get_annotation_dictionary() is annotation
+    # Typed accessor wraps it.
+    typed = action.get_annotation()
+    assert isinstance(typed, PDAnnotationMovie)
+    assert typed.get_cos_object() is annotation
+
+    # Round-trip via the typed wrapper directly.
+    typed_in = PDAnnotationMovie()
+    action.set_annotation(typed_in)
+    assert action.get_annotation_dictionary() is typed_in.get_cos_object()
 
     action.set_annotation(None)
     action.set_operation(None)
     action.set_t(None)
     assert action.get_annotation() is None
+    assert action.get_annotation_dictionary() is None
     assert action.get_operation() is None
     assert action.get_t() is None
 

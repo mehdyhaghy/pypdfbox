@@ -30,8 +30,9 @@ class PDListAttributeObject(PDStandardAttributeObject):
 
     # ---------- /ListNumbering ----------
 
-    def get_list_numbering(self) -> str | None:
-        return self._get_name("ListNumbering", self.LIST_NUMBERING_NONE)
+    def get_list_numbering(self) -> str:
+        value = self._get_name("ListNumbering", self.LIST_NUMBERING_NONE)
+        return value if value is not None else self.LIST_NUMBERING_NONE
 
     def set_list_numbering(self, list_numbering: str) -> None:
         self._set_name("ListNumbering", list_numbering)

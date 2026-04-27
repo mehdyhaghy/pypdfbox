@@ -341,9 +341,74 @@ def test_type0_eval_2d_corners_and_center() -> None:
     assert fn.eval([0.5, 0.5]) == pytest.approx([0.5])
 
 
-def test_type0_order3_falls_back_to_linear() -> None:
-    """/Order = 3 (cubic spline) is not implemented — eval falls back to
-    linear interpolation, matching the /Order = 1 result."""
+def test_type0_order3_1d_exact_at_sample_points() -> None:
+    """Catmull-Rom hits each sample exactly at the integer encoded position."""
+    # Samples [0, 0.25, 0.5, 0.75, 1.0] over /Domain [0, 4] map encoded
+    # positions 0..4 to those exact floats via /Decode = /Range = [0, 1].
+    fn = _make_type0(
+        size=[5],
+        bits=8,
+        domain=[0.0, 4.0],
+        rng=[0.0, 1.0],
+        body=bytes([0x00, 0x40, 0x80, 0xC0, 0xFF]),
+        order=3,
+    )
+    assert fn.eval([0.0]) == pytest.approx([0x00 / 0xFF])
+    assert fn.eval([1.0]) == pytest.approx([0x40 / 0xFF])
+    assert fn.eval([2.0]) == pytest.approx([0x80 / 0xFF])
+    assert fn.eval([3.0]) == pytest.approx([0xC0 / 0xFF])
+    assert fn.eval([4.0]) == pytest.approx([0xFF / 0xFF])
+
+
+def test_type0_order3_1d_midpoint_uses_cubic_hermite() -> None:
+    """At t=0.5 between two interior samples the Catmull-Rom value matches
+    the closed-form Hermite combination of the four bracketing samples."""
+    samples = [0x00, 0x40, 0x80, 0xC0, 0xFF]
+    fn = _make_type0(
+        size=[5],
+        bits=8,
+        domain=[0.0, 4.0],
+        rng=[-10.0, 10.0],  # wide range so cubic doesn't get clipped
+        body=bytes(samples),
+        order=3,
+    )
+    # Encoded position 1.5 → floor=1, frac=0.5; stencil samples are
+    # s0=samples[0], s1=samples[1], s2=samples[2], s3=samples[3].
+    # h00=0.5, h10=0.125, h01=0.5, h11=-0.125 at t=0.5.
+    # m1 = (s2 - s0)/2, m2 = (s3 - s1)/2.
+    s0, s1, s2, s3 = samples[0], samples[1], samples[2], samples[3]
+    m1 = 0.5 * (s2 - s0)
+    m2 = 0.5 * (s3 - s1)
+    interp = 0.5 * s1 + 0.125 * m1 + 0.5 * s2 + (-0.125) * m2
+    expected = interp * (10.0 - (-10.0)) / 0xFF + (-10.0)
+    assert fn.eval([1.5]) == pytest.approx([expected])
+
+
+def test_type0_order3_2d_smoke_4x4_grid() -> None:
+    """Cubic 2D interpolation over a 4x4 grid: integer corners exact, mid-
+    grid points stay inside the convex hull of neighbour samples."""
+    # Diagonal ramp: cell (i, j) holds value (i + 4*j) * (255 / 15).
+    body = bytes(int((i + 4 * j) * 255 / 15) for j in range(4) for i in range(4))
+    fn = _make_type0(
+        size=[4, 4],
+        bits=8,
+        domain=[0.0, 3.0, 0.0, 3.0],
+        rng=[0.0, 1.0],
+        body=body,
+        order=3,
+    )
+    # Exact at integer-encoded corners.
+    assert fn.eval([0.0, 0.0]) == pytest.approx([0.0])
+    assert fn.eval([3.0, 3.0]) == pytest.approx([1.0])
+    # Smoke: a center sample produces a value strictly in (0, 1).
+    mid = fn.eval([1.5, 1.5])
+    assert len(mid) == 1
+    assert 0.0 < mid[0] < 1.0
+
+
+def test_type0_order2_falls_back_to_linear() -> None:
+    """/Order values other than 1 or 3 fall back to linear interpolation,
+    behaviorally identical to the /Order = 1 result."""
     common = dict(
         size=[3],
         bits=8,
@@ -352,8 +417,31 @@ def test_type0_order3_falls_back_to_linear() -> None:
         body=bytes([0x00, 0x80, 0xFF]),
     )
     linear = _make_type0(**common)
-    cubic = _make_type0(**common, order=3)
-    assert cubic.eval([0.5]) == pytest.approx(linear.eval([0.5]))
+    quadratic = _make_type0(**common, order=2)
+    for x in (0.0, 0.25, 0.5, 0.75, 1.0):
+        assert quadratic.eval([x]) == pytest.approx(linear.eval([x]))
+
+
+def test_type0_order3_boundary_clamps_no_index_error() -> None:
+    """Cubic neighbour lookups at the /Domain edges must clamp to the valid
+    sample range — no negative-index lookups, no IndexError."""
+    fn = _make_type0(
+        size=[3],
+        bits=8,
+        domain=[0.0, 1.0],
+        rng=[0.0, 1.0],
+        body=bytes([0x00, 0x80, 0xFF]),
+        order=3,
+    )
+    # Edges of /Domain — should hit the first/last sample exactly via clamp.
+    assert fn.eval([0.0]) == pytest.approx([0.0])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
+    # Just inside each edge — exercises the (-1) and (+2) stencil offsets
+    # through the clamp without crashing.
+    near_lo = fn.eval([0.01])
+    near_hi = fn.eval([0.99])
+    assert 0.0 <= near_lo[0] <= 1.0
+    assert 0.0 <= near_hi[0] <= 1.0
 
 
 def test_type3_eval_routes_to_first_subfunction() -> None:

@@ -56,6 +56,7 @@ PDF-specific code, not stdlib-adapter territory. Ports the PDFBox COS object mod
 | `pypdfbox/cos/cos_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/COSStream.java` |
 | `pypdfbox/cos/cos_document.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/COSDocument.java` |
 | `pypdfbox/cos/cos_number.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/COSNumber.java` |
+| `pypdfbox/cos/pd_linearization_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocument.java` (linearization-hint parsing extracted from upstream `PDDocument` into a standalone typed wrapper) |
 
 ### `pypdfbox/pdfparser/`
 
@@ -215,7 +216,8 @@ Cluster #7 partial (outlines + destinations + actions).
 | `pypdfbox/pdmodel/interactive/action/pd_action_import_data.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionImportData.java` |
 | `pypdfbox/pdmodel/interactive/action/pd_action_hide.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionHide.java` |
 | `pypdfbox/pdmodel/interactive/action/pd_action_thread.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionThread.java` |
-| `pypdfbox/pdmodel/interactive/action/pd_action_sound.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionSound.java` (lite — `/Sound` returns raw COS, typed PDSoundStream deferred) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_sound.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionSound.java` (`/Sound` typed via `PDSoundStream`; setter still accepts raw COSBase for back-compat) |
+| `pypdfbox/pdmodel/interactive/sound/pd_sound_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/sound/PDSoundStream.java` |
 | `pypdfbox/pdmodel/interactive/action/pd_action_movie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionMovie.java` (lite — `/Annotation` returns raw COS, typed PDAnnotationMovie deferred) |
 | `pypdfbox/pdmodel/interactive/action/pd_action_rendition.py` | 3.0.x | PDF 32000-1 §12.6.4.13 (no upstream source — modelled on spec; `/AN` and `/R` return raw COS) |
 | `pypdfbox/pdmodel/interactive/action/pd_action_transition.py` | 3.0.x | PDF 32000-1 §12.6.4.14 (no upstream source; `/Trans` typed via PDTransition) |
@@ -242,6 +244,7 @@ Cluster #7 partial (outlines + destinations + actions).
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_ink.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationInk.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_polygon.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPolygon.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_polyline.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPolyline.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_movie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationMovie.java` (lite — `/Movie` returns raw `COSDictionary`, `/A` returns raw `COSBase`; typed `PDMovie` and `PDMovieActivation` deferred) |
 | `pypdfbox/pdmodel/common/pd_metadata.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDMetadata.java` (lite — multi-arg `__init__` dispatch; no XMPMetadata-returning accessor) |
 | `pypdfbox/pdmodel/graphics/color/pd_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColor.java` (lite — `to_rgb` rendering conversion deferred) |
 | `pypdfbox/pdmodel/graphics/color/pd_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorSpace.java` (lite — `create()` factory deferred) |

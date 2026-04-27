@@ -35,6 +35,16 @@ class PDFunctionType4(PDFunction):
 
     def __init__(self, function: COSBase | None = None) -> None:
         super().__init__(function)
+        # Parsed instruction sequence cache. ``None`` is the "not yet parsed"
+        # sentinel so a legitimately-empty program (``[]``) is still a hit
+        # after the first parse. Shading renderers call ``eval`` millions of
+        # times against the same wrapper; tokenising + parsing the body each
+        # call is the dominant cost. Body bytes don't mutate after the
+        # COSStream is parsed, so a once-parsed cache is safe for the
+        # lifetime of the wrapper. Callers that mutate the body via
+        # ``pd_stream.set_data(...)`` can invalidate via
+        # ``clear_instruction_cache()``.
+        self._instruction_cache: list | None = None
 
     def get_function_type(self) -> int:
         return 4
@@ -51,8 +61,10 @@ class PDFunctionType4(PDFunction):
         """
         clipped = self.clip_input(input)
 
-        body = self._read_body()
-        sequence = _parse(body)
+        sequence = self._instruction_cache
+        if sequence is None:
+            sequence = _parse(self._read_body())
+            self._instruction_cache = sequence
 
         stack: list[float | bool] = list(clipped)
         _execute(sequence, stack)
@@ -61,6 +73,17 @@ class PDFunctionType4(PDFunction):
         # before /Range clipping; /Range is defined over numeric outputs.
         result = [float(v) for v in stack]
         return self.clip_output(result)
+
+    def clear_instruction_cache(self) -> None:
+        """Drop the cached parsed instruction sequence so the next ``eval``
+        re-tokenises and re-parses the underlying stream body.
+
+        Not present in upstream PDFBox (which has no such cache to begin
+        with). Provided as a defensive escape hatch for callers that mutate
+        the underlying ``COSStream`` body via ``pd_stream.set_data(...)``
+        after the first ``eval``.
+        """
+        self._instruction_cache = None
 
     # ---------- helpers ----------
 

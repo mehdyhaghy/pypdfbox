@@ -11,6 +11,7 @@ from .cos_name import COSName
 from .cos_object import COSObject
 from .cos_object_key import COSObjectKey
 from .i_cos_visitor import ICOSVisitor
+from .pd_linearization_dictionary import PDLinearizationDictionary
 
 DEFAULT_VERSION: float = 1.4
 
@@ -55,6 +56,8 @@ class COSDocument(COSBase):
         # tail of the source — used by the incremental writer to set /Prev on
         # the appended xref. ``0`` means "unknown / new document".
         self._start_xref: int = 0
+        self._linearized_dict: PDLinearizationDictionary | None = None
+        self._linearized_resolved: bool = False
         self._closed: bool = False
 
     # ---------- object pool ----------
@@ -111,12 +114,27 @@ class COSDocument(COSBase):
                     out.append(cos_obj)
         return out
 
-    def get_linearized_dictionary(self) -> COSDictionary | None:
-        """Return the linearization parameter dictionary, or ``None`` if the
-        document is not linearized. Currently always ``None`` because pypdfbox
-        does not yet parse the linearization hint table — placeholder kept for
-        API parity (PDFBOX-6132)."""
-        return None
+    def get_linearized_dictionary(self) -> PDLinearizationDictionary | None:
+        """Return the linearization parameter dictionary (PDF 32000-1 Annex F)
+        as a typed wrapper, or ``None`` if the document is not linearized.
+
+        Linearized files place the parameter dictionary as the **first**
+        indirect object after the header; we walk the object pool in
+        insertion order and pick the first resolved dictionary carrying a
+        truthy ``/Linearized`` entry. The result is cached — repeated calls
+        do not re-scan."""
+        if self._linearized_resolved:
+            return self._linearized_dict
+        for cos_obj in self._objects.values():
+            resolved = cos_obj.get_object()
+            if not isinstance(resolved, COSDictionary):
+                continue
+            wrapper = PDLinearizationDictionary(resolved)
+            if wrapper.is_linearized():
+                self._linearized_dict = wrapper
+                break
+        self._linearized_resolved = True
+        return self._linearized_dict
 
     # ---------- trailer / catalog / id ----------
 

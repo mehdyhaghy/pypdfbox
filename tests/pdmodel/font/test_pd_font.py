@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
+from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.font import (
     PDFont,
     PDFontDescriptor,
@@ -236,6 +237,108 @@ def test_font_descriptor_constructor_does_not_overwrite_existing_dict_type() -> 
     fd = PDFontDescriptor(raw)
     # Wrapping an existing dict must not stomp the /Type entry.
     assert fd.get_cos_object().get_name(COSName.TYPE) == "Custom"  # type: ignore[attr-defined]
+
+
+# ---------- PDFontDescriptor descriptive entries ----------
+
+
+def test_font_descriptor_font_family_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_family() is None
+    fd.set_font_family("Helvetica")
+    assert fd.get_font_family() == "Helvetica"
+    fd.set_font_family(None)
+    assert fd.get_font_family() is None
+    assert fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("FontFamily")) is None
+
+
+def test_font_descriptor_font_stretch_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_stretch() is None
+    fd.set_font_stretch("Condensed")
+    assert fd.get_font_stretch() == "Condensed"
+    # /FontStretch is a name, not a string — verify the COS type.
+    raw = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("FontStretch"))
+    assert isinstance(raw, COSName)
+    fd.set_font_stretch(None)
+    assert fd.get_font_stretch() is None
+
+
+def test_font_descriptor_font_weight_round_trip_and_default() -> None:
+    fd = PDFontDescriptor()
+    # Default when absent must be 0.
+    assert fd.get_font_weight() == 0
+    fd.set_font_weight(700)
+    assert fd.get_font_weight() == 700.0
+    fd.set_font_weight(400.0)
+    assert fd.get_font_weight() == 400.0
+
+
+def test_font_descriptor_char_set_round_trip() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_char_set() is None
+    fd.set_char_set("/A/B/space")
+    assert fd.get_char_set() == "/A/B/space"
+    fd.set_char_set(None)
+    assert fd.get_char_set() is None
+
+
+# ---------- PDFontDescriptor /FontFile* PDStream accessors ----------
+
+
+def test_font_descriptor_font_file2_wraps_cos_stream_round_trip() -> None:
+    fd = PDFontDescriptor()
+    cos = COSStream()
+    cos.set_raw_data(b"\x00\x01TTF-bytes")
+    fd.set_font_file2(cos)
+
+    pd = fd.get_font_file2()
+    assert isinstance(pd, PDStream)
+    # The PDStream must wrap the same underlying COSStream we stored.
+    assert pd.get_cos_object() is cos
+
+    # Setting via PDStream must store the underlying COSStream verbatim.
+    fd2 = PDFontDescriptor()
+    fd2.set_font_file2(PDStream(cos))
+    assert (
+        fd2.get_cos_object().get_dictionary_object(COSName.get_pdf_name("FontFile2")) is cos
+    )
+
+
+def test_font_descriptor_font_file_and_file3_round_trip_and_set_none_removes() -> None:
+    fd = PDFontDescriptor()
+
+    # /FontFile (Type 1)
+    pfb_stream = COSStream()
+    pfb_stream.set_raw_data(b"PFB-bytes")
+    fd.set_font_file(pfb_stream)
+    out1 = fd.get_font_file()
+    assert isinstance(out1, PDStream)
+    assert out1.get_cos_object() is pfb_stream
+
+    # /FontFile3 (CFF / OpenType)
+    cff_stream = COSStream()
+    cff_stream.set_raw_data(b"CFF-bytes")
+    fd.set_font_file3(cff_stream)
+    out3 = fd.get_font_file3()
+    assert isinstance(out3, PDStream)
+    assert out3.get_cos_object() is cff_stream
+
+    # set_font_file*(None) must remove the entry on each variant.
+    fd.set_font_file(None)
+    fd.set_font_file3(None)
+    assert fd.get_font_file() is None
+    assert fd.get_font_file3() is None
+    cos = fd.get_cos_object()
+    assert cos.get_dictionary_object(COSName.get_pdf_name("FontFile")) is None
+    assert cos.get_dictionary_object(COSName.get_pdf_name("FontFile3")) is None
+
+
+def test_font_descriptor_font_file_accessors_return_none_when_absent() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_font_file() is None
+    assert fd.get_font_file2() is None
+    assert fd.get_font_file3() is None
 
 
 # ---------- PDFont <-> PDFontDescriptor wiring ----------

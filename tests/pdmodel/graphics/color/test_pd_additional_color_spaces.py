@@ -142,10 +142,16 @@ def test_pd_indexed_round_trip_hival_and_base() -> None:
 
 
 def test_pd_indexed_round_trip_lookup_bytes() -> None:
+    # Default PDIndexed: hival=255, base=DeviceRGB (3 components), so the
+    # canonical palette length is 768. get_lookup_data clamps the returned
+    # bytes to that length — short payloads are right-padded with NULs.
     cs = PDIndexed()
-    payload = bytes(range(0, 256, 4))
+    payload = bytes(range(0, 256, 4))  # 64 bytes < expected 768
     cs.set_lookup_data(payload)
-    assert cs.get_lookup_data() == payload
+    out = cs.get_lookup_data()
+    assert out is not None
+    assert out[: len(payload)] == payload
+    assert len(out) == (cs.get_hival() + 1) * 3
 
 
 def test_pd_indexed_lookup_from_cos_string() -> None:
@@ -156,7 +162,13 @@ def test_pd_indexed_lookup_from_cos_string() -> None:
     arr.add(COSString(b"\x00\x10\x20\x30"))
     cs = PDIndexed(arr)
     assert cs.get_hival() == 15
-    assert cs.get_lookup_data() == b"\x00\x10\x20\x30"
+    # hival=15, DeviceRGB → expected 16 * 3 = 48 bytes; the 4-byte payload
+    # is right-padded with NULs by get_lookup_data's defensive clamp.
+    out = cs.get_lookup_data()
+    assert out is not None
+    assert out[:4] == b"\x00\x10\x20\x30"
+    assert len(out) == 48
+    assert out[4:] == b"\x00" * 44
 
 
 # ---------- PDSeparation round-trip ----------

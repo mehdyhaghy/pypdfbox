@@ -70,13 +70,40 @@ class PDIndexed(PDColorSpace):
         self._array.set(2, COSInteger.get(hival))
 
     def get_lookup_data(self) -> bytes | None:
+        """Return the lookup-table bytes for this Indexed color space.
+
+        Per PDF 32000-1 §8.6.6.3 ``/Lookup`` is either a ``COSString``
+        (literal palette bytes) or a ``COSStream`` (same logical bytes,
+        carried through the stream's ``/Filter`` chain — typically
+        ``/FlateDecode`` for large palettes). For the stream form we
+        consume :meth:`COSStream.create_input_stream`, which walks the
+        filter chain, so the caller always sees decoded palette bytes.
+
+        Output length is clamped to ``(hival + 1) * base_components``:
+        longer payloads are truncated, shorter payloads are right-padded
+        with ``\x00``. Mirrors upstream's lenient handling of malformed
+        indexed lookups (better a black palette entry than a crash).
+        """
         assert self._array is not None
         entry = self._array.get_object(3)
+        data: bytes | None = None
         if isinstance(entry, COSString):
-            return entry.get_bytes()
-        if isinstance(entry, COSStream):
-            return entry.get_raw_data()
-        return None
+            data = entry.get_bytes()
+        elif isinstance(entry, COSStream):
+            with entry.create_input_stream() as src:
+                data = src.read()
+        if data is None:
+            return None
+
+        base = self.get_base_color_space()
+        if base is None:
+            return data
+        expected = (self.get_hival() + 1) * base.get_number_of_components()
+        if len(data) > expected:
+            return data[:expected]
+        if len(data) < expected:
+            return data + b"\x00" * (expected - len(data))
+        return data
 
     def set_lookup_data(self, data: bytes | None) -> None:
         assert self._array is not None

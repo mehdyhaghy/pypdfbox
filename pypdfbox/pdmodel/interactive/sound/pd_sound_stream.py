@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+from pypdfbox.cos import COSBase, COSName, COSStream
+from pypdfbox.pdmodel.common.pd_stream import PDStream
+
+_R: COSName = COSName.get_pdf_name("R")
+_C: COSName = COSName.get_pdf_name("C")
+_B: COSName = COSName.get_pdf_name("B")
+_E: COSName = COSName.get_pdf_name("E")
+_CO: COSName = COSName.get_pdf_name("CO")
+_CP: COSName = COSName.get_pdf_name("CP")
+
+
+class PDSoundStream(PDStream):
+    """Typed wrapper around a PDF sound stream.
+
+    Mirrors PDFBox ``PDSoundStream``. Per ISO 32000-1 §13.2.4 Table 200,
+    a sound dictionary is a ``COSStream`` extending ``PDStream`` with the
+    following entries:
+
+    ====  =========================================================
+    Key   Meaning
+    ====  =========================================================
+    /R    Sampling rate (samples per second). Required.
+    /C    Number of sound channels. Integer; default 1.
+    /B    Bits per sample. Integer; default 8.
+    /E    Sound encoding format. Name; default ``Raw``. Allowed:
+          ``Raw``, ``Signed``, ``muLaw``, ``ALaw``.
+    /CO   Compression format. Name; optional.
+    /CP   Compression parameters; type depends on /CO; optional.
+    ====  =========================================================
+
+    Constructor accepts ``None`` (build a fresh empty COSStream and stamp
+    the spec defaults ``/B 8``, ``/E /Raw``, ``/C 1``), an existing
+    ``COSStream`` (wrap as-is, no defaults), or another ``PDStream``
+    (steal its underlying COSStream)."""
+
+    def __init__(self, stream: COSStream | PDStream | None = None) -> None:
+        if isinstance(stream, PDStream):
+            super().__init__(stream.get_cos_object())
+        elif isinstance(stream, COSStream):
+            super().__init__(stream)
+        elif stream is None:
+            super().__init__()
+            cos = self.get_cos_object()
+            # Stamp spec defaults so a fresh wrapper round-trips through
+            # the dictionary accessors with sensible values.
+            cos.set_int(_B, 8)
+            cos.set_name(_E, "Raw")
+            cos.set_int(_C, 1)
+        else:
+            raise TypeError(
+                f"PDSoundStream expected None, COSStream, or PDStream; "
+                f"got {type(stream).__name__}"
+            )
+
+    # ---------- /R sampling rate ----------
+
+    def get_samples_per_second(self) -> float:
+        return self.get_cos_object().get_float(_R, 0.0)
+
+    def set_samples_per_second(self, value: float) -> None:
+        self.get_cos_object().set_float(_R, float(value))
+
+    # ---------- /C number of channels ----------
+
+    def get_number_of_channels(self) -> int:
+        return self.get_cos_object().get_int(_C, 1)
+
+    def set_number_of_channels(self, value: int) -> None:
+        self.get_cos_object().set_int(_C, int(value))
+
+    # ---------- /B bits per sample ----------
+
+    def get_bits_per_sample(self) -> int:
+        return self.get_cos_object().get_int(_B, 8)
+
+    def set_bits_per_sample(self, value: int) -> None:
+        self.get_cos_object().set_int(_B, int(value))
+
+    # ---------- /E encoding format ----------
+
+    def get_encoding_format(self) -> str:
+        name = self.get_cos_object().get_name(_E)
+        return name if name is not None else "Raw"
+
+    def set_encoding_format(self, value: str) -> None:
+        self.get_cos_object().set_name(_E, value)
+
+    # ---------- /CO compression format ----------
+
+    def get_compression_format(self) -> str | None:
+        return self.get_cos_object().get_name(_CO)
+
+    def set_compression_format(self, value: str | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_CO)
+            return
+        cos.set_name(_CO, value)
+
+    # ---------- /CP compression parameters ----------
+
+    def get_compression_params(self) -> COSBase | None:
+        return self.get_cos_object().get_dictionary_object(_CP)
+
+    def set_compression_params(self, value: COSBase | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_CP)
+            return
+        cos.set_item(_CP, value)
+
+
+__all__ = ["PDSoundStream"]

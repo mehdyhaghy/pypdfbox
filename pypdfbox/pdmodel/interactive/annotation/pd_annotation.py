@@ -121,6 +121,7 @@ class PDAnnotation:
         from .pd_annotation_ink import PDAnnotationInk
         from .pd_annotation_line import PDAnnotationLine
         from .pd_annotation_link import PDAnnotationLink
+        from .pd_annotation_movie import PDAnnotationMovie
         from .pd_annotation_polygon import PDAnnotationPolygon
         from .pd_annotation_polyline import PDAnnotationPolyline
         from .pd_annotation_popup import PDAnnotationPopup
@@ -175,6 +176,8 @@ class PDAnnotation:
             return PDAnnotationPolygon(cos_dict)
         if subtype == PDAnnotationPolyline.SUB_TYPE:
             return PDAnnotationPolyline(cos_dict)
+        if subtype == PDAnnotationMovie.SUB_TYPE:
+            return PDAnnotationMovie(cos_dict)
         return PDAnnotationUnknown(cos_dict)
 
     # ---------- /Rect ----------
