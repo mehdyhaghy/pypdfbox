@@ -23,6 +23,12 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
     Mirrors PDFBox ``PDOptionalContentMembershipDictionary``.
     """
 
+    # Visibility policy constants per PDF 32000-1 §8.11.2.2 / Table 102.
+    VISIBILITY_POLICY_ALL_ON: str = "AllOn"
+    VISIBILITY_POLICY_ANY_ON: str = "AnyOn"
+    VISIBILITY_POLICY_ANY_OFF: str = "AnyOff"
+    VISIBILITY_POLICY_ALL_OFF: str = "AllOff"
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             super().__init__()
@@ -87,6 +93,47 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
                     f"COSDictionary, got {type(item).__name__}"
                 )
         self._dict.set_item(_OCGS, arr)
+
+    # Upstream PDFBox spelling: ``getOCGs`` / ``setOCGs``. The auto
+    # camelCase→snake_case rule splits at every uppercase boundary which
+    # produces ``get_o_cgs``; PDFBox developers reach for ``get_ocgs`` first,
+    # so expose that as the canonical name with the split form kept as an
+    # alias for back-compat with earlier callers.
+    def get_ocgs(self) -> list[PDOptionalContentGroup]:
+        """Return the referenced optional content groups, never ``None``.
+
+        Mirrors PDFBox ``PDOptionalContentMembershipDictionary.getOCGs``.
+        """
+        return self.get_o_cgs()
+
+    def set_ocgs(
+        self,
+        ocgs: (
+            PDOptionalContentGroup
+            | COSDictionary
+            | list[PDOptionalContentGroup | COSDictionary]
+        ),
+    ) -> None:
+        """Write /OCGs.
+
+        When given a single ``PDOptionalContentGroup`` or ``COSDictionary``,
+        writes the value directly (PDF 32000-1 §8.11.2.2 allows /OCGs to be
+        either a single OCG dictionary or an array). Lists become a
+        ``COSArray`` via :meth:`set_o_cgs`.
+        """
+        if isinstance(ocgs, PDOptionalContentGroup):
+            self._dict.set_item(_OCGS, ocgs.get_cos_object())
+            return
+        if isinstance(ocgs, COSDictionary):
+            self._dict.set_item(_OCGS, ocgs)
+            return
+        if isinstance(ocgs, list):
+            self.set_o_cgs(ocgs)
+            return
+        raise TypeError(
+            "ocgs must be PDOptionalContentGroup, COSDictionary, or list, "
+            f"got {type(ocgs).__name__}"
+        )
 
     # ---------- /P (visibility policy) ----------
 

@@ -26,6 +26,15 @@ class PDTransition:
     PDF 32000-1:2008.
     """
 
+    #: Motion constant: inward from the edges of the page.
+    MOTION_INWARD = "I"
+    #: Motion constant: outward from the center of the page.
+    MOTION_OUTWARD = "O"
+    #: Dimension constant: horizontal.
+    DIMENSION_HORIZONTAL = "H"
+    #: Dimension constant: vertical.
+    DIMENSION_VERTICAL = "V"
+
     def __init__(
         self,
         dictionary: COSDictionary | None = None,
@@ -101,9 +110,20 @@ class PDTransition:
     def set_fly_scale(self, scale: float) -> None:
         self._dictionary.set_float(_SS, scale)
 
+    # ---------- scale aliases (/SS) ----------
+
+    def get_scale(self) -> float:
+        return self._dictionary.get_float(_SS, 1)
+
+    def set_scale(self, scale: float) -> None:
+        self._dictionary.set_float(_SS, scale)
+
     # ---------- fly area opaque (/B) ----------
 
     def get_fly_area_to_show(self) -> bool:
+        return self._dictionary.get_boolean(_B, False)
+
+    def is_fly_area_to_show(self) -> bool:
         return self._dictionary.get_boolean(_B, False)
 
     def set_fly_area_to_show(self, b: bool) -> None:

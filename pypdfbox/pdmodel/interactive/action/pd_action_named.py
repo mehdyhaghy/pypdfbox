@@ -12,6 +12,14 @@ class PDActionNamed(PDAction):
 
     SUB_TYPE = "Named"
 
+    # Standard named actions (PDF 32000-1 §12.6.4.11). PDF 1.5+ allows
+    # extension names beyond these four; callers may pass arbitrary
+    # strings to :meth:`set_n`.
+    NAMED_ACTION_NEXT_PAGE = "NextPage"
+    NAMED_ACTION_PREV_PAGE = "PrevPage"
+    NAMED_ACTION_FIRST_PAGE = "FirstPage"
+    NAMED_ACTION_LAST_PAGE = "LastPage"
+
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 

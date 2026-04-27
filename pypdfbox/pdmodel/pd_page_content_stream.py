@@ -213,6 +213,18 @@ class PDPageContentStream:
         self._write_operands(x1, y1, x2, y2, x3, y3)
         self._write_operator(b"c")
 
+    def curve_to_1(self, x2: float, y2: float, x3: float, y3: float) -> None:
+        """Emit ``v`` — Bezier curve from current point with control points
+        (current, x2,y2) ending at x3,y3."""
+        self._write_operands(x2, y2, x3, y3)
+        self._write_operator(b"v")
+
+    def curve_to_2(self, x1: float, y1: float, x3: float, y3: float) -> None:
+        """Emit ``y`` — Bezier curve with control points (x1,y1, x3,y3)
+        ending at x3,y3."""
+        self._write_operands(x1, y1, x3, y3)
+        self._write_operator(b"y")
+
     def close_path(self) -> None:
         self._write_operator(b"h")
 
@@ -225,8 +237,33 @@ class PDPageContentStream:
     def fill(self) -> None:
         self._write_operator(b"f")
 
+    def fill_even_odd(self) -> None:
+        """Emit ``f*`` — fill using the even-odd rule."""
+        self._write_operator(b"f*")
+
     def fill_and_stroke(self) -> None:
         self._write_operator(b"B")
+
+    def fill_and_stroke_even_odd(self) -> None:
+        """Emit ``B*`` — fill (even-odd) and stroke."""
+        self._write_operator(b"B*")
+
+    def close_fill_and_stroke(self) -> None:
+        """Emit ``b`` — close, fill (non-zero), and stroke."""
+        self._write_operator(b"b")
+
+    def close_fill_and_stroke_even_odd(self) -> None:
+        """Emit ``b*`` — close, fill (even-odd), and stroke."""
+        self._write_operator(b"b*")
+
+    def clip_path(self) -> None:
+        """Emit ``W`` — set the clipping path using the non-zero winding
+        rule. Must be followed by a path-painting or ``n`` operator."""
+        self._write_operator(b"W")
+
+    def clip_path_even_odd(self) -> None:
+        """Emit ``W*`` — set the clipping path using the even-odd rule."""
+        self._write_operator(b"W*")
 
     def add_rect(self, x: float, y: float, width: float, height: float) -> None:
         self._write_operands(x, y, width, height)
@@ -283,6 +320,31 @@ class PDPageContentStream:
     def set_miter_limit(self, miter: float) -> None:
         self._write_operands(miter)
         self._write_operator(b"M")
+
+    def set_dash_pattern(self, dash: list[float], phase: float) -> None:
+        """Emit ``[a b c ...] phase d`` — set the dash pattern."""
+        self._buffer.append(0x5B)  # [
+        first = True
+        for v in dash:
+            if not first:
+                self._buffer.append(0x20)
+            self._buffer.extend(_format_number(v))
+            first = False
+        self._buffer.append(0x5D)  # ]
+        self._buffer.append(0x20)
+        self._write_operands(phase)
+        self._write_operator(b"d")
+
+    def set_rendering_intent(self, intent: str) -> None:
+        """Emit ``/<intent> ri`` — set the colour rendering intent."""
+        self._write_name(_to_cos_name(intent))
+        self._buffer.append(0x20)
+        self._write_operator(b"ri")
+
+    def set_flatness(self, flatness: float) -> None:
+        """Emit ``<value> i`` — set the flatness tolerance."""
+        self._write_operands(flatness)
+        self._write_operator(b"i")
 
     # ------------------------------------------------------------------
     # text
@@ -376,6 +438,16 @@ class PDPageContentStream:
         self._write_operands(scaling)
         self._write_operator(b"Tz")
 
+    def set_text_rendering_mode(self, mode: int) -> None:
+        """Emit ``<mode> Tr`` — set the text rendering mode (0-7)."""
+        m = int(mode)
+        if not 0 <= m <= 7:
+            raise ValueError(
+                f"text rendering mode must be in 0..7; got {mode!r}"
+            )
+        self._write_operands(m)
+        self._write_operator(b"Tr")
+
     # ------------------------------------------------------------------
     # graphics state
     # ------------------------------------------------------------------
@@ -397,6 +469,19 @@ class PDPageContentStream:
     ) -> None:
         self._write_operands(a, b, c, d, e, f)
         self._write_operator(b"cm")
+
+    def concatenate_matrix(
+        self,
+        a: float,
+        b: float,
+        c: float,
+        d: float,
+        e: float,
+        f: float,
+    ) -> None:
+        """Emit ``a b c d e f cm`` — alias for :meth:`transform` matching
+        upstream's ``concatenate2CTM`` / ``concatenateMatrix`` naming."""
+        self.transform(a, b, c, d, e, f)
 
     # ------------------------------------------------------------------
     # XObject

@@ -41,5 +41,23 @@ class PDPageAdditionalActions:
             return
         self._actions.set_item(_C, action.get_cos_object())
 
+    # ------------------------------------------------------------------
+    # Upstream-named aliases. PDFBox exposes longer descriptive accessors
+    # alongside the single-letter ones; mirror those for source-level
+    # familiarity.
+    # ------------------------------------------------------------------
+
+    def get_open_action(self) -> PDAction | None:
+        return self.get_o()
+
+    def set_open_action(self, action: PDAction | None) -> None:
+        self.set_o(action)
+
+    def get_close_action(self) -> PDAction | None:
+        return self.get_c()
+
+    def set_close_action(self, action: PDAction | None) -> None:
+        self.set_c(action)
+
 
 __all__ = ["PDPageAdditionalActions"]

@@ -96,13 +96,24 @@ def test_submit_reset_import_hide_and_thread_accessors_round_trip_cos() -> None:
     submit.set_file("submit.fdf")
     submit.set_fields(fields)
     submit.set_flags(4)
-    assert isinstance(submit.get_file(), COSString)
-    assert submit.get_fields() is fields
+    # PDActionSubmitForm.get_file() now returns a typed PDFileSpecification
+    # (mirrors upstream PDFBox); the raw COS form is reachable on the dict.
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+    from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
+        PDComplexFileSpecification,
+    )
+    assert isinstance(submit.get_file(), PDSimpleFileSpecification)
+    assert submit.get_url() == "submit.fdf"
+    assert submit.get_cos_fields() is fields
     assert submit.get_flags() == 4
 
     file_spec = COSDictionary()
     submit.set_file(file_spec)
-    assert submit.get_file() is file_spec
+    fs = submit.get_file()
+    assert isinstance(fs, PDComplexFileSpecification)
+    assert fs.get_cos_object() is file_spec
 
     reset = PDActionResetForm()
     reset.set_fields(fields)
@@ -113,7 +124,12 @@ def test_submit_reset_import_hide_and_thread_accessors_round_trip_cos() -> None:
     import_data = PDActionImportData()
     import_file = COSDictionary()
     import_data.set_file(import_file)
-    assert import_data.get_file() is import_file
+    # PDActionImportData.get_file() returns a typed PDFileSpecification
+    # (mirrors upstream PDFBox); the raw COSDictionary is reachable via
+    # get_cos_object().
+    import_fs = import_data.get_file()
+    assert import_fs is not None
+    assert import_fs.get_cos_object() is import_file
 
     hide = PDActionHide()
     target = COSString("Widget1")
@@ -129,7 +145,11 @@ def test_submit_reset_import_hide_and_thread_accessors_round_trip_cos() -> None:
     thread.set_file("threads.pdf")
     thread.set_d(destination)
     thread.set_b(bead)
-    assert isinstance(thread.get_file(), COSString)
+    # PDActionThread.get_file() returns a typed PDFileSpecification
+    # (mirrors upstream PDFBox).
+    thread_fs = thread.get_file()
+    assert isinstance(thread_fs, PDSimpleFileSpecification)
+    assert thread_fs.get_file() == "threads.pdf"
     assert thread.get_d() is destination
     assert thread.get_b() is bead
 
@@ -137,7 +157,7 @@ def test_submit_reset_import_hide_and_thread_accessors_round_trip_cos() -> None:
     import_data.set_file(None)
     hide.set_t(None)
     thread.set_b(None)
-    assert submit.get_fields() is None
+    assert submit.get_cos_fields() is None
     assert import_data.get_file() is None
     assert hide.get_t() is None
     assert thread.get_b() is None

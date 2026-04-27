@@ -149,6 +149,45 @@ class PDStructureTreeRoot(PDStructureNode):
     def set_parent_tree_next_key(self, key: int) -> None:
         self._dictionary.set_int(_PARENT_TREE_NEXT_KEY, key)
 
+    # ---------- convenience lookups ----------
+
+    def get_struct_element_for_id(self, id_string: str) -> PDStructureElement | None:
+        """Look up a ``PDStructureElement`` by ``/ID`` via the ``/IDTree``.
+        Returns ``None`` when the ``/IDTree`` is absent or the id is not found.
+        Mirrors upstream ``PDStructureTreeRoot.getStructElementForID``."""
+        if id_string is None:
+            return None
+        id_tree = self.get_id_tree()
+        if id_tree is None:
+            return None
+        return id_tree.get_value(id_string)
+
+    def get_struct_element_for_mcid(
+        self, page: Any, mcid: int
+    ) -> PDStructureElement | None:
+        """Look up the ``PDStructureElement`` that owns the marked-content
+        sequence with id ``mcid`` on ``page``. Resolves via
+        ``/StructParents`` → ``/ParentTree`` → array indexed by mcid.
+        Returns ``None`` when any link is missing.
+        Mirrors upstream ``PDStructureTreeRoot.getStructElementForMCID``."""
+        if page is None:
+            return None
+        struct_parents = page.get_struct_parents()
+        if struct_parents < 0:
+            return None
+        parent_tree = self.get_parent_tree()
+        if parent_tree is None:
+            return None
+        entry = parent_tree.get_value(struct_parents)
+        if not isinstance(entry, COSArray):
+            return None
+        if mcid < 0 or mcid >= entry.size():
+            return None
+        target = entry.get_object(mcid)
+        if not isinstance(target, COSDictionary):
+            return None
+        return PDStructureElement(target)
+
 
 class PDStructureElementNameTreeNode(PDNameTreeNode[PDStructureElement]):
     """

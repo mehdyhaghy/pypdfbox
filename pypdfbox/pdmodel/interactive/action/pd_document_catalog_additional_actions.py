@@ -75,5 +75,41 @@ class PDDocumentCatalogAdditionalActions:
             return
         self._actions.set_item(_DP, action.get_cos_object())
 
+    # ------------------------------------------------------------------
+    # Upstream-named aliases. PDFBox exposes longer descriptive accessors
+    # alongside the two-letter ones; mirror those for source-level
+    # familiarity.
+    # ------------------------------------------------------------------
+
+    def get_will_close(self) -> PDAction | None:
+        return self.get_wc()
+
+    def set_will_close(self, action: PDAction | None) -> None:
+        self.set_wc(action)
+
+    def get_will_save(self) -> PDAction | None:
+        return self.get_ws()
+
+    def set_will_save(self, action: PDAction | None) -> None:
+        self.set_ws(action)
+
+    def get_did_save(self) -> PDAction | None:
+        return self.get_ds()
+
+    def set_did_save(self, action: PDAction | None) -> None:
+        self.set_ds(action)
+
+    def get_will_print(self) -> PDAction | None:
+        return self.get_wp()
+
+    def set_will_print(self, action: PDAction | None) -> None:
+        self.set_wp(action)
+
+    def get_did_print(self) -> PDAction | None:
+        return self.get_dp()
+
+    def set_did_print(self, action: PDAction | None) -> None:
+        self.set_dp(action)
+
 
 __all__ = ["PDDocumentCatalogAdditionalActions"]
