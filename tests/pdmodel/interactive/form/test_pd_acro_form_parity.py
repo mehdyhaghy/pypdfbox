@@ -1,0 +1,151 @@
+"""Parity tests for upstream-named ``PDAcroForm`` accessors.
+
+Covers the surface added on top of the wave-19 lite form: ``/DA``, ``/Q``,
+``/SigFlags`` (per-bit accessors), ``/NeedAppearances``, ``/DR``, plus the
+deferred ``refresh_appearances`` / ``import_fdf`` placeholders.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDFieldStub
+from pypdfbox.pdmodel.pd_resources import PDResources
+
+
+def test_default_appearance_round_trip() -> None:
+    form = PDAcroForm()
+    # Upstream returns "" (not None) when /DA is absent.
+    assert form.get_default_appearance() == ""
+
+    form.set_default_appearance("/Helv 0 Tf 0 g")
+    assert form.get_default_appearance() == "/Helv 0 Tf 0 g"
+
+    form.set_default_appearance("")
+    assert form.get_default_appearance() == ""
+
+
+def test_q_default_zero_and_round_trip() -> None:
+    form = PDAcroForm()
+    assert form.get_q() == 0  # default = quad-left
+
+    for value in (0, 1, 2):
+        form.set_q(value)
+        assert form.get_q() == value
+
+
+def test_signatures_exist_and_append_only_round_trip_via_sig_flags() -> None:
+    form = PDAcroForm()
+    assert form.is_signatures_exist() is False
+    assert form.is_append_only() is False
+
+    form.set_signatures_exist(True)
+    assert form.is_signatures_exist() is True
+    assert form.is_append_only() is False
+    # Bit-level: only bit 1 should be set after toggling /SignaturesExist.
+    assert form.get_cos_object().get_int(COSName.get_pdf_name("SigFlags")) == 1
+
+    form.set_append_only(True)
+    assert form.is_signatures_exist() is True
+    assert form.is_append_only() is True
+    assert form.get_cos_object().get_int(COSName.get_pdf_name("SigFlags")) == 3
+
+    # Clearing /SignaturesExist must preserve /AppendOnly.
+    form.set_signatures_exist(False)
+    assert form.is_signatures_exist() is False
+    assert form.is_append_only() is True
+    assert form.get_cos_object().get_int(COSName.get_pdf_name("SigFlags")) == 2
+
+    form.set_append_only(False)
+    assert form.is_append_only() is False
+    assert form.get_cos_object().get_int(COSName.get_pdf_name("SigFlags")) == 0
+
+
+def test_need_appearances_default_false_and_round_trip() -> None:
+    form = PDAcroForm()
+    assert form.is_need_appearances() is False
+
+    form.set_need_appearances(True)
+    assert form.is_need_appearances() is True
+
+    form.set_need_appearances(False)
+    assert form.is_need_appearances() is False
+
+
+def test_refresh_appearances_raises_not_implemented() -> None:
+    form = PDAcroForm()
+    with pytest.raises(NotImplementedError):
+        form.refresh_appearances()
+
+
+def test_refresh_appearances_with_field_list_raises_not_implemented() -> None:
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    with pytest.raises(NotImplementedError):
+        form.refresh_appearances([field])
+
+
+def test_import_fdf_raises_not_implemented() -> None:
+    form = PDAcroForm()
+    with pytest.raises(NotImplementedError):
+        form.import_fdf(object())
+
+
+def test_export_fdf_raises_not_implemented() -> None:
+    form = PDAcroForm()
+    with pytest.raises(NotImplementedError):
+        form.export_fdf()
+
+
+def test_default_resources_default_none_and_round_trip() -> None:
+    form = PDAcroForm()
+    assert form.get_default_resources() is None
+
+    resources = PDResources()
+    form.set_default_resources(resources)
+
+    fetched = form.get_default_resources()
+    assert fetched is not None
+    # Round-trip preserves the same backing /Resources COSDictionary.
+    assert fetched.get_cos_object() is resources.get_cos_object()
+    # /DR is now set on the form dictionary.
+    assert form.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("DR")
+    ) is resources.get_cos_object()
+
+    # Setting None removes the entry.
+    form.set_default_resources(None)
+    assert form.get_default_resources() is None
+    assert form.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("DR")
+    ) is None
+
+
+def test_calc_order_default_empty_and_round_trip() -> None:
+    form = PDAcroForm()
+    assert form.get_calc_order() == []
+
+    field = PDFieldStub(form, COSDictionary(), None)
+    field.set_partial_name("a")
+    form.set_calc_order([field])
+
+    co = form.get_calc_order()
+    assert len(co) == 1
+    assert co[0].get_cos_object() is field.get_cos_object()
+
+    # Empty list / None clears the entry.
+    form.set_calc_order(None)
+    assert form.get_calc_order() == []
+    assert form.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("CO")
+    ) is None
+
+
+def test_get_xfa_alias_matches_xfa() -> None:
+    form = PDAcroForm()
+    # No /XFA → both accessors agree on None.
+    assert form.get_xfa() is None
+    assert form.xfa() is None

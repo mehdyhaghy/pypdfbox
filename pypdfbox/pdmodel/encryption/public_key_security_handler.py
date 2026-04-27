@@ -314,5 +314,104 @@ class PublicKeySecurityHandler(SecurityHandler):
             return value
         return None
 
+    # ------------------------------------------------------- upstream aliases
+    #
+    # These accessors mirror the surface that upstream's
+    # ``PublicKeySecurityHandler`` (and its ``SecurityHandler<T_POLICY>``
+    # base) exposes. They route to the existing internals so behavior stays
+    # in lock-step with :meth:`prepare_document` and
+    # :meth:`prepare_for_decryption`.
+
+    def get_protection_policy(self) -> object | None:
+        """Return the attached :class:`PublicKeyProtectionPolicy`, or ``None``.
+
+        Mirrors ``SecurityHandler#getProtectionPolicy`` upstream.
+        """
+        return self._protection_policy
+
+    def set_protection_policy(self, policy: object) -> None:
+        """Attach a :class:`PublicKeyProtectionPolicy` to this handler.
+
+        Mirrors ``SecurityHandler#setProtectionPolicy`` upstream.
+        """
+        self._protection_policy = policy
+
+    def has_protection_policy(self) -> bool:
+        """Whether a protection policy is attached.
+
+        Mirrors ``SecurityHandler#hasProtectionPolicy`` upstream.
+        """
+        return self._protection_policy is not None
+
+    def get_recipients(self) -> list:
+        """Return the recipient list pulled from the attached policy.
+
+        When no policy is attached, returns an empty list — matches the
+        empty-iterator behaviour upstream callers see before
+        :meth:`prepare_document` runs.
+        """
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
+        )
+
+        policy = self._protection_policy
+        if isinstance(policy, PublicKeyProtectionPolicy):
+            return policy.get_recipients()
+        return []
+
+    def add_recipient(self, recipient: object) -> None:
+        """Append ``recipient`` to the attached policy's recipient list.
+
+        Lazily instantiates a :class:`PublicKeyProtectionPolicy` if one
+        isn't attached yet so callers can build up the policy fluently
+        before invoking :meth:`prepare_document`.
+        """
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
+        )
+
+        policy = self._protection_policy
+        if not isinstance(policy, PublicKeyProtectionPolicy):
+            policy = PublicKeyProtectionPolicy()
+            self._protection_policy = policy
+        policy.add_recipient(recipient)  # type: ignore[arg-type]
+
+    def compute_seed_value(self) -> bytes:
+        """Return a fresh 20-byte seed per PDF 32000-1 §7.6.5.
+
+        Placeholder helper — :meth:`prepare_document` generates its own
+        seed inline; this alias exposes the same primitive for callers
+        that need the seed independently (e.g. parity tests).
+        """
+        return os.urandom(_SEED_LENGTH)
+
+    def derive_file_key(
+        self,
+        seed: bytes,
+        recipient_blobs: list[bytes],
+        version: int,
+        key_length_bits: int,
+        encrypt_metadata: bool = True,
+    ) -> bytes:
+        """Derive the file-encryption key per PDF 32000-1 §7.6.5.
+
+        Hash composition:
+          ``hash(seed || every recipient blob in order
+                 [|| 0xFF*4 if not encrypt_metadata])``
+
+        SHA-256 for V>=5, SHA-1 (non-security context) otherwise. The
+        result is truncated to ``key_length_bits // 8`` bytes.
+        """
+        if version >= 5:
+            digest = hashlib.sha256()
+        else:
+            digest = hashlib.sha1(usedforsecurity=False)
+        digest.update(seed)
+        for blob in recipient_blobs:
+            digest.update(blob)
+        if not encrypt_metadata:
+            digest.update(b"\xff\xff\xff\xff")
+        return digest.digest()[: key_length_bits // 8]
+
 
 __all__ = ["PublicKeySecurityHandler"]

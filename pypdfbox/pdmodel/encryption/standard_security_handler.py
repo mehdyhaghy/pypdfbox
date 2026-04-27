@@ -129,6 +129,171 @@ class StandardSecurityHandler(SecurityHandler):
     def is_encrypt_metadata(self) -> bool:
         return self._encrypt_metadata
 
+    # Upstream-named alias — PDFBox spells this method ``isEncryptMetaData``
+    # (capital D) so we expose the snake_case variant alongside the existing
+    # ``is_encrypt_metadata`` name to keep the public API mirror-friendly.
+    def is_encrypt_meta_data(self) -> bool:
+        return self._encrypt_metadata
+
+    # Protection-policy accessors — the policy is captured at construction
+    # time (see ``__init__``); these surface it under the upstream PDFBox
+    # ``getProtectionPolicy`` / ``setProtectionPolicy`` names.
+    def get_protection_policy(self) -> object | None:
+        return self._protection_policy
+
+    def set_protection_policy(self, policy: object | None) -> None:
+        self._protection_policy = policy
+
+    # ----------------------------------------------------- upstream parity
+
+    @staticmethod
+    def compute_revision_number(key_length: int, prefer_aes: bool = False) -> int:
+        """Pick the spec revision for a (key_length_bits, prefer_aes) pair.
+
+        Mirrors PDFBox's ``StandardSecurityHandler.computeRevisionNumber`` —
+        256-bit keys map to r6 (AES-256), 128-bit + AES preference to r4,
+        128-bit RC4 to r3, anything else to r2 (RC4-40).
+        """
+        if int(key_length) == 256:
+            return 6
+        if int(key_length) == 128 and bool(prefer_aes):
+            return 4
+        if int(key_length) == 128:
+            return 3
+        return 2
+
+    @classmethod
+    def compute_user_password(
+        cls,
+        password: bytes,
+        owner_entry: bytes,
+        permissions: int,
+        document_id: bytes,
+        revision: int,
+        key_len_bytes: int,
+        encrypt_metadata: bool = True,
+    ) -> bytes:
+        """Algorithm 4/5 — derive the /U entry. Public alias."""
+        return cls._compute_user_password_r2_r4(
+            password,
+            owner_entry,
+            permissions,
+            document_id,
+            revision,
+            key_len_bytes,
+        )
+
+    @classmethod
+    def compute_owner_password(
+        cls,
+        owner_password: bytes,
+        user_password: bytes,
+        revision: int,
+        key_len_bytes: int,
+    ) -> bytes:
+        """Algorithm 3 — derive the /O entry. Public alias."""
+        return cls._compute_owner_password_r2_r4(
+            owner_password, user_password, revision, key_len_bytes
+        )
+
+    @classmethod
+    def compute_encrypted_key(
+        cls,
+        password: bytes,
+        o: bytes,
+        permissions: int,
+        document_id: bytes,
+        revision: int,
+        key_len_bytes: int,
+        encrypt_metadata: bool = True,
+    ) -> bytes:
+        """Algorithm 2 — derive the file encryption key. Public alias."""
+        return cls._compute_encryption_key(
+            password,
+            o,
+            permissions,
+            document_id,
+            revision,
+            key_len_bytes,
+            encrypt_metadata,
+        )
+
+    @classmethod
+    def is_user_password(
+        cls,
+        password: bytes | str,
+        encryption: PDEncryption,
+        document_id: bytes,
+    ) -> bool:
+        """Return True if ``password`` validates as the user password.
+
+        Mirrors PDFBox ``isUserPassword``. Supports r2-r4 via the legacy
+        validation path and r5/r6 via the SHA-256 / hardened-hash path.
+        """
+        pw = password.encode("latin-1", errors="replace") if isinstance(password, str) else bytes(password or b"")
+        revision = int(encryption.get_revision())
+        if revision >= 5:
+            u = encryption.get_u() or b""
+            if len(u) < 40:
+                return False
+            user_validation_salt = u[32:40]
+            return cls._compute_hash_r5_r6(
+                pw[:127] + user_validation_salt, pw[:127], b"", revision
+            ) == u[:32]
+        key_length_bits = int(
+            encryption.get_length() or (40 if revision < 3 else 128)
+        )
+        key_len_bytes = key_length_bits // 8
+        encrypt_metadata = bool(encryption.is_encrypt_meta_data())
+        return cls._compute_encryption_key_via_user_password(
+            pw,
+            encryption.get_o() or b"",
+            encryption.get_u() or b"",
+            int(encryption.get_p()),
+            document_id,
+            revision,
+            key_len_bytes,
+            encrypt_metadata,
+        ) is not None
+
+    @classmethod
+    def is_owner_password(
+        cls,
+        password: bytes | str,
+        encryption: PDEncryption,
+        document_id: bytes,
+    ) -> bool:
+        """Return True if ``password`` validates as the owner password.
+
+        Mirrors PDFBox ``isOwnerPassword``.
+        """
+        pw = password.encode("latin-1", errors="replace") if isinstance(password, str) else bytes(password or b"")
+        revision = int(encryption.get_revision())
+        if revision >= 5:
+            o = encryption.get_o() or b""
+            u = encryption.get_u() or b""
+            if len(o) < 40 or len(u) < 48:
+                return False
+            owner_validation_salt = o[32:40]
+            return cls._compute_hash_r5_r6(
+                pw[:127] + owner_validation_salt + u[:48], pw[:127], u[:48], revision
+            ) == o[:32]
+        key_length_bits = int(
+            encryption.get_length() or (40 if revision < 3 else 128)
+        )
+        key_len_bytes = key_length_bits // 8
+        encrypt_metadata = bool(encryption.is_encrypt_meta_data())
+        return cls._compute_encryption_key_via_owner_password(
+            pw,
+            encryption.get_o() or b"",
+            encryption.get_u() or b"",
+            int(encryption.get_p()),
+            document_id,
+            revision,
+            key_len_bytes,
+            encrypt_metadata,
+        ) is not None
+
     # ------------------------------------------------- /CF dispatch helpers
 
     @staticmethod

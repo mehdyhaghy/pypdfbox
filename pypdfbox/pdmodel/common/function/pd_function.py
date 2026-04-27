@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSStream
+from typing import Iterable
+
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 _FUNCTION_TYPE = "FunctionType"
@@ -110,6 +112,25 @@ class PDFunction:
             return 0
         return domain.size() // 2
 
+    def get_domain_for_input(self, n: int) -> tuple[float, float]:
+        """Return the ``(min, max)`` ``/Domain`` pair for input dimension ``n``.
+
+        Mirrors PDFBox ``getDomainForInput(int)``. Raises ``IndexError`` when
+        ``n`` is out of range or ``/Domain`` is absent / malformed.
+        """
+        ranges = self.get_ranges_for_inputs()
+        if n < 0 or n >= len(ranges):
+            raise IndexError(
+                f"input dimension {n} out of range (have {len(ranges)})"
+            )
+        return ranges[n]
+
+    def get_range_for_input(self, n: int) -> tuple[float, float]:
+        """Alias for ``get_domain_for_input`` — preserves the upstream PDFBox
+        naming (``getRangeForInput``) which is a long-standing misnomer for
+        the ``/Domain`` pair."""
+        return self.get_domain_for_input(n)
+
     # ---------- /Range ----------
 
     def get_range(self) -> COSArray | None:
@@ -132,6 +153,19 @@ class PDFunction:
         if rng is None:
             return 0
         return rng.size() // 2
+
+    def get_range_for_output(self, n: int) -> tuple[float, float]:
+        """Return the ``(min, max)`` ``/Range`` pair for output dimension ``n``.
+
+        Mirrors PDFBox ``getRangeForOutput(int)``. Raises ``IndexError`` when
+        ``n`` is out of range or ``/Range`` is absent.
+        """
+        ranges = self.get_ranges_for_outputs()
+        if n < 0 or n >= len(ranges):
+            raise IndexError(
+                f"output dimension {n} out of range (have {len(ranges)})"
+            )
+        return ranges[n]
 
     # ---------- evaluation ----------
 
@@ -201,6 +235,56 @@ class PDFunction:
         raise NotImplementedError(
             f"eval() is not implemented for {type(self).__name__}"
         )
+
+    def eval_function(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+        """Alias for :meth:`eval` — mirrors the upstream PDFBox convenience
+        method ``evalFunction(float[])`` which delegates straight to ``eval``."""
+        return self.eval(input)
+
+    # ---------- type predicates ----------
+
+    def is_function_type_0(self) -> bool:
+        """True when this function reports ``/FunctionType 0`` (sampled)."""
+        try:
+            return self.get_function_type() == 0
+        except NotImplementedError:
+            return False
+
+    def is_function_type_2(self) -> bool:
+        """True when this function reports ``/FunctionType 2`` (exponential)."""
+        try:
+            return self.get_function_type() == 2
+        except NotImplementedError:
+            return False
+
+    def is_function_type_3(self) -> bool:
+        """True when this function reports ``/FunctionType 3`` (stitching)."""
+        try:
+            return self.get_function_type() == 3
+        except NotImplementedError:
+            return False
+
+    def is_function_type_4(self) -> bool:
+        """True when this function reports ``/FunctionType 4`` (PostScript)."""
+        try:
+            return self.get_function_type() == 4
+        except NotImplementedError:
+            return False
+
+    # ---------- helpers ----------
+
+    @staticmethod
+    def to_array(numbers: Iterable[float]) -> COSArray:
+        """Build a ``COSArray`` of ``COSFloat`` from an iterable of numbers.
+
+        Mirrors PDFBox ``PDFunction.toCOSArray(float[])`` — used when callers
+        need to round-trip Python floats into a function dictionary's
+        ``/Domain`` / ``/Range`` / ``/C0`` / ``/C1`` arrays.
+        """
+        arr = COSArray()
+        for n in numbers:
+            arr.add(COSFloat(float(n)))
+        return arr
 
 
 __all__ = ["PDFunction"]

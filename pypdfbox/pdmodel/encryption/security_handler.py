@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover — older cryptography releases
     from cryptography.hazmat.primitives.ciphers.algorithms import ARC4 as _ARC4
 
 if TYPE_CHECKING:
+    from .access_permission import AccessPermission
     from .pd_encryption import PDEncryption
 
 
@@ -45,6 +46,9 @@ class SecurityHandler(ABC):
         self._revision: int = 0
         self._version: int = 0
         self._aes: bool = False
+        self._decrypt_metadata: bool = True
+        self._current_access_permission: AccessPermission | None = None
+        self._decryption_material: object | None = None
 
     # ------------------------------------------------------------------ state
 
@@ -77,6 +81,45 @@ class SecurityHandler(ABC):
 
     def set_aes(self, b: bool) -> None:
         self._aes = bool(b)
+
+    # ------------------------------------------------------- access permission
+
+    def get_current_access_permission(self) -> AccessPermission | None:
+        """Return the access permission resolved by ``prepare_for_decryption``.
+
+        ``None`` until a successful decryption has populated it. Mirrors
+        ``SecurityHandler#getCurrentAccessPermission`` upstream.
+        """
+        return self._current_access_permission
+
+    def set_current_access_permission(self, perm: AccessPermission) -> None:
+        self._current_access_permission = perm
+
+    # --------------------------------------------------------- material access
+
+    def get_decryption_material(self) -> object | None:
+        """Return the decryption material supplied to ``prepare_for_decryption``.
+
+        Stored opaquely so this base remains agnostic to standard vs.
+        public-key flows.
+        """
+        return self._decryption_material
+
+    def set_decryption_material(self, material: object) -> None:
+        self._decryption_material = material
+
+    # ----------------------------------------------------- metadata decrypt flag
+
+    def is_decrypt_metadata(self) -> bool:
+        """Whether document metadata streams should be decrypted.
+
+        Some upstream variants expose ``isDecryptMetadata`` in addition to
+        the encryption-dictionary flag. Defaults to ``True``.
+        """
+        return self._decrypt_metadata
+
+    def set_decrypt_metadata(self, b: bool) -> None:
+        self._decrypt_metadata = bool(b)
 
     # ------------------------------------------------------------ subclass API
 
@@ -145,6 +188,93 @@ class SecurityHandler(ABC):
 
     def encrypt_stream(self, data: bytes, obj_num: int, gen_num: int) -> bytes:
         return self._encrypt(data, obj_num, gen_num)
+
+    # ----------------------------------------------- generic data convenience
+
+    def decrypt_data(
+        self, input_stream: object, obj_num: int, gen_num: int
+    ) -> bytes:
+        """Decrypt arbitrary stream-like input.
+
+        Mirrors ``SecurityHandler#decryptData`` — accepts either a ``bytes``
+        payload or any object with a ``read()`` method (file-like). Returns
+        the decrypted bytes.
+        """
+        data = self._coerce_to_bytes(input_stream)
+        return self._decrypt(data, obj_num, gen_num)
+
+    def encrypt_data(
+        self, input_stream: object, obj_num: int, gen_num: int
+    ) -> bytes:
+        """Encrypt arbitrary stream-like input. See :meth:`decrypt_data`."""
+        data = self._coerce_to_bytes(input_stream)
+        return self._encrypt(data, obj_num, gen_num)
+
+    @staticmethod
+    def _coerce_to_bytes(input_stream: object) -> bytes:
+        if isinstance(input_stream, (bytes, bytearray, memoryview)):
+            return bytes(input_stream)
+        read = getattr(input_stream, "read", None)
+        if callable(read):
+            return bytes(read())
+        raise TypeError(
+            "input_stream must be bytes-like or a file-like object with read()"
+        )
+
+    # -------------------------------------------- subclass-override placeholders
+
+    def compute_encrypted_key(
+        self,
+        password: bytes,
+        o: bytes | None = None,
+        u: bytes | None = None,
+        oe: bytes | None = None,
+        ue: bytes | None = None,
+        permissions: int | None = None,
+        document_id: bytes | None = None,
+        revision: int | None = None,
+        length_in_bits: int | None = None,
+        encrypt_metadata: bool | None = None,
+        is_owner_password: bool = False,
+    ) -> bytes:
+        """Compute the file-encryption key from a password.
+
+        Placeholder on the base class — concrete handlers (e.g. the standard
+        security handler) implement the per-revision algorithms.
+        """
+        raise NotImplementedError(
+            "compute_encrypted_key must be implemented by a concrete "
+            "SecurityHandler subclass"
+        )
+
+    def compute_user_password(
+        self,
+        password: bytes,
+        o: bytes | None = None,
+        permissions: int | None = None,
+        document_id: bytes | None = None,
+        revision: int | None = None,
+        length_in_bits: int | None = None,
+        encrypt_metadata: bool | None = None,
+    ) -> bytes:
+        """Compute the /U entry from a password. Subclass override."""
+        raise NotImplementedError(
+            "compute_user_password must be implemented by a concrete "
+            "SecurityHandler subclass"
+        )
+
+    def compute_owner_password(
+        self,
+        owner_password: bytes,
+        user_password: bytes,
+        revision: int | None = None,
+        length_in_bits: int | None = None,
+    ) -> bytes:
+        """Compute the /O entry from owner+user passwords. Subclass override."""
+        raise NotImplementedError(
+            "compute_owner_password must be implemented by a concrete "
+            "SecurityHandler subclass"
+        )
 
     # ------------------------------------------------------------ internals
 

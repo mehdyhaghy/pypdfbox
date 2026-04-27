@@ -33,6 +33,7 @@ _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 _AA: COSName = COSName.get_pdf_name("AA")
 _THUMB: COSName = COSName.get_pdf_name("Thumb")
 _TRANS: COSName = COSName.get_pdf_name("Trans")
+_STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
 
 
 class PDPage:
@@ -162,6 +163,29 @@ class PDPage:
         single-stream variant; the array form is an upstream overload that
         will land with the contentstream cluster."""
         self._page.set_item(_CONTENTS, stream)
+
+    def get_content_streams(self) -> list[Any]:
+        """List form of ``/Contents``. Mirrors upstream
+        ``PDPage.getContentStreams()``: returns one :class:`PDStream` per
+        underlying stream, regardless of whether ``/Contents`` is a single
+        stream or an array. Empty list when ``/Contents`` is absent.
+        """
+        # Local import — PDStream lives in common/ and shouldn't be at
+        # module scope (avoids the writer/parser bring-up cycle).
+        from .common.pd_stream import PDStream
+
+        contents = self._page.get_dictionary_object(_CONTENTS)
+        if contents is None:
+            return []
+        result: list[Any] = []
+        if isinstance(contents, COSStream):
+            result.append(PDStream(contents))
+        elif isinstance(contents, COSArray):
+            for i in range(contents.size()):
+                entry = contents.get_object(i)
+                if isinstance(entry, COSStream):
+                    result.append(PDStream(entry))
+        return result
 
     # ---------- boxes ----------
 
@@ -364,6 +388,26 @@ class PDPage:
             self._page.remove_item(_AA)
             return
         self._page.set_item(_AA, actions.get_cos_object())
+
+    # ---------- struct parents ----------
+
+    def get_struct_parents(self) -> int:
+        """``/StructParents`` integer key into the document's structure
+        parent tree. Upstream returns ``-1`` when the entry is absent
+        (sentinel meaning "this page has no marked-content parents")."""
+        from pypdfbox.cos import COSFloat, COSInteger
+
+        value = self._page.get_dictionary_object(_STRUCT_PARENTS)
+        if isinstance(value, COSInteger):
+            return int(value.value)
+        if isinstance(value, COSFloat):
+            return int(value.value)
+        return -1
+
+    def set_struct_parents(self, value: int) -> None:
+        from pypdfbox.cos import COSInteger
+
+        self._page.set_item(_STRUCT_PARENTS, COSInteger.get(int(value)))
 
     # ---------- equality / repr ----------
 

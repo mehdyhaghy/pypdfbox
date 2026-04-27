@@ -271,6 +271,19 @@ class COSWriter(ICOSVisitor):
         # indirect object. Tracked explicitly because the trailer's /ID is
         # also the cleartext key the handler relied on.
         self._in_encrypt_subtree: bool = False
+        # Optional explicit PDF-version override (PDFBox: ``setPdfVersion``).
+        # When set, ``write_header(...)`` with no argument and the eventual
+        # ``_do_write_header`` call use this in preference to the
+        # ``COSDocument`` version. ``None`` means "fall back to the
+        # document's own version".
+        self._pdf_version: str | None = None
+        # Started streams hook (PDFBox: ``getStartedStreams``). Upstream
+        # tracks half-emitted streams here so the visitor pipeline can
+        # distinguish "I'm currently inside a stream body" from "I'm at
+        # the indirect-object framing layer". We don't use it yet, but
+        # external callers may inspect the set, so we expose a stable
+        # storage attribute and an accessor.
+        self._started_streams: set[Any] = set()
 
     # ---------- public API ----------
 
@@ -282,6 +295,169 @@ class COSWriter(ICOSVisitor):
 
     def get_xref_entries(self) -> list[COSWriterXRefEntry]:
         return self._xref_entries
+
+    # Upstream PDFBox spelling — ``getXRefEntries`` mirrors
+    # ``COSWriter.getXRefEntries`` literally. Kept as a thin alias so
+    # PDFBox-style callers can reach the list under either spelling.
+    def get_x_ref_entries(self) -> list[COSWriterXRefEntry]:
+        """Upstream alias for :py:meth:`get_xref_entries` — returns the
+        live list of xref entries collected so far (empty before the
+        first ``write(...)`` call)."""
+        return self._xref_entries
+
+    def get_started_streams(self) -> set[Any]:
+        """Upstream PDFBox accessor (``getStartedStreams``). Returns the
+        live set of streams whose emit is in progress; empty in the
+        common case since the writer is mostly synchronous."""
+        return self._started_streams
+
+    # ---- pdf version override (upstream COSWriter.setPdfVersion) ----
+
+    def set_pdf_version(self, major: int, minor: int) -> None:
+        """Pin the ``%PDF-x.y`` header version, overriding the value
+        carried on the ``COSDocument``. Mirrors upstream's
+        ``setPdfVersion(int, int)``."""
+        if not isinstance(major, int) or not isinstance(minor, int):
+            raise TypeError("set_pdf_version requires int major and minor")
+        if major < 0 or minor < 0:
+            raise ValueError(
+                f"PDF version components must be non-negative; got "
+                f"{major}.{minor}"
+            )
+        self._pdf_version = f"{major}.{minor}"
+
+    def get_pdf_version(self) -> str:
+        """Return the pinned PDF version string (e.g. ``"1.7"``). Falls
+        back to ``"1.4"`` when no override has been set — matches the
+        PDFBox default."""
+        return self._pdf_version if self._pdf_version is not None else "1.4"
+
+    # ---- upstream-spelled emit aliases ----
+
+    def write_object(self, obj: COSBase) -> None:
+        """Emit a single indirect object frame for ``obj``. Thin alias
+        over the internal :py:meth:`_do_write_object` so PDFBox-style
+        callers can drive the writer directly."""
+        self._do_write_object(obj)
+
+    def write_header(self, version: str | None = None) -> None:
+        """Emit the ``%PDF-x.y`` header line + the binary-marker comment.
+
+        ``version`` may be passed explicitly (``"1.7"``) or omitted, in
+        which case the writer falls back to the value previously set via
+        :py:meth:`set_pdf_version` (and finally to ``"1.4"``).
+        """
+        if version is None:
+            version = self.get_pdf_version()
+        if not isinstance(version, str):
+            raise TypeError("write_header expects a string version like '1.7'")
+        out = self._standard_output
+        out.write(f"%PDF-{version}".encode("iso-8859-1"))
+        out.write_eol()
+        out.write(COMMENT)
+        out.write(GARBAGE)
+        out.write_eol()
+
+    def write_xref(self) -> None:
+        """Emit the traditional ``xref`` table for the entries collected
+        during the current ``write(...)`` call. Alias over
+        :py:meth:`_do_write_xref_table`."""
+        self._do_write_xref_table()
+
+    def write_trailer(self, doc: COSDocument | None = None) -> None:
+        """Emit the ``trailer`` dictionary + ``startxref`` + ``%%EOF``.
+
+        ``doc`` is required so the trailer dictionary can be sourced
+        from it (mirrors the upstream signature where the document
+        context is always known to the writer). If omitted, raises
+        ``ValueError`` — there is no implicit document state to fall
+        back on at this layer.
+        """
+        if doc is None:
+            raise ValueError(
+                "write_trailer requires a COSDocument; the trailer "
+                "dictionary lives on the document, not the writer"
+            )
+        self._do_write_trailer(doc)
+        # Match upstream COSWriter.doWriteTrailer + the startxref/%%EOF
+        # epilogue emitted at the tail of ``visitFromDocument`` so the
+        # standalone helper produces a complete file segment.
+        out = self._standard_output
+        out.write(STARTXREF)
+        out.write_eol()
+        out.write_int(self._startxref)
+        out.write_eol()
+        out.write(EOF)
+        out.write_eol()
+
+    # ---- key-lookup accessors ----
+
+    def get_object_number(self, obj: COSBase) -> int:
+        """Return the object number assigned to ``obj`` during the
+        current write. Mirrors PDFBox's ``getObjectKey(obj).getNumber()``
+        convenience accessor.
+
+        Raises ``KeyError`` if the writer hasn't seen the object yet —
+        matches upstream behaviour (a key must be assigned before it
+        can be referenced).
+        """
+        key = self._lookup_existing_key(obj)
+        if key is None:
+            raise KeyError(f"no object key assigned for {type(obj).__name__}")
+        return key.object_number
+
+    def get_generation_number(self, obj: COSBase) -> int:
+        """Return the generation number assigned to ``obj`` during the
+        current write. See :py:meth:`get_object_number`."""
+        key = self._lookup_existing_key(obj)
+        if key is None:
+            raise KeyError(f"no object key assigned for {type(obj).__name__}")
+        return key.generation_number
+
+    def _lookup_existing_key(self, obj: COSBase) -> COSObjectKey | None:
+        """Return the already-assigned key for ``obj``, or ``None``.
+
+        Resolves through ``COSObject`` wrappers so that callers can pass
+        either the wrapper or the resolved actual interchangeably."""
+        existing = self._object_keys.get(id(obj))
+        if existing is not None:
+            return existing
+        if isinstance(obj, COSObject):
+            actual = obj.get_object()
+            if actual is not None:
+                return self._object_keys.get(id(actual))
+        return None
+
+    # ---- signature placeholder hook ----
+
+    def add_signature(self, *args: Any, **kwargs: Any) -> None:
+        """Placeholder PDFBox-parity hook. Real signing is driven by
+        :py:meth:`PDDocument.add_signature` which orchestrates the
+        ``/ByteRange`` placeholder + post-write splice; this writer-level
+        hook exists so PDFBox-style callers don't ``AttributeError`` when
+        probing for the symbol. Currently a no-op."""
+        return None
+
+    # ---- static helpers ----
+
+    @staticmethod
+    def to_hex_string(value: bytes) -> str:
+        """Hex-encode ``value`` to an uppercase ASCII string. Mirrors
+        upstream ``COSWriter.toHexString(byte[])`` — used when emitting
+        signature placeholders, file-id arrays, and similar byte blobs
+        that must be readable as hex by the parser."""
+        if not isinstance(value, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                f"to_hex_string expects bytes-like input, got {type(value).__name__}"
+            )
+        return bytes(value).hex().upper()
+
+    # ---- lifecycle alias ----
+
+    def release(self) -> None:
+        """Upstream ``release()`` alias — frees writer resources. Currently
+        delegates to :py:meth:`close`."""
+        self.close()
 
     # ---- xref-stream / object-stream output toggles ----
     # Mirror upstream COSWriter's ``setIncrementalWriter``-style accessor
@@ -782,7 +958,13 @@ class COSWriter(ICOSVisitor):
 
     def _do_write_header(self, doc: COSDocument) -> None:
         out = self._standard_output
-        version_text = self._format_version(doc.get_version())
+        # Honour an explicit ``set_pdf_version`` override so callers can
+        # bump the header without mutating the COSDocument. Falls through
+        # to the document's own version when no override is in play.
+        if self._pdf_version is not None:
+            version_text = self._pdf_version
+        else:
+            version_text = self._format_version(doc.get_version())
         out.write(f"%PDF-{version_text}".encode("iso-8859-1"))
         out.write_eol()
         out.write(COMMENT)

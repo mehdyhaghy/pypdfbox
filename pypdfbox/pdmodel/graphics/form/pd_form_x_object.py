@@ -1,18 +1,39 @@
 from __future__ import annotations
 
+import datetime as _dt
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSStream,
+    COSString,
+)
 from pypdfbox.pdmodel.common.pd_stream import PDStream
+from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
 from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 
 _FORM: COSName = COSName.get_pdf_name("Form")
 _FORMTYPE: COSName = COSName.get_pdf_name("FormType")
 _BBOX: COSName = COSName.get_pdf_name("BBox")
 _MATRIX: COSName = COSName.get_pdf_name("Matrix")
 _RESOURCES: COSName = COSName.RESOURCES  # type: ignore[attr-defined]
+_STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
+_GROUP: COSName = COSName.get_pdf_name("Group")
+_REF: COSName = COSName.get_pdf_name("Ref")
+_OC: COSName = COSName.get_pdf_name("OC")
+_PIECE_INFO: COSName = COSName.get_pdf_name("PieceInfo")
+_LAST_MODIFIED: COSName = COSName.get_pdf_name("LastModified")
+_NAME: COSName = COSName.get_pdf_name("Name")
 
 
 class PDFormXObject(PDXObject):
@@ -131,3 +152,117 @@ class PDFormXObject(PDXObject):
             else resources
         )
         cos.set_item(_RESOURCES, target)
+
+    # ---------- /StructParents ----------
+
+    def get_struct_parents(self) -> int:
+        """``/StructParents`` integer key into the structure-parents
+        number tree. Defaults to ``-1`` when absent (matches upstream)."""
+        return self.get_cos_object().get_int(_STRUCT_PARENTS, -1)
+
+    def set_struct_parents(self, value: int) -> None:
+        self.get_cos_object().set_int(_STRUCT_PARENTS, int(value))
+
+    # ---------- /OC (optional content) ----------
+
+    def get_oc(self) -> PDPropertyList | None:
+        """``/OC`` typed property list (PDOptionalContentGroup or
+        PDOptionalContentMembershipDictionary). Returns ``None`` when
+        absent or of an unrecognised type."""
+        value = self.get_cos_object().get_dictionary_object(_OC)
+        if isinstance(value, COSDictionary):
+            return PDPropertyList.create(value)
+        return None
+
+    def set_oc(self, value: PDPropertyList | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_OC)
+            return
+        cos.set_item(_OC, value.get_cos_object())
+
+    # ---------- /Group ----------
+
+    def get_group(self) -> COSDictionary | None:
+        """Raw ``/Group`` transparency-group dictionary, or ``None``."""
+        value = self.get_cos_object().get_dictionary_object(_GROUP)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_group(self, value: COSDictionary | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_GROUP)
+            return
+        cos.set_item(_GROUP, value)
+
+    # ---------- /Ref ----------
+
+    def get_ref(self) -> COSDictionary | None:
+        """Raw ``/Ref`` reference dictionary, or ``None``."""
+        value = self.get_cos_object().get_dictionary_object(_REF)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_ref(self, value: COSDictionary | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_REF)
+            return
+        cos.set_item(_REF, value)
+
+    # ---------- /PieceInfo ----------
+
+    def get_pieceinfo(self) -> COSDictionary | None:
+        """Raw ``/PieceInfo`` page-piece dictionary, or ``None``."""
+        value = self.get_cos_object().get_dictionary_object(_PIECE_INFO)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_pieceinfo(self, value: COSDictionary | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_PIECE_INFO)
+            return
+        cos.set_item(_PIECE_INFO, value)
+
+    # ---------- /LastModified ----------
+
+    def get_last_modified(self) -> _dt.datetime | None:
+        """``/LastModified`` PDF date string parsed to ``datetime``;
+        ``None`` when absent or unparseable."""
+        # Local import avoids a top-level cycle through pd_document_information.
+        from pypdfbox.pdmodel.pd_document_information import (  # noqa: PLC0415
+            _parse_pdf_date,
+        )
+
+        raw = self.get_cos_object().get_string(_LAST_MODIFIED)
+        return _parse_pdf_date(raw) if raw is not None else None
+
+    def set_last_modified(self, value: _dt.datetime | None) -> None:
+        from pypdfbox.pdmodel.pd_document_information import (  # noqa: PLC0415
+            _format_pdf_date,
+        )
+
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_LAST_MODIFIED)
+            return
+        cos.set_item(_LAST_MODIFIED, COSString(_format_pdf_date(value)))
+
+    # ---------- /Name ----------
+
+    def get_name(self) -> str | None:
+        """``/Name`` (a /Name object — deprecated since PDF 1.2 but still
+        appears in the wild). ``None`` when absent."""
+        return self.get_cos_object().get_name(_NAME)
+
+    def set_name(self, value: str | None) -> None:
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_NAME)
+            return
+        cos.set_name(_NAME, value)

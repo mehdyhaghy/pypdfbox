@@ -216,6 +216,11 @@ class PDDocument:
     def get_number_of_pages(self) -> int:
         return len(self.get_pages())
 
+    def get_page(self, index: int) -> PDPage:
+        """Return the page at the given 0-based index. Mirrors upstream
+        ``PDDocument.getPage(int)``."""
+        return self.get_pages()[index]
+
     def add_page(self, page: PDPage) -> None:
         self.get_pages().add(page)
 
@@ -926,6 +931,58 @@ class PDDocument:
         caching). Subsequent ``get_resource_cache`` calls return whatever
         was passed in — no lazy re-allocation when ``None``."""
         self._resource_cache = cache
+
+    def get_signature_fields(self) -> list[Any]:
+        """Return every ``/FT /Sig`` field reachable from the catalog's
+        ``/AcroForm`` (depth-first across the field tree). Empty list when
+        there is no AcroForm or no signature fields. Mirrors upstream
+        ``PDDocument.getSignatureFields``."""
+        from .interactive.form.pd_signature_field import PDSignatureField
+
+        catalog = self.get_document_catalog()
+        acro_form = catalog.get_acro_form()
+        if acro_form is None:
+            return []
+        return [
+            field
+            for field in acro_form.get_field_tree()
+            if isinstance(field, PDSignatureField)
+        ]
+
+    def get_signature_dictionaries(self) -> list[PDSignature]:
+        """Return the :class:`PDSignature` value of every signature field in
+        the document (skipping fields whose ``/V`` is unset). Mirrors
+        upstream ``PDDocument.getSignatureDictionaries``."""
+        out: list[PDSignature] = []
+        for sig_field in self.get_signature_fields():
+            sig = sig_field.get_signature()
+            if sig is not None:
+                out.append(sig)
+        return out
+
+    def requires_full_save(self) -> bool:
+        """Return ``True`` when the document has unsaved changes that cannot
+        be appended via :meth:`save_incremental` and instead require a full
+        :meth:`save`. Convenience predicate — at present we report ``True``
+        only when there is no parsable source to append to (synthesised
+        documents) or when there are no objects flagged
+        ``needs_to_be_updated`` to drive an incremental pass."""
+        if self._document.get_source() is None:
+            return True
+        for cos_obj in self._document.get_objects():
+            if cos_obj.is_needs_to_be_updated():
+                return False
+            inner = cos_obj.get_object()
+            if inner is not None and inner.is_needs_to_be_updated():
+                return False
+        return True
+
+    def is_locked_by_outline_destinations(self) -> bool:
+        """Return ``True`` when the document's outline tree pins the
+        document into append-only mode (e.g. signed-and-locked outline
+        destinations). Placeholder — returns ``False`` until outline-lock
+        detection lands."""
+        return False
 
     def register_true_type_font_for_closing(self, font: Any) -> None:
         """Register ``font`` to be closed when the document closes. Lite

@@ -73,6 +73,18 @@ class DomXmpParser:
         ``list[str]`` / ``list[str]`` / ``dict[str, str]`` (lang-keyed).
     """
 
+    def __init__(self) -> None:
+        # Upstream DomXmpParser exposes a strict-parsing toggle and a
+        # throw-on-invalid-xmp toggle. Strict mode is a deferred behavior in
+        # this port (we currently always parse permissively), so the flag is
+        # stored but not yet consumed by the parse pipeline.
+        self._strict_parsing: bool = True
+        self._throw_exception_on_invalid_xmp: bool = False
+
+    # ------------------------------------------------------------------
+    # public API (upstream-named entry points)
+    # ------------------------------------------------------------------
+
     def parse(self, source: bytes | bytearray | str | IO[bytes]) -> XMPMetadata:
         raw = self._read_bytes(source)
         body, xpacket_begin, xpacket_id, xpacket_bytes, xpacket_encoding, xpacket_end = (
@@ -108,6 +120,76 @@ class DomXmpParser:
         for schema in per_ns.values():
             metadata.add_schema(schema)
         return metadata
+
+    def parse_input(self, source: bytes | bytearray | str | IO[bytes]) -> XMPMetadata:
+        """Upstream alias for :meth:`parse`."""
+        return self.parse(source)
+
+    # ------------------------------------------------------------------
+    # strict-parsing toggle (placeholder; not yet consumed — see CHANGES.md)
+    # ------------------------------------------------------------------
+
+    def set_strict_parsing(self, b: bool) -> None:
+        """Toggle strict parsing. Stored but not yet enforced in this port."""
+        self._strict_parsing = bool(b)
+
+    def is_strict_parsing(self) -> bool:
+        """Return the current strict-parsing flag."""
+        return self._strict_parsing
+
+    def set_throw_exception_on_invalid_xmp(self, b: bool) -> None:
+        """Upstream alias for :meth:`set_strict_parsing`."""
+        self.set_strict_parsing(b)
+
+    def is_throw_exception_on_invalid_xmp(self) -> bool:
+        """Upstream alias for :meth:`is_strict_parsing`."""
+        return self.is_strict_parsing()
+
+    # ------------------------------------------------------------------
+    # namespace registry introspection
+    # ------------------------------------------------------------------
+
+    def get_namespace_table(self) -> dict[str, str]:
+        """
+        Return the namespace prefix → URI map currently registered with the
+        parser. Mirrors ``DomXmpParser#getNamespaceTable`` in upstream.
+        """
+        table: dict[str, str] = {
+            "rdf": _RDF_NS,
+            "xml": _XML_NS,
+        }
+        for ns_uri, schema_cls in _SCHEMA_REGISTRY.items():
+            prefix = getattr(schema_cls, "PREFERRED_PREFIX", None)
+            if prefix:
+                table[prefix] = ns_uri
+        return table
+
+    # ------------------------------------------------------------------
+    # upstream-named aliases for internal element parsers
+    # ------------------------------------------------------------------
+
+    def parse_describe_element(
+        self,
+        desc: ET.Element,
+        metadata: XMPMetadata,
+        per_ns: dict[str, XMPSchema] | None = None,
+    ) -> dict[str, XMPSchema]:
+        """
+        Upstream-named entry point that parses a single ``rdf:Description``
+        element into the supplied ``per_ns`` accumulator (created lazily if
+        omitted). Returns the accumulator so callers can chain.
+        """
+        if per_ns is None:
+            per_ns = {}
+        self._merge_description(desc, metadata, per_ns)
+        return per_ns
+
+    def parse_property(self, element: ET.Element) -> object:
+        """
+        Upstream alias for the internal property-value parser. Returns a
+        ``str``, ``list[str]`` (Bag/Seq), or ``dict[str, str]`` (Alt).
+        """
+        return self._parse_property_value(element)
 
     # ------------------------------------------------------------------
     # internal helpers

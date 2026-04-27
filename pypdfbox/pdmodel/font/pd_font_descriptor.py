@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
@@ -17,6 +18,11 @@ _CAP_HEIGHT: COSName = COSName.get_pdf_name("CapHeight")
 _X_HEIGHT: COSName = COSName.get_pdf_name("XHeight")
 _ITALIC_ANGLE: COSName = COSName.get_pdf_name("ItalicAngle")
 _STEM_V: COSName = COSName.get_pdf_name("StemV")
+_STEM_H: COSName = COSName.get_pdf_name("StemH")
+_AVG_WIDTH: COSName = COSName.get_pdf_name("AvgWidth")
+_MAX_WIDTH: COSName = COSName.get_pdf_name("MaxWidth")
+_MISSING_WIDTH: COSName = COSName.get_pdf_name("MissingWidth")
+_LEADING: COSName = COSName.get_pdf_name("Leading")
 _FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
@@ -41,8 +47,7 @@ class PDFontDescriptor:
     Exposes metric/flag accessors plus typed access to the embedded font
     program streams (``/FontFile``, ``/FontFile2``, ``/FontFile3``) and
     descriptive entries (``/FontFamily``, ``/FontStretch``, ``/FontWeight``,
-    ``/CharSet``). Lesser-used numeric metrics (Leading, StemH, AvgWidth,
-    MaxWidth, MissingWidth) are deferred.
+    ``/CharSet``).
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
@@ -80,17 +85,67 @@ class PDFontDescriptor:
         flags = (flags | mask) if value else (flags & ~mask)
         self.set_flags(flags)
 
+    def get_flag(self, bit: int) -> bool:
+        """Return the value of an individual flag bit (1-based, per Table 123)."""
+        return self._flag(1 << (int(bit) - 1))
+
+    def set_flag(self, bit: int, value: bool) -> None:
+        """Set the value of an individual flag bit (1-based, per Table 123)."""
+        self._set_flag(1 << (int(bit) - 1), value)
+
     def is_fixed_pitch(self) -> bool:
         return self._flag(FLAG_FIXED_PITCH)
 
     def set_fixed_pitch(self, value: bool) -> None:
         self._set_flag(FLAG_FIXED_PITCH, value)
 
+    def is_serif(self) -> bool:
+        return self._flag(FLAG_SERIF)
+
+    def set_serif(self, value: bool) -> None:
+        self._set_flag(FLAG_SERIF, value)
+
+    def is_symbolic(self) -> bool:
+        return self._flag(FLAG_SYMBOLIC)
+
+    def set_symbolic(self, value: bool) -> None:
+        self._set_flag(FLAG_SYMBOLIC, value)
+
+    def is_script(self) -> bool:
+        return self._flag(FLAG_SCRIPT)
+
+    def set_script(self, value: bool) -> None:
+        self._set_flag(FLAG_SCRIPT, value)
+
+    def is_non_symbolic(self) -> bool:
+        return self._flag(FLAG_NON_SYMBOLIC)
+
+    def set_non_symbolic(self, value: bool) -> None:
+        self._set_flag(FLAG_NON_SYMBOLIC, value)
+
     def is_italic(self) -> bool:
         return self._flag(FLAG_ITALIC)
 
     def set_italic(self, value: bool) -> None:
         self._set_flag(FLAG_ITALIC, value)
+
+    def is_all_cap(self) -> bool:
+        return self._flag(FLAG_ALL_CAP)
+
+    def set_all_cap(self, value: bool) -> None:
+        self._set_flag(FLAG_ALL_CAP, value)
+
+    def is_small_cap(self) -> bool:
+        return self._flag(FLAG_SMALL_CAP)
+
+    def set_small_cap(self, value: bool) -> None:
+        self._set_flag(FLAG_SMALL_CAP, value)
+
+    def is_force_bold(self) -> bool:
+        return self._flag(FLAG_FORCE_BOLD)
+
+    def set_force_bold(self, value: bool) -> None:
+        self._set_flag(FLAG_FORCE_BOLD, value)
 
     # ---------- /FontBBox ----------
 
@@ -105,6 +160,13 @@ class PDFontDescriptor:
             self._dict.remove_item(_FONT_BBOX)
             return
         self._dict.set_item(_FONT_BBOX, bbox)
+
+    def get_font_bounding_box(self) -> PDRectangle | None:
+        """Typed accessor mirroring upstream ``getFontBoundingBox()``."""
+        v = self._dict.get_dictionary_object(_FONT_BBOX)
+        if isinstance(v, COSArray) and len(v) >= 4:
+            return PDRectangle.from_cos_array(v)
+        return None
 
     # ---------- numeric metrics ----------
 
@@ -143,6 +205,36 @@ class PDFontDescriptor:
 
     def set_stem_v(self, value: float) -> None:
         self._dict.set_float(_STEM_V, float(value))
+
+    def get_stem_h(self) -> float:
+        return self._dict.get_float(_STEM_H, 0.0)
+
+    def set_stem_h(self, value: float) -> None:
+        self._dict.set_float(_STEM_H, float(value))
+
+    def get_avg_width(self) -> float:
+        return self._dict.get_float(_AVG_WIDTH, 0.0)
+
+    def set_avg_width(self, value: float) -> None:
+        self._dict.set_float(_AVG_WIDTH, float(value))
+
+    def get_max_width(self) -> float:
+        return self._dict.get_float(_MAX_WIDTH, 0.0)
+
+    def set_max_width(self, value: float) -> None:
+        self._dict.set_float(_MAX_WIDTH, float(value))
+
+    def get_missing_width(self) -> float:
+        return self._dict.get_float(_MISSING_WIDTH, 0.0)
+
+    def set_missing_width(self, value: float) -> None:
+        self._dict.set_float(_MISSING_WIDTH, float(value))
+
+    def get_leading(self) -> float:
+        return self._dict.get_float(_LEADING, 0.0)
+
+    def set_leading(self, value: float) -> None:
+        self._dict.set_float(_LEADING, float(value))
 
     # ---------- /FontFamily, /FontStretch, /FontWeight ----------
 

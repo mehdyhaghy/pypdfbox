@@ -40,6 +40,15 @@ class COSParser(BaseParser):
     ) -> None:
         super().__init__(source)
         self._document = document
+        # Trailing /XRef byte offset for the source. Mirrors upstream
+        # ``COSParser`` private state behind ``getXrefOffset`` /
+        # ``setXrefOffset`` accessors. ``-1`` means "not yet recorded".
+        self._xref_offset: int = -1
+        # Lenient parsing toggle. Mirrors upstream
+        # ``COSParser.setLenient`` / ``isLenient``. The pypdfbox tokenizer
+        # is already permissive — the flag is exposed for API parity and
+        # stored only; no behaviour branches off it yet.
+        self._lenient: bool = True
 
     @property
     def document(self) -> COSDocument | None:
@@ -279,3 +288,252 @@ class COSParser(BaseParser):
             return (first, -1)
         self._src.rewind(2)
         return (first, second)
+
+    # ---------- upstream-name aliases (org.apache.pdfbox.pdfparser.COSParser) ----------
+    #
+    # The aliases below mirror the public surface of upstream
+    # ``COSParser`` so PDFBox-style call sites (and the PDFParser
+    # subclass) can reach the same primitives by their familiar names.
+    # No semantics change — each alias either re-uses an existing
+    # method on this class / its base, exposes parser state, or raises
+    # ``NotImplementedError`` for surface that legitimately belongs in
+    # ``PDFParser`` (cluster #3) and is deferred here.
+
+    # Typed parse aliases — parse_cos_dictionary / parse_cos_array are
+    # already defined above.
+
+    def parse_cos_string(self) -> COSString:
+        """Parse a literal ``( ... )`` or hex ``< ... >`` string at the
+        current position and return a ``COSString``. Whitespace is consumed
+        first. Mirrors upstream ``COSParser.parseCOSString``."""
+        self.skip_whitespace()
+        b = self.peek_byte()
+        if b == 0x28:  # '('
+            return self._read_cos_literal_string()
+        if b == 0x3C:  # '<'
+            second = self._peek_two_bytes()[1]
+            if second == 0x3C:
+                raise PDFParseError(
+                    "expected string, found dictionary '<<'", position=self.position
+                )
+            return self._read_cos_hex_string()
+        raise PDFParseError(
+            f"expected COS string, got byte {b:#04x}", position=self.position
+        )
+
+    def parse_cos_name(self) -> COSName:
+        """Parse a ``/Foo`` name at the current position and return a
+        ``COSName``. Whitespace is consumed first. Mirrors upstream
+        ``COSParser.parseCOSName``."""
+        self.skip_whitespace()
+        return COSName.get_pdf_name(self.read_name())
+
+    def parse_cos_number(self) -> COSBase:
+        """Parse a numeric literal at the current position and return
+        either a ``COSInteger`` or a ``COSFloat``. Whitespace is consumed
+        first. Mirrors upstream ``COSParser.parseCOSNumber``."""
+        self.skip_whitespace()
+        start = self.position
+        value = self.read_number()
+        return self._wrap_number(value, start)
+
+    def parse_cos_object_reference(self) -> COSObject:
+        """Parse a full ``n m R`` indirect reference at the current
+        position and return the placeholder ``COSObject`` (resolved via
+        the bound document's pool when one is available). Whitespace is
+        consumed first. Mirrors upstream
+        ``COSParser.parseCOSObjectReference``."""
+        self.skip_whitespace()
+        start = self.position
+        obj = self._parse_number_or_indirect_reference()
+        if not isinstance(obj, COSObject):
+            raise PDFParseError(
+                "expected indirect reference 'n m R'", position=start
+            )
+        return obj
+
+    # Indirect-object resolution. Upstream ``parseObjectDynamically`` walks
+    # the xref + object pool to materialise a referenced object; that
+    # machinery lives in ``PDFParser``. With a bound document we can still
+    # answer the common case by routing through the document pool's
+    # already-installed loader.
+
+    def parse_object_dynamically(
+        self,
+        obj_num: int,
+        gen_num: int,
+        requires_existing_not_compressed: bool = False,
+    ) -> COSBase | None:
+        """Resolve the object referenced by ``(obj_num, gen_num)``.
+
+        When a document is bound and an existing pool entry has a loader
+        attached (the normal post-``populate_document`` state), this
+        triggers lazy resolution and returns the underlying ``COSBase``.
+        Without a bound document — or when the placeholder has no loader
+        and ``requires_existing_not_compressed`` is ``False`` — an empty
+        placeholder is returned (matching upstream's "create on demand"
+        affordance).
+
+        ``requires_existing_not_compressed`` mirrors the upstream third
+        argument: when ``True``, raises if the object isn't already known
+        to the document. The compressed-vs-uncompressed distinction lives
+        with the loader (``PDFParser``); this alias preserves the call
+        signature so PDFBox-style call sites work unchanged.
+
+        Mirrors upstream ``COSParser.parseObjectDynamically``."""
+        if self._document is None:
+            if requires_existing_not_compressed:
+                raise PDFParseError(
+                    f"parse_object_dynamically({obj_num}, {gen_num}): "
+                    "no document bound to parser"
+                )
+            return COSObject(obj_num, gen_num)
+        key = COSObjectKey(obj_num, gen_num)
+        if requires_existing_not_compressed and not self._document.has_object(key):
+            raise PDFParseError(
+                f"parse_object_dynamically({obj_num}, {gen_num}): "
+                "object not present in document pool"
+            )
+        cos_obj = self._document.get_object_from_pool(key)
+        # Trigger lazy resolution if a loader is attached; otherwise return
+        # whatever the placeholder currently wraps (may be ``None``).
+        return cos_obj.get_object()
+
+    def parse_object_stream(self, obj_num: int) -> list[COSBase]:
+        """Load every direct object packed inside the object stream
+        identified by ``obj_num``. Mirrors upstream
+        ``COSParser.parseObjectStream``.
+
+        The ObjStm body decoder + per-entry parser lives in ``PDFParser``
+        (cluster #3 / cluster #4) — this alias is a deferred placeholder
+        on ``COSParser`` itself."""
+        raise NotImplementedError(
+            f"parse_object_stream({obj_num}) is implemented by PDFParser; "
+            "COSParser only owns the direct-object grammar"
+        )
+
+    # ``is_eof``, ``peek``, ``unread`` are inherited from BaseParser.
+    # Restated here as explicit pass-throughs so ``hasattr(COSParser, …)``
+    # finds them at the COSParser level (matches upstream API surface
+    # — these accessors are documented on COSParser, not just BaseParser).
+
+    def is_eof(self) -> bool:
+        """Upstream-name alias — ``True`` when the source has no more
+        bytes. Inherited from ``BaseParser``; restated for parity."""
+        return super().is_eof()
+
+    def peek(self) -> int:
+        """Upstream-name alias — return the next byte without consuming
+        it; ``-1`` at EOF. Inherited from ``BaseParser``."""
+        return super().peek()
+
+    def unread(self, b: int = -1) -> None:
+        """Upstream-name alias — push the most recently read byte back
+        onto the source. The ``b`` argument matches upstream's signature
+        and is ignored (PDFBox semantics assume the byte equals what was
+        previously read). Inherited from ``BaseParser``."""
+        super().unread(b)
+
+    # /XRef byte offset accessors.
+
+    def get_xref_offset(self) -> int:
+        """Return the trailing ``/XRef`` byte offset most recently
+        recorded by :meth:`set_xref_offset`, or ``-1`` if none. Mirrors
+        upstream ``COSParser.getXrefOffset``."""
+        return self._xref_offset
+
+    def set_xref_offset(self, offset: int) -> None:
+        """Record the trailing ``/XRef`` byte offset. Used by
+        ``PDFParser`` to share the value with downstream consumers
+        without re-scanning the source. Mirrors upstream
+        ``COSParser.setXrefOffset``."""
+        self._xref_offset = int(offset)
+
+    # Bound-document accessor — companion to the read-only ``document``
+    # property already exposed above.
+
+    def get_document(self) -> COSDocument | None:
+        """Return the bound ``COSDocument``, or ``None`` if the parser
+        was constructed without one. Mirrors upstream
+        ``COSParser.getDocument``."""
+        return self._document
+
+    # Lenient-mode toggle.
+
+    def set_lenient(self, lenient: bool) -> None:
+        """Toggle lenient parsing mode. The pypdfbox tokenizer is
+        already permissive — the flag is stored for API parity. Mirrors
+        upstream ``COSParser.setLenient``."""
+        self._lenient = bool(lenient)
+
+    def is_lenient(self) -> bool:
+        """Return the current lenient-mode flag. Mirrors upstream
+        ``COSParser.isLenient``."""
+        return self._lenient
+
+    # Xref entry points — full implementations live in PDFParser
+    # (cluster #3). Aliases here are deferred placeholders so calls
+    # routed through the upstream API surface fail loudly with a
+    # discoverable message rather than ``AttributeError``.
+
+    def parse_xref_object_stream(
+        self, xref_table_offset: int, is_standalone: bool = True
+    ) -> COSDictionary:
+        """Parse a PDF 1.5+ xref stream at ``xref_table_offset`` and
+        return its trailer dictionary. Mirrors upstream
+        ``COSParser.parseXrefObjStream``.
+
+        Implemented by ``PDFParser._handle_xref_stream_at`` — this alias
+        on ``COSParser`` is a deferred placeholder."""
+        raise NotImplementedError(
+            f"parse_xref_object_stream({xref_table_offset}, "
+            f"is_standalone={is_standalone}) is implemented by PDFParser"
+        )
+
+    def parse_xref_table(self, start_byte_offset: int, *args: object) -> bool:
+        """Parse a traditional ``xref`` section starting at
+        ``start_byte_offset``. Mirrors upstream
+        ``COSParser.parseXrefTable``.
+
+        Implemented by ``PDFParser._parse_traditional_xref_section`` —
+        this alias on ``COSParser`` is a deferred placeholder."""
+        raise NotImplementedError(
+            f"parse_xref_table({start_byte_offset}) is implemented by PDFParser"
+        )
+
+    def parse_pdf_header(self) -> float:
+        """Validate the ``%PDF-x.y`` magic and return the version.
+        Mirrors upstream ``COSParser.parsePDFHeader``.
+
+        Implemented by ``PDFParser.parse_header`` — this alias on
+        ``COSParser`` is a deferred placeholder."""
+        raise NotImplementedError(
+            "parse_pdf_header() is implemented by PDFParser.parse_header"
+        )
+
+    # Brute-force scan helpers — used by upstream's malformed-recovery
+    # path. Not yet implemented in pypdfbox.
+
+    def bf_search_for_objects(self) -> dict[COSObjectKey, int] | None:
+        """Brute-force scan the source for ``n g obj`` headers and
+        return an offset map. Mirrors upstream
+        ``COSParser.bfSearchForObjects``.
+
+        Not yet implemented — pypdfbox does not currently provide the
+        malformed-PDF recovery scan."""
+        raise NotImplementedError(
+            "bf_search_for_objects() is not implemented in pypdfbox; "
+            "the malformed-recovery brute-force scan is deferred"
+        )
+
+    def bf_search_for_xref(self, xref_offset: int) -> int:
+        """Brute-force scan the source for the nearest ``xref`` keyword
+        and return its byte offset. Mirrors upstream
+        ``COSParser.bfSearchForXRef``.
+
+        Not yet implemented — pypdfbox does not currently provide the
+        malformed-PDF recovery scan."""
+        raise NotImplementedError(
+            f"bf_search_for_xref({xref_offset}) is not implemented in "
+            "pypdfbox; the malformed-recovery brute-force scan is deferred"
+        )

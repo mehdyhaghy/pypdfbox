@@ -32,6 +32,10 @@ _ACRO_FORM: COSName = COSName.get_pdf_name("AcroForm")
 _OUTPUT_INTENTS: COSName = COSName.get_pdf_name("OutputIntents")
 _METADATA: COSName = COSName.get_pdf_name("Metadata")
 _AA: COSName = COSName.get_pdf_name("AA")
+_THREADS: COSName = COSName.get_pdf_name("Threads")
+_PERMS: COSName = COSName.get_pdf_name("Perms")
+_LEGAL: COSName = COSName.get_pdf_name("Legal")
+_COLLECTION: COSName = COSName.get_pdf_name("Collection")
 
 
 class PDDocumentCatalog:
@@ -209,6 +213,13 @@ class PDDocumentCatalog:
             return
         self._catalog.set_item(_OUTLINES, outline.get_cos_object())
 
+    # Upstream alias: ``getOutlines()`` / ``setOutlines()``.
+    def get_outlines(self) -> Any:
+        return self.get_document_outline()
+
+    def set_outlines(self, outline: Any) -> None:
+        self.set_document_outline(outline)
+
     def get_metadata(self) -> Any:
         from pypdfbox.cos import COSStream
 
@@ -310,6 +321,13 @@ class PDDocumentCatalog:
             return
         self._catalog.set_item(_VIEWER_PREFERENCES, prefs.get_cos_object())
 
+    # Upstream alias: ``getViewPreferences()`` / ``setViewPreferences()``.
+    def get_view_preferences(self) -> PDViewerPreferences | None:
+        return self.get_viewer_preferences()
+
+    def set_view_preferences(self, prefs: PDViewerPreferences | None) -> None:
+        self.set_viewer_preferences(prefs)
+
     # ---------- page labels ----------
 
     def get_page_labels(self) -> PDPageLabels | None:
@@ -345,6 +363,57 @@ class PDDocumentCatalog:
             arr = COSArray()
             self._catalog.set_item(_OUTPUT_INTENTS, arr)
         arr.add(intent.get_cos_object())
+
+    # ---------- /Threads ----------
+
+    def get_threads(self) -> list[Any]:
+        """Return the article-thread list. ``PDThread`` is not yet ported,
+        so this currently returns an empty list — mirrors the upstream
+        accessor name so callers can detect the entry's absence."""
+        # PDThread typed wrapper not yet ported; placeholder per task plan.
+        return []
+
+    # ---------- /Perms ----------
+
+    def get_perms(self) -> COSDictionary | None:
+        v = self._catalog.get_dictionary_object(_PERMS)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_perms(self, perms: COSDictionary | None) -> None:
+        if perms is None:
+            self._catalog.remove_item(_PERMS)
+            return
+        self._catalog.set_item(_PERMS, perms)
+
+    # ---------- /Legal ----------
+
+    def get_legal(self) -> COSDictionary | None:
+        v = self._catalog.get_dictionary_object(_LEGAL)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_legal(self, legal: COSDictionary | None) -> None:
+        if legal is None:
+            self._catalog.remove_item(_LEGAL)
+            return
+        self._catalog.set_item(_LEGAL, legal)
+
+    # ---------- /Collection ----------
+
+    def get_collection(self) -> COSDictionary | None:
+        v = self._catalog.get_dictionary_object(_COLLECTION)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_collection(self, collection: COSDictionary | None) -> None:
+        if collection is None:
+            self._catalog.remove_item(_COLLECTION)
+            return
+        self._catalog.set_item(_COLLECTION, collection)
 
     # ---------- raw COS passthrough used by tests ----------
 

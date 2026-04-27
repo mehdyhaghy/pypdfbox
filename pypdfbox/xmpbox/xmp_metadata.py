@@ -48,6 +48,11 @@ class XMPMetadata:
         self._xpacket_encoding = xpacket_encoding
         self._xpacket_end_data = xpacket_end
         self._schemas: list[XMPSchema] = []
+        # Upstream ``XMPMetadata`` exposes a ``read-only`` flag on the packet
+        # (``<?xpacket … w?>`` vs ``r``). Cluster #1 stores the boolean directly
+        # and keeps :attr:`_xpacket_end_data` as the source of truth for the
+        # serialised form; see :meth:`is_read_only` / :meth:`set_read_only`.
+        self._read_only: bool = xpacket_end == "r"
 
     # --- factory --------------------------------------------------------
 
@@ -67,25 +72,95 @@ class XMPMetadata:
     def get_xpacket_begin(self) -> str | None:
         return self._xpacket_begin
 
+    def set_xpacket_begin(self, value: str | None) -> None:
+        """Mirror of upstream ``setXpacketBegin`` (write-side companion)."""
+        self._xpacket_begin = value
+
     def get_xpacket_id(self) -> str | None:
         return self._xpacket_id
+
+    def set_xpacket_id(self, value: str | None) -> None:
+        """Mirror of upstream ``setXpacketId`` (write-side companion)."""
+        self._xpacket_id = value
 
     def get_xpacket_bytes(self) -> str | None:
         return self._xpacket_bytes
 
+    def set_xpacket_bytes(self, value: str | None) -> None:
+        """Mirror of upstream ``setXpacketBytes``."""
+        self._xpacket_bytes = value
+
     def get_xpacket_encoding(self) -> str | None:
         return self._xpacket_encoding
 
+    def set_xpacket_encoding(self, value: str | None) -> None:
+        """Mirror of upstream ``setXpacketEncoding``."""
+        self._xpacket_encoding = value
+
     def set_end_xpacket(self, data: str) -> None:
         self._xpacket_end_data = data
+        self._read_only = data == "r"
 
     def get_end_xpacket(self) -> str:
         return self._xpacket_end_data
+
+    # --- read-only flag (xpacket end="r"/"w") --------------------------
+
+    def is_read_only(self) -> bool:
+        """
+        Mirror of upstream ``XMPMetadata.isReadOnly``. ``True`` when the packet
+        was (or will be) serialised with ``<?xpacket end='r'?>``.
+        """
+        return self._read_only
+
+    def set_read_only(self, value: bool) -> None:
+        """
+        Mirror of upstream ``setReadOnly(boolean)``. Also flips the underlying
+        ``end='w'``/``end='r'`` marker so :meth:`get_end_xpacket` stays in sync.
+        """
+        self._read_only = bool(value)
+        self._xpacket_end_data = "r" if self._read_only else "w"
+
+    # --- rdf:about (document-level alias) ------------------------------
+
+    def get_about(self) -> str | None:
+        """
+        Mirror of upstream ``XMPMetadata.getAbout``. Cluster #1 stores
+        ``rdf:about`` per-schema (see :meth:`XMPSchema.get_about`); for the
+        document-level alias we surface the first schema's ``rdf:about`` value
+        so packets that share a single ``rdf:Description`` round-trip cleanly.
+        Returns ``None`` when no schema has been added yet, mirroring upstream
+        behavior of returning ``null`` for an empty packet.
+        """
+        for schema in self._schemas:
+            value = schema.get_about_attribute()
+            if value:
+                return value
+        return None
+
+    def set_about(self, value: str) -> None:
+        """
+        Mirror of upstream ``XMPMetadata.setAbout``. Propagates ``rdf:about``
+        to every registered schema so subsequent serialisations include it.
+        """
+        for schema in self._schemas:
+            schema.set_about(value)
 
     # --- schema management ---------------------------------------------
 
     def add_schema(self, schema: XMPSchema) -> None:
         self._schemas.append(schema)
+
+    def remove_schema(self, schema: XMPSchema) -> None:
+        """
+        Mirror of upstream ``XMPMetadata.removeSchema``. Silently no-ops when
+        the schema instance is not currently registered, matching upstream
+        ``List#remove(Object)`` semantics.
+        """
+        try:
+            self._schemas.remove(schema)
+        except ValueError:
+            pass
 
     def get_all_schemas(self) -> list[XMPSchema]:
         # Upstream returns a defensive copy; mirror that.
@@ -130,13 +205,104 @@ class XMPMetadata:
 
         return self.get_schema(DublinCoreSchema)
 
+    def add_dublin_core_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addDublinCoreSchema``: install (or reuse) a
+        :class:`DublinCoreSchema` and return it. Idempotent — repeat calls
+        return the existing schema rather than stacking duplicates.
+        """
+        from .dublin_core_schema import DublinCoreSchema
+
+        existing = self.get_schema(DublinCoreSchema)
+        if existing is not None:
+            return existing
+        schema = DublinCoreSchema(self)
+        self.add_schema(schema)
+        return schema
+
     def get_xmp_basic_schema(self) -> XMPSchema | None:
         from .xmp_basic_schema import XMPBasicSchema
 
         return self.get_schema(XMPBasicSchema)
+
+    def add_xmp_basic_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addXMPBasicSchema``: install (or reuse) an
+        :class:`XMPBasicSchema` and return it.
+        """
+        from .xmp_basic_schema import XMPBasicSchema
+
+        existing = self.get_schema(XMPBasicSchema)
+        if existing is not None:
+            return existing
+        schema = XMPBasicSchema(self)
+        self.add_schema(schema)
+        return schema
 
     def get_pdf_identification_schema(self) -> XMPSchema | None:
         # Mirror of upstream ``XMPMetadata.getPDFIdentificationSchema``.
         from .pdfa_identification_schema import PDFAIdentificationSchema
 
         return self.get_schema(PDFAIdentificationSchema)
+
+    def get_pdfa_identification_schema(self) -> XMPSchema | None:
+        """Upstream-named alias of :meth:`get_pdf_identification_schema`."""
+        return self.get_pdf_identification_schema()
+
+    def add_pdfa_identification_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addPDFAIdentificationSchema``: install (or reuse)
+        a :class:`PDFAIdentificationSchema` and return it.
+        """
+        from .pdfa_identification_schema import PDFAIdentificationSchema
+
+        existing = self.get_schema(PDFAIdentificationSchema)
+        if existing is not None:
+            return existing
+        schema = PDFAIdentificationSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    # --- PDF basic schema (Adobe PDF) ---------------------------------
+    #
+    # PDFBox names the schema-class wrapper ``AdobePDFSchema``; the metadata
+    # accessors use both ``addPDFSchema`` and the longer ``addAdobePDFSchema``
+    # spelling at various release points. Cluster #1 has not ported the
+    # AdobePDFSchema wrapper yet, so these accessors return ``None`` and the
+    # add variants are no-op stubs that record absence, matching the deferred
+    # behavior pattern used by other placeholder methods in this port.
+
+    def get_pdf_schema(self) -> XMPSchema | None:
+        """
+        Mirror of upstream ``getAdobePDFSchema`` / ``getPDFSchema``. Returns
+        ``None`` until the ``AdobePDFSchema`` wrapper lands; callers should
+        fall back to :meth:`get_schema` with the namespace
+        ``"http://ns.adobe.com/pdf/1.3/"`` if the document was parsed in.
+        """
+        return self.get_schema("http://ns.adobe.com/pdf/1.3/")
+
+    def add_pdf_basic_schema(self) -> XMPSchema | None:
+        """
+        Placeholder for upstream ``addAdobePDFSchema``. Returns the existing
+        schema if a PDF-namespace schema was previously parsed in; otherwise
+        ``None`` until the typed wrapper lands.
+        """
+        return self.get_pdf_schema()
+
+    # --- PDF/A extension schemas (placeholders) ------------------------
+
+    def get_pdfa_extension_schema(self) -> XMPSchema | None:
+        """
+        Placeholder for upstream ``getPDFExtensionSchema`` /
+        ``getPDFAExtensionSchema``. Returns ``None`` until the
+        ``PDFAExtensionSchema`` wrapper is ported.
+        """
+        return self.get_schema("http://www.aiim.org/pdfa/ns/extension/")
+
+    def add_pdfa_extension_schema(self) -> XMPSchema | None:
+        """Placeholder for upstream ``addPDFAExtensionSchema``."""
+        return self.get_pdfa_extension_schema()
+
+    def add_pdf_extension_schema(self) -> XMPSchema | None:
+        """Placeholder alias for :meth:`add_pdfa_extension_schema`."""
+        return self.add_pdfa_extension_schema()

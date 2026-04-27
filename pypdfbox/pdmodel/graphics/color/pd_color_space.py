@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase
 
@@ -113,6 +113,81 @@ class PDColorSpace(ABC):
         raise NotImplementedError(
             f"get_default_decode is not implemented for {self.get_name()!r}"
         )
+
+    # ---------- rendering (deferred) ----------
+
+    def to_rgb_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Convert a raster of color values in this color space into an
+        sRGB image. Mirrors upstream
+        ``PDColorSpace.toRGBImage(WritableRaster)``.
+
+        Deferred until the rendering module lands — concrete pixel
+        conversion belongs alongside the Pillow-based renderer.
+        """
+        raise NotImplementedError(
+            f"to_rgb_image is not implemented for {self.get_name()!r} "
+            "(rendering module deferred)"
+        )
+
+    def to_raw_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Return the raster as an image in its native color space, with
+        no sRGB conversion. Mirrors upstream
+        ``PDColorSpace.toRawImage(WritableRaster)``.
+
+        Deferred until the rendering module lands.
+        """
+        raise NotImplementedError(
+            f"to_raw_image is not implemented for {self.get_name()!r} "
+            "(rendering module deferred)"
+        )
+
+    def get_java_color_space(self) -> Any:
+        """Return the underlying ``java.awt.color.ColorSpace`` instance.
+
+        Java-AWT-specific upstream API: there is no Python equivalent in
+        this port, so this always returns ``None``. Kept for surface
+        compatibility with PDFBox callers.
+        """
+        return None
+
+    # ---------- type predicates ----------
+
+    def is_pattern(self) -> bool:
+        """Return ``True`` if this is a Pattern color space."""
+        from .pd_pattern import PDPattern
+
+        return isinstance(self, PDPattern)
+
+    def is_indexed(self) -> bool:
+        """Return ``True`` if this is an Indexed color space."""
+        from .pd_indexed import PDIndexed
+
+        return isinstance(self, PDIndexed)
+
+    def is_separation(self) -> bool:
+        """Return ``True`` if this is a Separation color space."""
+        from .pd_separation import PDSeparation
+
+        return isinstance(self, PDSeparation)
+
+    def is_device_n(self) -> bool:
+        """Return ``True`` if this is a DeviceN color space."""
+        from .pd_device_n import PDDeviceN
+
+        return isinstance(self, PDDeviceN)
+
+    # ---------- array form ----------
+
+    def get_array(self) -> COSArray | None:
+        """Return the underlying ``COSArray`` when this color space was
+        constructed in array form (e.g. ``[/ICCBased <stream>]``,
+        ``[/Indexed ...]``); ``None`` for name-only device color spaces.
+        """
+        return self._array
 
     def __str__(self) -> str:
         return self.get_name()

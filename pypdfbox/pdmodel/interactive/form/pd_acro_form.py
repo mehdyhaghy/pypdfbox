@@ -8,6 +8,8 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from .pd_field_factory import PDFieldFactory
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
     from .pd_field import PDField
     from .pd_xfa_resource import PDXFAResource
 
@@ -15,6 +17,10 @@ _FIELDS: COSName = COSName.get_pdf_name("Fields")
 _SIG_FLAGS: COSName = COSName.get_pdf_name("SigFlags")
 _NEED_APPEARANCES: COSName = COSName.get_pdf_name("NeedAppearances")
 _XFA: COSName = COSName.get_pdf_name("XFA")
+_DR: COSName = COSName.get_pdf_name("DR")
+_DA: COSName = COSName.get_pdf_name("DA")
+_Q: COSName = COSName.get_pdf_name("Q")
+_CO: COSName = COSName.get_pdf_name("CO")
 
 # Names referenced by ``flatten`` — kept module-local to avoid leaking
 # AcroForm-only intern requests into the global COSName cache via callers.
@@ -38,10 +44,10 @@ _FLAG_APPEND_ONLY = 1 << 1
 class PDAcroForm:
     """The /AcroForm dictionary. Mirrors PDFBox ``PDAcroForm`` lite surface.
 
-    Deferred: ``refresh_appearances``, ``import_fdf``/``export_fdf``,
-    ``get_default_resources``/``set_default_resources``, ``get_default_appearance``,
-    ``get_q``, ``get_calc_order``, signature scripting handler. Typed PDXFAResource
-    is also deferred — :meth:`xfa` returns the raw COS entry.
+    Deferred: ``refresh_appearances`` (widget appearance construction from
+    ``/V``), ``import_fdf``/``export_fdf`` (FDF document module not yet
+    ported), signature scripting handler. Typed PDXFAResource is also
+    deferred — :meth:`xfa` returns the raw COS entry.
     """
 
     def __init__(
@@ -190,6 +196,13 @@ class PDAcroForm:
     def set_appendonly(self, value: bool) -> None:
         self._set_sig_flag(_FLAG_APPEND_ONLY, value)
 
+    # Upstream-named aliases (PDFBox ``isAppendOnly`` / ``setAppendOnly``).
+    def is_append_only(self) -> bool:
+        return self.is_appendonly()
+
+    def set_append_only(self, value: bool) -> None:
+        self.set_appendonly(value)
+
     # ---------- /NeedAppearances ----------
 
     def is_need_appearances(self) -> bool:
@@ -197,6 +210,121 @@ class PDAcroForm:
 
     def set_need_appearances(self, value: bool) -> None:
         self._dictionary.set_boolean(_NEED_APPEARANCES, value)
+
+    # ---------- /DR (default resources) ----------
+
+    def get_default_resources(self) -> PDResources | None:
+        """Return the form-wide default ``/DR`` resources, or ``None``.
+
+        Mirrors PDFBox ``getDefaultResources`` — used by widget appearance
+        generation to resolve fonts referenced from ``/DA`` strings."""
+        from pypdfbox.pdmodel.pd_resources import PDResources
+
+        raw = self._dictionary.get_dictionary_object(_DR)
+        if isinstance(raw, COSDictionary):
+            return PDResources(raw)
+        return None
+
+    def set_default_resources(self, resources: PDResources | None) -> None:
+        """Set the form-wide default ``/DR`` resources. ``None`` removes
+        the entry."""
+        if resources is None:
+            self._dictionary.remove_item(_DR)
+            return
+        self._dictionary.set_item(_DR, resources.get_cos_object())
+
+    # ---------- /DA (default appearance) ----------
+
+    def get_default_appearance(self) -> str:
+        """Return the default appearance string ``/DA``.
+
+        Upstream returns ``""`` (not ``None``) when absent — preserved
+        here for parity with ``PDAcroForm.getDefaultAppearance``."""
+        value = self._dictionary.get_string(_DA, "")
+        return value if value is not None else ""
+
+    def set_default_appearance(self, da: str) -> None:
+        self._dictionary.set_string(_DA, da)
+
+    # ---------- /Q (quadding / form-wide alignment) ----------
+
+    def get_q(self) -> int:
+        """Return the form-wide quadding value (``0``=left, ``1``=center,
+        ``2``=right). Defaults to ``0`` when ``/Q`` is absent."""
+        return self._dictionary.get_int(_Q, 0)
+
+    def set_q(self, value: int) -> None:
+        self._dictionary.set_int(_Q, value)
+
+    # ---------- /CO (calculation order) ----------
+
+    def get_calc_order(self) -> list[PDField]:
+        """Return the ``/CO`` calculation order — fields whose values are
+        recomputed (in order) when any field's value changes.
+
+        Mirrors PDFBox ``getCalculationOrder``: each entry must be a
+        terminal field dictionary; non-dictionary or non-resolvable
+        entries are skipped."""
+        raw = self._dictionary.get_dictionary_object(_CO)
+        if not isinstance(raw, COSArray):
+            return []
+        out: list[PDField] = []
+        for i in range(raw.size()):
+            entry = raw.get_object(i)
+            if not isinstance(entry, COSDictionary):
+                continue
+            field = PDFieldFactory.create_field(self, entry, None)
+            if field is not None:
+                out.append(field)
+        return out
+
+    def set_calc_order(self, fields: list[PDField] | None) -> None:
+        """Replace the ``/CO`` array. ``None`` or an empty list removes
+        the entry."""
+        if not fields:
+            self._dictionary.remove_item(_CO)
+            return
+        arr = COSArray()
+        for f in fields:
+            arr.add(f.get_cos_object())
+        self._dictionary.set_item(_CO, arr)
+
+    # ---------- appearance regeneration (deferred) ----------
+
+    def refresh_appearances(self, fields: list[PDField] | None = None) -> None:
+        """Rebuild widget appearances from each field's ``/V``.
+
+        Per-FT widget appearance construction is non-trivial (text fields
+        require font metrics + DA tokenisation, buttons need on/off state
+        appearances, choice fields need wrapped option lists). Deferred
+        until the renderer's text path can be reused.
+        """
+        raise NotImplementedError(
+            "PDAcroForm.refresh_appearances: widget appearance "
+            "construction from /V is not yet implemented"
+        )
+
+    # ---------- FDF (deferred) ----------
+
+    def import_fdf(self, fdf: object) -> None:
+        """Apply an :class:`FDFDocument`'s field values to this form.
+
+        The ``pypdfbox.pdmodel.fdf`` module is not yet ported; calling
+        this raises :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(
+            "PDAcroForm.import_fdf: FDFDocument support is not yet implemented"
+        )
+
+    def export_fdf(self) -> object:
+        """Export this form's field values as a new :class:`FDFDocument`.
+
+        The ``pypdfbox.pdmodel.fdf`` module is not yet ported; calling
+        this raises :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(
+            "PDAcroForm.export_fdf: FDFDocument support is not yet implemented"
+        )
 
     # ---------- /XFA ----------
 
@@ -207,6 +335,10 @@ class PDAcroForm:
         if raw is None:
             return None
         return PDXFAResource(raw)
+
+    # Upstream-named alias (PDFBox ``getXFA``).
+    def get_xfa(self) -> PDXFAResource | None:
+        return self.xfa()
 
     # ---------- flatten (PDF 32000-1 §12.7.5.5) ----------
 

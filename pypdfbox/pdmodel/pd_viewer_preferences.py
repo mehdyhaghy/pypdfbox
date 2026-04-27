@@ -69,6 +69,32 @@ class PDViewerPreferences:
         None_ = "None"  # ``None`` is reserved in Python; expose under ``None_``.
         AppDefault = "AppDefault"
 
+    # ---------- class-level string constants (mirror upstream PDFBox) ----------
+    # Upstream exposes these alongside the nested enums for callers that prefer
+    # plain string constants. Values are the exact /Name token strings written
+    # to the PDF dictionary (PDF 32000-1 §12.2 Table 150).
+
+    NON_FS_USE_NONE: str = "UseNone"
+    NON_FS_USE_OUTLINES: str = "UseOutlines"
+    NON_FS_USE_THUMBS: str = "UseThumbs"
+    NON_FS_USE_OC: str = "UseOC"
+
+    DIRECTION_L2R: str = "L2R"
+    DIRECTION_R2L: str = "R2L"
+
+    PRINT_SCALING_NONE: str = "None"
+    PRINT_SCALING_APPDEFAULT: str = "AppDefault"
+
+    DUPLEX_SIMPLEX: str = "Simplex"
+    DUPLEX_DUPLEX_FLIP_SHORT_EDGE: str = "DuplexFlipShortEdge"
+    DUPLEX_DUPLEX_FLIP_LONG_EDGE: str = "DuplexFlipLongEdge"
+
+    BOUNDARY_MEDIA_BOX: str = "MediaBox"
+    BOUNDARY_CROP_BOX: str = "CropBox"
+    BOUNDARY_BLEED_BOX: str = "BleedBox"
+    BOUNDARY_TRIM_BOX: str = "TrimBox"
+    BOUNDARY_ART_BOX: str = "ArtBox"
+
     # ---------- construction ----------
 
     def __init__(self, dict_: COSDictionary | None = None) -> None:
@@ -85,11 +111,18 @@ class PDViewerPreferences:
     def set_hide_toolbar(self, value: bool) -> None:
         self._prefs.set_boolean(_HIDE_TOOLBAR, value)
 
+    # Upstream-named accessor (``isHideToolbar`` → ``is_hide_toolbar``).
+    def is_hide_toolbar(self) -> bool:
+        return self.hide_toolbar()
+
     def hide_menubar(self) -> bool:
         return self._prefs.get_boolean(_HIDE_MENUBAR, False)
 
     def set_hide_menubar(self, value: bool) -> None:
         self._prefs.set_boolean(_HIDE_MENUBAR, value)
+
+    def is_hide_menubar(self) -> bool:
+        return self.hide_menubar()
 
     def hide_window_ui(self) -> bool:
         return self._prefs.get_boolean(_HIDE_WINDOWUI, False)
@@ -97,11 +130,17 @@ class PDViewerPreferences:
     def set_hide_window_ui(self, value: bool) -> None:
         self._prefs.set_boolean(_HIDE_WINDOWUI, value)
 
+    def is_hide_window_ui(self) -> bool:
+        return self.hide_window_ui()
+
     def fit_window(self) -> bool:
         return self._prefs.get_boolean(_FIT_WINDOW, False)
 
     def set_fit_window(self, value: bool) -> None:
         self._prefs.set_boolean(_FIT_WINDOW, value)
+
+    def is_fit_window(self) -> bool:
+        return self.fit_window()
 
     def center_window(self) -> bool:
         return self._prefs.get_boolean(_CENTER_WINDOW, False)
@@ -109,17 +148,26 @@ class PDViewerPreferences:
     def set_center_window(self, value: bool) -> None:
         self._prefs.set_boolean(_CENTER_WINDOW, value)
 
+    def is_center_window(self) -> bool:
+        return self.center_window()
+
     def display_doc_title(self) -> bool:
         return self._prefs.get_boolean(_DISPLAY_DOC_TITLE, False)
 
     def set_display_doc_title(self, value: bool) -> None:
         self._prefs.set_boolean(_DISPLAY_DOC_TITLE, value)
 
+    def is_display_doc_title(self) -> bool:
+        return self.display_doc_title()
+
     def pick_tray_by_pdf_size(self) -> bool:
         return self._prefs.get_boolean(_PICK_TRAY_BY_PDF_SIZE, False)
 
     def set_pick_tray_by_pdf_size(self, value: bool) -> None:
         self._prefs.set_boolean(_PICK_TRAY_BY_PDF_SIZE, value)
+
+    def is_pick_tray_by_pdf_size(self) -> bool:
+        return self.pick_tray_by_pdf_size()
 
     # ---------- name-valued accessors (with documented defaults) ----------
 
@@ -141,6 +189,13 @@ class PDViewerPreferences:
 
     def set_reading_direction(self, value: READING_DIRECTION | str) -> None:
         self._prefs.set_name(_DIRECTION, str(value))
+
+    # Upstream-named accessors (``getDirection`` / ``setDirection``).
+    def get_direction(self) -> str:
+        return self.get_reading_direction()
+
+    def set_direction(self, value: READING_DIRECTION | str) -> None:
+        self.set_reading_direction(value)
 
     def get_view_area(self) -> str:
         return self._prefs.get_name(
