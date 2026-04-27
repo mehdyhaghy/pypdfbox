@@ -26,12 +26,23 @@ class COSBoolean(COSBase):
     def get(cls, value: bool) -> COSBoolean:
         return cls.TRUE if value else cls.FALSE
 
+    @classmethod
+    def get_boolean(cls, value: bool) -> COSBoolean:
+        """Upstream-named factory mirroring ``COSBoolean.getBoolean(boolean)``."""
+        return cls.TRUE if value else cls.FALSE
+
     @property
     def value(self) -> bool:
         return self._value
 
     def get_value(self) -> bool:
         return self._value
+
+    def is_true(self) -> bool:
+        return self._value is True
+
+    def is_false(self) -> bool:
+        return self._value is False
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_boolean(self)

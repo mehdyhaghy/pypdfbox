@@ -163,22 +163,63 @@ class Standard14Fonts:
     # ---- Lookup -------------------------------------------------------
 
     @classmethod
-    def containsName(cls, name: str | None) -> bool:
-        """Return True for any of the 14 canonical names or a known alias."""
+    def contains_name(cls, name: str | None) -> bool:
+        """Return True for any of the 14 canonical names or a known alias.
+
+        Mirrors upstream ``Standard14Fonts.containsName``.
+        """
         if name is None:
             return False
         return name.lower() in _NAME_LOOKUP
 
+    # camelCase alias kept for legacy callers; prefer ``contains_name``.
     @classmethod
-    def getMappedFontName(cls, name: str | None) -> str | None:
+    def containsName(cls, name: str | None) -> bool:  # noqa: N802 - upstream name
+        return cls.contains_name(name)
+
+    @classmethod
+    def is_standard_14(cls, name: str | None) -> bool:
+        """Upstream alias for :meth:`contains_name`.
+
+        PDFBox exposes both ``containsName`` and ``isStandard14`` on
+        ``Standard14Fonts``; the two have identical semantics.
+        """
+        return cls.contains_name(name)
+
+    @classmethod
+    def get_mapped_font_name(cls, name: str | None) -> str | None:
         """Resolve ``name`` (canonical or alias) to its canonical form.
 
         Returns ``None`` if the name is not one of the Standard 14 or a
-        known substitute alias.
+        known substitute alias. Mirrors upstream
+        ``Standard14Fonts.getMappedFontName``.
         """
         if name is None:
             return None
         return _NAME_LOOKUP.get(name.lower())
+
+    # camelCase alias kept for legacy callers; prefer ``get_mapped_font_name``.
+    @classmethod
+    def getMappedFontName(cls, name: str | None) -> str | None:  # noqa: N802 - upstream name
+        return cls.get_mapped_font_name(name)
+
+    @classmethod
+    def get_names(cls) -> set[str]:
+        """Return the 14 canonical PostScript names.
+
+        Mirrors upstream ``Standard14Fonts.getNames`` — set semantics, no
+        ordering guarantee, exactly the canonical names (aliases excluded).
+        """
+        return set(_FAMILY_FLAGS)
+
+    @classmethod
+    def get_aliases(cls) -> dict[str, str]:
+        """Return the alias -> canonical-name map (defensive copy).
+
+        Mirrors upstream ``Standard14Fonts.getAliases``. Mutating the result
+        does not affect future lookups.
+        """
+        return dict(_ALIASES)
 
     # ---- AFM access ---------------------------------------------------
 
@@ -193,7 +234,7 @@ class Standard14Fonts:
         Raises ``ValueError`` if ``name`` is not a Standard 14 font or a
         known alias.
         """
-        canonical = cls.getMappedFontName(name)
+        canonical = cls.get_mapped_font_name(name)
         if canonical is None:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
         return load_standard14(canonical)
@@ -222,7 +263,7 @@ class Standard14Fonts:
         Raises ``ValueError`` if ``name`` is not a Standard 14 font or a
         known alias.
         """
-        canonical = cls.getMappedFontName(name)
+        canonical = cls.get_mapped_font_name(name)
         if canonical is None:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
         cached = _AVG_WIDTHS_CACHE.get(canonical)
@@ -254,7 +295,7 @@ class Standard14Fonts:
         Raises ``ValueError`` if ``name`` is not a Standard 14 font or a
         known alias.
         """
-        canonical = cls.getMappedFontName(name)
+        canonical = cls.get_mapped_font_name(name)
         if canonical is None:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
         afm_metrics = load_standard14(canonical).get_font_metrics()
@@ -269,6 +310,24 @@ class Standard14Fonts:
             "XHeight": float(afm_metrics["XHeight"]),
             "StemV": float(afm_metrics["StemV"]),
         }
+
+    @classmethod
+    def get_font_metrics(cls, name: str) -> dict[str, Any] | None:
+        """Return the raw AFM-derived font-descriptor numerics for ``name``.
+
+        Mirrors upstream ``Standard14Fonts.getFontMetrics`` — the result is a
+        plain dict of ``FontName / FontBBox / ItalicAngle / Ascent / Descent
+        / CapHeight / XHeight / StemV / IsFixedPitch`` straight from the
+        bundled AFM (no ``Flags`` synthesis; see :meth:`get_font_descriptor`
+        for the full PDF font-descriptor shape).
+
+        Returns ``None`` when ``name`` is not a Standard 14 font or a known
+        alias (matches upstream's null-return contract).
+        """
+        canonical = cls.get_mapped_font_name(name)
+        if canonical is None:
+            return None
+        return load_standard14(canonical).get_font_metrics()
 
 
 __all__ = ["Standard14Fonts"]

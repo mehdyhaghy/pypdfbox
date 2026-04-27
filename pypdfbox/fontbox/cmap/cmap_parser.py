@@ -87,6 +87,69 @@ class CMapParser:
             f"Error: Could not find referenced cmap stream {name}"
         )
 
+    def parse_unicode_cmap(
+        self, cmap_bytes: bytes | bytearray | memoryview
+    ) -> CMap:
+        """Parse a /ToUnicode CMap stream (PDF 32000-1 §9.10.3).
+
+        Convenience wrapper around :meth:`parse` matching the upstream
+        ``parseUnicodeCMap(byte[])`` helper used by ``PDFont`` to
+        materialise embedded ToUnicode mappings.
+        """
+        if cmap_bytes is None:
+            raise OSError("ToUnicode CMap data is missing")
+        return self.parse(bytes(cmap_bytes))
+
+    @classmethod
+    def get_cmap_for_name(cls, name: str) -> CMap | None:
+        """Load and cache a predefined CMap by name.
+
+        Mirrors the upstream ``CMapManager.getCMap`` accessor (exposed
+        via ``CMapParser`` for parity with downstream callers): returns
+        the cached instance on subsequent calls, or ``None`` when the
+        requested CMap is not available in this build.
+        """
+        cached = _PREDEFINED_CACHE.get(name)
+        if cached is not None:
+            return cached
+        try:
+            cmap = cls.parse_predefined(name)
+        except OSError:
+            return None
+        _PREDEFINED_CACHE[name] = cmap
+        return cmap
+
+    @staticmethod
+    def add_codespace_range(
+        cmap: CMap, low: bytes | bytearray, high: bytes | bytearray
+    ) -> None:
+        """Public helper that registers a codespace range on ``cmap``.
+
+        Mirrors the upstream ``addCodespaceRange`` hook so callers that
+        synthesise a ``CMap`` (e.g. tests, font builders) do not have to
+        construct a ``CodespaceRange`` by hand.
+        """
+        cmap.add_codespace_range(CodespaceRange(bytes(low), bytes(high)))
+
+    def parse_chunk(
+        self,
+        source: RandomAccessRead | BinaryIO | bytes | bytearray,
+        cmap: CMap | None = None,
+    ) -> CMap:
+        """Parse an additional CMap fragment and merge it into ``cmap``.
+
+        Parity hook for upstream's internal chunked-parse entry point.
+        When ``cmap`` is ``None`` a fresh ``CMap`` is returned; otherwise
+        any mappings discovered in ``source`` are folded into the
+        supplied instance via :meth:`CMap.use_cmap` and the same
+        instance is returned.
+        """
+        parsed = self.parse(source)
+        if cmap is None:
+            return parsed
+        cmap.use_cmap(parsed)
+        return cmap
+
     # ---------- usecmap / literal name handling ----------
 
     def _parse_usecmap(self, use_cmap_name: _LiteralName, result: CMap) -> None:
@@ -515,6 +578,9 @@ def _create_string_from_bytes(data: bytes) -> str:
     if len(data) == 1:
         return data.decode("latin-1")
     return data.decode("utf-16-be")
+
+
+_PREDEFINED_CACHE: dict[str, CMap] = {}
 
 
 def _build_identity_cmap(name: str) -> CMap | None:

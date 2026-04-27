@@ -235,7 +235,11 @@ def test_pd_icc_based_metadata_round_trip() -> None:
     cs = PDICCBased()
     md = COSStream()
     cs.set_metadata(md)
-    assert cs.get_metadata() is md
+    fetched = cs.get_metadata()
+    # get_metadata() now wraps the stream in PDMetadata to match
+    # upstream PDICCBased.getMetadata() : PDMetadata.
+    assert fetched is not None
+    assert fetched.get_cos_object() is md
 
 
 # ---------- PDCalGray ----------

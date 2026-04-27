@@ -110,6 +110,94 @@ class Loader:
         return document
 
     @staticmethod
+    def load(
+        source: PDFSource,
+        password: str | bytes | None = None,
+        /,
+    ) -> COSDocument:
+        """Upstream-name alias for :meth:`load_pdf`.
+
+        Mirrors ``org.apache.pdfbox.Loader.loadPDF`` — many call sites in
+        upstream samples and third-party code use the bare ``Loader.load``
+        spelling, so we expose both names with identical semantics.
+        """
+        return Loader.load_pdf(source, password)
+
+    @staticmethod
+    def load_pdf_from_bytes(
+        data: bytes | bytearray | memoryview,
+        password: str | bytes | None = None,
+        /,
+    ) -> COSDocument:
+        """Explicit bytes entry point — mirrors PDFBox
+        ``Loader.loadPDF(byte[])``.
+
+        Equivalent to ``Loader.load_pdf(data, password)`` but rejects
+        non-bytes-like inputs eagerly so callers get a clear error message
+        at the boundary instead of a generic ``TypeError`` deeper in
+        ``_coerce_source``.
+        """
+        if not isinstance(data, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                "Loader.load_pdf_from_bytes expected bytes, bytearray, or "
+                f"memoryview; got {type(data).__name__}"
+            )
+        return Loader.load_pdf(data, password)
+
+    @staticmethod
+    def load_pdf_from_file(
+        path: str | os.PathLike[str],
+        password: str | bytes | None = None,
+        /,
+    ) -> COSDocument:
+        """Explicit path entry point — mirrors PDFBox
+        ``Loader.loadPDF(File)``.
+
+        Equivalent to ``Loader.load_pdf(path, password)`` but rejects
+        non-path inputs eagerly. Accepts ``str``, ``pathlib.Path``, and
+        any ``os.PathLike``.
+        """
+        if not isinstance(path, (str, os.PathLike)):
+            raise TypeError(
+                "Loader.load_pdf_from_file expected str or PathLike; got "
+                f"{type(path).__name__}"
+            )
+        return Loader.load_pdf(path, password)
+
+    @staticmethod
+    def load_xfdf(source: PDFSource) -> None:
+        """Parse an XFDF (XML Forms Data Format) document — mirrors
+        ``org.apache.pdfbox.Loader.loadXFDF``.
+
+        Not yet implemented: XFDF parsing requires the ``fdf`` /
+        ``xfdf`` subsystems, which land in a later wave alongside the
+        rest of interactive-form data exchange. The method exists today
+        so downstream code can call it and get a clear, actionable
+        ``NotImplementedError`` instead of an ``AttributeError``.
+        """
+        raise NotImplementedError(
+            "Loader.load_xfdf is not yet implemented — XFDF parsing is "
+            "deferred to a later wave (tracked alongside the FDF / XFDF "
+            "interactive-form data exchange port)."
+        )
+
+    @staticmethod
+    def load_fdf(source: PDFSource) -> None:
+        """Parse an FDF (Forms Data Format) document — mirrors
+        ``org.apache.pdfbox.Loader.loadFDF``.
+
+        Not yet implemented: FDF parsing depends on the ``fdf`` subsystem
+        which lands in a later wave. The method exists today so downstream
+        code can call it and get a clear, actionable
+        ``NotImplementedError`` instead of an ``AttributeError``.
+        """
+        raise NotImplementedError(
+            "Loader.load_fdf is not yet implemented — FDF parsing is "
+            "deferred to a later wave (tracked alongside the FDF / XFDF "
+            "interactive-form data exchange port)."
+        )
+
+    @staticmethod
     def _coerce_source(source: PDFSource) -> tuple[RandomAccessRead, bool]:
         """Return ``(random_access_read, loader_owns_it)``."""
         # Order matters: RandomAccessRead is checked first so a custom

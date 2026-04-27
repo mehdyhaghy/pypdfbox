@@ -47,15 +47,37 @@ class PDFTextStripper:
     _WORD_GAP_FACTOR: float = 1.5
 
     def __init__(self) -> None:
+        # Upstream defaults end_page to ``Integer.MAX_VALUE`` (2**31 - 1);
+        # pypdfbox keeps ``sys.maxsize`` for backward compatibility with
+        # the existing lite stripper API. The practical effect is the
+        # same — both sentinels are clamped to ``len(pages)`` in
+        # ``get_text``.
         self._start_page: int = 1
         self._end_page: int = sys.maxsize
         self._should_separate_by_beads: bool = True  # no-op for lite
+        self._suppress_duplicate_overlapping_text: bool = True  # inert holder
+        self._sort_by_position: bool = False
         self._paragraph_start: str = ""
+        # Note: pypdfbox keeps the existing ``"\n"`` default for
+        # ``paragraph_end`` for backward compatibility with the lite
+        # extractor. Upstream PDFBox defaults this to ``""`` and emits
+        # the line terminator separately; we collapse the two until the
+        # stripper grows real paragraph detection.
         self._paragraph_end: str = "\n"
         self._page_start: str = ""
         self._page_end: str = "\n"
         self._word_separator: str = " "
         self._line_separator: str = "\n"
+        # Inert layout-tuning holders preserved for upstream API parity.
+        # The lite extraction loop doesn't yet consume these; they exist
+        # so callers can configure a stripper exactly as they would in
+        # Java PDFBox without having to branch on which subset is wired.
+        self._drop_threshold: float = 2.5
+        self._indent_threshold: float = 2.0
+        self._spacing_tolerance: float = 0.5
+        self._average_char_tolerance: float = 0.3
+        self._add_more_formatting: bool = False
+        self._lenient_stream_parsing: bool = True
         # Per-page CMap cache + active page handle for /ToUnicode lookup.
         # ``_cmap_cache`` keys are font resource names (the same ones the
         # ``Tf`` operator names); the value is the parsed ``CMap`` or
@@ -134,6 +156,60 @@ class PDFTextStripper:
 
     def get_should_separate_by_beads(self) -> bool:
         return self._should_separate_by_beads
+
+    def is_should_separate_by_beads(self) -> bool:
+        # Upstream PDFBox exposes this as ``isShouldSeparateByBeads`` as
+        # well as the ``getShouldSeparateByBeads`` alias on some 3.x
+        # branches. Mirror both so callers can pick either spelling.
+        return self._should_separate_by_beads
+
+    def set_sort_by_position(self, value: bool) -> None:
+        self._sort_by_position = bool(value)
+
+    def is_sort_by_position(self) -> bool:
+        return self._sort_by_position
+
+    def set_suppress_duplicate_overlapping_text(self, value: bool) -> None:
+        self._suppress_duplicate_overlapping_text = bool(value)
+
+    def is_suppress_duplicate_overlapping_text(self) -> bool:
+        return self._suppress_duplicate_overlapping_text
+
+    def set_drop_threshold(self, value: float) -> None:
+        self._drop_threshold = float(value)
+
+    def get_drop_threshold(self) -> float:
+        return self._drop_threshold
+
+    def set_indent_threshold(self, value: float) -> None:
+        self._indent_threshold = float(value)
+
+    def get_indent_threshold(self) -> float:
+        return self._indent_threshold
+
+    def set_spacing_tolerance(self, value: float) -> None:
+        self._spacing_tolerance = float(value)
+
+    def get_spacing_tolerance(self) -> float:
+        return self._spacing_tolerance
+
+    def set_average_char_tolerance(self, value: float) -> None:
+        self._average_char_tolerance = float(value)
+
+    def get_average_char_tolerance(self) -> float:
+        return self._average_char_tolerance
+
+    def set_add_more_formatting(self, value: bool) -> None:
+        self._add_more_formatting = bool(value)
+
+    def get_add_more_formatting(self) -> bool:
+        return self._add_more_formatting
+
+    def set_lenient_stream_parsing(self, value: bool) -> None:
+        self._lenient_stream_parsing = bool(value)
+
+    def is_lenient_stream_parsing(self) -> bool:
+        return self._lenient_stream_parsing
 
     # ---------- public API ----------
 
@@ -564,9 +640,17 @@ class PDFTextStripper:
           - Otherwise, if ``x`` jumps by more than ``_WORD_GAP_FACTOR``
             times the font size from the previous position's right edge,
             emit a word separator.
+
+        When ``sort_by_position`` is enabled the positions are first
+        re-ordered top-to-bottom, left-to-right (descending ``y`` since
+        PDF user space puts the origin at the lower-left) so emission
+        respects geometric reading order rather than content-stream
+        order. This mirrors upstream's ``setSortByPosition(true)``.
         """
         if not positions:
             return ""
+        if self._sort_by_position:
+            positions = sorted(positions, key=lambda p: (-p.y, p.x))
         out: list[str] = []
         prev: TextPosition | None = None
         for pos in positions:

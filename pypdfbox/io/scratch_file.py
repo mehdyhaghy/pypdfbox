@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import os
 import tempfile
 from typing import BinaryIO
@@ -10,6 +11,10 @@ from .random_access_read import RandomAccessRead
 from .random_access_write import RandomAccessWrite
 
 _BytesIO = io.BytesIO
+_log = logging.getLogger(__name__)
+
+# Default spill threshold for MIXED mode when no explicit cap is given.
+_DEFAULT_MIXED_SPILL_BYTES = 16 * 1024 * 1024  # 16 MiB
 
 
 class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
@@ -155,7 +160,7 @@ class ScratchFile:
             spool_max = (
                 self._setting.max_main_memory_bytes
                 if self._setting.max_main_memory_bytes != UNLIMITED
-                else 16 * 1024 * 1024  # 16 MiB default spill threshold
+                else _DEFAULT_MIXED_SPILL_BYTES
             )
             # SpooledTemporaryFile is BinaryIO-compatible at runtime but its stub
             # types it as IO[bytes]; cast for mypy.
@@ -178,8 +183,64 @@ class ScratchFile:
         buf.seek(0)
         return buf
 
+    def create_buffer_with_data(
+        self, data: bytes | bytearray | memoryview
+    ) -> ScratchFileBuffer:
+        """
+        Convenience: create a new buffer pre-populated with ``data`` and
+        seeked back to position 0, so the next read returns the bytes just
+        written. Mirrors no exact upstream method but matches the common
+        PDFBox idiom of ``buf = sf.createBuffer(); buf.write(data); buf.seek(0)``.
+        """
+        buf = self.create_buffer()
+        if len(data) > 0:
+            buf.write_bytes(data)
+        buf.seek(0)
+        return buf
+
     def is_closed(self) -> bool:
         return self._closed
+
+    def enqueue_page(self, page: int) -> None:
+        """
+        Upstream uses this to return a freed scratch page to the free-page
+        pool for later reuse. The stdlib-backed implementation has no
+        page-pool concept (spool/spill is handled by SpooledTemporaryFile),
+        so this is a no-op preserved for API parity.
+        """
+        _log.debug("ScratchFile.enqueue_page(%d): no-op (stdlib-backed)", page)
+
+    def dequeue_page(self) -> int:
+        """
+        Upstream pops a previously freed page index from the free-page
+        pool. Always returns -1 here since we never enqueue. Preserved for
+        API parity with PDFBox callers that probe page reuse.
+        """
+        _log.debug("ScratchFile.dequeue_page(): always -1 (stdlib-backed)")
+        return -1
+
+    def get_main_memory_max_pages(self) -> int:
+        """
+        Upstream returns the configured max number of in-memory scratch
+        pages. The stdlib-backed implementation has no page-count limit
+        (only a byte threshold via SpooledTemporaryFile), so we return -1
+        meaning "unlimited / not applicable".
+        """
+        return -1
+
+    def get_max_main_memory_bytes(self) -> int:
+        """
+        Spill-to-disk threshold in bytes. In MIXED mode without an
+        explicit cap, returns the 16 MiB default (see CHANGES.md). In
+        MAIN_MEMORY_ONLY / TEMP_FILE_ONLY modes, returns the setting's
+        configured ``max_main_memory_bytes`` (which may be ``UNLIMITED``
+        sentinel ``-1``).
+        """
+        if self._setting.mode is StorageMode.MIXED:
+            if self._setting.max_main_memory_bytes == UNLIMITED:
+                return _DEFAULT_MIXED_SPILL_BYTES
+            return self._setting.max_main_memory_bytes
+        return self._setting.max_main_memory_bytes
 
     def close(self) -> None:
         if self._closed:

@@ -5,6 +5,7 @@ import logging
 from pypdfbox.cos import COSDictionary
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 
+from .afm_loader import AfmMetrics
 from .pd_simple_font import PDSimpleFont
 from .standard14_fonts import Standard14Fonts
 
@@ -190,6 +191,150 @@ class PDType1Font(PDSimpleFont):
             if name and name != ".notdef":
                 return name
         return None
+
+    # ---------- upstream-parity accessors ----------
+
+    # ``get_name`` is already defined on :class:`PDFont`; ``get_base_font``
+    # is the upstream alias (PDFBox exposes both — ``getName`` and
+    # ``getBaseFont``). We expose both names so callers porting from
+    # ``org.apache.pdfbox.pdmodel.font.PDType1Font`` find the API they
+    # expect.
+
+    def get_base_font(self) -> str | None:
+        """``/BaseFont`` — alias of :meth:`PDFont.get_name`. Mirrors
+        upstream ``PDType1Font.getBaseFont``."""
+        return self.get_name()
+
+    def get_font_program(self) -> Type1Font | None:
+        """Return the parsed embedded Type 1 program, or ``None`` when the
+        font is not embedded or the program failed to parse. Mirrors
+        upstream ``PDType1Font.getFontProgram`` — alias of the internal
+        :meth:`_get_type1_font`."""
+        return self._get_type1_font()
+
+    def get_glyph_name_for_code(self, code: int) -> str | None:
+        """Resolve a 1-byte character code to a PostScript glyph name via
+        the font's ``/Encoding`` (with ``/Differences`` overlay).
+
+        Returns ``None`` for ``.notdef`` and unmapped codes. Mirrors
+        upstream ``PDType1Font.getGlyphNameForCode`` — alias of the
+        internal :meth:`_code_to_glyph_name` so external callers don't
+        have to reach for an underscore-prefixed name.
+        """
+        return self._code_to_glyph_name(code)
+
+    def get_path(self, name: str) -> list[tuple]:
+        """Return the glyph outline for the named glyph, in font units.
+
+        Mirrors upstream ``PDType1Font.getPath(String name)`` — operates
+        on a glyph *name* (not a character code; see
+        :meth:`get_glyph_path` for the code-keyed variant). Returns
+        ``[]`` when the font has no embedded program or the glyph is
+        missing.
+        """
+        program = self._get_type1_font()
+        if program is None:
+            return []
+        return program.get_path(name)
+
+    def is_embedded(self) -> bool:
+        """``True`` iff the font dictionary carries an embedded font
+        program — ``/FontFile`` (Type 1) or ``/FontFile3`` (Type 1C /
+        OpenType). Mirrors upstream ``PDFont.isEmbedded``."""
+        descriptor = self.get_font_descriptor()
+        if descriptor is None:
+            return False
+        return (
+            descriptor.get_font_file() is not None
+            or descriptor.get_font_file3() is not None
+        )
+
+    def is_damaged(self) -> bool:
+        """``True`` iff the embedded font program failed to parse.
+        Mirrors upstream ``PDFont.isDamaged``. Returns ``False`` when
+        the font is not embedded (nothing to parse, nothing to damage)
+        or when parsing succeeded.
+        """
+        descriptor = self.get_font_descriptor()
+        if descriptor is None or descriptor.get_font_file() is None:
+            return False
+        # Force the lazy parse and check whether it surfaced a real program.
+        self._get_type1_font()
+        return self._t1 is False
+
+    def get_height(self, code: int) -> float:
+        """Return the height of the glyph at ``code`` in font units.
+
+        Computed from the glyph outline's bounding box (max-y minus
+        min-y) when an embedded Type 1 program is available; otherwise
+        ``0.0``. Mirrors upstream ``PDSimpleFont.getHeight`` for
+        Type 1.
+        """
+        program = self._get_type1_font()
+        if program is None:
+            return 0.0
+        name = self._code_to_glyph_name(code)
+        if name is None:
+            return 0.0
+        path = program.get_path(name)
+        if not path:
+            return 0.0
+        ys: list[float] = []
+        for cmd in path:
+            # Commands look like ("moveto", x, y), ("lineto", x, y),
+            # ("curveto", x1, y1, x2, y2, x, y), ("closepath",). Skip the
+            # closepath singleton; for everything else extract the y
+            # coordinates (every odd-indexed numeric arg).
+            if len(cmd) <= 1:
+                continue
+            for i in range(2, len(cmd), 2):
+                ys.append(float(cmd[i]))
+        if not ys:
+            return 0.0
+        return max(ys) - min(ys)
+
+    def get_displacement(self, code: int) -> tuple[float, float]:
+        """Glyph displacement vector for ``code``, in *thousandths of an em*.
+
+        For horizontal-writing-mode simple fonts (which all Type 1 fonts
+        are) the displacement is ``(width / 1000, 0)`` — see PDF
+        32000-1:2008 §9.2.4. ``width`` is the value
+        :meth:`get_glyph_width` returns. Mirrors upstream
+        ``PDSimpleFont.getDisplacement``.
+        """
+        return self.get_glyph_width(code) / 1000.0, 0.0
+
+    def get_average_font_width(self) -> float:
+        """Mean glyph advance for this font in 1/1000 em.
+
+        Lookup order:
+
+        1. Mean of positive entries in ``/Widths`` (matches
+           :meth:`PDSimpleFont.get_average_font_width`).
+        2. AFM mean for the matching Standard 14 font, when ``/BaseFont``
+           resolves to one. Mirrors upstream ``PDType1Font`` falling back
+           to its bundled ``FontMetrics`` when the dict has no widths.
+        3. ``0.0``.
+        """
+        widths = self.get_widths()
+        non_zero = [w for w in widths if w > 0.0]
+        if non_zero:
+            return sum(non_zero) / len(non_zero)
+        afm = self.get_standard_14_font_metrics()
+        if afm is not None:
+            return afm.get_average_width()
+        return 0.0
+
+    def get_standard_14_font_metrics(self) -> AfmMetrics | None:
+        """Return the bundled Adobe AFM metrics for this font when
+        ``/BaseFont`` resolves to one of the 14 Standard fonts (or a
+        known alias); ``None`` otherwise. Mirrors upstream
+        ``PDType1Font.getStandard14AFM``.
+        """
+        base_font = self.get_name()
+        if base_font is None or not Standard14Fonts.containsName(base_font):
+            return None
+        return Standard14Fonts.get_afm(base_font)
 
 
 __all__ = ["PDType1Font"]

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 
 if TYPE_CHECKING:
     from .pd_font_descriptor import PDFontDescriptor
@@ -12,6 +13,21 @@ _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 _FONT: COSName = COSName.get_pdf_name("Font")
 _BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
+_FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
+_LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
+_WIDTHS: COSName = COSName.get_pdf_name("Widths")
+_FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
+_FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
+_FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
+
+# PDF subset marker: six uppercase letters + '+' prefix on /BaseFont
+# (PDF 32000-1 §9.6.4 — "tagged" subset font names).
+_SUBSET_RE = re.compile(r"^[A-Z]{6}\+")
+
+# Default space width when the font dictionary cannot supply one. Matches
+# upstream PDFBox ``PDFont.getSpaceWidth`` which falls back to 250 (1/4 em
+# in 1000-unit coordinates).
+_DEFAULT_SPACE_WIDTH: float = 250.0
 
 
 class PDFont:
@@ -60,6 +76,104 @@ class PDFont:
             self._dict.remove_item(_FONT_DESCRIPTOR)
             return
         self._dict.set_item(_FONT_DESCRIPTOR, font_descriptor.get_cos_object())
+
+    # ---------- embedding / damage state ----------
+
+    def is_embedded(self) -> bool:
+        """``True`` when the font program is embedded in the PDF.
+
+        Mirrors PDFBox ``PDFont.isEmbedded``: a font is embedded when its
+        ``/FontDescriptor`` carries any of ``/FontFile`` (Type 1),
+        ``/FontFile2`` (TrueType), or ``/FontFile3`` (CFF / OpenType).
+        """
+        fd = self._dict.get_dictionary_object(_FONT_DESCRIPTOR)
+        if not isinstance(fd, COSDictionary):
+            return False
+        return (
+            fd.get_dictionary_object(_FONT_FILE) is not None
+            or fd.get_dictionary_object(_FONT_FILE2) is not None
+            or fd.get_dictionary_object(_FONT_FILE3) is not None
+        )
+
+    def is_damaged(self) -> bool:
+        """``True`` when the embedded font program failed to parse.
+
+        Mirrors PDFBox ``PDFont.isDamaged``. The base implementation returns
+        ``False``; concrete subclasses override after their parse step has
+        had a chance to fail.
+        """
+        return False
+
+    # ---------- char-range / widths ----------
+
+    def get_widths(self) -> list[float]:
+        """Return the contents of ``/Widths`` as a list of floats.
+
+        Mirrors PDFBox ``PDFont.getWidths``. Non-numeric entries are
+        skipped. Returns an empty list when ``/Widths`` is absent.
+        """
+        arr = self._dict.get_dictionary_object(_WIDTHS)
+        if not isinstance(arr, COSArray):
+            return []
+        widths: list[float] = []
+        for item in arr:
+            if isinstance(item, (COSInteger, COSFloat)):
+                widths.append(float(item.value))
+        return widths
+
+    def get_first_char(self) -> int:
+        """``/FirstChar`` — first character code in ``/Widths``. Default ``-1``."""
+        return self._dict.get_int(_FIRST_CHAR, -1)
+
+    def get_last_char(self) -> int:
+        """``/LastChar`` — last character code in ``/Widths``. Default ``-1``."""
+        return self._dict.get_int(_LAST_CHAR, -1)
+
+    def get_average_font_width(self) -> float:
+        """Return the average glyph advance for this font in thousandths of an em.
+
+        Computed as the arithmetic mean of the positive entries in
+        ``/Widths``; zero-width entries (typically ``.notdef`` slots) are
+        skipped to avoid dragging the mean toward zero. Returns ``0.0``
+        when the font has no usable width entries.
+        """
+        widths = self.get_widths()
+        non_zero = [w for w in widths if w > 0.0]
+        if not non_zero:
+            return 0.0
+        return sum(non_zero) / len(non_zero)
+
+    def get_space_width(self) -> float:
+        """Return the advance width of the space glyph (character code 32).
+
+        Looks up code 32 in ``/Widths`` (offset by ``/FirstChar``). When
+        unavailable, falls back to 250 (the upstream PDFBox default).
+        """
+        widths = self.get_widths()
+        if widths:
+            first = self.get_first_char()
+            if first < 0:
+                first = 0
+            index = 32 - first
+            if 0 <= index < len(widths):
+                width = widths[index]
+                if width > 0.0:
+                    return width
+        return _DEFAULT_SPACE_WIDTH
+
+    # ---------- subset detection ----------
+
+    def is_subset(self) -> bool:
+        """``True`` when ``/BaseFont`` carries the six-letter subset prefix.
+
+        PDF 32000-1 §9.6.4 specifies that a subsetted font's ``/BaseFont``
+        is prefixed with six uppercase letters followed by ``+`` (e.g.
+        ``ABCDEF+Helvetica``). Mirrors PDFBox ``PDFont.isSubset``.
+        """
+        name = self.get_name()
+        if not name:
+            return False
+        return _SUBSET_RE.match(name) is not None
 
 
 __all__ = ["PDFont"]

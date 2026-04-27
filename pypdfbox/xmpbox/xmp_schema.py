@@ -68,6 +68,20 @@ class XMPSchema:
     def get_about(self) -> str:
         return self._about
 
+    def get_about_attribute(self) -> str | None:
+        """
+        Mirror of upstream ``getAboutAttribute()``: returns the ``rdf:about``
+        value, or ``None`` when none has been set. Upstream returns the backing
+        ``Attribute`` instance; cluster #1 stores the value as a plain string,
+        so we return that string (or ``None``) until the ``Attribute``
+        hierarchy lands.
+        """
+        return self._about or None
+
+    def get_about_value(self) -> str | None:
+        """Alias of :meth:`get_about_attribute` (upstream ``getAboutValue``)."""
+        return self.get_about_attribute()
+
     def set_about(self, about: str) -> None:
         self._about = about
 
@@ -92,9 +106,40 @@ class XMPSchema:
         """
         return self._properties.get(local_name)
 
+    def get_unqualified_property(self, local_name: str) -> object | None:
+        """
+        Mirror of upstream ``getUnqualifiedProperty(String)``. Cluster #1
+        returns the raw stored value (str / list / dict); when the
+        ``AbstractField`` hierarchy lands this will return the field instance.
+        """
+        return self.get_property(local_name)
+
     def set_property(self, local_name: str, value: object) -> None:
         """Generic setter used by the parser and by subclass helpers."""
         self._properties[local_name] = value
+
+    def add_property(self, prop: object) -> None:
+        """
+        Mirror of upstream ``addProperty(AbstractField)``. Until the field
+        hierarchy lands we accept either:
+
+          * any object exposing ``get_property_name()`` + ``get_value()`` (duck
+            typed ``AbstractField`` stand-in), or
+          * a ``(name, value)`` tuple/list, for callers that just want the
+            upstream-named entry point without constructing a field object.
+        """
+        if isinstance(prop, (tuple, list)) and len(prop) == 2:
+            name, value = prop
+            self._properties[str(name)] = value
+            return
+        get_name = getattr(prop, "get_property_name", None)
+        get_value = getattr(prop, "get_value", None)
+        if callable(get_name) and callable(get_value):
+            self._properties[str(get_name())] = get_value()
+            return
+        raise TypeError(
+            "add_property expects an AbstractField-like object or a (name, value) pair"
+        )
 
     def remove_property(self, local_name: str) -> None:
         self._properties.pop(local_name, None)
@@ -127,6 +172,49 @@ class XMPSchema:
     def set_text_property_value(self, local_name: str, value: str) -> None:
         self._properties[local_name] = value
 
+    def add_unqualified_text_property(self, local_name: str, value: str) -> None:
+        """
+        Mirror of upstream ``addUnqualifiedTextProperty``. Equivalent to
+        :meth:`set_text_property_value`; "add" here matches upstream wording —
+        a single TextType property has cardinality one, so adding replaces.
+        """
+        self.set_text_property_value(local_name, value)
+
+    def get_unqualified_text_property(self, local_name: str) -> str | None:
+        """
+        Mirror of upstream ``getUnqualifiedTextProperty`` — returns the raw
+        string value, or ``None`` when absent. Until ``TextType`` lands this
+        is the same as :meth:`get_unqualified_text_property_value`.
+        """
+        return self.get_unqualified_text_property_value(local_name)
+
+    # --- Array creation ----------------------------------------------
+
+    # Upstream array-type tokens (org.apache.xmpbox.type.ArrayProperty).
+    UNORDERED_ARRAY = "Bag"
+    ORDERED_ARRAY = "Seq"
+    ALTERNATIVE_ARRAY = "Alt"
+
+    def add_unqualified_array(self, local_name: str, array_type: str) -> list[str]:
+        """
+        Mirror of upstream ``addUnqualifiedArrayProperty`` — install an empty
+        array property of the requested type. ``array_type`` is one of
+        :attr:`UNORDERED_ARRAY` / :attr:`ORDERED_ARRAY` / :attr:`ALTERNATIVE_ARRAY`
+        (cluster #1 stores all three as plain lists; the type tag is accepted
+        for upstream parity but not yet enforced).
+
+        Returns the freshly-installed list so callers can append directly.
+        """
+        if array_type not in (
+            self.UNORDERED_ARRAY,
+            self.ORDERED_ARRAY,
+            self.ALTERNATIVE_ARRAY,
+        ):
+            raise ValueError(f"unknown array type: {array_type!r}")
+        new_list: list[str] = []
+        self._properties[local_name] = new_list
+        return new_list
+
     # --- Bag (unordered) ---------------------------------------------
 
     def add_qualified_bag_value(self, local_name: str, value: str) -> None:
@@ -135,6 +223,15 @@ class XMPSchema:
             existing = []
             self._properties[local_name] = existing
         existing.append(value)
+
+    def add_unqualified_bag_value(self, local_name: str, value: str) -> None:
+        """
+        Mirror of upstream ``addBagValue`` / ``addUnqualifiedBagValue``.
+        Alias of :meth:`add_qualified_bag_value`; in upstream the qualified
+        and unqualified flavors only differ in how the namespace prefix is
+        looked up, which cluster #1 sidesteps by storing local names directly.
+        """
+        self.add_qualified_bag_value(local_name, value)
 
     def remove_unqualified_bag_value(self, local_name: str, value: str) -> None:
         existing = self._properties.get(local_name)
@@ -153,6 +250,15 @@ class XMPSchema:
         if isinstance(v, str):
             return [v]
         return None
+
+    def get_unqualified_array_list(self, local_name: str) -> list[str] | None:
+        """
+        Mirror of upstream ``getUnqualifiedArrayList`` — return the items of
+        the array property at ``local_name`` (Bag, Seq or Alt), or ``None``
+        when the property is absent. Cluster #1 stores all array types as
+        plain lists, so this delegates to :meth:`get_unqualified_bag_value_list`.
+        """
+        return self.get_unqualified_bag_value_list(local_name)
 
     # --- Seq (ordered) — same storage as bag, kept distinct for API parity --
 

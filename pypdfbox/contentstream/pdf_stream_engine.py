@@ -17,7 +17,9 @@ from .operator_processor import MissingOperandException, OperatorProcessor
 from .pd_content_stream import PDContentStream
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
     from pypdfbox.pdmodel.pd_page import PDPage
+    from pypdfbox.pdmodel.pd_resources import PDResources
 
 _log = logging.getLogger(__name__)
 
@@ -51,8 +53,12 @@ class PDFStreamEngine:
         self._operators: dict[str, OperatorProcessor] = {}
         # The fields below correspond to upstream private state; they are
         # carried as attributes here so cluster #3 can populate them
-        # without touching the dispatch surface again.
-        self._resources: Any | None = None
+        # without touching the dispatch surface again. ``_resources`` is
+        # the *current* resource frame; the resource stack lives in
+        # ``_resources_stack`` and is pushed/popped by
+        # :meth:`set_resources` / nested :meth:`process_stream`.
+        self._resources: PDResources | None = None
+        self._resources_stack: list[PDResources | None] = []
         self._current_page: PDPage | None = None
         self._is_processing_page: bool = False
         self._level: int = 0
@@ -111,16 +117,23 @@ class PDFStreamEngine:
         Cluster #2 uses the random-access bytes view directly; the
         graphics-state save/restore and BBox clip that upstream's private
         ``processStream`` performs around the loop are deferred to
-        cluster #3.
+        cluster #3. ``_level`` is bumped for the duration so nested
+        ``process_form`` / ``process_tiling_pattern`` /
+        ``process_type3_stream`` reflect their depth via
+        :meth:`get_level`, matching upstream.
         """
         prev_resources = self._resources
+        self._level += 1
         try:
-            self._resources = content_stream.get_resources()
+            stream_resources = content_stream.get_resources()
+            if stream_resources is not None:
+                self._resources = stream_resources
             with content_stream.get_contents_for_stream_parsing() as src:
                 parser = PDFStreamParser(src)
                 self._dispatch_tokens(parser)
         finally:
             self._resources = prev_resources
+            self._level -= 1
 
     def _process_bytes(self, data: bytes) -> None:
         """Internal: feed raw content-stream bytes through the parser."""
@@ -213,6 +226,89 @@ class PDFStreamEngine:
             _log.warning("%s", exception)
             return
         raise exception
+
+    # ---------- accessors (upstream parity surface) ----------
+
+    def get_resources(self) -> PDResources | None:
+        """Return the current resource stack top — the :class:`PDResources`
+        in scope for the operator currently being processed. Mirrors
+        upstream's ``getResources``."""
+        return self._resources
+
+    def get_current_page(self) -> PDPage | None:
+        """Return the page currently being processed, or ``None`` outside
+        of :meth:`process_page`. Mirrors upstream's ``getCurrentPage``."""
+        return self._current_page
+
+    def get_level(self) -> int:
+        """Return the current nesting level of stream processing (0 at the
+        outermost stream, incremented for nested form / pattern / Type3
+        streams). Mirrors upstream's ``getLevel``."""
+        return self._level
+
+    def is_processing_page(self) -> bool:
+        """``True`` while inside :meth:`process_page`. Mirrors upstream's
+        ``isProcessingPage``."""
+        return self._is_processing_page
+
+    def set_resources(self, res: PDResources) -> None:
+        """Push a new resource stack frame, making ``res`` the active
+        :meth:`get_resources` result. Mirrors upstream's ``setResources``
+        used by form-XObject / pattern handlers to scope a nested
+        resource lookup."""
+        self._resources_stack.append(self._resources)
+        self._resources = res
+
+    # ---------- nested-stream entry points (upstream parity surface) ----------
+
+    def process_form(self, form_xobject: PDFormXObject) -> None:
+        """Process a form XObject's content stream. Convenience alias for
+        :meth:`process_stream`. Mirrors upstream's ``processForm`` which
+        wraps the same dispatch with a graphics-state save/restore that
+        the rendering subclass overlays."""
+        self.process_stream(form_xobject)
+
+    def process_tiling_pattern(
+        self,
+        pattern: PDContentStream,
+        color: Any | None,
+        color_space: Any | None,
+    ) -> None:
+        """Process a tiling-pattern content stream. Lite version: ignores
+        ``color`` / ``color_space`` (the rendering subclass uses them to
+        seed the non-stroking colour) and just drives the operators.
+        Mirrors upstream's ``processTilingPattern`` signature."""
+        del color, color_space  # rendering subclass consumes these
+        self.process_stream(pattern)
+
+    def process_type3_stream(
+        self,
+        charproc: PDContentStream,
+        text_matrix: Any | None = None,
+    ) -> None:
+        """Process a Type3 charproc content stream. Placeholder: ignores
+        ``text_matrix`` (the rendering subclass uses it to position the
+        glyph) and just drives the operators. Mirrors upstream's
+        ``processType3Stream``."""
+        del text_matrix  # rendering subclass consumes this
+        self.process_stream(charproc)
+
+    # ---------- graphics-state hooks (overridable in renderer) ----------
+
+    def save_graphics_state(self) -> None:
+        """``q`` notification — base no-op. The rendering subclass
+        overrides to push the graphics-state stack. Mirrors upstream's
+        ``saveGraphicsState``."""
+
+    def restore_graphics_state(self) -> None:
+        """``Q`` notification — base no-op. The rendering subclass
+        overrides to pop the graphics-state stack. Mirrors upstream's
+        ``restoreGraphicsState``."""
+
+    def transform_text(self, matrix: Any) -> None:
+        """Apply ``matrix`` to the text state. Base no-op; the rendering
+        subclass concatenates ``matrix`` onto the text matrix. Mirrors
+        upstream's ``transformText``."""
 
     # ---------- engine hooks (overridable in later clusters) ----------
     #

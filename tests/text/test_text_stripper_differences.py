@@ -384,7 +384,12 @@ def test_get_average_font_width_skips_zero_entries() -> None:
 
 
 def test_get_average_font_width_empty_widths() -> None:
-    """No ``/Widths`` array → ``0.0`` (sentinel for "no metric")."""
+    """No ``/Widths`` array on a Standard 14 font → falls back to AFM mean.
+
+    The fixture base font is Helvetica, so AFM bundled metrics provide the
+    average. Wave 22 expanded PDType1Font.get_average_font_width to consult
+    AFM after /Widths returns nothing; this used to return 0.0.
+    """
     from pypdfbox.pdmodel.font import PDType1Font
 
     font_dict = _make_type1_font(
@@ -392,4 +397,4 @@ def test_get_average_font_width_empty_widths() -> None:
         differences=[],
     )
     font = PDType1Font(font_dict)
-    assert font.get_average_font_width() == 0.0
+    assert font.get_average_font_width() > 0.0

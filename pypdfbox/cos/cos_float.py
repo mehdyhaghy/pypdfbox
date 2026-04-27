@@ -97,6 +97,11 @@ class COSFloat(COSNumber):
     def value(self) -> float:
         return self._value
 
+    def get_value(self) -> float:
+        """Upstream-named accessor mirroring ``COSFloat.floatValue()`` /
+        the ``getValue()`` accessor pattern used across COS leaf types."""
+        return self._value
+
     def float_value(self) -> float:
         return self._value
 

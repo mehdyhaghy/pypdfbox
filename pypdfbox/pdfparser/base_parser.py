@@ -53,6 +53,25 @@ class BaseParser:
         if self._src.get_position() > 0:
             self._src.rewind(1)
 
+    # ---------- upstream-name aliases (org.apache.pdfbox.pdfparser.BaseParser) ----------
+
+    def peek(self) -> int:
+        """Upstream-name alias for ``peek_byte``. Returns the next byte
+        without consuming it, or -1 at EOF."""
+        return self._src.peek()
+
+    def read(self) -> int:
+        """Upstream-name alias for ``read_byte``. Reads one byte and
+        advances; returns -1 at EOF."""
+        return self._src.read()
+
+    def unread(self, b: int) -> None:
+        """Upstream-name alias for ``unread_byte``. Pushes a byte back into
+        the stream (rewinds one position; ``b`` is ignored — PDFBox semantics
+        assume the byte matches what was previously read)."""
+        if self._src.get_position() > 0:
+            self._src.rewind(1)
+
     def require_byte(self) -> int:
         """Read a byte; raise ``PDFParseError`` at EOF."""
         b = self._src.read()
@@ -353,6 +372,25 @@ class BaseParser:
         if not out:
             raise PDFParseError("expected keyword", position=self.position)
         return bytes(out)
+
+    def read_string(self) -> str:
+        """Read a token: bytes up to (but not including) the next whitespace
+        or EOF. Mirrors upstream ``BaseParser.readString()``. Returns the
+        decoded ASCII/latin-1 string. The terminating whitespace byte (if
+        any) is left unread."""
+        out = bytearray()
+        while True:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                break
+            if self.is_whitespace(b):
+                self._src.rewind(1)
+                break
+            out.append(b)
+        try:
+            return out.decode("ascii")
+        except UnicodeDecodeError:
+            return out.decode("latin-1")
 
     def read_expected(self, expected: bytes) -> None:
         """Consume ``expected`` exactly; raise on mismatch."""
