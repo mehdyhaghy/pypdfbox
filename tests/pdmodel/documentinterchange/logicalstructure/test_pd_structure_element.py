@@ -10,6 +10,7 @@ _TYPE = COSName.TYPE  # type: ignore[attr-defined]
 _PG = COSName.get_pdf_name("Pg")
 _S = COSName.get_pdf_name("S")
 _P = COSName.get_pdf_name("P")
+_A = COSName.get_pdf_name("A")
 _ROLE_MAP = COSName.get_pdf_name("RoleMap")
 
 
@@ -363,3 +364,337 @@ def test_find_first_by_role_resolves_through_role_map() -> None:
     first = doc.find_first_by_role("H1")
     assert first is not None
     assert first.get_cos_object() is title.get_cos_object()
+
+
+# ---------- typed append_kid overloads ----------
+
+
+def test_append_kid_element_sets_parent_pointer() -> None:
+    parent = PDStructureElement(structure_type="Document")
+    child = PDStructureElement(structure_type="P")
+    parent.append_kid_element(child)
+    kids = parent.get_kids()
+    assert len(kids) == 1
+    assert kids[0].get_cos_object() is child.get_cos_object()
+    # /P parent pointer should now reference parent's COSDictionary.
+    assert child.get_parent() is parent.get_cos_object()
+
+
+def test_append_kid_element_none_is_silent_noop() -> None:
+    parent = PDStructureElement(structure_type="Document")
+    parent.append_kid_element(None)  # type: ignore[arg-type]
+    assert parent.get_kids() == []
+
+
+def test_append_kid_marked_content_appends() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
+        PDMarkedContentReference,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(7)
+    elem.append_kid_marked_content(mcr)
+    kids = elem.get_kids()
+    assert len(kids) == 1
+    assert isinstance(kids[0], PDMarkedContentReference)
+    assert kids[0].get_mcid() == 7
+
+
+def test_append_kid_object_reference_appends() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_object_reference import (
+        PDObjectReference,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    objr = PDObjectReference()
+    elem.append_kid_object_reference(objr)
+    kids = elem.get_kids()
+    assert len(kids) == 1
+    assert isinstance(kids[0], PDObjectReference)
+
+
+def test_append_kid_mcid_accepts_zero_and_positive() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.append_kid_mcid(0)
+    elem.append_kid_mcid(42)
+    assert elem.get_kids() == [0, 42]
+
+
+def test_append_kid_mcid_rejects_negative() -> None:
+    import pytest
+
+    elem = PDStructureElement(structure_type="P")
+    with pytest.raises(ValueError):
+        elem.append_kid_mcid(-1)
+
+
+# ---------- /S setter aliases ----------
+
+
+def test_set_standard_structure_type_writes_s() -> None:
+    elem = PDStructureElement()
+    elem.set_standard_structure_type("H1")
+    assert elem.get_structure_type() == "H1"
+
+
+def test_set_standard_structure_type_rejects_none() -> None:
+    import pytest
+
+    elem = PDStructureElement()
+    with pytest.raises(ValueError):
+        elem.set_standard_structure_type(None)  # type: ignore[arg-type]
+
+
+def test_get_standard_structure_type_name_alias() -> None:
+    elem = PDStructureElement(structure_type="H1")
+    assert elem.get_standard_structure_type_name() == elem.get_standard_structure_type()
+
+
+# ---------- add_attribute / remove_attribute / attribute_changed ----------
+
+
+def test_add_attribute_appends_to_a_array() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    elem.add_attribute(attr)
+    revs = elem.get_attributes()
+    assert revs.size() == 1
+    assert revs.get_revision_number_at(0) == 0
+    assert attr.get_structure_element() is elem
+
+
+def test_add_attribute_uses_current_revision_number() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    elem.set_revision_number(3)
+    attr = PDAttributeObject()
+    attr.set_owner("List")
+    elem.add_attribute(attr)
+    assert elem.get_attributes().get_revision_number_at(0) == 3
+
+
+def test_add_attribute_appending_two_creates_array() -> None:
+    from pypdfbox.cos import COSArray
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    a1 = PDAttributeObject()
+    a1.set_owner("Layout")
+    a2 = PDAttributeObject()
+    a2.set_owner("List")
+    elem.add_attribute(a1)
+    elem.add_attribute(a2)
+    a_value = elem.get_cos_object().get_dictionary_object(_A)
+    assert isinstance(a_value, COSArray)
+    assert elem.get_attributes().size() == 2
+
+
+def test_add_attribute_silent_on_none() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.add_attribute(None)
+    assert elem.get_attributes().size() == 0
+
+
+def test_remove_attribute_removes_match() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    a1 = PDAttributeObject()
+    a1.set_owner("Layout")
+    a2 = PDAttributeObject()
+    a2.set_owner("List")
+    elem.add_attribute(a1)
+    elem.add_attribute(a2)
+    elem.remove_attribute(a1)
+    revs = elem.get_attributes()
+    assert revs.size() == 1
+    assert a1.get_structure_element() is None
+
+
+def test_remove_attribute_clears_a_when_empty() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    a1 = PDAttributeObject()
+    a1.set_owner("Layout")
+    elem.add_attribute(a1)
+    elem.remove_attribute(a1)
+    assert elem.get_attributes().size() == 0
+    assert elem.get_cos_object().get_dictionary_object(_A) is None
+
+
+def test_remove_attribute_silent_when_missing() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    a1 = PDAttributeObject()
+    a1.set_owner("Layout")
+    # Not added — remove should be a quiet no-op.
+    elem.remove_attribute(a1)
+    assert elem.get_attributes().size() == 0
+
+
+def test_attribute_changed_bumps_revision() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    elem.set_revision_number(2)
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    elem.add_attribute(attr)
+    elem.set_revision_number(5)
+    elem.attribute_changed(attr)
+    assert elem.get_attributes().get_revision_number_at(0) == 5
+
+
+def test_attribute_changed_silent_when_missing() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+        PDAttributeObject,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    elem.attribute_changed(attr)  # not added — no error
+
+
+# ---------- add_class_name / remove_class_name / class_name_changed ----------
+
+
+def test_add_class_name_round_trip() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.add_class_name("Bold")
+    revs = elem.get_class_names()
+    assert revs.size() == 1
+    val = revs.get_object_at(0)
+    assert (val.get_name() if hasattr(val, "get_name") else val) == "Bold"
+    assert revs.get_revision_number_at(0) == 0
+
+
+def test_add_class_name_uses_current_revision() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_revision_number(4)
+    elem.add_class_name("Italic")
+    assert elem.get_class_names().get_revision_number_at(0) == 4
+
+
+def test_add_two_class_names_creates_array() -> None:
+    from pypdfbox.cos import COSArray
+
+    elem = PDStructureElement(structure_type="P")
+    elem.add_class_name("A")
+    elem.add_class_name("B")
+    c_value = elem.get_cos_object().get_dictionary_object(COSName.get_pdf_name("C"))
+    assert isinstance(c_value, COSArray)
+    assert elem.get_class_names().size() == 2
+
+
+def test_add_class_name_none_is_noop() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.add_class_name(None)
+    assert elem.get_class_names().size() == 0
+
+
+def test_remove_class_name_removes_match() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.add_class_name("Bold")
+    elem.add_class_name("Italic")
+    elem.remove_class_name("Bold")
+    revs = elem.get_class_names()
+    assert revs.size() == 1
+    val = revs.get_object_at(0)
+    assert (val.get_name() if hasattr(val, "get_name") else val) == "Italic"
+
+
+def test_remove_class_name_clears_c_when_empty() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.add_class_name("Bold")
+    elem.remove_class_name("Bold")
+    assert elem.get_class_names().size() == 0
+    assert elem.get_cos_object().get_dictionary_object(COSName.get_pdf_name("C")) is None
+
+
+def test_remove_class_name_silent_when_missing() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.remove_class_name("Bold")
+    assert elem.get_class_names().size() == 0
+
+
+def test_class_name_changed_bumps_revision() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_revision_number(2)
+    elem.add_class_name("Bold")
+    elem.set_revision_number(7)
+    elem.class_name_changed("Bold")
+    assert elem.get_class_names().get_revision_number_at(0) == 7
+
+
+def test_class_name_changed_silent_when_missing() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.class_name_changed("Bold")  # not added — no error
+
+
+# ---------- get_marked_content_references ----------
+
+
+def test_get_marked_content_references_collects_mcids_and_mcrs() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
+        PDMarkedContentReference,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    elem.append_kid(3)
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(7)
+    elem.append_kid(mcr)
+    elem.append_kid(11)
+    refs = elem.get_marked_content_references()
+    assert len(refs) == 3
+    assert refs[0] == 3
+    assert isinstance(refs[1], PDMarkedContentReference)
+    assert refs[2] == 11
+
+
+def test_get_marked_content_references_skips_struct_elements() -> None:
+    elem = PDStructureElement(structure_type="P")
+    child = PDStructureElement(structure_type="Span")
+    elem.append_kid_element(child)
+    elem.append_kid(5)
+    refs = elem.get_marked_content_references()
+    assert refs == [5]
+
+
+def test_get_marked_content_references_skips_object_references() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_object_reference import (
+        PDObjectReference,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    elem.append_kid(PDObjectReference())
+    elem.append_kid(2)
+    refs = elem.get_marked_content_references()
+    assert refs == [2]
+
+
+def test_get_marked_content_references_empty_when_no_kids() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.get_marked_content_references() == []

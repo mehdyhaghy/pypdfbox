@@ -41,10 +41,11 @@ class PDMarkedContent:
         ``/Artifact`` returns a ``PDArtifactMarkedContent``; everything else
         returns a plain ``PDMarkedContent``.
         """
-        # Local import to avoid the taggedpdf -> markedcontent -> taggedpdf
-        # cycle at module-load time.
+        # Local import to avoid the markedcontent -> artifact -> markedcontent
+        # cycle at module-load time. Mirrors upstream
+        # ``PDMarkedContent.create``.
         if tag is not None and tag.get_name() == "Artifact":
-            from pypdfbox.pdmodel.documentinterchange.taggedpdf.pd_artifact_marked_content import (
+            from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_artifact_marked_content import (
                 PDArtifactMarkedContent,
             )
 

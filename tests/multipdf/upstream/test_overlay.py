@@ -97,3 +97,49 @@ def test_overlay_setters_round_trip() -> None:
         # Exercises the per-bucket selection logic without crashing.
         result = overlay.overlay({})
         assert result is base
+
+
+# ---------------------------------------------------------------------------
+# Translated subset of testOverlayOnRotatedSourcePages — the fixture-bound
+# rendering check is skipped above. The pure API-surface portion (every
+# setter the test exercises is callable, ``adjustRotation`` accepts True,
+# ``Position.FOREGROUND`` is a valid argument, ``overlay({})`` returns the
+# input doc) translates without fixtures.
+# ---------------------------------------------------------------------------
+
+
+def test_overlay_on_rotated_source_pages_api_surface() -> None:
+    base = _make_simple_doc()
+    overlay_doc = _make_simple_doc(200.0, 200.0)
+    with Overlay() as overlay:
+        overlay.set_input_pdf(base)
+        overlay.set_default_overlay_pdf(overlay_doc)
+        overlay.set_overlay_position(Position.FOREGROUND)
+        overlay.set_adjust_rotation(True)
+        result = overlay.overlay({})
+        assert result is base
+
+
+# ---------------------------------------------------------------------------
+# Translated assertions from the file-vs-pdf API of upstream — verifies that
+# the overload pairs (file/PDF) round-trip without contradicting each other.
+# Upstream relies on the contract that callers pick one or the other; we
+# exercise both setters on a fresh instance to confirm none raise.
+# ---------------------------------------------------------------------------
+
+
+def test_overlay_file_setters_dont_crash() -> None:
+    """All file-path setters must accept a string and store it for later
+    consumption by :meth:`Overlay._load_pdfs`. Exercised purely as
+    setter-side smoke."""
+    overlay = Overlay()
+    overlay.set_input_file("/tmp/in.pdf")
+    overlay.set_default_overlay_file("/tmp/default.pdf")
+    overlay.set_first_page_overlay_file("/tmp/first.pdf")
+    overlay.set_last_page_overlay_file("/tmp/last.pdf")
+    overlay.set_all_pages_overlay_file("/tmp/all.pdf")
+    overlay.set_odd_page_overlay_file("/tmp/odd.pdf")
+    overlay.set_even_page_overlay_file("/tmp/even.pdf")
+    assert overlay.get_input_file() == "/tmp/in.pdf"
+    assert overlay.get_default_overlay_file() == "/tmp/default.pdf"
+    overlay.close()

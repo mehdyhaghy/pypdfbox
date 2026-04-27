@@ -37,7 +37,17 @@ class PDAnnotationWidget(PDAnnotation):
 
     def __init__(self, annot: COSDictionary | None = None) -> None:
         super().__init__(annot)
+        # Upstream's COSDictionary-taking constructor stamps /Type /Annot
+        # and /Subtype /Widget on the dict (used by PDTerminalField.getWidgets
+        # where the field dictionary doubles as the widget annotation). The
+        # default constructor inherits /Type /Annot from PDAnnotation and
+        # only needs to set the subtype.
         if annot is None:
+            self._set_subtype(self.SUB_TYPE)
+        else:
+            self._dict.set_item(
+                COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot")
+            )
             self._set_subtype(self.SUB_TYPE)
 
     # ---------- /H (highlighting mode) ----------

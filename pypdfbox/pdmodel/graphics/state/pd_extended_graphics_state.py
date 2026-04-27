@@ -41,6 +41,15 @@ _CA_NS: COSName = COSName.get_pdf_name("ca")
 _AIS: COSName = COSName.get_pdf_name("AIS")
 _TK: COSName = COSName.get_pdf_name("TK")
 _BM: COSName = COSName.get_pdf_name("BM")
+_SMASK: COSName = COSName.get_pdf_name("SMask")
+_TR: COSName = COSName.get_pdf_name("TR")
+_TR2: COSName = COSName.get_pdf_name("TR2")
+_HT: COSName = COSName.get_pdf_name("HT")
+_HTO: COSName = COSName.get_pdf_name("HTO")
+_UCR: COSName = COSName.get_pdf_name("UCR")
+_UCR2: COSName = COSName.get_pdf_name("UCR2")
+_BG: COSName = COSName.get_pdf_name("BG")
+_BG2: COSName = COSName.get_pdf_name("BG2")
 
 
 class PDExtendedGraphicsState:
@@ -493,6 +502,136 @@ class PDExtendedGraphicsState:
             self._dict.remove_item(_FONT)
             return
         self._dict.set_item(_FONT, setting.get_cos_object())
+
+    # ---------- Aliases mirroring upstream PDFBox 3.0.x naming ----------
+
+    # Upstream renamed several boolean accessors to *_control / *_tolerance /
+    # automatic_* variants. Keep both spellings so existing call sites continue
+    # to work while new code can use the upstream-preferred name.
+
+    def get_stroking_overprint_control(self) -> bool:
+        """Mirror upstream ``getStrokingOverprintControl()`` (alias of ``get_strokeOverprint``)."""
+        return self.get_strokeOverprint()
+
+    def set_stroking_overprint_control(self, op: bool) -> None:
+        """Mirror upstream ``setStrokingOverprintControl()`` (alias of ``set_stroke_overprint``)."""
+        self.set_stroke_overprint(op)
+
+    def get_non_stroking_overprint_control(self) -> bool:
+        """Mirror upstream ``getNonStrokingOverprintControl()``.
+
+        Upstream falls back to the stroking overprint when ``/op`` is absent;
+        this delegates to ``get_non_stroking_overprint`` which already has
+        that behaviour.
+        """
+        return self.get_non_stroking_overprint()
+
+    def set_non_stroking_overprint_control(self, op: bool) -> None:
+        self.set_non_stroking_overprint(op)
+
+    def get_flatness_tolerance(self) -> float:
+        """Mirror upstream ``getFlatnessTolerance()`` (alias of ``get_flatness``)."""
+        return self.get_flatness()
+
+    def set_flatness_tolerance(self, f: float | None) -> None:
+        self.set_flatness(f)
+
+    def get_smoothness_tolerance(self) -> float:
+        """Mirror upstream ``getSmoothnessTolerance()`` (alias of ``get_smoothness``)."""
+        return self.get_smoothness()
+
+    def set_smoothness_tolerance(self, s: float | None) -> None:
+        self.set_smoothness(s)
+
+    def get_automatic_stroke_adjustment(self) -> bool:
+        """Mirror upstream ``getAutomaticStrokeAdjustment()`` (alias of
+        ``get_stroke_adjustment``)."""
+        return self.get_stroke_adjustment()
+
+    def set_automatic_stroke_adjustment(self, sa: bool) -> None:
+        self.set_stroke_adjustment(sa)
+
+    # ---------- SMask (soft mask) ----------
+
+    def get_soft_mask(self) -> COSBase | None:
+        """Returns the raw ``/SMask`` entry.
+
+        Upstream returns a ``PDSoftMask`` typed wrapper which is not yet
+        ported here; callers receive the raw COS object (a ``COSName``
+        ``/None`` mask, or a ``COSDictionary`` describing a soft-mask
+        dictionary). When ``/SMask`` is absent, returns ``None``.
+        """
+        return self._dict.get_dictionary_object(_SMASK)
+
+    def set_soft_mask(self, mask: COSBase | None) -> None:
+        if mask is None:
+            self._dict.remove_item(_SMASK)
+            return
+        self._dict.set_item(_SMASK, mask)
+
+    # ---------- TR / TR2 (transfer functions) ----------
+
+    def get_transfer(self) -> COSBase | None:
+        """Returns the raw ``/TR`` entry (transfer function).
+
+        Per the PDF spec the value is one of: a function, an array of four
+        functions, or the name ``/Identity``. This lite port returns the
+        raw COS object; the typed function wrapper is deferred.
+        """
+        return self._dict.get_dictionary_object(_TR)
+
+    def set_transfer(self, transfer: COSBase | None) -> None:
+        if transfer is None:
+            self._dict.remove_item(_TR)
+            return
+        self._dict.set_item(_TR, transfer)
+
+    def get_transfer2(self) -> COSBase | None:
+        """Returns the raw ``/TR2`` entry (transfer function).
+
+        Per the PDF spec the value is one of: a function, an array of four
+        functions, the name ``/Identity``, or the name ``/Default``.
+        """
+        return self._dict.get_dictionary_object(_TR2)
+
+    def set_transfer2(self, transfer: COSBase | None) -> None:
+        if transfer is None:
+            self._dict.remove_item(_TR2)
+            return
+        self._dict.set_item(_TR2, transfer)
+
+    # ---------- HT / HTO (halftone) ----------
+
+    def get_halftone(self) -> COSBase | None:
+        """Returns the raw ``/HT`` entry (halftone).
+
+        Per the PDF spec the value is one of: a halftone dictionary,
+        a halftone stream, or the name ``/Default``. This lite port
+        returns the raw COS object; a typed ``PDHalftone`` wrapper is
+        deferred.
+        """
+        return self._dict.get_dictionary_object(_HT)
+
+    def set_halftone(self, halftone: COSBase | None) -> None:
+        if halftone is None:
+            self._dict.remove_item(_HT)
+            return
+        self._dict.set_item(_HT, halftone)
+
+    def get_halftone_origin(self) -> COSArray | None:
+        """Returns the raw ``/HTO`` entry (halftone origin) — a 2-element
+        ``COSArray`` of numbers, or ``None`` when absent.
+        """
+        base = self._dict.get_dictionary_object(_HTO)
+        if isinstance(base, COSArray):
+            return base
+        return None
+
+    def set_halftone_origin(self, origin: COSArray | None) -> None:
+        if origin is None:
+            self._dict.remove_item(_HTO)
+            return
+        self._dict.set_item(_HTO, origin)
 
 
 __all__ = ["PDExtendedGraphicsState"]

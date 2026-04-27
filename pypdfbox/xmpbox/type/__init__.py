@@ -35,6 +35,11 @@ from .job_type import JobType
 from .lang_alt import LangAlt
 from .layer_type import LayerType
 from .mime_type import MIMEType
+from .pdfa_field_description_type import PDFAFieldType
+from .pdfa_property_type import PDFAPropertyType
+from .pdfa_schema_type import PDFASchemaType
+from .pdfa_type_type import PDFATypeType
+from .pdfa_value_type_description_type import PDFAValueTypeDescriptionType
 from .proper_name_type import ProperNameType
 from .rational_type import RationalType
 from .real_type import RealType
@@ -66,6 +71,11 @@ __all__ = [
     "LangAlt",
     "LayerType",
     "MIMEType",
+    "PDFAFieldType",
+    "PDFAPropertyType",
+    "PDFASchemaType",
+    "PDFATypeType",
+    "PDFAValueTypeDescriptionType",
     "ProperNameType",
     "RationalType",
     "RealType",

@@ -119,23 +119,40 @@ class PDAttributeObject:
         """Add this attribute object to the parent structure element's
         ``/A`` array.
 
-        Lite stub: upstream rebuilds the parent's ``Revisions[PDAttributeObject]``
-        and writes ``/A`` back. We log + no-op until the typed parent-chain
-        machinery lands (see ``CHANGES.md``)."""
-        _LOG.debug(
-            "PDAttributeObject.add_to_structure_element() is a no-op stub "
-            "(structure-element /A maintenance deferred)"
-        )
+        When :meth:`set_structure_element` has been called, delegates to
+        ``PDStructureElement.add_attribute(self)``. With no structure
+        element bound the call is a debug-logged no-op (matches the
+        upstream behaviour of throwing only when the back-pointer is
+        missing — pypdfbox prefers the soft no-op for callers exploring
+        attribute objects out-of-tree)."""
+        if self._structure_element is None:
+            _LOG.debug(
+                "PDAttributeObject.add_to_structure_element() called with "
+                "no structure-element back-pointer; ignoring"
+            )
+            return
+        self._structure_element.add_attribute(self)
 
     def remove_from_structure_element(self) -> None:
         """Remove this attribute object from the parent structure element's
         ``/A`` array.
 
-        Lite stub: see ``add_to_structure_element``."""
-        _LOG.debug(
-            "PDAttributeObject.remove_from_structure_element() is a no-op "
-            "stub (structure-element /A maintenance deferred)"
-        )
+        When :meth:`set_structure_element` has been called, delegates to
+        ``PDStructureElement.remove_attribute(self)`` and clears the
+        back-pointer. With no structure element bound the call is a
+        debug-logged no-op."""
+        if self._structure_element is None:
+            _LOG.debug(
+                "PDAttributeObject.remove_from_structure_element() called "
+                "with no structure-element back-pointer; ignoring"
+            )
+            return
+        owner = self._structure_element
+        owner.remove_attribute(self)
+        # remove_attribute already clears the back-pointer when it removes
+        # the attribute; defensively clear here too in case the attribute
+        # wasn't actually present.
+        self._structure_element = None
 
     # ---------- change notification ----------
 
@@ -143,13 +160,17 @@ class PDAttributeObject:
         """Notify the owning structure element that this attribute object
         changed.
 
-        Lite stub: upstream calls back into the parent so the structure
-        element can record an attribute revision. Deferred per
-        ``CHANGES.md`` — this no-ops + logs at debug level."""
-        _LOG.debug(
-            "PDAttributeObject.notify_change() is a no-op stub (structure-"
-            "element change notification deferred)"
-        )
+        When :meth:`set_structure_element` has been called, delegates to
+        ``PDStructureElement.attribute_changed(self)`` so the parent can
+        bump the attribute's revision. With no structure element bound
+        the call is a debug-logged no-op."""
+        if self._structure_element is None:
+            _LOG.debug(
+                "PDAttributeObject.notify_change() called with no "
+                "structure-element back-pointer; ignoring"
+            )
+            return
+        self._structure_element.attribute_changed(self)
 
     def __repr__(self) -> str:
         return f"O={self.get_owner()}"

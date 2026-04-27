@@ -4,6 +4,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 
 from .pd_seed_value_certificate import PDSeedValueCertificate
 from .pd_seed_value_mdp import PDSeedValueMDP
+from .pd_seed_value_time_stamp import PDSeedValueTimeStamp
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SV: COSName = COSName.get_pdf_name("SV")
@@ -33,9 +34,9 @@ class PDSeedValue:
     """Seed value dictionary (``/Type /SV``). Mirrors PDFBox ``PDSeedValue``
     (PDF 32000-1 §12.7.4.5, Table 234).
 
-    Typed wrappers exist for ``/MDP`` (:class:`PDSeedValueMDP`) and ``/Cert``
-    (:class:`PDSeedValueCertificate`). ``/TimeStamp`` still returns the raw
-    ``COSDictionary`` until a typed wrapper is ported.
+    Typed wrappers exist for ``/MDP`` (:class:`PDSeedValueMDP`), ``/Cert``
+    (:class:`PDSeedValueCertificate`), and ``/TimeStamp``
+    (:class:`PDSeedValueTimeStamp`).
     """
 
     TYPE = "SV"
@@ -135,19 +136,32 @@ class PDSeedValue:
     def set_mpd(self, mdp: PDSeedValueMDP | COSDictionary | None) -> None:
         self.set_mdp(mdp)
 
-    # ---------- /TimeStamp raw ----------
+    # ---------- /TimeStamp (typed wrapper) ----------
 
-    def get_time_stamp(self) -> COSDictionary | None:
+    def get_time_stamp(self) -> PDSeedValueTimeStamp | None:
+        """Return the ``/TimeStamp`` sub-dictionary as a
+        :class:`PDSeedValueTimeStamp`, or ``None`` if absent.
+
+        Mirrors upstream ``PDSeedValue.getTimeStamp``.
+        """
         v = self._dict.get_dictionary_object(_TIME_STAMP)
         if isinstance(v, COSDictionary):
-            return v
+            return PDSeedValueTimeStamp(v)
         return None
 
-    def set_time_stamp(self, time_stamp: COSDictionary | None) -> None:
+    def set_time_stamp(
+        self, time_stamp: PDSeedValueTimeStamp | COSDictionary | None
+    ) -> None:
+        """Set or remove the ``/TimeStamp`` sub-dictionary. Accepts either a
+        :class:`PDSeedValueTimeStamp` (preferred) or a raw ``COSDictionary``.
+        """
         if time_stamp is None:
             self._dict.remove_item(_TIME_STAMP)
             return
-        self._dict.set_item(_TIME_STAMP, time_stamp)
+        if isinstance(time_stamp, PDSeedValueTimeStamp):
+            self._dict.set_item(_TIME_STAMP, time_stamp.get_cos_object())
+        else:
+            self._dict.set_item(_TIME_STAMP, time_stamp)
 
     # ---------- /DigestMethod (array of names) ----------
 
@@ -268,4 +282,4 @@ class PDSeedValue:
         self._set_flag(_FLAG_DIGEST_METHOD, b)
 
 
-__all__ = ["PDSeedValue"]
+__all__ = ["PDSeedValue", "PDSeedValueTimeStamp"]

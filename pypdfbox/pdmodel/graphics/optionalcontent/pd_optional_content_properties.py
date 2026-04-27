@@ -1,9 +1,36 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.cos.cos_object import COSObject
 
 from .pd_optional_content_group import PDOptionalContentGroup
+
+
+class BaseState(Enum):
+    """OCG /D /BaseState. Mirrors upstream nested enum
+    ``PDOptionalContentProperties.BaseState`` (``ON`` / ``OFF`` /
+    ``UNCHANGED``). The ``value`` is the spec PDF name; use
+    :meth:`get_pdf_name` for the COSName.
+    """
+
+    ON = "ON"
+    OFF = "OFF"
+    UNCHANGED = "Unchanged"
+
+    def get_pdf_name(self) -> COSName:
+        return COSName.get_pdf_name(self.value)
+
+    @classmethod
+    def value_of(cls, name: str) -> "BaseState":
+        """Mirrors upstream ``BaseState.valueOf(String)`` — looks up by spec
+        name (case-insensitive)."""
+        upper = name.upper()
+        for member in cls:
+            if member.value.upper() == upper:
+                return member
+        raise ValueError(f"BaseState has no member named {name!r}")
 
 _OCGS: COSName = COSName.get_pdf_name("OCGs")
 _D: COSName = COSName.D  # type: ignore[attr-defined]
@@ -29,6 +56,10 @@ _BASE_STATE_NAMES = {
 class PDOptionalContentProperties:
     """Wraps the catalog ``/OCProperties`` dictionary. Mirrors PDFBox
     ``PDOptionalContentProperties``."""
+
+    # Expose the BaseState enum nested-style for upstream API parity:
+    # callers can use ``PDOptionalContentProperties.BaseState.ON``.
+    BaseState = BaseState
 
     def __init__(self, props: COSDictionary | None = None) -> None:
         if props is None:
@@ -283,7 +314,10 @@ class PDOptionalContentProperties:
             return "Unchanged"
         return upper
 
-    def set_base_state(self, state: str) -> None:
+    def set_base_state(self, state: str | BaseState) -> None:
+        if isinstance(state, BaseState):
+            self._get_d().set_item(_BASE_STATE, state.get_pdf_name())
+            return
         key = state.upper()
         cos_name = _BASE_STATE_NAMES.get(key)
         if cos_name is None:
@@ -291,6 +325,10 @@ class PDOptionalContentProperties:
                 f"base state must be 'ON', 'OFF', or 'Unchanged', got {state!r}"
             )
         self._get_d().set_item(_BASE_STATE, cos_name)
+
+    def get_base_state_enum(self) -> BaseState:
+        """Typed-enum variant of :meth:`get_base_state`."""
+        return BaseState.value_of(self.get_base_state())
 
     # ---------- aggregate visibility ----------
 
@@ -433,4 +471,4 @@ class PDOptionalContentProperties:
         return names
 
 
-__all__ = ["PDOptionalContentProperties"]
+__all__ = ["BaseState", "PDOptionalContentProperties"]

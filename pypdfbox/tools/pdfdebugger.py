@@ -1,5 +1,6 @@
 """
-``pypdfbox pdfdebugger FILE [-trailer | -page N | -object NUM GEN | -tree]``
+``pypdfbox pdfdebugger FILE [-trailer | -page N | -object NUM[,GEN] | -xref |
+-catalog | -tree] [--password PWD] [--depth N]``
 — print a PDF object graph as text.
 
 Upstream ``org.apache.pdfbox.tools.PDFDebugger`` is a heavy Swing GUI for
@@ -17,17 +18,33 @@ Modes:
   type, trailer key list (one line each).
 * ``-trailer`` — pretty-print the document trailer dictionary.
 * ``-page N`` — pretty-print the (1-based) page dictionary at index ``N``.
-* ``-object NUM GEN`` — pretty-print the resolved object at the given
-  ``(object_number, generation_number)`` pair.
+* ``-object NUM [GEN]`` — pretty-print the resolved object at the given
+  object number (generation defaults to ``0`` when omitted).
+* ``-xref`` — dump the in-memory xref table (one ``num gen R`` per line).
+* ``-catalog`` — pretty-print the document catalog tree (resolves the
+  first level of indirect references inline; honours ``--depth``).
 * ``-tree`` — full object-pool dump: every indirect object printed in
   ``num gen R`` order. Output can be very large for non-trivial PDFs.
+
+Auxiliary flags:
+
+* ``--password PWD`` — passphrase for an encrypted document, mirroring
+  upstream ``-password`` on PDFDebugger / PDFBox CLI tools.
+* ``--depth N`` — maximum nesting depth when pretty-printing dictionaries
+  / arrays / streams (default ``24``). Lower values give a quick "shape"
+  overview of large object graphs.
 
 Output is plain text (UTF-8 stdout). Format is "human-readable", not a
 machine-parseable contract — callers wanting structured data should reach
 for ``qpdf --json`` instead.
 
-Exit codes: 0 success, 4 I/O / not-a-file. Bad ``-page`` / ``-object``
-arguments come back as exit 2 via argparse.
+Stream bodies are previewed *decoded* (filter chain applied) up to the
+first ~64 bytes; if decoding fails the raw, undecoded bytes are shown
+instead with a ``raw`` marker so the operator knows which form they're
+looking at.
+
+Exit codes: 0 success, 4 I/O / not-a-file / bad password. Bad ``-page`` /
+``-object`` arguments come back as exit 2 via argparse.
 """
 from __future__ import annotations
 
@@ -62,9 +79,9 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         "pdfdebugger",
         help="print a PDF object graph as text (lite CLI replacement for upstream's Swing PDFDebugger)",
         description="Print PDF object graph information. Without flags, prints "
-        "a terse summary. Use -trailer / -page / -object / -tree to dump "
-        "specific subgraphs. The upstream Swing GUI is intentionally not "
-        "ported — this is a CLI-only lite version.",
+        "a terse summary. Use -trailer / -page / -object / -xref / -catalog / "
+        "-tree to dump specific subgraphs. The upstream Swing GUI is "
+        "intentionally not ported — this is a CLI-only lite version.",
     )
     p.add_argument("input", help="path to the input PDF")
     group = p.add_mutually_exclusive_group()
@@ -77,13 +94,30 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         help="dump the (1-based) page dictionary at index N",
     )
     group.add_argument(
-        "-object", "--object", nargs=2, type=int, metavar=("NUM", "GEN"),
+        "-object", "--object", nargs="+", type=int, metavar="NUM",
         default=None,
-        help="dump the indirect object at (NUM, GEN)",
+        help="dump the indirect object at NUM [GEN] (GEN defaults to 0)",
+    )
+    group.add_argument(
+        "-xref", "--xref", action="store_true",
+        help="dump the in-memory xref table (one entry per line)",
+    )
+    group.add_argument(
+        "-catalog", "--catalog", action="store_true",
+        help="dump the document catalog dictionary tree",
     )
     group.add_argument(
         "-tree", "--tree", action="store_true",
         help="dump every resolved indirect object in the COS pool",
+    )
+    # Auxiliary flags — combine freely with any mode above.
+    p.add_argument(
+        "-password", "--password", metavar="PWD", default=None,
+        help="passphrase for encrypted documents (owner or user)",
+    )
+    p.add_argument(
+        "--depth", type=int, metavar="N", default=_MAX_DEPTH,
+        help=f"max nesting depth when pretty-printing (default {_MAX_DEPTH})",
     )
     p.set_defaults(func=run)
 
@@ -124,13 +158,17 @@ def _format_node(
     visited: set[int],
     depth: int = 0,
     follow_refs: bool = False,
+    max_depth: int = _MAX_DEPTH,
 ) -> None:
     """Append a pretty-printed representation of ``node`` to ``out``.
 
     ``follow_refs=False`` (the default) prints indirect references as
     ``N G R`` and stops — the same convention upstream PDFDebugger uses
     for its tree view. ``follow_refs=True`` resolves and recurses, with
-    cycle protection via ``visited`` (object ids) and ``depth``."""
+    cycle protection via ``visited`` (object ids) and ``depth``.
+
+    ``max_depth`` caps recursion; when reached the node is replaced with
+    a ``... (max depth)`` placeholder. Defaults to ``_MAX_DEPTH``."""
     pad = _INDENT * indent
 
     if node is None:
@@ -142,7 +180,7 @@ def _format_node(
         out.append(f"{pad}{simple}")
         return
 
-    if depth >= _MAX_DEPTH:
+    if depth >= max_depth:
         out.append(f"{pad}... (max depth)")
         return
 
@@ -167,6 +205,7 @@ def _format_node(
             _format_node(
                 target, indent + 1, out,
                 visited=visited, depth=depth + 1, follow_refs=follow_refs,
+                max_depth=max_depth,
             )
             return
 
@@ -179,22 +218,29 @@ def _format_node(
                 filt_str = f" filter={filt_simple}" if filt_simple else ""
             out.append(f"{pad}<<  (stream, length={length}{filt_str})")
             for k, v in node.entry_set():
-                _format_entry(k, v, indent + 1, out, visited=visited, depth=depth + 1, follow_refs=follow_refs)
+                _format_entry(
+                    k, v, indent + 1, out,
+                    visited=visited, depth=depth + 1, follow_refs=follow_refs,
+                    max_depth=max_depth,
+                )
             out.append(f"{pad}>>")
-            # Best-effort body preview (raw, undecoded).
-            try:
-                with node.create_raw_input_stream() as raw:
-                    sample = raw.read(_MAX_STREAM_PREVIEW)
-            except (OSError, AttributeError, NotImplementedError):
-                sample = b""
+            # Best-effort body preview — try the *decoded* bytes first
+            # (filter chain applied), fall back to raw if decoding fails.
+            sample, kind = _stream_preview(node)
             if sample:
-                out.append(f"{pad}stream-body[0:{len(sample)}]: {sample!r}")
+                out.append(
+                    f"{pad}stream-body[0:{len(sample)}, {kind}]: {sample!r}"
+                )
             return
 
         if isinstance(node, COSDictionary):
             out.append(f"{pad}<<")
             for k, v in node.entry_set():
-                _format_entry(k, v, indent + 1, out, visited=visited, depth=depth + 1, follow_refs=follow_refs)
+                _format_entry(
+                    k, v, indent + 1, out,
+                    visited=visited, depth=depth + 1, follow_refs=follow_refs,
+                    max_depth=max_depth,
+                )
             out.append(f"{pad}>>")
             return
 
@@ -209,6 +255,7 @@ def _format_node(
                 _format_node(
                     item, indent + 1, out,
                     visited=visited, depth=depth + 1, follow_refs=follow_refs,
+                    max_depth=max_depth,
                 )
             out.append(f"{pad}]")
             return
@@ -228,17 +275,43 @@ def _format_entry(
     visited: set[int],
     depth: int,
     follow_refs: bool,
+    max_depth: int = _MAX_DEPTH,
 ) -> None:
     pad = _INDENT * indent
     simple = _fmt_simple(value)
-    if simple is not None:
+    # Indirect refs in follow_refs mode must descend into their target
+    # rather than print as a single ``N G R`` line.
+    if simple is not None and not (follow_refs and isinstance(value, COSObject)):
         out.append(f"{pad}/{key.name} {simple}")
         return
     out.append(f"{pad}/{key.name}")
     _format_node(
         value, indent + 1, out,
         visited=visited, depth=depth + 1, follow_refs=follow_refs,
+        max_depth=max_depth,
     )
+
+
+def _stream_preview(node: COSStream) -> tuple[bytes, str]:
+    """Return ``(bytes, kind)`` where ``kind`` is ``"decoded"`` if the
+    filter chain ran cleanly or ``"raw"`` if we had to fall back. Empty
+    bytes means we couldn't get any sample at all (and the caller will
+    suppress the preview line entirely)."""
+    # Decoded path first — matches what most consumers actually see.
+    try:
+        with node.create_input_stream() as decoded:
+            sample = decoded.read(_MAX_STREAM_PREVIEW)
+        if sample:
+            return sample, "decoded"
+    except Exception:  # noqa: BLE001 — filter errors are diverse
+        pass
+    # Fall back to raw, undecoded bytes.
+    try:
+        with node.create_raw_input_stream() as raw:
+            sample = raw.read(_MAX_STREAM_PREVIEW)
+        return sample, "raw"
+    except (OSError, AttributeError, NotImplementedError):
+        return b"", "raw"
 
 
 # ---------- mode handlers ----------
@@ -273,30 +346,35 @@ def _print_summary(doc: PDDocument, src: Path) -> None:
     print(f"Indirect objects: {len(objects)}")
 
 
-def _print_trailer(doc: PDDocument) -> None:
+def _print_trailer(doc: PDDocument, max_depth: int = _MAX_DEPTH) -> None:
     cos_doc = doc.get_document()
     trailer = cos_doc.get_trailer()
     if trailer is None:
         print("<no trailer>")
         return
     out: list[str] = ["Trailer:"]
-    _format_node(trailer, 0, out, visited=set(), follow_refs=False)
+    _format_node(
+        trailer, 0, out, visited=set(), follow_refs=False, max_depth=max_depth,
+    )
     print("\n".join(out))
 
 
-def _print_page(doc: PDDocument, one_based_index: int) -> int:
+def _print_page(doc: PDDocument, one_based_index: int, max_depth: int = _MAX_DEPTH) -> int:
     n = doc.get_number_of_pages()
     if one_based_index < 1 or one_based_index > n:
         print(f"pdfdebugger: page {one_based_index} out of range (1..{n})", flush=True)
         return 4
     page = doc.get_page(one_based_index - 1)
     out: list[str] = [f"Page {one_based_index}:"]
-    _format_node(page.get_cos_object(), 0, out, visited=set(), follow_refs=False)
+    _format_node(
+        page.get_cos_object(), 0, out,
+        visited=set(), follow_refs=False, max_depth=max_depth,
+    )
     print("\n".join(out))
     return 0
 
 
-def _print_object(doc: PDDocument, num: int, gen: int) -> int:
+def _print_object(doc: PDDocument, num: int, gen: int, max_depth: int = _MAX_DEPTH) -> int:
     cos_doc = doc.get_document()
     key = COSObjectKey(num, gen)
     if not cos_doc.has_object(key):
@@ -305,12 +383,14 @@ def _print_object(doc: PDDocument, num: int, gen: int) -> int:
     cos_obj = cos_doc.get_object_from_pool(key)
     resolved = cos_obj.get_object()
     out: list[str] = [f"Object {num} {gen} R:"]
-    _format_node(resolved, 0, out, visited=set(), follow_refs=False)
+    _format_node(
+        resolved, 0, out, visited=set(), follow_refs=False, max_depth=max_depth,
+    )
     print("\n".join(out))
     return 0
 
 
-def _print_tree(doc: PDDocument) -> None:
+def _print_tree(doc: PDDocument, max_depth: int = _MAX_DEPTH) -> None:
     cos_doc: COSDocument = doc.get_document()
     keys = sorted(cos_doc.get_object_keys())
     print(f"Object pool ({len(keys)} entries):")
@@ -318,8 +398,43 @@ def _print_tree(doc: PDDocument) -> None:
         cos_obj = cos_doc.get_object_from_pool(key)
         resolved = cos_obj.get_object()
         out: list[str] = [f"  {key.object_number} {key.generation_number} R:"]
-        _format_node(resolved, 2, out, visited=set(), follow_refs=False)
+        _format_node(
+            resolved, 2, out, visited=set(), follow_refs=False, max_depth=max_depth,
+        )
         print("\n".join(out))
+
+
+def _print_xref(doc: PDDocument) -> None:
+    """Dump the in-memory xref table — one ``num gen R`` line per entry,
+    ordered by object number. PDFBox's GUI shows this as the ``Cross
+    Reference Table`` node; the headless equivalent is just the keys."""
+    cos_doc: COSDocument = doc.get_document()
+    keys = sorted(cos_doc.get_object_keys())
+    start_xref = cos_doc.get_start_xref()
+    is_stream = cos_doc.is_xref_stream()
+    print(f"Xref ({len(keys)} entries, startxref={start_xref}, "
+          f"stream={'yes' if is_stream else 'no'}):")
+    for key in keys:
+        print(f"  {key.object_number} {key.generation_number} R")
+
+
+def _print_catalog(doc: PDDocument, max_depth: int = _MAX_DEPTH) -> int:
+    """Pretty-print the document catalog dictionary subtree, resolving
+    indirect references inline (one level deep is the upstream default;
+    deeper resolution is bounded by ``max_depth``). Returns 4 if the
+    catalog is missing — corrupt-PDF case."""
+    cos_doc: COSDocument = doc.get_document()
+    catalog = cos_doc.get_catalog()
+    if catalog is None:
+        print("pdfdebugger: catalog missing from document", flush=True)
+        return 4
+    out: list[str] = ["Catalog:"]
+    _format_node(
+        catalog, 0, out,
+        visited=set(), follow_refs=True, max_depth=max_depth,
+    )
+    print("\n".join(out))
+    return 0
 
 
 # ---------- CLI entry ----------
@@ -330,17 +445,45 @@ def run(args: argparse.Namespace) -> int:
     if not src.is_file():
         print(f"pdfdebugger: {src}: not a file", flush=True)
         return 4
-    with PDDocument.load(src) as doc:
+
+    depth = args.depth if args.depth is not None and args.depth > 0 else _MAX_DEPTH
+    password = args.password
+
+    # ``PDDocument.load`` raises on bad/missing password — surface as exit 4
+    # so shell callers can distinguish from argparse-rejected input (exit 2).
+    try:
+        ctx = PDDocument.load(src, password=password) if password is not None \
+            else PDDocument.load(src)
+    except Exception as exc:  # noqa: BLE001 — broad on purpose at the CLI seam
+        print(f"pdfdebugger: cannot open {src}: {exc}", flush=True)
+        return 4
+
+    with ctx as doc:
         if args.trailer:
-            _print_trailer(doc)
+            _print_trailer(doc, max_depth=depth)
             return 0
         if args.page is not None:
-            return _print_page(doc, args.page)
+            return _print_page(doc, args.page, max_depth=depth)
         if args.object is not None:
-            num, gen = args.object
-            return _print_object(doc, num, gen)
+            nums = args.object
+            if len(nums) == 1:
+                num, gen = nums[0], 0
+            elif len(nums) == 2:
+                num, gen = nums[0], nums[1]
+            else:
+                print(
+                    "pdfdebugger: -object expects NUM [GEN] (one or two ints)",
+                    flush=True,
+                )
+                return 2
+            return _print_object(doc, num, gen, max_depth=depth)
+        if args.xref:
+            _print_xref(doc)
+            return 0
+        if args.catalog:
+            return _print_catalog(doc, max_depth=depth)
         if args.tree:
-            _print_tree(doc)
+            _print_tree(doc, max_depth=depth)
             return 0
         _print_summary(doc, src)
         return 0

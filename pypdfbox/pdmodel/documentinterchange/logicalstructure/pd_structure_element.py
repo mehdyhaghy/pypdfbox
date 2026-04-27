@@ -337,6 +337,234 @@ class PDStructureElement(PDStructureNode):
             return
         self._dictionary.set_item(_C, class_names.to_cos_array())
 
+    # ---------- /S standard-structure-type alias ----------
+
+    def get_standard_structure_type_name(self) -> str | None:
+        """Alias for :meth:`get_standard_structure_type`. Some upstream
+        documentation refers to the resolved name as the "standard structure
+        type"; pypdfbox keeps both spellings additive."""
+        return self.get_standard_structure_type()
+
+    def set_standard_structure_type(self, structure_type: str) -> None:
+        """Mirror upstream ``setStandardStructureType``.
+
+        Upstream PDFBox writes the supplied name to ``/S`` after validating
+        it against the standard-structure-types whitelist. The whitelist
+        check is deferred (PDF 32000-1 §14.7.4 enumerates the standard
+        types but the ``Standard14`` constants live in a future cluster);
+        for now we delegate straight to :meth:`set_structure_type` so the
+        public API name lines up with upstream callers.
+        """
+        if structure_type is None:
+            raise ValueError("standard structure type shall not be null")
+        self.set_structure_type(structure_type)
+
+    # ---------- typed /K append overloads ----------
+    #
+    # Upstream PDFBox exposes overloads for ``appendKid`` keyed on the kid
+    # type: ``PDStructureElement`` (sets the kid's ``/P`` parent pointer),
+    # ``PDMarkedContentReference``, ``PDObjectReference``, and ``int`` (raw
+    # MCID). The base ``append_kid`` accepts any kid; these typed wrappers
+    # add the parent-pointer plumbing that upstream performs as a side
+    # effect. Per PRD §3 we keep both inheritance and behavior intact.
+
+    def append_kid_element(self, structure_element: PDStructureElement) -> None:
+        """Append a ``PDStructureElement`` kid and set its ``/P`` parent
+        pointer to this element.
+
+        Mirrors upstream ``appendKid(PDStructureElement)``."""
+        if structure_element is None:
+            return
+        self.append_kid(structure_element)
+        structure_element.set_parent(self)
+
+    def append_kid_marked_content(
+        self, marked_content_reference: Any
+    ) -> None:
+        """Append a ``PDMarkedContentReference`` kid.
+
+        Mirrors upstream ``appendKid(PDMarkedContentReference)``."""
+        if marked_content_reference is None:
+            return
+        self.append_kid(marked_content_reference)
+
+    def append_kid_object_reference(self, object_reference: Any) -> None:
+        """Append a ``PDObjectReference`` kid.
+
+        Mirrors upstream ``appendKid(PDObjectReference)``."""
+        if object_reference is None:
+            return
+        self.append_kid(object_reference)
+
+    def append_kid_mcid(self, mcid: int) -> None:
+        """Append a marked-content identifier (raw integer ``/K`` entry).
+
+        Mirrors upstream ``appendKid(int)``. Upstream rejects negative
+        values; we mirror that with ``ValueError``.
+        """
+        if mcid < 0:
+            raise ValueError("MCID is negative")
+        self.append_kid(mcid)
+
+    # ---------- /A attribute object maintenance ----------
+
+    def add_attribute(self, attribute_object: Any) -> None:
+        """Append ``attribute_object`` to ``/A`` at the current revision and
+        wire its structure-element back-pointer.
+
+        Mirrors upstream ``addAttribute(PDAttributeObject)``: the new
+        attribute object's revision is the structure element's current
+        ``/R`` value (defaulting to ``0``); the back-pointer is set so
+        :meth:`PDAttributeObject.notify_change` can locate this element.
+        """
+        from .pd_attribute_object import PDAttributeObject
+        from .revisions import Revisions
+
+        if attribute_object is None:
+            return
+        revision = self.get_revision_number()
+        attribute_object.set_structure_element(self)
+        revs: Revisions[PDAttributeObject] = self.get_attributes()
+        revs.add_object(attribute_object, revision)
+        # ``Revisions`` shares the underlying COSArray on the ``/A`` slot
+        # only when ``/A`` was already an array; for the bare-dict and empty
+        # cases we have to write the array back.
+        existing = self._dictionary.get_dictionary_object(_A)
+        if not isinstance(existing, COSArray):
+            self._dictionary.set_item(_A, revs.to_cos_array())
+
+    def remove_attribute(self, attribute_object: Any) -> None:
+        """Remove ``attribute_object`` from ``/A`` and clear its
+        structure-element back-pointer.
+
+        Mirrors upstream ``removeAttribute(PDAttributeObject)``. Silently
+        returns when the attribute isn't present.
+        """
+        from .pd_attribute_object import PDAttributeObject
+        from .revisions import Revisions
+
+        if attribute_object is None:
+            return
+        revs: Revisions[PDAttributeObject] = self.get_attributes()
+        idx = revs.index_of(attribute_object)
+        if idx == -1:
+            return
+        revs.remove_at(idx)
+        if revs.is_empty():
+            self._dictionary.remove_item(_A)
+        else:
+            # Always rewrite the slot — the underlying array may have shrunk
+            # below the bare-dict heuristic upstream uses.
+            self._dictionary.set_item(_A, revs.to_cos_array())
+        if attribute_object.get_structure_element() is self:
+            attribute_object.set_structure_element(None)
+
+    def attribute_changed(self, attribute_object: Any) -> None:
+        """Mark ``attribute_object`` as changed at the current revision.
+
+        Mirrors upstream ``attributeChanged(PDAttributeObject)``: bumps the
+        attribute object's revision to match the structure element's
+        current ``/R``. Silently returns when the attribute isn't present
+        in ``/A``.
+        """
+        from .pd_attribute_object import PDAttributeObject
+        from .revisions import Revisions
+
+        if attribute_object is None:
+            return
+        revision = self.get_revision_number()
+        revs: Revisions[PDAttributeObject] = self.get_attributes()
+        idx = revs.index_of(attribute_object)
+        if idx == -1:
+            return
+        revs.set_revision_number_at(idx, revision)
+        existing = self._dictionary.get_dictionary_object(_A)
+        if not isinstance(existing, COSArray):
+            self._dictionary.set_item(_A, revs.to_cos_array())
+
+    # ---------- /C class-name maintenance ----------
+
+    def add_class_name(self, class_name: str | None) -> None:
+        """Append ``class_name`` to ``/C`` at the current revision.
+
+        Mirrors upstream ``addClassName(String)``. ``None`` is a silent
+        no-op (matches upstream's null-guard).
+        """
+        from .revisions import Revisions
+
+        if class_name is None:
+            return
+        revision = self.get_revision_number()
+        revs: Revisions[COSName] = self.get_class_names()
+        revs.add_object(COSName.get_pdf_name(class_name), revision)
+        existing = self._dictionary.get_dictionary_object(_C)
+        if not isinstance(existing, COSArray):
+            self._dictionary.set_item(_C, revs.to_cos_array())
+
+    def remove_class_name(self, class_name: str | None) -> None:
+        """Remove ``class_name`` from ``/C``.
+
+        Mirrors upstream ``removeClassName(String)``. Silently returns
+        when the name isn't present.
+        """
+        from .revisions import Revisions
+
+        if class_name is None:
+            return
+        target = COSName.get_pdf_name(class_name)
+        revs: Revisions[COSName] = self.get_class_names()
+        idx = revs.index_of(target)
+        if idx == -1:
+            return
+        revs.remove_at(idx)
+        if revs.is_empty():
+            self._dictionary.remove_item(_C)
+        else:
+            self._dictionary.set_item(_C, revs.to_cos_array())
+
+    def class_name_changed(self, class_name: str | None) -> None:
+        """Mark ``class_name`` as changed at the current revision.
+
+        Mirrors upstream ``classNameChanged(String)``: bumps the class
+        name's revision to match the structure element's current ``/R``.
+        Silently returns when the name isn't present in ``/C``.
+        """
+        from .revisions import Revisions
+
+        if class_name is None:
+            return
+        target = COSName.get_pdf_name(class_name)
+        revision = self.get_revision_number()
+        revs: Revisions[COSName] = self.get_class_names()
+        idx = revs.index_of(target)
+        if idx == -1:
+            return
+        revs.set_revision_number_at(idx, revision)
+        existing = self._dictionary.get_dictionary_object(_C)
+        if not isinstance(existing, COSArray):
+            self._dictionary.set_item(_C, revs.to_cos_array())
+
+    # ---------- marked-content reference enumeration ----------
+
+    def get_marked_content_references(self) -> list[Any]:
+        """Return the direct marked-content references of this element.
+
+        Mirrors upstream ``getMarkedContentReferences()``: collects every
+        ``/K`` kid that is either a raw integer MCID or a typed
+        :class:`PDMarkedContentReference`. Structure-element kids and
+        object-reference kids are skipped (callers wanting a recursive
+        walk should compose with :meth:`iter_descendants`).
+        """
+        from .pd_marked_content_reference import PDMarkedContentReference
+
+        out: list[Any] = []
+        for kid in self.get_kids():
+            if isinstance(kid, int) and not isinstance(kid, bool):
+                out.append(kid)
+            elif isinstance(kid, PDMarkedContentReference):
+                out.append(kid)
+        return out
+
 
 def _read_role_map(root: COSDictionary) -> dict[str, str]:
     """Extract ``/RoleMap`` from a structure-tree-root dict as a Python

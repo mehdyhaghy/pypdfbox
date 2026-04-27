@@ -844,3 +844,31 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/encoding/resources/glyphlist.txt` | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/glyphlist.txt` |
 | `pypdfbox/fontbox/encoding/resources/additional.txt` | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/additional.txt` |
 | `pypdfbox/fontbox/encoding/resources/zapfdingbats.txt` | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/zapfdingbats.txt` |
+| `pypdfbox/fontbox/ttf/gsub/feature_record.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/FeatureRecord.java` |
+| `pypdfbox/fontbox/ttf/gsub/feature_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/FeatureListTable.java` |
+| `pypdfbox/fontbox/ttf/gsub/lang_sys_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/LangSysTable.java` |
+| `pypdfbox/fontbox/ttf/gsub/script_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/ScriptTable.java` |
+| `pypdfbox/fontbox/cff/cff_cid_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFCIDFont.java` |
+| `pypdfbox/fontbox/cff/cff_type1_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFType1Font.java` |
+| `pypdfbox/fontbox/cff/fd_select.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFParser.java` (FDSelect / Format0FDSelect / Format3FDSelect inner classes) |
+| `pypdfbox/fontbox/cff/fd_array.py` | 3.0.x | derived from `CFFParser.parseFDArray()` shape (no upstream class file) |
+| `pypdfbox/pdmodel/graphics/color/pd_device_n.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_device_n_process.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceNProcess.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_lab.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDLab.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java` |
+| `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_artifact_marked_content.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDArtifactMarkedContent.java` (re-export shim; canonical impl at `taggedpdf/pd_artifact_marked_content.py`) |
+| `pypdfbox/xmpbox/type/pdfa_field_description_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/PDFAFieldType.java` |
+| `pypdfbox/xmpbox/type/pdfa_property_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/PDFAPropertyType.java` |
+| `pypdfbox/xmpbox/type/pdfa_schema_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/PDFASchemaType.java` |
+| `pypdfbox/xmpbox/type/pdfa_type_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/PDFATypeType.java` |
+| `pypdfbox/xmpbox/type/pdfa_value_type_description_type.py` | 3.0.x | alias module re-exporting `PDFATypeType` (no separate upstream class) |
+| `pypdfbox/text/text_position.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/TextPosition.java` |
+| `pypdfbox/text/position_wrapper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PositionWrapper.java` |
+| `pypdfbox/pdmodel/fdf/fdf_document.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFDocument.java` |
+| `pypdfbox/pdmodel/fdf/fdf_catalog.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFCatalog.java` |
+| `pypdfbox/pdmodel/fdf/fdf_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFDictionary.java` |
+| `pypdfbox/pdmodel/fdf/fdf_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFField.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotation.java` |
+| `pypdfbox/filter/lzw_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java` (alias module; codec body in `lzw_decode.py`) |
+| `pypdfbox/filter/run_length_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/RunLengthDecodeFilter.java` (alias module; codec body in `run_length_decode.py`) |
+| `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value_time_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueTimeStamp.java` |

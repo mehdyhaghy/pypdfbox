@@ -1,8 +1,28 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 from ..pd_property_list import PDPropertyList
+
+
+class RenderState(Enum):
+    """Render state for an OCG /Usage entry. Mirrors upstream nested enum
+    ``PDOptionalContentGroup.RenderState`` (values "ON"/"OFF")."""
+
+    ON = "ON"
+    OFF = "OFF"
+
+    @classmethod
+    def value_of(cls, name: str) -> "RenderState":
+        """Mirrors upstream ``RenderState.valueOf(String)`` — look up by the
+        spec name (case-insensitive)."""
+        upper = name.upper()
+        for member in cls:
+            if member.value == upper:
+                return member
+        raise ValueError(f"RenderState has no member named {name!r}")
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _OCG: COSName = COSName.get_pdf_name("OCG")
@@ -312,6 +332,36 @@ class PDOptionalContentGroup(PDPropertyList):
         sub = self.get_usage_dict()
         return PDOptionalContentGroupUsage(sub) if sub is not None else None
 
+    # Expose the enum as a class attribute so callers can use the upstream
+    # spelling ``PDOptionalContentGroup.RenderState`` mirroring the Java
+    # nested-enum form.
+    RenderState = RenderState
+
+    def get_render_state_enum(
+        self, destination: str | None = None
+    ) -> "RenderState | None":
+        """Typed-enum variant of :meth:`get_render_state`.
+
+        Returns the parsed :class:`RenderState` member or ``None`` when no
+        usage information is present.
+        """
+        name = self.get_render_state(destination)
+        if name is None:
+            return None
+        return RenderState.value_of(name)
+
+    def set_render_state_enum(
+        self, state: "RenderState", destination: str = "Export"
+    ) -> None:
+        """Typed-enum variant of :meth:`set_render_state` — accepts a
+        :class:`RenderState` member instead of a raw string."""
+        if not isinstance(state, RenderState):
+            raise TypeError(
+                "state must be RenderState, got "
+                f"{type(state).__name__}"
+            )
+        self.set_render_state(state.value, destination)
+
     def get_or_create_usage(self) -> "PDOptionalContentGroupUsage":
         """Return a typed wrapper, creating an empty ``/Usage`` dict if
         none exists yet."""
@@ -330,4 +380,9 @@ def _coerce_name(value: object) -> COSName | None:
     return value if isinstance(value, COSName) else None
 
 
-__all__ = ["PDOptionalContentGroup", "USAGE_STATE_ON", "USAGE_STATE_OFF"]
+__all__ = [
+    "PDOptionalContentGroup",
+    "RenderState",
+    "USAGE_STATE_ON",
+    "USAGE_STATE_OFF",
+]

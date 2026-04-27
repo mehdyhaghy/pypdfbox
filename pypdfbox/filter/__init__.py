@@ -10,7 +10,9 @@ from .flate_decode import FlateDecode
 from .jbig2_decode import JBIG2Decode
 from .jpx_decode import JPXDecode
 from .lzw_decode import LZWDecode
+from .lzw_filter import LZWFilter
 from .run_length_decode import RunLengthDecode
+from .run_length_filter import RunLengthDecodeFilter
 
 __all__ = [
     "ASCII85Decode",
@@ -23,5 +25,7 @@ __all__ = [
     "JBIG2Decode",
     "JPXDecode",
     "LZWDecode",
+    "LZWFilter",
     "RunLengthDecode",
+    "RunLengthDecodeFilter",
 ]

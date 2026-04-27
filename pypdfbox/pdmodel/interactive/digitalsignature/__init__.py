@@ -5,6 +5,7 @@ from .pd_prop_build_data_dict import PDPropBuildDataDict
 from .pd_seed_value import PDSeedValue
 from .pd_seed_value_certificate import PDSeedValueCertificate
 from .pd_seed_value_mdp import PDSeedValueMDP
+from .pd_seed_value_time_stamp import PDSeedValueTimeStamp
 from .pd_signature import PDSignature
 from .pd_signature_lock import PDSignatureLock
 from .pkcs7_signature import Pkcs7Signature
@@ -17,6 +18,7 @@ __all__ = [
     "PDSeedValue",
     "PDSeedValueCertificate",
     "PDSeedValueMDP",
+    "PDSeedValueTimeStamp",
     "PDSignature",
     "PDSignatureLock",
     "Pkcs7Signature",

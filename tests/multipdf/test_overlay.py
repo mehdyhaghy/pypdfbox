@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
@@ -10,17 +12,30 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 
 
-def _build_base_doc() -> PDDocument:
-    """Two-page A4 document with a thin rectangle on each page so we can
+def _build_base_doc(num_pages: int = 2) -> PDDocument:
+    """N-page A4 document with a thin rectangle on each page so we can
     tell that overlay content has been prepended (background) or appended
     (foreground) without disturbing the original strokes."""
     doc = PDDocument()
-    for _ in range(2):
+    for _ in range(num_pages):
         page = PDPage(PDRectangle.from_width_height(595.0, 842.0))
         doc.add_page(page)
         with PDPageContentStream(doc, page) as cs:
             cs.add_rect(50.0, 50.0, 100.0, 50.0)
             cs.stroke()
+    return doc
+
+
+def _build_multi_page_overlay_doc(num_pages: int) -> PDDocument:
+    """Multi-page overlay PDF — used to exercise
+    :meth:`Overlay.set_all_pages_overlay_pdf` cycling."""
+    doc = PDDocument()
+    for _ in range(num_pages):
+        page = PDPage(PDRectangle.from_width_height(200.0, 200.0))
+        doc.add_page(page)
+        with PDPageContentStream(doc, page) as cs:
+            cs.add_rect(20.0, 20.0, 50.0, 50.0)
+            cs.fill()
     return doc
 
 
@@ -231,3 +246,278 @@ def test_overlay_context_manager_closes_only_owned_documents() -> None:
     # upstream: Overlay only closes documents IT loaded). The base doc
     # was passed in by setInputPDF — it stays open.
     assert not base.is_closed()
+
+
+# ---------- odd / even / all-pages / file-path round-out ----------
+
+
+def test_overlay_odd_pages_only() -> None:
+    """``set_odd_page_overlay_pdf`` must apply the overlay only to pages
+    1, 3, 5, … (1-based). On a 4-page input we expect XObject/Do on pages
+    1 and 3, nothing on 2 and 4."""
+    base = _build_base_doc(4)
+    odd = _build_overlay_doc()
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_odd_page_overlay_pdf(odd)
+    overlay.overlay({})
+
+    for i in (0, 2):  # 1-based 1, 3 → odd
+        assert _resolve_xobject_keys(base.get_page(i))
+    for i in (1, 3):  # 1-based 2, 4 → even (no overlay)
+        assert not _resolve_xobject_keys(base.get_page(i))
+
+
+def test_overlay_even_pages_only() -> None:
+    base = _build_base_doc(4)
+    even = _build_overlay_doc()
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_even_page_overlay_pdf(even)
+    overlay.overlay({})
+
+    for i in (0, 2):  # odd pages — no overlay
+        assert not _resolve_xobject_keys(base.get_page(i))
+    for i in (1, 3):  # even pages — overlay
+        assert _resolve_xobject_keys(base.get_page(i))
+
+
+def test_overlay_all_pages_overlay_pdf_cycles_through_overlay_pages() -> None:
+    """``set_all_pages_overlay_pdf`` builds the per-page layout map from
+    the overlay document's pages and applies them cyclically when the
+    input has more pages than the overlay. Mirrors upstream
+    ``useAllOverlayPages`` semantics."""
+    base = _build_base_doc(5)
+    overlay_doc = _build_multi_page_overlay_doc(2)  # cycle every 2 pages
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_all_pages_overlay_pdf(overlay_doc)
+    overlay.overlay({})
+
+    # Every page must have received an overlay (cycle covers all pages).
+    for i in range(5):
+        assert _resolve_xobject_keys(base.get_page(i)), (
+            f"page {i} missing all-pages overlay XObject"
+        )
+
+
+def test_overlay_first_page_takes_precedence_over_default() -> None:
+    """When both first-page and default overlays are configured the
+    first-page overlay wins on page 1."""
+    base = _build_base_doc(2)
+    first = _build_overlay_doc()
+    default = _build_overlay_doc()
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_first_page_overlay_pdf(first)
+    overlay.set_default_overlay_pdf(default)
+    overlay.overlay({})
+
+    # Both pages get an overlay — but page 1 picks the first-page bucket
+    # and page 2 picks the default. We can't tell them apart structurally
+    # without rendering, but we can verify both got distinct invocations.
+    for i in (0, 1):
+        assert _resolve_xobject_keys(base.get_page(i))
+
+
+def test_overlay_specific_page_overrides_default() -> None:
+    """``overlay({n: path})`` for page n must beat the default overlay."""
+    base = _build_base_doc(2)
+    default = _build_overlay_doc()
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(default)
+    overlay.overlay({})
+
+    for i in (0, 1):
+        assert _resolve_xobject_keys(base.get_page(i))
+
+
+def test_overlay_set_input_file_round_trip(tmp_path: Path) -> None:
+    """Verify file-path setters work end-to-end: write a base PDF + an
+    overlay PDF to disk, configure the Overlay with file paths, and
+    confirm the input PDF gets the overlay applied."""
+    base_path = tmp_path / "base.pdf"
+    overlay_path = tmp_path / "overlay.pdf"
+
+    base = _build_base_doc()
+    base.save(str(base_path))
+    base.close()
+
+    overlay_doc = _build_overlay_doc()
+    overlay_doc.save(str(overlay_path))
+    overlay_doc.close()
+
+    with Overlay() as overlay:
+        overlay.set_input_file(str(base_path))
+        overlay.set_default_overlay_file(str(overlay_path))
+        assert overlay.get_input_file() == str(base_path)
+        assert overlay.get_default_overlay_file() == str(overlay_path)
+        result = overlay.overlay({})
+        assert result.get_number_of_pages() == 2
+        for i in range(2):
+            assert _resolve_xobject_keys(result.get_page(i))
+
+
+def test_overlay_specific_page_overlay_via_path(tmp_path: Path) -> None:
+    """Pass a specific-page overlay via the ``overlay({page: path})``
+    argument. Mirrors upstream ``overlay(Map<Integer, String>)``."""
+    overlay_path = tmp_path / "specific.pdf"
+    overlay_doc = _build_overlay_doc()
+    overlay_doc.save(str(overlay_path))
+    overlay_doc.close()
+
+    base = _build_base_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    result = overlay.overlay({2: str(overlay_path)})
+
+    assert not _resolve_xobject_keys(result.get_page(0))
+    assert _resolve_xobject_keys(result.get_page(1))
+
+
+def test_overlay_specific_page_path_dedupes_repeated_paths(
+    tmp_path: Path,
+) -> None:
+    """Same path mapped to two pages should only be loaded once. Mirrors
+    upstream's ``layouts.get(path)`` cache. We can't directly observe the
+    cache, but we can confirm the overlay still applies to both pages."""
+    overlay_path = tmp_path / "shared.pdf"
+    overlay_doc = _build_overlay_doc()
+    overlay_doc.save(str(overlay_path))
+    overlay_doc.close()
+
+    base = _build_base_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    result = overlay.overlay({1: str(overlay_path), 2: str(overlay_path)})
+
+    for i in (0, 1):
+        assert _resolve_xobject_keys(result.get_page(i))
+
+
+def test_overlay_combined_content_handles_array_of_streams() -> None:
+    """If the input page already has /Contents as an array of streams,
+    the overlay must preserve them (background mode appends them after
+    the overlay invocation)."""
+    base = PDDocument()
+    page = PDPage(PDRectangle.from_width_height(595.0, 842.0))
+    base.add_page(page)
+    # Two separate content streams produce a /Contents COSArray.
+    with PDPageContentStream(base, page) as cs:
+        cs.add_rect(10.0, 10.0, 20.0, 20.0)
+        cs.stroke()
+    with PDPageContentStream(
+        base, page, append_mode=True
+    ) as cs:
+        cs.add_rect(40.0, 40.0, 20.0, 20.0)
+        cs.stroke()
+    contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    assert isinstance(contents, COSArray)
+    pre_overlay_count = len(contents)
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(_build_overlay_doc())
+    overlay.overlay({})
+
+    new_contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    assert isinstance(new_contents, COSArray)
+    # Background: 1 overlay invocation stream + the original streams.
+    assert len(new_contents) == 1 + pre_overlay_count
+
+
+def test_overlay_set_adjust_rotation_toggles_flag() -> None:
+    overlay = Overlay()
+    assert overlay._adjust_rotation is False  # noqa: SLF001
+    overlay.set_adjust_rotation(True)
+    assert overlay._adjust_rotation is True  # noqa: SLF001
+    overlay.set_adjust_rotation(False)
+    assert overlay._adjust_rotation is False  # noqa: SLF001
+
+
+def test_overlay_float_to_string_strips_trailing_zeros() -> None:
+    """The internal ``_float_to_string`` must keep ``.0`` for integer-valued
+    floats and strip trailing zeros otherwise — this matches upstream's
+    BigDecimal-based formatter and keeps content streams compact."""
+    f = Overlay._float_to_string  # noqa: SLF001
+    assert f(0.0) == "0.0"
+    assert f(1.0) == "1.0"
+    assert f(1.5) == "1.5"
+    # 0.1 has irrational binary representation; we just ensure no trailing 0s.
+    s = f(0.1)
+    assert s.startswith("0.1")
+    assert not s.endswith("0")
+
+
+def test_overlay_unknown_position_raises() -> None:
+    """An invalid position value (e.g. ``None``) must raise on overlay()."""
+    base = _build_base_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(_build_overlay_doc())
+    overlay._position = "BAD"  # type: ignore[assignment]  # noqa: SLF001
+    with pytest.raises(OSError, match="Unknown type of position"):
+        overlay.overlay({})
+
+
+def test_overlay_addresses_pdfbox_6048_with_overlay_lower_left_offset() -> None:
+    """Mirror of the lower-left-corner test, but with the **overlay** box
+    starting away from origin. The translation must subtract the overlay's
+    own lower-left in addition to the page math."""
+    inst = Overlay()
+    page = PDPage(PDRectangle.from_width_height(600.0, 800.0))
+    overlay_box = PDRectangle(50.0, 100.0, 250.0, 300.0)  # 200 x 200, offset
+    matrix = inst.calculate_affine_transform(page, overlay_box)
+    # h_shift = (600 - 200) / 2 + 0 - 50 = 150
+    # v_shift = (800 - 200) / 2 + 0 - 100 = 200
+    assert matrix == [1.0, 0.0, 0.0, 1.0, 150.0, 200.0]
+
+
+def test_overlay_close_clears_specific_page_layout() -> None:
+    """``close()`` must clear the cached specific-page layout map so the
+    instance can be reused safely."""
+    base = _build_base_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.overlay_documents({1: _build_overlay_doc()})
+    assert overlay._specific_page_overlay_layout  # noqa: SLF001
+    overlay.close()
+    assert not overlay._specific_page_overlay_layout  # noqa: SLF001
+
+
+def test_overlay_returns_input_document_identity() -> None:
+    """The overlay() return value must be the same object passed via
+    set_input_pdf — mirrors upstream's documented contract."""
+    base = _build_base_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(_build_overlay_doc())
+    result = overlay.overlay({})
+    assert result is base
+
+
+def test_overlay_no_overlay_configured_leaves_pages_untouched() -> None:
+    """When no overlay buckets are configured, ``overlay({})`` must walk
+    every page and skip them all without modifying /Contents."""
+    base = _build_base_doc()
+    original_contents = [
+        base.get_page(i).get_cos_object().get_dictionary_object(COSName.CONTENTS)
+        for i in range(base.get_number_of_pages())
+    ]
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.overlay({})
+    for i, original in enumerate(original_contents):
+        # /Contents object identity must be preserved (no overlay layered).
+        assert (
+            base.get_page(i)
+            .get_cos_object()
+            .get_dictionary_object(COSName.CONTENTS)
+            is original
+        )

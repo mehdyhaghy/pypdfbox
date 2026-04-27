@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .pd_optional_content_group import PDOptionalContentGroup
+from .pd_optional_content_group import PDOptionalContentGroup, RenderState
 from .pd_optional_content_group_usage import (
     PDOptionalContentGroupUsage,
     PDUsageCreatorInfo,
@@ -13,11 +13,17 @@ from .pd_optional_content_group_usage import (
     PDUsageZoom,
 )
 from .pd_optional_content_membership_dictionary import (
+    MembershipDictionaryVisibilityPolicy,
     PDOptionalContentMembershipDictionary,
 )
-from .pd_optional_content_properties import PDOptionalContentProperties
+from .pd_optional_content_properties import (
+    BaseState,
+    PDOptionalContentProperties,
+)
 
 __all__ = [
+    "BaseState",
+    "MembershipDictionaryVisibilityPolicy",
     "PDOptionalContentGroup",
     "PDOptionalContentGroupUsage",
     "PDOptionalContentMembershipDictionary",
@@ -30,4 +36,5 @@ __all__ = [
     "PDUsageUser",
     "PDUsageView",
     "PDUsageZoom",
+    "RenderState",
 ]

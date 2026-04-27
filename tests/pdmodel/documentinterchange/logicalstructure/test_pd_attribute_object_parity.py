@@ -117,3 +117,39 @@ def test_remove_from_structure_element_callable_no_op() -> None:
     attr.set_owner("Layout")
     assert attr.remove_from_structure_element() is None
     assert attr.get_owner() == "Layout"
+
+
+# ---------- delegating add_to / remove_from / notify_change ----------
+
+
+def test_add_to_structure_element_delegates_to_owner() -> None:
+    elem = PDStructureElement(structure_type="P")
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    attr.set_structure_element(elem)
+    attr.add_to_structure_element()
+    revs = elem.get_attributes()
+    assert revs.size() == 1
+    # Identity round-trip: the attribute dict landed in /A.
+    assert revs.get_object_at(0) is attr.get_cos_object()
+
+
+def test_remove_from_structure_element_delegates_to_owner() -> None:
+    elem = PDStructureElement(structure_type="P")
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    elem.add_attribute(attr)
+    assert elem.get_attributes().size() == 1
+    attr.remove_from_structure_element()
+    assert elem.get_attributes().size() == 0
+    assert attr.get_structure_element() is None
+
+
+def test_notify_change_delegates_to_owner_and_bumps_revision() -> None:
+    elem = PDStructureElement(structure_type="P")
+    attr = PDAttributeObject()
+    attr.set_owner("Layout")
+    elem.add_attribute(attr)
+    elem.set_revision_number(9)
+    attr.notify_change()
+    assert elem.get_attributes().get_revision_number_at(0) == 9

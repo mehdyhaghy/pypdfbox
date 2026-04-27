@@ -36,6 +36,9 @@ class PDFunctionType0(PDFunction):
         # Decoded sample-table body; populated lazily on first eval to
         # amortise filter-chain decode across repeated evaluations.
         self._sample_bytes: bytes | None = None
+        # Lazy decoded sample grid cache for get_samples(). int[][] in
+        # upstream — outer index = linearised input cell, inner = output dim.
+        self._samples_cache: list[list[int]] | None = None
 
     def get_function_type(self) -> int:
         return 0
@@ -46,12 +49,36 @@ class PDFunctionType0(PDFunction):
             return item
         return None
 
+    def set_size(self, size: COSArray | None) -> None:
+        """Set ``/Size`` — one entry per input dimension (sample count
+        along that axis). ``None`` removes the entry."""
+        # Invalidate any cached decoded samples — grid layout changes.
+        self._samples_cache = None
+        if size is None:
+            self.get_cos_object().remove_item(_SIZE)
+        else:
+            self.get_cos_object().set_item(_SIZE, size)
+
     def get_bits_per_sample(self) -> int:
         return self.get_cos_object().get_int(_BITS_PER_SAMPLE, 0)
+
+    def set_bits_per_sample(self, bits: int) -> None:
+        """Set ``/BitsPerSample`` — must be one of {1, 2, 4, 8, 12, 16,
+        24, 32} per PDF 32000-1 §7.10.2 Table 38, but the value is not
+        validated here (mirrors upstream's permissive setter — eval
+        rejects unsupported widths)."""
+        self._samples_cache = None
+        self.get_cos_object().set_int(_BITS_PER_SAMPLE, bits)
 
     def get_order(self) -> int:
         """PDF default is 1 (linear) when ``/Order`` is absent."""
         return self.get_cos_object().get_int(_ORDER, 1)
+
+    def set_order(self, order: int) -> None:
+        """Set ``/Order`` — 1 (linear, default) or 3 (cubic). pypdfbox
+        falls back to linear with a debug log for any other value at
+        eval time. Mirrors upstream ``setOrder(int)``."""
+        self.get_cos_object().set_int(_ORDER, order)
 
     def get_encode(self) -> COSArray | None:
         item = self.get_cos_object().get_dictionary_object(_ENCODE)
@@ -59,11 +86,75 @@ class PDFunctionType0(PDFunction):
             return item
         return None
 
+    def set_encode(self, encode: COSArray | None) -> None:
+        """Set ``/Encode`` — paired ``(min, max)`` per input dimension.
+        ``None`` removes the entry; eval then defaults each dimension to
+        ``(0, Size[i] - 1)``."""
+        if encode is None:
+            self.get_cos_object().remove_item(_ENCODE)
+        else:
+            self.get_cos_object().set_item(_ENCODE, encode)
+
     def get_decode(self) -> COSArray | None:
         item = self.get_cos_object().get_dictionary_object(_DECODE)
         if isinstance(item, COSArray):
             return item
         return None
+
+    def set_decode(self, decode: COSArray | None) -> None:
+        """Set ``/Decode`` — paired ``(min, max)`` per output dimension.
+        ``None`` removes the entry; eval then defaults to the function's
+        ``/Range`` pairs."""
+        if decode is None:
+            self.get_cos_object().remove_item(_DECODE)
+        else:
+            self.get_cos_object().set_item(_DECODE, decode)
+
+    # ---------- sample table ----------
+
+    def get_samples(self) -> list[list[int]]:
+        """Lazy-decode the bit-packed sample table into ``int[][]``.
+
+        Outer index = linearised input cell (first input dim varies
+        fastest, mirroring upstream's ``calcSampleIndex`` layout).
+        Inner index = output dimension (length =
+        ``getNumberOfOutputParameters``). Cached on first call;
+        invalidated when any of ``/Size``, ``/BitsPerSample`` is reset
+        via the setters above. Mirrors PDFBox ``getSamples()`` which
+        also caches its decoded ``int[][]``.
+        """
+        if self._samples_cache is not None:
+            return self._samples_cache
+        num_in = self.get_number_of_input_parameters()
+        num_out = self.get_number_of_output_parameters()
+        bits = self.get_bits_per_sample()
+        if bits not in _SUPPORTED_BITS:
+            raise ValueError(
+                f"unsupported /BitsPerSample={bits}; expected one of {sorted(_SUPPORTED_BITS)}"
+            )
+        sizes = self._get_size_list()
+        if len(sizes) < num_in or any(s < 1 for s in sizes[:num_in]):
+            raise ValueError("/Size missing or invalid for declared input dimensions")
+        body = self._get_sample_bytes()
+
+        total_cells = 1
+        for i in range(num_in):
+            total_cells *= sizes[i]
+        out: list[list[int]] = []
+        for cell in range(total_cells):
+            coords: list[int] = []
+            tmp = cell
+            for i in range(num_in):
+                coords.append(tmp % sizes[i])
+                tmp //= sizes[i]
+            row: list[int] = []
+            for j in range(num_out):
+                row.append(
+                    self._read_sample(tuple(coords), j, sizes, num_out, bits, body)
+                )
+            out.append(row)
+        self._samples_cache = out
+        return out
 
     # ---------- evaluation ----------
 

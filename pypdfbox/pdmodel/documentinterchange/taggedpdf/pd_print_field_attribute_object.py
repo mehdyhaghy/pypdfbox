@@ -11,8 +11,17 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     ``PDPrintFieldAttributeObject``.
     """
 
+    # Upstream-parity owner constant.
+    OWNER_PRINT_FIELD: str = "PrintField"
+    # Pypdfbox-style alias kept for prior callers.
     OWNER: str = "PrintField"
 
+    # Dictionary keys (upstream private static finals).
+    ROLE: str = "Role"
+    CHECKED: str = "checked"
+    DESC: str = "Desc"
+
+    # Role values (upstream PDFBox constants).
     ROLE_RB: str = "rb"
     ROLE_CB: str = "cb"
     ROLE_PB: str = "pb"
@@ -24,6 +33,7 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     ROLE_PUSH_BUTTON: str = "pb"
     ROLE_TEXT_VALUE: str = "tv"
 
+    # Checked state values (upstream PDFBox constants).
     CHECKED_STATE_ON: str = "on"
     CHECKED_STATE_OFF: str = "off"
     CHECKED_STATE_NEUTRAL: str = "neutral"
@@ -36,47 +46,64 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         super().__init__(dictionary)
         if dictionary is None:
-            self.set_owner(self.OWNER)
+            self.set_owner(self.OWNER_PRINT_FIELD)
 
     # ---------- /Role ----------
 
     def get_role(self) -> str | None:
-        return self._get_name("Role")
+        return self._get_name(self.ROLE)
 
     def set_role(self, role: str | None) -> None:
-        self._set_name("Role", role)
+        self._set_name(self.ROLE, role)
 
     # ---------- /checked ----------
 
+    def get_checked_state(self) -> str:
+        """Upstream-parity name. Returns the checked state, default
+        :attr:`CHECKED_STATE_OFF` when absent."""
+        return self._get_name(self.CHECKED, self.CHECKED_STATE_OFF)
+
+    def set_checked_state(self, checked_state: str) -> None:
+        """Upstream-parity name."""
+        self._set_name(self.CHECKED, checked_state)
+
+    # Pypdfbox-style aliases retained for prior callers.
     def get_checked(self) -> str:
-        return self._get_name("checked", self.CHECKED_OFF)
+        return self.get_checked_state()
 
     def set_checked(self, checked: str) -> None:
-        self._set_name("checked", checked)
+        self.set_checked_state(checked)
 
-    # ---------- /Desc ----------
+    # ---------- /Desc (alternate name) ----------
 
+    def get_alternate_name(self) -> str | None:
+        """Upstream-parity name for the ``/Desc`` entry."""
+        return self._get_string(self.DESC)
+
+    def set_alternate_name(self, alternate_name: str | None) -> None:
+        """Upstream-parity setter for the ``/Desc`` entry."""
+        if alternate_name is None or alternate_name == "":
+            self._dictionary.remove_item(self.DESC)
+        else:
+            self._set_string(self.DESC, alternate_name)
+
+    # Pypdfbox-style aliases retained for prior callers.
     def get_desc(self) -> str | None:
-        return self._get_string("Desc")
+        return self.get_alternate_name()
 
     def set_desc(self, desc: str | None) -> None:
-        if desc is None or desc == "":
-            self._dictionary.remove_item("Desc")
-        else:
-            self._set_string("Desc", desc)
-
-    # PDFBox-aligned aliases for /Desc.
+        self.set_alternate_name(desc)
 
     def get_description(self) -> str | None:
-        return self.get_desc()
+        return self.get_alternate_name()
 
     def set_description(self, description: str | None) -> None:
-        self.set_desc(description)
+        self.set_alternate_name(description)
 
     def __repr__(self) -> str:
         return (
             f"PDPrintFieldAttributeObject(O={self.get_owner()}, "
-            f"Role={self.get_role()}, checked={self.get_checked()})"
+            f"Role={self.get_role()}, checked={self.get_checked_state()})"
         )
 
 

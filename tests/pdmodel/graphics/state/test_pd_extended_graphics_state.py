@@ -353,3 +353,146 @@ def test_copy_into_graphics_state_supports_dict_targets() -> None:
     assert target["stroke_adjustment"] is True
     assert target["font"] is font
     assert target["font_size"] == 7.0
+
+
+# ---------- Aliases mirroring upstream PDFBox 3.0.x naming ----------
+
+
+def test_stroking_overprint_control_alias_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_stroking_overprint_control() is False
+    gs.set_stroking_overprint_control(True)
+    assert gs.get_stroking_overprint_control() is True
+    # Alias must mutate the same underlying /OP entry as set_stroke_overprint.
+    assert gs.get_strokeOverprint() is True
+
+
+def test_non_stroking_overprint_control_alias_falls_back_to_stroking() -> None:
+    gs = PDExtendedGraphicsState()
+    gs.set_stroking_overprint_control(True)
+    # /op absent → falls back to /OP, mirroring upstream behaviour.
+    assert gs.get_non_stroking_overprint_control() is True
+    gs.set_non_stroking_overprint_control(False)
+    assert gs.get_non_stroking_overprint_control() is False
+    # Underlying /op entry written directly.
+    assert gs.get_cos_object().get_item("op") is not None
+
+
+def test_flatness_tolerance_alias_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_flatness_tolerance() == 1.0
+    gs.set_flatness_tolerance(2.5)
+    assert gs.get_flatness_tolerance() == 2.5
+    assert gs.get_flatness() == 2.5
+    gs.set_flatness_tolerance(None)
+    assert gs.get_flatness_tolerance() == 1.0
+
+
+def test_smoothness_tolerance_alias_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_smoothness_tolerance() == 0.0
+    gs.set_smoothness_tolerance(0.125)
+    assert gs.get_smoothness_tolerance() == 0.125
+    assert gs.get_smoothness() == 0.125
+
+
+def test_automatic_stroke_adjustment_alias_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_automatic_stroke_adjustment() is False
+    gs.set_automatic_stroke_adjustment(True)
+    assert gs.get_automatic_stroke_adjustment() is True
+    assert gs.get_stroke_adjustment() is True
+
+
+# ---------- SMask ----------
+
+
+def test_soft_mask_round_trip_name_and_dict() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_soft_mask() is None
+    none_name = COSName.get_pdf_name("None")
+    gs.set_soft_mask(none_name)
+    assert gs.get_soft_mask() is none_name
+    # Replace with a dictionary-shaped soft mask.
+    sm = COSDictionary()
+    sm.set_name("S", "Luminosity")
+    gs.set_soft_mask(sm)
+    assert gs.get_soft_mask() is sm
+    gs.set_soft_mask(None)
+    assert gs.get_soft_mask() is None
+    assert gs.get_cos_object().get_item("SMask") is None
+
+
+# ---------- Transfer / Transfer2 ----------
+
+
+def test_transfer_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_transfer() is None
+    identity = COSName.get_pdf_name("Identity")
+    gs.set_transfer(identity)
+    assert gs.get_transfer() is identity
+    gs.set_transfer(None)
+    assert gs.get_transfer() is None
+    assert gs.get_cos_object().get_item("TR") is None
+
+
+def test_transfer2_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_transfer2() is None
+    default = COSName.get_pdf_name("Default")
+    gs.set_transfer2(default)
+    assert gs.get_transfer2() is default
+    gs.set_transfer2(None)
+    assert gs.get_transfer2() is None
+
+
+# ---------- Halftone ----------
+
+
+def test_halftone_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_halftone() is None
+    default = COSName.get_pdf_name("Default")
+    gs.set_halftone(default)
+    assert gs.get_halftone() is default
+    # Replace with a halftone dict.
+    ht = COSDictionary()
+    ht.set_int("HalftoneType", 1)
+    gs.set_halftone(ht)
+    assert gs.get_halftone() is ht
+    gs.set_halftone(None)
+    assert gs.get_halftone() is None
+
+
+def test_halftone_origin_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_halftone_origin() is None
+    arr = COSArray()
+    arr.add(COSFloat(0.0))
+    arr.add(COSFloat(1.0))
+    gs.set_halftone_origin(arr)
+    rt = gs.get_halftone_origin()
+    assert rt is arr
+    gs.set_halftone_origin(None)
+    assert gs.get_halftone_origin() is None
+
+
+# ---------- Font setting typed wrapper ----------
+
+
+def test_font_setting_typed_wrapper_round_trip() -> None:
+    from pypdfbox.pdmodel.graphics.state.pd_font_setting import PDFontSetting
+
+    gs = PDExtendedGraphicsState()
+    assert gs.get_font_setting() is None
+    setting = PDFontSetting()
+    setting.set_font(COSName.get_pdf_name("F1"))
+    setting.set_font_size(14.0)
+    gs.set_font_setting(setting)
+    rt = gs.get_font_setting()
+    assert isinstance(rt, PDFontSetting)
+    assert rt.get_font_size() == 14.0
+    gs.set_font_setting(None)
+    assert gs.get_font_setting() is None
+    assert gs.get_cos_object().get_item("Font") is None

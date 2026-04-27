@@ -11,7 +11,13 @@ class PDListAttributeObject(PDStandardAttributeObject):
     ``PDListAttributeObject``.
     """
 
+    # Upstream-parity owner constant.
+    OWNER_LIST: str = "List"
+    # Pypdfbox-style alias kept for prior callers.
     OWNER: str = "List"
+
+    # Dictionary key (upstream protected static).
+    LIST_NUMBERING: str = "ListNumbering"
 
     LIST_NUMBERING_NONE: str = "None"
     LIST_NUMBERING_DISC: str = "Disc"

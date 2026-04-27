@@ -11,7 +11,17 @@ class PDTableAttributeObject(PDStandardAttributeObject):
     ``PDTableAttributeObject``.
     """
 
+    # Upstream-parity owner constant.
+    OWNER_TABLE: str = "Table"
+    # Pypdfbox-style alias kept for prior callers.
     OWNER: str = "Table"
+
+    # Dictionary keys (upstream protected static finals).
+    ROW_SPAN: str = "RowSpan"
+    COL_SPAN: str = "ColSpan"
+    HEADERS: str = "Headers"
+    SCOPE: str = "Scope"
+    SUMMARY: str = "Summary"
 
     SCOPE_ROW: str = "Row"
     SCOPE_COLUMN: str = "Column"

@@ -1,9 +1,38 @@
 from __future__ import annotations
 
+from enum import Enum
+
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 from ..pd_property_list import PDPropertyList
 from .pd_optional_content_group import PDOptionalContentGroup
+
+
+class MembershipDictionaryVisibilityPolicy(Enum):
+    """OCMD /P visibility policy. Mirrors upstream nested enum
+    ``PDOptionalContentMembershipDictionary.VisibilityPolicy`` with values
+    ``AllOn`` / ``AnyOn`` / ``AnyOff`` / ``AllOff`` (PDF 32000-1
+    §8.11.2.2).
+    """
+
+    ALL_ON = "AllOn"
+    ANY_ON = "AnyOn"
+    ANY_OFF = "AnyOff"
+    ALL_OFF = "AllOff"
+
+    def get_pdf_name(self) -> COSName:
+        return COSName.get_pdf_name(self.value)
+
+    @classmethod
+    def value_of(cls, name: str) -> "MembershipDictionaryVisibilityPolicy":
+        """Look up a member by its spec name. Mirrors upstream
+        ``VisibilityPolicy.valueOf(String)``."""
+        for member in cls:
+            if member.value == name:
+                return member
+        raise ValueError(
+            f"MembershipDictionaryVisibilityPolicy has no member named {name!r}"
+        )
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _OCMD: COSName = COSName.get_pdf_name("OCMD")
@@ -28,6 +57,10 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
     VISIBILITY_POLICY_ANY_ON: str = "AnyOn"
     VISIBILITY_POLICY_ANY_OFF: str = "AnyOff"
     VISIBILITY_POLICY_ALL_OFF: str = "AllOff"
+
+    # Expose the typed enum for upstream API parity:
+    # ``PDOptionalContentMembershipDictionary.VisibilityPolicy.AllOn``.
+    VisibilityPolicy = MembershipDictionaryVisibilityPolicy
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
@@ -144,13 +177,26 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
             return value.name
         return _ANY_ON.name
 
-    def set_visibility_policy(self, policy: str) -> None:
+    def set_visibility_policy(
+        self, policy: str | MembershipDictionaryVisibilityPolicy
+    ) -> None:
+        if isinstance(policy, MembershipDictionaryVisibilityPolicy):
+            self._dict.set_item(_P, policy.get_pdf_name())
+            return
         if policy not in _VALID_POLICIES:
             raise ValueError(
                 "visibility_policy must be one of "
                 f"{sorted(_VALID_POLICIES)}, got {policy!r}"
             )
         self._dict.set_item(_P, COSName.get_pdf_name(policy))
+
+    def get_visibility_policy_enum(
+        self,
+    ) -> MembershipDictionaryVisibilityPolicy:
+        """Typed-enum variant of :meth:`get_visibility_policy`."""
+        return MembershipDictionaryVisibilityPolicy.value_of(
+            self.get_visibility_policy()
+        )
 
     # ---------- /VE (visibility expression) ----------
 
@@ -258,4 +304,7 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
         return any(states)
 
 
-__all__ = ["PDOptionalContentMembershipDictionary"]
+__all__ = [
+    "MembershipDictionaryVisibilityPolicy",
+    "PDOptionalContentMembershipDictionary",
+]
