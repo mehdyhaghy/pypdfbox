@@ -4,12 +4,15 @@ import re
 from typing import IO
 from xml.etree import ElementTree as ET
 
+from .adobe_pdf_schema import AdobePDFSchema
 from .dublin_core_schema import DublinCoreSchema
 from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
+from .photoshop_schema import PhotoshopSchema
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import RDF_NAMESPACE, XMPMetadata
+from .xmp_paged_text_schema import XMPageTextSchema
 from .xmp_rights_management_schema import XMPRightsManagementSchema
 from .xmp_schema import X_DEFAULT, XMPSchema
 
@@ -30,6 +33,9 @@ _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
     PDFAExtensionSchema.NAMESPACE: PDFAExtensionSchema,
     XMPMediaManagementSchema.NAMESPACE: XMPMediaManagementSchema,
     XMPRightsManagementSchema.NAMESPACE: XMPRightsManagementSchema,
+    XMPageTextSchema.NAMESPACE: XMPageTextSchema,
+    PhotoshopSchema.NAMESPACE: PhotoshopSchema,
+    AdobePDFSchema.NAMESPACE: AdobePDFSchema,
 }
 
 

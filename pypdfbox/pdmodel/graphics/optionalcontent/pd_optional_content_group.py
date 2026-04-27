@@ -284,6 +284,47 @@ class PDOptionalContentGroup(PDPropertyList):
     def set_usage_language(self, lang: str | None) -> None:
         self._set_usage_string_entry(_LANGUAGE, _LANG, lang)
 
+    # ---- /Usage typed wrapper (PDF 32000-1 §8.11.4.4 Table 102) --------------
+
+    def get_usage_dict(self) -> COSDictionary | None:
+        """Return the raw ``/Usage`` ``COSDictionary``, or ``None`` if absent.
+
+        Mirrors PDFBox ``PDOptionalContentGroup.getUsage()`` which returns
+        the underlying ``COSDictionary``. The pypdfbox spelling is
+        :meth:`get_usage` (returning a typed wrapper); this helper exists
+        for callers that want the raw dictionary directly.
+        """
+        value = self._dict.get_dictionary_object(_USAGE)
+        return value if isinstance(value, COSDictionary) else None
+
+    def get_usage(self) -> "PDOptionalContentGroupUsage | None":
+        """Return a typed :class:`PDOptionalContentGroupUsage` wrapper for
+        the OCG ``/Usage`` sub-dictionary, or ``None`` when absent.
+
+        Note: this typed wrapper class is original to pypdfbox — Apache
+        PDFBox returns a raw ``COSDictionary`` from ``getUsage()``. Use
+        :meth:`get_usage_dict` for the upstream-shaped raw dictionary.
+        """
+        from .pd_optional_content_group_usage import (
+            PDOptionalContentGroupUsage,
+        )
+
+        sub = self.get_usage_dict()
+        return PDOptionalContentGroupUsage(sub) if sub is not None else None
+
+    def get_or_create_usage(self) -> "PDOptionalContentGroupUsage":
+        """Return a typed wrapper, creating an empty ``/Usage`` dict if
+        none exists yet."""
+        from .pd_optional_content_group_usage import (
+            PDOptionalContentGroupUsage,
+        )
+
+        sub = self._get_usage_subdict_chain(create=True)
+        # _get_usage_subdict_chain with no keys after _USAGE returns the
+        # /Usage dict itself.
+        assert sub is not None
+        return PDOptionalContentGroupUsage(sub)
+
 
 def _coerce_name(value: object) -> COSName | None:
     return value if isinstance(value, COSName) else None

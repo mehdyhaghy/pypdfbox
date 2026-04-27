@@ -110,14 +110,23 @@ def test_add_xmp_basic_schema_returns_typed_wrapper() -> None:
     assert meta.add_xmp_basic_schema() is schema
 
 
-# --- placeholder accessors (PDF basic) -----------------------------------
+# --- Adobe PDF schema accessors ------------------------------------------
 
 
-def test_pdf_basic_schema_placeholders_return_none_when_absent() -> None:
-    # AdobePDFSchema typed wrapper still deferred — these remain placeholders.
+def test_adobe_pdf_schema_accessors_round_trip() -> None:
+    from pypdfbox.xmpbox import AdobePDFSchema
+
     meta = XMPMetadata.create_xmp_metadata()
     assert meta.get_pdf_schema() is None
-    assert meta.add_pdf_basic_schema() is None
+    assert meta.get_adobe_pdf_schema() is None
+    schema = meta.add_pdf_basic_schema()
+    assert isinstance(schema, AdobePDFSchema)
+    assert meta.get_pdf_schema() is schema
+    assert meta.get_adobe_pdf_schema() is schema
+    # Idempotent across all aliases.
+    assert meta.add_adobe_pdf_schema() is schema
+    assert meta.create_and_add_adobe_pdf_schema() is schema
+    assert meta.add_pdf_basic_schema() is schema
 
 
 # --- xpacket header setters ----------------------------------------------

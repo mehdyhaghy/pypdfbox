@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_annotation_markup import PDAnnotationMarkup
 from .pd_border_style_dictionary import PDBorderStyleDictionary
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
+        PDMeasureDictionary,
+    )
 
 _VERTICES: COSName = COSName.get_pdf_name("Vertices")
 _IC: COSName = COSName.get_pdf_name("IC")
@@ -132,18 +139,28 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
 
     # ---------- /Measure ----------
 
-    def get_measure(self) -> COSDictionary | None:
-        """Raw measure dict — typed ``PDMeasureDictionary`` is deferred."""
+    def get_measure(self) -> "PDMeasureDictionary | None":
+        """Return the typed measure dictionary or ``None`` when ``/Measure``
+        is absent."""
+        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
+            PDMeasureDictionary,
+        )
+
         value = self._dict.get_dictionary_object(_MEASURE)
         if isinstance(value, COSDictionary):
-            return value
+            return PDMeasureDictionary(value)
         return None
 
-    def set_measure(self, measure: COSDictionary | None) -> None:
+    def set_measure(
+        self, measure: "PDMeasureDictionary | COSDictionary | None"
+    ) -> None:
         if measure is None:
             self._dict.remove_item(_MEASURE)
             return
-        self._dict.set_item(_MEASURE, measure)
+        self._dict.set_item(
+            _MEASURE,
+            measure.get_cos_object() if hasattr(measure, "get_cos_object") else measure,
+        )
 
 
 __all__ = ["PDAnnotationPolyline"]

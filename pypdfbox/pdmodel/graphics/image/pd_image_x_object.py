@@ -235,6 +235,18 @@ class PDImageXObject(PDXObject):
     def set_image_mask(self, value: bool) -> None:
         self.get_cos_object().set_boolean(_IMAGE_MASK, bool(value))
 
+    # ---------- stencil (upstream PDImage interface aliases) ----------
+
+    def is_stencil(self) -> bool:
+        """Whether this is a stencil mask. Mirrors upstream
+        ``PDImage.isStencil()`` which reads ``/ImageMask``."""
+        return self.is_image_mask()
+
+    def set_stencil(self, is_stencil: bool) -> None:
+        """Mark this image as a stencil mask. Mirrors upstream
+        ``PDImage.setStencil(boolean)`` which writes ``/ImageMask``."""
+        self.set_image_mask(is_stencil)
+
     # ---------- /StructParent ----------
 
     def get_struct_parent(self) -> int:

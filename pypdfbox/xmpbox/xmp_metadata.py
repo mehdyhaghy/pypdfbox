@@ -307,31 +307,40 @@ class XMPMetadata:
         self.add_schema(schema)
         return schema
 
-    # --- PDF basic schema (Adobe PDF) ---------------------------------
-    #
-    # PDFBox names the schema-class wrapper ``AdobePDFSchema``; the metadata
-    # accessors use both ``addPDFSchema`` and the longer ``addAdobePDFSchema``
-    # spelling at various release points. Cluster #1 has not ported the
-    # AdobePDFSchema wrapper yet, so these accessors return ``None`` and the
-    # add variants are no-op stubs that record absence, matching the deferred
-    # behavior pattern used by other placeholder methods in this port.
+    # --- Adobe PDF schema --------------------------------------------
+
+    def get_adobe_pdf_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``getAdobePDFSchema``."""
+        from .adobe_pdf_schema import AdobePDFSchema
+
+        return self.get_schema(AdobePDFSchema)
 
     def get_pdf_schema(self) -> XMPSchema | None:
-        """
-        Mirror of upstream ``getAdobePDFSchema`` / ``getPDFSchema``. Returns
-        ``None`` until the ``AdobePDFSchema`` wrapper lands; callers should
-        fall back to :meth:`get_schema` with the namespace
-        ``"http://ns.adobe.com/pdf/1.3/"`` if the document was parsed in.
-        """
-        return self.get_schema("http://ns.adobe.com/pdf/1.3/")
+        """Upstream-named alias of :meth:`get_adobe_pdf_schema`."""
+        return self.get_adobe_pdf_schema()
 
-    def add_pdf_basic_schema(self) -> XMPSchema | None:
+    def add_adobe_pdf_schema(self) -> XMPSchema:
         """
-        Placeholder for upstream ``addAdobePDFSchema``. Returns the existing
-        schema if a PDF-namespace schema was previously parsed in; otherwise
-        ``None`` until the typed wrapper lands.
+        Mirror of upstream ``addAdobePDFSchema`` / ``createAndAddAdobePDFSchema``:
+        install (or reuse) an :class:`AdobePDFSchema` and return it. Idempotent —
+        repeat calls return the existing schema rather than stacking duplicates.
         """
-        return self.get_pdf_schema()
+        from .adobe_pdf_schema import AdobePDFSchema
+
+        existing = self.get_schema(AdobePDFSchema)
+        if existing is not None:
+            return existing
+        schema = AdobePDFSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_adobe_pdf_schema(self) -> XMPSchema:
+        """Upstream-named alias of :meth:`add_adobe_pdf_schema`."""
+        return self.add_adobe_pdf_schema()
+
+    def add_pdf_basic_schema(self) -> XMPSchema:
+        """Upstream-compatible alias of :meth:`add_adobe_pdf_schema`."""
+        return self.add_adobe_pdf_schema()
 
     # --- PDF/A extension schema -----------------------------------------
 
@@ -363,3 +372,90 @@ class XMPMetadata:
     def add_pdf_extension_schema(self) -> XMPSchema:
         """Upstream-compatible alias of :meth:`add_pdfa_extension_schema`."""
         return self.add_pdfa_extension_schema()
+
+    # --- XMP Basic Job Ticket schema ----------------------------------
+
+    def get_basic_job_ticket_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``getBasicJobTicketSchema``."""
+        from .xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema
+
+        return self.get_schema(XMPBasicJobTicketSchema)
+
+    def create_and_add_basic_job_ticket_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``createAndAddBasicJobTicketSchema``: install a
+        fresh :class:`XMPBasicJobTicketSchema` and return it. Upstream creates
+        unconditionally; cluster #1 keeps that behavior so the method always
+        returns a newly-built instance.
+        """
+        from .xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema
+
+        schema = XMPBasicJobTicketSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def add_xmp_basic_job_ticket_schema(self) -> XMPSchema:
+        """
+        Upstream-name-friendly alias used in pypdfbox cluster #1 to mirror the
+        idempotent add pattern used by sibling schemas (returns the existing
+        instance on repeat calls rather than stacking duplicates).
+        """
+        from .xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema
+
+        existing = self.get_schema(XMPBasicJobTicketSchema)
+        if existing is not None:
+            return existing
+        return self.create_and_add_basic_job_ticket_schema()
+
+    # --- XMP Paged-Text schema ----------------------------------------
+
+    def get_page_text_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``XMPMetadata.getPageTextSchema``."""
+        from .xmp_paged_text_schema import XMPageTextSchema
+
+        return self.get_schema(XMPageTextSchema)
+
+    def create_and_add_page_text_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``createAndAddPageTextSchema``: install a fresh
+        :class:`XMPageTextSchema` (with ``rdf:about=""``) and return it.
+        Upstream creates unconditionally; cluster #1 keeps that behavior so
+        the method always returns a newly-built instance.
+        """
+        from .xmp_paged_text_schema import XMPageTextSchema
+
+        schema = XMPageTextSchema(self)
+        schema.set_about_as_simple("")
+        self.add_schema(schema)
+        return schema
+
+    # --- Photoshop schema ---------------------------------------------
+
+    def get_photoshop_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``XMPMetadata.getPhotoshopSchema``."""
+        from .photoshop_schema import PhotoshopSchema
+
+        return self.get_schema(PhotoshopSchema)
+
+    def add_photoshop_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addPhotoshopSchema``: install (or reuse) a
+        :class:`PhotoshopSchema` and return it. Idempotent — repeat calls
+        return the existing schema rather than stacking duplicates.
+        """
+        from .photoshop_schema import PhotoshopSchema
+
+        existing = self.get_schema(PhotoshopSchema)
+        if existing is not None:
+            return existing
+        schema = PhotoshopSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_photoshop_schema(self) -> XMPSchema:
+        """
+        Upstream-compatible alias of :meth:`add_photoshop_schema`. Mirrors the
+        ``createAndAdd*`` naming the upstream class uses for some of its
+        schema accessors.
+        """
+        return self.add_photoshop_schema()

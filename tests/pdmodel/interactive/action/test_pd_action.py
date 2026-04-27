@@ -46,7 +46,7 @@ def test_action_factory_dispatches_common_subtypes() -> None:
 
 def test_action_factory_preserves_unknown_subtype() -> None:
     raw = COSDictionary()
-    raw.set_name(COSName.get_pdf_name("S"), "SetOCGState")
+    raw.set_name(COSName.get_pdf_name("S"), "TotallyMadeUpSubtype")
     action = PDAction.create(raw)
     assert isinstance(action, PDActionUnknown)
     assert action.get_cos_object() is raw

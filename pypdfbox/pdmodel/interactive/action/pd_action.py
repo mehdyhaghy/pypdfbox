@@ -25,6 +25,7 @@ class PDAction:
     def create(action: COSDictionary | None) -> PDAction | None:
         from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
         from .pd_action_go_to import PDActionGoTo
+        from .pd_action_go_to_dp import PDActionGoToDp
         from .pd_action_hide import PDActionHide
         from .pd_action_import_data import PDActionImportData
         from .pd_action_java_script import PDActionJavaScript
@@ -34,6 +35,8 @@ class PDAction:
         from .pd_action_remote_go_to import PDActionRemoteGoTo
         from .pd_action_rendition import PDActionRendition
         from .pd_action_reset_form import PDActionResetForm
+        from .pd_action_rich_media_execute import PDActionRichMediaExecute
+        from .pd_action_set_ocg_state import PDActionSetOCGState
         from .pd_action_sound import PDActionSound
         from .pd_action_submit_form import PDActionSubmitForm
         from .pd_action_thread import PDActionThread
@@ -78,6 +81,12 @@ class PDAction:
             return PDActionTransition(action)
         if sub_type == PDActionEmbeddedGoTo.SUB_TYPE:
             return PDActionEmbeddedGoTo(action)
+        if sub_type == PDActionSetOCGState.SUB_TYPE:
+            return PDActionSetOCGState(action)
+        if sub_type == PDActionGoToDp.SUB_TYPE:
+            return PDActionGoToDp(action)
+        if sub_type == PDActionRichMediaExecute.SUB_TYPE:
+            return PDActionRichMediaExecute(action)
         return PDActionUnknown(action)
 
     def get_cos_object(self) -> COSDictionary:

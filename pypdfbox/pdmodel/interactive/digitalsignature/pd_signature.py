@@ -4,6 +4,7 @@ import hashlib
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 
+from .pd_prop_build import PDPropBuild
 from .signature_validation_result import SignatureValidationResult
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -17,6 +18,7 @@ _CONTACT_INFO: COSName = COSName.get_pdf_name("ContactInfo")
 _M: COSName = COSName.get_pdf_name("M")
 _BYTE_RANGE: COSName = COSName.get_pdf_name("ByteRange")
 _CONTENTS: COSName = COSName.get_pdf_name("Contents")
+_PROP_BUILD: COSName = COSName.get_pdf_name("Prop_Build")
 
 
 class PDSignature:
@@ -155,6 +157,24 @@ class PDSignature:
         s.set_force_hex_form(True)
         self._dict.set_item(_CONTENTS, s)
 
+    # ---------- /Prop_Build ----------
+
+    def get_prop_build(self) -> PDPropBuild | None:
+        """PDF signature build dictionary. Provides information about the
+        signature handler that was used to create this signature.
+        """
+        v = self._dict.get_dictionary_object(_PROP_BUILD)
+        if isinstance(v, COSDictionary):
+            return PDPropBuild(v)
+        return None
+
+    def set_prop_build(self, prop_build: PDPropBuild | None) -> None:
+        """Set the PDF signature build dictionary."""
+        if prop_build is None:
+            self._dict.remove_item(_PROP_BUILD)
+            return
+        self._dict.set_item(_PROP_BUILD, prop_build.get_cos_object())
+
     # ---------- convenience: raw /Contents and signed bytes ----------
 
     def get_contents_bytes(self) -> bytes | None:
@@ -258,4 +278,4 @@ class PDSignature:
         return result
 
 
-__all__ = ["PDSignature", "SignatureValidationResult"]
+__all__ = ["PDPropBuild", "PDSignature", "SignatureValidationResult"]

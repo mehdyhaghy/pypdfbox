@@ -648,3 +648,39 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cff/cff_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFFont.java` | API surface only — parsing delegated to `fontTools.cffLib.CFFFontSet`; widths via `fontTools.misc.psCharStrings.T2WidthExtractor` |
 | `pypdfbox/pdmodel/font/pd_type1_font.py` (`get_glyph_width` extension + `get_glyph_path` + `set_font_program` + `_get_type1_font`) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1Font.java` (`getWidthFromFont`, `getPath` analogues) |
 | `pypdfbox/pdmodel/font/pd_type1c_font.py` (`get_glyph_width` / `get_glyph_path` / `set_font_program` / `_get_cff_font` overrides) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (graduated from marker subclass to working CFF wrapper) |
+
+### Wave 28 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/xmpbox/adobe_pdf_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/AdobePDFSchema.java` |
+| `pypdfbox/xmpbox/xmp_basic_job_ticket_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPBasicJobTicketSchema.java` (+ co-located lite `JobType` from `xmpbox/src/main/java/org/apache/xmpbox/type/JobType.java`) |
+| `pypdfbox/xmpbox/xmp_paged_text_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPageTextSchema.java` |
+| `pypdfbox/xmpbox/photoshop_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/PhotoshopSchema.java` |
+| `pypdfbox/pdmodel/interactive/measurement/pd_measure_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/measurement/PDMeasureDictionary.java` |
+| `pypdfbox/pdmodel/interactive/measurement/pd_rectlinear_measure_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/measurement/PDRectlinearMeasureDictionary.java` |
+| `pypdfbox/pdmodel/interactive/measurement/pd_number_format_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/measurement/PDNumberFormatDictionary.java` |
+| `pypdfbox/pdmodel/interactive/measurement/pd_viewport_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/measurement/PDViewportDictionary.java` |
+| `pypdfbox/pdmodel/interactive/action/pd_action_set_ocg_state.py` | 3.0.x | original (PDF 32000-1 §12.6.4.12 SetOCGState — no upstream Java class in 3.0.x; typed wrapper added so factory yields a typed instance instead of `PDActionUnknown`) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_go_to_dp.py` | 3.0.x | original (PDF 2.0 / ISO 32000-2 §12.6.4.4 GoToDp — no upstream Java class in 3.0.x or trunk) |
+| `pypdfbox/pdmodel/interactive/action/pd_action_rich_media_execute.py` | 3.0.x | original (PDF 2.0 / ISO 32000-2 §13.6.4 RichMediaExecute — no upstream Java class in 3.0.x or trunk) |
+| `pypdfbox/text/pdf_text_stripper_by_area.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PDFTextStripperByArea.java` |
+| `pypdfbox/text/text_metrics.py` | 3.0.x | original (no upstream Java source in PDFBox 3.0.x; data-holder shape conforms to upstream-documented ascent/descent ratios) |
+| `pypdfbox/text/word_with_text_positions.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PDFTextStripper.java` (private inner class `WordWithTextPositions`, promoted to top-level) |
+| `pypdfbox/fontbox/ttf/glyph_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/GlyphTable.java` (API surface only — parsing delegated to fontTools `glyf` table) |
+| `pypdfbox/fontbox/ttf/glyph_data.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/GlyphData.java` (+ inlined minimal `BoundingBox` from `fontbox/src/main/java/org/apache/fontbox/util/BoundingBox.java`) (API surface only — parsing delegated to fontTools) |
+| `pypdfbox/fontbox/ttf/kerning_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/KerningTable.java` (API surface only — parsing delegated to fontTools `kern` table) |
+| `pypdfbox/fontbox/ttf/kerning_subtable.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/KerningSubtable.java` (API surface only — parsing delegated to fontTools) |
+| `pypdfbox/fontbox/ttf/vertical_header_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/VerticalHeaderTable.java` (API surface only — parsing delegated to fontTools `vhea` table) |
+| `pypdfbox/fontbox/ttf/vertical_metrics_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/VerticalMetricsTable.java` (API surface only — parsing delegated to fontTools `vmtx` table) |
+| `pypdfbox/fontbox/ttf/glyph_substitution_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/GlyphSubstitutionTable.java` (API surface only — parsing delegated to fontTools `GSUB` table; lookup type 1 only — types 2-8 deferred) |
+| `pypdfbox/fontbox/ttf/digital_signature_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/DigitalSignatureTable.java` (API surface only — parsing delegated to fontTools `DSIG` table) |
+| `pypdfbox/fontbox/cff/type2_char_string.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/Type2CharString.java` (API surface only — parsing delegated to `fontTools.misc.psCharStrings.T2CharString`) |
+| `pypdfbox/pdmodel/interactive/digitalsignature/pd_prop_build.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDPropBuild.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/pd_prop_build_data_dict.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDPropBuildDataDict.java` |
+| `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_group_usage.py` | 3.0.x | original (typed wrapper around the OCG `/Usage` sub-dict per PDF 32000-1 §8.11.4.4 Table 102; upstream `PDOptionalContentGroup.getUsage()` returns a raw `COSDictionary`) |
+| `tests/fixtures/text/input/eu-001.pdf` | 3.0.x | `pdfbox/src/test/resources/input/eu-001.pdf` |
+| `tests/xmpbox/upstream/test_adobe_pdf_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/AdobePDFTest.java` |
+| `tests/xmpbox/upstream/test_photoshop_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/PhotoshopSchemaTest.java` |
+| `tests/text/upstream/test_pdf_text_stripper_by_area.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/text/PDFTextStripperByAreaTest.java` |
+| `tests/fontbox/ttf/upstream/test_glyph_substitution_table.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/GlyphSubstitutionTableTest.java` (spirit-port — Lohit-Bengali fixture not bundled; asserts `get_supported_script_tags`/`get_supported_feature_tags` against `LiberationSans-Regular.ttf`) |

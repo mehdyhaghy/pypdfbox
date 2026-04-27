@@ -3,6 +3,7 @@ from __future__ import annotations
 from .pd_action import PDAction
 from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
 from .pd_action_go_to import PDActionGoTo
+from .pd_action_go_to_dp import PDActionGoToDp
 from .pd_action_hide import PDActionHide
 from .pd_action_import_data import PDActionImportData
 from .pd_action_java_script import PDActionJavaScript
@@ -12,6 +13,8 @@ from .pd_action_named import PDActionNamed
 from .pd_action_remote_go_to import PDActionRemoteGoTo
 from .pd_action_rendition import PDActionRendition
 from .pd_action_reset_form import PDActionResetForm
+from .pd_action_rich_media_execute import PDActionRichMediaExecute
+from .pd_action_set_ocg_state import PDActionSetOCGState
 from .pd_action_sound import PDActionSound
 from .pd_action_submit_form import PDActionSubmitForm
 from .pd_action_thread import PDActionThread
@@ -28,6 +31,7 @@ __all__ = [
     "PDAction",
     "PDActionEmbeddedGoTo",
     "PDActionGoTo",
+    "PDActionGoToDp",
     "PDActionHide",
     "PDActionImportData",
     "PDActionJavaScript",
@@ -37,6 +41,8 @@ __all__ = [
     "PDActionRemoteGoTo",
     "PDActionRendition",
     "PDActionResetForm",
+    "PDActionRichMediaExecute",
+    "PDActionSetOCGState",
     "PDActionSound",
     "PDActionSubmitForm",
     "PDActionThread",

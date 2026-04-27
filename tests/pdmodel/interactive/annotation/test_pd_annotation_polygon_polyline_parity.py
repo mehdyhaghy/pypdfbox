@@ -167,13 +167,17 @@ def test_measure_default_is_none(cls) -> None:
 
 @pytest.mark.parametrize("cls", [PDAnnotationPolygon, PDAnnotationPolyline])
 def test_measure_round_trip(cls) -> None:
+    from pypdfbox.pdmodel.interactive.measurement import PDMeasureDictionary
+
     ann = cls()
     measure = COSDictionary()
     measure.set_name(COSName.TYPE, "Measure")  # type: ignore[attr-defined]
     measure.set_name(COSName.get_pdf_name("Subtype"), "RL")
     ann.set_measure(measure)
     fetched = ann.get_measure()
-    assert fetched is measure
+    assert isinstance(fetched, PDMeasureDictionary)
+    # Same underlying COSDictionary instance.
+    assert fetched.get_cos_object() is measure
 
 
 @pytest.mark.parametrize("cls", [PDAnnotationPolygon, PDAnnotationPolyline])

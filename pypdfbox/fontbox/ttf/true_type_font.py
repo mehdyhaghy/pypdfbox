@@ -3,15 +3,22 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING, Any
 
+from .digital_signature_table import DigitalSignatureTable
+from .glyph_substitution_table import GlyphSubstitutionTable
 from .header_table import HeaderTable
 from .horizontal_header_table import HorizontalHeaderTable
 from .horizontal_metrics_table import HorizontalMetricsTable
 from .maximum_profile_table import MaximumProfileTable
 from .ttf_data_stream import MemoryTTFDataStream, TTFDataStream
 from .ttf_table import TTFTable
+from .vertical_header_table import VerticalHeaderTable
+from .vertical_metrics_table import VerticalMetricsTable
 
 if TYPE_CHECKING:
     from .cmap_subtable import CmapSubtable
+    from .glyph_data import GlyphData
+    from .glyph_table import GlyphTable
+    from .kerning_table import KerningTable
 
 
 class TrueTypeFont:
@@ -48,10 +55,19 @@ class TrueTypeFont:
         self._hhea: HorizontalHeaderTable | None = None
         self._maxp: MaximumProfileTable | None = None
         self._hmtx: HorizontalMetricsTable | None = None
+        self._vhea: VerticalHeaderTable | None = None
+        self._vmtx: VerticalMetricsTable | None = None
         self._cmap_subtable: CmapSubtable | None = None
         self._cmap_resolved: bool = False
         self._advance_widths: list[int] | None = None
         self._table_map: dict[str, TTFTable] | None = None
+        self._glyph_table: GlyphTable | None = None
+        self._dsig: DigitalSignatureTable | None = None
+        self._dsig_resolved: bool = False
+        self._kern: KerningTable | None = None
+        self._kern_resolved: bool = False
+        self._gsub: GlyphSubstitutionTable | None = None
+        self._gsub_resolved: bool = False
 
     # ---------- factories ----------
 
@@ -236,6 +252,178 @@ class TrueTypeFont:
         t._non_horizontal_left_side_bearing = lsbs[num_h_metrics:]  # noqa: SLF001
         t.initialized = True
         self._hmtx = t
+        return t
+
+    # ---------- vertical metrics (vhea / vmtx) -------------------------
+
+    def get_vertical_header(self) -> VerticalHeaderTable | None:
+        """Return the populated ``vhea`` table, or ``None`` when the font
+        lacks a vertical header (typical of Latin-only fonts).
+        """
+        if self._vhea is not None:
+            return self._vhea
+        if "vhea" not in self._tt:
+            return None
+        ft = self._tt["vhea"]
+        t = VerticalHeaderTable()
+        # vhea.tableVersion is a raw uint32 ("L") in fontTools — convert
+        # back to the 16.16 fixed-point float upstream exposes.
+        t._version = self._fixed_16_16(int(ft.tableVersion) & 0xFFFFFFFF)  # noqa: SLF001
+        t._ascender = int(ft.ascent)  # noqa: SLF001
+        t._descender = int(ft.descent)  # noqa: SLF001
+        t._line_gap = int(ft.lineGap)  # noqa: SLF001
+        t._advance_height_max = int(ft.advanceHeightMax)  # noqa: SLF001
+        t._min_top_side_bearing = int(ft.minTopSideBearing)  # noqa: SLF001
+        t._min_bottom_side_bearing = int(ft.minBottomSideBearing)  # noqa: SLF001
+        t._y_max_extent = int(ft.yMaxExtent)  # noqa: SLF001
+        t._caret_slope_rise = int(ft.caretSlopeRise)  # noqa: SLF001
+        t._caret_slope_run = int(ft.caretSlopeRun)  # noqa: SLF001
+        t._caret_offset = int(ft.caretOffset)  # noqa: SLF001
+        t._metric_data_format = int(ft.metricDataFormat)  # noqa: SLF001
+        t._number_of_v_metrics = int(ft.numberOfVMetrics)  # noqa: SLF001
+        t.initialized = True
+        self._vhea = t
+        return t
+
+    def get_vertical_metrics(self) -> VerticalMetricsTable | None:
+        """Return the populated ``vmtx`` table, or ``None`` when the font
+        lacks a ``vmtx`` (or matching ``vhea``) table.
+        """
+        if self._vmtx is not None:
+            return self._vmtx
+        if "vmtx" not in self._tt:
+            return None
+        vhea = self.get_vertical_header()
+        if vhea is None:
+            return None
+        num_v_metrics = vhea.get_number_of_v_metrics()
+        # fontTools resolves vmtx into a {glyph_name: (advance, tsb)} dict
+        # keyed by glyph name. Project back to GID order to populate the
+        # legacy structure faithfully.
+        ft_metrics = self._tt["vmtx"].metrics
+        glyph_order = self._tt.getGlyphOrder()
+        advances = [int(ft_metrics[n][0]) for n in glyph_order]
+        tsbs = [int(ft_metrics[n][1]) for n in glyph_order]
+
+        t = VerticalMetricsTable()
+        t._num_v_metrics = num_v_metrics  # noqa: SLF001
+        # First num_v_metrics entries carry both advance and TSB; the
+        # remaining glyphs share the last advance and have a trailing
+        # TSB-only block in the on-disk table.
+        t._advance_height = advances[:num_v_metrics]  # noqa: SLF001
+        t._top_side_bearing = tsbs[:num_v_metrics]  # noqa: SLF001
+        t._additional_top_side_bearing = tsbs[num_v_metrics:]  # noqa: SLF001
+        t.initialized = True
+        self._vmtx = t
+        return t
+
+    # ---------- glyf accessors -----------------------------------------
+
+    def get_glyph_table(self) -> GlyphTable | None:
+        """Return the ``glyf`` table view, or ``None`` if absent.
+
+        TrueType-flavoured fonts ship a ``glyf`` table; CFF / OpenType-CFF
+        fonts do not (their outlines live in ``CFF ``). The returned
+        :class:`GlyphTable` is bound to the same fontTools-parsed font
+        instance, so glyph lookups stay zero-copy.
+        """
+        if self._glyph_table is not None:
+            return self._glyph_table
+        if "glyf" not in self._tt:
+            return None
+        from .glyph_table import GlyphTable  # noqa: PLC0415
+
+        gt = GlyphTable()
+        gt._bind(self)  # noqa: SLF001
+        self._glyph_table = gt
+        return gt
+
+    def get_glyph(self, gid: int) -> GlyphData | None:
+        """Convenience accessor — :meth:`GlyphTable.get_glyph` for ``gid``.
+
+        Returns ``None`` if the font has no ``glyf`` table or ``gid`` is
+        out of range. This mirrors the path most upstream callers take
+        (``ttf.getGlyph().getGlyph(gid)``) collapsed into one call, which
+        is by far the most common shape in PDFBox glyph rendering code.
+        """
+        gt = self.get_glyph_table()
+        if gt is None:
+            return None
+        return gt.get_glyph(gid)
+
+    # ---------- DSIG (digital signature) accessor ----------------------
+
+    def get_dsig(self) -> DigitalSignatureTable | None:
+        """Return the ``DSIG`` table view, or ``None`` if absent.
+
+        The DSIG table is optional and rare in real-world fonts; most
+        production fonts ship without one. When present, it is parsed by
+        ``fontTools.ttLib.tables.D_S_I_G_`` and projected onto a
+        :class:`DigitalSignatureTable` snapshot so the legacy upstream
+        accessor surface stays available.
+
+        Result is cached, including the negative case — repeat callers
+        on a font without DSIG won't re-probe the directory.
+        """
+        if self._dsig_resolved:
+            return self._dsig
+        self._dsig_resolved = True
+        if "DSIG" not in self._tt:
+            self._dsig = None
+            return None
+        ft_dsig = self._tt["DSIG"]
+        t = DigitalSignatureTable()
+        t.populate_from_fonttools(ft_dsig)
+        self._dsig = t
+        return t
+
+    # ---------- kern (kerning) accessor --------------------------------
+
+    def get_kerning_table(self) -> KerningTable | None:
+        """Return the ``kern`` table view, or ``None`` if absent.
+
+        Most modern fonts carry kerning information in the GPOS table
+        instead, so the legacy ``kern`` table is optional. When present,
+        fontTools decodes it into ``self._tt["kern"].kernTables`` and we
+        wrap that in a :class:`KerningTable` snapshot so the upstream
+        ``getSubtables`` / ``getHorizontalKerningSubtable`` API stays
+        intact. Result is cached, including the negative case.
+        """
+        if self._kern_resolved:
+            return self._kern
+        self._kern_resolved = True
+        if "kern" not in self._tt:
+            self._kern = None
+            return None
+        from .kerning_table import KerningTable  # noqa: PLC0415
+
+        ft_kern = self._tt["kern"]
+        self._kern = KerningTable.from_fonttools(ft_kern, self)
+        return self._kern
+
+    # ---------- GSUB (glyph substitution) accessor ---------------------
+
+    def get_gsub(self) -> GlyphSubstitutionTable | None:
+        """Return the ``GSUB`` table view, or ``None`` if absent.
+
+        GSUB carries OpenType glyph substitution rules (ligatures,
+        small-caps, super/subscript variants, script-shaping, ...).
+        Parsing is delegated to ``fontTools.ttLib`` — see
+        :class:`GlyphSubstitutionTable` for the rationale and the
+        documented deviation from upstream's ``GsubData`` projection.
+
+        Result is cached, including the negative case — repeat callers
+        on a font without GSUB won't re-probe the directory.
+        """
+        if self._gsub_resolved:
+            return self._gsub
+        self._gsub_resolved = True
+        if "GSUB" not in self._tt:
+            self._gsub = None
+            return None
+        t = GlyphSubstitutionTable()
+        t.populate_from_fonttools(self._tt)
+        self._gsub = t
         return t
 
     # ---------- name-table accessors -----------------------------------

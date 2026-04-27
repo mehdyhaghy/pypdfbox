@@ -324,5 +324,60 @@ class CFFFont:
             return []
         return list(pen.commands)  # type: ignore[attr-defined]
 
+    # ---------- Type 2 charstring accessor ---------------------------------
+
+    def get_type2_char_string(self, cid_or_gid: int) -> Any:
+        """PDFBox: ``CFFFont.getType2CharString(int cidOrGid)`` —
+        return a :class:`Type2CharString` wrapper for the glyph at
+        index ``cid_or_gid``.
+
+        For name-keyed CFF fonts this is the GID; for CID-keyed fonts
+        the upstream contract is that the caller passes a CID and the
+        font does the CID→GID resolution. fontTools surfaces both
+        flavours through the same ``CharStrings`` mapping (CID fonts
+        use synthetic ``cid<NNNNN>`` names), so we just look up by
+        ordinal in the GID-ordered charset.
+
+        Returns a :class:`Type2CharString` whose ``get_path`` /
+        ``get_width`` methods delegate to fontTools, never an exception
+        for an out-of-range GID — instead an empty-program wrapper is
+        returned so callers can probe ``get_path() == []``.
+        """
+        # Defer the import: type2_char_string.py imports from this
+        # module's package, but the class itself doesn't depend on
+        # CFFFont, so circular import is not a concern in practice.
+        from .type2_char_string import Type2CharString  # noqa: PLC0415
+
+        charset = self.get_charset()
+        if not charset or cid_or_gid < 0 or cid_or_gid >= len(charset):
+            # Out-of-range: return an empty wrapper. Upstream throws
+            # IOException; we deliberately diverge for ergonomics —
+            # callers can detect via ``get_path() == []``.
+            return Type2CharString(
+                font=self,
+                font_name=self.get_name(),
+                glyph_name="",
+                gid=cid_or_gid,
+                sequence=None,
+                default_width_x=int(self.get_default_width_x()),
+                nominal_width_x=int(self.get_nominal_width_x()),
+            )
+
+        glyph_name = charset[cid_or_gid]
+        cs_map = self._charstrings_dict()
+        try:
+            cs = cs_map[glyph_name]
+        except KeyError:
+            cs = None
+        return Type2CharString(
+            font=self,
+            font_name=self.get_name(),
+            glyph_name=glyph_name,
+            gid=cid_or_gid,
+            sequence=cs,  # fontTools T2CharString from the parsed font
+            default_width_x=int(self.get_default_width_x()),
+            nominal_width_x=int(self.get_nominal_width_x()),
+        )
+
 
 __all__ = ["CFFFont"]
