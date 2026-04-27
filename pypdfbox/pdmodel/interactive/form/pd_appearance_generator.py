@@ -45,6 +45,7 @@ _RESOURCES: COSName = COSName.get_pdf_name("Resources")
 _FORM_TYPE: COSName = COSName.get_pdf_name("FormType")
 _OFF: COSName = COSName.get_pdf_name("Off")
 _YES: COSName = COSName.get_pdf_name("Yes")
+_MK: COSName = COSName.get_pdf_name("MK")
 
 
 def _parse_default_appearance(
@@ -169,15 +170,29 @@ class PDAppearanceGenerator:
       for buttons this is the on-state-keyed subdictionary, for text
       and choice fields it's a single appearance stream.
 
-    **Deferred:** push button (``/Btn`` with ``FLAG_PUSHBUTTON``) caption
-    rendering is skipped — upstream pulls a labeled rectangle from the
-    widget's ``/MK /CA`` caption entry plus optional rollover/down
-    captions, which involves the appearance characteristics dictionary
-    and per-state caption variants. Signature field (``/Sig``) visual
-    signature appearances, multi-line / comb / quadding layout for text
-    fields, font-substitution fallbacks for non-Standard-14 ``/DA`` fonts,
-    ``/MK`` border / background painting, and rich-text (``/RV``) rendering
-    all stay no-ops in the lite surface — see ``CHANGES.md``.
+    **Text fields (Wave 33+):** support multi-line (``Ff`` bit 13),
+    comb (``Ff`` bit 25 — distributes the value's characters into
+    ``/MaxLen`` equal-width cells), and quadding (``/Q`` 0/1/2 = left /
+    centered / right alignment). Auto-line-wrap walks the value
+    breaking on whitespace, advancing the baseline by ``size * 1.15``
+    per line.
+
+    **Push buttons (Wave 33+):** the widget's ``/MK /CA`` caption is
+    rendered as flat text centred in the rect, with an optional border
+    drawn from ``/MK /BC`` and a flat background fill from ``/MK /BG``.
+    Rollover (``/RC``) and alternate / down (``/AC``) captions stay
+    deferred — viewers fall back to ``/CA`` when those entries are
+    absent, so the lite surface still produces a usable widget.
+
+    **Signature fields (Wave 33+):** when the field carries a
+    ``/V`` ``PDSignature``, the visual appearance is a flat box with
+    the signer's ``/Name`` and ``/M`` sign date in two Helvetica-10
+    lines. Sigfields without a signature value get an empty stream.
+
+    **Deferred:** font-substitution fallbacks for non-Standard-14
+    ``/DA`` fonts, rich-text (``/RV``) rendering, and a proper
+    iterative auto-size for over-flowing text values stay no-ops in
+    the lite surface — see ``CHANGES.md``.
     """
 
     DEFAULT_FONT_SIZE: float = 12.0
@@ -202,11 +217,13 @@ class PDAppearanceGenerator:
         """Regenerate the ``/AP /N`` normal appearance of every widget on
         ``field``. Dispatches on field type:
 
-        - ``/Tx`` text → flat single-line text appearance.
+        - ``/Tx`` text → flat text appearance (single-line, multi-line,
+          comb, or quadded based on ``Ff`` / ``/Q``).
         - ``/Btn`` check / radio → two-state on/off appearance subdict.
-        - ``/Btn`` push button → skipped (caption handling deferred).
+        - ``/Btn`` push button → centred ``/MK /CA`` caption with
+          optional border / background.
         - ``/Ch`` combo / list → flat text rendering of selected value(s).
-        - ``/Sig`` signature → skipped (visual signatures deferred).
+        - ``/Sig`` signature → flat name + date box (when ``/V`` set).
         - anything else → debug-logged and skipped.
         """
         from .pd_button import PDButton
@@ -214,17 +231,14 @@ class PDAppearanceGenerator:
         from .pd_choice import PDChoice
         from .pd_push_button import PDPushButton
         from .pd_radio_button import PDRadioButton
+        from .pd_signature_field import PDSignatureField
         from .pd_text_field import PDTextField
 
         if isinstance(field, PDTextField):
             self._generate_text_field(field)
             return
         if isinstance(field, PDPushButton):
-            _LOG.debug(
-                "PDAppearanceGenerator.generate: push-button caption "
-                "appearance deferred (skipping %s)",
-                field.get_fully_qualified_name(),
-            )
+            self._generate_push_button(field)
             return
         if isinstance(field, (PDCheckBox, PDRadioButton)):
             self._generate_button(field)
@@ -236,9 +250,12 @@ class PDAppearanceGenerator:
         if isinstance(field, PDChoice):
             self._generate_choice(field)
             return
+        if isinstance(field, PDSignatureField):
+            self._generate_signature(field)
+            return
         _LOG.debug(
             "PDAppearanceGenerator.generate: skipping %s — not a "
-            "supported field type (text / check / radio / choice)",
+            "supported field type",
             type(field).__name__,
         )
 
@@ -247,12 +264,33 @@ class PDAppearanceGenerator:
     # ------------------------------------------------------------------
 
     def _generate_text_field(self, field: PDField) -> None:
+        from .pd_text_field import PDTextField
+
         value = field.get_value() or ""  # type: ignore[attr-defined]
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
+
+        is_multiline = False
+        is_comb = False
+        max_len = -1
+        quadding = 0
+        if isinstance(field, PDTextField):
+            is_multiline = field.is_multiline()
+            is_comb = field.is_comb()
+            max_len = field.get_max_len()
+            quadding = field.get_q()
+
         for widget in field.get_widgets():  # type: ignore[attr-defined]
             self._regenerate_text_widget(
-                widget, value, font_name, font_size, color
+                widget,
+                value,
+                font_name,
+                font_size,
+                color,
+                is_multiline=is_multiline,
+                is_comb=is_comb,
+                max_len=max_len,
+                quadding=quadding,
             )
 
     # ------------------------------------------------------------------
@@ -506,6 +544,10 @@ class PDAppearanceGenerator:
         font_name: str | None,
         font_size: float,
         color: tuple[float, ...] | None,
+        is_multiline: bool = False,
+        is_comb: bool = False,
+        max_len: int = -1,
+        quadding: int = 0,
     ) -> None:
         widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
@@ -538,18 +580,10 @@ class PDAppearanceGenerator:
         if resolved_size <= 0.0:
             resolved_size = self._auto_size(height)
 
-        # Emit content stream:
-        #   /Tx BMC                  marked-content section
-        #   q                        save graphics state
-        #   1 1 width-2 height-2 re W n  clip to interior
-        #   BT
-        #     <color>                 non-stroking color
-        #     /<font-key> <size> Tf
-        #     <x> <y> Td
-        #     (<value>) Tj
-        #   ET
-        #   Q
-        #   EMC
+        interior_w = max(0.0, width - 2.0)
+        interior_h = max(0.0, height - 2.0)
+        line_height = resolved_size * 1.15
+
         with PDAppearanceContentStream(appearance_stream) as cs:
             # /Tx BMC marked-content tag — Acrobat looks for this on form
             # field appearance streams.
@@ -557,28 +591,382 @@ class PDAppearanceGenerator:
             cs.save_graphics_state()
             # Light interior clip (1pt margin all around) so the value
             # never bleeds over the widget border.
-            interior_w = max(0.0, width - 2.0)
-            interior_h = max(0.0, height - 2.0)
             if interior_w > 0.0 and interior_h > 0.0:
                 cs.add_rect(1.0, 1.0, interior_w, interior_h)
                 cs._write_operator(b"W")  # type: ignore[attr-defined]
                 cs._write_operator(b"n")  # type: ignore[attr-defined]
-            cs.begin_text()
-            if color is not None:
-                cs.set_non_stroking_color(color)
-            cs.set_font(font, resolved_size)
-            # Position text: small left padding, vertically roughly
-            # centered using a 1.15 line-height heuristic.
-            x = 2.0
-            y = max(2.0, (height - resolved_size) / 2.0)
-            cs.new_line_at_offset(x, y)
-            if value:
-                cs.show_text(value)
-            cs.end_text()
+
+            if is_comb and max_len > 0:
+                self._emit_comb_text(
+                    cs, value, font, resolved_size, color,
+                    width, height, max_len,
+                )
+            elif is_multiline:
+                self._emit_multiline_text(
+                    cs, value, font, resolved_size, color,
+                    interior_w, height, line_height, quadding,
+                )
+            else:
+                self._emit_single_line_text(
+                    cs, value, font, resolved_size, color,
+                    interior_w, height, quadding,
+                )
+
             cs.restore_graphics_state()
             cs._buffer.extend(b"EMC\n")  # type: ignore[attr-defined]
 
         # Wire the new appearance into the widget annotation as /AP /N.
+        ap_value = widget_cos.get_dictionary_object(_AP)
+        if isinstance(ap_value, COSDictionary):
+            ap_dict = PDAppearanceDictionary(ap_value)
+        else:
+            ap_dict = PDAppearanceDictionary()
+            widget_cos.set_item(_AP, ap_dict.get_cos_object())
+        ap_dict.set_normal_appearance(appearance_stream)
+
+    def _emit_single_line_text(
+        self,
+        cs: PDAppearanceContentStream,
+        value: str,
+        font: PDFont,
+        size: float,
+        color: tuple[float, ...] | None,
+        interior_w: float,
+        height: float,
+        quadding: int,
+    ) -> None:
+        cs.begin_text()
+        if color is not None:
+            cs.set_non_stroking_color(color)
+        cs.set_font(font, size)
+        x = self._x_for_quadding(font, size, value, interior_w, quadding)
+        y = max(2.0, (height - size) / 2.0)
+        cs.new_line_at_offset(x, y)
+        if value:
+            cs.show_text(value)
+        cs.end_text()
+
+    def _emit_multiline_text(
+        self,
+        cs: PDAppearanceContentStream,
+        value: str,
+        font: PDFont,
+        size: float,
+        color: tuple[float, ...] | None,
+        interior_w: float,
+        height: float,
+        line_height: float,
+        quadding: int,
+    ) -> None:
+        lines = self._wrap_lines(value, font, size, max(interior_w, 1.0))
+        cs.begin_text()
+        if color is not None:
+            cs.set_non_stroking_color(color)
+        cs.set_font(font, size)
+        # First baseline near the top of the rect; subsequent lines
+        # advance downward by ``line_height``.
+        top_y = max(2.0, height - size * 1.15)
+        first_x = self._x_for_quadding(
+            font, size, lines[0] if lines else "", interior_w, quadding
+        )
+        cs.new_line_at_offset(first_x, top_y)
+        first = True
+        prev_x = first_x
+        for line in lines:
+            line_x = self._x_for_quadding(
+                font, size, line, interior_w, quadding
+            )
+            if not first:
+                # Td is relative to start-of-line — undo the previous
+                # quadding offset so the new x lands at ``line_x``.
+                cs.new_line_at_offset(line_x - prev_x, -line_height)
+            first = False
+            prev_x = line_x
+            if line:
+                cs.show_text(line)
+        cs.end_text()
+
+    def _emit_comb_text(
+        self,
+        cs: PDAppearanceContentStream,
+        value: str,
+        font: PDFont,
+        size: float,
+        color: tuple[float, ...] | None,
+        width: float,
+        height: float,
+        max_len: int,
+    ) -> None:
+        # Comb mode: PDF 32000-1 §12.7.3.3 — the field's value is split
+        # into one-character-per-cell entries, each centered horizontally
+        # within a 1/MaxLen wide cell.
+        cell_w = width / float(max_len)
+        y = max(2.0, (height - size) / 2.0)
+        cs.begin_text()
+        if color is not None:
+            cs.set_non_stroking_color(color)
+        cs.set_font(font, size)
+        # Anchor at the absolute origin so each char's Td below is in
+        # the same coord system.
+        cs.new_line_at_offset(0.0, y)
+        prev_x = 0.0
+        chars = list(value or "")
+        for idx, ch in enumerate(chars[:max_len]):
+            ch_w = self._estimate_text_width(font, size, ch)
+            cell_center = cell_w * (idx + 0.5)
+            x = cell_center - ch_w / 2.0
+            cs.new_line_at_offset(x - prev_x, 0.0)
+            prev_x = x
+            cs.show_text(ch)
+        cs.end_text()
+
+    def _x_for_quadding(
+        self,
+        font: PDFont,
+        size: float,
+        line: str,
+        interior_w: float,
+        quadding: int,
+    ) -> float:
+        """Pick the leftmost x-offset for ``line`` per ``/Q`` quadding.
+
+        Quadding values per PDF 32000-1 §12.7.3.3:
+        ``0`` = left, ``1`` = centered, ``2`` = right. Anything else
+        falls back to left.
+        """
+        if quadding == 1 or quadding == 2:
+            text_w = self._estimate_text_width(font, size, line)
+            available = max(0.0, interior_w - text_w)
+            if quadding == 1:
+                return 2.0 + available / 2.0
+            return 2.0 + available
+        return 2.0
+
+    def _wrap_lines(
+        self,
+        value: str,
+        font: PDFont,
+        size: float,
+        interior_w: float,
+    ) -> list[str]:
+        """Word-wrap ``value`` onto lines that fit ``interior_w``.
+
+        Splits on existing ``\\n`` first to preserve explicit line
+        breaks, then word-wraps each resulting paragraph. Words wider
+        than the rect are emitted on their own line (no mid-word break).
+        """
+        if not value:
+            return [""]
+        out: list[str] = []
+        for paragraph in value.split("\n"):
+            if not paragraph:
+                out.append("")
+                continue
+            words = paragraph.split(" ")
+            current = ""
+            for word in words:
+                candidate = word if not current else current + " " + word
+                if self._estimate_text_width(font, size, candidate) <= interior_w:
+                    current = candidate
+                else:
+                    if current:
+                        out.append(current)
+                    current = word
+            if current:
+                out.append(current)
+        return out
+
+    @staticmethod
+    def _estimate_text_width(font: PDFont, size: float, text: str) -> float:
+        """Estimate ``text`` width in user units at the given ``size``.
+
+        Lite-port estimate: average-font-width per glyph (in 1/1000 em
+        units) times the character count, scaled by ``size / 1000``.
+        Falls back to ``size * 0.5`` when the font carries no widths
+        (Standard 14 fonts without an explicit ``/Widths``).
+        """
+        if not text:
+            return 0.0
+        avg = font.get_average_font_width()
+        if avg <= 0.0:
+            avg = 500.0  # 0.5 em — plausible for Helvetica-style fonts
+        return len(text) * avg * size / 1000.0
+
+    # ------------------------------------------------------------------
+    # push button (caption from /MK /CA)
+    # ------------------------------------------------------------------
+
+    def _generate_push_button(self, field: PDField) -> None:
+        """Render the widget's ``/MK /CA`` caption flat-centered.
+
+        For each widget:
+
+        - If ``/MK /BG`` is set, fill the rect with the background color.
+        - If ``/MK /BC`` is set, stroke a 1pt rectangular border.
+        - Render ``/MK /CA`` (if present) as Helvetica text, font size
+          auto-sized to the rect height, centered horizontally and
+          vertically.
+
+        Rollover (``/MK /RC``) and alternate / down (``/MK /AC``)
+        captions stay deferred — viewers fall back to ``/CA`` when those
+        entries are absent.
+        """
+        for widget in field.get_widgets():  # type: ignore[attr-defined]
+            self._regenerate_push_button_widget(widget)
+
+    def _regenerate_push_button_widget(self, widget: object) -> None:
+        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
+        if rect is None:
+            return
+        llx, lly, urx, ury = rect
+        width = urx - llx
+        height = ury - lly
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        caption = ""
+        bg: tuple[float, ...] | None = None
+        bc: tuple[float, ...] | None = None
+        ac = widget_cos.get_dictionary_object(_MK)
+        if isinstance(ac, COSDictionary):
+            ca = ac.get_string(COSName.get_pdf_name("CA"))
+            if isinstance(ca, str):
+                caption = ca
+            bg = self._color_array_to_tuple(
+                ac.get_dictionary_object(COSName.get_pdf_name("BG"))
+            )
+            bc = self._color_array_to_tuple(
+                ac.get_dictionary_object(COSName.get_pdf_name("BC"))
+            )
+
+        appearance_cos = self._fresh_form_xobject(width, height)
+        appearance_stream = PDAppearanceStream(appearance_cos)
+        font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+        size = self._auto_size(height)
+
+        with PDAppearanceContentStream(appearance_stream) as cs:
+            cs.save_graphics_state()
+            # Background fill.
+            if bg is not None:
+                cs.set_non_stroking_color(bg)
+                cs.add_rect(0.0, 0.0, width, height)
+                cs.fill()
+            # Border stroke (1pt inset by 0.5 so the stroke sits inside).
+            if bc is not None:
+                cs.set_stroking_color(bc)
+                cs.set_line_width(1.0)
+                cs.add_rect(0.5, 0.5, max(0.0, width - 1.0), max(0.0, height - 1.0))
+                cs.stroke()
+            # Caption.
+            if caption:
+                cs.begin_text()
+                cs.set_non_stroking_color((0.0,))
+                cs.set_font(font, size)
+                text_w = self._estimate_text_width(font, size, caption)
+                x = max(2.0, (width - text_w) / 2.0)
+                y = max(2.0, (height - size) / 2.0)
+                cs.new_line_at_offset(x, y)
+                cs.show_text(caption)
+                cs.end_text()
+            cs.restore_graphics_state()
+
+        ap_value = widget_cos.get_dictionary_object(_AP)
+        if isinstance(ap_value, COSDictionary):
+            ap_dict = PDAppearanceDictionary(ap_value)
+        else:
+            ap_dict = PDAppearanceDictionary()
+            widget_cos.set_item(_AP, ap_dict.get_cos_object())
+        ap_dict.set_normal_appearance(appearance_stream)
+
+    @staticmethod
+    def _color_array_to_tuple(value: COSBase | None) -> tuple[float, ...] | None:
+        """Pull a ``/MK`` color array (1, 3, or 4 numeric entries) into
+        a non-stroking-color components tuple. Returns ``None`` for
+        empty / non-numeric arrays."""
+        if not isinstance(value, COSArray):
+            return None
+        comps: list[float] = []
+        for i in range(value.size()):
+            entry = value.get_object(i)
+            if isinstance(entry, (COSFloat, COSInteger)):
+                comps.append(float(entry.value))
+            else:
+                return None
+        if len(comps) in (1, 3, 4):
+            return tuple(comps)
+        return None
+
+    # ------------------------------------------------------------------
+    # signature field
+    # ------------------------------------------------------------------
+
+    def _generate_signature(self, field: PDField) -> None:
+        """Render a flat name + date appearance for a signature field.
+
+        Pulls ``/Name`` and ``/M`` (sign date) off the field's
+        ``PDSignature`` ``/V`` value and writes them on two
+        Helvetica-10 lines inside the widget rect. A 1pt border is
+        stroked around the rect so unsigned-but-rendered widgets are
+        still visible. Sigfields without a signature value get an
+        empty stream (matches PDFBox's behavior of leaving an empty
+        appearance until the field is signed).
+        """
+        from .pd_signature_field import PDSignatureField
+
+        if not isinstance(field, PDSignatureField):
+            return
+        signature = field.get_signature()
+        signer_name = signature.get_name() if signature is not None else None
+        sign_date = signature.get_sign_date() if signature is not None else None
+
+        for widget in field.get_widgets():
+            self._regenerate_signature_widget(widget, signer_name, sign_date)
+
+    def _regenerate_signature_widget(
+        self,
+        widget: object,
+        signer_name: str | None,
+        sign_date: str | None,
+    ) -> None:
+        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
+        if rect is None:
+            return
+        llx, lly, urx, ury = rect
+        width = urx - llx
+        height = ury - lly
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        appearance_cos = self._fresh_form_xobject(width, height)
+        appearance_stream = PDAppearanceStream(appearance_cos)
+        font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+        size = 10.0
+
+        with PDAppearanceContentStream(appearance_stream) as cs:
+            cs.save_graphics_state()
+            # Frame the signature box with a thin border.
+            cs.set_stroking_color((0.0,))
+            cs._buffer.extend(b"1 w\n")  # type: ignore[attr-defined]
+            cs.add_rect(0.5, 0.5, max(0.0, width - 1.0), max(0.0, height - 1.0))
+            cs.stroke()
+
+            if signer_name or sign_date:
+                cs.begin_text()
+                cs.set_non_stroking_color((0.0,))
+                cs.set_font(font, size)
+                # Two-line layout: top line = signer name, bottom line = date.
+                line_height = size * 1.4
+                top_y = max(2.0, height - size * 1.4)
+                cs.new_line_at_offset(4.0, top_y)
+                cs.show_text(signer_name or "")
+                cs.new_line_at_offset(0.0, -line_height)
+                cs.show_text(sign_date or "")
+                cs.end_text()
+
+            cs.restore_graphics_state()
+
         ap_value = widget_cos.get_dictionary_object(_AP)
         if isinstance(ap_value, COSDictionary):
             ap_dict = PDAppearanceDictionary(ap_value)

@@ -308,3 +308,208 @@ def test_decryption_material_password_encoding() -> None:
 def test_security_handler_is_abstract() -> None:
     with pytest.raises(TypeError):
         SecurityHandler()  # type: ignore[abstract]
+
+
+# -------------------------------------------------- AES-256 (r6) coverage
+
+
+def test_round_trip_r6_aes_256_empty_password() -> None:
+    """ISO 32000-2 §7.6.4.4.10 — empty user password is the common case
+    for ``read everything but only owner can edit`` PDFs. Both wraps must
+    round-trip cleanly even when only one of (owner, user) is non-blank."""
+    handler, encryption = _build_handler_r6_aes_256("", "ownerOnly")
+
+    plaintext = b"r6 with empty user password"
+    ciphertext = handler.encrypt_string(plaintext, 1, 0)
+    assert ciphertext != plaintext
+
+    # Empty user password unwraps via the user-password path.
+    decoder = StandardSecurityHandler()
+    decoder.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial("")
+    )
+    assert decoder.is_aes() is True
+    assert decoder.get_encryption_key() == handler.get_encryption_key()
+    assert decoder.decrypt_string(ciphertext, 1, 0) == plaintext
+
+    # Owner password must still unlock the same file.
+    decoder2 = StandardSecurityHandler()
+    decoder2.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial("ownerOnly")
+    )
+    assert decoder2.get_encryption_key() == handler.get_encryption_key()
+
+
+def test_round_trip_r6_aes_256_long_payload_crosses_blocks() -> None:
+    """Confirm AES-256 dispatch handles multi-block payloads — encrypted
+    output must include the 16-byte IV plus a multiple of 16 bytes of
+    ciphertext, and decrypt back identically."""
+    handler, encryption = _build_handler_r6_aes_256("user-pw", "owner-pw")
+
+    # Pick a payload length that is *not* a multiple of 16 so we exercise
+    # the PKCS#7 padding branch end-to-end.
+    plaintext = b"A" * 33 + b"B" * 17 + b"C" * 5
+    ciphertext = handler.encrypt_stream(plaintext, 7, 0)
+    assert ciphertext != plaintext
+    assert (len(ciphertext) - 16) % 16 == 0  # IV (16) + ciphertext blocks
+
+    decoder = StandardSecurityHandler()
+    decoder.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial("user-pw")
+    )
+    assert decoder.decrypt_stream(ciphertext, 7, 0) == plaintext
+
+
+def test_r6_perms_round_trips_permission_bits() -> None:
+    """``/Perms`` carries the 32-bit /P value encrypted under AES-256-ECB.
+    The round-trip via ``_validate_perms_r5_r6`` must recover the exact
+    permission integer the dictionary was built with."""
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os as _os
+
+    handler.set_encryption_key(_os.urandom(32))
+    # Custom permission set: deny printing, allow modify, deny extract.
+    permissions = -1852  # arbitrary signed-32 representable value
+    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner-pw", b"user-pw", permissions
+    )
+    assert len(perms) == 16
+
+    # AES-256 ECB decrypt under the file key must produce the canonical
+    # algorithm-10 layout.
+    plain = StandardSecurityHandler._decrypt_perms_r5_r6(  # noqa: SLF001
+        handler.get_encryption_key() or b"", perms
+    )
+    assert len(plain) == 16
+    assert bytes(plain[9:12]) == b"adb"
+    # First four bytes = little-endian /P.
+    recovered = (
+        plain[0] | (plain[1] << 8) | (plain[2] << 16) | (plain[3] << 24)
+    )
+    if recovered & 0x80000000:
+        recovered -= 0x100000000
+    assert recovered == permissions
+    # Bytes 4-7 are 0xFF.
+    assert plain[4:8] == b"\xff\xff\xff\xff"
+    # Byte 8 is 'T' because ``encrypt_metadata`` defaults to True.
+    assert plain[8:9] == b"T"
+    # Validation helper agrees.
+    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+        handler.get_encryption_key() or b"", perms, permissions, True
+    ) is True
+    # Tampering with the permission integer must fail validation.
+    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+        handler.get_encryption_key() or b"", perms, permissions ^ 0xFF, True
+    ) is False
+
+
+def test_r6_perms_validates_encrypt_metadata_flag() -> None:
+    """Byte 8 of the decrypted Perms is 'T' when EncryptMetadata is True
+    and 'F' otherwise. The validation routine must agree."""
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+    handler.set_decrypt_metadata(True)
+    # Force the encrypt-metadata flag to False on the writer side.
+    handler._encrypt_metadata = False  # noqa: SLF001
+
+    import os as _os
+
+    handler.set_encryption_key(_os.urandom(32))
+    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", -3904
+    )
+    plain = StandardSecurityHandler._decrypt_perms_r5_r6(  # noqa: SLF001
+        handler.get_encryption_key() or b"", perms
+    )
+    assert plain[8:9] == b"F"
+    # And validate_perms must accept it only when the caller passes
+    # ``encrypt_metadata=False``.
+    file_key = handler.get_encryption_key() or b""
+    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+        file_key, perms, -3904, False
+    ) is True
+    assert StandardSecurityHandler._validate_perms_r5_r6(  # noqa: SLF001
+        file_key, perms, -3904, True
+    ) is False
+
+
+def test_r6_random_salts_are_unique_per_build() -> None:
+    """Each ``_build_r6_dictionary`` call must mint fresh validation +
+    key salts — bytes 32-40 of /U and /O respectively, plus bytes 40-48
+    each. Re-building twice on the same handler must produce different
+    /O and /U values even for an identical password pair."""
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os as _os
+
+    handler.set_encryption_key(_os.urandom(32))
+    o1, _oe1, u1, _ue1, _p1 = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", -3904
+    )
+    o2, _oe2, u2, _ue2, _p2 = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", -3904
+    )
+    # Hashes will differ because OE/UE wrap a fresh file_key — but more
+    # importantly the salts on /O and /U must change.
+    assert o1[32:40] != o2[32:40]  # owner validation salt
+    assert o1[40:48] != o2[40:48]  # owner key salt
+    assert u1[32:40] != u2[32:40]  # user validation salt
+    assert u1[40:48] != u2[40:48]  # user key salt
+
+
+def test_compute_hash_r5_r6_user_key_below_48_is_ignored() -> None:
+    """Algorithm 2.B: the user key is mixed into the per-round block only
+    when its length is >= 48. Passing a shorter user_key must produce the
+    same result as passing ``b""``."""
+    pw = b"password"
+    salt = b"\x01\x02\x03\x04\x05\x06\x07\x08"
+    h_empty = StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+        pw + salt, pw, b"", 6
+    )
+    h_short = StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+        pw + salt, pw, b"too-short", 6
+    )
+    assert h_empty == h_short
+
+    # And a 48-byte user_key must produce a *different* hash — proving the
+    # short-circuit is real, not a no-op masking a bug.
+    h_full = StandardSecurityHandler._compute_hash_r5_r6(  # noqa: SLF001
+        pw + salt, pw, b"\x00" * 48, 6
+    )
+    assert h_full != h_empty
+
+
+def test_prepare_for_decryption_perms_mismatch_warns_but_succeeds(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A corrupted /Perms field should log a warning but still let the
+    decoder open the document — matches PDFBox's tolerant behaviour for
+    buggy producers."""
+    handler, encryption = _build_handler_r6_aes_256("user", "owner")
+    # Corrupt /Perms by flipping a byte (it stays 16 bytes long so the
+    # ECB decrypt still runs).
+    bad = bytearray(encryption.get_perms() or b"")
+    bad[0] ^= 0xFF
+    encryption.set_perms(bytes(bad))
+
+    decoder = StandardSecurityHandler()
+    with caplog.at_level("WARNING"):
+        decoder.prepare_for_decryption(
+            encryption, b"", StandardDecryptionMaterial("user")
+        )
+    # Decryption still succeeded — the file_key matches the writer's.
+    assert decoder.get_encryption_key() == handler.get_encryption_key()
+    # And the warning fired.
+    assert any("Perms" in rec.message for rec in caplog.records)

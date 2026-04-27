@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .type.job_type import JobType as _TypedJobType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -221,3 +222,83 @@ class XMPBasicJobTicketSchema(XMPSchema):
 
     def clear_jobs(self) -> None:
         self.remove_property(self.JOB_REF)
+
+    # --- typed structured-Job accessors (Wave 33) -------------------------
+    #
+    # The cluster #1 storage shape (a list of plain dicts under JOB_REF) is
+    # preserved so existing string-form callers, ``add_job`` / ``get_jobs`` /
+    # ``remove_job`` and the lite :class:`JobType` value object keep working
+    # untouched. These accessors materialise the Wave 32 structured
+    # :class:`pypdfbox.xmpbox.type.job_type.JobType` on demand from the
+    # dicts, and the typed setter writes back into the same dict-form list.
+
+    @staticmethod
+    def _typed_job_to_dict(job: _TypedJobType) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for field, getter in (
+            (_TypedJobType.ID, job.get_id),
+            (_TypedJobType.NAME, job.get_name),
+            (_TypedJobType.URL, job.get_url),
+        ):
+            value = getter()
+            if value is not None:
+                out[field] = value
+        return out
+
+    def _dict_to_typed_job(self, data: dict[str, str]) -> _TypedJobType:
+        job = _TypedJobType(self._metadata)
+        if _TypedJobType.ID in data:
+            job.set_id(data[_TypedJobType.ID])
+        if _TypedJobType.NAME in data:
+            job.set_name(data[_TypedJobType.NAME])
+        if _TypedJobType.URL in data:
+            job.set_url(data[_TypedJobType.URL])
+        return job
+
+    def set_jobs_property(self, jobs: list[_TypedJobType]) -> None:
+        """
+        Replace the ``JobRef`` Bag with ``jobs`` — a list of Wave 32 typed
+        :class:`pypdfbox.xmpbox.type.job_type.JobType` instances. Each typed
+        instance is flattened back into the dict-shape used by cluster #1
+        storage so existing string-form callers keep observing the same shape.
+        """
+        new_list: list[dict[str, str]] = []
+        for job in jobs:
+            prefix = job.get_prefix() or _TypedJobType.PREFERRED_PREFIX
+            if prefix not in self._namespaces:
+                self.add_namespace(prefix, job.get_namespace() or _TypedJobType.NAMESPACE)
+            new_list.append(self._typed_job_to_dict(job))
+        self._properties[self.JOB_REF] = new_list
+
+    def get_jobs_property(self) -> list[_TypedJobType] | None:
+        """
+        Return a fresh list of Wave 32 structured
+        :class:`pypdfbox.xmpbox.type.job_type.JobType` instances reflecting
+        the current ``JobRef`` Bag, or ``None`` when the property is absent.
+        Companion to :meth:`set_jobs_property`; the lite
+        :meth:`get_jobs` accessor remains for cluster-#1 callers.
+        """
+        existing = self._properties.get(self.JOB_REF)
+        if existing is None:
+            return None
+        if not isinstance(existing, list):
+            return []
+        out: list[_TypedJobType] = []
+        for item in existing:
+            if isinstance(item, dict):
+                out.append(self._dict_to_typed_job(item))
+        return out
+
+    def add_job_typed(self, job: _TypedJobType) -> None:
+        """
+        Append a Wave 32 structured
+        :class:`pypdfbox.xmpbox.type.job_type.JobType` to the ``JobRef`` Bag.
+        Parallel to the lite :meth:`add_job_type`; the typed instance is
+        flattened to a dict on insert so cluster-#1 callers see the same
+        storage shape they always have.
+        """
+        prefix = job.get_prefix() or _TypedJobType.PREFERRED_PREFIX
+        if prefix not in self._namespaces:
+            self.add_namespace(prefix, job.get_namespace() or _TypedJobType.NAMESPACE)
+        jobs = self._get_job_list()
+        jobs.append(self._typed_job_to_dict(job))

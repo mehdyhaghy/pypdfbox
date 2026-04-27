@@ -1915,11 +1915,10 @@ class PDFRenderer(PDFStreamEngine):
         Implements the separable blend functions of PDF 32000-1 §11.3.5.1
         (``Normal`` / ``Multiply`` / ``Screen`` / ``Overlay`` / ``Darken`` /
         ``Lighten`` / ``ColorDodge`` / ``ColorBurn`` / ``HardLight`` /
-        ``SoftLight`` / ``Difference`` / ``Exclusion``). The non-separable
-        HSL family (§11.3.5.2: ``Hue`` / ``Saturation`` / ``Color`` /
-        ``Luminosity``) currently falls back to ``Normal`` with a debug
-        log — they require RGB→HSL round-tripping that the lite renderer
-        defers (tracked in ``CHANGES.md``).
+        ``SoftLight`` / ``Difference`` / ``Exclusion``) plus the four
+        non-separable HSL blend functions of §11.3.5.3 (``Hue`` /
+        ``Saturation`` / ``Color`` / ``Luminosity``) via the spec helpers
+        ``Lum`` / ``Sat`` / ``SetLum`` / ``SetSat`` / ``ClipColor``.
 
         Both inputs are converted to RGBA and the result is RGBA. The
         formula is applied per channel on the *colour* components only;
@@ -1947,20 +1946,43 @@ class PDFRenderer(PDFStreamEngine):
             out.alpha_composite(source)
             return out
 
-        # Non-separable modes are not yet implemented — fall back to
-        # Normal compositing with a debug breadcrumb.
-        if not getattr(mode, "is_separable", lambda: True)():
-            _log.debug(
-                "rendering: non-separable blend mode %r → Normal fallback",
-                getattr(mode, "name", mode),
-            )
-            out = backdrop.copy()
-            out.alpha_composite(source)
-            return out
-
         sr, sg, sb, sa = source.split()
         br, bg, bb, ba = backdrop.split()
         name = getattr(mode, "name", None)
+
+        # Non-separable HSL family (§11.3.5.3) — dispatch to dedicated
+        # per-pixel helpers that operate on the full RGB triple at once
+        # (separable per-channel formulas don't apply to these modes).
+        if not getattr(mode, "is_separable", lambda: True)():
+            if name == "Hue":
+                cr, cg, cb = PDFRenderer._blend_hue(br, bg, bb, sr, sg, sb)
+            elif name == "Saturation":
+                cr, cg, cb = PDFRenderer._blend_saturation(
+                    br, bg, bb, sr, sg, sb
+                )
+            elif name == "Color":
+                cr, cg, cb = PDFRenderer._blend_color(
+                    br, bg, bb, sr, sg, sb
+                )
+            elif name == "Luminosity":
+                cr, cg, cb = PDFRenderer._blend_luminosity(
+                    br, bg, bb, sr, sg, sb
+                )
+            else:
+                _log.debug(
+                    "rendering: unknown non-separable blend mode %r → Normal",
+                    name,
+                )
+                out = backdrop.copy()
+                out.alpha_composite(source)
+                return out
+            inv_sa = ImageChops.invert(sa)
+            ba_keep = ImageChops.multiply(ba, inv_sa)
+            out_a = ImageChops.add(sa, ba_keep)
+            cr = Image.composite(cr, br, sa)
+            cg = Image.composite(cg, bg, sa)
+            cb = Image.composite(cb, bb, sa)
+            return Image.merge("RGBA", (cr, cg, cb, out_a))
 
         # ImageChops paths are vectorised in C — prefer them whenever the
         # blend formula maps cleanly to a single primitive.
@@ -2082,6 +2104,246 @@ class PDFRenderer(PDFStreamEngine):
             return abs(b - s)
         # Fallback — leave backdrop unchanged for unknown / non-separable.
         return b
+
+    # ------------------------------------------------------------------
+    # Non-separable HSL helpers (PDF 32000-1 §11.3.5.3)
+    # ------------------------------------------------------------------
+    #
+    # The four HSL blend modes treat each pixel's RGB triple as a single
+    # colour and compose Hue / Saturation / Luminosity components from the
+    # backdrop and the source. The spec defines a small kit of pure
+    # functions on (R, G, B) tuples:
+    #
+    #     Lum(C)        = 0.30*R + 0.59*G + 0.11*B
+    #     Sat(C)        = max(R, G, B) - min(R, G, B)
+    #     ClipColor(C)  : push out-of-gamut RGB values back into [0, 1]
+    #                     while preserving Lum.
+    #     SetLum(C, l)  : translate C so its luminance equals l, then clip.
+    #     SetSat(C, s)  : remap C's component range to [0, s] preserving
+    #                     the relative ordering of R, G, B.
+    #
+    # Each blend mode is a one-line composition of those primitives:
+    #
+    #     Hue        = SetLum(SetSat(Cs, Sat(Cb)),  Lum(Cb))
+    #     Saturation = SetLum(SetSat(Cb, Sat(Cs)),  Lum(Cb))
+    #     Color      = SetLum(Cs,                   Lum(Cb))
+    #     Luminosity = SetLum(Cb,                   Lum(Cs))
+    #
+    # Implementation walks the canvas pixel-by-pixel. Lite-renderer
+    # canvases are small enough at typical DPIs that the per-pixel cost
+    # is dwarfed by the wider rasterisation pipeline; we prioritise
+    # spec-faithful arithmetic in [0, 1] space over throughput.
+
+    @staticmethod
+    def _hsl_lum(r: float, g: float, b: float) -> float:
+        return 0.30 * r + 0.59 * g + 0.11 * b
+
+    @staticmethod
+    def _hsl_sat(r: float, g: float, b: float) -> float:
+        return max(r, g, b) - min(r, g, b)
+
+    @staticmethod
+    def _hsl_clip_color(
+        r: float, g: float, b: float
+    ) -> tuple[float, float, float]:
+        """Push (R, G, B) back into [0, 1] while preserving luminance.
+
+        Mirrors the ``ClipColor`` pseudocode in §11.3.5.3."""
+        lum = PDFRenderer._hsl_lum(r, g, b)
+        cmin = min(r, g, b)
+        cmax = max(r, g, b)
+        if cmin < 0.0:
+            denom = lum - cmin
+            if denom != 0.0:
+                r = lum + (r - lum) * lum / denom
+                g = lum + (g - lum) * lum / denom
+                b = lum + (b - lum) * lum / denom
+            else:
+                r = g = b = lum
+        if cmax > 1.0:
+            denom = cmax - lum
+            if denom != 0.0:
+                r = lum + (r - lum) * (1.0 - lum) / denom
+                g = lum + (g - lum) * (1.0 - lum) / denom
+                b = lum + (b - lum) * (1.0 - lum) / denom
+            else:
+                r = g = b = lum
+        return r, g, b
+
+    @staticmethod
+    def _hsl_set_lum(
+        r: float, g: float, b: float, lum: float
+    ) -> tuple[float, float, float]:
+        """Return colour with luminance ``lum`` (clipped to [0, 1])."""
+        d = lum - PDFRenderer._hsl_lum(r, g, b)
+        return PDFRenderer._hsl_clip_color(r + d, g + d, b + d)
+
+    @staticmethod
+    def _hsl_set_sat(
+        r: float, g: float, b: float, sat: float
+    ) -> tuple[float, float, float]:
+        """Return colour with saturation ``sat`` preserving the relative
+        ordering of components — the §11.3.5.3 ``SetSat`` algorithm.
+
+        The spec sorts the components into (Cmin, Cmid, Cmax). The mid
+        component is rescaled into [0, sat] using its position between
+        Cmin and Cmax, the max becomes ``sat``, and the min becomes 0.
+        """
+        # Identify min / mid / max indices. With three components a small
+        # branching table is clearer (and faster) than an explicit sort.
+        components = [r, g, b]
+        cmax = max(components)
+        cmin = min(components)
+        if cmax == cmin:
+            return 0.0, 0.0, 0.0
+        # Locate indices for max and min; the remaining one is mid.
+        max_idx = components.index(cmax)
+        # ``index`` returns the first match; if max == mid that's still
+        # fine because the mid handling below scales using cmax-cmin and
+        # any component equal to cmax maps to ``sat`` anyway.
+        min_idx = next(
+            (i for i in range(3) if i != max_idx and components[i] == cmin),
+            None,
+        )
+        if min_idx is None:
+            # All three equal — already handled above, but guard anyway.
+            return 0.0, 0.0, 0.0
+        mid_idx = 3 - max_idx - min_idx
+        out = [0.0, 0.0, 0.0]
+        out[mid_idx] = (components[mid_idx] - cmin) * sat / (cmax - cmin)
+        out[max_idx] = sat
+        out[min_idx] = 0.0
+        return out[0], out[1], out[2]
+
+    @staticmethod
+    def _hsl_blend_pixels(
+        backdrop: Image.Image,
+        source: Image.Image,
+        compose: Any,
+    ) -> tuple[Image.Image, Image.Image, Image.Image]:
+        """Apply ``compose(cb, cs)`` per pixel and return three ``L``
+        channel images. ``backdrop`` and ``source`` are RGBA inputs of
+        identical size (callers ensure this); ``compose`` accepts and
+        returns RGB triples in [0, 1] space."""
+        w, h = backdrop.size
+        # Drop the alpha channel — alpha is reapplied by the caller via
+        # ``Image.composite(...)`` against the source alpha.
+        bd = backdrop.convert("RGB").load()
+        sd = source.convert("RGB").load()
+        out_r = Image.new("L", (w, h))
+        out_g = Image.new("L", (w, h))
+        out_b = Image.new("L", (w, h))
+        rd = out_r.load()
+        gd = out_g.load()
+        bd_out = out_b.load()
+        for y in range(h):
+            for x in range(w):
+                br, bg, bb = bd[x, y]
+                sr, sg, sb = sd[x, y]
+                cb = (br / 255.0, bg / 255.0, bb / 255.0)
+                cs = (sr / 255.0, sg / 255.0, sb / 255.0)
+                cr, cgc, cbc = compose(cb, cs)
+                cr = 0.0 if cr < 0.0 else 1.0 if cr > 1.0 else cr
+                cgc = 0.0 if cgc < 0.0 else 1.0 if cgc > 1.0 else cgc
+                cbc = 0.0 if cbc < 0.0 else 1.0 if cbc > 1.0 else cbc
+                rd[x, y] = int(round(cr * 255.0))
+                gd[x, y] = int(round(cgc * 255.0))
+                bd_out[x, y] = int(round(cbc * 255.0))
+        return out_r, out_g, out_b
+
+    @staticmethod
+    def _blend_hue(
+        br: Image.Image,
+        bg: Image.Image,
+        bb: Image.Image,
+        sr: Image.Image,
+        sg: Image.Image,
+        sb: Image.Image,
+    ) -> tuple[Image.Image, Image.Image, Image.Image]:
+        """Hue: keep backdrop's saturation and luminance, take source's hue.
+
+        Spec formula: ``B(Cb, Cs) = SetLum(SetSat(Cs, Sat(Cb)), Lum(Cb))``.
+        """
+        backdrop = Image.merge("RGB", (br, bg, bb))
+        source = Image.merge("RGB", (sr, sg, sb))
+
+        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+            r, g, b = PDFRenderer._hsl_set_sat(
+                cs[0], cs[1], cs[2], PDFRenderer._hsl_sat(*cb)
+            )
+            return PDFRenderer._hsl_set_lum(r, g, b, PDFRenderer._hsl_lum(*cb))
+
+        return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
+
+    @staticmethod
+    def _blend_saturation(
+        br: Image.Image,
+        bg: Image.Image,
+        bb: Image.Image,
+        sr: Image.Image,
+        sg: Image.Image,
+        sb: Image.Image,
+    ) -> tuple[Image.Image, Image.Image, Image.Image]:
+        """Saturation: keep backdrop's hue and luminance, take source's saturation.
+
+        Spec formula: ``B(Cb, Cs) = SetLum(SetSat(Cb, Sat(Cs)), Lum(Cb))``.
+        """
+        backdrop = Image.merge("RGB", (br, bg, bb))
+        source = Image.merge("RGB", (sr, sg, sb))
+
+        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+            r, g, b = PDFRenderer._hsl_set_sat(
+                cb[0], cb[1], cb[2], PDFRenderer._hsl_sat(*cs)
+            )
+            return PDFRenderer._hsl_set_lum(r, g, b, PDFRenderer._hsl_lum(*cb))
+
+        return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
+
+    @staticmethod
+    def _blend_color(
+        br: Image.Image,
+        bg: Image.Image,
+        bb: Image.Image,
+        sr: Image.Image,
+        sg: Image.Image,
+        sb: Image.Image,
+    ) -> tuple[Image.Image, Image.Image, Image.Image]:
+        """Color: keep backdrop's luminance, take source's hue+saturation.
+
+        Spec formula: ``B(Cb, Cs) = SetLum(Cs, Lum(Cb))``.
+        """
+        backdrop = Image.merge("RGB", (br, bg, bb))
+        source = Image.merge("RGB", (sr, sg, sb))
+
+        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+            return PDFRenderer._hsl_set_lum(
+                cs[0], cs[1], cs[2], PDFRenderer._hsl_lum(*cb)
+            )
+
+        return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
+
+    @staticmethod
+    def _blend_luminosity(
+        br: Image.Image,
+        bg: Image.Image,
+        bb: Image.Image,
+        sr: Image.Image,
+        sg: Image.Image,
+        sb: Image.Image,
+    ) -> tuple[Image.Image, Image.Image, Image.Image]:
+        """Luminosity: keep backdrop's hue+saturation, take source's luminance.
+
+        Spec formula: ``B(Cb, Cs) = SetLum(Cb, Lum(Cs))``.
+        """
+        backdrop = Image.merge("RGB", (br, bg, bb))
+        source = Image.merge("RGB", (sr, sg, sb))
+
+        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+            return PDFRenderer._hsl_set_lum(
+                cb[0], cb[1], cb[2], PDFRenderer._hsl_lum(*cs)
+            )
+
+        return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
 
     def _apply_smask(self, image: Image.Image, smask: Any) -> Image.Image:
         """Return ``image`` with the SMask Image XObject applied as alpha.

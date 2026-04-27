@@ -16,6 +16,7 @@ from .dublin_core_schema import DublinCoreSchema
 from .exif_schema import ExifSchema
 from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
+from .pdfua_identification_schema import PDFUAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
 from .tiff_schema import TiffSchema
 from .type import (
@@ -32,6 +33,7 @@ from .type import (
     DateType,
     DimensionsType,
     FontType,
+    GPSCoordinateType,
     GUIDType,
     IntegerType,
     LangAlt,
@@ -73,6 +75,7 @@ __all__ = [
     "DublinCoreSchema",
     "ExifSchema",
     "FontType",
+    "GPSCoordinateType",
     "GUIDType",
     "IntegerType",
     "JobType",
@@ -81,6 +84,7 @@ __all__ = [
     "MIMEType",
     "PDFAExtensionSchema",
     "PDFAIdentificationSchema",
+    "PDFUAIdentificationSchema",
     "PhotoshopSchema",
     "ProperNameType",
     "RationalType",

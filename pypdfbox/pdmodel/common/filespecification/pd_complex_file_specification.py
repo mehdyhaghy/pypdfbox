@@ -14,6 +14,7 @@ _UNIX: COSName = COSName.get_pdf_name("Unix")
 _V: COSName = COSName.get_pdf_name("V")
 _EF: COSName = COSName.get_pdf_name("EF")
 _DESC: COSName = COSName.get_pdf_name("Desc")
+_AF_RELATIONSHIP: COSName = COSName.get_pdf_name("AFRelationship")
 
 
 class PDComplexFileSpecification(PDFileSpecification):
@@ -150,6 +151,24 @@ class PDComplexFileSpecification(PDFileSpecification):
 
     def get_file_description(self) -> str | None:
         return self._fs.get_string(_DESC)
+
+    # ---------- /AFRelationship (PDF/A-3, ISO 19005-3 / ISO 32000-2 §14.13) ----------
+
+    def get_af_relationship(self) -> str | None:
+        """Return the value of the ``/AFRelationship`` name entry, or
+        ``None`` if absent. Per ISO 32000-2 §14.13 the standard values
+        are ``Source``, ``Data``, ``Alternative``, ``Supplement``,
+        ``EncryptedPayload``, ``FormData`` and ``Unspecified``.
+        Mirrors PDFBox ``getAFRelationship()``."""
+        return self._fs.get_name(_AF_RELATIONSHIP)
+
+    def set_af_relationship(self, relationship: str | None) -> None:
+        """Set the ``/AFRelationship`` name entry. Pass ``None`` to
+        remove. Mirrors PDFBox ``setAFRelationship(String)``."""
+        if relationship is None:
+            self._fs.remove_item(_AF_RELATIONSHIP)
+            return
+        self._fs.set_name(_AF_RELATIONSHIP, relationship)
 
 
 __all__ = ["PDComplexFileSpecification"]

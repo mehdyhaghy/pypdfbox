@@ -4,8 +4,11 @@ from typing import TYPE_CHECKING
 
 from .type import (
     AbstractSimpleProperty,
+    ArrayProperty,
+    Cardinality,
     DateType,
     IntegerType,
+    LayerType,
     ProperNameType,
     TextType,
     URIType,
@@ -58,10 +61,12 @@ class PhotoshopSchema(XMPSchema):
       * ``TransmissionReference`` (Text) — IPTC original transmission reference.
       * ``Urgency`` (Integer) — IPTC urgency, 1..8.
 
-    Deferred until the typed ``LayerType`` struct lands (see CHANGES note for
-    Wave 32): full ``TextLayers`` round-trip. Callers needing raw access
-    before the wrapper ships can use the generic
-    :meth:`XMPSchema.get_property` accessor.
+    ``TextLayers`` is wired to typed :class:`LayerType` instances stored
+    inside an :class:`ArrayProperty` (cardinality :attr:`Cardinality.Seq`).
+    Callers may use the convenience accessors :meth:`get_text_layers` /
+    :meth:`set_text_layers` / :meth:`add_text_layer` /
+    :meth:`remove_text_layer`, or reach the parametric upstream-test path
+    via :meth:`get_text_layers_property` / :meth:`set_text_layers_property`.
     """
 
     NAMESPACE = "http://ns.adobe.com/photoshop/1.0/"
@@ -523,3 +528,111 @@ class PhotoshopSchema(XMPSchema):
 
     def set_urgency_property(self, value: IntegerType | None) -> None:
         self._typed_set(self.URGENCY, value)
+
+    # --- TextLayers (Seq of LayerType) -------------------------------
+
+    def _ensure_text_layers_seq(self) -> ArrayProperty:
+        """
+        Return the existing :class:`ArrayProperty` Seq under
+        :attr:`TEXT_LAYERS`, allocating an empty one if absent or if the slot
+        holds a non-array value (defensive — the parser/raw setter could in
+        principle have written something else there).
+        """
+        existing = self._properties.get(self.TEXT_LAYERS)
+        if isinstance(existing, ArrayProperty):
+            return existing
+        seq = ArrayProperty(
+            self._metadata,
+            self._namespace,
+            self._prefix,
+            self.TEXT_LAYERS,
+            Cardinality.Seq,
+        )
+        self._properties[self.TEXT_LAYERS] = seq
+        return seq
+
+    def get_text_layers(self) -> list[LayerType] | None:
+        """
+        Mirror of upstream ``getTextLayers()``. Return a fresh list of
+        :class:`LayerType` children carried by the ``TextLayers`` Seq, or
+        ``None`` when the property is absent. Non-:class:`LayerType` children
+        (which upstream rejects via ``BadFieldValueException``) are skipped.
+        """
+        existing = self._properties.get(self.TEXT_LAYERS)
+        if existing is None:
+            return None
+        if not isinstance(existing, ArrayProperty):
+            return None
+        return [
+            child for child in existing.get_all_properties() if isinstance(child, LayerType)
+        ]
+
+    def set_text_layers(self, layers: list[LayerType] | None) -> None:
+        """
+        Mirror of upstream ``setTextLayers(List<LayerType>)``. Replace the
+        existing ``TextLayers`` Seq with a fresh container holding the given
+        :class:`LayerType` instances. Passing ``None`` removes the property.
+        """
+        if layers is None:
+            self.remove_property(self.TEXT_LAYERS)
+            return
+        seq = ArrayProperty(
+            self._metadata,
+            self._namespace,
+            self._prefix,
+            self.TEXT_LAYERS,
+            Cardinality.Seq,
+        )
+        for layer in layers:
+            seq.add_property(layer)
+        self._properties[self.TEXT_LAYERS] = seq
+
+    def add_text_layer(self, layer: LayerType) -> None:
+        """
+        Mirror of upstream ``addTextLayer(LayerType)``. Append a single
+        :class:`LayerType` to the ``TextLayers`` Seq, allocating the
+        container on first use.
+        """
+        self._ensure_text_layers_seq().add_property(layer)
+
+    def remove_text_layer(self, layer_name: str) -> None:
+        """
+        Convenience helper: remove the first :class:`LayerType` child whose
+        ``LayerName`` field matches ``layer_name``. No-op when no match is
+        found or when ``TextLayers`` is absent. Upstream has no exact
+        equivalent — :meth:`set_text_layers` is the only mutator — so this is
+        a small Pythonic addition kept consistent with the
+        :class:`XMPBasicJobTicketSchema` ``remove_job`` helper shape.
+        """
+        existing = self._properties.get(self.TEXT_LAYERS)
+        if not isinstance(existing, ArrayProperty):
+            return
+        for child in existing.get_all_properties():
+            if isinstance(child, LayerType) and child.get_layer_name() == layer_name:
+                existing.remove_property(child)
+                return
+
+    def get_text_layers_property(self) -> ArrayProperty | None:
+        """
+        Parametric (upstream-test) accessor: return the raw
+        :class:`ArrayProperty` Seq backing ``TextLayers``, or ``None`` when
+        the property is absent.
+        """
+        existing = self._properties.get(self.TEXT_LAYERS)
+        return existing if isinstance(existing, ArrayProperty) else None
+
+    def set_text_layers_property(self, value: ArrayProperty | None) -> None:
+        """
+        Parametric (upstream-test) setter: install the given
+        :class:`ArrayProperty` instance under :attr:`TEXT_LAYERS`. Mirrors
+        upstream ``addProperty(AbstractField)`` for an ``ArrayProperty``
+        carrying the ``TextLayers`` local-name. Passing ``None`` removes the
+        property.
+        """
+        if value is None:
+            self.remove_property(self.TEXT_LAYERS)
+            return
+        # Mirror upstream addProperty(AbstractField): keep the upstream local
+        # name on the field and store the array instance in the slot.
+        value.set_property_name(self.TEXT_LAYERS)
+        self._properties[self.TEXT_LAYERS] = value

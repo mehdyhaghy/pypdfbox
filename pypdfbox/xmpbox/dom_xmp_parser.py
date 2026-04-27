@@ -9,6 +9,7 @@ from .dublin_core_schema import DublinCoreSchema
 from .exif_schema import ExifSchema
 from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
+from .pdfua_identification_schema import PDFUAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
 from .tiff_schema import TiffSchema
 from .xmp_basic_schema import XMPBasicSchema
@@ -32,6 +33,7 @@ _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
     DublinCoreSchema.NAMESPACE: DublinCoreSchema,
     XMPBasicSchema.NAMESPACE: XMPBasicSchema,
     PDFAIdentificationSchema.NAMESPACE: PDFAIdentificationSchema,
+    PDFUAIdentificationSchema.NAMESPACE: PDFUAIdentificationSchema,
     PDFAExtensionSchema.NAMESPACE: PDFAExtensionSchema,
     XMPMediaManagementSchema.NAMESPACE: XMPMediaManagementSchema,
     XMPRightsManagementSchema.NAMESPACE: XMPRightsManagementSchema,

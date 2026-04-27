@@ -263,6 +263,36 @@ class XMPMetadata:
         self.add_schema(schema)
         return schema
 
+    # --- PDF/UA identification schema -------------------------------
+
+    def get_pdfua_identification_schema(self) -> XMPSchema | None:
+        """
+        Return the registered :class:`PDFUAIdentificationSchema` instance, or
+        ``None`` when the packet declares none. PDF/UA-1 (ISO 14289-1) is
+        identified by ``pdfuaid:part = 1``; this is a pypdfbox addition (no
+        upstream PDFBox class) and is read/identification only — validation is
+        deferred to external tools (veraPDF, PAC).
+        """
+        from .pdfua_identification_schema import PDFUAIdentificationSchema
+
+        return self.get_schema(PDFUAIdentificationSchema)
+
+    def add_pdfua_identification_schema(self) -> XMPSchema:
+        """
+        Install (or reuse) a :class:`PDFUAIdentificationSchema` and return it.
+        Idempotent — repeat calls return the existing schema rather than
+        stacking duplicates, matching the pattern used by the other
+        ``add_*`` accessors on :class:`XMPMetadata`.
+        """
+        from .pdfua_identification_schema import PDFUAIdentificationSchema
+
+        existing = self.get_schema(PDFUAIdentificationSchema)
+        if existing is not None:
+            return existing
+        schema = PDFUAIdentificationSchema(self)
+        self.add_schema(schema)
+        return schema
+
     # --- XMP Rights Management schema --------------------------------
 
     def get_xmp_rights_management_schema(self) -> XMPSchema | None:

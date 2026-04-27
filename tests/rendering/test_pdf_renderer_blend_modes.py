@@ -238,20 +238,72 @@ def test_blend_transparent_source_preserves_backdrop() -> None:
         assert _close(out.getpixel((0, 0)), (255, 0, 0)), mode.name
 
 
-def test_blend_non_separable_falls_back_to_normal() -> None:
-    """Hue / Saturation / Color / Luminosity are deferred — the helper
-    falls back to plain alpha-over with a debug log."""
-    src = _solid((0, 0, 255, 255))
+def test_blend_hue_red_backdrop_green_source() -> None:
+    """Hue: SetLum(SetSat(Cs, Sat(Cb)), Lum(Cb)).
+
+    With Cb=red=(1,0,0) and Cs=green=(0,1,0):
+       Sat(Cb)=1, Lum(Cb)=0.30, Lum(Cs)=0.59, Sat(Cs)=1.
+       SetSat((0,1,0), 1) = (0,1,0)  (already saturated).
+       SetLum((0,1,0), 0.30): d = 0.30 - 0.59 = -0.29 → (-0.29, 0.71, -0.29).
+       ClipColor with lum=0.30 → (0, 0.5085, 0) ≈ (0, 130, 0).
+    """
+    src = _solid((0, 255, 0, 255))
     bg = _solid((255, 0, 0, 255))
-    for mode in (
-        BlendMode.HUE,
-        BlendMode.SATURATION,
-        BlendMode.COLOR,
-        BlendMode.LUMINOSITY,
-    ):
-        out = PDFRenderer._blend(src, bg, mode)
-        # Equivalent to Normal — opaque source replaces backdrop.
-        assert _close(out.getpixel((0, 0)), (0, 0, 255)), mode.name
+    out = PDFRenderer._blend(src, bg, BlendMode.HUE)
+    assert _close(out.getpixel((0, 0)), (0, 130, 0), tol=2)
+
+
+def test_blend_saturation_red_backdrop_green_source_preserves_red() -> None:
+    """Saturation: SetLum(SetSat(Cb, Sat(Cs)), Lum(Cb)).
+
+    With Cb=red and Cs=green: Sat(Cs)=1 leaves Cb's already-saturated
+    profile intact, then SetLum to its own Lum(Cb)=0.30 is a no-op.
+    Backdrop is preserved as pure red.
+    """
+    src = _solid((0, 255, 0, 255))
+    bg = _solid((255, 0, 0, 255))
+    out = PDFRenderer._blend(src, bg, BlendMode.SATURATION)
+    assert _close(out.getpixel((0, 0)), (255, 0, 0), tol=2)
+
+
+def test_blend_color_red_backdrop_green_source() -> None:
+    """Color: SetLum(Cs, Lum(Cb)).
+
+    SetLum(green, 0.30) = (0, 0.5085, 0) after ClipColor — see Hue test.
+    """
+    src = _solid((0, 255, 0, 255))
+    bg = _solid((255, 0, 0, 255))
+    out = PDFRenderer._blend(src, bg, BlendMode.COLOR)
+    assert _close(out.getpixel((0, 0)), (0, 130, 0), tol=2)
+
+
+def test_blend_luminosity_red_backdrop_green_source() -> None:
+    """Luminosity: SetLum(Cb, Lum(Cs)).
+
+    With Cb=red and Cs=green: SetLum(red, 0.59):
+       d = 0.59 - 0.30 = 0.29 → (1.29, 0.29, 0.29).
+       ClipColor with lum=0.59, cmax=1.29 > 1, denom=0.70:
+         r = 0.59 + 0.70 * 0.41/0.70 = 1.0
+         g = 0.59 - 0.30 * 0.41/0.70 ≈ 0.4143
+         b = 0.4143
+       → ≈ (255, 106, 106).
+    """
+    src = _solid((0, 255, 0, 255))
+    bg = _solid((255, 0, 0, 255))
+    out = PDFRenderer._blend(src, bg, BlendMode.LUMINOSITY)
+    assert _close(out.getpixel((0, 0)), (255, 106, 106), tol=2)
+
+
+def test_blend_color_then_luminosity_round_trip_preserves_lum() -> None:
+    """Color sets Lum to backdrop's; querying Lum on the result must
+    equal Lum(Cb). Sanity check on the SetLum/ClipColor pair."""
+    src = _solid((0, 255, 0, 255))
+    bg = _solid((255, 0, 0, 255))
+    out = PDFRenderer._blend(src, bg, BlendMode.COLOR)
+    r, g, b = (c / 255.0 for c in out.getpixel((0, 0))[:3])
+    backdrop_lum = PDFRenderer._hsl_lum(1.0, 0.0, 0.0)
+    actual_lum = PDFRenderer._hsl_lum(r, g, b)
+    assert abs(actual_lum - backdrop_lum) < 0.01
 
 
 def test_blend_resizes_mismatched_source() -> None:

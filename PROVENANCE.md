@@ -834,3 +834,13 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/xmpbox/upstream/test_xmp_basic_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPBasicTest.java` |
 | `tests/xmpbox/upstream/test_dublin_core_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/DublinCoreTest.java` |
 | `tests/fontbox/afm/upstream/test_afm_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/AFMParserTest.java` |
+| `pypdfbox/pdmodel/pdfua_flavour.py` | 3.0.x | pypdfbox addition (no upstream Java class — modeled on veraPDF PDF/UA flavour metadata) |
+| `pypdfbox/tools/listbookmarks.py` | 3.0.x | `pdfbox-examples/src/main/java/org/apache/pdfbox/examples/pdmodel/PrintBookmarks.java` |
+| `pypdfbox/xmpbox/pdfua_identification_schema.py` | 3.0.x | pypdfbox addition (no upstream Java class — mirrors `PDFAIdentificationSchema` shape for PDF/UA `pdfuaid` namespace) |
+| `pypdfbox/xmpbox/type/gps_coordinate_type.py` | 3.0.x | pypdfbox addition (no upstream Java class — D,M,Sk / D,M.mmk EXIF GPS coordinate parser) |
+| `tests/pdmodel/test_pdfua_flavour.py` | 3.0.x | pypdfbox addition (covers `pdfua_flavour.py`) |
+| `tests/tools/test_listbookmarks.py` | 3.0.x | derived from `pdfbox-examples/.../PrintBookmarks.java` invocation patterns |
+| `tests/xmpbox/test_pdfua_identification_schema.py` | 3.0.x | pypdfbox addition (covers `pdfua_identification_schema.py`) |
+| `pypdfbox/fontbox/encoding/resources/glyphlist.txt` | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/glyphlist.txt` |
+| `pypdfbox/fontbox/encoding/resources/additional.txt` | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/additional.txt` |
+| `pypdfbox/fontbox/encoding/resources/zapfdingbats.txt` | 3.0.x | `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/zapfdingbats.txt` |

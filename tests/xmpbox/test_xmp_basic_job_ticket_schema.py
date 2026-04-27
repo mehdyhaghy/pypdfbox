@@ -5,6 +5,7 @@ from pypdfbox.xmpbox import (
     XMPBasicJobTicketSchema,
     XMPMetadata,
 )
+from pypdfbox.xmpbox.type.job_type import JobType as TypedJobType
 
 
 def _schema() -> XMPBasicJobTicketSchema:
@@ -155,3 +156,134 @@ def test_partial_jobtype_dict_skips_unset_fields() -> None:
     assert rebuilt.get_id() == "only-id"
     assert rebuilt.get_name() is None
     assert rebuilt.get_url() is None
+
+
+# --- Wave 33: typed structured-Job accessors (round-trip + interop) ----------
+
+
+def test_get_jobs_property_returns_none_when_unset() -> None:
+    schema = _schema()
+    assert schema.get_jobs_property() is None
+
+
+def test_set_and_get_jobs_property_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+
+    a = TypedJobType(metadata)
+    a.set_id("J1")
+    a.set_name("First")
+    a.set_url("https://example.com/1")
+
+    b = TypedJobType(metadata)
+    b.set_id("J2")
+    b.set_name("Second")
+    b.set_url("https://example.com/2")
+
+    schema.set_jobs_property([a, b])
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert len(typed) == 2
+    assert isinstance(typed[0], TypedJobType)
+    assert typed[0].get_id() == "J1"
+    assert typed[0].get_name() == "First"
+    assert typed[0].get_url() == "https://example.com/1"
+    assert typed[1].get_id() == "J2"
+    assert typed[1].get_name() == "Second"
+    assert typed[1].get_url() == "https://example.com/2"
+
+
+def test_set_jobs_property_replaces_existing_entries() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+    schema.add_job("legacy", "legacy-name", "https://example.com/legacy")
+
+    fresh = TypedJobType(metadata)
+    fresh.set_id("new")
+    fresh.set_name("new-name")
+    fresh.set_url("https://example.com/new")
+    schema.set_jobs_property([fresh])
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert len(typed) == 1
+    assert typed[0].get_id() == "new"
+
+
+def test_add_job_typed_appends_to_existing_bag() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+    schema.add_job("J1", "First", "https://example.com/1")
+
+    extra = TypedJobType(metadata)
+    extra.set_id("J2")
+    extra.set_name("Second")
+    extra.set_url("https://example.com/2")
+    schema.add_job_typed(extra)
+
+    # both flavours of accessor see the same two entries
+    assert schema.get_property(XMPBasicJobTicketSchema.JOB_REF) == [
+        {"id": "J1", "name": "First", "url": "https://example.com/1"},
+        {"id": "J2", "name": "Second", "url": "https://example.com/2"},
+    ]
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert [j.get_id() for j in typed] == ["J1", "J2"]
+
+    lite = schema.get_jobs()
+    assert lite is not None
+    assert [j.get_id() for j in lite] == ["J1", "J2"]
+
+
+def test_add_job_typed_registers_namespace() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+    job = TypedJobType(metadata)
+    job.set_id("J9")
+    schema.add_job_typed(job)
+
+    namespaces = schema.get_namespaces()
+    assert namespaces.get("stJob") == "http://ns.adobe.com/xap/1.0/sType/Job#"
+
+
+def test_typed_and_lite_accessors_share_storage() -> None:
+    """Lite ``add_job`` then read back via typed ``get_jobs_property`` (and v.v.)."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+    schema.add_job("L1", "lite", "https://example.com/L1")
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert typed[0].get_id() == "L1"
+    assert typed[0].get_name() == "lite"
+    assert typed[0].get_url() == "https://example.com/L1"
+
+    extra = TypedJobType(metadata)
+    extra.set_id("T2")
+    extra.set_name("typed")
+    extra.set_url("https://example.com/T2")
+    schema.add_job_typed(extra)
+
+    lite = schema.get_jobs()
+    assert lite is not None
+    assert [j.get_id() for j in lite] == ["L1", "T2"]
+
+
+def test_typed_partial_jobtype_skips_unset_fields() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+
+    partial = TypedJobType(metadata)
+    partial.set_id("only-id")
+    schema.add_job_typed(partial)
+
+    bag = schema.get_property(XMPBasicJobTicketSchema.JOB_REF)
+    assert bag == [{"id": "only-id"}]
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert typed[0].get_id() == "only-id"
+    assert typed[0].get_name() is None
+    assert typed[0].get_url() is None

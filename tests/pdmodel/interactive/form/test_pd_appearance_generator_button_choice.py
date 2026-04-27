@@ -180,15 +180,17 @@ def test_radio_button_set_value_regenerate_appearance() -> None:
 # ---------- push button (skipped) ----------
 
 
-def test_push_button_generate_skipped() -> None:
+def test_push_button_generate_emits_caption_stream() -> None:
     form = PDAcroForm()
     pb = PDPushButton(form)
     pb.get_cos_object().set_item(_RECT, _rect(0, 0, 100, 30))
 
     PDAppearanceGenerator().generate(pb)
     widget_cos = pb.get_widgets()[0].get_cos_object()
-    # Push button caption rendering is deferred — no /AP installed.
-    assert widget_cos.get_dictionary_object(_AP) is None
+    ap = widget_cos.get_dictionary_object(_AP)
+    assert isinstance(ap, COSDictionary)
+    n = ap.get_dictionary_object(_N)
+    assert isinstance(n, COSStream)
 
 
 # ---------- combo box ----------

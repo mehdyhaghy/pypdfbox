@@ -28,6 +28,7 @@ from .colorant_type import ColorantType
 from .date_type import DateType
 from .dimensions_type import DimensionsType
 from .font_type import FontType
+from .gps_coordinate_type import GPSCoordinateType
 from .guid_type import GUIDType
 from .integer_type import IntegerType
 from .job_type import JobType
@@ -58,6 +59,7 @@ __all__ = [
     "DateType",
     "DimensionsType",
     "FontType",
+    "GPSCoordinateType",
     "GUIDType",
     "IntegerType",
     "JobType",

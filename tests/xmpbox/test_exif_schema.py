@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from fractions import Fraction
+
+import pytest
+
 from pypdfbox.xmpbox import (
+    DateType,
     DomXmpParser,
     ExifSchema,
+    GPSCoordinateType,
+    IntegerType,
+    RationalType,
+    TextType,
     XMPMetadata,
 )
 
@@ -412,3 +421,298 @@ def test_dom_parser_dispatches_iso_speed_ratings_seq_onto_typed_schema() -> None
 def test_dom_parser_get_namespace_table_includes_exif() -> None:
     table = DomXmpParser().get_namespace_table()
     assert table.get("exif") == "http://ns.adobe.com/exif/1.0/"
+
+
+# --- Typed *_property accessors --------------------------------------
+
+
+def _meta() -> XMPMetadata:
+    return XMPMetadata.create_xmp_metadata()
+
+
+def test_text_typed_property_round_trip_with_caching() -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    prop = TextType(metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "0220")
+    schema.set_exif_version_property(prop)
+    # Typed setter caches the originating instance.
+    assert schema.get_exif_version_property() is prop
+    # String-form getter sees the same value.
+    assert schema.get_exif_version() == "0220"
+    # Setting None clears the property.
+    schema.set_exif_version_property(None)
+    assert schema.get_exif_version_property() is None
+    assert schema.get_exif_version() is None
+
+
+def test_text_typed_getter_fabricates_wrapper_from_raw_string() -> None:
+    schema = _exif()
+    schema.set_image_unique_id("9876ABCD")
+    typed = schema.get_image_unique_id_property()
+    assert isinstance(typed, TextType)
+    assert typed.get_string_value() == "9876ABCD"
+
+
+def test_integer_typed_property_round_trip() -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    prop = IntegerType(metadata, schema.get_namespace(), schema.get_prefix(), "tmp", 1)
+    schema.set_color_space_property(prop)
+    assert schema.get_color_space_property() is prop
+    assert schema.get_color_space() == 1
+    # Fabricates from raw int when only the simple-form setter was called.
+    schema.set_pixel_x_dimension(4032)
+    typed = schema.get_pixel_x_dimension_property()
+    assert isinstance(typed, IntegerType)
+    assert typed.get_value() == 4032
+
+
+def test_date_typed_property_round_trip() -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    prop = DateType(
+        metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "2026-04-27T12:00:00Z"
+    )
+    schema.set_date_time_original_property(prop)
+    assert schema.get_date_time_original_property() is prop
+    # Z is canonicalized to +00:00 on round-trip via datetime.isoformat()
+    assert schema.get_date_time_original() == "2026-04-27T12:00:00+00:00"
+
+
+def test_rational_property_string_round_trip() -> None:
+    schema = _exif()
+    schema.set_exposure_time("1/250")
+    assert schema.get_exposure_time() == "1/250"
+    assert schema.get_unqualified_text_property_value(ExifSchema.EXPOSURE_TIME) == "1/250"
+    schema.set_exposure_time(None)
+    assert schema.get_exposure_time() is None
+
+
+def test_rational_typed_property_round_trip_with_caching() -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    rt = RationalType(
+        metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "1/8"
+    )
+    schema.set_f_number_property(rt)
+    assert schema.get_f_number_property() is rt
+    assert schema.get_f_number() == "1/8"
+    typed = schema.get_f_number_property()
+    assert isinstance(typed, RationalType)
+    assert typed.as_fraction() == Fraction(1, 8)
+
+
+def test_rational_typed_getter_fabricates_wrapper_from_raw_string() -> None:
+    schema = _exif()
+    schema.set_focal_length("50/1")
+    typed = schema.get_focal_length_property()
+    assert isinstance(typed, RationalType)
+    assert typed.as_fraction() == Fraction(50, 1)
+
+
+@pytest.mark.parametrize(
+    ("getter", "setter"),
+    [
+        ("get_compressed_bits_per_pixel", "set_compressed_bits_per_pixel"),
+        ("get_exposure_time", "set_exposure_time"),
+        ("get_f_number", "set_f_number"),
+        ("get_shutter_speed_value", "set_shutter_speed_value"),
+        ("get_aperture_value", "set_aperture_value"),
+        ("get_brightness_value", "set_brightness_value"),
+        ("get_exposure_bias_value", "set_exposure_bias_value"),
+        ("get_max_aperture_value", "set_max_aperture_value"),
+        ("get_subject_distance", "set_subject_distance"),
+        ("get_flash_energy", "set_flash_energy"),
+        ("get_focal_length", "set_focal_length"),
+        ("get_focal_plane_x_resolution", "set_focal_plane_x_resolution"),
+        ("get_focal_plane_y_resolution", "set_focal_plane_y_resolution"),
+        ("get_exposure_index", "set_exposure_index"),
+        ("get_digital_zoom_ratio", "set_digital_zoom_ratio"),
+        ("get_gps_altitude", "set_gps_altitude"),
+        ("get_gps_dop", "set_gps_dop"),
+        ("get_gps_speed", "set_gps_speed"),
+        ("get_gps_track", "set_gps_track"),
+        ("get_gps_img_direction", "set_gps_img_direction"),
+        ("get_gps_dest_bearing", "set_gps_dest_bearing"),
+        ("get_gps_dest_distance", "set_gps_dest_distance"),
+    ],
+)
+def test_every_rational_string_accessor_round_trips(getter: str, setter: str) -> None:
+    schema = _exif()
+    assert getattr(schema, getter)() is None
+    getattr(schema, setter)("3/2")
+    assert getattr(schema, getter)() == "3/2"
+    getattr(schema, setter)(None)
+    assert getattr(schema, getter)() is None
+
+
+@pytest.mark.parametrize(
+    ("typed_getter", "typed_setter"),
+    [
+        ("get_compressed_bits_per_pixel_property", "set_compressed_bits_per_pixel_property"),
+        ("get_exposure_time_property", "set_exposure_time_property"),
+        ("get_f_number_property", "set_f_number_property"),
+        ("get_shutter_speed_value_property", "set_shutter_speed_value_property"),
+        ("get_aperture_value_property", "set_aperture_value_property"),
+        ("get_brightness_value_property", "set_brightness_value_property"),
+        ("get_exposure_bias_value_property", "set_exposure_bias_value_property"),
+        ("get_max_aperture_value_property", "set_max_aperture_value_property"),
+        ("get_subject_distance_property", "set_subject_distance_property"),
+        ("get_flash_energy_property", "set_flash_energy_property"),
+        ("get_focal_length_property", "set_focal_length_property"),
+        ("get_focal_plane_x_resolution_property", "set_focal_plane_x_resolution_property"),
+        ("get_focal_plane_y_resolution_property", "set_focal_plane_y_resolution_property"),
+        ("get_exposure_index_property", "set_exposure_index_property"),
+        ("get_digital_zoom_ratio_property", "set_digital_zoom_ratio_property"),
+        ("get_gps_altitude_property", "set_gps_altitude_property"),
+        ("get_gps_dop_property", "set_gps_dop_property"),
+        ("get_gps_speed_property", "set_gps_speed_property"),
+        ("get_gps_track_property", "set_gps_track_property"),
+        ("get_gps_img_direction_property", "set_gps_img_direction_property"),
+        ("get_gps_dest_bearing_property", "set_gps_dest_bearing_property"),
+        ("get_gps_dest_distance_property", "set_gps_dest_distance_property"),
+    ],
+)
+def test_every_rational_typed_accessor_round_trips(
+    typed_getter: str, typed_setter: str
+) -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    rt = RationalType(
+        metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "7/16"
+    )
+    getattr(schema, typed_setter)(rt)
+    assert getattr(schema, typed_getter)() is rt
+    getattr(schema, typed_setter)(None)
+    assert getattr(schema, typed_getter)() is None
+
+
+# --- GPSCoordinate -----------------------------------------------------
+
+
+def test_gps_coordinate_string_round_trip() -> None:
+    schema = _exif()
+    schema.set_gps_latitude("48,51,30N")
+    schema.set_gps_longitude("2,17,40E")
+    assert schema.get_gps_latitude() == "48,51,30N"
+    assert schema.get_gps_longitude() == "2,17,40E"
+    schema.set_gps_latitude(None)
+    assert schema.get_gps_latitude() is None
+
+
+def test_gps_coordinate_typed_property_round_trip_with_caching() -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    coord = GPSCoordinateType(
+        metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "48,51,30N"
+    )
+    schema.set_gps_latitude_property(coord)
+    # Cached identity preserved.
+    assert schema.get_gps_latitude_property() is coord
+    assert schema.get_gps_latitude() == "48,51,30N"
+    # Parse helper splits into (D, M, S, hemi).
+    parsed = coord.parse()
+    assert parsed == (48, 51.0, 30.0, "N")
+
+
+def test_gps_coordinate_typed_getter_fabricates_wrapper_from_raw_string() -> None:
+    schema = _exif()
+    schema.set_gps_dest_longitude("2,17.5W")
+    typed = schema.get_gps_dest_longitude_property()
+    assert isinstance(typed, GPSCoordinateType)
+    parsed = typed.parse()
+    assert parsed == (2, 17.5, 0.0, "W")
+
+
+def test_gps_coordinate_format_helpers() -> None:
+    assert GPSCoordinateType.format_dms(48, 51, 30, "N") == "48,51,30N"
+    assert GPSCoordinateType.format_dm(48, 51.5, "N") == "48,51.5N"
+    with pytest.raises(ValueError):
+        GPSCoordinateType.format_dms(0, 0, 0, "X")
+
+
+def test_gps_coordinate_parse_returns_none_for_garbage() -> None:
+    metadata = _meta()
+    coord = GPSCoordinateType(metadata, None, None, "tmp", "")
+    assert coord.parse() is None
+    coord = GPSCoordinateType(metadata, None, None, "tmp", "no-hemi")
+    assert coord.parse() is None
+    coord = GPSCoordinateType(metadata, None, None, "tmp", "48,51,xxN")
+    assert coord.parse() is None
+
+
+@pytest.mark.parametrize(
+    ("getter", "setter"),
+    [
+        ("get_gps_latitude", "set_gps_latitude"),
+        ("get_gps_longitude", "set_gps_longitude"),
+        ("get_gps_dest_latitude", "set_gps_dest_latitude"),
+        ("get_gps_dest_longitude", "set_gps_dest_longitude"),
+    ],
+)
+def test_every_gps_coordinate_string_accessor_round_trips(
+    getter: str, setter: str
+) -> None:
+    schema = _exif()
+    assert getattr(schema, getter)() is None
+    getattr(schema, setter)("0,0,0N")
+    assert getattr(schema, getter)() == "0,0,0N"
+    getattr(schema, setter)(None)
+    assert getattr(schema, getter)() is None
+
+
+@pytest.mark.parametrize(
+    ("typed_getter", "typed_setter"),
+    [
+        ("get_gps_latitude_property", "set_gps_latitude_property"),
+        ("get_gps_longitude_property", "set_gps_longitude_property"),
+        ("get_gps_dest_latitude_property", "set_gps_dest_latitude_property"),
+        ("get_gps_dest_longitude_property", "set_gps_dest_longitude_property"),
+    ],
+)
+def test_every_gps_coordinate_typed_accessor_round_trips(
+    typed_getter: str, typed_setter: str
+) -> None:
+    schema = _exif()
+    metadata = schema.get_metadata()
+    coord = GPSCoordinateType(
+        metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "1,2,3N"
+    )
+    getattr(schema, typed_setter)(coord)
+    assert getattr(schema, typed_getter)() is coord
+    getattr(schema, typed_setter)(None)
+    assert getattr(schema, typed_getter)() is None
+
+
+def test_dom_parser_dispatches_rational_attribute_form_onto_typed_schema() -> None:
+    packet = (
+        b"<?xpacket begin='\xef\xbb\xbf' id='W5M0MpCehiHzreSzNTczkc9d'?>"
+        b"<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+        b"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+        b"<rdf:Description rdf:about=''"
+        b" xmlns:exif='http://ns.adobe.com/exif/1.0/'"
+        b" exif:ExposureTime='1/250'"
+        b" exif:FNumber='28/10'"
+        b" exif:FocalLength='50/1'"
+        b" exif:GPSAltitude='100/1'"
+        b" exif:GPSLatitude='48,51,30N'"
+        b" exif:GPSLongitude='2,17,40E'/>"
+        b"</rdf:RDF></x:xmpmeta>"
+        b"<?xpacket end='w'?>"
+    )
+    metadata = DomXmpParser().parse(packet)
+    schema = metadata.get_schema(ExifSchema)
+    assert isinstance(schema, ExifSchema)
+    assert schema.get_exposure_time() == "1/250"
+    assert schema.get_f_number() == "28/10"
+    assert schema.get_focal_length() == "50/1"
+    assert schema.get_gps_altitude() == "100/1"
+    assert schema.get_gps_latitude() == "48,51,30N"
+    assert schema.get_gps_longitude() == "2,17,40E"
+    # Typed accessors fabricate wrappers from the parser's raw strings.
+    typed = schema.get_focal_length_property()
+    assert isinstance(typed, RationalType)
+    assert typed.as_fraction() == Fraction(50, 1)
+    coord = schema.get_gps_latitude_property()
+    assert isinstance(coord, GPSCoordinateType)
+    assert coord.parse() == (48, 51.0, 30.0, "N")

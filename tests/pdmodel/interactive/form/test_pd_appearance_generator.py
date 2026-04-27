@@ -132,8 +132,8 @@ def test_generate_sets_form_xobject_metadata() -> None:
     assert abs(floats[3] - 20.0) < 1e-6
 
 
-def test_generate_skips_signature_fields() -> None:
-    """Signature fields (``/Sig``) — visual signature appearance is deferred."""
+def test_generate_signature_field_unsigned_emits_empty_stream() -> None:
+    """Unsigned signature fields get an empty /AP/N stream (no /V)."""
     from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
         PDSignatureField,
     )
@@ -143,7 +143,10 @@ def test_generate_skips_signature_fields() -> None:
     sig.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
     PDAppearanceGenerator().generate(sig)
     widget_cos = sig.get_widgets()[0].get_cos_object()
-    assert widget_cos.get_dictionary_object(_AP) is None
+    ap = widget_cos.get_dictionary_object(_AP)
+    assert isinstance(ap, COSDictionary)
+    n = ap.get_dictionary_object(_N)
+    assert isinstance(n, COSStream)
 
 
 def test_generate_empty_value_emits_no_text_string_but_keeps_stream() -> None:

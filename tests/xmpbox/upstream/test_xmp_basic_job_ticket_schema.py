@@ -17,6 +17,7 @@ from pypdfbox.xmpbox import (
     XMPBasicJobTicketSchema,
     XMPMetadata,
 )
+from pypdfbox.xmpbox.type.job_type import JobType as TypedJobType
 
 
 def test_structured_type_namespace_and_prefix() -> None:
@@ -99,3 +100,57 @@ def test_get_jobs_returns_none_when_unset() -> None:
     # getJobs() returns null when JOB_REF property is absent
     schema = XMPBasicJobTicketSchema(XMPMetadata.create_xmp_metadata())
     assert schema.get_jobs() is None
+
+
+# --- typed structured-Job parity (Wave 33) -------------------------------
+#
+# Upstream's setJobsProperty(List<JobType>) / getJobsProperty() / addJob(JobType)
+# operate on the structured ``org.apache.xmpbox.type.JobType`` rather than the
+# lite dict-shape value object cluster #1 introduced. Wave 33 adds parallel
+# accessors that take/return the Wave-32 structured ``JobType`` while leaving
+# the existing lite accessors alone for back-compat.
+
+
+def test_set_jobs_property_typed_overload() -> None:
+    # public void setJobsProperty(List<JobType> jobs)
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+    job = TypedJobType(metadata)
+    job.set_id("J1")
+    job.set_name("First")
+    job.set_url("https://example.com/1")
+    schema.set_jobs_property([job])
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert len(typed) == 1
+    assert isinstance(typed[0], TypedJobType)
+    assert typed[0].get_id() == "J1"
+    assert typed[0].get_name() == "First"
+    assert typed[0].get_url() == "https://example.com/1"
+
+
+def test_get_jobs_property_returns_none_when_unset() -> None:
+    # getJobsProperty() mirrors getJobs() — returns null/None when absent
+    schema = XMPBasicJobTicketSchema(XMPMetadata.create_xmp_metadata())
+    assert schema.get_jobs_property() is None
+
+
+def test_add_job_typed_overload_with_structured_jobtype() -> None:
+    # public void addJob(JobType job) — structured-type variant
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicJobTicketSchema(metadata)
+    job = TypedJobType(metadata)
+    job.set_id("J1")
+    job.set_name("First")
+    job.set_url("https://example.com/1")
+    schema.add_job_typed(job)
+
+    typed = schema.get_jobs_property()
+    assert typed is not None
+    assert typed[0].get_id() == "J1"
+
+    # lite accessors still see the same entry (storage is shared)
+    lite = schema.get_jobs()
+    assert lite is not None
+    assert lite[0].get_id() == "J1"

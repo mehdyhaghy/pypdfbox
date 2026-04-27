@@ -4541,6 +4541,11 @@ class GlyphList:
         return cls.DEFAULT
 
     @classmethod
+    def get_default_glyph_list(cls) -> "GlyphList":
+        """Alias for :meth:`get_adobe_glyph_list` — the AGL singleton."""
+        return cls.DEFAULT
+
+    @classmethod
     def get_zapf_dingbats(cls) -> "GlyphList":
         return cls.ZAPF_DINGBATS
 
@@ -4578,6 +4583,23 @@ class GlyphList:
         """
         return self.to_unicode(name)
 
+    def unicode_for_name(self, name: Optional[str]) -> Optional[str]:
+        """Alias for :meth:`to_unicode` — glyph name to Unicode string."""
+        return self.to_unicode(name)
+
+    def code_point_for_glyph_name(self, name: Optional[str]) -> Optional[int]:
+        """Return the single Unicode code point for glyph ``name``, or
+        ``None`` if the name is unknown or maps to a multi-code-point sequence.
+
+        Convenience wrapper around :meth:`to_unicode` that returns an ``int``
+        instead of a one-character string. Multi-code-point glyphs (ligatures)
+        return ``None`` since they don't fit a single code point.
+        """
+        unicode = self.to_unicode(name)
+        if unicode is None or len(unicode) != 1:
+            return None
+        return ord(unicode)
+
     def code_point_to_name(self, code_point: int) -> Optional[str]:
         """Return the first glyph name that maps to the single ``code_point``.
 
@@ -4596,6 +4618,39 @@ class GlyphList:
     def code_point_to_string(self, code_point: int) -> Optional[str]:
         """Alias for :meth:`code_point_to_name`."""
         return self.code_point_to_name(code_point)
+
+    def code_point_to_name_or_notdef(self, code_point: int) -> str:
+        """Upstream-parity reverse lookup for a single Unicode code point.
+
+        Mirrors upstream ``GlyphList.codePointToName(int)`` exactly: returns
+        the PostScript glyph name for ``code_point``, or the literal
+        ``".notdef"`` when no name is mapped. Use :meth:`code_point_to_name`
+        for the Pythonic ``None``-on-miss variant.
+        """
+        name = self.code_point_to_name(code_point)
+        return name if name is not None else ".notdef"
+
+    def get_name(self, code_point: int) -> Optional[str]:
+        """Reverse mapping: Unicode code point (``int``) -> glyph name.
+
+        Equivalent to :meth:`code_point_to_name`. Returns ``None`` when the
+        code point isn't present in the glyph list. For upstream-parity
+        ``.notdef`` semantics use :meth:`code_point_to_name_or_notdef`.
+        """
+        return self.code_point_to_name(code_point)
+
+    def sequence_to_name(self, unicode_sequence: Optional[str]) -> str:
+        """Reverse mapping: full Unicode character sequence -> glyph name.
+
+        Mirrors upstream ``GlyphList.sequenceToName(String)``. Returns
+        ``".notdef"`` when no glyph name is mapped to the given sequence.
+        Multi-code-point sequences are matched against ligature entries
+        (e.g. ``"ﬁ"`` -> ``"fi"``).
+        """
+        if unicode_sequence is None:
+            return ".notdef"
+        name = self._reverse_map().get(unicode_sequence)
+        return name if name is not None else ".notdef"
 
     @staticmethod
     def is_unicode_lookup(name: Optional[str]) -> bool:

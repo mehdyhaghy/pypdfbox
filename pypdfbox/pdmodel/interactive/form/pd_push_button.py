@@ -62,5 +62,18 @@ class PDPushButton(PDButton):
     def get_on_values(self) -> set[str]:
         return set()
 
+    # ---------- appearance regeneration ----------
+
+    def regenerate_appearance(self) -> None:
+        """Rebuild each widget's ``/AP /N`` from its ``/MK`` caption /
+        background / border. Push buttons hold no value, so unlike
+        :meth:`PDTextField.set_value` and :meth:`PDCheckBox.set_value`
+        there's no value-mutation path that doubles as a regenerate
+        trigger — callers who change the widget's ``/MK`` must invoke
+        this explicitly."""
+        from .pd_appearance_generator import PDAppearanceGenerator
+
+        PDAppearanceGenerator().generate(self)
+
 
 __all__ = ["PDPushButton"]

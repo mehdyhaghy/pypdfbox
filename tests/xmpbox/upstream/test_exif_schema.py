@@ -11,9 +11,12 @@ Rather than leave the upstream slot empty, this file mirrors the
 upstream ``@PropertyType`` declarations from the ExifSchema source and
 exercises the ``testInitializedToNull`` / ``testSettingValue`` contracts
 that ``SchemaTester`` would have applied if Apache had wired one up.
-Typed-struct properties (CFAPattern, OECF, DeviceSettings, Flash,
-GPSCoordinate, Rational) are skipped — see ExifSchema docstring for the
-deferral list.
+
+Wave 33 un-skips the Rational and GPSCoordinate property declarations
+(see ``_RATIONAL_PARAMETERS`` / ``_GPS_COORDINATE_PARAMETERS`` below).
+The remaining typed-struct deferrals are CFAPattern, OECF (and its
+SpatialFrequencyResponse alias), Flash, and DeviceSettings — those land
+when the matching structured-type wrappers do.
 """
 
 from __future__ import annotations
@@ -79,16 +82,44 @@ _PARAMETERS: tuple[tuple[str, str, str], ...] = (
     ("SubjectLocation", "Integer", "Seq"),
 )
 
-# Skipped (typed-struct fields — see ExifSchema docstring deferral list):
-#   CompressedBitsPerPixel / ExposureTime / FNumber / ShutterSpeedValue /
-#   ApertureValue / BrightnessValue / ExposureBiasValue / MaxApertureValue /
-#   SubjectDistance / FlashEnergy / FocalLength / FocalPlaneXResolution /
-#   FocalPlaneYResolution / ExposureIndex / DigitalZoomRatio / GPSAltitude /
-#   GPSDOP / GPSSpeed / GPSTrack / GPSImgDirection / GPSDestBearing /
-#   GPSDestDistance (Rational), GPSLatitude / GPSLongitude /
-#   GPSDestLatitude / GPSDestLongitude (GPSCoordinate), OECF /
-#   SpatialFrequencyResponse (OECF), CFAPattern / CFAPatternType
-#   (CFAPattern), Flash (Flash), DeviceSettingDescription (DeviceSettings).
+# Wave-33 additions — Rational (``"<num>/<den>"`` wire form).
+_RATIONAL_PARAMETERS: tuple[tuple[str, str, str], ...] = (
+    ("CompressedBitsPerPixel", "Rational", "Simple"),
+    ("ExposureTime", "Rational", "Simple"),
+    ("FNumber", "Rational", "Simple"),
+    ("ShutterSpeedValue", "Rational", "Simple"),
+    ("ApertureValue", "Rational", "Simple"),
+    ("BrightnessValue", "Rational", "Simple"),
+    ("ExposureBiasValue", "Rational", "Simple"),
+    ("MaxApertureValue", "Rational", "Simple"),
+    ("SubjectDistance", "Rational", "Simple"),
+    ("FlashEnergy", "Rational", "Simple"),
+    ("FocalLength", "Rational", "Simple"),
+    ("FocalPlaneXResolution", "Rational", "Simple"),
+    ("FocalPlaneYResolution", "Rational", "Simple"),
+    ("ExposureIndex", "Rational", "Simple"),
+    ("DigitalZoomRatio", "Rational", "Simple"),
+    ("GPSAltitude", "Rational", "Simple"),
+    ("GPSDOP", "Rational", "Simple"),
+    ("GPSSpeed", "Rational", "Simple"),
+    ("GPSTrack", "Rational", "Simple"),
+    ("GPSImgDirection", "Rational", "Simple"),
+    ("GPSDestBearing", "Rational", "Simple"),
+    ("GPSDestDistance", "Rational", "Simple"),
+)
+
+# Wave-33 additions — GPSCoordinate (pypdfbox addition; see ExifSchema docstring).
+_GPS_COORDINATE_PARAMETERS: tuple[tuple[str, str, str], ...] = (
+    ("GPSLatitude", "GPSCoordinate", "Simple"),
+    ("GPSLongitude", "GPSCoordinate", "Simple"),
+    ("GPSDestLatitude", "GPSCoordinate", "Simple"),
+    ("GPSDestLongitude", "GPSCoordinate", "Simple"),
+)
+
+# Still skipped — pending typed-struct ports (see ExifSchema docstring):
+#   OECF / SpatialFrequencyResponse (OECF struct), CFAPattern /
+#   CFAPatternType (CFAPattern struct), Flash (Flash struct),
+#   DeviceSettingDescription (DeviceSettings struct).
 
 
 # Map upstream constant name → (getter, setter or adder).

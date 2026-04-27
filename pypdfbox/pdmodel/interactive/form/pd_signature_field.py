@@ -51,7 +51,11 @@ class PDSignatureField(PDTerminalField):
     def get_value(self) -> PDSignature | None:
         return self.get_signature()
 
-    def set_value(self, value: PDSignature | COSDictionary | None) -> None:
+    def set_value(
+        self,
+        value: PDSignature | COSDictionary | None,
+        regenerate_appearance: bool = False,
+    ) -> None:
         if value is None:
             self._field.remove_item(_V)
         else:
@@ -59,6 +63,23 @@ class PDSignatureField(PDTerminalField):
                 _V,
                 value.get_cos_object() if hasattr(value, "get_cos_object") else value,
             )
+        if regenerate_appearance:
+            from .pd_appearance_generator import PDAppearanceGenerator
+
+            PDAppearanceGenerator().generate(self)
+
+    # ---------- appearance regeneration ----------
+
+    def regenerate_appearance(self) -> None:
+        """Rebuild each widget's ``/AP /N`` from the field's signature
+        ``/V``. Convenience wrapper around the appearance generator —
+        callers that mutate the underlying ``PDSignature`` after
+        :meth:`set_value` can invoke this to refresh the widget visual
+        without rewriting ``/V``.
+        """
+        from .pd_appearance_generator import PDAppearanceGenerator
+
+        PDAppearanceGenerator().generate(self)
 
     def get_value_as_string(self) -> str:
         """Upstream PDFBox returns ``""`` — the signature dictionary has no

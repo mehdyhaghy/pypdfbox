@@ -25,9 +25,12 @@ validation. Those are tracked in ``CHANGES.md``.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import struct
 from typing import TYPE_CHECKING
+
+_LOG = logging.getLogger(__name__)
 
 from cryptography.hazmat.primitives import padding as _aes_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -520,6 +523,17 @@ class StandardSecurityHandler(SecurityHandler):
             if key is None:
                 raise PDInvalidPasswordException()
             self.set_encryption_key(key)
+            # Algorithm 13 — verify /Perms. Upstream merely warns on mismatch
+            # since some encoders mis-emit the field; we do the same so we
+            # stay tolerant of buggy producers (PDFBox parity).
+            if perms is not None and len(perms) == 16:
+                if not self._validate_perms_r5_r6(
+                    key, perms, self._permissions, self._encrypt_metadata
+                ):
+                    _LOG.warning(
+                        "Verification of /Perms failed — using /P from "
+                        "the encryption dictionary"
+                    )
             return
 
         # Revisions 2-4: try owner password first, then user password.
@@ -947,16 +961,33 @@ class StandardSecurityHandler(SecurityHandler):
         """PDF 32000-2 §7.6.4.3.4 algorithm 2.B — hardened hash for r6.
 
         For r5 the result is plain SHA-256 of ``input_data``; for r6 the
-        64-iteration AES + SHA-2 round is applied.
+        64-iteration AES + SHA-2 round is applied. ``user_key`` is included
+        in the per-round block only when it is at least 48 bytes (mirroring
+        ``StandardSecurityHandler.computeHash2B`` upstream — the U entry's
+        first 48 bytes during owner-password validation).
+
+        The mod-3 selection of SHA-256/-384/-512 follows ISO 32000-2 §7.6.4.3.4
+        algorithm 2.B step (e): "Treat the first 16 bytes [of ``e``] as an
+        unsigned big-endian integer and take it mod 3". Summing the bytes —
+        which is what we do here — is *not* the same as a big-endian integer
+        mod 3 in general, but because ``256 ≡ 1 (mod 3)`` every byte
+        contributes ``1`` per place value and the byte-sum mod 3 equals the
+        big-endian-integer mod 3 by Fermat's little theorem on the radix.
+        Keep the comment so the equivalence isn't re-derived on every read.
         """
         k = hashlib.sha256(input_data).digest()
         if revision == 5:
             return k
 
+        # Only include user_key in the per-round block when it's at least 48
+        # bytes, matching PDFBox's ``computeHash2B`` exactly.
+        include_user_key = user_key is not None and len(user_key) >= 48
+        uk = user_key[:48] if include_user_key else b""
+
         round_no = 0
         last_byte = 0
         while round_no < 64 or last_byte > round_no - 32:
-            k1 = (password + k + user_key) * 64
+            k1 = (password + k + uk) * 64
             aes_key = k[:16]
             iv = k[16:32]
             cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv))
@@ -974,6 +1005,53 @@ class StandardSecurityHandler(SecurityHandler):
             round_no += 1
 
         return k[:32]
+
+    @classmethod
+    def _decrypt_perms_r5_r6(cls, file_key: bytes, perms: bytes) -> bytes:
+        """Decrypt the 16-byte ``/Perms`` block with AES-256 ECB (no padding).
+
+        ISO 32000-2 §7.6.4.4.11 (algorithm 13). Returns the 16-byte
+        plaintext, or ``b""`` when the input is malformed.
+        """
+        if file_key is None or len(file_key) != 32 or len(perms) != 16:
+            return b""
+        cipher = Cipher(algorithms.AES(file_key), modes.ECB())
+        dec = cipher.decryptor()
+        return dec.update(perms) + dec.finalize()
+
+    @classmethod
+    def _validate_perms_r5_r6(
+        cls,
+        file_key: bytes,
+        perms: bytes,
+        dic_permissions: int,
+        encrypt_metadata: bool,
+    ) -> bool:
+        """Algorithm 13 — verify the ``/Perms`` field after key recovery.
+
+        Mirrors PDFBox's ``validatePerms`` (the read-side check). Returns
+        ``True`` when bytes 9-11 are ``adb`` AND the little-endian permission
+        integer in bytes 0-3 matches ``dic_permissions``. Caller decides what
+        to do with a ``False`` — PDFBox merely logs and continues, since some
+        encoders mis-emit the field.
+        """
+        plain = cls._decrypt_perms_r5_r6(file_key, perms)
+        if len(plain) != 16:
+            return False
+        if plain[9] != ord("a") or plain[10] != ord("d") or plain[11] != ord("b"):
+            return False
+        perms_p = (
+            plain[0]
+            | (plain[1] << 8)
+            | (plain[2] << 16)
+            | (plain[3] << 24)
+        )
+        if perms_p & 0x80000000:
+            perms_p -= 0x100000000
+        if perms_p != _signed32(dic_permissions):
+            return False
+        expected = ord("T") if encrypt_metadata else ord("F")
+        return plain[8] == expected
 
     def _build_r6_dictionary(
         self, owner_pw: bytes, user_pw: bytes, permissions: int

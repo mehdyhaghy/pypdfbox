@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pypdfbox.xmpbox import (
+    ArrayProperty,
+    Cardinality,
     DateType,
     DomXmpParser,
     IntegerType,
+    LayerType,
     PhotoshopSchema,
     ProperNameType,
     TextType,
@@ -404,14 +407,116 @@ def test_typed_round_trip_for_all_simple_text_accessors() -> None:
         assert getattr(schema, getter)() is field
 
 
-def test_text_layers_layer_type_migration_deferred() -> None:
-    """
-    LayerType structured-type wrapper has not landed; ``TextLayers`` typed
-    accessors stay deferred. Pinned here so future waves notice the gap.
-    """
+def _make_layer(metadata: XMPMetadata, name: str, text: str) -> LayerType:
+    layer = LayerType(metadata)
+    layer.set_layer_name(name)
+    layer.set_layer_text(text)
+    return layer
+
+
+def test_text_layers_default_returns_none() -> None:
     schema = PhotoshopSchema(XMPMetadata.create_xmp_metadata())
-    # No typed accessor exists yet — generic get_property remains the only way
-    # to introspect the slot.
+    assert schema.get_text_layers() is None
+    assert schema.get_text_layers_property() is None
+
+
+def test_text_layers_typed_round_trip_set_get() -> None:
+    """Round-trip a list of two LayerType instances through set/get_text_layers."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    layers_in = [
+        _make_layer(metadata, "Background", "Hello"),
+        _make_layer(metadata, "Foreground", "World"),
+    ]
+    schema.set_text_layers(layers_in)
+    layers_out = schema.get_text_layers()
+    assert layers_out is not None
+    assert len(layers_out) == 2
+    # Each layer round-trips its LayerName + LayerText.
+    assert layers_out[0].get_layer_name() == "Background"
+    assert layers_out[0].get_layer_text() == "Hello"
+    assert layers_out[1].get_layer_name() == "Foreground"
+    assert layers_out[1].get_layer_text() == "World"
+
+
+def test_text_layers_set_none_clears_property() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    schema.set_text_layers([_make_layer(metadata, "L", "T")])
+    schema.set_text_layers(None)
+    assert schema.get_text_layers() is None
+    assert schema.get_text_layers_property() is None
     assert schema.get_property(PhotoshopSchema.TEXT_LAYERS) is None
-    assert not hasattr(schema, "set_text_layers")
-    assert not hasattr(schema, "get_text_layers")
+
+
+def test_add_text_layer_appends_to_seq() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    schema.add_text_layer(_make_layer(metadata, "first", "alpha"))
+    schema.add_text_layer(_make_layer(metadata, "second", "beta"))
+    layers = schema.get_text_layers()
+    assert layers is not None
+    assert [layer.get_layer_name() for layer in layers] == ["first", "second"]
+    assert [layer.get_layer_text() for layer in layers] == ["alpha", "beta"]
+
+
+def test_remove_text_layer_drops_matching_layer_name() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    schema.set_text_layers([
+        _make_layer(metadata, "keep", "a"),
+        _make_layer(metadata, "drop", "b"),
+        _make_layer(metadata, "also-keep", "c"),
+    ])
+    schema.remove_text_layer("drop")
+    layers = schema.get_text_layers()
+    assert layers is not None
+    assert [layer.get_layer_name() for layer in layers] == ["keep", "also-keep"]
+
+
+def test_remove_text_layer_no_match_is_noop() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    schema.set_text_layers([_make_layer(metadata, "only", "x")])
+    schema.remove_text_layer("missing")
+    layers = schema.get_text_layers()
+    assert layers is not None
+    assert len(layers) == 1
+    assert layers[0].get_layer_name() == "only"
+
+
+def test_remove_text_layer_when_property_absent_is_noop() -> None:
+    schema = PhotoshopSchema(XMPMetadata.create_xmp_metadata())
+    schema.remove_text_layer("anything")
+    assert schema.get_text_layers() is None
+
+
+def test_text_layers_property_round_trip_via_array_property() -> None:
+    """Parametric upstream-test path: set/get the raw ArrayProperty Seq."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    seq = ArrayProperty(
+        metadata,
+        PhotoshopSchema.NAMESPACE,
+        "photoshop",
+        PhotoshopSchema.TEXT_LAYERS,
+        Cardinality.Seq,
+    )
+    seq.add_property(_make_layer(metadata, "L1", "T1"))
+    schema.set_text_layers_property(seq)
+    assert schema.get_text_layers_property() is seq
+    # Stored under the upstream local-name with the typed-list view available.
+    assert schema.get_property(PhotoshopSchema.TEXT_LAYERS) is seq
+    layers = schema.get_text_layers()
+    assert layers is not None
+    assert len(layers) == 1
+    assert layers[0].get_layer_name() == "L1"
+
+
+def test_text_layers_property_setter_with_none_clears_property() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    schema.add_text_layer(_make_layer(metadata, "x", "y"))
+    schema.set_text_layers_property(None)
+    assert schema.get_text_layers_property() is None
+    assert schema.get_text_layers() is None

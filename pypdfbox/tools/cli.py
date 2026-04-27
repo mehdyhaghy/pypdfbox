@@ -19,6 +19,7 @@ from . import (
     extracttext,
     imagetopdf,
     info,
+    listbookmarks,
     merge,
     pdfdebugger,
     split,
@@ -38,6 +39,7 @@ _SUBCOMMANDS = (
     extracttext,
     imagetopdf,
     texttopdf,
+    listbookmarks,
     pdfdebugger,
     writedecodedstream,
 )
