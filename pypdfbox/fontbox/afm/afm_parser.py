@@ -36,6 +36,7 @@ class AFMParser:
     COMMENT = "Comment"
     START_FONT_METRICS = "StartFontMetrics"
     END_FONT_METRICS = "EndFontMetrics"
+    METRIC_SETS = "MetricSets"
     FONT_NAME = "FontName"
     FULL_NAME = "FullName"
     FAMILY_NAME = "FamilyName"
@@ -137,7 +138,9 @@ class AFMParser:
             next_command = self._read_string()
             if next_command == self.END_FONT_METRICS:
                 break
-            if next_command == self.FONT_NAME:
+            if next_command == self.METRIC_SETS:
+                font_metrics.set_metric_sets(self._read_int())
+            elif next_command == self.FONT_NAME:
                 font_metrics.set_font_name(self._read_line())
             elif next_command == self.FULL_NAME:
                 font_metrics.set_full_name(self._read_line())
@@ -330,6 +333,9 @@ class AFMParser:
             if next_command == self.START_TRACK_KERN:
                 count = self._read_int()
                 for _ in range(count):
+                    # Per AFM spec 5004 §9, each track-kern entry is
+                    # introduced by a literal ``TrackKern`` keyword.
+                    self._read_command("TrackKern")
                     font_metrics.add_track_kern(
                         TrackKern(
                             self._read_int(),

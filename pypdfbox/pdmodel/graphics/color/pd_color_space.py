@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 from pypdfbox.cos import COSArray, COSBase
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
     from .pd_color import PDColor
 
 
@@ -27,8 +29,36 @@ class PDColorSpace(ABC):
         self._array = array
 
     @staticmethod
-    def create(base: COSBase | None) -> PDColorSpace | None:
+    def create(
+        base: COSBase | None,
+        resources: PDResources | None = None,
+    ) -> PDColorSpace | None:
+        """Build a typed ``PDColorSpace`` from its COS form.
+
+        Mirrors upstream ``PDColorSpace.create(COSBase, PDResources)``:
+
+        - ``None`` → ``None``.
+        - ``COSObject`` is unwrapped to its referenced object first.
+        - ``COSName`` for a *device* color space (long form
+          ``DeviceGray``/``DeviceRGB``/``DeviceCMYK`` or the inline-image
+          short form ``G``/``RGB``/``CMYK``) → device singleton.
+        - ``COSName == "Pattern"`` → colored Pattern color space.
+        - any other ``COSName``: looked up in
+          ``resources.get_color_space(name)`` when ``resources`` is
+          supplied; ``None`` otherwise. This is the standard way named
+          color spaces flow from a page's ``/Resources/ColorSpace``
+          entry to a typed object.
+        - ``COSArray`` whose first element is a known color-space name
+          (``Indexed``/``I``, ``Separation``, ``DeviceN``, ``ICCBased``,
+          ``CalGray``, ``CalRGB``, ``Lab``, ``Pattern``) → the matching
+          array-form color space.
+
+        ``resources`` is keyword-only-ish (positional for upstream
+        parity); pass ``None`` for the common case where the dispatch is
+        purely structural and no name resolution is needed.
+        """
         from pypdfbox.cos import COSName
+        from pypdfbox.cos.cos_object import COSObject
 
         from .pd_cal_gray import PDCalGray
         from .pd_cal_rgb import PDCalRGB
@@ -44,38 +74,63 @@ class PDColorSpace(ABC):
 
         if base is None:
             return None
-        name: str | None = None
-        array: COSArray | None = None
+
+        # Unwrap indirect references — upstream calls
+        # ``COSObject.getObject()`` before the type dispatch.
+        if isinstance(base, COSObject):
+            base = base.get_object()
+            if base is None:
+                return None
+
         if isinstance(base, COSName):
-            name = base.get_name()
-        elif isinstance(base, COSArray) and base.size() > 0:
+            cs_name = base.get_name()
+            if cs_name in ("DeviceGray", "G"):
+                return PDDeviceGray.INSTANCE
+            if cs_name in ("DeviceRGB", "RGB"):
+                return PDDeviceRGB.INSTANCE
+            if cs_name in ("DeviceCMYK", "CMYK"):
+                return PDDeviceCMYK.INSTANCE
+            if cs_name == "Pattern":
+                return PDPattern(resources=resources)
+            # Any other name must be resolved through the page's
+            # /Resources/ColorSpace dictionary.
+            if resources is not None:
+                return resources.get_color_space(base)
+            return None
+
+        if isinstance(base, COSArray) and base.size() > 0:
             head = base.get_object(0)
-            if isinstance(head, COSName):
-                name = head.get_name()
-                array = base
-        if name in ("DeviceGray", "G"):
-            return PDDeviceGray.INSTANCE
-        if name in ("DeviceRGB", "RGB"):
-            return PDDeviceRGB.INSTANCE
-        if name in ("DeviceCMYK", "CMYK"):
-            return PDDeviceCMYK.INSTANCE
-        if name == "Pattern":
-            return PDPattern()
-        if array is not None:
-            if name in ("Indexed", "I"):
-                return PDIndexed(array)
-            if name == "Separation":
-                return PDSeparation(array)
-            if name == "DeviceN":
-                return PDDeviceN(array)
-            if name == "ICCBased":
-                return PDICCBased(array)
-            if name == "CalGray":
-                return PDCalGray(array)
-            if name == "CalRGB":
-                return PDCalRGB(array)
-            if name == "Lab":
-                return PDLab(array)
+            if not isinstance(head, COSName):
+                return None
+            arr_name = head.get_name()
+            if arr_name in ("DeviceGray", "G"):
+                return PDDeviceGray.INSTANCE
+            if arr_name in ("DeviceRGB", "RGB"):
+                return PDDeviceRGB.INSTANCE
+            if arr_name in ("DeviceCMYK", "CMYK"):
+                return PDDeviceCMYK.INSTANCE
+            if arr_name in ("Indexed", "I"):
+                return PDIndexed(base)
+            if arr_name == "Separation":
+                return PDSeparation(base)
+            if arr_name == "DeviceN":
+                return PDDeviceN(base)
+            if arr_name == "ICCBased":
+                return PDICCBased(base)
+            if arr_name == "CalGray":
+                return PDCalGray(base)
+            if arr_name == "CalRGB":
+                return PDCalRGB(base)
+            if arr_name == "Lab":
+                return PDLab(base)
+            if arr_name == "Pattern":
+                # [/Pattern <underlying CS>] — uncolored tiling.
+                underlying: PDColorSpace | None = None
+                if base.size() > 1:
+                    underlying = PDColorSpace.create(
+                        base.get_object(1), resources
+                    )
+                return PDPattern(underlying, resources=resources)
         return None
 
     # ---------- COS surface ----------

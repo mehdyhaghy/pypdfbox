@@ -50,6 +50,23 @@ def _make_path_pen() -> Any:
     return _PathPen()
 
 
+class _ParsedT1:
+    """Stand-in for fontTools' ``T1Font`` populated by our own
+    :class:`Type1Parser`. Only the two access patterns our accessors
+    exercise are implemented: attribute ``.font`` and item lookup."""
+
+    def __init__(self, font_dict: dict[str, Any]) -> None:
+        self.font = font_dict
+        self.data: bytes = b""
+        self.encoding: str = "ascii"
+
+    def __getitem__(self, key: str) -> Any:
+        return self.font[key]
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.font
+
+
 class Type1Font:
     """Type 1 (PostScript) font wrapper.
 
@@ -83,6 +100,8 @@ class Type1Font:
         # resolved value (or its safe default).
         self._meta_cache: dict[str, Any] = {}
         self._encoding_map: dict[int, str] | None = None
+        # Eexec-decrypted private-dict bytes (set by create_with_segments).
+        self.decrypted_binary: bytes = b""
 
     # ---------- factory ----------
 
@@ -127,6 +146,32 @@ class Type1Font:
 
         instance = cls()
         instance._t1 = t1
+        return instance
+
+    @classmethod
+    def create_with_segments(
+        cls,
+        segment1: bytes | bytearray,
+        segment2: bytes | bytearray,
+    ) -> "Type1Font":
+        """Build a ``Type1Font`` from a (cleartext, eexec-binary) pair.
+
+        Mirrors upstream ``Type1Font.createWithSegments(byte[], byte[])``.
+        Uses the in-house :class:`Type1Parser` for the cleartext header
+        and exposes the eexec-decrypted bytes via
+        :attr:`decrypted_binary` — note that we do NOT run a private-dict
+        interpreter on those bytes (upstream does); callers that need
+        glyph outlines should still use :meth:`from_bytes` which routes
+        through fontTools' full PostScript-subset interpreter.
+        """
+        from .type1_parser import Type1Parser  # noqa: PLC0415
+
+        parser = Type1Parser()
+        font_dict = parser.parse(segment1, segment2)
+
+        instance = cls()
+        instance._t1 = _ParsedT1(font_dict)
+        instance.decrypted_binary = parser.decrypted_binary
         return instance
 
     # ---------- internal lookup helpers ----------
@@ -232,6 +277,29 @@ class Type1Font:
                 value = ""
             self._meta_cache["weight"] = str(value)
         return self._meta_cache["weight"]  # type: ignore[no-any-return]
+
+    def get_notice(self) -> str:
+        """``FontInfo /Notice`` (copyright / legal notice). Empty when absent."""
+        if "notice" not in self._meta_cache:
+            value = self._font_info().get("Notice")
+            if value is None:
+                logger.debug("Type1Font: /Notice missing, returning ''")
+                value = ""
+            self._meta_cache["notice"] = str(value)
+        return self._meta_cache["notice"]  # type: ignore[no-any-return]
+
+    def is_italic(self) -> bool:
+        """Convenience: ``True`` when the italic angle is non-zero.
+
+        Mirrors upstream ``Type1Font.isItalic()`` which is implemented as
+        ``getItalicAngle() != 0`` against the parsed FontInfo dict.
+        """
+        return self.get_italic_angle() != 0.0
+
+    def is_fixed_pitch(self) -> bool:
+        """Alias for :meth:`get_is_fixed_pitch` matching upstream's
+        ``isFixedPitch()`` accessor name."""
+        return self.get_is_fixed_pitch()
 
     def get_italic_angle(self) -> float:
         """``FontInfo /ItalicAngle`` in degrees. ``0.0`` when absent."""
@@ -379,6 +447,54 @@ class Type1Font:
 
         self._encoding_map = result
         return dict(self._encoding_map)
+
+    def get_char_strings_dict(self) -> dict[str, Any]:
+        """Upstream ``Type1Font.getCharStringsDict()`` — the same
+        glyph-name → charstring map ``get_char_strings_subroutines_charset``
+        returns, exposed under its more familiar name. Returned dict is
+        a copy so callers may mutate freely."""
+        return self.get_char_strings_subroutines_charset()
+
+    def get_char_string(self, name: str) -> Any:
+        """Upstream ``Type1Font.getCharString(String name)`` — return the
+        :class:`Type1CharString` wrapper for glyph ``name``.
+
+        Thin alias of :meth:`get_type1_char_string` to match upstream's
+        getter name (the older method stays for back-compat)."""
+        return self.get_type1_char_string(name)
+
+    def get_type1_mappings(self) -> list[Any]:
+        """Upstream ``Type1Font.getType1Mappings()`` — one
+        :class:`~pypdfbox.fontbox.type1.type1_mapping.Type1Mapping` row
+        per non-``.notdef`` slot in the font's encoding vector.
+
+        The list is sorted by code so callers can iterate in encoding
+        order (matching upstream which builds the list inside a loop
+        from 0 to 255)."""
+        from .type1_mapping import Type1Mapping  # noqa: PLC0415
+
+        encoding = self.get_encoding()
+        rows: list[Type1Mapping] = []
+        for code in sorted(encoding):
+            name = encoding[code]
+            cs = self.get_type1_char_string(name)
+            rows.append(Type1Mapping(code=code, name=name, char_string=cs))
+        return rows
+
+    def get_metrics(self) -> dict[str, Any]:
+        """Upstream ``Type1Font.getMetrics()`` — bundle the font-level
+        metrics into a single dict for callers that want everything at
+        once. Includes the bbox, font matrix, italic angle, underline
+        position / thickness, and units-per-em."""
+        return {
+            "FontBBox": self.get_font_bbox(),
+            "FontMatrix": list(self.font_matrix),
+            "ItalicAngle": self.get_italic_angle(),
+            "UnderlinePosition": self.get_underline_position(),
+            "UnderlineThickness": self.get_underline_thickness(),
+            "UnitsPerEm": self.units_per_em,
+            "isFixedPitch": self.get_is_fixed_pitch(),
+        }
 
     def get_char_strings_subroutines_charset(self) -> dict[str, Any]:
         """Best-effort dict view of the ``/CharStrings`` table.

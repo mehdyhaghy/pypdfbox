@@ -215,19 +215,30 @@ class PDFormXObject(PDXObject):
 
     # ---------- /PieceInfo ----------
 
-    def get_pieceinfo(self) -> COSDictionary | None:
-        """Raw ``/PieceInfo`` page-piece dictionary, or ``None``."""
+    def get_piece_info(self) -> COSDictionary | None:
+        """Raw ``/PieceInfo`` page-piece dictionary, or ``None``. Mirrors
+        upstream ``getPieceInfo()`` (PDF §14.5)."""
         value = self.get_cos_object().get_dictionary_object(_PIECE_INFO)
         if isinstance(value, COSDictionary):
             return value
         return None
 
-    def set_pieceinfo(self, value: COSDictionary | None) -> None:
+    def set_piece_info(self, value: COSDictionary | None) -> None:
+        """Mirror of upstream ``setPieceInfo(COSDictionary)``."""
         cos = self.get_cos_object()
         if value is None:
             cos.remove_item(_PIECE_INFO)
             return
         cos.set_item(_PIECE_INFO, value)
+
+    # Backward-compatibility aliases — earlier ports used the all-lowercase
+    # form. Keep both spellings live so existing call sites and the parity
+    # tests do not regress.
+    def get_pieceinfo(self) -> COSDictionary | None:
+        return self.get_piece_info()
+
+    def set_pieceinfo(self, value: COSDictionary | None) -> None:
+        self.set_piece_info(value)
 
     # ---------- /LastModified ----------
 

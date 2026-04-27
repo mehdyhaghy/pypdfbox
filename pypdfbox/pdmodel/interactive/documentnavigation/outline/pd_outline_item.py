@@ -172,6 +172,19 @@ class PDOutlineItem(PDOutlineNode):
     def set_text_flags(self, flags: int) -> None:
         self._dictionary.set_item(_F, COSInteger.get(int(flags)))
 
+    # Upstream-compatibility aliases — Apache PDFBox names the same
+    # ``/F`` accessor pair ``getTextStyle`` / ``setTextStyle``.
+    def get_text_style(self) -> int:
+        """Upstream alias for :meth:`get_text_flags` — returns the raw
+        ``/F`` integer (default ``0``). Mirrors
+        ``PDOutlineItem#getTextStyle`` in the Java API."""
+        return self.get_text_flags()
+
+    def set_text_style(self, style: int) -> None:
+        """Upstream alias for :meth:`set_text_flags`. Mirrors
+        ``PDOutlineItem#setTextStyle(int)`` in the Java API."""
+        self.set_text_flags(style)
+
     def _get_flag(self, mask: int) -> bool:
         return bool(self.get_text_flags() & mask)
 

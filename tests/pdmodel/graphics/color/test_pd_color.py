@@ -287,3 +287,87 @@ def test_composite_over_alpha_nan_raises() -> None:
         PDColor.composite_over(
             (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), float("nan")
         )
+
+
+# ---------- constructor variants (upstream parity) ----------
+
+
+def test_constructor_variant_components_and_color_space() -> None:
+    color = PDColor([0.1, 0.2, 0.3], PDDeviceRGB.INSTANCE)
+    assert color.get_components() == [0.1, 0.2, 0.3]
+    assert color.get_color_space() is PDDeviceRGB.INSTANCE
+    assert color.get_pattern_name() is None
+
+
+def test_constructor_variant_upstream_pattern_name_then_cs() -> None:
+    # Upstream signature: PDColor(components, patternName, colorSpace).
+    name = COSName.get_pdf_name("P1")
+    pattern_cs = PDPattern()
+    color = PDColor([0.5, 0.25], name, pattern_cs)
+    assert color.get_components() == [0.5, 0.25]
+    assert color.get_color_space() is pattern_cs
+    assert color.get_pattern_name() is name
+
+
+def test_constructor_variant_legacy_cs_then_pattern_name() -> None:
+    # Legacy pypdfbox positional order — also still supported.
+    name = COSName.get_pdf_name("P2")
+    color = PDColor([0.5, 0.25, 0.75], PDDeviceRGB.INSTANCE, name)
+    assert color.get_color_space() is PDDeviceRGB.INSTANCE
+    assert color.get_pattern_name() is name
+
+
+def test_constructor_variant_pattern_keyword() -> None:
+    name = COSName.get_pdf_name("P3")
+    color = PDColor([0.5], PDDeviceGray.INSTANCE, pattern=name)
+    assert color.get_pattern_name() is name
+
+
+def test_constructor_variant_cos_array_round_trip() -> None:
+    # Upstream signature: PDColor(COSArray, PDColorSpace) parses both
+    # components and an optional trailing pattern name.
+    src = PDColor([0.25, 0.5, 0.75], PDDeviceRGB.INSTANCE)
+    array = src.to_cos_array()
+    rebuilt = PDColor(array, PDDeviceRGB.INSTANCE)
+    assert rebuilt.get_components() == [0.25, 0.5, 0.75]
+    assert rebuilt.get_color_space() is PDDeviceRGB.INSTANCE
+    assert rebuilt.get_pattern_name() is None
+
+
+def test_constructor_variant_cos_array_keeps_pattern_name() -> None:
+    name = COSName.get_pdf_name("P1")
+    src = PDColor([0.5, 0.25], PDDeviceRGB.INSTANCE, name)
+    array = src.to_cos_array()
+    rebuilt = PDColor(array, PDDeviceRGB.INSTANCE)
+    assert rebuilt.get_components() == [0.5, 0.25]
+    assert rebuilt.get_pattern_name() == name
+
+
+def test_constructor_variant_cos_array_disallows_extra_args() -> None:
+    src = PDColor([0.5], PDDeviceGray.INSTANCE)
+    array = src.to_cos_array()
+    with pytest.raises(TypeError):
+        PDColor(array, PDDeviceGray.INSTANCE, COSName.get_pdf_name("P"))
+    with pytest.raises(TypeError):
+        PDColor(
+            array,
+            PDDeviceGray.INSTANCE,
+            pattern=COSName.get_pdf_name("P"),
+        )
+
+
+def test_constructor_variant_pattern_name_requires_third_color_space() -> None:
+    # PDColor(components, COSName) without a third PDColorSpace is invalid.
+    with pytest.raises(TypeError):
+        PDColor([0.5], COSName.get_pdf_name("P"))
+
+
+def test_constructor_variant_pattern_keyword_conflict_raises() -> None:
+    name = COSName.get_pdf_name("P1")
+    with pytest.raises(TypeError):
+        PDColor(
+            [0.5],
+            PDDeviceGray.INSTANCE,
+            COSName.get_pdf_name("P2"),
+            pattern=name,
+        )

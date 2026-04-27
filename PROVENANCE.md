@@ -895,3 +895,10 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/fdf/fdf_annotation_circle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationCircle.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_line.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationLine.java` |
 | `tests/pdmodel/upstream/test_pd_page_content_stream.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageContentStreamTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_color.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_color_space_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorSpaceTest.java` |
+| `tests/pdmodel/graphics/image/upstream/test_pd_image_x_object_masks.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObjectTest.java` (mask coverage subset) |
+| `pypdfbox/fontbox/type1/type1_font_util.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1FontUtil.java` |
+| `pypdfbox/fontbox/type1/type1_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Parser.java` + `Type1Lexer.java` (lite — top-level keys + FontInfo only) |
+| `pypdfbox/fontbox/type1/type1_mapping.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Mapping.java` |
+| `tests/fontbox/type1/upstream/test_type1_font_util.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/type1/Type1FontUtilTest.java` |

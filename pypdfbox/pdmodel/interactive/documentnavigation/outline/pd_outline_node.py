@@ -191,6 +191,12 @@ class PDOutlineNode:
         self._prepend(new_child)
         self._update_parent_open_count_for_added_child(new_child)
 
+    def append_child(self, new_child: PDOutlineItem) -> None:
+        """Upstream-compatibility alias for :meth:`add_last`. Mirrors
+        ``PDOutlineNode#appendChild`` from the Java API — appends
+        ``new_child`` to the end of the child chain."""
+        self.add_last(new_child)
+
     # ---------- iteration ----------
 
     def children(self) -> _OutlineChildren:

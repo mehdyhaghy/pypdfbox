@@ -34,6 +34,7 @@ _IMAGE_MASK: COSName = COSName.get_pdf_name("ImageMask")
 _STRUCT_PARENT: COSName = COSName.get_pdf_name("StructParent")
 _METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _OC: COSName = COSName.get_pdf_name("OC")
+_SMASK_IN_DATA: COSName = COSName.get_pdf_name("SMaskInData")
 
 
 class PDImageXObject(PDXObject):
@@ -200,6 +201,23 @@ class PDImageXObject(PDXObject):
             cos.remove_item(_SMASK)
             return
         cos.set_item(_SMASK, value.get_cos_object())
+
+    # ---------- /SMaskInData (JPEG2000-only optional hint) ----------
+
+    def get_smask_in_data(self) -> int:
+        """``/SMaskInData`` integer (one of ``0``, ``1``, ``2``); default
+        ``0`` per PDF 32000-1 Table 89. Only meaningful for JPXDecode
+        images. Mirrors upstream ``PDImageXObject.getSMaskInData()``."""
+        return self.get_cos_object().get_int(_SMASK_IN_DATA, 0)
+
+    def set_smask_in_data(self, value: int) -> None:
+        """Set ``/SMaskInData`` (must be ``0``, ``1``, or ``2`` per spec).
+        Mirrors upstream ``PDImageXObject.setSMaskInData(int)``."""
+        if value not in (0, 1, 2):
+            raise ValueError(
+                f"/SMaskInData must be 0, 1, or 2 (PDF 32000-1 Table 89); got {value!r}"
+            )
+        self.get_cos_object().set_int(_SMASK_IN_DATA, int(value))
 
     # ---------- /Decode ----------
 

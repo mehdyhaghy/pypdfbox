@@ -38,14 +38,74 @@ class PDColor:
 
     def __init__(
         self,
-        components: list[float],
-        color_space: PDColorSpace,
+        components: list[float] | COSArray,
+        arg2: PDColorSpace | COSName,
+        arg3: PDColorSpace | COSName | None = None,
+        *,
         pattern: COSName | None = None,
     ) -> None:
+        """Construct a PDColor. Mirrors the three upstream PDFBox
+        constructors (with one historical pypdfbox accommodation):
+
+        - ``PDColor(components, color_space)`` — components-only.
+        - ``PDColor(components, pattern_name, color_space)`` — upstream's
+          uncolored-tiling form with tint components plus a pattern name.
+        - ``PDColor(cos_array, color_space)`` — parses components and an
+          optional trailing pattern name out of a ``COSArray`` (the
+          serialized form produced by :meth:`to_cos_array`).
+
+        For backward compatibility with the original pypdfbox surface,
+        ``PDColor(components, color_space, pattern_name)`` and the
+        ``pattern=`` keyword are still accepted; the constructor inspects
+        the positional argument types to disambiguate.
+        """
+        # Variant 3: PDColor(COSArray, PDColorSpace)
+        if isinstance(components, COSArray):
+            if arg3 is not None or pattern is not None:
+                raise TypeError(
+                    "PDColor(COSArray, color_space): no third positional or "
+                    "pattern= argument allowed when components is a COSArray"
+                )
+            parsed_components, parsed_pattern = self._parse_cos_array(components)
+            self._components = parsed_components
+            self._color_space = arg2  # type: ignore[assignment]
+            self._pattern_name = parsed_pattern
+            return
+
+        # Disambiguate by type — upstream uses (components, name, cs); the
+        # original pypdfbox signature was (components, cs, name).
+        cs: PDColorSpace
+        pattern_name: COSName | None
+        if isinstance(arg2, COSName):
+            # Upstream: PDColor(components, pattern_name, color_space)
+            if arg3 is None or isinstance(arg3, COSName):
+                raise TypeError(
+                    "PDColor(components, pattern_name, color_space): the "
+                    "third positional color_space argument is required"
+                )
+            cs = arg3
+            pattern_name = arg2
+        else:
+            # Legacy / variant 1: PDColor(components, color_space[, pattern])
+            cs = arg2
+            if arg3 is not None and not isinstance(arg3, COSName):
+                raise TypeError(
+                    "PDColor(components, color_space, pattern_name): third "
+                    "argument must be a COSName"
+                )
+            pattern_name = arg3
+        if pattern is not None:
+            if pattern_name is not None and pattern_name is not pattern:
+                raise TypeError(
+                    "PDColor: pattern_name passed both positionally and via "
+                    "the pattern= keyword"
+                )
+            pattern_name = pattern
+
         # Defensive copy to keep the instance immutable from the outside.
-        self._components: list[float] = [float(c) for c in components]
-        self._color_space = color_space
-        self._pattern_name = pattern
+        self._components = [float(c) for c in components]
+        self._color_space = cs
+        self._pattern_name = pattern_name
 
     # ---------- accessors ----------
 
@@ -361,6 +421,18 @@ class PDColor:
         array: COSArray,
         color_space: PDColorSpace,
     ) -> PDColor:
+        return cls(array, color_space)
+
+    @staticmethod
+    def _parse_cos_array(
+        array: COSArray,
+    ) -> tuple[list[float], COSName | None]:
+        """Split a COSArray into ``(components, pattern_name)``.
+
+        Numeric entries (``COSFloat``/``COSInteger``) become components in
+        order; the trailing ``COSName`` (if present) is the pattern name.
+        Mirrors upstream ``PDColor(COSArray, PDColorSpace)`` parsing.
+        """
         components: list[float] = []
         pattern: COSName | None = None
         for index in range(array.size()):
@@ -369,7 +441,7 @@ class PDColor:
                 components.append(float(item.value))
             elif isinstance(item, COSName):
                 pattern = item
-        return cls(components, color_space, pattern)
+        return components, pattern
 
 
 __all__ = ["PDColor"]

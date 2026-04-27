@@ -39,7 +39,13 @@ class PDMetadata(PDStream):
     - ``bytes`` / ``str``            → fresh tagged stream populated with
       the XMP packet (``str`` is encoded as UTF-8).
     - ``PDDocument`` / ``COSDocument`` → fresh tagged stream attached to
-      that document.
+      that document. An optional ``input_data`` argument (bytes, str, or
+      file-like) is then imported via :meth:`import_xmp_metadata`,
+      mirroring upstream's two-argument constructor.
+
+    Filter control is inherited from :class:`PDStream` — call
+    :meth:`set_filters` to declare an on-write encoding chain (e.g.
+    ``COSName.FLATE_DECODE``).
     """
 
     def __init__(
@@ -47,6 +53,7 @@ class PDMetadata(PDStream):
         stream_or_doc: (
             PDDocument | COSStream | bytes | bytearray | memoryview | str | None
         ) = None,
+        input_data: bytes | bytearray | memoryview | str | BinaryIO | None = None,
     ) -> None:
         # Local import to avoid circular dependency.
         from pypdfbox.cos import COSDocument  # noqa: PLC0415
@@ -55,6 +62,10 @@ class PDMetadata(PDStream):
         if isinstance(stream_or_doc, COSStream):
             # Wrap-as-is: do NOT set /Type or /Subtype. Mirrors upstream
             # ``PDMetadata(COSStream)``.
+            if input_data is not None:
+                raise TypeError(
+                    "PDMetadata(COSStream, input_data) is not a valid overload"
+                )
             super().__init__(stream_or_doc)
             return
 
@@ -73,11 +84,17 @@ class PDMetadata(PDStream):
         if stream_or_doc is None:
             super().__init__()
             self._tag_metadata()
+            if input_data is not None:
+                self.import_xmp_metadata(input_data)
             return
 
         if isinstance(stream_or_doc, (PDDocument, COSDocument)):
+            # Mirrors upstream ``PDMetadata(PDDocument)`` and
+            # ``PDMetadata(PDDocument, InputStream)``.
             super().__init__(stream_or_doc)
             self._tag_metadata()
+            if input_data is not None:
+                self.import_xmp_metadata(input_data)
             return
 
         raise TypeError(
@@ -97,15 +114,33 @@ class PDMetadata(PDStream):
     # ---------- XMP I/O ----------
 
     def import_xmp_metadata(
-        self, xmp: bytes | bytearray | memoryview | str
+        self, xmp: bytes | bytearray | memoryview | str | BinaryIO
     ) -> None:
         """Replace the stream body with the supplied XMP packet bytes.
-        Mirrors upstream ``importXMPMetadata(byte[])``. ``str`` is encoded
-        as UTF-8."""
+
+        Mirrors upstream ``importXMPMetadata(byte[])``. Accepts:
+
+        - ``bytes`` / ``bytearray`` / ``memoryview`` — written verbatim.
+        - ``str`` — encoded as UTF-8 then written.
+        - file-like (any object with ``read()``) — fully drained, then
+          written verbatim. Matches upstream's ``InputStream`` overload
+          shape used by callers that build the XMP packet in memory.
+        """
         if isinstance(xmp, str):
             data = xmp.encode("utf-8")
-        else:
+        elif isinstance(xmp, (bytes, bytearray, memoryview)):
             data = bytes(xmp)
+        elif hasattr(xmp, "read"):
+            chunk = xmp.read()
+            if isinstance(chunk, str):
+                data = chunk.encode("utf-8")
+            else:
+                data = bytes(chunk)
+        else:
+            raise TypeError(
+                f"import_xmp_metadata expected bytes, str, or a file-like "
+                f"object; got {type(xmp).__name__}"
+            )
         with self.create_output_stream() as out:
             out.write(data)
 

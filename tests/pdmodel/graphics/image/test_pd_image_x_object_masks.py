@@ -8,6 +8,8 @@ the page, not the image XObject).
 """
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
 from pypdfbox.pdmodel.pd_page import PDPage
@@ -173,6 +175,32 @@ def test_set_stencil_false_clears_image_mask() -> None:
     image.set_stencil(False)
     assert image.is_stencil() is False
     assert image.is_image_mask() is False
+
+
+# ---------- /SMaskInData ----------
+
+
+def test_smask_in_data_default_is_zero() -> None:
+    image = _make_image()
+    assert image.get_smask_in_data() == 0
+
+
+@pytest.mark.parametrize("value", [0, 1, 2])
+def test_set_smask_in_data_round_trip(value: int) -> None:
+    image = _make_image()
+    image.set_smask_in_data(value)
+    assert image.get_smask_in_data() == value
+    assert (
+        image.get_cos_object().get_int(COSName.get_pdf_name("SMaskInData"), -1)
+        == value
+    )
+
+
+@pytest.mark.parametrize("value", [-1, 3, 100])
+def test_set_smask_in_data_rejects_out_of_range(value: int) -> None:
+    image = _make_image()
+    with pytest.raises(ValueError):
+        image.set_smask_in_data(value)
 
 
 # ---------- /Thumb on PDPage ----------
