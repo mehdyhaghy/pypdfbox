@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
     from pypdfbox.pdmodel.graphics.shading import PDShading
     from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
 
 # Category prefixes — match upstream ``PDResources.createKey()`` per kind.
@@ -49,8 +51,16 @@ class PDResources:
       registering newly-minted resources across all standard categories.
     """
 
-    def __init__(self, resources: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        resources: COSDictionary | None = None,
+        *,
+        document: PDDocument | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
         self._resources: COSDictionary = resources if resources is not None else COSDictionary()
+        self._document = document
+        self._resource_cache = resource_cache
 
     # ---------- COS surface ----------
 
@@ -88,6 +98,22 @@ class PDResources:
             return None
         return sub.get_dictionary_object(name)
 
+    def _lookup_raw_and_resolved(
+        self, category: COSName, name: COSName
+    ) -> tuple[COSBase | None, COSBase | None]:
+        sub = self._get_subdict(category)
+        if sub is None:
+            return None, None
+        raw = sub.get_item(name)
+        if isinstance(raw, COSObject):
+            return raw, raw.get_object()
+        return raw, raw
+
+    def _cache(self) -> PDResourceCache | None:
+        if self._document is not None:
+            return self._document.get_resource_cache()
+        return self._resource_cache
+
     # ---------- raw category accessors ----------
 
     def get_xobject(self, name: COSName) -> COSBase | None:
@@ -122,7 +148,7 @@ class PDResources:
         )
 
         key = name if isinstance(name, COSName) else COSName.get_pdf_name(name)
-        entry = self.get_xobject(key)
+        _raw, entry = self._lookup_raw_and_resolved(_X_OBJECT, key)
         if entry is None:
             return None
         if not isinstance(entry, COSStream):
@@ -203,7 +229,7 @@ class PDResources:
 
     # ---------- typed-accessor surface ----------
 
-    def get_color_space(self, name: COSName) -> "PDColorSpace | None":
+    def get_color_space(self, name: COSName) -> PDColorSpace | None:
         """Return the typed ``PDColorSpace`` for ``name``, or ``None`` when
         the entry is absent. Mirrors upstream
         ``PDResources.getColorSpace(COSName)`` — dispatch lives in
@@ -211,10 +237,18 @@ class PDResources:
         # Local import keeps cluster boundaries explicit.
         from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
 
-        base = self._lookup("ColorSpace", name)
-        return PDColorSpace.create(base)
+        raw, base = self._lookup_raw_and_resolved(_COLOR_SPACE, name)
+        cache = self._cache()
+        if cache is not None and isinstance(raw, COSObject):
+            cached = cache.get_color_space(raw)
+            if cached is not None:
+                return cached
+        color_space = PDColorSpace.create(base)
+        if cache is not None and isinstance(raw, COSObject) and color_space is not None:
+            cache.put_color_space(raw, color_space)
+        return color_space
 
-    def get_pattern(self, name: COSName) -> "PDAbstractPattern | None":
+    def get_pattern(self, name: COSName) -> PDAbstractPattern | None:
         """Return the typed ``PDAbstractPattern`` for ``name`` (a
         ``PDTilingPattern`` or ``PDShadingPattern``), or ``None`` when the
         entry is missing or not a dictionary."""
@@ -222,44 +256,80 @@ class PDResources:
             PDAbstractPattern,
         )
 
-        base = self._lookup("Pattern", name)
+        raw, base = self._lookup_raw_and_resolved(_PATTERN, name)
+        cache = self._cache()
+        if cache is not None and isinstance(raw, COSObject):
+            cached = cache.get_pattern(raw)
+            if cached is not None:
+                return cached
         if isinstance(base, COSDictionary):
-            return PDAbstractPattern.create(base)
+            pattern = PDAbstractPattern.create(base)
+            if cache is not None and isinstance(raw, COSObject) and pattern is not None:
+                cache.put_pattern(raw, pattern)
+            return pattern
         return None
 
-    def get_shading(self, name: COSName) -> "PDShading | None":
+    def get_shading(self, name: COSName) -> PDShading | None:
         """Return the typed ``PDShading`` for ``name`` (one of
         ``PDShadingType1``..``PDShadingType7``), or ``None`` when the entry
         is absent."""
         from pypdfbox.pdmodel.graphics.shading import PDShading  # noqa: PLC0415
 
-        base = self._lookup("Shading", name)
+        raw, base = self._lookup_raw_and_resolved(_SHADING, name)
+        cache = self._cache()
+        if cache is not None and isinstance(raw, COSObject):
+            cached = cache.get_shading(raw)
+            if cached is not None:
+                return cached
         if isinstance(base, COSDictionary):
-            return PDShading.create(base)
+            shading = PDShading.create(base)
+            if cache is not None and isinstance(raw, COSObject) and shading is not None:
+                cache.put_shading(raw, shading)
+            return shading
         return None
 
-    def get_ext_gstate(self, name: COSName) -> "PDExtendedGraphicsState | None":
+    def get_ext_gstate(self, name: COSName) -> PDExtendedGraphicsState | None:
         """Return the typed ``PDExtendedGraphicsState`` for ``name``, or
         ``None`` when the entry is absent or not a dictionary."""
         from pypdfbox.pdmodel.graphics.state import (  # noqa: PLC0415
             PDExtendedGraphicsState,
         )
 
-        base = self._lookup("ExtGState", name)
+        raw, base = self._lookup_raw_and_resolved(_EXT_GSTATE, name)
+        cache = self._cache()
+        if cache is not None and isinstance(raw, COSObject):
+            cached = cache.get_ext_g_state(raw)
+            if cached is not None:
+                return cached
         if isinstance(base, COSDictionary):
-            return PDExtendedGraphicsState(base)
+            ext_g_state = PDExtendedGraphicsState(base)
+            if cache is not None and isinstance(raw, COSObject):
+                cache.put_ext_g_state(raw, ext_g_state)
+            return ext_g_state
         return None
 
-    def get_property_list(self, name: COSName) -> "PDPropertyList | None":
+    def get_property_list(self, name: COSName) -> PDPropertyList | None:
         """Return the typed ``PDPropertyList`` (OCG / OCMD) for ``name``, or
         ``None`` when the entry is absent or not a dictionary."""
         from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
             PDPropertyList,
         )
 
-        base = self._lookup("Properties", name)
+        raw, base = self._lookup_raw_and_resolved(_PROPERTIES, name)
+        cache = self._cache()
+        if cache is not None and isinstance(raw, COSObject):
+            cached = cache.get_property_list(raw)
+            if cached is not None:
+                return cached
         if isinstance(base, COSDictionary):
-            return PDPropertyList.create(base)
+            property_list = PDPropertyList.create(base)
+            if (
+                cache is not None
+                and isinstance(raw, COSObject)
+                and property_list is not None
+            ):
+                cache.put_property_list(raw, property_list)
+            return property_list
         return None
 
     # ---------- put / add ----------

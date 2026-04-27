@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _K: COSName = COSName.get_pdf_name("K")
@@ -18,8 +18,8 @@ class PDStructureNode:
 
     Lite surface: typed kid dispatch (PDStructureElement /
     PDMarkedContentReference / PDObjectReference / int MCID), the typed
-    parent chain, and ``insertBefore`` overloads are deferred. ``get_kids``
-    returns the raw mixed list of dictionaries / integers.
+    parent chain, and ``insertBefore`` overloads are deferred. Unknown ``/K``
+    entries are preserved as raw COS objects.
     """
 
     def __init__(
@@ -88,14 +88,15 @@ class PDStructureNode:
     def get_type(self) -> str | None:
         return self._dictionary.get_name(_TYPE)
 
-    # ---------- /K kids (raw) ----------
+    # ---------- /K kids ----------
 
     def get_kids(self) -> list[Any]:
         """
-        Returns the raw ``/K`` children. ``/K`` may be a single structure
+        Returns the typed ``/K`` children. ``/K`` may be a single structure
         element dictionary, a single integer MCID, or a COSArray mixing
-        dictionaries, integer MCIDs, and marked-content references. Typed
-        dispatch belongs in subclasses — callers receive raw entries.
+        dictionaries, integer MCIDs, and marked-content references. Known
+        structure-tree dictionaries are wrapped; unknown entries are returned
+        unchanged as raw COS fallback.
         """
         k = self._dictionary.get_dictionary_object(_K)
         if k is None:
@@ -105,9 +106,9 @@ class PDStructureNode:
             for i in range(k.size()):
                 base = k.get_object(i)
                 if base is not None:
-                    out.append(base)
+                    out.append(self.wrap_kid(base))
             return out
-        return [k]
+        return [self.wrap_kid(k)]
 
     def set_kids(self, kids: list[Any] | None) -> None:
         if not kids:
@@ -142,13 +143,13 @@ class PDStructureNode:
         if existing is None:
             return False
         if isinstance(existing, COSArray):
-            removed = existing.remove_object(cos_kid)
+            removed = _remove_array_kid(existing, cos_kid)
             if existing.size() == 1:
                 only = existing.get_object(0)
                 if only is not None:
                     self._dictionary.set_item(_K, only)
             return removed
-        if existing is cos_kid or existing == cos_kid:
+        if _same_kid(existing, cos_kid):
             self._dictionary.remove_item(_K)
             return True
         return False
@@ -157,7 +158,31 @@ class PDStructureNode:
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
         return value.get_cos_object()
+    if isinstance(value, int) and not isinstance(value, bool):
+        return COSInteger.get(value)
     return value
+
+
+def _remove_array_kid(array: COSArray, cos_kid: COSBase) -> bool:
+    if array.remove_object(cos_kid):
+        return True
+    for i in range(array.size()):
+        if _same_kid(array.get_object(i), cos_kid):
+            array.remove_at(i)
+            return True
+    return False
+
+
+def _same_kid(left: Any, right: Any) -> bool:
+    if left is right:
+        return True
+    if isinstance(left, COSInteger) and isinstance(right, COSInteger):
+        return left.value == right.value
+    if isinstance(left, COSInteger) and isinstance(right, int) and not isinstance(right, bool):
+        return left.value == right
+    if isinstance(left, int) and not isinstance(left, bool) and isinstance(right, COSInteger):
+        return left == right.value
+    return left == right
 
 
 __all__ = ["PDStructureNode"]

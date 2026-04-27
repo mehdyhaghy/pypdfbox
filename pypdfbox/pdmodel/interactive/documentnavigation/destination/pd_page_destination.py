@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -43,21 +45,35 @@ class PDPageDestination(PDDestination):
         self._array.set(0, COSInteger.get(page_number))
 
     def find_page_number(self, document=None) -> int:
-        """0-based page index when /D[0] is a COSInteger; otherwise resolves
-        /D[0] (a Page dict ref) against ``document``'s page tree by identity.
-        Returns ``-1`` when ``/D[0]`` is a Page ref but no document is supplied
-        or the page can't be located.
+        """Return the 0-based destination page index.
+
+        ``/D[0]`` may be an integer page index, a direct page dictionary, or
+        an indirect object that resolves to either. Page-object destinations
+        require a ``PDDocument`` or ``PDPageTree`` context and are matched by
+        underlying COS dictionary identity. Returns ``-1`` when the page can't
+        be located.
         """
         page = self._array.get_object(0)
         if isinstance(page, COSInteger):
             return page.value
-        if isinstance(page, COSDictionary) and document is not None:
-            from pypdfbox.pdmodel.pd_page import PDPage
-            return document.get_pages().index_of(PDPage(page))
+        if isinstance(page, COSDictionary):
+            pages = self._resolve_page_tree(document)
+            if pages is not None:
+                return pages.index_of(page)
         return -1
 
     def retrieve_page_number(self, document=None) -> int:
         return self.find_page_number(document)
+
+    @staticmethod
+    def _resolve_page_tree(context: Any) -> Any:
+        if context is None:
+            return None
+        if hasattr(context, "index_of"):
+            return context
+        if hasattr(context, "get_pages"):
+            return context.get_pages()
+        return None
 
     def get_type(self) -> str | None:
         return self._array.get_name(1)

@@ -6,7 +6,6 @@ from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_cid_system_info import PDCIDSystemInfo
 
-
 # ---------- subtype scaffolding ----------
 
 
@@ -189,6 +188,62 @@ def test_cid_to_gid_map_set_none_removes_entry() -> None:
     assert font.get_cid_to_gid_map() is None
 
 
+def test_cid_font_type2_identity_cid_to_gid_map_uses_cid_as_gid() -> None:
+    font = PDCIDFontType2()
+    font.set_cid_to_gid_map("Identity")
+    assert font.has_cid_to_gid_map() is False
+    assert font.cid_to_gid(0) == 0
+    assert font.cid_to_gid(42) == 42
+    assert font.code_to_gid(42) == 42
+    assert font._code_to_gid(42) == 42
+
+
+def test_cid_font_type2_absent_cid_to_gid_map_defaults_to_identity() -> None:
+    font = PDCIDFontType2()
+    assert font.has_cid_to_gid_map() is False
+    assert font.cid_to_gid(7) == 7
+
+
+def test_cid_font_type2_stream_cid_to_gid_map_reads_big_endian_words() -> None:
+    font = PDCIDFontType2()
+    stream = COSStream()
+    stream.set_data(
+        b"\x00\x00"  # CID 0 -> GID 0
+        b"\x00\x2a"  # CID 1 -> GID 42
+        b"\x01\x00"  # CID 2 -> GID 256
+    )
+    font.set_cid_to_gid_map(stream)
+
+    assert font.has_cid_to_gid_map() is True
+    assert font.cid_to_gid(0) == 0
+    assert font.cid_to_gid(1) == 42
+    assert font.cid_to_gid(2) == 256
+    assert font.cid_to_gid(3) == 0
+
+
+def test_cid_font_type2_stream_cid_to_gid_map_ignores_trailing_odd_byte() -> None:
+    font = PDCIDFontType2()
+    stream = COSStream()
+    stream.set_data(b"\x12\x34\xff")
+    font.set_cid_to_gid_map(stream)
+
+    assert font.cid_to_gid(0) == 0x1234
+    assert font.cid_to_gid(1) == 0
+
+
+def test_cid_font_type2_cid_to_gid_cache_can_be_cleared() -> None:
+    font = PDCIDFontType2()
+    stream = COSStream()
+    stream.set_data(b"\x00\x01")
+    font.set_cid_to_gid_map(stream)
+    assert font.cid_to_gid(0) == 1
+
+    stream.set_data(b"\x00\x02")
+    assert font.cid_to_gid(0) == 1
+    font.clear_cid_to_gid_map_cache()
+    assert font.cid_to_gid(0) == 2
+
+
 # ---------- parent Type0 wiring ----------
 
 
@@ -202,6 +257,24 @@ def test_cid_font_parent_passthrough() -> None:
 
 def test_cid_font_no_parent_default() -> None:
     assert PDCIDFontType0().get_parent() is None
+
+
+def test_type0_descendant_type2_preserves_cid_to_gid_lookup() -> None:
+    from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
+
+    parent_dict = COSDictionary()
+    descendant = COSDictionary()
+    descendant.set_name(COSName.SUBTYPE, "CIDFontType2")  # type: ignore[attr-defined]
+    stream = COSStream()
+    stream.set_data(b"\x00\x00\x00\x0d")
+    descendant.set_item(COSName.get_pdf_name("CIDToGIDMap"), stream)
+    parent_dict.set_item(COSName.get_pdf_name("DescendantFonts"), COSArray([descendant]))
+
+    parent = PDType0Font(parent_dict)
+    cid = parent.get_descendant_font()
+    assert isinstance(cid, PDCIDFontType2)
+    assert cid.get_parent() is parent
+    assert cid.cid_to_gid(1) == 13
 
 
 # ---------- inheritance sanity ----------

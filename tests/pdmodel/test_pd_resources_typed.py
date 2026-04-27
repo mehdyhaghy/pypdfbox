@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox import PDDocument
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSObject
 from pypdfbox.pdmodel import PDResources
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.pattern import PDTilingPattern
@@ -98,3 +99,47 @@ def test_get_color_space_array_form_for_indexed() -> None:
     from pypdfbox.pdmodel.graphics.color import PDIndexed
 
     assert isinstance(cs, PDIndexed)
+
+
+def test_indirect_color_space_uses_document_resource_cache() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    arr = COSArray(
+        [
+            COSName.get_pdf_name("Indexed"),
+            COSName.get_pdf_name("DeviceRGB"),
+            COSInteger(0),
+            COSInteger(0),
+        ]
+    )
+    name = COSName.get_pdf_name("CS2")
+    res.put(_COLOR_SPACE, name, COSObject(20, 0, resolved=arr))
+
+    first = res.get_color_space(name)
+    second = res.get_color_space(name)
+
+    assert first is not None
+    assert first is second
+
+
+def test_resource_cache_clear_invalidates_indirect_color_space_reuse() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    arr = COSArray(
+        [
+            COSName.get_pdf_name("Indexed"),
+            COSName.get_pdf_name("DeviceRGB"),
+            COSInteger(0),
+            COSInteger(0),
+        ]
+    )
+    name = COSName.get_pdf_name("CS3")
+    res.put(_COLOR_SPACE, name, COSObject(21, 0, resolved=arr))
+
+    first = res.get_color_space(name)
+    doc.get_resource_cache().clear()
+    second = res.get_color_space(name)
+
+    assert first is not None
+    assert second is not None
+    assert first is not second

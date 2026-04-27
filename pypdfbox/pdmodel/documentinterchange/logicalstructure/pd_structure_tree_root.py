@@ -22,15 +22,17 @@ class PDStructureTreeRoot(PDStructureNode):
     Root of a PDF logical-structure tree (``/StructTreeRoot`` dictionary).
     Mirrors PDFBox ``PDStructureTreeRoot``.
 
-    Lite surface: ``/K`` returns raw COS children (no typed
-    PDStructureElement walk yet); ``/ParentTree`` returns the raw
-    ``COSDictionary`` (no typed ``PDNumberTreeNode<PDParentTreeValue>``
-    yet); ``/ClassMap`` returns the raw Python ``dict`` of COSBase entries
-    (no ``PDAttributeObject`` typed wrap yet).
+    Lite surface: ``/K`` returns typed children where known, preserving raw
+    COS fallback; ``/ParentTree`` returns the raw ``COSDictionary`` (no typed
+    ``PDNumberTreeNode<PDParentTreeValue>`` yet); ``/ClassMap`` returns the
+    raw Python ``dict`` of COSBase entries (no ``PDAttributeObject`` typed
+    wrap yet).
     """
 
     def __init__(self, struct_tree_root: COSDictionary | None = None) -> None:
-        super().__init__(struct_tree_root if struct_tree_root is not None else _STRUCT_TREE_ROOT_NAME)
+        super().__init__(
+            struct_tree_root if struct_tree_root is not None else _STRUCT_TREE_ROOT_NAME
+        )
         # Backwards-compat alias for callers / subclasses that referenced ``_root``.
         self._root: COSDictionary = self._dictionary
 

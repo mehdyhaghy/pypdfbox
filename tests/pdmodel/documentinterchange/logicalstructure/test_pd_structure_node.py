@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
     PDAttributeObject,
+)
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
+    PDMarkedContentReference,
+)
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_object_reference import (
+    PDObjectReference,
 )
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
     PDStructureElement,
@@ -44,7 +50,6 @@ def test_structure_node_wraps_existing_dictionary() -> None:
 def test_structure_node_append_kid_then_get_kids_round_trip() -> None:
     node = PDStructureNode("StructElem")
     child = COSDictionary()
-    child.set_name(_TYPE, "StructElem")
     node.append_kid(child)
     kids = node.get_kids()
     assert kids == [child]
@@ -89,6 +94,63 @@ def test_structure_node_set_kids_clears_when_empty() -> None:
     node.append_kid(COSDictionary())
     node.set_kids([])
     assert node.get_kids() == []
+
+
+def test_structure_node_get_kids_dispatches_mixed_k_array() -> None:
+    node = PDStructureNode("StructElem")
+    elem = COSDictionary()
+    elem.set_name(_TYPE, "StructElem")
+    mcr = COSDictionary()
+    mcr.set_name(_TYPE, "MCR")
+    objr = COSDictionary()
+    objr.set_name(_TYPE, "OBJR")
+    unknown = COSDictionary()
+    unknown.set_name(_TYPE, "SomethingElse")
+    arr = COSArray([elem, mcr, objr, COSInteger.get(12), unknown])
+    node.get_cos_object().set_item(_K, arr)
+
+    kids = node.get_kids()
+
+    assert isinstance(kids[0], PDStructureElement)
+    assert kids[0].get_cos_object() is elem
+    assert isinstance(kids[1], PDMarkedContentReference)
+    assert kids[1].get_cos_object() is mcr
+    assert isinstance(kids[2], PDObjectReference)
+    assert kids[2].get_cos_object() is objr
+    assert kids[3] == 12
+    assert kids[4] is unknown
+
+
+def test_structure_node_append_and_remove_typed_kids() -> None:
+    node = PDStructureNode("StructElem")
+    elem = PDStructureElement(structure_type="P")
+    mcr = PDMarkedContentReference()
+    objr = PDObjectReference()
+
+    node.append_kid(elem)
+    node.append_kid(mcr)
+    node.append_kid(objr)
+    node.append_kid(4)
+
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert isinstance(raw_k, COSArray)
+    assert raw_k.get_object(0) is elem.get_cos_object()
+    assert raw_k.get_object(1) is mcr.get_cos_object()
+    assert raw_k.get_object(2) is objr.get_cos_object()
+    assert raw_k.get_object(3) == COSInteger.get(4)
+    assert [type(kid) for kid in node.get_kids()] == [
+        PDStructureElement,
+        PDMarkedContentReference,
+        PDObjectReference,
+        int,
+    ]
+
+    assert node.remove_kid(mcr) is True
+    assert node.remove_kid(4) is True
+    kids = node.get_kids()
+    assert len(kids) == 2
+    assert isinstance(kids[0], PDStructureElement)
+    assert isinstance(kids[1], PDObjectReference)
 
 
 # ---------- PDStructureNode.create dispatch ----------

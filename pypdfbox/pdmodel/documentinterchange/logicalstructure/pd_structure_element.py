@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
@@ -30,6 +30,10 @@ _STRUCT_TREE_ROOT_NAME: str = "StructTreeRoot"
 # protection against pathological inputs.
 _MAX_ROLE_MAP_DEPTH: int = 16
 
+if TYPE_CHECKING:
+    from .pd_attribute_object import PDAttributeObject
+    from .revisions import Revisions
+
 
 class PDStructureElement(PDStructureNode):
     """
@@ -37,9 +41,9 @@ class PDStructureElement(PDStructureNode):
     ``PDStructureElement``.
 
     This is the *lite* surface: typed attribute objects, class-name
-    revisions, page (``/Pg``), the typed-parent chain, and the typed kid
-    dispatch (marked-content reference / object reference / structure
-    element walk) are deferred until later clusters land.
+    revisions, page (``/Pg``), ``/K`` typed kid dispatch, and role-map
+    resolution are present; the typed-parent chain is deferred until later
+    clusters land.
     """
 
     TYPE: str = "StructElem"
@@ -207,13 +211,12 @@ class PDStructureElement(PDStructureNode):
     # ---------- /K kids ----------
     #
     # ``get_kids`` / ``set_kids`` / ``append_kid`` / ``remove_kid`` come from
-    # PDStructureNode. Both the lite element surface and the base node treat
-    # ``/K`` as a flat list of raw COSBase entries (single dict / single int
-    # MCID / mixed COSArray) and use identical promotion semantics.
+    # PDStructureNode. The base node treats ``/K`` as a flat list of typed
+    # structure-tree entries, preserving unknown values as raw COS fallback.
 
     # ---------- /A attributes ----------
 
-    def get_attributes(self) -> "Revisions[PDAttributeObject]":
+    def get_attributes(self) -> Revisions[PDAttributeObject]:
         from .pd_attribute_object import PDAttributeObject
         from .revisions import Revisions
 
@@ -225,7 +228,7 @@ class PDStructureElement(PDStructureNode):
             revs.add_object(PDAttributeObject(a), self.get_revision_number())
         return revs
 
-    def set_attributes(self, attributes: "Revisions[PDAttributeObject] | None") -> None:
+    def set_attributes(self, attributes: Revisions[PDAttributeObject] | None) -> None:
         if attributes is None:
             self._dictionary.remove_item(_A)
             return
@@ -233,7 +236,7 @@ class PDStructureElement(PDStructureNode):
 
     # ---------- /C class names ----------
 
-    def get_class_names(self) -> "Revisions[COSName]":
+    def get_class_names(self) -> Revisions[COSName]:
         from .revisions import Revisions
 
         c = self._dictionary.get_dictionary_object(_C)
@@ -244,7 +247,7 @@ class PDStructureElement(PDStructureNode):
             revs.add_object(c, self.get_revision_number())
         return revs
 
-    def set_class_names(self, class_names: "Revisions[COSName] | None") -> None:
+    def set_class_names(self, class_names: Revisions[COSName] | None) -> None:
         if class_names is None:
             self._dictionary.remove_item(_C)
             return
