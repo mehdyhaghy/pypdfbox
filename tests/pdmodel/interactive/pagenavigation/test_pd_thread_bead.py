@@ -154,3 +154,57 @@ def test_set_thread_none_removes_entry() -> None:
     bead.set_thread(None)
     assert bead.get_thread() is None
     assert not bead.get_cos_object().contains_key(COSName.get_pdf_name("T"))
+
+
+def test_iter_beads_single_bead_yields_self_only() -> None:
+    bead = PDThreadBead()
+    walked = list(bead.iter_beads())
+    assert len(walked) == 1
+    assert walked[0].get_cos_object() is bead.get_cos_object()
+
+
+def test_iter_beads_three_bead_chain_walks_in_order() -> None:
+    a = PDThreadBead()
+    b = PDThreadBead()
+    c = PDThreadBead()
+    a.append_bead(b)  # a <-> b <-> a
+    b.append_bead(c)  # a <-> b <-> c <-> a
+
+    walked = list(a.iter_beads())
+    assert [w.get_cos_object() for w in walked] == [
+        a.get_cos_object(),
+        b.get_cos_object(),
+        c.get_cos_object(),
+    ]
+
+
+def test_dunder_iter_walks_chain() -> None:
+    a = PDThreadBead()
+    b = PDThreadBead()
+    a.append_bead(b)
+    walked = [w.get_cos_object() for w in a]
+    assert walked == [a.get_cos_object(), b.get_cos_object()]
+
+
+def test_iter_beads_terminates_on_missing_next() -> None:
+    # A bead built from a bare dictionary has no /N — iteration must yield
+    # exactly the starting bead and stop, not raise.
+    bead = PDThreadBead(COSDictionary())
+    walked = list(bead.iter_beads())
+    assert len(walked) == 1
+    assert walked[0].get_cos_object() is bead.get_cos_object()
+
+
+def test_iter_beads_terminates_on_malformed_self_loop() -> None:
+    # A bead that points /N at a different bead which then points back at
+    # itself (not at the starting bead) is malformed but the iterator must
+    # still terminate via the visited-set guard.
+    a = PDThreadBead()
+    b = PDThreadBead()
+    a.set_next_bead(b)
+    b.set_next_bead(b)  # b points to itself, never back to a
+    walked = list(a.iter_beads())
+    # a is yielded, b is yielded, then b would be re-yielded — bail.
+    assert len(walked) == 2
+    assert walked[0].get_cos_object() is a.get_cos_object()
+    assert walked[1].get_cos_object() is b.get_cos_object()

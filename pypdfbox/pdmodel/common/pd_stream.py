@@ -8,6 +8,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSDocument, COSName, COSStrea
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.filespecification import PDFileSpecification
+    from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
     from pypdfbox.pdmodel.pd_document import PDDocument
 
 
@@ -307,7 +308,14 @@ class PDStream:
     # ---------- /Metadata ----------
 
     def get_metadata(self) -> COSStream | None:
-        """``/Metadata`` — stream-level XMP metadata, or ``None``."""
+        """``/Metadata`` — stream-level XMP metadata, or ``None``.
+
+        Returns the raw ``COSStream``; callers that want the typed
+        :class:`PDMetadata` wrapper should construct one explicitly
+        (``PDMetadata(stream.get_metadata())``). Upstream returns
+        ``PDMetadata`` directly, but we keep ``COSStream`` for parity
+        with prior call-sites that compare-by-identity against the
+        stream they set."""
         meta = self._stream.get_dictionary_object(_METADATA)
         if meta is None:
             return None
@@ -315,12 +323,20 @@ class PDStream:
             return meta
         raise TypeError(f"unexpected /Metadata type: {type(meta).__name__}")
 
-    def set_metadata(self, stream: COSStream | None) -> None:
-        """Set ``/Metadata`` (or remove when ``None``)."""
+    def set_metadata(self, stream: PDMetadata | COSStream | None) -> None:
+        """Set ``/Metadata`` (or remove when ``None``). Accepts a typed
+        :class:`PDMetadata` (the underlying ``COSStream`` is recorded) or
+        a raw ``COSStream``. Mirrors upstream ``setMetadata(PDMetadata)``
+        with a Pythonic widening to ``COSStream`` for callers that already
+        hold the raw object."""
         if stream is None:
             self._stream.remove_item(_METADATA)
             return
-        self._stream.set_item(_METADATA, stream)
+        if isinstance(stream, COSStream):
+            self._stream.set_item(_METADATA, stream)
+            return
+        # PDMetadata (or any PDStream subclass) — unwrap to COSStream.
+        self._stream.set_item(_METADATA, stream.get_cos_object())
 
     # ---------- /F external file spec ----------
 
@@ -367,6 +383,24 @@ class PDStream:
             return out
         raise TypeError(f"unexpected /FFilter type: {type(f).__name__}")
 
+    def set_file_filters(
+        self,
+        filters: COSName | str | Iterable[COSName | str] | None,
+    ) -> None:
+        """Replace ``/FFilter`` — the filter chain applied when the body
+        is sourced from the external file referenced by ``/F``. Same shape
+        rules as :meth:`set_filters`. Mirrors upstream
+        ``setFileFilters(List<COSName>)``."""
+        if filters is None:
+            self._stream.remove_item(_FFILTER)
+            return
+        if isinstance(filters, (COSName, str)):
+            names = [_to_name(filters)]
+        else:
+            names = [_to_name(n) for n in filters]
+        arr = COSArray(names)
+        self._stream.set_item(_FFILTER, arr)
+
     def get_file_decode_parms(self) -> list[COSDictionary] | None:
         """``/FDecodeParms`` — decode-parameter chain paired with
         ``/FFilter`` (one dict per file-filter, in matching order).
@@ -393,6 +427,22 @@ class PDStream:
                     )
             return out
         raise TypeError(f"unexpected /FDecodeParms type: {type(parms).__name__}")
+
+    def set_file_decode_parms(
+        self,
+        parms: COSDictionary | Sequence[COSDictionary] | None,
+    ) -> None:
+        """Replace ``/FDecodeParms`` — decode-parameter chain paired with
+        ``/FFilter``. Same shape rules as :meth:`set_decode_parms`. Mirrors
+        upstream ``setFileDecodeParams(List<COSDictionary>)``."""
+        if parms is None:
+            self._stream.remove_item(_FDECODE_PARMS)
+            return
+        if isinstance(parms, COSDictionary):
+            self._stream.set_item(_FDECODE_PARMS, parms)
+            return
+        arr = COSArray(list(parms))
+        self._stream.set_item(_FDECODE_PARMS, arr)
 
     # ---------- bytes convenience ----------
 

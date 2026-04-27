@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import BinaryIO
+
 from pypdfbox.cos import COSBase, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
@@ -110,6 +112,18 @@ class PDSoundStream(PDStream):
             cos.remove_item(_CP)
             return
         cos.set_item(_CP, value)
+
+    # ---------- raw sample data ----------
+
+    def get_raw_sample_data(self) -> BinaryIO:
+        """Decoded sample bytes — mirrors PDFBox ``getRawSampleData()``.
+
+        Per the upstream contract this is the filter-decoded body of the
+        sound stream (raw audio samples in the format described by ``/E``,
+        ``/B``, ``/C``, ``/R``). Implemented as a thin alias over
+        :meth:`PDStream.create_input_stream` so callers receive a binary
+        file-like positioned at the start of the decoded payload."""
+        return self.create_input_stream()
 
 
 __all__ = ["PDSoundStream"]

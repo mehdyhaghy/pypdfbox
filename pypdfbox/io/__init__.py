@@ -9,9 +9,12 @@ from .random_access_read_memory_mapped import RandomAccessReadMemoryMapped
 from .random_access_read_view import RandomAccessReadView
 from .random_access_write import RandomAccessWrite
 from .random_access_write_buffer import RandomAccessWriteBuffer
-from .scratch_file import ScratchFile, ScratchFileBuffer
+from .scratch_file import DEFAULT_PAGE_SIZE, NO_FREE_PAGE, ScratchFile
+from .scratch_file_buffer import ScratchFileBuffer
 
 __all__ = [
+    "DEFAULT_PAGE_SIZE",
+    "NO_FREE_PAGE",
     "UNLIMITED",
     "MemoryUsageSetting",
     "RandomAccessRead",

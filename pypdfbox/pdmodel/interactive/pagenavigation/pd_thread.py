@@ -78,5 +78,20 @@ class PDThread:
         bead.set_thread(self)
         self._thread.set_item(_F, bead.get_cos_object())
 
+    # ---------- upstream-name aliases ----------
+    #
+    # Upstream PDFBox exposes ``getInfo()`` / ``setInfo()`` on PDThread (not
+    # ``getThreadInfo`` — that's our own clarifying name). Provide the
+    # snake_case equivalents of the upstream names so PDFBox developers can
+    # reach for what they expect.
+
+    def get_info(self) -> PDDocumentInformation | None:
+        """Alias of :meth:`get_thread_info` matching upstream ``getInfo``."""
+        return self.get_thread_info()
+
+    def set_info(self, info: PDDocumentInformation | None) -> None:
+        """Alias of :meth:`set_thread_info` matching upstream ``setInfo``."""
+        self.set_thread_info(info)
+
 
 __all__ = ["PDThread"]

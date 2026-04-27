@@ -247,3 +247,226 @@ def test_cli_missing_input_file(
     assert rc == 4
     assert "not a file" in capsys.readouterr().out
     assert not out.exists()
+
+
+# ---------------------------------------------- extended page-size catalog
+
+
+@pytest.mark.parametrize(
+    ("page_size", "want_w", "want_h"),
+    [
+        ("Executive", 522.0, 756.0),
+        ("Tabloid", 792.0, 1224.0),
+        ("Ledger", 792.0, 1224.0),
+        ("US-Legal", 612.0, 1008.0),
+        ("us_legal", 612.0, 1008.0),
+        ("A3", 842.0, 1191.0),
+        ("B5", 499.0, 709.0),
+    ],
+)
+def test_images_to_pdf_extended_page_sizes(
+    tmp_path: Path, page_size: str, want_w: float, want_h: float,
+) -> None:
+    src = _write_png(tmp_path / "x.png")
+    out = tmp_path / "out.pdf"
+
+    imagetopdf.images_to_pdf([src], out, page_size=page_size)
+
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        assert mb.get_width() == pytest.approx(want_w)
+        assert mb.get_height() == pytest.approx(want_h)
+
+
+def test_images_to_pdf_unknown_page_size_falls_back_to_letter(tmp_path: Path) -> None:
+    src = _write_png(tmp_path / "x.png")
+    out = tmp_path / "out.pdf"
+
+    imagetopdf.images_to_pdf([src], out, page_size="bogus-name")
+
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        assert mb.get_width() == pytest.approx(612.0)
+        assert mb.get_height() == pytest.approx(792.0)
+
+
+# --------------------------------------------------------- margin handling
+
+
+def test_images_to_pdf_margin_no_resize_offsets_image(tmp_path: Path) -> None:
+    src = _write_png(tmp_path / "x.png", size=(4, 4))
+    out = tmp_path / "out.pdf"
+
+    imagetopdf.images_to_pdf(
+        [src], out, page_size="Letter", margin_pt=36.0,
+    )
+
+    with PDDocument.load(out) as pd:
+        page = pd.get_page(0)
+        # Page size unchanged: margin is white-space inside the page box.
+        mb = page.get_media_box()
+        assert mb.get_width() == pytest.approx(612.0)
+        assert mb.get_height() == pytest.approx(792.0)
+        # Image XObject is drawn at intrinsic 4x4 pt at the lower-left of
+        # the printable area, i.e. (margin, margin) = (36, 36).
+        body = page.get_contents()
+        assert b"4 0 0 4 36 36 cm" in body
+
+
+def test_images_to_pdf_margin_with_resize_fits_aspect_ratio(tmp_path: Path) -> None:
+    # 200x100 image, Letter page (612x792), margin 36 -> printable 540x720.
+    # Aspect-fit gives min(540/200, 720/100) = 2.7 -> 540x270.
+    src = _write_png(tmp_path / "wide.png", size=(200, 100))
+    out = tmp_path / "out.pdf"
+
+    imagetopdf.images_to_pdf(
+        [src], out, page_size="Letter", resize=True, margin_pt=36.0,
+    )
+
+    with PDDocument.load(out) as pd:
+        page = pd.get_page(0)
+        body = page.get_contents()
+        # Drawn at 540x270, centered horizontally (offset 36 + 0 = 36)
+        # and vertically (36 + (720-270)/2 = 36 + 225 = 261).
+        assert b"540 0 0 270 36 261 cm" in body
+
+
+def test_images_to_pdf_margin_auto_page_size_grows_page(tmp_path: Path) -> None:
+    # auto: page = image-size + 2*margin on each axis.
+    src = _write_png(tmp_path / "x.png", size=(100, 60))
+    out = tmp_path / "out.pdf"
+
+    imagetopdf.images_to_pdf(
+        [src], out, page_size="auto", margin_pt=20.0,
+    )
+
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        assert mb.get_width() == pytest.approx(140.0)
+        assert mb.get_height() == pytest.approx(100.0)
+
+
+# ----------------------------------------------------- CLI surface (new flags)
+
+
+def test_cli_long_form_page_size(tmp_path: Path) -> None:
+    src = _write_png(tmp_path / "x.png")
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(
+        ["imagetopdf", "-i", str(src), "-o", str(out), "--page-size", "Executive"]
+    )
+    assert rc == 0
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        assert mb.get_width() == pytest.approx(522.0)
+        assert mb.get_height() == pytest.approx(756.0)
+
+
+def test_cli_portrait_alias_keeps_portrait_orientation(tmp_path: Path) -> None:
+    src = _write_png(tmp_path / "x.png")
+    out = tmp_path / "out.pdf"
+    # --portrait alone is the explicit-default form.
+    rc = cli.run_cli(
+        ["imagetopdf", "-i", str(src), "-o", str(out),
+         "-pageSize", "Letter", "--portrait"]
+    )
+    assert rc == 0
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        # Portrait Letter.
+        assert mb.get_width() == pytest.approx(612.0)
+        assert mb.get_height() == pytest.approx(792.0)
+
+
+def test_cli_auto_orientation_beats_landscape(tmp_path: Path) -> None:
+    """Documented precedence: --auto-orientation overrides --landscape
+    (mirrors upstream where -autoOrientation supersedes -landscape)."""
+    tall = _write_png(tmp_path / "tall.png", size=(10, 20))
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(
+        ["imagetopdf", "-i", str(tall), "-o", str(out),
+         "-pageSize", "Letter", "--landscape", "--auto-orientation"]
+    )
+    assert rc == 0
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        # Tall image + auto -> portrait (overrides --landscape).
+        assert mb.get_width() == pytest.approx(612.0)
+        assert mb.get_height() == pytest.approx(792.0)
+
+
+def test_cli_auto_orientation_long_form(tmp_path: Path) -> None:
+    wide = _write_png(tmp_path / "wide.png", size=(20, 10))
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(
+        ["imagetopdf", "-i", str(wide), "-o", str(out),
+         "-pageSize", "Letter", "--auto-orientation"]
+    )
+    assert rc == 0
+    with PDDocument.load(out) as pd:
+        mb = pd.get_page(0).get_media_box()
+        assert mb.get_width() > mb.get_height()
+
+
+def test_cli_margin_pt(tmp_path: Path) -> None:
+    src = _write_png(tmp_path / "x.png", size=(4, 4))
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(
+        ["imagetopdf", "-i", str(src), "-o", str(out),
+         "-pageSize", "Letter", "--margin-pt", "72"]
+    )
+    assert rc == 0
+    with PDDocument.load(out) as pd:
+        page = pd.get_page(0)
+        body = page.get_contents()
+        # 1-inch margin: image positioned at (72, 72).
+        assert b"4 0 0 4 72 72 cm" in body
+
+
+def test_cli_negative_margin_rejected(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = _write_png(tmp_path / "x.png")
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(
+        ["imagetopdf", "-i", str(src), "-o", str(out), "--margin-pt", "-5"]
+    )
+    assert rc == 4
+    assert "must be >= 0" in capsys.readouterr().out
+    assert not out.exists()
+
+
+def test_cli_help_smoke(capsys: pytest.CaptureFixture[str]) -> None:
+    """The subcommand --help should render without raising."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli.run_cli(["imagetopdf", "--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    # Sanity-check that the new flags appear in the help text.
+    assert "--margin-pt" in out
+    assert "--auto-orientation" in out
+    assert "--page-size" in out
+
+
+def test_cli_multipage_with_extended_page_size(tmp_path: Path) -> None:
+    """End-to-end: three inputs + Tabloid page size + margin → 3 pages."""
+    paths = [
+        _write_png(tmp_path / "a.png", color=(255, 0, 0)),
+        _write_jpeg(tmp_path / "b.jpg"),
+        _write_png(tmp_path / "c.png", color=(0, 0, 255)),
+    ]
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(
+        ["imagetopdf",
+         "-i", *(str(p) for p in paths),
+         "-o", str(out),
+         "--page-size", "Tabloid",
+         "--margin-pt", "18"]
+    )
+    assert rc == 0
+    with PDDocument.load(out) as pd:
+        assert pd.get_number_of_pages() == 3
+        for i in range(3):
+            mb = pd.get_page(i).get_media_box()
+            assert mb.get_width() == pytest.approx(792.0)
+            assert mb.get_height() == pytest.approx(1224.0)

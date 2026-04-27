@@ -1,180 +1,248 @@
 from __future__ import annotations
 
-import io
 import logging
 import os
 import tempfile
-from typing import BinaryIO
+import threading
+from typing import IO, Iterable
 
 from .memory_usage_setting import UNLIMITED, MemoryUsageSetting, StorageMode
-from .random_access_read import RandomAccessRead
-from .random_access_write import RandomAccessWrite
 
-_BytesIO = io.BytesIO
 _log = logging.getLogger(__name__)
+
+# Default 4 KiB page size — matches upstream ScratchFile's PAGE_SIZE.
+DEFAULT_PAGE_SIZE: int = 4096
 
 # Default spill threshold for MIXED mode when no explicit cap is given.
 _DEFAULT_MIXED_SPILL_BYTES = 16 * 1024 * 1024  # 16 MiB
 
-
-class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
-    """
-    Read+write buffer backed by either ``io.BytesIO`` (memory-only mode)
-    or ``tempfile.SpooledTemporaryFile`` (mixed mode — spills to disk
-    after the memory threshold) or an unspooled temp file (disk-only).
-
-    Created exclusively by ``ScratchFile.create_buffer()``. Closing the
-    parent ``ScratchFile`` closes all buffers it created.
-    """
-
-    def __init__(self, backing: BinaryIO, owner: ScratchFile) -> None:
-        self._backing = backing
-        self._owner = owner
-        self._closed = False
-
-    # Both base ABCs define context-manager helpers; resolve the diamond explicitly.
-    def __enter__(self) -> ScratchFileBuffer:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        self.close()
-
-    def _check_open(self) -> None:
-        if self._closed:
-            raise ValueError("operation on closed ScratchFileBuffer")
-
-    # ----- RandomAccessRead -----
-
-    def read(self) -> int:
-        self._check_open()
-        b = self._backing.read(1)
-        return b[0] if b else self.EOF
-
-    def read_into(
-        self, buf: bytearray, offset: int = 0, length: int | None = None
-    ) -> int:
-        self._check_open()
-        if length is None:
-            length = len(buf) - offset
-        if length < 0:
-            raise ValueError("length must be non-negative")
-        if offset < 0 or offset + length > len(buf):
-            raise ValueError("offset/length out of range for buf")
-        if self.get_position() >= self.length():
-            return self.EOF if length > 0 else 0
-        view = memoryview(buf)[offset : offset + length]
-        n = self._backing.readinto(view)  # type: ignore[attr-defined]
-        return n if n is not None else 0
-
-    def get_position(self) -> int:
-        self._check_open()
-        return self._backing.tell()
-
-    def seek(self, position: int) -> None:
-        self._check_open()
-        if position < 0:
-            raise ValueError("position must be non-negative")
-        self._backing.seek(position)
-
-    def length(self) -> int:
-        self._check_open()
-        cur = self._backing.tell()
-        self._backing.seek(0, os.SEEK_END)
-        end = self._backing.tell()
-        self._backing.seek(cur)
-        return end
-
-    def is_closed(self) -> bool:
-        return self._closed
-
-    def create_view(self, start_position: int, length: int) -> RandomAccessRead:
-        # PDFBox upstream: ScratchFileBuffer does not support views.
-        raise NotImplementedError("createView() not supported on ScratchFileBuffer")
-
-    # ----- RandomAccessWrite -----
-
-    def write(self, b: int) -> None:
-        self._check_open()
-        if not 0 <= b <= 0xFF:
-            raise ValueError("byte value must be in 0..255")
-        self._backing.write(bytes((b,)))
-
-    def write_bytes(
-        self,
-        data: bytes | bytearray | memoryview,
-        offset: int = 0,
-        length: int | None = None,
-    ) -> None:
-        self._check_open()
-        if length is None:
-            length = len(data) - offset
-        if length < 0:
-            raise ValueError("length must be non-negative")
-        if offset < 0 or offset + length > len(data):
-            raise ValueError("offset/length out of range for data")
-        self._backing.write(memoryview(data)[offset : offset + length])
-
-    def clear(self) -> None:
-        self._check_open()
-        self._backing.seek(0)
-        self._backing.truncate(0)
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._backing.close()
-        self._owner._buffer_closed(self)
+# Sentinel returned by dequeue_page() when the free-page queue is empty.
+NO_FREE_PAGE: int = -1
 
 
 class ScratchFile:
     """
-    Factory for read+write buffers used to hold parsed/decoded PDF object
-    streams without unbounded memory pressure.
+    Page-based temporary storage allocator.
 
-    Backed by ``tempfile.SpooledTemporaryFile`` in MIXED mode, plain
-    ``BytesIO`` in MAIN_MEMORY_ONLY, and an unspooled ``TemporaryFile``
-    in TEMP_FILE_ONLY. Per PRD §3.7, page-based scratch storage is
-    delegated to stdlib's spooled temp file.
+    Mirrors ``org.apache.pdfbox.io.ScratchFile`` (Apache PDFBox 3.0). Hands
+    out fixed-size pages (default 4 KiB) backed by either RAM or a temp
+    file, governed by a :class:`MemoryUsageSetting`:
+
+    * ``MAIN_MEMORY_ONLY`` — all pages live in RAM (a list of ``bytearray``).
+    * ``TEMP_FILE_ONLY``  — every page is written to a stdlib temp file.
+    * ``MIXED``           — pages live in RAM until ``max_main_memory_bytes``
+      is exhausted, after which new pages spill to a temp file.
+
+    The page-oriented API matches upstream:
+
+    * :meth:`get_new_page` allocates a fresh page index.
+    * :meth:`read_page`    copies a page's bytes into a caller buffer.
+    * :meth:`write_page`   stores bytes for a page index.
+    * :meth:`mark_pages_as_free` returns a set of pages to the free pool
+      so subsequent :meth:`get_new_page` calls reuse them.
+    * :meth:`enqueue_page` / :meth:`dequeue_page` expose the free-page queue.
+
+    Higher-level :class:`ScratchFileBuffer` instances created via
+    :meth:`create_buffer` use this page API as their backing store, so
+    closing the parent ``ScratchFile`` closes (and frees the pages of)
+    every buffer it produced.
     """
 
-    def __init__(self, setting: MemoryUsageSetting | None = None) -> None:
+    def __init__(
+        self,
+        setting: MemoryUsageSetting | None = None,
+        page_size: int = DEFAULT_PAGE_SIZE,
+    ) -> None:
+        if page_size <= 0:
+            raise ValueError("page_size must be positive")
         self._setting = setting or MemoryUsageSetting.setup_main_memory_only()
+        self._page_size = page_size
+        self._lock = threading.RLock()
+
+        # In-memory pages: list slot -> bytearray of length <= page_size.
+        # None entries indicate the page is currently free / spilled.
+        self._mem_pages: list[bytearray | None] = []
+
+        # Page indices >= len(_mem_pages) live on the temp file.
+        # Mapping: page_index -> file offset in self._tmp.
+        self._file_pages: dict[int, int] = {}
+        self._tmp: IO[bytes] | None = None
+        self._tmp_next_offset: int = 0
+
+        # Free-page LIFO queue (reused by get_new_page).
+        self._free_pages: list[int] = []
+
+        # Total pages ever allocated (highest index + 1, ignoring frees).
+        self._page_count: int = 0
+
+        # Buffers produced via create_buffer(); closed when ScratchFile closes.
         self._open_buffers: set[ScratchFileBuffer] = set()
+
         self._closed = False
+
+        # Honour TEMP_FILE_ONLY by opening the temp file eagerly so failures
+        # surface at construction time rather than on first allocation.
+        if self._setting.mode is StorageMode.TEMP_FILE_ONLY:
+            self._ensure_tmp()
+
+    # ----- properties -----
 
     @property
     def setting(self) -> MemoryUsageSetting:
         return self._setting
 
-    def create_buffer(self) -> ScratchFileBuffer:
-        if self._closed:
-            raise ValueError("ScratchFile is closed")
-        mode = self._setting.mode
-        backing: BinaryIO
-        if mode is StorageMode.MAIN_MEMORY_ONLY:
-            backing = _BytesIO()
-        elif mode is StorageMode.TEMP_FILE_ONLY:
-            backing = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115 — closed by buffer
-        else:  # MIXED
-            spool_max = (
-                self._setting.max_main_memory_bytes
-                if self._setting.max_main_memory_bytes != UNLIMITED
-                else _DEFAULT_MIXED_SPILL_BYTES
-            )
-            # SpooledTemporaryFile is BinaryIO-compatible at runtime but its stub
-            # types it as IO[bytes]; cast for mypy.
-            backing = tempfile.SpooledTemporaryFile(  # noqa: SIM115 — closed by buffer
-                max_size=spool_max, mode="w+b"
-            )  # type: ignore[assignment]
-        buf = ScratchFileBuffer(backing, self)
-        self._open_buffers.add(buf)
-        return buf
+    @property
+    def page_size(self) -> int:
+        return self._page_size
 
-    def create_buffer_from_input(self, source: RandomAccessRead) -> ScratchFileBuffer:
-        """Convenience: copy ``source`` (from current position to end) into a new buffer."""
+    def get_page_size(self) -> int:
+        """Upstream alias for :attr:`page_size`."""
+        return self._page_size
+
+    def is_closed(self) -> bool:
+        return self._closed
+
+    # ----- page-oriented API (upstream parity) -----
+
+    def get_new_page(self) -> int:
+        """
+        Allocate and return the index of a fresh page.
+
+        Reuses a previously freed page if one is queued; otherwise grows
+        the page space. Newly allocated pages are zero-filled.
+        """
+        with self._lock:
+            self._check_open()
+            if self._free_pages:
+                idx = self._free_pages.pop()
+                self._reset_page(idx)
+                return idx
+            return self._allocate_new_page()
+
+    def read_page(
+        self,
+        page_index: int,
+        buf: bytearray | memoryview,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> int:
+        """
+        Copy bytes from page ``page_index`` into ``buf``.
+
+        ``length`` defaults to ``page_size``. Returns the number of bytes
+        actually copied (always equal to ``length`` on success).
+        """
+        if length is None:
+            length = self._page_size
+        self._validate_page_io(page_index, buf, offset, length)
+        with self._lock:
+            self._check_open()
+            data = self._fetch_page_bytes(page_index)
+            view = memoryview(buf)[offset : offset + length]
+            view[:length] = data[:length]
+            return length
+
+    def write_page(
+        self,
+        page_index: int,
+        data: bytes | bytearray | memoryview,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> None:
+        """
+        Store ``length`` bytes from ``data[offset:offset+length]`` into
+        page ``page_index``. ``length`` defaults to ``page_size``.
+        """
+        if length is None:
+            length = self._page_size
+        self._validate_page_io(page_index, data, offset, length)
+        with self._lock:
+            self._check_open()
+            self._validate_page_index(page_index)
+            payload = bytes(memoryview(data)[offset : offset + length])
+            # Pad short writes with zeros so a page is always page_size long
+            # in storage (matches upstream's fixed-page behavior).
+            if length < self._page_size:
+                payload = payload + bytes(self._page_size - length)
+            self._store_page_bytes(page_index, payload)
+
+    def mark_pages_as_free(self, indices: Iterable[int]) -> None:
+        """
+        Return the given pages to the free-page pool so subsequent
+        :meth:`get_new_page` calls reuse them. Idempotent: indices that
+        are already free or out-of-range are silently ignored (matches
+        upstream's defensive behavior).
+        """
+        with self._lock:
+            self._check_open()
+            for idx in indices:
+                if idx < 0 or idx >= self._page_count:
+                    continue
+                if idx in self._free_pages:
+                    continue
+                self._free_pages.append(idx)
+
+    def enqueue_page(self, page: int) -> None:
+        """Mark a single page as free (upstream API)."""
+        self.mark_pages_as_free((page,))
+
+    def dequeue_page(self) -> int:
+        """
+        Pop and return a previously freed page index, or :data:`NO_FREE_PAGE`
+        (-1) if the free queue is empty. Mirrors upstream behaviour.
+        """
+        with self._lock:
+            self._check_open()
+            if not self._free_pages:
+                return NO_FREE_PAGE
+            return self._free_pages.pop()
+
+    def get_main_memory_max_pages(self) -> int:
+        """
+        Configured cap on in-memory pages, derived from the setting's
+        ``max_main_memory_bytes``. Returns -1 (unlimited) when no cap is
+        set or in TEMP_FILE_ONLY mode (where main-memory pages aren't used).
+        """
+        if self._setting.mode is StorageMode.TEMP_FILE_ONLY:
+            return 0
+        cap = self._setting.max_main_memory_bytes
+        if cap == UNLIMITED:
+            return -1
+        return cap // self._page_size
+
+    def get_max_main_memory_bytes(self) -> int:
+        """
+        Spill-to-disk threshold in bytes. In MIXED mode without an explicit
+        cap, returns the 16 MiB default. Otherwise returns the setting's
+        configured ``max_main_memory_bytes`` (which may be ``UNLIMITED``).
+        """
+        if self._setting.mode is StorageMode.MIXED:
+            if self._setting.max_main_memory_bytes == UNLIMITED:
+                return _DEFAULT_MIXED_SPILL_BYTES
+            return self._setting.max_main_memory_bytes
+        return self._setting.max_main_memory_bytes
+
+    def get_page_count(self) -> int:
+        """Total pages allocated so far (free pages still count)."""
+        return self._page_count
+
+    # ----- buffer factory -----
+
+    def create_buffer(self) -> ScratchFileBuffer:
+        """
+        Return a fresh :class:`ScratchFileBuffer` whose backing is this
+        ScratchFile's page pool. Closing the buffer releases its pages.
+        """
+        with self._lock:
+            self._check_open()
+            buf = ScratchFileBuffer(self)
+            self._open_buffers.add(buf)
+            return buf
+
+    def create_buffer_from_input(self, source) -> ScratchFileBuffer:  # noqa: ANN001
+        """Convenience: copy ``source`` (current pos -> end) into a new buffer."""
         buf = self.create_buffer()
-        chunk = bytearray(8192)
+        chunk = bytearray(self._page_size)
         while True:
             n = source.read_into(chunk)
             if n <= 0:
@@ -187,10 +255,8 @@ class ScratchFile:
         self, data: bytes | bytearray | memoryview
     ) -> ScratchFileBuffer:
         """
-        Convenience: create a new buffer pre-populated with ``data`` and
-        seeked back to position 0, so the next read returns the bytes just
-        written. Mirrors no exact upstream method but matches the common
-        PDFBox idiom of ``buf = sf.createBuffer(); buf.write(data); buf.seek(0)``.
+        Convenience: create a buffer pre-populated with ``data`` and seeked
+        back to position 0.
         """
         buf = self.create_buffer()
         if len(data) > 0:
@@ -198,60 +264,33 @@ class ScratchFile:
         buf.seek(0)
         return buf
 
-    def is_closed(self) -> bool:
-        return self._closed
+    def _buffer_closed(self, buf: ScratchFileBuffer) -> None:
+        with self._lock:
+            self._open_buffers.discard(buf)
 
-    def enqueue_page(self, page: int) -> None:
-        """
-        Upstream uses this to return a freed scratch page to the free-page
-        pool for later reuse. The stdlib-backed implementation has no
-        page-pool concept (spool/spill is handled by SpooledTemporaryFile),
-        so this is a no-op preserved for API parity.
-        """
-        _log.debug("ScratchFile.enqueue_page(%d): no-op (stdlib-backed)", page)
-
-    def dequeue_page(self) -> int:
-        """
-        Upstream pops a previously freed page index from the free-page
-        pool. Always returns -1 here since we never enqueue. Preserved for
-        API parity with PDFBox callers that probe page reuse.
-        """
-        _log.debug("ScratchFile.dequeue_page(): always -1 (stdlib-backed)")
-        return -1
-
-    def get_main_memory_max_pages(self) -> int:
-        """
-        Upstream returns the configured max number of in-memory scratch
-        pages. The stdlib-backed implementation has no page-count limit
-        (only a byte threshold via SpooledTemporaryFile), so we return -1
-        meaning "unlimited / not applicable".
-        """
-        return -1
-
-    def get_max_main_memory_bytes(self) -> int:
-        """
-        Spill-to-disk threshold in bytes. In MIXED mode without an
-        explicit cap, returns the 16 MiB default (see CHANGES.md). In
-        MAIN_MEMORY_ONLY / TEMP_FILE_ONLY modes, returns the setting's
-        configured ``max_main_memory_bytes`` (which may be ``UNLIMITED``
-        sentinel ``-1``).
-        """
-        if self._setting.mode is StorageMode.MIXED:
-            if self._setting.max_main_memory_bytes == UNLIMITED:
-                return _DEFAULT_MIXED_SPILL_BYTES
-            return self._setting.max_main_memory_bytes
-        return self._setting.max_main_memory_bytes
+    # ----- lifecycle -----
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        for buf in list(self._open_buffers):
-            buf.close()
-        self._open_buffers.clear()
-
-    def _buffer_closed(self, buf: ScratchFileBuffer) -> None:
-        self._open_buffers.discard(buf)
+        """
+        Close all outstanding buffers, drop in-memory pages, and delete the
+        temp file (if any). Idempotent.
+        """
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            for buf in list(self._open_buffers):
+                buf.close()
+            self._open_buffers.clear()
+            self._mem_pages.clear()
+            self._file_pages.clear()
+            self._free_pages.clear()
+            if self._tmp is not None:
+                try:
+                    self._tmp.close()
+                except OSError as exc:  # pragma: no cover - extremely unlikely
+                    _log.debug("ScratchFile temp file close failed: %s", exc)
+                self._tmp = None
 
     def __enter__(self) -> ScratchFile:
         return self
@@ -259,5 +298,117 @@ class ScratchFile:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
 
+    # ----- internals -----
 
-__all__ = ["ScratchFile", "ScratchFileBuffer"]
+    def _check_open(self) -> None:
+        if self._closed:
+            raise ValueError("operation on closed ScratchFile")
+
+    def _validate_page_io(
+        self,
+        page_index: int,
+        buf: bytes | bytearray | memoryview,
+        offset: int,
+        length: int,
+    ) -> None:
+        if length < 0:
+            raise ValueError("length must be non-negative")
+        if length > self._page_size:
+            raise ValueError(
+                f"length {length} exceeds page size {self._page_size}"
+            )
+        if offset < 0 or offset + length > len(buf):
+            raise ValueError("offset/length out of range for buf")
+
+    def _validate_page_index(self, idx: int) -> None:
+        if idx < 0 or idx >= self._page_count:
+            raise IndexError(f"page index {idx} out of range [0, {self._page_count})")
+
+    def _ensure_tmp(self) -> IO[bytes]:
+        if self._tmp is None:
+            # noqa: SIM115 — closed by ScratchFile.close().
+            self._tmp = tempfile.TemporaryFile(mode="w+b")
+        return self._tmp
+
+    def _allocate_new_page(self) -> int:
+        idx = self._page_count
+        self._page_count += 1
+        if self._should_use_main_memory():
+            self._mem_pages.append(bytearray(self._page_size))
+        else:
+            tmp = self._ensure_tmp()
+            self._file_pages[idx] = self._tmp_next_offset
+            tmp.seek(self._tmp_next_offset)
+            tmp.write(bytes(self._page_size))
+            self._tmp_next_offset += self._page_size
+            # Pad the in-memory list so indices stay aligned.
+            self._mem_pages.append(None)
+        return idx
+
+    def _reset_page(self, idx: int) -> None:
+        # Zero the page so reused indices don't leak previous content.
+        if idx < len(self._mem_pages) and self._mem_pages[idx] is not None:
+            page = self._mem_pages[idx]
+            assert page is not None  # for mypy
+            page[:] = bytes(self._page_size)
+        elif idx in self._file_pages:
+            tmp = self._ensure_tmp()
+            tmp.seek(self._file_pages[idx])
+            tmp.write(bytes(self._page_size))
+
+    def _should_use_main_memory(self) -> bool:
+        mode = self._setting.mode
+        if mode is StorageMode.MAIN_MEMORY_ONLY:
+            return True
+        if mode is StorageMode.TEMP_FILE_ONLY:
+            return False
+        # MIXED: stay in RAM until cap exhausted.
+        cap = self.get_max_main_memory_bytes()
+        if cap == UNLIMITED:
+            return True
+        used = sum(1 for p in self._mem_pages if p is not None) * self._page_size
+        return used + self._page_size <= cap
+
+    def _fetch_page_bytes(self, page_index: int) -> bytes:
+        self._validate_page_index(page_index)
+        if page_index < len(self._mem_pages) and self._mem_pages[page_index] is not None:
+            return bytes(self._mem_pages[page_index])  # type: ignore[arg-type]
+        # File-backed.
+        if page_index not in self._file_pages:
+            # Page exists but has never been written to (allocated only).
+            return bytes(self._page_size)
+        tmp = self._ensure_tmp()
+        tmp.seek(self._file_pages[page_index])
+        return tmp.read(self._page_size)
+
+    def _store_page_bytes(self, page_index: int, payload: bytes) -> None:
+        if (
+            page_index < len(self._mem_pages)
+            and self._mem_pages[page_index] is not None
+        ):
+            page = self._mem_pages[page_index]
+            assert page is not None
+            page[:] = payload
+            return
+        # File-backed: allocate the slot lazily for pages allocated when no
+        # main-memory budget remained.
+        tmp = self._ensure_tmp()
+        if page_index in self._file_pages:
+            offset = self._file_pages[page_index]
+        else:
+            offset = self._tmp_next_offset
+            self._file_pages[page_index] = offset
+            self._tmp_next_offset += self._page_size
+        tmp.seek(offset)
+        tmp.write(payload)
+
+
+# Late import: ScratchFileBuffer references ScratchFile in its annotations.
+from .scratch_file_buffer import ScratchFileBuffer  # noqa: E402
+
+__all__ = [
+    "DEFAULT_PAGE_SIZE",
+    "NO_FREE_PAGE",
+    "ScratchFile",
+    "ScratchFileBuffer",
+]

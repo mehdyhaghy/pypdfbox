@@ -155,3 +155,133 @@ def test_to_byte_array_delegates_to_cos_stream() -> None:
     payload = b"delegated"
     stream = PDStream(input_data=zlib.compress(payload), filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
     assert stream.to_byte_array() == payload
+
+
+# ---------- /FFilter setter ----------
+
+
+def test_set_file_filters_single_name_writes_one_element_array() -> None:
+    stream = PDStream()
+    stream.set_file_filters(COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    raw = stream.get_cos_object().get_dictionary_object(COSName.get_pdf_name("FFilter"))
+    assert isinstance(raw, COSArray)
+    assert stream.get_file_filters() == [COSName.FLATE_DECODE]  # type: ignore[attr-defined]
+
+
+def test_set_file_filters_chain_round_trips() -> None:
+    stream = PDStream()
+    stream.set_file_filters(["ASCII85Decode", "FlateDecode"])
+    assert [n.name for n in stream.get_file_filters()] == [
+        "ASCII85Decode",
+        "FlateDecode",
+    ]
+
+
+def test_set_file_filters_none_removes_entry() -> None:
+    stream = PDStream()
+    stream.set_file_filters(COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    assert stream.get_file_filters() != []
+    stream.set_file_filters(None)
+    assert stream.get_file_filters() == []
+
+
+# ---------- /FDecodeParms setter ----------
+
+
+def test_set_file_decode_parms_single_dict_round_trips() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream()
+    parms = COSDictionary()
+    parms.set_int("Predictor", 12)
+    stream.set_file_decode_parms(parms)
+
+    out = stream.get_file_decode_parms()
+    assert out is not None
+    assert len(out) == 1
+    assert out[0].get_int("Predictor") == 12
+
+
+def test_set_file_decode_parms_chain_round_trips() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream()
+    p1 = COSDictionary()
+    p1.set_int("Predictor", 1)
+    p2 = COSDictionary()
+    p2.set_int("Predictor", 12)
+    stream.set_file_decode_parms([p1, p2])
+
+    out = stream.get_file_decode_parms()
+    assert out is not None
+    assert [d.get_int("Predictor") for d in out] == [1, 12]
+
+
+def test_set_file_decode_parms_none_removes_entry() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream()
+    stream.set_file_decode_parms(COSDictionary())
+    assert stream.get_file_decode_parms() is not None
+    stream.set_file_decode_parms(None)
+    assert stream.get_file_decode_parms() is None
+
+
+# ---------- set_metadata accepts PDMetadata ----------
+
+
+def test_set_metadata_accepts_pd_metadata_wrapper() -> None:
+    from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+
+    stream = PDStream()
+    meta = PDMetadata(b"<x:xmpmeta/>")
+    stream.set_metadata(meta)
+    # Underlying COSStream identity preserved.
+    assert stream.get_metadata() is meta.get_cos_object()
+
+
+# ---------- constructors ----------
+
+
+def test_constructor_with_pd_document_uses_scratch_file() -> None:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    doc = PDDocument()
+    stream = PDStream(doc)
+    assert isinstance(stream.get_cos_object(), COSStream)
+    assert stream.get_length() is None  # no body, no /Length
+
+
+def test_constructor_with_pd_document_and_input_data_embeds_bytes() -> None:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    doc = PDDocument()
+    stream = PDStream(doc, b"hello", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    # Embed stores the bytes verbatim and records /Filter.
+    assert stream.create_raw_input_stream().read() == b"hello"
+    assert stream.get_filters() == [COSName.FLATE_DECODE]  # type: ignore[attr-defined]
+
+
+def test_constructor_with_pd_document_and_filter_array() -> None:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    doc = PDDocument()
+    chain = COSArray(
+        [
+            COSName.ASCII85_DECODE,  # type: ignore[attr-defined]
+            COSName.FLATE_DECODE,  # type: ignore[attr-defined]
+        ]
+    )
+    stream = PDStream(doc, b"raw", filters=chain)
+    # /Filter is set to the array as-is.
+    raw = stream.get_cos_object().get_dictionary_object(COSName.FILTER)  # type: ignore[attr-defined]
+    assert isinstance(raw, COSArray)
+    assert [n.name for n in stream.get_filters()] == ["ASCII85Decode", "FlateDecode"]
+
+
+def test_constructor_rejects_cos_stream_with_input_data() -> None:
+    import pytest
+
+    cs = COSStream()
+    with pytest.raises(TypeError):
+        PDStream(cs, b"oops")

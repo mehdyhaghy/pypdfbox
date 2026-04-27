@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSName, COSNumber, COSStream, COSString
@@ -14,6 +15,9 @@ if TYPE_CHECKING:
     from pypdfbox.cos import COSBase
     from pypdfbox.pdmodel import PDDocument, PDPage
     from pypdfbox.pdmodel.font import PDFont
+    from pypdfbox.pdmodel.interactive.documentnavigation.outline.pd_outline_item import (
+        PDOutlineItem,
+    )
 
 
 class PDFTextStripper:
@@ -68,6 +72,20 @@ class PDFTextStripper:
         self._page_end: str = "\n"
         self._word_separator: str = " "
         self._line_separator: str = "\n"
+        # Article delimiters — emitted around every "article" (one
+        # ``/StructTreeRoot/Article`` bead chain in upstream, but the
+        # lite stripper treats the whole page body as a single article
+        # so these wrap the same span as ``page_start`` / ``page_end``
+        # when ``setShouldSeparateByBeads(true)`` is in effect.
+        self._article_start: str = ""
+        self._article_end: str = ""
+        # Bookmark-bounded extraction range. ``start_bookmark`` (when
+        # set) clamps ``start_page`` to the page the bookmark resolves
+        # to; ``end_bookmark`` does the same for ``end_page``. Either
+        # may be ``None``. Per upstream, when both are set the bookmark
+        # range overrides the explicit page range.
+        self._start_bookmark: PDOutlineItem | None = None
+        self._end_bookmark: PDOutlineItem | None = None
         # Inert layout-tuning holders preserved for upstream API parity.
         # The lite extraction loop doesn't yet consume these; they exist
         # so callers can configure a stripper exactly as they would in
@@ -169,10 +187,20 @@ class PDFTextStripper:
     def is_sort_by_position(self) -> bool:
         return self._sort_by_position
 
+    def get_sort_by_position(self) -> bool:
+        # Upstream PDFBox 3.0.x exposes ``getSortByPosition`` as a
+        # boolean alias of ``isSortByPosition``. Mirror both spellings
+        # so callers can pick either.
+        return self._sort_by_position
+
     def set_suppress_duplicate_overlapping_text(self, value: bool) -> None:
         self._suppress_duplicate_overlapping_text = bool(value)
 
     def is_suppress_duplicate_overlapping_text(self) -> bool:
+        return self._suppress_duplicate_overlapping_text
+
+    def get_suppress_duplicate_overlapping_text(self) -> bool:
+        # Same alias situation as ``get_sort_by_position``.
         return self._suppress_duplicate_overlapping_text
 
     def set_drop_threshold(self, value: float) -> None:
@@ -211,27 +239,94 @@ class PDFTextStripper:
     def is_lenient_stream_parsing(self) -> bool:
         return self._lenient_stream_parsing
 
+    def set_article_start(self, value: str) -> None:
+        self._article_start = value
+
+    def get_article_start(self) -> str:
+        return self._article_start
+
+    def set_article_end(self, value: str) -> None:
+        self._article_end = value
+
+    def get_article_end(self) -> str:
+        return self._article_end
+
+    def set_start_bookmark(self, bookmark: PDOutlineItem | None) -> None:
+        self._start_bookmark = bookmark
+
+    def get_start_bookmark(self) -> PDOutlineItem | None:
+        return self._start_bookmark
+
+    def set_end_bookmark(self, bookmark: PDOutlineItem | None) -> None:
+        self._end_bookmark = bookmark
+
+    def get_end_bookmark(self) -> PDOutlineItem | None:
+        return self._end_bookmark
+
     # ---------- public API ----------
 
     def get_text(self, document: PDDocument) -> str:
         """Walk pages from ``start_page`` (1-based, inclusive) through
         ``min(end_page, page_count)`` and return the concatenated
         extracted text. Each page is wrapped in
-        ``page_start`` / ``page_end``.
+        ``page_start`` / ``page_end``; the whole page body is also
+        wrapped in ``article_start`` / ``article_end`` (lite stripper
+        treats the page as a single article).
+
+        When ``start_bookmark`` / ``end_bookmark`` are set, the
+        resolved bookmark page numbers further clamp the range — see
+        ``_resolve_bookmark_page``. This mirrors upstream's
+        ``setStartBookmark`` / ``setEndBookmark`` behaviour.
         """
         pages = list(document.get_pages())
         total = len(pages)
         first = max(1, self._start_page)
         last = min(self._end_page, total)
+        # Bookmark clamping. Upstream takes the bookmark range as
+        # authoritative when set, but only narrows (never widens) the
+        # explicit page range.
+        if self._start_bookmark is not None:
+            bm_first = self._resolve_bookmark_page(self._start_bookmark, document)
+            if bm_first is not None:
+                first = max(first, bm_first)
+        if self._end_bookmark is not None:
+            bm_last = self._resolve_bookmark_page(self._end_bookmark, document)
+            if bm_last is not None:
+                last = min(last, bm_last)
         if first > last:
             return ""
-        out: list[str] = []
+        chunks: list[str] = []
+
+        def _sink(piece: str) -> None:
+            chunks.append(piece)
+
         for one_based in range(first, last + 1):
             page = pages[one_based - 1]
-            out.append(self._page_start)
-            out.append(self.process_page(page))
-            out.append(self._page_end)
-        return "".join(out)
+            self.write_page_start(_sink)
+            if self._article_start:
+                self.write_article_start(_sink)
+            chunks.append(self.process_page(page))
+            if self._article_end:
+                self.write_article_end(_sink)
+            self.write_page_end(_sink)
+        return "".join(chunks)
+
+    @staticmethod
+    def _resolve_bookmark_page(
+        bookmark: PDOutlineItem, document: PDDocument
+    ) -> int | None:
+        """Return the 1-based page number that ``bookmark`` resolves to
+        within ``document``, or ``None`` when the destination can't be
+        resolved within the lite outline surface (named-destination
+        resolution is deferred — see ``PDOutlineItem.find_destination_page``).
+        """
+        target = bookmark.find_destination_page(document)
+        if target is None:
+            return None
+        for idx, page in enumerate(document.get_pages(), start=1):
+            if page.get_cos_object() is target:
+                return idx
+        return None
 
     def process_page(self, page: PDPage) -> str:
         """Extract text from a single page. Subclasses may override to
@@ -668,17 +763,29 @@ class PDFTextStripper:
         PDF user space puts the origin at the lower-left) so emission
         respects geometric reading order rather than content-stream
         order. This mirrors upstream's ``setSortByPosition(true)``.
+
+        When ``suppress_duplicate_overlapping_text`` is enabled (the
+        upstream default), two positions that share the same text and
+        whose origins differ by less than a quarter of the font size
+        are considered the same glyph painted twice (a common trick
+        for fake bold) and the duplicate is dropped before formatting.
         """
         if not positions:
             return ""
         if self._sort_by_position:
             positions = sorted(positions, key=lambda p: (-p.y, p.x))
-        out: list[str] = []
+        if self._suppress_duplicate_overlapping_text:
+            positions = self._drop_overlapping_duplicates(positions)
+        chunks: list[str] = []
+
+        def _sink(piece: str) -> None:
+            chunks.append(piece)
+
         prev: TextPosition | None = None
         for pos in positions:
             if prev is not None:
                 if abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5:
-                    out.append(self._line_separator)
+                    self.write_line_separator(_sink)
                 else:
                     if prev.width > 0.0:
                         prev_right = prev.x + prev.width
@@ -686,10 +793,96 @@ class PDFTextStripper:
                         prev_right = prev.x + len(prev.text) * prev.font_size * 0.5
                     gap = pos.x - prev_right
                     if gap > prev.font_size * self._WORD_GAP_FACTOR:
-                        out.append(self._word_separator)
-            out.append(pos.text)
+                        self.write_word_separator(_sink)
+            self.write_string(pos.text, [pos], _sink)
             prev = pos
-        return "".join(out)
+        return "".join(chunks)
+
+    @staticmethod
+    def _drop_overlapping_duplicates(
+        positions: list[TextPosition],
+    ) -> list[TextPosition]:
+        """Drop ``TextPosition`` entries that overlap an earlier entry
+        with the same text — the duplicate-glyph fake-bold case.
+        Linear scan against a small ring of recent positions; the
+        threshold is a quarter of the font size in user-space units."""
+        result: list[TextPosition] = []
+        for pos in positions:
+            duplicate = False
+            tol = max(pos.font_size, 0.1) * 0.25
+            # Only check the trailing window — duplicates from fake
+            # bold are always emitted right after their original.
+            for prior in result[-4:]:
+                if (
+                    prior.text == pos.text
+                    and abs(prior.x - pos.x) <= tol
+                    and abs(prior.y - pos.y) <= tol
+                ):
+                    duplicate = True
+                    break
+            if not duplicate:
+                result.append(pos)
+        return result
+
+    # ---------- emission hooks (subclasses may override) ----------
+    #
+    # These mirror upstream PDFBox's ``writeString`` /
+    # ``writeWordSeparator`` / ``writeLineSeparator`` /
+    # ``writeParagraphStart`` / ``writeParagraphEnd`` /
+    # ``writePageStart`` / ``writePageEnd`` / ``writeArticleStart`` /
+    # ``writeArticleEnd`` overrides. Upstream writes to a Java
+    # ``Writer``; we accept a callable sink so subclasses don't need
+    # to thread a buffer through the call chain.
+
+    def process_text_position(self, text: TextPosition) -> None:
+        """Per-glyph hook invoked for every emitted ``TextPosition``.
+
+        The base implementation is a no-op; subclasses override to
+        collect or filter individual glyphs (the
+        :class:`FilteredTextStripper` ``-rotationMagic`` collector is
+        the canonical use case). Upstream PDFBox calls this from its
+        showText path; the lite stripper invokes it once per emitted
+        run from ``_format_positions`` so the hook stays observable
+        without re-engineering the parser walk.
+        """
+        return None
+
+    def write_string(
+        self,
+        text: str,
+        text_positions: list[TextPosition],
+        sink: Callable[[str], None],
+    ) -> None:
+        """Hook for emitting a decoded text run. Default writes
+        ``text`` to ``sink``. Subclasses may inspect ``text_positions``
+        to filter or transform the run before writing."""
+        for tp in text_positions:
+            self.process_text_position(tp)
+        sink(text)
+
+    def write_word_separator(self, sink: Callable[[str], None]) -> None:
+        sink(self._word_separator)
+
+    def write_line_separator(self, sink: Callable[[str], None]) -> None:
+        sink(self._line_separator)
+
+    def write_paragraph_start(self, sink: Callable[[str], None]) -> None:
+        sink(self._paragraph_start)
+
+    def write_paragraph_end(self, sink: Callable[[str], None]) -> None:
+        sink(self._paragraph_end)
+
+    def write_page_start(self, sink: Callable[[str], None]) -> None:
+        sink(self._page_start)
+
+    def write_page_end(self, sink: Callable[[str], None]) -> None:
+        sink(self._page_end)
+
+    def write_article_start(self, sink: Callable[[str], None]) -> None:
+        sink(self._article_start)
+
+    def write_article_end(self, sink: Callable[[str], None]) -> None:
+        sink(self._article_end)
 
 
 class _TextState:

@@ -239,6 +239,11 @@ class Standard14Fonts:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
         return load_standard14(canonical)
 
+    # camelCase alias kept for upstream-API parity; prefer ``get_afm``.
+    @classmethod
+    def getAFM(cls, name: str) -> AfmMetrics:  # noqa: N802 - upstream name
+        return cls.get_afm(name)
+
     # ---- Metrics ------------------------------------------------------
 
     @classmethod

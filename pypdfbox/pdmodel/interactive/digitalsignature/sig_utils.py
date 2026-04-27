@@ -1,0 +1,290 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+
+from .pd_signature import PDSignature
+
+if TYPE_CHECKING:  # pragma: no cover — typing only
+    from cryptography.x509 import Certificate
+
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+_REFERENCE: COSName = COSName.get_pdf_name("Reference")
+_TRANSFORM_METHOD: COSName = COSName.get_pdf_name("TransformMethod")
+_TRANSFORM_PARAMS: COSName = COSName.get_pdf_name("TransformParams")
+_DOC_MDP: COSName = COSName.get_pdf_name("DocMDP")
+_P: COSName = COSName.get_pdf_name("P")
+_PERMS: COSName = COSName.get_pdf_name("Perms")
+_BYTE_RANGE: COSName = COSName.get_pdf_name("ByteRange")
+
+
+# --------------------------------------------------------------------- MDP API
+
+
+def get_mdp_permission(document: PDDocument) -> int:
+    """Get the MDP (Modification Detection and Prevention) permission level.
+
+    Mirrors PDFBox examples ``SigUtils.getMDPPermission``. Returns ``0`` if
+    no MDP signature is present, otherwise ``1``, ``2`` or ``3`` (PDF 32000-1
+    §12.8.2.2 / Table 257):
+
+    * ``1`` — no changes permitted; any change invalidates the signature.
+    * ``2`` — form fill-in and signing allowed; other changes invalidate.
+    * ``3`` — also annotation create/delete/modify allowed.
+
+    Looks up ``/Catalog/Perms/DocMDP``, follows its ``/Reference`` array to
+    the first ``/TransformMethod /DocMDP`` entry, and reads ``/TransformParams
+    /P``. Anything malformed returns ``0`` (no MDP), matching upstream's
+    permissive parsing.
+    """
+    catalog = document.get_document_catalog()
+    perms = catalog.get_perms()
+    if perms is None:
+        return 0
+    base = perms.get_dictionary_object(_DOC_MDP)
+    if not isinstance(base, COSDictionary):
+        return 0
+    references = base.get_dictionary_object(_REFERENCE)
+    if not isinstance(references, COSArray):
+        return 0
+    for i in range(len(references)):
+        ref = references.get_object(i)
+        if not isinstance(ref, COSDictionary):
+            continue
+        method = ref.get_dictionary_object(_TRANSFORM_METHOD)
+        if not (isinstance(method, COSName) and method.get_name() == "DocMDP"):
+            continue
+        params = ref.get_dictionary_object(_TRANSFORM_PARAMS)
+        if not isinstance(params, COSDictionary):
+            continue
+        p = params.get_dictionary_object(_P)
+        if isinstance(p, COSInteger):
+            value = int(p.int_value())
+            if 1 <= value <= 3:
+                return value
+        return 0
+    return 0
+
+
+def set_mdp_permission(
+    document: PDDocument, signature: PDSignature, access_permissions: int
+) -> None:
+    """Attach an MDP (Modification Detection and Prevention) transform to
+    ``signature`` and wire it into the document catalog at ``/Perms/DocMDP``.
+
+    Mirrors PDFBox examples ``SigUtils.setMDPPermission``. ``access_permissions``
+    is one of:
+
+    * ``1`` — no changes permitted.
+    * ``2`` — form fill-in / signing allowed.
+    * ``3`` — also annotation create/delete/modify allowed.
+
+    Raises :class:`ValueError` for any other value, and :class:`ValueError`
+    if a DocMDP transform is already present (only one MDP signature per
+    document is permitted by the spec)."""
+    if access_permissions not in (1, 2, 3):
+        raise ValueError(
+            f"Access permissions must be 1, 2 or 3; got {access_permissions}"
+        )
+    sig_dict = signature.get_cos_object()
+    catalog = document.get_document_catalog()
+
+    perms = catalog.get_perms()
+    if perms is not None and perms.get_dictionary_object(_DOC_MDP) is not None:
+        raise ValueError(
+            "DocMDP transform parameters dictionary is already present "
+            "in the catalog; only one MDP signature allowed per document"
+        )
+
+    transform_params = COSDictionary()
+    transform_params.set_item(COSName.TYPE, COSName.get_pdf_name("TransformParams"))  # type: ignore[attr-defined]
+    transform_params.set_item(_P, COSInteger.get(access_permissions))
+    transform_params.set_item(
+        COSName.get_pdf_name("V"), COSName.get_pdf_name("1.2")
+    )
+    transform_params.set_needs_to_be_updated(True)
+
+    reference = COSDictionary()
+    reference.set_item(COSName.TYPE, COSName.get_pdf_name("SigRef"))  # type: ignore[attr-defined]
+    reference.set_item(_TRANSFORM_METHOD, COSName.get_pdf_name("DocMDP"))
+    reference.set_item(
+        COSName.get_pdf_name("DigestMethod"), COSName.get_pdf_name("SHA1")
+    )
+    reference.set_item(_TRANSFORM_PARAMS, transform_params)
+    reference.set_needs_to_be_updated(True)
+
+    reference_array = COSArray()
+    reference_array.add(reference)
+    sig_dict.set_item(_REFERENCE, reference_array)
+
+    if perms is None:
+        perms = COSDictionary()
+        catalog.set_perms(perms)
+    perms.set_item(_DOC_MDP, sig_dict)
+    perms.set_needs_to_be_updated(True)
+    catalog.get_cos_object().set_needs_to_be_updated(True)
+
+
+# ----------------------------------------------------------------- cert checks
+
+
+def _has_extended_key_usage(cert: Certificate, oid_dotted_string: str) -> bool:
+    try:
+        from cryptography.x509 import ExtensionNotFound
+        from cryptography.x509.oid import ExtensionOID
+    except ImportError as exc:  # pragma: no cover — install-time
+        raise RuntimeError("cryptography is required for SigUtils") from exc
+    try:
+        ext = cert.extensions.get_extension_for_oid(
+            ExtensionOID.EXTENDED_KEY_USAGE
+        )
+    except ExtensionNotFound:
+        return False
+    return any(usage.dotted_string == oid_dotted_string for usage in ext.value)
+
+
+def check_certificate_usage(certificate: Certificate) -> list[str]:
+    """Walk ``certificate`` for the X.509 KeyUsage / ExtendedKeyUsage bits a
+    PDF *signing* certificate is supposed to carry.
+
+    Mirrors PDFBox examples ``SigUtils.checkCertificateUsage``. Returns a
+    list of warning strings (one per issue) — empty list means the cert
+    looks fine for signing. Pure structural check; no chain-trust math.
+
+    Warnings cover:
+
+    * KeyUsage extension missing or marked non-critical.
+    * ``digitalSignature`` and ``nonRepudiation`` both clear (need at least
+      one for PDF signing).
+    * ExtendedKeyUsage present but lacks ``id-kp-emailProtection`` /
+      ``id-kp-codeSigning`` / Adobe-Authentic-Documents-Trust OID.
+    """
+    warnings: list[str] = []
+    try:
+        from cryptography.x509 import ExtensionNotFound
+        from cryptography.x509.oid import ExtensionOID
+    except ImportError as exc:  # pragma: no cover — install-time
+        raise RuntimeError("cryptography is required for SigUtils") from exc
+
+    # KeyUsage
+    try:
+        ku_ext = certificate.extensions.get_extension_for_oid(
+            ExtensionOID.KEY_USAGE
+        )
+    except ExtensionNotFound:
+        warnings.append("Certificate has no KeyUsage extension")
+    else:
+        if not ku_ext.critical:
+            warnings.append("KeyUsage extension is not marked critical")
+        ku = ku_ext.value
+        if not (ku.digital_signature or ku.content_commitment):
+            # ``content_commitment`` is the X.509 v3 name for nonRepudiation.
+            warnings.append(
+                "Certificate KeyUsage lacks digitalSignature / nonRepudiation"
+            )
+
+    # ExtendedKeyUsage
+    try:
+        eku_ext = certificate.extensions.get_extension_for_oid(
+            ExtensionOID.EXTENDED_KEY_USAGE
+        )
+    except ExtensionNotFound:
+        return warnings  # EKU is optional.
+
+    eku_oids = {usage.dotted_string for usage in eku_ext.value}
+    # 1.3.6.1.5.5.7.3.4 = id-kp-emailProtection
+    # 1.3.6.1.5.5.7.3.3 = id-kp-codeSigning
+    # 1.2.840.113583.1.1.5 = Adobe Authentic Documents Trust
+    expected = {
+        "1.3.6.1.5.5.7.3.4",
+        "1.3.6.1.5.5.7.3.3",
+        "1.2.840.113583.1.1.5",
+    }
+    if eku_oids.isdisjoint(expected):
+        warnings.append(
+            "Certificate ExtendedKeyUsage lacks emailProtection / "
+            "codeSigning / Adobe Authentic Documents Trust"
+        )
+    return warnings
+
+
+def check_responder_certificate_usage(certificate: Certificate) -> list[str]:
+    """Walk ``certificate`` for the ExtendedKeyUsage an OCSP-responder
+    certificate must carry — namely ``id-kp-OCSPSigning`` (1.3.6.1.5.5.7.3.9).
+
+    Mirrors PDFBox examples ``SigUtils.checkResponderCertificateUsage``.
+    Returns a list of warnings; empty list means the responder cert is
+    properly marked.
+    """
+    warnings: list[str] = []
+    try:
+        from cryptography.x509 import ExtensionNotFound
+        from cryptography.x509.oid import ExtensionOID
+    except ImportError as exc:  # pragma: no cover — install-time
+        raise RuntimeError("cryptography is required for SigUtils") from exc
+
+    try:
+        eku_ext = certificate.extensions.get_extension_for_oid(
+            ExtensionOID.EXTENDED_KEY_USAGE
+        )
+    except ExtensionNotFound:
+        warnings.append(
+            "Responder certificate has no ExtendedKeyUsage extension"
+        )
+        return warnings
+
+    eku_oids = {usage.dotted_string for usage in eku_ext.value}
+    if "1.3.6.1.5.5.7.3.9" not in eku_oids:
+        warnings.append(
+            "Responder certificate ExtendedKeyUsage lacks OCSPSigning "
+            "(1.3.6.1.5.5.7.3.9)"
+        )
+    return warnings
+
+
+# ------------------------------------------------------------ signature picker
+
+
+def get_last_relevant_signature(document: PDDocument) -> PDSignature | None:
+    """Return the *latest-applied* :class:`PDSignature` in ``document``, or
+    ``None`` if there are no signatures.
+
+    Mirrors PDFBox examples ``SigUtils.getLastRelevantSignature``. The
+    upstream heuristic is: of all signatures whose ``/ByteRange`` is set,
+    pick the one whose second range ends *latest in the file* — i.e. the
+    one whose update covers the most bytes. That is the signature applied
+    by the most-recent incremental save, and so the one whose lock /
+    permission bits are the active ones for the document's current state.
+    """
+    sigs = document.get_signature_dictionaries()
+    if not sigs:
+        return None
+
+    best: PDSignature | None = None
+    best_end = -1
+    for sig in sigs:
+        br = sig.get_byte_range()
+        if br is None or len(br) != 4:
+            continue
+        end = int(br[2]) + int(br[3])
+        if end > best_end:
+            best_end = end
+            best = sig
+    if best is not None:
+        return best
+    # Fallback: no /ByteRange anywhere — return the last in order, matching
+    # upstream's behavior of returning the final signature when ranges are
+    # missing.
+    return sigs[-1]
+
+
+__all__ = [
+    "check_certificate_usage",
+    "check_responder_certificate_usage",
+    "get_last_relevant_signature",
+    "get_mdp_permission",
+    "set_mdp_permission",
+]

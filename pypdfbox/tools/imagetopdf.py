@@ -1,7 +1,7 @@
 """
 ``pypdfbox imagetopdf -i img1 [img2 ...] -o out.pdf [-pageSize SIZE]
-[-resize] [-orientation ORI]`` — build a PDF from one or more raster
-images.
+[-resize] [-orientation ORI] [--margin-pt N]`` — build a PDF from one or
+more raster images.
 
 Mirrors upstream ``org.apache.pdfbox.tools.ImageToPDF``. Upstream loads
 each image via ``PDImageXObject.createFromFileByExtension`` (delegating
@@ -15,6 +15,22 @@ helpers, so we build the Image XObject inline:
 * ``.jpg`` / ``.jpeg`` payloads embed verbatim as ``/DCTDecode``.
 * every other Pillow-readable format (PNG, TIFF, BMP, GIF, ...) is
   decoded to RGB pixels and stored as a FlateDecode-compressed raster.
+
+In addition to upstream's switches we expose a small superset for
+practical CLI use:
+
+* ``--page-size`` — extended catalog (LETTER, LEGAL, US-LEGAL, EXECUTIVE,
+  TABLOID, LEDGER, A0..A6, B4, B5).
+* ``--portrait`` / ``--landscape`` — explicit orientation flags
+  (``--landscape`` mirrors upstream; ``--portrait`` is the implicit
+  default and is exposed for symmetry).
+* ``--auto-orientation`` — picks landscape automatically when the image
+  is wider than tall (mirrors upstream ``-autoOrientation``).
+* ``--margin-pt N`` — uniform white margin (in PDF points) on all four
+  sides. With ``--resize`` the image is fit into the printable area
+  (page minus margins) preserving aspect ratio; without ``--resize`` the
+  image is positioned at the lower-left of the printable area at its
+  intrinsic pixel size.
 
 Exit codes follow upstream:
   0  success
@@ -38,11 +54,23 @@ from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 # page-size table (mirrors upstream ImageToPDF#createRectangle)
 # ---------------------------------------------------------------------------
 
-# Standard A-series sizes in PDF user-space points (1pt = 1/72 inch).
-# Values match Apache PDFBox's PDRectangle constants.
+# Standard sizes in PDF user-space points (1pt = 1/72 inch). Values
+# match Apache PDFBox's PDRectangle constants where they exist; the rest
+# come from the ISO 216 / ANSI / North-American tables.
+#
+# Aliases (us-legal == legal, ledger == tabloid) are wired below so the
+# CLI accepts both spellings; matches upstream's case-insensitive
+# ``createRectangle`` lookup.
 _PAGE_SIZES: dict[str, PDRectangle] = {
+    # North American
     "letter": PDRectangle.LETTER,  # type: ignore[attr-defined]
     "legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
+    "us-legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
+    "us_legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
+    "executive": PDRectangle(0.0, 0.0, 522.0, 756.0),
+    "tabloid": PDRectangle(0.0, 0.0, 792.0, 1224.0),
+    "ledger": PDRectangle(0.0, 0.0, 792.0, 1224.0),
+    # ISO 216 A-series
     "a0": PDRectangle(0.0, 0.0, 2384.0, 3370.0),
     "a1": PDRectangle(0.0, 0.0, 1684.0, 2384.0),
     "a2": PDRectangle(0.0, 0.0, 1191.0, 1684.0),
@@ -50,6 +78,9 @@ _PAGE_SIZES: dict[str, PDRectangle] = {
     "a4": PDRectangle.A4,  # type: ignore[attr-defined]
     "a5": PDRectangle(0.0, 0.0, 420.0, 595.0),
     "a6": PDRectangle(0.0, 0.0, 298.0, 420.0),
+    # ISO 216 B-series (commonly requested; subset only)
+    "b4": PDRectangle(0.0, 0.0, 709.0, 1001.0),
+    "b5": PDRectangle(0.0, 0.0, 499.0, 709.0),
 }
 
 _DEFAULT_PAGE_SIZE = "Letter"
@@ -79,14 +110,18 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         help="output PDF file",
     )
     p.add_argument(
-        "-pageSize", "--pageSize", dest="page_size",
+        "-pageSize", "--pageSize", "--page-size", dest="page_size",
         default=_DEFAULT_PAGE_SIZE, metavar="SIZE",
-        help="the page size to use: Letter, Legal, A0, A1, A2, A3, A4, A5, "
-        "A6, or auto (= match each image's pixel dimensions). Default: Letter.",
+        help="page size: Letter, Legal, US-Legal, Executive, Tabloid, Ledger, "
+        "A0..A6, B4, B5, or 'auto' (= match each image's pixel dimensions). "
+        "Default: Letter.",
     )
     p.add_argument(
         "-resize", "--resize", dest="resize", action="store_true",
-        help="resize each image to fill the full page",
+        help="resize each image to fit the printable area (page minus "
+        "margins). Aspect ratio is preserved when --margin-pt > 0; with "
+        "no margin the image is stretched to fill the page (upstream "
+        "behavior).",
     )
     p.add_argument(
         "-orientation", "--orientation", dest="orientation",
@@ -102,9 +137,21 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         help="set orientation to landscape (alias for -orientation landscape)",
     )
     p.add_argument(
-        "-autoOrientation", "--autoOrientation", dest="_auto_orientation",
-        action="store_true",
-        help="set orientation to auto (alias for -orientation auto)",
+        "--portrait", dest="_portrait", action="store_true",
+        help="set orientation to portrait (alias for -orientation portrait); "
+        "default — exposed for symmetry with --landscape.",
+    )
+    p.add_argument(
+        "-autoOrientation", "--autoOrientation", "--auto-orientation",
+        dest="_auto_orientation", action="store_true",
+        help="rotate page to landscape when the image is wider than tall "
+        "(alias for -orientation auto).",
+    )
+    p.add_argument(
+        "--margin-pt", dest="margin_pt", type=float, default=0.0,
+        metavar="N",
+        help="uniform white margin in PDF points (1pt = 1/72 in) on all "
+        "four sides. Default: 0.",
     )
     p.set_defaults(func=run)
 
@@ -209,11 +256,25 @@ def _resolve_page_size(name: str) -> PDRectangle | None:
     """Resolve a page-size keyword to a :class:`PDRectangle`. Returns
     ``None`` for ``auto`` (caller derives the rectangle per-image).
     Unknown names fall back to Letter, matching upstream's
-    ``createRectangle`` default."""
+    ``createRectangle`` default.
+
+    Hyphens, underscores and case are normalised so callers can pass
+    ``"US-Legal"``, ``"us_legal"`` or ``"USLEGAL"`` interchangeably.
+    """
     key = (name or "").strip().lower()
     if key == "auto":
         return None
-    return _PAGE_SIZES.get(key, PDRectangle.LETTER)  # type: ignore[attr-defined]
+    # Try the literal lookup first, then the hyphen/underscore-normalized
+    # form (so 'usletter' -> 'usletter' miss falls back to 'us-letter' if
+    # later added; harmless today).
+    rect = _PAGE_SIZES.get(key)
+    if rect is None:
+        rect = _PAGE_SIZES.get(key.replace("_", "-"))
+    if rect is None:
+        rect = _PAGE_SIZES.get(key.replace("-", "_"))
+    if rect is None:
+        rect = _PAGE_SIZES.get(key.replace("-", "").replace("_", ""))
+    return rect if rect is not None else PDRectangle.LETTER  # type: ignore[attr-defined]
 
 
 def _orient(media_box: PDRectangle, orientation: str, image: PDImageXObject) -> PDRectangle:
@@ -239,6 +300,20 @@ def _auto_media_box(image: PDImageXObject) -> PDRectangle:
 # ---------------------------------------------------------------------------
 
 
+def _fit_into(image: PDImageXObject, max_w: float, max_h: float) -> tuple[float, float]:
+    """Scale ``image``'s pixel size into a box of ``max_w`` x ``max_h``
+    preserving aspect ratio. Returns the (width, height) in PDF points.
+    If the image already fits in either dimension we still scale so it
+    consumes the printable area — matching the user expectation of
+    ``--resize``."""
+    iw = float(image.get_width())
+    ih = float(image.get_height())
+    if iw <= 0 or ih <= 0:  # pragma: no cover — defensive
+        return max_w, max_h
+    scale = min(max_w / iw, max_h / ih)
+    return iw * scale, ih * scale
+
+
 def images_to_pdf(
     inputs: Iterable[Path | str],
     output: Path | str,
@@ -246,6 +321,7 @@ def images_to_pdf(
     page_size: str = _DEFAULT_PAGE_SIZE,
     resize: bool = False,
     orientation: str = "portrait",
+    margin_pt: float = 0.0,
 ) -> None:
     """Build a multi-page PDF where each page carries one input image.
 
@@ -253,8 +329,14 @@ def images_to_pdf(
     ``-autoOrientation`` / ``-landscape`` / ``-resize`` switches. The
     orientation argument here unifies upstream's two boolean flags into a
     single tri-state string (``portrait`` / ``landscape`` / ``auto``).
+
+    ``margin_pt`` adds a uniform white margin (in PDF points) on all
+    four sides of every page; with ``resize=True`` the image is fit into
+    the printable area preserving aspect ratio, otherwise it is placed
+    at the lower-left of the printable area at its intrinsic pixel size.
     """
     media_box_template = _resolve_page_size(page_size)
+    margin = max(0.0, float(margin_pt))
     doc = PDDocument()
     try:
         for image_path in inputs:
@@ -262,27 +344,42 @@ def images_to_pdf(
             image = create_image_xobject(path)
 
             if media_box_template is None:
-                # auto page size: match the image's pixel bounds.
-                actual_media_box = _auto_media_box(image)
+                # auto page size: match the image's pixel bounds (plus
+                # margin on all sides if requested).
+                inner = _auto_media_box(image)
+                actual_media_box = PDRectangle(
+                    0.0, 0.0,
+                    inner.get_width() + 2 * margin,
+                    inner.get_height() + 2 * margin,
+                )
             else:
                 actual_media_box = _orient(media_box_template, orientation, image)
 
             page = PDPage(actual_media_box)
             doc.add_page(page)
+
+            page_w = actual_media_box.get_width()
+            page_h = actual_media_box.get_height()
+            printable_w = max(0.0, page_w - 2 * margin)
+            printable_h = max(0.0, page_h - 2 * margin)
+
             with PDPageContentStream(doc, page) as contents:
                 if resize:
-                    contents.draw_image(
-                        image,
-                        0,
-                        0,
-                        actual_media_box.get_width(),
-                        actual_media_box.get_height(),
-                    )
+                    if margin > 0.0:
+                        # Fit into the printable area preserving aspect.
+                        draw_w, draw_h = _fit_into(image, printable_w, printable_h)
+                        # Center within the printable area.
+                        x = margin + (printable_w - draw_w) / 2.0
+                        y = margin + (printable_h - draw_h) / 2.0
+                        contents.draw_image(image, x, y, draw_w, draw_h)
+                    else:
+                        # Upstream behavior: stretch to full media box.
+                        contents.draw_image(image, 0, 0, page_w, page_h)
                 else:
                     contents.draw_image(
                         image,
-                        0,
-                        0,
+                        margin,
+                        margin,
                         float(image.get_width()),
                         float(image.get_height()),
                     )
@@ -304,11 +401,22 @@ def run(args: argparse.Namespace) -> int:
             return 4
 
     # Reconcile legacy upstream switches with the unified -orientation arg.
+    # Boolean flags don't preserve CLI ordering through argparse, so we
+    # pick a deterministic precedence: among the aliases, auto wins,
+    # then landscape, then portrait. Aliases override -orientation.
+    # This matches upstream where -autoOrientation overrides -landscape.
     orientation = (args.orientation or "portrait").lower()
+    if getattr(args, "_portrait", False):
+        orientation = "portrait"
     if getattr(args, "_landscape", False):
         orientation = "landscape"
     if getattr(args, "_auto_orientation", False):
         orientation = "auto"
+
+    margin_pt = float(getattr(args, "margin_pt", 0.0) or 0.0)
+    if margin_pt < 0:
+        print(f"imagetopdf: --margin-pt must be >= 0 (got {margin_pt})", flush=True)
+        return 4
 
     images_to_pdf(
         inputs,
@@ -316,5 +424,6 @@ def run(args: argparse.Namespace) -> int:
         page_size=args.page_size,
         resize=bool(args.resize),
         orientation=orientation,
+        margin_pt=margin_pt,
     )
     return 0

@@ -82,3 +82,25 @@ def test_set_first_bead_none_removes_entry() -> None:
 def test_get_cos_object_returns_dictionary() -> None:
     thread = PDThread()
     assert isinstance(thread.get_cos_object(), COSDictionary)
+
+
+def test_get_info_alias_matches_get_thread_info() -> None:
+    thread = PDThread()
+    info = PDDocumentInformation()
+    info.set_author("Ada Lovelace")
+    thread.set_info(info)
+    fetched = thread.get_info()
+    assert fetched is not None
+    assert fetched.get_author() == "Ada Lovelace"
+    # Both accessors must observe the same /I entry.
+    via_thread_info = thread.get_thread_info()
+    assert via_thread_info is not None
+    assert via_thread_info.get_cos_object() is fetched.get_cos_object()
+
+
+def test_set_info_none_removes_entry() -> None:
+    thread = PDThread()
+    thread.set_info(PDDocumentInformation())
+    thread.set_info(None)
+    assert thread.get_info() is None
+    assert not thread.get_cos_object().contains_key(COSName.get_pdf_name("I"))

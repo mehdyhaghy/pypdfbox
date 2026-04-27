@@ -95,7 +95,12 @@ def test_exif() -> None:
     pass
 
 
-@pytest.mark.skip(reason="needs PhotoshopSchema + LayerType (rich type system, not yet ported)")
+@pytest.mark.skip(
+    reason="LayerType + PhotoshopSchema typed accessors are ported, but the "
+    "DOM parser does not yet build typed structured-type instances from "
+    "rdf:Seq/rdf:li children — TextLayers parses as a plain list rather than "
+    "an ArrayProperty of LayerType. Un-skip when parser typed-construction lands."
+)
 def test_layer() -> None:
     pass
 

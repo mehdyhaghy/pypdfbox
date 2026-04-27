@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
@@ -148,6 +148,38 @@ class PDThreadBead:
             self._bead.remove_item(_R)
             return
         self._bead.set_item(_R, rect.to_cos_array())
+
+    # ---------- iteration over the bead chain ----------
+
+    def iter_beads(self) -> Iterator[PDThreadBead]:
+        """Walk the (circular) bead chain forward starting from this bead.
+
+        Yields ``self`` first, then follows ``/N`` until the chain wraps back
+        to the starting bead's underlying ``COSDictionary`` or ``/N`` is
+        absent. The walk is identity-aware: malformed PDFs that point ``/N``
+        at an already-visited bead are tolerated by tracking visited
+        dictionary identities, so the iterator is guaranteed to terminate.
+        """
+        seen: set[int] = set()
+        current: PDThreadBead | None = self
+        start_id = id(self._bead)
+        while current is not None:
+            cur_id = id(current._bead)
+            if cur_id in seen:
+                return
+            seen.add(cur_id)
+            yield current
+            nxt = current.get_next_bead()
+            if nxt is None:
+                return
+            if id(nxt.get_cos_object()) == start_id:
+                return
+            current = nxt
+
+    def __iter__(self) -> Iterator[PDThreadBead]:
+        """Equivalent to :meth:`iter_beads` — lets callers do ``for b in
+        bead:`` to walk the article."""
+        return self.iter_beads()
 
 
 __all__ = ["PDThreadBead"]

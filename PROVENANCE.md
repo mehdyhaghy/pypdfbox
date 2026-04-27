@@ -920,3 +920,10 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/contentstream/operator/text/set_text_rendering_mode_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextRenderingMode.java` |
 | `pypdfbox/contentstream/operator/text/set_text_rise_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextRise.java` |
 | `pypdfbox/contentstream/operator/text/next_line_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/NextLine.java` |
+| `pypdfbox/contentstream/operator/graphics/shading_fill.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/ShadingFill.java` |
+| `pypdfbox/io/scratch_file.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/ScratchFile.java` |
+| `pypdfbox/io/scratch_file_buffer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/ScratchFileBuffer.java` |
+| `tests/io/upstream/test_scratch_file.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/io/ScratchFileTest.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/cos_filter_input_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/COSFilterInputStream.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/sig_utils.py` | 3.0.x | derived from `pdfbox-examples/.../SigUtils.java` patterns (KU/EKU bit checks only) |
+| `tests/pdmodel/font/upstream/test_standard14_fonts.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/Standard14FontsTest.java` |

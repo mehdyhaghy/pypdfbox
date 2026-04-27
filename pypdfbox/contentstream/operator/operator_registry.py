@@ -19,6 +19,7 @@ from .color.set_stroking_gray import SetStrokingGray
 from .color.set_stroking_rgb import SetStrokingRGB
 from .graphics.concatenate_matrix import ConcatenateMatrix
 from .graphics.invoke_named_xobject import InvokeNamedXObject
+from .graphics.shading_fill import ShadingFill
 from .imagecontent.begin_inline_image import BeginInlineImage
 from .imagecontent.begin_inline_image_data import BeginInlineImageData
 from .imagecontent.end_inline_image import EndInlineImage
@@ -142,6 +143,8 @@ class OperatorRegistry:
         SetLineMiterLimit.OPERATOR_NAME: SetLineMiterLimit,
         # XObject invocation
         InvokeNamedXObject.OPERATOR_NAME: InvokeNamedXObject,
+        # shading
+        ShadingFill.OPERATOR_NAME: ShadingFill,
         # inline-image operators
         BeginInlineImage.OPERATOR_NAME: BeginInlineImage,
         BeginInlineImageData.OPERATOR_NAME: BeginInlineImageData,
