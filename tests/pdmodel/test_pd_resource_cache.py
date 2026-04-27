@@ -3,7 +3,8 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox import PDDocument
-from pypdfbox.cos import COSDictionary, COSObject
+from pypdfbox.cos import COSDictionary, COSObject, COSStream
+from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.pd_resource_cache import (
     DefaultResourceCache,
     PDResourceCache,
@@ -36,10 +37,24 @@ def test_get_font_missing_returns_none() -> None:
     assert cache.get_font(_ref(99)) is None
 
 
+def test_put_x_object_get_x_object_round_trip() -> None:
+    cache = DefaultResourceCache()
+    key = _ref(8)
+    xobject = PDFormXObject(COSStream())
+    cache.put_x_object(key, xobject)
+    assert cache.get_x_object(key) is xobject
+
+
+def test_get_x_object_missing_returns_none() -> None:
+    cache = DefaultResourceCache()
+    assert cache.get_x_object(_ref(100)) is None
+
+
 def test_clear_empties_the_cache() -> None:
     cache = DefaultResourceCache()
     key = _ref(3)
     cache.put_font(key, COSDictionary())
+    cache.put_x_object(key, PDFormXObject(COSStream()))
     cache.put_color_space(key, object())  # type: ignore[arg-type]
     cache.put_pattern(key, object())  # type: ignore[arg-type]
     cache.put_shading(key, object())  # type: ignore[arg-type]
@@ -47,6 +62,7 @@ def test_clear_empties_the_cache() -> None:
     cache.put_property_list(key, object())  # type: ignore[arg-type]
     cache.clear()
     assert cache.get_font(key) is None
+    assert cache.get_x_object(key) is None
     assert cache.get_color_space(key) is None
     assert cache.get_pattern(key) is None
     assert cache.get_shading(key) is None
@@ -81,6 +97,7 @@ def test_each_category_is_isolated() -> None:
     cache.put_font(key, font)
     # Same key in a different category should miss.
     assert cache.get_color_space(key) is None
+    assert cache.get_x_object(key) is None
     assert cache.get_pattern(key) is None
     assert cache.get_shading(key) is None
     assert cache.get_ext_g_state(key) is None

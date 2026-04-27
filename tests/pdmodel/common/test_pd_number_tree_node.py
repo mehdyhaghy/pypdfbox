@@ -69,6 +69,25 @@ def test_get_value_walks_kids_via_limits() -> None:
     assert root.get_value(9999) is None
 
 
+def test_get_numbers_flattens_nested_kids() -> None:
+    leaf_one = _IntNumberTreeNode()
+    leaf_one.set_numbers({1: 11, 2: 22})
+
+    leaf_two = _IntNumberTreeNode()
+    leaf_two.set_numbers({100: 1100})
+
+    intermediate = _IntNumberTreeNode()
+    intermediate.set_kids([leaf_two])
+
+    root = _IntNumberTreeNode()
+    root.set_kids([leaf_one, intermediate])
+
+    assert root.get_numbers() == {1: 11, 2: 22, 100: 1100}
+    assert root.get_value(100) == 1100
+    assert intermediate.get_lower_limit() == 100
+    assert intermediate.get_upper_limit() == 100
+
+
 def test_kids_set_parent_and_carry_limits() -> None:
     leaf = _IntNumberTreeNode()
     leaf.set_numbers({5: 50, 10: 100})
@@ -86,6 +105,29 @@ def test_kids_set_parent_and_carry_limits() -> None:
     assert root.get_cos_object().get_dictionary_object(_LIMITS) is None
     assert leaf.get_lower_limit() == 5
     assert leaf.get_upper_limit() == 10
+
+
+def test_read_kids_are_parented_and_can_refresh_limits() -> None:
+    leaf_dict = COSDictionary()
+    nums = COSArray()
+    nums.add(COSInteger.get(3))
+    nums.add(COSInteger.get(30))
+    leaf_dict.set_item(_NUMS, nums)
+
+    root_dict = COSDictionary()
+    kids = COSArray()
+    kids.add(leaf_dict)
+    root_dict.set_item(_KIDS, kids)
+
+    root = _IntNumberTreeNode(root_dict)
+    wrapped_kids = root.get_kids()
+    assert wrapped_kids is not None
+    child = wrapped_kids[0]
+
+    assert child.get_parent() is root
+    child.set_numbers({5: 50, 9: 90})
+    assert child.get_lower_limit() == 5
+    assert child.get_upper_limit() == 9
 
 
 def test_lower_upper_limit_round_trip() -> None:
@@ -128,7 +170,7 @@ def test_get_numbers_none_when_only_kids() -> None:
     leaf.set_numbers({1: 1})
     root = _IntNumberTreeNode()
     root.set_kids([leaf])
-    assert root.get_numbers() is None
+    assert root.get_numbers() == {1: 1}
     assert root.get_kids() is not None
 
 
@@ -146,6 +188,26 @@ def test_get_numbers_rejects_non_integer_key() -> None:
     tree.get_cos_object().set_item(_NUMS, arr)
     # Upstream behavior: returns None on bad key (logs error).
     assert tree.get_numbers() is None
+
+
+def test_large_root_numbers_write_as_deterministic_kids() -> None:
+    tree = _IntNumberTreeNode()
+    numbers = {key: key * 10 for key in range(130, 0, -1)}
+    tree.set_numbers(numbers)
+
+    assert tree.get_cos_object().get_dictionary_object(_NUMS) is None
+    kids = tree.get_kids()
+    assert kids is not None
+    assert len(kids) == 3
+    assert [kid.get_lower_limit() for kid in kids] == [1, 65, 129]
+    assert [kid.get_upper_limit() for kid in kids] == [64, 128, 130]
+    assert tree.get_numbers() == {key: key * 10 for key in range(1, 131)}
+    assert tree.get_value(130) == 1300
+
+    first_nums = kids[0].get_cos_object().get_dictionary_object(_NUMS)
+    assert isinstance(first_nums, COSArray)
+    first_keys = [first_nums.get_object(i).value for i in range(0, first_nums.size(), 2)]
+    assert first_keys == list(range(1, 65))
 
 
 def test_create_child_node_returns_same_type() -> None:

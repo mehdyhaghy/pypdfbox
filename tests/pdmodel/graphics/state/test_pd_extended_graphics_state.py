@@ -191,8 +191,133 @@ def test_line_dash_pattern_round_trip_raw_array() -> None:
 def test_font_size_helper() -> None:
     gs = PDExtendedGraphicsState()
     assert gs.get_font_size() is None
+    font = COSName.get_pdf_name("F1")
+    gs.set_font(font)
+    assert gs.get_font() is font
     gs.set_font_size(12.5)
+    assert gs.get_font() is font
     assert gs.get_font_size() == 12.5
     # Setting again should overwrite the size slot, not append.
     gs.set_font_size(8.0)
     assert gs.get_font_size() == 8.0
+
+
+def test_copy_into_graphics_state_uses_matching_setters() -> None:
+    class TextState:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, object]] = []
+
+        def set_font(self, font: object) -> None:
+            self.calls.append(("font", font))
+
+        def set_font_size(self, size: object) -> None:
+            self.calls.append(("font_size", size))
+
+        def set_knockout_flag(self, flag: object) -> None:
+            self.calls.append(("knockout", flag))
+
+    class GraphicsState:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, object]] = []
+            self.text_state = TextState()
+
+        def set_line_width(self, value: object) -> None:
+            self.calls.append(("line_width", value))
+
+        def set_line_cap(self, value: object) -> None:
+            self.calls.append(("line_cap", value))
+
+        def set_line_join(self, value: object) -> None:
+            self.calls.append(("line_join", value))
+
+        def set_miter_limit(self, value: object) -> None:
+            self.calls.append(("miter_limit", value))
+
+        def set_rendering_intent(self, value: object) -> None:
+            self.calls.append(("rendering_intent", value))
+
+        def set_overprint_mode(self, value: object) -> None:
+            self.calls.append(("overprint_mode", value))
+
+        def set_alpha_constants(self, value: object) -> None:
+            self.calls.append(("alpha_constants", value))
+
+        def set_non_stroke_alpha_constants(self, value: object) -> None:
+            self.calls.append(("non_stroke_alpha_constants", value))
+
+        def set_alpha_source(self, value: object) -> None:
+            self.calls.append(("alpha_source", value))
+
+        def set_blend_mode(self, value: object) -> None:
+            self.calls.append(("blend_mode", value))
+
+        def get_text_state(self) -> TextState:
+            return self.text_state
+
+    gs = PDExtendedGraphicsState()
+    gs.set_line_width(2.0)
+    gs.set_line_cap_style(1)
+    gs.set_line_join_style(2)
+    gs.set_miter_limit(10.0)
+    gs.set_rendering_intent("Perceptual")
+    gs.set_overprint_mode(1)
+    gs.set_stroking_alpha_constant(0.5)
+    gs.set_non_stroking_alpha_constant(0.25)
+    gs.set_alpha_source_flag(True)
+    gs.set_text_knockout_flag(False)
+    gs.set_font(COSName.get_pdf_name("F1"))
+    gs.set_font_size(11.0)
+    gs.set_blend_mode("Multiply")
+
+    target = GraphicsState()
+    gs.copy_into_graphics_state(target)
+
+    assert ("line_width", 2.0) in target.calls
+    assert ("line_cap", 1) in target.calls
+    assert ("line_join", 2) in target.calls
+    assert ("miter_limit", 10.0) in target.calls
+    assert ("rendering_intent", "Perceptual") in target.calls
+    assert ("overprint_mode", 1) in target.calls
+    assert ("alpha_constants", 0.5) in target.calls
+    assert ("non_stroke_alpha_constants", 0.25) in target.calls
+    assert ("alpha_source", True) in target.calls
+    assert ("blend_mode", COSName.get_pdf_name("Multiply")) in target.calls
+    assert ("font", COSName.get_pdf_name("F1")) in target.text_state.calls
+    assert ("font_size", 11.0) in target.text_state.calls
+    assert ("knockout", False) in target.text_state.calls
+
+
+def test_copy_into_graphics_state_uses_existing_attributes() -> None:
+    class Target:
+        def __init__(self) -> None:
+            self.line_width = 1.0
+            self.text_font = None
+            self.text_font_size = 0.0
+
+    gs = PDExtendedGraphicsState()
+    font = COSName.get_pdf_name("F1")
+    gs.set_line_width(3.0)
+    gs.set_font(font)
+    gs.set_font_size(9.0)
+
+    target = Target()
+    gs.copy_into_graphics_state(target)
+
+    assert target.line_width == 3.0
+    assert target.text_font is font
+    assert target.text_font_size == 9.0
+
+
+def test_copy_into_graphics_state_supports_dict_targets() -> None:
+    gs = PDExtendedGraphicsState()
+    font = COSName.get_pdf_name("F1")
+    gs.set_stroke_adjustment(True)
+    gs.set_font(font)
+    gs.set_font_size(7.0)
+
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+
+    assert target["stroke_adjustment"] is True
+    assert target["font"] is font
+    assert target["font_size"] == 7.0

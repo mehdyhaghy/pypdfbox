@@ -2,20 +2,19 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSNull, COSString
-
-T = TypeVar("T")
 
 _LOG = logging.getLogger(__name__)
 
 _KIDS: COSName = COSName.KIDS  # type: ignore[attr-defined]
 _NAMES: COSName = COSName.get_pdf_name("Names")
 _LIMITS: COSName = COSName.get_pdf_name("Limits")
+_MAX_NAMES_IN_LEAF = 64
+_MAX_KIDS_IN_NODE = 64
 
 
-class PDNameTreeNode(Generic[T], ABC):
+class PDNameTreeNode[T](ABC):
     """
     Generic name-tree node wrapper. Mirrors PDFBox ``PDNameTreeNode<T>``.
 
@@ -75,6 +74,7 @@ class PDNameTreeNode(Generic[T], ABC):
             else:
                 _LOG.warning("Bad child node at position %d", i)
                 child = self.create_child_node(COSDictionary())
+            child._parent = self
             out.append(child)
         return out
 
@@ -86,9 +86,7 @@ class PDNameTreeNode(Generic[T], ABC):
             for kid in kids:
                 arr.add(kid.get_cos_object())
             self._node.set_item(_KIDS, arr)
-            # root nodes with kids do not have Names
-            if self.is_root_node():
-                self._node.remove_item(_NAMES)
+            self._node.remove_item(_NAMES)
         else:
             self._node.remove_item(_KIDS)
             self._node.remove_item(_LIMITS)
@@ -98,22 +96,16 @@ class PDNameTreeNode(Generic[T], ABC):
 
     def get_names(self) -> dict[str, T] | None:
         names_array = self._node.get_dictionary_object(_NAMES)
-        if not isinstance(names_array, COSArray):
+        if isinstance(names_array, COSArray):
+            return self._read_names_array(names_array)
+        kids = self.get_kids()
+        if kids is None:
             return None
-        size = names_array.size()
-        if size % 2 != 0:
-            _LOG.warning("Names array has odd size: %d", size)
-        out: dict[str, T] = {}
-        i = 0
-        while i + 1 < size:
-            base = names_array.get_object(i)
-            if not isinstance(base, COSString):
-                raise OSError(
-                    f"Expected string, found {base!r} in name tree at index {i}"
-                )
-            cos_value = names_array.get_object(i + 1)
-            out[base.get_string()] = self.convert_cos_to_value(cos_value)  # type: ignore[arg-type]
-            i += 2
+        out = {}
+        for child in kids:
+            child_names = child.get_names()
+            if child_names:
+                out.update(child_names)
         return out
 
     def set_names(self, names: dict[str, T] | None) -> None:
@@ -121,19 +113,23 @@ class PDNameTreeNode(Generic[T], ABC):
             self._node.remove_item(_NAMES)
             self._node.remove_item(_LIMITS)
             return
+        if len(names) > _MAX_NAMES_IN_LEAF:
+            self.set_kids(self._build_balanced_kids(names))
+            return
         arr = COSArray()
         for key in sorted(names):
             arr.add(COSString(key))
             arr.add(self.convert_value_to_cos(names[key]))
+        self._node.remove_item(_KIDS)
         self._node.set_item(_NAMES, arr)
         self._calculate_limits()
 
     # ---------- value lookup (binary descent through /Limits) ----------
 
     def get_value(self, name: str) -> T | None:
-        names = self.get_names()
-        if names is not None:
-            return names.get(name)
+        names_array = self._node.get_dictionary_object(_NAMES)
+        if isinstance(names_array, COSArray):
+            return self._read_names_array(names_array).get(name)
         kids = self.get_kids()
         if kids is not None:
             for child in kids:
@@ -182,6 +178,49 @@ class PDNameTreeNode(Generic[T], ABC):
             arr.add(COSNull.NULL)
             self._node.set_item(_LIMITS, arr)
         return arr
+
+    def _read_names_array(self, names_array: COSArray) -> dict[str, T]:
+        size = names_array.size()
+        if size % 2 != 0:
+            _LOG.warning("Names array has odd size: %d", size)
+        out: dict[str, T] = {}
+        i = 0
+        while i + 1 < size:
+            base = names_array.get_object(i)
+            if not isinstance(base, COSString):
+                raise OSError(
+                    f"Expected string, found {base!r} in name tree at index {i}"
+                )
+            cos_value = names_array.get_object(i + 1)
+            out[base.get_string()] = self.convert_cos_to_value(cos_value)  # type: ignore[arg-type]
+            i += 2
+        return out
+
+    def _set_leaf_names(self, names: dict[str, T]) -> None:
+        arr = COSArray()
+        for key in sorted(names):
+            arr.add(COSString(key))
+            arr.add(self.convert_value_to_cos(names[key]))
+        self._node.remove_item(_KIDS)
+        self._node.set_item(_NAMES, arr)
+        self._calculate_limits()
+
+    def _build_balanced_kids(self, names: dict[str, T]) -> list[PDNameTreeNode[T]]:
+        sorted_keys = sorted(names)
+        level: list[PDNameTreeNode[T]] = []
+        for i in range(0, len(sorted_keys), _MAX_NAMES_IN_LEAF):
+            chunk_keys = sorted_keys[i : i + _MAX_NAMES_IN_LEAF]
+            leaf = self.create_child_node(COSDictionary())
+            leaf._set_leaf_names({key: names[key] for key in chunk_keys})
+            level.append(leaf)
+        while len(level) > _MAX_KIDS_IN_NODE:
+            next_level: list[PDNameTreeNode[T]] = []
+            for i in range(0, len(level), _MAX_KIDS_IN_NODE):
+                child = self.create_child_node(COSDictionary())
+                child.set_kids(level[i : i + _MAX_KIDS_IN_NODE])
+                next_level.append(child)
+            level = next_level
+        return level
 
     def _calculate_limits(self) -> None:
         if self.is_root_node():

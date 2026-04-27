@@ -96,3 +96,63 @@ def test_get_field_by_fully_qualified_name() -> None:
     assert found.get_partial_name() == "street"
     assert form.get_field("address") is not None
     assert form.get_field("does.not.exist") is None
+
+
+def test_field_tree_and_iterator_walk_recursively_in_order() -> None:
+    form = PDAcroForm()
+    address = PDNonTerminalField(form)
+    address.set_partial_name("address")
+    street = PDFieldStub(form)
+    street.set_partial_name("street")
+    city = PDFieldStub(form)
+    city.set_partial_name("city")
+    address.set_children([street, city])
+    name = PDFieldStub(form)
+    name.set_partial_name("name")
+    form.set_fields([address, name])
+
+    assert [
+        field.get_fully_qualified_name() for field in form.get_field_tree()
+    ] == ["address", "address.street", "address.city", "name"]
+    assert [
+        field.get_fully_qualified_name() for field in form.get_field_iterator()
+    ] == ["address", "address.street", "address.city", "name"]
+
+
+def test_field_cache_can_be_enabled_and_disabled() -> None:
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("original")
+    form.set_fields([field])
+
+    assert form.is_caching_fields() is False
+    form.set_cache_fields(True)
+    assert form.is_caching_fields() is True
+    cached = form.get_field("original")
+    assert cached is form.get_field("original")
+
+    assert cached is not None
+    cached.set_partial_name("renamed")
+    assert form.get_field("renamed") is None
+    assert form.get_field("original") is cached
+
+    form.set_cache_fields(False)
+    assert form.is_caching_fields() is False
+    assert form.get_field("original") is None
+    assert form.get_field("renamed") is not None
+
+
+def test_field_cache_is_invalidated_when_fields_are_replaced() -> None:
+    form = PDAcroForm()
+    old_field = PDFieldStub(form)
+    old_field.set_partial_name("old")
+    form.set_fields([old_field])
+    form.set_cache_fields(True)
+    assert form.get_field("old") is not None
+
+    new_field = PDFieldStub(form)
+    new_field.set_partial_name("new")
+    form.set_fields([new_field])
+
+    assert form.get_field("old") is None
+    assert form.get_field("new") is not None

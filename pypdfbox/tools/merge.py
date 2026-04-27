@@ -23,6 +23,9 @@ XObjects) are remapped into the merged output.
    suffixing later entries as ``#2``, ``#3``, ...; imported Link
    annotations that referenced a renamed named destination are rewritten
    to the suffixed name.
+4. Preserves simple, self-contained catalog entries from the first source
+   that supplies them: ``/Lang``, ``/PageLayout``, ``/PageMode``,
+   ``/ViewerPreferences``, and document ``/Metadata``.
 
 Cross-document references that were not imported (a link pointing at a
 page outside the current source's import set) are left untouched and
@@ -51,9 +54,21 @@ _KIDS: COSName = COSName.get_pdf_name("Kids")
 _TYPE: COSName = COSName.get_pdf_name("Type")
 _PAGE: COSName = COSName.get_pdf_name("Page")
 _PAGES: COSName = COSName.get_pdf_name("Pages")
+_LANG: COSName = COSName.get_pdf_name("Lang")
+_PAGE_LAYOUT: COSName = COSName.get_pdf_name("PageLayout")
+_PAGE_MODE: COSName = COSName.get_pdf_name("PageMode")
+_VIEWER_PREFERENCES: COSName = COSName.get_pdf_name("ViewerPreferences")
+_METADATA: COSName = COSName.get_pdf_name("Metadata")
 _DESTS: COSName = COSName.get_pdf_name("Dests")
 _EMBEDDED_FILES: COSName = COSName.get_pdf_name("EmbeddedFiles")
 _JAVA_SCRIPT: COSName = COSName.get_pdf_name("JavaScript")
+_SIMPLE_CATALOG_KEYS: tuple[COSName, ...] = (
+    _LANG,
+    _PAGE_LAYOUT,
+    _PAGE_MODE,
+    _VIEWER_PREFERENCES,
+    _METADATA,
+)
 
 
 def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -127,6 +142,7 @@ def _import_source(src: PDDocument, target: PDDocument) -> None:
         pairs.append((src_dict, new_dict))
 
     renamed_dests = _merge_supported_names(src, target, src_to_imported)
+    _preserve_simple_catalog_entries(src, target)
 
     # Second pass: for each imported page, walk its /Annots in lockstep
     # with the source page's /Annots. import_page preserves order, so the
@@ -284,6 +300,23 @@ def _merge_supported_names(
     if target_names.is_empty():
         target_catalog.remove_item(_NAMES)
     return renamed_dests
+
+
+def _preserve_simple_catalog_entries(src: PDDocument, target: PDDocument) -> None:
+    """Copy catalog entries that do not require merge-time reconciliation.
+
+    First source wins for each key. Later sources can still fill a key that
+    earlier sources did not provide.
+    """
+    src_catalog = src.get_document_catalog().get_cos_object()
+    target_catalog = target.get_document_catalog().get_cos_object()
+    for key in _SIMPLE_CATALOG_KEYS:
+        if target_catalog.contains_key(key):
+            continue
+        value = src_catalog.get_item(key)
+        if value is None:
+            continue
+        target_catalog.set_item(key, target._deep_copy_cos(value, set()))
 
 
 def _ensure_names_dictionary(catalog: COSDictionary) -> COSDictionary:

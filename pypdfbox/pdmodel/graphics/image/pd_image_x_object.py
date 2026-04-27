@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Sequence
 from typing import BinaryIO
 
-from pypdfbox.cos import COSArray, COSName, COSStream
+from PIL import Image
+
+from pypdfbox.cos import COSArray, COSBase, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
+from pypdfbox.pdmodel.graphics.color import PDColorSpace
 from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 
 _IMAGE: COSName = COSName.get_pdf_name("Image")
@@ -22,17 +26,15 @@ class PDImageXObject(PDXObject):
     Image XObject (``/Subtype /Image``). Mirrors
     ``org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject``.
 
-    Cluster #3 ships only the *metadata + raw filter pipeline* surface —
-    actual image decoding (CCITT / JPEG / JBIG2 / JPX / lossless), color-
-    space resolution, and ``BufferedImage`` rendering are deferred to
-    later clusters (PRD §6.12).
+    Cluster #3 shipped only the *metadata + raw filter pipeline* surface.
+    The current surface adds typed color-space resolution through
+    ``PDColorSpace.create`` plus a small PIL helper for the raw/JPEG image
+    forms already supported by the dependency stack.
 
-    What we expose here matches the data already available without an
-    image-decoding stack: ``/Width``, ``/Height``, ``/BitsPerComponent``
-    (and short alias ``/BPC``), ``/ColorSpace`` (returned as the raw
-    ``COSName`` or ``None`` — typed ``PDColorSpace`` lands in cluster #9),
-    the ``/Filter`` chain, and ``create_input_stream`` over the decoded
-    body via ``PDStream``.
+    Existing stream metadata APIs are preserved: ``/Width``, ``/Height``,
+    ``/BitsPerComponent`` (and short alias ``/BPC``), raw ``/ColorSpace``
+    access through ``get_color_space_cos_object``, the ``/Filter`` chain,
+    and ``create_input_stream`` over the decoded body via ``PDStream``.
     """
 
     def __init__(self, stream: PDStream | COSStream) -> None:
@@ -68,27 +70,29 @@ class PDImageXObject(PDXObject):
 
     # ---------- /ColorSpace ----------
 
-    def get_color_space(self) -> COSName | None:
-        """Cluster #3 returns the raw ``/ColorSpace`` name (or ``None``).
-        The typed ``PDColorSpace`` wrapper lands with pdmodel cluster #9
-        (graphics/color)."""
+    def get_color_space_cos_object(self) -> COSBase | None:
+        """Raw ``/ColorSpace`` value, falling back to the short ``/CS`` alias."""
         cos = self.get_cos_object()
         value = cos.get_dictionary_object(_COLORSPACE)
         if value is None:
             value = cos.get_dictionary_object(_CS)
-        if isinstance(value, COSName):
-            return value
-        return None
+        return value
 
-    def set_color_space(self, name: COSName | str | None) -> None:
+    def get_color_space(self) -> PDColorSpace | None:
+        """Typed ``/ColorSpace`` wrapper, or ``None`` when absent/unsupported."""
+        return PDColorSpace.create(self.get_color_space_cos_object())
+
+    def set_color_space(self, name: PDColorSpace | COSName | str | None) -> None:
         cos = self.get_cos_object()
         if name is None:
             cos.remove_item(_COLORSPACE)
             return
-        cos.set_item(
-            _COLORSPACE,
-            name if isinstance(name, COSName) else COSName.get_pdf_name(name),
-        )
+        if isinstance(name, PDColorSpace):
+            value = name.get_cos_object()
+        else:
+            value = name if isinstance(name, COSName) else COSName.get_pdf_name(name)
+        if value is not None:
+            cos.set_item(_COLORSPACE, value)
 
     # ---------- /Filter ----------
 
@@ -108,3 +112,50 @@ class PDImageXObject(PDXObject):
         the same stop-filter semantics apply (e.g. images stop at
         ``DCTDecode`` to keep JPEG bytes intact for downstream encoders)."""
         return self.get_stream().create_input_stream(stop_filters)
+
+    # ---------- PIL image helper ----------
+
+    def to_pil_image(self) -> Image.Image | None:
+        """Best-effort conversion to a PIL image.
+
+        Supports DCT/JPX payloads via Pillow and raw 8-bit DeviceRGB or
+        DeviceGray rasters. More complex PDF image features such as decode
+        arrays, masks, Indexed expansion, and non-8bpc samples remain
+        rendering-cluster work and return ``None`` here.
+        """
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return None
+        width = self.get_width()
+        height = self.get_height()
+        if width <= 0 or height <= 0:
+            return None
+
+        filter_names = {item.name for item in cos.get_filter_list()}
+        if "DCTDecode" in filter_names:
+            with self.create_input_stream(stop_filters=["DCTDecode"]) as src:
+                return Image.open(io.BytesIO(src.read())).convert("RGB")
+        if "JPXDecode" in filter_names:
+            with self.create_input_stream(stop_filters=["JPXDecode"]) as src:
+                return Image.open(io.BytesIO(src.read())).convert("RGB")
+
+        bpc = self.get_bits_per_component()
+        if bpc not in (8, -1):
+            return None
+        color_space = self.get_color_space()
+        color_space_name = color_space.get_name() if color_space is not None else None
+        with self.create_input_stream() as src:
+            data = src.read()
+        rgb_len = width * height * 3
+        gray_len = width * height
+        if color_space_name == "DeviceRGB" or (
+            color_space_name is None and len(data) >= rgb_len
+        ):
+            if len(data) < rgb_len:
+                return None
+            return Image.frombytes("RGB", (width, height), data[:rgb_len])
+        if color_space_name == "DeviceGray":
+            if len(data) < gray_len:
+                return None
+            return Image.frombytes("L", (width, height), data[:gray_len]).convert("RGB")
+        return None

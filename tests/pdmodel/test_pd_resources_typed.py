@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from pypdfbox import PDDocument
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSObject
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSObject, COSStream
 from pypdfbox.pdmodel import PDResources
+from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
+from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.graphics.pattern import PDTilingPattern
 from pypdfbox.pdmodel.graphics.shading.pd_shading_type2 import PDShadingType2
 from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
 
 _COLOR_SPACE: COSName = COSName.get_pdf_name("ColorSpace")
+_FONT: COSName = COSName.get_pdf_name("Font")
+_X_OBJECT: COSName = COSName.get_pdf_name("XObject")
 _PATTERN: COSName = COSName.get_pdf_name("Pattern")
 _SHADING: COSName = COSName.get_pdf_name("Shading")
 _EXT_G_STATE: COSName = COSName.get_pdf_name("ExtGState")
@@ -80,6 +84,81 @@ def test_get_ext_gstate_missing_returns_none() -> None:
 def test_get_property_list_missing_returns_none() -> None:
     res = PDResources()
     assert res.get_property_list(COSName.get_pdf_name("Nope")) is None
+
+
+def test_indirect_font_uses_document_resource_cache() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    font_dict = COSDictionary()
+    font_dict.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("F2")
+    res.put(_FONT, name, COSObject(30, 0, resolved=font_dict))
+
+    first = res.get_font(name)
+    second = res.get_font(name)
+
+    assert isinstance(first, PDType1Font)
+    assert first is second
+
+
+def test_resource_cache_clear_invalidates_indirect_font_reuse() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    font_dict = COSDictionary()
+    font_dict.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("F3")
+    res.put(_FONT, name, COSObject(31, 0, resolved=font_dict))
+
+    first = res.get_font(name)
+    doc.get_resource_cache().clear()
+    second = res.get_font(name)
+
+    assert isinstance(first, PDType1Font)
+    assert isinstance(second, PDType1Font)
+    assert first is not second
+
+
+def test_indirect_x_object_uses_document_resource_cache() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("Form2")
+    res.put(_X_OBJECT, name, COSObject(32, 0, resolved=form))
+
+    first = res.get_x_object(name)
+    second = res.get_x_object(name)
+
+    assert isinstance(first, PDFormXObject)
+    assert first is second
+
+
+def test_resource_cache_clear_invalidates_indirect_x_object_reuse() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("Form3")
+    res.put(_X_OBJECT, name, COSObject(33, 0, resolved=form))
+
+    first = res.get_x_object(name)
+    doc.get_resource_cache().clear()
+    second = res.get_x_object(name)
+
+    assert isinstance(first, PDFormXObject)
+    assert isinstance(second, PDFormXObject)
+    assert first is not second
+
+
+def test_raw_get_xobject_still_returns_dereferenced_cos_stream() -> None:
+    doc = PDDocument()
+    res = PDResources(document=doc)
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("Form4")
+    res.put(_X_OBJECT, name, COSObject(34, 0, resolved=form))
+
+    assert res.get_xobject(name) is form
 
 
 def test_get_color_space_array_form_for_indexed() -> None:

@@ -7,8 +7,10 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
-from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
-
+from pypdfbox.pdmodel.pd_page_content_stream import (
+    AppendMode,
+    PDPageContentStream,
+)
 
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _RESOURCES: COSName = COSName.RESOURCES  # type: ignore[attr-defined]
@@ -329,7 +331,7 @@ def test_appending_to_existing_contents_promotes_to_array() -> None:
     initial.set_raw_data(b"q\nQ\n")
     page.set_contents(initial)
 
-    with PDPageContentStream(doc, page) as cs:
+    with PDPageContentStream(doc, page, AppendMode.APPEND) as cs:
         cs.move_to(0, 0)
 
     contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
@@ -353,12 +355,63 @@ def test_appending_to_existing_contents_array_extends_it() -> None:
     arr.add(b)
     page.get_cos_object().set_item(_CONTENTS, arr)
 
-    with PDPageContentStream(doc, page) as cs:
+    with PDPageContentStream(doc, page, AppendMode.APPEND) as cs:
         cs.move_to(0, 0)
 
     contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     assert isinstance(contents, COSArray)
     assert contents.size() == 3
+    assert page.get_contents() == b"q\n\nQ\n\n0 0 m\n"
+
+
+def test_default_append_mode_overwrites_existing_contents() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    initial = COSStream()
+    initial.set_raw_data(b"old\n")
+    page.set_contents(initial)
+
+    with PDPageContentStream(doc, page) as cs:
+        cs.move_to(1, 2)
+
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
+    assert isinstance(contents, COSStream)
+    assert contents is not initial
+    assert page.get_contents() == b"1 2 m\n"
+
+
+def test_prepending_to_existing_contents_preserves_order() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    initial = COSStream()
+    initial.set_raw_data(b"old\n")
+    page.set_contents(initial)
+
+    with PDPageContentStream(doc, page, AppendMode.PREPEND) as cs:
+        cs.move_to(3, 4)
+
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
+    assert isinstance(contents, COSArray)
+    assert contents.size() == 2
+    first = contents.get(0)
+    assert isinstance(first, COSStream)
+    assert first.get_raw_data() == b"3 4 m\n"
+    assert contents.get(1) is initial
+    assert page.get_contents() == b"3 4 m\n\nold\n"
+
+
+def test_compression_flag_writes_flate_filtered_stream() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page, compress=True)
+    cs.move_to(5, 6)
+    target = cs.get_target_stream()
+    cs.close()
+
+    assert target.get_filter_list() == [COSName.FLATE_DECODE]  # type: ignore[attr-defined]
+    assert target.get_raw_data() != b"5 6 m\n"
+    assert target.to_byte_array() == b"5 6 m\n"
+    assert page.get_contents() == b"5 6 m\n"
 
 
 def test_form_xobject_target_writes_into_form_stream() -> None:

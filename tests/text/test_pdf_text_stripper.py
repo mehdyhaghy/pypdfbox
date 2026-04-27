@@ -7,7 +7,6 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.text import PDFTextStripper, TextPosition
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -28,22 +27,46 @@ def _make_page_with_stream(doc: PDDocument, content: bytes) -> PDPage:
 
 
 def test_text_position_round_trip() -> None:
-    pos = TextPosition(text="Hi", x=10.0, y=20.0, font_size=12.0, font_name="F0")
+    pos = TextPosition(
+        text="Hi",
+        x=10.0,
+        y=20.0,
+        font_size=12.0,
+        font_name="F0",
+        resolved_font_name="Helvetica",
+        width=10.5,
+        width_of_space=3.25,
+        char_spacing=1.0,
+        word_spacing=2.0,
+    )
     assert pos.text == "Hi"
     assert pos.x == 10.0
     assert pos.y == 20.0
     assert pos.font_size == 12.0
     assert pos.font_name == "F0"
+    assert pos.resolved_font_name == "Helvetica"
+    assert pos.width == 10.5
+    assert pos.width_of_space == 3.25
+    assert pos.char_spacing == 1.0
+    assert pos.word_spacing == 2.0
     assert pos.get_unicode() == "Hi"
     assert pos.get_x() == 10.0
     assert pos.get_y() == 20.0
     assert pos.get_font_size() == 12.0
     assert pos.get_font_name() == "F0"
+    assert pos.get_font() is None
+    assert pos.get_resolved_font_name() == "Helvetica"
+    assert pos.get_width() == 10.5
+    assert pos.get_width_of_space() == 3.25
 
 
 def test_text_position_default_font_name_is_none() -> None:
     pos = TextPosition(text="x", x=0.0, y=0.0, font_size=10.0)
     assert pos.font_name is None
+    assert pos.font is None
+    assert pos.resolved_font_name is None
+    assert pos.width == 0.0
+    assert pos.width_of_space == 0.0
 
 
 # ---------------------------------------------------------------------------

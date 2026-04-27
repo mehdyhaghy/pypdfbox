@@ -11,6 +11,7 @@ from pypdfbox.cos import (
 )
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.font import PDFont
     from pypdfbox.pdmodel.graphics.color import PDColorSpace
     from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
@@ -41,12 +42,11 @@ class PDResources:
 
     - name-listing accessors (``get_xobject_names`` etc.) returning a list
       of ``COSName``;
-    - raw value accessors (``get_xobject``, ``get_font``) returning the
-      underlying ``COSStream`` / ``COSDictionary`` (``PDFont`` typed wrapper
-      lands in cluster #4 — see ``CHANGES.md``);
-    - typed accessors (``get_color_space``, ``get_pattern``, ``get_shading``,
-      ``get_ext_gstate``, ``get_property_list``) returning the appropriate
-      PD wrapper or ``None``;
+    - raw accessors for direct font dictionaries and XObjects
+      (``get_font``, ``get_xobject``);
+    - typed accessors (``get_x_object``, ``get_color_space``,
+      ``get_pattern``, ``get_shading``, ``get_ext_gstate``,
+      ``get_property_list``) returning the appropriate PD wrapper or ``None``;
     - ``add(category, value)`` and ``put(category, name, value)`` for
       registering newly-minted resources across all standard categories.
     """
@@ -148,18 +148,29 @@ class PDResources:
         )
 
         key = name if isinstance(name, COSName) else COSName.get_pdf_name(name)
-        _raw, entry = self._lookup_raw_and_resolved(_X_OBJECT, key)
+        raw, entry = self._lookup_raw_and_resolved(_X_OBJECT, key)
         if entry is None:
             return None
+        cache = self._cache()
+        if cache is not None and isinstance(raw, COSObject):
+            cached = cache.get_x_object(raw)
+            if cached is not None:
+                return cached
         if not isinstance(entry, COSStream):
             raise TypeError(
                 f"/XObject entry {key!s} is not a stream: {type(entry).__name__}"
             )
         subtype = entry.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
         if subtype == "Form":
-            return PDFormXObject(entry)
+            xobject = PDFormXObject(entry)
+            if cache is not None and isinstance(raw, COSObject):
+                cache.put_x_object(raw, xobject)
+            return xobject
         if subtype == "Image":
-            return PDImageXObject(entry)
+            xobject = PDImageXObject(entry)
+            if cache is not None and isinstance(raw, COSObject):
+                cache.put_x_object(raw, xobject)
+            return xobject
         raise OSError(f"Invalid XObject Subtype: {subtype!r}")
 
     def get_x_object_names(self) -> list[str]:
@@ -194,13 +205,31 @@ class PDResources:
         sub.set_item(key, xobject.get_cos_object())
         return key
 
-    def get_font(self, name: COSName) -> COSDictionary | None:
-        """Raw font dictionary; ``PDFont`` wrapper lands in cluster #4."""
-        sub = self._get_subdict(_FONT)
-        if sub is None:
+    def get_font(self, name: COSName) -> COSDictionary | PDFont | None:
+        """Return the font resource for ``name``.
+
+        Direct entries preserve the cluster #1 raw ``COSDictionary`` surface.
+        Indirect entries use ``PDFontFactory`` and the document resource cache,
+        matching upstream's cache hookup for typed font resources.
+        """
+        from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
+
+        raw, base = self._lookup_raw_and_resolved(_FONT, name)
+        if base is None:
             return None
-        entry = sub.get_dictionary_object(name)
-        return entry if isinstance(entry, COSDictionary) else None
+        if not isinstance(raw, COSObject):
+            return base if isinstance(base, COSDictionary) else None
+        cache = self._cache()
+        if cache is not None:
+            cached = cache.get_font(raw)
+            if cached is not None:
+                return cached
+        if isinstance(base, COSDictionary):
+            font = PDFontFactory.create_font(base)
+            if cache is not None and font is not None:
+                cache.put_font(raw, font)
+            return font
+        return None
 
     # ---------- name-listing accessors ----------
 

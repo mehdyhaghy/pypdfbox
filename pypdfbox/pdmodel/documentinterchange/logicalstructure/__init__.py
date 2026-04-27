@@ -6,7 +6,10 @@ from .pd_marked_content_reference import PDMarkedContentReference
 from .pd_object_reference import PDObjectReference
 from .pd_structure_element import PDStructureElement
 from .pd_structure_node import PDStructureNode
-from .pd_structure_tree_root import PDStructureTreeRoot
+from .pd_structure_tree_root import (
+    PDStructureElementNumberTreeNode,
+    PDStructureTreeRoot,
+)
 from .revisions import Revisions
 
 __all__ = [
@@ -15,6 +18,7 @@ __all__ = [
     "PDMarkedContentReference",
     "PDObjectReference",
     "PDStructureElement",
+    "PDStructureElementNumberTreeNode",
     "PDStructureNode",
     "PDStructureTreeRoot",
     "Revisions",

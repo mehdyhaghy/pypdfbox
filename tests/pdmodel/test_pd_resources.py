@@ -60,7 +60,7 @@ def test_get_xobject_resolves_indirect_ref() -> None:
     assert res.get_xobject(name) is s
 
 
-def test_get_font_returns_dictionary() -> None:
+def test_get_font_returns_direct_dictionary() -> None:
     res = PDResources()
     font = COSDictionary()
     font.set_name(COSName.TYPE, "Font")  # type: ignore[attr-defined]

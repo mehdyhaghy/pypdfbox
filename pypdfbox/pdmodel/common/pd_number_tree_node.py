@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
 
 from pypdfbox.cos import (
     COSArray,
@@ -13,16 +12,15 @@ from pypdfbox.cos import (
     COSNull,
 )
 
-T = TypeVar("T")
-
 _LOG = logging.getLogger(__name__)
 
 _KIDS: COSName = COSName.KIDS  # type: ignore[attr-defined]
 _NUMS: COSName = COSName.get_pdf_name("Nums")
 _LIMITS: COSName = COSName.get_pdf_name("Limits")
+_MAX_NUMS = 64
 
 
-class PDNumberTreeNode(Generic[T], ABC):
+class PDNumberTreeNode[T](ABC):
     """
     Generic number-tree node wrapper. Mirrors PDFBox ``PDNumberTreeNode``.
 
@@ -85,6 +83,7 @@ class PDNumberTreeNode(Generic[T], ABC):
             else:
                 _LOG.warning("Bad child node at position %d", i)
                 child = self.create_child_node(COSDictionary())
+            child._parent = self
             out.append(child)
         return out
 
@@ -108,32 +107,41 @@ class PDNumberTreeNode(Generic[T], ABC):
 
     def get_numbers(self) -> dict[int, T] | None:
         numbers_array = self._node.get_dictionary_object(_NUMS)
-        if not isinstance(numbers_array, COSArray):
+        if isinstance(numbers_array, COSArray):
+            return self._read_numbers_array(numbers_array)
+
+        kids = self.get_kids()
+        if kids is None:
             return None
-        size = numbers_array.size()
-        if size % 2 != 0:
-            _LOG.warning("Numbers array has odd size: %d", size)
         out: dict[int, T] = {}
-        i = 0
-        while i + 1 < size:
-            base = numbers_array.get_object(i)
-            if not isinstance(base, COSInteger):
-                _LOG.error(
-                    "page labels ignored, index %d should be a number, but is %r",
-                    i,
-                    base,
-                )
-                return None
-            cos_value = numbers_array.get_object(i + 1)
-            out[int(base.value)] = self.convert_cos_to_value(cos_value)  # type: ignore[arg-type]
-            i += 2
-        return out
+        for child in kids:
+            child_numbers = child.get_numbers()
+            if child_numbers is None:
+                continue
+            out.update(child_numbers)
+        return dict(sorted(out.items()))
 
     def set_numbers(self, numbers: dict[int, T] | None) -> None:
         if numbers is None:
             self._node.remove_item(_NUMS)
             self._node.remove_item(_LIMITS)
+            self._notify_parent_limits_changed()
             return
+
+        if self.is_root_node() and len(numbers) > _MAX_NUMS:
+            keys = sorted(numbers)
+            kids: list[PDNumberTreeNode[T]] = []
+            for i in range(0, len(keys), _MAX_NUMS):
+                child = self.create_child_node(COSDictionary())
+                child._set_numbers_leaf({key: numbers[key] for key in keys[i : i + _MAX_NUMS]})
+                kids.append(child)
+            self.set_kids(kids)
+            return
+
+        self._node.remove_item(_KIDS)
+        self._set_numbers_leaf(numbers)
+
+    def _set_numbers_leaf(self, numbers: dict[int, T]) -> None:
         arr = COSArray()
         keys = sorted(numbers)
         for key in keys:
@@ -145,6 +153,7 @@ class PDNumberTreeNode(Generic[T], ABC):
                 arr.add(self.convert_value_to_cos(value))
         self._node.set_item(_NUMS, arr)
         self._calculate_limits()
+        self._notify_parent_limits_changed()
 
     # ---------- value lookup (descent through /Limits) ----------
 
@@ -217,13 +226,44 @@ class PDNumberTreeNode(Generic[T], ABC):
             self.set_lower_limit(first_kid.get_lower_limit())
             self.set_upper_limit(last_kid.get_upper_limit())
             return
-        numbers = self.get_numbers()
+        numbers_array = self._node.get_dictionary_object(_NUMS)
+        numbers = (
+            self._read_numbers_array(numbers_array)
+            if isinstance(numbers_array, COSArray)
+            else None
+        )
         if numbers:
             keys = sorted(numbers.keys())
             self.set_lower_limit(keys[0])
             self.set_upper_limit(keys[-1])
         else:
             self._node.remove_item(_LIMITS)
+
+    def _read_numbers_array(self, numbers_array: COSArray) -> dict[int, T] | None:
+        size = numbers_array.size()
+        if size % 2 != 0:
+            _LOG.warning("Numbers array has odd size: %d", size)
+        out: dict[int, T] = {}
+        i = 0
+        while i + 1 < size:
+            base = numbers_array.get_object(i)
+            if not isinstance(base, COSInteger):
+                _LOG.error(
+                    "page labels ignored, index %d should be a number, but is %r",
+                    i,
+                    base,
+                )
+                return None
+            cos_value = numbers_array.get_object(i + 1)
+            out[int(base.value)] = self.convert_cos_to_value(cos_value)  # type: ignore[arg-type]
+            i += 2
+        return out
+
+    def _notify_parent_limits_changed(self) -> None:
+        parent = self._parent
+        while parent is not None:
+            parent._calculate_limits()
+            parent = parent._parent
 
 
 __all__ = ["PDNumberTreeNode"]

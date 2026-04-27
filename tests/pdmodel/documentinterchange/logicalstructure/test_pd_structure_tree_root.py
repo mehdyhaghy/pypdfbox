@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDMarkInfo,
     PDStructureElement,
+    PDStructureElementNumberTreeNode,
     PDStructureTreeRoot,
 )
 
@@ -28,6 +29,38 @@ def test_struct_tree_root_id_tree_returns_typed_node() -> None:
     root.get_cos_object().set_item(COSName.get_pdf_name("IDTree"), COSDictionary())
     id_tree = root.get_id_tree()
     assert isinstance(id_tree, PDNameTreeNode)
+
+
+def test_struct_tree_root_parent_tree_returns_typed_number_tree() -> None:
+    root = PDStructureTreeRoot()
+    assert root.get_parent_tree() is None
+
+    parent_tree = COSDictionary()
+    nums = COSArray()
+    nums.add(COSInteger.get(0))
+    struct_elem = COSDictionary()
+    struct_elem.set_name(COSName.TYPE, "StructElem")  # type: ignore[attr-defined]
+    nums.add(struct_elem)
+    parent_tree.set_item(COSName.get_pdf_name("Nums"), nums)
+
+    root.get_cos_object().set_item(COSName.get_pdf_name("ParentTree"), parent_tree)
+    wrapped = root.get_parent_tree()
+
+    assert isinstance(wrapped, PDStructureElementNumberTreeNode)
+    assert wrapped.get_value(0) is struct_elem
+
+
+def test_struct_tree_root_set_parent_tree_accepts_typed_number_tree() -> None:
+    root = PDStructureTreeRoot()
+    parent_tree = PDStructureElementNumberTreeNode()
+    struct_elem = COSDictionary()
+    parent_tree.set_numbers({5: struct_elem})
+
+    root.set_parent_tree(parent_tree)
+
+    wrapped = root.get_parent_tree()
+    assert isinstance(wrapped, PDStructureElementNumberTreeNode)
+    assert wrapped.get_value(5) is struct_elem
 
 
 def test_struct_tree_root_parent_tree_next_key_round_trip() -> None:

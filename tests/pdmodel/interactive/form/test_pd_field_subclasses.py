@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.pdmodel.interactive.action import (
+    PDActionJavaScript,
+    PDFormFieldAdditionalActions,
+)
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_button import PDButton
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
-from pypdfbox.pdmodel.interactive.form.pd_choice import PDChoice
 from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
 from pypdfbox.pdmodel.interactive.form.pd_list_box import PDListBox
 from pypdfbox.pdmodel.interactive.form.pd_push_button import PDPushButton
@@ -14,7 +17,6 @@ from pypdfbox.pdmodel.interactive.form.pd_radio_button import PDRadioButton
 from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 from pypdfbox.pdmodel.interactive.form.pd_variable_text import PDVariableText
-
 
 # ---------- PDTextField ----------
 
@@ -220,6 +222,64 @@ def test_variable_text_default_appearance_and_q_round_trip_on_text_field() -> No
     tf.set_rich_text_value("<body>Hi</body>")
     assert tf.get_default_style_string() == "font: Helvetica"
     assert tf.get_rich_text_value() == "<body>Hi</body>"
+
+
+def test_variable_text_default_appearance_updates_existing_widget_kid_da() -> None:
+    form = PDAcroForm()
+    field = COSDictionary()
+    field.set_name(COSName.get_pdf_name("FT"), "Tx")
+
+    first_widget = COSDictionary()
+    first_widget.set_string(COSName.get_pdf_name("DA"), "/Helv 9 Tf 0 g")
+    second_widget = COSDictionary()
+    field.set_item(COSName.get_pdf_name("Kids"), COSArray([first_widget, second_widget]))
+
+    tf = PDTextField(form, field)
+    tf.set_default_appearance("/F1 12 Tf 0 g")
+
+    assert tf.get_default_appearance() == "/F1 12 Tf 0 g"
+    assert first_widget.get_string(COSName.get_pdf_name("DA")) == "/F1 12 Tf 0 g"
+    assert not second_widget.contains_key(COSName.get_pdf_name("DA"))
+
+
+def test_variable_text_default_appearance_none_removes_existing_widget_kid_da() -> None:
+    form = PDAcroForm()
+    field = COSDictionary()
+    field.set_name(COSName.get_pdf_name("FT"), "Tx")
+    field.set_string(COSName.get_pdf_name("DA"), "/Helv 9 Tf 0 g")
+    widget = COSDictionary()
+    widget.set_string(COSName.get_pdf_name("DA"), "/Helv 9 Tf 0 g")
+    field.set_item(COSName.get_pdf_name("Kids"), COSArray([widget]))
+
+    tf = PDTextField(form, field)
+    tf.set_default_appearance(None)
+
+    assert tf.get_default_appearance() is None
+    assert not widget.contains_key(COSName.get_pdf_name("DA"))
+
+
+def test_terminal_field_additional_actions_round_trip_typed_actions() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    actions = PDFormFieldAdditionalActions()
+    javascript = PDActionJavaScript()
+    javascript.set_action("event.value = event.value.toUpperCase();")
+
+    actions.set_k(javascript)
+    tf.set_actions(actions)
+
+    assert tf.get_cos_object().get_dictionary_object(COSName.get_pdf_name("AA")) is (
+        actions.get_cos_object()
+    )
+    resolved_actions = tf.get_actions()
+    assert isinstance(resolved_actions, PDFormFieldAdditionalActions)
+    resolved_action = resolved_actions.get_k()
+    assert isinstance(resolved_action, PDActionJavaScript)
+    assert resolved_action.get_action() == "event.value = event.value.toUpperCase();"
+
+    tf.set_actions(None)
+    assert tf.get_actions() is None
+    assert not tf.get_cos_object().contains_key(COSName.get_pdf_name("AA"))
 
 
 # ---------- PDButton common surface ----------

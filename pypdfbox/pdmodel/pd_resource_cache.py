@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.color import PDColorSpace
     from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
+    from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
     from pypdfbox.pdmodel.graphics.shading import PDShading
     from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
 
@@ -27,62 +28,70 @@ class PDResourceCache(ABC):
     """
 
     @abstractmethod
-    def get_font(self, indirect: COSObject) -> "PDFont | None":
+    def get_font(self, indirect: COSObject) -> PDFont | None:
         """Return the cached :class:`PDFont` for ``indirect``, or ``None``."""
 
     @abstractmethod
-    def put_font(self, indirect: COSObject, font: "PDFont") -> None:
+    def put_font(self, indirect: COSObject, font: PDFont) -> None:
         """Cache ``font`` under the indirect ref ``indirect``."""
 
     @abstractmethod
-    def get_color_space(self, indirect: COSObject) -> "PDColorSpace | None":
+    def get_x_object(self, indirect: COSObject) -> PDXObject | None:
+        """Return the cached :class:`PDXObject` for ``indirect``, or ``None``."""
+
+    @abstractmethod
+    def put_x_object(self, indirect: COSObject, xobject: PDXObject) -> None:
+        """Cache ``xobject`` under the indirect ref ``indirect``."""
+
+    @abstractmethod
+    def get_color_space(self, indirect: COSObject) -> PDColorSpace | None:
         """Return the cached :class:`PDColorSpace` for ``indirect``, or ``None``."""
 
     @abstractmethod
     def put_color_space(
-        self, indirect: COSObject, color_space: "PDColorSpace"
+        self, indirect: COSObject, color_space: PDColorSpace
     ) -> None:
         """Cache ``color_space`` under ``indirect``."""
 
     @abstractmethod
-    def get_pattern(self, indirect: COSObject) -> "PDAbstractPattern | None":
+    def get_pattern(self, indirect: COSObject) -> PDAbstractPattern | None:
         """Return the cached :class:`PDAbstractPattern` for ``indirect``."""
 
     @abstractmethod
     def put_pattern(
-        self, indirect: COSObject, pattern: "PDAbstractPattern"
+        self, indirect: COSObject, pattern: PDAbstractPattern
     ) -> None:
         """Cache ``pattern`` under ``indirect``."""
 
     @abstractmethod
-    def get_shading(self, indirect: COSObject) -> "PDShading | None":
+    def get_shading(self, indirect: COSObject) -> PDShading | None:
         """Return the cached :class:`PDShading` for ``indirect``."""
 
     @abstractmethod
-    def put_shading(self, indirect: COSObject, shading: "PDShading") -> None:
+    def put_shading(self, indirect: COSObject, shading: PDShading) -> None:
         """Cache ``shading`` under ``indirect``."""
 
     @abstractmethod
     def get_ext_g_state(
         self, indirect: COSObject
-    ) -> "PDExtendedGraphicsState | None":
+    ) -> PDExtendedGraphicsState | None:
         """Return the cached :class:`PDExtendedGraphicsState` for ``indirect``."""
 
     @abstractmethod
     def put_ext_g_state(
-        self, indirect: COSObject, ext_g_state: "PDExtendedGraphicsState"
+        self, indirect: COSObject, ext_g_state: PDExtendedGraphicsState
     ) -> None:
         """Cache ``ext_g_state`` under ``indirect``."""
 
     @abstractmethod
     def get_property_list(
         self, indirect: COSObject
-    ) -> "PDPropertyList | None":
+    ) -> PDPropertyList | None:
         """Return the cached :class:`PDPropertyList` for ``indirect``."""
 
     @abstractmethod
     def put_property_list(
-        self, indirect: COSObject, property_list: "PDPropertyList"
+        self, indirect: COSObject, property_list: PDPropertyList
     ) -> None:
         """Cache ``property_list`` under ``indirect``."""
 
@@ -104,6 +113,7 @@ class DefaultResourceCache(PDResourceCache):
 
     def __init__(self) -> None:
         self._fonts: dict[COSObject, PDFont] = {}
+        self._xobjects: dict[COSObject, PDXObject] = {}
         self._color_spaces: dict[COSObject, PDColorSpace] = {}
         self._patterns: dict[COSObject, PDAbstractPattern] = {}
         self._shadings: dict[COSObject, PDShading] = {}
@@ -112,49 +122,57 @@ class DefaultResourceCache(PDResourceCache):
 
     # ---------- fonts ----------
 
-    def get_font(self, indirect: COSObject) -> "PDFont | None":
+    def get_font(self, indirect: COSObject) -> PDFont | None:
         return self._fonts.get(indirect)
 
-    def put_font(self, indirect: COSObject, font: "PDFont") -> None:
+    def put_font(self, indirect: COSObject, font: PDFont) -> None:
         self._fonts[indirect] = font
+
+    # ---------- XObjects ----------
+
+    def get_x_object(self, indirect: COSObject) -> PDXObject | None:
+        return self._xobjects.get(indirect)
+
+    def put_x_object(self, indirect: COSObject, xobject: PDXObject) -> None:
+        self._xobjects[indirect] = xobject
 
     # ---------- color spaces ----------
 
-    def get_color_space(self, indirect: COSObject) -> "PDColorSpace | None":
+    def get_color_space(self, indirect: COSObject) -> PDColorSpace | None:
         return self._color_spaces.get(indirect)
 
     def put_color_space(
-        self, indirect: COSObject, color_space: "PDColorSpace"
+        self, indirect: COSObject, color_space: PDColorSpace
     ) -> None:
         self._color_spaces[indirect] = color_space
 
     # ---------- patterns ----------
 
-    def get_pattern(self, indirect: COSObject) -> "PDAbstractPattern | None":
+    def get_pattern(self, indirect: COSObject) -> PDAbstractPattern | None:
         return self._patterns.get(indirect)
 
     def put_pattern(
-        self, indirect: COSObject, pattern: "PDAbstractPattern"
+        self, indirect: COSObject, pattern: PDAbstractPattern
     ) -> None:
         self._patterns[indirect] = pattern
 
     # ---------- shadings ----------
 
-    def get_shading(self, indirect: COSObject) -> "PDShading | None":
+    def get_shading(self, indirect: COSObject) -> PDShading | None:
         return self._shadings.get(indirect)
 
-    def put_shading(self, indirect: COSObject, shading: "PDShading") -> None:
+    def put_shading(self, indirect: COSObject, shading: PDShading) -> None:
         self._shadings[indirect] = shading
 
     # ---------- ext-g-states ----------
 
     def get_ext_g_state(
         self, indirect: COSObject
-    ) -> "PDExtendedGraphicsState | None":
+    ) -> PDExtendedGraphicsState | None:
         return self._ext_g_states.get(indirect)
 
     def put_ext_g_state(
-        self, indirect: COSObject, ext_g_state: "PDExtendedGraphicsState"
+        self, indirect: COSObject, ext_g_state: PDExtendedGraphicsState
     ) -> None:
         self._ext_g_states[indirect] = ext_g_state
 
@@ -162,11 +180,11 @@ class DefaultResourceCache(PDResourceCache):
 
     def get_property_list(
         self, indirect: COSObject
-    ) -> "PDPropertyList | None":
+    ) -> PDPropertyList | None:
         return self._property_lists.get(indirect)
 
     def put_property_list(
-        self, indirect: COSObject, property_list: "PDPropertyList"
+        self, indirect: COSObject, property_list: PDPropertyList
     ) -> None:
         self._property_lists[indirect] = property_list
 
@@ -178,6 +196,7 @@ class DefaultResourceCache(PDResourceCache):
         exposes an explicit hook for tests and long-running services that
         rotate documents."""
         self._fonts.clear()
+        self._xobjects.clear()
         self._color_spaces.clear()
         self._patterns.clear()
         self._shadings.clear()

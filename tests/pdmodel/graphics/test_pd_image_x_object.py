@@ -5,7 +5,8 @@ import zlib
 
 from PIL import Image
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream, COSString
+from pypdfbox.pdmodel.graphics.color import PDDeviceGray, PDDeviceRGB, PDIndexed
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
 
 
@@ -22,7 +23,8 @@ def test_image_xobject_sets_subtype_and_metadata() -> None:
     assert image.get_width() == 640
     assert image.get_height() == 480
     assert image.get_bits_per_component() == 8
-    assert image.get_color_space() == COSName.get_pdf_name("DeviceRGB")
+    assert image.get_color_space() is PDDeviceRGB.INSTANCE
+    assert image.get_color_space_cos_object() == COSName.get_pdf_name("DeviceRGB")
 
 
 def test_image_xobject_accepts_short_metadata_aliases() -> None:
@@ -32,7 +34,27 @@ def test_image_xobject_accepts_short_metadata_aliases() -> None:
 
     image = PDImageXObject(stream)
     assert image.get_bits_per_component() == 1
-    assert image.get_color_space() == COSName.get_pdf_name("DeviceGray")
+    assert image.get_color_space() is PDDeviceGray.INSTANCE
+    assert image.get_color_space_cos_object() == COSName.get_pdf_name("DeviceGray")
+
+
+def test_image_xobject_resolves_indexed_color_space_array() -> None:
+    indexed = COSArray()
+    indexed.add(COSName.get_pdf_name("Indexed"))
+    indexed.add(COSName.get_pdf_name("DeviceRGB"))
+    indexed.add(COSInteger.get(1))
+    indexed.add(COSString(b"\x00\x00\x00\xff\xff\xff"))
+
+    stream = COSStream()
+    stream.set_item(COSName.get_pdf_name("ColorSpace"), indexed)
+
+    image = PDImageXObject(stream)
+    color_space = image.get_color_space()
+    assert isinstance(color_space, PDIndexed)
+    assert color_space.get_base_color_space() is PDDeviceRGB.INSTANCE
+    assert color_space.get_hival() == 1
+    assert color_space.get_lookup_data() == b"\x00\x00\x00\xff\xff\xff"
+    assert image.get_color_space_cos_object() is indexed
 
 
 def test_image_create_input_stream_delegates_to_pd_stream_stop_filters() -> None:
@@ -106,3 +128,21 @@ def test_image_xobject_decodes_run_length_end_to_end() -> None:
 
     decoded = image.create_input_stream().read()
     assert decoded == b"abXXXXcd"
+
+
+def test_image_xobject_to_pil_image_from_raw_device_rgb() -> None:
+    stream = COSStream()
+    stream.set_raw_data(bytes([255, 0, 0, 0, 255, 0]))
+
+    image = PDImageXObject(stream)
+    image.set_width(2)
+    image.set_height(1)
+    image.set_bits_per_component(8)
+    image.set_color_space("DeviceRGB")
+
+    pil_image = image.to_pil_image()
+    assert pil_image is not None
+    assert pil_image.mode == "RGB"
+    assert pil_image.size == (2, 1)
+    assert pil_image.getpixel((0, 0)) == (255, 0, 0)
+    assert pil_image.getpixel((1, 0)) == (0, 255, 0)

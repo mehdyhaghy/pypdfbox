@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
@@ -8,7 +9,6 @@ from pypdfbox.cos import (
     COSStream,
 )
 
-from .common.pd_stream import PDStream
 from .font.pd_font import PDFont
 from .graphics.form.pd_form_x_object import PDFormXObject
 from .graphics.image.pd_image_x_object import PDImageXObject
@@ -25,6 +25,14 @@ _FONT: COSName = COSName.get_pdf_name("Font")
 _X_OBJECT: COSName = COSName.get_pdf_name("XObject")
 
 
+class AppendMode(Enum):
+    """How a page-targeted content stream is attached to existing contents."""
+
+    OVERWRITE = "OVERWRITE"
+    APPEND = "APPEND"
+    PREPEND = "PREPEND"
+
+
 class PDPageContentStream:
     """High-level PDF content-stream writer. Mirrors
     ``org.apache.pdfbox.pdmodel.PDPageContentStream`` (the lite surface —
@@ -33,10 +41,10 @@ class PDPageContentStream:
 
     Two construction shapes match upstream:
 
-    - ``PDPageContentStream(document, page)`` — append a fresh content
-      stream to ``page`` (does not overwrite — for parity convenience the
-      lite surface always *appends* so callers can layer content on
-      existing pages without losing pre-existing operators).
+    - ``PDPageContentStream(document, page[, append_mode[, compress]])`` —
+      write a fresh content stream to ``page``. ``append_mode`` mirrors
+      upstream's ``AppendMode`` values: ``OVERWRITE`` (default), ``APPEND``,
+      or ``PREPEND``.
     - ``PDPageContentStream(document, form_xobject)`` — write into the
       form XObject's body stream (replaces any existing body).
 
@@ -51,10 +59,15 @@ class PDPageContentStream:
         self,
         document: PDDocument,
         source_page: PDPage | PDFormXObject | None = None,
+        append_mode: AppendMode | str | bool | None = None,
+        compress: bool = False,
+        reset_context: bool = False,
     ) -> None:
         self._document = document
         self._closed: bool = False
         self._buffer: bytearray = bytearray()
+        self._compress = bool(compress)
+        self._reset_context = bool(reset_context)
         # Whether we've started a text block (BT) — used purely as a
         # convenience for users; we don't enforce strict state machines
         # here (upstream tracks ``inTextMode`` for sanity-check exceptions
@@ -76,10 +89,8 @@ class PDPageContentStream:
             else:
                 self._resources = PDResources()
                 source_page.set_resources(self._resources)
-            # Append the new stream to the page's /Contents (matches
-            # upstream's APPEND mode, which is the safer default for the
-            # lite surface).
-            self._attach_to_page(source_page, self._target_stream)
+            mode = _coerce_append_mode(append_mode)
+            self._attach_to_page(source_page, self._target_stream, mode)
         elif isinstance(source_page, PDFormXObject):
             self._target_stream = source_page.get_cos_object()
             existing_res = source_page.get_resources()
@@ -103,25 +114,37 @@ class PDPageContentStream:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _attach_to_page(page: PDPage, new_stream: COSStream) -> None:
-        """Append ``new_stream`` to ``page``'s /Contents.
+    def _attach_to_page(
+        page: PDPage,
+        new_stream: COSStream,
+        append_mode: AppendMode,
+    ) -> None:
+        """Attach ``new_stream`` to ``page``'s /Contents.
 
         - No /Contents yet → set the new stream as /Contents directly.
-        - /Contents is already a stream → wrap [old, new] into a COSArray.
-        - /Contents is already an array → append.
+        - OVERWRITE → replace /Contents with the new stream.
+        - APPEND → stream becomes the last content stream.
+        - PREPEND → stream becomes the first content stream.
         """
         page_dict = page.get_cos_object()
         existing = page_dict.get_dictionary_object(_CONTENTS)
-        if existing is None:
+        if existing is None or append_mode is AppendMode.OVERWRITE:
             page_dict.set_item(_CONTENTS, new_stream)
             return
         if isinstance(existing, COSArray):
-            existing.add(new_stream)
+            if append_mode is AppendMode.APPEND:
+                existing.add(new_stream)
+            else:
+                existing.add_at(0, new_stream)
             return
         # Single existing stream — promote to array.
         arr = COSArray()
-        arr.add(existing)
-        arr.add(new_stream)
+        if append_mode is AppendMode.APPEND:
+            arr.add(existing)
+            arr.add(new_stream)
+        else:
+            arr.add(new_stream)
+            arr.add(existing)
         page_dict.set_item(_CONTENTS, arr)
 
     # ------------------------------------------------------------------
@@ -139,8 +162,15 @@ class PDPageContentStream:
         if self._closed:
             return
         self._closed = True
-        # Commit the buffered bytes — set_raw_data replaces the body.
-        self._target_stream.set_raw_data(bytes(self._buffer))
+        data = bytes(self._buffer)
+        if self._compress:
+            with self._target_stream.create_output_stream(
+                COSName.FLATE_DECODE  # type: ignore[attr-defined]
+            ) as out:
+                out.write(data)
+        else:
+            # Commit the buffered bytes — set_raw_data replaces the body.
+            self._target_stream.set_raw_data(data)
 
     # ------------------------------------------------------------------
     # accessors used by tests + parity with upstream
@@ -474,4 +504,26 @@ def _format_number(value: float) -> bytes:
     return text.encode("ascii")
 
 
-__all__ = ["PDPageContentStream"]
+def _coerce_append_mode(mode: AppendMode | str | bool | None) -> AppendMode:
+    if mode is None:
+        return AppendMode.OVERWRITE
+    if isinstance(mode, AppendMode):
+        return mode
+    if isinstance(mode, bool):
+        return AppendMode.APPEND if mode else AppendMode.OVERWRITE
+    if isinstance(mode, str):
+        key = mode.upper()
+        try:
+            return AppendMode[key]
+        except KeyError as exc:
+            raise ValueError(f"unknown AppendMode: {mode!r}") from exc
+    raise TypeError(
+        "append_mode must be AppendMode, str, bool, or None; "
+        f"got {type(mode).__name__}"
+    )
+
+
+PDPageContentStream.AppendMode = AppendMode  # type: ignore[attr-defined]
+
+
+__all__ = ["AppendMode", "PDPageContentStream"]

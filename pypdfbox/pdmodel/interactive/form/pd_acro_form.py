@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 
 from .pd_field_factory import PDFieldFactory
 
 if TYPE_CHECKING:
     from .pd_field import PDField
+    from .pd_xfa_resource import PDXFAResource
 
 _FIELDS: COSName = COSName.get_pdf_name("Fields")
 _SIG_FLAGS: COSName = COSName.get_pdf_name("SigFlags")
@@ -38,9 +40,8 @@ class PDAcroForm:
 
     Deferred: ``refresh_appearances``, ``import_fdf``/``export_fdf``,
     ``get_default_resources``/``set_default_resources``, ``get_default_appearance``,
-    ``get_q``, ``get_calc_order``, signature scripting handler, field caching,
-    ``get_field_iterator``/``get_field_tree``. Typed PDXFAResource is also deferred —
-    :meth:`xfa` returns the raw COS entry.
+    ``get_q``, ``get_calc_order``, signature scripting handler. Typed PDXFAResource
+    is also deferred — :meth:`xfa` returns the raw COS entry.
     """
 
     def __init__(
@@ -54,6 +55,8 @@ class PDAcroForm:
             self._dictionary.set_item(_FIELDS, COSArray())
         else:
             self._dictionary = dictionary
+        self._cache_fields = False
+        self._field_cache: dict[str, PDField] | None = None
 
     # ---------- core ----------
 
@@ -87,16 +90,55 @@ class PDAcroForm:
         for f in fields:
             arr.add(f.get_cos_object())
         self._dictionary.set_item(_FIELDS, arr)
+        self._invalidate_field_cache()
+
+    def get_field_tree(self) -> list[PDField]:
+        """Return every field in the AcroForm field tree, depth-first.
+
+        The top-level ``/Fields`` entries are returned first, followed by each
+        non-terminal field's descendants in ``/Kids`` order. This mirrors the
+        iteration order used by PDFBox's ``PDFieldTree`` and by
+        :meth:`get_field`.
+        """
+        out: list[PDField] = []
+        for field in self.get_fields():
+            self._append_field_subtree(field, out)
+        return out
+
+    def get_field_iterator(self) -> Iterator[PDField]:
+        return iter(self.get_field_tree())
+
+    def set_cache_fields(self, cache: bool) -> None:
+        self._cache_fields = bool(cache)
+        self._field_cache = self._build_field_cache() if self._cache_fields else None
+
+    def is_caching_fields(self) -> bool:
+        return self._cache_fields
 
     def get_field(self, fully_qualified_name: str) -> PDField | None:
         """Locate a field by its fully-qualified name (".\"-joined)."""
         if fully_qualified_name is None:
             return None
+        if self._cache_fields:
+            if self._field_cache is None:
+                self._field_cache = self._build_field_cache()
+            return self._field_cache.get(fully_qualified_name)
         for top in self.get_fields():
             found = self._find_field(top, fully_qualified_name)
             if found is not None:
                 return found
         return None
+
+    def _append_field_subtree(self, field: PDField, out: list[PDField]) -> None:
+        out.append(field)
+        if field.is_terminal():
+            return
+        from .pd_non_terminal_field import PDNonTerminalField
+
+        if not isinstance(field, PDNonTerminalField):
+            return
+        for child in field.get_children():
+            self._append_field_subtree(child, out)
 
     def _find_field(self, field: PDField, fqn: str) -> PDField | None:
         if field.get_fully_qualified_name() == fqn:
@@ -110,6 +152,18 @@ class PDAcroForm:
                 if found is not None:
                     return found
         return None
+
+    def _build_field_cache(self) -> dict[str, PDField]:
+        cache: dict[str, PDField] = {}
+        for field in self.get_field_tree():
+            name = field.get_fully_qualified_name()
+            if name not in cache:
+                cache[name] = field
+        return cache
+
+    def _invalidate_field_cache(self) -> None:
+        if self._cache_fields:
+            self._field_cache = None
 
     # ---------- /SigFlags ----------
 
@@ -146,7 +200,7 @@ class PDAcroForm:
 
     # ---------- /XFA ----------
 
-    def xfa(self) -> "PDXFAResource | None":
+    def xfa(self) -> PDXFAResource | None:
         from .pd_xfa_resource import PDXFAResource
 
         raw = self._dictionary.get_dictionary_object(_XFA)
@@ -158,7 +212,7 @@ class PDAcroForm:
 
     def flatten(
         self,
-        fields: "list[PDField] | None" = None,
+        fields: list[PDField] | None = None,
         refresh_appearances: bool = False,
     ) -> None:
         """Flatten widgets for ``fields`` (default = every field in the
@@ -233,10 +287,11 @@ class PDAcroForm:
                     resolved = entry.get_object() if hasattr(entry, "get_object") else entry  # type: ignore[union-attr]
                     if id(resolved) in victims:
                         arr.remove(entry)
+        self._invalidate_field_cache()
 
     # ---------- flatten internals ----------
 
-    def _collect_terminals(self, field: "PDField") -> "list[PDField]":
+    def _collect_terminals(self, field: PDField) -> list[PDField]:
         """Depth-first walk of a field subtree returning every terminal
         descendant. Mirrors the implicit recursion in PDFBox's
         ``flatten`` which only emits content for terminal fields with

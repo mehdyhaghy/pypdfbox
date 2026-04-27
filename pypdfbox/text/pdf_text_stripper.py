@@ -12,9 +12,8 @@ from .text_position import TextPosition
 
 if TYPE_CHECKING:
     from pypdfbox.cos import COSBase
-
     from pypdfbox.pdmodel import PDDocument, PDPage
-    from pypdfbox.pdmodel.font import PDFont, PDSimpleFont
+    from pypdfbox.pdmodel.font import PDFont
 
 
 class PDFTextStripper:
@@ -337,6 +336,15 @@ class PDFTextStripper:
         text = self._decode_show_text(s.get_bytes())
         if not text:
             return
+        font = self._active_font
+        resolved_font_name = font.get_name() if font is not None else None
+        per_char = self._active_avg_advance
+        if per_char is None:
+            per_char = state.font_size * 0.5
+        run_width = len(text) * per_char
+        width_of_space = self._compute_width_of_space(
+            font, state.font_size, fallback=per_char
+        )
         positions.append(
             TextPosition(
                 text=text,
@@ -344,6 +352,12 @@ class PDFTextStripper:
                 y=state.text_y,
                 font_size=state.font_size,
                 font_name=state.font_name,
+                font=font,
+                resolved_font_name=resolved_font_name,
+                width=run_width,
+                width_of_space=width_of_space,
+                char_spacing=state.char_spacing,
+                word_spacing=state.word_spacing,
             )
         )
         # Advance the text origin by an approximation of the run width.
@@ -352,10 +366,7 @@ class PDFTextStripper:
         # ``_compute_avg_advance``); otherwise fall back to the legacy
         # 0.5-em-per-char monospace estimate so unknown fonts still
         # produce monotonic advances for the word-gap heuristic.
-        per_char = self._active_avg_advance
-        if per_char is None:
-            per_char = state.font_size * 0.5
-        state.text_x += len(text) * per_char
+        state.text_x += run_width
 
     def _emit_tj_array(
         self,
@@ -387,7 +398,8 @@ class PDFTextStripper:
           - ``/ToUnicode`` isn't a stream.
 
         ``Encoding`` / ``Differences`` based glyph→unicode resolution for
-        fonts without ``/ToUnicode`` is deferred (see ``CHANGES.md``).
+        fonts without ``/ToUnicode`` is handled by the typed-font decode
+        path after this lookup returns ``None``.
         """
         if font_resource_name is None or self._active_page is None:
             return None
@@ -487,6 +499,31 @@ class PDFTextStripper:
         return avg_thousandths / 1000.0 * font_size
 
     @staticmethod
+    def _compute_width_of_space(
+        font: PDFont | None,
+        font_size: float,
+        *,
+        fallback: float,
+    ) -> float:
+        """Return a user-space space width for the active font.
+
+        Current font wrappers only expose per-code widths on some
+        subclasses, so this is intentionally conservative: use
+        ``get_glyph_width(32)`` when present and positive, otherwise
+        reuse the per-character fallback already driving run advances.
+        """
+        if font is not None and font_size > 0:
+            get_glyph_width = getattr(font, "get_glyph_width", None)
+            if callable(get_glyph_width):
+                try:
+                    width = float(get_glyph_width(32))
+                except Exception:  # noqa: BLE001 — defensive: malformed font metrics
+                    width = 0.0
+                if width > 0.0:
+                    return width / 1000.0 * font_size
+        return fallback
+
+    @staticmethod
     def _decode_text_via_cmap(text_bytes: bytes, cmap: CMap) -> str:
         """Walk ``text_bytes`` consuming codes whose width is governed by
         the CMap's codespace ranges, look each up via ``cmap.to_unicode``,
@@ -532,18 +569,13 @@ class PDFTextStripper:
             return ""
         out: list[str] = []
         prev: TextPosition | None = None
-        # Use the same per-char advance the emitter used for ``state.text_x``
-        # so the right-edge of a run lines up with the *next* run's
-        # ``x``. Falls back to the 0.5-em estimate if the active font
-        # had no usable ``/Widths``.
-        per_char = self._active_avg_advance
         for pos in positions:
             if prev is not None:
                 if abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5:
                     out.append(self._line_separator)
                 else:
-                    if per_char is not None:
-                        prev_right = prev.x + len(prev.text) * per_char
+                    if prev.width > 0.0:
+                        prev_right = prev.x + prev.width
                     else:
                         prev_right = prev.x + len(prev.text) * prev.font_size * 0.5
                     gap = pos.x - prev_right

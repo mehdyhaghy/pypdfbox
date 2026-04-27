@@ -12,6 +12,8 @@ tests don't depend on the upstream PDF corpus.
 
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -21,7 +23,7 @@ from pypdfbox.cos import (
 )
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
-from pypdfbox.text import PDFTextStripper
+from pypdfbox.text import PDFTextStripper, TextPosition
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -99,6 +101,16 @@ def _attach_font(page: PDPage, name: str, font_dict: COSDictionary) -> None:
         font_dict,
     )
     page.set_resources(resources)
+
+
+class _CapturingTextStripper(PDFTextStripper):
+    def __init__(self) -> None:
+        super().__init__()
+        self.positions: list[TextPosition] = []
+
+    def _format_positions(self, positions: list[TextPosition]) -> str:
+        self.positions = list(positions)
+        return super()._format_positions(positions)
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +295,70 @@ def test_widths_zero_falls_back_to_half_em_estimate() -> None:
     # exceeds the 0.5-em-derived right edge plus 18-unit threshold.
     out = PDFTextStripper().get_text(doc)
     assert out == "foo bar\n"
+
+
+def test_text_positions_carry_resolved_font_and_width_metadata() -> None:
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc,
+        b"BT /F0 12 Tf 3 Tw 1 Tc 100 700 Td (Hi) Tj ET",
+    )
+    font_dict = _make_type1_font(
+        base_encoding="WinAnsiEncoding",
+        differences=[],
+        widths=[600] * 256,
+        first_char=0,
+    )
+    _attach_font(page, "F0", font_dict)
+
+    stripper = _CapturingTextStripper()
+    assert stripper.get_text(doc) == "Hi\n"
+    assert len(stripper.positions) == 1
+    pos = stripper.positions[0]
+    assert pos.text == "Hi"
+    assert pos.font_name == "F0"
+    assert pos.font is not None
+    assert pos.resolved_font_name == "Helvetica"
+    assert pos.width == pytest.approx(14.4)
+    assert pos.width_of_space == pytest.approx(7.2)
+    assert pos.char_spacing == 1.0
+    assert pos.word_spacing == 3.0
+
+
+def test_mixed_font_spacing_uses_previous_position_width() -> None:
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc,
+        b"BT /Fwide 12 Tf 100 700 Td (foo) Tj /Fnarrow 12 Tf 40 0 Td (bar) Tj ET",
+    )
+    resources = PDResources()
+    resources.put(
+        COSName.get_pdf_name("Font"),
+        COSName.get_pdf_name("Fwide"),
+        _make_type1_font(
+            base_encoding="WinAnsiEncoding",
+            differences=[],
+            widths=[1000] * 256,
+            first_char=0,
+        ),
+    )
+    resources.put(
+        COSName.get_pdf_name("Font"),
+        COSName.get_pdf_name("Fnarrow"),
+        _make_type1_font(
+            base_encoding="WinAnsiEncoding",
+            differences=[],
+            widths=[200] * 256,
+            first_char=0,
+        ),
+    )
+    page.set_resources(resources)
+
+    stripper = _CapturingTextStripper()
+    assert stripper.get_text(doc) == "foobar\n"
+    assert [pos.text for pos in stripper.positions] == ["foo", "bar"]
+    assert [pos.font_name for pos in stripper.positions] == ["Fwide", "Fnarrow"]
+    assert [pos.width for pos in stripper.positions] == pytest.approx([36.0, 7.2])
 
 
 # ---------------------------------------------------------------------------

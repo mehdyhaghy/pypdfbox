@@ -27,7 +27,7 @@ class PDColorSpace(ABC):
         self._array = array
 
     @staticmethod
-    def create(base: COSBase | None) -> "PDColorSpace | None":
+    def create(base: COSBase | None) -> PDColorSpace | None:
         from pypdfbox.cos import COSName
 
         from .pd_cal_gray import PDCalGray
@@ -82,6 +82,11 @@ class PDColorSpace(ABC):
 
     def get_cos_object(self) -> COSBase | None:
         return self._array
+
+    @property
+    def name(self) -> str:
+        """Compatibility alias for callers that need the COS color-space name."""
+        return self.get_name()
 
     # ---------- abstract surface ----------
 

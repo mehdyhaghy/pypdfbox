@@ -4,6 +4,7 @@ from typing import Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
+from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
 from .pd_structure_element import PDStructureElement
 from .pd_structure_node import PDStructureNode
@@ -23,10 +24,9 @@ class PDStructureTreeRoot(PDStructureNode):
     Mirrors PDFBox ``PDStructureTreeRoot``.
 
     Lite surface: ``/K`` returns typed children where known, preserving raw
-    COS fallback; ``/ParentTree`` returns the raw ``COSDictionary`` (no typed
-    ``PDNumberTreeNode<PDParentTreeValue>`` yet); ``/ClassMap`` returns the
-    raw Python ``dict`` of COSBase entries (no ``PDAttributeObject`` typed
-    wrap yet).
+    COS fallback; ``/ParentTree`` returns a typed number-tree wrapper with raw
+    COS values; ``/ClassMap`` returns the raw Python ``dict`` of COSBase
+    entries (no ``PDAttributeObject`` typed wrap yet).
     """
 
     def __init__(self, struct_tree_root: COSDictionary | None = None) -> None:
@@ -122,10 +122,13 @@ class PDStructureTreeRoot(PDStructureNode):
         cos = id_tree.get_cos_object() if hasattr(id_tree, "get_cos_object") else id_tree
         self._dictionary.set_item(_ID_TREE, cos)
 
-    # ---------- /ParentTree (raw — typed PDNumberTreeNode deferred) ----
+    # ---------- /ParentTree ----
 
-    def get_parent_tree(self) -> COSBase | None:
-        return self._dictionary.get_dictionary_object(_PARENT_TREE)
+    def get_parent_tree(self) -> PDStructureElementNumberTreeNode | None:
+        parent_tree = self._dictionary.get_dictionary_object(_PARENT_TREE)
+        if not isinstance(parent_tree, COSDictionary):
+            return None
+        return PDStructureElementNumberTreeNode(parent_tree)
 
     def set_parent_tree(self, parent_tree: Any) -> None:
         if parent_tree is None:
@@ -169,10 +172,31 @@ class PDStructureElementNameTreeNode(PDNameTreeNode[PDStructureElement]):
         return PDStructureElementNameTreeNode(dic)
 
 
+class PDStructureElementNumberTreeNode(PDNumberTreeNode[COSBase]):
+    """
+    Concrete number-tree node used for ``/ParentTree``. Values are exposed as
+    raw COS entries because parent-tree leaves may be either a structure
+    element dictionary or an array indexed by MCID.
+    """
+
+    def convert_cos_to_value(self, base: COSBase) -> COSBase:
+        return base
+
+    def convert_value_to_cos(self, value: COSBase) -> COSBase:
+        return _to_cos(value)
+
+    def create_child_node(self, dic: COSDictionary) -> PDStructureElementNumberTreeNode:
+        return PDStructureElementNumberTreeNode(dic)
+
+
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
         return value.get_cos_object()
     return value
 
 
-__all__ = ["PDStructureElementNameTreeNode", "PDStructureTreeRoot"]
+__all__ = [
+    "PDStructureElementNameTreeNode",
+    "PDStructureElementNumberTreeNode",
+    "PDStructureTreeRoot",
+]
