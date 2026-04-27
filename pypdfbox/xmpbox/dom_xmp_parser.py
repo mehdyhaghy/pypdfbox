@@ -5,9 +5,12 @@ from typing import IO
 from xml.etree import ElementTree as ET
 
 from .dublin_core_schema import DublinCoreSchema
+from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
 from .xmp_basic_schema import XMPBasicSchema
+from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import RDF_NAMESPACE, XMPMetadata
+from .xmp_rights_management_schema import XMPRightsManagementSchema
 from .xmp_schema import X_DEFAULT, XMPSchema
 
 
@@ -24,6 +27,9 @@ _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
     DublinCoreSchema.NAMESPACE: DublinCoreSchema,
     XMPBasicSchema.NAMESPACE: XMPBasicSchema,
     PDFAIdentificationSchema.NAMESPACE: PDFAIdentificationSchema,
+    PDFAExtensionSchema.NAMESPACE: PDFAExtensionSchema,
+    XMPMediaManagementSchema.NAMESPACE: XMPMediaManagementSchema,
+    XMPRightsManagementSchema.NAMESPACE: XMPRightsManagementSchema,
 }
 
 

@@ -263,6 +263,50 @@ class XMPMetadata:
         self.add_schema(schema)
         return schema
 
+    # --- XMP Rights Management schema --------------------------------
+
+    def get_xmp_rights_management_schema(self) -> XMPSchema | None:
+        # Mirror of upstream ``XMPMetadata.getXMPRightsManagementSchema``.
+        from .xmp_rights_management_schema import XMPRightsManagementSchema
+
+        return self.get_schema(XMPRightsManagementSchema)
+
+    def add_xmp_rights_management_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addXMPRightsManagementSchema``: install (or reuse)
+        an :class:`XMPRightsManagementSchema` and return it.
+        """
+        from .xmp_rights_management_schema import XMPRightsManagementSchema
+
+        existing = self.get_schema(XMPRightsManagementSchema)
+        if existing is not None:
+            return existing
+        schema = XMPRightsManagementSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    # --- XMP Media Management schema ---------------------------------
+
+    def get_xmp_media_management_schema(self) -> XMPSchema | None:
+        # Mirror of upstream ``XMPMetadata.getXMPMediaManagementSchema``.
+        from .xmp_media_management_schema import XMPMediaManagementSchema
+
+        return self.get_schema(XMPMediaManagementSchema)
+
+    def add_xmp_media_management_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addXMPMediaManagementSchema``: install (or reuse)
+        an :class:`XMPMediaManagementSchema` and return it.
+        """
+        from .xmp_media_management_schema import XMPMediaManagementSchema
+
+        existing = self.get_schema(XMPMediaManagementSchema)
+        if existing is not None:
+            return existing
+        schema = XMPMediaManagementSchema(self)
+        self.add_schema(schema)
+        return schema
+
     # --- PDF basic schema (Adobe PDF) ---------------------------------
     #
     # PDFBox names the schema-class wrapper ``AdobePDFSchema``; the metadata
@@ -289,20 +333,33 @@ class XMPMetadata:
         """
         return self.get_pdf_schema()
 
-    # --- PDF/A extension schemas (placeholders) ------------------------
+    # --- PDF/A extension schema -----------------------------------------
 
     def get_pdfa_extension_schema(self) -> XMPSchema | None:
         """
-        Placeholder for upstream ``getPDFExtensionSchema`` /
-        ``getPDFAExtensionSchema``. Returns ``None`` until the
-        ``PDFAExtensionSchema`` wrapper is ported.
+        Mirror of upstream ``getPDFExtensionSchema`` / ``getPDFAExtensionSchema``.
+        Returns the registered :class:`PDFAExtensionSchema` instance if the
+        packet declares one, or ``None`` otherwise.
         """
-        return self.get_schema("http://www.aiim.org/pdfa/ns/extension/")
+        from .pdfa_extension_schema import PDFAExtensionSchema
 
-    def add_pdfa_extension_schema(self) -> XMPSchema | None:
-        """Placeholder for upstream ``addPDFAExtensionSchema``."""
-        return self.get_pdfa_extension_schema()
+        return self.get_schema(PDFAExtensionSchema)
 
-    def add_pdf_extension_schema(self) -> XMPSchema | None:
-        """Placeholder alias for :meth:`add_pdfa_extension_schema`."""
+    def add_pdfa_extension_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``addPDFAExtensionSchema``: install (or reuse) a
+        :class:`PDFAExtensionSchema` and return it. Idempotent — repeat calls
+        return the existing schema rather than stacking duplicates.
+        """
+        from .pdfa_extension_schema import PDFAExtensionSchema
+
+        existing = self.get_schema(PDFAExtensionSchema)
+        if existing is not None:
+            return existing
+        schema = PDFAExtensionSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def add_pdf_extension_schema(self) -> XMPSchema:
+        """Upstream-compatible alias of :meth:`add_pdfa_extension_schema`."""
         return self.add_pdfa_extension_schema()

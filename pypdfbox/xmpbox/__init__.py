@@ -12,17 +12,23 @@ from __future__ import annotations
 
 from .dom_xmp_parser import DomXmpParser, XmpParsingException
 from .dublin_core_schema import DublinCoreSchema
+from .pdfa_extension_schema import PDFAExtensionSchema
 from .pdfa_identification_schema import PDFAIdentificationSchema
 from .xmp_basic_schema import XMPBasicSchema
+from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import XMPMetadata
+from .xmp_rights_management_schema import XMPRightsManagementSchema
 from .xmp_schema import XMPSchema
 
 __all__ = [
     "DomXmpParser",
     "DublinCoreSchema",
+    "PDFAExtensionSchema",
     "PDFAIdentificationSchema",
     "XMPBasicSchema",
+    "XMPMediaManagementSchema",
     "XMPMetadata",
+    "XMPRightsManagementSchema",
     "XMPSchema",
     "XmpParsingException",
 ]

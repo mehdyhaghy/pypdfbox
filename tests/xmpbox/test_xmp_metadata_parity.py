@@ -110,16 +110,14 @@ def test_add_xmp_basic_schema_returns_typed_wrapper() -> None:
     assert meta.add_xmp_basic_schema() is schema
 
 
-# --- placeholder accessors (PDF basic / PDF/A extension) -----------------
+# --- placeholder accessors (PDF basic) -----------------------------------
 
 
 def test_pdf_basic_schema_placeholders_return_none_when_absent() -> None:
+    # AdobePDFSchema typed wrapper still deferred — these remain placeholders.
     meta = XMPMetadata.create_xmp_metadata()
     assert meta.get_pdf_schema() is None
     assert meta.add_pdf_basic_schema() is None
-    assert meta.get_pdfa_extension_schema() is None
-    assert meta.add_pdfa_extension_schema() is None
-    assert meta.add_pdf_extension_schema() is None
 
 
 # --- xpacket header setters ----------------------------------------------
