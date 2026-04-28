@@ -36,6 +36,46 @@ class PDRadioButton(PDButton):
     def set_radios_in_unison(self, value: bool) -> None:
         self._set_flag(self.FLAG_RADIOS_IN_UNISON, value)
 
+    # ---------- selection accessors ----------
+
+    def get_selected_index(self) -> int:
+        """Index of the currently selected widget, or -1 if none.
+
+        Mirrors upstream ``PDRadioButton.getSelectedIndex``: walks the
+        widget list and returns the index of the first widget whose
+        ``/AS`` is not ``/Off``.
+        """
+        idx = 0
+        for widget in self.get_widgets():
+            if widget.get_appearance_state() != "Off":
+                return idx
+            idx += 1
+        return -1
+
+    def get_selected_export_values(self) -> list[str]:
+        """Selected widget's export values (per ``/Opt``).
+
+        Mirrors upstream ``PDRadioButton.getSelectedExportValues``:
+        - When ``/Opt`` is empty, returns ``[get_value()]``.
+        - Otherwise returns the export-values entries whose corresponding
+          widget on-state matches ``get_value()``.
+
+        Note: upstream iterates ``getOnValues()`` (a ``LinkedHashSet`` with
+        insertion order) parallel to ``exportValues``. We iterate
+        ``export_values`` directly for index correspondence — ``get_on_values``
+        on this port returns a Python ``set`` whose iteration order is not
+        guaranteed.
+        """
+        export_values = self.get_export_values()
+        if not export_values:
+            return [self.get_value()]
+        selected: list[str] = []
+        field_value = self.get_value()
+        for idx, on_value in enumerate(export_values):
+            if on_value == field_value:
+                selected.append(export_values[idx])
+        return selected
+
     # ---------- /V + appearance ----------
 
     def set_value(

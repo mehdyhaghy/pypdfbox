@@ -81,17 +81,27 @@ def test_get_java_color_space_returns_none() -> None:
     assert PDIndexed().get_java_color_space() is None
 
 
-# ---------- to_rgb_image / to_raw_image (rendering deferred) ----------
+# ---------- to_rgb_image / to_raw_image ----------
 
 
-def test_to_rgb_image_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        PDDeviceRGB.INSTANCE.to_rgb_image(b"", 1, 1)
+def test_to_rgb_image_returns_pillow_image() -> None:
+    from PIL import Image
+
+    raster = bytes([255, 0, 0, 0, 255, 0])  # 2 RGB pixels
+    img = PDDeviceRGB.INSTANCE.to_rgb_image(raster, 2, 1)
+    assert isinstance(img, Image.Image)
+    assert img.mode == "RGB"
+    assert img.size == (2, 1)
 
 
-def test_to_raw_image_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError):
-        PDDeviceRGB.INSTANCE.to_raw_image(b"", 1, 1)
+def test_to_raw_image_uses_pillow_native_mode_for_device_rgb() -> None:
+    from PIL import Image
+
+    raster = bytes([10, 20, 30])
+    img = PDDeviceRGB.INSTANCE.to_raw_image(raster, 1, 1)
+    assert isinstance(img, Image.Image)
+    assert img.mode == "RGB"
+    assert img.getpixel((0, 0)) == (10, 20, 30)
 
 
 # ---------- get_array ----------

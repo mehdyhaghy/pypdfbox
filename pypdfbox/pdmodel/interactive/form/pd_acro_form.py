@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,8 @@ if TYPE_CHECKING:
 
     from .pd_field import PDField
     from .pd_xfa_resource import PDXFAResource
+
+_logger = logging.getLogger(__name__)
 
 _FIELDS: COSName = COSName.get_pdf_name("Fields")
 _SIG_FLAGS: COSName = COSName.get_pdf_name("SigFlags")
@@ -63,6 +66,10 @@ class PDAcroForm:
             self._dictionary = dictionary
         self._cache_fields = False
         self._field_cache: dict[str, PDField] | None = None
+        # Optional handler for JavaScript form actions. Upstream stores
+        # this as a ``ScriptingHandler`` instance — that interface is not
+        # yet ported, so we accept any object the caller wants to pass.
+        self._scripting_handler: object | None = None
 
     # ---------- core ----------
 
@@ -118,8 +125,24 @@ class PDAcroForm:
         self._cache_fields = bool(cache)
         self._field_cache = self._build_field_cache() if self._cache_fields else None
 
+    # Upstream-named alias (PDFBox ``cacheFields`` — synonym for
+    # ``setCacheFields(true)``).
+    def cache_fields(self) -> None:
+        self.set_cache_fields(True)
+
     def is_caching_fields(self) -> bool:
         return self._cache_fields
+
+    def get_signature_fields(self) -> list[PDField]:
+        """Return every ``/FT /Sig`` field reachable from this form's
+        field tree, depth-first.
+
+        Mirrors upstream ``PDAcroForm.getSignatureFields`` (provided via
+        ``PDDocument.getSignatureFields`` in 3.x — same predicate). The
+        list is fresh; mutating it does not modify ``/Fields``."""
+        from .pd_signature_field import PDSignatureField
+
+        return [field for field in self.get_field_tree() if isinstance(field, PDSignatureField)]
 
     def get_field(self, fully_qualified_name: str) -> PDField | None:
         """Locate a field by its fully-qualified name (".\"-joined)."""
@@ -211,6 +234,22 @@ class PDAcroForm:
     def set_need_appearances(self, value: bool) -> None:
         self._dictionary.set_boolean(_NEED_APPEARANCES, value)
 
+    # Upstream-named alias (PDFBox ``getNeedAppearances`` /
+    # ``setNeedAppearances``).
+    def get_need_appearances(self) -> bool:
+        return self.is_need_appearances()
+
+    def get_need_appearances_if_exists(self) -> bool | None:
+        """Return ``/NeedAppearances`` as a tri-state — ``None`` when the
+        entry is absent, otherwise the boolean value.
+
+        Used by writers that want to round-trip ``/NeedAppearances``
+        without inventing a default. Mirrors the convention upstream's
+        ``getNeedAppearancesIfExists`` follows in 4.x."""
+        if not self._dictionary.contains_key(_NEED_APPEARANCES):
+            return None
+        return self._dictionary.get_boolean(_NEED_APPEARANCES, False)
+
     # ---------- /DR (default resources) ----------
 
     def get_default_resources(self) -> PDResources | None:
@@ -289,20 +328,44 @@ class PDAcroForm:
             arr.add(f.get_cos_object())
         self._dictionary.set_item(_CO, arr)
 
-    # ---------- appearance regeneration (deferred) ----------
+    # ---------- scripting handler ----------
+
+    def get_scripting_handler(self) -> object | None:
+        """Return the optional handler for JavaScript form actions, or
+        ``None``. Mirrors upstream ``PDAcroForm.getScriptingHandler`` —
+        the handler interface itself is not yet ported, so this round-
+        trips whatever opaque object the caller registered."""
+        return self._scripting_handler
+
+    def set_scripting_handler(self, handler: object | None) -> None:
+        """Register a handler for JavaScript form actions. Mirrors
+        upstream ``PDAcroForm.setScriptingHandler``."""
+        self._scripting_handler = handler
+
+    # ---------- appearance regeneration ----------
 
     def refresh_appearances(self, fields: list[PDField] | None = None) -> None:
-        """Rebuild widget appearances from each field's ``/V``.
+        """Rebuild appearance streams + dictionaries for the widget
+        annotations of every field (or only ``fields`` when supplied).
 
-        Per-FT widget appearance construction is non-trivial (text fields
-        require font metrics + DA tokenisation, buttons need on/off state
-        appearances, choice fields need wrapped option lists). Deferred
-        until the renderer's text path can be reused.
+        Mirrors upstream ``PDAcroForm.refreshAppearances`` — iterates
+        terminal fields and dispatches to ``construct_appearances`` on
+        each. Non-terminal fields are skipped (matches upstream's
+        ``instanceof PDTerminalField`` guard).
+
+        Per-``/FT`` appearance construction (text/button/choice/sig) is
+        the responsibility of the field's own
+        :meth:`~PDTerminalField.construct_appearances`; on the lite
+        surface that delegates into :class:`PDAppearanceGenerator` for
+        the implemented field types and is a debug-logged no-op for the
+        rest.
         """
-        raise NotImplementedError(
-            "PDAcroForm.refresh_appearances: widget appearance "
-            "construction from /V is not yet implemented"
-        )
+        from .pd_terminal_field import PDTerminalField
+
+        targets: Iterator[PDField] = iter(self.get_field_tree()) if fields is None else iter(fields)
+        for field in targets:
+            if isinstance(field, PDTerminalField):
+                field.construct_appearances()
 
     # ---------- FDF (deferred) ----------
 
@@ -340,6 +403,29 @@ class PDAcroForm:
     def get_xfa(self) -> PDXFAResource | None:
         return self.xfa()
 
+    def set_xfa(self, xfa: PDXFAResource | None) -> None:
+        """Set the XFA resource (only used for PDF 1.5+ forms).
+
+        ``None`` removes the entry; otherwise the resource's COS payload
+        is written to ``/XFA``. Mirrors upstream ``PDAcroForm.setXFA``.
+        """
+        if xfa is None:
+            self._dictionary.remove_item(_XFA)
+            return
+        self._dictionary.set_item(_XFA, xfa.get_cos_object())
+
+    def has_xfa(self) -> bool:
+        """Return ``True`` when this form has an ``/XFA`` entry. Mirrors
+        upstream ``PDAcroForm.hasXFA``."""
+        return self._dictionary.contains_key(_XFA)
+
+    def xfa_is_dynamic(self) -> bool:
+        """Return ``True`` for a *dynamic* XFA form — i.e. ``/XFA`` is
+        present but ``/Fields`` is empty. Mirrors upstream
+        ``PDAcroForm.xfaIsDynamic``: dynamic XFA forms carry no AcroForm
+        widget representation, so flattening is not supported."""
+        return self.has_xfa() and not self.get_fields()
+
     # ---------- flatten (PDF 32000-1 §12.7.5.5) ----------
 
     def flatten(
@@ -373,35 +459,65 @@ class PDAcroForm:
         ``/Fields`` array. When the call flattens **all** fields, the
         document catalog's ``/AcroForm`` entry is dropped entirely.
 
-        ``refresh_appearances`` would rebuild ``/AP /N`` from ``/V`` before
-        flattening — this is non-trivial (per-FT widget appearance
-        construction) and is deferred. Passing ``True`` raises
-        :class:`NotImplementedError`.
-        """
-        if refresh_appearances:
-            raise NotImplementedError(
-                "PDAcroForm.flatten(refresh_appearances=True): widget "
-                "appearance construction from /V is not yet implemented "
-                "(would call refresh_appearances → field.construct_appearances)"
-            )
+        ``refresh_appearances=True`` first walks the fields and calls
+        :meth:`refresh_appearances` on each terminal — on the lite
+        surface that uses :class:`PDAppearanceGenerator` for implemented
+        field types and is a no-op for the rest, mirroring the
+        ``PDTerminalField.constructAppearances`` dispatch upstream.
 
-        targets: list[PDField] = (
-            list(self.get_fields()) if fields is None else list(fields)
-        )
+        Mirrors the upstream early-outs:
+
+        * Dynamic XFA (``xfa_is_dynamic`` true) → log a warning and
+          return; flattening would require rendering XFA into a static
+          PDF.
+        * ``need_appearances`` true with ``refresh_appearances=False`` →
+          log a warning recommending the caller pass
+          ``refresh_appearances=True`` or call
+          :meth:`refresh_appearances` first.
+
+        After the per-widget loop the form's ``/XFA`` entry is dropped
+        (matches upstream's hybrid-form cleanup) and ``/SigFlags`` is
+        cleared when no signature dictionaries remain.
+        """
+        # Dynamic XFA forms have no static appearance to flatten —
+        # mirrors upstream's early-out.
+        if self.xfa_is_dynamic():
+            _logger.warning("Flatten for a dynamic XFA form is not supported")
+            return
+
+        targets: list[PDField] = list(self.get_fields()) if fields is None else list(fields)
         if not targets:
             return
 
+        if not refresh_appearances and self.get_need_appearances():
+            _logger.warning(
+                "acroForm.get_need_appearances() returns true, "
+                "visual field appearances may not have been set"
+            )
+            _logger.warning(
+                "call acroForm.refresh_appearances() or "
+                "use the flatten() method with refresh_appearances parameter"
+            )
+
+        # Flatten input is a list of root fields; walk descendants once
+        # to collect every terminal exactly once. ``refresh_appearances``
+        # operates on the same terminal set.
         terminal_fields: list[PDField] = []
         for field in targets:
             terminal_fields.extend(self._collect_terminals(field))
         if not terminal_fields:
             return
 
+        if refresh_appearances:
+            self.refresh_appearances(terminal_fields)
+
         flatten_all = fields is None
 
         for field in terminal_fields:
             for widget in field.get_widgets():
-                widget_cos = widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
+                widget_cos = (
+                    widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
+                )
                 self._flatten_widget(widget_cos)
 
         # Drop the flattened fields from /Fields (or wipe the entry when
@@ -420,6 +536,18 @@ class PDAcroForm:
                     resolved = entry.get_object() if hasattr(entry, "get_object") else entry  # type: ignore[union-attr]
                     if id(resolved) in victims:
                         arr.remove(entry)
+
+        # /XFA cleanup for hybrid forms (upstream parity).
+        self._dictionary.remove_item(_XFA)
+
+        # Drop /SigFlags when no signatures remain (upstream parity).
+        document = self._document
+        if document is not None:
+            from pypdfbox.pdmodel.pd_document import PDDocument
+
+            if isinstance(document, PDDocument) and not document.get_signature_dictionaries():
+                self._dictionary.remove_item(_SIG_FLAGS)
+
         self._invalidate_field_cache()
 
     # ---------- flatten internals ----------
@@ -558,7 +686,7 @@ class PDAcroForm:
         if isinstance(bbox_arr, COSArray) and bbox_arr.size() >= 4:
             try:
                 vals = [float(bbox_arr.get_object(i).value) for i in range(4)]  # type: ignore[union-attr]
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 vals = []
             if len(vals) == 4:
                 bbox = (

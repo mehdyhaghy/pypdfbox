@@ -112,13 +112,56 @@ class PDChoice(PDVariableText):
                     out.append(value)
         return out
 
-    def set_options(self, values: list[str] | None) -> None:
-        if not values:
+    def set_options(
+        self,
+        values: list[str] | None,
+        display_values: list[str] | None = None,
+    ) -> None:
+        """Set the field's ``/Opt`` entries.
+
+        Single-argument call mirrors upstream ``setOptions(List<String>)`` and
+        writes a flat ``COSArray`` of strings (sorted when ``is_sort()`` is
+        true, per upstream).
+
+        Two-argument call mirrors upstream
+        ``setOptions(List<String> exportValues, List<String> displayValues)``
+        — writes ``[export, display]`` two-element ``COSArray`` pairs. Sizes
+        must match. Sorting (when ``is_sort()`` is true) preserves the
+        export/display pairing by sorting on the display half.
+        """
+        if display_values is None:
+            # single-arg / display-only form
+            if not values:
+                self._field.remove_item(_OPT)
+                return
+            ordered = sorted(values) if self.is_sort() else list(values)
+            arr = COSArray.of_cos_strings(ordered)
+            self._field.set_item(_OPT, arr)
+            return
+
+        # two-arg form: values is the export list
+        export_values = values
+        if not export_values or not display_values:
             self._field.remove_item(_OPT)
             return
-        ordered = sorted(values) if self.is_sort() else list(values)
-        arr = COSArray.of_cos_strings(ordered)
-        self._field.set_item(_OPT, arr)
+        if len(export_values) != len(display_values):
+            raise ValueError(
+                "The number of export values must match the number of display values"
+            )
+        pairs = list(zip(export_values, display_values))
+        if self.is_sort():
+            pairs.sort(key=lambda kv: kv[1])
+        options = COSArray()
+        for export, display in pairs:
+            entry = COSArray()
+            entry.add(COSString(export))
+            entry.add(COSString(display))
+            options.add(entry)
+        self._field.set_item(_OPT, options)
+
+    def has_separate_export_and_display_values(self) -> bool:
+        """Mirrors upstream ``PDChoice.hasSeparateExportAndDisplayValues``."""
+        return self.get_options_export_values() != self.get_options_display_values()
 
     def get_options_export_values(self) -> list[str]:
         # Upstream ``getOptionsExportValues`` returns getOptions() when entries
@@ -231,6 +274,17 @@ class PDChoice(PDVariableText):
             self._field.remove_item(_I)
             return
         self._field.set_item(_I, COSArray.of_cos_integers(indices))
+
+    # Upstream PDFBox names (singular). Aliases for the plural pythonic forms.
+    def get_selected_options_index(self) -> list[int]:
+        """Upstream PDFBox name (``getSelectedOptionsIndex``). Alias for
+        :meth:`get_selected_options_indices`."""
+        return self.get_selected_options_indices()
+
+    def set_selected_options_index(self, indices: list[int] | None) -> None:
+        """Upstream PDFBox name (``setSelectedOptionsIndex``). Alias for
+        :meth:`set_selected_options_indices`."""
+        self.set_selected_options_indices(indices)
 
 
 __all__ = ["PDChoice"]

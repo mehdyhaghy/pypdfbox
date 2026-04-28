@@ -109,6 +109,23 @@ class _GState:
     # non-separable HSL family (§11.3.5.2) falls back to ``Normal`` with a
     # one-time debug log inside ``_blend``.
     blend_mode: Any | None = None
+    # ---- soft mask from ExtGState /SMask (PDF 32000-1 §11.6.5.3) ----
+    # When non-None, an ``PDSoftMask`` is active: the next compositing
+    # step (transparency group, image paste, shading paint) computes a
+    # mask alpha by rendering the soft-mask group XObject (/G), reading
+    # its alpha (subtype /Alpha) or its luminance (subtype /Luminosity),
+    # optionally applying the /TR transfer function, and multiplying that
+    # into the source alpha. ``None`` means "no soft mask" (the literal
+    # /None mask name from the gs operator also resets to None).
+    soft_mask: Any | None = None
+    # ---- alpha constants (CA / ca) ----
+    # Stroke + non-stroke alpha multipliers in [0, 1] from ExtGState. 1.0
+    # means "fully opaque" (the spec default). Honoured at compositing
+    # time inside the soft-mask path; otherwise the lite renderer's solid
+    # paints are unaffected (a future cluster wires CA/ca into stroke /
+    # fill brushes directly).
+    stroke_alpha: float = 1.0
+    fill_alpha: float = 1.0
 
     def clone(self) -> _GState:
         # ``replace`` would re-share the field defaults — manually copy mutable
@@ -132,6 +149,9 @@ class _GState:
             text_horizontal_scaling=self.text_horizontal_scaling,
             clip_mask=self.clip_mask,
             blend_mode=self.blend_mode,
+            soft_mask=self.soft_mask,
+            stroke_alpha=self.stroke_alpha,
+            fill_alpha=self.fill_alpha,
         )
 
 
@@ -642,9 +662,12 @@ class PDFRenderer(PDFStreamEngine):
     ) -> None:
         """``gs`` — apply the named ExtGState dictionary's parameters.
 
-        The lite renderer only consumes ``/BM`` (blend mode) here; other
-        ExtGState entries (line dash, alpha constants, soft-mask
-        dictionaries, smoothness, …) are deferred — see ``CHANGES.md``."""
+        The lite renderer consumes ``/BM`` (blend mode), ``/SMask``
+        (soft mask — Alpha or Luminosity types per PDF 32000-1
+        §11.6.5.3, with ``/BC`` backdrop colour and ``/TR`` transfer
+        function), and ``/CA``/``/ca`` (stroke / non-stroke alpha
+        constants). Other ExtGState entries (line dash, smoothness,
+        halftone, …) are deferred — see ``CHANGES.md``."""
         if not operands or not isinstance(operands[0], COSName):
             return
         if self._resources is None:
@@ -673,6 +696,34 @@ class PDFRenderer(PDFStreamEngine):
             self._gs.blend_mode = None
         else:
             self._gs.blend_mode = bm
+
+        # ---- /SMask (soft mask) — §11.6.5.3 ----
+        # ``/None`` resets to "no soft mask"; a dict wraps as PDSoftMask
+        # and is honoured at compositing time. Anything malformed is
+        # logged at debug and treated as ``/None``.
+        try:
+            smask_typed = ext_gstate.get_soft_mask_typed()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: cannot resolve ExtGState /SMask on %s: %s",
+                name.name, exc,
+            )
+            smask_typed = None
+        self._gs.soft_mask = smask_typed
+
+        # ---- /CA (stroke alpha) and /ca (non-stroke alpha) ----
+        try:
+            ca = ext_gstate.get_stroking_alpha_constant()
+        except Exception:  # noqa: BLE001
+            ca = None
+        if ca is not None:
+            self._gs.stroke_alpha = max(0.0, min(1.0, float(ca)))
+        try:
+            ca_ns = ext_gstate.get_non_stroking_alpha_constant()
+        except Exception:  # noqa: BLE001
+            ca_ns = None
+        if ca_ns is not None:
+            self._gs.fill_alpha = max(0.0, min(1.0, float(ca_ns)))
 
     # ---- path construction ----
 
@@ -1345,8 +1396,34 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(shading, PDShadingType3):
             self._paint_radial_shading(shading, region_mask=region_mask)
             return
-        # Type 1 / 4 / 5 / 6 / 7 — fall back to a solid fill at the
-        # function's value at u=0.
+        from pypdfbox.pdmodel.graphics.shading import (  # noqa: PLC0415
+            PDShadingType1,
+            PDShadingType4,
+            PDShadingType5,
+            PDShadingType6,
+            PDShadingType7,
+        )
+
+        if isinstance(shading, PDShadingType1):
+            self._paint_function_shading(shading, region_mask=region_mask)
+            return
+        if isinstance(
+            shading,
+            (PDShadingType4, PDShadingType5, PDShadingType6, PDShadingType7),
+        ):
+            # Mesh shadings (free-form / lattice / Coons / tensor) fall
+            # back to a uniform fill at f(0) — full mesh rasterisation
+            # tracked in CHANGES.md as deferred.
+            _log.debug(
+                "rendering: mesh shading type %s deferred; falling back to f(0)",
+                type(shading).__name__,
+            )
+            rgb = self._evaluate_shading_rgb(shading, 0.0)
+            if rgb is None:
+                return
+            self._fill_mask_with_rgb(region_mask, _rgb_bytes(*rgb))
+            return
+        # Unknown/uncreated subclass — same fallback.
         _log.debug(
             "rendering: unsupported shading type %s; falling back to f(0)",
             type(shading).__name__,
@@ -1647,6 +1724,234 @@ class PDFRenderer(PDFStreamEngine):
         self._image.paste(gradient, (0, 0), region_mask)
         self._draw = aggdraw.Draw(self._image)
         self._draw.setantialias(True)
+
+    def _paint_function_shading(
+        self,
+        shading: Any,
+        *,
+        region_mask: Image.Image,
+    ) -> None:
+        """Type 1 (function-based) shading per PDF 32000-1 §8.7.4.5.2.
+
+        ``/Domain`` = ``[xmin xmax ymin ymax]`` defines a rectangle in
+        the shading's parametric space; ``/Matrix`` (default identity)
+        maps that rectangle into pattern user space; ``/Function`` is a
+        2-input function (or array of 1-input functions, one per output
+        component) that returns the colour at each ``(x, y)`` in domain
+        space.
+
+        For each output pixel: invert the device→user CTM to get pattern
+        coordinates, invert the shading ``/Matrix`` to get domain
+        coordinates, clip to ``/Domain``, then evaluate the function.
+        """
+        if self._image is None:
+            return
+        # Domain — 4 floats; default [0 1 0 1] per spec.
+        domain_xmin, domain_xmax, domain_ymin, domain_ymax = (
+            self._shading_domain_2d(shading)
+        )
+        if domain_xmax <= domain_xmin or domain_ymax <= domain_ymin:
+            return
+        # Optional /Matrix maps domain → pattern user space; identity by default.
+        mtx = self._shading_matrix(shading)
+        # Inverse so we can go pattern user → domain at each pixel.
+        mtx_inv = self._invert_matrix(mtx)
+        if mtx_inv is None:
+            _log.debug("rendering: PDShadingType1 /Matrix is singular")
+            return
+
+        inv = self._invert_matrix(self._full_ctm())
+        if inv is None:
+            return
+        ia, ib, ic, id_, ie, if_ = inv
+        ma, mb, mc, md, me, mf = mtx_inv
+
+        # Resolve the function once (PDFunction.eval handles 2-in/N-out).
+        try:
+            fn = shading.get_function()
+        except Exception:  # noqa: BLE001
+            fn = None
+        if fn is None:
+            _log.debug("rendering: PDShadingType1 missing /Function")
+            return
+        # Normalise: get_function may hand back a COSArray of per-channel
+        # functions or a typed PDFunction. We need a callable that maps
+        # [x, y] → [r, g, b...] in [0,1] regardless.
+        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+
+        if isinstance(fn, COSArray):
+            # Array of single-output functions, one per colour component.
+            sub_fns: list[Any] = []
+            for i in range(fn.size()):
+                entry = fn.get_object(i)
+                if entry is None:
+                    continue
+                try:
+                    sub_fns.append(PDFunction.create(entry))
+                except Exception:  # noqa: BLE001
+                    sub_fns.append(None)
+
+            def evaluate(x: float, y: float) -> list[float]:
+                out_vals: list[float] = []
+                for sf in sub_fns:
+                    if sf is None:
+                        out_vals.append(0.0)
+                        continue
+                    try:
+                        r = sf.eval([x, y])
+                    except Exception:  # noqa: BLE001
+                        out_vals.append(0.0)
+                        continue
+                    out_vals.append(float(r[0]) if r else 0.0)
+                return out_vals
+        else:
+            if not hasattr(fn, "eval"):
+                try:
+                    fn = PDFunction.create(fn)
+                except Exception:  # noqa: BLE001
+                    fn = None
+            if fn is None:
+                return
+
+            def evaluate(x: float, y: float) -> list[float]:
+                try:
+                    return list(fn.eval([x, y]))
+                except Exception:  # noqa: BLE001
+                    return []
+
+        cs_obj = None
+        try:
+            cs_obj = shading.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs_obj = None
+        cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
+
+        canvas_w, canvas_h = self._image.size
+        pixels = bytearray(canvas_w * canvas_h * 3)
+        mask_data = region_mask.tobytes()
+
+        # Sample colours through a small cache keyed by quantised (x,y) so
+        # adjacent pixels don't all re-pay the function eval.
+        cache_grid = 256
+        cache: dict[tuple[int, int], tuple[int, int, int]] = {}
+        bg = (255, 255, 255)
+        for py in range(canvas_h):
+            row_off = py * canvas_w
+            for px in range(canvas_w):
+                base = (row_off + px) * 3
+                if mask_data[row_off + px] == 0:
+                    pixels[base] = bg[0]
+                    pixels[base + 1] = bg[1]
+                    pixels[base + 2] = bg[2]
+                    continue
+                # device → pattern user
+                ux = ia * px + ic * py + ie
+                uy = ib * px + id_ * py + if_
+                # pattern user → domain via inverse /Matrix
+                dx = ma * ux + mc * uy + me
+                dy = mb * ux + md * uy + mf
+                if (
+                    dx < domain_xmin
+                    or dx > domain_xmax
+                    or dy < domain_ymin
+                    or dy > domain_ymax
+                ):
+                    pixels[base] = bg[0]
+                    pixels[base + 1] = bg[1]
+                    pixels[base + 2] = bg[2]
+                    continue
+                # Quantise to a per-domain grid for caching.
+                qx = int(
+                    (dx - domain_xmin)
+                    / (domain_xmax - domain_xmin)
+                    * (cache_grid - 1)
+                )
+                qy = int(
+                    (dy - domain_ymin)
+                    / (domain_ymax - domain_ymin)
+                    * (cache_grid - 1)
+                )
+                key = (qx, qy)
+                rgb = cache.get(key)
+                if rgb is None:
+                    out = evaluate(dx, dy)
+                    rgb = self._function_output_to_rgb(out, cs_name) if out else bg
+                    cache[key] = rgb
+                pixels[base] = rgb[0]
+                pixels[base + 1] = rgb[1]
+                pixels[base + 2] = rgb[2]
+
+        gradient = Image.frombytes(
+            "RGB", (canvas_w, canvas_h), bytes(pixels)
+        )
+        if self._draw is not None:
+            self._draw.flush()
+        self._image.paste(gradient, (0, 0), region_mask)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+
+    @staticmethod
+    def _function_output_to_rgb(
+        out: list[float] | tuple[float, ...], cs_name: str | None
+    ) -> tuple[int, int, int]:
+        """Coerce a function's colour-space output to an sRGB byte triple.
+
+        Mirrors the colour-space dispatch used by
+        :meth:`_evaluate_shading_rgb` but accepts a raw output list so the
+        function-based shader can call it once per cache entry."""
+        if not out:
+            return (0, 0, 0)
+        if cs_name == "DeviceGray" or len(out) == 1:
+            g = float(out[0])
+            return _rgb_bytes(g, g, g)
+        if cs_name == "DeviceCMYK" or len(out) == 4:
+            c, m, y, k = (float(v) for v in out[:4])
+            return _cmyk_to_rgb_bytes(c, m, y, k)
+        padded = list(out) + [0.0, 0.0, 0.0]
+        return _rgb_bytes(float(padded[0]), float(padded[1]), float(padded[2]))
+
+    @staticmethod
+    def _shading_domain_2d(shading: Any) -> tuple[float, float, float, float]:
+        """Read a 4-element /Domain (PDShadingType1) — defaults to
+        [0 1 0 1]. Falls back to defaults for any shape mismatch."""
+        try:
+            domain = shading.get_domain()
+        except Exception:  # noqa: BLE001
+            return (0.0, 1.0, 0.0, 1.0)
+        if domain is None:
+            return (0.0, 1.0, 0.0, 1.0)
+        try:
+            flat = domain.to_float_array()
+        except Exception:  # noqa: BLE001
+            return (0.0, 1.0, 0.0, 1.0)
+        if len(flat) < 4:
+            return (0.0, 1.0, 0.0, 1.0)
+        return (float(flat[0]), float(flat[1]), float(flat[2]), float(flat[3]))
+
+    @staticmethod
+    def _shading_matrix(shading: Any) -> _Matrix:
+        """Read a 6-element /Matrix from a Type 1 shading; default
+        identity."""
+        try:
+            mtx = shading.get_matrix()
+        except Exception:  # noqa: BLE001
+            return _IDENTITY
+        if mtx is None:
+            return _IDENTITY
+        try:
+            flat = mtx.to_float_array()
+        except Exception:  # noqa: BLE001
+            return _IDENTITY
+        if len(flat) < 6:
+            return _IDENTITY
+        return (
+            float(flat[0]),
+            float(flat[1]),
+            float(flat[2]),
+            float(flat[3]),
+            float(flat[4]),
+            float(flat[5]),
+        )
 
     @staticmethod
     def _shading_domain(shading: Any) -> tuple[float, float]:
@@ -2370,6 +2675,167 @@ class PDFRenderer(PDFStreamEngine):
         rgba.putalpha(mask_image)
         return rgba
 
+    def _render_soft_mask_alpha(
+        self, soft_mask: Any, size: tuple[int, int]
+    ) -> Image.Image | None:
+        """Render an ExtGState soft-mask dictionary into an ``"L"`` alpha
+        plane sized to ``size`` (matching the active group canvas).
+
+        Per PDF spec §11.6.5.2-3:
+
+        - ``/G`` (transparency-group XObject) is rendered onto a fresh
+          RGBA canvas. For ``/Luminosity`` the canvas is pre-filled with
+          the backdrop colour ``/BC`` (default 0 in the group's colour
+          space) so areas the group leaves untouched contribute the
+          backdrop's luminance to the mask. For ``/Alpha`` the canvas
+          starts fully transparent so untouched areas contribute zero.
+        - The mask values are taken from either the alpha channel
+          (``/Alpha``) or the luminance of RGB (``/Luminosity``).
+        - The optional ``/TR`` transfer function (default ``/Identity``)
+          remaps mask values before they become alpha multipliers.
+
+        Returns ``None`` when the soft mask is malformed or unrenderable."""
+        from pypdfbox.pdmodel.graphics.state.pd_soft_mask import (  # noqa: PLC0415
+            PDSoftMask,
+        )
+
+        if not isinstance(soft_mask, PDSoftMask):
+            return None
+        group_form = soft_mask.get_group()
+        if group_form is None:
+            _log.debug("rendering: soft mask /G missing or malformed")
+            return None
+
+        # Initial mask canvas. /Luminosity uses the backdrop colour; /Alpha
+        # starts with zero alpha (a fully-masked-out canvas).
+        is_luminosity = soft_mask.is_luminosity()
+        if is_luminosity:
+            bc = self._soft_mask_backdrop_rgb(soft_mask)
+            mask_canvas = Image.new("RGBA", size, (bc[0], bc[1], bc[2], 255))
+        else:
+            mask_canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+
+        # Redirect rendering onto the mask canvas with a fresh GS stack so
+        # the active soft mask doesn't recursively trigger another mask
+        # render. The mask group's own /G ExtGStates may set their own
+        # blend modes; we contain those by snapshotting the renderer's
+        # mutable state.
+        prev_image = self._image
+        prev_draw = self._draw
+        prev_gs_stack = self._gs_stack
+        prev_subpaths = self._subpaths
+        prev_subpath = self._current_subpath
+        prev_pending_clip = self._pending_clip
+        prev_resources = self._resources
+        prev_knockout_active = self._knockout_active
+        prev_knockout_snapshot = self._knockout_snapshot
+        prev_knockout_form_depth = self._knockout_form_depth
+        # Avoid recursive soft-mask rendering during the mask render itself.
+        fresh_gs = _GState()
+        fresh_gs.ctm = self._gs.ctm
+        fresh_gs.soft_mask = None
+        self._image = mask_canvas
+        self._draw = aggdraw.Draw(mask_canvas)
+        self._draw.setantialias(True)
+        self._gs_stack = [fresh_gs]
+        self._subpaths = []
+        self._current_subpath = None
+        self._pending_clip = None
+        self._knockout_active = False
+        self._knockout_snapshot = None
+        self._knockout_form_depth = 0
+        try:
+            self._render_form_xobject(group_form)
+            current = self._draw
+            if current is not None:
+                current.flush()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: soft-mask group render failed: %s", exc)
+            return None
+        finally:
+            self._image = prev_image
+            self._draw = prev_draw
+            self._gs_stack = prev_gs_stack
+            self._subpaths = prev_subpaths
+            self._current_subpath = prev_subpath
+            self._pending_clip = prev_pending_clip
+            self._resources = prev_resources
+            self._knockout_active = prev_knockout_active
+            self._knockout_snapshot = prev_knockout_snapshot
+            self._knockout_form_depth = prev_knockout_form_depth
+
+        # Extract the mask channel.
+        if is_luminosity:
+            # Luminance of RGB → 8-bit grayscale.
+            alpha_plane = mask_canvas.convert("L")
+        else:
+            alpha_plane = mask_canvas.split()[3]
+
+        # Apply /TR transfer function if present (and not /Identity).
+        tr = soft_mask.get_transfer_function()
+        if tr is not None:
+            tr_lookup = self._build_transfer_lookup(tr)
+            if tr_lookup is not None:
+                alpha_plane = alpha_plane.point(tr_lookup)
+
+        return alpha_plane
+
+    def _soft_mask_backdrop_rgb(self, soft_mask: Any) -> tuple[int, int, int]:
+        """Resolve a soft-mask ``/BC`` array to an sRGB byte triple.
+
+        Defaults to black (the "no-colour" default for /Luminosity per
+        PDF spec §11.6.5.3) when ``/BC`` is absent or unparseable. The
+        component count drives the colour-space dispatch (1 → DeviceGray,
+        3 → DeviceRGB, 4 → DeviceCMYK)."""
+        bc = soft_mask.get_backdrop_color()
+        if bc is None:
+            return (0, 0, 0)
+        try:
+            flat = bc.to_float_array()
+        except Exception:  # noqa: BLE001
+            return (0, 0, 0)
+        if not flat:
+            return (0, 0, 0)
+        if len(flat) == 1:
+            g = float(flat[0])
+            return _rgb_bytes(g, g, g)
+        if len(flat) == 4:
+            return _cmyk_to_rgb_bytes(*(float(v) for v in flat[:4]))
+        # 3-channel (DeviceRGB / unknown 3-channel) — pad / clamp.
+        padded = list(flat) + [0.0, 0.0, 0.0]
+        return _rgb_bytes(
+            float(padded[0]), float(padded[1]), float(padded[2])
+        )
+
+    @staticmethod
+    def _build_transfer_lookup(tr: Any) -> list[int] | None:
+        """Build a 256-entry PIL ``point`` lookup table from a transfer
+        function. Returns ``None`` for ``/Identity`` (no remap needed)
+        and on any function-type that fails to evaluate.
+
+        Per PDF spec §11.6.5.3 the transfer function maps mask values in
+        [0, 1] back to [0, 1]; we sample once per byte value."""
+        if isinstance(tr, COSName) and tr.name in ("Identity", "Default"):
+            return None
+        from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
+
+        try:
+            fn = PDFunction.create(tr)
+        except Exception:  # noqa: BLE001
+            return None
+        if fn is None:
+            return None
+        try:
+            lut = []
+            for i in range(256):
+                out = fn.eval([i / 255.0])
+                v = float(out[0]) if out else i / 255.0
+                v = max(0.0, min(1.0, v))
+                lut.append(int(round(v * 255.0)))
+        except Exception:  # noqa: BLE001
+            return None
+        return lut
+
     def _render_transparency_group(self, form: Any) -> None:
         """Render a transparency-group Form XObject onto its own RGBA
         canvas and alpha-composite onto the parent.
@@ -2384,12 +2850,23 @@ class PDFRenderer(PDFStreamEngine):
           painted child fully replaces (rather than composites with)
           prior contents at the group level. We snapshot the group
           canvas at group entry and restore it before each top-level
-          painting operator (see :meth:`process_operator`)."""
+          painting operator (see :meth:`process_operator`).
+        - ``/CS`` (group colour space): the group's blending colour
+          space (DeviceGray / DeviceRGB / DeviceCMYK / ICCBased / etc.).
+          Lite renderer composes everything in sRGB; we read /CS for
+          parity but log when it would alter the result.
+        - Active ExtGState ``/SMask``: when set, after the group renders
+          to its own canvas we rasterise the soft-mask group XObject,
+          extract per-pixel alpha (via ``/S /Alpha`` or ``/Luminosity``
+          + optional ``/TR`` transfer function), and multiply it into
+          the group canvas's alpha before alpha-compositing onto the
+          parent (PDF spec §11.6.5.2-3)."""
         assert self._image is not None
         assert self._draw is not None
 
         isolated = False
         knockout = False
+        cs_obj: COSBase | None = None
         try:
             group = form.get_group()
         except Exception:  # noqa: BLE001
@@ -2397,6 +2874,17 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(group, COSDictionary):
             isolated = group.get_boolean(COSName.get_pdf_name("I"), default=False)
             knockout = group.get_boolean(COSName.get_pdf_name("K"), default=False)
+            cs_obj = group.get_dictionary_object(COSName.get_pdf_name("CS"))
+            if cs_obj is not None:
+                # Parity log only — lite renderer always composes in sRGB.
+                cs_repr = (
+                    cs_obj.name if isinstance(cs_obj, COSName) else type(cs_obj).__name__
+                )
+                _log.debug(
+                    "rendering: transparency group /CS=%s — lite renderer "
+                    "composites in sRGB regardless",
+                    cs_repr,
+                )
 
         # Flush any pending aggdraw strokes onto the parent canvas before
         # we redirect to a fresh group canvas — otherwise they'd be
@@ -2447,6 +2935,26 @@ class PDFRenderer(PDFStreamEngine):
             self._knockout_active = prev_knockout_active
             self._knockout_snapshot = prev_knockout_snapshot
             self._knockout_form_depth = prev_knockout_form_depth
+
+        # Apply ExtGState /SMask (PDF spec §11.6.5.2): if a soft mask
+        # is active, multiply the group's alpha by the mask's alpha
+        # before compositing onto the parent.
+        soft_mask = self._gs.soft_mask
+        if soft_mask is not None:
+            try:
+                mask_alpha = self._render_soft_mask_alpha(
+                    soft_mask, group_canvas.size
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: soft-mask render failed: %s", exc)
+                mask_alpha = None
+            if mask_alpha is not None:
+                # Combine: out_alpha = group_alpha * mask_alpha / 255.
+                bands = group_canvas.split()
+                new_alpha = ImageChops.multiply(bands[3], mask_alpha)
+                group_canvas = Image.merge(
+                    "RGBA", (bands[0], bands[1], bands[2], new_alpha)
+                )
 
         # Composite the group result onto the parent. When the active
         # ExtGState blend mode is non-Normal (PDF 32000-1 §11.4.7.4 +

@@ -161,6 +161,8 @@ def test_choice_selected_indices_round_trip() -> None:
     form = PDAcroForm()
     lb = PDListBox(form)
     assert lb.get_selected_options_indices() == []
+    # Upstream PDFBox: setSelectedOptionsIndex requires the MULTI_SELECT flag.
+    lb.set_multi_select(True)
     lb.set_selected_options_indices([0, 2, 5])
     assert lb.get_selected_options_indices() == [0, 2, 5]
 

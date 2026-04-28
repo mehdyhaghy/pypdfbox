@@ -3,12 +3,17 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.fontbox.ttf.gsub import (
+    AlternateSetTable,
+    CoverageTable,
     LigatureSetTable,
     LigatureTable,
     LookupSubTable,
+    LookupTypeAlternateSubstitutionFormat1,
     LookupTypeLigatureSubstitutionSubstFormat1,
+    LookupTypeMultipleSubstitutionFormat1,
     LookupTypeSingleSubstFormat1,
     LookupTypeSingleSubstFormat2,
+    SequenceTable,
 )
 
 
@@ -129,3 +134,113 @@ def test_ligature_set_table_getter() -> None:
     lt = LigatureTable(ligature_glyph=42, component_glyph_ids=(1,))
     lst = LigatureSetTable(ligature_tables=(lt,))
     assert lst.get_ligature_tables() == (lt,)
+
+
+def test_ligature_table_component_count_default() -> None:
+    # Upstream stores component_count = trailing-components + 1 implicit head.
+    lt = LigatureTable(ligature_glyph=42, component_glyph_ids=(1, 2, 3))
+    assert lt.get_component_count() == 4
+
+
+def test_ligature_set_count_default() -> None:
+    lt = LigatureTable(ligature_glyph=1, component_glyph_ids=(2,))
+    lst = LigatureSetTable(ligature_tables=(lt, lt, lt))
+    assert lst.get_ligature_count() == 3
+
+
+# --- Type 2: Multiple Substitution -----------------------------------
+
+
+def test_multiple_format1_single_signature_unsupported() -> None:
+    sub = LookupTypeMultipleSubstitutionFormat1()
+    with pytest.raises(NotImplementedError):
+        sub.do_substitution(1, 0)
+
+
+def test_multiple_format1_expands_to_sequence() -> None:
+    sub = LookupTypeMultipleSubstitutionFormat1(
+        coverage_table=(50,),
+        sequence_tables=(
+            SequenceTable(glyph_count=3, substitute_glyph_ids=(60, 61, 62)),
+        ),
+    )
+    assert sub.do_substitution_multiple(50, 0) == [60, 61, 62]
+
+
+def test_multiple_format1_uncovered_passthrough() -> None:
+    sub = LookupTypeMultipleSubstitutionFormat1()
+    assert sub.do_substitution_multiple(99, -1) == [99]
+
+
+def test_multiple_format1_out_of_bounds_passthrough() -> None:
+    sub = LookupTypeMultipleSubstitutionFormat1(
+        coverage_table=(50,),
+        sequence_tables=(
+            SequenceTable(glyph_count=1, substitute_glyph_ids=(60,)),
+        ),
+    )
+    assert sub.do_substitution_multiple(50, 5) == [50]
+
+
+def test_sequence_table_getters() -> None:
+    st = SequenceTable(glyph_count=2, substitute_glyph_ids=(10, 20))
+    assert st.get_glyph_count() == 2
+    assert st.get_substitute_glyph_ids() == (10, 20)
+
+
+# --- Type 3: Alternate Substitution ----------------------------------
+
+
+def test_alternate_format1_single_signature_unsupported() -> None:
+    sub = LookupTypeAlternateSubstitutionFormat1()
+    with pytest.raises(NotImplementedError):
+        sub.do_substitution(1, 0)
+
+
+def test_alternate_format1_returns_alternate_set() -> None:
+    sub = LookupTypeAlternateSubstitutionFormat1(
+        coverage_table=(80,),
+        alternate_set_tables=(
+            AlternateSetTable(glyph_count=3, alternate_glyph_ids=(800, 801, 802)),
+        ),
+    )
+    assert sub.get_alternate_glyph_ids_for(80, 0) == (800, 801, 802)
+
+
+def test_alternate_format1_uncovered_returns_empty() -> None:
+    sub = LookupTypeAlternateSubstitutionFormat1()
+    assert sub.get_alternate_glyph_ids_for(99, -1) == ()
+
+
+def test_alternate_format1_out_of_bounds_returns_empty() -> None:
+    sub = LookupTypeAlternateSubstitutionFormat1(
+        coverage_table=(80,),
+        alternate_set_tables=(
+            AlternateSetTable(glyph_count=1, alternate_glyph_ids=(800,)),
+        ),
+    )
+    assert sub.get_alternate_glyph_ids_for(80, 7) == ()
+
+
+def test_alternate_set_table_getters() -> None:
+    ast = AlternateSetTable(glyph_count=2, alternate_glyph_ids=(11, 22))
+    assert ast.get_glyph_count() == 2
+    assert ast.get_alternate_glyph_ids() == (11, 22)
+
+
+# --- CoverageTable ---------------------------------------------------
+
+
+def test_coverage_table_index_lookup() -> None:
+    cov = CoverageTable(glyph_array=(10, 20, 30))
+    assert cov.get_coverage_index(20) == 1
+    assert cov.get_coverage_index(99) == -1
+    assert cov.get_size() == 3
+    assert cov.get_glyph_array() == (10, 20, 30)
+    assert cov.get_coverage_format() == 1
+
+
+def test_lookup_subtable_subst_format_alias() -> None:
+    # Upstream Java accessor is ``getSubstFormat`` — kept as alias.
+    sub = LookupTypeSingleSubstFormat1(delta_glyph_id=1, coverage_table=(1,))
+    assert sub.get_subst_format() == sub.get_substitute_format() == 1

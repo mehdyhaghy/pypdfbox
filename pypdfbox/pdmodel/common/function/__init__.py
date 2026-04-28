@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .pd_function import PDFunction
+from .pd_function import PDFunction, PDFunctionTypeIdentity
 from .pd_function_type0 import PDFunctionType0
 from .pd_function_type2 import PDFunctionType2
 from .pd_function_type3 import PDFunctionType3
@@ -12,4 +12,5 @@ __all__ = [
     "PDFunctionType2",
     "PDFunctionType3",
     "PDFunctionType4",
+    "PDFunctionTypeIdentity",
 ]

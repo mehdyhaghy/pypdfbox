@@ -111,12 +111,18 @@ def test_field_tree_and_iterator_walk_recursively_in_order() -> None:
     name.set_partial_name("name")
     form.set_fields([address, name])
 
-    assert [
-        field.get_fully_qualified_name() for field in form.get_field_tree()
-    ] == ["address", "address.street", "address.city", "name"]
-    assert [
-        field.get_fully_qualified_name() for field in form.get_field_iterator()
-    ] == ["address", "address.street", "address.city", "name"]
+    assert [field.get_fully_qualified_name() for field in form.get_field_tree()] == [
+        "address",
+        "address.street",
+        "address.city",
+        "name",
+    ]
+    assert [field.get_fully_qualified_name() for field in form.get_field_iterator()] == [
+        "address",
+        "address.street",
+        "address.city",
+        "name",
+    ]
 
 
 def test_field_cache_can_be_enabled_and_disabled() -> None:
@@ -156,3 +162,148 @@ def test_field_cache_is_invalidated_when_fields_are_replaced() -> None:
 
     assert form.get_field("old") is None
     assert form.get_field("new") is not None
+
+
+# ---------- Wave 40 — refresh_appearances + has_xfa + xfa_is_dynamic +
+# need_appearances_if_exists + scripting handler + cache_fields alias.
+
+
+def test_refresh_appearances_no_args_walks_field_tree() -> None:
+    """``refresh_appearances`` with no fields argument iterates the
+    full field tree and dispatches into each terminal's
+    :meth:`construct_appearances`. Lite ``construct_appearances`` is a
+    no-op debug log — the call must succeed."""
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    form.refresh_appearances()  # no exception
+
+
+def test_refresh_appearances_explicit_field_list() -> None:
+    """When called with an explicit list, only that list is walked
+    (matches upstream signature)."""
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    form.refresh_appearances([field])
+
+
+def test_refresh_appearances_skips_non_terminals() -> None:
+    """Non-terminal fields are not dispatched — upstream guards via
+    ``instanceof PDTerminalField``. Just verifies the call succeeds when
+    only a non-terminal is in the tree."""
+    form = PDAcroForm()
+    parent = PDNonTerminalField(form)
+    parent.set_partial_name("address")
+    form.set_fields([parent])
+    form.refresh_appearances()  # no exception
+
+
+def test_has_xfa_round_trips_with_set_xfa() -> None:
+    """``has_xfa`` should reflect ``/XFA`` presence after set/clear."""
+    from pypdfbox.cos import COSName
+    from pypdfbox.pdmodel.interactive.form.pd_xfa_resource import PDXFAResource
+
+    form = PDAcroForm()
+    assert form.has_xfa() is False
+    assert form.xfa_is_dynamic() is False
+
+    # Synthesise a tiny /XFA byte stream and wrap.
+    payload = COSDictionary()
+    form.get_cos_object().set_item(COSName.get_pdf_name("XFA"), payload)
+    assert form.has_xfa() is True
+    # /XFA present + /Fields empty (none added) → dynamic XFA.
+    assert form.xfa_is_dynamic() is True
+
+    # When fields are present /XFA is not "dynamic-only".
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    assert form.has_xfa() is True
+    assert form.xfa_is_dynamic() is False
+
+    # set_xfa(None) clears the entry.
+    form.set_xfa(None)
+    assert form.has_xfa() is False
+    assert form.xfa_is_dynamic() is False
+
+    # set_xfa with a typed wrapper writes the COS payload back.
+    wrapper = PDXFAResource(payload)
+    form.set_xfa(wrapper)
+    assert form.has_xfa() is True
+    assert form.xfa() is not None
+
+
+def test_get_need_appearances_alias() -> None:
+    """``get_need_appearances`` is the upstream-named alias for
+    ``is_need_appearances`` — same default + same round-trip."""
+    form = PDAcroForm()
+    assert form.get_need_appearances() is False
+    form.set_need_appearances(True)
+    assert form.get_need_appearances() is True
+    form.set_need_appearances(False)
+    assert form.get_need_appearances() is False
+
+
+def test_get_need_appearances_if_exists_returns_none_when_absent() -> None:
+    """``get_need_appearances_if_exists`` is tri-state: ``None`` when
+    /NeedAppearances is absent, otherwise the boolean value."""
+    form = PDAcroForm()
+    assert form.get_need_appearances_if_exists() is None
+    form.set_need_appearances(True)
+    assert form.get_need_appearances_if_exists() is True
+    form.set_need_appearances(False)
+    assert form.get_need_appearances_if_exists() is False
+
+
+def test_scripting_handler_round_trip() -> None:
+    """Scripting handler is opaque on the lite surface — round-trips
+    whatever object the caller registers."""
+    form = PDAcroForm()
+    assert form.get_scripting_handler() is None
+
+    sentinel = object()
+    form.set_scripting_handler(sentinel)
+    assert form.get_scripting_handler() is sentinel
+
+    form.set_scripting_handler(None)
+    assert form.get_scripting_handler() is None
+
+
+def test_cache_fields_alias_enables_caching() -> None:
+    """``cache_fields`` is an upstream-named synonym for
+    ``set_cache_fields(True)``."""
+    form = PDAcroForm()
+    assert form.is_caching_fields() is False
+    form.cache_fields()
+    assert form.is_caching_fields() is True
+
+
+def test_get_signature_fields_filters_to_signature_subclass() -> None:
+    """``get_signature_fields`` returns only ``PDSignatureField``
+    instances reachable from the field tree."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
+
+    form = PDAcroForm()
+    plain = PDFieldStub(form)
+    plain.set_partial_name("name")
+    sig = PDSignatureField(form)
+    sig.set_partial_name("Signature1")
+    form.set_fields([plain, sig])
+
+    sig_fields = form.get_signature_fields()
+    assert len(sig_fields) == 1
+    assert sig_fields[0].get_partial_name() == "Signature1"
+
+
+def test_xfa_is_dynamic_false_when_no_xfa() -> None:
+    """``xfa_is_dynamic`` is ``False`` whenever ``/XFA`` is absent —
+    independent of whether ``/Fields`` is empty."""
+    form = PDAcroForm()
+    assert form.xfa_is_dynamic() is False  # no /XFA, no fields
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    assert form.xfa_is_dynamic() is False  # no /XFA, has fields

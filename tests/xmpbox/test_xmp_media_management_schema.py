@@ -5,6 +5,7 @@ from pypdfbox.xmpbox import (
     XMPMediaManagementSchema,
     XMPMetadata,
 )
+from pypdfbox.xmpbox.type import ResourceEventType, ResourceRefType
 
 
 def _mm() -> XMPMediaManagementSchema:
@@ -148,3 +149,62 @@ def test_xmp_metadata_add_returns_typed_wrapper() -> None:
     # Idempotent: a second add returns the same instance.
     assert metadata.add_xmp_media_management_schema() is schema
     assert metadata.get_xmp_media_management_schema() is schema
+
+
+def test_derived_from_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_derived_from() is None
+    ref = ResourceRefType(metadata)
+    ref.set_document_id("uuid:source-doc")
+    ref.set_instance_id("uuid:source-inst")
+    schema.set_derived_from(ref)
+    same = schema.get_derived_from()
+    assert same is ref
+    assert same.get_document_id() == "uuid:source-doc"
+    schema.set_derived_from(None)
+    assert schema.get_derived_from() is None
+
+
+def test_history_seq_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_history() is None
+    e1 = ResourceEventType(metadata)
+    e1.set_action("created")
+    e2 = ResourceEventType(metadata)
+    e2.set_action("converted")
+    schema.add_history(e1)
+    schema.add_history(e2)
+    history = schema.get_history()
+    assert history == [e1, e2]
+
+
+def test_manifest_bag_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_manifest() is None
+    r = ResourceRefType(metadata)
+    r.set_document_id("uuid:ingredient")
+    schema.add_manifest(r)
+    manifest = schema.get_manifest()
+    assert manifest == [r]
+
+
+def test_ingredients_bag_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_ingredients() is None
+    r = ResourceRefType(metadata)
+    r.set_document_id("uuid:i1")
+    schema.add_ingredient(r)
+    ingredients = schema.get_ingredients()
+    assert ingredients == [r]
+
+
+def test_namespace_registration_for_resource_types() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    namespaces = schema.get_namespaces()
+    assert namespaces.get(ResourceRefType.PREFERRED_PREFIX) == ResourceRefType.NAMESPACE
+    assert namespaces.get(ResourceEventType.PREFERRED_PREFIX) == ResourceEventType.NAMESPACE

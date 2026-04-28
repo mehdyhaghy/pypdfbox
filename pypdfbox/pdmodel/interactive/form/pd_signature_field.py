@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 _FT_KEY: COSName = COSName.get_pdf_name("FT")
 _V: COSName = COSName.get_pdf_name("V")
+_DV: COSName = COSName.get_pdf_name("DV")
 _SV: COSName = COSName.get_pdf_name("SV")
 _LOCK: COSName = COSName.get_pdf_name("Lock")
 
@@ -53,9 +54,25 @@ class PDSignatureField(PDTerminalField):
 
     def set_value(
         self,
-        value: PDSignature | COSDictionary | None,
+        value: PDSignature | COSDictionary | str | None,
         regenerate_appearance: bool = False,
     ) -> None:
+        """Set the field's ``/V`` value.
+
+        Mirrors upstream's overloads:
+        - ``setValue(PDSignature)`` — typed signature dictionary.
+        - ``setValue(String)`` — explicitly unsupported upstream
+          (``UnsupportedOperationException``); we raise ``NotImplementedError``
+          to preserve the upstream contract.
+
+        ``None`` removes ``/V`` (extension over upstream — symmetric with the
+        rest of the form-field API in this port).
+        """
+        if isinstance(value, str):
+            raise NotImplementedError(
+                "Signature fields cannot be set with a string value — "
+                "use a PDSignature instance"
+            )
         if value is None:
             self._field.remove_item(_V)
         else:
@@ -67,6 +84,26 @@ class PDSignatureField(PDTerminalField):
             from .pd_appearance_generator import PDAppearanceGenerator
 
             PDAppearanceGenerator().generate(self)
+
+    # ---------- /DV ----------
+
+    def get_default_value(self) -> PDSignature | None:
+        item = self._field.get_dictionary_object(_DV)
+        if isinstance(item, COSDictionary):
+            return PDSignature(item)
+        return None
+
+    def set_default_value(
+        self, value: PDSignature | COSDictionary | None
+    ) -> None:
+        """Mirrors upstream ``PDSignatureField.setDefaultValue(PDSignature)``."""
+        if value is None:
+            self._field.remove_item(_DV)
+        else:
+            self._field.set_item(
+                _DV,
+                value.get_cos_object() if hasattr(value, "get_cos_object") else value,
+            )
 
     # ---------- appearance regeneration ----------
 

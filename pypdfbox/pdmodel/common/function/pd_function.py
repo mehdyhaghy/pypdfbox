@@ -3,11 +3,15 @@ from __future__ import annotations
 from typing import Iterable
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSStream
+from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 _FUNCTION_TYPE = "FunctionType"
 _DOMAIN = "Domain"
 _RANGE = "Range"
+_TYPE = "Type"
+_FUNCTION = "Function"
+_IDENTITY = "Identity"
 
 
 class PDFunction:
@@ -34,6 +38,9 @@ class PDFunction:
         elif isinstance(function, COSStream):
             self._function_stream = PDStream(function)
             self._function_dictionary = function
+            # Mirror upstream: stream-backed functions advertise /Type /Function
+            # so that tools that introspect the stream dictionary recognise it.
+            function.set_item(_TYPE, COSName.get_pdf_name(_FUNCTION))
         elif isinstance(function, COSDictionary):
             self._function_dictionary = function
             self._function_stream = None
@@ -49,9 +56,13 @@ class PDFunction:
     def create(function: COSBase | None) -> PDFunction | None:
         """Dispatch on ``/FunctionType`` to the concrete subclass.
 
-        Returns ``None`` if ``function`` is ``None``. Raises ``ValueError``
-        for an unsupported function type so callers can distinguish a missing
-        function from an invalid one (mirrors upstream ``IOException``).
+        Returns ``None`` if ``function`` is ``None``. The PDF name
+        ``/Identity`` is recognised as a sentinel and returns a
+        :class:`PDFunctionTypeIdentity` (mirrors upstream PDFBox handling
+        of ``COSName.IDENTITY`` in soft-mask / TR dictionaries). Raises
+        ``ValueError`` for an unsupported function type so callers can
+        distinguish a missing function from an invalid one (mirrors
+        upstream ``IOException``).
         """
         # Local imports to avoid circular references.
         from .pd_function_type0 import PDFunctionType0
@@ -61,6 +72,9 @@ class PDFunction:
 
         if function is None:
             return None
+        # /Identity sentinel — used by transfer / soft-mask dictionaries.
+        if isinstance(function, COSName) and function.get_name() == _IDENTITY:
+            return PDFunctionTypeIdentity()
         if not isinstance(function, (COSDictionary, COSStream)):
             raise TypeError(
                 "PDFunction.create expects COSDictionary or COSStream, "
@@ -286,5 +300,82 @@ class PDFunction:
             arr.add(COSFloat(float(n)))
         return arr
 
+    @staticmethod
+    def interpolate(
+        x: float,
+        x_range_min: float,
+        x_range_max: float,
+        y_range_min: float,
+        y_range_max: float,
+    ) -> float:
+        """Linear interpolation helper (PDF 32000-1 §7.10.2 ``interpolate``).
 
-__all__ = ["PDFunction"]
+        Maps ``x`` from ``[x_range_min, x_range_max]`` linearly into
+        ``[y_range_min, y_range_max]``. When ``x_range_max == x_range_min``
+        (degenerate domain) returns ``y_range_min`` — mirrors upstream
+        PDFBOX-5593 / PR #162 to avoid division-by-zero.
+        """
+        if x_range_max == x_range_min:
+            return y_range_min
+        return y_range_min + (
+            (x - x_range_min) * (y_range_max - y_range_min)
+            / (x_range_max - x_range_min)
+        )
+
+    # ---------- upstream-named aliases ----------
+
+    def clip_to_range(self, values: list[float]) -> list[float]:
+        """Upstream-named alias for :meth:`clip_output` (PDFBox
+        ``clipToRange(float[])``)."""
+        return self.clip_output(values)
+
+    @staticmethod
+    def clip_value_to_range(x: float, range_min: float, range_max: float) -> float:
+        """Upstream-named alias for the scalar clamp helper (PDFBox
+        ``clipToRange(float, float, float)``). Returns ``x`` clamped to
+        ``[range_min, range_max]``; tolerates ``range_min > range_max`` by
+        normalising the pair first."""
+        lo, hi = (range_min, range_max) if range_min <= range_max else (range_max, range_min)
+        if x < lo:
+            return lo
+        if x > hi:
+            return hi
+        return x
+
+    def __str__(self) -> str:
+        """Mirror upstream ``toString()`` — ``"FunctionType<n>"``."""
+        try:
+            return f"FunctionType{self.get_function_type()}"
+        except (NotImplementedError, Exception):  # pragma: no cover - defensive
+            return "FunctionType?"
+
+
+class PDFunctionTypeIdentity(PDFunction):
+    """The ``/Identity`` function — returns its inputs unchanged.
+
+    Mirrors PDFBox ``PDFunctionTypeIdentity``. Used in transfer / soft-mask
+    dictionaries where the spec allows the literal name ``/Identity`` in
+    place of a function dictionary. ``get_function_type`` is undefined per
+    upstream (it raises) — callers should branch on ``isinstance`` instead.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(None)
+
+    def get_function_type(self) -> int:  # pragma: no cover - upstream behaviour
+        raise NotImplementedError(
+            "PDFunctionTypeIdentity has no /FunctionType — branch on isinstance"
+        )
+
+    def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
+        return list(input)
+
+    def get_range(self) -> COSArray | None:
+        # Upstream returns null so the base ``clipToRange`` is a no-op.
+        return None
+
+    def __str__(self) -> str:
+        return "FunctionTypeIdentity"
+
+
+__all__ = ["PDFunction", "PDFunctionTypeIdentity"]

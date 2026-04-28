@@ -177,22 +177,44 @@ def test_parse_object_dynamically_resolves_pool_loader() -> None:
     assert resolved.value == 123
 
 
-# ---------- deferred xref / header / brute-force placeholders ----------
+# ---------- xref / header / object-stream coverage ----------
+#
+# These methods used to be ``NotImplementedError`` placeholders. They
+# now have real implementations on COSParser — ``parse_object_stream``
+# requires a bound document, the others raise ``PDFParseError`` on
+# malformed input. Behavioural tests live alongside in
+# ``test_cos_parser_recovery.py`` (xref/object-stream cluster).
 
 
-@pytest.mark.parametrize(
-    ("method_name", "args"),
-    [
-        ("parse_object_stream", (12,)),
-        ("parse_xref_object_stream", (1024,)),
-        ("parse_xref_table", (1024,)),
-        ("parse_pdf_header", ()),
-    ],
-)
-def test_deferred_placeholder_raises(method_name: str, args: tuple) -> None:
+def test_parse_object_stream_without_document_raises_parse_error() -> None:
+    from pypdfbox.pdfparser import PDFParseError
+
     p = _parser(b"")
-    with pytest.raises(NotImplementedError):
-        getattr(p, method_name)(*args)
+    with pytest.raises(PDFParseError):
+        p.parse_object_stream(12)
+
+
+def test_parse_xref_object_stream_at_invalid_offset_raises() -> None:
+    from pypdfbox.pdfparser import PDFParseError
+
+    p = _parser(b"%PDF-1.4\n%%EOF")
+    with pytest.raises(PDFParseError):
+        p.parse_xref_object_stream(1024)
+
+
+def test_parse_xref_table_at_invalid_offset_returns_false() -> None:
+    p = _parser(b"%PDF-1.4\n%%EOF")
+    # No 'xref' keyword at offset 1024 (out of bounds) — must return
+    # False rather than crash.
+    assert p.parse_xref_table(1024) is False
+
+
+def test_parse_pdf_header_without_magic_raises() -> None:
+    from pypdfbox.pdfparser import PDFParseError
+
+    p = _parser(b"not a PDF")
+    with pytest.raises(PDFParseError):
+        p.parse_pdf_header()
 
 
 # ``bf_search_for_objects`` / ``bf_search_for_xref`` were deferred

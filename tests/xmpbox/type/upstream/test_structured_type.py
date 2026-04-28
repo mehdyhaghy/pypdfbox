@@ -20,12 +20,17 @@ from pypdfbox.xmpbox.type import (
     AbstractSimpleProperty,
     AbstractStructuredType,
     AgentNameType,
+    BooleanType,
     ChoiceType,
+    ColorantType,
     DateType,
+    DimensionsType,
+    FontType,
     GUIDType,
     IntegerType,
     JobType,
     LayerType,
+    RealType,
     ResourceEventType,
     ResourceRefType,
     TextType,
@@ -42,6 +47,8 @@ _TYPE_TO_CLS: dict[str, type[AbstractSimpleProperty]] = {
     "URI": URIType,
     "URL": URIType,
     "Integer": IntegerType,
+    "Real": RealType,
+    "Boolean": BooleanType,
 }
 
 
@@ -55,6 +62,10 @@ def _java_value(type_name: str) -> object:
         return datetime(2024, 1, 1, tzinfo=UTC)
     if type_name == "Integer":
         return 42
+    if type_name == "Real":
+        return 0.5
+    if type_name == "Boolean":
+        return True
     return "hello"
 
 
@@ -90,6 +101,30 @@ _PARAMS: list[tuple[type[AbstractStructuredType], str, str, list[object]]] = [
     (ThumbnailType, "height", "Integer", []),
     (ThumbnailType, "width", "Integer", []),
     (ThumbnailType, "image", "Text", []),
+    (DimensionsType, "h", "Real", []),
+    (DimensionsType, "w", "Real", []),
+    (DimensionsType, "unit", "Text", []),
+    (FontType, "childFontFiles", "Text", []),
+    (FontType, "composite", "Boolean", []),
+    (FontType, "fontFace", "Text", []),
+    (FontType, "fontFamily", "Text", []),
+    (FontType, "fontFileName", "Text", []),
+    (FontType, "fontName", "Text", []),
+    (FontType, "fontType", "Choice", []),
+    (FontType, "versionString", "Text", []),
+    (ColorantType, "swatchName", "Text", []),
+    (ColorantType, "mode", "Choice", []),
+    (ColorantType, "type", "Choice", []),
+    (ColorantType, "L", "Real", []),
+    (ColorantType, "A", "Integer", []),
+    (ColorantType, "B", "Integer", []),
+    (ColorantType, "black", "Real", []),
+    (ColorantType, "cyan", "Real", []),
+    (ColorantType, "magenta", "Real", []),
+    (ColorantType, "yellow", "Real", []),
+    (ColorantType, "red", "Integer", []),
+    (ColorantType, "green", "Integer", []),
+    (ColorantType, "blue", "Integer", []),
 ]
 
 
@@ -153,7 +188,7 @@ def test_setter_then_getter(
     setter(value)
     asp = structured.get_property(field_name)
     assert isinstance(asp, AbstractSimpleProperty)
-    if type_name in ("Date", "Integer"):
+    if type_name in ("Date", "Integer", "Real", "Boolean"):
         assert asp.get_value() == value
     else:
         assert asp.get_string_value() == value

@@ -65,7 +65,7 @@ PDF-specific parsing — port territory.
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization subset only) |
-| `pypdfbox/pdfparser/cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (direct-object / array / dict / indirect-ref subset; no xref / stream-body / object-stream paths yet) |
+| `pypdfbox/pdfparser/cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (direct-object / array / dict / indirect-ref + brute-force recovery + parsePDFHeader + parseXrefTable + parseXrefObjStream + parseObjectStream + direct-/Length stream body; indirect-/Length deferred to PDFParser) |
 | `pypdfbox/pdfparser/xref_trailer_resolver.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java` |
 | `pypdfbox/pdfparser/pdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFParser.java` (traditional xref + trailer + /Prev + stream body; xref-streams / object-streams / malformed recovery deferred) |
 | `pypdfbox/pdfparser/pdf_stream_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java` |
@@ -278,8 +278,9 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_membership_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/optionalcontent/PDOptionalContentMembershipDictionary.java` (`/VE` raw COSArray — visibility-expression tree parsing deferred per upstream) |
 | `pypdfbox/pdmodel/graphics/pd_property_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDPropertyList.java` (lite — `create()` returns `None` for unknown `/Type`) |
 | `pypdfbox/pdmodel/graphics/pd_line_dash_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDLineDashPattern.java` (lite — phase accepts `float`) |
-| `pypdfbox/pdmodel/graphics/state/pd_extended_graphics_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PDExtendedGraphicsState.java` (lite — `/SMask`/`/TR`/`/TR2`/`copy_into_graphics_state` deferred) |
+| `pypdfbox/pdmodel/graphics/state/pd_extended_graphics_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PDExtendedGraphicsState.java` (lite — `/SMask` typed via `get_soft_mask_typed()` → `PDSoftMask`; `/TR`/`/TR2` raw round-trip + honoured at compositing time in `PDFRenderer`; `copy_into_graphics_state` lite — see CHANGES.md) |
 | `pypdfbox/pdmodel/graphics/state/pd_font_setting.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PDFontSetting.java` |
+| `pypdfbox/pdmodel/graphics/state/pd_soft_mask.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PDSoftMask.java` (lite — exposes `/S`/`/G`/`/BC`/`/TR` raw round-trip; honoured by `PDFRenderer._render_soft_mask_alpha`) |
 | `pypdfbox/pdmodel/graphics/color/pd_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_indexed.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDIndexed.java` (lite — lookup table raw filtered bytes) |
 | `pypdfbox/pdmodel/graphics/color/pd_separation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java` |
@@ -340,7 +341,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_transition_motion.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionMotion.java` |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_transition_dimension.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionDimension.java` |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_transition_direction.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDTransitionDirection.java` |
-| `pypdfbox/pdmodel/interactive/form/pd_acro_form.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDAcroForm.java` (scaffold + `flatten` — refresh_appearances/FDF/scripting/PDFieldTree/XFA deferred) |
+| `pypdfbox/pdmodel/interactive/form/pd_acro_form.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDAcroForm.java` (scaffold + `flatten` + `refresh_appearances` + `xfa_is_dynamic`/`has_xfa`/`set_xfa` + `get_need_appearances_if_exists` + scripting handler + `cache_fields` + `get_signature_fields` — FDF/PDFieldTree deferred) |
 | `pypdfbox/pdmodel/interactive/form/pd_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDField.java` (scaffold — value handling + `/AA` typing deferred) |
 | `pypdfbox/pdmodel/interactive/form/pd_non_terminal_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDNonTerminalField.java` |
 | `pypdfbox/pdmodel/interactive/form/pd_terminal_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDTerminalField.java` (also hosts `PDFieldStub` — generic concrete subclass returned by factory until typed dispatch lands) |
@@ -484,6 +485,7 @@ Not yet ported (classes not implemented in pypdfbox): `SequenceRandomAccessReadT
 |---|---|
 | `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` |
 | `tests/pdfparser/upstream/test_pdf_stream_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFStreamParserTest.java` |
+| `tests/pdfparser/upstream/test_cos_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/COSParserTest.java` (parse-header / brute-force / rebuild-trailer / parse-xref-stream / parse-xref-table subset; fixture-corpus-driven cases skipped) |
 
 Not yet ported (classes not implemented in pypdfbox): `EndstreamFilterStreamTest`, `PDFObjectStreamParserTest`, `TestPDFParser`.
 
@@ -587,7 +589,7 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 | `pypdfbox/pdmodel/font/pd_type3_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3Font.java` (lite — typed PDCharProc deferred) |
 | `pypdfbox/pdmodel/font/pd_mm_type1_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDMMType1Font.java` (marker subclass) |
 | `pypdfbox/pdmodel/font/pd_type1c_font.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (marker subclass) |
-| `pypdfbox/pdmodel/common/function/pd_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunction.java` (lite — eval deferred) |
+| `pypdfbox/pdmodel/common/function/pd_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunction.java` + `PDFunctionTypeIdentity.java` (Identity sentinel bundled in same module; eval dispatch + interpolate helper + /Type=/Function on stream construction) |
 | `pypdfbox/pdmodel/common/function/pd_function_type0.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType0.java` (lite — sampled-table decoding deferred) |
 | `pypdfbox/pdmodel/common/function/pd_function_type2.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType2.java` |
 | `pypdfbox/pdmodel/common/function/pd_function_type3.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType3.java` |
@@ -874,7 +876,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value_time_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/PDSeedValueTimeStamp.java` |
 | `pypdfbox/fontbox/ttf/gsub/gsub_data.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/GsubData.java` |
 | `pypdfbox/fontbox/ttf/gsub/lookup_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/LookupTable.java` |
-| `pypdfbox/fontbox/ttf/gsub/lookup_subtable.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/gsub/LookupSubTable.java` |
+| `pypdfbox/fontbox/ttf/gsub/lookup_subtable.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/table/common/LookupSubTable.java` + `table/common/CoverageTable.java` + `table/gsub/{LookupTypeSingleSubstFormat1,LookupTypeSingleSubstFormat2,LookupTypeMultipleSubstitutionFormat1,LookupTypeAlternateSubstitutionFormat1,LookupTypeLigatureSubstitutionSubstFormat1,SequenceTable,AlternateSetTable,LigatureTable,LigatureSetTable}.java` (single-file aggregate) |
 | `tests/fontbox/ttf/gsub/upstream/test_lookup_subtable.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GsubWorkerForLatinTest.java` |
 | `tests/fontbox/ttf/gsub/upstream/test_gsub_data.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GlyphSubstitutionDataExtractorTest.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationRubberStamp.java` (renamed Stamp per PDF spec) |
@@ -932,3 +934,14 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/ttf/ttf_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/TTFParser.java` |
 | `pypdfbox/fontbox/ttf/otf_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/OTFParser.java` |
 | `pypdfbox/fontbox/ttf/open_type_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/OpenTypeFont.java` |
+| `tests/pdmodel/interactive/form/upstream/test_appearance_generator_helper.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/AppearanceGeneratorHelperTest.java` (subset — fixture-loading and custom-font/rotation tests skipped) |
+| `tests/pdmodel/interactive/form/upstream/test_pd_acro_form.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDAcroFormTest.java` (subset — fixture-load/render-parity, FDF, network-fetch, lazy-DA/DR auto-population, and PDType0Font load tests skipped) |
+| `pypdfbox/pdmodel/interactive/action/open_mode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/OpenMode.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_text_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDTextField.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_choice.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDChoice.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_radio_button.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDRadioButton.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_button.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDButton.java` |
+| `tests/pdmodel/interactive/form/upstream/test_pd_text_field.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDTextFieldTest.java` |
+| `tests/pdmodel/interactive/form/upstream/test_pd_choice.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDChoiceTest.java` (subset — PDFBOX-6150 fixture-loading test skipped) |
+| `tests/pdmodel/interactive/form/upstream/test_pd_button.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDButtonTest.java` (subset — Acrobat-PDF fixture-loading tests skipped) |
+| `tests/pdmodel/interactive/form/upstream/test_pd_signature_field.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDSignatureFieldTest.java` (subset — setValueForAbstractedSignatureField and PDFBOX-4822 byte-range test skipped) |

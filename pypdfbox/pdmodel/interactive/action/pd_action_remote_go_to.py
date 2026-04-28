@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSBase, COSBoolean, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
@@ -8,6 +8,7 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination 
     PDDestination,
 )
 
+from .open_mode import OpenMode
 from .pd_action import PDAction
 
 _D: COSName = COSName.D  # type: ignore[attr-defined]
@@ -143,10 +144,29 @@ class PDActionRemoteGoTo(PDAction):
         ``shouldOpenInNewWindow`` spelling."""
         return self.get_new_window()
 
-    def set_open_in_new_window(self, value: bool) -> None:
-        """Alias of :meth:`set_new_window` matching upstream
-        ``setOpenInNewWindow`` spelling."""
-        self.set_new_window(value)
+    def set_open_in_new_window(self, value: bool | OpenMode) -> None:
+        """Set ``/NewWindow``. Accepts a plain ``bool`` or an
+        :class:`OpenMode`; :attr:`OpenMode.USER_PREFERENCE` removes the
+        entry. Mirrors upstream ``setOpenInNewWindow(OpenMode)`` while
+        retaining the historical bool overload."""
+        if isinstance(value, OpenMode):
+            if value is OpenMode.USER_PREFERENCE:
+                self._action.remove_item(_NEW_WINDOW)
+                return
+            self._action.set_boolean(_NEW_WINDOW, value is OpenMode.NEW_WINDOW)
+            return
+        self.set_new_window(bool(value))
+
+    def get_open_in_new_window(self) -> OpenMode:
+        """Return ``/NewWindow`` as an :class:`OpenMode` tri-state. Mirrors
+        upstream ``PDActionRemoteGoTo.getOpenInNewWindow()`` which
+        returns ``OpenMode``. ``USER_PREFERENCE`` when the entry is
+        absent / non-boolean; ``NEW_WINDOW`` / ``SAME_WINDOW`` for
+        explicit ``true`` / ``false``."""
+        entry = self._action.get_dictionary_object(_NEW_WINDOW)
+        if isinstance(entry, COSBoolean):
+            return OpenMode.NEW_WINDOW if entry.get_value() else OpenMode.SAME_WINDOW
+        return OpenMode.USER_PREFERENCE
 
 
 __all__ = ["PDActionRemoteGoTo"]

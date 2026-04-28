@@ -67,11 +67,21 @@ class PDTextField(PDVariableText):
     def is_do_not_spell_check(self) -> bool:
         return bool(self.get_field_flags() & self.FLAG_DO_NOT_SPELL_CHECK)
 
+    def do_not_spell_check(self) -> bool:
+        """Upstream PDFBox name (``doNotSpellCheck``). Alias for
+        :meth:`is_do_not_spell_check`."""
+        return self.is_do_not_spell_check()
+
     def set_do_not_spell_check(self, value: bool) -> None:
         self._set_flag(self.FLAG_DO_NOT_SPELL_CHECK, value)
 
     def is_do_not_scroll(self) -> bool:
         return bool(self.get_field_flags() & self.FLAG_DO_NOT_SCROLL)
+
+    def do_not_scroll(self) -> bool:
+        """Upstream PDFBox name (``doNotScroll``). Alias for
+        :meth:`is_do_not_scroll`."""
+        return self.is_do_not_scroll()
 
     def set_do_not_scroll(self, value: bool) -> None:
         self._set_flag(self.FLAG_DO_NOT_SCROLL, value)

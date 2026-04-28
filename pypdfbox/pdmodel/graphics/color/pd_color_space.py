@@ -161,44 +161,97 @@ class PDColorSpace(ABC):
         """Return the default ``/Decode`` array for image XObjects in this
         color space (PDF 32000-1 §8.9.5.1, Table 90).
 
-        Base implementation raises :class:`NotImplementedError`; concrete
-        subclasses override (for most spaces this is ``[0, 1]`` repeated
-        per component, but ``DeviceCMYK``, ``Indexed`` and ``Lab`` differ).
+        Default behaviour matches the spec's general rule: ``[0, 1]``
+        repeated per component. Concrete subclasses override for the
+        spaces that differ (``DeviceCMYK``, ``Indexed``, ``Lab``).
         """
-        raise NotImplementedError(
-            f"get_default_decode is not implemented for {self.get_name()!r}"
-        )
+        n = self.get_number_of_components()
+        out: list[float] = []
+        for _ in range(n):
+            out.append(0.0)
+            out.append(1.0)
+        return out
 
-    # ---------- rendering (deferred) ----------
+    # ---------- rendering ----------
 
     def to_rgb_image(
         self, raster: bytes, width: int, height: int
     ) -> Any:
-        """Convert a raster of color values in this color space into an
-        sRGB image. Mirrors upstream
+        """Convert a raster of 8-bits-per-component color values in this
+        color space into an sRGB Pillow ``Image``. Mirrors upstream
         ``PDColorSpace.toRGBImage(WritableRaster)``.
 
-        Deferred until the rendering module lands — concrete pixel
-        conversion belongs alongside the Pillow-based renderer.
+        ``raster`` is interpreted as a tightly-packed buffer of
+        ``width * height * get_number_of_components()`` bytes. Each
+        sample is mapped through this color space's default decode array
+        (so Indexed bytes stay integer indices, while Device* / Lab /
+        ICCBased samples land in the ``[0, 1]`` / Lab range expected by
+        :meth:`PDColor.to_rgb`).
         """
-        raise NotImplementedError(
-            f"to_rgb_image is not implemented for {self.get_name()!r} "
-            "(rendering module deferred)"
-        )
+        from PIL import Image
+
+        from .pd_color import PDColor
+
+        n = self.get_number_of_components()
+        if n <= 0:
+            raise ValueError(
+                f"Cannot rasterise {self.get_name()!r} with {n} components"
+            )
+        expected = int(width) * int(height) * n
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+        # /Decode maps each 8-bit sample [0, 255] -> [low_c, high_c].
+        decode = self.get_default_decode(8)
+        if len(decode) < 2 * n:
+            # Fall back to [0, 1] per component if the override returned
+            # something narrower than the spec mandates.
+            decode = []
+            for _ in range(n):
+                decode.extend([0.0, 1.0])
+        out = bytearray(int(width) * int(height) * 3)
+        for pixel_index in range(int(width) * int(height)):
+            offset = pixel_index * n
+            components = []
+            for c in range(n):
+                low = decode[2 * c]
+                high = decode[2 * c + 1]
+                sample = data[offset + c] / 255.0
+                components.append(low + sample * (high - low))
+            r, g, b = PDColor(components, self).to_rgb()
+            base = pixel_index * 3
+            out[base] = max(0, min(255, int(round(r * 255.0))))
+            out[base + 1] = max(0, min(255, int(round(g * 255.0))))
+            out[base + 2] = max(0, min(255, int(round(b * 255.0))))
+        return Image.frombytes("RGB", (int(width), int(height)), bytes(out))
 
     def to_raw_image(
         self, raster: bytes, width: int, height: int
     ) -> Any:
-        """Return the raster as an image in its native color space, with
-        no sRGB conversion. Mirrors upstream
-        ``PDColorSpace.toRawImage(WritableRaster)``.
-
-        Deferred until the rendering module lands.
+        """Return the raster as a Pillow ``Image`` in its native color
+        space when it has a Pillow analogue (``DeviceGray`` → ``L``,
+        ``DeviceRGB`` → ``RGB``, ``DeviceCMYK`` → ``CMYK``); falls
+        through to :meth:`to_rgb_image` for any other space (Lab,
+        Indexed, ICCBased, Cal*, Separation, DeviceN, Pattern). Mirrors
+        upstream ``PDColorSpace.toRawImage(WritableRaster)``.
         """
-        raise NotImplementedError(
-            f"to_raw_image is not implemented for {self.get_name()!r} "
-            "(rendering module deferred)"
-        )
+        from PIL import Image
+
+        name = self.get_name()
+        n = self.get_number_of_components()
+        if name in ("DeviceGray", "G") and n == 1:
+            return Image.frombytes(
+                "L", (int(width), int(height)), bytes(raster)
+            )
+        if name in ("DeviceRGB", "RGB") and n == 3:
+            return Image.frombytes(
+                "RGB", (int(width), int(height)), bytes(raster)
+            )
+        if name in ("DeviceCMYK", "CMYK") and n == 4:
+            return Image.frombytes(
+                "CMYK", (int(width), int(height)), bytes(raster)
+            )
+        return self.to_rgb_image(raster, width, height)
 
     def get_java_color_space(self) -> Any:
         """Return the underlying ``java.awt.color.ColorSpace`` instance.

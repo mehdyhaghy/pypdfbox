@@ -179,14 +179,16 @@ class PDColor:
 
         Dispatches on the color space name per PDF 32000-1 §8.6.4. Lite
         surface: ``CalGray`` and ``CalRGB`` short-circuit to their
-        device equivalents (no gamma/matrix applied), ``Indexed``
-        assumes a DeviceRGB base and 1 byte per component, and ``Lab``
-        uses a fixed D65 white point with the sRGB matrix and gamma
-        encoding (no chromatic adaptation, no black-point compensation).
-        ``ICCBased`` falls back to its ``/Alternate`` color space (or
-        infers one from ``/N``); ``Separation`` and ``DeviceN`` evaluate
-        their tint transform and forward to the alternate. Colored
-        ``Pattern`` instances (no underlying color space) raise
+        device equivalents (no gamma/matrix applied), ``Indexed`` reads
+        one byte per base-CS component and converts through the base,
+        and ``Lab`` uses a fixed D65 white point with the sRGB matrix
+        and gamma encoding (no chromatic adaptation, no black-point
+        compensation). ``ICCBased`` evaluates the embedded profile via
+        Pillow's ``ImageCms`` when possible and falls back to the
+        ``/Alternate`` color space otherwise (or one inferred from
+        ``/N``); ``Separation`` and ``DeviceN`` evaluate their tint
+        transform and forward to the alternate. Colored ``Pattern``
+        instances (no underlying color space) raise
         :class:`NotImplementedError` — pattern shading is a rendering
         concern; uncolored tiling patterns recurse into the underlying
         color space.
@@ -244,30 +246,69 @@ class PDColor:
     # --- helpers for to_rgb ---
 
     def _indexed_to_rgb(self) -> tuple[float, float, float]:
-        # Lite: assume DeviceRGB base, 1 byte per component, palette as
-        # raw bytes. components[0] is the palette index (0..hival).
+        # Per PDF 32000-1 §8.6.6.3: index components[0] into /Lookup, read
+        # one byte per base-CS component, then convert through the base
+        # color space. Falls back to DeviceRGB-style 3-byte interpretation
+        # when the base CS can't be resolved.
         cs = self._color_space
         index = int(self._components[0])
         if index < 0:
             index = 0
+        # Clamp index against /Hival when the CS exposes it.
+        get_hival = getattr(cs, "get_hival", None)
+        if get_hival is not None:
+            try:
+                hival = int(get_hival())
+                if index > hival:
+                    index = hival
+            except (TypeError, ValueError):
+                pass
         get_lookup = getattr(cs, "get_lookup_data", None)
         if get_lookup is None:
-            raise NotImplementedError(
-                "Indexed color space lacks get_lookup_data()"
-            )
+            # No /Lookup accessor — black palette entry is the safest
+            # default per upstream's lenient handling.
+            return (0.0, 0.0, 0.0)
         lookup = get_lookup()
         if not lookup:
-            raise NotImplementedError(
-                "Indexed color space has no lookup table"
-            )
-        offset = index * 3
-        if offset + 2 >= len(lookup):
-            # clamp to last entry to stay defensive
-            offset = max(0, len(lookup) - 3)
-        r = lookup[offset] / 255.0
-        g = lookup[offset + 1] / 255.0
-        b = lookup[offset + 2] / 255.0
-        return _clamp_rgb((r, g, b))
+            return (0.0, 0.0, 0.0)
+        # Determine base-CS arity. Fall back to 3 (DeviceRGB) when we
+        # can't introspect — matches the lite assumption of upstream
+        # before its full color-pipeline lands.
+        base_cs = None
+        get_base = getattr(cs, "get_base_color_space", None)
+        if get_base is not None:
+            try:
+                base_cs = get_base()
+            except (TypeError, ValueError):
+                base_cs = None
+        if base_cs is not None:
+            n_components = base_cs.get_number_of_components()
+        else:
+            n_components = 3
+        offset = index * n_components
+        if offset + n_components > len(lookup):
+            # Clamp to last full entry — defensive parity with upstream's
+            # tolerant indexed handling (truncate-or-zero-pad).
+            offset = max(0, len(lookup) - n_components)
+        # Each lookup byte is in [0, 255] mapping to the base CS's
+        # natural range; we normalise to [0, 1] here. For most base
+        # color spaces (Device*, Cal*, ICCBased) this matches the
+        # /Decode default of [0, 1] and lets the base's to_rgb()
+        # consume the components directly.
+        components = [
+            lookup[offset + i] / 255.0 for i in range(n_components)
+        ]
+        if base_cs is None:
+            # Treat as DeviceRGB (the lite legacy behaviour).
+            if len(components) >= 3:
+                return _clamp_rgb(
+                    (components[0], components[1], components[2])
+                )
+            if len(components) == 1:
+                g = _clamp_unit(components[0])
+                return (g, g, g)
+            return (0.0, 0.0, 0.0)
+        return _clamp_rgb(PDColor(components, base_cs).to_rgb())
 
     def _lab_to_rgb(self) -> tuple[float, float, float]:
         # Standard Lab -> XYZ (D65) -> linear sRGB -> sRGB gamma.
@@ -364,26 +405,70 @@ class PDColor:
             for t, b in zip(top, bottom)
         )
 
-    def to_rgb_image(self, *args: object, **kwargs: object) -> object:
-        """Render this color as an sRGB raster. Upstream returns a
-        ``BufferedImage``; rendering raster output is a renderer-module
-        concern, so this is intentionally unimplemented at the model
-        layer.
+    def to_rgb_image(
+        self, width: int = 1, height: int = 1
+    ) -> object:
+        """Render this color as an sRGB raster (Pillow ``Image`` instance,
+        mode ``"RGB"``). Mirrors upstream
+        ``PDColor.toRGBImage(WritableRaster)`` — but since pypdfbox has no
+        AWT ``WritableRaster``, we accept a ``(width, height)`` pair and
+        produce a uniformly-coloured Pillow image instead.
         """
-        raise NotImplementedError(
-            "PDColor.to_rgb_image() is not implemented; rendering belongs to "
-            "the rendering module"
-        )
+        from PIL import Image
 
-    def to_raw_image(self, *args: object, **kwargs: object) -> object:
-        """Render this color in its native color space as a raster.
-        Upstream returns a ``BufferedImage``; deferred to the rendering
-        module.
-        """
-        raise NotImplementedError(
-            "PDColor.to_raw_image() is not implemented; rendering belongs to "
-            "the rendering module"
+        r, g, b = self.to_rgb()
+        rgb_8 = (
+            int(round(_clamp_unit(r) * 255.0)),
+            int(round(_clamp_unit(g) * 255.0)),
+            int(round(_clamp_unit(b) * 255.0)),
         )
+        return Image.new("RGB", (int(width), int(height)), rgb_8)
+
+    def to_raw_image(
+        self, width: int = 1, height: int = 1
+    ) -> object:
+        """Render this color in its native color space as a raster.
+        Mirrors upstream ``PDColor.toRawImage(WritableRaster)``. Pillow
+        only natively supports ``L`` (gray), ``RGB`` and ``CMYK`` modes,
+        so for color spaces outside those three (Lab, Indexed,
+        Separation, DeviceN, ICCBased, Pattern, Cal*) we fall back to
+        :meth:`to_rgb_image` after converting through the standard sRGB
+        path.
+        """
+        from PIL import Image
+
+        name = self._color_space.get_name()
+        if name == "DeviceGray":
+            value = int(round(_clamp_unit(self._components[0]) * 255.0))
+            return Image.new("L", (int(width), int(height)), value)
+        if name == "DeviceRGB":
+            rgb_8 = (
+                int(round(_clamp_unit(self._components[0]) * 255.0)),
+                int(round(_clamp_unit(self._components[1]) * 255.0)),
+                int(round(_clamp_unit(self._components[2]) * 255.0)),
+            )
+            return Image.new("RGB", (int(width), int(height)), rgb_8)
+        if name == "DeviceCMYK":
+            cmyk_8 = (
+                int(round(_clamp_unit(self._components[0]) * 255.0)),
+                int(round(_clamp_unit(self._components[1]) * 255.0)),
+                int(round(_clamp_unit(self._components[2]) * 255.0)),
+                int(round(_clamp_unit(self._components[3]) * 255.0)),
+            )
+            return Image.new("CMYK", (int(width), int(height)), cmyk_8)
+        return self.to_rgb_image(width, height)
+
+    def get_java_color(self) -> tuple[float, float, float]:
+        """Return the upstream ``java.awt.Color`` equivalent as a tuple of
+        three floats in ``[0.0, 1.0]``. Upstream returns a
+        ``java.awt.Color``; pypdfbox represents colors as tuples (see
+        ``CHANGES.md`` — AWT ``Color`` → ``tuple[float, float, float]``).
+
+        Numerically identical to :meth:`to_rgb`; kept as a separate alias
+        for surface compatibility with PDFBox callers reaching for
+        ``getJavaColor()``.
+        """
+        return self.to_rgb()
 
     # ---------- COS surface ----------
 

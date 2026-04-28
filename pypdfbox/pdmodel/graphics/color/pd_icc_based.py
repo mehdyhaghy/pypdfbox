@@ -4,7 +4,7 @@ from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
-from .pd_color import PDColor
+from .pd_color import PDColor, _clamp_unit
 from .pd_color_space import PDColorSpace
 
 
@@ -220,18 +220,28 @@ class PDICCBased(PDColorSpace):
     def to_rgb(
         self, components: list[float]
     ) -> tuple[float, float, float] | None:
-        """Convert ``components`` through the alternate color space.
+        """Convert ``components`` through the embedded ICC profile when
+        possible, falling back to the alternate color space otherwise.
 
-        Lite surface: no embedded ICC profile is parsed. Per PDF 32000-1
-        §8.6.5.5, the ``/Alternate`` entry provides a fallback color
-        space; if absent we infer one from ``/N``: ``1`` → DeviceGray,
-        ``3`` → DeviceRGB, ``4`` → DeviceCMYK. ICC profile parsing is
-        deferred (CLAUDE.md library-first note — when implemented it
-        will wrap a permissive ICC library, never reimplement).
+        Per PDF 32000-1 §8.6.5.5: the ICC profile in the stream is the
+        canonical converter; ``/Alternate`` (or one inferred from
+        ``/N`` ∈ {1, 3, 4} → DeviceGray/DeviceRGB/DeviceCMYK) is a
+        fallback for renderers that can't process the profile.
+
+        We try Pillow's ``ImageCms`` first — when it's available *and*
+        the embedded profile parses, we build an sRGB transform and run
+        the ``components`` through it. On any error (malformed profile,
+        unsupported component count) we silently fall through to the
+        alternate-CS path so callers always get a valid sRGB tuple.
         """
         from .pd_device_cmyk import PDDeviceCMYK
         from .pd_device_gray import PDDeviceGray
         from .pd_device_rgb import PDDeviceRGB
+
+        # Try ICC-based conversion first when Pillow is available.
+        rgb = self._try_icc_to_rgb(components)
+        if rgb is not None:
+            return rgb
 
         alternate = self.get_alternate()
         if alternate is None:
@@ -246,6 +256,74 @@ class PDICCBased(PDColorSpace):
                 return None
         # Build a PDColor in the alternate CS and let it dispatch.
         return PDColor(components, alternate).to_rgb()
+
+    def _try_icc_to_rgb(
+        self, components: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Attempt ICC-profile-driven conversion via Pillow's ``ImageCms``.
+
+        Returns ``None`` (caller falls through to ``/Alternate``) when
+        Pillow can't parse the embedded profile, the profile's component
+        count doesn't match ``/N`` or our supported set (1/3/4), or any
+        runtime error occurs while building / running the transform.
+        """
+        try:
+            from io import BytesIO
+
+            from PIL import Image, ImageCms
+        except ImportError:
+            return None
+
+        profile_bytes = self.get_iccprofile_bytes()
+        if not profile_bytes:
+            return None
+
+        n = self.get_n()
+        if n not in (1, 3, 4):
+            return None
+        if len(components) < n:
+            return None
+
+        try:
+            in_profile = ImageCms.ImageCmsProfile(BytesIO(profile_bytes))
+        except (OSError, ValueError, ImageCms.PyCMSError):
+            return None
+        try:
+            srgb_profile = ImageCms.createProfile("sRGB")
+        except (OSError, ValueError, ImageCms.PyCMSError):
+            return None
+
+        if n == 1:
+            in_mode = "L"
+            sample = (
+                int(round(_clamp_unit(components[0]) * 255.0)),
+            )
+        elif n == 3:
+            in_mode = "RGB"
+            sample = (
+                int(round(_clamp_unit(components[0]) * 255.0)),
+                int(round(_clamp_unit(components[1]) * 255.0)),
+                int(round(_clamp_unit(components[2]) * 255.0)),
+            )
+        else:  # n == 4
+            in_mode = "CMYK"
+            sample = (
+                int(round(_clamp_unit(components[0]) * 255.0)),
+                int(round(_clamp_unit(components[1]) * 255.0)),
+                int(round(_clamp_unit(components[2]) * 255.0)),
+                int(round(_clamp_unit(components[3]) * 255.0)),
+            )
+
+        try:
+            transform = ImageCms.buildTransform(
+                in_profile, srgb_profile, in_mode, "RGB"
+            )
+            src = Image.new(in_mode, (1, 1), sample)
+            dst = ImageCms.applyTransform(src, transform)
+            r, g, b = dst.getpixel((0, 0))
+        except (OSError, ValueError, ImageCms.PyCMSError):
+            return None
+        return (r / 255.0, g / 255.0, b / 255.0)
 
 
 __all__ = ["PDICCBased"]

@@ -124,11 +124,47 @@ class PDButton(PDTerminalField):
     def get_on_values(self) -> set[str]:
         """Returns the union of widget appearance "on" state names.
 
-        Deferred: full upstream implementation walks each widget's
-        ``/AP /N`` dictionary to collect non-Off names. This scaffold returns
-        an empty set.
+        Mirrors upstream ``PDButton.getOnValues``:
+        - If ``/Opt`` is non-empty, returns its entries (preserving order
+          via ``LinkedHashSet`` upstream — we use a list-backed dedupe).
+        - Otherwise walks each widget's ``/AP /N`` subdictionary and
+          collects the first non-``/Off`` name.
+
+        Returns a Python ``set`` (membership semantics match upstream
+        callers like :meth:`PDRadioButton.get_selected_export_values`).
         """
-        return set()
+        export_values = self.get_export_values()
+        if export_values:
+            # preserve insertion order while dedup'ing
+            seen: list[str] = []
+            for value in export_values:
+                if value not in seen:
+                    seen.append(value)
+            return set(seen)
+        out: set[str] = set()
+        for widget in self.get_widgets():
+            on_value = self._on_value_for_widget(widget)
+            if on_value is not None:
+                out.add(on_value)
+        return out
+
+    @staticmethod
+    def _on_value_for_widget(widget) -> str | None:
+        """Return the first non-``/Off`` key in this widget's ``/AP /N``
+        subdictionary, or ``None`` if no normal-appearance subdictionary
+        exists. Used by :meth:`get_on_values`."""
+        cos = widget.get_cos_object()
+        ap = cos.get_dictionary_object(COSName.get_pdf_name("AP"))
+        if not isinstance(ap, COSDictionary):
+            return None
+        n = ap.get_dictionary_object(COSName.get_pdf_name("N"))
+        if not isinstance(n, COSDictionary):
+            return None
+        off = COSName.get_pdf_name("Off")
+        for key in n.key_set():
+            if key != off:
+                return key.name
+        return None
 
 
 __all__ = ["PDButton"]

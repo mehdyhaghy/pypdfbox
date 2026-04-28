@@ -54,3 +54,41 @@ def test_set_font_type_choice(metadata: XMPMetadata) -> None:
     f = FontType(metadata)
     f.add_simple_property(FontType.FONT_TYPE, "TrueType")
     assert f.get_property_value_as_string(FontType.FONT_TYPE) == "TrueType"
+
+
+def test_typed_text_accessors(metadata: XMPMetadata) -> None:
+    f = FontType(metadata)
+    f.set_font_name("Helvetica")
+    f.set_font_family("Helvetica Family")
+    f.set_font_face("Bold")
+    f.set_font_file_name("helvetica.ttf")
+    f.set_version_string("1.0")
+    f.set_child_font_files("helvetica-bold.ttf")
+    f.set_font_type("TrueType")
+    assert f.get_font_name() == "Helvetica"
+    assert f.get_font_family() == "Helvetica Family"
+    assert f.get_font_face() == "Bold"
+    assert f.get_font_file_name() == "helvetica.ttf"
+    assert f.get_version_string() == "1.0"
+    assert f.get_child_font_files() == "helvetica-bold.ttf"
+    assert f.get_font_type() == "TrueType"
+
+
+def test_typed_composite_accessor(metadata: XMPMetadata) -> None:
+    f = FontType(metadata)
+    f.set_composite(True)
+    assert f.get_composite() is True
+    f.set_composite(False)
+    assert f.get_composite() is False
+
+
+def test_typed_initial_none(metadata: XMPMetadata) -> None:
+    f = FontType(metadata)
+    assert f.get_font_name() is None
+    assert f.get_font_family() is None
+    assert f.get_font_face() is None
+    assert f.get_font_file_name() is None
+    assert f.get_version_string() is None
+    assert f.get_child_font_files() is None
+    assert f.get_font_type() is None
+    assert f.get_composite() is None

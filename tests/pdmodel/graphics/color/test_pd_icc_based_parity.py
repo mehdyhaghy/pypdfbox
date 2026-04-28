@@ -140,3 +140,56 @@ def test_pd_icc_based_alternate_color_space_alias_round_trip() -> None:
     fetched = cs.get_alternate_color_space()
     assert fetched is not None
     assert fetched.get_name() == "DeviceCMYK"
+
+
+# ---------- to_rgb via embedded sRGB profile (ImageCms) ----------
+
+
+def test_pd_icc_based_to_rgb_uses_imagecms_for_embedded_srgb_profile() -> None:
+    from PIL import ImageCms
+
+    # Build an ICCBased carrying the embedded sRGB profile bytes; the
+    # ImageCms converter does sRGB -> sRGB identity so pure red returns
+    # close to (1, 0, 0) within 8-bit rounding noise.
+    srgb = ImageCms.createProfile("sRGB")
+    profile_bytes = ImageCms.ImageCmsProfile(srgb).tobytes()
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("ICCBased"))
+    stream = COSStream()
+    stream.set_int("N", 3)
+    with stream.create_output_stream() as out:
+        out.write(profile_bytes)
+    arr.add(stream)
+    cs = PDICCBased(arr)
+
+    rgb = cs.to_rgb([1.0, 0.0, 0.0])
+    assert rgb is not None
+    assert rgb[0] > 0.9
+    assert rgb[1] < 0.1
+    assert rgb[2] < 0.1
+
+
+def test_pd_icc_based_to_rgb_falls_back_to_alternate_when_profile_missing() -> None:
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+
+    # No profile body -> /Alternate fallback (or /N inference).
+    cs = PDICCBased()
+    cs.set_n(3)
+    cs.set_alternate(PDDeviceRGB.INSTANCE)
+    rgb = cs.to_rgb([1.0, 0.5, 0.0])
+    assert rgb == (1.0, 0.5, 0.0)
+
+
+def test_pd_icc_based_to_rgb_falls_back_when_profile_is_garbage() -> None:
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("ICCBased"))
+    stream = COSStream()
+    stream.set_int("N", 3)
+    with stream.create_output_stream() as out:
+        out.write(b"NOT-AN-ICC-PROFILE")
+    arr.add(stream)
+    cs = PDICCBased(arr)
+    # Garbage profile -> ImageCms raises -> /N=3 fallback to DeviceRGB.
+    rgb = cs.to_rgb([0.25, 0.5, 0.75])
+    assert rgb == (0.25, 0.5, 0.75)

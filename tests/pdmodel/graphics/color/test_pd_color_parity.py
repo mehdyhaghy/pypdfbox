@@ -147,19 +147,30 @@ def test_equal_with_same_pattern_name() -> None:
     assert hash(a) == hash(b)
 
 
-# ---------- to_rgb_image / to_raw_image placeholders ----------
+# ---------- to_rgb_image / to_raw_image ----------
 
 
-def test_to_rgb_image_raises_not_implemented() -> None:
+def test_to_rgb_image_returns_pillow_image() -> None:
+    from PIL import Image
+
     color = PDColor([1.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
-    with pytest.raises(NotImplementedError):
-        color.to_rgb_image()
+    img = color.to_rgb_image(2, 3)
+    assert isinstance(img, Image.Image)
+    assert img.mode == "RGB"
+    assert img.size == (2, 3)
+    assert img.getpixel((0, 0)) == (255, 0, 0)
 
 
-def test_to_raw_image_raises_not_implemented() -> None:
-    color = PDColor([1.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
-    with pytest.raises(NotImplementedError):
-        color.to_raw_image()
+def test_to_raw_image_uses_native_mode_for_device_spaces() -> None:
+    from PIL import Image
+
+    img = PDColor([0.5], PDDeviceGray.INSTANCE).to_raw_image(1, 1)
+    assert isinstance(img, Image.Image)
+    assert img.mode == "L"
+    img = PDColor(
+        [0.0, 1.0, 1.0, 0.0], PDDeviceCMYK.INSTANCE
+    ).to_raw_image(1, 1)
+    assert img.mode == "CMYK"
 
 
 # ---------- is_separation / is_device_n predicates ----------

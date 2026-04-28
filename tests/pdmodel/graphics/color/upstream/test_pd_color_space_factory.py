@@ -184,3 +184,26 @@ def test_create_none_returns_none() -> None:
     # an Optional-style check (this is one of the documented deviations
     # to keep Python idioms; behaviour for *valid* inputs is unchanged).
     assert PDColorSpace.create(None) is None
+
+
+# ---------- get_default_decode (upstream parity) ----------
+
+
+def test_get_default_decode_for_device_gray() -> None:
+    assert PDDeviceGray.INSTANCE.get_default_decode(8) == [0.0, 1.0]
+
+
+def test_get_default_decode_for_device_rgb() -> None:
+    assert PDDeviceRGB.INSTANCE.get_default_decode(8) == [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
+
+
+def test_get_default_decode_for_device_cmyk() -> None:
+    assert PDDeviceCMYK.INSTANCE.get_default_decode(8) == [0.0, 1.0] * 4
+
+
+def test_get_default_decode_for_indexed_uses_index_range() -> None:
+    assert PDIndexed().get_default_decode(8) == [0.0, 255.0]
+
+
+def test_get_default_decode_for_lab_uses_l_and_range() -> None:
+    assert PDLab().get_default_decode(8) == [0.0, 100.0, -100.0, 100.0, -100.0, 100.0]

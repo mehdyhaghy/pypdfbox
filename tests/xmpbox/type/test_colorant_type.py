@@ -71,3 +71,62 @@ def test_set_and_get_descriptive(metadata: XMPMetadata) -> None:
     assert c.get_property_value_as_string(ColorantType.SWATCH_NAME) == "MySwatch"
     assert c.get_property_value_as_string(ColorantType.MODE) == "RGB"
     assert c.get_property_value_as_string(ColorantType.TYPE) == "PROCESS"
+
+
+def test_typed_lab_accessors(metadata: XMPMetadata) -> None:
+    c = ColorantType(metadata)
+    c.set_l(50.0)
+    c.set_a(12)
+    c.set_b(-34)
+    assert c.get_l() == pytest.approx(50.0)
+    assert c.get_a() == 12
+    assert c.get_b() == -34
+
+
+def test_typed_cmyk_accessors(metadata: XMPMetadata) -> None:
+    c = ColorantType(metadata)
+    c.set_cyan(0.1)
+    c.set_magenta(0.2)
+    c.set_yellow(0.3)
+    c.set_black(0.4)
+    assert c.get_cyan() == pytest.approx(0.1)
+    assert c.get_magenta() == pytest.approx(0.2)
+    assert c.get_yellow() == pytest.approx(0.3)
+    assert c.get_black() == pytest.approx(0.4)
+
+
+def test_typed_rgb_accessors(metadata: XMPMetadata) -> None:
+    c = ColorantType(metadata)
+    c.set_red(255)
+    c.set_green(128)
+    c.set_blue(64)
+    assert c.get_red() == 255
+    assert c.get_green() == 128
+    assert c.get_blue() == 64
+
+
+def test_typed_descriptive_accessors(metadata: XMPMetadata) -> None:
+    c = ColorantType(metadata)
+    c.set_swatch_name("MySwatch")
+    c.set_mode("RGB")
+    c.set_type("PROCESS")
+    assert c.get_swatch_name() == "MySwatch"
+    assert c.get_mode() == "RGB"
+    assert c.get_type() == "PROCESS"
+
+
+def test_typed_initial_none(metadata: XMPMetadata) -> None:
+    c = ColorantType(metadata)
+    assert c.get_l() is None
+    assert c.get_a() is None
+    assert c.get_b() is None
+    assert c.get_cyan() is None
+    assert c.get_magenta() is None
+    assert c.get_yellow() is None
+    assert c.get_black() is None
+    assert c.get_red() is None
+    assert c.get_green() is None
+    assert c.get_blue() is None
+    assert c.get_mode() is None
+    assert c.get_swatch_name() is None
+    assert c.get_type() is None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .open_mode import OpenMode
 from .pd_action import PDAction
 from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
 from .pd_action_go_to import PDActionGoTo
@@ -29,6 +30,7 @@ from .pd_target_directory import PDTargetDirectory
 from .pd_windows_launch_params import PDWindowsLaunchParams
 
 __all__ = [
+    "OpenMode",
     "PDAction",
     "PDActionEmbeddedGoTo",
     "PDActionGoTo",

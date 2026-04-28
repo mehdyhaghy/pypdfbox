@@ -94,5 +94,18 @@ class PDLab(PDColorSpace):
     def set_range(self, rng: list[float]) -> None:
         self._dict().set_item(_RANGE, COSArray.of_cos_floats(rng))
 
+    # ---------- decode ----------
+
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Default Lab decode per PDF 32000-1 §8.9.5.1 Table 90:
+        ``[0, 100, a_min, a_max, b_min, b_max]``. ``L*`` always spans
+        ``[0, 100]``; the ``a*``/``b*`` bounds come from ``/Range``
+        (default ``[-100, 100, -100, 100]``).
+        """
+        rng = self.get_range()
+        if len(rng) >= 4:
+            return [0.0, 100.0, float(rng[0]), float(rng[1]), float(rng[2]), float(rng[3])]
+        return [0.0, 100.0, -100.0, 100.0, -100.0, 100.0]
+
 
 __all__ = ["PDLab"]

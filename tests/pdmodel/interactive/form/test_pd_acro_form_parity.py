@@ -73,19 +73,22 @@ def test_need_appearances_default_false_and_round_trip() -> None:
     assert form.is_need_appearances() is False
 
 
-def test_refresh_appearances_raises_not_implemented() -> None:
+def test_refresh_appearances_no_args_walks_field_tree_no_op() -> None:
+    """Empty form: refresh_appearances is a successful no-op (no
+    terminal fields → nothing to construct)."""
     form = PDAcroForm()
-    with pytest.raises(NotImplementedError):
-        form.refresh_appearances()
+    form.refresh_appearances()  # must not raise
 
 
-def test_refresh_appearances_with_field_list_raises_not_implemented() -> None:
+def test_refresh_appearances_with_field_list_walks_supplied_fields() -> None:
+    """Supplied terminal fields: refresh_appearances dispatches into
+    each terminal's ``construct_appearances`` (lite no-op debug log;
+    must not raise)."""
     form = PDAcroForm()
     field = PDFieldStub(form)
     field.set_partial_name("name")
     form.set_fields([field])
-    with pytest.raises(NotImplementedError):
-        form.refresh_appearances([field])
+    form.refresh_appearances([field])  # must not raise
 
 
 def test_import_fdf_raises_not_implemented() -> None:
@@ -112,16 +115,15 @@ def test_default_resources_default_none_and_round_trip() -> None:
     # Round-trip preserves the same backing /Resources COSDictionary.
     assert fetched.get_cos_object() is resources.get_cos_object()
     # /DR is now set on the form dictionary.
-    assert form.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("DR")
-    ) is resources.get_cos_object()
+    assert (
+        form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("DR"))
+        is resources.get_cos_object()
+    )
 
     # Setting None removes the entry.
     form.set_default_resources(None)
     assert form.get_default_resources() is None
-    assert form.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("DR")
-    ) is None
+    assert form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("DR")) is None
 
 
 def test_calc_order_default_empty_and_round_trip() -> None:
@@ -139,9 +141,7 @@ def test_calc_order_default_empty_and_round_trip() -> None:
     # Empty list / None clears the entry.
     form.set_calc_order(None)
     assert form.get_calc_order() == []
-    assert form.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("CO")
-    ) is None
+    assert form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("CO")) is None
 
 
 def test_get_xfa_alias_matches_xfa() -> None:

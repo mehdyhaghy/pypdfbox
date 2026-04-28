@@ -112,5 +112,15 @@ class PDIndexed(PDColorSpace):
         else:
             self._array.set(3, COSString(data))
 
+    # ---------- decode ----------
+
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Default ``/Decode`` for Indexed images is
+        ``[0, 2**bits_per_component - 1]`` per PDF 32000-1 §8.9.5.1
+        Table 90 — the index range, not the [0, 1] of regular CSes.
+        """
+        upper = float((1 << int(bits_per_component)) - 1)
+        return [0.0, upper]
+
 
 __all__ = ["PDIndexed"]

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .type.resource_event_type import ResourceEventType
+from .type.resource_ref_type import ResourceRefType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -32,11 +34,20 @@ class XMPMediaManagementSchema(XMPSchema):
       * ``Manager`` — asset-management application name.
       * ``ManagerVariant`` — manager build/variant identifier.
 
-    Deferred until the typed ``ResourceRef`` wrapper lands (see cluster #1
-    plan): ``DerivedFrom`` (single ``ResourceRef`` struct) and
-    ``Ingredients`` (``Bag`` of ``ResourceRef``). Callers needing raw access
-    to those properties before the wrapper ships can use the generic
-    :meth:`XMPSchema.get_property` accessor.
+    Wave 40 round-out adds typed accessors for the structured-type
+    properties:
+
+      * ``DerivedFrom`` — single :class:`ResourceRefType` struct.
+      * ``History`` — ordered ``Seq`` of :class:`ResourceEventType` (one
+        per save / publish / convert action).
+      * ``Manifest`` — unordered ``Bag`` of :class:`ResourceRefType`
+        recording the source ingredients of the asset.
+      * ``Ingredients`` — alias for ``Manifest`` in older XMP spec drafts;
+        retained as a separate Bag of ``ResourceRefType`` for spec parity.
+
+    The cluster-#1 raw-property pass-through (`get_property` /
+    `set_property`) continues to work for callers that haven't migrated to
+    typed accessors.
     """
 
     NAMESPACE = "http://ns.adobe.com/xap/1.0/mm/"
@@ -53,9 +64,20 @@ class XMPMediaManagementSchema(XMPSchema):
     MANAGE_UI = "ManageUI"
     MANAGER = "Manager"
     MANAGER_VARIANT = "ManagerVariant"
+    DERIVED_FROM = "DerivedFrom"
+    HISTORY = "History"
+    MANIFEST = "Manifest"
+    INGREDIENTS = "Ingredients"
 
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
+        # Pre-register the structured-type sub-namespaces so callers serialising
+        # DerivedFrom / History / Manifest get the right xmlns declarations on
+        # the surrounding rdf:Description element.
+        self.add_namespace(ResourceRefType.PREFERRED_PREFIX, ResourceRefType.NAMESPACE)
+        self.add_namespace(
+            ResourceEventType.PREFERRED_PREFIX, ResourceEventType.NAMESPACE
+        )
 
     # --- DocumentID --------------------------------------------------
 
@@ -166,3 +188,82 @@ class XMPMediaManagementSchema(XMPSchema):
             self.remove_property(self.MANAGER_VARIANT)
             return
         self.set_text_property_value(self.MANAGER_VARIANT, value)
+
+    # --- DerivedFrom (single ResourceRef) ---------------------------
+
+    def get_derived_from(self) -> ResourceRefType | None:
+        """
+        Return the ``DerivedFrom`` property as a typed
+        :class:`ResourceRefType`, or ``None`` if absent or stored in another
+        shape. Callers wanting raw access can fall back to
+        :meth:`get_property`.
+        """
+        v = self._properties.get(self.DERIVED_FROM)
+        if isinstance(v, ResourceRefType):
+            return v
+        return None
+
+    def set_derived_from(self, ref: ResourceRefType | None) -> None:
+        if ref is None:
+            self.remove_property(self.DERIVED_FROM)
+            return
+        self.set_property(self.DERIVED_FROM, ref)
+
+    # --- History (Seq of ResourceEvent) -----------------------------
+
+    def add_history(self, event: ResourceEventType) -> None:
+        """Append ``event`` to the ``History`` Seq."""
+        existing = self._properties.get(self.HISTORY)
+        if not isinstance(existing, list):
+            existing = []
+            self._properties[self.HISTORY] = existing
+        existing.append(event)
+
+    def get_history(self) -> list[ResourceEventType] | None:
+        """
+        Return the ``History`` Seq as a list of :class:`ResourceEventType`
+        instances, or ``None`` when absent. Untyped (string / dict) entries
+        are skipped.
+        """
+        v = self._properties.get(self.HISTORY)
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            v = [v]
+        return [item for item in v if isinstance(item, ResourceEventType)]
+
+    # --- Manifest (Bag of ResourceRef) ------------------------------
+
+    def add_manifest(self, ref: ResourceRefType) -> None:
+        """Append ``ref`` to the ``Manifest`` Bag."""
+        existing = self._properties.get(self.MANIFEST)
+        if not isinstance(existing, list):
+            existing = []
+            self._properties[self.MANIFEST] = existing
+        existing.append(ref)
+
+    def get_manifest(self) -> list[ResourceRefType] | None:
+        v = self._properties.get(self.MANIFEST)
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            v = [v]
+        return [item for item in v if isinstance(item, ResourceRefType)]
+
+    # --- Ingredients (Bag of ResourceRef) ---------------------------
+
+    def add_ingredient(self, ref: ResourceRefType) -> None:
+        """Append ``ref`` to the ``Ingredients`` Bag."""
+        existing = self._properties.get(self.INGREDIENTS)
+        if not isinstance(existing, list):
+            existing = []
+            self._properties[self.INGREDIENTS] = existing
+        existing.append(ref)
+
+    def get_ingredients(self) -> list[ResourceRefType] | None:
+        v = self._properties.get(self.INGREDIENTS)
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            v = [v]
+        return [item for item in v if isinstance(item, ResourceRefType)]

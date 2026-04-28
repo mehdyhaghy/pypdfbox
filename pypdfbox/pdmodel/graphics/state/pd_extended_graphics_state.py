@@ -569,6 +569,21 @@ class PDExtendedGraphicsState:
             return
         self._dict.set_item(_SMASK, mask)
 
+    def get_soft_mask_typed(self) -> Any | None:
+        """Return ``/SMask`` wrapped as :class:`PDSoftMask`, or ``None``
+        for the literal ``/None`` mask name (or when ``/SMask`` is
+        absent / not a soft-mask dictionary).
+
+        Companion to :meth:`get_soft_mask` (which returns the raw COS
+        object for upstream-parity tests). Mirrors upstream
+        ``PDExtendedGraphicsState.getSoftMask()``'s typed return.
+        """
+        from pypdfbox.pdmodel.graphics.state.pd_soft_mask import (  # noqa: PLC0415
+            PDSoftMask,
+        )
+
+        return PDSoftMask.create(self.get_soft_mask())
+
     # ---------- TR / TR2 (transfer functions) ----------
 
     def get_transfer(self) -> COSBase | None:

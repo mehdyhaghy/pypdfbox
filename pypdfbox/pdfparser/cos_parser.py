@@ -12,9 +12,10 @@ from pypdfbox.cos import (
     COSNull,
     COSObject,
     COSObjectKey,
+    COSStream,
     COSString,
 )
-from pypdfbox.io import RandomAccessRead
+from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .base_parser import BaseParser
 from .parse_error import PDFParseError
@@ -250,10 +251,32 @@ class COSParser(BaseParser):
         if peeked == 0x73:  # 's' — possibly 'stream'
             kw2 = self.read_keyword()
             if kw2 == b"stream":
-                raise NotImplementedError(
-                    "stream-body parsing requires /Length resolution; "
-                    "lives in PDFParser (parser cluster #3)"
-                )
+                # Stream body parsing — supports the direct-/Length case
+                # (``/Length n`` is an integer literal in the stream
+                # dictionary). Indirect-/Length resolution requires the
+                # full xref pool and lives in ``PDFParser``; if /Length
+                # is an indirect reference we fall back to NotImplemented.
+                if not isinstance(body, COSDictionary):
+                    raise PDFParseError(
+                        "stream object body is not a dictionary",
+                        position=self.position,
+                    )
+                stream = self._build_stream_from_dict(body)
+                self._read_stream_body_into(stream)
+                self.skip_whitespace()
+                end_kw = self.read_keyword()
+                if end_kw != b"endobj":
+                    raise PDFParseError(
+                        f"expected 'endobj' after stream, got {end_kw!r}",
+                        position=self.position,
+                    )
+                if self._document is not None:
+                    cos_obj = self._document.get_object_from_pool(
+                        COSObjectKey(object_number, generation_number)
+                    )
+                    cos_obj.set_object(stream)
+                    return cos_obj
+                return COSObject(object_number, generation_number, resolved=stream)
             raise PDFParseError(
                 f"expected 'endobj' after object body, got {kw2!r}",
                 position=self.position,
@@ -272,6 +295,82 @@ class COSParser(BaseParser):
             return cos_obj
         cos_obj = COSObject(object_number, generation_number, resolved=body)
         return cos_obj
+
+    # ---------- stream-body helpers ----------
+    #
+    # Used by ``parse_indirect_object_definition`` and
+    # ``parse_xref_object_stream``. Stream-body parsing requires
+    # ``/Length`` resolution; we handle the direct-/Length case here
+    # (the common one) and raise ``NotImplementedError`` for the
+    # indirect-/Length case, which needs the full xref pool and lives
+    # in ``PDFParser``.
+
+    def _build_stream_from_dict(self, src: COSDictionary) -> COSStream:
+        """Promote a parsed ``COSDictionary`` to a ``COSStream`` by
+        copying every entry. The original dict is no longer
+        referenced. Uses the bound document's scratch file when
+        available so body bytes are spilled per the document's memory
+        policy."""
+        scratch = self._document.scratch_file if self._document is not None else None
+        stream = COSStream(scratch_file=scratch)
+        for k, v in src.entry_set():
+            stream.set_item(k, v)
+        return stream
+
+    def _read_stream_body_into(self, stream: COSStream) -> None:
+        """Per ISO 32000-1 §7.3.8.1: ``stream`` keyword is followed by
+        EOL (CRLF or LF — bare CR is non-conformant). Then exactly
+        ``/Length`` bytes. Then ``endstream`` (typically preceded by
+        EOL).
+
+        Only direct integer ``/Length`` values are resolved here. An
+        indirect-reference ``/Length`` requires the full xref pool and
+        is rejected with ``NotImplementedError`` so callers fall
+        through to ``PDFParser._read_stream_body``."""
+        self._consume_eol_after_stream_keyword()
+        length_obj = stream.get_dictionary_object(COSName.get_pdf_name("Length"))
+        if not isinstance(length_obj, COSInteger):
+            # Either missing or indirect — defer to PDFParser.
+            raise NotImplementedError(
+                "indirect or missing /Length; stream body resolution "
+                "lives in PDFParser (cluster #3)"
+            )
+        length = length_obj.value
+        if length < 0:
+            raise PDFParseError(
+                f"stream /Length is negative: {length}", position=self.position
+            )
+        body = bytearray(length)
+        n = self._src.read_into(body)
+        if n != length:
+            raise PDFParseError(
+                f"stream body truncated: expected {length} bytes, got {n}",
+                position=self.position,
+            )
+        stream.set_raw_data(bytes(body))
+        # Trailing EOL is conventional but optional; skip it then verify
+        # 'endstream' is next.
+        self.skip_whitespace()
+        kw = self.read_keyword()
+        if kw != b"endstream":
+            raise PDFParseError(
+                f"expected 'endstream', got {kw!r}", position=self.position
+            )
+
+    def _consume_eol_after_stream_keyword(self) -> None:
+        """Per spec: a single CRLF or LF after ``stream``. Tolerate a
+        bare CR (PDFBox quirk — some producers emit just CR)."""
+        b = self._src.read()
+        if b == 0x0D:  # CR
+            if self._src.peek() == 0x0A:
+                self._src.read()  # consume LF too
+            return
+        if b == 0x0A:  # LF
+            return
+        # No EOL after 'stream' — extremely non-conformant; rewind so
+        # the body read sees the byte.
+        if b != RandomAccessRead.EOF:
+            self._src.rewind(1)
 
     # ---------- internal byte-pair lookahead ----------
 
@@ -404,13 +503,73 @@ class COSParser(BaseParser):
         identified by ``obj_num``. Mirrors upstream
         ``COSParser.parseObjectStream``.
 
-        The ObjStm body decoder + per-entry parser lives in ``PDFParser``
-        (cluster #3 / cluster #4) — this alias is a deferred placeholder
-        on ``COSParser`` itself."""
-        raise NotImplementedError(
-            f"parse_object_stream({obj_num}) is implemented by PDFParser; "
-            "COSParser only owns the direct-object grammar"
+        The ObjStm body, after /Filter is applied, is a header of ``/N``
+        ``(obj_num byte_offset)`` integer pairs followed by ``/N`` packed
+        direct objects starting at byte ``/First``. This implementation
+        materialises the ObjStm via the bound document's pool, decodes
+        the body, parses every contained direct object in order, and
+        registers each into the document pool with key ``(stored_obj_num,
+        0)`` (PDF 32000-1 §7.5.7 fixes generation 0 for compressed
+        objects). Returns the list of parsed objects in storage order.
+
+        Requires a bound document — without one, the ObjStm cannot be
+        looked up so the call raises ``PDFParseError``."""
+        if self._document is None:
+            raise PDFParseError(
+                f"parse_object_stream({obj_num}): no document bound to parser"
+            )
+        objstm_holder = self._document.get_object_from_pool(
+            COSObjectKey(obj_num, 0)
         )
+        objstm_body = objstm_holder.get_object()
+        if not isinstance(objstm_body, COSStream):
+            raise PDFParseError(
+                f"object stream {obj_num} is not a stream"
+            )
+        n_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("N"))
+        first_obj = objstm_body.get_dictionary_object(
+            COSName.get_pdf_name("First")
+        )
+        if not isinstance(n_obj, COSInteger) or not isinstance(first_obj, COSInteger):
+            raise PDFParseError(
+                f"object stream {obj_num} missing /N or /First"
+            )
+        n = n_obj.value
+        first = first_obj.value
+        with objstm_body.create_input_stream() as src:
+            decoded = src.read()
+        # Header: N pairs of "<obj_num> <byte_offset>", whitespace
+        # separated. Parse them via a fresh BaseParser scoped to just
+        # the header window.
+        header_view = RandomAccessReadBuffer(decoded[:first])
+        header_parser = BaseParser(header_view)
+        pairs: list[tuple[int, int]] = []
+        try:
+            for _ in range(n):
+                header_parser.skip_whitespace()
+                stored_obj_num = header_parser.read_int()
+                header_parser.skip_whitespace()
+                byte_offset = header_parser.read_int()
+                pairs.append((stored_obj_num, byte_offset))
+        finally:
+            header_view.close()
+        results: list[COSBase] = []
+        # Body: each entry starts at decoded[first + offset]. Parse all
+        # of them; register into the pool so subsequent indirect
+        # references resolve immediately.
+        for stored_obj_num, byte_offset in pairs:
+            body_view = RandomAccessReadBuffer(decoded[first + byte_offset:])
+            body_parser = COSParser(body_view, document=self._document)
+            try:
+                parsed = body_parser.parse_direct_object()
+            finally:
+                body_view.close()
+            results.append(parsed)
+            holder = self._document.get_object_from_pool(
+                COSObjectKey(stored_obj_num, 0)
+            )
+            holder.set_object(parsed)
+        return results
 
     # ``is_eof``, ``peek``, ``unread`` are inherited from BaseParser.
     # Restated here as explicit pass-throughs so ``hasattr(COSParser, …)``
@@ -483,33 +642,157 @@ class COSParser(BaseParser):
         return its trailer dictionary. Mirrors upstream
         ``COSParser.parseXrefObjStream``.
 
-        Implemented by ``PDFParser._handle_xref_stream_at`` — this alias
-        on ``COSParser`` is a deferred placeholder."""
-        raise NotImplementedError(
-            f"parse_xref_object_stream({xref_table_offset}, "
-            f"is_standalone={is_standalone}) is implemented by PDFParser"
-        )
+        Reads the indirect-object header (``n g obj``), parses the
+        stream dictionary, validates ``/Type /XRef``, then consumes the
+        ``stream`` keyword + EOL and reads exactly ``/Length`` body
+        bytes (when ``/Length`` is direct). The returned dictionary is
+        the trailer fragment — body decoding lives at the
+        cross-reference layer (``parse_xref_stream`` /
+        ``PDFParser._decode_xref_stream_entries``).
 
-    def parse_xref_table(self, start_byte_offset: int, *args: object) -> bool:
+        ``is_standalone`` mirrors upstream's flag: when ``True`` (the
+        default — chain entry point), an absent or non-``/XRef`` typed
+        dictionary is a hard error; when ``False`` (chained from a
+        hybrid xref), a missing /Type /XRef is tolerated."""
+        self.seek(xref_table_offset)
+        self.skip_whitespace()
+        # n g obj
+        self.read_int()
+        self.skip_whitespace()
+        self.read_int()
+        self.skip_whitespace()
+        kw = self.read_keyword()
+        if kw != b"obj":
+            raise PDFParseError(
+                f"expected 'obj' at xref-stream offset {xref_table_offset}, "
+                f"got {kw!r}",
+                position=self.position,
+            )
+        body = self.parse_direct_object()
+        if not isinstance(body, COSDictionary):
+            raise PDFParseError(
+                "xref-stream object body is not a dictionary",
+                position=self.position,
+            )
+        type_obj = body.get_dictionary_object(COSName.get_pdf_name("Type"))
+        if is_standalone:
+            if not (isinstance(type_obj, COSName) and type_obj.name == "XRef"):
+                raise PDFParseError(
+                    "xref-stream dict missing /Type /XRef",
+                    position=self.position,
+                )
+        # Promote the dict to a COSStream + read its body so callers
+        # that want the on-disk bytes can drive ``create_input_stream``.
+        stream = self._build_stream_from_dict(body)
+        self.skip_whitespace()
+        if self.peek_byte() == 0x73:  # 's' — stream
+            kw2 = self.read_keyword()
+            if kw2 != b"stream":
+                raise PDFParseError(
+                    f"expected 'stream' in xref-stream object, got {kw2!r}",
+                    position=self.position,
+                )
+            self._read_stream_body_into(stream)
+            # Cross-reference streams are never encrypted (ISO 32000-2
+            # §7.6.2) — flag so future decrypt walks skip this body.
+            stream.set_skip_encryption(True)
+        return stream
+
+    def parse_xref_table(
+        self,
+        start_byte_offset: int,
+        xref_table: dict[COSObjectKey, int] | None = None,
+    ) -> bool:
         """Parse a traditional ``xref`` section starting at
-        ``start_byte_offset``. Mirrors upstream
-        ``COSParser.parseXrefTable``.
+        ``start_byte_offset`` and return ``True`` on success. The parsed
+        entries are merged into ``xref_table`` (a fresh dict by default)
+        as ``{COSObjectKey: byte_offset}``. ``-1`` is recorded for
+        free entries so callers can distinguish them.
 
-        Implemented by ``PDFParser._parse_traditional_xref_section`` —
-        this alias on ``COSParser`` is a deferred placeholder."""
-        raise NotImplementedError(
-            f"parse_xref_table({start_byte_offset}) is implemented by PDFParser"
-        )
+        Mirrors upstream ``COSParser.parseXrefTable(long, XrefTrailerResolver)``
+        — the caller-provided table replaces the resolver argument so
+        this call is usable without the full ``PDFParser`` plumbing."""
+        if xref_table is None:
+            xref_table = {}
+        self.seek(start_byte_offset)
+        self.skip_whitespace()
+        try:
+            kw = self.read_keyword()
+        except PDFParseError:
+            return False
+        if kw != b"xref":
+            return False
+        self.skip_whitespace()
+        # Subsections until 'trailer' (or EOF in a malformed file).
+        while True:
+            peek = self.peek_byte()
+            if peek == RandomAccessRead.EOF:
+                return False
+            if peek == 0x74:  # 't' — start of 'trailer'
+                break
+            try:
+                first_obj = self.read_int()
+                self.skip_whitespace()
+                count = self.read_int()
+                self.skip_whitespace()
+            except PDFParseError:
+                return False
+            for i in range(count):
+                # 20-byte fixed entry: ``oooooooooo ggggg n\r\n``.
+                raw = bytearray(20)
+                n = self._src.read_into(raw)
+                if n < 20:
+                    return False
+                line = bytes(raw)
+                try:
+                    offset = int(line[0:10].decode("ascii"))
+                    generation = int(line[11:16].decode("ascii"))
+                    flag = chr(line[17])
+                except (ValueError, IndexError):
+                    return False
+                key = COSObjectKey(first_obj + i, generation)
+                if flag == "n":
+                    # First-write wins so chained /Prev sections (parsed
+                    # newest-first by walkers above this layer) don't get
+                    # overwritten by older entries when they happen to be
+                    # parsed in the wrong order.
+                    xref_table.setdefault(key, offset)
+                elif flag == "f":
+                    xref_table.setdefault(key, -1)
+                else:
+                    return False
+        return True
 
     def parse_pdf_header(self) -> float:
-        """Validate the ``%PDF-x.y`` magic and return the version.
-        Mirrors upstream ``COSParser.parsePDFHeader``.
-
-        Implemented by ``PDFParser.parse_header`` — this alias on
-        ``COSParser`` is a deferred placeholder."""
-        raise NotImplementedError(
-            "parse_pdf_header() is implemented by PDFParser.parse_header"
-        )
+        """Validate the ``%PDF-x.y`` magic and return the version as a
+        float. Tolerates up to 1024 bytes of leading garbage (some
+        producers prepend MIME envelopes / shebangs / etc.). Mirrors
+        upstream ``COSParser.parsePDFHeader``."""
+        scan_window = 1024
+        self._src.seek(0)
+        head = bytearray()
+        while len(head) < scan_window:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                break
+            head.append(b)
+        idx = bytes(head).find(b"%PDF-")
+        if idx < 0:
+            raise PDFParseError("missing %PDF- header (not a PDF file)")
+        # Position the cursor just past "%PDF-" for version parsing.
+        self._src.seek(idx + len(b"%PDF-"))
+        version_bytes = bytearray()
+        while True:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF or b in (0x0A, 0x0D, 0x20):
+                break
+            version_bytes.append(b)
+        try:
+            return float(version_bytes.decode("ascii"))
+        except ValueError as exc:
+            raise PDFParseError(
+                f"malformed %PDF version {version_bytes!r}"
+            ) from exc
 
     # Brute-force scan helpers — used by upstream's malformed-recovery
     # path. Mirrors `org.apache.pdfbox.pdfparser.COSParser` recovery

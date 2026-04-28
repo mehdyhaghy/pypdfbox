@@ -111,3 +111,20 @@ def test_initial_color_for_device_gray_is_black() -> None:
     initial = PDDeviceGray.INSTANCE.get_initial_color()
     assert initial.get_components() == [0.0]
     assert initial.get_color_space() is PDDeviceGray.INSTANCE
+
+
+# ---------- to_rgb / get_java_color (upstream parity) ----------
+
+
+def test_to_rgb_returns_three_floats_in_unit_range() -> None:
+    rgb = PDColor([0.5], PDDeviceGray.INSTANCE).to_rgb()
+    assert isinstance(rgb, tuple)
+    assert len(rgb) == 3
+    for c in rgb:
+        assert 0.0 <= c <= 1.0
+
+
+def test_get_java_color_matches_to_rgb() -> None:
+    # Upstream returns ``java.awt.Color``; we return a tuple of floats.
+    color = PDColor([0.2, 0.4, 0.6], PDDeviceRGB.INSTANCE)
+    assert color.get_java_color() == color.to_rgb()

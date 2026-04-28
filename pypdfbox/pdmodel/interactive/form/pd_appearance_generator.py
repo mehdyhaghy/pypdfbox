@@ -272,13 +272,23 @@ class PDAppearanceGenerator:
 
         is_multiline = False
         is_comb = False
+        is_password = False
         max_len = -1
         quadding = 0
         if isinstance(field, PDTextField):
             is_multiline = field.is_multiline()
             is_comb = field.is_comb()
+            is_password = field.is_password()
             max_len = field.get_max_len()
             quadding = field.get_q()
+
+        # Password fields render every char as an asterisk per PDF 32000-1
+        # §12.7.4.3 — the underlying ``/V`` value is unchanged. We mask once
+        # here so the multi-line / comb / quadding layout below all observe
+        # the masked string consistently. ``len(value)`` measures Python
+        # codepoints, which matches upstream's character-by-character mask.
+        if is_password and value:
+            value = "*" * len(value)
 
         for widget in field.get_widgets():  # type: ignore[attr-defined]
             self._regenerate_text_widget(
@@ -454,24 +464,61 @@ class PDAppearanceGenerator:
     def _generate_choice(self, field: PDField) -> None:
         """Render the field's selected value(s) as flat text.
 
-        For combo boxes (single-select) and list boxes (potentially
-        multi-select), the content stream is laid out the same way as a
-        text field — we join the values with newlines and emit one
-        ``Tj`` per line.
+        For combo boxes (single-select) the selected value is rendered
+        as a single line of flat text. For list boxes the entire option
+        list is laid out one-per-row starting from the field's ``/TI``
+        scroll-offset (top index), and rows whose option matches the
+        selected ``/V`` (or whose index appears in ``/I``) get a
+        highlight rectangle drawn behind the row text — mirrors
+        upstream's ``insertGeneratedListboxAppearance``.
         """
+        from .pd_choice import PDChoice
+        from .pd_list_box import PDListBox
+
         values = field.get_value()  # type: ignore[attr-defined]
         if isinstance(values, str):
-            lines = [values] if values else []
+            selected_values = [values] if values else []
         elif isinstance(values, list):
-            lines = [v for v in values if v]
+            selected_values = [v for v in values if v]
         else:
-            lines = []
+            selected_values = []
+
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
+
+        is_listbox = isinstance(field, PDListBox)
+        options: list[str] = []
+        top_index = 0
+        selected_indices: list[int] = []
+        if isinstance(field, PDChoice):
+            try:
+                options = field.get_options_display_values() or field.get_options()
+            except Exception:  # noqa: BLE001 — defensive on lite-port surface
+                options = []
+            top_index = max(0, field.get_top_index())
+            selected_indices = field.get_selected_options_indices()
+
         for widget in field.get_widgets():  # type: ignore[attr-defined]
-            self._regenerate_choice_widget(
-                widget, lines, font_name, font_size, color
-            )
+            if is_listbox:
+                # When the field has no /Opt entries (uncommon but legal),
+                # fall back to the selected values themselves so the widget
+                # surface still shows something. Selection highlight then
+                # covers the entire visible row range.
+                rows = options if options else selected_values
+                self._regenerate_listbox_widget(
+                    widget,
+                    rows,
+                    selected_values,
+                    selected_indices,
+                    top_index,
+                    font_name,
+                    font_size,
+                    color,
+                )
+            else:
+                self._regenerate_choice_widget(
+                    widget, selected_values, font_name, font_size, color
+                )
 
     def _regenerate_choice_widget(
         self,
@@ -521,6 +568,112 @@ class PDAppearanceGenerator:
                     cs.new_line_at_offset(0.0, -line_height)
                 first = False
                 cs.show_text(line)
+            cs.end_text()
+            cs.restore_graphics_state()
+            cs._buffer.extend(b"EMC\n")  # type: ignore[attr-defined]
+
+        ap_value = widget_cos.get_dictionary_object(_AP)
+        if isinstance(ap_value, COSDictionary):
+            ap_dict = PDAppearanceDictionary(ap_value)
+        else:
+            ap_dict = PDAppearanceDictionary()
+            widget_cos.set_item(_AP, ap_dict.get_cos_object())
+        ap_dict.set_normal_appearance(appearance_stream)
+
+    def _regenerate_listbox_widget(
+        self,
+        widget: object,
+        options: list[str],
+        selected_values: list[str],
+        selected_indices: list[int],
+        top_index: int,
+        font_name: str | None,
+        font_size: float,
+        color: tuple[float, ...] | None,
+    ) -> None:
+        """Render a list-box appearance with selection highlight + scroll offset.
+
+        Mirrors upstream ``insertGeneratedListboxAppearance``:
+
+        - All option rows are drawn (not just the selected ones), starting
+          from row index ``top_index`` (``/TI``) so callers controlling the
+          scroll position get the same visible window as Acrobat.
+        - Rows whose index appears in ``/I`` (or whose value appears in
+          ``/V``) get a flat blue highlight rectangle drawn behind the
+          row text — RGB ``(0.6, 0.75, 0.85)`` matches Acrobat's default
+          listbox selection color.
+        - Rows scroll downward from the top of the rect at one
+          ``line_height`` per option; rows whose baseline falls below the
+          rect are clipped by the standard ``/Tx BMC`` clip path.
+        """
+        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
+        if rect is None:
+            return
+        llx, lly, urx, ury = rect
+        width = urx - llx
+        height = ury - lly
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        appearance_cos = self._fresh_form_xobject(width, height)
+        appearance_stream = PDAppearanceStream(appearance_cos)
+        font = self._resolve_font(font_name)
+        resolved_size = font_size if font_size > 0.0 else self._auto_size(height)
+        line_height = resolved_size * 1.15
+
+        # Resolve the highlighted-row index set: union of /I and any
+        # option index whose value appears in /V.
+        highlighted: set[int] = set(i for i in selected_indices if i >= 0)
+        for sel in selected_values:
+            for idx, opt in enumerate(options):
+                if opt == sel:
+                    highlighted.add(idx)
+
+        with PDAppearanceContentStream(appearance_stream) as cs:
+            cs._buffer.extend(b"/Tx BMC\n")  # type: ignore[attr-defined]
+            cs.save_graphics_state()
+            interior_w = max(0.0, width - 2.0)
+            interior_h = max(0.0, height - 2.0)
+            if interior_w > 0.0 and interior_h > 0.0:
+                cs.add_rect(1.0, 1.0, interior_w, interior_h)
+                cs._write_operator(b"W")  # type: ignore[attr-defined]
+                cs._write_operator(b"n")  # type: ignore[attr-defined]
+
+            # Selection highlight rectangles — drawn before the text so
+            # the glyphs paint on top.
+            top_y = max(2.0, height - resolved_size * 1.15)
+            visible_options = options[top_index:] if top_index < len(options) else []
+            for visible_idx, _ in enumerate(visible_options):
+                option_idx = top_index + visible_idx
+                if option_idx not in highlighted:
+                    continue
+                row_y = top_y - visible_idx * line_height
+                # Highlight rect spans the full interior width and one line.
+                cs.set_non_stroking_color((0.6, 0.75, 0.85))
+                cs.add_rect(
+                    1.0,
+                    max(0.0, row_y - resolved_size * 0.15),
+                    interior_w,
+                    line_height,
+                )
+                cs.fill()
+
+            # Row text.
+            cs.begin_text()
+            if color is not None:
+                cs.set_non_stroking_color(color)
+            else:
+                cs.set_non_stroking_color((0.0,))
+            cs.set_font(font, resolved_size)
+            x = 2.0
+            cs.new_line_at_offset(x, top_y)
+            first = True
+            for option in visible_options:
+                if not first:
+                    cs.new_line_at_offset(0.0, -line_height)
+                first = False
+                cs.show_text(option)
             cs.end_text()
             cs.restore_graphics_state()
             cs._buffer.extend(b"EMC\n")  # type: ignore[attr-defined]
@@ -923,6 +1076,10 @@ class PDAppearanceGenerator:
         for widget in field.get_widgets():
             self._regenerate_signature_widget(widget, signer_name, sign_date)
 
+    # Default placeholder caption rendered for unsigned signature
+    # widgets — matches Acrobat's "Sign here" hint.
+    UNSIGNED_PLACEHOLDER: str = "Sign here"
+
     def _regenerate_signature_widget(
         self,
         widget: object,
@@ -943,16 +1100,26 @@ class PDAppearanceGenerator:
         appearance_stream = PDAppearanceStream(appearance_cos)
         font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
         size = 10.0
+        is_signed = bool(signer_name or sign_date)
 
         with PDAppearanceContentStream(appearance_stream) as cs:
             cs.save_graphics_state()
-            # Frame the signature box with a thin border.
+            # Frame the signature box with a thin border. Unsigned widgets
+            # use a dashed outline so reviewers visually distinguish them
+            # from signed-and-rendered widgets.
             cs.set_stroking_color((0.0,))
             cs._buffer.extend(b"1 w\n")  # type: ignore[attr-defined]
+            if not is_signed:
+                # 3-on / 3-off dashed line — Acrobat default for empty sigs.
+                cs._buffer.extend(b"[3 3] 0 d\n")  # type: ignore[attr-defined]
             cs.add_rect(0.5, 0.5, max(0.0, width - 1.0), max(0.0, height - 1.0))
             cs.stroke()
+            if not is_signed:
+                # Reset the dash pattern so subsequent drawing inside the
+                # appearance isn't unintentionally dashed.
+                cs._buffer.extend(b"[] 0 d\n")  # type: ignore[attr-defined]
 
-            if signer_name or sign_date:
+            if is_signed:
                 cs.begin_text()
                 cs.set_non_stroking_color((0.0,))
                 cs.set_font(font, size)
@@ -963,6 +1130,26 @@ class PDAppearanceGenerator:
                 cs.show_text(signer_name or "")
                 cs.new_line_at_offset(0.0, -line_height)
                 cs.show_text(sign_date or "")
+                cs.end_text()
+            else:
+                # Unsigned placeholder — 50% gray "Sign here" centered in
+                # the box. Helps Acrobat / Reader users locate empty
+                # signature fields.
+                placeholder_size = max(
+                    self.AUTO_FONT_SIZE_MIN,
+                    min(self.AUTO_FONT_SIZE_MAX, height * 0.5),
+                )
+                placeholder = self.UNSIGNED_PLACEHOLDER
+                text_w = self._estimate_text_width(
+                    font, placeholder_size, placeholder
+                )
+                x = max(2.0, (width - text_w) / 2.0)
+                y = max(2.0, (height - placeholder_size) / 2.0)
+                cs.begin_text()
+                cs.set_non_stroking_color((0.5,))
+                cs.set_font(font, placeholder_size)
+                cs.new_line_at_offset(x, y)
+                cs.show_text(placeholder)
                 cs.end_text()
 
             cs.restore_graphics_state()

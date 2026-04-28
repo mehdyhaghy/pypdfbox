@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
-from pypdfbox.pdmodel.pd_document import PDDocument
-from pypdfbox.pdmodel.pd_page import PDPage
-from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.interactive.form import (
     PDAcroForm,
     PDTextField,
 )
-
+from pypdfbox.pdmodel.pd_document import PDDocument
+from pypdfbox.pdmodel.pd_page import PDPage
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 # ---------- helpers ----------
 
@@ -100,15 +97,11 @@ def test_flatten_single_widget_appends_form_to_page_and_drops_acro_form() -> Non
     # /AcroForm gone from catalog.
     assert doc.get_document_catalog().get_acro_form() is None
     # /Annots on the page is now empty.
-    annots = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Annots")
-    )
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
     assert isinstance(annots, COSArray)
     assert annots.size() == 0
     # /Resources /XObject contains exactly one entry referencing our form.
-    res = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Resources")
-    )
+    res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
     assert isinstance(res, COSDictionary)
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
     assert isinstance(xo, COSDictionary)
@@ -132,22 +125,16 @@ def test_flatten_two_widgets_same_page_get_unique_names() -> None:
     field_a = PDTextField(form)
     field_a.set_partial_name("a")
     ap_a = _make_form_xobject((0.0, 0.0, 100.0, 20.0))
-    _attach_widget(
-        field_a.get_cos_object(), page, (50.0, 50.0, 150.0, 70.0), ap_a
-    )
+    _attach_widget(field_a.get_cos_object(), page, (50.0, 50.0, 150.0, 70.0), ap_a)
     field_b = PDTextField(form)
     field_b.set_partial_name("b")
     ap_b = _make_form_xobject((0.0, 0.0, 100.0, 20.0))
-    _attach_widget(
-        field_b.get_cos_object(), page, (50.0, 100.0, 150.0, 120.0), ap_b
-    )
+    _attach_widget(field_b.get_cos_object(), page, (50.0, 100.0, 150.0, 120.0), ap_b)
     form.set_fields([field_a, field_b])
 
     form.flatten()
 
-    res = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Resources")
-    )
+    res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
     keys = sorted(k.name for k in xo.key_set())
     assert len(keys) == 2
@@ -165,24 +152,18 @@ def test_flatten_widget_without_appearance_is_skipped_no_error() -> None:
     field = PDTextField(form)
     field.set_partial_name("missing_ap")
     # No appearance — pass appearance=None.
-    _attach_widget(
-        field.get_cos_object(), page, (10.0, 10.0, 60.0, 30.0), None
-    )
+    _attach_widget(field.get_cos_object(), page, (10.0, 10.0, 60.0, 30.0), None)
     form.set_fields([field])
 
     form.flatten()  # must not raise.
 
     # The widget is *not* removed from /Annots when skipped — matches
     # upstream's "appearance-bearing only" flatten contract.
-    annots = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Annots")
-    )
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
     assert isinstance(annots, COSArray)
     assert annots.size() == 1
     # No XObject was registered.
-    res = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Resources")
-    )
+    res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
     if isinstance(res, COSDictionary):
         xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
         if isinstance(xo, COSDictionary):
@@ -203,25 +184,19 @@ def test_flatten_two_pages_each_get_their_own_appended_stream() -> None:
     field_a = PDTextField(form)
     field_a.set_partial_name("on_a")
     ap_a = _make_form_xobject((0.0, 0.0, 80.0, 20.0))
-    _attach_widget(
-        field_a.get_cos_object(), page_a, (10.0, 10.0, 90.0, 30.0), ap_a
-    )
+    _attach_widget(field_a.get_cos_object(), page_a, (10.0, 10.0, 90.0, 30.0), ap_a)
 
     field_b = PDTextField(form)
     field_b.set_partial_name("on_b")
     ap_b = _make_form_xobject((0.0, 0.0, 80.0, 20.0))
-    _attach_widget(
-        field_b.get_cos_object(), page_b, (10.0, 10.0, 90.0, 30.0), ap_b
-    )
+    _attach_widget(field_b.get_cos_object(), page_b, (10.0, 10.0, 90.0, 30.0), ap_b)
     form.set_fields([field_a, field_b])
 
     form.flatten()
 
     # Each page got its own XObject + Do reference.
     for page, ap in ((page_a, ap_a), (page_b, ap_b)):
-        res = page.get_cos_object().get_dictionary_object(
-            COSName.get_pdf_name("Resources")
-        )
+        res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
         assert isinstance(res, COSDictionary)
         xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
         assert isinstance(xo, COSDictionary)
@@ -230,16 +205,27 @@ def test_flatten_two_pages_each_get_their_own_appended_stream() -> None:
         assert xo.get_dictionary_object(names[0]) is ap
         contents = page.get_contents()
         assert f"/{names[0].name} Do".encode("ascii") in contents
-        annots = page.get_cos_object().get_dictionary_object(
-            COSName.get_pdf_name("Annots")
-        )
+        annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
         assert annots.size() == 0
 
 
-def test_flatten_refresh_appearances_true_raises_not_implemented() -> None:
+def test_flatten_refresh_appearances_true_invokes_refresh_path() -> None:
+    """When ``refresh_appearances=True``, flatten dispatches through
+    :meth:`refresh_appearances` (which calls
+    ``PDTerminalField.construct_appearances`` on every terminal) before
+    flattening. The lite ``construct_appearances`` is a debug-logged
+    no-op, so the call must succeed without raising."""
     doc, form = _make_document_with_form()
-    with pytest.raises(NotImplementedError, match="refresh_appearances"):
-        form.flatten(refresh_appearances=True)
+    page = next(iter(doc.get_pages()))
+
+    field = PDTextField(form)
+    field.set_partial_name("name")
+    appearance = _make_form_xobject((0.0, 0.0, 100.0, 20.0))
+    _attach_widget(field.get_cos_object(), page, (10.0, 10.0, 110.0, 30.0), appearance)
+    form.set_fields([field])
+
+    form.flatten(refresh_appearances=True)  # must not raise.
+    assert doc.get_document_catalog().get_acro_form() is None
 
 
 def test_flatten_subset_keeps_other_fields_and_acro_form() -> None:
@@ -249,16 +235,12 @@ def test_flatten_subset_keeps_other_fields_and_acro_form() -> None:
     keep = PDTextField(form)
     keep.set_partial_name("keep")
     keep_ap = _make_form_xobject((0.0, 0.0, 50.0, 10.0))
-    _attach_widget(
-        keep.get_cos_object(), page, (10.0, 10.0, 60.0, 20.0), keep_ap
-    )
+    _attach_widget(keep.get_cos_object(), page, (10.0, 10.0, 60.0, 20.0), keep_ap)
 
     flat = PDTextField(form)
     flat.set_partial_name("flat")
     flat_ap = _make_form_xobject((0.0, 0.0, 50.0, 10.0))
-    _attach_widget(
-        flat.get_cos_object(), page, (70.0, 10.0, 120.0, 20.0), flat_ap
-    )
+    _attach_widget(flat.get_cos_object(), page, (70.0, 10.0, 120.0, 20.0), flat_ap)
     form.set_fields([keep, flat])
 
     form.flatten(fields=[flat])
@@ -269,15 +251,11 @@ def test_flatten_subset_keeps_other_fields_and_acro_form() -> None:
     fields_now = form.get_fields()
     assert [f.get_partial_name() for f in fields_now] == ["keep"]
     # `keep`'s widget is still in /Annots.
-    annots = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Annots")
-    )
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
     assert annots.size() == 1
     # Only the flattened form was appended.
     contents = page.get_contents()
-    res = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Resources")
-    )
+    res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
     names = list(xo.key_set())
     assert len(names) == 1
@@ -294,12 +272,8 @@ def test_flatten_checkbox_uses_as_state_to_pick_appearance() -> None:
     # poke the widget /AP /N straight at a state dict; the field type
     # only governs /FT, which flatten ignores.
     field.set_partial_name("box")
-    field.get_cos_object().set_item(
-        COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Widget")
-    )
-    field.get_cos_object().set_item(
-        COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot")
-    )
+    field.get_cos_object().set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Widget"))
+    field.get_cos_object().set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot"))
     from pypdfbox.cos import COSFloat
 
     rect = COSArray()
@@ -316,9 +290,7 @@ def test_flatten_checkbox_uses_as_state_to_pick_appearance() -> None:
     ap = COSDictionary()
     ap.set_item(COSName.get_pdf_name("N"), n_states)
     field.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
-    field.get_cos_object().set_item(
-        COSName.get_pdf_name("AS"), COSName.get_pdf_name("Yes")
-    )
+    field.get_cos_object().set_item(COSName.get_pdf_name("AS"), COSName.get_pdf_name("Yes"))
 
     annots = COSArray()
     annots.add(field.get_cos_object())
@@ -327,9 +299,7 @@ def test_flatten_checkbox_uses_as_state_to_pick_appearance() -> None:
     form.set_fields([field])
     form.flatten()
 
-    res = page.get_cos_object().get_dictionary_object(
-        COSName.get_pdf_name("Resources")
-    )
+    res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
     names = list(xo.key_set())
     assert len(names) == 1

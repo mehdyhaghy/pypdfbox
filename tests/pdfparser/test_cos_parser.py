@@ -241,9 +241,22 @@ def test_parse_indirect_object_registers_in_document_pool() -> None:
     assert isinstance(body, COSInteger) and body.value == 42
 
 
-def test_parse_indirect_object_with_stream_keyword_raises_not_implemented() -> None:
-    # Stream body parsing belongs to PDFParser cluster #3 (needs /Length).
+def test_parse_indirect_object_with_direct_length_stream_returns_stream() -> None:
+    # Direct-/Length stream bodies are handled inline by COSParser; only
+    # indirect-/Length resolution still defers to PDFParser.
+    from pypdfbox.cos import COSStream
+
     p = parser(b"4 0 obj << /Length 5 >> stream\nABCDE\nendstream endobj")
+    obj = p.parse_indirect_object_definition()
+    assert isinstance(obj, COSObject)
+    body = obj.get_object()
+    assert isinstance(body, COSStream)
+    assert body.get_raw_data() == b"ABCDE"
+
+
+def test_parse_indirect_object_with_indirect_length_raises_not_implemented() -> None:
+    # Indirect-/Length stream bodies still belong to PDFParser cluster #3.
+    p = parser(b"4 0 obj << /Length 99 0 R >> stream\nABCDE\nendstream endobj")
     with pytest.raises(NotImplementedError):
         p.parse_indirect_object_definition()
 
@@ -306,3 +319,187 @@ def test_realistic_page_dictionary() -> None:
     assert media.to_float_array() == [0.0, 0.0, 612.0, 792.0]
     contents = obj.get_item("Contents")
     assert isinstance(contents, COSObject) and contents.object_number == 9
+
+
+# ---------- direct-/Length stream bodies ----------
+
+
+def test_stream_body_with_direct_length_round_trips() -> None:
+    from pypdfbox.cos import COSStream
+
+    p = parser(b"5 0 obj << /Length 11 >> stream\nhello world\nendstream endobj")
+    obj = p.parse_indirect_object_definition()
+    body = obj.get_object()
+    assert isinstance(body, COSStream)
+    assert body.get_raw_data() == b"hello world"
+
+
+def test_stream_body_crlf_eol_after_stream_keyword() -> None:
+    from pypdfbox.cos import COSStream
+
+    pdf = b"5 0 obj << /Length 5 >> stream\r\nABCDE\nendstream endobj"
+    body = parser(pdf).parse_indirect_object_definition().get_object()
+    assert isinstance(body, COSStream)
+    assert body.get_raw_data() == b"ABCDE"
+
+
+def test_stream_body_truncated_raises() -> None:
+    p = parser(b"5 0 obj << /Length 99 >> stream\nshort\nendstream endobj")
+    with pytest.raises(PDFParseError):
+        p.parse_indirect_object_definition()
+
+
+def test_stream_body_negative_length_raises() -> None:
+    p = parser(b"5 0 obj << /Length -1 >> stream\nABCDE\nendstream endobj")
+    with pytest.raises(PDFParseError):
+        p.parse_indirect_object_definition()
+
+
+# ---------- parse_pdf_header ----------
+
+
+def test_parse_pdf_header_basic() -> None:
+    p = parser(b"%PDF-1.7\nbody...")
+    assert p.parse_pdf_header() == 1.7
+
+
+def test_parse_pdf_header_tolerates_leading_garbage() -> None:
+    p = parser(b"junk garbage\nMore garbage\n%PDF-1.4\n")
+    assert p.parse_pdf_header() == 1.4
+
+
+def test_parse_pdf_header_missing_magic_raises() -> None:
+    with pytest.raises(PDFParseError):
+        parser(b"this is not a PDF").parse_pdf_header()
+
+
+def test_parse_pdf_header_malformed_version_raises() -> None:
+    with pytest.raises(PDFParseError):
+        parser(b"%PDF-bad\n").parse_pdf_header()
+
+
+# ---------- parse_xref_table ----------
+
+
+def test_parse_xref_table_traditional_section() -> None:
+    pdf = (
+        b"xref\n0 3\n"
+        b"0000000000 65535 f \n"
+        b"0000000017 00000 n \n"
+        b"0000000089 00000 n \n"
+        b"trailer << /Size 3 >>\n"
+    )
+    table: dict = {}
+    assert parser(pdf).parse_xref_table(0, table) is True
+    assert table[COSObjectKey(0, 65535)] == -1  # free entry
+    assert table[COSObjectKey(1, 0)] == 17
+    assert table[COSObjectKey(2, 0)] == 89
+
+
+def test_parse_xref_table_returns_false_when_keyword_missing() -> None:
+    p = parser(b"not an xref")
+    assert p.parse_xref_table(0) is False
+
+
+def test_parse_xref_table_first_write_wins_for_duplicate_keys() -> None:
+    # Two adjacent subsections with overlapping ranges — first wins.
+    pdf = (
+        b"xref\n0 1\n0000000000 65535 f \n"
+        b"0 1\n0000000999 00000 n \n"
+        b"trailer << /Size 1 >>\n"
+    )
+    table: dict = {}
+    parser(pdf).parse_xref_table(0, table)
+    # First write wins — the "f" entry at offset 0.
+    assert table[COSObjectKey(0, 65535)] == -1
+
+
+# ---------- parse_xref_object_stream ----------
+
+
+def test_parse_xref_object_stream_returns_stream_with_dict() -> None:
+    from pypdfbox.cos import COSStream
+
+    body = b"\x00\x00\x00\x00"  # 4-byte body, content irrelevant for shape test
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /XRef /Length 4 /W [1 2 1] /Size 1 >>\n"
+        b"stream\n" + body + b"\nendstream\nendobj\n"
+    )
+    p = parser(pdf)
+    s = p.parse_xref_object_stream(0)
+    assert isinstance(s, COSStream)
+    assert s.get_name("Type") == "XRef"
+    assert s.is_skip_encryption()
+    assert s.get_raw_data() == body
+
+
+def test_parse_xref_object_stream_rejects_non_xref_when_standalone() -> None:
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /Other /Length 4 >>\n"
+        b"stream\nDATA\nendstream\nendobj\n"
+    )
+    with pytest.raises(PDFParseError):
+        parser(pdf).parse_xref_object_stream(0)
+
+
+def test_parse_xref_object_stream_tolerates_non_xref_when_not_standalone() -> None:
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /Other /Length 4 >>\n"
+        b"stream\nDATA\nendstream\nendobj\n"
+    )
+    s = parser(pdf).parse_xref_object_stream(0, is_standalone=False)
+    assert s.get_name("Type") == "Other"
+
+
+# ---------- parse_object_stream ----------
+
+
+def test_parse_object_stream_decodes_packed_objects() -> None:
+    # ObjStm with N=2, First=8, two integers stored at offsets 0 and 3.
+    # Header: "10 0 11 3" (no filter applied for simplicity).
+    body = b"10 0 11 3\n42  99"  # 16 bytes
+    # Now stand up a document containing that ObjStm at obj 5.
+    doc = COSDocument()
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /ObjStm /N 2 /First 10 /Length 16 >>\n"
+        b"stream\n" + body + b"\nendstream\nendobj\n"
+    )
+    p = parser(pdf, document=doc)
+    # Parse the ObjStm object so the pool entry is populated.
+    p.parse_indirect_object_definition()
+    # Now decode it.
+    p2 = parser(b"", document=doc)
+    items = p2.parse_object_stream(5)
+    assert len(items) == 2
+    assert items[0] == COSInteger(42)
+    assert items[1] == COSInteger(99)
+    # Pool should have entries for obj 10 and obj 11 (gen 0 by spec).
+    assert doc.has_object(COSObjectKey(10, 0))
+    assert doc.has_object(COSObjectKey(11, 0))
+    assert doc.get_object_from_pool(COSObjectKey(10, 0)).get_object() == COSInteger(42)
+
+
+def test_parse_object_stream_without_document_raises() -> None:
+    p = parser(b"")
+    with pytest.raises(PDFParseError):
+        p.parse_object_stream(5)
+
+
+def test_parse_object_stream_missing_n_or_first_raises() -> None:
+    # ObjStm dict lacks /N — must raise.
+    body = b""
+    doc = COSDocument()
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /ObjStm /Length 0 >>\n"
+        b"stream\n" + body + b"\nendstream\nendobj\n"
+    )
+    p = parser(pdf, document=doc)
+    p.parse_indirect_object_definition()
+    p2 = parser(b"", document=doc)
+    with pytest.raises(PDFParseError):
+        p2.parse_object_stream(5)

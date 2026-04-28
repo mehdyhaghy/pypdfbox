@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSBoolean, COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
@@ -15,6 +15,7 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination 
     PDDestination,
 )
 
+from .open_mode import OpenMode
 from .pd_action import PDAction
 from .pd_target_directory import PDTargetDirectory
 
@@ -95,14 +96,30 @@ class PDActionEmbeddedGoTo(PDAction):
     # set_new_window. Default per PDF 32000-1 §12.6.4.4 is ``False``.
     def get_open_in_new_window(self) -> bool:
         """Spec-named accessor for the ``/NewWindow`` boolean. Defaults to
-        ``False`` when the entry is absent. Mirrors upstream PDFBox
-        ``getOpenInNewWindow()``."""
+        ``False`` when the entry is absent. For the upstream tri-state
+        :class:`OpenMode` surface use :meth:`get_open_in_new_window_mode`."""
         return self._action.get_boolean(_NEW_WINDOW, False)
 
-    def set_open_in_new_window(self, value: bool) -> None:
-        """Spec-named setter for the ``/NewWindow`` boolean. Mirrors
-        upstream PDFBox ``setOpenInNewWindow(boolean)``."""
-        self._action.set_boolean(_NEW_WINDOW, value)
+    def set_open_in_new_window(self, value: bool | OpenMode) -> None:
+        """Spec-named setter for ``/NewWindow``. Accepts a plain ``bool``
+        or an :class:`OpenMode`. :attr:`OpenMode.USER_PREFERENCE` removes
+        the entry."""
+        if isinstance(value, OpenMode):
+            if value is OpenMode.USER_PREFERENCE:
+                self._action.remove_item(_NEW_WINDOW)
+                return
+            self._action.set_boolean(_NEW_WINDOW, value is OpenMode.NEW_WINDOW)
+            return
+        self._action.set_boolean(_NEW_WINDOW, bool(value))
+
+    def get_open_in_new_window_mode(self) -> OpenMode:
+        """Return ``/NewWindow`` as an :class:`OpenMode` tri-state. Mirrors
+        upstream ``PDActionEmbeddedGoTo.getOpenInNewWindow()`` which
+        returns ``OpenMode`` rather than a plain boolean."""
+        entry = self._action.get_dictionary_object(_NEW_WINDOW)
+        if isinstance(entry, COSBoolean):
+            return OpenMode.NEW_WINDOW if entry.get_value() else OpenMode.SAME_WINDOW
+        return OpenMode.USER_PREFERENCE
 
     def get_target(self) -> PDTargetDirectory | None:
         d = self._action.get_dictionary_object(_T)

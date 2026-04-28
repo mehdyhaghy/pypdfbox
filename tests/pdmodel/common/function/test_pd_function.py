@@ -3,12 +3,14 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSStream
+from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.common.function import (
     PDFunction,
     PDFunctionType0,
     PDFunctionType2,
     PDFunctionType3,
     PDFunctionType4,
+    PDFunctionTypeIdentity,
 )
 
 
@@ -572,3 +574,94 @@ def test_type4_eval_clips_input_and_output() -> None:
     assert fn.eval([5.0]) == pytest.approx([4.0])
     # input -10.0 clipped to -2.0 -> 4.0
     assert fn.eval([-10.0]) == pytest.approx([4.0])
+
+
+# ---------- interpolate static helper ----------
+
+
+def test_interpolate_maps_endpoints() -> None:
+    assert PDFunction.interpolate(0.0, 0.0, 1.0, 10.0, 20.0) == pytest.approx(10.0)
+    assert PDFunction.interpolate(1.0, 0.0, 1.0, 10.0, 20.0) == pytest.approx(20.0)
+
+
+def test_interpolate_maps_midpoint() -> None:
+    assert PDFunction.interpolate(0.5, 0.0, 1.0, 10.0, 20.0) == pytest.approx(15.0)
+
+
+def test_interpolate_degenerate_x_range_returns_y_min() -> None:
+    """PDFBOX-5593: when xMax == xMin, return yMin instead of dividing by zero."""
+    assert PDFunction.interpolate(0.5, 1.0, 1.0, 10.0, 20.0) == pytest.approx(10.0)
+
+
+def test_interpolate_inverted_y_range() -> None:
+    # Interpolating over an inverted output range still respects the
+    # straight-line formula (y_max < y_min just yields a downward ramp).
+    assert PDFunction.interpolate(0.5, 0.0, 1.0, 1.0, 0.0) == pytest.approx(0.5)
+
+
+# ---------- clip_to_range / clip_value_to_range upstream-named aliases ----------
+
+
+def test_clip_to_range_alias_uses_range() -> None:
+    fn = _make_type2([0.0], [1.0], 1.0, rng=[0.0, 0.5])
+    assert fn.clip_to_range([1.0]) == pytest.approx([0.5])
+
+
+def test_clip_value_to_range_clamps_below_above() -> None:
+    assert PDFunction.clip_value_to_range(-1.0, 0.0, 1.0) == pytest.approx(0.0)
+    assert PDFunction.clip_value_to_range(2.0, 0.0, 1.0) == pytest.approx(1.0)
+    assert PDFunction.clip_value_to_range(0.5, 0.0, 1.0) == pytest.approx(0.5)
+
+
+def test_clip_value_to_range_swapped_bounds() -> None:
+    # Tolerate min > max — normalise then clamp.
+    assert PDFunction.clip_value_to_range(0.5, 1.0, 0.0) == pytest.approx(0.5)
+    assert PDFunction.clip_value_to_range(2.0, 1.0, 0.0) == pytest.approx(1.0)
+
+
+# ---------- __str__ matches upstream ----------
+
+
+def test_str_reports_function_type_number() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    fn = PDFunction.create(raw)
+    assert str(fn) == "FunctionType2"
+
+
+# ---------- /Type = /Function set on stream construction ----------
+
+
+def test_stream_construction_sets_type_function() -> None:
+    raw = COSStream()
+    PDFunctionType0(raw)
+    type_name = raw.get_dictionary_object("Type")
+    assert isinstance(type_name, COSName)
+    assert type_name.get_name() == "Function"
+
+
+# ---------- Identity sentinel handling ----------
+
+
+def test_create_returns_identity_for_cos_name_identity() -> None:
+    result = PDFunction.create(COSName.get_pdf_name("Identity"))
+    assert isinstance(result, PDFunctionTypeIdentity)
+
+
+def test_identity_eval_returns_input_unchanged() -> None:
+    fn = PDFunctionTypeIdentity()
+    assert fn.eval([0.1, 0.2, 0.3]) == [0.1, 0.2, 0.3]
+
+
+def test_identity_str_matches_upstream() -> None:
+    assert str(PDFunctionTypeIdentity()) == "FunctionTypeIdentity"
+
+
+def test_identity_get_range_is_none() -> None:
+    assert PDFunctionTypeIdentity().get_range() is None
+
+
+def test_identity_get_function_type_raises() -> None:
+    fn = PDFunctionTypeIdentity()
+    with pytest.raises(NotImplementedError):
+        fn.get_function_type()

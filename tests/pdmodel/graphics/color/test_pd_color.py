@@ -371,3 +371,114 @@ def test_constructor_variant_pattern_keyword_conflict_raises() -> None:
             COSName.get_pdf_name("P2"),
             pattern=name,
         )
+
+
+# ---------- get_java_color (AWT replacement) ----------
+
+
+def test_get_java_color_matches_to_rgb_for_device_rgb() -> None:
+    color = PDColor([0.25, 0.5, 0.75], PDDeviceRGB.INSTANCE)
+    assert color.get_java_color() == color.to_rgb()
+
+
+def test_get_java_color_returns_three_floats_in_unit_range() -> None:
+    color = PDColor([0.0, 1.0, 1.0, 0.0], PDDeviceCMYK.INSTANCE)
+    rgb = color.get_java_color()
+    assert isinstance(rgb, tuple)
+    assert len(rgb) == 3
+    for component in rgb:
+        assert 0.0 <= component <= 1.0
+
+
+# ---------- to_rgb_image / to_raw_image (Pillow) ----------
+
+
+def test_to_rgb_image_default_size_is_one_by_one() -> None:
+    from PIL import Image
+
+    color = PDColor([1.0, 0.5, 0.0], PDDeviceRGB.INSTANCE)
+    img = color.to_rgb_image()
+    assert isinstance(img, Image.Image)
+    assert img.size == (1, 1)
+    assert img.mode == "RGB"
+
+
+def test_to_rgb_image_custom_size_round_trip() -> None:
+    color = PDColor([0.0, 1.0, 0.0], PDDeviceRGB.INSTANCE)
+    img = color.to_rgb_image(4, 5)
+    assert img.size == (4, 5)
+    assert img.getpixel((2, 3)) == (0, 255, 0)
+
+
+def test_to_raw_image_for_device_gray_uses_l_mode() -> None:
+    img = PDColor([0.25], PDDeviceGray.INSTANCE).to_raw_image(2, 2)
+    assert img.mode == "L"
+    assert img.size == (2, 2)
+
+
+def test_to_raw_image_for_device_cmyk_uses_cmyk_mode() -> None:
+    img = PDColor(
+        [0.0, 1.0, 1.0, 0.0], PDDeviceCMYK.INSTANCE
+    ).to_raw_image(1, 1)
+    assert img.mode == "CMYK"
+
+
+def test_to_raw_image_for_lab_falls_through_to_srgb() -> None:
+    img = PDColor([100.0, 0.0, 0.0], PDLab()).to_raw_image(1, 1)
+    assert img.mode == "RGB"
+
+
+# ---------- Indexed lookup parity ----------
+
+
+def test_indexed_to_rgb_reads_n_bytes_from_lookup_table() -> None:
+    from pypdfbox.cos import COSArray, COSInteger, COSString
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    # 3-entry palette: white, red, blue (DeviceRGB base, 1 byte/component).
+    palette = bytes([255, 255, 255, 255, 0, 0, 0, 0, 255])
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(2))
+    arr.add(COSString(palette))
+    indexed = PDIndexed(arr)
+
+    assert PDColor([0], indexed).to_rgb() == (1.0, 1.0, 1.0)
+    assert PDColor([1], indexed).to_rgb() == (1.0, 0.0, 0.0)
+    assert PDColor([2], indexed).to_rgb() == (0.0, 0.0, 1.0)
+
+
+def test_indexed_to_rgb_clamps_index_to_hival() -> None:
+    from pypdfbox.cos import COSArray, COSInteger, COSString
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    palette = bytes([255, 0, 0, 0, 255, 0])  # 2 entries
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(1))
+    arr.add(COSString(palette))
+    indexed = PDIndexed(arr)
+
+    # Index 99 is clamped to hival=1 -> green palette entry.
+    assert PDColor([99], indexed).to_rgb() == (0.0, 1.0, 0.0)
+
+
+def test_indexed_to_rgb_with_device_gray_base_reads_one_byte_per_entry() -> None:
+    from pypdfbox.cos import COSArray, COSInteger, COSString
+    from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+    from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceGray.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(2))
+    arr.add(COSString(bytes([0, 128, 255])))
+    indexed = PDIndexed(arr)
+
+    assert PDColor([0], indexed).to_rgb() == (0.0, 0.0, 0.0)
+    rgb_mid = PDColor([1], indexed).to_rgb()
+    assert rgb_mid[0] == pytest.approx(128 / 255.0, abs=1e-6)
+    assert rgb_mid[0] == rgb_mid[1] == rgb_mid[2]
+    assert PDColor([2], indexed).to_rgb() == (1.0, 1.0, 1.0)
