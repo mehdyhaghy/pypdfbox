@@ -50,6 +50,9 @@ _UCR: COSName = COSName.get_pdf_name("UCR")
 _UCR2: COSName = COSName.get_pdf_name("UCR2")
 _BG: COSName = COSName.get_pdf_name("BG")
 _BG2: COSName = COSName.get_pdf_name("BG2")
+# Apple-specific advanced-annotations key (PDFBox PDFBOX-3017 / ISO 32000-2
+# §11.6.8). Upstream stores it as the literal string ``AAPL:AA``.
+_AAPL_AA: COSName = COSName.get_pdf_name("AAPL:AA")
 
 
 class PDExtendedGraphicsState:
@@ -590,10 +593,14 @@ class PDExtendedGraphicsState:
         """Returns the raw ``/TR`` entry (transfer function).
 
         Per the PDF spec the value is one of: a function, an array of four
-        functions, or the name ``/Identity``. This lite port returns the
-        raw COS object; the typed function wrapper is deferred.
+        functions, or the name ``/Identity``. Mirrors upstream:
+        a ``COSArray`` whose size is not 4 is filtered out and ``None``
+        is returned.
         """
-        return self._dict.get_dictionary_object(_TR)
+        base = self._dict.get_dictionary_object(_TR)
+        if isinstance(base, COSArray) and base.size() != 4:
+            return None
+        return base
 
     def set_transfer(self, transfer: COSBase | None) -> None:
         if transfer is None:
@@ -606,14 +613,161 @@ class PDExtendedGraphicsState:
 
         Per the PDF spec the value is one of: a function, an array of four
         functions, the name ``/Identity``, or the name ``/Default``.
+        Mirrors upstream: a ``COSArray`` whose size is not 4 is filtered
+        out and ``None`` is returned.
         """
-        return self._dict.get_dictionary_object(_TR2)
+        base = self._dict.get_dictionary_object(_TR2)
+        if isinstance(base, COSArray) and base.size() != 4:
+            return None
+        return base
 
     def set_transfer2(self, transfer: COSBase | None) -> None:
         if transfer is None:
             self._dict.remove_item(_TR2)
             return
         self._dict.set_item(_TR2, transfer)
+
+    def get_transfer_typed(self) -> Any | None:
+        """Return ``/TR`` resolved to a typed :class:`PDFunction` (or list
+        of four ``PDFunction`` instances when the entry is a 4-array).
+
+        - ``None`` when the entry is absent or is a ``COSArray`` whose size
+          is not 4 (mirrors :meth:`get_transfer` upstream-parity filter).
+        - :class:`PDFunctionTypeIdentity` for the name ``/Identity``.
+        - A list of four ``PDFunction`` instances when the entry is a
+          4-array (one per process colorant; see PDF 32000-1 §11.7.5.3).
+        - A single :class:`PDFunction` instance otherwise.
+
+        Companion to :meth:`get_transfer` (raw COS access). Typed version
+        deferred until Wave 42 — see CHANGES.md.
+        """
+        return self._resolve_transfer(self.get_transfer())
+
+    def get_transfer2_typed(self) -> Any | None:
+        """Return ``/TR2`` resolved to a typed :class:`PDFunction` (or list
+        of four). See :meth:`get_transfer_typed` — only difference is the
+        spec-allowed ``/Default`` name, which is returned as the raw
+        ``COSName`` (no typed wrapper exists for /Default; callers compare
+        by name).
+        """
+        return self._resolve_transfer(self.get_transfer2())
+
+    @staticmethod
+    def _resolve_transfer(base: COSBase | None) -> Any | None:
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+
+        if base is None:
+            return None
+        if isinstance(base, COSName):
+            # /Identity → typed identity function; /Default has no typed
+            # wrapper so return the raw COSName for caller inspection.
+            if base.get_name() == "Identity":
+                return PDFunction.create(base)
+            return base
+        if isinstance(base, COSArray):
+            # Already filtered to size==4 by get_transfer / get_transfer2.
+            return [PDFunction.create(base.get_object(i)) for i in range(4)]
+        return PDFunction.create(base)
+
+    # ---------- BG / BG2 (black-generation functions) ----------
+
+    def get_black_generation(self) -> COSBase | None:
+        """Returns the raw ``/BG`` entry — a function (dictionary or
+        stream). Per PDF 32000-1 §11.7.5.3, ``/BG`` is always a single
+        function (no array, no name forms).
+        """
+        return self._dict.get_dictionary_object(_BG)
+
+    def set_black_generation(self, function: COSBase | None) -> None:
+        if function is None:
+            self._dict.remove_item(_BG)
+            return
+        self._dict.set_item(_BG, function)
+
+    def get_black_generation_typed(self) -> Any | None:
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+
+        return PDFunction.create(self.get_black_generation())
+
+    def get_black_generation2(self) -> COSBase | None:
+        """Returns the raw ``/BG2`` entry — a function or the name
+        ``/Default`` (PDF 32000-1 §11.7.5.3).
+        """
+        return self._dict.get_dictionary_object(_BG2)
+
+    def set_black_generation2(self, function: COSBase | None) -> None:
+        if function is None:
+            self._dict.remove_item(_BG2)
+            return
+        self._dict.set_item(_BG2, function)
+
+    def get_black_generation2_typed(self) -> Any | None:
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+
+        base = self.get_black_generation2()
+        if base is None:
+            return None
+        if isinstance(base, COSName):
+            # /Default — no typed wrapper; return raw for caller inspection.
+            return base
+        return PDFunction.create(base)
+
+    # ---------- UCR / UCR2 (undercolor-removal functions) ----------
+
+    def get_undercolor_removal(self) -> COSBase | None:
+        """Returns the raw ``/UCR`` entry — a single function (PDF
+        32000-1 §11.7.5.3).
+        """
+        return self._dict.get_dictionary_object(_UCR)
+
+    def set_undercolor_removal(self, function: COSBase | None) -> None:
+        if function is None:
+            self._dict.remove_item(_UCR)
+            return
+        self._dict.set_item(_UCR, function)
+
+    def get_undercolor_removal_typed(self) -> Any | None:
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+
+        return PDFunction.create(self.get_undercolor_removal())
+
+    def get_undercolor_removal2(self) -> COSBase | None:
+        """Returns the raw ``/UCR2`` entry — a function or the name
+        ``/Default`` (PDF 32000-1 §11.7.5.3).
+        """
+        return self._dict.get_dictionary_object(_UCR2)
+
+    def set_undercolor_removal2(self, function: COSBase | None) -> None:
+        if function is None:
+            self._dict.remove_item(_UCR2)
+            return
+        self._dict.set_item(_UCR2, function)
+
+    def get_undercolor_removal2_typed(self) -> Any | None:
+        from pypdfbox.pdmodel.common.function.pd_function import PDFunction  # noqa: PLC0415
+
+        base = self.get_undercolor_removal2()
+        if base is None:
+            return None
+        if isinstance(base, COSName):
+            return base
+        return PDFunction.create(base)
+
+    # ---------- AAPL:AA (Apple advanced annotations) ----------
+
+    def get_advanced_annotations(self) -> COSBase | None:
+        """Returns the raw ``/AAPL:AA`` entry. This is an Apple-specific
+        extension (not in the PDF spec); upstream PDFBox preserves the
+        entry on round-trip rather than parsing it. Returns ``None`` when
+        absent.
+        """
+        return self._dict.get_dictionary_object(_AAPL_AA)
+
+    def set_advanced_annotations(self, value: COSBase | None) -> None:
+        if value is None:
+            self._dict.remove_item(_AAPL_AA)
+            return
+        self._dict.set_item(_AAPL_AA, value)
 
     # ---------- HT / HTO (halftone) ----------
 

@@ -7,11 +7,12 @@ on a name-keyed OTF being present on the host (mirrors the strategy in
 from __future__ import annotations
 
 import io
+import struct
 from pathlib import Path
 
 import pytest
 
-from pypdfbox.fontbox.cff.cff_font import CFFFont
+from pypdfbox.fontbox.cff.cff_font import CFFFont, read_charset, read_encoding
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 
 # Candidate locations for a name-keyed CFF font (Type 1 flavour).
@@ -214,3 +215,60 @@ def test_get_type1_char_string_returns_wrapper(type1_font: CFFType1Font) -> None
     # Unknown name routes to GID 0 (.notdef).
     cs2 = type1_font.get_type1_char_string("__no_such_glyph__")
     assert hasattr(cs2, "get_path")
+
+
+# ---------- charset / encoding byte-level parser exercises ----------
+
+
+class TestReadCharsetType1Flavour:
+    """Format-0/1 charset parsing on a name-keyed (Type 1-flavoured) CFF.
+
+    For name-keyed fonts charset entries are SIDs that resolve through
+    the Standard Strings table or font-private STRING INDEX. We assert
+    the parser shapes here; full SID→name resolution is exercised
+    elsewhere via :class:`CFFFont.get_string`.
+    """
+
+    def test_format_0_three_glyphs(self) -> None:
+        # SIDs 0 (.notdef), 34 ("A"), 35 ("B"). Three Card16 SIDs after
+        # the format byte; .notdef is implicit.
+        data = bytes([0x00]) + struct.pack(">H", 34) + struct.pack(">H", 35)
+        out = read_charset(io.BytesIO(data), n_glyphs=3)
+        assert out == [0, 34, 35]
+
+    def test_format_1_one_range_covers_three_letters(self) -> None:
+        # Range starting at SID 34 ("A"), nLeft=2 → SIDs 34,35,36 ("A","B","C").
+        data = bytes([0x01]) + struct.pack(">H", 34) + bytes([0x02])
+        out = read_charset(io.BytesIO(data), n_glyphs=4)
+        assert out == [0, 34, 35, 36]
+
+
+class TestReadEncodingType1Flavour:
+    """Format-0/1 encoding parsing for a Type 1-flavoured CFF, plus
+    supplement handling (high-bit form)."""
+
+    # Charset: GID 0 = .notdef, GID 1 = SID 34 ("A"), GID 2 = SID 35 ("B").
+    CHARSET = [0, 34, 35]
+
+    def test_format_0_maps_codes_via_charset(self) -> None:
+        # nCodes=2, codes 0x41 ("A") → GID 1 (SID 34), 0x42 ("B") → GID 2 (SID 35).
+        data = bytes([0x00, 0x02, 0x41, 0x42])
+        encoding, sup = read_encoding(io.BytesIO(data), self.CHARSET)
+        assert encoding[0x41] == 34
+        assert encoding[0x42] == 35
+        assert sup == []
+
+    def test_format_1_range_and_supplement(self) -> None:
+        # Format byte 0x81: format 1 + supplement bit.
+        # Range: first=0x41, nLeft=1 → codes 0x41,0x42 → GIDs 1,2.
+        # Supplement: nSups=1, (0x90 → SID 200).
+        data = (
+            bytes([0x81, 0x01, 0x41, 0x01])  # format + nRanges + first + nLeft
+            + bytes([0x01, 0x90])  # nSups + sup code
+            + struct.pack(">H", 200)  # sup SID
+        )
+        encoding, sup = read_encoding(io.BytesIO(data), self.CHARSET)
+        assert encoding[0x41] == 34
+        assert encoding[0x42] == 35
+        assert encoding[0x90] == 200
+        assert sup == [(0x90, 200)]

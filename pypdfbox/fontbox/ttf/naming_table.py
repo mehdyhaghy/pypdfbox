@@ -150,6 +150,24 @@ class NamingTable(TTFTable):
             NameRecord.LANGUAGE_MACINTOSH_ENGLISH,
         )
 
+    def get_english_name(self, name_id: int) -> str | None:
+        """Return the English-language string for ``name_id``.
+
+        Walks the Unicode platform first (encodings 4 → 0), then Microsoft
+        Unicode BMP / English-US, then Macintosh Roman / English. Returns
+        ``None`` if no English record is present.
+        """
+        return self._get_english_name(name_id)
+
+    def get_names_by_id(self, name_id: int) -> list[NameRecord]:
+        """Return every record matching ``name_id`` in read order.
+
+        Useful when callers need to enumerate language variants of a single
+        name (upstream callers traverse the per-name-id sub-map directly,
+        but exposing a list keeps the API ergonomic from Python).
+        """
+        return [nr for nr in self._name_records if nr.get_name_id() == name_id]
+
     def get_name(
         self,
         name_id: int,

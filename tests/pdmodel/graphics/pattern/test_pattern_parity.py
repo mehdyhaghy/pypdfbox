@@ -268,3 +268,126 @@ def test_factory_dispatch_preserves_type_predicates() -> None:
     assert shading is not None
     assert shading.is_shading_pattern()
     assert not shading.is_tiling_pattern()
+
+
+# ---------- new parity round-out (Wave 42) ----------
+
+
+def test_abstract_pattern_get_type_constant() -> None:
+    """``getType()`` is the spec-fixed string 'Pattern'."""
+    assert PDTilingPattern().get_type() == "Pattern"
+    assert PDShadingPattern().get_type() == "Pattern"
+
+
+def test_abstract_pattern_set_pattern_type_writes_dict() -> None:
+    """Base setter writes ``/PatternType`` even though concrete subclasses
+    override the getter — mirrors upstream's
+    ``PDAbstractPattern.setPatternType`` surface."""
+    pattern = PDTilingPattern()
+    pattern.set_pattern_type(7)
+    assert (
+        pattern.get_cos_object().get_int(COSName.get_pdf_name("PatternType"), 0)
+        == 7
+    )
+
+
+def test_abstract_pattern_set_paint_type_on_base() -> None:
+    """Upstream defines ``setPaintType`` on the base class — usable on a
+    shading pattern even though the spec only defines /PaintType for
+    tiling patterns."""
+    shading = PDShadingPattern()
+    shading.set_paint_type(1)
+    assert (
+        shading.get_cos_object().get_int(_PAINT_TYPE, 0) == 1
+    )
+
+
+def test_factory_dispatch_with_resource_cache_forwarded() -> None:
+    """``PDAbstractPattern.create`` accepts a ``resource_cache`` kwarg and
+    threads it through to ``PDTilingPattern`` (mirrors upstream's two-arg
+    factory)."""
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
+
+    cache = DefaultResourceCache()
+    stream = COSStream()
+    stream.set_int(COSName.get_pdf_name("PatternType"), 1)
+    tiling = PDAbstractPattern.create(stream, resource_cache=cache)
+    assert isinstance(tiling, PDTilingPattern)
+    # The cache propagates down the resources lookup path; verify the
+    # private attribute (no public getter on PDTilingPattern itself).
+    assert tiling._resource_cache is cache  # type: ignore[attr-defined]
+
+
+def test_tiling_get_content_stream_returns_pdstream() -> None:
+    """``getContentStream`` wraps the pattern's COSStream as a PDStream."""
+    from pypdfbox.pdmodel.common.pd_stream import PDStream
+
+    pattern = PDTilingPattern()
+    cs = pattern.get_content_stream()
+    assert isinstance(cs, PDStream)
+    assert cs.get_cos_stream() is pattern.get_cos_object()
+
+
+def test_tiling_resources_carry_resource_cache() -> None:
+    """The cache stashed at construction time is passed on to each
+    ``PDResources`` instance returned by ``get_resources``."""
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
+
+    cache = DefaultResourceCache()
+    stream = COSStream()
+    stream.set_int(COSName.get_pdf_name("PatternType"), 1)
+    # Attach a /Resources subdictionary so get_resources returns non-None.
+    stream.set_item(COSName.RESOURCES, COSDictionary())  # type: ignore[attr-defined]
+    pattern = PDTilingPattern(stream, resource_cache=cache)
+    res = pattern.get_resources()
+    assert res is not None
+    assert res._resource_cache is cache  # type: ignore[attr-defined]
+
+
+# ---------- /Pattern color space dispatch (cross-cluster verification) ----------
+
+
+def test_pattern_color_space_colored_form_has_no_underlying() -> None:
+    """``PDPattern()`` (no underlying CS) — the colored / name form."""
+    from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+
+    cs = PDPattern()
+    assert cs.get_underlying_color_space() is None
+    assert cs.get_name() == "Pattern"
+    # Colored pattern serialises as the bare /Pattern name.
+    assert cs.get_cos_object() == COSName.get_pdf_name("Pattern")
+
+
+def test_pattern_color_space_uncolored_form_carries_underlying() -> None:
+    """Uncolored tiling pattern → array form ``[/Pattern <CS>]``."""
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+
+    cs = PDPattern(PDDeviceRGB.INSTANCE)
+    underlying = cs.get_underlying_color_space()
+    assert underlying is PDDeviceRGB.INSTANCE
+    out = cs.get_cos_object()
+    assert isinstance(out, COSArray)
+    assert out.size() == 2
+    assert out.get_object(0) == COSName.get_pdf_name("Pattern")
+
+
+def test_pattern_color_space_to_rgb_uncolored_recurses() -> None:
+    """For an uncolored tiling pattern, ``to_rgb`` should recurse into the
+    underlying color space (the components are tints)."""
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+    from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+
+    cs = PDPattern(PDDeviceRGB.INSTANCE)
+    assert cs.to_rgb([0.5, 0.5, 0.5]) is not None
+
+
+def test_pattern_color_space_to_rgb_colored_returns_none() -> None:
+    """Colored patterns can't be reduced to a single RGB triple without
+    rendering — ``to_rgb`` returns ``None`` so callers can short-circuit."""
+    from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+
+    cs = PDPattern()
+    assert cs.to_rgb([]) is None

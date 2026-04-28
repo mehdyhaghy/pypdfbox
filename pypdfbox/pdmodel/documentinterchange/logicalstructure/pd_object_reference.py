@@ -7,6 +7,7 @@ from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
     from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
+    from pypdfbox.pdmodel.pd_page import PDPage
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
@@ -50,6 +51,33 @@ class PDObjectReference:
         return pg if isinstance(pg, COSDictionary) else None
 
     def set_pg(self, page: COSDictionary | None) -> None:
+        if page is None:
+            self._dictionary.remove_item(_PG)
+            return
+        cos = page.get_cos_object() if hasattr(page, "get_cos_object") else page
+        self._dictionary.set_item(_PG, cos)
+
+    # ---------- /Pg page (typed PDPage — mirrors upstream getPage) ----
+
+    def get_page(self) -> "PDPage | None":
+        """Resolve ``/Pg`` to a typed :class:`PDPage`.
+
+        Mirrors upstream ``PDObjectReference.getPage()``. Returns ``None``
+        when ``/Pg`` is absent or not a dictionary. ``/Pg`` is optional —
+        when present on the OBJR it overrides the enclosing structure
+        element's ``/Pg`` for this referenced object only (PDF 32000-1
+        §14.7.4.3).
+        """
+        page_dict = self._dictionary.get_dictionary_object(_PG)
+        if not isinstance(page_dict, COSDictionary):
+            return None
+        # Local import avoids the pdmodel→logicalstructure→pdmodel cycle.
+        from pypdfbox.pdmodel.pd_page import PDPage
+
+        return PDPage(page_dict)
+
+    def set_page(self, page: "PDPage | COSDictionary | None") -> None:
+        """Set ``/Pg`` to a typed :class:`PDPage` wrapper or remove it."""
         if page is None:
             self._dictionary.remove_item(_PG)
             return

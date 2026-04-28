@@ -217,3 +217,85 @@ def test_remove_region_clears_cached_text() -> None:
     # After removal the region's cached text is dropped — a subsequent
     # lookup falls through to the empty-string default.
     assert s.get_text_for_region("r") == ""
+
+
+def test_extract_regions_bin_has_no_duplicates() -> None:
+    """The internal per-region position list must hold one entry per
+    glyph — not one entry per glyph times the number of times the
+    formatting hook fires. Guards against the lite-mode subtlety where
+    the base stripper calls ``process_text_position`` from both the
+    parser walk and the format walk."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td (abc) Tj ET"
+    )
+    s = PDFTextStripperByArea()
+    s.add_region("r", (50.0, 690.0, 500.0, 20.0))
+    s.extract_regions(page)
+    # Lite stripper emits one TextPosition per show-text run; we should
+    # have exactly one entry in the bin, not two (the Wave-34 scaffold
+    # double-counted because formatting re-fires the hook).
+    assert len(s._region_character_list["r"]) == 1
+
+
+def test_extract_regions_runs_after_no_op_set_should_separate() -> None:
+    """Even after a (no-op) ``set_should_separate_by_beads(True)`` call,
+    extraction must still run and yield text — the override eats the
+    setter without leaving the instance in a half-configured state."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td (kept) Tj ET"
+    )
+    s = PDFTextStripperByArea()
+    s.set_should_separate_by_beads(True)  # silently dropped
+    s.add_region("r", (50.0, 690.0, 500.0, 20.0))
+    s.extract_regions(page)
+    assert s.get_text_for_region("r").strip() == "kept"
+
+
+def test_extract_regions_sort_by_position_applied_per_region() -> None:
+    """``set_sort_by_position(True)`` must affect each region's emitted
+    ordering independently — one region's content-stream order shouldn't
+    spill into the next."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc,
+        # Three rows in REVERSE reading order in the content stream:
+        # bottom (y=500), middle (y=600), top (y=700).
+        b"BT /F0 12 Tf 100 500 Td (bottom) Tj ET "
+        b"BT /F0 12 Tf 100 600 Td (middle) Tj ET "
+        b"BT /F0 12 Tf 100 700 Td (top) Tj ET ",
+    )
+    s = PDFTextStripperByArea()
+    s.set_sort_by_position(True)
+    # One region covering all three rows — sort order must be top→bottom.
+    s.add_region("all", (50.0, 490.0, 500.0, 220.0))
+    s.extract_regions(page)
+    captured = s.get_text_for_region("all")
+    assert captured.find("top") < captured.find("middle") < captured.find("bottom")
+
+
+def test_get_regions_returns_live_alias() -> None:
+    """Upstream returns the backing ArrayList — mutations through the
+    returned reference must be visible on subsequent extractions."""
+    s = PDFTextStripperByArea()
+    s.add_region("a", (0.0, 0.0, 10.0, 10.0))
+    live = s.get_regions()
+    live.append("synthetic")  # type: ignore[arg-type]
+    assert s.get_regions() == ["a", "synthetic"]
+
+
+def test_add_region_normalizes_negative_dimensions() -> None:
+    """A rectangle passed with negative width/height should be flipped
+    so the lower-left / upper-right invariant holds — otherwise the
+    point-in-rect test below can reject perfectly valid origins."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td (here) Tj ET"
+    )
+    s = PDFTextStripperByArea()
+    # Anchored at upper-right with negative width/height — covers the
+    # same area as (50, 690, 500, 20) when normalized.
+    s.add_region("r", (550.0, 710.0, -500.0, -20.0))
+    s.extract_regions(page)
+    assert s.get_text_for_region("r").strip() == "here"

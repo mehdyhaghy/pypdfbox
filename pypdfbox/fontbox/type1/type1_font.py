@@ -102,6 +102,13 @@ class Type1Font:
         self._encoding_map: dict[int, str] | None = None
         # Eexec-decrypted private-dict bytes (set by create_with_segments).
         self.decrypted_binary: bytes = b""
+        # Raw segment 1 / segment 2 bytes for round-trip use. Upstream
+        # exposes these as ``getASCIISegment()`` / ``getBinarySegment()``;
+        # populated by :meth:`create_with_segments` (and best-effort
+        # populated by :meth:`from_bytes` from the chunk-discovered
+        # cleartext / eexec halves).
+        self._segment1: bytes = b""
+        self._segment2: bytes = b""
 
     # ---------- factory ----------
 
@@ -128,11 +135,19 @@ class Type1Font:
         assertType1(raw)
         chunks = findEncryptedChunks(raw)
         normalised: list[bytes] = []
+        seg1_parts: list[bytes] = []
+        seg2_parts: list[bytes] = []
         for is_encrypted, chunk in chunks:
             if is_encrypted and isHex(chunk[:4]):
-                normalised.append(deHexString(chunk))
+                decoded = deHexString(chunk)
+                normalised.append(decoded)
+                seg2_parts.append(decoded)
+            elif is_encrypted:
+                normalised.append(chunk)
+                seg2_parts.append(chunk)
             else:
                 normalised.append(chunk)
+                seg1_parts.append(chunk)
         merged = bytesjoin(normalised)
 
         # Subclass T1Font in-place to skip its file-path read; everything
@@ -146,6 +161,8 @@ class Type1Font:
 
         instance = cls()
         instance._t1 = t1
+        instance._segment1 = bytesjoin(seg1_parts)
+        instance._segment2 = bytesjoin(seg2_parts)
         return instance
 
     @classmethod
@@ -172,6 +189,8 @@ class Type1Font:
         instance = cls()
         instance._t1 = _ParsedT1(font_dict)
         instance.decrypted_binary = parser.decrypted_binary
+        instance._segment1 = bytes(segment1)
+        instance._segment2 = bytes(segment2)
         return instance
 
     # ---------- internal lookup helpers ----------

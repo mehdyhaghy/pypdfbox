@@ -496,3 +496,165 @@ def test_font_setting_typed_wrapper_round_trip() -> None:
     gs.set_font_setting(None)
     assert gs.get_font_setting() is None
     assert gs.get_cos_object().get_item("Font") is None
+
+
+# ---------- Transfer (typed) ----------
+
+
+def _make_type2_function() -> COSDictionary:
+    from pypdfbox.cos import COSInteger
+
+    fn = COSDictionary()
+    fn.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.add(COSFloat(0.0))
+    domain.add(COSFloat(1.0))
+    fn.set_item("Domain", domain)
+    fn.set_item("N", COSInteger.get(1))
+    return fn
+
+
+def test_transfer_array_size_not_four_returns_none() -> None:
+    # Mirrors upstream: an array of size != 4 is filtered out at the raw
+    # accessor (returns None) — only single-function or 4-function arrays
+    # are valid per PDF 32000-1 §11.7.5.3.
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    arr.add(_make_type2_function())
+    arr.add(_make_type2_function())  # size 2 — invalid
+    gs.get_cos_object().set_item("TR", arr)
+    assert gs.get_transfer() is None
+
+
+def test_transfer_typed_identity_returns_pd_function_identity() -> None:
+    from pypdfbox.pdmodel.common.function.pd_function import PDFunctionTypeIdentity
+
+    gs = PDExtendedGraphicsState()
+    gs.set_transfer(COSName.get_pdf_name("Identity"))
+    typed = gs.get_transfer_typed()
+    assert isinstance(typed, PDFunctionTypeIdentity)
+
+
+def test_transfer_typed_single_function() -> None:
+    from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+
+    gs = PDExtendedGraphicsState()
+    gs.set_transfer(_make_type2_function())
+    typed = gs.get_transfer_typed()
+    assert isinstance(typed, PDFunctionType2)
+
+
+def test_transfer_typed_four_array_returns_list_of_four() -> None:
+    from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    for _ in range(4):
+        arr.add(_make_type2_function())
+    gs.get_cos_object().set_item("TR", arr)
+    typed = gs.get_transfer_typed()
+    assert isinstance(typed, list)
+    assert len(typed) == 4
+    assert all(isinstance(fn, PDFunctionType2) for fn in typed)
+
+
+def test_transfer2_typed_default_returns_raw_name() -> None:
+    gs = PDExtendedGraphicsState()
+    default = COSName.get_pdf_name("Default")
+    gs.set_transfer2(default)
+    # /Default has no typed wrapper — caller gets the raw COSName.
+    assert gs.get_transfer2_typed() is default
+
+
+def test_transfer_typed_absent_returns_none() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_transfer_typed() is None
+    assert gs.get_transfer2_typed() is None
+
+
+# ---------- BG / BG2 (black generation) ----------
+
+
+def test_black_generation_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_black_generation() is None
+    fn = _make_type2_function()
+    gs.set_black_generation(fn)
+    assert gs.get_black_generation() is fn
+    gs.set_black_generation(None)
+    assert gs.get_black_generation() is None
+    assert gs.get_cos_object().get_item("BG") is None
+
+
+def test_black_generation_typed() -> None:
+    from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+
+    gs = PDExtendedGraphicsState()
+    assert gs.get_black_generation_typed() is None
+    gs.set_black_generation(_make_type2_function())
+    typed = gs.get_black_generation_typed()
+    assert isinstance(typed, PDFunctionType2)
+
+
+def test_black_generation2_round_trip_and_default_name() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_black_generation2() is None
+    default = COSName.get_pdf_name("Default")
+    gs.set_black_generation2(default)
+    assert gs.get_black_generation2() is default
+    # /Default returns raw COSName from typed accessor (no wrapper).
+    assert gs.get_black_generation2_typed() is default
+    # Replace with a function — typed accessor wraps it.
+    gs.set_black_generation2(_make_type2_function())
+    from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+
+    assert isinstance(gs.get_black_generation2_typed(), PDFunctionType2)
+    gs.set_black_generation2(None)
+    assert gs.get_black_generation2_typed() is None
+
+
+# ---------- UCR / UCR2 (undercolor removal) ----------
+
+
+def test_undercolor_removal_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_undercolor_removal() is None
+    fn = _make_type2_function()
+    gs.set_undercolor_removal(fn)
+    assert gs.get_undercolor_removal() is fn
+    gs.set_undercolor_removal(None)
+    assert gs.get_undercolor_removal() is None
+
+
+def test_undercolor_removal_typed() -> None:
+    from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+
+    gs = PDExtendedGraphicsState()
+    gs.set_undercolor_removal(_make_type2_function())
+    assert isinstance(gs.get_undercolor_removal_typed(), PDFunctionType2)
+
+
+def test_undercolor_removal2_default_name() -> None:
+    gs = PDExtendedGraphicsState()
+    default = COSName.get_pdf_name("Default")
+    gs.set_undercolor_removal2(default)
+    assert gs.get_undercolor_removal2() is default
+    assert gs.get_undercolor_removal2_typed() is default
+    gs.set_undercolor_removal2(None)
+    assert gs.get_undercolor_removal2() is None
+
+
+# ---------- AAPL:AA (Apple advanced annotations) ----------
+
+
+def test_advanced_annotations_round_trip() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_advanced_annotations() is None
+    aa = COSDictionary()
+    aa.set_int("Foo", 1)
+    gs.set_advanced_annotations(aa)
+    assert gs.get_advanced_annotations() is aa
+    # Stored under the literal "AAPL:AA" key.
+    assert gs.get_cos_object().get_dictionary_object("AAPL:AA") is aa
+    gs.set_advanced_annotations(None)
+    assert gs.get_advanced_annotations() is None

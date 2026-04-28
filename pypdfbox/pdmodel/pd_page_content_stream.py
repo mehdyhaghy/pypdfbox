@@ -26,6 +26,9 @@ _FONT: COSName = COSName.get_pdf_name("Font")
 _X_OBJECT: COSName = COSName.get_pdf_name("XObject")
 _PROPERTIES: COSName = COSName.get_pdf_name("Properties")
 _COLOR_SPACE: COSName = COSName.get_pdf_name("ColorSpace")
+_EXT_G_STATE: COSName = COSName.get_pdf_name("ExtGState")
+_PATTERN: COSName = COSName.get_pdf_name("Pattern")
+_SHADING: COSName = COSName.get_pdf_name("Shading")
 _DEVICE_COLOR_SPACES: frozenset[str] = frozenset(
     {"DeviceGray", "DeviceRGB", "DeviceCMYK"}
 )
@@ -802,6 +805,172 @@ class PDPageContentStream:
         """Emit ``a b c d e f cm`` — alias for :meth:`transform` matching
         upstream's ``concatenate2CTM`` / ``concatenateMatrix`` naming."""
         self.transform(a, b, c, d, e, f)
+
+    def set_graphics_state_parameters(self, ext_g_state: Any) -> None:
+        """Emit ``/<key> gs`` — apply a :class:`PDExtendedGraphicsState`.
+
+        Auto-registers ``ext_g_state`` under ``/Resources/ExtGState`` (key
+        ``GS<n>``) when not already present. Mirrors upstream's
+        ``setGraphicsStateParameters`` (Java) /
+        ``set_graphics_state_parameters`` (port).
+        """
+        key = self._resource_key_for_ext_g_state(ext_g_state)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"gs")
+
+    # ------------------------------------------------------------------
+    # ExtGState convenience setters — each builds (or fetches) a small
+    # ExtGState carrying just the relevant key, registers it under
+    # /Resources/ExtGState, and emits ``/<key> gs``. Mirrors upstream's
+    # ``setStrokingAlphaConstant``/``setNonStrokingAlphaConstant``/
+    # ``setBlendMode`` / Soft-mask convenience helpers.
+    # ------------------------------------------------------------------
+
+    def set_stroking_alpha_constant(self, alpha: float) -> None:
+        """Emit ``/<key> gs`` with an ExtGState carrying ``/CA``."""
+        ext = self._build_ext_g_state(stroking_alpha=float(alpha))
+        self.set_graphics_state_parameters(ext)
+
+    def set_non_stroking_alpha_constant(self, alpha: float) -> None:
+        """Emit ``/<key> gs`` with an ExtGState carrying ``/ca``."""
+        ext = self._build_ext_g_state(non_stroking_alpha=float(alpha))
+        self.set_graphics_state_parameters(ext)
+
+    def set_blend_mode(self, blend_mode: Any) -> None:
+        """Emit ``/<key> gs`` with an ExtGState carrying ``/BM``.
+
+        Accepts a :class:`pypdfbox.pdmodel.graphics.blend_mode.BlendMode`,
+        a :class:`COSName`, or a ``str`` blend-mode name.
+        """
+        ext = self._build_ext_g_state(blend_mode=blend_mode)
+        self.set_graphics_state_parameters(ext)
+
+    def set_softmask(self, soft_mask: Any) -> None:
+        """Emit ``/<key> gs`` with an ExtGState carrying ``/SMask``.
+
+        ``soft_mask`` may be a :class:`PDSoftMask`, a :class:`COSDictionary`
+        (taken as the SMask dict directly), or ``None`` to write the
+        ``/None`` literal that disables masking.
+        """
+        ext = self._build_ext_g_state(soft_mask=soft_mask)
+        self.set_graphics_state_parameters(ext)
+
+    # alias: upstream method name is ``setSoftMask`` (camelCase) — keep
+    # both spellings so callers porting from PDFBox find either.
+    def set_soft_mask(self, soft_mask: Any) -> None:
+        """Alias for :meth:`set_softmask` matching upstream's
+        ``setSoftMask`` Java method name."""
+        self.set_softmask(soft_mask)
+
+    @staticmethod
+    def _build_ext_g_state(
+        *,
+        stroking_alpha: float | None = None,
+        non_stroking_alpha: float | None = None,
+        blend_mode: Any = None,
+        soft_mask: Any = None,
+    ) -> Any:
+        """Construct a fresh :class:`PDExtendedGraphicsState` carrying
+        only the keys explicitly passed. Lazy-imports the class to keep
+        the writer's module-load cost down."""
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
+            PDExtendedGraphicsState,
+        )
+
+        ext = PDExtendedGraphicsState()
+        if stroking_alpha is not None:
+            ext.set_stroking_alpha_constant(stroking_alpha)
+        if non_stroking_alpha is not None:
+            ext.set_non_stroking_alpha_constant(non_stroking_alpha)
+        if blend_mode is not None:
+            ext.set_blend_mode(blend_mode)
+        if soft_mask is not None:
+            ext.get_cos_object().set_item(
+                COSName.get_pdf_name("SMask"),
+                soft_mask.get_cos_object()
+                if hasattr(soft_mask, "get_cos_object")
+                else soft_mask,
+            )
+        return ext
+
+    # ------------------------------------------------------------------
+    # pattern / shading colour
+    # ------------------------------------------------------------------
+
+    def set_stroking_color_pattern(self, pattern: Any) -> None:
+        """Emit ``/Pattern CS /<key> SCN`` — set the stroking colour to a
+        :class:`PDAbstractPattern`. Mirrors upstream's
+        ``setStrokingColor(PDAbstractPattern)``."""
+        self._set_color_pattern(pattern, stroking=True)
+
+    def set_non_stroking_color_pattern(self, pattern: Any) -> None:
+        """Emit ``/Pattern cs /<key> scn`` — non-stroking variant of
+        :meth:`set_stroking_color_pattern`."""
+        self._set_color_pattern(pattern, stroking=False)
+
+    # alias: shorter spelling matching the agent-task targets.
+    def set_pattern_stroke(self, pattern: Any) -> None:
+        """Alias for :meth:`set_stroking_color_pattern`."""
+        self.set_stroking_color_pattern(pattern)
+
+    def set_pattern_fill(self, pattern: Any) -> None:
+        """Alias for :meth:`set_non_stroking_color_pattern`."""
+        self.set_non_stroking_color_pattern(pattern)
+
+    def _set_color_pattern(self, pattern: Any, *, stroking: bool) -> None:
+        # Emit /Pattern (CS or cs).
+        pattern_cs_name = COSName.get_pdf_name("Pattern")
+        self._write_name(pattern_cs_name)
+        self._buffer.append(0x20)
+        self._write_operator(b"CS" if stroking else b"cs")
+        # Register the pattern under /Resources/Pattern and emit its key.
+        key = self._resource_key_for_pattern(pattern)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"SCN" if stroking else b"scn")
+
+    def shading_fill(self, shading: Any) -> None:
+        """Emit ``/<key> sh`` — paint the shape and colour shading from a
+        :class:`PDShading`. Mirrors upstream's ``shadingFill``."""
+        key = self._resource_key_for_shading(shading)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"sh")
+
+    # ------------------------------------------------------------------
+    # shape painting (line-width-aware operator dispatch)
+    # ------------------------------------------------------------------
+
+    def draw_shape(
+        self,
+        line_width: float,
+        has_stroke: bool,
+        has_fill: bool,
+    ) -> None:
+        """Emit the path-painting operator selected from ``line_width``,
+        ``has_stroke``, and ``has_fill``:
+
+        - very thin lines (``line_width < 1e-6``) suppress the stroke;
+        - fill + stroke -> ``B``;
+        - stroke only -> ``S``;
+        - fill only -> ``f``;
+        - neither -> ``n`` (end path without painting).
+
+        Matches the helper of the same name on
+        :class:`PDAppearanceContentStream`.
+        """
+        resolved_has_stroke = bool(has_stroke)
+        if float(line_width) < 1e-6:
+            resolved_has_stroke = False
+        if has_fill and resolved_has_stroke:
+            self.fill_and_stroke()
+        elif resolved_has_stroke:
+            self.stroke()
+        elif has_fill:
+            self.fill()
+        else:
+            self._write_operator(b"n")
 
     # ------------------------------------------------------------------
     # XObject

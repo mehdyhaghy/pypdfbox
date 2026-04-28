@@ -4,6 +4,7 @@ from .cmap_lookup import CmapLookup
 from .cmap_subtable import CmapSubtable
 from .digital_signature_table import DigitalSignatureTable
 from .glyph_data import BoundingBox, GlyphData
+from .glyph_positioning_table import GlyphPositioningTable
 from .glyph_substitution_table import GlyphSubstitutionTable
 from .glyph_table import GlyphTable
 from .header_table import HeaderTable
@@ -37,6 +38,7 @@ __all__ = [
     "CmapSubtable",
     "DigitalSignatureTable",
     "GlyphData",
+    "GlyphPositioningTable",
     "GlyphSubstitutionTable",
     "GlyphTable",
     "HeaderTable",

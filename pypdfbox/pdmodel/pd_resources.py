@@ -292,7 +292,9 @@ class PDResources:
             if cached is not None:
                 return cached
         if isinstance(base, COSDictionary):
-            pattern = PDAbstractPattern.create(base)
+            # Forward our resource cache to PDTilingPattern (upstream
+            # ``PDAbstractPattern.create(COSDictionary, ResourceCache)``).
+            pattern = PDAbstractPattern.create(base, resource_cache=cache)
             if cache is not None and isinstance(raw, COSObject) and pattern is not None:
                 cache.put_pattern(raw, pattern)
             return pattern

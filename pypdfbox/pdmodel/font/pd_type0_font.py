@@ -73,6 +73,11 @@ class PDType0Font(PDFont):
         # :meth:`subset` on save. Type 0 fonts subset the descendant
         # CIDFontType2's embedded TrueType program.
         self._subset_codepoints: set[int] = set()
+        # GSUB feature gating — :meth:`set_gsub_features` overrides;
+        # :meth:`get_gsub_features` returns the resolved set (defaults to
+        # ``["liga"]`` for latin per upstream's ``PDType0Font.applyGsub``
+        # default-feature heuristic).
+        self._gsub_features: list[str] | None = None
 
     # ---------- /DescendantFonts ----------
 
@@ -272,6 +277,14 @@ class PDType0Font(PDFont):
         Resolves code → CID via the encoding CMap, then CID → GID via
         the descendant font's ``/CIDToGIDMap`` (Type2). For Type0/CFF
         descendants the GID equals the CID, mirroring upstream behavior.
+
+        When the descendant TTF carries a GSUB table, the resulting GID
+        is run through any active **single-substitution** lookups
+        (lookup type 1) for the current GSUB feature set — see
+        :meth:`set_gsub_features`. Many-to-one (ligature) lookups are
+        applied on a glyph *run* rather than a single glyph, so callers
+        that need ligature shaping should use :meth:`apply_gsub_features`
+        on the post-``code_to_gid`` GID list.
         """
         descendant = self.get_descendant_font()
         if descendant is None:
@@ -281,8 +294,283 @@ class PDType0Font(PDFont):
         cid = self.code_to_cid(code)
         cid_to_gid = getattr(descendant, "cid_to_gid", None)
         if callable(cid_to_gid):
-            return cid_to_gid(cid)
-        return cid
+            gid = cid_to_gid(cid)
+        else:
+            gid = cid
+
+        # GSUB single-substitution — glyph-by-glyph rewrites only.
+        gsub = self._get_gsub_table()
+        if gsub is not None:
+            features = self.get_gsub_features()
+            try:
+                gid = gsub.get_substitution(gid, None, features)
+            except Exception:  # noqa: BLE001 — defensive: malformed GSUB graphs
+                pass
+        return gid
+
+    # ---------- GSUB feature gating ----------
+
+    def set_gsub_features(self, features: Iterable[str] | None) -> None:
+        """Override the active GSUB feature tag set for this rendering pass.
+
+        ``features`` is the ordered iterable of OpenType feature tags
+        (``"liga"``, ``"dlig"``, ``"calt"``, ``"sups"``, ...) to enable.
+        Passing ``None`` reverts to the script-derived default
+        (``["liga"]`` for latin) — same behaviour upstream's
+        ``PDType0Font.applyGsub`` exhibits when no explicit feature list
+        is configured. The ordering is preserved because GSUB applies
+        features in the order specified (so a caller can run ``liga``
+        before ``sups``, for example).
+
+        ``kern`` is accepted in the list for forward-compatibility but
+        is a GPOS feature (positioning, not glyph rewriting) and
+        therefore handled by :class:`PDType0Font` GPOS support rather
+        than the GSUB pipeline; it is silently ignored at GSUB time.
+        """
+        if features is None:
+            self._gsub_features = None
+            return
+        # Preserve order, drop duplicates.
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for tag in features:
+            t = str(tag)
+            if t in seen:
+                continue
+            seen.add(t)
+            ordered.append(t)
+        self._gsub_features = ordered
+
+    def get_gsub_features(self) -> list[str]:
+        """Return the GSUB feature tags active for this font.
+
+        Defaults are script-derived: ``["liga"]`` for latin scripts (the
+        only script we have a default for; other scripts return ``[]``
+        which means *no GSUB* — callers should configure features
+        explicitly via :meth:`set_gsub_features`). When a previous call
+        to :meth:`set_gsub_features` set a custom list, that list wins
+        regardless of script.
+        """
+        if self._gsub_features is not None:
+            return list(self._gsub_features)
+        # Script-derived default. We resolve the script tag via the
+        # GSUB's first-supported-script logic; falling back to "latn"
+        # when nothing matches.
+        return ["liga"] if self._is_latin_script() else []
+
+    def _is_latin_script(self) -> bool:
+        """Return ``True`` when the embedded GSUB advertises latin or
+        the table has no script discriminator at all (in which case
+        latin defaults are still the safer bet for Type 0 fonts).
+        """
+        gsub = self._get_gsub_table()
+        if gsub is None:
+            return True  # no GSUB → harmless default; features won't fire anyway
+        try:
+            scripts = gsub.get_supported_script_tags()
+        except Exception:  # noqa: BLE001
+            return True
+        if not scripts:
+            return True
+        return any(s in ("latn", "DFLT", "dflt") for s in scripts)
+
+    def _get_gsub_table(self) -> Any | None:
+        """Return the descendant TTF's :class:`GlyphSubstitutionTable`,
+        or ``None`` when no descendant / no GSUB / parse failure.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return None
+        get_ttf = getattr(descendant, "get_true_type_font", None)
+        if not callable(get_ttf):
+            return None
+        try:
+            ttf = get_ttf()
+        except Exception:  # noqa: BLE001
+            return None
+        if ttf is None:
+            return None
+        try:
+            return ttf.get_gsub()
+        except Exception:  # noqa: BLE001
+            return None
+
+    def apply_gsub_features(self, glyph_ids: list[int]) -> list[int]:
+        """Apply the active GSUB feature lookups to a glyph run.
+
+        Mirrors upstream ``PDType0Font.applyGsub`` (exposed in PDFBox
+        3.0.x via PDFBOX-5780). Walks every enabled feature's
+        :class:`LookupList` in order; for each lookup applies type-1
+        (single substitution) and type-4 (ligature) lookups to the
+        glyph run. Single substitutions rewrite one GID in place;
+        ligature substitutions collapse multi-glyph sequences into one
+        ligature GID. Other lookup types (multiple, alternate, context,
+        chained, extension, reverse-chaining) are skipped — same set
+        upstream skips for the GID-stream-in / GID-stream-out signature.
+
+        Returns a fresh list (input is not mutated).
+        """
+        if not glyph_ids:
+            return []
+        gsub = self._get_gsub_table()
+        if gsub is None:
+            return list(glyph_ids)
+        raw = gsub.get_raw_table()
+        if raw is None:
+            return list(glyph_ids)
+        features = self.get_gsub_features()
+        if not features:
+            return list(glyph_ids)
+
+        glyph_order = list(getattr(gsub, "_glyph_order", []))
+        name_to_gid: dict[str, int] = dict(getattr(gsub, "_glyph_name_to_gid", {}))
+        if not glyph_order or not name_to_gid:
+            return list(glyph_ids)
+
+        feature_indices = self._collect_gsub_feature_indices(raw, features)
+        if not feature_indices:
+            return list(glyph_ids)
+
+        feature_records = raw.FeatureList.FeatureRecord
+        lookups = raw.LookupList.Lookup
+        result = list(glyph_ids)
+        for fi in feature_indices:
+            if fi < 0 or fi >= len(feature_records):
+                continue
+            for lookup_index in feature_records[fi].Feature.LookupListIndex:
+                if lookup_index < 0 or lookup_index >= len(lookups):
+                    continue
+                lookup = lookups[lookup_index]
+                lt = int(lookup.LookupType)
+                if lt == 1:
+                    result = self._apply_single_run(lookup, result, glyph_order, name_to_gid)
+                elif lt == 4:
+                    result = self._apply_ligature_run(lookup, result, glyph_order, name_to_gid)
+                # Other types skipped (matches upstream applyGsub).
+        return result
+
+    @staticmethod
+    def _collect_gsub_feature_indices(
+        raw: Any, enabled_features: list[str]
+    ) -> list[int]:
+        """Return feature-record indices for feature tags in
+        ``enabled_features``, preserving the caller's order.
+        """
+        feature_records = raw.FeatureList.FeatureRecord
+        # Walk every script's default + per-language feature index list
+        # so we don't miss features that live exclusively under a
+        # non-default LangSys. Dedup by feature index (multiple
+        # LangSys can point at the same FeatureRecord).
+        seen: set[int] = set()
+        gathered: list[int] = []
+        scripts = getattr(raw.ScriptList, "ScriptRecord", None) or []
+        for sr in scripts:
+            default_ls = getattr(sr.Script, "DefaultLangSys", None)
+            lang_records = getattr(sr.Script, "LangSysRecord", None) or []
+            lang_systems = [default_ls, *(lsr.LangSys for lsr in lang_records)]
+            for ls in lang_systems:
+                if ls is None:
+                    continue
+                req = int(getattr(ls, "ReqFeatureIndex", 0xFFFF))
+                if req != 0xFFFF and req not in seen:
+                    seen.add(req)
+                    gathered.append(req)
+                for idx in getattr(ls, "FeatureIndex", None) or []:
+                    i = int(idx)
+                    if i not in seen:
+                        seen.add(i)
+                        gathered.append(i)
+
+        def tag_for(fi: int) -> str:
+            return str(feature_records[fi].FeatureTag).strip()
+
+        filtered = [fi for fi in gathered if tag_for(fi) in enabled_features]
+        filtered.sort(key=lambda fi: enabled_features.index(tag_for(fi)))
+        return filtered
+
+    @staticmethod
+    def _apply_single_run(
+        lookup: Any,
+        glyph_ids: list[int],
+        glyph_order: list[str],
+        name_to_gid: dict[str, int],
+    ) -> list[int]:
+        """Apply a type-1 (single) substitution lookup across the glyph run."""
+        out: list[int] = []
+        for gid in glyph_ids:
+            new_gid = gid
+            if 0 <= gid < len(glyph_order):
+                src_name = glyph_order[gid]
+                for subtable in lookup.SubTable or []:
+                    mapping = getattr(subtable, "mapping", None)
+                    if not mapping:
+                        continue
+                    dst = mapping.get(src_name)
+                    if dst is None:
+                        continue
+                    cand = name_to_gid.get(dst)
+                    if cand is not None:
+                        new_gid = cand
+                        break
+            out.append(new_gid)
+        return out
+
+    @staticmethod
+    def _apply_ligature_run(
+        lookup: Any,
+        glyph_ids: list[int],
+        glyph_order: list[str],
+        name_to_gid: dict[str, int],
+    ) -> list[int]:
+        """Apply a type-4 (ligature) substitution lookup across the glyph run.
+
+        fontTools exposes ligature subtables with a ``ligatures`` dict
+        keyed by *first-component glyph name* whose values are a list of
+        ``Ligature`` records carrying ``Component`` (trailing component
+        glyph names) and ``LigGlyph`` (output glyph name). Walk the run
+        left-to-right, longest-match-wins per the OpenType spec.
+        """
+        out: list[int] = []
+        n = len(glyph_ids)
+        i = 0
+        while i < n:
+            gid = glyph_ids[i]
+            consumed = 1
+            replacement = gid
+            if 0 <= gid < len(glyph_order):
+                src_name = glyph_order[gid]
+                for subtable in lookup.SubTable or []:
+                    ligs = getattr(subtable, "ligatures", None)
+                    if not ligs:
+                        continue
+                    candidates = ligs.get(src_name)
+                    if not candidates:
+                        continue
+                    best_len = 0
+                    best_lig_name: str | None = None
+                    for lig in candidates:
+                        comps = list(getattr(lig, "Component", None) or [])
+                        end = i + 1 + len(comps)
+                        if end > n:
+                            continue
+                        ok = True
+                        for k, comp_name in enumerate(comps):
+                            comp_gid = name_to_gid.get(comp_name)
+                            if comp_gid is None or glyph_ids[i + 1 + k] != comp_gid:
+                                ok = False
+                                break
+                        if ok and len(comps) >= best_len:
+                            best_len = len(comps)
+                            best_lig_name = getattr(lig, "LigGlyph", None)
+                    if best_lig_name is not None:
+                        new_gid = name_to_gid.get(best_lig_name)
+                        if new_gid is not None:
+                            replacement = new_gid
+                            consumed = 1 + best_len
+                            break
+            out.append(replacement)
+            i += consumed
+        return out
 
     # ---------- read_code (PDF 32000-1 §9.7.6.2) ----------
 

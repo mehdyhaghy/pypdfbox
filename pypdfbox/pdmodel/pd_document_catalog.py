@@ -42,6 +42,8 @@ _COLLECTION: COSName = COSName.get_pdf_name("Collection")
 _EXTENSIONS: COSName = COSName.get_pdf_name("Extensions")
 _URI: COSName = COSName.get_pdf_name("URI")
 _REQUIREMENTS: COSName = COSName.get_pdf_name("Requirements")
+_AF: COSName = COSName.get_pdf_name("AF")
+_PIECE_INFO: COSName = COSName.get_pdf_name("PieceInfo")
 
 
 class PDDocumentCatalog:
@@ -223,6 +225,14 @@ class PDDocumentCatalog:
             return
         self._catalog.set_item(_STRUCT_TREE_ROOT, root.get_cos_object())
 
+    # Upstream-named aliases (PDFBox: getStructureTreeRoot /
+    # setStructureTreeRoot — note the longer ``Structure`` spelling).
+    def get_structure_tree_root(self) -> Any:
+        return self.get_struct_tree_root()
+
+    def set_structure_tree_root(self, root: Any) -> None:
+        self.set_struct_tree_root(root)
+
     # ---------- /MarkInfo ----------
 
     def get_mark_info(self) -> Any:
@@ -238,6 +248,70 @@ class PDDocumentCatalog:
             self._catalog.remove_item(_MARK_INFO)
             return
         self._catalog.set_item(_MARK_INFO, mark_info.get_cos_object())
+
+    # MarkInfo convenience accessors — catalog-level shortcuts that read
+    # / write the boolean flags inside the ``/MarkInfo`` sub-dictionary
+    # (PDF 32000-1 §14.7 Table 321). They mirror the upstream PDMarkInfo
+    # surface but stay reachable from the catalog so callers don't need
+    # to materialise the wrapper for the common case. Reads return
+    # ``False`` when ``/MarkInfo`` is missing (per Table 321 defaults).
+
+    def is_document_marked(self) -> bool:
+        """Return ``/MarkInfo /Marked`` (defaults to ``False``)."""
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if isinstance(v, COSDictionary):
+            return PDMarkInfo(v).is_marked()
+        return False
+
+    def set_document_marked(self, marked: bool) -> None:
+        """Write ``/MarkInfo /Marked``. Creates ``/MarkInfo`` on demand."""
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if not isinstance(v, COSDictionary):
+            v = COSDictionary()
+            self._catalog.set_item(_MARK_INFO, v)
+        PDMarkInfo(v).set_marked(marked)
+
+    def has_user_properties(self) -> bool:
+        """Return ``/MarkInfo /UserProperties`` (defaults to ``False``)."""
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if isinstance(v, COSDictionary):
+            return PDMarkInfo(v).is_user_properties()
+        return False
+
+    def set_user_properties(self, value: bool) -> None:
+        """Write ``/MarkInfo /UserProperties``. Creates ``/MarkInfo`` on demand."""
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if not isinstance(v, COSDictionary):
+            v = COSDictionary()
+            self._catalog.set_item(_MARK_INFO, v)
+        PDMarkInfo(v).set_user_properties(value)
+
+    def has_suspects(self) -> bool:
+        """Return ``/MarkInfo /Suspects`` (defaults to ``False``)."""
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if isinstance(v, COSDictionary):
+            return PDMarkInfo(v).is_suspects()
+        return False
+
+    def set_suspects(self, value: bool) -> None:
+        """Write ``/MarkInfo /Suspects``. Creates ``/MarkInfo`` on demand."""
+        from .documentinterchange.logicalstructure import PDMarkInfo
+
+        v = self._catalog.get_dictionary_object(_MARK_INFO)
+        if not isinstance(v, COSDictionary):
+            v = COSDictionary()
+            self._catalog.set_item(_MARK_INFO, v)
+        PDMarkInfo(v).set_suspects(value)
 
     # ---------- /AcroForm ----------
 
@@ -418,6 +492,18 @@ class PDDocumentCatalog:
             arr = COSArray()
             self._catalog.set_item(_OUTPUT_INTENTS, arr)
         arr.add(intent.get_cos_object())
+
+    def set_output_intents(self, intents: list[Any] | None) -> None:
+        """Replace the ``/OutputIntents`` array with ``intents``. Pass
+        ``None`` or an empty list to remove the entry entirely. Mirrors
+        upstream ``setOutputIntents(List<PDOutputIntent>)``."""
+        if not intents:
+            self._catalog.remove_item(_OUTPUT_INTENTS)
+            return
+        arr = COSArray()
+        for intent in intents:
+            arr.add(intent.get_cos_object())
+        self._catalog.set_item(_OUTPUT_INTENTS, arr)
 
     # ---------- /Threads ----------
 
@@ -645,6 +731,62 @@ class PDDocumentCatalog:
             arr = COSArray()
             self._catalog.set_item(_REQUIREMENTS, arr)
         arr.add(requirement)
+
+    # ---------- /AF (AssociatedFiles, PDF 2.0 / ISO 32000-2 §14.13) ----------
+
+    def get_associated_files(self) -> list[Any]:
+        """Return the catalog's ``/AF`` array as a list of typed
+        :class:`PDFileSpecification` wrappers (PDF 2.0 / ISO 32000-2
+        §14.13). Returns an empty list when the entry is absent.
+
+        Upstream PDFBox 3.0 does not yet expose a typed AF accessor on
+        the catalog; pypdfbox surfaces it for forward parity with the
+        4.x line which adds it. Non-dictionary / non-string entries are
+        skipped under defensive parsing."""
+        from .common.filespecification import PDFileSpecification
+
+        arr = self._catalog.get_dictionary_object(_AF)
+        if not isinstance(arr, COSArray):
+            return []
+        result: list[Any] = []
+        for i in range(arr.size()):
+            entry = arr.get_object(i)
+            spec = PDFileSpecification.create_fs(entry)
+            if spec is not None:
+                result.append(spec)
+        return result
+
+    def set_associated_files(self, files: list[Any] | None) -> None:
+        """Replace the catalog's ``/AF`` array. Pass ``None`` or an empty
+        list to remove the entry entirely. Each entry must be a
+        :class:`PDFileSpecification`."""
+        if not files:
+            self._catalog.remove_item(_AF)
+            return
+        arr = COSArray()
+        for spec in files:
+            arr.add(spec.get_cos_object())
+        self._catalog.set_item(_AF, arr)
+
+    # ---------- /PieceInfo (PDF 32000-1 §14.5) ----------
+
+    def get_piece_info(self) -> COSDictionary | None:
+        """Return the catalog's ``/PieceInfo`` page-piece dictionary, or
+        ``None`` when absent. PDF 32000-1 §14.5: an opaque per-application
+        data store keyed by application registration name. Returned raw
+        because the contents are application-defined."""
+        v = self._catalog.get_dictionary_object(_PIECE_INFO)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_piece_info(self, piece_info: COSDictionary | None) -> None:
+        """Set the catalog's ``/PieceInfo`` dictionary. Pass ``None`` to
+        remove the entry."""
+        if piece_info is None:
+            self._catalog.remove_item(_PIECE_INFO)
+            return
+        self._catalog.set_item(_PIECE_INFO, piece_info)
 
     # ---------- raw COS passthrough used by tests ----------
 

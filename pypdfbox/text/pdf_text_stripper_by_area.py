@@ -76,6 +76,12 @@ class PDFTextStripperByArea(PDFTextStripper):
         # :meth:`extract_regions` call. Mirrors upstream's
         # ``Map<String, StringWriter> regionText``.
         self._region_text: dict[str, str] = {}
+        # Guard flag — set while ``extract_regions`` is binning positions
+        # so the ``process_text_position`` override only routes during
+        # the binning pass (and not during the per-region
+        # ``_format_positions`` invocation, which calls the hook a second
+        # time via ``write_string`` and would otherwise double-bin).
+        self._binning_active: bool = False
 
     # ---------- bead override ----------
 
@@ -182,22 +188,33 @@ class PDFTextStripperByArea(PDFTextStripper):
         self._active_avg_advance = None
         try:
             positions = self._extract_positions(contents)
+            # Bin positions into regions through the public hook so a
+            # subclass that overrides ``process_text_position`` can still
+            # extend the routing decision (e.g. drop watermarks). The
+            # guard flag below stops the per-region ``_format_positions``
+            # call from re-entering the bin loop via ``write_string``.
+            self._binning_active = True
+            try:
+                for position in positions:
+                    self.process_text_position(position)
+            finally:
+                self._binning_active = False
+
+            # Format each region's bin into a string with the configured
+            # separators. Mirrors upstream's ``writePage`` override which
+            # iterates ``regionArea.keySet()`` and re-runs the formatter
+            # per region. The active page / font caches stay valid here
+            # so any decode work the formatter triggers (word-gap font
+            # widths, suppress-duplicate threshold) sees the same state
+            # the parser walk used.
+            for name in self._regions:
+                bin_positions = self._region_character_list.get(name, [])
+                self._region_text[name] = self._format_positions(bin_positions)
         finally:
             self._active_page = None
             self._active_cmap = None
             self._active_font = None
             self._active_avg_advance = None
-
-        for position in positions:
-            self.process_text_position(position)
-
-        # Format each region's bin into a string with the configured
-        # separators. Mirrors upstream's ``writePage`` override which
-        # iterates ``regionArea.keySet()`` and re-runs the formatter per
-        # region.
-        for name in self._regions:
-            bin_positions = self._region_character_list.get(name, [])
-            self._region_text[name] = self._format_positions(bin_positions)
 
     def process_text_position(self, text: TextPosition) -> None:
         """Route a single text position into every region that contains
@@ -207,7 +224,20 @@ class PDFTextStripperByArea(PDFTextStripper):
         whose ``(x, y)`` falls inside multiple regions is added to all
         of them (regions can overlap). Positions outside every region
         are dropped.
+
+        Lite-stripper subtlety
+        ----------------------
+        The base :class:`PDFTextStripper` invokes
+        ``process_text_position`` from two places — the parser walk
+        (upstream parity) and the formatting walk (lite-mode-only;
+        upstream's ``writeString`` doesn't re-emit the hook). The
+        ``_binning_active`` guard ensures we only bin during the parser
+        walk; a re-entry from ``write_string`` during per-region
+        formatting is dropped on the floor so we don't double-count
+        positions in their own region's bin.
         """
+        if not self._binning_active:
+            return
         x = text.get_x()
         y = text.get_y()
         for name, (min_x, min_y, max_x, max_y) in self._region_area.items():

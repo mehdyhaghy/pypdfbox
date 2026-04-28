@@ -140,3 +140,57 @@ def test_soft_mask_transfer_halftone_round_trip() -> None:
     assert gs.get_transfer2() == COSName.get_pdf_name("Default")
     assert gs.get_halftone() is halftone
     assert gs.get_halftone_origin() is origin
+
+
+def test_transfer_array_size_filter_matches_upstream() -> None:
+    # Upstream PDExtendedGraphicsState.getTransfer / getTransfer2 explicitly
+    # filter out arrays whose size != 4 (returns null). Mirror that contract.
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    arr.add(COSFloat(0.0))  # not even a function — only size matters here
+    gs.get_cos_object().set_item("TR", arr)
+    assert gs.get_transfer() is None
+    gs.get_cos_object().set_item("TR2", arr)
+    assert gs.get_transfer2() is None
+
+
+def test_black_generation_undercolor_removal_round_trip() -> None:
+    # PDF 32000-1 Table 58: /BG /BG2 /UCR /UCR2 are function dictionaries
+    # (BG2/UCR2 also accept the name /Default). Upstream defers typed
+    # accessors; we expose both raw and typed (PDFunction) round-trips.
+    gs = PDExtendedGraphicsState()
+    assert gs.get_black_generation() is None
+    assert gs.get_black_generation2() is None
+    assert gs.get_undercolor_removal() is None
+    assert gs.get_undercolor_removal2() is None
+
+    fn = COSDictionary()
+    fn.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.add(COSFloat(0.0))
+    domain.add(COSFloat(1.0))
+    fn.set_item("Domain", domain)
+    from pypdfbox.cos import COSInteger
+
+    fn.set_item("N", COSInteger.get(1))
+
+    gs.set_black_generation(fn)
+    gs.set_undercolor_removal(fn)
+    gs.set_black_generation2(COSName.get_pdf_name("Default"))
+    gs.set_undercolor_removal2(COSName.get_pdf_name("Default"))
+
+    assert gs.get_black_generation() is fn
+    assert gs.get_undercolor_removal() is fn
+    assert gs.get_black_generation2() == COSName.get_pdf_name("Default")
+    assert gs.get_undercolor_removal2() == COSName.get_pdf_name("Default")
+
+
+def test_advanced_annotations_round_trip() -> None:
+    # Apple-specific /AAPL:AA entry — preserved on round-trip without
+    # parsing (mirrors upstream behaviour).
+    gs = PDExtendedGraphicsState()
+    assert gs.get_advanced_annotations() is None
+    aa = COSDictionary()
+    aa.set_int("X", 1)
+    gs.set_advanced_annotations(aa)
+    assert gs.get_advanced_annotations() is aa

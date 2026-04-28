@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import io
-from typing import Any
+import struct
+from typing import Any, BinaryIO
 
 
 def _make_path_pen() -> Any:
@@ -641,4 +642,168 @@ class CFFFont:
         )
 
 
-__all__ = ["CFFFont"]
+# --------------------------------------------------------------------------
+# Explicit charset / encoding parsing — Adobe Technote #5176 §13 / §12.
+# --------------------------------------------------------------------------
+#
+# These helpers mirror the byte-level parsing in upstream
+# ``org.apache.fontbox.cff.CFFParser`` (methods ``readCharset`` and
+# ``readEncoding``). The actual font-set decompile we use at runtime is
+# delegated to ``fontTools.cffLib.CFFFontSet`` (MIT) — fontTools handles
+# all three charset formats and both encoding formats with supplement
+# correctly. The helpers below are exposed for parity with upstream's
+# public API, for synthetic-stream testing, and so callers that already
+# hold a raw byte slice (e.g. an embedded /CharStrings index in a private
+# parser) can invoke them directly without round-tripping through
+# fontTools.
+#
+# Format reference (Adobe Technote #5176, "The Compact Font Format
+# Specification", v1.0, December 2003):
+#   §13 Charsets:
+#     - Format 0: array of (nGlyphs - 1) Card16 SIDs after the implicit
+#       .notdef at GID 0.
+#     - Format 1: ranges of (Card16 first, Card8 nLeft); each range covers
+#       nLeft + 1 glyphs starting at SID `first`.
+#     - Format 2: ranges of (Card16 first, Card16 nLeft); used by CID
+#       fonts when nLeft can exceed 255.
+#   §12 Encodings:
+#     - Format 0: Card8 nCodes followed by nCodes Card8 codes.
+#     - Format 1: Card8 nRanges followed by ranges of (Card8 first, Card8
+#       nLeft); covers nLeft + 1 codes per range.
+#     - Supplement: when the high bit (0x80) of the format byte is set,
+#       follow the base table with Card8 nSups + nSups (Card8 code,
+#       Card16 SID) pairs.
+#
+# Values returned mirror upstream's ``CFFCharset`` / ``CFFEncoding``
+# semantics: charsets are GID-ordered SID lists (with SID 0 == .notdef
+# at GID 0); encodings are 256-entry SID lists, default 0 (.notdef).
+# Supplement entries return as a list of (code, SID) pairs and are
+# *also* applied to the base encoding list so callers that don't care
+# about the distinction can ignore the second tuple element.
+
+
+def _read_card8(stream: BinaryIO) -> int:
+    """Read a Card8 (1-byte unsigned int). Raises ``EOFError`` if the
+    stream is exhausted (mirrors upstream's IOException on short read)."""
+    b = stream.read(1)
+    if len(b) != 1:
+        msg = "Unexpected end of stream while reading Card8"
+        raise EOFError(msg)
+    return b[0]
+
+
+def _read_card16(stream: BinaryIO) -> int:
+    """Read a Card16 (2-byte big-endian unsigned int)."""
+    b = stream.read(2)
+    if len(b) != 2:
+        msg = "Unexpected end of stream while reading Card16"
+        raise EOFError(msg)
+    return struct.unpack(">H", b)[0]
+
+
+def read_charset(
+    stream: BinaryIO, n_glyphs: int, fmt: int | None = None
+) -> list[int]:
+    """Parse a CFF charset table from ``stream`` and return the resulting
+    GID-ordered list of SIDs (or CIDs for CID fonts — the format byte
+    treatment is identical; the caller decides how to interpret the
+    integer values).
+
+    The returned list always has length ``n_glyphs`` and starts with
+    SID 0 at index 0 (.notdef), matching CFF spec §13.
+
+    When ``fmt`` is ``None`` (default), the format byte is read from
+    ``stream``; when supplied, the caller is asserting the format byte
+    was already consumed (matches upstream's overload pattern).
+
+    Mirrors ``CFFParser.readCharset`` (handles formats 0, 1, 2).
+    """
+    if fmt is None:
+        fmt = _read_card8(stream)
+    charset: list[int] = [0]  # .notdef
+    if fmt == 0:
+        for _ in range(n_glyphs - 1):
+            charset.append(_read_card16(stream))
+        return charset
+    if fmt in (1, 2):
+        n_left_reader = _read_card8 if fmt == 1 else _read_card16
+        count = 1
+        while count < n_glyphs:
+            first = _read_card16(stream)
+            n_left = n_left_reader(stream)
+            for sid in range(first, first + n_left + 1):
+                charset.append(sid)
+                count += 1
+                if count >= n_glyphs:
+                    break
+        return charset
+    msg = f"Unknown CFF charset format: {fmt}"
+    raise ValueError(msg)
+
+
+def read_encoding(
+    stream: BinaryIO, charset: list[int], fmt_byte: int | None = None
+) -> tuple[list[int], list[tuple[int, int]]]:
+    """Parse a CFF encoding table from ``stream``.
+
+    Returns a 2-tuple ``(encoding, supplement)`` where:
+      * ``encoding`` is a 256-entry list of SIDs indexed by character
+        code (entries default to 0 / .notdef).
+      * ``supplement`` is a list of ``(code, sid)`` pairs for any
+        supplemental mappings; supplement entries are *also* applied to
+        ``encoding`` in place (last write wins, matching upstream).
+
+    ``charset`` is the parsed charset (GID → SID list) — encoding format
+    0/1 entries are GID-relative pointers into this list. When
+    ``fmt_byte`` is supplied the caller asserts it was already read;
+    otherwise it is read from ``stream``.
+
+    The high bit (0x80) of the format byte signals a supplement; the
+    low 7 bits give the format (0 or 1).
+
+    Mirrors ``CFFParser.readEncoding`` (handles formats 0/1 + supplement).
+    """
+    if fmt_byte is None:
+        fmt_byte = _read_card8(stream)
+    have_supplement = bool(fmt_byte & 0x80)
+    fmt = fmt_byte & 0x7F
+
+    encoding: list[int] = [0] * 256
+    if fmt == 0:
+        n_codes = _read_card8(stream)
+        for gid in range(1, n_codes + 1):
+            code = _read_card8(stream)
+            if 0 <= gid < len(charset):
+                encoding[code] = charset[gid]
+    elif fmt == 1:
+        n_ranges = _read_card8(stream)
+        gid = 1
+        for _ in range(n_ranges):
+            code = _read_card8(stream)
+            n_left = _read_card8(stream)
+            for _ in range(n_left + 1):
+                if 0 <= gid < len(charset):
+                    encoding[code] = charset[gid]
+                code = (code + 1) & 0xFF
+                gid += 1
+    else:
+        msg = f"Unknown CFF encoding format: {fmt}"
+        raise ValueError(msg)
+
+    supplement: list[tuple[int, int]] = []
+    if have_supplement:
+        n_sups = _read_card8(stream)
+        for _ in range(n_sups):
+            code = _read_card8(stream)
+            sid = _read_card16(stream)
+            encoding[code] = sid
+            supplement.append((code, sid))
+
+    return encoding, supplement
+
+
+__all__ = [
+    "CFFFont",
+    "read_charset",
+    "read_encoding",
+]

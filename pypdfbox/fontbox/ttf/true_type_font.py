@@ -4,6 +4,7 @@ import io
 from typing import TYPE_CHECKING, Any
 
 from .digital_signature_table import DigitalSignatureTable
+from .glyph_positioning_table import GlyphPositioningTable
 from .glyph_substitution_table import GlyphSubstitutionTable
 from .header_table import HeaderTable
 from .horizontal_header_table import HorizontalHeaderTable
@@ -73,6 +74,8 @@ class TrueTypeFont:
         self._kern_resolved: bool = False
         self._gsub: GlyphSubstitutionTable | None = None
         self._gsub_resolved: bool = False
+        self._gpos: GlyphPositioningTable | None = None
+        self._gpos_resolved: bool = False
         self._naming: NamingTable | None = None
         self._naming_resolved: bool = False
         self._post: PostScriptTable | None = None
@@ -466,6 +469,35 @@ class TrueTypeFont:
         t = GlyphSubstitutionTable()
         t.populate_from_fonttools(self._tt)
         self._gsub = t
+        return t
+
+    # ---------- GPOS (glyph positioning) accessor ----------------------
+
+    def get_gpos(self) -> GlyphPositioningTable | None:
+        """Return the ``GPOS`` table view, or ``None`` if absent.
+
+        GPOS carries OpenType glyph positioning rules — pair-based
+        kerning (the most common use), cursive attachment, mark-to-
+        base / mark-to-mark / mark-to-ligature attachment, and
+        contextual / chained-contextual positioning. Most modern fonts
+        carry kerning in GPOS rather than the legacy ``kern`` table, so
+        this is the table actually consulted during PDF text layout.
+
+        Parsing is delegated to ``fontTools.ttLib`` — see
+        :class:`GlyphPositioningTable` for the rationale.
+
+        Result is cached, including the negative case — repeat callers
+        on a font without GPOS won't re-probe the directory.
+        """
+        if self._gpos_resolved:
+            return self._gpos
+        self._gpos_resolved = True
+        if "GPOS" not in self._tt:
+            self._gpos = None
+            return None
+        t = GlyphPositioningTable()
+        t.populate_from_fonttools(self._tt)
+        self._gpos = t
         return t
 
     # ---------- name-table accessors -----------------------------------

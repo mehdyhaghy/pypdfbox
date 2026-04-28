@@ -46,10 +46,18 @@ class PDAbstractPattern:
     # ---------- factory ----------
 
     @staticmethod
-    def create(dictionary: COSDictionary | None) -> PDAbstractPattern | None:
+    def create(
+        dictionary: COSDictionary | None,
+        resource_cache=None,  # type: ignore[no-untyped-def]
+    ) -> PDAbstractPattern | None:
         """Dispatch on ``/PatternType``. Returns ``None`` when ``dictionary``
         is ``None``; raises ``OSError`` for an unknown pattern type (mirrors
-        upstream ``IOException``)."""
+        upstream ``IOException``).
+
+        ``resource_cache`` is forwarded to ``PDTilingPattern`` (mirrors
+        upstream ``PDAbstractPattern.create(COSDictionary, ResourceCache)``);
+        ignored for ``PDShadingPattern`` since shading patterns do not own
+        a content-stream-bearing resources subtree."""
         # Local imports avoid a circular dependency between the abstract
         # base and its subclasses.
         from .pd_shading_pattern import PDShadingPattern  # noqa: PLC0415
@@ -64,7 +72,7 @@ class PDAbstractPattern:
             )
         pattern_type = dictionary.get_int(_PATTERN_TYPE, 0)
         if pattern_type == PDAbstractPattern.TYPE_TILING_PATTERN:
-            return PDTilingPattern(dictionary)
+            return PDTilingPattern(dictionary, resource_cache=resource_cache)
         if pattern_type == PDAbstractPattern.TYPE_SHADING_PATTERN:
             return PDShadingPattern(dictionary)
         raise OSError(f"Error: Unknown pattern type {pattern_type}")
@@ -74,11 +82,35 @@ class PDAbstractPattern:
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    # ---------- /Type ----------
+
+    def get_type(self) -> str:
+        """Always returns ``"Pattern"`` — the constant ``/Type`` value for
+        a pattern dictionary. Mirrors upstream ``PDAbstractPattern.getType``."""
+        return "Pattern"
+
     # ---------- /PatternType ----------
 
     def get_pattern_type(self) -> int:
         """Subclasses override to return their fixed pattern type code."""
         raise NotImplementedError
+
+    def set_pattern_type(self, pattern_type: int) -> None:
+        """Write ``/PatternType``. Mirrors upstream
+        ``PDAbstractPattern.setPatternType``. The concrete subclasses
+        override ``get_pattern_type`` to return their fixed code, but
+        upstream still exposes a setter on the base for symmetry with
+        ``setPaintType`` — we mirror that surface."""
+        self._dict.set_int(_PATTERN_TYPE, int(pattern_type))
+
+    # ---------- /PaintType (base for symmetry with upstream) ----------
+
+    def set_paint_type(self, paint_type: int) -> None:
+        """Write ``/PaintType``. Upstream defines this on the base class
+        (overridden as a no-op refinement on ``PDTilingPattern``); we
+        mirror that surface so callers can write ``/PaintType`` on either
+        subclass without re-typing."""
+        self._dict.set_int(COSName.get_pdf_name("PaintType"), int(paint_type))
 
     # ---------- /Matrix ----------
 

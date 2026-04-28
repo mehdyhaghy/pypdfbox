@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -10,6 +12,10 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 from .pd_abstract_pattern import PDAbstractPattern
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.pd_stream import PDStream
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _PATTERN: COSName = COSName.get_pdf_name("Pattern")
@@ -48,7 +54,12 @@ class PDTilingPattern(PDAbstractPattern):
     TILING_NO_DISTORTION: int = 2
     TILING_CONSTANT_SPACING_FASTER_TILING: int = 3
 
-    def __init__(self, stream: COSStream | None = None) -> None:
+    def __init__(
+        self,
+        stream: COSStream | None = None,
+        *,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
         if stream is None:
             stream = COSStream()
             super().__init__(stream)
@@ -60,6 +71,9 @@ class PDTilingPattern(PDAbstractPattern):
             self.set_resources(PDResources())
         else:
             super().__init__(stream)
+        # Upstream's two-arg ctor stashes the resource cache so that
+        # ``getResources()`` can pass it to the new PDResources wrapper.
+        self._resource_cache = resource_cache
 
     # ---------- /PatternType ----------
 
@@ -124,12 +138,30 @@ class PDTilingPattern(PDAbstractPattern):
     def set_y_step(self, y_step: float) -> None:
         self._dict.set_float(_Y_STEP, float(y_step))
 
+    # ---------- content stream ----------
+
+    def get_content_stream(self) -> PDStream:
+        """Return the wrapped content stream as a ``PDStream``. Mirrors
+        upstream ``PDTilingPattern.getContentStream`` — tiling patterns
+        carry a content stream describing one tile cell."""
+        from pypdfbox.pdmodel.common.pd_stream import PDStream  # noqa: PLC0415
+
+        cos = self._dict
+        if not isinstance(cos, COSStream):
+            # Defensive — upstream casts unconditionally; we surface a
+            # clearer error if a caller bypassed the typed ctor.
+            raise TypeError(
+                "PDTilingPattern is not backed by a COSStream — content "
+                "stream access requires a stream-typed pattern dictionary"
+            )
+        return PDStream(cos)
+
     # ---------- /Resources ----------
 
     def get_resources(self) -> PDResources | None:
         value = self._dict.get_dictionary_object(_RESOURCES)
         if isinstance(value, COSDictionary):
-            return PDResources(value)
+            return PDResources(value, resource_cache=self._resource_cache)
         return None
 
     def set_resources(

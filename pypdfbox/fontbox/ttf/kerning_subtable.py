@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -10,17 +11,20 @@ class KerningSubtable:
     """A single subtable of a TrueType ``kern`` table.
 
     Mirrors ``org.apache.fontbox.ttf.KerningSubtable`` at the public-method
-    level. The on-disk parsing is delegated to ``fontTools.ttLib`` (its
-    ``KernTable_format_0`` already understands both OpenType and Apple
-    layouts); this class is only an API shim that re-exposes the fields
-    PDFBox callers expect (``isHorizontalKerning``, ``getKerning``,
-    etc.) snake-cased.
+    level. Two construction paths are supported:
 
-    Only the upstream-supported case (OpenType ``kern`` version 0,
-    subtable format 0) carries pair data — formats 1 / 2 / Apple
-    extended-format subtables are exposed but report ``get_kerning``
-    of 0 for any pair, matching upstream's "unsupported subtable"
-    behaviour where ``pairs`` stays ``None`` and the warning is logged.
+    * Wrapping a fontTools ``KernTable_format_0`` instance (default
+      :meth:`__init__`). fontTools already understands both OpenType and
+      Apple layouts.
+    * Direct on-disk parsing via :meth:`from_bytes`, for the upstream
+      OpenType formats PDFBox handles natively — Format 0 (sorted pair
+      list) and Format 2 (class-based pair lookup, used by very large
+      kerning tables to keep size down).
+
+    Format 1 / Apple extended-format subtables are exposed but report
+    ``get_kerning`` of 0 for any pair, matching upstream's "unsupported
+    subtable" behaviour where ``pairs`` stays ``None`` and the warning is
+    logged.
     """
 
     # Coverage bit masks / shifts — kept identical to upstream so callers
@@ -37,7 +41,7 @@ class KerningSubtable:
 
     def __init__(
         self,
-        ft_subtable: Any,
+        ft_subtable: Any = None,
         ttf: TrueTypeFont | None = None,
     ) -> None:
         # ft_subtable is a fontTools KernTable_format_0 (or
@@ -45,6 +49,29 @@ class KerningSubtable:
         # to evaluate coverage flags and look up a pair value.
         self._ft = ft_subtable
         self._ttf = ttf
+
+        # Format-2 class-based lookup state (only populated by
+        # :meth:`from_bytes` when format == 2).
+        self._gid_to_left_class: dict[int, int] | None = None
+        self._gid_to_right_class: dict[int, int] | None = None
+        self._class_kerning: list[int] | None = None
+        self._class_row_width: int = 0
+
+        # Integer-keyed gid -> gid -> value lookup populated by
+        # :meth:`from_bytes` for format 0. Distinct from ``_pairs`` (which
+        # holds glyph-name keys when wrapping fontTools output).
+        self._gid_pairs: dict[tuple[int, int], int] | None = None
+
+        if ft_subtable is None:
+            # Bare-bones constructor used by :meth:`from_bytes` — caller
+            # populates the fields directly.
+            self._coverage = 0
+            self._horizontal = False
+            self._minimums = False
+            self._cross_stream = False
+            self._format = 0
+            self._pairs = None
+            return
 
         # In fontTools, OpenType non-Apple ``coverage`` is the low byte
         # of the upstream 16-bit coverage word and ``format`` is the high
@@ -85,6 +112,146 @@ class KerningSubtable:
         else:
             self._pairs = None
 
+    # ---------- direct binary parsing (Format 0 + Format 2) ----------
+
+    @classmethod
+    def from_bytes(
+        cls,
+        data: bytes,
+        version: int = 0,
+    ) -> KerningSubtable:
+        """Parse a single ``kern`` subtable from raw bytes.
+
+        ``data`` must include the subtable header (version, length, coverage)
+        followed by the format-specific body. ``version`` selects between
+        the OpenType layout (``0``) and the Apple ``kern`` layout (``1``);
+        the OpenType layout is what PDFBox parses natively.
+
+        Supports Format 0 (sorted pair list) and Format 2 (class-based).
+        Other formats are accepted but produce a subtable that returns 0
+        for any pair lookup, matching upstream's "unsupported subtable"
+        behaviour.
+        """
+        sub = cls()
+        if version == 0:
+            # OpenType subtable header: version (uint16), length (uint16),
+            # coverage (uint16). Coverage low byte = flags, high byte = format.
+            if len(data) < 6:
+                raise ValueError("kern subtable too short for OpenType header")
+            sub_version, _length, coverage = struct.unpack_from(">HHH", data, 0)
+            del sub_version
+            body = data[6:]
+        else:
+            # Apple ``kern`` v1 subtable header: length (uint32),
+            # coverage (uint16), tupleIndex (uint16). We only really need
+            # coverage; format is bits 0-7 of the low byte and direction
+            # / cross-stream / variation in the high byte.
+            if len(data) < 8:
+                raise ValueError("kern subtable too short for Apple header")
+            _length, coverage, _tuple = struct.unpack_from(">IHH", data, 0)
+            body = data[8:]
+
+        sub._coverage = coverage
+        if version == 0:
+            sub._format = (coverage & cls.COVERAGE_FORMAT) >> cls.COVERAGE_FORMAT_SHIFT
+            sub._horizontal = bool(coverage & cls.COVERAGE_HORIZONTAL)
+            sub._minimums = bool(coverage & cls.COVERAGE_MINIMUMS)
+            sub._cross_stream = bool(coverage & cls.COVERAGE_CROSS_STREAM)
+        else:
+            # Apple coverage layout differs (vertical bit set means vertical,
+            # so horizontal = NOT bit 15). We don't need full parity — leave
+            # the booleans False so unsupported-subtable lookup applies.
+            sub._format = coverage & 0xFF
+            sub._horizontal = False
+            sub._minimums = False
+            sub._cross_stream = False
+
+        if sub._format == 0:
+            sub._read_format_0(body)
+        elif sub._format == 2:
+            sub._read_format_2(body)
+        # Other formats: leave _pairs / class tables unset → 0 lookup.
+        return sub
+
+    def _read_format_0(self, body: bytes) -> None:
+        """Parse a Format 0 (sorted pair list) subtable body.
+
+        Layout: nPairs (uint16), searchRange (uint16), entrySelector (uint16),
+        rangeShift (uint16), then nPairs * (left uint16, right uint16,
+        value int16) entries sorted by (left, right).
+        """
+        if len(body) < 8:
+            raise ValueError("kern format-0 body too short")
+        n_pairs, _search, _entry_sel, _range_shift = struct.unpack_from(
+            ">HHHH", body, 0
+        )
+        pairs: dict[tuple[int, int], int] = {}
+        offset = 8
+        for _ in range(n_pairs):
+            if offset + 6 > len(body):
+                break
+            left, right, value = struct.unpack_from(">HHh", body, offset)
+            pairs[(left, right)] = value
+            offset += 6
+        self._gid_pairs = pairs
+
+    def _read_format_2(self, body: bytes) -> None:
+        """Parse a Format 2 (class-based) subtable body.
+
+        Layout: rowWidth (uint16), leftClassTableOffset (uint16),
+        rightClassTableOffset (uint16), arrayOffset (uint16). Offsets are
+        measured from the start of the subtable header (i.e. before the
+        6-byte OpenType header), so we add 6 to each.
+
+        Each class table starts with firstGlyph (uint16), nGlyphs (uint16)
+        followed by nGlyphs uint16 class values. The kerning array is a
+        block of int16 values; the kerning value for (left_gid, right_gid)
+        is ``array[leftClass + rightClass]`` (offsets in bytes within the
+        subtable, so leftClass already counts in row-width units).
+        """
+        if len(body) < 8:
+            raise ValueError("kern format-2 body too short")
+        row_width, left_off, right_off, array_off = struct.unpack_from(
+            ">HHHH", body, 0
+        )
+        # Offsets are from the start of the subtable header (before the
+        # 6-byte OpenType header). Re-base them onto ``body``.
+        header_size = 6
+        left_base = left_off - header_size
+        right_base = right_off - header_size
+        array_base = array_off - header_size
+
+        gid_to_left = self._read_class_table(body, left_base)
+        gid_to_right = self._read_class_table(body, right_base)
+        # The kerning array runs from array_base to end of body. Decode as
+        # a flat int16 list — index lookup is (leftClass + rightClass) bytes.
+        array_bytes = body[array_base:]
+        n_values = len(array_bytes) // 2
+        values = list(struct.unpack(">" + "h" * n_values, array_bytes[: n_values * 2]))
+
+        self._gid_to_left_class = gid_to_left
+        self._gid_to_right_class = gid_to_right
+        self._class_kerning = values
+        self._class_row_width = row_width
+
+    @staticmethod
+    def _read_class_table(body: bytes, base: int) -> dict[int, int]:
+        """Decode one class-mapping subtable returning gid → class value
+        (in bytes — Format 2 stores class values as byte offsets, so the
+        caller indexes the kerning array directly without further scaling)."""
+        if base < 0 or base + 4 > len(body):
+            return {}
+        first_glyph, n_glyphs = struct.unpack_from(">HH", body, base)
+        result: dict[int, int] = {}
+        offset = base + 4
+        for i in range(n_glyphs):
+            if offset + 2 > len(body):
+                break
+            (cls_value,) = struct.unpack_from(">H", body, offset)
+            result[first_glyph + i] = cls_value
+            offset += 2
+        return result
+
     # ---------- coverage accessors ----------
 
     def is_horizontal_kerning(self, cross: bool = False) -> bool:
@@ -117,7 +284,9 @@ class KerningSubtable:
         return self._cross_stream
 
     def get_format(self) -> int:
-        """Subtable format (0 / 1 / 2 / 3)."""
+        """Subtable format (0 / 1 / 2 / 3). Formats 0 and 2 carry pair data
+        when parsed via :meth:`from_bytes`; format 1 / 3 / Apple extended
+        formats are exposed but report zero adjustments."""
         return self._format
 
     def get_coverage(self) -> int:
@@ -150,7 +319,24 @@ class KerningSubtable:
         )
 
     def _get_kerning_pair(self, left: int, right: int) -> int:
-        if self._pairs is None or left < 0 or right < 0:
+        if left < 0 or right < 0:
+            return 0
+        # Format-2 class-based lookup.
+        if self._class_kerning is not None and self._gid_to_left_class is not None:
+            assert self._gid_to_right_class is not None
+            left_cls = self._gid_to_left_class.get(left, 0)
+            right_cls = self._gid_to_right_class.get(right, 0)
+            # Class values are byte offsets — divide by 2 since we store the
+            # array as int16 entries.
+            idx = (left_cls + right_cls) // 2
+            if 0 <= idx < len(self._class_kerning):
+                return int(self._class_kerning[idx])
+            return 0
+        # Format-0 binary-parsed (gid-keyed) lookup.
+        if self._gid_pairs is not None:
+            return int(self._gid_pairs.get((left, right), 0))
+        # Format-0 fontTools-wrapped (glyph-name keyed) lookup.
+        if self._pairs is None:
             return 0
         # fontTools stores keys as (glyph_name, glyph_name) tuples — we
         # need to project the GIDs back through the glyph order to look
@@ -168,7 +354,11 @@ class KerningSubtable:
 
     def _get_kerning_seq(self, glyphs: list[int] | tuple[int, ...]) -> list[int]:
         result: list[int] = []
-        if self._pairs is None:
+        if (
+            self._pairs is None
+            and self._gid_pairs is None
+            and self._class_kerning is None
+        ):
             return [0] * len(glyphs)
         ng = len(glyphs)
         for i in range(ng):

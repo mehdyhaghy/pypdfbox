@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
+from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
 from pypdfbox.pdmodel.interactive.annotation import PDIconFit
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_characteristics_dictionary import (
@@ -38,33 +44,57 @@ def test_border_colour_default_none() -> None:
 
 def test_border_colour_round_trip_grey() -> None:
     mk = PDAppearanceCharacteristicsDictionary()
-    bc = COSArray.of_cos_floats([0.5])
-    mk.set_border_colour(bc)
-    assert mk.get_border_colour() is bc
+    color = PDColor([0.5], PDDeviceGray.INSTANCE)
+    mk.set_border_colour(color)
+    rt = mk.get_border_colour()
+    assert isinstance(rt, PDColor)
+    assert rt.get_color_space() is PDDeviceGray.INSTANCE
+    assert rt.get_components() == [0.5]
+
+
+def test_border_colour_round_trip_rgb() -> None:
+    mk = PDAppearanceCharacteristicsDictionary()
+    color = PDColor([0.1, 0.2, 0.3], PDDeviceRGB.INSTANCE)
+    mk.set_border_colour(color)
+    rt = mk.get_border_colour()
+    assert isinstance(rt, PDColor)
+    assert rt.get_color_space() is PDDeviceRGB.INSTANCE
+    assert rt.get_components() == pytest.approx([0.1, 0.2, 0.3])
 
 
 def test_border_colour_round_trip_cmyk() -> None:
     mk = PDAppearanceCharacteristicsDictionary()
-    bc = COSArray.of_cos_floats([0.0, 0.5, 1.0, 0.25])
-    mk.set_border_colour(bc)
-    assert mk.get_border_colour() is bc
-    assert len(mk.get_border_colour()) == 4
+    color = PDColor([0.0, 0.5, 1.0, 0.25], PDDeviceCMYK.INSTANCE)
+    mk.set_border_colour(color)
+    rt = mk.get_border_colour()
+    assert isinstance(rt, PDColor)
+    assert rt.get_color_space() is PDDeviceCMYK.INSTANCE
+    assert rt.get_components() == [0.0, 0.5, 1.0, 0.25]
 
 
 def test_border_colour_clear_via_none() -> None:
     mk = PDAppearanceCharacteristicsDictionary()
-    mk.set_border_colour(COSArray.of_cos_floats([1.0, 0.0, 0.0]))
+    mk.set_border_colour(PDColor([1.0, 0.0, 0.0], PDDeviceRGB.INSTANCE))
     mk.set_border_colour(None)
     assert mk.get_border_colour() is None
     assert not mk.get_cos_object().contains_key(COSName.get_pdf_name("BC"))
 
 
-def test_border_colour_empty_array_signifies_no_colour() -> None:
+def test_border_colour_zero_or_two_components_is_none() -> None:
+    """Per upstream's ``getColor()`` switch: only 1, 3, 4 components map
+    to a typed ``PDColor``; other arities yield ``None``."""
     mk = PDAppearanceCharacteristicsDictionary()
     mk.set_border_colour(COSArray())
-    rt = mk.get_border_colour()
-    assert isinstance(rt, COSArray)
-    assert len(rt) == 0
+    assert mk.get_border_colour() is None
+    mk.set_border_colour(COSArray.of_cos_floats([0.5, 0.5]))
+    assert mk.get_border_colour() is None
+
+
+def test_border_colour_array_returns_raw_cos_array() -> None:
+    mk = PDAppearanceCharacteristicsDictionary()
+    raw = COSArray.of_cos_floats([0.5, 0.5, 0.5])
+    mk.set_border_colour(raw)
+    assert mk.get_border_colour_array() is raw
 
 
 # ---------- /BG background colour ----------
@@ -76,16 +106,28 @@ def test_background_default_none() -> None:
 
 def test_background_round_trip_rgb() -> None:
     mk = PDAppearanceCharacteristicsDictionary()
-    bg = COSArray.of_cos_floats([0.1, 0.2, 0.3])
-    mk.set_background(bg)
-    assert mk.get_background() is bg
+    color = PDColor([0.1, 0.2, 0.3], PDDeviceRGB.INSTANCE)
+    mk.set_background(color)
+    rt = mk.get_background()
+    assert isinstance(rt, PDColor)
+    assert rt.get_components() == pytest.approx([0.1, 0.2, 0.3])
 
 
 def test_background_clear_via_none() -> None:
     mk = PDAppearanceCharacteristicsDictionary()
-    mk.set_background(COSArray.of_cos_floats([0.5]))
+    mk.set_background(PDColor([0.5], PDDeviceGray.INSTANCE))
     mk.set_background(None)
     assert mk.get_background() is None
+
+
+def test_background_array_returns_raw_cos_array() -> None:
+    mk = PDAppearanceCharacteristicsDictionary()
+    raw = COSArray.of_cos_floats([0.0, 0.5, 1.0, 0.0])
+    mk.set_background(raw)
+    assert mk.get_background_array() is raw
+    typed = mk.get_background()
+    assert isinstance(typed, PDColor)
+    assert typed.get_color_space() is PDDeviceCMYK.INSTANCE
 
 
 # ---------- /CA /RC /AC captions ----------
@@ -227,6 +269,24 @@ def test_text_position_all_seven_codes_round_trip() -> None:
         mk = PDAppearanceCharacteristicsDictionary()
         mk.set_text_position(tp)
         assert mk.get_text_position() == tp
+
+
+def test_text_position_constants_match_spec() -> None:
+    cls = PDAppearanceCharacteristicsDictionary
+    assert cls.TEXT_POSITION_CAPTION_ONLY == 0
+    assert cls.TEXT_POSITION_NO_CAPTION == 1
+    assert cls.TEXT_POSITION_CAPTION_BELOW == 2
+    assert cls.TEXT_POSITION_CAPTION_ABOVE == 3
+    assert cls.TEXT_POSITION_CAPTION_RIGHT == 4
+    assert cls.TEXT_POSITION_CAPTION_LEFT == 5
+    assert cls.TEXT_POSITION_CAPTION_OVERLAID == 6
+
+
+def test_text_position_constants_round_trip_via_setter() -> None:
+    cls = PDAppearanceCharacteristicsDictionary
+    mk = cls()
+    mk.set_text_position(cls.TEXT_POSITION_CAPTION_OVERLAID)
+    assert mk.get_text_position() == 6
 
 
 # ---------- constructor / cos object ----------

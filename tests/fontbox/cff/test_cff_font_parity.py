@@ -12,11 +12,12 @@ suite is still expected to pass on every other module's tests.
 from __future__ import annotations
 
 import io
+import struct
 from pathlib import Path
 
 import pytest
 
-from pypdfbox.fontbox.cff.cff_font import CFFFont
+from pypdfbox.fontbox.cff.cff_font import CFFFont, read_charset, read_encoding
 
 # Candidate OTF locations. First match wins; missing files are skipped.
 _OTF_CANDIDATES = [
@@ -229,3 +230,153 @@ def test_get_global_subr_index_returns_bytes_list(cff_font: CFFFont) -> None:
     assert all(isinstance(b, bytes) for b in gsubrs)
     # Count must agree with the int accessor.
     assert len(gsubrs) == cff_font.get_global_subrs()
+
+
+# ---------- explicit CFF charset / encoding parser tests ----------
+# Upstream: org.apache.fontbox.cff.CFFParser.readCharset / readEncoding.
+# Adobe Technote #5176 §13 (charsets) and §12 (encodings).
+
+
+class TestReadCharset:
+    """Synthetic byte streams exercising the three charset formats."""
+
+    def test_format_0_reads_card16_sids(self) -> None:
+        # Format 0: nGlyphs - 1 Card16 SIDs after .notdef.
+        # Three glyphs total (.notdef + 2): SIDs [0, 100, 200].
+        data = bytes([0x00, 0x00, 0x64, 0x00, 0xC8])
+        stream = io.BytesIO(data)
+        out = read_charset(stream, n_glyphs=3)
+        assert out == [0, 100, 200]
+        # Stream fully consumed.
+        assert stream.read() == b""
+
+    def test_format_1_card8_nleft_ranges(self) -> None:
+        # Format 1: ranges of (Card16 first, Card8 nLeft).
+        # 5 glyphs total = .notdef (implicit) + range [10..13] (nLeft=3).
+        data = bytes([0x01, 0x00, 0x0A, 0x03])
+        stream = io.BytesIO(data)
+        out = read_charset(stream, n_glyphs=5)
+        assert out == [0, 10, 11, 12, 13]
+
+    def test_format_1_multiple_ranges(self) -> None:
+        # Two ranges: (first=5, nLeft=1) → [5,6]; (first=20, nLeft=2) → [20,21,22].
+        # 6 glyphs total (incl. .notdef).
+        data = bytes([0x01, 0x00, 0x05, 0x01, 0x00, 0x14, 0x02])
+        stream = io.BytesIO(data)
+        out = read_charset(stream, n_glyphs=6)
+        assert out == [0, 5, 6, 20, 21, 22]
+
+    def test_format_2_card16_nleft_for_large_ranges(self) -> None:
+        # Format 2: ranges of (Card16 first, Card16 nLeft) — used by CID
+        # fonts where nLeft can exceed 255. Synthesise a single range
+        # covering 300 CIDs.
+        n_left = 299  # 300 entries in the range
+        n_glyphs = 1 + 300
+        data = bytes([0x02]) + struct.pack(">H", 1000) + struct.pack(">H", n_left)
+        stream = io.BytesIO(data)
+        out = read_charset(stream, n_glyphs=n_glyphs)
+        assert out[0] == 0
+        assert out[1] == 1000
+        assert out[-1] == 1000 + n_left
+        assert len(out) == n_glyphs
+
+    def test_unknown_format_raises(self) -> None:
+        stream = io.BytesIO(bytes([0x05]))
+        with pytest.raises(ValueError, match="charset format"):
+            read_charset(stream, n_glyphs=2)
+
+    def test_explicit_fmt_skips_format_byte(self) -> None:
+        # When fmt is supplied, the helper does NOT consume a format byte.
+        data = bytes([0x00, 0x07])  # raw Card16 = 7
+        stream = io.BytesIO(data)
+        out = read_charset(stream, n_glyphs=2, fmt=0)
+        assert out == [0, 7]
+
+
+class TestReadEncoding:
+    """Synthetic byte streams exercising both encoding formats and the
+    supplement, plus the high-bit-set form."""
+
+    # Charset for the test fonts: GID 0=.notdef (SID 0), GID 1=SID 100,
+    # GID 2=SID 200, GID 3=SID 300.
+    CHARSET = [0, 100, 200, 300]
+
+    def test_format_0_simple_codes(self) -> None:
+        # nCodes=3: codes 0x41 ('A'), 0x42 ('B'), 0x43 ('C') → GIDs 1,2,3.
+        data = bytes([0x00, 0x03, 0x41, 0x42, 0x43])
+        stream = io.BytesIO(data)
+        encoding, sup = read_encoding(stream, self.CHARSET)
+        assert sup == []
+        assert encoding[0x41] == 100
+        assert encoding[0x42] == 200
+        assert encoding[0x43] == 300
+        # Untouched codes stay 0.
+        assert encoding[0] == 0
+        assert encoding[0xFF] == 0
+        assert len(encoding) == 256
+
+    def test_format_1_range_based(self) -> None:
+        # Single range: code=0x41, nLeft=2 → 3 codes [0x41, 0x42, 0x43]
+        # mapping to GIDs 1,2,3.
+        data = bytes([0x01, 0x01, 0x41, 0x02])
+        stream = io.BytesIO(data)
+        encoding, sup = read_encoding(stream, self.CHARSET)
+        assert sup == []
+        assert encoding[0x41] == 100
+        assert encoding[0x42] == 200
+        assert encoding[0x43] == 300
+
+    def test_format_0_with_supplement_high_bit(self) -> None:
+        # Format byte 0x80 = format 0 + supplement bit.
+        # Base: nCodes=1, code 0x41 → GID 1 (SID 100).
+        # Supplement: nSups=2, (0x42 → SID 999), (0x41 → SID 555 — overrides base).
+        data = (
+            bytes([0x80, 0x01, 0x41])
+            + bytes([0x02, 0x42])
+            + struct.pack(">H", 999)
+            + bytes([0x41])
+            + struct.pack(">H", 555)
+        )
+        stream = io.BytesIO(data)
+        encoding, sup = read_encoding(stream, self.CHARSET)
+        # Supplement entries returned in stream order.
+        assert sup == [(0x42, 999), (0x41, 555)]
+        # Supplement applied to encoding (last write wins for 0x41).
+        assert encoding[0x42] == 999
+        assert encoding[0x41] == 555
+
+    def test_format_1_with_supplement_high_bit(self) -> None:
+        # Format byte 0x81 = format 1 + supplement bit.
+        # Single range: code=0x30, nLeft=1 → codes 0x30, 0x31 → GIDs 1,2.
+        # Supplement: nSups=1, (0x99 → SID 777).
+        data = (
+            bytes([0x81, 0x01, 0x30, 0x01])
+            + bytes([0x01, 0x99])
+            + struct.pack(">H", 777)
+        )
+        stream = io.BytesIO(data)
+        encoding, sup = read_encoding(stream, self.CHARSET)
+        assert encoding[0x30] == 100
+        assert encoding[0x31] == 200
+        assert sup == [(0x99, 777)]
+        assert encoding[0x99] == 777
+
+    def test_unknown_encoding_format_raises(self) -> None:
+        # Low 7 bits = 5 (not 0 or 1) → ValueError.
+        stream = io.BytesIO(bytes([0x05]))
+        with pytest.raises(ValueError, match="encoding format"):
+            read_encoding(stream, self.CHARSET)
+
+    def test_explicit_fmt_byte_skips_read(self) -> None:
+        # nCodes=1, code 0x10 → GID 1 (SID 100).
+        data = bytes([0x01, 0x10])
+        stream = io.BytesIO(data)
+        encoding, sup = read_encoding(stream, self.CHARSET, fmt_byte=0x00)
+        assert encoding[0x10] == 100
+        assert sup == []
+
+    def test_truncated_stream_raises_eof(self) -> None:
+        # Format 0 with promised nCodes=3 but only 1 code byte present.
+        stream = io.BytesIO(bytes([0x00, 0x03, 0x41]))
+        with pytest.raises(EOFError):
+            read_encoding(stream, self.CHARSET)

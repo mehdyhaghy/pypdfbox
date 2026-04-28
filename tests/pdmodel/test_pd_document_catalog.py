@@ -315,3 +315,164 @@ def test_set_pages_none_removes_entry() -> None:
 
     catalog.set_pages(None)
     assert COSName.PAGES not in catalog  # type: ignore[attr-defined]
+
+
+# ---------- MarkInfo convenience accessors ----------
+
+
+def test_mark_info_convenience_defaults_when_absent() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.is_document_marked() is False
+    assert cat.has_user_properties() is False
+    assert cat.has_suspects() is False
+
+
+def test_mark_info_convenience_round_trip() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_document_marked(True)
+    cat.set_user_properties(True)
+    cat.set_suspects(True)
+    assert cat.is_document_marked() is True
+    assert cat.has_user_properties() is True
+    assert cat.has_suspects() is True
+    # Sub-dict is materialised under /MarkInfo.
+    mark = cat.get_mark_info()
+    assert mark is not None
+    assert mark.is_marked() is True
+    assert mark.is_user_properties() is True
+    assert mark.is_suspects() is True
+
+
+# ---------- StructureTreeRoot upstream-name aliases ----------
+
+
+def test_structure_tree_root_alias_returns_same() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_structure_tree_root() is None
+    # set_structure_tree_root mirrors set_struct_tree_root.
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureTreeRoot,
+    )
+
+    root = PDStructureTreeRoot()
+    cat.set_structure_tree_root(root)
+    assert cat.get_structure_tree_root() is not None
+    assert (
+        cat.get_structure_tree_root().get_cos_object()
+        is root.get_cos_object()
+    )
+
+
+# ---------- /OutputIntents set_output_intents ----------
+
+
+def test_set_output_intents_replaces_array() -> None:
+    from pypdfbox.pdmodel.graphics.color import PDOutputIntent
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    a = PDOutputIntent()
+    b = PDOutputIntent()
+    cat.set_output_intents([a, b])
+    assert len(cat.get_output_intents()) == 2
+
+    c = PDOutputIntent()
+    cat.set_output_intents([c])
+    fetched = cat.get_output_intents()
+    assert len(fetched) == 1
+    assert fetched[0].get_cos_object() is c.get_cos_object()
+
+
+def test_set_output_intents_none_or_empty_removes_entry() -> None:
+    from pypdfbox.pdmodel.graphics.color import PDOutputIntent
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    cat.add_output_intent(PDOutputIntent())
+    cat.set_output_intents(None)
+    assert COSName.get_pdf_name("OutputIntents") not in cat
+
+    cat.add_output_intent(PDOutputIntent())
+    cat.set_output_intents([])
+    assert COSName.get_pdf_name("OutputIntents") not in cat
+
+
+# ---------- /AF AssociatedFiles ----------
+
+
+def test_get_associated_files_absent_returns_empty_list() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_associated_files() == []
+
+
+def test_associated_files_round_trip() -> None:
+    from pypdfbox.pdmodel.common.filespecification import (
+        PDComplexFileSpecification,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    fs = PDComplexFileSpecification()
+    fs.set_file("attached.txt")
+    cat.set_associated_files([fs])
+
+    fetched = cat.get_associated_files()
+    assert len(fetched) == 1
+    assert fetched[0].get_file() == "attached.txt"
+
+    cat.set_associated_files(None)
+    assert cat.get_associated_files() == []
+
+
+def test_associated_files_set_empty_removes_entry() -> None:
+    from pypdfbox.pdmodel.common.filespecification import (
+        PDComplexFileSpecification,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    fs = PDComplexFileSpecification()
+    cat.set_associated_files([fs])
+    assert COSName.get_pdf_name("AF") in cat
+
+    cat.set_associated_files([])
+    assert COSName.get_pdf_name("AF") not in cat
+
+
+# ---------- /PieceInfo ----------
+
+
+def test_piece_info_absent_returns_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().get_piece_info() is None
+
+
+def test_piece_info_round_trip() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    piece = COSDictionary()
+    piece.set_item(COSName.get_pdf_name("ADBE"), COSDictionary())
+    cat.set_piece_info(piece)
+
+    fetched = cat.get_piece_info()
+    assert fetched is piece
+
+    cat.set_piece_info(None)
+    assert cat.get_piece_info() is None
+
+
+def test_piece_info_returns_none_when_entry_is_not_dict() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PieceInfo"), COSString("nope")
+    )
+    assert cat.get_piece_info() is None

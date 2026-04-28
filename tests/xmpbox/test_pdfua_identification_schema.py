@@ -106,3 +106,103 @@ def test_xmp_metadata_add_is_idempotent() -> None:
     assert a is b
     assert isinstance(a, PDFUAIdentificationSchema)
     assert meta.get_pdfua_identification_schema() is a
+
+
+# ---------- PDF/UA-2 (ISO 14289-2) round-out ----------
+
+
+def test_part_constants_match_iso_parts() -> None:
+    assert PDFUAIdentificationSchema.PART_1 == 1
+    assert PDFUAIdentificationSchema.PART_2 == 2
+
+
+def test_pdfua_part2_round_trip_with_rev() -> None:
+    schema = _ident()
+    schema.set_part(PDFUAIdentificationSchema.PART_2)
+    schema.set_rev("2024")
+    assert schema.get_part() == 2
+    assert schema.get_rev() == "2024"
+    assert schema.get_revision() == "2024"
+
+
+def test_pdfua_part2_set_rev_accepts_int() -> None:
+    schema = _ident()
+    schema.set_part(PDFUAIdentificationSchema.PART_2)
+    schema.set_rev(2024)
+    # int input is coerced to decimal string for upstream-style round-trip.
+    assert schema.get_rev() == "2024"
+    assert schema.get_revision() == "2024"
+
+
+def test_pdfua_part2_set_rev_none_clears() -> None:
+    schema = _ident()
+    schema.set_rev("2024")
+    assert schema.get_rev() == "2024"
+    schema.set_rev(None)
+    assert schema.get_rev() is None
+
+
+def test_pdfua_part2_amd_corr_round_trip() -> None:
+    schema = _ident()
+    schema.set_part(2)
+    schema.set_amd("A1")
+    schema.set_corr("Cor1:2025")
+    assert schema.get_amd() == "A1"
+    assert schema.get_amendment() == "A1"
+    assert schema.get_corr() == "Cor1:2025"
+    assert schema.get_correction() == "Cor1:2025"
+    schema.set_corr(None)
+    assert schema.get_corr() is None
+    assert schema.get_correction() is None
+
+
+def test_pdfua_part2_packet_round_trips_through_parser() -> None:
+    # Realistic PDF/UA-2 XMP packet — part=2 + rev=2024 is the minimum claim.
+    packet = (
+        b"<?xpacket begin='\xef\xbb\xbf' id='W5M0MpCehiHzreSzNTczkc9d'?>"
+        b"<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+        b"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+        b"<rdf:Description rdf:about=''"
+        b" xmlns:pdfuaid='http://www.aiim.org/pdfua/ns/id/'"
+        b" pdfuaid:part='2' pdfuaid:rev='2024'/>"
+        b"</rdf:RDF></x:xmpmeta>"
+        b"<?xpacket end='w'?>"
+    )
+    metadata = DomXmpParser().parse(packet)
+    schema = metadata.get_schema(PDFUAIdentificationSchema)
+    assert isinstance(schema, PDFUAIdentificationSchema)
+    assert schema.get_part() == 2
+    assert schema.get_rev() == "2024"
+
+
+def test_pdfua_part2_packet_with_amd_and_corr() -> None:
+    packet = (
+        b"<?xpacket begin='\xef\xbb\xbf' id='W5M0MpCehiHzreSzNTczkc9d'?>"
+        b"<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+        b"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+        b"<rdf:Description rdf:about=''"
+        b" xmlns:pdfuaid='http://www.aiim.org/pdfua/ns/id/'"
+        b" pdfuaid:part='2' pdfuaid:rev='2024'"
+        b" pdfuaid:amd='A1' pdfuaid:corr='Cor1:2025'/>"
+        b"</rdf:RDF></x:xmpmeta>"
+        b"<?xpacket end='w'?>"
+    )
+    metadata = DomXmpParser().parse(packet)
+    schema = metadata.get_schema(PDFUAIdentificationSchema)
+    assert isinstance(schema, PDFUAIdentificationSchema)
+    assert schema.get_part() == 2
+    assert schema.get_rev() == "2024"
+    assert schema.get_amendment() == "A1"
+    assert schema.get_correction() == "Cor1:2025"
+
+
+def test_set_part_value_with_int_and_string_aliases() -> None:
+    schema = _ident()
+    schema.set_part_value_with_int(2)
+    assert schema.get_part() == 2
+    schema.set_part_value_with_string("1")
+    assert schema.get_part() == 1
+    import pytest
+
+    with pytest.raises(ValueError):
+        schema.set_part_value_with_string("not-a-number")
