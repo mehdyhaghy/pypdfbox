@@ -251,3 +251,102 @@ def test_string_name_tree_create_child_node_returns_same_type() -> None:
 def test_pd_name_tree_node_is_abstract() -> None:
     with pytest.raises(TypeError):
         PDNameTreeNode()  # type: ignore[abstract]
+
+
+# ---------- round-out: value_type, remove_*, merge, sizing, contains ----------
+
+
+def test_value_type_constructor_arg_round_trips() -> None:
+    tree = PDStringNameTreeNode()
+    assert tree.get_value_type() is None
+
+    typed = PDStringNameTreeNode()
+    # Subclasses pin T, but the base lets callers stash the marker class
+    # for parity with PDFBox's ``PDNameTreeNode(Class<? extends T>)`` ctor.
+    typed._value_type = str  # noqa: SLF001 - direct marker assignment is fine
+    assert typed.get_value_type() is str
+
+
+def test_remove_names_clears_only_names_and_limits() -> None:
+    tree = PDStringNameTreeNode()
+    tree.set_names({"a": "A", "b": "B"})
+
+    tree.remove_names()
+
+    assert tree.get_cos_object().get_dictionary_object(_NAMES) is None
+    assert tree.get_cos_object().get_dictionary_object(_LIMITS) is None
+    # /Kids was never present so still absent.
+    assert tree.get_cos_object().get_dictionary_object(_KIDS) is None
+
+
+def test_remove_kids_clears_kids_and_limits() -> None:
+    leaf = PDStringNameTreeNode()
+    leaf.set_names({"a": "A"})
+    root = PDStringNameTreeNode()
+    root.set_kids([leaf])
+
+    root.remove_kids()
+    assert root.get_cos_object().get_dictionary_object(_KIDS) is None
+    assert root.get_cos_object().get_dictionary_object(_LIMITS) is None
+
+
+def test_merge_with_dict_inserts_and_overwrites() -> None:
+    tree = PDStringNameTreeNode()
+    tree.set_names({"a": "A", "b": "B"})
+
+    tree.merge({"b": "B2", "c": "C"})
+
+    assert tree.get_names() == {"a": "A", "b": "B2", "c": "C"}
+
+
+def test_merge_with_other_node_flattens_kids() -> None:
+    leaf_one = PDStringNameTreeNode()
+    leaf_one.set_names({"a": "A", "b": "B"})
+    leaf_two = PDStringNameTreeNode()
+    leaf_two.set_names({"y": "Y", "z": "Z"})
+    other = PDStringNameTreeNode()
+    other.set_kids([leaf_one, leaf_two])
+
+    target = PDStringNameTreeNode()
+    target.set_names({"m": "M"})
+    target.merge(other)
+
+    assert target.get_names() == {"a": "A", "b": "B", "m": "M", "y": "Y", "z": "Z"}
+
+
+def test_merge_none_and_empty_are_noops() -> None:
+    tree = PDStringNameTreeNode()
+    tree.set_names({"a": "A"})
+
+    tree.merge(None)
+    tree.merge({})
+    assert tree.get_names() == {"a": "A"}
+
+
+def test_get_number_of_values_flat_and_nested() -> None:
+    flat = PDStringNameTreeNode()
+    flat.set_names({"a": "A", "b": "B", "c": "C"})
+    assert flat.get_number_of_values() == 3
+
+    leaf_one = PDStringNameTreeNode()
+    leaf_one.set_names({"alpha": "A", "bravo": "B"})
+    leaf_two = PDStringNameTreeNode()
+    leaf_two.set_names({"charlie": "C"})
+    root = PDStringNameTreeNode()
+    root.set_kids([leaf_one, leaf_two])
+    assert root.get_number_of_values() == 3
+
+    empty = PDStringNameTreeNode()
+    assert empty.get_number_of_values() == 0
+
+
+def test_contains_operator_walks_tree() -> None:
+    leaf = PDStringNameTreeNode()
+    leaf.set_names({"alpha": "A"})
+    root = PDStringNameTreeNode()
+    root.set_kids([leaf])
+
+    assert "alpha" in root
+    assert "missing" not in root
+    # Non-string types just return False instead of raising.
+    assert 123 not in root  # type: ignore[operator]

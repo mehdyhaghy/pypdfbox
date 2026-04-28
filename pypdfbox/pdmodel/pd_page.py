@@ -35,6 +35,10 @@ _THUMB: COSName = COSName.get_pdf_name("Thumb")
 _TRANS: COSName = COSName.get_pdf_name("Trans")
 _STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
 _BEADS: COSName = COSName.get_pdf_name("B")
+_GROUP: COSName = COSName.get_pdf_name("Group")
+_METADATA: COSName = COSName.get_pdf_name("Metadata")
+_TABS: COSName = COSName.get_pdf_name("Tabs")
+_VP: COSName = COSName.get_pdf_name("VP")
 
 
 class PDPage:
@@ -91,6 +95,31 @@ class PDPage:
                 return value
             parent = node.get_dictionary_object(_PARENT)
             node = parent if isinstance(parent, COSDictionary) else None
+        return None
+
+    def get_inherited_cos_object(self, name: COSName | str) -> COSBase | None:
+        """Resolve an inheritable attribute on this page by walking the
+        ``/Parent`` chain. Returns ``None`` when no ancestor (including this
+        page) carries it. Mirrors upstream ``PDPage.getInheritableAttribute``
+        (renamed to ``get_inherited_cos_object`` to keep the snake_case
+        translation explicit)."""
+        key = name if isinstance(name, COSName) else COSName.get_pdf_name(name)
+        return self._get_inheritable(key)
+
+    # Upstream's exact spelling kept as an alias so callers porting from
+    # PDFBox don't have to relearn the camelCase→snake_case mapping.
+    def get_inheritable_attribute(self, name: COSName | str) -> COSBase | None:
+        """Alias for :meth:`get_inherited_cos_object`."""
+        return self.get_inherited_cos_object(name)
+
+    def get_cos_parent(self) -> COSDictionary | None:
+        """Return the immediate ``/Parent`` ``COSDictionary`` (a page-tree
+        intermediate node, *not* a :class:`PDPageTree`). Mirrors upstream
+        ``PDPage.getCOSParent`` — used by the page-tree walker to splice
+        pages into and out of intermediate nodes."""
+        parent = self._page.get_dictionary_object(_PARENT)
+        if isinstance(parent, COSDictionary):
+            return parent
         return None
 
     # ---------- resources ----------
@@ -159,11 +188,54 @@ class PDPage:
         with stream.create_input_stream() as src:
             return src.read()
 
-    def set_contents(self, stream: COSStream) -> None:
-        """Replace ``/Contents`` with a single stream. Cluster #1 covers the
-        single-stream variant; the array form is an upstream overload that
-        will land with the contentstream cluster."""
-        self._page.set_item(_CONTENTS, stream)
+    def set_contents(
+        self,
+        stream: COSStream | list[COSStream] | COSArray | None,
+    ) -> None:
+        """Replace ``/Contents``.
+
+        Accepts:
+
+        - ``None`` — remove the entry entirely.
+        - a single :class:`COSStream` — written verbatim (single-stream form).
+        - a ``list[COSStream]`` or :class:`COSArray` of streams — written as
+          the array form. Mirrors upstream's ``setContents(List<PDStream>)``
+          overload.
+        """
+        if stream is None:
+            self._page.remove_item(_CONTENTS)
+            return
+        if isinstance(stream, COSStream):
+            self._page.set_item(_CONTENTS, stream)
+            return
+        if isinstance(stream, COSArray):
+            self._page.set_item(_CONTENTS, stream)
+            return
+        if isinstance(stream, list):
+            arr = COSArray()
+            for entry in stream:
+                if isinstance(entry, COSStream):
+                    arr.add(entry)
+                elif hasattr(entry, "get_cos_object"):
+                    cos = entry.get_cos_object()
+                    if isinstance(cos, COSStream):
+                        arr.add(cos)
+                        continue
+                    raise TypeError(
+                        "PDPage.set_contents list entries must wrap a "
+                        f"COSStream; got {type(entry).__name__}"
+                    )
+                else:
+                    raise TypeError(
+                        "PDPage.set_contents list entries must be "
+                        f"COSStream-like; got {type(entry).__name__}"
+                    )
+            self._page.set_item(_CONTENTS, arr)
+            return
+        raise TypeError(
+            "PDPage.set_contents expected None, COSStream, COSArray, or "
+            f"list[COSStream]; got {type(stream).__name__}"
+        )
 
     def get_content_streams(self) -> list[Any]:
         """List form of ``/Contents``. Mirrors upstream
@@ -221,39 +293,43 @@ class PDPage:
             return PDRectangle.from_cos_array(value)
         return self.get_media_box()
 
-    def set_crop_box(self, rect: PDRectangle | None) -> None:
+    def set_crop_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:
             self._page.remove_item(_CROP_BOX)
             return
-        self._page.set_item(_CROP_BOX, rect.to_cos_array())
+        cos = rect if isinstance(rect, COSArray) else rect.to_cos_array()
+        self._page.set_item(_CROP_BOX, cos)
 
     def get_bleed_box(self) -> PDRectangle:
         """``/BleedBox`` if present, else ``/CropBox``."""
         return self._get_box(_BLEED_BOX, fallback=self.get_crop_box())
 
-    def set_bleed_box(self, rect: PDRectangle | None) -> None:
+    def set_bleed_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:
             self._page.remove_item(_BLEED_BOX)
             return
-        self._page.set_item(_BLEED_BOX, rect.to_cos_array())
+        cos = rect if isinstance(rect, COSArray) else rect.to_cos_array()
+        self._page.set_item(_BLEED_BOX, cos)
 
     def get_trim_box(self) -> PDRectangle:
         return self._get_box(_TRIM_BOX, fallback=self.get_crop_box())
 
-    def set_trim_box(self, rect: PDRectangle | None) -> None:
+    def set_trim_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:
             self._page.remove_item(_TRIM_BOX)
             return
-        self._page.set_item(_TRIM_BOX, rect.to_cos_array())
+        cos = rect if isinstance(rect, COSArray) else rect.to_cos_array()
+        self._page.set_item(_TRIM_BOX, cos)
 
     def get_art_box(self) -> PDRectangle:
         return self._get_box(_ART_BOX, fallback=self.get_crop_box())
 
-    def set_art_box(self, rect: PDRectangle | None) -> None:
+    def set_art_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:
             self._page.remove_item(_ART_BOX)
             return
-        self._page.set_item(_ART_BOX, rect.to_cos_array())
+        cos = rect if isinstance(rect, COSArray) else rect.to_cos_array()
+        self._page.set_item(_ART_BOX, cos)
 
     # ---------- rotation / user unit ----------
 
@@ -451,6 +527,111 @@ class PDPage:
         from pypdfbox.cos import COSInteger
 
         self._page.set_item(_STRUCT_PARENTS, COSInteger.get(int(value)))
+
+    # ---------- metadata ----------
+
+    def get_metadata(self) -> Any:
+        """Resolve ``/Metadata`` into a :class:`PDMetadata` (XMP packet
+        wrapper). Returns ``None`` when ``/Metadata`` is absent or not a
+        stream. Mirrors upstream ``PDPage.getMetadata``."""
+        from .common.pd_metadata import PDMetadata
+
+        value = self._page.get_dictionary_object(_METADATA)
+        if isinstance(value, COSStream):
+            return PDMetadata(value)
+        return None
+
+    def set_metadata(self, metadata: Any) -> None:
+        """Replace ``/Metadata`` with the supplied :class:`PDMetadata`. Pass
+        ``None`` to remove the entry. Mirrors upstream
+        ``PDPage.setMetadata``."""
+        if metadata is None:
+            self._page.remove_item(_METADATA)
+            return
+        cos = metadata.get_cos_object() if hasattr(metadata, "get_cos_object") else metadata
+        self._page.set_item(_METADATA, cos)
+
+    # ---------- transparency group ----------
+
+    def get_group(self) -> COSDictionary | None:
+        """Return the ``/Group`` transparency-group dictionary, or ``None``
+        if absent. Upstream returns a ``PDTransparencyGroupAttributes`` —
+        we surface the raw COS dictionary until that wrapper lands with
+        the graphics-state cluster (PRD §6.7)."""
+        value = self._page.get_dictionary_object(_GROUP)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_group(self, group: Any) -> None:
+        """Set ``/Group`` (transparency group attributes). Accepts a
+        :class:`COSDictionary` or any object exposing ``get_cos_object()``.
+        ``None`` removes the entry."""
+        if group is None:
+            self._page.remove_item(_GROUP)
+            return
+        cos = group.get_cos_object() if hasattr(group, "get_cos_object") else group
+        if not isinstance(cos, COSDictionary):
+            raise TypeError(
+                "PDPage.set_group expected COSDictionary or wrapper; "
+                f"got {type(group).__name__}"
+            )
+        self._page.set_item(_GROUP, cos)
+
+    # ---------- viewports ----------
+
+    def get_viewports(self) -> list[Any] | None:
+        """Resolve ``/VP`` into a list of :class:`PDViewportDictionary`.
+
+        Returns ``None`` when ``/VP`` is absent (mirrors upstream which
+        returns ``null`` rather than an empty list — important so callers
+        can distinguish "no viewports declared" from "explicitly empty
+        array"). Returns an empty list when ``/VP`` is present but holds
+        no dictionary entries."""
+        from .interactive.measurement.pd_viewport_dictionary import (
+            PDViewportDictionary,
+        )
+
+        vp = self._page.get_dictionary_object(_VP)
+        if not isinstance(vp, COSArray):
+            return None
+        result: list[Any] = []
+        for i in range(vp.size()):
+            entry = vp.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(PDViewportDictionary(entry))
+        return result
+
+    # ---------- transition ----------
+
+    def get_transition_effect(self) -> Any:
+        """Alias for :meth:`get_transition` — matches upstream's secondary
+        spelling used by the slideshow APIs."""
+        return self.get_transition()
+
+    def set_transition_effect(self, transition: Any) -> None:
+        """Alias for :meth:`set_transition`."""
+        self.set_transition(transition)
+
+    # ---------- tab order ----------
+
+    def get_tab_order(self) -> str | None:
+        """Return the ``/Tabs`` value (one of ``"R"``, ``"C"``, ``"S"``,
+        ``"A"``, ``"W"``) controlling the page's annotation tab order.
+        Returns ``None`` when the entry is absent. Mirrors upstream
+        ``PDPage.getTabOrder``."""
+        return self._page.get_name(_TABS)
+
+    def set_tab_order(self, order: str | None) -> None:
+        """Set ``/Tabs``. Pass ``None`` to remove. Accepts the upstream
+        constants ``"R"`` (row order), ``"C"`` (column order), ``"S"``
+        (structure order, PDF 1.5+), ``"A"`` (annotations array order,
+        PDF 2.0+), ``"W"`` (widget order, PDF 2.0+). We do not validate —
+        upstream tolerates unknown values for forward compatibility."""
+        if order is None:
+            self._page.remove_item(_TABS)
+            return
+        self._page.set_name(_TABS, order)
 
     # ---------- equality / repr ----------
 

@@ -219,3 +219,52 @@ def test_create_child_node_returns_same_type() -> None:
 def test_pd_number_tree_node_is_abstract() -> None:
     with pytest.raises(TypeError):
         PDNumberTreeNode()  # type: ignore[abstract]
+
+
+def test_get_number_aliases_get_value() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10, 2: 20, 3: 30})
+    assert tree.get_number(2) == 20
+    assert tree.get_number(99) is None
+    # Must walk through kids identically to get_value().
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({100: 1000})
+    root = _IntNumberTreeNode()
+    root.set_kids([leaf])
+    assert root.get_number(100) == 1000
+    assert root.get_value(100) == root.get_number(100)
+
+
+def test_factory_value_typing_via_subclass() -> None:
+    # The factory subclass narrows the value type — convert_cos_to_value
+    # must reject the wrong COS type.
+    tree = _IntNumberTreeNode()
+    arr = COSArray()
+    arr.add(COSInteger.get(1))
+    arr.add(COSName.get_pdf_name("NotAnInt"))
+    tree.get_cos_object().set_item(_NUMS, arr)
+    with pytest.raises(OSError):
+        tree.get_numbers()
+
+
+def test_set_kids_replaces_existing_numbers_on_root() -> None:
+    root = _IntNumberTreeNode()
+    root.set_numbers({1: 1, 2: 2})
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({10: 100})
+    root.set_kids([leaf])
+    # Root with /Kids must drop /Nums per spec.
+    assert root.get_cos_object().get_dictionary_object(_NUMS) is None
+    assert root.get_value(10) == 100
+
+
+def test_lower_upper_limit_can_be_cleared() -> None:
+    parent = _IntNumberTreeNode()
+    leaf = _IntNumberTreeNode()
+    leaf.set_parent(parent)
+    leaf.set_lower_limit(7)
+    leaf.set_upper_limit(42)
+    leaf.set_lower_limit(None)
+    leaf.set_upper_limit(None)
+    assert leaf.get_lower_limit() is None
+    assert leaf.get_upper_limit() is None

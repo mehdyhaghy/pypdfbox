@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from enum import Enum
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 from ..pd_property_list import PDPropertyList
 from .pd_optional_content_group import PDOptionalContentGroup
+
+# A state resolver callable maps a PDOptionalContentGroup wrapper to its
+# current visibility state (``True`` == ON, ``False`` == OFF). Mirrors
+# upstream PDFBox usage of an ``isVisible(PDOptionalContentGroup)``
+# predicate when evaluating OCMD/VE trees.
+StateResolver = Callable[[PDOptionalContentGroup], bool]
 
 
 class MembershipDictionaryVisibilityPolicy(Enum):
@@ -240,6 +247,125 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
             return self.evaluate_visibility(visible_ocgs)
         return self._evaluate_policy(visible_ocgs)
 
+    # ---------- Resolver-callable variants (PDFBox-style) ----------
+    #
+    # Upstream PDFBox queries OCG state through a predicate / lookup rather
+    # than threading a precomputed visibility set. Expose a parallel API
+    # here so callers can pass a ``StateResolver`` callable directly.
+
+    def is_visible_with(self, state_resolver: StateResolver) -> bool:
+        """Resolver-callable form of :meth:`is_visible`.
+
+        ``state_resolver`` maps a :class:`PDOptionalContentGroup` to its
+        current visibility (``True`` == ON, ``False`` == OFF).
+
+        Prefers /VE when present; otherwise applies /P + /OCGs policy.
+        """
+        if self.get_visibility_expression() is not None:
+            return self.evaluate_ve(
+                self.get_visibility_expression(), state_resolver
+            )
+        return self._evaluate_policy_with(state_resolver)
+
+    def evaluate_ve(
+        self,
+        ve: COSArray | None,
+        state_resolver: StateResolver,
+    ) -> bool:
+        """Evaluate a /VE visibility expression tree (PDF 32000-1 §8.11.2.4).
+
+        ``ve`` is the raw COSArray expression (typically the value of /VE).
+        Operator dispatch:
+        - ``[/And  child1 child2 ...]`` — True iff every child is True
+        - ``[/Or   child1 child2 ...]`` — True iff at least one child is True
+        - ``[/Not  child]``             — True iff the single child is False
+
+        Children may be either OCG dictionaries (leaves) or further VE
+        sub-arrays (recursive). When ``ve`` is ``None`` the dict is treated
+        as having no expression and the policy fallback is applied.
+        """
+        if ve is None:
+            return self._evaluate_policy_with(state_resolver)
+        return self._eval_node_with(ve, state_resolver)
+
+    @classmethod
+    def _eval_node_with(
+        cls,
+        node: object,
+        state_resolver: StateResolver,
+    ) -> bool:
+        """Recursive /VE walker that dispatches via a state-resolver
+        callable instead of a precomputed visibility set."""
+        if isinstance(node, COSDictionary):
+            wrapped = PDPropertyList.create(node)
+            if isinstance(wrapped, PDOptionalContentGroup):
+                return bool(state_resolver(wrapped))
+            # Non-OCG dictionary leaves are treated as "not visible" — the
+            # spec only allows OCG references at leaf positions.
+            return False
+        if isinstance(node, COSArray):
+            if node.size() == 0:
+                raise ValueError(
+                    "Empty /VE sub-array — missing operator"
+                )
+            head = node.get_object(0)
+            if not isinstance(head, COSName):
+                raise ValueError(
+                    "First element of /VE array must be a COSName operator"
+                )
+            op = head.name
+            rest = [node.get_object(i) for i in range(1, node.size())]
+            if op == "Not":
+                if len(rest) != 1:
+                    raise ValueError(
+                        "/VE 'Not' requires exactly 1 operand, "
+                        f"got {len(rest)}"
+                    )
+                return not cls._eval_node_with(rest[0], state_resolver)
+            if op == "And":
+                if not rest:
+                    raise ValueError("/VE 'And' requires >= 1 operand")
+                return all(
+                    cls._eval_node_with(child, state_resolver)
+                    for child in rest
+                )
+            if op == "Or":
+                if not rest:
+                    raise ValueError("/VE 'Or' requires >= 1 operand")
+                return any(
+                    cls._eval_node_with(child, state_resolver)
+                    for child in rest
+                )
+            raise ValueError(f"Unknown /VE operator: {op!r}")
+        return False
+
+    def _evaluate_policy_with(
+        self, state_resolver: StateResolver
+    ) -> bool:
+        """Resolver-callable form of :meth:`_evaluate_policy`.
+
+        Per PDF 32000-1 §8.11.2.2:
+        - "AllOn":  visible iff every OCG is on
+        - "AnyOn":  visible iff at least one OCG is on (default)
+        - "AnyOff": visible iff at least one OCG is off
+        - "AllOff": visible iff every OCG is off
+        With no /OCGs entries, AllOn/AllOff are vacuously True and
+        AnyOn/AnyOff are vacuously False (matches PDFBox semantics).
+        """
+        groups = self.get_o_cgs()
+        states = [bool(state_resolver(g)) for g in groups]
+        policy = self.get_visibility_policy()
+        if policy == "AllOn":
+            return all(states)
+        if policy == "AnyOn":
+            return any(states)
+        if policy == "AnyOff":
+            return any(not s for s in states)
+        if policy == "AllOff":
+            return all(not s for s in states)
+        # Unknown policy: be conservative, treat as default AnyOn.
+        return any(states)
+
     @classmethod
     def _eval_node(cls, node: object, visible: set[int]) -> bool:
         """Recursively evaluate a /VE tree node.
@@ -307,4 +433,5 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
 __all__ = [
     "MembershipDictionaryVisibilityPolicy",
     "PDOptionalContentMembershipDictionary",
+    "StateResolver",
 ]

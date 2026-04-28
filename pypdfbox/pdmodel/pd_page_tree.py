@@ -55,7 +55,10 @@ class PDPageTree:
       - ``len()`` via ``/Count`` (with a walk-fallback);
       - 0-based and negative indexing;
       - ``index_of(page)`` / ``index_of_page(page)`` lookup;
-      - ``add(page)`` / ``remove(page)`` / ``insert_before`` / ``insert_after``;
+      - ``add(page)`` / ``remove(page|int)`` / ``insert_before`` /
+        ``insert_after``;
+      - ``get_root()`` — top ``/Pages`` node;
+      - ``iterator()`` — Java-style alias for ``__iter__``;
       - the ``get_inheritable_attribute`` static helper.
     """
 
@@ -77,10 +80,29 @@ class PDPageTree:
     def get_cos_object(self) -> COSDictionary:
         return self._root
 
+    def get_root(self) -> COSDictionary:
+        """Return the top ``/Pages`` node backing this tree.
+
+        Mirrors upstream ``PDPageTree.getCOSObject()`` — exposed as
+        ``get_root`` for callers that want an explicit accessor instead
+        of the generic COS-object getter.
+        """
+        return self._root
+
+    def get_document(self) -> PDDocument | None:
+        """Return the owning ``PDDocument`` if this tree was constructed
+        with one, else ``None``. Mirrors upstream ``getDocument()``."""
+        return self._document
+
     # ---------- iteration ----------
 
     def __iter__(self) -> Iterator[PDPage]:
         yield from self._walk(self._root, set())
+
+    def iterator(self) -> Iterator[PDPage]:
+        """Java-style alias for ``__iter__``. Mirrors upstream
+        ``PDPageTree.iterator()``."""
+        return iter(self)
 
     def _walk(
         self, node: COSDictionary, seen: set[int]

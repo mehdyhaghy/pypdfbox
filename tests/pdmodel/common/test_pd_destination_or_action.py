@@ -100,6 +100,41 @@ def test_create_empty_dictionary_returns_pd_action_unknown() -> None:
     assert isinstance(result, PDAction)
 
 
+# ---------- create() — /D-only shorthand (legacy GoTo without /S) ----------
+
+
+def test_create_dictionary_with_only_d_returns_goto_shorthand() -> None:
+    """Some legacy producers omit ``/S`` from a GoTo action and rely on
+    the presence of ``/D`` alone to imply ``GoTo``. The factory must
+    promote such dictionaries to :class:`PDActionGoTo`."""
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("D"), _make_xyz_array())
+    result = PDDestinationOrAction.create(d)
+    assert isinstance(result, PDActionGoTo)
+    # The wrapped destination must round-trip through the GoTo accessor.
+    inner = result.get_destination()
+    assert isinstance(inner, PDPageXYZDestination)
+
+
+def test_create_dictionary_with_only_d_named_destination_shorthand() -> None:
+    d = COSDictionary()
+    d.set_string(COSName.get_pdf_name("D"), "MyTarget")
+    result = PDDestinationOrAction.create(d)
+    assert isinstance(result, PDActionGoTo)
+    assert result.get_destination() == "MyTarget"
+
+
+def test_create_dictionary_with_s_takes_precedence_over_d() -> None:
+    """When both ``/S`` and ``/D`` are present, ``/S`` wins (we go through
+    the normal :meth:`PDAction.create` dispatch which already handles
+    GoTo with ``/D``)."""
+    d = COSDictionary()
+    d.set_name(COSName.get_pdf_name("S"), "GoTo")
+    d.set_item(COSName.get_pdf_name("D"), _make_xyz_array())
+    result = PDDestinationOrAction.create(d)
+    assert isinstance(result, PDActionGoTo)
+
+
 # ---------- is_destination_or_action() ----------
 
 

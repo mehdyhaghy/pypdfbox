@@ -172,6 +172,10 @@ class PDNumberTreeNode[T](ABC):
             _LOG.warning('NumberTreeNode does not have "nums" nor "kids" objects.')
         return None
 
+    def get_number(self, index: int) -> T | None:
+        """Alias for :meth:`get_value` matching the PDFBox accessor name."""
+        return self.get_value(index)
+
     # ---------- /Limits ----------
 
     def get_lower_limit(self) -> int | None:

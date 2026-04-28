@@ -10,6 +10,16 @@ class AccessPermission:
     Bit semantics (1-based positions per the PDF spec; bits 1 and 2 are
     reserved and must be 0; the value stored in ``/P`` is interpreted as a
     32-bit signed two's-complement integer with all unused high bits set).
+
+    Bit positions (Table 22):
+        3  — printing (low quality if bit 12 also clear)
+        4  — modify content
+        5  — extract content (text/graphics)
+        6  — modify annotations / fill forms (revision 2) / create form fields
+        9  — fill in form fields (revision 3+)
+        10 — extract for accessibility (deprecated in PDF 2.0)
+        11 — assemble document (insert/rotate/delete pages, bookmarks)
+        12 — high-quality (faithful) print
     """
 
     # Bit position constants (1-based, as the PDF spec numbers them). The
@@ -28,6 +38,12 @@ class AccessPermission:
     _DEFAULT_PERMISSIONS: int = ~3
 
     def __init__(self, permissions: int = -1) -> None:
+        """Construct an ``AccessPermission``.
+
+        With no argument (or ``permissions == -1``), all permissions are
+        granted (mirrors upstream no-arg constructor). Otherwise the bits
+        are decoded from ``permissions`` (typically the value of ``/P``).
+        """
         # ``-1`` is the convention used by the upstream no-arg constructor:
         # all bits set, including the reserved low ones, which then get
         # masked off implicitly by the bit accessors.
@@ -40,6 +56,12 @@ class AccessPermission:
     # ---------- raw access ----------
 
     def get_permission_bytes(self) -> int:
+        """Return the permission bits encoded as the int stored in ``/P``."""
+        return self._bytes
+
+    def get_permission_bits_as_int(self) -> int:
+        """Alias for ``get_permission_bytes`` matching the PDFBox helper
+        name used in some call sites."""
         return self._bytes
 
     # ---------- owner / read-only flag ----------
@@ -55,12 +77,14 @@ class AccessPermission:
             and self.can_modify()
             and self.can_modify_annotations()
             and self.can_print()
-            and self.can_print_degraded()
+            and self.can_print_faithful()
         )
 
     def set_read_only(self) -> None:
         """Lock this instance — subsequent setters become no-ops. Mirrors
-        upstream ``setReadOnly()``."""
+        upstream ``setReadOnly()``. Used when this object originates from
+        an opened, decrypted document so callers cannot mutate the
+        already-applied policy."""
         self._read_only = True
 
     def is_read_only(self) -> bool:
@@ -69,8 +93,16 @@ class AccessPermission:
     @classmethod
     def get_owner_access_permission(cls) -> AccessPermission:
         """Return an instance with every permission bit set (owner)."""
-        perm = cls(cls._DEFAULT_PERMISSIONS)
-        return perm
+        return cls(cls._DEFAULT_PERMISSIONS)
+
+    @classmethod
+    def get_instance(cls) -> AccessPermission:
+        """Static factory returning a fully-permissive (owner) instance.
+
+        Mirrors PDFBox ``AccessPermission.getInstance()`` — semantically
+        equivalent to the no-arg constructor but reads more cleanly at
+        call sites that just want default/owner permissions."""
+        return cls()
 
     # ---------- internal bit helpers ----------
 
@@ -124,6 +156,9 @@ class AccessPermission:
         self._set_bit(self.BIT_FILL_FORMS, b)
 
     def can_extract_for_accessibility(self) -> bool:
+        """Bit 10 — extract for accessibility. Deprecated in PDF 2.0
+        (ISO 32000-2 mandates that text extraction be unconditionally
+        permitted for accessibility regardless of this bit)."""
         return self._is_set(self.BIT_EXTRACTABLE_FOR_ACCESSIBILITY)
 
     def set_can_extract_for_accessibility(self, b: bool) -> None:
@@ -135,11 +170,26 @@ class AccessPermission:
     def set_can_assemble_document(self, b: bool) -> None:
         self._set_bit(self.BIT_ASSEMBLE_DOCUMENT, b)
 
-    def can_print_degraded(self) -> bool:
+    # Bit 12: high-quality / "faithful" printing. Upstream PDFBox renamed
+    # ``canPrintDegraded`` → ``canPrintFaithful`` because the original name
+    # was inverted from what the bit actually indicates (the bit being SET
+    # permits faithful/high-quality print; CLEARED forces low-resolution).
+    # Both names are exposed for compatibility.
+
+    def can_print_faithful(self) -> bool:
         return self._is_set(self.BIT_PRINT_DEGRADED)
 
-    def set_can_print_degraded(self, b: bool) -> None:
+    def set_can_print_faithful(self, b: bool) -> None:
         self._set_bit(self.BIT_PRINT_DEGRADED, b)
+
+    def can_print_degraded(self) -> bool:
+        """Legacy alias for :py:meth:`can_print_faithful`. Kept for
+        backward compatibility with older PDFBox API."""
+        return self.can_print_faithful()
+
+    def set_can_print_degraded(self, b: bool) -> None:
+        """Legacy alias for :py:meth:`set_can_print_faithful`."""
+        self.set_can_print_faithful(b)
 
 
 __all__ = ["AccessPermission"]

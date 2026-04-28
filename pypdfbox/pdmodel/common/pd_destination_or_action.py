@@ -50,7 +50,13 @@ class PDDestinationOrAction:
         :class:`PDAction`.
 
         - ``COSArray``, ``COSName``, ``COSString`` → :meth:`PDDestination.create`
-        - ``COSDictionary`` → :meth:`PDAction.create`
+        - ``COSDictionary`` with ``/S`` (subtype) → :meth:`PDAction.create`
+        - ``COSDictionary`` with only ``/D`` (no ``/S``) → wrapped as a
+          :class:`PDActionGoTo` shorthand. PDF 32000-1 §12.6.2 / §12.3.2.2
+          describe an action dictionary; some legacy producers omit ``/S``
+          and rely on the presence of ``/D`` alone to imply a GoTo action.
+        - ``COSDictionary`` (otherwise) → :meth:`PDAction.create` (which
+          falls back to ``PDActionUnknown``)
         - ``None`` → ``None``
         - any other type → ``None`` (matches upstream
           ``PDDocumentCatalog.getOpenAction()`` which silently drops
@@ -60,7 +66,13 @@ class PDDestinationOrAction:
             return None
         if isinstance(value, COSDictionary):
             from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
+            from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
 
+            sub_type = value.get_name(COSName.get_pdf_name("S"))
+            if sub_type is None and value.contains_key(COSName.get_pdf_name("D")):
+                # Action-shaped dictionary lacking /S but carrying /D —
+                # treat as an implicit GoTo action.
+                return PDActionGoTo(value)
             return PDAction.create(value)
         if isinstance(value, (COSArray, COSName, COSString)):
             from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (

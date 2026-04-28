@@ -111,6 +111,14 @@ class PDDocument:
         # Policy staged by ``protect()`` and consumed by the writer at save.
         self._protection_policy: Any = None
 
+        # Optional ``Long`` seed consumed by COSWriter when deriving the
+        # trailer's ``/ID`` array on a full save. ``None`` (the default) lets
+        # the writer pick a random / time-based seed; a caller-supplied value
+        # makes the resulting /ID deterministic — useful for reproducible
+        # builds and round-trip tests. Mirrors upstream's
+        # ``PDDocument.setDocumentId(Long)`` transient field.
+        self._document_id_seed: int | None = None
+
         # Pending signature staged by ``add_signature(...)`` and consumed by
         # the next ``save_incremental`` call. ``_pending_signature_dict`` is
         # the COSDictionary backing the PDSignature (so the writer emits its
@@ -181,6 +189,32 @@ class PDDocument:
             self._catalog = PDDocumentCatalog(self)
         return self._catalog
 
+    def set_document_catalog(self, catalog: PDDocumentCatalog) -> None:
+        """Replace the document's catalog with ``catalog``. Rewires the
+        trailer's ``/Root`` entry to ``catalog.get_cos_object()`` so any
+        subsequent save reaches the new catalog. Mirrors upstream
+        ``PDDocument.setDocumentCatalog``.
+
+        Note: the previous catalog (and anything reachable only through it)
+        becomes orphaned; callers are responsible for not stranding dirty
+        objects across a swap during incremental save."""
+        if catalog is None:
+            raise TypeError("set_document_catalog: catalog must not be None")
+        cos = catalog.get_cos_object()
+        if not isinstance(cos, COSDictionary):
+            raise TypeError(
+                f"set_document_catalog: expected a PDDocumentCatalog backed by "
+                f"a COSDictionary; got {type(cos).__name__}"
+            )
+        trailer = self._document.get_trailer()
+        if trailer is None:
+            trailer = COSDictionary()
+            self._document.set_trailer(trailer)
+        trailer.set_item(_ROOT, cos)
+        self._catalog = catalog
+        # Catalog-derived caches (notably the page tree) must rebuild.
+        self._pages = None
+
     def get_document_information(self) -> PDDocumentInformation:
         """Return the trailer's ``/Info`` dictionary wrapped as
         ``PDDocumentInformation``. If absent, an empty wrapper is created
@@ -239,10 +273,19 @@ class PDDocument:
     def save(
         self,
         target: str | os.PathLike[str] | BinaryIO | RandomAccessWrite,
+        compress_parameters: Any = None,
     ) -> None:
         """Full save via ``COSWriter``. Accepts a path, a writable binary
         stream, or a ``RandomAccessWrite``. Mirrors the multiple ``save``
-        overloads upstream."""
+        overloads upstream — including the trailing ``CompressParameters``
+        argument introduced in PDFBox 3.0.
+
+        ``compress_parameters`` is accepted for API parity but currently
+        ignored: pypdfbox always writes uncompressed object streams (the
+        compression toggle lands with the pdfwriter cluster). Callers may
+        pass ``CompressParameters.NO_COMPRESSION`` to be explicit; any
+        truthy compression request is silently downgraded to no-compression
+        and recorded in CHANGES.md."""
         if self._closed:
             raise ValueError("operation on closed PDDocument")
         # Local import — pdfwriter depends on cos and we want the loader-style
@@ -624,6 +667,36 @@ class PDDocument:
             trailer = _COSDictionary()
             self._document.set_trailer(trailer)
         trailer.set_item(COSName.ENCRYPT, enc_dict)  # type: ignore[attr-defined]
+
+    def set_encryption(self, encryption: Any) -> None:
+        """Alias for :meth:`set_encryption_dictionary`. Mirrors upstream
+        ``PDDocument.setEncryptionDictionary`` (PDFBox 3.0 retains both
+        spellings as overloads on ``PDEncryption`` and ``COSDictionary``)."""
+        self.set_encryption_dictionary(encryption)
+
+    # ---------- document id seed ----------
+
+    def get_document_id(self) -> int | None:
+        """Return the caller-supplied seed for the trailer's ``/ID`` array,
+        or ``None`` when no seed has been staged. Mirrors upstream
+        ``PDDocument.getDocumentId(): Long``.
+
+        This is *not* the trailer's actual ``/ID`` value — read that via
+        ``get_document().get_document_id()`` (returns the
+        ``COSArray`` of two byte strings). The seed is consumed by
+        :class:`COSWriter` at full-save time to produce a deterministic
+        ``/ID`` when set."""
+        return self._document_id_seed
+
+    def set_document_id(self, doc_id: int | None) -> None:
+        """Stage a deterministic seed for the trailer's ``/ID`` derivation.
+        Pass ``None`` to clear and let the writer fall back to a random
+        seed. Mirrors upstream ``PDDocument.setDocumentId(Long)``."""
+        if doc_id is not None and not isinstance(doc_id, int):
+            raise TypeError(
+                f"set_document_id: expected int or None, got {type(doc_id).__name__}"
+            )
+        self._document_id_seed = doc_id
 
     def decrypt(self, password: str | bytes = "") -> None:
         """Validate ``password`` against the document's ``/Encrypt``

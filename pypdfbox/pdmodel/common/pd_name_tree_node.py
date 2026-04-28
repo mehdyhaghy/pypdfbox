@@ -25,9 +25,18 @@ class PDNameTreeNode[T](ABC):
     ``convert_value_to_cos``, and ``create_child_node``.
     """
 
-    def __init__(self, node: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        node: COSDictionary | None = None,
+        value_type: type | None = None,
+    ) -> None:
         self._node: COSDictionary = node if node is not None else COSDictionary()
         self._parent: PDNameTreeNode[T] | None = None
+        # Mirrors PDFBox's ``Class<? extends T> valueType`` constructor
+        # parameter. Concrete subclasses already pin ``T``; the field is
+        # exposed so dynamic factories that build typed name trees from a
+        # raw COSDictionary can inspect/round-trip the leaf value class.
+        self._value_type: type | None = value_type
 
     # ---------- COS plumbing ----------
 
@@ -45,6 +54,17 @@ class PDNameTreeNode[T](ABC):
 
     def is_root_node(self) -> bool:
         return self._parent is None
+
+    # ---------- value type plumbing ----------
+
+    def get_value_type(self) -> type | None:
+        """The ``Class<? extends T>`` PDFBox stores at construction.
+
+        Concrete subclasses pin ``T`` and may safely return ``None`` here;
+        the value is purely informational and is never inspected by the
+        base class behaviour.
+        """
+        return self._value_type
 
     # ---------- subclass extension points ----------
 
@@ -221,6 +241,65 @@ class PDNameTreeNode[T](ABC):
                 next_level.append(child)
             level = next_level
         return level
+
+    # ---------- removal & merge helpers ----------
+
+    def remove_names(self) -> None:
+        """Drop the ``/Names`` and ``/Limits`` entries from this node.
+
+        Equivalent to ``set_names(None)``; provided as a verb-shaped helper
+        for parity with other PDFBox-style remove_* APIs and for callers
+        that want a no-arg cleanup without recomputing the limits walk.
+        """
+        self._node.remove_item(_NAMES)
+        self._node.remove_item(_LIMITS)
+
+    def remove_kids(self) -> None:
+        """Drop the ``/Kids`` and ``/Limits`` entries from this node."""
+        self._node.remove_item(_KIDS)
+        self._node.remove_item(_LIMITS)
+
+    def merge(self, other: PDNameTreeNode[T] | dict[str, T] | None) -> None:
+        """Merge ``other`` into this node, overwriting on key collisions.
+
+        Accepts either another ``PDNameTreeNode`` (whose flattened
+        name-to-value mapping is read via ``get_names``) or a plain
+        ``dict[str, T]``. The result is rebalanced through ``set_names``,
+        which preserves the leaf-vs-kids decision based on cardinality.
+        """
+        if other is None:
+            return
+        if isinstance(other, PDNameTreeNode):
+            other_names = other.get_names() or {}
+        else:
+            other_names = dict(other)
+        if not other_names:
+            return
+        existing = self.get_names() or {}
+        existing.update(other_names)
+        self.set_names(existing)
+
+    def get_number_of_values(self) -> int:
+        """Total leaf-value count across this subtree.
+
+        Mirrors a common PDFBox idiom of asking "how big is this name
+        tree" without materialising every leaf. We still walk children
+        because the on-disk format does not record subtree sizes.
+        """
+        names_array = self._node.get_dictionary_object(_NAMES)
+        if isinstance(names_array, COSArray):
+            return names_array.size() // 2
+        kids = self.get_kids()
+        if not kids:
+            return 0
+        return sum(child.get_number_of_values() for child in kids)
+
+    def __contains__(self, name: object) -> bool:
+        if not isinstance(name, str):
+            return False
+        return self.get_value(name) is not None
+
+    # ---------- internal ----------
 
     def _calculate_limits(self) -> None:
         if self.is_root_node():
