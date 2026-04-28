@@ -170,6 +170,40 @@ class GlyphSubstitutionTable(TTFTable):
         """
         return self._gsub_table
 
+    def get_lookup_indices_for_feature(self, feature_tag: str) -> list[int]:
+        """Return every lookup-index referenced by ``feature_tag``.
+
+        A GSUB FeatureList may contain the same tag more than once for
+        different scripts or language systems. Walk every matching
+        FeatureRecord, preserve first-seen lookup order, and deduplicate
+        repeated indices so callers can inspect "all lookups implementing
+        this feature" without reaching into ``get_raw_table``.
+
+        Not present on upstream; pypdfbox-only structural lookup helper
+        matching the GPOS wrapper's helper of the same name.
+        """
+        if self._gsub_table is None:
+            return []
+        feature_list = getattr(self._gsub_table, "FeatureList", None)
+        if feature_list is None:
+            return []
+        out: list[int] = []
+        seen: set[int] = set()
+        for record in getattr(feature_list, "FeatureRecord", None) or []:
+            tag = str(getattr(record, "FeatureTag", "")).strip()
+            if tag != feature_tag:
+                continue
+            feature = getattr(record, "Feature", None)
+            if feature is None:
+                continue
+            for lookup_index in getattr(feature, "LookupListIndex", None) or []:
+                lookup_index_i = int(lookup_index)
+                if lookup_index_i in seen:
+                    continue
+                seen.add(lookup_index_i)
+                out.append(lookup_index_i)
+        return out
+
     def get_substitution(
         self,
         gid: int,

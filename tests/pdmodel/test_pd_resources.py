@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDResources
+from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
+from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
+from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
 
 
 def test_empty_resources_has_empty_name_lists() -> None:
@@ -110,3 +113,96 @@ def test_add_x_object_uses_typed_prefixes() -> None:
 
     assert form_name.get_name() == "Form0"
     assert image_name.get_name() == "Im0"
+
+
+def test_upstream_name_aliases_return_cos_names() -> None:
+    res = PDResources()
+    image = COSStream()
+    image.set_name(COSName.SUBTYPE, "Image")  # type: ignore[attr-defined]
+    res.add(COSName.get_pdf_name("XObject"), image)
+    res.put(
+        COSName.get_pdf_name("ExtGState"),
+        COSName.get_pdf_name("GS0"),
+        COSDictionary(),
+    )
+    res.put(
+        COSName.get_pdf_name("Properties"),
+        COSName.get_pdf_name("Prop0"),
+        COSDictionary(),
+    )
+
+    assert [name.get_name() for name in res.get_x_object_names()] == ["Im0"]
+    assert [name.get_name() for name in res.get_ext_g_state_names()] == ["GS0"]
+    assert [name.get_name() for name in res.get_properties_names()] == ["Prop0"]
+
+
+def test_get_resource_cache_returns_constructor_cache() -> None:
+    cache = object()
+    res = PDResources(resource_cache=cache)  # type: ignore[arg-type]
+    assert res.get_resource_cache() is cache
+
+
+def test_has_color_space_checks_entry_presence() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("CS0")
+    assert not res.has_color_space(name)
+    res.put(COSName.get_pdf_name("ColorSpace"), name, COSName.get_pdf_name("DeviceRGB"))
+    assert res.has_color_space(name)
+
+
+def test_is_image_x_object_checks_subtype_without_wrapping() -> None:
+    res = PDResources()
+    image = COSStream()
+    image.set_name(COSName.SUBTYPE, "Image")  # type: ignore[attr-defined]
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+
+    image_name = res.add(COSName.get_pdf_name("XObject"), image)
+    form_name = res.add(COSName.get_pdf_name("XObject"), form)
+
+    assert res.is_image_x_object(image_name)
+    assert not res.is_image_x_object(form_name)
+    assert not res.is_image_x_object(COSName.get_pdf_name("Missing"))
+
+
+def test_get_properties_alias_returns_property_list() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("MC0")
+    prop = COSDictionary()
+    res.put(COSName.get_pdf_name("Properties"), name, prop)
+
+    fetched = res.get_properties(name)
+
+    assert isinstance(fetched, PDPropertyList)
+    assert fetched.get_cos_object() is prop
+
+
+def test_typed_add_reuses_existing_cos_object() -> None:
+    res = PDResources()
+    ext = PDExtendedGraphicsState()
+
+    first = res.add(ext)
+    second = res.add(ext)
+
+    assert first == second
+    assert [name.get_name() for name in res.get_extgstate_names()] == ["gs0"]
+
+
+def test_typed_add_xobject_uses_upstream_prefixes() -> None:
+    res = PDResources()
+
+    form_name = res.add(PDFormXObject(COSStream()))
+    image_name = res.add(PDImageXObject(COSStream()))
+
+    assert form_name.get_name() == "Form0"
+    assert image_name.get_name() == "Im0"
+
+
+def test_typed_put_infers_category() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("CS0")
+
+    res.put(name, PDDeviceRGB.INSTANCE)
+
+    assert res.has_color_space(name)
+    assert res.get_color_space(name) is PDDeviceRGB.INSTANCE

@@ -111,6 +111,7 @@ class PDFParser:
         # path below is unaffected (trailing xref still wins).
         self._detect_linearization()
         startxref = self.find_startxref_offset()
+        self._cos_parser.set_xref_offset(startxref)
         # Record so the incremental writer can chain its appended xref
         # via /Prev (PRD §6.5 cluster #2).
         self._document.set_start_xref(startxref)
@@ -128,6 +129,15 @@ class PDFParser:
         has not been called yet. Mirrors upstream
         ``PDFParser.getDocument()``."""
         return self._document
+
+    def get_xref_offset(self) -> int:
+        """Return the ``startxref`` byte offset recorded during
+        :meth:`parse`, or ``-1`` before parsing. Mirrors the
+        upstream ``COSParser.getXrefOffset`` surface inherited by
+        ``PDFParser`` in PDFBox."""
+        if self._cos_parser is None:
+            return -1
+        return self._cos_parser.get_xref_offset()
 
     def get_pd_document(self) -> Any:
         """Return a ``PDDocument`` wrapper around the parsed
@@ -544,9 +554,9 @@ class PDFParser:
         # ``n g obj`` line + dictionary + ``stream`` body.
         self._src.seek(offset)
         self._base.skip_whitespace()
-        on = self._base.read_int()
+        self._base.read_int()
         self._base.skip_whitespace()
-        gn = self._base.read_int()
+        self._base.read_int()
         self._base.skip_whitespace()
         kw = self._base.read_keyword()
         if kw != b"obj":
@@ -666,15 +676,15 @@ class PDFParser:
                 record = body[cursor : cursor + record_size]
                 cursor += record_size
                 # Slice each field; honour the spec's defaults when w_i==0.
-                if w1 == 0:
-                    field1 = 1  # default = uncompressed in-use
-                else:
-                    field1 = int.from_bytes(record[0:w1], "big")
+                field1 = (
+                    1 if w1 == 0 else int.from_bytes(record[0:w1], "big")
+                )
                 field2 = int.from_bytes(record[w1 : w1 + w2], "big")
-                if w3 == 0:
-                    field3 = 0  # default generation
-                else:
-                    field3 = int.from_bytes(record[w1 + w2 : w1 + w2 + w3], "big")
+                field3 = (
+                    0
+                    if w3 == 0
+                    else int.from_bytes(record[w1 + w2 : w1 + w2 + w3], "big")
+                )
                 obj_num = first + i
                 if field1 == 0:
                     # Free entry — record it but flag with compressed_index=-1

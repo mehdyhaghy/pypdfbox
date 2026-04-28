@@ -59,6 +59,7 @@ def test_default_state_before_population() -> None:
     assert t.get_supported_script_tags() == set()
     assert t.get_supported_feature_tags() == []
     assert t.get_raw_table() is None
+    assert t.get_lookup_indices_for_feature("sups") == []
     assert t.get_initialized() is False
 
 
@@ -141,6 +142,15 @@ def test_raw_table_exposes_fonttools_object(gsub: GlyphSubstitutionTable) -> Non
     assert hasattr(raw, "ScriptList")
     assert hasattr(raw, "FeatureList")
     assert hasattr(raw, "LookupList")
+
+
+def test_lookup_indices_for_feature(gsub: GlyphSubstitutionTable) -> None:
+    assert gsub.get_lookup_indices_for_feature("sups") == [5]
+    assert gsub.get_lookup_indices_for_feature("subs") == [6]
+    # Liberation Sans has two ccmp FeatureRecords; the helper walks both
+    # and preserves first-seen lookup order.
+    assert gsub.get_lookup_indices_for_feature("ccmp") == [3, 1, 2]
+    assert gsub.get_lookup_indices_for_feature("zzzz") == []
 
 
 # ---------- get_substitution: real lookup walks ----------------------------

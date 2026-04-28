@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from .type.resource_event_type import ResourceEventType
 from .type.resource_ref_type import ResourceRefType
+from .type.version_type import VersionType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -40,6 +41,8 @@ class XMPMediaManagementSchema(XMPSchema):
       * ``DerivedFrom`` — single :class:`ResourceRefType` struct.
       * ``History`` — ordered ``Seq`` of :class:`ResourceEventType` (one
         per save / publish / convert action).
+      * ``Versions`` — ordered ``Seq`` of :class:`VersionType` snapshots
+        recording version labels, modifiers, comments, and save events.
       * ``Manifest`` — unordered ``Bag`` of :class:`ResourceRefType`
         recording the source ingredients of the asset.
       * ``Ingredients`` — alias for ``Manifest`` in older XMP spec drafts;
@@ -66,6 +69,7 @@ class XMPMediaManagementSchema(XMPSchema):
     MANAGER_VARIANT = "ManagerVariant"
     DERIVED_FROM = "DerivedFrom"
     HISTORY = "History"
+    VERSIONS = "Versions"
     MANIFEST = "Manifest"
     INGREDIENTS = "Ingredients"
 
@@ -78,6 +82,7 @@ class XMPMediaManagementSchema(XMPSchema):
         self.add_namespace(
             ResourceEventType.PREFERRED_PREFIX, ResourceEventType.NAMESPACE
         )
+        self.add_namespace(VersionType.PREFERRED_PREFIX, VersionType.NAMESPACE)
 
     # --- DocumentID --------------------------------------------------
 
@@ -231,6 +236,28 @@ class XMPMediaManagementSchema(XMPSchema):
         if not isinstance(v, list):
             v = [v]
         return [item for item in v if isinstance(item, ResourceEventType)]
+
+    # --- Versions (Seq of Version) ----------------------------------
+
+    def add_version(self, version: VersionType) -> None:
+        """Append ``version`` to the ``Versions`` Seq."""
+        existing = self._properties.get(self.VERSIONS)
+        if not isinstance(existing, list):
+            existing = []
+            self._properties[self.VERSIONS] = existing
+        existing.append(version)
+
+    def get_versions(self) -> list[VersionType] | None:
+        """
+        Return the ``Versions`` Seq as a list of :class:`VersionType`
+        instances, or ``None`` when absent. Untyped entries are skipped.
+        """
+        v = self._properties.get(self.VERSIONS)
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            v = [v]
+        return [item for item in v if isinstance(item, VersionType)]
 
     # --- Manifest (Bag of ResourceRef) ------------------------------
 

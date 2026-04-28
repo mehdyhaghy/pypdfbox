@@ -15,6 +15,7 @@ from pypdfbox.cos import COSName
 from pypdfbox.io.random_access_read import RandomAccessRead
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.pdmodel import PDPage, PDRectangle, PDResources
+from pypdfbox.pdmodel.graphics.color import PDColor
 
 
 class _RecordingGraphicsEngine(PDFGraphicsStreamEngine):
@@ -88,6 +89,14 @@ class _RecordingGraphicsEngine(PDFGraphicsStreamEngine):
 
     def shading_fill(self, shading_name: COSName) -> None:
         self.events.append(("shading_fill", (shading_name,)))
+
+    # --- color ---
+
+    def set_stroking_color(self, color: PDColor) -> None:
+        self.events.append(("set_stroking_color", (color,)))
+
+    def set_non_stroking_color(self, color: PDColor) -> None:
+        self.events.append(("set_non_stroking_color", (color,)))
 
     # --- image ---
 
@@ -320,6 +329,42 @@ def test_round_trip_shading_fill_without_name_is_silently_skipped() -> None:
     stream = _BytesContentStream(b"sh")
     engine.process_stream(stream)
     assert engine.events == []
+
+
+def test_round_trip_device_color_operators() -> None:
+    engine = _RecordingGraphicsEngine()
+    stream = _BytesContentStream(
+        b"0.25 G 0.5 g "
+        b"0.125 0.25 0.5 RG 0.25 0.5 0.75 rg "
+        b"0.125 0.25 0.5 0.75 K 0.0 0.25 0.5 1.0 k"
+    )
+    engine.process_stream(stream)
+
+    sequence = [(name, args[0]) for name, args in engine.events]
+    assert [name for name, _ in sequence] == [
+        "set_stroking_color",
+        "set_non_stroking_color",
+        "set_stroking_color",
+        "set_non_stroking_color",
+        "set_stroking_color",
+        "set_non_stroking_color",
+    ]
+    assert [color.get_color_space_name() for _, color in sequence] == [
+        "DeviceGray",
+        "DeviceGray",
+        "DeviceRGB",
+        "DeviceRGB",
+        "DeviceCMYK",
+        "DeviceCMYK",
+    ]
+    assert [color.get_components() for _, color in sequence] == [
+        [0.25],
+        [0.5],
+        [0.125, 0.25, 0.5],
+        [0.25, 0.5, 0.75],
+        [0.125, 0.25, 0.5, 0.75],
+        [0.0, 0.25, 0.5, 1.0],
+    ]
 
 
 def test_close_and_stroke_decomposes_to_close_then_stroke() -> None:

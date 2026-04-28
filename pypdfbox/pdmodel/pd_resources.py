@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
     COSBase,
@@ -54,13 +54,18 @@ class PDResources:
     def __init__(
         self,
         resources: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
         *,
         document: PDDocument | None = None,
-        resource_cache: PDResourceCache | None = None,
+        direct_font_cache: dict[COSName, Any] | None = None,
     ) -> None:
         self._resources: COSDictionary = resources if resources is not None else COSDictionary()
         self._document = document
         self._resource_cache = resource_cache
+        # Accepted for constructor parity with PDFBox 3.x. pypdfbox preserves
+        # the historical direct-font raw dictionary surface, so this cache is
+        # intentionally not consulted by get_font().
+        self._direct_font_cache = direct_font_cache
 
     # ---------- COS surface ----------
 
@@ -113,6 +118,11 @@ class PDResources:
         if self._document is not None:
             return self._document.get_resource_cache()
         return self._resource_cache
+
+    def get_resource_cache(self) -> PDResourceCache | None:
+        """Return the resource cache associated with these resources, or
+        ``None``. Mirrors upstream ``getResourceCache()``."""
+        return self._cache()
 
     # ---------- raw category accessors ----------
 
@@ -173,11 +183,9 @@ class PDResources:
             return xobject
         raise OSError(f"Invalid XObject Subtype: {subtype!r}")
 
-    def get_x_object_names(self) -> list[str]:
-        """``/XObject`` keys as plain strings. Mirrors upstream's
-        ``getXObjectNames()`` which returns ``Set<COSName>`` — Python idiom
-        is a list of strings here for pleasant iteration."""
-        return [n.name for n in self.get_xobject_names()]
+    def get_x_object_names(self) -> list[COSName]:
+        """``/XObject`` keys. Upstream method name is ``getXObjectNames``."""
+        return self.get_xobject_names()
 
     def add_x_object(self, xobject: PDXObject) -> COSName:
         """Register ``xobject`` under a fresh key. Form XObjects are keyed
@@ -252,17 +260,28 @@ class PDResources:
         """``/ExtGState`` keys. Upstream method name is ``getExtGStateNames``."""
         return self._names_in(self._get_subdict(_EXT_GSTATE))
 
+    def get_ext_g_state_names(self) -> list[COSName]:
+        """Upstream-spelled alias for ``get_extgstate_names``."""
+        return self.get_extgstate_names()
+
     def get_property_list_names(self) -> list[COSName]:
         """``/Properties`` keys. Upstream method name is ``getPropertiesNames``."""
         return self._names_in(self._get_subdict(_PROPERTIES))
 
+    def get_properties_names(self) -> list[COSName]:
+        """Upstream-spelled alias for ``get_property_list_names``."""
+        return self.get_property_list_names()
+
     # ---------- typed-accessor surface ----------
 
-    def get_color_space(self, name: COSName) -> PDColorSpace | None:
+    def get_color_space(
+        self, name: COSName, was_default: bool = False
+    ) -> PDColorSpace | None:
         """Return the typed ``PDColorSpace`` for ``name``, or ``None`` when
         the entry is absent. Mirrors upstream
         ``PDResources.getColorSpace(COSName)`` — dispatch lives in
         ``PDColorSpace.create``."""
+        del was_default  # PDFBox exposes this for internal recursion only.
         # Local import keeps cluster boundaries explicit.
         from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
 
@@ -276,6 +295,11 @@ class PDResources:
         if cache is not None and isinstance(raw, COSObject) and color_space is not None:
             cache.put_color_space(raw, color_space)
         return color_space
+
+    def has_color_space(self, name: COSName) -> bool:
+        """Return ``True`` if a ``/ColorSpace`` entry exists for ``name``."""
+        sub = self._get_subdict(_COLOR_SPACE)
+        return sub is not None and sub.contains_key(name)
 
     def get_pattern(self, name: COSName) -> PDAbstractPattern | None:
         """Return the typed ``PDAbstractPattern`` for ``name`` (a
@@ -363,27 +387,163 @@ class PDResources:
             return property_list
         return None
 
+    def get_properties(self, name: COSName) -> PDPropertyList | None:
+        """Upstream-spelled alias for ``get_property_list``."""
+        return self.get_property_list(name)
+
+    def is_image_x_object(self, name: COSName) -> bool:
+        """Return whether the named ``/XObject`` is an image XObject."""
+        _raw, entry = self._lookup_raw_and_resolved(_X_OBJECT, name)
+        return (
+            isinstance(entry, COSStream)
+            and entry.get_name(COSName.SUBTYPE) == "Image"  # type: ignore[attr-defined]
+        )
+
     # ---------- put / add ----------
 
-    def put(self, category: COSName, name: COSName, value: COSBase) -> None:
-        """Place ``value`` at ``/Resources/<category>/<name>``. Mirrors the
-        upstream ``put`` overloads (``putFont``, ``putXObject``, …) collapsed
-        into one explicit-category form. Used by content-stream consumers
-        and tests."""
+    def put(
+        self,
+        category_or_name: COSName,
+        name_or_value: COSName | COSBase | Any,
+        value: COSBase | Any | None = None,
+    ) -> None:
+        """Place a value in the resource dictionary.
+
+        Supported call forms:
+
+        - ``put(category, name, value)``: pypdfbox explicit-category form.
+        - ``put(name, typed_resource)``: upstream-style typed overload.
+        """
+        if value is None:
+            category = self._category_for_resource(name_or_value)
+            name = category_or_name
+            cos_value = self._cos_value(name_or_value)
+        else:
+            category = category_or_name
+            name = name_or_value
+            cos_value = self._cos_value(value)
+        if not isinstance(name, COSName):
+            raise TypeError(f"resource name must be COSName, got {type(name).__name__}")
         sub = self._get_or_create_subdict(category)
-        sub.set_item(name, value)
+        sub.set_item(name, cos_value)
 
-    def add(self, category: COSName, value: COSBase) -> COSName:
-        """Register ``value`` under a freshly-allocated key in ``category``.
+    def add(
+        self,
+        category_or_value: COSName | COSBase | Any,
+        value: COSBase | Any | None = None,
+        *,
+        prefix: str | None = None,
+    ) -> COSName:
+        """Register a value and return its resource key.
 
-        Supports the standard resource categories — ``/XObject``, ``/Font``,
-        ``/ColorSpace``, ``/ExtGState``, ``/Shading``, ``/Pattern``,
-        ``/Properties``. Unknown categories raise ``ValueError``.
+        Supports both ``add(category, value)`` (the existing pypdfbox form)
+        and ``add(typed_resource, prefix=...)`` (upstream-style typed
+        overloads). If the same COS object is already present in the target
+        subdictionary, its existing key is returned.
 
         Returns the allocated ``COSName`` key.
         """
+        if value is None:
+            original_value = category_or_value
+            category = self._category_for_resource(category_or_value)
+            cos_value = self._cos_value(category_or_value)
+        else:
+            original_value = value
+            category = category_or_value
+            cos_value = self._cos_value(value)
+            if not isinstance(category, COSName):
+                raise TypeError(
+                    "explicit add category must be COSName, "
+                    f"got {type(category).__name__}"
+                )
+
+        sub = self._get_or_create_subdict(category)
+        existing = self._find_existing_key(sub, cos_value)
+        if existing is not None:
+            return existing
+
+        if prefix is not None:
+            key_prefix = prefix
+        else:
+            key_prefix = self._prefix_for_category_value(
+                category, cos_value, original_value
+            )
+
+        key = self._create_key(sub, key_prefix)
+        sub.set_item(key, cos_value)
+        return key
+
+    @staticmethod
+    def _cos_value(value: COSBase | Any) -> COSBase:
+        if isinstance(value, COSBase):
+            return value
+        get_cos_object = getattr(value, "get_cos_object", None)
+        if callable(get_cos_object):
+            cos_value = get_cos_object()
+            if isinstance(cos_value, COSBase):
+                return cos_value
+        raise TypeError(f"resource value is not COS-backed: {type(value).__name__}")
+
+    @staticmethod
+    def _find_existing_key(sub: COSDictionary, value: COSBase) -> COSName | None:
+        for key, existing in sub.entry_set():
+            if existing is value:
+                return key
+        return None
+
+    @staticmethod
+    def _category_for_resource(value: Any) -> COSName:
+        from pypdfbox.pdmodel.font import PDFont  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
+            PDPropertyList,
+        )
+        from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.shading import PDShading  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.state import (  # noqa: PLC0415
+            PDExtendedGraphicsState,
+        )
+
+        if isinstance(value, PDFont):
+            return _FONT
+        if isinstance(value, PDColorSpace):
+            return _COLOR_SPACE
+        if isinstance(value, PDExtendedGraphicsState):
+            return _EXT_GSTATE
+        if isinstance(value, PDShading):
+            return _SHADING
+        if isinstance(value, PDAbstractPattern):
+            return _PATTERN
+        if isinstance(value, PDPropertyList):
+            return _PROPERTIES
+        if isinstance(value, PDXObject):
+            return _X_OBJECT
+        raise TypeError(f"cannot infer PDResources category for {type(value).__name__}")
+
+    @staticmethod
+    def _prefix_for_category_value(
+        category: COSName, value: COSBase, original_value: Any = None
+    ) -> str:
         if category is _X_OBJECT:
-            prefix = _PREFIX_IMAGE if isinstance(value, COSStream) else _PREFIX_FORM
+            from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+                PDFormXObject,
+            )
+            from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+                PDImageXObject,
+            )
+
+            if isinstance(original_value, PDFormXObject):
+                prefix = _PREFIX_FORM
+            elif isinstance(original_value, PDImageXObject):
+                prefix = _PREFIX_IMAGE
+            elif (
+                isinstance(value, (COSStream, COSDictionary))
+                and value.get_name(COSName.SUBTYPE) == "Form"  # type: ignore[attr-defined]
+            ):
+                prefix = _PREFIX_FORM
+            else:
+                prefix = _PREFIX_IMAGE
         elif category is _FONT:
             prefix = _PREFIX_FONT
         elif category is _COLOR_SPACE:
@@ -400,11 +560,7 @@ class PDResources:
             raise ValueError(
                 f"PDResources.add: unknown resource category {category!s}"
             )
-
-        sub = self._get_or_create_subdict(category)
-        key = self._create_key(sub, prefix)
-        sub.set_item(key, value)
-        return key
+        return prefix
 
     @staticmethod
     def _create_key(sub: COSDictionary, prefix: str) -> COSName:

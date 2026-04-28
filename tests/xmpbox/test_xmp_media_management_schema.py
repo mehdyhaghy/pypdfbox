@@ -5,7 +5,7 @@ from pypdfbox.xmpbox import (
     XMPMediaManagementSchema,
     XMPMetadata,
 )
-from pypdfbox.xmpbox.type import ResourceEventType, ResourceRefType
+from pypdfbox.xmpbox.type import ResourceEventType, ResourceRefType, VersionType
 
 
 def _mm() -> XMPMediaManagementSchema:
@@ -32,6 +32,7 @@ def test_default_accessors_return_none() -> None:
     assert schema.get_manage_ui() is None
     assert schema.get_manager() is None
     assert schema.get_manager_variant() is None
+    assert schema.get_versions() is None
 
 
 def test_round_trip_each_accessor() -> None:
@@ -93,6 +94,7 @@ def test_local_name_constants_match_upstream() -> None:
     assert XMPMediaManagementSchema.MANAGE_UI == "ManageUI"
     assert XMPMediaManagementSchema.MANAGER == "Manager"
     assert XMPMediaManagementSchema.MANAGER_VARIANT == "ManagerVariant"
+    assert XMPMediaManagementSchema.VERSIONS == "Versions"
 
 
 def test_round_trip_through_xmp_packet() -> None:
@@ -180,6 +182,36 @@ def test_history_seq_typed_round_trip() -> None:
     assert history == [e1, e2]
 
 
+def test_versions_seq_typed_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_versions() is None
+    v1 = VersionType(metadata)
+    v1.set_version("1")
+    v1.set_modifier("Ada")
+    v2 = VersionType(metadata)
+    v2.set_version("2")
+    v2.set_comments("released")
+    schema.add_version(v1)
+    schema.add_version(v2)
+    versions = schema.get_versions()
+    assert versions == [v1, v2]
+    assert versions[0].get_modifier() == "Ada"
+    assert versions[1].get_comments() == "released"
+
+
+def test_versions_filters_untyped_entries() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    version = VersionType(metadata)
+    version.set_version("1")
+    schema.set_property(
+        XMPMediaManagementSchema.VERSIONS,
+        ["legacy", version, ResourceEventType(metadata)],
+    )
+    assert schema.get_versions() == [version]
+
+
 def test_manifest_bag_typed_round_trip() -> None:
     metadata = XMPMetadata.create_xmp_metadata()
     schema = XMPMediaManagementSchema(metadata)
@@ -208,3 +240,4 @@ def test_namespace_registration_for_resource_types() -> None:
     namespaces = schema.get_namespaces()
     assert namespaces.get(ResourceRefType.PREFERRED_PREFIX) == ResourceRefType.NAMESPACE
     assert namespaces.get(ResourceEventType.PREFERRED_PREFIX) == ResourceEventType.NAMESPACE
+    assert namespaces.get(VersionType.PREFERRED_PREFIX) == VersionType.NAMESPACE

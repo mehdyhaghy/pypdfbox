@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from pypdfbox.cos import COSBase
 
 from . import Operator
+
+if TYPE_CHECKING:
+    from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
 
 _log = logging.getLogger(__name__)
 
@@ -33,6 +36,14 @@ class OperatorProcessor(ABC):
     """
 
     OPERATOR_NAME: ClassVar[str] = ""
+
+    def __init__(self, context: PDFStreamEngine | None = None) -> None:
+        self._context: PDFStreamEngine | None = context
+
+    def set_context(self, context: PDFStreamEngine) -> None:
+        """Bind this processor to a stream engine when used in the
+        engine-dispatch path. Standalone registry use leaves it unset."""
+        self._context = context
 
     @abstractmethod
     def process(self, operator: Operator, operands: list[COSBase]) -> None:

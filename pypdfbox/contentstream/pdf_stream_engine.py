@@ -17,6 +17,7 @@ from .operator_processor import MissingOperandException, OperatorProcessor
 from .pd_content_stream import PDContentStream
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.graphics.color import PDColor
     from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
     from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
     from pypdfbox.pdmodel.pd_page import PDPage
@@ -498,6 +499,20 @@ class PDFStreamEngine:
 
     def set_text_rise(self, rise: float) -> None:
         """``Ts`` notification — cluster #2 no-op."""
+
+    def set_stroking_color(self, color: PDColor) -> None:
+        """Device-color notification for stroking paint operators.
+
+        Base no-op; graphics/text/rendering subclasses may store the
+        supplied :class:`PDColor` in their graphics state.
+        """
+
+    def set_non_stroking_color(self, color: PDColor) -> None:
+        """Device-color notification for non-stroking paint operators.
+
+        Base no-op; graphics/text/rendering subclasses may store the
+        supplied :class:`PDColor` in their graphics state.
+        """
 
     def show_text_string(self, text: bytes) -> None:
         """``Tj`` notification — cluster #2 no-op."""

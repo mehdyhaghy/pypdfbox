@@ -72,6 +72,29 @@ def test_get_document_returns_same_instance_returned_by_parse() -> None:
     assert p.get_document() is parsed
 
 
+# ---------- get_xref_offset ----------
+
+
+def test_get_xref_offset_default_is_minus_one() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    assert p.get_xref_offset() == -1
+
+
+def test_get_xref_offset_records_startxref_after_parse() -> None:
+    pdf = _minimal_pdf_bytes()
+    expected = pdf.find(b"xref\n")
+    assert expected >= 0
+
+    p = _parser(pdf)
+    doc = p.parse()
+    try:
+        assert p.get_xref_offset() == expected
+        assert p.get_document() is doc
+        assert doc.get_start_xref() == expected
+    finally:
+        doc.close()
+
+
 # ---------- set_lenient / is_lenient ----------
 
 

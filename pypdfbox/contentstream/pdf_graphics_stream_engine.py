@@ -194,8 +194,23 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             BeginMarkedContentWithProps(),        # BDC
             EndMarkedContent(),                   # EMC
         ):
-            # Lite stubs have no ``set_context`` — register directly.
+            # Most lite stubs are registered directly because their
+            # semantics are routed through this class' process_operator
+            # override or remain context-free scaffolding.
             self._operators[processor.get_name()] = processor
+
+        # Device color operators need engine context so they can forward
+        # PDColor values into the color-state hooks. They overwrite the
+        # context-free instances registered above.
+        for color_processor in (
+            SetStrokingGray(),                     # G
+            SetNonStrokingGray(),                  # g
+            SetStrokingRGB(),                      # RG
+            SetNonStrokingRGB(),                   # rg
+            SetStrokingCMYK(),                     # K
+            SetNonStrokingCMYK(),                  # k
+        ):
+            self.add_operator(color_processor)
 
         # Engine-bound text-operator handlers (call back into engine hooks
         # via ``get_context()``). These need ``add_operator`` so the

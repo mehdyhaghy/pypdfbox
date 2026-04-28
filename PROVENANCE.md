@@ -994,3 +994,9 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `tests/xmpbox/type/test_version_type.py` | 3.0.x | hand-written coverage for `xmpbox/src/main/java/org/apache/xmpbox/type/VersionType.java` structured-type accessors |
+
+### Wave 45 additions
+
+Original work (no PROVENANCE row needed; listed here for clarity):
+- `pypdfbox/contentstream/operator/color/_device_color.py` — small shared helper used by the six device-colour operator ports to build `PDColor` and notify engine hooks.
+- `tests/contentstream/operator/color/test_device_color_semantics.py` — hand-written behavioral coverage for device-colour operator dispatch.
