@@ -86,3 +86,52 @@ def test_post_script_name_strip_matches_upstream() -> None:
          "  LiberationSans-Bold  ".encode("utf-16-be")),
     ])
     assert t.get_post_script_name() == "LiberationSans-Bold"
+
+
+def test_get_name_records_iteration_matches_upstream() -> None:
+    """Upstream callers traverse ``getNameRecords()`` directly. The list
+    must contain every record in read order with platform / encoding /
+    language / name ids preserved."""
+    t = _build([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_COPYRIGHT,
+         "(c) 2020".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "Liberation Sans".encode("utf-16-be")),
+    ])
+    records = t.get_name_records()
+    assert len(records) == 2
+    # First record is copyright per insertion order.
+    assert records[0].get_name_id() == NameRecord.NAME_COPYRIGHT
+    assert records[1].get_name_id() == NameRecord.NAME_FONT_FAMILY_NAME
+    # Records expose the upstream-style getters.
+    assert records[1].get_platform_id() == NameRecord.PLATFORM_WINDOWS
+    assert records[1].get_language_id() == NameRecord.LANGUAGE_WINDOWS_EN_US
+    assert records[1].get_string() == "Liberation Sans"
+
+
+def test_lookup_table_language_records_round_trip() -> None:
+    """Multi-language records all decode and remain queryable via the
+    quadruple ``getName`` lookup."""
+    t = _build([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "Roboto".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_FONT_FAMILY_NAME,  # de-DE
+         "Roboto".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0411, NameRecord.NAME_FONT_FAMILY_NAME,  # ja-JP
+         "Roboto".encode("utf-16-be")),
+    ])
+    for lang in (NameRecord.LANGUAGE_WINDOWS_EN_US, 0x0407, 0x0411):
+        assert (
+            t.get_name(
+                NameRecord.NAME_FONT_FAMILY_NAME,
+                NameRecord.PLATFORM_WINDOWS,
+                NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+                lang,
+            )
+            == "Roboto"
+        )

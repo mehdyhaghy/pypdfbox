@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream
@@ -8,6 +9,8 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
     from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
     from pypdfbox.pdmodel.pd_page import PDPage
+
+_LOG = logging.getLogger(__name__)
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
@@ -101,21 +104,35 @@ class PDObjectReference:
     def get_referenced_object(self) -> "PDAnnotation | PDXObject | None":
         """Resolve ``/Obj`` to a typed wrapper.
 
-        Returns a :class:`PDAnnotation` subclass when ``/Obj`` points at
-        an annotation dict (``/Type /Annot``), a :class:`PDFormXObject`
-        or :class:`PDImageXObject` when it points at a Form / Image
-        XObject (either ``/Type /XObject`` on a dict or a stream whose
-        ``/Subtype`` identifies the form/image), or ``None`` when
-        ``/Obj`` is absent or unresolvable.
+        Mirrors upstream ``getReferencedObject`` (PDF 32000-1 §14.7.4.3):
+
+        1. If ``/Obj`` is a ``COSStream`` with ``/Subtype /Form`` or
+           ``/Image`` it is wrapped as :class:`PDFormXObject` /
+           :class:`PDImageXObject`.
+        2. Otherwise — including streams whose ``/Subtype`` is unknown —
+           the resolver falls through to annotation dispatch via
+           :meth:`PDAnnotation.create`. The annotation is returned only
+           when it dispatched to a *known* subclass, or when
+           ``/Type /Annot`` is present (matching upstream's
+           ``!instanceof PDAnnotationUnknown || /Type == /Annot``).
+        3. Returns ``None`` when ``/Obj`` is absent, points at
+           something that isn't a dictionary, or fails both dispatch
+           paths.
+
+        Streams that aren't Form/Image XObjects (e.g. ``/Subtype /PS``)
+        return ``None`` — upstream's ``PDXObject.createXObject`` raises
+        ``IOException`` for unknown subtypes which the upstream catch
+        block swallows and logs.
         """
         obj = self._dictionary.get_dictionary_object(_OBJ)
         if obj is None:
             return None
 
-        # Local imports break the cos→pdmodel→annotation/XObject cycle.
+        # ---- Streams: try XObject dispatch first (matches upstream). ----
         if isinstance(obj, COSStream):
             subtype = obj.get_name(_SUBTYPE)
             if subtype == _FORM:
+                # Local import — cluster boundary, see module docstring.
                 from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
                     PDFormXObject,
                 )
@@ -127,32 +144,43 @@ class PDObjectReference:
                 )
 
                 return PDImageXObject(obj)
+            # Unknown stream subtype (e.g. /PS PostScript XObject).
+            # Upstream catches the IOException and returns null after
+            # falling through to annotation dispatch — but a stream is
+            # never a valid annotation, so short-circuit here.
+            _LOG.debug(
+                "PDObjectReference /Obj stream has unrecognised /Subtype %r — "
+                "returning None",
+                subtype,
+            )
             return None
 
+        # ---- Dicts: annotation dispatch with upstream's filter rule. ----
         if isinstance(obj, COSDictionary):
+            from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
+                PDAnnotation,
+            )
+            from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
+                PDAnnotationUnknown,
+            )
+
             type_name = obj.get_name(_TYPE)
-            subtype = obj.get_name(_SUBTYPE)
-            if type_name == _ANNOT:
-                from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
-                    PDAnnotation,
+            try:
+                annotation = PDAnnotation.create(obj)
+            except (TypeError, ValueError) as exc:
+                _LOG.debug(
+                    "PDObjectReference /Obj annotation dispatch failed: %s", exc
                 )
+                return None
+            # Upstream returns the annotation when it's a *known* subclass,
+            # or when /Type is /Annot (allowing /Subtype-less typed dicts).
+            if not isinstance(annotation, PDAnnotationUnknown):
+                return annotation
+            if type_name == _ANNOT:
+                return annotation
+            return None
 
-                return PDAnnotation.create(obj)
-            if type_name == _XOBJECT or subtype in (_FORM, _IMAGE):
-                # Some producers stamp /Type /XObject on a dict (rare —
-                # XObjects are usually streams). Fall through if /Subtype
-                # is missing; we cannot dispatch without it.
-                if subtype == _FORM:
-                    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
-                        PDFormXObject,
-                    )
-
-                    # PDFormXObject requires a stream; a bare dict cannot
-                    # be wrapped. Return None rather than raising — round-
-                    # tripping a malformed reference shouldn't crash.
-                    return None
-                if subtype == _IMAGE:
-                    return None
+        # COSBase that's neither a dict nor a stream — not resolvable.
         return None
 
     def set_referenced_object(
@@ -164,6 +192,12 @@ class PDObjectReference:
         wrapper (calls ``get_cos_object()``) or ``None`` to remove
         ``/Obj``. Raw ``COSBase`` values should go through :meth:`set_obj`
         instead — keeping the typed surface narrow makes intent obvious.
+
+        Upstream PDFBox splits this into two overloads —
+        ``setReferencedObject(PDAnnotation)`` and
+        ``setReferencedObject(PDXObject)``. Python doesn't have method
+        overloading; one entry-point dispatches on ``get_cos_object()``
+        which both wrappers implement.
         """
         if obj is None:
             self._dictionary.remove_item(_OBJ)

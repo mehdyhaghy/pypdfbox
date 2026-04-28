@@ -391,3 +391,93 @@ def test_pattern_color_space_to_rgb_colored_returns_none() -> None:
 
     cs = PDPattern()
     assert cs.to_rgb([]) is None
+
+
+# ---------- PDContentStream surface (Wave 43) ----------
+
+
+def test_tiling_get_contents_returns_decoded_stream() -> None:
+    """``getContents()`` returns a ``BinaryIO`` over the decoded body —
+    mirrors upstream's ``PDContentStream.getContents``."""
+    pattern = PDTilingPattern()
+    cs = pattern.get_content_stream()
+    with cs.create_output_stream() as out:
+        out.write(b"q 1 0 0 1 0 0 cm Q")
+
+    contents = pattern.get_contents()
+    assert contents is not None
+    data = contents.read()
+    assert data == b"q 1 0 0 1 0 0 cm Q"
+
+
+def test_tiling_get_contents_for_random_access_returns_raw_stream() -> None:
+    """``getContentsForRandomAccess()`` returns a raw (encoded) seekable
+    view — mirrors upstream's ``RandomAccessRead`` return."""
+    pattern = PDTilingPattern()
+    cs = pattern.get_content_stream()
+    with cs.create_output_stream() as out:
+        out.write(b"hello world")
+
+    raw = pattern.get_contents_for_random_access()
+    assert raw is not None
+    # Raw view supports seek/read.
+    raw.seek(0)
+    assert raw.read() == b"hello world"
+
+
+def test_tiling_get_contents_returns_none_for_non_stream() -> None:
+    """A pattern whose underlying COSDictionary isn't a stream → ``None``
+    rather than raising — matches upstream's ``return null``."""
+    from pypdfbox.cos import COSDictionary
+
+    # Bypass the typed ctor so we can wrap a non-stream dictionary; this
+    # is the only way to construct a degenerate PDTilingPattern.
+    plain = COSDictionary()
+    plain.set_int(COSName.get_pdf_name("PatternType"), 1)
+    pattern = PDTilingPattern.__new__(PDTilingPattern)
+    pattern._dict = plain  # type: ignore[attr-defined]
+    pattern._resource_cache = None  # type: ignore[attr-defined]
+    assert pattern.get_contents() is None
+    assert pattern.get_contents_for_random_access() is None
+
+
+# ---------- PDShadingPattern typed /ExtGState override ----------
+
+
+def test_shading_get_extended_graphics_state_typed() -> None:
+    """``PDShadingPattern.getExtendedGraphicsState`` returns a typed
+    ``PDExtendedGraphicsState`` — overrides the base accessor that
+    returns the raw dict."""
+    pattern = PDShadingPattern()
+    assert pattern.get_extended_graphics_state() is None
+
+    extgs = PDExtendedGraphicsState()
+    pattern.set_extended_graphics_state(extgs)
+    out = pattern.get_extended_graphics_state()
+    assert out is not None
+    assert isinstance(out, PDExtendedGraphicsState)
+    assert out.get_cos_object() is extgs.get_cos_object()
+
+
+def test_shading_set_extended_graphics_state_accepts_raw_dict() -> None:
+    pattern = PDShadingPattern()
+    raw = COSDictionary()
+    pattern.set_extended_graphics_state(raw)
+    out = pattern.get_extended_graphics_state()
+    assert out is not None
+    assert isinstance(out, PDExtendedGraphicsState)
+    assert out.get_cos_object() is raw
+
+
+def test_shading_set_extended_graphics_state_none_clears() -> None:
+    pattern = PDShadingPattern()
+    pattern.set_extended_graphics_state(PDExtendedGraphicsState())
+    pattern.set_extended_graphics_state(None)
+    assert pattern.get_extended_graphics_state() is None
+    assert pattern.get_cos_object().get_dictionary_object(_EXT_G_STATE) is None
+
+
+def test_shading_set_extended_graphics_state_rejects_garbage() -> None:
+    pattern = PDShadingPattern()
+    with pytest.raises(TypeError):
+        pattern.set_extended_graphics_state(42)  # type: ignore[arg-type]

@@ -393,10 +393,22 @@ class PDDocumentCatalog:
         return None
 
     def set_oc_properties(self, oc_properties: Any) -> None:
+        """Write the catalog's ``/OCProperties`` dictionary. Mirrors
+        upstream's side effect: optional content groups require PDF 1.5,
+        so when a non-``None`` value is set the document version is
+        bumped to 1.5 if it is currently lower (matches upstream
+        ``setOCProperties``)."""
         if oc_properties is None:
             self._catalog.remove_item(_OC_PROPERTIES)
             return
         self._catalog.set_item(_OC_PROPERTIES, oc_properties.get_cos_object())
+        # Upstream: if (ocProperties != null && document.getVersion() < 1.5)
+        #              document.setVersion(1.5f);
+        try:
+            if self._document.get_version() < 1.5:
+                self._document.set_version(1.5)
+        except Exception:  # noqa: BLE001 — defensive: catalogs without a doc
+            pass
 
     def get_names(self) -> Any:
         from .pd_document_name_dictionary import PDDocumentNameDictionary
@@ -420,6 +432,61 @@ class PDDocumentCatalog:
         value = self._catalog.get_dictionary_object(_DESTS)
         if isinstance(value, COSDictionary):
             return PDDestinationNameTreeNode(value)
+        return None
+
+    def find_named_destination_page(self, named_dest: Any) -> Any:
+        """Resolve a :class:`PDNamedDestination` against the catalog's
+        name dictionaries. Mirrors upstream
+        ``PDDocumentCatalog.findNamedDestinationPage(PDNamedDestination)``.
+
+        Lookup order matches upstream:
+
+        1. ``/Names /Dests`` name tree (modern, PDF 1.2+).
+        2. Legacy ``/Dests`` flat dictionary on the catalog (PDF 1.1).
+
+        Returns the resolved :class:`PDPageDestination` (or its subclass)
+        or ``None`` when the name is not registered."""
+        from .pd_document_name_destination_dictionary import (
+            PDDocumentNameDestinationDictionary,
+        )
+
+        if named_dest is None:
+            return None
+        try:
+            name = named_dest.get_named_destination()
+        except AttributeError:
+            return None
+        if name is None:
+            return None
+
+        # 1) /Names /Dests name tree.
+        names_dict = self.get_names()
+        if names_dict is not None:
+            try:
+                dests_tree = names_dict.get_dests()
+            except Exception:  # noqa: BLE001 — defensive on malformed names
+                dests_tree = None
+            if dests_tree is not None:
+                # PDDestinationNameTreeNode (the proper name-tree shape) has
+                # get_value(); the legacy PDDocumentNameDestinationDictionary
+                # has get_destination(). Cover both for robustness.
+                getter = getattr(dests_tree, "get_value", None) or getattr(
+                    dests_tree, "get_destination", None
+                )
+                if getter is not None:
+                    page_dest = getter(name)
+                    if page_dest is not None:
+                        return page_dest
+
+        # 2) Legacy catalog /Dests flat dictionary.
+        cat_dests = self._catalog.get_dictionary_object(_DESTS)
+        if isinstance(cat_dests, COSDictionary):
+            page_dest = PDDocumentNameDestinationDictionary(
+                cat_dests
+            ).get_destination(name)
+            if page_dest is not None:
+                return page_dest
+
         return None
 
     def get_open_action(self) -> Any:
@@ -652,28 +719,35 @@ class PDDocumentCatalog:
 
     # ---------- /URI (URI dictionary, PDF 32000-1 §12.6.4.7) ----------
 
-    def get_uri(self) -> COSDictionary | None:
-        """Return the catalog's ``/URI`` dictionary (PDF 32000-1
-        §12.6.4.7) or ``None`` when absent.
+    def get_uri(self) -> Any:
+        """Return the catalog's ``/URI`` dictionary as a typed
+        :class:`PDURIDictionary` (PDF 32000-1 §12.6.4.7), or ``None``
+        when absent.
 
         The ``/URI`` dictionary holds document-level URI information,
         most notably the ``/Base`` entry — a string used as the base
-        URI for resolving any relative URIs in URI actions. Upstream
-        PDFBox returns a typed ``PDURIDictionary`` wrapper; pypdfbox
-        currently surfaces the raw ``COSDictionary`` until the typed
-        wrapper is ported (deferred to the URI dictionary cluster)."""
+        URI for resolving any relative URIs in URI actions. Mirrors
+        upstream ``PDDocumentCatalog.getURI()`` returning
+        ``PDURIDictionary``."""
+        from .interactive.action import PDURIDictionary
+
         v = self._catalog.get_dictionary_object(_URI)
         if isinstance(v, COSDictionary):
-            return v
+            return PDURIDictionary(v)
         return None
 
-    def set_uri(self, uri_dict: COSDictionary | None) -> None:
+    def set_uri(self, uri_dict: Any) -> None:
         """Set the catalog's ``/URI`` dictionary. Pass ``None`` to
-        remove the entry."""
+        remove the entry. Accepts a :class:`PDURIDictionary` (preferred,
+        mirrors upstream) or a raw :class:`COSDictionary` for
+        back-compat with earlier pypdfbox callers."""
         if uri_dict is None:
             self._catalog.remove_item(_URI)
             return
-        self._catalog.set_item(_URI, uri_dict)
+        if isinstance(uri_dict, COSDictionary):
+            self._catalog.set_item(_URI, uri_dict)
+            return
+        self._catalog.set_item(_URI, uri_dict.get_cos_object())
 
     # ---------- /Requirements (PDF 32000-1 §12.10) ----------
 

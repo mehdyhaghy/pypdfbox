@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import bisect
 import struct
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .true_type_font import TrueTypeFont
+    from .ttf_data_stream import TTFDataStream
 
 
 class KerningSubtable:
@@ -113,6 +115,77 @@ class KerningSubtable:
             self._pairs = None
 
     # ---------- direct binary parsing (Format 0 + Format 2) ----------
+
+    def read(self, data: TTFDataStream, version: int) -> None:
+        """Read this subtable from a :class:`TTFDataStream` at the current
+        position, mirroring upstream ``KerningSubtable#read(TTFDataStream, int)``.
+
+        ``version`` is the parent ``kern`` table version (0 = OpenType,
+        1 = Apple). Other values raise :class:`ValueError` (upstream throws
+        ``IllegalStateException``).
+        """
+        if version == 0:
+            self._read_subtable_0(data)
+        elif version == 1:
+            self._read_subtable_1(data)
+        else:
+            raise ValueError(f"unknown kern table version {version}")
+
+    def _read_subtable_0(self, data: TTFDataStream) -> None:
+        """Upstream ``readSubtable0`` — OpenType layout. Reads the 6-byte
+        OpenType subtable header (version, length, coverage) then dispatches
+        on the format byte (high byte of coverage). Format 0 → sorted pair
+        list (binary search); Format 2 → class-based; anything else logs
+        and leaves ``pairs`` unset so :meth:`get_kerning` returns 0."""
+        sub_version = data.read_unsigned_short()
+        if sub_version != 0:
+            # Upstream "Unsupported kerning sub-table version" log; bail out.
+            return
+        length = data.read_unsigned_short()
+        if length < 6:
+            # Upstream "Kerning sub-table too short" log; bail out.
+            return
+        coverage = data.read_unsigned_short()
+        self._coverage = coverage
+        self._horizontal = bool(coverage & self.COVERAGE_HORIZONTAL)
+        self._minimums = bool(coverage & self.COVERAGE_MINIMUMS)
+        self._cross_stream = bool(coverage & self.COVERAGE_CROSS_STREAM)
+        self._format = (
+            coverage & self.COVERAGE_FORMAT
+        ) >> self.COVERAGE_FORMAT_SHIFT
+        if self._format == 0:
+            self._read_subtable_0_format_0_stream(data)
+        elif self._format == 2:
+            # Read remaining ``length - 6`` bytes and parse via the in-memory
+            # Format 2 path; class-based bodies use absolute offsets relative
+            # to the subtable header, which the buffer-based parser already
+            # handles correctly.
+            body = data.read_bytes(max(0, length - 6))
+            self._read_format_2(body)
+        # other formats: leave pairs unset → 0 lookup (upstream parity)
+
+    def _read_subtable_0_format_0_stream(self, data: TTFDataStream) -> None:
+        """Upstream ``readSubtable0Format0`` body reader. nPairs (uint16),
+        searchRange (uint16), entrySelector (uint16), rangeShift (uint16),
+        then nPairs * (left, right, value) where value is signed int16."""
+        n_pairs = data.read_unsigned_short()
+        # Three more uint16s are part of the binary-search header upstream
+        # uses but we don't need them for our dict / sorted-list lookup.
+        data.read_unsigned_short()  # searchRange
+        data.read_unsigned_short()  # entrySelector
+        data.read_unsigned_short()  # rangeShift
+        pairs: dict[tuple[int, int], int] = {}
+        for _ in range(n_pairs):
+            left = data.read_unsigned_short()
+            right = data.read_unsigned_short()
+            value = data.read_signed_short()
+            pairs[(left, right)] = value
+        self._gid_pairs = pairs
+
+    def _read_subtable_1(self, data: TTFDataStream) -> None:  # noqa: ARG002
+        """Upstream ``readSubtable1`` — Apple state-machine layout. Logged as
+        "not yet supported" upstream; leave ``pairs`` unset → 0 lookup."""
+        return
 
     @classmethod
     def from_bytes(
@@ -332,7 +405,11 @@ class KerningSubtable:
             if 0 <= idx < len(self._class_kerning):
                 return int(self._class_kerning[idx])
             return 0
-        # Format-0 binary-parsed (gid-keyed) lookup.
+        # Format-0 binary-parsed (gid-keyed) lookup. Mirrors upstream's
+        # ``Arrays.binarySearch`` over the sorted (left, right, value) list:
+        # we keep the dict as the primary store (O(1) lookup) but also
+        # expose a ``_sorted_pairs`` view for callers that want
+        # binary-search semantics — see :meth:`binary_search_pair`.
         if self._gid_pairs is not None:
             return int(self._gid_pairs.get((left, right), 0))
         # Format-0 fontTools-wrapped (glyph-name keyed) lookup.
@@ -351,6 +428,28 @@ class KerningSubtable:
         if value is None:
             return 0
         return int(value)
+
+    def binary_search_pair(self, left: int, right: int) -> int:
+        """Upstream-style binary search over a sorted (left, right) pair
+        list — returns the kerning value or 0 if the pair is absent.
+
+        Provided as a parity helper that mirrors the
+        ``Arrays.binarySearch(pairs, key, this)`` call in upstream's
+        ``PairData0Format0#getKerning``. The default :meth:`get_kerning`
+        path uses an O(1) dict instead; both must produce the same result.
+        """
+        if self._gid_pairs is None or left < 0 or right < 0:
+            return 0
+        # Build / cache the sorted-pair view lazily.
+        sorted_pairs = getattr(self, "_sorted_pairs_cache", None)
+        if sorted_pairs is None:
+            sorted_pairs = sorted(self._gid_pairs.items(), key=lambda kv: kv[0])
+            self._sorted_pairs_cache = sorted_pairs
+        keys = [kv[0] for kv in sorted_pairs]
+        idx = bisect.bisect_left(keys, (left, right))
+        if 0 <= idx < len(keys) and keys[idx] == (left, right):
+            return int(sorted_pairs[idx][1])
+        return 0
 
     def _get_kerning_seq(self, glyphs: list[int] | tuple[int, ...]) -> list[int]:
         result: list[int] = []

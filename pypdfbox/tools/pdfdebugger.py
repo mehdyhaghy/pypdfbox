@@ -1,9 +1,10 @@
 """
 ``pypdfbox pdfdebugger FILE [-trailer | -page N | -object NUM[,GEN] | -xref |
 -catalog | -tree | --list-objects | --show-trailer | --show-catalog |
---show-tree | --show-object NUM[.GEN] | --show-page-tokens N |
---show-encryption] [--password PWD] [--depth N] [--format text|json]``
-— print a PDF object graph as text.
+--show-tree | --dump-tree | --dump-stream NUM[.GEN] | --show-object NUM[.GEN] |
+--show-page-tokens N | --show-encryption | -i / --interactive]
+[--password PWD] [--depth N] [--format text|json]``
+— print a PDF object graph as text, or open an interactive walker.
 
 Upstream ``org.apache.pdfbox.tools.PDFDebugger`` is a heavy Swing GUI for
 interactively browsing the COS object pool. We deliberately do **not**
@@ -11,27 +12,36 @@ replicate that — pypdfbox does not pull in any GUI subsystem (per the
 project-wide divergence noted in ``CHANGES.md`` and ``CLAUDE.md``).
 
 This is the *lite* CLI alternative — analogous in spirit to
-``qpdf --json`` / ``mutool show``. It walks the same COS graph the GUI
-would render and prints it as indented text on stdout.
+``qpdf --json`` / ``mutool show`` (non-interactive) or ``pdb`` (interactive).
+It walks the same COS graph the GUI would render and prints it as indented
+text on stdout, or — under ``-i`` / ``--interactive`` — drops the operator
+into a textual REPL with ``ls / cd / pwd / cat / hex / ref / find / raw /
+decode / q`` commands modelled on POSIX shell + a debugger.
 
 Modes (mutually exclusive):
 
 * default (no flag) — terse summary: header version, page count, catalog
   type, trailer key list (one line each).
-* ``-trailer`` / ``--show-trailer`` — pretty-print the document trailer.
+* ``-trailer`` / ``--trailer`` / ``--show-trailer`` — pretty-print the
+  document trailer.
 * ``-page N`` — pretty-print the (1-based) page dictionary at index ``N``.
 * ``-object NUM [GEN]`` / ``--show-object NUM[.GEN]`` — pretty-print the
   resolved object at the given object number.
-* ``-xref`` — dump the in-memory xref table (one ``num gen R`` per line).
+* ``-xref`` / ``--xref`` — dump the in-memory xref table (one ``num gen R``
+  per line).
 * ``--list-objects`` — like ``-xref`` but shows offset / in_objstm / free
   state for each entry, mirroring ``qpdf --show-xref`` output.
 * ``-catalog`` / ``--show-catalog`` — pretty-print the document catalog.
-* ``-tree`` / ``--show-tree`` — full object-pool dump.
+* ``-tree`` / ``--show-tree`` / ``--dump-tree`` — full object-pool dump.
+* ``--dump-stream NUM[.GEN]`` — hex + decoded body dump for the given
+  stream object (errors with exit 4 if the object isn't a stream).
 * ``--show-page-tokens N`` — tokenize and dump the content-stream of
   page ``N`` (1-based).
 * ``--show-encryption`` — print encryption parameters (V/R/Length/Filter
   /SubFilter/permissions). For security, only the first 8 hex characters
   of /U and /O are shown (never the full hash).
+* ``-i`` / ``--interactive`` — open the textual COS walker (REPL). See
+  in-process ``help`` for the command list.
 
 Auxiliary flags:
 
@@ -46,8 +56,25 @@ first ~64 bytes; if decoding fails the raw, undecoded bytes are shown
 instead with a ``raw`` marker so the operator knows which form they're
 looking at.
 
-Exit codes: 0 success, 4 I/O / not-a-file / bad password. Bad ``-page`` /
-``-object`` arguments come back as exit 2 via argparse.
+Interactive walker commands (``-i`` / ``--interactive``):
+
+* ``ls`` — list children of the current node (key/index → short type).
+* ``cd <key|index>`` — descend into a child (``cd ..`` ascends; ``cd /``
+  jumps to the trailer; ``cd <num> <gen>`` follows an indirect ref by
+  object key).
+* ``pwd`` — print the path from trailer to the current node.
+* ``cat`` — pretty-print the current node (default depth 6).
+* ``hex`` — hex dump of the current node when it is a stream (raw bytes).
+* ``ref <num> [gen]`` — jump straight to ``num gen R`` in the object pool.
+* ``find <key>`` — list paths in the visited subtree where dict-key matches.
+* ``raw`` — show the *raw* (encoded) stream bytes (preview).
+* ``decode`` — show the *decoded* (filter-chain-applied) stream bytes
+  (preview).
+* ``q`` / ``quit`` / ``exit`` — leave the walker.
+* ``help`` — print this list inside the walker.
+
+Exit codes: 0 success, 4 I/O / not-a-file / bad password / bad object id.
+Bad ``-page`` / ``-object`` arguments come back as exit 2 via argparse.
 """
 from __future__ import annotations
 
@@ -126,9 +153,13 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         help="dump the document catalog dictionary tree",
     )
     group.add_argument(
-        "-tree", "--tree", "--show-tree",
+        "-tree", "--tree", "--show-tree", "--dump-tree",
         action="store_true", dest="tree",
         help="dump every resolved indirect object in the COS pool",
+    )
+    group.add_argument(
+        "--dump-stream", metavar="NUM[.GEN]", default=None, dest="dump_stream",
+        help="hex + decoded body dump of the stream object at NUM[.GEN]",
     )
     group.add_argument(
         "--show-page-tokens", type=int, metavar="N", default=None,
@@ -138,6 +169,11 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
     group.add_argument(
         "--show-encryption", action="store_true", dest="show_encryption",
         help="print encryption parameters; /U and /O shown as hex prefix only",
+    )
+    group.add_argument(
+        "-i", "--interactive", action="store_true", dest="interactive",
+        help="open the textual COS walker REPL (ls/cd/pwd/cat/hex/ref/find/"
+        "raw/decode/q)",
     )
     # Auxiliary flags — combine freely with any mode above.
     p.add_argument(
@@ -586,6 +622,113 @@ def _print_object(
     return 0
 
 
+def _hex_dump(data: bytes, *, width: int = 16, max_lines: int = 64) -> str:
+    """Return a ``hexdump -C``-style block: ``offset  hex  |ascii|``.
+
+    Truncated after ``max_lines`` rows with a trailing ``...`` marker so a
+    large stream doesn't flood the terminal. ``width`` is the number of
+    bytes per row."""
+    if not data:
+        return "<empty>"
+    rows: list[str] = []
+    total = len(data)
+    cap = min(total, max_lines * width)
+    for offset in range(0, cap, width):
+        chunk = data[offset:offset + width]
+        hex_part = " ".join(f"{b:02x}" for b in chunk)
+        # Pad hex column so the ascii column is aligned across short rows.
+        hex_part = hex_part.ljust(width * 3 - 1)
+        ascii_part = "".join(
+            chr(b) if 32 <= b < 127 else "." for b in chunk
+        )
+        rows.append(f"{offset:08x}  {hex_part}  |{ascii_part}|")
+    if cap < total:
+        rows.append(f"... ({total - cap} more bytes)")
+    return "\n".join(rows)
+
+
+def _dump_stream(
+    doc: PDDocument, num: int, gen: int, *,
+    output_format: str = _FORMAT_TEXT,
+) -> int:
+    """Dump the stream object at ``num gen R`` as raw + decoded bytes.
+
+    Mirrors ``qpdf --show-object=NUM --raw-stream-data`` in spirit. The
+    raw block is the on-disk bytes; the decoded block is the result of
+    running the ``/Filter`` chain. We always show *both* because they
+    answer different debugging questions ("is the predictor right?" vs
+    "what does the consumer see?").
+
+    Exit codes: 0 success, 4 if the object isn't in the pool, 4 if it's
+    not a stream."""
+    cos_doc = doc.get_document()
+    key = COSObjectKey(num, gen)
+    if not cos_doc.has_object(key):
+        print(f"pdfdebugger: object {num} {gen} R not in pool", flush=True)
+        return 4
+    resolved = cos_doc.get_object_from_pool(key).get_object()
+    if not isinstance(resolved, COSStream):
+        print(
+            f"pdfdebugger: object {num} {gen} R is not a stream",
+            flush=True,
+        )
+        return 4
+
+    # Pull both forms — raw is always available; decoded may fail when a
+    # filter is unsupported (we surface that as an error string rather
+    # than crashing the dump).
+    try:
+        with resolved.create_raw_input_stream() as src:
+            raw_bytes = src.read()
+    except (OSError, AttributeError) as exc:
+        raw_bytes = b""
+        raw_err: str | None = str(exc)
+    else:
+        raw_err = None
+    try:
+        decoded_bytes = resolved.to_byte_array()
+        decoded_err: str | None = None
+    except Exception as exc:  # noqa: BLE001 — filters surface diverse errors
+        decoded_bytes = b""
+        decoded_err = str(exc)
+
+    filt = resolved.get_dictionary_object(COSName.get_pdf_name("Filter"))
+    filt_repr = _fmt_simple(filt) if filt is not None else None
+
+    if output_format == _FORMAT_JSON:
+        payload = {
+            "object_number": num,
+            "generation_number": gen,
+            "filter": filt_repr,
+            "length": resolved.get_length(),
+            "raw_length": len(raw_bytes),
+            "raw_hex": raw_bytes.hex(),
+            "raw_error": raw_err,
+            "decoded_length": len(decoded_bytes),
+            "decoded_hex": decoded_bytes.hex(),
+            "decoded_error": decoded_err,
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    print(f"Stream {num} {gen} R:")
+    print(f"  /Length : {resolved.get_length()}")
+    print(f"  /Filter : {filt_repr if filt_repr else '<none>'}")
+    print(f"  raw bytes ({len(raw_bytes)} bytes):")
+    if raw_err is not None:
+        print(f"    <error: {raw_err}>")
+    else:
+        for line in _hex_dump(raw_bytes).splitlines():
+            print(f"    {line}")
+    print(f"  decoded bytes ({len(decoded_bytes)} bytes):")
+    if decoded_err is not None:
+        print(f"    <error: {decoded_err}>")
+    else:
+        for line in _hex_dump(decoded_bytes).splitlines():
+            print(f"    {line}")
+    return 0
+
+
 def _print_tree(
     doc: PDDocument, *,
     max_depth: int = _MAX_DEPTH, output_format: str = _FORMAT_TEXT,
@@ -896,6 +1039,352 @@ def _print_encryption(doc: PDDocument, *, output_format: str = _FORMAT_TEXT) -> 
     return 0
 
 
+# ---------- interactive walker ----------
+
+
+_WALKER_HELP = """\
+Commands:
+  ls                   list children of the current node
+  cd <key|index>       descend into the named child (cd .. to ascend,
+                       cd / to jump back to the trailer)
+  cd <num> <gen>       follow an indirect ref by object key
+  pwd                  print path from root to current node
+  cat                  pretty-print the current node (depth 6)
+  hex                  hex dump of the current node (streams only)
+  ref <num> [gen]      jump to indirect object num gen R
+  find <key>           list paths in the visited subtree where dict-key matches
+  raw                  preview the raw (encoded) stream bytes
+  decode               preview the decoded (filter-applied) stream bytes
+  q | quit | exit      leave the walker
+  help                 show this list
+"""
+
+_WALKER_HEX_MAX_BYTES = 1024  # cap for ``hex`` output so large streams stay sane
+_WALKER_DEFAULT_DEPTH = 6
+
+
+def _node_type_label(node: COSBase | None) -> str:
+    """Return a short type tag for ``ls`` output (``dict``, ``array``,
+    ``stream``, ``ref``, ``name`` etc)."""
+    if node is None:
+        return "<unresolved>"
+    if isinstance(node, COSStream):
+        return "stream"
+    if isinstance(node, COSDictionary):
+        return "dict"
+    if isinstance(node, COSArray):
+        return "array"
+    if isinstance(node, COSObject):
+        return f"ref={node.object_number} {node.generation_number} R"
+    if isinstance(node, COSName):
+        return f"name=/{node.name}"
+    if isinstance(node, COSString):
+        try:
+            return f"string=({node.get_string()!r})"
+        except (UnicodeDecodeError, ValueError):
+            return f"string=<{node.get_bytes().hex()}>"
+    if isinstance(node, COSBoolean):
+        return f"bool={'true' if node.value else 'false'}"
+    if isinstance(node, COSInteger):
+        return f"int={node.value}"
+    if isinstance(node, COSFloat):
+        return f"float={node.value!r}"
+    if isinstance(node, COSNull):
+        return "null"
+    return type(node).__name__
+
+
+def _resolve_for_navigation(node: COSBase | None) -> COSBase | None:
+    """Follow ``COSObject`` indirect refs until we hit a concrete value.
+
+    The walker treats refs as transparent for ``ls``/``cd`` so users can
+    descend without an explicit ``ref`` jump every level."""
+    seen: set[int] = set()
+    cur: COSBase | None = node
+    while isinstance(cur, COSObject):
+        if id(cur) in seen:
+            return cur  # cycle; stop here so we don't infinite-loop
+        seen.add(id(cur))
+        cur = cur.get_object()
+    return cur
+
+
+def _walker_list_children(node: COSBase | None) -> list[tuple[str, COSBase]]:
+    """Return a list of ``(label, child)`` tuples for the ls/cd surface.
+
+    Dictionary children are labelled with ``/Key`` and array children with
+    ``[index]``. Streams expose their dict entries (the body itself is
+    accessed via ``raw`` / ``decode`` / ``hex``). Scalars have no
+    children."""
+    target = _resolve_for_navigation(node)
+    children: list[tuple[str, COSBase]] = []
+    if isinstance(target, COSStream):
+        for k, v in target.entry_set():
+            children.append((f"/{k.name}", v))
+        return children
+    if isinstance(target, COSDictionary):
+        for k, v in target.entry_set():
+            children.append((f"/{k.name}", v))
+        return children
+    if isinstance(target, COSArray):
+        for idx, item in enumerate(target):
+            children.append((f"[{idx}]", item))
+        return children
+    return children
+
+
+def _walker_lookup_child(
+    node: COSBase | None, token: str,
+) -> COSBase | None:
+    """Resolve a single ``cd`` token (``/Foo``, ``Foo``, or ``[n]``) against
+    ``node``'s children. Returns the child node or ``None`` if unmatched."""
+    target = _resolve_for_navigation(node)
+    if target is None:
+        return None
+    # Array index — accept both bare ``5`` and bracketed ``[5]``.
+    if isinstance(target, COSArray):
+        spec = token.strip()
+        if spec.startswith("[") and spec.endswith("]"):
+            spec = spec[1:-1]
+        try:
+            idx = int(spec)
+        except ValueError:
+            return None
+        if 0 <= idx < len(target):
+            return target[idx]
+        return None
+    if isinstance(target, (COSDictionary, COSStream)):
+        # ``cd /Foo`` and ``cd Foo`` both work — strip a single leading slash.
+        key = token[1:] if token.startswith("/") else token
+        return target.get_dictionary_object(COSName.get_pdf_name(key))
+    return None
+
+
+def _walker_print_node(node: COSBase | None, *, depth: int) -> None:
+    """Pretty-print ``node`` to stdout for the ``cat`` command. Depth is
+    bounded so a top-level ``cat`` on the trailer doesn't dump the whole
+    document."""
+    out: list[str] = []
+    _format_node(
+        node, 0, out, visited=set(),
+        follow_refs=False, max_depth=depth,
+    )
+    print("\n".join(out))
+
+
+def _walker_find_in_subtree(
+    node: COSBase | None, key: str, *, max_results: int = 64,
+) -> list[str]:
+    """Walk the subtree rooted at ``node`` and return the paths of every
+    dict whose key set contains ``key`` (case-sensitive, slash optional).
+
+    Cycles are guarded by an id-set; recursion is bounded by
+    ``_MAX_DEPTH`` to mirror the pretty-printer."""
+    target = key[1:] if key.startswith("/") else key
+    matches: list[str] = []
+    visited: set[int] = set()
+
+    def walk(n: COSBase | None, path: str, depth: int) -> None:
+        if len(matches) >= max_results or depth >= _MAX_DEPTH:
+            return
+        n = _resolve_for_navigation(n)
+        if n is None or id(n) in visited:
+            return
+        visited.add(id(n))
+        try:
+            if isinstance(n, (COSStream, COSDictionary)):
+                for k, v in n.entry_set():
+                    if k.name == target:
+                        matches.append(f"{path}/{k.name}")
+                    walk(v, f"{path}/{k.name}", depth + 1)
+            elif isinstance(n, COSArray):
+                for idx, item in enumerate(n):
+                    walk(item, f"{path}[{idx}]", depth + 1)
+        finally:
+            visited.discard(id(n))
+
+    walk(node, "", 0)
+    return matches
+
+
+def _walker_stream_preview(
+    node: COSBase | None, *, mode: str, limit: int = _MAX_STREAM_PREVIEW * 4,
+) -> str:
+    """Return a hex-dump preview of a stream body. ``mode`` is ``"raw"``
+    or ``"decoded"``. Returns a human-readable error string when the
+    target isn't a stream or the requested form is unavailable."""
+    target = _resolve_for_navigation(node)
+    if not isinstance(target, COSStream):
+        return "<not a stream>"
+    try:
+        if mode == "raw":
+            with target.create_raw_input_stream() as src:
+                data = src.read(limit)
+        else:
+            with target.create_input_stream() as src:
+                data = src.read(limit)
+    except Exception as exc:  # noqa: BLE001 — surface filter errors verbatim
+        return f"<error: {exc}>"
+    return _hex_dump(data)
+
+
+def _interactive_walker(doc: PDDocument) -> int:
+    """Drop into a textual REPL rooted at the document trailer.
+
+    Returns 0 on a clean ``q`` / EOF, ``4`` when the trailer isn't
+    available (corrupt file). The dispatch is a flat if/elif so each
+    command can short-circuit cleanly without nested state machines."""
+    cos_doc = doc.get_document()
+    trailer = cos_doc.get_trailer()
+    if trailer is None:
+        print("pdfdebugger: trailer missing; cannot start walker", flush=True)
+        return 4
+
+    # ``stack`` is the (label, node) breadcrumb from trailer to current.
+    # Root is labelled ``trailer`` so ``pwd`` reads naturally.
+    stack: list[tuple[str, COSBase]] = [("trailer", trailer)]
+
+    def current() -> COSBase:
+        return stack[-1][1]
+
+    def path_str() -> str:
+        if len(stack) == 1:
+            return "trailer"
+        head, *tail = stack
+        return head[0] + "".join(t[0] for t in tail)
+
+    print(
+        "pdfdebugger interactive walker — type 'help' for commands, "
+        "'q' to quit."
+    )
+    print(f"At: {path_str()}  ({_node_type_label(current())})")
+
+    while True:
+        try:
+            raw_line = input("(pdfdebugger) ")
+        except EOFError:
+            print()
+            return 0
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        cmd = parts[0].lower()
+        args = parts[1:]
+
+        if cmd in ("q", "quit", "exit"):
+            return 0
+        if cmd == "help":
+            print(_WALKER_HELP, end="")
+            continue
+        if cmd == "pwd":
+            print(path_str())
+            continue
+        if cmd == "ls":
+            children = _walker_list_children(current())
+            if not children:
+                print("<no children>")
+                continue
+            for label, child in children:
+                print(f"  {label:<24} {_node_type_label(child)}")
+            continue
+        if cmd == "cat":
+            depth = _WALKER_DEFAULT_DEPTH
+            if args:
+                try:
+                    depth = max(1, int(args[0]))
+                except ValueError:
+                    print("cat: depth must be an integer")
+                    continue
+            _walker_print_node(current(), depth=depth)
+            continue
+        if cmd == "hex":
+            data_block = _walker_stream_preview(
+                current(), mode="raw", limit=_WALKER_HEX_MAX_BYTES,
+            )
+            print(data_block)
+            continue
+        if cmd == "raw":
+            print(_walker_stream_preview(current(), mode="raw"))
+            continue
+        if cmd == "decode":
+            print(_walker_stream_preview(current(), mode="decoded"))
+            continue
+        if cmd == "find":
+            if not args:
+                print("find: usage: find <key>")
+                continue
+            hits = _walker_find_in_subtree(current(), args[0])
+            if not hits:
+                print(f"<no matches for /{args[0].lstrip('/')}>")
+                continue
+            for hit in hits:
+                print(f"  {hit}")
+            continue
+        if cmd == "ref":
+            if not args:
+                print("ref: usage: ref <num> [gen]")
+                continue
+            try:
+                num = int(args[0])
+                gen = int(args[1]) if len(args) > 1 else 0
+            except ValueError:
+                print("ref: num and gen must be integers")
+                continue
+            key = COSObjectKey(num, gen)
+            if not cos_doc.has_object(key):
+                print(f"ref: object {num} {gen} R not in pool")
+                continue
+            target = cos_doc.get_object_from_pool(key).get_object()
+            stack = [
+                ("trailer", trailer),
+                (f"#{num} {gen} R", target),
+            ]
+            print(f"At: {path_str()}  ({_node_type_label(target)})")
+            continue
+        if cmd == "cd":
+            if not args:
+                print(
+                    "cd: usage: cd <key|index> | cd .. | cd / | cd <num> <gen>"
+                )
+                continue
+            # ``cd ..`` ascends one level.
+            if args[0] == "..":
+                if len(stack) > 1:
+                    stack.pop()
+                print(f"At: {path_str()}  ({_node_type_label(current())})")
+                continue
+            # ``cd /`` resets to trailer.
+            if args[0] == "/":
+                stack = [("trailer", trailer)]
+                print(f"At: {path_str()}  ({_node_type_label(current())})")
+                continue
+            # ``cd <num> <gen>`` shorthand for ``ref``.
+            if len(args) == 2 and all(a.lstrip("-").isdigit() for a in args):
+                num = int(args[0])
+                gen = int(args[1])
+                key = COSObjectKey(num, gen)
+                if not cos_doc.has_object(key):
+                    print(f"cd: object {num} {gen} R not in pool")
+                    continue
+                target = cos_doc.get_object_from_pool(key).get_object()
+                stack = [
+                    ("trailer", trailer),
+                    (f"#{num} {gen} R", target),
+                ]
+                print(f"At: {path_str()}  ({_node_type_label(target)})")
+                continue
+            child = _walker_lookup_child(current(), args[0])
+            if child is None:
+                print(f"cd: no child '{args[0]}'")
+                continue
+            label = args[0] if args[0].startswith(("/", "[")) else f"/{args[0]}"
+            stack.append((label, child))
+            print(f"At: {path_str()}  ({_node_type_label(current())})")
+            continue
+        print(f"unknown command: {cmd!r} (type 'help' for the list)")
+
+
 # ---------- CLI entry ----------
 
 
@@ -993,12 +1482,24 @@ def run(args: argparse.Namespace) -> int:
         if args.tree:
             _print_tree(doc, max_depth=depth, output_format=output_format)
             return 0
+        if args.dump_stream is not None:
+            parsed = _parse_show_object(args.dump_stream)
+            if parsed is None:
+                print(
+                    "pdfdebugger: --dump-stream expects NUM[.GEN] (e.g. 12 or 12.0)",
+                    flush=True,
+                )
+                return 2
+            num, gen = parsed
+            return _dump_stream(doc, num, gen, output_format=output_format)
         if args.show_page_tokens is not None:
             return _print_page_tokens(
                 doc, args.show_page_tokens, output_format=output_format,
             )
         if args.show_encryption:
             return _print_encryption(doc, output_format=output_format)
+        if args.interactive:
+            return _interactive_walker(doc)
         _print_summary(doc, src, output_format=output_format)
         return 0
 

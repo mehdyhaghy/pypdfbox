@@ -253,3 +253,161 @@ def test_read_method_is_noop(liberation_sans: TrueTypeFont) -> None:
     table = GlyphPositioningTable()
     table.read(liberation_sans, MemoryTTFDataStream(b""))
     assert table.get_initialized() is False
+
+
+# ---------- structural accessors (script / feature / lookup lists) ----------
+
+
+def test_get_script_list_returns_fonttools_object(
+    gpos: GlyphPositioningTable,
+) -> None:
+    sl = gpos.get_script_list()
+    assert sl is not None
+    # Carries one ScriptRecord per supported script tag.
+    records = sl.ScriptRecord
+    assert len(records) == 7
+    tags = {str(sr.ScriptTag) for sr in records}
+    assert tags == {"DFLT", "bopo", "copt", "cyrl", "grek", "hebr", "latn"}
+
+
+def test_get_script_list_none_when_unpopulated() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_script_list() is None
+
+
+def test_get_feature_list_returns_fonttools_object(
+    gpos: GlyphPositioningTable,
+) -> None:
+    fl = gpos.get_feature_list()
+    assert fl is not None
+    records = fl.FeatureRecord
+    # ``kern`` appears twice in this font (latin + hebrew variants).
+    tags = [str(fr.FeatureTag).strip() for fr in records]
+    assert "kern" in tags
+    assert "mark" in tags
+    assert "mkmk" in tags
+    assert tags.count("kern") >= 1
+
+
+def test_get_feature_list_none_when_unpopulated() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_feature_list() is None
+
+
+def test_get_lookup_list_returns_fonttools_object(
+    gpos: GlyphPositioningTable,
+) -> None:
+    ll = gpos.get_lookup_list()
+    assert ll is not None
+    assert len(ll.Lookup) == 37
+
+
+def test_get_lookup_list_none_when_unpopulated() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_lookup_list() is None
+
+
+def test_get_lookup_returns_indexed_entry(
+    gpos: GlyphPositioningTable,
+) -> None:
+    """Each entry exposes ``LookupType`` / ``SubTable`` per OT spec."""
+    lookup = gpos.get_lookup(0)
+    assert lookup is not None
+    assert hasattr(lookup, "LookupType")
+    assert hasattr(lookup, "SubTable")
+
+
+def test_get_lookup_out_of_range_returns_none(
+    gpos: GlyphPositioningTable,
+) -> None:
+    assert gpos.get_lookup(-1) is None
+    assert gpos.get_lookup(9999) is None
+
+
+def test_get_lookup_unpopulated_returns_none() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_lookup(0) is None
+
+
+def test_get_lookup_subtables_for_pair_adjustment(
+    gpos: GlyphPositioningTable,
+) -> None:
+    """Walk every type-2 (pair-adjustment) lookup and confirm
+    ``get_lookup_subtables`` returns at least one subtable for each."""
+    types = gpos.get_lookup_types()
+    pair_indices = [i for i, t in enumerate(types) if t == 2]
+    assert pair_indices, "fixture should carry at least one pair-adjustment lookup"
+    for li in pair_indices:
+        subtables = gpos.get_lookup_subtables(li)
+        assert subtables  # non-empty
+        # At least one subtable should expose Format 1 or 2 PairPos shape.
+        fmts = {int(getattr(s, "Format", 0)) for s in subtables}
+        assert fmts & {1, 2}
+
+
+def test_get_lookup_subtables_out_of_range_returns_empty(
+    gpos: GlyphPositioningTable,
+) -> None:
+    assert gpos.get_lookup_subtables(-1) == []
+    assert gpos.get_lookup_subtables(9999) == []
+
+
+def test_get_lookup_subtables_unpopulated_returns_empty() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_lookup_subtables(0) == []
+
+
+def test_get_feature_record_indexed_access(
+    gpos: GlyphPositioningTable,
+) -> None:
+    fr = gpos.get_feature_record(0)
+    assert fr is not None
+    assert hasattr(fr, "FeatureTag")
+    assert hasattr(fr, "Feature")
+
+
+def test_get_feature_record_out_of_range_returns_none(
+    gpos: GlyphPositioningTable,
+) -> None:
+    assert gpos.get_feature_record(-1) is None
+    assert gpos.get_feature_record(9999) is None
+
+
+def test_get_feature_record_unpopulated_returns_none() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_feature_record(0) is None
+
+
+def test_get_lookup_indices_for_feature_kern(
+    gpos: GlyphPositioningTable,
+) -> None:
+    """``kern`` appears for both Latin and Hebrew in this font; the
+    union of their LookupListIndex entries should land at least one
+    type-2 (pair-adjustment) lookup."""
+    indices = gpos.get_lookup_indices_for_feature("kern")
+    assert indices, "kern feature should reference at least one lookup"
+    # Every returned index must point at a real lookup; at least one
+    # of them must be type-2 (pair adjustment) for kern to make sense.
+    types = gpos.get_lookup_types()
+    referenced_types = {types[i] for i in indices}
+    assert 2 in referenced_types
+
+
+def test_get_lookup_indices_for_feature_unknown_returns_empty(
+    gpos: GlyphPositioningTable,
+) -> None:
+    assert gpos.get_lookup_indices_for_feature("zzzz") == []
+
+
+def test_get_lookup_indices_for_feature_dedup(
+    gpos: GlyphPositioningTable,
+) -> None:
+    """Duplicate lookup indices across multiple ``kern`` records must
+    be deduplicated; the result must preserve first-appearance order."""
+    indices = gpos.get_lookup_indices_for_feature("kern")
+    assert len(indices) == len(set(indices))
+
+
+def test_get_lookup_indices_for_feature_unpopulated_returns_empty() -> None:
+    t = GlyphPositioningTable()
+    assert t.get_lookup_indices_for_feature("kern") == []

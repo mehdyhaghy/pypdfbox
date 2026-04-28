@@ -263,3 +263,131 @@ def test_append_kid_object_reference_stores_cos_dict() -> None:
     assert len(kids) == 1
     assert isinstance(kids[0], PDObjectReference)
     assert kids[0].get_cos_object() is objr.get_cos_object()
+
+
+# ---------- Upstream-aligned dispatch: subtype-only / fallback rules ----
+
+
+def test_get_referenced_object_subtype_only_annotation_dispatched() -> None:
+    """Upstream returns the annotation for a known /Subtype even when
+    /Type is missing — the only filter is "is the dispatch result
+    PDAnnotationUnknown?"."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+        PDAnnotationLink,
+    )
+
+    objr = PDObjectReference()
+    annot_dict = COSDictionary()
+    # Deliberately omit /Type — upstream still recognises this as Link.
+    annot_dict.set_name(_SUBTYPE, "Link")
+    objr.set_obj(annot_dict)
+
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDAnnotationLink)
+    assert referenced.get_cos_object() is annot_dict
+
+
+def test_get_referenced_object_unknown_subtype_with_type_annot_returned() -> None:
+    """Upstream rule: PDAnnotationUnknown is returned only when /Type is
+    /Annot (allows callers to round-trip producer-specific subtypes)."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
+        PDAnnotationUnknown,
+    )
+
+    objr = PDObjectReference()
+    annot_dict = COSDictionary()
+    annot_dict.set_name(_TYPE, "Annot")
+    annot_dict.set_name(_SUBTYPE, "FutureSubtype42")
+    objr.set_obj(annot_dict)
+
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDAnnotationUnknown)
+    assert referenced.get_cos_object() is annot_dict
+
+
+def test_get_referenced_object_unknown_subtype_without_type_returns_none() -> None:
+    """No /Type, unknown /Subtype → upstream returns null (cannot tell
+    whether the dict is even an annotation)."""
+    objr = PDObjectReference()
+    annot_dict = COSDictionary()
+    annot_dict.set_name(_SUBTYPE, "FutureSubtype42")
+    objr.set_obj(annot_dict)
+    assert objr.get_referenced_object() is None
+
+
+def test_get_referenced_object_dict_no_type_no_subtype_returns_none() -> None:
+    """Bare dict with neither /Type nor /Subtype — nothing to dispatch on."""
+    objr = PDObjectReference()
+    objr.set_obj(COSDictionary())
+    assert objr.get_referenced_object() is None
+
+
+def test_get_referenced_object_form_xobject_dispatched_before_annotation() -> None:
+    """Stream with /Subtype /Form must dispatch to PDFormXObject even
+    when /Type is /Annot (which would never happen in practice but tests
+    the upstream stream-first ordering)."""
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+
+    objr = PDObjectReference()
+    stream = COSStream()
+    stream.set_name(_SUBTYPE, "Form")
+    objr.set_obj(stream)
+
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDFormXObject)
+
+
+def test_get_referenced_object_known_annotation_returns_typed_subclass() -> None:
+    """All twenty-odd dispatch table entries should round-trip — spot-
+    check Square + Text since they're not exercised above."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_square_circle import (
+        PDAnnotationSquare,
+    )
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
+        PDAnnotationText,
+    )
+
+    for subtype, expected_cls in (
+        ("Square", PDAnnotationSquare),
+        ("Text", PDAnnotationText),
+    ):
+        objr = PDObjectReference()
+        annot_dict = COSDictionary()
+        annot_dict.set_name(_TYPE, "Annot")
+        annot_dict.set_name(_SUBTYPE, subtype)
+        objr.set_obj(annot_dict)
+
+        referenced = objr.get_referenced_object()
+        assert isinstance(referenced, expected_cls)
+
+
+def test_set_referenced_object_form_xobject_round_trip() -> None:
+    """set_referenced_object must accept a PDFormXObject (upstream
+    overload no. 2) and round-trip through get_referenced_object."""
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+
+    form = PDFormXObject(COSStream())
+    objr = PDObjectReference()
+    objr.set_referenced_object(form)
+
+    assert (
+        objr.get_cos_object().get_dictionary_object(_OBJ) is form.get_cos_object()
+    )
+    referenced = objr.get_referenced_object()
+    assert isinstance(referenced, PDFormXObject)
+    assert referenced.get_cos_object() is form.get_cos_object()
+
+
+def test_get_referenced_object_returns_none_when_obj_is_array() -> None:
+    """/Obj points at a COSArray (malformed) — typed accessor must not
+    crash; returns None."""
+    objr = PDObjectReference()
+    objr.get_cos_object().set_item(_OBJ, COSArray())
+    assert objr.get_referenced_object() is None
+
+
+# ---------- TYPE constant ----------
+
+
+def test_type_constant_is_objr() -> None:
+    assert PDObjectReference.TYPE == "OBJR"

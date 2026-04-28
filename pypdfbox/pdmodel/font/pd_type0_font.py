@@ -620,6 +620,33 @@ class PDType0Font(PDFont):
             return False
         return cmap.get_wmode() == 1
 
+    def is_vertical_writing(self) -> bool:
+        """Alias for :meth:`is_vertical`. Mirrors upstream's documented
+        synonym ``isVerticalWriting`` (kept for callers that prefer the
+        spelled-out name from PDF 32000-1 §9.7.5.2).
+        """
+        return self.is_vertical()
+
+    def has_explicit_writing_mode(self) -> bool:
+        """``True`` when the font's ``/Encoding`` is an embedded CMap
+        stream that explicitly carries a ``/WMode`` entry.
+
+        Predefined CMap names (``Identity-H``, ``Identity-V``, ``GBK-EUC-H``,
+        ...) carry an *implicit* WMode baked into the CMap's identity.
+        Custom CMap streams may or may not declare ``/WMode`` explicitly;
+        this helper distinguishes the two cases so callers can decide
+        whether to fall back to a heuristic (e.g. inspecting the CMap
+        name suffix) or trust the dictionary entry.
+
+        Not present on upstream verbatim — added so vertical-writing
+        tooling can branch on whether the CMap stream is authoritative.
+        """
+        raw = self._dict.get_dictionary_object(_ENCODING)
+        if not isinstance(raw, COSStream):
+            return False
+        wmode_entry = raw.get_dictionary_object(COSName.get_pdf_name("WMode"))
+        return wmode_entry is not None
+
     # ---------- to_unicode ----------
 
     def to_unicode(self, code: int) -> str | None:
@@ -627,8 +654,9 @@ class PDType0Font(PDFont):
 
         Tries the ``/ToUnicode`` CMap first, then the encoding CMap's own
         bf-mappings, then the predefined ``*-UCS2`` CMap matched on the
-        descendant's ``/CIDSystemInfo`` (Registry, Ordering). Mirrors
-        upstream ``PDType0Font.toUnicode``.
+        descendant's ``/CIDSystemInfo`` (Registry, Ordering), and finally
+        the embedded TTF's reverse cmap (PDFBOX-5324) when the descendant
+        is a CIDFontType2. Mirrors upstream ``PDType0Font.toUnicode``.
         """
         to_unicode_cmap = self.get_to_unicode_cmap()
         if to_unicode_cmap is not None and to_unicode_cmap.has_unicode_mappings():
@@ -640,14 +668,68 @@ class PDType0Font(PDFont):
             mapped = cmap.to_unicode(code)
             if mapped is not None:
                 return mapped
-        # Final fallback — predefined Adobe ``*-UCS2`` CMap keyed on the
-        # CID (we only reach here when the encoding CMap has no unicode
-        # bf-mappings of its own; that's the canonical Identity-H case
-        # for CJK fonts that lean on the predefined UCS2 fallback).
+        # Predefined Adobe ``*-UCS2`` CMap keyed on the CID — used when
+        # the encoding CMap has no unicode bf-mappings of its own; the
+        # canonical Identity-H case for CJK fonts that lean on the
+        # predefined UCS2 fallback.
         ucs2 = self.get_cmap_ucs2()
         if ucs2 is not None and ucs2.has_unicode_mappings():
             cid = self.code_to_cid(code)
-            return ucs2.to_unicode(cid)
+            mapped = ucs2.to_unicode(cid)
+            if mapped is not None:
+                return mapped
+        # PDFBOX-5324 fallback — read the unicode value directly out of
+        # the embedded TTF's cmap. Only applies when the descendant is a
+        # CIDFontType2 with an embedded program.
+        return self._unicode_from_embedded_cmap(code)
+
+    def _unicode_from_embedded_cmap(self, code: int) -> str | None:
+        """Reverse-lookup a glyph in the embedded TTF's unicode cmap.
+
+        Mirrors upstream's PDFBOX-5324 fallback: for CIDFontType2
+        descendants with an embedded program, walk the unicode cmap
+        backwards from GID -> codepoint when no other to_unicode source
+        can answer.
+        """
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        descendant = self.get_descendant_font()
+        if not isinstance(descendant, PDCIDFontType2):
+            return None
+        ttf = descendant.get_true_type_font()
+        if ttf is None:
+            return None
+        # When embedded, code_to_gid already follows /CIDToGIDMap;
+        # otherwise PDFBOX-5331 says fall back to code_to_cid to avoid
+        # infinite recursion (PDCIDFontType2.codeToGID's fallback path).
+        try:
+            if descendant.is_embedded():
+                gid = descendant.code_to_gid(code)
+            else:
+                gid = descendant.code_to_cid(code)
+        except Exception:  # noqa: BLE001
+            return None
+        if gid <= 0:
+            return None
+        # fontTools' cmap subtable carries a ``cmap`` dict (codepoint ->
+        # glyph name). Reverse-walk it for the first codepoint pointing
+        # to our glyph name.
+        inner = getattr(ttf, "_tt", None)
+        if inner is None or "cmap" not in inner:
+            return None
+        try:
+            order = inner.getGlyphOrder()
+            if not 0 <= gid < len(order):
+                return None
+            target_name = order[gid]
+            best_cmap = inner["cmap"].getBestCmap()
+            if not best_cmap:
+                return None
+            for cp, name in best_cmap.items():
+                if name == target_name:
+                    return chr(cp)
+        except (KeyError, AttributeError):
+            return None
         return None
 
     # ---------- embedding / damage ----------
@@ -747,23 +829,88 @@ class PDType0Font(PDFont):
 
     # ---------- str <-> bytes (encoding via the active CMap) ----------
 
-    def encode(self, text: str) -> bytes:
-        """Encode a Python string to the font's raw byte representation.
+    def encode(self, text: str | int) -> bytes:
+        """Encode either a Python string or a single Unicode codepoint to
+        the font's raw byte representation.
+
+        Polymorphic to mirror upstream PDFBox's two ``encode`` overloads:
+
+        * ``encode(String)`` — the public, ``final`` String API used by
+          content-stream writers; iterates codepoints and concatenates
+          per-codepoint outputs.
+        * ``encode(int unicode)`` — the protected single-codepoint API
+          implemented per font subclass. ``PDType0Font`` delegates to its
+          descendant CIDFont, but we inline the equivalent logic here so
+          callers can encode without first materialising a one-character
+          string.
 
         For Identity-H / Identity-V the codepoint *is* the CID and is
         emitted as a 2-byte big-endian sequence. For predefined Adobe
         UCS2-mapped CMaps the encoding cmap's reverse lookup
         (``get_codes_from_unicode``) is consulted. For embedded
-        non-Identity CMaps without a reverse mapping the codepoint
-        is replaced with the bytes of CID 0 (``.notdef``) — matches
-        upstream ``PDType0Font.encode`` fallback behaviour.
+        non-Identity CMaps without a reverse mapping the codepoint is
+        replaced with the bytes of CID 0 (``.notdef``).
         """
+        if isinstance(text, int):
+            return self._encode_codepoint(text, self.get_cmap())
         cmap = self.get_cmap()
         out = bytearray()
         for ch in text:
             cp = ord(ch)
             encoded = self._encode_codepoint(cp, cmap)
             out.extend(encoded)
+        return bytes(out)
+
+    def encode_string(self, text: str) -> bytes:
+        """Encode a Python string with GSUB-aware ligature substitution.
+
+        Mirrors upstream's public ``PDType0Font.encode(String)`` plus the
+        GSUB-application path that runs when the descendant TTF carries a
+        ``GSUB`` table. The pipeline is:
+
+        1. Codepoint → CID → GID (via :meth:`code_to_gid`, which already
+           applies *single*-substitution lookups in GID space).
+        2. Walk the resulting glyph run through
+           :meth:`apply_gsub_features` — this layers *ligature* (type 4)
+           substitutions on top, collapsing multi-glyph sequences into a
+           single ligature glyph (e.g. Devanagari conjuncts, fi/fl in
+           latin, alef+lamed in Hebrew).
+        3. Emit the post-GSUB GIDs as 2-byte big-endian (CID == GID under
+           Identity-H + ``/CIDToGIDMap /Identity``, which is the only
+           configuration where GSUB substitution makes sense — non-
+           Identity CMaps can't address arbitrary GIDs through their
+           codespace).
+
+        Falls back to plain :meth:`encode` when the font has no descendant,
+        no embedded TTF, no GSUB, or a non-Identity encoding.
+        """
+        if not text:
+            return b""
+        # GSUB only fires for Identity-H Type-2 descendants — non-identity
+        # CMaps don't have a 1:1 GID addressing surface, so the post-
+        # ligature GIDs would have nowhere to land. Fall through to the
+        # plain encode in those cases.
+        cmap = self.get_cmap()
+        cmap_name = (cmap.get_name() or "") if cmap is not None else ""
+        if not cmap_name.startswith("Identity"):
+            return self.encode(text)
+
+        gsub = self._get_gsub_table()
+        if gsub is None:
+            return self.encode(text)
+
+        # Resolve each codepoint to its initial GID through the descendant
+        # font (which already runs single-substitution lookups). Then run
+        # the run through ligature lookups.
+        gids: list[int] = []
+        for ch in text:
+            cp = ord(ch)
+            gids.append(self.code_to_gid(cp))
+        substituted = self.apply_gsub_features(gids)
+
+        out = bytearray()
+        for gid in substituted:
+            out.extend((gid & 0xFFFF).to_bytes(2, "big"))
         return bytes(out)
 
     @staticmethod
@@ -802,6 +949,17 @@ class PDType0Font(PDFont):
         """
         code, _ = self.read_code(data, 0)
         return code
+
+    def decode_one(self, data: bytes, offset: int = 0) -> tuple[int, int]:
+        """Decode one character code from ``data`` starting at ``offset``.
+
+        Returns ``(code, bytes_consumed)``. Mirrors :meth:`read_code`'s
+        signature but uses the upstream-Java naming for callers that walk
+        a buffer one code at a time. ``decode`` (single-int return) and
+        :meth:`read_code` remain available for callers with the inverse
+        preferences.
+        """
+        return self.read_code(data, offset)
 
     # ---------- read (InputStream-shaped wrapper) ----------
 

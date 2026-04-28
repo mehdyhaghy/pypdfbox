@@ -50,6 +50,12 @@ class PDSeparation(PDColorSpace):
     def get_initial_color(self) -> PDColor:
         return self._initial_color
 
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Return ``[0, 1]`` per upstream — single tint component spans
+        the full range. Mirrors upstream
+        ``PDSeparation.getDefaultDecode``."""
+        return [0.0, 1.0]
+
     # ---------- separation-specific ----------
 
     def get_colorant_name(self) -> str | None:

@@ -279,6 +279,49 @@ class PDDeviceN(PDColorSpace):
             return False
         return attrs.is_n_channel()
 
+    def get_subtype(self) -> str:
+        """Return the DeviceN subtype: ``"NChannel"`` or ``"DeviceN"``.
+
+        Pypdfbox enrichment — upstream exposes only the boolean
+        ``isNChannel()``. Per PDF 32000-1 §8.6.6.5, when ``/Attributes``
+        is absent or carries no ``/Subtype`` entry the implicit subtype
+        is ``DeviceN`` (NChannel was added in PDF 1.6 and must opt-in).
+        """
+        attrs = self.get_attributes()
+        if attrs is None:
+            return "DeviceN"
+        sub = attrs.get_subtype()
+        if sub == "NChannel":
+            return "NChannel"
+        return "DeviceN"
+
+    def get_process_color_space(self) -> PDColorSpace | None:
+        """Return the process color space declared in
+        ``/Attributes/Process/ColorSpace``, or ``None`` when absent.
+
+        Pypdfbox enrichment — upstream exposes the same data only via
+        ``getAttributes().getProcess().getColorSpace()``; this collapses
+        the chain for a common consumer.
+        """
+        attrs = self.get_attributes()
+        if attrs is None:
+            return None
+        process = attrs.get_process()
+        if process is None:
+            return None
+        return process.get_color_space()
+
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Return ``[0, 1]`` per colorant. Mirrors upstream
+        ``PDDeviceN.getDefaultDecode`` — for each component the decode
+        pair is ``[0, 1]``."""
+        n = self.get_number_of_components()
+        out: list[float] = []
+        for _ in range(n):
+            out.append(0.0)
+            out.append(1.0)
+        return out
+
     # ---------- conversion ----------
 
     def to_rgb(

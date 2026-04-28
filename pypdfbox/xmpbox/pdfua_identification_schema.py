@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .pdfa_identification_schema import BadFieldValueException
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -29,9 +30,11 @@ class PDFUAIdentificationSchema(XMPSchema):
 
     Optional companion properties:
 
-      * ``pdfuaid:conformance`` — single-letter conformance ("Acc" is the
-        conventional value emitted by some toolchains; the spec is silent on
-        the exact set of letters).
+      * ``pdfuaid:conformance`` — single-letter conformance level. ISO 14289-2
+        defines the conformance value space as ``{"A", "B", "U"}`` (mirroring
+        PDF/A's ABU triad pre-PDFBOX-6088). Earlier toolchains emitted
+        ``"Acc"`` for PDF/UA-1; that legacy spelling is also accepted for
+        round-trip parity.
       * ``pdfuaid:rev`` — revision year string (e.g. ``"2014"`` for UA-1,
         ``"2024"`` for UA-2). Stored verbatim for round-trip parity.
       * ``pdfuaid:amd`` — amendment identifier string.
@@ -62,6 +65,18 @@ class PDFUAIdentificationSchema(XMPSchema):
     PART_1 = 1
     PART_2 = 2
 
+    # Defined PDF/UA part numbers per ISO 14289 (Part 1 published 2014,
+    # Part 2 published 2024). ``set_part`` accepts any int per upstream
+    # ``IntegerType`` semantics, but :meth:`is_known_part` consults this
+    # set to distinguish standardised parts from opaque integers.
+    _KNOWN_PARTS: frozenset[int] = frozenset({PART_1, PART_2})
+
+    # Conformance value space. ISO 14289-2 §7 reuses the PDF/A "A/B/U"
+    # triad. ``"Acc"`` is grandfathered in because some PDF/UA-1 toolchains
+    # emit it (e.g. older Acrobat-derived tooling); accepting it on read
+    # avoids round-trip data loss without endorsing it on write-from-scratch.
+    _VALID_CONFORMANCE: frozenset[str] = frozenset({"A", "B", "U", "Acc"})
+
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
 
@@ -90,12 +105,25 @@ class PDFUAIdentificationSchema(XMPSchema):
         except ValueError:
             return None
 
+    def get_part_value(self) -> int | None:
+        """Mirror of upstream ``getPartValue()`` shape on
+        :class:`PDFAIdentificationSchema` — alias of :meth:`get_part`. Returns
+        the raw integer value (no enclosing typed property)."""
+        return self.get_part()
+
     def set_part(self, value: int) -> None:
         """Set the PDF/UA part. Use :attr:`PART_1` (ISO 14289-1) or
         :attr:`PART_2` (ISO 14289-2)."""
         # Store as int so round-trips preserve numeric type. The parser path
         # (string from XML attribute) is normalised in ``get_part``.
         self._properties[self.PART] = int(value)
+
+    def set_part_property(self, value: int) -> None:
+        """Mirror of upstream ``setPartProperty`` shape on
+        :class:`PDFAIdentificationSchema`. pypdfbox stores the value
+        directly (no ``IntegerType`` wrapper in cluster #1) — kept as an
+        alias for upstream-API parity."""
+        self.set_part(int(value))
 
     def set_part_value_with_int(self, value: int) -> None:
         """Parity alias of :meth:`set_part` mirroring the
@@ -109,15 +137,42 @@ class PDFUAIdentificationSchema(XMPSchema):
         ``setPartValueWithString`` semantics."""
         self._properties[self.PART] = int(value)
 
+    def is_known_part(self) -> bool:
+        """Return ``True`` when the stored ``pdfuaid:part`` matches a part
+        number defined by ISO 14289 (currently 1 or 2). Returns ``False`` when
+        absent or when set to an opaque integer (e.g. a future part not yet
+        catalogued in :attr:`_KNOWN_PARTS`)."""
+        part = self.get_part()
+        return part is not None and part in self._KNOWN_PARTS
+
+    def is_pdf_ua_1(self) -> bool:
+        """Return ``True`` iff the schema declares ``pdfuaid:part = 1``."""
+        return self.get_part() == self.PART_1
+
+    def is_pdf_ua_2(self) -> bool:
+        """Return ``True`` iff the schema declares ``pdfuaid:part = 2``."""
+        return self.get_part() == self.PART_2
+
     # --- conformance (text) -------------------------------------------
 
     def get_conformance(self) -> str | None:
         return self.get_unqualified_text_property_value(self.CONFORMANCE)
 
     def set_conformance(self, value: str | None) -> None:
+        """Set the PDF/UA conformance level. Pass ``None`` to remove.
+
+        Validates against the ISO 14289-2 value space ``{"A", "B", "U"}``
+        plus the legacy ``"Acc"`` spelling some PDF/UA-1 emitters still
+        produce. Raises :class:`BadFieldValueException` for anything else
+        (mirrors :meth:`PDFAIdentificationSchema.set_conformance`)."""
         if value is None:
             self.remove_property(self.CONFORMANCE)
             return
+        if value not in self._VALID_CONFORMANCE:
+            raise BadFieldValueException(
+                f"The value '{value}' isn't a valid PDF/UA conformance level "
+                f"(must be A, B, U or Acc)"
+            )
         self.set_text_property_value(self.CONFORMANCE, value)
 
     # --- revision -----------------------------------------------------

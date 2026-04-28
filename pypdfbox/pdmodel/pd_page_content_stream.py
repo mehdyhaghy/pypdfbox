@@ -918,12 +918,57 @@ class PDPageContentStream:
         """Alias for :meth:`set_non_stroking_color_pattern`."""
         self.set_non_stroking_color_pattern(pattern)
 
-    def _set_color_pattern(self, pattern: Any, *, stroking: bool) -> None:
+    def set_stroking_pattern(
+        self,
+        pattern: Any,
+        color_components: list[float] | tuple[float, ...] | None = None,
+    ) -> None:
+        """Emit ``/Pattern CS [<components> ]/<key> SCN`` — set the
+        stroking colour to a :class:`PDAbstractPattern`.
+
+        ``color_components`` is the optional list of underlying-colour-space
+        components for an *uncolored* tiling pattern (PDF 32000-1 §8.7.3.3).
+        When provided, the components are emitted before the pattern name.
+        For coloured patterns and shading patterns omit the argument.
+
+        Mirrors upstream's ``setStrokingColor(PDColor)`` behaviour for the
+        Pattern colour-space branch, exposed here directly so callers don't
+        need to construct a PDColor first.
+        """
+        self._set_color_pattern(
+            pattern, color_components=color_components, stroking=True
+        )
+
+    def set_non_stroking_pattern(
+        self,
+        pattern: Any,
+        color_components: list[float] | tuple[float, ...] | None = None,
+    ) -> None:
+        """Emit ``/Pattern cs [<components> ]/<key> scn`` — non-stroking
+        variant of :meth:`set_stroking_pattern`."""
+        self._set_color_pattern(
+            pattern, color_components=color_components, stroking=False
+        )
+
+    def _set_color_pattern(
+        self,
+        pattern: Any,
+        *,
+        color_components: list[float] | tuple[float, ...] | None = None,
+        stroking: bool,
+    ) -> None:
         # Emit /Pattern (CS or cs).
         pattern_cs_name = COSName.get_pdf_name("Pattern")
         self._write_name(pattern_cs_name)
         self._buffer.append(0x20)
         self._write_operator(b"CS" if stroking else b"cs")
+        # Optional underlying-colour-space components for uncolored tiling
+        # patterns. Emit them as bare numeric operands in front of the
+        # pattern name, mirroring upstream's
+        # ``for (float value : color.getComponents()) writeOperand(value)``.
+        if color_components is not None:
+            for value in color_components:
+                self._write_operands(float(value))
         # Register the pattern under /Resources/Pattern and emit its key.
         key = self._resource_key_for_pattern(pattern)
         self._write_name(key)
@@ -1321,6 +1366,69 @@ class PDPageContentStream:
                 if sub.get_dictionary_object(key) is prop_cos:
                     return key
         return self._resources.add(_PROPERTIES, prop_cos)
+
+    def _resource_key_for_ext_g_state(self, ext_g_state: Any) -> COSName:
+        """Return the /Resources/ExtGState key for ``ext_g_state``,
+        allocating a new ``gs<n>`` slot when necessary. Reuses an
+        existing slot when the same COSDictionary is already registered."""
+        ext_cos = ext_g_state.get_cos_object()
+        sub = self._resources.get_cos_object().get_dictionary_object(
+            _EXT_G_STATE
+        )
+        if sub is not None:
+            for key in sub.key_set():
+                if sub.get_dictionary_object(key) is ext_cos:
+                    return key
+        return self._resources.add(_EXT_G_STATE, ext_cos)
+
+    def _resource_key_for_pattern(self, pattern: Any) -> COSName:
+        """Return the /Resources/Pattern key for ``pattern``, allocating
+        a new ``p<n>`` slot when necessary. ``pattern`` may be a
+        :class:`PDAbstractPattern` (or any object exposing
+        ``get_cos_object``) — accepts a raw :class:`COSDictionary` for
+        callers porting tests that pre-built the dictionary."""
+        from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+
+        pat_cos = (
+            pattern.get_cos_object()
+            if hasattr(pattern, "get_cos_object")
+            else pattern
+        )
+        if not isinstance(pat_cos, COSDictionary):
+            raise TypeError(
+                "set_(non_)stroking_color_pattern expects a PDAbstractPattern "
+                f"or COSDictionary; got {type(pattern).__name__}"
+            )
+        sub = self._resources.get_cos_object().get_dictionary_object(_PATTERN)
+        if sub is not None:
+            for key in sub.key_set():
+                if sub.get_dictionary_object(key) is pat_cos:
+                    return key
+        return self._resources.add(_PATTERN, pat_cos)
+
+    def _resource_key_for_shading(self, shading: Any) -> COSName:
+        """Return the /Resources/Shading key for ``shading``, allocating
+        a new ``sh<n>`` slot when necessary."""
+        from pypdfbox.cos import COSDictionary  # noqa: PLC0415
+
+        sh_cos = (
+            shading.get_cos_object()
+            if hasattr(shading, "get_cos_object")
+            else shading
+        )
+        if not isinstance(sh_cos, COSDictionary) and not isinstance(
+            sh_cos, COSStream
+        ):
+            raise TypeError(
+                "shading_fill expects a PDShading or COSDictionary/COSStream; "
+                f"got {type(shading).__name__}"
+            )
+        sub = self._resources.get_cos_object().get_dictionary_object(_SHADING)
+        if sub is not None:
+            for key in sub.key_set():
+                if sub.get_dictionary_object(key) is sh_cos:
+                    return key
+        return self._resources.add(_SHADING, sh_cos)
 
     # ------------------------------------------------------------------
     # low-level emit helpers

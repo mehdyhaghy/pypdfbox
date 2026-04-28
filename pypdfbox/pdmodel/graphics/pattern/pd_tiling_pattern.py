@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import (
     COSArray,
@@ -155,6 +155,29 @@ class PDTilingPattern(PDAbstractPattern):
                 "stream access requires a stream-typed pattern dictionary"
             )
         return PDStream(cos)
+
+    # ---------- PDContentStream surface ----------
+
+    def get_contents(self) -> BinaryIO | None:
+        """Decoded byte stream of the tile's content stream — mirrors
+        upstream ``PDTilingPattern.getContents`` (a ``PDContentStream``
+        method). Returns ``None`` when the underlying ``COSDictionary`` is
+        not a stream (i.e. nothing to read)."""
+        cos = self._dict
+        if not isinstance(cos, COSStream):
+            return None
+        return cos.create_input_stream()
+
+    def get_contents_for_random_access(self) -> BinaryIO | None:
+        """Random-access view onto the *encoded* body — mirrors upstream
+        ``PDTilingPattern.getContentsForRandomAccess`` (which returns a
+        ``RandomAccessRead``). The Python port returns a fresh raw
+        ``BinaryIO`` over the encoded bytes since our I/O layer treats
+        ``BinaryIO`` itself as random-access (``seek``/``tell``)."""
+        cos = self._dict
+        if not isinstance(cos, COSStream):
+            return None
+        return cos.create_raw_input_stream()
 
     # ---------- /Resources ----------
 

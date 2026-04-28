@@ -30,6 +30,7 @@ from .resource_ref_type import ResourceRefType
 from .text_type import TextType
 from .thumbnail_type import ThumbnailType
 from .uri_type import URIType
+from .version_type import VersionType
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata

@@ -163,17 +163,20 @@ def test_get_uri_absent_returns_none() -> None:
 
 
 def test_uri_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.action import PDURIDictionary
+
     doc = PDDocument()
     catalog = doc.get_document_catalog()
 
+    # Back-compat: raw COSDictionary still accepted as the value.
     uri_dict = COSDictionary()
     uri_dict.set_item(COSName.get_pdf_name("Base"), COSString("https://example.test/"))
     catalog.set_uri(uri_dict)
 
     resolved = catalog.get_uri()
-    assert isinstance(resolved, COSDictionary)
-    assert resolved is uri_dict
-    assert resolved.get_string(COSName.get_pdf_name("Base")) == "https://example.test/"
+    assert isinstance(resolved, PDURIDictionary)
+    assert resolved.get_cos_object() is uri_dict
+    assert resolved.get_base() == "https://example.test/"
 
     catalog.set_uri(None)
     assert catalog.get_uri() is None
@@ -476,3 +479,129 @@ def test_piece_info_returns_none_when_entry_is_not_dict() -> None:
         COSName.get_pdf_name("PieceInfo"), COSString("nope")
     )
     assert cat.get_piece_info() is None
+
+
+# ---------- /URI typed wrapper ----------
+
+
+def test_set_uri_accepts_pd_uri_dictionary() -> None:
+    """``set_uri`` accepts a typed :class:`PDURIDictionary` (mirroring
+    upstream's ``setURI(PDURIDictionary)``) and round-trips through
+    ``get_uri()``."""
+    from pypdfbox.pdmodel.interactive.action import PDURIDictionary
+
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    typed = PDURIDictionary()
+    typed.set_base("https://typed.example/")
+    catalog.set_uri(typed)
+
+    fetched = catalog.get_uri()
+    assert isinstance(fetched, PDURIDictionary)
+    assert fetched.get_cos_object() is typed.get_cos_object()
+    assert fetched.get_base() == "https://typed.example/"
+
+
+# ---------- find_named_destination_page ----------
+
+
+def test_find_named_destination_page_via_names_dests_tree() -> None:
+    """``findNamedDestinationPage`` resolves a :class:`PDNamedDestination`
+    through the catalog's ``/Names /Dests`` name tree (PDF 1.2+ shape)."""
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+        PDNamedDestination,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    # Wire /Names → /Dests dictionary holding {"chap1": [<page><dest>]}.
+    names = COSDictionary()
+    dests = COSDictionary()
+    arr = COSArray()
+    page_dest = PDPageXYZDestination()
+    page_dest.set_page_number(2)
+    names_arr = COSArray()
+    names_arr.add(COSString("chap1"))
+    names_arr.add(page_dest.get_cos_object())
+    dests.set_item(COSName.get_pdf_name("Names"), names_arr)
+    arr.add(dests)
+    names.set_item(COSName.get_pdf_name("Dests"), dests)
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Names"), names)
+
+    named = PDNamedDestination("chap1")
+    resolved = cat.find_named_destination_page(named)
+    assert isinstance(resolved, PDPageXYZDestination)
+    assert resolved.get_page_number() == 2
+
+
+def test_find_named_destination_page_via_legacy_dests() -> None:
+    """Falls back to the catalog's legacy flat ``/Dests`` dictionary
+    when ``/Names /Dests`` is absent (PDF 1.1 shape)."""
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+        PDNamedDestination,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    legacy = COSDictionary()
+    page_dest = PDPageXYZDestination()
+    page_dest.set_page_number(5)
+    legacy.set_item(COSName.get_pdf_name("foo"), page_dest.get_cos_object())
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Dests"), legacy)
+
+    named = PDNamedDestination("foo")
+    resolved = cat.find_named_destination_page(named)
+    assert resolved is not None
+    assert resolved.get_page_number() == 5
+
+
+def test_find_named_destination_page_returns_none_when_unknown() -> None:
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+        PDNamedDestination,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.find_named_destination_page(PDNamedDestination("missing")) is None
+
+
+def test_find_named_destination_page_handles_none() -> None:
+    doc = PDDocument()
+    assert doc.get_document_catalog().find_named_destination_page(None) is None
+
+
+# ---------- set_oc_properties version bump ----------
+
+
+def test_set_oc_properties_bumps_version_to_1_5() -> None:
+    """Upstream side effect: optional content groups require PDF 1.5,
+    so ``setOCProperties`` raises the document version when below."""
+    from pypdfbox.pdmodel.graphics.optionalcontent import (
+        PDOptionalContentProperties,
+    )
+
+    doc = PDDocument()
+    # Ensure the doc starts below 1.5 (a fresh PDDocument is 1.4).
+    assert doc.get_version() < 1.5
+
+    ocp = PDOptionalContentProperties()
+    cat = doc.get_document_catalog()
+    cat.set_oc_properties(ocp)
+
+    assert doc.get_version() >= 1.5
+
+
+def test_set_oc_properties_none_removes_entry() -> None:
+    from pypdfbox.pdmodel.graphics.optionalcontent import (
+        PDOptionalContentProperties,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_oc_properties(PDOptionalContentProperties())
+    assert COSName.get_pdf_name("OCProperties") in cat
+
+    cat.set_oc_properties(None)
+    assert COSName.get_pdf_name("OCProperties") not in cat

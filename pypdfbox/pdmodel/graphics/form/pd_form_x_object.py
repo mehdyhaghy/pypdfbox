@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as _dt
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import (
     COSArray,
@@ -20,6 +20,7 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 if TYPE_CHECKING:
+    from pypdfbox.io.random_access_read import RandomAccessRead
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 
 _FORM: COSName = COSName.get_pdf_name("Form")
@@ -277,3 +278,56 @@ class PDFormXObject(PDXObject):
             cos.remove_item(_NAME)
             return
         cos.set_name(_NAME, value)
+
+    # ---------- PDContentStream interface ----------
+    #
+    # ``PDFormXObject`` implements ``PDContentStream`` upstream. The five
+    # methods below — ``get_content_stream`` / ``get_contents`` /
+    # ``get_contents_for_random_access`` / ``get_resources`` / ``get_bbox`` /
+    # ``get_matrix`` — give the content-stream parser a stable handle on
+    # the form's body without forcing callers to thread :class:`PDStream`
+    # through the API. ``get_resources`` and ``get_bbox`` and ``get_matrix``
+    # are already defined above; the remaining three are added here.
+
+    def get_content_stream(self) -> PDStream:
+        """The underlying :class:`PDStream` carrying the form's content
+        stream bytes. Mirrors upstream ``getContentStream()``."""
+        return self.get_stream()
+
+    def get_contents(self) -> BinaryIO:
+        """Decoded content-stream bytes as a readable stream. Mirrors
+        upstream ``getContents()`` (which returns ``InputStream``).
+        Equivalent to ``self.get_stream().create_input_stream()``."""
+        return self.get_stream().create_input_stream()
+
+    def get_contents_for_random_access(self) -> RandomAccessRead:
+        """Random-access view of the decoded content-stream bytes. Mirrors
+        upstream ``getContentsForRandomAccess()``. The bytes are read
+        eagerly and wrapped in :class:`RandomAccessReadBuffer` — content
+        streams are bounded so this stays cheap."""
+        # Local import avoids a top-level cycle through the io package
+        # which itself imports PDF model types in a few places.
+        from pypdfbox.io.random_access_read_buffer import (  # noqa: PLC0415
+            RandomAccessReadBuffer,
+        )
+
+        with self.get_stream().create_input_stream() as src:
+            data = src.read()
+        return RandomAccessReadBuffer.from_bytes(data)
+
+    # ---------- /OC aliases ----------
+    #
+    # Upstream spells the optional-content accessor ``getOptionalContent``
+    # (and ``setOptionalContent``); the snake_case translation is
+    # ``get_optional_content``. The earlier two-letter form ``get_oc`` is
+    # the one wired into call sites; both spellings stay live.
+
+    def get_optional_content(self) -> PDPropertyList | None:
+        """``/OC`` typed property list. Mirrors upstream
+        ``getOptionalContent()``. Alias of :meth:`get_oc`."""
+        return self.get_oc()
+
+    def set_optional_content(self, value: PDPropertyList | None) -> None:
+        """Set ``/OC`` typed property list. Mirrors upstream
+        ``setOptionalContent(PDPropertyList)``. Alias of :meth:`set_oc`."""
+        self.set_oc(value)

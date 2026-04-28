@@ -24,6 +24,28 @@ def _read_tristimulus(
     return list(default)
 
 
+def _xyz_to_srgb(x: float, y: float, z: float) -> tuple[float, float, float]:
+    """Convert CIE XYZ (D65) tristimulus values to clamped sRGB ``[0, 1]``.
+
+    Uses the IEC 61966-2-1 sRGB matrix and gamma encoding. No chromatic
+    adaptation; assumes the source XYZ is already on a D65 white point.
+    """
+    r_lin = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
+    g_lin = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
+    b_lin = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
+
+    def _srgb_encode(u: float) -> float:
+        if u <= 0.0:
+            return 0.0
+        if u >= 1.0:
+            return 1.0
+        if u <= 0.0031308:
+            return 12.92 * u
+        return 1.055 * (u ** (1.0 / 2.4)) - 0.055
+
+    return (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
+
+
 class PDCalGray(PDColorSpace):
     """A CalGray color space. Mirrors PDFBox
     ``org.apache.pdfbox.pdmodel.graphics.color.PDCalGray``.
@@ -80,6 +102,40 @@ class PDCalGray(PDColorSpace):
 
     def set_gamma(self, gamma: float) -> None:
         self._dict().set_item(_GAMMA, COSFloat(gamma))
+
+    # ---------- conversion ----------
+
+    def to_rgb(self, values: list[float]) -> tuple[float, float, float]:
+        """Convert a single-component CalGray sample to clamped sRGB.
+
+        Per PDF 32000-1 §8.6.5.2:
+
+        ``A' = A ** Gamma``
+        ``X = X_w * A'``, ``Y = Y_w * A'``, ``Z = Z_w * A'``
+
+        Then XYZ → sRGB (IEC 61966-2-1, no chromatic adaptation; assumes
+        the white point is already a sensible illuminant — we do not do
+        Bradford here, mirroring PDFBox's behaviour of trusting the
+        embedded white point).
+
+        ``values`` must contain exactly one component in ``[0, 1]``.
+        """
+        if not values:
+            raise ValueError("CalGray.to_rgb requires one component, got 0")
+        a = float(values[0])
+        if a < 0.0:
+            a = 0.0
+        elif a > 1.0:
+            a = 1.0
+        gamma = float(self.get_gamma())
+        # 0 ** non-positive blows up; guard.
+        a_g = (a ** gamma) if a > 0.0 else 0.0
+        wp = self.get_white_point()
+        x_w, y_w, z_w = float(wp[0]), float(wp[1]), float(wp[2])
+        x = x_w * a_g
+        y = y_w * a_g
+        z = z_w * a_g
+        return _xyz_to_srgb(x, y, z)
 
 
 __all__ = ["PDCalGray"]

@@ -7,14 +7,16 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from .pd_outline_node import PDOutlineNode
 
 if TYPE_CHECKING:
-    from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
         PDStructureElement,
     )
+    from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
     from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
     from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
         PDDestination,
     )
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
 
 
 _TITLE: COSName = COSName.get_pdf_name("Title")
@@ -120,9 +122,31 @@ class PDOutlineItem(PDOutlineNode):
         raw = self._dictionary.get_dictionary_object(_DEST)
         return PDDestination.create(raw)
 
-    def set_destination(self, dest: PDDestination | None) -> None:
+    def set_destination(self, dest: "PDDestination | PDPage | None") -> None:
+        """Set the outline's ``/Dest``.
+
+        Accepts:
+
+        - ``PDDestination`` — written verbatim.
+        - ``PDPage`` — upstream convenience overload that creates a
+          default ``PDPageXYZDestination`` pointing at the given page
+          (mirrors ``PDOutlineItem#setDestination(PDPage)``).
+        - ``None`` — removes ``/Dest``.
+        """
         if dest is None:
             self._dictionary.remove_item(_DEST)
+            return
+        # Upstream convenience: PDPage in → wrap as a default XYZ destination.
+        from pypdfbox.pdmodel.pd_page import PDPage
+
+        if isinstance(dest, PDPage):
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_xyz_destination import (
+                PDPageXYZDestination,
+            )
+
+            xyz = PDPageXYZDestination()
+            xyz.set_page(dest)
+            self._dictionary.set_item(_DEST, xyz.get_cos_object())
             return
         self._dictionary.set_item(_DEST, dest.get_cos_object())
 
@@ -146,19 +170,65 @@ class PDOutlineItem(PDOutlineNode):
 
     def get_text_color(self) -> tuple[float, float, float] | None:
         """Return the RGB text colour as a 3-tuple in [0, 1], or ``None``
-        when ``/C`` is absent or malformed. Upstream synthesises the spec
-        default (black) inside a typed ``PDColor``; cluster scope returns
-        ``None`` here so callers can distinguish "unset" from "explicitly
-        black" until ``PDColor`` lands with the rendering cluster."""
+        when ``/C`` is absent or malformed.
+
+        **Pypdfbox divergence from upstream**: upstream's
+        ``getTextColor()`` materializes a ``[0,0,0]`` ``COSArray`` on the
+        outline dictionary if ``/C`` is missing and never returns
+        ``null``. We return ``None`` here so callers can distinguish
+        "unset" from "explicitly black" without paying the side-effect
+        write. For an upstream-shaped ``PDColor`` accessor that *does*
+        materialize the default, see :meth:`get_text_color_pd_color`.
+        See ``CHANGES.md``.
+        """
         arr = self._dictionary.get_dictionary_object(_C)
         if isinstance(arr, COSArray) and arr.size() >= 3:
             vals = arr.to_float_array()[:3]
             return (vals[0], vals[1], vals[2])
         return None
 
-    def set_text_color(self, rgb: tuple[float, float, float] | None) -> None:
+    def get_text_color_pd_color(self) -> "PDColor":
+        """Return a typed ``PDColor`` for ``/C`` against
+        ``PDDeviceRGB.INSTANCE``, mirroring upstream
+        ``PDOutlineItem#getTextColor()`` exactly.
+
+        Upstream behaviour: when ``/C`` is absent, upstream materializes a
+        zero-filled 3-element ``COSArray`` on the outline dictionary
+        (so the next read sees ``[0,0,0]`` rather than absent) and wraps
+        it. We mirror that side-effect for parity with callers that round-trip
+        the dictionary.
+        """
+        from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+        from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+
+        arr = self._dictionary.get_dictionary_object(_C)
+        if not isinstance(arr, COSArray):
+            arr = COSArray()
+            arr.grow_to_size(3, COSFloat(0.0))
+            self._dictionary.set_item(_C, arr)
+        return PDColor(arr, PDDeviceRGB.INSTANCE)
+
+    def set_text_color(
+        self, rgb: "tuple[float, float, float] | PDColor | None"
+    ) -> None:
+        """Set the outline's RGB ``/C`` colour.
+
+        Accepts:
+
+        - ``tuple[float, float, float]`` — three components in [0, 1].
+        - ``PDColor`` — written via :meth:`PDColor.to_cos_array` (upstream
+          ``setTextColor(PDColor)``).
+        - ``None`` — removes ``/C``.
+        """
         if rgb is None:
             self._dictionary.remove_item(_C)
+            return
+        # Local import to avoid cycles via graphics/color → fontbox at
+        # module-import time.
+        from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+
+        if isinstance(rgb, PDColor):
+            self._dictionary.set_item(_C, rgb.to_cos_array())
             return
         arr = COSArray([COSFloat(float(c)) for c in rgb])
         self._dictionary.set_item(_C, arr)
@@ -210,20 +280,23 @@ class PDOutlineItem(PDOutlineNode):
 
     # ---------- /SE (structure element) ----------
 
-    def get_structure_element(self) -> COSDictionary | None:
-        """Return the raw ``/SE`` ``COSDictionary`` or ``None``.
+    def get_structure_element(self) -> "PDStructureElement | None":
+        """Return the typed ``/SE`` :class:`PDStructureElement` or
+        ``None`` when absent. Mirrors
+        ``PDOutlineItem#getStructureElement()``.
 
-        Upstream returns a typed ``PDStructureElement``; the cluster scope
-        returns the raw dictionary to avoid pulling
-        ``pdmodel.documentinterchange.logicalstructure`` (and its
-        ``PDStructureNode`` factory) into ``outline``'s import graph.
-        Callers can wrap with ``PDStructureNode.create(...)`` themselves
-        until that wiring lands. See ``CHANGES.md``.
+        ``PDStructureElement`` is imported lazily to avoid pulling the
+        logical-structure cluster into ``outline``'s import graph at
+        module load time.
         """
         value = self._dictionary.get_dictionary_object(_SE)
-        if isinstance(value, COSDictionary):
-            return value
-        return None
+        if not isinstance(value, COSDictionary):
+            return None
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
+            PDStructureElement,
+        )
+
+        return PDStructureElement(value)
 
     def set_structure_element(
         self, elem: "PDStructureElement | COSDictionary | None"
@@ -260,15 +333,27 @@ class PDOutlineItem(PDOutlineNode):
         """Resolve this outline's ``/Dest`` (or its ``/A`` action's
         destination) to a page ``COSDictionary`` against ``document``.
 
-        Lite scope: only ``PDPageDestination`` whose ``/D[0]`` is an
-        explicit 0-based page integer is resolved here — we look up
-        ``document.get_pages()[index]`` and return its underlying dict.
-        Indirect-page references (``/D[0]`` already a ``COSDictionary``)
-        and named-destination resolution (via ``/Dests`` / the ``/Names``
-        name tree) are deferred. Returns ``None`` when no destination is
-        present or it can't be resolved within the lite surface."""
+        Resolves:
+
+        - explicit page-index destinations (``/D[0]`` is an integer);
+        - direct page-dict destinations (``/D[0]`` is already a page
+          ``COSDictionary``);
+        - ``PDNamedDestination`` (string or name) — looked up first in
+          the catalog ``/Dests`` dictionary (PDF 1.1) and then in the
+          ``/Names/Dests`` name tree (PDF 1.2+).
+
+        **Pypdfbox divergence from upstream**: upstream returns a typed
+        ``PDPage``; we return the page's ``COSDictionary`` so existing
+        in-tree consumers (``listbookmarks``, ``PDFTextStripper``) can
+        keep their identity-comparison shape. See ``CHANGES.md``.
+        Returns ``None`` when no destination is present or it can't be
+        resolved.
+        """
         from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
             PDActionGoTo,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+            PDNamedDestination,
         )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
             PDPageDestination,
@@ -278,11 +363,23 @@ class PDOutlineItem(PDOutlineNode):
         if destination is None:
             action = self.get_action()
             if isinstance(action, PDActionGoTo):
-                destination = action.get_destination()
+                resolved_action_dest = action.get_destination()
+                if isinstance(resolved_action_dest, str):
+                    # Upstream's PDActionGoTo returns a `PDNamedDestination`
+                    # for the string form; our PDActionGoTo returns the bare
+                    # string (see CHANGES.md). Re-wrap so the named-destination
+                    # resolution path below kicks in.
+                    destination = PDNamedDestination(resolved_action_dest)
+                else:
+                    destination = resolved_action_dest
         if destination is None:
             return None
+        # PDNamedDestination → catalog lookup.
+        if isinstance(destination, PDNamedDestination):
+            destination = self._resolve_named_destination(document, destination)
+            if destination is None:
+                return None
         if not isinstance(destination, PDPageDestination):
-            # Named-destination resolution deferred — see docstring.
             return None
         # Direct page-dict reference: the destination already points at
         # the page we want.
@@ -296,6 +393,75 @@ class PDOutlineItem(PDOutlineNode):
         if page_number >= len(pages):
             return None
         return pages[page_number].get_cos_object()
+
+    @staticmethod
+    def _resolve_named_destination(
+        document: "PDDocument", named: "object"
+    ) -> "PDDestination | None":
+        """Resolve a ``PDNamedDestination`` via the catalog's ``/Dests``
+        dictionary (PDF 1.1) and ``/Names/Dests`` name tree (PDF 1.2+).
+
+        Returns the typed ``PDDestination`` whose ``/D`` array was
+        looked up, or ``None`` when the name is missing from both
+        sources. The lookup prefers the catalog ``/Dests`` entry to
+        match upstream ``PDDocumentCatalog#findNamedDestinationPage``
+        precedence.
+        """
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
+            PDDestination,
+        )
+
+        get_named = getattr(named, "get_named_destination", None)
+        if not callable(get_named):
+            return None
+        name = get_named()
+        if not isinstance(name, str):
+            return None
+        catalog = document.get_document_catalog()
+        # /Dests dictionary (PDF 1.1).
+        dests = catalog.get_dests()
+        if dests is not None:
+            entry = None
+            # PDDestinationNameTreeNode-shaped wrappers expose get_value(name);
+            # plain COSDictionary wrappers may expose get_dictionary_object.
+            get_value = getattr(dests, "get_value", None)
+            if callable(get_value):
+                entry = get_value(name)
+            if entry is None:
+                cos = getattr(dests, "get_cos_object", None)
+                raw = cos() if callable(cos) else None
+                if isinstance(raw, COSDictionary):
+                    entry = raw.get_dictionary_object(COSName.get_pdf_name(name))
+            if entry is not None:
+                # Dest entries may be wrapped in a dictionary with a /D key.
+                if isinstance(entry, COSDictionary):
+                    inner = entry.get_dictionary_object(COSName.get_pdf_name("D"))
+                    if inner is not None:
+                        entry = inner
+                resolved = PDDestination.create(entry)
+                if resolved is not None:
+                    return resolved
+        # /Names/Dests name tree (PDF 1.2+).
+        names = catalog.get_names()
+        if names is None:
+            return None
+        get_dests_tree = getattr(names, "get_dests", None)
+        if not callable(get_dests_tree):
+            return None
+        tree = get_dests_tree()
+        if tree is None:
+            return None
+        get_value = getattr(tree, "get_value", None)
+        if not callable(get_value):
+            return None
+        entry = get_value(name)
+        if entry is None:
+            return None
+        if isinstance(entry, COSDictionary):
+            inner = entry.get_dictionary_object(COSName.get_pdf_name("D"))
+            if inner is not None:
+                entry = inner
+        return PDDestination.create(entry)
 
 
 __all__ = ["PDOutlineItem"]

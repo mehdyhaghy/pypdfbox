@@ -202,6 +202,162 @@ class GlyphPositioningTable(TTFTable):
             return []
         return [int(lk.LookupType) for lk in (getattr(ll, "Lookup", None) or [])]
 
+    # ------------------------------------------------------------------
+    # OT-aliased structural accessors
+    # ------------------------------------------------------------------
+    #
+    # Upstream PDFBox's ``GlyphPositioningTable`` keeps the on-disk
+    # OpenType structures (ScriptList, FeatureList, LookupList) as
+    # private fields without exposing them — callers only get the
+    # derived tag/inventory views. We surface the underlying fontTools
+    # structures so consumers that need full access (e.g. positioning
+    # engine ports, OpenType introspection tools) don't have to reach
+    # through ``get_raw_table()``. These return the raw fontTools
+    # objects (``otTables.ScriptList`` etc.) so attribute access matches
+    # the OT spec field names exactly.
+
+    def get_script_list(self) -> Any | None:
+        """Underlying ``otTables.ScriptList`` (or ``None`` when absent).
+
+        The returned object exposes a ``ScriptRecord`` list whose
+        entries each carry a ``ScriptTag`` plus a ``Script`` with a
+        ``DefaultLangSys`` and a ``LangSysRecord`` list. Walk this when
+        per-language feature selection matters (e.g. enabling Turkish
+        ``i`` dotted-i handling under the ``latn`` script).
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        if self._gpos_table is None:
+            return None
+        return getattr(self._gpos_table, "ScriptList", None)
+
+    def get_feature_list(self) -> Any | None:
+        """Underlying ``otTables.FeatureList`` (or ``None`` when absent).
+
+        Carries an indexed ``FeatureRecord`` list — each record's
+        ``FeatureTag`` is the four-byte feature identifier (``kern``,
+        ``mark``, ``mkmk``, ...) and ``Feature.LookupListIndex`` is the
+        list of lookup indices that implement that feature. The index
+        position is what ``ScriptList``'s LangSys entries point into.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        if self._gpos_table is None:
+            return None
+        return getattr(self._gpos_table, "FeatureList", None)
+
+    def get_lookup_list(self) -> Any | None:
+        """Underlying ``otTables.LookupList`` (or ``None`` when absent).
+
+        Carries an indexed ``Lookup`` list — each entry has a
+        ``LookupType`` (1..9 per OT § GPOS Header — see
+        ``LOOKUP_TYPE_*`` constants on this class), a ``LookupFlag``
+        bitfield (right-to-left, ignore-base / ligature / mark, mark
+        filtering), and an ordered ``SubTable`` list whose entries
+        are the actual positioning records.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        if self._gpos_table is None:
+            return None
+        return getattr(self._gpos_table, "LookupList", None)
+
+    def get_lookup(self, lookup_index: int) -> Any | None:
+        """Return the ``otTables.Lookup`` at ``lookup_index`` (or
+        ``None`` for an out-of-range / missing-table query).
+
+        Index space matches ``FeatureRecord.Feature.LookupListIndex`` —
+        feed those values straight in.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        ll = self.get_lookup_list()
+        if ll is None:
+            return None
+        lookups = getattr(ll, "Lookup", None) or []
+        if lookup_index < 0 or lookup_index >= len(lookups):
+            return None
+        return lookups[lookup_index]
+
+    def get_lookup_subtables(self, lookup_index: int) -> list[Any]:
+        """Return the ordered ``SubTable`` list for the lookup at
+        ``lookup_index``, or an empty list if the index is out of
+        range / the table is absent.
+
+        Subtable shape varies with ``LookupType``:
+
+        * Type 1 — ``SinglePos`` (Format 1 single ValueRecord, Format 2
+          per-coverage-glyph ValueRecord array).
+        * Type 2 — ``PairPos`` (Format 1 PairSet of PairValueRecord,
+          Format 2 Class1×Class2 matrix).
+        * Type 3 — ``CursivePos`` (entry/exit anchors per coverage glyph).
+        * Type 4 — ``MarkBasePos`` (mark + base anchor arrays).
+        * Type 5 — ``MarkLigPos`` (mark + per-component ligature anchors).
+        * Type 6 — ``MarkMarkPos`` (mark1 + mark2 anchor arrays).
+        * Type 7 — ``ContextPos`` (rule-based, three sub-formats).
+        * Type 8 — ``ChainContextPos`` (chained, three sub-formats).
+        * Type 9 — ``ExtensionPos`` (transparently inlined by fontTools).
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        Mirrors the request shape of upstream's GSUB-side
+        ``LookupTable.getSubTables`` (gsub package).
+        """
+        lookup = self.get_lookup(lookup_index)
+        if lookup is None:
+            return []
+        return list(getattr(lookup, "SubTable", None) or [])
+
+    def get_feature_record(self, feature_index: int) -> Any | None:
+        """Return the ``otTables.FeatureRecord`` at ``feature_index``,
+        or ``None`` for out-of-range / missing-table queries.
+
+        Index space matches ``LangSys.FeatureIndex`` and
+        ``LangSys.ReqFeatureIndex`` — feed those values straight in.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        fl = self.get_feature_list()
+        if fl is None:
+            return None
+        records = getattr(fl, "FeatureRecord", None) or []
+        if feature_index < 0 or feature_index >= len(records):
+            return None
+        return records[feature_index]
+
+    def get_lookup_indices_for_feature(self, feature_tag: str) -> list[int]:
+        """Return every lookup-index referenced by a feature whose tag
+        matches ``feature_tag``.
+
+        A single feature tag can appear in multiple FeatureRecords
+        (e.g. ``kern`` once for Latin, once for Hebrew); we union the
+        ``LookupListIndex`` lists across every match while preserving
+        the order of first appearance and deduplicating repeats. This
+        is the same shape the OT processing pipeline uses when a tag
+        gates "every lookup that implements this feature regardless
+        of script".
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        fl = self.get_feature_list()
+        if fl is None:
+            return []
+        out: list[int] = []
+        seen: set[int] = set()
+        for fr in getattr(fl, "FeatureRecord", None) or []:
+            tag = str(getattr(fr, "FeatureTag", "")).strip()
+            if tag != feature_tag:
+                continue
+            feature = getattr(fr, "Feature", None)
+            if feature is None:
+                continue
+            for li in getattr(feature, "LookupListIndex", None) or []:
+                li_i = int(li)
+                if li_i in seen:
+                    continue
+                seen.add(li_i)
+                out.append(li_i)
+        return out
+
     def get_raw_table(self) -> Any | None:
         """The underlying ``fontTools.ttLib.tables.otTables.GPOS``
         instance, or ``None`` if no GPOS was present.

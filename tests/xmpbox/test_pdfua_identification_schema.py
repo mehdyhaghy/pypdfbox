@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.xmpbox import (
+    BadFieldValueException,
     DomXmpParser,
     PDFUAIdentificationSchema,
     XMPMetadata,
@@ -202,7 +205,93 @@ def test_set_part_value_with_int_and_string_aliases() -> None:
     assert schema.get_part() == 2
     schema.set_part_value_with_string("1")
     assert schema.get_part() == 1
-    import pytest
 
     with pytest.raises(ValueError):
         schema.set_part_value_with_string("not-a-number")
+
+
+# ---------- ISO 14289 conformance validation ----------
+
+
+@pytest.mark.parametrize("value", ["A", "B", "U", "Acc"])
+def test_set_conformance_accepts_valid_values(value: str) -> None:
+    schema = _ident()
+    schema.set_conformance(value)
+    assert schema.get_conformance() == value
+
+
+def test_set_conformance_rejects_invalid_value() -> None:
+    schema = _ident()
+    with pytest.raises(BadFieldValueException):
+        schema.set_conformance("Z")
+
+
+def test_set_conformance_rejects_lowercase() -> None:
+    # Lowercase "a"/"b"/"u" are *not* in the ISO 14289-2 value space —
+    # only uppercase A/B/U (plus the legacy "Acc" spelling) are accepted.
+    schema = _ident()
+    with pytest.raises(BadFieldValueException):
+        schema.set_conformance("a")
+
+
+def test_set_conformance_none_clears_property() -> None:
+    schema = _ident()
+    schema.set_conformance("U")
+    schema.set_conformance(None)
+    assert schema.get_conformance() is None
+
+
+def test_bad_field_value_exception_subclasses_value_error() -> None:
+    """Callers that aren't aware of the upstream class can still
+    ``except ValueError``."""
+    schema = _ident()
+    with pytest.raises(ValueError):
+        schema.set_conformance("nope")
+
+
+# ---------- ISO 14289 part predicates ----------
+
+
+def test_is_pdf_ua_1_when_part_is_one() -> None:
+    schema = _ident()
+    schema.set_part(1)
+    assert schema.is_pdf_ua_1()
+    assert not schema.is_pdf_ua_2()
+    assert schema.is_known_part()
+
+
+def test_is_pdf_ua_2_when_part_is_two() -> None:
+    schema = _ident()
+    schema.set_part(2)
+    assert schema.is_pdf_ua_2()
+    assert not schema.is_pdf_ua_1()
+    assert schema.is_known_part()
+
+
+def test_predicates_default_false_when_part_absent() -> None:
+    schema = _ident()
+    assert not schema.is_pdf_ua_1()
+    assert not schema.is_pdf_ua_2()
+    assert not schema.is_known_part()
+
+
+def test_is_known_part_false_for_future_part() -> None:
+    schema = _ident()
+    schema.set_part(99)
+    assert not schema.is_known_part()
+    assert not schema.is_pdf_ua_1()
+    assert not schema.is_pdf_ua_2()
+
+
+def test_get_part_value_alias() -> None:
+    """``get_part_value`` mirrors the upstream PDF/A shape."""
+    schema = _ident()
+    schema.set_part(2)
+    assert schema.get_part_value() == 2
+
+
+def test_set_part_property_alias() -> None:
+    """``set_part_property`` is an upstream-API alias of :meth:`set_part`."""
+    schema = _ident()
+    schema.set_part_property(2)
+    assert schema.get_part() == 2

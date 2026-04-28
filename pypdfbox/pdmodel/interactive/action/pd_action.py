@@ -25,6 +25,7 @@ class PDAction:
     def create(action: COSDictionary | None) -> PDAction | None:
         from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
         from .pd_action_go_to import PDActionGoTo
+        from .pd_action_go_to_3d_view import PDActionGoTo3DView
         from .pd_action_go_to_dp import PDActionGoToDp
         from .pd_action_hide import PDActionHide
         from .pd_action_import_data import PDActionImportData
@@ -85,6 +86,8 @@ class PDAction:
             return PDActionSetOCGState(action)
         if sub_type == PDActionGoToDp.SUB_TYPE:
             return PDActionGoToDp(action)
+        if sub_type == PDActionGoTo3DView.SUB_TYPE:
+            return PDActionGoTo3DView(action)
         if sub_type == PDActionRichMediaExecute.SUB_TYPE:
             return PDActionRichMediaExecute(action)
         return PDActionUnknown(action)

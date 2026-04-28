@@ -239,3 +239,173 @@ def test_get_name_records_returns_list_in_read_order() -> None:
         NameRecord.NAME_FONT_SUB_FAMILY_NAME,
         NameRecord.NAME_FULL_FONT_NAME,
     ]
+
+
+# ---- language records / per-language accessors ---------------------------
+
+
+def test_language_records_returns_every_record_for_name_id() -> None:
+    """``language_records(name_id)`` enumerates every record carrying that
+    name id — useful for tools listing language variants of a single name."""
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "Helvetica".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_FONT_FAMILY_NAME,
+         "Helvetica".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FULL_FONT_NAME,
+         "Helvetica".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    records = t.language_records(NameRecord.NAME_FONT_FAMILY_NAME)
+    assert len(records) == 2
+    assert all(nr.get_name_id() == NameRecord.NAME_FONT_FAMILY_NAME for nr in records)
+
+
+def test_language_ids_returns_distinct_languages() -> None:
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "Roboto".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_FONT_FAMILY_NAME,  # de-DE
+         "Roboto".encode("utf-16-be")),
+        (NameRecord.PLATFORM_MACINTOSH, NameRecord.ENCODING_MACINTOSH_ROMAN,
+         NameRecord.LANGUAGE_MACINTOSH_ENGLISH, NameRecord.NAME_FONT_FAMILY_NAME,
+         b"Roboto"),
+    ])
+    t = _read(blob)
+    langs = t.language_ids(NameRecord.NAME_FONT_FAMILY_NAME)
+    assert NameRecord.LANGUAGE_WINDOWS_EN_US in langs
+    assert 0x0407 in langs
+    assert NameRecord.LANGUAGE_MACINTOSH_ENGLISH in langs
+
+
+def test_get_font_family_with_language_id() -> None:
+    """``get_font_family(language_id=...)`` returns the per-language record."""
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "Helvetica".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_FONT_FAMILY_NAME,
+         "HelveticaDE".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    assert t.get_font_family(NameRecord.LANGUAGE_WINDOWS_EN_US) == "Helvetica"
+    assert t.get_font_family(0x0407) == "HelveticaDE"
+    assert t.get_font_family(0x9999) is None
+    # No-arg form unchanged.
+    assert t.get_font_family() == "Helvetica"
+
+
+def test_per_language_accessors_round_out() -> None:
+    """All standard records (full / sub-family / version / copyright /
+    trademark / unique-id / postscript) honour the optional language-id
+    selector."""
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_SUB_FAMILY_NAME,
+         "Bold".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_FONT_SUB_FAMILY_NAME,
+         "Fett".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FULL_FONT_NAME,
+         "FullEN".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_VERSION,
+         "1.5-DE".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_COPYRIGHT,
+         "(c) DE".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_TRADEMARK,
+         "TM-DE".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_UNIQUE_FONT_ID,
+         "UID-DE".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_POSTSCRIPT_NAME,
+         "  PSDE  ".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    assert t.get_font_sub_family(0x0407) == "Fett"
+    assert t.get_full_name(0x0407) is None  # only en-US recorded
+    assert t.get_full_name(NameRecord.LANGUAGE_WINDOWS_EN_US) == "FullEN"
+    assert t.get_version(0x0407) == "1.5-DE"
+    assert t.get_copyright(0x0407) == "(c) DE"
+    assert t.get_trademark(0x0407) == "TM-DE"
+    assert t.get_unique_id(0x0407) == "UID-DE"
+    # PostScript per-language is also stripped.
+    assert t.get_post_script_name(0x0407) == "PSDE"
+    # Unknown language id → None.
+    assert t.get_post_script_name(0x9999) is None
+
+
+# ---- name id / record discovery helpers -----------------------------------
+
+
+def test_name_ids_returns_distinct_sorted() -> None:
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_VERSION,
+         "1.0".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "X".encode("utf-16-be")),
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         0x0407, NameRecord.NAME_FONT_FAMILY_NAME,
+         "X".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    assert t.name_ids() == [NameRecord.NAME_FONT_FAMILY_NAME, NameRecord.NAME_VERSION]
+
+
+def test_has_name_with_only_name_id() -> None:
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "X".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    assert t.has_name(NameRecord.NAME_FONT_FAMILY_NAME) is True
+    assert t.has_name(NameRecord.NAME_TRADEMARK) is False
+
+
+def test_has_name_with_full_quadruple() -> None:
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "X".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    assert t.has_name(
+        NameRecord.NAME_FONT_FAMILY_NAME,
+        NameRecord.PLATFORM_WINDOWS,
+        NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+        NameRecord.LANGUAGE_WINDOWS_EN_US,
+    ) is True
+    # Wrong language → absent.
+    assert t.has_name(
+        NameRecord.NAME_FONT_FAMILY_NAME,
+        NameRecord.PLATFORM_WINDOWS,
+        NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+        0x0407,
+    ) is False
+
+
+def test_iter_name_records_returns_independent_copy() -> None:
+    """``iter_name_records`` should return a fresh list — appends do not
+    leak into the underlying record list."""
+    blob = _build_name_table([
+        (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
+         NameRecord.LANGUAGE_WINDOWS_EN_US, NameRecord.NAME_FONT_FAMILY_NAME,
+         "X".encode("utf-16-be")),
+    ])
+    t = _read(blob)
+    snapshot = t.iter_name_records()
+    snapshot.append(NameRecord())
+    assert len(t.get_name_records()) == 1

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
+from .pd_cal_gray import _xyz_to_srgb
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
@@ -97,6 +98,56 @@ class PDCalRGB(PDColorSpace):
             d.remove_item(_MATRIX)
         else:
             d.set_item(_MATRIX, COSArray.of_cos_floats(matrix))
+
+    # ---------- conversion ----------
+
+    def to_rgb(self, values: list[float]) -> tuple[float, float, float]:
+        """Convert a 3-component CalRGB sample to clamped sRGB.
+
+        Per PDF 32000-1 §8.6.5.3:
+
+        ``A' = A ** GammaR``, ``B' = B ** GammaG``, ``C' = C ** GammaB``
+        ``[X Y Z]^T = M * [A' B' C']^T`` where ``M`` is the column-major
+        ``/Matrix`` (per spec: stored as 9 numbers ``[X_a Y_a Z_a X_b
+        Y_b Z_b X_c Y_c Z_c]`` — three column vectors).
+
+        Then XYZ → sRGB (IEC 61966-2-1).
+
+        ``values`` must contain exactly three components in ``[0, 1]``.
+        """
+        if len(values) < 3:
+            raise ValueError(
+                f"CalRGB.to_rgb requires three components, got {len(values)}"
+            )
+        a = float(values[0])
+        b = float(values[1])
+        c = float(values[2])
+        # Clamp
+        a = 0.0 if a < 0.0 else (1.0 if a > 1.0 else a)
+        b = 0.0 if b < 0.0 else (1.0 if b > 1.0 else b)
+        c = 0.0 if c < 0.0 else (1.0 if c > 1.0 else c)
+        gammas = self.get_gamma()
+        g_r = float(gammas[0]) if len(gammas) >= 1 else 1.0
+        g_g = float(gammas[1]) if len(gammas) >= 2 else 1.0
+        g_b = float(gammas[2]) if len(gammas) >= 3 else 1.0
+        a_p = (a ** g_r) if a > 0.0 else 0.0
+        b_p = (b ** g_g) if b > 0.0 else 0.0
+        c_p = (c ** g_b) if c > 0.0 else 0.0
+
+        m = self.get_matrix()
+        if m is None or len(m) < 9:
+            # Identity: X = A', Y = B', Z = C'
+            x, y, z = a_p, b_p, c_p
+        else:
+            # Spec layout: [X_a Y_a Z_a  X_b Y_b Z_b  X_c Y_c Z_c]
+            # X = X_a*A' + X_b*B' + X_c*C'  (etc)
+            x_a, y_a, z_a = float(m[0]), float(m[1]), float(m[2])
+            x_b, y_b, z_b = float(m[3]), float(m[4]), float(m[5])
+            x_c, y_c, z_c = float(m[6]), float(m[7]), float(m[8])
+            x = x_a * a_p + x_b * b_p + x_c * c_p
+            y = y_a * a_p + y_b * b_p + y_c * c_p
+            z = z_a * a_p + z_b * b_p + z_c * c_p
+        return _xyz_to_srgb(x, y, z)
 
 
 __all__ = ["PDCalRGB"]

@@ -48,25 +48,62 @@ class PDActionSound(PDAction):
         self._action.set_item(_SOUND, sound)
 
     def get_volume(self) -> float:
-        return self._action.get_float(_VOLUME, 1.0)
+        """Return ``/Volume`` (default ``1.0``). PDF 32000-1 §12.6.4.13
+        Table 207 constrains ``/Volume`` to ``[-1.0, 1.0]``; values outside
+        that range are read as ``1.0`` (the default), mirroring upstream
+        ``PDActionSound.getVolume`` clamp behavior."""
+        volume = self._action.get_float(_VOLUME, 1.0)
+        if volume < -1.0 or volume > 1.0:
+            return 1.0
+        return volume
 
     def set_volume(self, volume: float) -> None:
+        """Set ``/Volume``. Raises :class:`ValueError` when ``volume`` is
+        outside ``[-1.0, 1.0]``. Mirrors upstream
+        ``PDActionSound.setVolume`` (``IllegalArgumentException`` →
+        :class:`ValueError`)."""
+        if volume < -1.0 or volume > 1.0:
+            raise ValueError("volume outside of the range -1.0 to 1.0")
         self._action.set_float(_VOLUME, volume)
 
-    def is_synchronous(self) -> bool:
+    # ---------- /Synchronous ----------
+
+    def get_synchronous(self) -> bool:
+        """Return ``/Synchronous`` (default ``False``). Upstream
+        ``PDActionSound.getSynchronous`` parity name."""
         return self._action.get_boolean(_SYNCHRONOUS, False)
+
+    def is_synchronous(self) -> bool:
+        """pypdfbox-style alias of :meth:`get_synchronous`."""
+        return self.get_synchronous()
 
     def set_synchronous(self, synchronous: bool) -> None:
         self._action.set_boolean(_SYNCHRONOUS, synchronous)
 
-    def is_repeat(self) -> bool:
+    # ---------- /Repeat ----------
+
+    def get_repeat(self) -> bool:
+        """Return ``/Repeat`` (default ``False``). Upstream
+        ``PDActionSound.getRepeat`` parity name."""
         return self._action.get_boolean(_REPEAT, False)
+
+    def is_repeat(self) -> bool:
+        """pypdfbox-style alias of :meth:`get_repeat`."""
+        return self.get_repeat()
 
     def set_repeat(self, repeat: bool) -> None:
         self._action.set_boolean(_REPEAT, repeat)
 
-    def is_mix(self) -> bool:
+    # ---------- /Mix ----------
+
+    def get_mix(self) -> bool:
+        """Return ``/Mix`` (default ``False``). Upstream
+        ``PDActionSound.getMix`` parity name."""
         return self._action.get_boolean(_MIX, False)
+
+    def is_mix(self) -> bool:
+        """pypdfbox-style alias of :meth:`get_mix`."""
+        return self.get_mix()
 
     def set_mix(self, mix: bool) -> None:
         self._action.set_boolean(_MIX, mix)

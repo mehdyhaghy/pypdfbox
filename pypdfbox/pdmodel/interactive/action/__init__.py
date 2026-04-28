@@ -4,6 +4,7 @@ from .open_mode import OpenMode
 from .pd_action import PDAction
 from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
 from .pd_action_go_to import PDActionGoTo
+from .pd_action_go_to_3d_view import PDActionGoTo3DView
 from .pd_action_go_to_dp import PDActionGoToDp
 from .pd_action_hide import PDActionHide
 from .pd_action_import_data import PDActionImportData
@@ -27,6 +28,7 @@ from .pd_document_catalog_additional_actions import PDDocumentCatalogAdditionalA
 from .pd_form_field_additional_actions import PDFormFieldAdditionalActions
 from .pd_page_additional_actions import PDPageAdditionalActions
 from .pd_target_directory import PDTargetDirectory
+from .pd_uri_dictionary import PDURIDictionary
 from .pd_windows_launch_params import PDWindowsLaunchParams
 
 __all__ = [
@@ -34,6 +36,7 @@ __all__ = [
     "PDAction",
     "PDActionEmbeddedGoTo",
     "PDActionGoTo",
+    "PDActionGoTo3DView",
     "PDActionGoToDp",
     "PDActionHide",
     "PDActionImportData",
@@ -57,5 +60,6 @@ __all__ = [
     "PDFormFieldAdditionalActions",
     "PDPageAdditionalActions",
     "PDTargetDirectory",
+    "PDURIDictionary",
     "PDWindowsLaunchParams",
 ]

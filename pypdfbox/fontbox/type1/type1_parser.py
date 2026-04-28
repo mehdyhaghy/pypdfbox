@@ -1,35 +1,32 @@
-"""Lite parser for the cleartext header of a Type 1 PostScript font.
+"""Parser for the two-segment Type 1 PostScript font format.
 
-Mirrors the responsibilities of ``org.apache.fontbox.type1.Type1Parser``
-in upstream PDFBox at the *interface* level — we expose the same
-``parse(segment1, segment2)`` entry point and emit a parsed font dict.
-The heavy lifting (full PostScript-subset interpretation of the eexec
-section) is delegated to :class:`fontTools.t1Lib.T1Font` because the
-spec covers ~50 operators and re-implementing them in Python would
-duplicate a battle-tested library; see
-``pypdfbox/fontbox/type1/type1_font.py`` for the same pattern.
+Mirrors :class:`org.apache.fontbox.type1.Type1Parser` in upstream PDFBox
+at the *interface* level — we expose the same ``parse(segment1,
+segment2)`` entry point and emit a parsed font dict.
 
-What we actually do here:
+What we extract:
 
-1. Tokenise segment 1 (the cleartext PostScript header) into a stream of
-   ``(kind, value)`` tuples — names (``/FontName``), numbers, strings,
-   operators (``def``, ``put``), array delimiters (``[`` ``]`` ``{``
-   ``}``), and dict-marker tokens (``dict``, ``begin``, ``end``).
-2. Walk the token stream, picking out the well-known top-level keys
-   (``/FontName``, ``/FontMatrix``, ``/FontBBox``, ``/PaintType``,
-   ``/FontType``, ``/Encoding``, ``/UniqueID``) plus the contents of the
-   ``/FontInfo`` dict (the textual metadata exposed by ``Type1Font``
-   getters).
-3. Forward segment 2 (the binary eexec block) to
-   :func:`Type1FontUtil.eexec_decrypt` — the recovered plaintext is what
-   the upstream ``Type1Parser.parseBinary`` would feed to its private-dict
-   parser. We surface it on the parser as ``decrypted_binary`` so
-   callers can hand it to a downstream interpreter (or just confirm
-   round-trip integrity in tests).
+1. Segment 1 (cleartext PostScript header):
+   - Top-level keys: ``/FontName``, ``/FontType``, ``/PaintType``,
+     ``/FontMatrix``, ``/FontBBox``, ``/Encoding``, ``/UniqueID``,
+     ``/StrokeWidth``, ``/FID``.
+   - ``/FontInfo`` sub-dict: ``version``, ``Notice``, ``Copyright``,
+     ``FullName``, ``FamilyName``, ``Weight``, ``ItalicAngle``,
+     ``isFixedPitch``, ``UnderlinePosition``, ``UnderlineThickness``.
+2. Segment 2 (eexec-encrypted private + charstrings block):
+   - eexec-decrypt via :func:`Type1FontUtil.eexec_decrypt`.
+   - Walk the decrypted PostScript to extract:
+     - ``/Private`` dict (``BlueValues``, ``OtherBlues``, ``FamilyBlues``,
+       ``FamilyOtherBlues``, ``BlueScale``, ``BlueShift``, ``BlueFuzz``,
+       ``StdHW``, ``StdVW``, ``StemSnapH``, ``StemSnapV``, ``ForceBold``,
+       ``LanguageGroup``, ``lenIV``).
+     - ``/Subrs`` array — each entry charstring-decrypted to raw bytes.
+     - ``/CharStrings`` dict — ``name -> charstring-decrypted bytes``.
 
-The parser does NOT execute PostScript; it only reads. That covers
-everything ``Type1Font``'s metadata accessors need without forking a
-PostScript interpreter.
+The parser does NOT execute the charstring bytecode (that lives in
+:class:`pypdfbox.fontbox.cff.type1_char_string.Type1CharString` and
+delegates to fontTools); it only recovers the raw byte payload so the
+Type1Font accessors can hand it on.
 """
 
 from __future__ import annotations
@@ -73,28 +70,52 @@ class Type1Lexer:
     the upstream class is a stateful byte-buffer iterator whose
     ``nextToken()`` returns one ``Token`` at a time. We expose the same
     pull-style protocol via :meth:`next_token`.
+
+    The lexer recognises the binary CHARSTRING token: when the bareword
+    ``RD`` or ``-|`` appears immediately after an integer literal, the
+    integer is consumed as the byte length of an encrypted charstring
+    payload. The next byte after RD is a single delimiter (whitespace),
+    then exactly ``length`` raw bytes follow as the charstring body. The
+    payload is returned as a ``(TOKEN_CHARSTRING, bytes)`` token rather
+    than a name.
     """
 
     def __init__(self, data: bytes | bytearray | str) -> None:
         if isinstance(data, str):
+            # When given str input we still need a byte view for
+            # CHARSTRING extraction (binary RD payloads are 0..255).
+            # Latin-1 round-trips losslessly between str and bytes.
             self._buf = data
+            self._raw = data.encode("latin-1")
         else:
             # Cleartext PostScript is ASCII / Latin-1 by spec; decode
             # with latin-1 so any odd byte round-trips losslessly.
-            self._buf = bytes(data).decode("latin-1")
+            self._raw = bytes(data)
+            self._buf = self._raw.decode("latin-1")
         self._pos = 0
+        # Sliding window of last-emitted token — needed to recognise
+        # ``<INT> RD`` (and ``<INT> -|``) sequences and capture the
+        # following binary charstring payload.
+        self._prev_token: tuple[str, Any] | None = None
 
     # ---------- public ----------
 
     def peek_token(self) -> tuple[str, Any] | None:
         """Return the next token without consuming it. ``None`` at EOF."""
-        saved = self._pos
+        saved_pos = self._pos
+        saved_prev = self._prev_token
         tok = self.next_token()
-        self._pos = saved
+        self._pos = saved_pos
+        self._prev_token = saved_prev
         return tok
 
     def next_token(self) -> tuple[str, Any] | None:
         """Consume and return one ``(kind, value)`` token. ``None`` at EOF."""
+        tok = self._next_token_inner()
+        self._prev_token = tok
+        return tok
+
+    def _next_token_inner(self) -> tuple[str, Any] | None:
         self._skip_whitespace_and_comments()
         if self._pos >= len(self._buf):
             return None
@@ -260,6 +281,24 @@ class Type1Lexer:
                     return (TOKEN_INTEGER, int(m.group(2), base))
                 except ValueError:
                     pass
+        # CHARSTRING capture: ``<INT> RD <space> <N raw bytes>`` or the
+        # equivalent ``<INT> -| <space> <N raw bytes>``. Upstream
+        # ``Type1Lexer.readCharString(length)`` does the same.
+        if word in ("RD", "-|") and self._prev_token is not None:
+            kind, value = self._prev_token
+            if kind == TOKEN_INTEGER:
+                length = int(value)
+                # Consume one delimiter byte (typically space).
+                if self._pos < len(self._buf):
+                    self._pos += 1
+                # Read ``length`` raw bytes from the underlying byte
+                # buffer (bypass the latin-1 view so high bytes survive).
+                end = self._pos + length
+                if end > len(self._raw):
+                    end = len(self._raw)
+                payload = self._raw[self._pos:end]
+                self._pos = end
+                return (TOKEN_CHARSTRING, bytes(payload))
         return (TOKEN_NAME, word)
 
 
@@ -336,13 +375,30 @@ class Type1Parser:
 
         Returns the parsed top-level font dict and stores it on
         :attr:`font_dict` for inspection. The decrypted private-dict
-        bytes are kept on :attr:`decrypted_binary`.
+        bytes are kept on :attr:`decrypted_binary`. After eexec decrypt,
+        the parser walks the recovered PostScript to populate the
+        ``Private`` sub-dict (Blue values, lenIV, ForceBold, etc.), the
+        ``Subrs`` array (charstring-decrypted bytes), and the
+        ``CharStrings`` map (glyph name → charstring-decrypted bytes).
         """
         # _len_iv is currently informational; eexec uses a fixed 4-byte
         # warm-up. We accept the parameter to mirror upstream's signature.
         del len_iv
         self._parse_ascii(bytes(segment1))
         self.decrypted_binary = Type1FontUtil.eexec_decrypt(bytes(segment2))
+        # Best-effort second-stage parse over the decrypted block. Any
+        # parse failure leaves Private / Subrs / CharStrings empty and is
+        # logged at debug — matches our overall "tolerant defaults"
+        # posture (upstream raises IOException; we diverge for ergonomics
+        # and let the accessor-side defaults handle the missing data).
+        try:
+            self._parse_binary(self.decrypted_binary)
+        except Exception as exc:  # noqa: BLE001
+            import logging  # noqa: PLC0415
+
+            logging.getLogger(__name__).debug(
+                "Type1Parser: binary segment parse failed: %s", exc
+            )
         return self.font_dict
 
     # ---------- ascii section ----------
@@ -502,6 +558,344 @@ class Type1Parser:
             elif kind == TOKEN_NAME:
                 out.append(value)
         return out
+
+    # ---------- binary section (eexec-decrypted) ----------
+
+    # Keys we hoist into ``font_dict["Private"]``. Values are typed by
+    # the caller-side accessors; the parser stores the decoded shape:
+    # numeric arrays as ``list[int|float]``, scalars as int/float/bool.
+    _PRIVATE_NUMERIC_ARRAY_KEYS = frozenset(
+        {
+            "BlueValues",
+            "OtherBlues",
+            "FamilyBlues",
+            "FamilyOtherBlues",
+            "StdHW",
+            "StdVW",
+            "StemSnapH",
+            "StemSnapV",
+        }
+    )
+    _PRIVATE_SCALAR_KEYS = frozenset(
+        {
+            "BlueScale",
+            "BlueShift",
+            "BlueFuzz",
+            "ForceBold",
+            "LanguageGroup",
+            "lenIV",
+            "MinFeature",
+            "password",
+            "RndStemUp",
+            "ExpansionFactor",
+            "UniqueID",
+        }
+    )
+
+    def _parse_binary(self, decrypted: bytes) -> None:
+        """Walk the eexec-decrypted PostScript and harvest Private +
+        Subrs + CharStrings into ``font_dict``.
+
+        The decrypted block looks like::
+
+            dup /Private 16 dict dup begin
+              /Subrs 5 array
+                dup 0 23 RD <23 raw bytes> NP
+                ...
+                def
+              /CharStrings 4 dict dup begin
+                /A 12 RD <12 raw bytes> ND
+                ...
+              end
+              /BlueValues [-20 0 800 820] def
+              /lenIV 4 def
+              ...
+              end
+            end
+            ...
+
+        We are tolerant of missing keys / out-of-order layouts because
+        real-world fonts deviate (PDFBOX-2134, PDFBOX-5942). On any
+        unrecognised structure we simply continue scanning until we hit
+        the next literal key.
+        """
+        if not decrypted:
+            return
+        lex = Type1Lexer(decrypted)
+        private: dict[str, Any] = {}
+        subrs: list[bytes] = []
+        charstrings: dict[str, bytes] = {}
+        len_iv = 4
+
+        # Locate ``/Private`` to anchor the body. Real fonts wrap the
+        # block in ``dup /Private N dict dup begin``; we just skip until
+        # we see the literal ``Private``.
+        found = False
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                break
+            if tok[0] == TOKEN_LITERAL and tok[1] == "Private":
+                found = True
+                break
+        if not found:
+            return
+
+        # Now walk the Private dict body until we hit the
+        # ``/CharStrings`` literal that marks the second sub-dict.
+        # Inside this loop we also pick up ``/Subrs`` (which is itself
+        # a procedure-style array of dup-N-RD-payload triples).
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                return
+            kind, value = tok
+            if kind == TOKEN_LITERAL:
+                if value == "Subrs":
+                    self._read_subrs(lex, subrs, len_iv)
+                    continue
+                if value == "CharStrings":
+                    self._read_charstrings(lex, charstrings, len_iv)
+                    break
+                if value == "lenIV":
+                    val = self._read_scalar_value(lex)
+                    if isinstance(val, int):
+                        len_iv = val
+                    private["lenIV"] = val
+                    continue
+                if value in self._PRIVATE_NUMERIC_ARRAY_KEYS:
+                    arr = self._read_numeric_array_value(lex)
+                    if arr is not None:
+                        private[value] = arr
+                    continue
+                if value in self._PRIVATE_SCALAR_KEYS:
+                    val = self._read_scalar_value(lex)
+                    if val is not None:
+                        private[value] = val
+                    continue
+                # Unknown literal — drain its value and continue.
+                self._drain_value(lex)
+                continue
+            # Hitting ``end`` at top level closes the Private dict.
+            if kind == TOKEN_NAME and value == "end":
+                break
+
+        if private:
+            self.font_dict["Private"] = private
+        if subrs:
+            # Store under Private/Subrs to match upstream's
+            # `font.subrs` / `Type1Font.getSubrsArray()` shape.
+            self.font_dict.setdefault("Private", private)["Subrs"] = subrs
+        if charstrings:
+            self.font_dict["CharStrings"] = charstrings
+
+    @staticmethod
+    def _read_scalar_value(lex: Type1Lexer) -> Any:
+        """Read a simple scalar from a ``/Key value def`` triple.
+
+        Drains tokens up to and including the closing ``def`` (or the
+        next ``ND`` / ``|-`` postscript synonym). Returns the first
+        meaningful value seen — int, float, bool, or string.
+        """
+        out: Any = None
+        depth = 0
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                return out
+            kind, value = tok
+            if kind == TOKEN_START_ARRAY:
+                depth += 1
+                continue
+            if kind == TOKEN_END_ARRAY:
+                if depth > 0:
+                    depth -= 1
+                continue
+            if depth > 0:
+                continue
+            if kind == TOKEN_NAME and value in ("def", "ND", "|-", "readonly", "noaccess"):
+                if value in ("def", "ND", "|-"):
+                    return out
+                continue
+            if kind == TOKEN_INTEGER and out is None:
+                out = int(value)
+                continue
+            if kind == TOKEN_REAL and out is None:
+                out = float(value)
+                continue
+            if kind == TOKEN_NAME and value in ("true", "false") and out is None:
+                out = (value == "true")
+                continue
+            if kind == TOKEN_STRING and out is None:
+                out = value
+                continue
+
+    @staticmethod
+    def _read_numeric_array_value(lex: Type1Lexer) -> list[Any] | None:
+        """Read a ``[ n n n ] def`` style numeric array."""
+        # Skip until we see the array opener.
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                return None
+            kind, value = tok
+            if kind == TOKEN_START_ARRAY or kind == TOKEN_START_PROC:
+                break
+            if kind == TOKEN_NAME and value == "def":
+                return None
+        out: list[Any] = []
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                break
+            kind, value = tok
+            if kind in (TOKEN_END_ARRAY, TOKEN_END_PROC):
+                break
+            if kind in (TOKEN_INTEGER, TOKEN_REAL):
+                out.append(value)
+        # Drain to def.
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                break
+            if tok[0] == TOKEN_NAME and tok[1] in ("def", "ND", "|-"):
+                break
+        return out
+
+    @staticmethod
+    def _drain_value(lex: Type1Lexer) -> None:
+        """Skip tokens until the next ``def`` / ``ND`` / ``|-``.
+
+        Used to ignore Private-dict keys we don't model (``OtherSubrs``,
+        ``MinFeature``, ``UniqueID`` overrides at this scope, etc.).
+        """
+        depth = 0
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                return
+            kind, value = tok
+            if kind in (TOKEN_START_ARRAY, TOKEN_START_PROC):
+                depth += 1
+                continue
+            if kind in (TOKEN_END_ARRAY, TOKEN_END_PROC):
+                if depth > 0:
+                    depth -= 1
+                continue
+            if depth == 0 and kind == TOKEN_NAME and value in ("def", "ND", "|-"):
+                return
+
+    def _read_subrs(self, lex: Type1Lexer, out: list[bytes], len_iv: int) -> None:
+        """Walk the ``/Subrs N array dup K M RD <bytes> NP …`` block.
+
+        Each entry is a charstring; we decrypt it with the supplied
+        ``len_iv`` (from the Private dict's ``lenIV`` key, default 4)
+        and store the plaintext at index ``K``. Indexes need not be
+        in-order — upstream pre-sizes the list with ``None`` and slots
+        each entry into its declared position.
+        """
+        # Read array length.
+        length_tok = lex.next_token()
+        if length_tok is None or length_tok[0] != TOKEN_INTEGER:
+            return
+        length = int(length_tok[1])
+        # Pre-fill so out-of-order indexes are positional.
+        out.extend(b"" for _ in range(length))
+        # Optional ``array`` operator.
+        peek = lex.peek_token()
+        if peek and peek[0] == TOKEN_NAME and peek[1] == "array":
+            lex.next_token()
+
+        while True:
+            peek = lex.peek_token()
+            if peek is None:
+                return
+            if peek[0] != TOKEN_NAME or peek[1] != "dup":
+                # No more entries — drain trailing operators (def, etc.)
+                # until we exit. Upstream just falls through.
+                return
+            lex.next_token()  # consume ``dup``
+            idx_tok = lex.next_token()
+            if idx_tok is None or idx_tok[0] != TOKEN_INTEGER:
+                return
+            length_tok = lex.next_token()
+            if length_tok is None or length_tok[0] != TOKEN_INTEGER:
+                return
+            cs_tok = lex.next_token()
+            if cs_tok is None or cs_tok[0] != TOKEN_CHARSTRING:
+                return
+            idx = int(idx_tok[1])
+            try:
+                plain = Type1FontUtil.charstring_decrypt(cs_tok[1], len_iv)
+            except Exception:  # noqa: BLE001
+                plain = b""
+            if 0 <= idx < len(out):
+                out[idx] = plain
+            # Drain trailing put / NP / | / def per upstream readPut.
+            while True:
+                t = lex.peek_token()
+                if t is None:
+                    return
+                if t[0] == TOKEN_NAME and t[1] == "dup":
+                    break
+                lex.next_token()
+                if t[0] == TOKEN_NAME and t[1] in ("NP", "|", "put"):
+                    break
+
+    def _read_charstrings(
+        self, lex: Type1Lexer, out: dict[str, bytes], len_iv: int
+    ) -> None:
+        """Walk the ``/CharStrings N dict dup begin /name M RD <bytes> ND …``
+        block. Each ``name -> charstring`` entry is decrypted with
+        ``len_iv`` and stored under the literal glyph name."""
+        # Length / dict / dup / begin preamble — tolerant of variants.
+        length_tok = lex.next_token()
+        if length_tok is None:
+            return
+        # Drain through ``dict`` / ``dup`` / ``begin``.
+        for _ in range(4):
+            peek = lex.peek_token()
+            if peek is None:
+                return
+            if peek[0] == TOKEN_NAME and peek[1] in ("dict", "dup", "begin"):
+                lex.next_token()
+            else:
+                break
+
+        while True:
+            peek = lex.peek_token()
+            if peek is None:
+                return
+            if peek[0] == TOKEN_NAME and peek[1] == "end":
+                lex.next_token()
+                return
+            if peek[0] != TOKEN_LITERAL:
+                lex.next_token()
+                continue
+            name_tok = lex.next_token()
+            if name_tok is None:
+                return
+            length_tok = lex.next_token()
+            if length_tok is None or length_tok[0] != TOKEN_INTEGER:
+                continue
+            cs_tok = lex.next_token()
+            if cs_tok is None or cs_tok[0] != TOKEN_CHARSTRING:
+                continue
+            try:
+                plain = Type1FontUtil.charstring_decrypt(cs_tok[1], len_iv)
+            except Exception:  # noqa: BLE001
+                plain = b""
+            out[str(name_tok[1])] = plain
+            # Drain trailing readonly / noaccess / def / ND.
+            while True:
+                t = lex.peek_token()
+                if t is None:
+                    return
+                if t[0] != TOKEN_NAME:
+                    break
+                lex.next_token()
+                if t[1] in ("def", "ND", "|-"):
+                    break
 
     @staticmethod
     def _coerce_value(kind: str, value: Any, lex: Type1Lexer) -> Any:

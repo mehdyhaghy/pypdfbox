@@ -253,3 +253,102 @@ def test_from_bytes_apple_version_consumes_8_byte_header() -> None:
     sub = KerningSubtable.from_bytes(blob, version=1)
     assert sub.get_format() == 0
     assert sub.get_kerning(0, 1) == 0
+
+
+# ---------- KerningSubtable#read(stream, version) parity ------------------
+
+from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+
+def test_read_stream_version_0_format_0() -> None:
+    """Upstream ``read(data, 0)`` parity: parses an OpenType subtable from
+    a stream and populates pair data. Mirrors ``readSubtable0`` →
+    ``readSubtable0Format0``."""
+    blob = _make_format_0([(1, 2, -100), (3, 4, 50)], coverage=0x0001)
+    stream = MemoryTTFDataStream(blob)
+    sub = KerningSubtable()
+    sub.read(stream, 0)
+    assert sub.get_format() == 0
+    assert sub.is_horizontal() is True
+    assert sub.get_kerning(1, 2) == -100
+    assert sub.get_kerning(3, 4) == 50
+
+
+def test_read_stream_version_0_format_2() -> None:
+    """Upstream ``readSubtable0`` falls through to a no-op for format 2;
+    we go further and actually parse it. Verify the dispatch through the
+    stream-based ``read`` path."""
+    blob = _make_format_2(
+        left_first=10, left_classes=[0, 4],
+        right_first=20, right_classes=[0, 2],
+        row_width=4,
+        array_values=[100, -50, 0, 25],
+    )
+    stream = MemoryTTFDataStream(blob)
+    sub = KerningSubtable()
+    sub.read(stream, 0)
+    assert sub.get_format() == 2
+    assert sub.get_kerning(10, 20) == 100
+    assert sub.get_kerning(11, 21) == 25
+
+
+def test_read_stream_version_1_apple_logged_and_skipped() -> None:
+    """Upstream ``readSubtable1`` logs and skips. We mirror that — pair
+    data stays unset → 0 lookup."""
+    sub = KerningSubtable()
+    sub.read(MemoryTTFDataStream(b""), 1)
+    assert sub.get_kerning(1, 2) == 0
+
+
+def test_read_stream_unknown_version_raises() -> None:
+    """Upstream throws ``IllegalStateException`` for unknown versions —
+    we surface ``ValueError`` per Python convention."""
+    sub = KerningSubtable()
+    with pytest.raises(ValueError):
+        sub.read(MemoryTTFDataStream(b""), 99)
+
+
+def test_read_stream_version_0_bad_inner_version_skipped() -> None:
+    """If the inner subtable version field is non-zero, upstream logs
+    and bails out without populating pairs."""
+    # Inner version = 99 (invalid) → readSubtable0 returns early.
+    blob = struct.pack(">HHH", 99, 6, 0x0001)
+    stream = MemoryTTFDataStream(blob)
+    sub = KerningSubtable()
+    sub.read(stream, 0)
+    assert sub.get_kerning(0, 1) == 0
+
+
+def test_read_stream_version_0_short_length_skipped() -> None:
+    """Upstream rejects subtables shorter than the 6-byte header."""
+    blob = struct.pack(">HHH", 0, 4, 0x0001)
+    stream = MemoryTTFDataStream(blob)
+    sub = KerningSubtable()
+    sub.read(stream, 0)
+    assert sub.get_kerning(0, 1) == 0
+
+
+# ---------- binary search parity helper ------------------------------------
+
+
+def test_binary_search_pair_matches_dict_lookup() -> None:
+    """``binary_search_pair`` mirrors upstream's ``Arrays.binarySearch``
+    over the sorted (left, right) pair list. Must agree with the dict
+    path for every pair."""
+    blob = _make_format_0([(1, 2, -100), (1, 5, 7), (3, 4, 50), (10, 20, -3)])
+    sub = KerningSubtable.from_bytes(blob)
+    for left, right, expected in [(1, 2, -100), (1, 5, 7), (3, 4, 50), (10, 20, -3)]:
+        assert sub.binary_search_pair(left, right) == expected
+        assert sub.get_kerning(left, right) == expected
+
+
+def test_binary_search_pair_missing_returns_zero() -> None:
+    blob = _make_format_0([(1, 2, -100)])
+    sub = KerningSubtable.from_bytes(blob)
+    assert sub.binary_search_pair(99, 99) == 0
+    assert sub.binary_search_pair(-1, 2) == 0
+
+
+def test_binary_search_pair_no_pair_data_returns_zero() -> None:
+    sub = KerningSubtable()
+    assert sub.binary_search_pair(1, 2) == 0

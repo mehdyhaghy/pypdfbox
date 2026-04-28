@@ -248,26 +248,116 @@ class NamingTable(TTFTable):
     def get_name_records(self) -> list[NameRecord]:
         return self._name_records
 
-    def get_font_family(self) -> str | None:
-        return self._font_family
+    def iter_name_records(self) -> list[NameRecord]:
+        """Alias for :meth:`get_name_records` returning a fresh list copy.
 
-    def get_font_sub_family(self) -> str | None:
-        return self._font_sub_family
+        Upstream returns the live ``ArrayList`` from ``getNameRecords``;
+        a copy here makes per-call mutation safe for Python callers that
+        accidentally append.
+        """
+        return list(self._name_records)
 
-    def get_post_script_name(self) -> str | None:
-        return self._ps_name
+    def get_font_family(self, language_id: int | None = None) -> str | None:
+        """Font family name. With no argument, returns the English-language
+        record (Unicode platform → Microsoft Unicode BMP en-US → Macintosh
+        Roman English). With ``language_id`` supplied, looks up the record
+        in any platform under that language id, or returns ``None`` if no
+        such record exists."""
+        if language_id is None:
+            return self._font_family
+        return self._lookup_by_language(NameRecord.NAME_FONT_FAMILY_NAME, language_id)
 
-    def get_unique_id(self) -> str | None:
-        return self._unique_id
+    def get_font_sub_family(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._font_sub_family
+        return self._lookup_by_language(
+            NameRecord.NAME_FONT_SUB_FAMILY_NAME, language_id
+        )
 
-    def get_full_name(self) -> str | None:
-        return self._full_name
+    def get_post_script_name(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._ps_name
+        v = self._lookup_by_language(NameRecord.NAME_POSTSCRIPT_NAME, language_id)
+        return v.strip() if v is not None else None
 
-    def get_version(self) -> str | None:
-        return self._version
+    def get_unique_id(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._unique_id
+        return self._lookup_by_language(NameRecord.NAME_UNIQUE_FONT_ID, language_id)
 
-    def get_copyright(self) -> str | None:
-        return self._copyright
+    def get_full_name(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._full_name
+        return self._lookup_by_language(NameRecord.NAME_FULL_FONT_NAME, language_id)
 
-    def get_trademark(self) -> str | None:
-        return self._trademark
+    def get_version(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._version
+        return self._lookup_by_language(NameRecord.NAME_VERSION, language_id)
+
+    def get_copyright(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._copyright
+        return self._lookup_by_language(NameRecord.NAME_COPYRIGHT, language_id)
+
+    def get_trademark(self, language_id: int | None = None) -> str | None:
+        if language_id is None:
+            return self._trademark
+        return self._lookup_by_language(NameRecord.NAME_TRADEMARK, language_id)
+
+    # ---- language / record discovery (no upstream equivalent — additions) ----
+
+    def language_records(self, name_id: int) -> list[NameRecord]:
+        """Every :class:`NameRecord` for ``name_id`` in read order.
+
+        Mirrors upstream callers that traverse
+        ``lookupTable.get(nameId)`` to enumerate language variants of one
+        name; this returns the underlying records so the platform /
+        encoding / language ids remain accessible on each entry.
+        """
+        return [nr for nr in self._name_records if nr.get_name_id() == name_id]
+
+    def language_ids(self, name_id: int) -> list[int]:
+        """Distinct ``language_id`` values present for ``name_id``."""
+        seen: list[int] = []
+        for nr in self._name_records:
+            if nr.get_name_id() != name_id:
+                continue
+            lid = nr.get_language_id()
+            if lid not in seen:
+                seen.append(lid)
+        return seen
+
+    def name_ids(self) -> list[int]:
+        """Sorted list of distinct ``name_id`` values present in this table.
+        Useful for tools that enumerate everything the font advertises
+        (translators, font inspectors)."""
+        return sorted(self._lookup_table.keys())
+
+    def has_name(
+        self,
+        name_id: int,
+        platform_id: int | None = None,
+        encoding_id: int | None = None,
+        language_id: int | None = None,
+    ) -> bool:
+        """``True`` if a record exists matching the supplied ids. With
+        only ``name_id`` supplied, returns ``True`` if any record carries
+        that name id."""
+        if platform_id is None and encoding_id is None and language_id is None:
+            return name_id in self._lookup_table
+        return self.get_name(name_id, platform_id, encoding_id, language_id) is not None
+
+    def _lookup_by_language(self, name_id: int, language_id: int) -> str | None:
+        """Search every (platform, encoding) for a record matching
+        ``(name_id, language_id)``; return its decoded string or ``None``."""
+        platforms = self._lookup_table.get(name_id)
+        if platforms is None:
+            return None
+        for encodings in platforms.values():
+            for languages in encodings.values():
+                if language_id in languages:
+                    v = languages[language_id]
+                    if v is not None:
+                        return v
+        return None
