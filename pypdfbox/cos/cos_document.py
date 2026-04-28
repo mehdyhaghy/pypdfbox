@@ -59,6 +59,19 @@ class COSDocument(COSBase):
         self._linearized_dict: PDLinearizationDictionary | None = None
         self._linearized_resolved: bool = False
         self._closed: bool = False
+        # Highest object number seen by the parser — used by the writer when
+        # allocating new indirect objects so it doesn't collide with existing
+        # ones. ``0`` means "no objects seen yet".
+        self._highest_xref_object_number: int = 0
+        # When True (the default), ``__del__`` logs a warning if the document
+        # was never explicitly closed; mirrors PDFBox's ``warnMissingClose``.
+        self._warn_missing_close: bool = True
+        # Sparse byte-offset map populated by the parser as it walks the xref.
+        # Mirrors PDFBox's ``Map<COSObjectKey, Long> xrefTable``. ``None`` for
+        # free entries; positive integers are absolute file offsets; negative
+        # integers encode object-stream membership (``-objstm_object_number``)
+        # following the PDFBox convention.
+        self._xref_table: dict[COSObjectKey, int] = {}
 
     # ---------- object pool ----------
 
@@ -75,6 +88,13 @@ class COSDocument(COSBase):
             existing = COSObject(key.object_number, key.generation_number)
             self._objects[key] = existing
         return existing
+
+    def get_object(self, key: COSObjectKey) -> COSObject | None:
+        """Return the ``COSObject`` registered for ``key`` or ``None`` if no
+        such object has been seen by the parser yet. Mirrors PDFBox's
+        ``getObjectFromPool``-companion ``getObject(COSObjectKey)`` lookup —
+        does NOT auto-create a placeholder."""
+        return self._objects.get(key)
 
     def has_object(self, key: COSObjectKey) -> bool:
         return key in self._objects
@@ -93,12 +113,20 @@ class COSDocument(COSBase):
         """Bulk-register xref entries — mirrors PDFBox's ``addXRefTable``.
 
         Entries with a ``None`` key (PDFBOX-6132 — corrupt xref entry) are
-        ignored; the offset value itself is currently unused by ``COSDocument``
-        but kept in the signature for parity."""
-        for key in table:
+        ignored; offsets are stored in ``_xref_table`` for later retrieval via
+        :meth:`get_xref_table`."""
+        for key, offset in table.items():
             if key is None:
                 continue
             self.get_object_from_pool(key)
+            self._xref_table[key] = offset
+
+    def get_xref_table(self) -> dict[COSObjectKey, int]:
+        """Sparse object-key → byte-offset map populated by the parser.
+        Mirrors PDFBox's ``getXrefTable()``. Positive offsets are absolute
+        file positions; negative values encode object-stream membership
+        (``-objstm_object_number`` per PDFBox convention)."""
+        return self._xref_table
 
     def get_objects_by_type(self, type_name: COSName | str) -> list[COSObject]:
         """Return every resolved object whose dictionary's ``/Type`` equals
@@ -191,6 +219,24 @@ class COSDocument(COSBase):
     def set_xref_stream(self, value: bool) -> None:
         self._is_xref_stream = value
 
+    def set_is_xref_stream(self, value: bool) -> None:
+        """Mirror of upstream ``setIsXRefStream(boolean)``. Kept alongside
+        :meth:`set_xref_stream` for naming parity with PDFBox 3.x."""
+        self._is_xref_stream = value
+
+    # ---------- highest xref object number ----------
+
+    def get_highest_xref_object_number(self) -> int:
+        """Largest object number the parser has registered against this
+        document — used by the writer when allocating new objects so it
+        doesn't reuse an existing number."""
+        return self._highest_xref_object_number
+
+    def set_highest_xref_object_number(self, number: int) -> None:
+        if number < 0:
+            raise ValueError("highest xref object number must be non-negative")
+        self._highest_xref_object_number = number
+
     # ---------- source / startxref (incremental save plumbing) ----------
 
     def get_source(self) -> RandomAccessRead | None:
@@ -220,11 +266,18 @@ class COSDocument(COSBase):
     def is_closed(self) -> bool:
         return self._closed
 
+    def set_warn_missing_close(self, warn: bool) -> None:
+        """Mirror of PDFBox ``setWarnMissingClose``. When ``False`` the
+        finalizer suppresses the "document was not closed" log warning. The
+        parser flips this off when it is going to retain a reference itself."""
+        self._warn_missing_close = warn
+
     def close(self) -> None:
         if self._closed:
             return
         self._closed = True
         self._objects.clear()
+        self._xref_table.clear()
         if self._owns_scratch:
             self._scratch_file.close()
         if self._source is not None and not self._source.is_closed():
@@ -235,6 +288,24 @@ class COSDocument(COSBase):
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
+
+    def __del__(self) -> None:  # pragma: no cover - finalizer
+        # Mirror PDFBox's "warnMissingClose": if the user forgot to close
+        # the document and warnings are enabled, log it and best-effort
+        # release the scratch / source so resources are not leaked. We
+        # swallow any exceptions because finalizers run during interpreter
+        # shutdown when modules may already be torn down.
+        try:
+            if not getattr(self, "_closed", True):
+                if getattr(self, "_warn_missing_close", False):
+                    import logging
+
+                    logging.getLogger(__name__).warning(
+                        "COSDocument was not closed — call close() explicitly",
+                    )
+                self.close()
+        except Exception:
+            pass
 
     def __repr__(self) -> str:
         return (

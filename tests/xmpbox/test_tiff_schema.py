@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from pypdfbox.xmpbox import (
+    AgentNameType,
+    DateType,
     DomXmpParser,
+    IntegerType,
+    ProperNameType,
+    RationalType,
+    TextType,
     TiffSchema,
     XMPMetadata,
 )
@@ -46,6 +52,7 @@ def test_local_name_constants_match_upstream() -> None:
     assert TiffSchema.SOFTWARE == "Software"
     assert TiffSchema.MAKE == "Make"
     assert TiffSchema.MODEL == "Model"
+    assert TiffSchema.NATIVE_DIGEST == "NativeDigest"
 
 
 def test_default_accessors_return_none() -> None:
@@ -322,3 +329,171 @@ def test_dom_parser_dispatches_image_description_lang_alt_onto_typed_schema() ->
 def test_dom_parser_get_namespace_table_includes_tiff() -> None:
     table = DomXmpParser().get_namespace_table()
     assert table.get("tiff") == "http://ns.adobe.com/tiff/1.0/"
+
+
+# --- Wave 39 round-out: typed-property accessors -----------------------
+
+
+def test_native_digest_round_trip() -> None:
+    schema = _tiff()
+    assert schema.get_native_digest() is None
+    schema.set_native_digest("AABBCCDD11223344")
+    assert schema.get_native_digest() == "AABBCCDD11223344"
+    schema.set_native_digest(None)
+    assert schema.get_native_digest() is None
+
+
+def test_native_digest_typed_property() -> None:
+    schema = _tiff()
+    metadata = schema._metadata
+    prop = TextType(
+        metadata,
+        TiffSchema.NAMESPACE,
+        TiffSchema.PREFERRED_PREFIX,
+        TiffSchema.NATIVE_DIGEST,
+        "DEADBEEF",
+    )
+    schema.set_native_digest_property(prop)
+    fetched = schema.get_native_digest_property()
+    assert isinstance(fetched, TextType)
+    assert fetched.get_string_value() == "DEADBEEF"
+    # Round-trip through string accessor.
+    assert schema.get_native_digest() == "DEADBEEF"
+
+
+def test_make_model_artist_typed_property() -> None:
+    schema = _tiff()
+    metadata = schema._metadata
+    schema.set_make_property(
+        ProperNameType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.MAKE, "Canon"
+        )
+    )
+    schema.set_model_property(
+        ProperNameType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.MODEL, "EOS R5"
+        )
+    )
+    schema.set_artist_property(
+        ProperNameType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.ARTIST, "Ansel"
+        )
+    )
+    assert isinstance(schema.get_make_property(), ProperNameType)
+    assert schema.get_make_property().get_string_value() == "Canon"
+    assert isinstance(schema.get_model_property(), ProperNameType)
+    assert schema.get_model_property().get_string_value() == "EOS R5"
+    assert isinstance(schema.get_artist_property(), ProperNameType)
+    assert schema.get_artist_property().get_string_value() == "Ansel"
+
+
+def test_software_typed_property() -> None:
+    schema = _tiff()
+    metadata = schema._metadata
+    schema.set_software_property(
+        AgentNameType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.SOFTWARE, "ACR 16"
+        )
+    )
+    fetched = schema.get_software_property()
+    assert isinstance(fetched, AgentNameType)
+    assert fetched.get_string_value() == "ACR 16"
+    # String getter sees the same value.
+    assert schema.get_software() == "ACR 16"
+
+
+def test_date_time_typed_property() -> None:
+    schema = _tiff()
+    metadata = schema._metadata
+    schema.set_date_time_property(
+        DateType(
+            metadata,
+            TiffSchema.NAMESPACE,
+            "tiff",
+            TiffSchema.DATE_TIME,
+            "2026-04-27T12:34:56Z",
+        )
+    )
+    fetched = schema.get_date_time_property()
+    assert isinstance(fetched, DateType)
+    # ``DateType`` normalises ``Z`` into the explicit ``+00:00`` offset; the
+    # round-trip preserves the same timezone moment regardless of spelling.
+    assert fetched.get_string_value().startswith("2026-04-27T12:34:56")
+    assert schema.get_date_time().startswith("2026-04-27T12:34:56")
+
+
+def test_integer_typed_property_round_trip() -> None:
+    schema = _tiff()
+    metadata = schema._metadata
+    schema.set_image_width_property(
+        IntegerType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.IMAGE_WIDTH, 4000
+        )
+    )
+    schema.set_orientation_property(
+        IntegerType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.ORIENTATION, 1
+        )
+    )
+    assert isinstance(schema.get_image_width_property(), IntegerType)
+    assert schema.get_image_width_property().get_value() == 4000
+    assert schema.get_image_width() == 4000
+    assert schema.get_orientation_property().get_value() == 1
+
+
+def test_integer_typed_property_promotes_string_form() -> None:
+    """If a parser stored a raw string, the typed getter still returns IntegerType."""
+    schema = _tiff()
+    schema.set_text_property_value(TiffSchema.IMAGE_LENGTH, "3000")
+    fetched = schema.get_image_length_property()
+    assert isinstance(fetched, IntegerType)
+    assert fetched.get_value() == 3000
+
+
+def test_rational_typed_property_round_trip() -> None:
+    schema = _tiff()
+    metadata = schema._metadata
+    schema.set_x_resolution_property(
+        RationalType(
+            metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.XRESOLUTION, "300/1"
+        )
+    )
+    fetched = schema.get_x_resolution_property()
+    assert isinstance(fetched, RationalType)
+    assert fetched.get_string_value() == "300/1"
+    # String form sees the same value.
+    assert schema.get_x_resolution() == "300/1"
+    # Fraction helper.
+    fr = fetched.as_fraction()
+    assert fr is not None
+    assert fr.numerator == 300
+    assert fr.denominator == 1
+
+
+def test_typed_setter_clears_with_none() -> None:
+    schema = _tiff()
+    schema.set_image_width(4000)
+    schema.set_image_width_property(None)
+    assert schema.get_image_width() is None
+    assert schema.get_image_width_property() is None
+
+
+def test_all_typed_property_getters_return_none_when_empty() -> None:
+    schema = _tiff()
+    assert schema.get_native_digest_property() is None
+    assert schema.get_make_property() is None
+    assert schema.get_model_property() is None
+    assert schema.get_artist_property() is None
+    assert schema.get_software_property() is None
+    assert schema.get_date_time_property() is None
+    assert schema.get_image_width_property() is None
+    assert schema.get_image_length_property() is None
+    assert schema.get_compression_property() is None
+    assert schema.get_photometric_interpretation_property() is None
+    assert schema.get_orientation_property() is None
+    assert schema.get_samples_per_pixel_property() is None
+    assert schema.get_planar_configuration_property() is None
+    assert schema.get_y_cb_cr_positioning_property() is None
+    assert schema.get_resolution_unit_property() is None
+    assert schema.get_x_resolution_property() is None
+    assert schema.get_y_resolution_property() is None

@@ -193,3 +193,80 @@ def test_external_int_object_does_not_leak_into_pool() -> None:
         doc.get_object_from_pool(COSObjectKey(1, 0))
         _ = COSInteger(99)
         assert len(doc.get_objects()) == 1
+
+
+def test_get_object_returns_none_for_unknown_key() -> None:
+    with COSDocument() as doc:
+        assert doc.get_object(COSObjectKey(42, 0)) is None
+        # ``get_object`` does NOT auto-create.
+        assert doc.get_objects() == []
+
+
+def test_get_object_returns_existing_placeholder() -> None:
+    with COSDocument() as doc:
+        key = COSObjectKey(7, 0)
+        placeholder = doc.get_object_from_pool(key)
+        assert doc.get_object(key) is placeholder
+
+
+def test_xref_table_round_trip() -> None:
+    with COSDocument() as doc:
+        table = {
+            COSObjectKey(1, 0): 100,
+            COSObjectKey(2, 0): 200,
+            None: 999,  # PDFBOX-6132 — must be ignored
+        }
+        doc.add_xref_table(table)  # type: ignore[arg-type]
+        x = doc.get_xref_table()
+        assert x[COSObjectKey(1, 0)] == 100
+        assert x[COSObjectKey(2, 0)] == 200
+        assert None not in x
+        assert len(x) == 2
+
+
+def test_xref_table_cleared_on_close() -> None:
+    doc = COSDocument()
+    doc.add_xref_table({COSObjectKey(1, 0): 50})
+    assert len(doc.get_xref_table()) == 1
+    doc.close()
+    assert doc.get_xref_table() == {}
+
+
+def test_set_is_xref_stream_alias() -> None:
+    with COSDocument() as doc:
+        assert not doc.is_xref_stream()
+        doc.set_is_xref_stream(True)
+        assert doc.is_xref_stream()
+        doc.set_is_xref_stream(False)
+        assert not doc.is_xref_stream()
+
+
+def test_highest_xref_object_number() -> None:
+    with COSDocument() as doc:
+        assert doc.get_highest_xref_object_number() == 0
+        doc.set_highest_xref_object_number(42)
+        assert doc.get_highest_xref_object_number() == 42
+        with pytest.raises(ValueError):
+            doc.set_highest_xref_object_number(-1)
+
+
+def test_set_warn_missing_close_does_not_raise() -> None:
+    with COSDocument() as doc:
+        # Smoke test: the toggle is honored (no raise) and is idempotent.
+        doc.set_warn_missing_close(False)
+        doc.set_warn_missing_close(True)
+
+
+def test_start_xref_round_trip() -> None:
+    with COSDocument() as doc:
+        assert doc.get_start_xref() == 0
+        doc.set_start_xref(12345)
+        assert doc.get_start_xref() == 12345
+        with pytest.raises(ValueError):
+            doc.set_start_xref(-1)
+
+
+def test_version_set_int_promoted_to_float() -> None:
+    with COSDocument() as doc:
+        doc.set_version(1.7)
+        assert doc.get_version() == 1.7

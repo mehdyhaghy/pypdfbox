@@ -187,14 +187,17 @@ def test_parse_object_dynamically_resolves_pool_loader() -> None:
         ("parse_xref_object_stream", (1024,)),
         ("parse_xref_table", (1024,)),
         ("parse_pdf_header", ()),
-        ("bf_search_for_objects", ()),
-        ("bf_search_for_xref", (0,)),
     ],
 )
 def test_deferred_placeholder_raises(method_name: str, args: tuple) -> None:
     p = _parser(b"")
     with pytest.raises(NotImplementedError):
         getattr(p, method_name)(*args)
+
+
+# ``bf_search_for_objects`` / ``bf_search_for_xref`` were deferred
+# placeholders until the recovery cluster — they're now real
+# implementations covered by ``test_cos_parser_recovery.py``.
 
 
 # ---------- /XRef offset accessor round-trip ----------

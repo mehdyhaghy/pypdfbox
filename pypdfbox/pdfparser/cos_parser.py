@@ -512,28 +512,343 @@ class COSParser(BaseParser):
         )
 
     # Brute-force scan helpers — used by upstream's malformed-recovery
-    # path. Not yet implemented in pypdfbox.
+    # path. Mirrors `org.apache.pdfbox.pdfparser.COSParser` recovery
+    # surface (``bfSearchForObjects`` / ``bfSearchForXRef`` /
+    # ``rebuildTrailer`` / ``parseXrefStream``). Lenient mode must be
+    # enabled for these to be exercised by upstream callers, but the
+    # methods themselves work in any mode.
 
-    def bf_search_for_objects(self) -> dict[COSObjectKey, int] | None:
-        """Brute-force scan the source for ``n g obj`` headers and
-        return an offset map. Mirrors upstream
+    def _read_all_bytes(self) -> bytes:
+        """Snapshot the entire source as a ``bytes`` blob. Position is
+        preserved. Used by the brute-force scanners below — they are
+        whole-file linear sweeps and a single ``bytes`` view is the
+        simplest fast path."""
+        saved = self.position
+        try:
+            length = self._src.length()
+            self._src.seek(0)
+            buf = bytearray(length)
+            read = 0
+            while read < length:
+                n = self._src.read_into(buf, read, length - read)
+                if n <= 0:
+                    break
+                read += n
+            return bytes(buf[:read])
+        finally:
+            self._src.seek(saved)
+
+    def bf_search_for_objects(self) -> dict[COSObjectKey, int]:
+        """Brute-force scan the source for ``n g obj`` headers and return
+        an ``{COSObjectKey: byte_offset}`` map. Mirrors upstream
         ``COSParser.bfSearchForObjects``.
 
-        Not yet implemented — pypdfbox does not currently provide the
-        malformed-PDF recovery scan."""
-        raise NotImplementedError(
-            "bf_search_for_objects() is not implemented in pypdfbox; "
-            "the malformed-recovery brute-force scan is deferred"
-        )
+        The scan walks the raw source byte-by-byte looking for the
+        keyword ``obj`` preceded by two unsigned integers separated by
+        whitespace. The recorded offset points at the start of the
+        leading object number — the same offset format that an xref
+        entry would carry."""
+        data = self._read_all_bytes()
+        offsets: dict[COSObjectKey, int] = {}
+        n = len(data)
+        i = 0
+        ws = self.WHITESPACE
+        # Search for the literal token ``obj`` separated from neighbours
+        # by whitespace; then back-walk to recover the (n g) header.
+        while i < n - 3:
+            j = data.find(b"obj", i)
+            if j < 0:
+                break
+            # ``obj`` must be preceded by whitespace and followed by a
+            # whitespace / delimiter / EOF — otherwise it's a substring
+            # of e.g. ``endobj`` or part of a name.
+            if j == 0 or data[j - 1] not in ws:
+                i = j + 1
+                continue
+            after = j + 3
+            if after < n and data[after] not in ws and data[after] not in self.DELIMITERS:
+                i = j + 1
+                continue
+            # Back-walk: skip whitespace, then digits (gen), whitespace,
+            # then digits (obj number).
+            k = j - 1
+            while k >= 0 and data[k] in ws:
+                k -= 1
+            gen_end = k + 1
+            while k >= 0 and 0x30 <= data[k] <= 0x39:
+                k -= 1
+            gen_start = k + 1
+            if gen_start == gen_end:
+                i = j + 1
+                continue
+            while k >= 0 and data[k] in ws:
+                k -= 1
+            num_end = k + 1
+            while k >= 0 and 0x30 <= data[k] <= 0x39:
+                k -= 1
+            num_start = k + 1
+            if num_start == num_end:
+                i = j + 1
+                continue
+            # Make sure the byte before the object number isn't itself a
+            # digit — otherwise we'd be picking up only the trailing
+            # digits of a longer number (rare, but possible in malformed
+            # streams where two int literals abut).
+            if num_start > 0 and 0x30 <= data[num_start - 1] <= 0x39:
+                i = j + 1
+                continue
+            try:
+                obj_num = int(data[num_start:num_end])
+                gen_num = int(data[gen_start:gen_end])
+            except ValueError:
+                i = j + 1
+                continue
+            if obj_num < 0 or gen_num < 0:
+                i = j + 1
+                continue
+            key = COSObjectKey(obj_num, gen_num)
+            # First occurrence wins for any given key — matches upstream
+            # behaviour where the brute-force scan records the *earliest*
+            # offset and leaves the resolver to disambiguate.
+            offsets.setdefault(key, num_start)
+            i = j + 3
+        return offsets
 
-    def bf_search_for_xref(self, xref_offset: int) -> int:
-        """Brute-force scan the source for the nearest ``xref`` keyword
-        and return its byte offset. Mirrors upstream
+    def bf_search_for_xref(self, start_xref_offset: int) -> int:
+        """Brute-force scan the source for an ``xref`` keyword (or an
+        xref-stream object header) near ``start_xref_offset`` and return
+        the byte offset of the recovered xref. Mirrors upstream
         ``COSParser.bfSearchForXRef``.
 
-        Not yet implemented — pypdfbox does not currently provide the
-        malformed-PDF recovery scan."""
-        raise NotImplementedError(
-            f"bf_search_for_xref({xref_offset}) is not implemented in "
-            "pypdfbox; the malformed-recovery brute-force scan is deferred"
-        )
+        The scan first looks for a literal ``xref`` keyword (traditional
+        cross-reference table); if none is found it falls back to the
+        nearest ``n g obj`` header containing an ``/XRef`` typed stream
+        dictionary. Returns ``-1`` if neither candidate can be located."""
+        data = self._read_all_bytes()
+        ws = self.WHITESPACE
+        # 1) Traditional xref tables: scan for the literal ``xref`` token
+        # (must be preceded and followed by whitespace / EOF — guards
+        # against ``startxref`` and ``/XRef`` substrings).
+        candidates: list[int] = []
+        i = 0
+        n = len(data)
+        while i <= n - 4:
+            j = data.find(b"xref", i)
+            if j < 0:
+                break
+            before_ok = j == 0 or data[j - 1] in ws
+            after_ok = j + 4 == n or data[j + 4] in ws
+            # Reject the trailing ``xref`` of ``startxref`` — preceded
+            # by ``start`` not whitespace.
+            if before_ok and after_ok:
+                # Reject ``/XRef`` (preceded by ``/``).
+                if not (j > 0 and data[j - 1] == 0x2F):
+                    candidates.append(j)
+            i = j + 1
+        if candidates:
+            # Pick the candidate nearest to ``start_xref_offset``; ties
+            # break to the earlier offset (matches upstream).
+            target = max(0, int(start_xref_offset))
+            return min(candidates, key=lambda c: (abs(c - target), c))
+        # 2) Fall back to xref-stream objects: scan for ``n g obj`` and
+        # check the dictionary for ``/Type /XRef``.
+        objects = self.bf_search_for_objects()
+        if not objects:
+            return -1
+        target = max(0, int(start_xref_offset))
+        best_offset = -1
+        best_distance = -1
+        for offset in objects.values():
+            self.seek(offset)
+            try:
+                # Parse just enough to get the dictionary.
+                self.read_int()
+                self.skip_whitespace()
+                self.read_int()
+                self.skip_whitespace()
+                kw = self.read_keyword()
+                if kw != b"obj":
+                    continue
+                self.skip_whitespace()
+                if self.peek_byte() != 0x3C:
+                    continue
+                # Don't fully parse — just look for "/Type/XRef" /
+                # "/Type /XRef" textual marker between ``<<`` and ``>>``.
+            except (PDFParseError, ValueError):
+                continue
+            # Substring check on the raw bytes between the object header
+            # and the next ``endobj``/``stream`` keyword.
+            end = data.find(b"endobj", offset)
+            stream_pos = data.find(b"stream", offset)
+            if 0 <= stream_pos < end or end < 0:
+                end = stream_pos if stream_pos >= 0 else min(offset + 4096, n)
+            window = data[offset:end]
+            if b"/XRef" not in window or b"/Type" not in window:
+                continue
+            distance = abs(offset - target)
+            if best_offset < 0 or distance < best_distance:
+                best_offset = offset
+                best_distance = distance
+        return best_offset
+
+    def rebuild_trailer(self) -> COSDictionary:
+        """Reconstruct a trailer dictionary by scanning every recovered
+        object for ``/Root``, ``/Info``, ``/Encrypt``, and ``/ID``
+        candidates. Mirrors upstream ``COSParser.rebuildTrailer``.
+
+        The first object that owns a ``/Type /Catalog`` entry wins for
+        ``/Root``; the first object containing standard document-info
+        keys (``/CreationDate``, ``/Producer``, ``/Title``, ...) wins for
+        ``/Info``. ``/Encrypt`` and ``/ID`` are copied from any object
+        whose dictionary advertises them. The reconstructed trailer also
+        receives a ``/Size`` equal to ``max(object_number) + 1``."""
+        objects = self.bf_search_for_objects()
+        trailer = COSDictionary()
+        if not objects:
+            return trailer
+        max_obj = 0
+        info_keys = {
+            COSName.get_pdf_name("CreationDate"),
+            COSName.get_pdf_name("ModDate"),
+            COSName.get_pdf_name("Producer"),
+            COSName.get_pdf_name("Creator"),
+            COSName.get_pdf_name("Title"),
+            COSName.get_pdf_name("Author"),
+            COSName.get_pdf_name("Subject"),
+            COSName.get_pdf_name("Keywords"),
+        }
+        catalog_name = COSName.get_pdf_name("Catalog")
+        type_name = COSName.get_pdf_name("Type")
+        encrypt_name = COSName.get_pdf_name("Encrypt")
+        id_name = COSName.get_pdf_name("ID")
+        root_name = COSName.get_pdf_name("Root")
+        info_name = COSName.get_pdf_name("Info")
+        size_name = COSName.get_pdf_name("Size")
+        for key, offset in objects.items():
+            if key.object_number > max_obj:
+                max_obj = key.object_number
+            self.seek(offset)
+            try:
+                self.read_int()
+                self.skip_whitespace()
+                self.read_int()
+                self.skip_whitespace()
+                kw = self.read_keyword()
+                if kw != b"obj":
+                    continue
+                self.skip_whitespace()
+                if self.peek_byte() != 0x3C:
+                    continue
+                second = self._peek_two_bytes()[1]
+                if second != 0x3C:
+                    continue
+                d = self.parse_cos_dictionary()
+            except (PDFParseError, NotImplementedError, ValueError):
+                continue
+            if not isinstance(d, COSDictionary):
+                continue
+            # /Root candidate: dictionary advertises /Type /Catalog.
+            if (
+                not trailer.contains_key(root_name)
+                and d.get_item(type_name) is catalog_name
+            ):
+                trailer.set_item(
+                    root_name,
+                    self._make_indirect_reference(
+                        key.object_number, key.generation_number
+                    ),
+                )
+            # /Info candidate: dictionary contains a known info key.
+            if (
+                not trailer.contains_key(info_name)
+                and any(d.get_item(k) is not None for k in info_keys)
+                and d.get_item(type_name) is not catalog_name
+            ):
+                trailer.set_item(
+                    info_name,
+                    self._make_indirect_reference(
+                        key.object_number, key.generation_number
+                    ),
+                )
+            # /Encrypt: copy reference / direct value through verbatim.
+            if not trailer.contains_key(encrypt_name):
+                enc = d.get_item(encrypt_name)
+                if enc is not None:
+                    trailer.set_item(encrypt_name, enc)
+            # /ID: same.
+            if not trailer.contains_key(id_name):
+                ids = d.get_item(id_name)
+                if ids is not None:
+                    trailer.set_item(id_name, ids)
+        trailer.set_item(size_name, COSInteger.get(max_obj + 1))
+        return trailer
+
+    def parse_xref_stream(
+        self, xref_stream_dict: COSDictionary, xref_table: dict | None = None
+    ) -> dict[COSObjectKey, int]:
+        """Tolerantly parse a PDF 1.5+ xref-stream trailer dictionary's
+        ``/W`` and ``/Index`` arrays and return an
+        ``{COSObjectKey: in-stream-byte-offset}`` map. Mirrors upstream
+        ``COSParser.parseXrefStream`` (the dictionary-shape inspection
+        half — the body decode lives in
+        ``PDFParser._decode_xref_stream_entries``).
+
+        ``/W`` may have any non-negative element widths (0 means "field
+        absent"); ``/Index`` defaults to ``[0 /Size]`` when missing. The
+        return value records the *byte position within the decoded
+        stream body* at which each entry starts, so callers that need to
+        reach into a partially-parsed body can do so without re-walking
+        ``/Index`` themselves.
+
+        ``xref_table`` is accepted for API parity (upstream merges into a
+        shared map) but defaults to a fresh dict; the populated map is
+        always returned to the caller."""
+        if xref_table is None:
+            xref_table = {}
+        w_obj = xref_stream_dict.get_dictionary_object(COSName.get_pdf_name("W"))
+        if not isinstance(w_obj, COSArray):
+            raise PDFParseError("xref stream missing /W array")
+        w = []
+        for i in range(w_obj.size()):
+            v = w_obj.get(i)
+            if isinstance(v, COSInteger):
+                w.append(v.int_value())
+            elif isinstance(v, COSFloat):
+                w.append(int(v.float_value()))
+            else:
+                w.append(0)
+        # Pad /W out to at least three fields — older malformed encoders
+        # sometimes ship a 2-element array (omitting the trailing
+        # generation slot).
+        while len(w) < 3:
+            w.append(0)
+        if any(v < 0 for v in w):
+            raise PDFParseError("xref stream /W contains a negative width")
+        entry_size = sum(w)
+        if entry_size <= 0:
+            raise PDFParseError("xref stream /W defines a zero-byte entry")
+        # /Index defaults to [0 /Size] per ISO 32000-1 §7.5.8.2.
+        index_obj = xref_stream_dict.get_dictionary_object(COSName.get_pdf_name("Index"))
+        index_pairs: list[tuple[int, int]] = []
+        if isinstance(index_obj, COSArray):
+            i = 0
+            while i + 1 < index_obj.size():
+                first = index_obj.get(i)
+                count = index_obj.get(i + 1)
+                if isinstance(first, COSInteger) and isinstance(count, COSInteger):
+                    index_pairs.append((first.int_value(), count.int_value()))
+                i += 2
+        if not index_pairs:
+            size_obj = xref_stream_dict.get_dictionary_object(
+                COSName.get_pdf_name("Size")
+            )
+            size = size_obj.int_value() if isinstance(size_obj, COSInteger) else 0
+            index_pairs = [(0, size)]
+        body_offset = 0
+        for first_obj_num, count in index_pairs:
+            if count <= 0:
+                continue
+            for k in range(count):
+                xref_table[COSObjectKey(first_obj_num + k, 0)] = body_offset
+                body_offset += entry_size
+        return xref_table

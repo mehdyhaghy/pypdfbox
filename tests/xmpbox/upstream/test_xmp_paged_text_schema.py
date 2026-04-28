@@ -29,6 +29,10 @@ def test_property_local_names_match_upstream_constants() -> None:
     assert XMPageTextSchema.MAX_PAGE_SIZE == "MaxPageSize"
     # public static final String N_PAGES = "NPages";
     assert XMPageTextSchema.N_PAGES == "NPages"
+    # public static final String HAS_VISIBLE_TRANSPARENCY = "HasVisibleTransparency";
+    assert XMPageTextSchema.HAS_VISIBLE_TRANSPARENCY == "HasVisibleTransparency"
+    # public static final String HAS_VISIBLE_OVERPRINT = "HasVisibleOverprint";
+    assert XMPageTextSchema.HAS_VISIBLE_OVERPRINT == "HasVisibleOverprint"
     # public static final String PLATENAMES = "PlateNames";
     assert XMPageTextSchema.PLATENAMES == "PlateNames"
     # public static final String COLORANTS = "Colorants";

@@ -2,6 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .type import (
+    AbstractSimpleProperty,
+    AgentNameType,
+    DateType,
+    IntegerType,
+    ProperNameType,
+    RationalType,
+    TextType,
+)
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -12,52 +21,66 @@ class TiffSchema(XMPSchema):
     """
     Representation of the Adobe TIFF XMP schema.
 
-    Ported (subset, read+write path) from
-    ``org.apache.xmpbox.schema.TiffSchema`` (PDFBox 3.0). The schema captures
-    EXIF/TIFF tag metadata (``tiff:Make``, ``tiff:Model``, image dimensions,
-    resolution, etc.) Adobe applications embed alongside Dublin Core when
-    archiving raw or developed photos. Per Adobe XMP Specification Part 2 the
-    namespace is ``http://ns.adobe.com/tiff/1.0/`` with preferred prefix
-    ``tiff``. Property local names match upstream constants verbatim.
+    Ported from ``org.apache.xmpbox.schema.TIFFSchema`` (PDFBox 3.0). The
+    schema captures EXIF/TIFF tag metadata Adobe applications embed alongside
+    Dublin Core when archiving raw or developed photos. Per Adobe XMP
+    Specification Part 2 the namespace is ``http://ns.adobe.com/tiff/1.0/``
+    with preferred prefix ``tiff``. Property local names match upstream
+    constants verbatim.
 
-    Substitute target — upstream PDFBox 3.0.x does **not** ship a
-    ``CameraRawSchema`` (the public xmpbox skips Camera Raw), so this port
-    fills the closest sibling: TIFF / camera-tag metadata. ``ExifSchema`` is
-    a separate, larger sibling and is left for a follow-up cluster.
+    Wave 39 round-out: layered typed (``TextType`` / ``IntegerType`` /
+    ``RationalType`` / ``DateType`` / ``ProperNameType`` / ``AgentNameType``)
+    ``*_property`` getter/setter pairs on top of the existing simple
+    string/int form accessors. Both forms share the same underlying property
+    store: typed setters install an :class:`AbstractSimpleProperty` instance
+    under the upstream local name, string-form getters transparently read
+    either form, and string-form setters continue to write plain string/int
+    values for back-compat.
 
-    Cluster ships text-typed accessors for the LangAlt-cardinality properties
-    (``ImageDescription`` / ``Copyright``), simple-string accessors for the
-    ProperName / AgentName / Date / Text properties, integer accessors for
-    the simple Integer properties, and Seq-of-string accessors for the array
-    properties:
+    Adobe TIFF tags covered (all 30+ per Adobe XMP spec Part 2):
 
-      * ``ImageDescription`` (LangAlt) — caption / description.
-      * ``Copyright`` (LangAlt) — copyright notice.
-      * ``Artist`` (ProperName) — image creator.
-      * ``Make`` (ProperName) — camera manufacturer.
-      * ``Model`` (ProperName) — camera model.
-      * ``Software`` (AgentName) — capture / processing software.
-      * ``DateTime`` (Date) — file change date/time (XMP date string).
-      * ``ImageWidth`` / ``ImageLength`` (Integer) — image pixel dimensions.
-      * ``Compression`` (Integer) — TIFF compression scheme tag.
-      * ``PhotometricInterpretation`` (Integer) — TIFF tag 262.
-      * ``Orientation`` (Integer) — TIFF tag 274 (1..8).
-      * ``SamplesPerPixel`` (Integer) — TIFF tag 277.
-      * ``PlanarConfiguration`` (Integer) — TIFF tag 284 (1=Chunky, 2=Planar).
-      * ``YCbCrPositioning`` (Integer) — TIFF tag 531.
-      * ``ResolutionUnit`` (Integer) — TIFF tag 296.
-      * ``BitsPerSample`` (Seq of Integer, stored as strings).
-      * ``YCbCrSubSampling`` (Seq of Integer, stored as strings).
-      * ``TransferFunction`` (Seq of Integer, stored as strings).
-      * ``XResolution`` / ``YResolution`` (Rational, stored as the upstream
-        ``"num/den"`` text form).
-      * ``WhitePoint``, ``PrimaryChromaticities``, ``YCbCrCoefficients``,
-        ``ReferenceBlackWhite`` (Seq of Rational, stored as ``"num/den"``).
+      Image-data structure (Integer):
 
-    Deferred until the typed ``RationalType`` and ``OECFType`` structs land:
-    typed Rational round-trip with numerator/denominator accessors. Callers
-    that need raw access before those wrappers ship can use the generic
-    :meth:`XMPSchema.get_property` accessor or the ``"num/den"`` string form.
+        * ``ImageWidth`` (tag 256), ``ImageLength`` (tag 257),
+          ``Compression`` (tag 259), ``PhotometricInterpretation`` (tag 262),
+          ``Orientation`` (tag 274 — 1..8), ``SamplesPerPixel`` (tag 277),
+          ``PlanarConfiguration`` (tag 284 — 1=Chunky, 2=Planar),
+          ``YCbCrPositioning`` (tag 531), ``ResolutionUnit`` (tag 296).
+
+      Image-data structure (Seq of Integer):
+
+        * ``BitsPerSample`` (tag 258), ``YCbCrSubSampling`` (tag 530),
+          ``TransferFunction`` (tag 301).
+
+      Image-data structure (Rational):
+
+        * ``XResolution`` (tag 282), ``YResolution`` (tag 283).
+
+      Image-data structure (Seq of Rational):
+
+        * ``WhitePoint`` (tag 318), ``PrimaryChromaticities`` (tag 319),
+          ``YCbCrCoefficients`` (tag 529), ``ReferenceBlackWhite`` (tag 532).
+
+      Recording offsets / data location: not part of XMP — only on disk.
+
+      Date / description (Date / LangAlt / ProperName / AgentName):
+
+        * ``DateTime`` (tag 306, Date), ``ImageDescription`` (tag 270,
+          LangAlt), ``Copyright`` (tag 33432, LangAlt), ``Make`` (tag 271,
+          ProperName), ``Model`` (tag 272, ProperName), ``Software``
+          (tag 305, AgentName), ``Artist`` (tag 315, ProperName).
+
+      Internal:
+
+        * ``NativeDigest`` (Text) — internal property used by Adobe
+          applications to detect XMP/legacy-EXIF round-trip mismatches.
+
+    Deferred until the typed ``OECFType`` / ``CFAPattern`` structs land:
+    none — TIFF schema does not use those structures (they live on
+    ``ExifSchema``). The Rational accessors provided here keep both a string
+    "<num>/<den>" form (round-trip parity with upstream wire format) and a
+    typed :class:`RationalType` form (callers can use
+    :meth:`RationalType.as_fraction`).
     """
 
     NAMESPACE = "http://ns.adobe.com/tiff/1.0/"
@@ -89,6 +112,7 @@ class TiffSchema(XMPSchema):
     SOFTWARE = "Software"
     MAKE = "Make"
     MODEL = "Model"
+    NATIVE_DIGEST = "NativeDigest"
 
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
@@ -100,6 +124,14 @@ class TiffSchema(XMPSchema):
         raw = self._properties.get(local_name)
         if raw is None:
             return None
+        if isinstance(raw, IntegerType):
+            return raw.get_value()
+        if isinstance(raw, AbstractSimpleProperty):
+            text = raw.get_string_value()
+            try:
+                return int(text.strip())
+            except (AttributeError, ValueError):
+                return None
         if isinstance(raw, bool):
             # bool subclasses int; reject so True/False can't sneak in.
             return int(raw)
@@ -127,6 +159,78 @@ class TiffSchema(XMPSchema):
             self.set_text_property_value(local_name, value)
         else:
             self.set_text_property_value(local_name, str(int(value)))
+
+    def _set_text(self, local_name: str, value: str | None) -> None:
+        if value is None:
+            self.remove_property(local_name)
+            return
+        self.set_text_property_value(local_name, value)
+
+    def _read_text_string(self, local_name: str) -> str | None:
+        raw = self._properties.get(local_name)
+        if isinstance(raw, AbstractSimpleProperty):
+            value = raw.get_string_value()
+            return value if isinstance(value, str) else None
+        return self.get_unqualified_text_property_value(local_name)
+
+    # --- internal: typed-instance helpers ----------------------------
+
+    def _typed_get(
+        self, local_name: str, expected: type[AbstractSimpleProperty]
+    ) -> AbstractSimpleProperty | None:
+        raw = self._properties.get(local_name)
+        if raw is None:
+            return None
+        if isinstance(raw, expected):
+            return raw
+        if isinstance(raw, AbstractSimpleProperty):
+            return expected(
+                self._metadata,
+                self._namespace,
+                self._prefix,
+                local_name,
+                raw.get_string_value(),
+            )
+        return expected(
+            self._metadata, self._namespace, self._prefix, local_name, raw
+        )
+
+    def _typed_set(
+        self, local_name: str, prop: AbstractSimpleProperty | None
+    ) -> None:
+        if prop is None:
+            self.remove_property(local_name)
+            return
+        prop.set_property_name(local_name)
+        self._properties[local_name] = prop
+
+    # --- internal: rational text/typed helpers -----------------------
+
+    def _get_rational_string(self, local_name: str) -> str | None:
+        raw = self._properties.get(local_name)
+        if raw is None:
+            return None
+        if isinstance(raw, AbstractSimpleProperty):
+            value = raw.get_string_value()
+            return value if isinstance(value, str) else None
+        if isinstance(raw, str):
+            return raw
+        return self.get_unqualified_text_property_value(local_name)
+
+    def _set_rational_string(self, local_name: str, value: str | None) -> None:
+        if value is None:
+            self.remove_property(local_name)
+            return
+        self.set_text_property_value(local_name, value)
+
+    def _get_rational_property(self, local_name: str) -> RationalType | None:
+        result = self._typed_get(local_name, RationalType)
+        return result if isinstance(result, RationalType) else None
+
+    def _set_rational_property(
+        self, local_name: str, value: RationalType | None
+    ) -> None:
+        self._typed_set(local_name, value)
 
     # --- ImageDescription (LangAlt) ---------------------------------
 
@@ -161,53 +265,92 @@ class TiffSchema(XMPSchema):
     # --- Artist (ProperName) ----------------------------------------
 
     def get_artist(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.ARTIST)
+        return self._read_text_string(self.ARTIST)
 
     def set_artist(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.ARTIST)
-            return
-        self.set_text_property_value(self.ARTIST, value)
+        self._set_text(self.ARTIST, value)
 
-    # --- Make / Model / Software (ProperName / AgentName) -----------
+    def get_artist_property(self) -> ProperNameType | None:
+        result = self._typed_get(self.ARTIST, ProperNameType)
+        return result if isinstance(result, ProperNameType) else None
+
+    def set_artist_property(self, value: ProperNameType | None) -> None:
+        self._typed_set(self.ARTIST, value)
+
+    # --- Make (ProperName) ------------------------------------------
 
     def get_make(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.MAKE)
+        return self._read_text_string(self.MAKE)
 
     def set_make(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.MAKE)
-            return
-        self.set_text_property_value(self.MAKE, value)
+        self._set_text(self.MAKE, value)
+
+    def get_make_property(self) -> ProperNameType | None:
+        result = self._typed_get(self.MAKE, ProperNameType)
+        return result if isinstance(result, ProperNameType) else None
+
+    def set_make_property(self, value: ProperNameType | None) -> None:
+        self._typed_set(self.MAKE, value)
+
+    # --- Model (ProperName) -----------------------------------------
 
     def get_model(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.MODEL)
+        return self._read_text_string(self.MODEL)
 
     def set_model(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.MODEL)
-            return
-        self.set_text_property_value(self.MODEL, value)
+        self._set_text(self.MODEL, value)
+
+    def get_model_property(self) -> ProperNameType | None:
+        result = self._typed_get(self.MODEL, ProperNameType)
+        return result if isinstance(result, ProperNameType) else None
+
+    def set_model_property(self, value: ProperNameType | None) -> None:
+        self._typed_set(self.MODEL, value)
+
+    # --- Software (AgentName) ---------------------------------------
 
     def get_software(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.SOFTWARE)
+        return self._read_text_string(self.SOFTWARE)
 
     def set_software(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.SOFTWARE)
-            return
-        self.set_text_property_value(self.SOFTWARE, value)
+        self._set_text(self.SOFTWARE, value)
+
+    def get_software_property(self) -> AgentNameType | None:
+        result = self._typed_get(self.SOFTWARE, AgentNameType)
+        return result if isinstance(result, AgentNameType) else None
+
+    def set_software_property(self, value: AgentNameType | None) -> None:
+        self._typed_set(self.SOFTWARE, value)
 
     # --- DateTime (Date) --------------------------------------------
 
     def get_date_time(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.DATE_TIME)
+        return self._read_text_string(self.DATE_TIME)
 
     def set_date_time(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.DATE_TIME)
-            return
-        self.set_text_property_value(self.DATE_TIME, value)
+        self._set_text(self.DATE_TIME, value)
+
+    def get_date_time_property(self) -> DateType | None:
+        result = self._typed_get(self.DATE_TIME, DateType)
+        return result if isinstance(result, DateType) else None
+
+    def set_date_time_property(self, value: DateType | None) -> None:
+        self._typed_set(self.DATE_TIME, value)
+
+    # --- NativeDigest (Text) ----------------------------------------
+
+    def get_native_digest(self) -> str | None:
+        return self._read_text_string(self.NATIVE_DIGEST)
+
+    def set_native_digest(self, value: str | None) -> None:
+        self._set_text(self.NATIVE_DIGEST, value)
+
+    def get_native_digest_property(self) -> TextType | None:
+        result = self._typed_get(self.NATIVE_DIGEST, TextType)
+        return result if isinstance(result, TextType) else None
+
+    def set_native_digest_property(self, value: TextType | None) -> None:
+        self._typed_set(self.NATIVE_DIGEST, value)
 
     # --- ImageWidth / ImageLength (Integer) -------------------------
 
@@ -217,11 +360,25 @@ class TiffSchema(XMPSchema):
     def set_image_width(self, value: int | str | None) -> None:
         self._set_integer(self.IMAGE_WIDTH, value)
 
+    def get_image_width_property(self) -> IntegerType | None:
+        result = self._typed_get(self.IMAGE_WIDTH, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_image_width_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.IMAGE_WIDTH, value)
+
     def get_image_length(self) -> int | None:
         return self._get_integer(self.IMAGE_LENGTH)
 
     def set_image_length(self, value: int | str | None) -> None:
         self._set_integer(self.IMAGE_LENGTH, value)
+
+    def get_image_length_property(self) -> IntegerType | None:
+        result = self._typed_get(self.IMAGE_LENGTH, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_image_length_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.IMAGE_LENGTH, value)
 
     # --- Compression / PhotometricInterpretation (Integer) ----------
 
@@ -231,11 +388,27 @@ class TiffSchema(XMPSchema):
     def set_compression(self, value: int | str | None) -> None:
         self._set_integer(self.COMPRESSION, value)
 
+    def get_compression_property(self) -> IntegerType | None:
+        result = self._typed_get(self.COMPRESSION, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_compression_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.COMPRESSION, value)
+
     def get_photometric_interpretation(self) -> int | None:
         return self._get_integer(self.PHOTOMETRIC_INTERPRETATION)
 
     def set_photometric_interpretation(self, value: int | str | None) -> None:
         self._set_integer(self.PHOTOMETRIC_INTERPRETATION, value)
+
+    def get_photometric_interpretation_property(self) -> IntegerType | None:
+        result = self._typed_get(self.PHOTOMETRIC_INTERPRETATION, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_photometric_interpretation_property(
+        self, value: IntegerType | None
+    ) -> None:
+        self._typed_set(self.PHOTOMETRIC_INTERPRETATION, value)
 
     # --- Orientation / SamplesPerPixel / PlanarConfiguration --------
 
@@ -245,17 +418,38 @@ class TiffSchema(XMPSchema):
     def set_orientation(self, value: int | str | None) -> None:
         self._set_integer(self.ORIENTATION, value)
 
+    def get_orientation_property(self) -> IntegerType | None:
+        result = self._typed_get(self.ORIENTATION, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_orientation_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.ORIENTATION, value)
+
     def get_samples_per_pixel(self) -> int | None:
         return self._get_integer(self.SAMPLES_PER_PIXEL)
 
     def set_samples_per_pixel(self, value: int | str | None) -> None:
         self._set_integer(self.SAMPLES_PER_PIXEL, value)
 
+    def get_samples_per_pixel_property(self) -> IntegerType | None:
+        result = self._typed_get(self.SAMPLES_PER_PIXEL, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_samples_per_pixel_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.SAMPLES_PER_PIXEL, value)
+
     def get_planar_configuration(self) -> int | None:
         return self._get_integer(self.PLANAR_CONFIGURATION)
 
     def set_planar_configuration(self, value: int | str | None) -> None:
         self._set_integer(self.PLANAR_CONFIGURATION, value)
+
+    def get_planar_configuration_property(self) -> IntegerType | None:
+        result = self._typed_get(self.PLANAR_CONFIGURATION, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_planar_configuration_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.PLANAR_CONFIGURATION, value)
 
     # --- YCbCrPositioning / ResolutionUnit (Integer) ----------------
 
@@ -265,11 +459,25 @@ class TiffSchema(XMPSchema):
     def set_y_cb_cr_positioning(self, value: int | str | None) -> None:
         self._set_integer(self.YCB_CR_POSITIONING, value)
 
+    def get_y_cb_cr_positioning_property(self) -> IntegerType | None:
+        result = self._typed_get(self.YCB_CR_POSITIONING, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_y_cb_cr_positioning_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.YCB_CR_POSITIONING, value)
+
     def get_resolution_unit(self) -> int | None:
         return self._get_integer(self.RESOLUTION_UNIT)
 
     def set_resolution_unit(self, value: int | str | None) -> None:
         self._set_integer(self.RESOLUTION_UNIT, value)
+
+    def get_resolution_unit_property(self) -> IntegerType | None:
+        result = self._typed_get(self.RESOLUTION_UNIT, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_resolution_unit_property(self, value: IntegerType | None) -> None:
+        self._typed_set(self.RESOLUTION_UNIT, value)
 
     # --- BitsPerSample / YCbCrSubSampling / TransferFunction (Seq) --
 
@@ -303,22 +511,28 @@ class TiffSchema(XMPSchema):
     # --- XResolution / YResolution (Rational, "num/den") ------------
 
     def get_x_resolution(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.XRESOLUTION)
+        return self._get_rational_string(self.XRESOLUTION)
 
     def set_x_resolution(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.XRESOLUTION)
-            return
-        self.set_text_property_value(self.XRESOLUTION, value)
+        self._set_rational_string(self.XRESOLUTION, value)
+
+    def get_x_resolution_property(self) -> RationalType | None:
+        return self._get_rational_property(self.XRESOLUTION)
+
+    def set_x_resolution_property(self, value: RationalType | None) -> None:
+        self._set_rational_property(self.XRESOLUTION, value)
 
     def get_y_resolution(self) -> str | None:
-        return self.get_unqualified_text_property_value(self.YRESOLUTION)
+        return self._get_rational_string(self.YRESOLUTION)
 
     def set_y_resolution(self, value: str | None) -> None:
-        if value is None:
-            self.remove_property(self.YRESOLUTION)
-            return
-        self.set_text_property_value(self.YRESOLUTION, value)
+        self._set_rational_string(self.YRESOLUTION, value)
+
+    def get_y_resolution_property(self) -> RationalType | None:
+        return self._get_rational_property(self.YRESOLUTION)
+
+    def set_y_resolution_property(self, value: RationalType | None) -> None:
+        self._set_rational_property(self.YRESOLUTION, value)
 
     # --- WhitePoint / PrimaryChromaticities / YCbCrCoefficients /
     # ReferenceBlackWhite (Seq of Rational, stored as "num/den") -----

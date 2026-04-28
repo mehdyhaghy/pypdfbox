@@ -15,9 +15,12 @@ from .kerning_table import KerningTable
 from .maximum_profile_table import MaximumProfileTable
 from .name_record import NameRecord
 from .naming_table import NamingTable
+from .open_type_font import OpenTypeFont
 from .os2_windows_metrics_table import OS2WindowsMetricsTable
+from .otf_parser import OTFParser
 from .post_script_table import PostScriptTable
 from .true_type_font import TrueTypeFont
+from .ttf_parser import TTFParser
 from .ttf_data_stream import (
     MemoryTTFDataStream,
     RandomAccessReadDataStream,
@@ -47,9 +50,12 @@ __all__ = [
     "NameRecord",
     "NamingTable",
     "OS2WindowsMetricsTable",
+    "OTFParser",
+    "OpenTypeFont",
     "PostScriptTable",
     "RandomAccessReadDataStream",
     "TTFDataStream",
+    "TTFParser",
     "TTFSubsetter",
     "TTFTable",
     "TrueTypeFont",

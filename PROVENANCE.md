@@ -927,3 +927,8 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/digitalsignature/cos_filter_input_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/COSFilterInputStream.java` |
 | `pypdfbox/pdmodel/interactive/digitalsignature/sig_utils.py` | 3.0.x | derived from `pdfbox-examples/.../SigUtils.java` patterns (KU/EKU bit checks only) |
 | `tests/pdmodel/font/upstream/test_standard14_fonts.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/Standard14FontsTest.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_icon_fit.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAppearanceCharacteristicsDictionary.java` (PDIconFit inner class) |
+| `tests/xmpbox/upstream/test_adobe_pdf_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/AdobePDFTest.java` |
+| `pypdfbox/fontbox/ttf/ttf_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/TTFParser.java` |
+| `pypdfbox/fontbox/ttf/otf_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/OTFParser.java` |
+| `pypdfbox/fontbox/ttf/open_type_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/OpenTypeFont.java` |

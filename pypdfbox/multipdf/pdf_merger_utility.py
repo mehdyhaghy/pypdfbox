@@ -13,6 +13,7 @@ from pypdfbox.cos import (
     COSName,
     COSStream,
 )
+from pypdfbox.io import RandomAccessRead
 
 from .pdf_clone_utility import PDFCloneUtility
 
@@ -96,7 +97,9 @@ class AcroFormMergeMode(enum.Enum):
 
 # Convenience aliases mirroring upstream's nested "static final" naming so
 # ``PDFMergerUtility.DocumentMergeMode.PDFBOX_LEGACY_MODE`` etc. line up.
-SourceLike = Union[str, "os.PathLike[str]", BinaryIO, "PDDocument"]
+SourceLike = Union[
+    str, "os.PathLike[str]", BinaryIO, "PDDocument", RandomAccessRead, bytes
+]
 
 
 # ---------- the utility ----------
@@ -227,7 +230,8 @@ class PDFMergerUtility:
 
     def add_source(self, source: SourceLike) -> None:
         """Add a source document. Accepts a file path, an already-opened
-        :class:`PDDocument`, or a binary stream.
+        :class:`PDDocument`, a :class:`RandomAccessRead`, raw ``bytes``,
+        or a binary stream.
         """
         self._sources.append(source)
 
@@ -237,6 +241,28 @@ class PDFMergerUtility:
 
     def get_sources(self) -> list[Any]:
         return list(self._sources)
+
+    # Upstream offers an overloaded ``setDestination(File | OutputStream)``;
+    # this convenience routes either flavour to the right backing field.
+    def set_destination(
+        self, destination: str | os.PathLike[str] | BinaryIO
+    ) -> None:
+        """Set the merge destination.
+
+        Routes path-like inputs to :meth:`set_destination_file_name` and
+        binary streams (any object with a ``write`` method) to
+        :meth:`set_destination_stream`. Mirrors upstream's overloaded
+        ``setDestination``.
+        """
+        if isinstance(destination, (str, os.PathLike)):
+            self.set_destination_file_name(destination)
+            return
+        if hasattr(destination, "write"):
+            self.set_destination_stream(destination)
+            return
+        raise TypeError(
+            f"unsupported destination type: {type(destination).__name__}"
+        )
 
     # ---------- merge entry points ----------
 
@@ -252,6 +278,36 @@ class PDFMergerUtility:
                 "falling back to PDFBOX_LEGACY_MODE."
             )
         self._legacy_merge_documents()
+
+    def merge_documents_random_access_read(
+        self,
+        sources: Iterable[RandomAccessRead],
+        memory_usage_setting: Any = None,
+    ) -> None:
+        """Merge a sequence of :class:`RandomAccessRead` sources into the
+        configured destination.
+
+        Mirrors upstream ``PDFMergerUtility.mergeDocumentsRandomAccessRead``.
+        Each :class:`RandomAccessRead` is registered as a source via
+        :meth:`add_source` and the merge is then driven through the same
+        :meth:`merge_documents` path. Sources passed in by the caller stay
+        owned by the caller — the merger does NOT call ``close()`` on
+        them, mirroring upstream's contract that
+        ``RandomAccessRead`` ownership belongs to the caller.
+
+        ``memory_usage_setting`` is accepted for upstream signature parity
+        but is currently ignored (see ``CHANGES.md``).
+        """
+        del memory_usage_setting  # parity placeholder — see docstring
+        for src in sources:
+            if not isinstance(src, RandomAccessRead):
+                raise TypeError(
+                    "merge_documents_random_access_read: every source must "
+                    "be a RandomAccessRead instance; got "
+                    f"{type(src).__name__}"
+                )
+            self.add_source(src)
+        self.merge_documents()
 
     def _legacy_merge_documents(self) -> None:
         if not self._sources:
@@ -310,13 +366,26 @@ class PDFMergerUtility:
 
     @staticmethod
     def _open_source(source: SourceLike) -> tuple[PDDocument, bool]:
-        """Resolve ``source`` to a (PDDocument, owns_doc) pair."""
+        """Resolve ``source`` to a (PDDocument, owns_doc) pair.
+
+        Accepts a file path, an already-opened :class:`PDDocument`, a
+        :class:`RandomAccessRead`, raw ``bytes`` / ``bytearray``, or a
+        binary stream. ``owns_doc`` is ``True`` when the merger created
+        the :class:`PDDocument` and is responsible for closing it.
+        """
         from pypdfbox.pdmodel.pd_document import PDDocument
 
         if isinstance(source, PDDocument):
             return source, False
+        if isinstance(source, RandomAccessRead):
+            # Pass through directly — Loader can take a RandomAccessRead
+            # without needing to drain it first. Caller retains ownership
+            # of the RandomAccessRead per upstream contract.
+            return PDDocument.load(source), True
         if isinstance(source, (str, os.PathLike)):
             return PDDocument.load(source), True
+        if isinstance(source, (bytes, bytearray, memoryview)):
+            return PDDocument.load(bytes(source)), True
         if hasattr(source, "read"):
             data = source.read()
             return PDDocument.load(data), True

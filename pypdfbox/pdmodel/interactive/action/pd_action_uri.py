@@ -28,5 +28,16 @@ class PDActionURI(PDAction):
     def set_track_mouse_position(self, value: bool) -> None:
         self._action.set_boolean(_IS_MAP, value)
 
+    # Aliases mirroring the raw PDF dictionary entry name (`/IsMap`).
+    def get_is_map(self) -> bool:
+        """Return ``/IsMap``. Defaults to ``False`` when absent. Synonym of
+        :meth:`should_track_mouse_position` matching the dictionary key
+        name verbatim."""
+        return self._action.get_boolean(_IS_MAP, False)
+
+    def set_is_map(self, value: bool) -> None:
+        """Set ``/IsMap``. Synonym of :meth:`set_track_mouse_position`."""
+        self._action.set_boolean(_IS_MAP, value)
+
 
 __all__ = ["PDActionURI"]

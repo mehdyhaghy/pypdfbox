@@ -8,7 +8,12 @@ from .glyph_substitution_table import GlyphSubstitutionTable
 from .header_table import HeaderTable
 from .horizontal_header_table import HorizontalHeaderTable
 from .horizontal_metrics_table import HorizontalMetricsTable
+from .index_to_location_table import IndexToLocationTable
 from .maximum_profile_table import MaximumProfileTable
+from .name_record import NameRecord
+from .naming_table import NamingTable
+from .os2_windows_metrics_table import OS2WindowsMetricsTable
+from .post_script_table import PostScriptTable
 from .ttf_data_stream import MemoryTTFDataStream, TTFDataStream
 from .ttf_table import TTFTable
 from .vertical_header_table import VerticalHeaderTable
@@ -68,6 +73,17 @@ class TrueTypeFont:
         self._kern_resolved: bool = False
         self._gsub: GlyphSubstitutionTable | None = None
         self._gsub_resolved: bool = False
+        self._naming: NamingTable | None = None
+        self._naming_resolved: bool = False
+        self._post: PostScriptTable | None = None
+        self._post_resolved: bool = False
+        self._os2: OS2WindowsMetricsTable | None = None
+        self._os2_resolved: bool = False
+        self._loca: IndexToLocationTable | None = None
+        self._loca_resolved: bool = False
+        # Raw bytes kept for embedding round-trips (``get_original_data``).
+        self._raw_bytes: bytes = bytes(raw)
+        self._closed: bool = False
 
     # ---------- factories ----------
 
@@ -141,6 +157,32 @@ class TrueTypeFont:
                 tables[tag] = t
             self._table_map = tables
         return self._table_map
+
+    def get_table(self, tag: str) -> TTFTable | None:
+        """Return the SFNT-directory entry for ``tag``, or ``None`` if absent.
+
+        Mirrors upstream's ``getTable(String)`` which yields the raw
+        :class:`TTFTable` directory record (tag / offset / length /
+        checksum) — *not* the typed table payload. Use the typed
+        ``get_header`` / ``get_naming`` / ... helpers for parsed values.
+        """
+        return self.get_table_map().get(tag)
+
+    def get_table_bytes(self, tag: str) -> bytes | None:
+        """Return the raw on-disk bytes of table ``tag``, or ``None`` if absent.
+
+        Mirrors upstream's ``getTableBytes(TTFTable)``. Pulls the bytes
+        out of the in-memory SFNT buffer using the directory entry's
+        offset/length so callers don't have to re-read the file.
+        """
+        entry = self.get_table_map().get(tag)
+        if entry is None:
+            return None
+        offset = entry.get_offset()
+        length = entry.get_length()
+        if offset < 0 or length < 0 or offset + length > len(self._raw_bytes):
+            return None
+        return self._raw_bytes[offset : offset + length]
 
     def get_header(self) -> HeaderTable | None:
         if self._head is not None:
@@ -585,6 +627,301 @@ class TrueTypeFont:
             view._build_glyph_id_to_character_code_lookup(max_gid)  # noqa: SLF001
         self._cmap_subtable = view
         return view
+
+    def get_cmap(self) -> CmapSubtable | None:
+        """Alias for :meth:`get_unicode_cmap_subtable`.
+
+        Mirrors upstream's ``getCmap()`` shorthand. Most callers want the
+        Unicode subtable view that PDFBox picks internally, so we reuse
+        the existing resolver rather than exposing the full ``cmap``
+        directory wrapper.
+        """
+        return self.get_unicode_cmap_subtable()
+
+    def name_to_gid(self, name: str) -> int:
+        """Return the GID for a PostScript glyph name (0 / ``.notdef`` if unknown).
+
+        Mirrors upstream's ``nameToGID(String)``: walks the font's glyph
+        order, falling back to gid 0 (``.notdef``) when the name is not
+        present. Names like ``glyph123`` (fontTools placeholder for
+        unnamed glyphs) are accepted by that path too because they live
+        in the glyph order.
+        """
+        if not name:
+            return 0
+        order = self._tt.getGlyphOrder()
+        try:
+            return int(order.index(name))
+        except ValueError:
+            return 0
+
+    # ---------- naming / post / OS/2 / loca typed-table accessors --------
+
+    def get_naming(self) -> NamingTable | None:
+        """Return the populated ``name`` table, or ``None`` if absent.
+
+        fontTools holds the parsed name records on ``TTFont["name"].names``;
+        we project each onto a :class:`NameRecord` and rebuild the
+        upstream lookup map so ``naming.get_name(name_id)`` and the
+        ``get_font_family`` / ``get_post_script_name`` shortcuts work
+        without re-reading bytes.
+        """
+        if self._naming_resolved:
+            return self._naming
+        self._naming_resolved = True
+        if "name" not in self._tt:
+            self._naming = None
+            return None
+        ft_name = self._tt["name"]
+        nt = NamingTable()
+        records: list[NameRecord] = []
+        for ft_record in getattr(ft_name, "names", []) or []:
+            nr = NameRecord()
+            nr.set_platform_id(int(ft_record.platformID))
+            nr.set_platform_encoding_id(int(ft_record.platEncID))
+            nr.set_language_id(int(ft_record.langID))
+            nr.set_name_id(int(ft_record.nameID))
+            try:
+                value = ft_record.toUnicode()
+            except (UnicodeDecodeError, ValueError):
+                value = None
+            if value is not None:
+                value = str(value)
+                nr.set_string(value)
+                # ``string_length`` upstream is the on-disk byte length;
+                # we don't have it here, so the UTF-8 byte length is the
+                # closest meaningful approximation. Tests only assert the
+                # round-tripped string.
+                nr.set_string_length(len(value.encode("utf-8")))
+            records.append(nr)
+        nt._name_records = records  # noqa: SLF001
+        nt._fill_lookup_table()  # noqa: SLF001
+        nt._read_interesting_strings()  # noqa: SLF001
+        nt.initialized = True
+        self._naming = nt
+        return nt
+
+    def get_post_script(self) -> PostScriptTable | None:
+        """Return the populated ``post`` table, or ``None`` if absent."""
+        if self._post_resolved:
+            return self._post
+        self._post_resolved = True
+        if "post" not in self._tt:
+            self._post = None
+            return None
+        ft_post = self._tt["post"]
+        t = PostScriptTable()
+        t._format_type = float(ft_post.formatType)  # noqa: SLF001
+        t._italic_angle = float(ft_post.italicAngle)  # noqa: SLF001
+        t._underline_position = int(ft_post.underlinePosition)  # noqa: SLF001
+        t._underline_thickness = int(ft_post.underlineThickness)  # noqa: SLF001
+        t._is_fixed_pitch = int(ft_post.isFixedPitch)  # noqa: SLF001
+        t._min_mem_type42 = int(ft_post.minMemType42)  # noqa: SLF001
+        t._max_mem_type42 = int(ft_post.maxMemType42)  # noqa: SLF001
+        t._mim_mem_type1 = int(ft_post.minMemType1)  # noqa: SLF001
+        t._max_mem_type1 = int(ft_post.maxMemType1)  # noqa: SLF001
+        # fontTools resolves glyph names onto the post table for format 2.0;
+        # both formats end up in ``glyphOrder``, indexed by gid.
+        glyph_names = getattr(ft_post, "glyphOrder", None)
+        if glyph_names is not None:
+            t._glyph_names = list(glyph_names)  # noqa: SLF001
+        t.initialized = True
+        self._post = t
+        return t
+
+    def get_os2_windows(self) -> OS2WindowsMetricsTable | None:
+        """Return the populated ``OS/2`` table, or ``None`` if absent.
+
+        Optional in pre-Windows fonts but practically required for any
+        font shipped on a modern OS — defaults to ``None`` only for
+        legacy Mac TrueType files.
+        """
+        if self._os2_resolved:
+            return self._os2
+        self._os2_resolved = True
+        if "OS/2" not in self._tt:
+            self._os2 = None
+            return None
+        ft = self._tt["OS/2"]
+        t = OS2WindowsMetricsTable()
+        t._version = int(ft.version)  # noqa: SLF001
+        t._average_char_width = int(ft.xAvgCharWidth)  # noqa: SLF001
+        t._weight_class = int(ft.usWeightClass)  # noqa: SLF001
+        t._width_class = int(ft.usWidthClass)  # noqa: SLF001
+        t._fs_type = int(ft.fsType)  # noqa: SLF001
+        t._subscript_x_size = int(ft.ySubscriptXSize)  # noqa: SLF001
+        t._subscript_y_size = int(ft.ySubscriptYSize)  # noqa: SLF001
+        t._subscript_x_offset = int(ft.ySubscriptXOffset)  # noqa: SLF001
+        t._subscript_y_offset = int(ft.ySubscriptYOffset)  # noqa: SLF001
+        t._superscript_x_size = int(ft.ySuperscriptXSize)  # noqa: SLF001
+        t._superscript_y_size = int(ft.ySuperscriptYSize)  # noqa: SLF001
+        t._superscript_x_offset = int(ft.ySuperscriptXOffset)  # noqa: SLF001
+        t._superscript_y_offset = int(ft.ySuperscriptYOffset)  # noqa: SLF001
+        t._strikeout_size = int(ft.yStrikeoutSize)  # noqa: SLF001
+        t._strikeout_position = int(ft.yStrikeoutPosition)  # noqa: SLF001
+        t._family_class = int(ft.sFamilyClass)  # noqa: SLF001
+        # ``panose`` in fontTools is a Panose() object with named fields;
+        # serialise back to a 10-byte buffer for upstream parity.
+        panose = getattr(ft, "panose", None)
+        if panose is not None:
+            t._panose = bytes(  # noqa: SLF001
+                int(getattr(panose, attr, 0)) & 0xFF
+                for attr in (
+                    "bFamilyType",
+                    "bSerifStyle",
+                    "bWeight",
+                    "bProportion",
+                    "bContrast",
+                    "bStrokeVariation",
+                    "bArmStyle",
+                    "bLetterForm",
+                    "bMidline",
+                    "bXHeight",
+                )
+            )
+        t._unicode_range1 = int(ft.ulUnicodeRange1)  # noqa: SLF001
+        t._unicode_range2 = int(ft.ulUnicodeRange2)  # noqa: SLF001
+        t._unicode_range3 = int(ft.ulUnicodeRange3)  # noqa: SLF001
+        t._unicode_range4 = int(ft.ulUnicodeRange4)  # noqa: SLF001
+        # achVendID may come back as bytes; coerce defensively.
+        ach = ft.achVendID
+        if isinstance(ach, (bytes, bytearray)):
+            ach = ach.decode("ascii", errors="replace")
+        t._ach_vend_id = str(ach)  # noqa: SLF001
+        t._fs_selection = int(ft.fsSelection)  # noqa: SLF001
+        t._first_char_index = int(ft.usFirstCharIndex)  # noqa: SLF001
+        t._last_char_index = int(ft.usLastCharIndex)  # noqa: SLF001
+        t._typo_ascender = int(ft.sTypoAscender)  # noqa: SLF001
+        t._typo_descender = int(ft.sTypoDescender)  # noqa: SLF001
+        t._typo_line_gap = int(ft.sTypoLineGap)  # noqa: SLF001
+        t._win_ascent = int(ft.usWinAscent)  # noqa: SLF001
+        t._win_descent = int(ft.usWinDescent)  # noqa: SLF001
+        if t._version >= 1:  # noqa: SLF001
+            t._code_page_range1 = int(getattr(ft, "ulCodePageRange1", 0))  # noqa: SLF001
+            t._code_page_range2 = int(getattr(ft, "ulCodePageRange2", 0))  # noqa: SLF001
+        if t._version >= 2:  # noqa: SLF001
+            t._sx_height = int(getattr(ft, "sxHeight", 0))  # noqa: SLF001
+            t._s_cap_height = int(getattr(ft, "sCapHeight", 0))  # noqa: SLF001
+            t._us_default_char = int(getattr(ft, "usDefaultChar", 0))  # noqa: SLF001
+            t._us_break_char = int(getattr(ft, "usBreakChar", 0))  # noqa: SLF001
+            t._us_max_context = int(getattr(ft, "usMaxContext", 0))  # noqa: SLF001
+        t.initialized = True
+        self._os2 = t
+        return t
+
+    def get_index_to_location(self) -> IndexToLocationTable | None:
+        """Return the populated ``loca`` table, or ``None`` if absent.
+
+        TrueType-only — CFF fonts ship glyph offsets inside the CFF
+        block and have no ``loca``. The returned table mirrors upstream's
+        offsets-array view; offsets are stored as resolved byte offsets
+        regardless of ``head.indexToLocFormat`` (matching what upstream's
+        ``read`` produces post-decoding).
+        """
+        if self._loca_resolved:
+            return self._loca
+        self._loca_resolved = True
+        if "loca" not in self._tt:
+            self._loca = None
+            return None
+        ft_loca = self._tt["loca"]
+        offsets = getattr(ft_loca, "locations", None)
+        t = IndexToLocationTable()
+        if offsets is not None:
+            t.set_offsets([int(o) for o in offsets])
+        t.initialized = True
+        self._loca = t
+        return t
+
+    # ---------- aliases for upstream-shaped accessor names ---------------
+
+    def get_kerning(self) -> KerningTable | None:
+        """Alias for :meth:`get_kerning_table` matching upstream's
+        ``getKerning()`` shorthand."""
+        return self.get_kerning_table()
+
+    def get_digital_signature(self) -> DigitalSignatureTable | None:
+        """Alias for :meth:`get_dsig` matching upstream's
+        ``getDigitalSignature()`` shorthand."""
+        return self.get_dsig()
+
+    # ---------- glyph helpers --------------------------------------------
+
+    def get_path(self, gid: int) -> Any | None:
+        """Return the outline of glyph ``gid`` as a fontTools ``RecordingPen``.
+
+        Mirrors upstream's ``getPath(int)``. Returns ``None`` when the
+        font has no ``glyf`` table (CFF) or ``gid`` is out of range —
+        callers that want an empty path can fall back to a blank pen.
+        """
+        glyph = self.get_glyph(gid)
+        if glyph is None:
+            return None
+        return glyph.get_path()
+
+    def get_bounding_box(self) -> tuple[int, int, int, int]:
+        """Alias for :meth:`get_font_bbox` — mirrors upstream's
+        ``getFontBBox()`` shorthand exposed under the broader name."""
+        return self.get_font_bbox()
+
+    # ---------- font-level metadata --------------------------------------
+
+    def get_original_data(self) -> bytes:
+        """Return the raw SFNT bytes the font was constructed from.
+
+        Used by PDF font embedders that need to re-emit the original
+        on-disk byte stream (e.g. ``PDTrueTypeFont`` /
+        ``PDType0Font`` embedding paths). Mirrors upstream's
+        ``getOriginalData()``.
+        """
+        return self._raw_bytes
+
+    def get_original_data_size(self) -> int:
+        """Length of :meth:`get_original_data` in bytes."""
+        return len(self._raw_bytes)
+
+    def is_post_script(self) -> bool:
+        """``False`` — TrueType-flavoured fonts are not PostScript-flavoured.
+
+        Upstream's ``OpenTypeFont`` subclass overrides this for CFF
+        (PostScript-flavoured OpenType) fonts. The base ``TrueTypeFont``
+        always returns ``False``.
+        """
+        return False
+
+    def is_supported(self) -> bool:
+        """``True`` iff the font carries the minimum tables PDFBox requires.
+
+        Mirrors upstream's check that ``head``, ``hhea``, ``maxp``,
+        ``hmtx``, ``cmap``, ``name`` and ``post`` are all present —
+        fonts missing any of these can't be read or embedded reliably.
+        """
+        required = ("head", "hhea", "maxp", "hmtx", "cmap", "name", "post")
+        return all(self.has_table(t) for t in required)
+
+    def close(self) -> None:
+        """Release the fontTools-held resources.
+
+        Idempotent. After ``close()``, table accessors will raise on
+        re-access against the underlying fontTools object — call sites
+        should treat this as "the font handle is no longer usable".
+        Mirrors upstream's ``close()``.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._tt.close()
+        except (AttributeError, OSError):
+            # Older fontTools releases used a context-manager-only API;
+            # nothing to do then.
+            pass
+
+    def __enter__(self) -> TrueTypeFont:
+        return self
+
+    def __exit__(self, *exc: Any) -> None:
+        self.close()
 
     # ---------- helpers -------------------------------------------------
 
