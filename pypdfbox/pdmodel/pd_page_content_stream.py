@@ -99,7 +99,14 @@ class PDPageContentStream:
                 self._resources = PDResources()
                 source_page.set_resources(self._resources)
             mode = _coerce_append_mode(append_mode)
-            self._attach_to_page(source_page, self._target_stream, mode)
+            needs_context_restore = self._attach_to_page(
+                source_page,
+                self._target_stream,
+                mode,
+                self._reset_context,
+            )
+            if needs_context_restore:
+                self.restore_graphics_state()
         elif isinstance(source_page, PDFormXObject):
             self._target_stream = source_page.get_cos_object()
             existing_res = source_page.get_resources()
@@ -127,34 +134,47 @@ class PDPageContentStream:
         page: PDPage,
         new_stream: COSStream,
         append_mode: AppendMode,
-    ) -> None:
+        reset_context: bool = False,
+    ) -> bool:
         """Attach ``new_stream`` to ``page``'s /Contents.
 
         - No /Contents yet → set the new stream as /Contents directly.
         - OVERWRITE → replace /Contents with the new stream.
         - APPEND → stream becomes the last content stream.
         - PREPEND → stream becomes the first content stream.
+
+        When ``reset_context`` is true while preserving existing content,
+        mirror upstream PDFBox's constructor behavior: prefix the existing
+        content with ``q`` and start the new stream with ``Q`` so graphics
+        state changes from previous streams do not leak into appended
+        operators.
         """
         page_dict = page.get_cos_object()
         existing = page_dict.get_dictionary_object(_CONTENTS)
         if existing is None or append_mode is AppendMode.OVERWRITE:
             page_dict.set_item(_CONTENTS, new_stream)
-            return
+            return False
         if isinstance(existing, COSArray):
+            arr = existing
             if append_mode is AppendMode.APPEND:
-                existing.add(new_stream)
+                arr.add(new_stream)
             else:
-                existing.add_at(0, new_stream)
-            return
-        # Single existing stream — promote to array.
-        arr = COSArray()
-        if append_mode is AppendMode.APPEND:
-            arr.add(existing)
-            arr.add(new_stream)
+                arr.add_at(0, new_stream)
         else:
-            arr.add(new_stream)
-            arr.add(existing)
+            # Single existing stream — promote to array.
+            arr = COSArray()
+            if append_mode is AppendMode.APPEND:
+                arr.add(existing)
+                arr.add(new_stream)
+            else:
+                arr.add(new_stream)
+                arr.add(existing)
+        if reset_context:
+            prefix = COSStream()
+            prefix.set_raw_data(b"q\n")
+            arr.add_at(0, prefix)
         page_dict.set_item(_CONTENTS, arr)
+        return reset_context
 
     # ------------------------------------------------------------------
     # context manager / lifecycle

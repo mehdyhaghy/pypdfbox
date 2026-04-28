@@ -138,6 +138,8 @@ class PDAnnotation:
         from .pd_annotation_polygon import PDAnnotationPolygon
         from .pd_annotation_polyline import PDAnnotationPolyline
         from .pd_annotation_popup import PDAnnotationPopup
+        from .pd_annotation_printer_mark import PDAnnotationPrinterMark
+        from .pd_annotation_redact import PDAnnotationRedact
         from .pd_annotation_rubber_stamp import PDAnnotationRubberStamp
         from .pd_annotation_screen import PDAnnotationScreen
         from .pd_annotation_sound import PDAnnotationSound
@@ -148,8 +150,11 @@ class PDAnnotation:
         from .pd_annotation_squiggly import PDAnnotationSquiggly
         from .pd_annotation_strikeout import PDAnnotationStrikeout
         from .pd_annotation_text import PDAnnotationText
+        from .pd_annotation_three_d import PDAnnotation3D
+        from .pd_annotation_trap_net import PDAnnotationTrapNet
         from .pd_annotation_underline import PDAnnotationUnderline
         from .pd_annotation_unknown import PDAnnotationUnknown
+        from .pd_annotation_watermark import PDAnnotationWatermark
         from .pd_annotation_widget import PDAnnotationWidget
 
         subtype = cos_dict.get_name(_SUBTYPE)
@@ -197,6 +202,16 @@ class PDAnnotation:
             return PDAnnotationSound(cos_dict)
         if subtype == PDAnnotationScreen.SUB_TYPE:
             return PDAnnotationScreen(cos_dict)
+        if subtype == PDAnnotationRedact.SUB_TYPE:
+            return PDAnnotationRedact(cos_dict)
+        if subtype == PDAnnotation3D.SUB_TYPE:
+            return PDAnnotation3D(cos_dict)
+        if subtype == PDAnnotationWatermark.SUB_TYPE:
+            return PDAnnotationWatermark(cos_dict)
+        if subtype == PDAnnotationPrinterMark.SUB_TYPE:
+            return PDAnnotationPrinterMark(cos_dict)
+        if subtype == PDAnnotationTrapNet.SUB_TYPE:
+            return PDAnnotationTrapNet(cos_dict)
         return PDAnnotationUnknown(cos_dict)
 
     # ---------- /Rect ----------

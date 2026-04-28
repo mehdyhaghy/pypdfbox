@@ -970,3 +970,27 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cff/_expert_encoding.py` | 3.0.x | derived table from `fontbox/src/main/java/org/apache/fontbox/cff/CFFExpertEncoding.java` (raw code→SID pairs) + Adobe Standard Strings table (resolves SIDs to glyph names) — used by `CFFType1Font.code_to_name` for predefined Expert encoding |
 | `pypdfbox/fontbox/ttf/glyph_positioning_table.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/GlyphPositioningTable.java` (API surface — parsing delegated to fontTools `GPOS` table; structural accessors `get_script_list` / `get_feature_list` / `get_lookup_list` / `get_lookup` / `get_lookup_subtables` / `get_feature_record` / `get_lookup_indices_for_feature` are pypdfbox-only — upstream keeps the OT structures private; lookup-type 2 pair-adjustment kerning extraction implemented for both Format 1 and Format 2 subtables; types 1, 3-9 surfaced via raw / structural accessors but not engine-applied — matches upstream's stop-short coverage) |
 | `tests/fontbox/ttf/upstream/test_glyph_positioning_table.py` | 3.0.x | placeholder — upstream PDFBox 3.0 ships no dedicated `GlyphPositioningTableTest.java` (the upstream class is itself a `TAG`-only scaffold); spirit-port asserts script / feature inventory + lookup-type breadth against `LiberationSans-Regular.ttf` |
+
+### Wave 43 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/action/pd_action_go_to_3d_view.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDActionGoTo3DView.java` |
+| `pypdfbox/pdmodel/interactive/action/pd_uri_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDURIDictionary.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_printer_mark.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationPrinterMark.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_redact.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationRedact.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_three_d.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotation3D.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_trap_net.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationTrapNet.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_annotation_watermark.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWatermark.java` |
+| `pypdfbox/xmpbox/type/version_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/VersionType.java` |
+| `tests/fontbox/ttf/upstream/test_kerning_subtable.py` | 3.0.x | parity-shaped coverage for `fontbox/src/main/java/org/apache/fontbox/ttf/KerningSubtable.java` format behavior |
+| `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_object_reference.py` | 3.0.x | parity-shaped coverage for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDObjectReference.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_separation.py` | 3.0.x | parity-shaped coverage for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java` |
+| `tests/pdmodel/interactive/action/test_pd_action_go_to_3d_view.py` | 3.0.x | hand-written coverage for `PDActionGoTo3DView` |
+| `tests/pdmodel/interactive/action/test_pd_action_sound_round_out.py` | 3.0.x | hand-written coverage for `PDActionSound` round-out |
+
+### Wave 44 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `tests/xmpbox/type/test_version_type.py` | 3.0.x | hand-written coverage for `xmpbox/src/main/java/org/apache/xmpbox/type/VersionType.java` structured-type accessors |

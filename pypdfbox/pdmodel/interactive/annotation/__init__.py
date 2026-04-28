@@ -12,21 +12,26 @@ from .pd_annotation_markup import PDAnnotationMarkup
 from .pd_annotation_polygon import PDAnnotationPolygon
 from .pd_annotation_polyline import PDAnnotationPolyline
 from .pd_annotation_popup import PDAnnotationPopup
+from .pd_annotation_printer_mark import PDAnnotationPrinterMark
+from .pd_annotation_redact import PDAnnotationRedact
 from .pd_annotation_rubber_stamp import PDAnnotationRubberStamp
 from .pd_annotation_screen import PDAnnotationScreen
 from .pd_annotation_sound import PDAnnotationSound
-from .pd_annotation_stamp import PDAnnotationStamp
 from .pd_annotation_square_circle import (
     PDAnnotationCircle,
     PDAnnotationSquare,
     PDAnnotationSquareCircle,
 )
 from .pd_annotation_squiggly import PDAnnotationSquiggly
+from .pd_annotation_stamp import PDAnnotationStamp
 from .pd_annotation_strikeout import PDAnnotationStrikeout
 from .pd_annotation_text import PDAnnotationText
 from .pd_annotation_text_markup import PDAnnotationTextMarkup
+from .pd_annotation_three_d import PDAnnotation3D
+from .pd_annotation_trap_net import PDAnnotationTrapNet
 from .pd_annotation_underline import PDAnnotationUnderline
 from .pd_annotation_unknown import PDAnnotationUnknown
+from .pd_annotation_watermark import PDAnnotationWatermark
 from .pd_annotation_widget import PDAnnotationWidget
 from .pd_appearance_characteristics_dictionary import PDAppearanceCharacteristicsDictionary
 from .pd_appearance_content_stream import PDAppearanceContentStream
@@ -54,6 +59,8 @@ __all__ = [
     "PDAnnotationPolygon",
     "PDAnnotationPolyline",
     "PDAnnotationPopup",
+    "PDAnnotationPrinterMark",
+    "PDAnnotationRedact",
     "PDAnnotationRubberStamp",
     "PDAnnotationScreen",
     "PDAnnotationSound",
@@ -64,8 +71,11 @@ __all__ = [
     "PDAnnotationStrikeout",
     "PDAnnotationText",
     "PDAnnotationTextMarkup",
+    "PDAnnotation3D",
+    "PDAnnotationTrapNet",
     "PDAnnotationUnderline",
     "PDAnnotationUnknown",
+    "PDAnnotationWatermark",
     "PDAnnotationWidget",
     "PDAppearanceCharacteristicsDictionary",
     "PDAppearanceContentStream",

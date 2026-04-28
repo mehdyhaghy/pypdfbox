@@ -51,6 +51,7 @@ from .type import (
     ThumbnailType,
     TypeMapping,
     URIType,
+    VersionType,
 )
 from .xmp_basic_job_ticket_schema import JobType, XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
@@ -100,6 +101,7 @@ __all__ = [
     "TiffSchema",
     "TypeMapping",
     "URIType",
+    "VersionType",
     "XMPBasicJobTicketSchema",
     "XMPBasicSchema",
     "XMPMediaManagementSchema",

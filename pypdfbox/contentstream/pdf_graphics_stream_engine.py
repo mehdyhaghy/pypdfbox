@@ -62,15 +62,15 @@ from .operator.text.begin_text import BeginText
 from .operator.text.end_text import EndText
 from .operator.text.move_text import MoveText
 from .operator.text.move_text_set_leading import MoveTextSetLeading
-from .operator.text.next_line import NextLine
-from .operator.text.set_character_spacing import SetCharacterSpacing
+from .operator.text.next_line_op import NextLine
+from .operator.text.set_char_spacing import SetCharSpacing
 from .operator.text.set_font_and_size import SetFontAndSize
-from .operator.text.set_horizontal_scaling import SetHorizontalScaling
+from .operator.text.set_horizontal_text_scaling import SetHorizontalTextScaling
 from .operator.text.set_matrix import SetMatrix
-from .operator.text.set_text_leading import SetTextLeading
-from .operator.text.set_text_rendering_mode import SetTextRenderingMode
-from .operator.text.set_text_rise import SetTextRise
-from .operator.text.set_word_spacing import SetWordSpacing
+from .operator.text.set_text_leading_op import SetTextLeading
+from .operator.text.set_text_rendering_mode_op import SetTextRenderingMode
+from .operator.text.set_text_rise_op import SetTextRise
+from .operator.text.set_word_spacing_op import SetWordSpacing
 from .operator.text.show_text import ShowText
 from .operator.text.show_text_adjusted import ShowTextAdjusted
 from .operator.text.show_text_line import ShowTextLine
@@ -199,41 +199,27 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
 
         # Engine-bound text-operator handlers (call back into engine hooks
         # via ``get_context()``). These need ``add_operator`` so the
-        # ``set_context`` rebind happens. The remaining text operators
-        # (Tc, Tz, Tr, Ts, Tw, TL, T*) only have lite stubs in pypdfbox
-        # right now and are registered alongside the path/state group
-        # above; see ``CHANGES.md`` for the parity-deviation note.
+        # ``set_context`` rebind happens.
         for engine_bound in (
             BeginText(),                          # BT
             EndText(),                            # ET
+            NextLine(),                           # T*
             MoveText(),                           # Td
             MoveTextSetLeading(),                 # TD
             SetFontAndSize(),                     # Tf
             SetMatrix(),                          # Tm
+            SetCharSpacing(),                     # Tc
+            SetTextLeading(),                     # TL
+            SetTextRenderingMode(),               # Tr
+            SetTextRise(),                        # Ts
+            SetWordSpacing(),                     # Tw
+            SetHorizontalTextScaling(),           # Tz
             ShowText(),                           # Tj
             ShowTextAdjusted(),                   # TJ
             ShowTextLine(),                       # '
             ShowTextLineAndSpace(),               # "
         ):
             self.add_operator(engine_bound)
-
-        # Lite text-state stubs — registered after the engine-bound ones
-        # so they don't collide with operators that have richer
-        # implementations above. ``T*`` / ``Tc`` / ``Tw`` / ``Ts`` /
-        # ``Tr`` / ``Tz`` / ``TL`` only have lite stubs at this stage;
-        # they live alongside the text-operator surface for parity with
-        # upstream's ``addOperator(SetCharSpacing)`` etc.
-        for lite_text in (
-            NextLine(),                           # T*
-            SetCharacterSpacing(),                # Tc
-            SetTextLeading(),                     # TL
-            SetTextRenderingMode(),               # Tr
-            SetTextRise(),                        # Ts
-            SetWordSpacing(),                     # Tw
-            SetHorizontalScaling(),               # Tz
-        ):
-            if lite_text.get_name() not in self._operators:
-                self._operators[lite_text.get_name()] = lite_text
 
     # ---------- accessors ----------
 

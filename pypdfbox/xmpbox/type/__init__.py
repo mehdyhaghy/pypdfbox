@@ -49,6 +49,7 @@ from .text_type import TextType
 from .thumbnail_type import ThumbnailType
 from .type_mapping import TypeMapping
 from .uri_type import URIType
+from .version_type import VersionType
 
 __all__ = [
     "AbstractField",
@@ -85,4 +86,5 @@ __all__ = [
     "ThumbnailType",
     "TypeMapping",
     "URIType",
+    "VersionType",
 ]

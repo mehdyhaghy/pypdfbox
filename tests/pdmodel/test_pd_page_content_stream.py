@@ -573,6 +573,52 @@ def test_prepending_to_existing_contents_preserves_order() -> None:
     assert page.get_contents() == b"3 4 m\n\nold\n"
 
 
+def test_append_reset_context_wraps_existing_graphics_state() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    initial = COSStream()
+    initial.set_raw_data(b"2 0 0 2 0 0 cm\n")
+    page.set_contents(initial)
+
+    with PDPageContentStream(
+        doc,
+        page,
+        AppendMode.APPEND,
+        reset_context=True,
+    ) as cs:
+        cs.move_to(1, 2)
+
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
+    assert isinstance(contents, COSArray)
+    assert contents.size() == 3
+    prefix = contents.get(0)
+    appended = contents.get(2)
+    assert isinstance(prefix, COSStream)
+    assert isinstance(appended, COSStream)
+    assert prefix.get_raw_data() == b"q\n"
+    assert contents.get(1) is initial
+    assert appended.get_raw_data() == b"Q\n1 2 m\n"
+    assert page.get_contents() == b"q\n\n2 0 0 2 0 0 cm\n\nQ\n1 2 m\n"
+
+
+def test_append_reset_context_is_ignored_without_existing_contents() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+
+    with PDPageContentStream(
+        doc,
+        page,
+        AppendMode.APPEND,
+        reset_context=True,
+    ) as cs:
+        cs.move_to(1, 2)
+
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
+    assert isinstance(contents, COSStream)
+    assert contents.get_raw_data() == b"1 2 m\n"
+    assert page.get_contents() == b"1 2 m\n"
+
+
 def test_compression_flag_writes_flate_filtered_stream() -> None:
     doc = PDDocument()
     page = _make_page(doc)

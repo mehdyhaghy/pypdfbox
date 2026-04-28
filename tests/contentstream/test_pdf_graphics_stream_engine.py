@@ -387,3 +387,56 @@ def test_super_dispatch_for_unhandled_operators() -> None:
     stream = _BytesContentStream(b"q Q")
     engine.process_stream(stream)
     assert captured == ["save", "restore"]
+
+
+def test_text_state_operators_dispatch_to_engine_hooks() -> None:
+    captured: list[tuple[str, float | int]] = []
+
+    class _Tracker(_RecordingGraphicsEngine):
+        def set_character_spacing(self, spacing: float) -> None:
+            captured.append(("Tc", spacing))
+
+        def set_word_spacing(self, spacing: float) -> None:
+            captured.append(("Tw", spacing))
+
+        def set_horizontal_scaling(self, scaling: float) -> None:
+            captured.append(("Tz", scaling))
+
+        def set_text_leading(self, leading: float) -> None:
+            captured.append(("TL", leading))
+
+        def set_text_rendering_mode(self, mode: int) -> None:
+            captured.append(("Tr", mode))
+
+        def set_text_rise(self, rise: float) -> None:
+            captured.append(("Ts", rise))
+
+    engine = _Tracker()
+    stream = _BytesContentStream(b"1 Tc 2 Tw 75 Tz 14 TL 3 Tr 4 Ts")
+    engine.process_stream(stream)
+
+    assert captured == [
+        ("Tc", 1.0),
+        ("Tw", 2.0),
+        ("Tz", 75.0),
+        ("TL", 14.0),
+        ("Tr", 3),
+        ("Ts", 4.0),
+    ]
+
+
+def test_next_line_dispatches_move_text_using_current_leading() -> None:
+    captured: list[tuple[float, float]] = []
+
+    class _Tracker(_RecordingGraphicsEngine):
+        def get_text_leading(self) -> float:
+            return 12.5
+
+        def move_text_position(self, tx: float, ty: float) -> None:
+            captured.append((tx, ty))
+
+    engine = _Tracker()
+    stream = _BytesContentStream(b"T*")
+    engine.process_stream(stream)
+
+    assert captured == [(0.0, -12.5)]

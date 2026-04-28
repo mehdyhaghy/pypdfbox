@@ -60,6 +60,7 @@ _STRUCTURED: dict[str, type] = {
     "Font": FontType,
     "ResourceRef": ResourceRefType,
     "ResourceEvent": ResourceEventType,
+    "Version": VersionType,
     "Thumbnail": ThumbnailType,
     "Layer": LayerType,
     "Job": JobType,

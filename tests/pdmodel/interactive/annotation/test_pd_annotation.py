@@ -15,13 +15,17 @@ from pypdfbox.cos import (
 from pypdfbox.pdmodel import PDRectangle
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotation,
+    PDAnnotation3D,
     PDAnnotationCircle,
     PDAnnotationLink,
+    PDAnnotationPrinterMark,
+    PDAnnotationRedact,
     PDAnnotationSquare,
     PDAnnotationText,
+    PDAnnotationTrapNet,
     PDAnnotationUnknown,
+    PDAnnotationWatermark,
 )
-
 
 # ---------- construction ----------
 
@@ -83,13 +87,32 @@ def test_create_unknown_for_missing_subtype() -> None:
     assert ann.get_subtype() is None
 
 
-def test_create_unknown_for_unsupported_subtype() -> None:
-    # 3D, Watermark, Redact and other §12.5 subtypes still fall back to Unknown.
+@pytest.mark.parametrize(
+    ("subtype", "expected_cls"),
+    [
+        ("Redact", PDAnnotationRedact),
+        ("3D", PDAnnotation3D),
+        ("Watermark", PDAnnotationWatermark),
+        ("PrinterMark", PDAnnotationPrinterMark),
+        ("TrapNet", PDAnnotationTrapNet),
+    ],
+)
+def test_create_dispatches_recent_annotation_subtypes(
+    subtype: str, expected_cls: type[PDAnnotation]
+) -> None:
     d = COSDictionary()
-    d.set_name(COSName.SUBTYPE, "3D")  # type: ignore[attr-defined]
+    d.set_name(COSName.SUBTYPE, subtype)  # type: ignore[attr-defined]
+    ann = PDAnnotation.create(d)
+    assert isinstance(ann, expected_cls)
+    assert ann.get_subtype() == subtype
+
+
+def test_create_unknown_for_unsupported_subtype() -> None:
+    d = COSDictionary()
+    d.set_name(COSName.SUBTYPE, "TotallyMadeUpSubtype")  # type: ignore[attr-defined]
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationUnknown)
-    assert ann.get_subtype() == "3D"
+    assert ann.get_subtype() == "TotallyMadeUpSubtype"
 
 
 def test_create_rejects_non_dict() -> None:
@@ -151,7 +174,7 @@ def test_modified_date_string_round_trip() -> None:
 
 def test_modified_date_datetime_round_trip() -> None:
     ann = PDAnnotationText()
-    when = _dt.datetime(2023, 6, 1, 12, 30, 45, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2023, 6, 1, 12, 30, 45, tzinfo=_dt.UTC)
     ann.set_modified_date(when)
     raw = ann.get_modified_date()
     assert raw is not None

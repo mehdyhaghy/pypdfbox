@@ -85,6 +85,21 @@ class HorizontalHeaderTable(TTFTable):
     def get_caret_slope_run(self) -> int:
         return self._caret_slope_run
 
+    def get_reserved1(self) -> int:
+        return self._reserved1
+
+    def get_reserved2(self) -> int:
+        return self._reserved2
+
+    def get_reserved3(self) -> int:
+        return self._reserved3
+
+    def get_reserved4(self) -> int:
+        return self._reserved4
+
+    def get_reserved5(self) -> int:
+        return self._reserved5
+
     def get_metric_data_format(self) -> int:
         return self._metric_data_format
 

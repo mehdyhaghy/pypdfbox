@@ -17,9 +17,12 @@ from pypdfbox.xmpbox import (
     MIMEType,
     ProperNameType,
     RealType,
+    ResourceEventType,
+    ResourceRefType,
     TextType,
     TypeMapping,
     URIType,
+    VersionType,
     XMPMetadata,
 )
 
@@ -103,3 +106,26 @@ def test_instanciate_simple_property_propagates_value_error(mapping: TypeMapping
 def test_is_simple_type_known(mapping: TypeMapping) -> None:
     assert mapping.is_simple_type_known("Text") is True
     assert mapping.is_simple_type_known("Bogus") is False
+
+
+def test_instanciate_structured_type_dispatches_version(
+    mapping: TypeMapping,
+) -> None:
+    prop = mapping.instanciate_structured_type("Version", "Versions")
+    assert isinstance(prop, VersionType)
+    assert prop.get_metadata() is mapping.get_metadata()
+    assert prop.get_property_name() == "Versions"
+
+
+def test_version_structured_type_is_known(mapping: TypeMapping) -> None:
+    assert mapping.is_structured_type_known("Version") is True
+    assert mapping.is_structured_type_namespace(VersionType.NAMESPACE) is True
+
+
+def test_existing_structured_types_still_dispatch(mapping: TypeMapping) -> None:
+    assert isinstance(
+        mapping.instanciate_structured_type("ResourceRef"), ResourceRefType
+    )
+    assert isinstance(
+        mapping.instanciate_structured_type("ResourceEvent"), ResourceEventType
+    )

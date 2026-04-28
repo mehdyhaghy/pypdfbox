@@ -18,6 +18,7 @@ def _build_hhea(
     x_max_extent: int = 1900,
     caret_slope_rise: int = 1,
     caret_slope_run: int = 0,
+    reserved: tuple[int, int, int, int, int] = (0, 0, 0, 0, 0),
     metric_data_format: int = 0,
     number_of_h_metrics: int = 256,
 ) -> bytes:
@@ -34,11 +35,11 @@ def _build_hhea(
         x_max_extent,
         caret_slope_rise,
         caret_slope_run,
-        0,  # reserved1
-        0,  # reserved2
-        0,  # reserved3
-        0,  # reserved4
-        0,  # reserved5
+        reserved[0],
+        reserved[1],
+        reserved[2],
+        reserved[3],
+        reserved[4],
         metric_data_format,
         number_of_h_metrics,
     )
@@ -122,3 +123,24 @@ def test_fractional_version() -> None:
     table = HorizontalHeaderTable()
     table.read(None, MemoryTTFDataStream(raw))  # type: ignore[arg-type]
     assert table.get_version() == 0.5
+
+
+def test_reserved_fields_are_preserved() -> None:
+    raw = _build_hhea(reserved=(1, -2, 3, -4, 5))
+    table = HorizontalHeaderTable()
+    table.read(None, MemoryTTFDataStream(raw))  # type: ignore[arg-type]
+    assert table.get_reserved1() == 1
+    assert table.get_reserved2() == -2
+    assert table.get_reserved3() == 3
+    assert table.get_reserved4() == -4
+    assert table.get_reserved5() == 5
+
+
+def test_reserved_fields_default_zero() -> None:
+    table = HorizontalHeaderTable()
+    table.read(None, MemoryTTFDataStream(_build_hhea()))  # type: ignore[arg-type]
+    assert table.get_reserved1() == 0
+    assert table.get_reserved2() == 0
+    assert table.get_reserved3() == 0
+    assert table.get_reserved4() == 0
+    assert table.get_reserved5() == 0

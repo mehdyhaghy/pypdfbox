@@ -480,11 +480,24 @@ class PDFStreamEngine:
     def set_text_leading(self, leading: float) -> None:
         """``TL`` notification (used by the ``TD`` decomposition)."""
 
+    def get_text_leading(self) -> float:
+        """Return the current text leading. Cluster #2 default is 0."""
+        return 0.0
+
     def set_word_spacing(self, spacing: float) -> None:
         """``Tw`` notification (used by the ``"`` decomposition)."""
 
     def set_character_spacing(self, spacing: float) -> None:
         """``Tc`` notification (used by the ``"`` decomposition)."""
+
+    def set_horizontal_scaling(self, scaling: float) -> None:
+        """``Tz`` notification — cluster #2 no-op."""
+
+    def set_text_rendering_mode(self, mode: int) -> None:
+        """``Tr`` notification — cluster #2 no-op."""
+
+    def set_text_rise(self, rise: float) -> None:
+        """``Ts`` notification — cluster #2 no-op."""
 
     def show_text_string(self, text: bytes) -> None:
         """``Tj`` notification — cluster #2 no-op."""
