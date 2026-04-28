@@ -42,6 +42,8 @@ from .pd_border_style_dictionary import PDBorderStyleDictionary
 from .pd_icon_fit import PDIconFit
 from .pd_ink_list import PDInkList
 from .pd_line_info import PDLineInfo
+from .pd_movie import PDMovie
+from .pd_movie_activation import PDMovieActivation
 from .pd_path_info import PDPathInfo
 from .pd_vertices import PDVertices
 
@@ -86,6 +88,8 @@ __all__ = [
     "PDIconFit",
     "PDInkList",
     "PDLineInfo",
+    "PDMovie",
+    "PDMovieActivation",
     "PDPathInfo",
     "PDVertices",
 ]

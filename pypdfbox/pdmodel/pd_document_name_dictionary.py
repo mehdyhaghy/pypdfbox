@@ -4,6 +4,7 @@ from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName
 
+from .interactive.documentnavigation.destination import PDDestinationNameTreeNode
 from .pd_alternate_presentations_name_tree_node import (
     PDAlternatePresentationsNameTreeNode,
 )
@@ -68,19 +69,24 @@ class PDDocumentNameDictionary:
     def get_cos_dictionary(self) -> COSDictionary:
         return self._name_dictionary
 
-    # ---------- /Dests (flat dict, NOT a name tree) ----------
+    # ---------- /Dests ----------
 
-    def get_dests(self) -> PDDocumentNameDestinationDictionary | None:
+    def get_dests(
+        self,
+    ) -> PDDestinationNameTreeNode | PDDocumentNameDestinationDictionary | None:
         dic = self._name_dictionary.get_dictionary_object(_DESTS)
-        if not isinstance(dic, COSDictionary) and self._catalog is not None:
+        if isinstance(dic, COSDictionary):
+            return PDDestinationNameTreeNode(dic)
+        if self._catalog is not None:
             cat_dests = self._catalog.get_cos_object().get_dictionary_object(_DESTS)
             if isinstance(cat_dests, COSDictionary):
-                dic = cat_dests
-        if isinstance(dic, COSDictionary):
-            return PDDocumentNameDestinationDictionary(dic)
+                return PDDocumentNameDestinationDictionary(cat_dests)
         return None
 
-    def set_dests(self, dests: PDDocumentNameDestinationDictionary | None) -> None:
+    def set_dests(
+        self,
+        dests: PDDestinationNameTreeNode | PDDocumentNameDestinationDictionary | None,
+    ) -> None:
         if dests is None:
             self._name_dictionary.remove_item(_DESTS)
         else:

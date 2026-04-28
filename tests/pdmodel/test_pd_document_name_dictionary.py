@@ -4,10 +4,9 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
-from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDDestination,
-)
-from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_xyz_destination import (
+    PDDestinationNameTreeNode,
     PDPageXYZDestination,
 )
 from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
@@ -109,7 +108,7 @@ def test_set_dests_and_clears_catalog_legacy_entry() -> None:
     cat.get_cos_object().set_item(_DESTS, legacy)
 
     nd = PDDocumentNameDictionary(catalog=cat)
-    new_dests = PDDocumentNameDestinationDictionary()
+    new_dests = PDDestinationNameTreeNode()
     nd.set_dests(new_dests)
 
     assert nd.get_cos_object().get_dictionary_object(_DESTS) is new_dests.get_cos_object()
@@ -125,6 +124,23 @@ def test_get_dests_falls_back_to_catalog_legacy() -> None:
     out = nd.get_dests()
     assert out is not None
     assert out.get_cos_object() is legacy
+
+
+def test_get_dests_returns_destination_name_tree_for_names_entry() -> None:
+    nd = PDDocumentNameDictionary()
+    dests = PDDestinationNameTreeNode()
+    destination = PDPageXYZDestination()
+    destination.set_page_number(0)
+    dests.set_value("home", destination)
+
+    nd.set_dests(dests)
+
+    out = nd.get_dests()
+    assert isinstance(out, PDDestinationNameTreeNode)
+    assert out.get_cos_object() is dests.get_cos_object()
+    fetched = out.get_value("home")
+    assert isinstance(fetched, PDPageXYZDestination)
+    assert fetched.get_page_number() == 0
 
 
 # ---------- PDEmbeddedFilesNameTreeNode ----------

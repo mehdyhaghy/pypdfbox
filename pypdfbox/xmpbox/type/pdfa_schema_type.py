@@ -3,12 +3,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .abstract_structured_type import AbstractStructuredType
-from .array_property import ArrayProperty
+from .array_property import ArrayProperty, Cardinality
 from .text_type import TextType
 from .uri_type import URIType
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
+    from .pdfa_property_type import PDFAPropertyType
+    from .pdfa_type_type import PDFATypeType
 
 
 class PDFASchemaType(AbstractStructuredType):
@@ -59,5 +61,45 @@ class PDFASchemaType(AbstractStructuredType):
         # field-name lookup, so the no-arg variant is renamed.
         return self.get_array_property(self.PROPERTY)
 
+    def add_property_description(self, prop: PDFAPropertyType) -> None:
+        array = self._get_or_create_seq(self.PROPERTY)
+        array.add_property(prop)
+
+    def get_property_descriptions(self) -> list[PDFAPropertyType]:
+        from .pdfa_property_type import PDFAPropertyType
+
+        array = self.get_property_array()
+        if array is None:
+            return []
+        return [
+            prop
+            for prop in array.get_all_properties()
+            if isinstance(prop, PDFAPropertyType)
+        ]
+
     def get_value_type(self) -> ArrayProperty | None:
         return self.get_array_property(self.VALUE_TYPE)
+
+    def add_value_type_description(self, value_type: PDFATypeType) -> None:
+        array = self._get_or_create_seq(self.VALUE_TYPE)
+        array.add_property(value_type)
+
+    def get_value_type_descriptions(self) -> list[PDFATypeType]:
+        from .pdfa_type_type import PDFATypeType
+
+        array = self.get_value_type()
+        if array is None:
+            return []
+        return [
+            prop
+            for prop in array.get_all_properties()
+            if isinstance(prop, PDFATypeType)
+        ]
+
+    def _get_or_create_seq(self, property_name: str) -> ArrayProperty:
+        array = self.get_array_property(property_name)
+        if array is not None:
+            return array
+        array = self.create_array_property(property_name, Cardinality.Seq)
+        self.add_property(array)
+        return array

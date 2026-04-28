@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
 
 from .pd_shading import PDShading
@@ -50,24 +52,47 @@ class PDShadingType4(PDShading):
     def set_bits_per_flag(self, bits: int) -> None:
         self._dict.set_int(_BITS_PER_FLAG, bits)
 
-    def get_decode(self) -> COSArray | None:
+    def get_decode(self) -> list[float] | None:
         v = self._dict.get_dictionary_object(_DECODE)
-        return v if isinstance(v, COSArray) else None
+        if not isinstance(v, COSArray):
+            return None
+        return v.to_float_array()
 
-    def set_decode(self, decode: COSArray | None) -> None:
-        if decode is None:
+    def set_decode(self, values: COSArray | Iterable[float] | None) -> None:
+        if values is None:
             self._dict.remove_item(_DECODE)
             return
-        self._dict.set_item(_DECODE, decode)
+        if isinstance(values, COSArray):
+            self._dict.set_item(_DECODE, values)
+            return
+        array = COSArray()
+        array.set_float_array(values)
+        self._dict.set_item(_DECODE, array)
 
-    def get_function(self) -> COSBase | None:
-        return self._dict.get_dictionary_object(_FUNCTION)
+    def get_function(self):
+        from pypdfbox.pdmodel.common.function import PDFunction
 
-    def set_function(self, function: COSBase | None) -> None:
-        if function is None:
+        item = self._dict.get_dictionary_object(_FUNCTION)
+        if item is None:
+            return None
+        return PDFunction.create(item)
+
+    def set_function(self, value) -> None:
+        from pypdfbox.pdmodel.common.function import PDFunction
+
+        if value is None:
             self._dict.remove_item(_FUNCTION)
             return
-        self._dict.set_item(_FUNCTION, function)
+        if isinstance(value, PDFunction):
+            self._dict.set_item(_FUNCTION, value.get_cos_object())
+            return
+        if isinstance(value, COSBase):
+            self._dict.set_item(_FUNCTION, value)
+            return
+        raise TypeError(
+            "set_function expects PDFunction, COSDictionary, COSStream, "
+            f"or None; got {type(value).__name__}"
+        )
 
 
 __all__ = ["PDShadingType4"]

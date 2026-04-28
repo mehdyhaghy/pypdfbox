@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSBoolean, COSDictionary, COSName
 
 from .pd_annotation import PDAnnotation
+from .pd_movie import PDMovie
+from .pd_movie_activation import PDMovieActivation
 
 _T: COSName = COSName.get_pdf_name("T")
 _MOVIE: COSName = COSName.get_pdf_name("Movie")
@@ -17,10 +19,10 @@ class PDAnnotationMovie(PDAnnotation):
     Contains animated graphics and sound to be presented on the computer
     screen and through the speakers (PDF 32000-1:2008 §12.5.6.17,
     Table 184). The companion ``/Movie`` dictionary (Table 271) is exposed
-    here as a raw ``COSDictionary``; a typed ``PDMovie`` wrapper is
-    deferred — see ``CHANGES.md``. The ``/A`` activation entry can be a
-    boolean *or* a movie-activation dictionary; we surface it as a raw
-    ``COSBase`` for the same reason.
+    as a typed ``PDMovie`` wrapper, with raw COS dictionary accessors retained
+    for compatibility. The ``/A`` activation entry can be a boolean or a movie
+    activation dictionary; typed activation dictionaries are surfaced through
+    ``PDMovieActivation``.
     """
 
     SUB_TYPE: str = "Movie"
@@ -40,31 +42,54 @@ class PDAnnotationMovie(PDAnnotation):
 
     # ---------- /Movie (movie dictionary, required) ----------
 
-    def get_movie(self) -> COSDictionary | None:
+    def get_movie_dictionary(self) -> COSDictionary | None:
         value = self._dict.get_dictionary_object(_MOVIE)
         if isinstance(value, COSDictionary):
             return value
         return None
 
-    def set_movie(self, value: COSDictionary | None) -> None:
+    def get_movie(self) -> PDMovie | None:
+        value = self.get_movie_dictionary()
+        if value is None:
+            return None
+        return PDMovie(value)
+
+    def set_movie(self, value: PDMovie | COSDictionary | None) -> None:
         if value is None:
             self._dict.remove_item(_MOVIE)
+            return
+        if isinstance(value, PDMovie):
+            self._dict.set_item(_MOVIE, value.get_cos_object())
             return
         self._dict.set_item(_MOVIE, value)
 
     # ---------- /A (activation: boolean or activation dict, default true) ----------
 
-    def get_activation(self) -> COSBase | None:
+    def get_activation_entry(self) -> COSBase | None:
         return self._dict.get_dictionary_object(_A)
 
-    def set_activation(self, value: COSBase | None) -> None:
+    def get_activation(self) -> PDMovieActivation | bool | None:
+        value = self.get_activation_entry()
+        if isinstance(value, COSDictionary):
+            return PDMovieActivation(value)
+        if isinstance(value, COSBoolean):
+            return value.value
+        return None
+
+    def set_activation(
+        self, value: PDMovieActivation | COSBase | bool | None
+    ) -> None:
         if value is None:
             self._dict.remove_item(_A)
             return
-        self._dict.set_item(
-            _A,
-            value.get_cos_object() if hasattr(value, "get_cos_object") else value,
-        )
+        if isinstance(value, bool):
+            self._dict.set_boolean(_A, value)
+            return
+        if isinstance(value, PDMovieActivation):
+            self._dict.set_item(_A, value.get_cos_object())
+            return
+        cos_value = value.get_cos_object() if hasattr(value, "get_cos_object") else value
+        self._dict.set_item(_A, cos_value)
 
 
 __all__ = ["PDAnnotationMovie"]

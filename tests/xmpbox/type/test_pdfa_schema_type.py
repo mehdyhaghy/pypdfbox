@@ -86,6 +86,32 @@ def test_property_seq_population(metadata: XMPMetadata) -> None:
     assert len(arr.get_all_properties()) == 1
 
 
+def test_add_property_description_creates_seq(metadata: XMPMetadata) -> None:
+    schema = PDFASchemaType(metadata)
+    pprop = PDFAPropertyType(metadata)
+    pprop.add_simple_property(PDFAPropertyType.NAME, "foo")
+
+    schema.add_property_description(pprop)
+
+    arr = schema.get_property_array()
+    assert isinstance(arr, ArrayProperty)
+    assert arr.get_array_type() is Cardinality.Seq
+    assert schema.get_property_descriptions() == [pprop]
+
+
+def test_property_descriptions_filter_non_property_entries(
+    metadata: XMPMetadata,
+) -> None:
+    schema = PDFASchemaType(metadata)
+    seq = schema.create_array_property(PDFASchemaType.PROPERTY, Cardinality.Seq)
+    seq.add_property(TextType(metadata, None, "rdf", "li", "ignored"))
+    pprop = PDFAPropertyType(metadata)
+    seq.add_property(pprop)
+    schema.add_property(seq)
+
+    assert schema.get_property_descriptions() == [pprop]
+
+
 def test_value_type_seq_population(metadata: XMPMetadata) -> None:
     schema = PDFASchemaType(metadata)
     seq = ArrayProperty(
@@ -104,3 +130,29 @@ def test_value_type_seq_population(metadata: XMPMetadata) -> None:
     arr = schema.get_value_type()
     assert isinstance(arr, ArrayProperty)
     assert len(arr.get_all_properties()) == 1
+
+
+def test_add_value_type_description_creates_seq(metadata: XMPMetadata) -> None:
+    schema = PDFASchemaType(metadata)
+    vt = PDFATypeType(metadata)
+    vt.add_simple_property(PDFATypeType.TYPE, "MyType")
+
+    schema.add_value_type_description(vt)
+
+    arr = schema.get_value_type()
+    assert isinstance(arr, ArrayProperty)
+    assert arr.get_array_type() is Cardinality.Seq
+    assert schema.get_value_type_descriptions() == [vt]
+
+
+def test_value_type_descriptions_filter_non_value_type_entries(
+    metadata: XMPMetadata,
+) -> None:
+    schema = PDFASchemaType(metadata)
+    seq = schema.create_array_property(PDFASchemaType.VALUE_TYPE, Cardinality.Seq)
+    seq.add_property(TextType(metadata, None, "rdf", "li", "ignored"))
+    vt = PDFATypeType(metadata)
+    seq.add_property(vt)
+    schema.add_property(seq)
+
+    assert schema.get_value_type_descriptions() == [vt]

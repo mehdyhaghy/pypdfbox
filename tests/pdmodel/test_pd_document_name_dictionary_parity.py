@@ -4,11 +4,12 @@ from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDDestinationNameTreeNode,
+    PDPageXYZDestination,
+)
 from pypdfbox.pdmodel.pd_alternate_presentations_name_tree_node import (
     PDAlternatePresentationsNameTreeNode,
-)
-from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
-    PDDocumentNameDestinationDictionary,
 )
 from pypdfbox.pdmodel.pd_document_name_dictionary import PDDocumentNameDictionary
 from pypdfbox.pdmodel.pd_embedded_files_name_tree_node import (
@@ -55,13 +56,13 @@ def test_get_dests_round_trip_returns_destination_dictionary() -> None:
 
     out = nd.get_dests()
     assert out is not None
-    assert isinstance(out, PDDocumentNameDestinationDictionary)
+    assert isinstance(out, PDDestinationNameTreeNode)
     assert out.get_cos_object() is inner
 
 
 def test_set_dests_round_trip() -> None:
     nd = PDDocumentNameDictionary()
-    dests = PDDocumentNameDestinationDictionary()
+    dests = PDDestinationNameTreeNode()
     nd.set_dests(dests)
     out = nd.get_dests()
     assert out is not None
@@ -70,7 +71,7 @@ def test_set_dests_round_trip() -> None:
 
 def test_set_dests_none_clears_entry() -> None:
     nd = PDDocumentNameDictionary()
-    nd.set_dests(PDDocumentNameDestinationDictionary())
+    nd.set_dests(PDDestinationNameTreeNode())
     assert nd.get_cos_object().get_dictionary_object(_DESTS) is not None
     nd.set_dests(None)
     assert nd.get_dests() is None
@@ -80,6 +81,22 @@ def test_set_dests_none_clears_entry() -> None:
 def test_get_dests_returns_none_when_absent() -> None:
     nd = PDDocumentNameDictionary()
     assert nd.get_dests() is None
+
+
+def test_set_dests_preserves_destination_name_tree_leaf() -> None:
+    nd = PDDocumentNameDictionary()
+    dests = PDDestinationNameTreeNode()
+    destination = PDPageXYZDestination()
+    destination.set_page_number(2)
+    dests.set_value("chapter", destination)
+
+    nd.set_dests(dests)
+
+    out = nd.get_dests()
+    assert isinstance(out, PDDestinationNameTreeNode)
+    fetched = out.get_value("chapter")
+    assert isinstance(fetched, PDPageXYZDestination)
+    assert fetched.get_page_number() == 2
 
 
 # ---------- get_embedded_files / set_embedded_files ----------

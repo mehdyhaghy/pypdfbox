@@ -14,7 +14,6 @@ from pypdfbox.pdmodel.graphics.shading import (
     PDShadingType7,
 )
 
-
 # ---------- shading-type identity ----------
 
 
@@ -164,7 +163,8 @@ def test_type4_mesh_metadata_round_trip():
     for v in (0.0, 100.0, 0.0, 100.0, 0.0, 1.0):
         decode.add(COSFloat(v))
     s.set_decode(decode)
-    assert s.get_decode() is decode
+    assert s.get_decode() == [0.0, 100.0, 0.0, 100.0, 0.0, 1.0]
+    assert s.get_cos_object().get_dictionary_object("Decode") is decode
 
 
 def test_type5_vertices_per_row_round_trip():

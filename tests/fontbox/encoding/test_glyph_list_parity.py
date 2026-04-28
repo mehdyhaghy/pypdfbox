@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pypdfbox.fontbox.encoding import GlyphList
 
-
 # -- to_unicode --------------------------------------------------------------
 
 def test_to_unicode_ascii_letter() -> None:
@@ -108,3 +107,20 @@ def test_get_or_unicode_lookup_unknown_returns_none() -> None:
 
 def test_get_or_unicode_lookup_none_returns_none() -> None:
     assert GlyphList.get_default().get_or_unicode_lookup(None) is None
+
+
+# -- unicode_to_name ---------------------------------------------------------
+
+def test_unicode_to_name_matches_sequence_to_name() -> None:
+    g = GlyphList.get_default()
+    assert g.unicode_to_name("A") == g.sequence_to_name("A") == "A"
+    assert g.unicode_to_name("Á") == "Aacute"
+
+
+def test_unicode_to_name_ligature() -> None:
+    assert GlyphList.get_default().unicode_to_name("ﬁ") == "fi"
+
+
+def test_unicode_to_name_unknown_returns_notdef() -> None:
+    assert GlyphList.get_default().unicode_to_name("\ue000") == ".notdef"
+    assert GlyphList.get_default().unicode_to_name(None) == ".notdef"

@@ -4652,6 +4652,14 @@ class GlyphList:
         name = self._reverse_map().get(unicode_sequence)
         return name if name is not None else ".notdef"
 
+    def unicode_to_name(self, unicode_sequence: str | None) -> str:
+        """Alias for :meth:`sequence_to_name`.
+
+        Kept for callers that describe the reverse map as Unicode-to-name
+        lookup rather than sequence-to-name lookup.
+        """
+        return self.sequence_to_name(unicode_sequence)
+
     @staticmethod
     def is_unicode_lookup(name: Optional[str]) -> bool:
         """Return True if ``name`` matches the synthesized uniXXXX / uXXXX(XX)
