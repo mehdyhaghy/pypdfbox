@@ -108,3 +108,129 @@ def test_signature_validation_result_errors_independent_per_instance() -> None:
     b = SignatureValidationResult()
     a.errors.append("boom")
     assert b.errors == []
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: real PKCS#7 detached signature → digest-match verify
+# ---------------------------------------------------------------------------
+
+
+def _make_self_signed_signer():
+    """Self-signed cert + key pair for a Pkcs7Signature roundtrip test."""
+    import datetime as _dt
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "verify-test")])
+    now = _dt.datetime.now(_dt.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(42)
+        .not_valid_before(now)
+        .not_valid_after(now + _dt.timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
+    return cert, key
+
+
+def test_verify_digest_match_against_real_pkcs7_blob() -> None:
+    """End-to-end: build a PKCS#7 detached SignedData over the bracketed
+    document bytes, splice into a synthetic /Contents slot, then verify()
+    — expect digest match, signer cert recovered, signed_digest populated.
+    """
+    import io as _io
+
+    from pypdfbox.pdmodel.interactive.digitalsignature import (
+        Pkcs7Signature,
+        compute_byte_range,
+    )
+
+    cert, key = _make_self_signed_signer()
+
+    # Synthetic PDF: prefix bytes, a `<...>` placeholder window, suffix bytes.
+    # PDFBox-style bracketed bytes (per ISO 32000-1 §12.8.1) INCLUDE the
+    # angle brackets — so the signer must hash prefix + b"<" + b">" + suffix.
+    prefix = b"%PDF-1.7\n" + b"A" * 100
+    suffix = b"B" * 100 + b"\n%%EOF\n"
+
+    signer = Pkcs7Signature(cert, key)
+    # First produce a placeholder doc to reserve space.
+    placeholder = b"\x00" * 4096
+    document_template = prefix + b"<" + placeholder + b">" + suffix
+    open_idx = len(prefix)
+    close_idx = open_idx + 1 + len(placeholder)
+    byte_range = compute_byte_range(document_template, open_idx, close_idx)
+    bracketed = (
+        document_template[byte_range[0] : byte_range[0] + byte_range[1]]
+        + document_template[byte_range[2] : byte_range[2] + byte_range[3]]
+    )
+
+    pkcs7_blob = signer.sign(_io.BytesIO(bracketed))
+    # Splice into the placeholder window (zero-pad to keep offsets stable).
+    if len(pkcs7_blob) > len(placeholder):
+        raise AssertionError("placeholder too small for PKCS#7 blob in test")
+    splice = pkcs7_blob + b"\x00" * (len(placeholder) - len(pkcs7_blob))
+    document = prefix + b"<" + splice + b">" + suffix
+
+    sig = PDSignature()
+    sig.set_sub_filter("adbe.pkcs7.detached")
+    sig.set_byte_range(byte_range)
+    sig.set_contents(splice)
+
+    result = sig.verify(document)
+
+    assert result.signer_certificate is not None
+    assert result.signer_subject is not None and "verify-test" in result.signer_subject
+    assert result.signer_serial_number == 42
+    assert result.computed_digest is not None
+    assert result.signed_digest is not None
+    assert result.signed_digest == result.computed_digest
+    assert result.is_valid is True
+
+
+def test_verify_detects_tampering_via_digest_mismatch() -> None:
+    """If the document is altered after signing, verify() must surface a
+    digest-mismatch error and is_valid=False."""
+    import io as _io
+
+    from pypdfbox.pdmodel.interactive.digitalsignature import (
+        Pkcs7Signature,
+        compute_byte_range,
+    )
+
+    cert, key = _make_self_signed_signer()
+
+    prefix = b"A" * 50
+    suffix = b"B" * 50
+    placeholder = b"\x00" * 4096
+    document_template = prefix + b"<" + placeholder + b">" + suffix
+    open_idx = len(prefix)
+    close_idx = open_idx + 1 + len(placeholder)
+    byte_range = compute_byte_range(document_template, open_idx, close_idx)
+    bracketed = (
+        document_template[byte_range[0] : byte_range[0] + byte_range[1]]
+        + document_template[byte_range[2] : byte_range[2] + byte_range[3]]
+    )
+    pkcs7_blob = Pkcs7Signature(cert, key).sign(_io.BytesIO(bracketed))
+    splice = pkcs7_blob + b"\x00" * (len(placeholder) - len(pkcs7_blob))
+    document = prefix + b"<" + splice + b">" + suffix
+
+    sig = PDSignature()
+    sig.set_sub_filter("adbe.pkcs7.detached")
+    sig.set_byte_range(byte_range)
+    sig.set_contents(splice)
+
+    # Tamper with the signed prefix region — flip a byte in the first range.
+    tampered = bytearray(document)
+    tampered[10] = (tampered[10] + 1) & 0xFF
+
+    result = sig.verify(bytes(tampered))
+    assert result.is_valid is False
+    assert any("digest mismatch" in e for e in result.errors)

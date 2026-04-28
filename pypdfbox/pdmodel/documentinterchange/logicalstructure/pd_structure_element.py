@@ -150,6 +150,38 @@ class PDStructureElement(PDStructureNode):
         cos = parent.get_cos_object() if hasattr(parent, "get_cos_object") else parent
         self._dictionary.set_item(_P, cos)
 
+    def get_parent_node(self) -> PDStructureNode | None:
+        """Return ``/P`` dispatched to a typed :class:`PDStructureNode`
+        (either :class:`PDStructureTreeRoot` or :class:`PDStructureElement`).
+        Mirrors upstream ``PDStructureElement.getParent()``'s typed dispatch
+        via ``PDStructureNode.create``. Returns ``None`` when ``/P`` is
+        absent or not a dictionary."""
+        parent = self._dictionary.get_dictionary_object(_P)
+        if not isinstance(parent, COSDictionary):
+            return None
+        return PDStructureNode.create(parent)
+
+    def get_structure_tree_root(self) -> Any | None:
+        """Walk the ``/P`` parent chain to the owning
+        :class:`PDStructureTreeRoot`. Returns ``None`` when no root is
+        reachable. Mirrors upstream's private
+        ``PDStructureElement.getStructureTreeRoot()`` (lifted to a public
+        accessor — pypdfbox callers commonly need root-level role-map /
+        class-map traversal from a leaf element)."""
+        from .pd_structure_tree_root import PDStructureTreeRoot
+
+        node: COSDictionary | None = self._dictionary
+        seen: set[int] = set()
+        for _ in range(_MAX_ROLE_MAP_DEPTH):
+            if node is None or id(node) in seen:
+                return None
+            seen.add(id(node))
+            if node.get_name(_TYPE) == _STRUCT_TREE_ROOT_NAME:
+                return PDStructureTreeRoot(node)
+            parent = node.get_dictionary_object(_P)
+            node = parent if isinstance(parent, COSDictionary) else None
+        return None
+
     # ---------- /ID ----------
 
     def get_id(self) -> str | None:
@@ -312,6 +344,41 @@ class PDStructureElement(PDStructureNode):
             revs.add_object(PDAttributeObject(a), self.get_revision_number())
         return revs
 
+    def get_attribute_objects(self) -> list[PDAttributeObject]:
+        """Return the ``/A`` entries as a flat list of typed
+        :class:`PDAttributeObject` (every owner subclass dispatched through
+        :meth:`PDAttributeObject.create`).
+
+        pypdfbox addition: upstream callers reach for ``getAttributes()``
+        and unpack the :class:`Revisions` wrapper. The flat-list shape is a
+        common convenience and lets ``PDStructureElement`` callers compose
+        with ``/ClassMap`` lookups without going through the revision API.
+        """
+        from .pd_attribute_object import PDAttributeObject
+
+        out: list[PDAttributeObject] = []
+        a = self._dictionary.get_dictionary_object(_A)
+        if isinstance(a, COSDictionary):
+            out.append(PDAttributeObject.create(a))
+            return out
+        if isinstance(a, COSArray):
+            for i in range(a.size()):
+                item = a.get_object(i)
+                if isinstance(item, COSDictionary):
+                    out.append(PDAttributeObject.create(item))
+        return out
+
+    def has_attribute_owner(self, owner: str) -> bool:
+        """Return ``True`` when at least one ``/A`` entry's ``/O`` owner
+        equals ``owner``. Convenience wrapper around
+        :meth:`get_attribute_objects`."""
+        if owner is None:
+            return False
+        for attr in self.get_attribute_objects():
+            if attr.get_owner() == owner:
+                return True
+        return False
+
     def set_attributes(self, attributes: Revisions[PDAttributeObject] | None) -> None:
         if attributes is None:
             self._dictionary.remove_item(_A)
@@ -336,6 +403,35 @@ class PDStructureElement(PDStructureNode):
             self._dictionary.remove_item(_C)
             return
         self._dictionary.set_item(_C, class_names.to_cos_array())
+
+    def get_class_names_as_strings(self) -> list[str]:
+        """Return the ``/C`` class-name entries as plain Python ``str``.
+
+        Mirrors upstream's ``Revisions<String>``-typed ``getClassNames``;
+        this convenience helper is the pypdfbox-typed shape (the underlying
+        Revisions store wraps :class:`COSName` for round-trip fidelity).
+
+        Single-name and array shapes both decode the same way; non-name
+        entries (e.g. integer revision markers) are skipped.
+        """
+        revs = self.get_class_names()
+        out: list[str] = []
+        for i in range(revs.size()):
+            entry = revs.get_object_at(i)
+            if isinstance(entry, COSName):
+                out.append(entry.get_name())
+            elif isinstance(entry, str):
+                out.append(entry)
+        return out
+
+    def has_class(self, class_name: str | None) -> bool:
+        """Return ``True`` when ``class_name`` is one of this element's
+        ``/C`` class names. Mirrors PDF tagging-tooling convention; not a
+        direct upstream method but a thin wrapper over :meth:`Revisions.contains`
+        that callers commonly write inline."""
+        if class_name is None:
+            return False
+        return class_name in self.get_class_names_as_strings()
 
     # ---------- /S standard-structure-type alias ----------
 
@@ -545,6 +641,17 @@ class PDStructureElement(PDStructureNode):
             self._dictionary.set_item(_C, revs.to_cos_array())
 
     # ---------- marked-content reference enumeration ----------
+
+    def iter_object_references(self) -> Iterator[Any]:
+        """Yield direct ``/K`` kids that are :class:`PDObjectReference`
+        (``/Type /OBJR``) typed wrappers. Upstream's ``getKids`` returns a
+        mixed list; this is a convenience filter for callers that only
+        care about annotation/XObject back-pointers."""
+        from .pd_object_reference import PDObjectReference
+
+        for kid in self.get_kids():
+            if isinstance(kid, PDObjectReference):
+                yield kid
 
     def get_marked_content_references(self) -> list[Any]:
         """Return the direct marked-content references of this element.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .pd_optional_content_configuration import PDOptionalContentConfiguration
 from .pd_optional_content_group import PDOptionalContentGroup, RenderState
 from .pd_optional_content_group_usage import (
     PDOptionalContentGroupUsage,
@@ -24,6 +25,7 @@ from .pd_optional_content_properties import (
 __all__ = [
     "BaseState",
     "MembershipDictionaryVisibilityPolicy",
+    "PDOptionalContentConfiguration",
     "PDOptionalContentGroup",
     "PDOptionalContentGroupUsage",
     "PDOptionalContentMembershipDictionary",

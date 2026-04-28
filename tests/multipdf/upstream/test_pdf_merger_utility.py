@@ -122,39 +122,69 @@ def test_jpeg_ccitt() -> None: ...
 def test_pdf_merger_open_action() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py and "
+    "test_pdf_merger_utility_struct_tree.py"
+)
 def test_structure_tree_merge() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py"
+)
 def test_structure_tree_merge_2() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py"
+)
 def test_structure_tree_merge_3() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py"
+)
 def test_structure_tree_merge_4() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py"
+)
 def test_structure_tree_merge_5() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py"
+)
 def test_structure_tree_merge_6() -> None: ...
 
 
-@pytest.mark.skip(reason="structure-tree merging deferred — see CHANGES.md")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
+    "tests/multipdf/test_merger_struct_tree.py"
+)
 def test_structure_tree_merge_7() -> None: ...
 
 
-@pytest.mark.skip(reason="ParentTreeNextKey + structure tree deferred")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — synthetic equivalent in "
+    "tests/multipdf/test_pdf_merger_utility_struct_tree.py "
+    "(test_struct_tree_merge_keys_offset_into_dest_range)"
+)
 def test_missing_parent_tree_next_key() -> None: ...
 
 
-@pytest.mark.skip(reason="ID-tree merging deferred (structure tree)")
+@pytest.mark.skip(
+    reason="upstream input/PDFA-1b.pdf fixture — synthetic equivalent in "
+    "tests/multipdf/test_merger_struct_tree.py "
+    "(test_id_tree_collision_dest_wins_with_warning)"
+)
 def test_structure_tree_merge_id_tree() -> None: ...
 
 

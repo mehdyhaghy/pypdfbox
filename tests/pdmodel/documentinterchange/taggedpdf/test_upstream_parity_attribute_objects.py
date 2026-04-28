@@ -164,6 +164,65 @@ def test_export_format_inherits_layout_color_helpers() -> None:
     assert obj.get_background_color() == (1.0, 0.0, 0.5)
 
 
+def test_layout_owner_constant_is_owner_layout() -> None:
+    assert PDLayoutAttributeObject.OWNER_LAYOUT == "Layout"
+    assert PDLayoutAttributeObject().get_owner() == PDLayoutAttributeObject.OWNER_LAYOUT
+
+
+def test_layout_round_out_value_constants_match_upstream() -> None:
+    cls = PDLayoutAttributeObject
+    # LineHeight sentinels.
+    assert cls.LINE_HEIGHT_NORMAL == "Normal"
+    assert cls.LINE_HEIGHT_AUTO == "Auto"
+    # TextDecorationType.
+    assert cls.TEXT_DECORATION_TYPE_NONE == "None"
+    assert cls.TEXT_DECORATION_TYPE_UNDERLINE == "Underline"
+    assert cls.TEXT_DECORATION_TYPE_OVERLINE == "Overline"
+    assert cls.TEXT_DECORATION_TYPE_LINE_THROUGH == "LineThrough"
+    # RubyAlign.
+    assert cls.RUBY_ALIGN_START == "Start"
+    assert cls.RUBY_ALIGN_CENTER == "Center"
+    assert cls.RUBY_ALIGN_END == "End"
+    assert cls.RUBY_ALIGN_JUSTIFY == "Justify"
+    assert cls.RUBY_ALIGN_DISTRIBUTE == "Distribute"
+    # RubyPosition.
+    assert cls.RUBY_POSITION_BEFORE == "Before"
+    assert cls.RUBY_POSITION_AFTER == "After"
+    assert cls.RUBY_POSITION_WARICHU == "Warichu"
+    assert cls.RUBY_POSITION_INLINE == "Inline"
+    # GlyphOrientationVertical.
+    assert cls.GLYPH_ORIENTATION_VERTICAL_AUTO == "Auto"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_MINUS_180_DEGREES == "-180"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_MINUS_90_DEGREES == "-90"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_ZERO_DEGREES == "0"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_90_DEGREES == "90"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_180_DEGREES == "180"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_270_DEGREES == "270"
+    assert cls.GLYPH_ORIENTATION_VERTICAL_360_DEGREES == "360"
+
+
+def test_export_format_inherits_round_out_layout_accessors() -> None:
+    """Round-out layout accessors must be reachable through the export-format
+    subclass (upstream inheritance)."""
+    obj = PDExportFormatAttributeObject()
+    obj.set_t_padding([1.0, 2.0, 3.0, 4.0])
+    obj.set_line_height_auto()
+    obj.set_text_decoration_type(
+        PDLayoutAttributeObject.TEXT_DECORATION_TYPE_UNDERLINE
+    )
+    obj.set_ruby_align(PDLayoutAttributeObject.RUBY_ALIGN_JUSTIFY)
+    obj.set_ruby_position(PDLayoutAttributeObject.RUBY_POSITION_WARICHU)
+    obj.set_glyph_orientation_vertical(
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_90_DEGREES
+    )
+    assert obj.get_t_padding() == [1.0, 2.0, 3.0, 4.0]
+    assert obj.get_line_height() == "Auto"
+    assert obj.get_text_decoration_type() == "Underline"
+    assert obj.get_ruby_align() == "Justify"
+    assert obj.get_ruby_position() == "Warichu"
+    assert obj.get_glyph_orientation_vertical() == "90"
+
+
 def test_export_format_owner_round_trip_via_constructor_owner_kwarg() -> None:
     for owner in (
         PDExportFormatAttributeObject.OWNER_XML_1_00,

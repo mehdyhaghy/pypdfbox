@@ -89,3 +89,34 @@ def test_create_dispatches_artifact_to_subclass() -> None:
 
     mc = PDMarkedContent.create(COSName.get_pdf_name("Artifact"), COSDictionary())
     assert isinstance(mc, PDArtifactMarkedContent)
+
+
+# ---------- MCID linkage with PDStructureElement / PDMarkedContentReference ----------
+
+
+def test_mcid_round_trips_via_marked_content_reference() -> None:
+    """The MCID stored on a BDC's properties must round-trip through a
+    ``PDMarkedContentReference`` so the structure tree can resolve a
+    structure element back to its on-page marked-content sequence.
+
+    Mirrors the PDF/UA invariant: ``PDMarkedContent.get_mcid()`` and
+    ``PDMarkedContentReference.get_mcid()`` agree for the same MCID.
+    """
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
+        PDMarkedContentReference,
+    )
+
+    props = COSDictionary()
+    props.set_int(COSName.get_pdf_name("MCID"), 12)
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), props)
+
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(mc.get_mcid())
+
+    assert mcr.get_mcid() == mc.get_mcid() == 12
+
+
+def test_pd_marked_content_str_alias_matches_repr() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("Span"), COSDictionary())
+    # ``__str__`` mirrors ``toString`` — delegates to ``__repr__``.
+    assert str(mc) == repr(mc)

@@ -339,7 +339,7 @@ def test_panose_returns_none_when_style_missing() -> None:
 def test_panose_returns_none_when_data_too_short() -> None:
     fd = PDFontDescriptor()
     style = COSDictionary()
-    style.set_item(COSName.get_pdf_name("Panose"), COSString(b"\x00\x01\x02"))  # < 10 bytes
+    style.set_item(COSName.get_pdf_name("Panose"), COSString(b"\x00\x01\x02"))  # < 12 bytes
     fd.get_cos_object().set_item(COSName.get_pdf_name("Style"), style)
     assert fd.get_panose() is None
 
@@ -347,22 +347,34 @@ def test_panose_returns_none_when_data_too_short() -> None:
 def test_panose_round_trip_from_style_dict() -> None:
     fd = PDFontDescriptor()
     style = COSDictionary()
-    payload = bytes(range(10))  # 0,1,2,...,9 — 10 bytes
+    # 12 bytes: bytes 0-1 = sFamilyClass (0x0008), bytes 2-11 = PANOSE-10.
+    payload = bytes([0x00, 0x08, 2, 11, 6, 3, 5, 4, 5, 2, 2, 4])
     style.set_item(COSName.get_pdf_name("Panose"), COSString(payload))
     fd.get_cos_object().set_item(COSName.get_pdf_name("Style"), style)
 
     panose = fd.get_panose()
     assert isinstance(panose, PDPanose)
     assert panose.get_bytes() == payload
-    assert panose.get_family_class() == 0
-    assert panose.get_serif_style() == 1
+    assert panose.get_family_class() == 8
+
+    classification = panose.get_panose()
+    assert classification.get_family_kind() == 2
+    assert classification.get_serif_style() == 11
+    assert classification.get_weight() == 6
+    assert classification.get_proportion() == 3
+    assert classification.get_contrast() == 5
+    assert classification.get_stroke_variation() == 4
+    assert classification.get_arm_style() == 5
+    assert classification.get_letterform() == 2
+    assert classification.get_midline() == 2
+    assert classification.get_x_height() == 4
 
 
-def test_panose_constructor_validates_length() -> None:
-    PDPanose(bytes(10))  # ok
-    PDPanose(bytes(20))  # ok, truncates to first 10
-    with pytest.raises(ValueError):
-        PDPanose(bytes(5))
+def test_panose_constructor_accepts_any_length() -> None:
+    """Upstream stores bytes verbatim with no length check — mirror that."""
+    PDPanose(bytes(12))  # nominal
+    PDPanose(bytes(24))  # over-long, ok
+    PDPanose(bytes(5))  # short, ok — accessors raise IndexError on demand
 
 
 # ---------- /Type entry written by the no-arg constructor ----------

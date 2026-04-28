@@ -151,3 +151,81 @@ def test_empty_cff_font_accessors_are_safe() -> None:
     assert f.get_default_width_x() == 0.0
     assert f.get_nominal_width_x() == 0.0
     assert f.get_glyph_widths() == {}
+    # Wave 41 round-out additions.
+    assert f.get_data() == b""
+    assert f.get_global_subr_index() == []
+    assert f.get_char_string_bytes() == []
+    assert f.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+    assert f.get_font_b_box() == [0.0, 0.0, 0.0, 0.0]
+    assert f.get_font_bbox() == [0.0, 0.0, 0.0, 0.0]
+    assert f.get_name_for_gid(0) == ".notdef"
+    assert f.get_name_for_gid(99) == ".notdef"
+    assert f.get_sid_for_gid(0) == 0
+    assert f.get_gid_for_sid(0) == 0
+    assert f.get_cid_for_gid(0) == 0
+    assert f.get_gid_for_cid(0) == 0
+
+
+def test_get_string_standard_strings_table() -> None:
+    """SIDs 0..390 resolve via the Adobe Standard Strings table even on
+    an unparsed CFFFont (the table is font-independent)."""
+    f = CFFFont()
+    assert f.get_string(0) == ".notdef"
+    assert f.get_string(1) == "space"
+    # Per Adobe Technote #5176 Appendix A, SID 34 = "A".
+    assert f.get_string(34) == "A"
+    # Negative / out-of-range → empty string.
+    assert f.get_string(-1) == ""
+    # Past the standard strings range with no font set → empty string.
+    assert f.get_string(10_000) == ""
+
+
+def test_get_sid_resolves_standard_names() -> None:
+    f = CFFFont()
+    assert f.get_sid(".notdef") == 0
+    assert f.get_sid("A") == 34
+    assert f.get_sid("space") == 1
+    assert f.get_sid("__not_a_real_glyph__") == 0
+    assert f.get_sid("") == 0
+
+
+def test_add_value_to_top_dict_overlay() -> None:
+    f = CFFFont()
+    f.add_value_to_top_dict("CustomKey", "CustomValue")
+    assert f.get_property("CustomKey") == "CustomValue"
+    assert f.get_top_dict()["CustomKey"] == "CustomValue"
+    # Setting None is a no-op (matches upstream null-guard).
+    f.add_value_to_top_dict("OtherKey", None)
+    assert "OtherKey" not in f.get_top_dict()
+
+
+def test_get_data_round_trip(cff_font: CFFFont) -> None:
+    """``get_data()`` returns the exact byte payload the font was
+    parsed from."""
+    raw = cff_font.get_data()
+    assert isinstance(raw, bytes)
+    assert raw == _CFF_BYTES
+
+
+def test_charset_sid_round_trip(cff_font: CFFFont) -> None:
+    """For a typical name-keyed CFF font GID 0 is .notdef, SID 0."""
+    assert cff_font.get_name_for_gid(0) == ".notdef"
+    assert cff_font.get_sid_for_gid(0) == 0
+    # SID 0 round-trips back to GID 0.
+    assert cff_font.get_gid_for_sid(0) == 0
+    # The "A" glyph (if present) round-trips through SID lookup.
+    charset = cff_font.get_charset()
+    if "A" in charset:
+        a_gid = charset.index("A")
+        a_sid = cff_font.get_sid_for_gid(a_gid)
+        # SID for "A" is 34 in the standard strings table; round-trip back.
+        assert a_sid == 34
+        assert cff_font.get_gid_for_sid(a_sid) == a_gid
+
+
+def test_get_global_subr_index_returns_bytes_list(cff_font: CFFFont) -> None:
+    gsubrs = cff_font.get_global_subr_index()
+    assert isinstance(gsubrs, list)
+    assert all(isinstance(b, bytes) for b in gsubrs)
+    # Count must agree with the int accessor.
+    assert len(gsubrs) == cff_font.get_global_subrs()

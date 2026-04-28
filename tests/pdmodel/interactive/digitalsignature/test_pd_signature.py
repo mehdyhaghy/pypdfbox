@@ -79,3 +79,62 @@ def test_pd_signature_lock_round_trip_action_and_fields() -> None:
 
     lock.set_p(2)
     assert lock.get_p() == 2
+
+
+# ---------------------------------------------------------------------------
+# /Type, /Cert, /M accessors
+# ---------------------------------------------------------------------------
+
+
+def test_pd_signature_get_type_default_sig() -> None:
+    sig = PDSignature()
+    assert sig.get_type() == "Sig"
+
+
+def test_pd_signature_set_type_round_trip_and_remove() -> None:
+    sig = PDSignature()
+    sig.set_type("DocTimeStamp")
+    assert sig.get_type() == "DocTimeStamp"
+    sig.set_type(None)
+    assert sig.get_type() is None
+
+
+def test_pd_signature_cert_single_string_round_trip() -> None:
+    sig = PDSignature()
+    assert sig.get_cert() is None
+    sig.set_cert("DER-bytes-as-string")
+    # Single-string storage is still surfaced as a one-element list on read.
+    assert sig.get_cert() == ["DER-bytes-as-string"]
+
+
+def test_pd_signature_cert_array_round_trip() -> None:
+    sig = PDSignature()
+    sig.set_cert(["leaf-cert", "intermediate-cert", "root-cert"])
+    assert sig.get_cert() == ["leaf-cert", "intermediate-cert", "root-cert"]
+
+
+def test_pd_signature_cert_set_none_removes_entry() -> None:
+    sig = PDSignature()
+    sig.set_cert("anything")
+    sig.set_cert(None)
+    assert sig.get_cert() is None
+    assert not sig.get_cos_object().contains_key("Cert")
+
+
+def test_pd_signature_set_sign_date_round_trip() -> None:
+    sig = PDSignature()
+    assert sig.get_sign_date() is None
+    sig.set_sign_date("D:20260427120000Z")
+    assert sig.get_sign_date() == "D:20260427120000Z"
+    sig.set_sign_date(None)
+    assert sig.get_sign_date() is None
+
+
+def test_pd_signature_set_byte_range_rejects_wrong_length() -> None:
+    import pytest
+
+    sig = PDSignature()
+    with pytest.raises(ValueError, match="exactly 4"):
+        sig.set_byte_range([0, 100, 200])
+    with pytest.raises(ValueError, match="exactly 4"):
+        sig.set_byte_range([0, 100, 200, 300, 400])

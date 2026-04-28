@@ -361,7 +361,9 @@ class PDFontDescriptor:
     def get_panose(self) -> PDPanose | None:
         """Returns the Panose entry of the Style dictionary, if any.
 
-        Mirrors upstream ``PDFontDescriptor.getPanose()``.
+        Mirrors upstream ``PDFontDescriptor.getPanose()``. The Panose entry is
+        a 12-byte string: bytes 0-1 are the TrueType ``sFamilyClass`` and
+        bytes 2-11 are the 10-byte PANOSE classification.
         """
         v = self._dict.get_dictionary_object(_STYLE)
         if not isinstance(v, COSDictionary):
@@ -395,35 +397,126 @@ class PDFontDescriptor:
         self._dict.set_name(_LANG, value)
 
 
-class PDPanose:
-    """Panose-1 classification block (10 bytes) from the /Style dictionary.
+class PDPanoseClassification:
+    """10-byte PANOSE classification block.
 
-    Mirrors ``org.apache.pdfbox.pdmodel.font.PDPanose``. Upstream exposes the
-    raw 10-byte block plus per-byte category accessors; our port surfaces the
-    raw bytes and the family-class / serif-style headers — enough for the
-    descriptor wrapper to round-trip the value. Additional per-byte
-    accessors land alongside the font subsetting cluster.
+    Mirrors ``org.apache.pdfbox.pdmodel.font.PDPanoseClassification``. The
+    PANOSE classification number is documented at
+    https://monotype.de/services/pan2 and at
+    https://www.microsoft.com/typography/otspec/os2.htm#pan.
     """
 
     LENGTH: int = 10
 
-    __slots__ = ("_data",)
+    __slots__ = ("_bytes",)
 
     def __init__(self, data: bytes | bytearray) -> None:
-        if len(data) < self.LENGTH:
-            raise ValueError(
-                f"PDPanose requires at least {self.LENGTH} bytes, got {len(data)}"
-            )
-        self._data = bytes(data[: self.LENGTH])
+        # Upstream stores the byte array verbatim — no length validation in
+        # the constructor. Match that for behavioral parity (callers may
+        # reasonably pass 10 bytes; PDFontDescriptor.get_panose() guards the
+        # length before constructing this object).
+        self._bytes = bytes(data)
 
     def get_bytes(self) -> bytes:
-        return self._data
+        return self._bytes
 
-    def get_family_class(self) -> int:
-        return self._data[0]
+    def get_family_kind(self) -> int:
+        return self._bytes[0]
 
     def get_serif_style(self) -> int:
-        return self._data[1]
+        return self._bytes[1]
+
+    def get_weight(self) -> int:
+        return self._bytes[2]
+
+    def get_proportion(self) -> int:
+        return self._bytes[3]
+
+    def get_contrast(self) -> int:
+        return self._bytes[4]
+
+    def get_stroke_variation(self) -> int:
+        return self._bytes[5]
+
+    def get_arm_style(self) -> int:
+        return self._bytes[6]
+
+    def get_letterform(self) -> int:
+        return self._bytes[7]
+
+    def get_midline(self) -> int:
+        return self._bytes[8]
+
+    def get_x_height(self) -> int:
+        return self._bytes[9]
+
+    def __str__(self) -> str:
+        return (
+            "{ FamilyKind = "
+            + str(self.get_family_kind())
+            + ", SerifStyle = "
+            + str(self.get_serif_style())
+            + ", Weight = "
+            + str(self.get_weight())
+            + ", Proportion = "
+            + str(self.get_proportion())
+            + ", Contrast = "
+            + str(self.get_contrast())
+            + ", StrokeVariation = "
+            + str(self.get_stroke_variation())
+            + ", ArmStyle = "
+            + str(self.get_arm_style())
+            + ", Letterform = "
+            + str(self.get_letterform())
+            + ", Midline = "
+            + str(self.get_midline())
+            + ", XHeight = "
+            + str(self.get_x_height())
+            + "}"
+        )
+
+
+class PDPanose:
+    """The 12-byte Panose entry of a FontDescriptor's /Style dictionary.
+
+    Mirrors ``org.apache.pdfbox.pdmodel.font.PDPanose``. The first two bytes
+    hold the TrueType ``sFamilyClass`` value (signed 16-bit big-endian); the
+    remaining 10 bytes are the PANOSE classification number, exposed via
+    :class:`PDPanoseClassification`.
+    """
+
+    LENGTH: int = 12
+
+    __slots__ = ("_bytes",)
+
+    def __init__(self, data: bytes | bytearray) -> None:
+        # Upstream stores the array directly without length checks. Mirror
+        # that — accept any length the caller hands in and let the per-byte
+        # accessors raise IndexError if the buffer is short.
+        self._bytes = bytes(data)
+
+    def get_bytes(self) -> bytes:
+        """The raw 12-byte block (sFamilyClass + 10-byte PANOSE)."""
+        return self._bytes
+
+    def get_family_class(self) -> int:
+        """The TrueType ``sFamilyClass`` value (signed 16-bit big-endian).
+
+        Bytes 0-1 of the Panose block. Mirrors upstream
+        ``PDPanose.getFamilyClass()`` which returns ``bytes[0] << 8 | bytes[1]``
+        — a *signed* value because Java's ``byte`` is signed. We replicate
+        that signedness so round-trips with PDFBox match exactly.
+        """
+        # Java does (bytes[0] << 8) | (bytes[1] & 0xff) where bytes[0] is a
+        # signed byte. Replicate by interpreting bytes[0] as int8.
+        high = self._bytes[0]
+        if high >= 0x80:
+            high -= 0x100
+        return (high << 8) | (self._bytes[1] & 0xFF)
+
+    def get_panose(self) -> PDPanoseClassification:
+        """The 10-byte PANOSE classification (bytes 2-11)."""
+        return PDPanoseClassification(self._bytes[2:12])
 
 
 __all__ = [
@@ -438,4 +531,5 @@ __all__ = [
     "FLAG_SYMBOLIC",
     "PDFontDescriptor",
     "PDPanose",
+    "PDPanoseClassification",
 ]

@@ -129,6 +129,105 @@ class CFFCIDFont(CFFFont):
     def get_nominal_width_x_for_gid(self, gid: int) -> float:
         return self.get_fd_array().get_nominal_width_x(self.get_fd_index_for_gid(gid))
 
+    # PDFBox-named per-FD width overrides (upstream override)
+
+    def get_default_width_x(self, gid: int = -1) -> float:  # noqa: D401
+        """Per-GID defaultWidthX override. Upstream
+        ``CFFCIDFont.getDefaultWidthX(int gid)`` reads the right
+        Private DICT through /FDSelect; the no-arg parent form returns
+        the Top-DICT /Private value (which is unused for CIDKeyed
+        CFF). We honour both shapes: pass ``gid=-1`` (the default) to
+        get the Top-DICT value for parity with non-CID fonts.
+        """
+        if gid < 0:
+            return super().get_default_width_x()
+        return self.get_default_width_x_for_gid(gid)
+
+    def get_nominal_width_x(self, gid: int = -1) -> float:  # noqa: D401
+        """Per-GID nominalWidthX override (mirror of
+        :meth:`get_default_width_x`)."""
+        if gid < 0:
+            return super().get_nominal_width_x()
+        return self.get_nominal_width_x_for_gid(gid)
+
+    # ---------- bulk dict accessors ----------
+
+    def get_font_dicts(self) -> list[dict[str, Any]]:
+        """PDFBox: ``CFFCIDFont.getFontDicts()`` — every Font DICT in
+        /FDArray, in array order. Mirrors upstream's
+        ``List<Map<String, Object>>`` shape."""
+        arr = self.get_fd_array()
+        return [arr.get_font_dict(i) for i in range(arr.size())]
+
+    def get_priv_dicts(self) -> list[dict[str, Any]]:
+        """PDFBox: ``CFFCIDFont.getPrivDicts()`` — every Private DICT
+        in /FDArray, in array order. (Note the upstream typo ``Priv``
+        rather than ``Private`` is preserved for parity.)"""
+        arr = self.get_fd_array()
+        return [arr.get_private_dict(i) for i in range(arr.size())]
+
+    # ---------- selector-keyed glyph access ----------
+
+    @staticmethod
+    def _coerce_to_cid(selector: int | str) -> int:
+        """Map a PDFBox-style ``selector`` (integer CID or string of
+        the form ``"NNN"`` / ``"cidNNNNN"``) to a CID. Returns ``-1``
+        when the input is unparseable."""
+        if isinstance(selector, int):
+            return selector
+        if isinstance(selector, str):
+            if selector.startswith("cid"):
+                tail = selector[3:]
+                if tail.isdigit():
+                    return int(tail)
+            if selector.lstrip("-").isdigit():
+                return int(selector)
+        return -1
+
+    def has_glyph(self, selector: int | str) -> bool:  # type: ignore[override]
+        """PDFBox: ``CFFCIDFont.hasGlyph(int|String)`` — whether the
+        font carries a glyph for the given CID."""
+        cid = self._coerce_to_cid(selector)
+        if cid < 0:
+            return False
+        return f"cid{cid:05d}" in self.get_charset()
+
+    def get_path(self, selector: int | str) -> list[tuple]:  # type: ignore[override]
+        """PDFBox: ``CFFCIDFont.getPath(int|String)`` — outline for the
+        glyph identified by CID."""
+        cid = self._coerce_to_cid(selector)
+        if cid < 0:
+            return []
+        gid = self.gid_for_cid(cid)
+        name = self.get_name_for_gid(gid)
+        if not name:
+            return []
+        return super().get_path(name)
+
+    def get_width(self, selector: int | str) -> float:  # type: ignore[override]
+        """PDFBox: ``CFFCIDFont.getWidth(int|String)`` — advance width
+        for the glyph identified by CID."""
+        cid = self._coerce_to_cid(selector)
+        if cid < 0:
+            return 0.0
+        gid = self.gid_for_cid(cid)
+        name = self.get_name_for_gid(gid)
+        if not name:
+            return 0.0
+        return super().get_width(name)
+
+    def get_type2_char_string(self, cid_or_gid: int) -> Any:  # noqa: D401
+        """PDFBox: ``CFFCIDFont.getType2CharString(int cid)`` — wraps
+        the GID resolved from the CID into a :class:`Type2CharString`.
+
+        Per upstream contract the parameter is a *CID*, not a GID;
+        this method does the CID→GID resolution before delegating
+        to the base class accessor. Out-of-range CIDs route through
+        the empty-wrapper fallback in :class:`CFFFont`.
+        """
+        gid = self.gid_for_cid(cid_or_gid)
+        return super().get_type2_char_string(gid)
+
     def gid_for_cid(self, cid: int) -> int:
         """Resolve a CID to a GID via the parsed charset.
 

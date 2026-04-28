@@ -598,5 +598,39 @@ class CMap:
     def get_space_mapping(self) -> int:
         return self._space_mapping
 
+    # ---------- CIDSystemInfo registry / typed accessors ----------
+
+    def get_cid_system_info(self) -> dict[str, object] | None:
+        """Return the parsed ``/CIDSystemInfo`` triple as a typed dict.
+
+        pypdfbox enrichment — upstream stores the three values as bare
+        strings on ``CMap`` and never groups them. The typed dict makes
+        it ergonomic to round-trip a CMap-derived ``CIDSystemInfo`` into
+        a font's ``/CIDSystemInfo`` dictionary (see
+        :class:`pypdfbox.pdmodel.font.PDCIDSystemInfo`).
+
+        Returns ``None`` when neither ``Registry`` nor ``Ordering`` was
+        recorded — predefined CMaps always populate both.
+        """
+        if self._registry is None and self._ordering is None:
+            return None
+        return {
+            "Registry": self._registry,
+            "Ordering": self._ordering,
+            "Supplement": self._supplement,
+        }
+
+    def get_combined_name(self) -> str | None:
+        """``Registry-Ordering-Supplement`` triple as a single string.
+
+        Mirrors the convention used throughout PDFBox font code (e.g.
+        ``Adobe-Japan1-6``) for matching CMap CIDSystemInfo against a
+        font's CIDSystemInfo. Returns ``None`` if either ``Registry`` or
+        ``Ordering`` is missing.
+        """
+        if not self._registry or not self._ordering:
+            return None
+        return f"{self._registry}-{self._ordering}-{self._supplement}"
+
     def __str__(self) -> str:
         return self._cmap_name or ""

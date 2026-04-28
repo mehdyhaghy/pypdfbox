@@ -58,9 +58,16 @@ class PDFTextStripper:
         # ``get_text``.
         self._start_page: int = 1
         self._end_page: int = sys.maxsize
-        self._should_separate_by_beads: bool = True  # no-op for lite
+        self._should_separate_by_beads: bool = True
         self._suppress_duplicate_overlapping_text: bool = True  # inert holder
         self._sort_by_position: bool = False
+        # Y-axis up vs Y-axis down. Upstream PDFBox flips the axes via
+        # ``setShouldFlipAxes`` so that a rotated-90 page can be extracted
+        # as if it were portrait. Lite mode mirrors the flag and applies it
+        # at the formatting layer: when ``True`` the line-break heuristic
+        # treats *X* as the line-stepping axis and *Y* as the word-flow
+        # axis (transposing the role of the two coordinates).
+        self._flip_axes: bool = False
         self._paragraph_start: str = ""
         # Note: pypdfbox keeps the existing ``"\n"`` default for
         # ``paragraph_end`` for backward compatibility with the lite
@@ -238,6 +245,20 @@ class PDFTextStripper:
 
     def is_lenient_stream_parsing(self) -> bool:
         return self._lenient_stream_parsing
+
+    def set_should_flip_axes(self, value: bool) -> None:
+        """Toggle axis-flipped extraction (transposes the role of X and Y
+        in the line-break / word-gap heuristic). Mirrors upstream
+        ``PDFTextStripper.setShouldFlipAxes`` (added in 3.x for sideways
+        text on rotated pages)."""
+        self._flip_axes = bool(value)
+
+    def is_should_flip_axes(self) -> bool:
+        return self._flip_axes
+
+    def get_should_flip_axes(self) -> bool:
+        # Upstream exposes both spellings on the 3.x branch.
+        return self._flip_axes
 
     def set_article_start(self, value: str) -> None:
         self._article_start = value
@@ -769,34 +790,228 @@ class PDFTextStripper:
         whose origins differ by less than a quarter of the font size
         are considered the same glyph painted twice (a common trick
         for fake bold) and the duplicate is dropped before formatting.
+
+        When ``should_separate_by_beads`` is enabled and the active page
+        carries thread beads, positions are bucketed into the bead whose
+        rectangle contains the run's origin (with a residual bucket for
+        runs outside any bead). Buckets are emitted in bead-chain order,
+        matching upstream's ``setShouldSeparateByBeads(true)`` semantics.
         """
         if not positions:
             return ""
-        if self._sort_by_position:
-            positions = sorted(positions, key=lambda p: (-p.y, p.x))
+        # Drop glyphs the subclass declines via ``should_skip_glyph``
+        # before any sorting/grouping — keeps the position lists handed
+        # to ``write_string`` in sync with what subclasses would have
+        # seen via ``processTextPosition`` upstream.
+        positions = [p for p in positions if not self.should_skip_glyph(p)]
+        if not positions:
+            return ""
         if self._suppress_duplicate_overlapping_text:
             positions = self._drop_overlapping_duplicates(positions)
+        # Upstream applies the comparator only when ``sortByPosition`` is
+        # set — even when bead-separation is on, the in-bead ordering
+        # follows content-stream order unless explicit sort is requested.
+        # Lite mode follows the same gating.
+        if self._sort_by_position:
+            if self._flip_axes:
+                # Rotated frame: sort by ascending x (top-to-bottom in
+                # the rotated reading order) then ascending y (left-to-
+                # right within a column). Mirrors upstream's flipped
+                # comparator.
+                positions = sorted(positions, key=lambda p: (p.x, p.y))
+            else:
+                positions = sorted(positions, key=lambda p: (-p.y, p.x))
+
+        # Bead-separation: bucket positions by the bead whose rectangle
+        # contains their origin, then emit one bucket at a time. Lite
+        # mode preserves the upstream invariant that text outside any
+        # bead falls into a residual bucket emitted last.
+        groups: list[list[TextPosition]] = []
+        if self._should_separate_by_beads and self._active_page is not None:
+            groups = self._partition_by_beads(positions)
+        if not groups:
+            groups = [positions]
+
         chunks: list[str] = []
 
         def _sink(piece: str) -> None:
             chunks.append(piece)
 
+        for gi, group in enumerate(groups):
+            if gi > 0:
+                # Bead boundary — upstream emits a line separator between
+                # articles when sortByPosition is on so the bead change is
+                # visible. Lite mode does the same unconditionally; the
+                # caller can post-process the line separator if needed.
+                self.write_line_separator(_sink)
+            self._emit_group(group, _sink)
+        return "".join(chunks)
+
+    def _emit_group(
+        self,
+        positions: list[TextPosition],
+        sink: Callable[[str], None],
+    ) -> None:
+        """Emit a single ordered list of positions. Splits out from
+        ``_format_positions`` so the bead-bucket loop can reuse the same
+        line/word/paragraph heuristics for each bucket independently."""
         prev: TextPosition | None = None
         for pos in positions:
             if prev is not None:
-                if abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5:
-                    self.write_line_separator(_sink)
-                else:
-                    if prev.width > 0.0:
-                        prev_right = prev.x + prev.width
+                if self._is_line_break(pos, prev):
+                    if self.is_paragraph_separation(pos, prev):
+                        self.write_paragraph_end(sink)
+                        self.write_line_separator(sink)
+                        self.write_paragraph_start(sink)
                     else:
-                        prev_right = prev.x + len(prev.text) * prev.font_size * 0.5
-                    gap = pos.x - prev_right
-                    if gap > prev.font_size * self._WORD_GAP_FACTOR:
-                        self.write_word_separator(_sink)
-            self.write_string(pos.text, [pos], _sink)
+                        self.write_line_separator(sink)
+                else:
+                    if self._is_word_break(pos, prev):
+                        self.write_word_separator(sink)
+            self.write_string(pos.text, [pos], sink)
             prev = pos
-        return "".join(chunks)
+
+    def _is_line_break(
+        self, pos: TextPosition, prev: TextPosition
+    ) -> bool:
+        """True when ``pos`` belongs to a new line relative to ``prev``."""
+        if self._flip_axes:
+            # Rotated frame: line stepping happens along X.
+            return abs(pos.x - prev.x) > max(prev.font_size, 0.1) * 0.5
+        return abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5
+
+    def _is_word_break(
+        self, pos: TextPosition, prev: TextPosition
+    ) -> bool:
+        """True when ``pos`` is far enough past ``prev``'s right edge to
+        warrant a word separator."""
+        if prev.width > 0.0:
+            prev_right = prev.x + prev.width if not self._flip_axes else prev.y + prev.width
+        else:
+            stretch = len(prev.text) * prev.font_size * 0.5
+            prev_right = (prev.x + stretch) if not self._flip_axes else (prev.y + stretch)
+        gap = (pos.x - prev_right) if not self._flip_axes else (pos.y - prev_right)
+        return gap > prev.font_size * self._WORD_GAP_FACTOR
+
+    def is_paragraph_separation(
+        self, pos: TextPosition, prev: TextPosition
+    ) -> bool:
+        """Heuristic: ``pos`` starts a new paragraph relative to ``prev``.
+
+        Upstream PDFBox's ``isParagraphSeparation`` fires on either:
+          - a vertical drop larger than ``drop_threshold`` × line height
+            (a blank line — a "paragraph drop"), or
+          - a noticeable indent — ``pos.x`` jumps right by more than
+            ``indent_threshold`` × space width vs the previous line's
+            start (an "indented first line").
+
+        Lite mode applies the same two-prong test. ``drop_threshold`` and
+        ``indent_threshold`` honour the configured values.
+        """
+        # Drop test (vertical gap exceeds drop_threshold × line height).
+        line_height = max(prev.font_size, 0.1)
+        if self._flip_axes:
+            drop = abs(pos.x - prev.x)
+        else:
+            drop = abs(pos.y - prev.y)
+        if drop > line_height * self._drop_threshold:
+            return True
+        # Indent test — only meaningful when a line-break has been
+        # detected; callers gate on ``_is_line_break`` first.
+        space_width = prev.width_of_space if prev.width_of_space > 0 else (
+            prev.font_size * 0.25
+        )
+        if self._flip_axes:
+            indent = pos.y - prev.y
+        else:
+            indent = pos.x - prev.x
+        if indent > space_width * self._indent_threshold:
+            return True
+        return False
+
+    def is_para_break_indented(self, pos: TextPosition, prev: TextPosition) -> bool:
+        """Convenience predicate: only the indent prong of
+        :meth:`is_paragraph_separation`. Mirrors upstream's helper used
+        by callers that want to detect indented-first-line paragraphs
+        without conflating them with blank-line paragraph drops."""
+        space_width = prev.width_of_space if prev.width_of_space > 0 else (
+            prev.font_size * 0.25
+        )
+        if self._flip_axes:
+            indent = pos.y - prev.y
+        else:
+            indent = pos.x - prev.x
+        return indent > space_width * self._indent_threshold
+
+    def start_of_paragraph(
+        self, pos: TextPosition, prev: TextPosition
+    ) -> bool:
+        """Alias for :meth:`is_paragraph_separation` matching upstream's
+        ``isParagraphStart`` accessor name spelling. Both names are
+        present on the 3.x surface; we honour both for porting parity."""
+        return self.is_paragraph_separation(pos, prev)
+
+    def _partition_by_beads(
+        self, positions: list[TextPosition]
+    ) -> list[list[TextPosition]]:
+        """Bucket ``positions`` by the bead whose rectangle covers each
+        run's origin. Returns a list of buckets in bead-chain order; the
+        last bucket holds positions that fell outside every bead.
+
+        Returns an empty list when the active page has no thread beads
+        (callers fall back to a single all-positions group)."""
+        page = self._active_page
+        if page is None:
+            return []
+        try:
+            beads = page.get_thread_beads()
+        except Exception:  # noqa: BLE001 — defensive: malformed /B
+            return []
+        if not beads:
+            return []
+        rects: list[tuple[float, float, float, float] | None] = []
+        for bead in beads:
+            if bead is None:
+                rects.append(None)
+                continue
+            try:
+                r = bead.get_rectangle()
+            except Exception:  # noqa: BLE001
+                rects.append(None)
+                continue
+            if r is None:
+                rects.append(None)
+                continue
+            # PDRectangle stores (lower_left_x, lower_left_y, upper_right_x,
+            # upper_right_y) — keep that form for membership tests.
+            rects.append(
+                (
+                    float(r.get_lower_left_x()),
+                    float(r.get_lower_left_y()),
+                    float(r.get_upper_right_x()),
+                    float(r.get_upper_right_y()),
+                )
+            )
+        if not any(r is not None for r in rects):
+            return []
+        buckets: list[list[TextPosition]] = [[] for _ in rects]
+        residual: list[TextPosition] = []
+        for pos in positions:
+            placed = False
+            for idx, rect in enumerate(rects):
+                if rect is None:
+                    continue
+                llx, lly, urx, ury = rect
+                if llx <= pos.x <= urx and lly <= pos.y <= ury:
+                    buckets[idx].append(pos)
+                    placed = True
+                    break
+            if not placed:
+                residual.append(pos)
+        result = [b for b in buckets if b]
+        if residual:
+            result.append(residual)
+        return result
 
     @staticmethod
     def _drop_overlapping_duplicates(
@@ -847,6 +1062,17 @@ class PDFTextStripper:
         """
         return None
 
+    def should_skip_glyph(self, text: TextPosition) -> bool:
+        """Return ``True`` to drop ``text`` from the formatted output.
+
+        Mirrors upstream PDFBox's ``shouldSkipGlyph`` filter hook
+        (added on the 3.x branch alongside ``setIgnoreContentStreamSpaceGlyphs``).
+        The base implementation always returns ``False`` — every glyph
+        is kept. Subclasses override to filter, e.g. by rotation,
+        position, or font.
+        """
+        return False
+
     def write_string(
         self,
         text: str,
@@ -859,6 +1085,33 @@ class PDFTextStripper:
         for tp in text_positions:
             self.process_text_position(tp)
         sink(text)
+
+    def write_string_with_positions(
+        self,
+        text: str,
+        text_positions: list[TextPosition],
+        sink: Callable[[str], None],
+    ) -> None:
+        """Position-aware emission hook with the same signature as
+        :meth:`write_string`. Mirrors upstream's
+        ``writeString(String, List<TextPosition>)`` overload.
+
+        Invariants enforced here for subclasses:
+
+        - ``text`` is non-empty when called from the format path.
+        - ``text_positions`` is non-empty and every entry's ``.text``
+          contributes to ``text`` (concatenation; the lite stripper emits
+          one position per run so the list is length 1).
+        - Each position is dispatched through :meth:`process_text_position`
+          *before* anything is written to ``sink``, so collectors can
+          inspect the run's geometry before its text materialises.
+
+        The default delegates to :meth:`write_string` (the upstream-
+        compatible single-arg name); subclasses can override either.
+        """
+        if not text or not text_positions:
+            return
+        self.write_string(text, text_positions, sink)
 
     def write_word_separator(self, sink: Callable[[str], None]) -> None:
         sink(self._word_separator)

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
@@ -18,6 +18,71 @@ _ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
 _CLASS_MAP: COSName = COSName.get_pdf_name("ClassMap")
 
 _STRUCT_TREE_ROOT_NAME: str = "StructTreeRoot"
+
+# Cap how far we follow a /RoleMap chain. PDF 32000-1 §14.7.4 doesn't pin a
+# limit; upstream PDFBox uses the role-map dictionary itself as the cycle
+# detector. We additionally cap the walk at 16 hops as belt-and-braces
+# protection against pathological inputs (matches PDStructureElement).
+_MAX_ROLE_MAP_DEPTH: int = 16
+
+# PDF 32000-1 §14.8.4 standard structure types (subset). When ``ResolveRoleMap``
+# walks the chain it stops at any name in this set; otherwise it follows the
+# next mapping. The list mirrors upstream ``StandardStructureTypes`` constants
+# that are recognised at the structure-tree root level. Keeping it inline
+# avoids a circular import with the ``taggedpdf`` package.
+_STANDARD_STRUCTURE_TYPES: frozenset[str] = frozenset(
+    {
+        "Document",
+        "Part",
+        "Art",
+        "Sect",
+        "Div",
+        "BlockQuote",
+        "Caption",
+        "TOC",
+        "TOCI",
+        "Index",
+        "NonStruct",
+        "Private",
+        "P",
+        "H",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "L",
+        "LI",
+        "Lbl",
+        "LBody",
+        "Table",
+        "TR",
+        "TH",
+        "TD",
+        "THead",
+        "TBody",
+        "TFoot",
+        "Span",
+        "Quote",
+        "Note",
+        "Reference",
+        "BibEntry",
+        "Code",
+        "Link",
+        "Annot",
+        "Ruby",
+        "RB",
+        "RT",
+        "RP",
+        "Warichu",
+        "WT",
+        "WP",
+        "Figure",
+        "Formula",
+        "Form",
+    }
+)
 
 
 class PDStructureTreeRoot(PDStructureNode):
@@ -231,6 +296,138 @@ class PDStructureTreeRoot(PDStructureNode):
         if not isinstance(target, COSDictionary):
             return None
         return PDStructureElement(target)
+
+    # ---------- /K traversal helpers (pypdfbox additions) ----------
+
+    def iter_descendants(self) -> Iterator[PDStructureElement]:
+        """Depth-first walk of every ``PDStructureElement`` reachable from
+        ``/K``. Skips marked-content references, object references, and bare
+        MCID integers. Cycles in ``/K`` are guarded by an identity-set so
+        the walk terminates.
+        """
+        seen: set[int] = {id(self._dictionary)}
+        stack: list[PDStructureElement] = []
+        direct = [
+            k for k in self.get_kids() if isinstance(k, PDStructureElement)
+        ]
+        stack.extend(reversed(direct))
+        while stack:
+            node = stack.pop()
+            node_id = id(node.get_cos_object())
+            if node_id in seen:
+                continue
+            seen.add(node_id)
+            yield node
+            children = [
+                k for k in node.get_kids() if isinstance(k, PDStructureElement)
+            ]
+            stack.extend(reversed(children))
+
+    def find_by_role(self, role: str) -> Iterator[PDStructureElement]:
+        """Yield every descendant element whose *resolved* (role-map normalized)
+        structure type matches ``role``. Mirrors the existing
+        :meth:`PDStructureElement.find_by_role` API but rooted at the tree
+        root rather than a structure element."""
+        for descendant in self.iter_descendants():
+            resolved = descendant.get_standard_structure_type()
+            if resolved == role:
+                yield descendant
+
+    def find_first_by_role(self, role: str) -> PDStructureElement | None:
+        """Return the first descendant matching ``role``, or ``None``."""
+        for hit in self.find_by_role(role):
+            return hit
+        return None
+
+    # ---------- /RoleMap resolve ----------
+
+    def resolve_role_map(self, structure_type: str | None) -> str | None:
+        """Resolve ``structure_type`` against ``/RoleMap`` until it lands on
+        a standard PDF structure type (or runs out of mappings).
+
+        Mirrors upstream ``getStandardStructureType`` semantics applied at
+        the tree-root level. Returns the input unchanged when no role-map
+        exists, when the input is already a standard type, or when no
+        mapping matches. Cycles are broken by visiting each name at most
+        once.
+        """
+        if structure_type is None:
+            return None
+        role_map = self.get_role_map()
+        if not role_map:
+            return structure_type
+        seen: set[str] = set()
+        current: str = structure_type
+        for _ in range(_MAX_ROLE_MAP_DEPTH):
+            if current in _STANDARD_STRUCTURE_TYPES:
+                return current
+            if current in seen:
+                return current
+            seen.add(current)
+            mapped = role_map.get(current)
+            if mapped is None:
+                return current
+            current = mapped
+        return current
+
+    # ---------- /ParentTree construction ----------
+
+    def build_parent_tree(self, pages: Any) -> PDStructureElementNumberTreeNode:
+        """Construct ``/ParentTree`` from the supplied iterable of
+        :class:`PDPage`-likes (anything exposing ``get_struct_parents`` and
+        ``get_cos_object``).
+
+        The resulting number tree maps each page's ``/StructParents`` integer
+        to a :class:`COSArray` indexed by MCID. Existing per-page entries
+        already present in the tree are reused (callers rebuilding from
+        scratch should pass in a fresh ``PDStructureTreeRoot``).
+
+        Mirrors the upstream "StructParents → ParentTree" wiring that lives
+        inline in ``PDFMergerUtility`` / ``LayerUtility``; the helper is a
+        pypdfbox convenience that lifts it onto :class:`PDStructureTreeRoot`.
+
+        Returns the resulting :class:`PDStructureElementNumberTreeNode`. Pages
+        without a ``/StructParents`` entry (or with a negative value) are
+        skipped; the caller is expected to set ``/StructParents`` on each
+        page before invoking this builder.
+        """
+        existing = self.get_parent_tree()
+        if existing is None:
+            tree = PDStructureElementNumberTreeNode()
+        else:
+            tree = existing
+        # Read existing numbers as a dict to make merging deterministic.
+        existing_numbers = tree.get_numbers() or {}
+        nums: dict[int, COSBase] = dict(existing_numbers)
+        max_key = max(nums.keys()) if nums else -1
+        for page in pages or []:
+            sp = page.get_struct_parents()
+            if sp is None or sp < 0:
+                continue
+            if sp not in nums:
+                # Empty per-page array; callers populate it through
+                # ``/MCID`` ordering when they wire structure elements.
+                nums[sp] = COSArray()
+            if sp > max_key:
+                max_key = sp
+        tree.set_numbers(nums)
+        self.set_parent_tree(tree)
+        if max_key >= 0:
+            self.set_parent_tree_next_key(max_key + 1)
+        return tree
+
+    # ---------- /K append ----------
+
+    def append_kid(self, kid: Any) -> None:  # noqa: D401 - mirrors upstream
+        """Append ``kid`` to the root's ``/K``. Wires ``/P`` for
+        :class:`PDStructureElement` kids so they back-reference this root,
+        mirroring upstream's ``appendKid(PDStructureElement)`` plumbing.
+        """
+        if kid is None:
+            return
+        super().append_kid(kid)
+        if isinstance(kid, PDStructureElement):
+            kid.set_parent(self)
 
 
 class PDStructureElementNameTreeNode(PDNameTreeNode[PDStructureElement]):

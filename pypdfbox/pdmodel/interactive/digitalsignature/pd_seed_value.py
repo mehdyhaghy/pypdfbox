@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNumber
 
 from .pd_seed_value_certificate import PDSeedValueCertificate
 from .pd_seed_value_mdp import PDSeedValueMDP
@@ -41,10 +41,21 @@ class PDSeedValue:
 
     TYPE = "SV"
 
+    # /Ff bit positions (PDF 32000-1 Table 234), exposed for parity.
+    FLAG_FILTER = _FLAG_FILTER
+    FLAG_SUBFILTER = _FLAG_SUB_FILTER
+    FLAG_V = _FLAG_V
+    FLAG_REASON = _FLAG_REASON
+    FLAG_LEGAL_ATTESTATION = _FLAG_LEGAL_ATTESTATION
+    FLAG_ADD_REV_INFO = _FLAG_ADD_REV_INFO
+    FLAG_DIGEST_METHOD = _FLAG_DIGEST_METHOD
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dict = COSDictionary()
             self._dict.set_item(_TYPE, _SV)
+            # Upstream calls dictionary.setDirect(true) in the no-arg ctor.
+            self._dict.set_direct(True)
         else:
             self._dict = dictionary
 
@@ -81,17 +92,21 @@ class PDSeedValue:
 
     # ---------- /V version ----------
 
-    def get_v(self) -> int | None:
+    def get_v(self) -> float | None:
+        """Return the ``/V`` minimum-required-capability value, or ``None``
+        if absent. Mirrors upstream ``getV()`` (returns ``float``)."""
         v = self._dict.get_dictionary_object(_V)
-        if isinstance(v, COSInteger):
-            return v.value
+        if isinstance(v, COSNumber):
+            return v.float_value()
         return None
 
-    def set_v(self, v: int | None) -> None:
+    def set_v(self, v: float | None) -> None:
+        """Set or remove the ``/V`` entry. Upstream signature is
+        ``setV(float)``; we accept ``None`` to remove."""
         if v is None:
             self._dict.remove_item(_V)
             return
-        self._dict.set_int(_V, v)
+        self._dict.set_float(_V, float(v))
 
     # ---------- /Reasons (array of text strings) ----------
 
@@ -256,6 +271,12 @@ class PDSeedValue:
 
     def set_sub_filter_required(self, b: bool) -> None:
         self._set_flag(_FLAG_SUB_FILTER, b)
+
+    def is_v_required(self) -> bool:
+        return self._is_flag(_FLAG_V)
+
+    def set_v_required(self, b: bool) -> None:
+        self._set_flag(_FLAG_V, b)
 
     def is_reason_required(self) -> bool:
         return self._is_flag(_FLAG_REASON)

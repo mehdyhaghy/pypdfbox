@@ -177,6 +177,37 @@ def test_document_constructor_requires_color_profile() -> None:
         PDOutputIntent(doc)  # type: ignore[arg-type]
 
 
+# ---------- get_n_for_profile() helper ----------
+
+
+def test_get_n_for_profile_absent_returns_none() -> None:
+    intent = PDOutputIntent()
+    assert intent.get_n_for_profile() is None
+
+
+def test_get_n_for_profile_reads_explicit_n() -> None:
+    """Prefer the explicit ``/N`` integer set on the ``DestOutputProfile``
+    stream — no ICC header decode required."""
+    intent = PDOutputIntent()
+    cos = COSStream()
+    cos.set_int(COSName.get_pdf_name("N"), 4)
+    intent.set_dest_output_profile(cos)
+    assert intent.get_n_for_profile() == 4
+
+
+def test_get_n_for_profile_reflects_constructor_blob() -> None:
+    doc = PDDocument()
+    intent = PDOutputIntent(doc, _icc_with_signature(b"CMYK"))
+    assert intent.get_n_for_profile() == 4
+
+
+def test_get_n_for_profile_reflects_set_data() -> None:
+    intent = PDOutputIntent()
+    blob = _icc_with_signature(b"RGB ")
+    intent.set_data(blob, num_components=3)
+    assert intent.get_n_for_profile() == 3
+
+
 def test_document_input_stream_constructor_compresses_bytes() -> None:
     """Upstream embeds the ICC bytes via ``COSName.FLATE_DECODE`` —
     after construction the stream's /Filter must reflect that."""

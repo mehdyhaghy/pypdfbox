@@ -15,7 +15,10 @@ from .dom_xmp_parser import DomXmpParser, XmpParsingException
 from .dublin_core_schema import DublinCoreSchema
 from .exif_schema import ExifSchema
 from .pdfa_extension_schema import PDFAExtensionSchema
-from .pdfa_identification_schema import PDFAIdentificationSchema
+from .pdfa_identification_schema import (
+    BadFieldValueException,
+    PDFAIdentificationSchema,
+)
 from .pdfua_identification_schema import PDFUAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
 from .tiff_schema import TiffSchema
@@ -82,6 +85,7 @@ __all__ = [
     "LangAlt",
     "LayerType",
     "MIMEType",
+    "BadFieldValueException",
     "PDFAExtensionSchema",
     "PDFAIdentificationSchema",
     "PDFUAIdentificationSchema",

@@ -124,3 +124,12 @@ def test_repr_contains_tag_properties_and_contents() -> None:
     assert "tag=Span" in rendered
     assert "properties=" in rendered
     assert "contents=" in rendered
+
+
+def test_str_matches_repr_mirrors_to_string() -> None:
+    # Upstream's ``toString`` is reachable in Python via ``str(obj)``.
+    # ``__str__`` delegates to ``__repr__`` so both paths return the same
+    # upstream-formatted string.
+    mc = PDMarkedContent(COSName.get_pdf_name("Span"), COSDictionary())
+    assert str(mc) == repr(mc)
+    assert "tag=Span" in str(mc)

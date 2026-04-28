@@ -95,6 +95,22 @@ class StandardDecryptionMaterial:
         # algorithm where the difference matters.
         return self._password.encode("latin-1", errors="replace")
 
+    def get_password_bytes(self, revision: int) -> bytes | None:
+        """Return password bytes encoded per ``revision``.
+
+        Mirrors the upstream ``prepareForDecryption`` charset switch:
+        ISO-8859-1 (Latin-1) for r2-r4 and UTF-8 for r5-r6 (PDFBOX-4155).
+        ``bytes`` inputs are returned as-is so callers can pass already-encoded
+        password material straight through.
+        """
+        if self._password is None:
+            return None
+        if isinstance(self._password, bytes):
+            return self._password
+        if int(revision) >= 5:
+            return self._password.encode("utf-8", errors="replace")
+        return self._password.encode("latin-1", errors="replace")
+
     def get_password_str(self) -> str | None:
         if self._password is None:
             return None
@@ -222,6 +238,38 @@ class StandardSecurityHandler(SecurityHandler):
         )
 
     @classmethod
+    def get_user_password(
+        cls,
+        owner_password: bytes,
+        owner_entry: bytes,
+        revision: int,
+        key_len_bytes: int,
+    ) -> bytes:
+        """Algorithm 7 inverse — recover user password from owner password.
+
+        Mirrors upstream ``StandardSecurityHandler.getUserPassword`` for
+        r2-r4. Returns the (padded) user password bytes; r5/r6 do not have
+        a recoverable user password from the owner side, so upstream
+        returns an empty byte array — we mirror that.
+        """
+        if int(revision) >= 5:
+            return b""
+        padded_owner = cls._pad_password(owner_password)
+        digest = hashlib.md5(padded_owner, usedforsecurity=False).digest()
+        if revision >= 3:
+            for _ in range(50):
+                digest = hashlib.md5(digest, usedforsecurity=False).digest()
+        rc4_key = digest[:key_len_bytes]
+        if revision == 2:
+            return _rc4(rc4_key, owner_entry)
+        # r3, r4 — 20 inverse rounds with rotated keys.
+        result = bytes(owner_entry)
+        for i in range(19, -1, -1):
+            rotated = bytes(b ^ i for b in rc4_key)
+            result = _rc4(rotated, result)
+        return result
+
+    @classmethod
     def is_user_password(
         cls,
         password: bytes | str,
@@ -232,9 +280,15 @@ class StandardSecurityHandler(SecurityHandler):
 
         Mirrors PDFBox ``isUserPassword``. Supports r2-r4 via the legacy
         validation path and r5/r6 via the SHA-256 / hardened-hash path.
+        Charset selection follows upstream: UTF-8 for r5/r6 (PDFBOX-4155),
+        Latin-1 (ISO-8859-1) for r2-r4.
         """
-        pw = password.encode("latin-1", errors="replace") if isinstance(password, str) else bytes(password or b"")
         revision = int(encryption.get_revision())
+        if isinstance(password, str):
+            charset = "utf-8" if revision >= 5 else "latin-1"
+            pw = password.encode(charset, errors="replace")
+        else:
+            pw = bytes(password or b"")
         if revision >= 5:
             u = encryption.get_u() or b""
             if len(u) < 40:
@@ -268,10 +322,15 @@ class StandardSecurityHandler(SecurityHandler):
     ) -> bool:
         """Return True if ``password`` validates as the owner password.
 
-        Mirrors PDFBox ``isOwnerPassword``.
+        Mirrors PDFBox ``isOwnerPassword``. Charset selection mirrors
+        ``is_user_password`` — UTF-8 for r5/r6, Latin-1 for r2-r4.
         """
-        pw = password.encode("latin-1", errors="replace") if isinstance(password, str) else bytes(password or b"")
         revision = int(encryption.get_revision())
+        if isinstance(password, str):
+            charset = "utf-8" if revision >= 5 else "latin-1"
+            pw = password.encode(charset, errors="replace")
+        else:
+            pw = bytes(password or b"")
         if revision >= 5:
             o = encryption.get_o() or b""
             u = encryption.get_u() or b""
@@ -509,7 +568,10 @@ class StandardSecurityHandler(SecurityHandler):
         # via /CF for V>=4.
         self._populate_routing_table(encryption)
 
-        password = decryption_material.get_password() or b""
+        # PDF 32000-2 §7.6.4.3.4 — r5/r6 read passwords as UTF-8 (after
+        # SaslPrep), r2-r4 as Latin-1. Match upstream so non-ASCII passwords
+        # round-trip correctly.
+        password = decryption_material.get_password_bytes(revision) or b""
         o = encryption.get_o()
         u = encryption.get_u()
 
@@ -630,8 +692,14 @@ class StandardSecurityHandler(SecurityHandler):
         encryption.set_length(key_len_bits)
         encryption.set_p(permissions)
 
-        owner_pw = owner_password.encode("latin-1", errors="replace")
-        user_pw = user_password.encode("latin-1", errors="replace")
+        # PDF 32000-2 §7.6.4.3.4 — r6 writes UTF-8 (after SaslPrep), r2-r4
+        # use Latin-1. Match upstream's ``prepareDocumentForEncryption``.
+        if revision >= 5:
+            owner_pw = owner_password.encode("utf-8", errors="replace")
+            user_pw = user_password.encode("utf-8", errors="replace")
+        else:
+            owner_pw = owner_password.encode("latin-1", errors="replace")
+            user_pw = user_password.encode("latin-1", errors="replace")
         # Owner password defaults to the user password if not supplied.
         if not owner_pw:
             owner_pw = user_pw

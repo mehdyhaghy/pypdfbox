@@ -276,3 +276,101 @@ def test_process_page_empty_stream_returns_empty_list() -> None:
     extractor = PDFMarkedContentExtractor()
     assert extractor.process_page(page) == ""
     assert extractor.get_marked_contents() == []
+
+
+def test_process_page_resolves_bdc_named_property_via_resources() -> None:
+    """A BDC with a name operand instead of an inline dict resolves the
+    name through the page's ``/Resources/Properties`` subdictionary.
+    Mirrors upstream's ``PDResources.getPropertyList(name)`` lookup.
+    """
+    from pypdfbox.cos import COSDictionary, COSInteger, COSName
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc,
+        b"/P /MyProps BDC\n"
+        b"BT /F0 12 Tf 0 0 Td (Hello) Tj ET\n"
+        b"EMC\n",
+    )
+    # Wire up the named property list on the page resources.
+    res = PDResources()
+    cos_props = COSDictionary()
+    cos_props.set_item(COSName.get_pdf_name("MCID"), COSInteger.get(99))
+    res.put(
+        COSName.get_pdf_name("Properties"),
+        COSName.get_pdf_name("MyProps"),
+        cos_props,
+    )
+    page.set_resources(res)
+
+    extractor = PDFMarkedContentExtractor()
+    extractor.set_suppress_duplicate_overlapping_text(False)
+    extractor.process_page(page)
+
+    contents = extractor.get_marked_contents()
+    assert len(contents) == 1
+    assert contents[0].get_tag() == "P"
+    assert contents[0].get_mcid() == 99
+
+
+def test_process_page_dp_marked_point_with_props_does_not_open_sequence() -> None:
+    """``DP`` is a single tagged point, not a sequence. It must NOT
+    appear in the top-level marked-content list and must NOT swallow the
+    surrounding text into a phantom bucket.
+    """
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc,
+        b"/P <</MCID 0>> BDC\n"
+        b"BT /F0 12 Tf 0 0 Td (Before) Tj ET\n"
+        b"/Span <</MCID 7>> DP\n"
+        b"BT /F0 12 Tf 0 -14 Td (After) Tj ET\n"
+        b"EMC\n",
+    )
+    extractor = PDFMarkedContentExtractor()
+    extractor.set_suppress_duplicate_overlapping_text(False)
+    extractor.process_page(page)
+    top = extractor.get_marked_contents()
+    # Exactly one top-level: the surrounding /P sequence. The DP point is
+    # a no-op upstream and produces no bucket.
+    assert len(top) == 1
+    text = "".join(
+        t.get_unicode() for t in top[0].get_contents()
+        if isinstance(t, TextPosition)
+    )
+    assert text == "BeforeAfter"
+
+
+def test_get_marked_contents_returns_top_level_only_not_nested() -> None:
+    """``get_marked_contents`` mirrors upstream — it returns *only* the
+    top-level sequences. Nested ones are reachable via the parent's
+    ``get_contents()`` list, not the top-level accumulator.
+    """
+    from pypdfbox.cos import COSName
+
+    extractor = PDFMarkedContentExtractor()
+    extractor.begin_marked_content_sequence(
+        COSName.get_pdf_name("Sect"), None
+    )
+    extractor.begin_marked_content_sequence(
+        COSName.get_pdf_name("P"), None
+    )
+    extractor.begin_marked_content_sequence(
+        COSName.get_pdf_name("Span"), None
+    )
+    extractor.end_marked_content_sequence()
+    extractor.end_marked_content_sequence()
+    extractor.end_marked_content_sequence()
+    top = extractor.get_marked_contents()
+    assert len(top) == 1
+    assert top[0].get_tag() == "Sect"
+
+
+def test_stray_emc_does_not_raise() -> None:
+    """An ``EMC`` without a matching ``BMC``/``BDC`` is silently ignored.
+    Mirrors upstream tolerance for malformed input."""
+    extractor = PDFMarkedContentExtractor()
+    extractor.end_marked_content_sequence()
+    extractor.end_marked_content_sequence()
+    assert extractor.get_marked_contents() == []

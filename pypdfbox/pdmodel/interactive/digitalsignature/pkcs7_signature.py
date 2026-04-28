@@ -1,15 +1,31 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, BinaryIO
-
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.serialization import pkcs7
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from .signature_interface import SignatureInterface
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover — typing only
     from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import ec, rsa
+
+
+def _import_cryptography() -> tuple[Any, Any, Any]:
+    """Lazy import of ``cryptography`` so a stripped install (no signing
+    support) doesn't fail at module-import time. Returns ``(hashes,
+    serialization, pkcs7)``. Raises :class:`ImportError` (re-thrown as
+    ``RuntimeError`` by callers) if the package is missing.
+    """
+    try:
+        from cryptography.hazmat.primitives import hashes as _hashes
+        from cryptography.hazmat.primitives import serialization as _serialization
+        from cryptography.hazmat.primitives.serialization import pkcs7 as _pkcs7
+    except ImportError as exc:  # pragma: no cover — install-time guard
+        raise RuntimeError(
+            "Pkcs7Signature requires the 'cryptography' package — "
+            "install it with `pip install cryptography`"
+        ) from exc
+    return _hashes, _serialization, _pkcs7
 
 
 class Pkcs7Signature(SignatureInterface):
@@ -34,9 +50,10 @@ class Pkcs7Signature(SignatureInterface):
         hash_algorithm: hashes.HashAlgorithm | None = None,
         additional_certificates: list[x509.Certificate] | None = None,
     ) -> None:
+        hashes_mod, _, _ = _import_cryptography()
         self._certificate = certificate
         self._private_key = private_key
-        self._hash_algorithm = hash_algorithm or hashes.SHA256()
+        self._hash_algorithm = hash_algorithm or hashes_mod.SHA256()
         self._additional_certificates = list(additional_certificates or [])
 
     @property
@@ -45,6 +62,7 @@ class Pkcs7Signature(SignatureInterface):
 
     def sign(self, content: BinaryIO) -> bytes:
         """Return DER-encoded PKCS#7 detached SignedData over ``content``."""
+        _, serialization, pkcs7 = _import_cryptography()
         data = content.read()
         builder = pkcs7.PKCS7SignatureBuilder().set_data(data)
         builder = builder.add_signer(

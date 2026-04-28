@@ -3,6 +3,56 @@ from __future__ import annotations
 from typing import Any
 
 
+def _make_extended_extractor(pen: Any, subrs: Any) -> Any:
+    """Build a T1 outline extractor that fills in the arithmetic / stack
+    operators fontTools leaves as ``NotImplementedError``.
+
+    fontTools' ``T1OutlineExtractor`` (MIT, vendored only at runtime) has
+    full coverage for the path / subroutine / flex operators we need —
+    ``hstem``, ``vstem``, ``vmoveto``, ``rlineto``, ``hlineto``,
+    ``vlineto``, ``rrcurveto``, ``closepath``, ``hmoveto``, ``rmoveto``,
+    ``callsubr``, ``return``, ``endchar``, ``hsbw``, ``sbw``, the
+    Adobe-Type-1 flex sequence (``1 0 callothersubr`` … ``3 0
+    callothersubr 0 callsubr``), ``setcurrentpoint``, ``seac``, ``div``,
+    ``pop``. It explicitly raises ``NotImplementedError`` for ``dup``
+    and ``exch`` (see ``op_dup`` / ``op_exch`` in
+    ``fontTools.misc.psCharStrings``). Real-world Type 1 glyph
+    charstrings rarely use these on the operand stack — they appear in
+    Other-Subroutine machinery — but PDFBox handles them, so we do too.
+    """
+    from fontTools.misc.psCharStrings import T1OutlineExtractor  # noqa: PLC0415
+
+    class _Type1ExtendedExtractor(T1OutlineExtractor):
+        def op_dup(self, index: int) -> None:
+            # PostScript ``dup``: duplicate the top of the operand stack.
+            top = self.pop()
+            self.push(top)
+            self.push(top)
+
+        def op_exch(self, index: int) -> None:
+            # PostScript ``exch``: swap the top two operands.
+            top = self.pop()
+            second = self.pop()
+            self.push(top)
+            self.push(second)
+
+    return _Type1ExtendedExtractor(pen, subrs)
+
+
+def _draw_with_extended_extractor(t1: Any, pen: Any) -> float:
+    """Run the wrapped charstring against ``pen`` using the extended
+    extractor (with ``dup`` / ``exch`` filled in). Returns the advance
+    width recorded by the ``hsbw`` / ``sbw`` prologue."""
+    extractor = _make_extended_extractor(pen, getattr(t1, "subrs", None))
+    extractor.execute(t1)
+    width = float(getattr(extractor, "width", 0.0) or 0.0)
+    # Mirror fontTools' own ``T1CharString.draw`` side-effect: stash the
+    # width on the charstring so a follow-up ``getattr(t1, "width")``
+    # returns the same value as native fontTools.
+    t1.width = width
+    return width
+
+
 def _make_path_pen() -> Any:
     """Build a fontTools BasePen subclass that records draw commands as
     the simple list-of-tuples format used elsewhere in pypdfbox
@@ -165,11 +215,11 @@ class Type1CharString:
         from fontTools.pens.basePen import NullPen  # noqa: PLC0415
 
         try:
-            self._t1.draw(NullPen())
+            self._cached_width = _draw_with_extended_extractor(
+                self._t1, NullPen()
+            )
         except Exception:  # noqa: BLE001
             self._cached_width = 0.0
-            return self._cached_width
-        self._cached_width = float(getattr(self._t1, "width", 0.0) or 0.0)
         return self._cached_width
 
     def get_path(self) -> list[tuple]:
@@ -191,14 +241,14 @@ class Type1CharString:
             return list(self._cached_path)
         pen = _make_path_pen()
         try:
-            self._t1.draw(pen)
+            width = _draw_with_extended_extractor(self._t1, pen)
         except Exception:  # noqa: BLE001
             self._cached_path = []
             return []
-        # Side-effect: draw populates self._t1.width — cache it now so
-        # a follow-up get_width() avoids a second draw.
+        # Side-effect: extractor populates the advance width — cache it
+        # now so a follow-up ``get_width()`` avoids a second draw.
         if self._cached_width is None:
-            self._cached_width = float(getattr(self._t1, "width", 0.0) or 0.0)
+            self._cached_width = width
         self._cached_path = list(pen.commands)  # type: ignore[attr-defined]
         return list(self._cached_path)
 

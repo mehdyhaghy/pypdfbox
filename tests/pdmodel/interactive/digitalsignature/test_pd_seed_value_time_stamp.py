@@ -116,6 +116,42 @@ def test_pd_seed_value_set_time_stamp_accepts_raw_dict() -> None:
     assert got.get_cos_object() is cos
 
 
+# ---------- upstream-named timestamp_required alias ----------
+
+
+def test_is_timestamp_required_default_false() -> None:
+    ts = PDSeedValueTimeStamp()
+    assert ts.is_timestamp_required() is False
+
+
+def test_set_timestamp_required_writes_int() -> None:
+    ts = PDSeedValueTimeStamp()
+    ts.set_timestamp_required(True)
+    # Upstream stores 1 / 0, not bit-OR'd.
+    assert ts.get_cos_object().get_int(_FF) == 1
+    assert ts.is_timestamp_required() is True
+    ts.set_timestamp_required(False)
+    assert ts.get_cos_object().get_int(_FF) == 0
+    assert ts.is_timestamp_required() is False
+
+
+def test_is_timestamp_required_true_for_any_nonzero() -> None:
+    """Mirrors upstream ``getInt(COSName.FF, 0) != 0`` semantics."""
+    cos = COSDictionary()
+    cos.set_int("Ff", 7)  # nonzero, but not bit-1-only
+    ts = PDSeedValueTimeStamp(cos)
+    assert ts.is_timestamp_required() is True
+
+
+def test_url_required_and_timestamp_required_observe_same_field() -> None:
+    """``is_url_required`` (bit 1) is a subset of ``is_timestamp_required``
+    (any nonzero); both read from /Ff."""
+    ts = PDSeedValueTimeStamp()
+    ts.set_url_required(True)
+    assert ts.is_url_required() is True
+    assert ts.is_timestamp_required() is True
+
+
 def test_signature_field_seed_value_time_stamp_round_trip() -> None:
     """End-to-end: PDSignatureField -> PDSeedValue -> PDSeedValueTimeStamp."""
     from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm

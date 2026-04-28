@@ -112,3 +112,10 @@ class PDMarkedContent:
             f"properties={self._properties!r}, "
             f"contents={self._contents!r}"
         )
+
+    # Mirror upstream's ``toString()`` — Java's ``Object.toString`` is
+    # accessible via ``str(obj)`` in Python, which calls ``__str__``.
+    # Delegate to ``__repr__`` so both paths produce the same upstream
+    # string. Upstream body is literally
+    # ``"tag=" + tag + ", properties=" + properties + ", contents=" + contents``.
+    __str__ = __repr__

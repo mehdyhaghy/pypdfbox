@@ -134,10 +134,13 @@ def test_parsed_type1_name_to_gid_known_glyph(type1_font: CFFType1Font) -> None:
 
 
 def test_parsed_type1_code_to_name_predefined(type1_font: CFFType1Font) -> None:
-    # For predefined encodings our wrapper deliberately returns
-    # ``.notdef`` (we don't materialise the StandardEncoding table).
-    if type1_font.is_standard_encoding() or type1_font.is_expert_encoding():
-        assert type1_font.code_to_name(65) == ".notdef"
+    # Predefined encodings are now resolved via the canonical Adobe
+    # tables: StandardEncoding (CFF EncodingId 0) maps code 65 → "A",
+    # Expert (id 1) maps code 65 → "Asmall". Round-out wave 41.
+    if type1_font.is_standard_encoding():
+        assert type1_font.code_to_name(65) == "A"
+    if type1_font.is_expert_encoding():
+        assert type1_font.code_to_name(65) == "Asmall"
 
 
 def test_from_cff_font_round_trip(type1_font: CFFType1Font) -> None:
@@ -147,3 +150,67 @@ def test_from_cff_font_round_trip(type1_font: CFFType1Font) -> None:
     again = CFFType1Font.from_cff_font(base)
     assert again.is_cid_font() is False
     assert again.get_encoding() == type1_font.get_encoding()
+
+
+def test_standard_encoding_predefined_resolves() -> None:
+    """When a font reports StandardEncoding the wrapper resolves
+    individual codes via the canonical Adobe Standard Encoding."""
+    # Construct a minimal "looks-like-standard-encoding" Type1 by stubbing.
+    class _Top:
+        Encoding = "StandardEncoding"
+        rawDict: dict = {}  # noqa: RUF012
+
+    f = CFFType1Font()
+    f._top = _Top()  # noqa: SLF001
+    assert f.is_standard_encoding() is True
+    assert f.code_to_name(65) == "A"
+    assert f.code_to_name(32) == "space"
+    # Round-trip name → code.
+    assert f.name_to_code("A") == 65
+    assert f.name_to_code("__bogus__") == -1
+
+
+def test_expert_encoding_predefined_resolves() -> None:
+    """ExpertEncoding code 65 maps to SID 253 → "asuperior" per
+    Adobe Technote #5176 Appendix B (CFFExpertEncoding table)."""
+    class _Top:
+        Encoding = "ExpertEncoding"
+        rawDict: dict = {}  # noqa: RUF012
+
+    f = CFFType1Font()
+    f._top = _Top()  # noqa: SLF001
+    assert f.is_expert_encoding() is True
+    assert f.code_to_name(65) == "asuperior"
+    # Code 32 ("space") is in both Standard and Expert.
+    assert f.code_to_name(32) == "space"
+    # Unmapped code → .notdef.
+    assert f.code_to_name(70) == ".notdef"
+    # Round-trip.
+    assert f.name_to_code("asuperior") == 65
+
+
+def test_custom_encoding_array_round_trip() -> None:
+    """A list-shaped /Encoding looks up codes by index and finds the
+    code for a glyph name by linear scan."""
+    class _Top:
+        Encoding = [".notdef", "A", "B", "C"]
+        rawDict: dict = {}  # noqa: RUF012
+
+    f = CFFType1Font()
+    f._top = _Top()  # noqa: SLF001
+    assert f.is_custom_encoding() is True
+    assert f.code_to_name(0) == ".notdef"
+    assert f.code_to_name(1) == "A"
+    assert f.code_to_name(2) == "B"
+    assert f.name_to_code("C") == 3
+    assert f.name_to_code("Z") == -1
+
+
+def test_get_type1_char_string_returns_wrapper(type1_font: CFFType1Font) -> None:
+    cs = type1_font.get_type1_char_string(".notdef")
+    # Wrapper exposes get_path / get_width regardless of underlying state.
+    assert hasattr(cs, "get_path")
+    assert hasattr(cs, "get_width")
+    # Unknown name routes to GID 0 (.notdef).
+    cs2 = type1_font.get_type1_char_string("__no_such_glyph__")
+    assert hasattr(cs2, "get_path")

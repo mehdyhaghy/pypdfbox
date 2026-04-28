@@ -7,6 +7,7 @@ from pypdfbox.cos import (
     COSBase,
     COSDictionary,
     COSDocument,
+    COSFloat,
     COSInteger,
     COSName,
     COSObject,
@@ -81,6 +82,19 @@ class PDFParser:
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
         self._pd_document: Any | None = None
+        # Optional linearization parameter dictionary (PDF 32000-1 Annex F).
+        # Populated by :meth:`_detect_linearization` when the **first**
+        # indirect object after the header carries a truthy ``/Linearized``
+        # entry. Advisory metadata only — the regular xref-walk path is
+        # unaffected by linearization (the trailing xref still wins).
+        self.linearization_dict: COSDictionary | None = None
+        # Raw bytes of the primary hint stream, slurped via the offset+
+        # length pair in the linearization dict's ``/H`` entry. Hint
+        # streams encode the page-offset / shared-object / thumbnail
+        # tables that web-streaming viewers consult to fetch only the
+        # bytes they need; pypdfbox does not interpret the hint table
+        # body — exposed as raw bytes for downstream tooling.
+        self.hint_table_bytes: bytes | None = None
 
     # ---------- public entry point ----------
 
@@ -91,6 +105,11 @@ class PDFParser:
         self._cos_parser = COSParser(self._src, document=self._document)
         self._version = self.parse_header()
         self._document.set_version(self._version)
+        # Detect linearization (PDF 32000-1 Annex F): the **first**
+        # indirect object after the header is the linearization
+        # parameter dictionary. Advisory only — the regular xref-walk
+        # path below is unaffected (trailing xref still wins).
+        self._detect_linearization()
         startxref = self.find_startxref_offset()
         # Record so the incremental writer can chain its appended xref
         # via /Prev (PRD §6.5 cluster #2).
@@ -142,6 +161,110 @@ class PDFParser:
         """Return whether lenient parsing is enabled. Mirrors upstream
         ``PDFParser.isLenient()``."""
         return self._lenient
+
+    # ---------- linearization (PDF 32000-1 Annex F) ----------
+
+    def is_linearized(self) -> bool:
+        """``True`` when a linearization parameter dictionary was detected
+        as the first indirect object after the header. Mirrors the
+        conceptual surface PDFBox exposes through
+        ``COSDocument.getLinearizedDictionary()`` returning non-null.
+
+        Set during :meth:`parse` (more precisely, by
+        :meth:`_detect_linearization`)."""
+        return self.linearization_dict is not None
+
+    def get_linearization_dictionary(self) -> COSDictionary | None:
+        """Return the parsed linearization parameter dictionary, or
+        ``None`` when the document is not linearized."""
+        return self.linearization_dict
+
+    def get_hint_table_bytes(self) -> bytes | None:
+        """Return the raw bytes of the primary hint stream (offset +
+        length taken from the linearization dict's ``/H`` array), or
+        ``None`` when the document is not linearized or the hint table
+        could not be located. The body is **not** interpreted — hint
+        stream parsing (page-offset, shared-object, thumbnail tables)
+        is left to higher-level callers."""
+        return self.hint_table_bytes
+
+    def _detect_linearization(self) -> None:
+        """Parse the first indirect object after the header. If it is a
+        dictionary carrying a truthy ``/Linearized`` entry, record it on
+        :attr:`linearization_dict` and slurp the primary hint stream's
+        bytes into :attr:`hint_table_bytes`. Quiet on every failure path
+        — linearization is advisory metadata, never load-blocking.
+
+        Cursor is restored to its post-header position before returning
+        so :meth:`find_startxref_offset` (which scans from EOF anyway)
+        and the rest of :meth:`parse` are unaffected."""
+        saved = self._src.get_position()
+        try:
+            self._base.skip_whitespace()
+            # An indirect-object header reads ``<num> <gen> obj``. Bail
+            # out quietly if the first non-whitespace byte isn't a
+            # decimal digit (some producers prepend comments — we
+            # could call ``skip_comment`` here but per spec the
+            # linearization dict, if present, is the very first object).
+            peek = self._base.peek_byte()
+            if peek == RandomAccessRead.EOF or not (0x30 <= peek <= 0x39):
+                return
+            try:
+                obj_num = self._base.read_int()
+                self._base.skip_whitespace()
+                gen_num = self._base.read_int()
+            except PDFParseError:
+                return
+            self._base.skip_whitespace()
+            try:
+                kw = self._base.read_keyword()
+            except PDFParseError:
+                return
+            if kw != b"obj":
+                return
+            assert self._cos_parser is not None
+            try:
+                body = self._cos_parser.parse_direct_object()
+            except PDFParseError:
+                return
+            if not isinstance(body, COSDictionary):
+                return
+            lin = body.get_dictionary_object(COSName.get_pdf_name("Linearized"))
+            if not isinstance(lin, (COSInteger, COSFloat)):
+                return
+            if lin.value == 0:
+                return
+            # Genuine linearization dict — record it.
+            self.linearization_dict = body
+            # Slurp the primary hint stream's raw bytes (don't decode the
+            # hint-table body; that's a deeper task). /H is an array of
+            # 2 ints (primary only) or 4 ints (primary + overflow).
+            h_arr = body.get_dictionary_object(COSName.get_pdf_name("H"))
+            if isinstance(h_arr, COSArray) and h_arr.size() >= 2:
+                h_off = h_arr.get(0)
+                h_len = h_arr.get(1)
+                if isinstance(h_off, (COSInteger, COSFloat)) and isinstance(
+                    h_len, (COSInteger, COSFloat)
+                ):
+                    offset = int(h_off.value)
+                    length = int(h_len.value)
+                    file_len = self._src.length()
+                    if 0 <= offset < file_len and 0 <= length <= file_len - offset:
+                        # Snapshot cursor again — read_into moves it.
+                        cursor_snap = self._src.get_position()
+                        try:
+                            self._src.seek(offset)
+                            buf = bytearray(length)
+                            n = self._src.read_into(buf)
+                            self.hint_table_bytes = bytes(buf[: max(n, 0)])
+                        finally:
+                            self._src.seek(cursor_snap)
+            # Discard the obj_num / gen_num to silence "unused" linters
+            # without losing the parse-side validation above.
+            del obj_num, gen_num
+        finally:
+            # Always restore the cursor to where the caller left it.
+            self._src.seek(saved)
 
     # ---------- encryption / id introspection ----------
 

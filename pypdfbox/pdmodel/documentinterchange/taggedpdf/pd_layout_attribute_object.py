@@ -14,12 +14,52 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     Covers the typed accessors per PDF 32000-1:2008 §14.8.5.4: placement,
     writing mode, foreground / background colors, four-side border colors,
     border style / thickness, padding, vertical spacing, indents, text
-    align, baseline shift, bounding box, content size, column geometry, and
-    block / inline alignment. The decoration / ruby accessors and the
-    upstream change-notification plumbing are still deferred.
+    align, baseline shift, bounding box, content size, column geometry,
+    block / inline alignment, table-cell border style / padding, line
+    height, text decoration, ruby alignment / position, and glyph
+    orientation. The upstream change-notification plumbing
+    (``potentiallyNotifyChanged``) is deferred — setters mutate the
+    dictionary directly.
     """
 
+    # Owner constant (upstream-parity).
+    OWNER_LAYOUT: str = "Layout"
+    # Pypdfbox-style alias kept for prior callers.
     OWNER: str = "Layout"
+
+    # ---- Dictionary keys (upstream-parity public statics) ----
+    PLACEMENT: str = "Placement"
+    WRITING_MODE: str = "WritingMode"
+    BACKGROUND_COLOR: str = "BackgroundColor"
+    BORDER_COLOR: str = "BorderColor"
+    BORDER_STYLE: str = "BorderStyle"
+    BORDER_THICKNESS: str = "BorderThickness"
+    PADDING: str = "Padding"
+    COLOR: str = "Color"
+    SPACE_BEFORE: str = "SpaceBefore"
+    SPACE_AFTER: str = "SpaceAfter"
+    START_INDENT: str = "StartIndent"
+    END_INDENT: str = "EndIndent"
+    TEXT_INDENT: str = "TextIndent"
+    TEXT_ALIGN: str = "TextAlign"
+    BBOX: str = "BBox"
+    WIDTH: str = "Width"
+    HEIGHT: str = "Height"
+    BLOCK_ALIGN: str = "BlockAlign"
+    INLINE_ALIGN: str = "InlineAlign"
+    T_BORDER_STYLE: str = "TBorderStyle"
+    T_PADDING: str = "TPadding"
+    BASELINE_SHIFT: str = "BaselineShift"
+    LINE_HEIGHT: str = "LineHeight"
+    TEXT_DECORATION_COLOR: str = "TextDecorationColor"
+    TEXT_DECORATION_THICKNESS: str = "TextDecorationThickness"
+    TEXT_DECORATION_TYPE: str = "TextDecorationType"
+    RUBY_ALIGN: str = "RubyAlign"
+    RUBY_POSITION: str = "RubyPosition"
+    GLYPH_ORIENTATION_VERTICAL: str = "GlyphOrientationVertical"
+    COLUMN_COUNT: str = "ColumnCount"
+    COLUMN_GAP: str = "ColumnGap"
+    COLUMN_WIDTHS: str = "ColumnWidths"
 
     # Placement values
     PLACEMENT_BLOCK: str = "Block"
@@ -65,6 +105,39 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     TEXT_ALIGN_CENTER: str = "Center"
     TEXT_ALIGN_END: str = "End"
     TEXT_ALIGN_JUSTIFY: str = "Justify"
+
+    # LineHeight name sentinels (PDF 32000-1 §14.8.5.4 Table 343)
+    LINE_HEIGHT_NORMAL: str = "Normal"
+    LINE_HEIGHT_AUTO: str = "Auto"
+
+    # TextDecorationType values
+    TEXT_DECORATION_TYPE_NONE: str = "None"
+    TEXT_DECORATION_TYPE_UNDERLINE: str = "Underline"
+    TEXT_DECORATION_TYPE_OVERLINE: str = "Overline"
+    TEXT_DECORATION_TYPE_LINE_THROUGH: str = "LineThrough"
+
+    # RubyAlign values
+    RUBY_ALIGN_START: str = "Start"
+    RUBY_ALIGN_CENTER: str = "Center"
+    RUBY_ALIGN_END: str = "End"
+    RUBY_ALIGN_JUSTIFY: str = "Justify"
+    RUBY_ALIGN_DISTRIBUTE: str = "Distribute"
+
+    # RubyPosition values
+    RUBY_POSITION_BEFORE: str = "Before"
+    RUBY_POSITION_AFTER: str = "After"
+    RUBY_POSITION_WARICHU: str = "Warichu"
+    RUBY_POSITION_INLINE: str = "Inline"
+
+    # GlyphOrientationVertical values (PDF 32000-1 §14.8.5.4 Table 343)
+    GLYPH_ORIENTATION_VERTICAL_AUTO: str = "Auto"
+    GLYPH_ORIENTATION_VERTICAL_MINUS_180_DEGREES: str = "-180"
+    GLYPH_ORIENTATION_VERTICAL_MINUS_90_DEGREES: str = "-90"
+    GLYPH_ORIENTATION_VERTICAL_ZERO_DEGREES: str = "0"
+    GLYPH_ORIENTATION_VERTICAL_90_DEGREES: str = "90"
+    GLYPH_ORIENTATION_VERTICAL_180_DEGREES: str = "180"
+    GLYPH_ORIENTATION_VERTICAL_270_DEGREES: str = "270"
+    GLYPH_ORIENTATION_VERTICAL_360_DEGREES: str = "360"
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         super().__init__(dictionary)
@@ -373,6 +446,191 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
             self._set_number("ColumnWidths", value)
         else:
             self._set_array_of_number("ColumnWidths", [float(v) for v in value])
+
+    # ---------- Upstream-parity overload-style aliases ----------
+    #
+    # Upstream Java exposes both ``setAllXxx(scalar)`` and ``setXxxs(array)``
+    # for the four-side / per-side layout attributes. Python collapses the
+    # overloads into a single polymorphic setter (the methods above), but
+    # we expose the upstream names so PDFBox-shaped code ports cleanly.
+
+    def set_all_border_styles(self, value: str | None) -> None:
+        """Set ``/BorderStyle`` to a single name applied to all four sides."""
+        self.set_border_style(value)
+
+    def set_border_styles(self, values: list[str] | None) -> None:
+        """Set ``/BorderStyle`` to a four-element per-side name array."""
+        if values is None:
+            self._dictionary.remove_item("BorderStyle")
+        else:
+            self._set_array_of_name("BorderStyle", list(values))
+
+    def set_all_border_thicknesses(self, value: float | int | None) -> None:
+        """Set ``/BorderThickness`` to a single number applied to all sides."""
+        self.set_border_thickness(value)
+
+    def set_border_thicknesses(self, values: list[float] | None) -> None:
+        """Set ``/BorderThickness`` to a per-side number array."""
+        if values is None:
+            self._dictionary.remove_item("BorderThickness")
+        else:
+            self._set_array_of_number("BorderThickness", [float(v) for v in values])
+
+    def set_all_paddings(self, value: float | int | None) -> None:
+        """Set ``/Padding`` to a single number applied to all four sides."""
+        self.set_padding(value)
+
+    def set_paddings(self, values: list[float] | None) -> None:
+        """Set ``/Padding`` to a four-element per-side number array."""
+        if values is None:
+            self._dictionary.remove_item("Padding")
+        else:
+            self._set_array_of_number("Padding", [float(v) for v in values])
+
+    def set_all_column_widths(self, value: float | int | None) -> None:
+        """Set ``/ColumnWidths`` to a single number applied to all columns."""
+        self.set_column_widths(value)
+
+    def set_column_gaps(self, values: list[float] | None) -> None:
+        """Set ``/ColumnGap`` to a per-gap number array."""
+        if values is None:
+            self._dictionary.remove_item("ColumnGap")
+        else:
+            self._set_array_of_number("ColumnGap", [float(v) for v in values])
+
+    # ---------- /TBorderStyle (table-cell border style) ----------
+
+    def get_t_border_style(self) -> str | list[str] | None:
+        """Return either a single name or a four-element per-side list.
+        Defaults to :attr:`BORDER_STYLE_NONE` when absent."""
+        return self.get_name_or_array_of_name("TBorderStyle", self.BORDER_STYLE_NONE)
+
+    def set_t_border_style(self, value: str | list[str] | None) -> None:
+        """Set ``/TBorderStyle`` to a single name (all sides) or a four-element
+        per-side name array."""
+        if value is None:
+            self._dictionary.remove_item("TBorderStyle")
+        elif isinstance(value, str):
+            self._set_name("TBorderStyle", value)
+        else:
+            self._set_array_of_name("TBorderStyle", list(value))
+
+    def set_all_t_border_styles(self, value: str | None) -> None:
+        """Upstream-parity single-name setter for ``/TBorderStyle``."""
+        self.set_t_border_style(value)
+
+    def set_t_border_styles(self, values: list[str] | None) -> None:
+        """Upstream-parity per-side array setter for ``/TBorderStyle``."""
+        if values is None:
+            self._dictionary.remove_item("TBorderStyle")
+        else:
+            self._set_array_of_name("TBorderStyle", list(values))
+
+    # ---------- /TPadding (table-cell padding) ----------
+
+    def get_t_padding(self) -> float | list[float] | None:
+        """Return either a single number or a four-element per-side list.
+        Defaults to ``0.0`` when absent."""
+        return self.get_number_or_array_of_number("TPadding", 0.0)
+
+    def set_t_padding(self, value: float | int | list[float] | None) -> None:
+        """Set ``/TPadding`` to a single number (uniform) or a four-element
+        per-side number array."""
+        if value is None:
+            self._dictionary.remove_item("TPadding")
+        elif isinstance(value, (int, float)) and not isinstance(value, bool):
+            self._set_number("TPadding", value)
+        else:
+            self._set_array_of_number("TPadding", [float(v) for v in value])
+
+    def set_all_t_paddings(self, value: float | int | None) -> None:
+        """Upstream-parity single-number setter for ``/TPadding``."""
+        self.set_t_padding(value)
+
+    def set_t_paddings(self, values: list[float] | None) -> None:
+        """Upstream-parity per-side array setter for ``/TPadding``."""
+        if values is None:
+            self._dictionary.remove_item("TPadding")
+        else:
+            self._set_array_of_number("TPadding", [float(v) for v in values])
+
+    # ---------- /LineHeight ----------
+
+    def get_line_height(self) -> float | str | None:
+        """Return a number, the literal ``"Normal"``, the literal ``"Auto"``,
+        or the default ``"Normal"`` when absent."""
+        return self.get_number_or_name("LineHeight", self.LINE_HEIGHT_NORMAL)
+
+    def set_line_height(self, value: float | int | str | None) -> None:
+        """Set ``/LineHeight`` to a number, ``"Normal"``, ``"Auto"``, or
+        remove on ``None``."""
+        if value is None:
+            self._dictionary.remove_item("LineHeight")
+        elif isinstance(value, str):
+            self._set_name("LineHeight", value)
+        else:
+            self._set_number("LineHeight", value)
+
+    def set_line_height_normal(self) -> None:
+        """Convenience: set ``/LineHeight`` to ``"Normal"``."""
+        self._set_name("LineHeight", self.LINE_HEIGHT_NORMAL)
+
+    def set_line_height_auto(self) -> None:
+        """Convenience: set ``/LineHeight`` to ``"Auto"``."""
+        self._set_name("LineHeight", self.LINE_HEIGHT_AUTO)
+
+    # ---------- /TextDecorationColor ----------
+
+    def get_text_decoration_color(self) -> tuple[float, ...] | None:
+        return self._get_color_value("TextDecorationColor")
+
+    def set_text_decoration_color(self, rgb: tuple[float, ...] | None) -> None:
+        self._set_color_value("TextDecorationColor", rgb)
+
+    # ---------- /TextDecorationThickness ----------
+
+    def get_text_decoration_thickness(self) -> float:
+        """Return the decoration thickness; ``UNSPECIFIED`` (-1.0) when absent."""
+        return self._get_number("TextDecorationThickness", self.UNSPECIFIED)
+
+    def set_text_decoration_thickness(self, value: float | int) -> None:
+        self._set_number("TextDecorationThickness", value)
+
+    # ---------- /TextDecorationType ----------
+
+    def get_text_decoration_type(self) -> str | None:
+        return self._get_name(
+            "TextDecorationType", self.TEXT_DECORATION_TYPE_NONE
+        )
+
+    def set_text_decoration_type(self, value: str) -> None:
+        self._set_name("TextDecorationType", value)
+
+    # ---------- /RubyAlign ----------
+
+    def get_ruby_align(self) -> str | None:
+        return self._get_name("RubyAlign", self.RUBY_ALIGN_DISTRIBUTE)
+
+    def set_ruby_align(self, value: str) -> None:
+        self._set_name("RubyAlign", value)
+
+    # ---------- /RubyPosition ----------
+
+    def get_ruby_position(self) -> str | None:
+        return self._get_name("RubyPosition", self.RUBY_POSITION_BEFORE)
+
+    def set_ruby_position(self, value: str) -> None:
+        self._set_name("RubyPosition", value)
+
+    # ---------- /GlyphOrientationVertical ----------
+
+    def get_glyph_orientation_vertical(self) -> str | None:
+        return self._get_name(
+            "GlyphOrientationVertical", self.GLYPH_ORIENTATION_VERTICAL_AUTO
+        )
+
+    def set_glyph_orientation_vertical(self, value: str) -> None:
+        self._set_name("GlyphOrientationVertical", value)
 
     def __repr__(self) -> str:
         return (

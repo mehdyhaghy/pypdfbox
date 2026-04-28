@@ -207,3 +207,15 @@ def test_prepare_document_round_trip_matches_decrypt_path(
     assert decrypt_handler.get_encryption_key() == encrypt_key
     assert decrypt_handler.get_key_length() == key_length_bits
     assert decrypt_handler.is_aes() is True
+    # Decryption material is stashed on the base handler — mirrors upstream
+    # ``SecurityHandler#setDecryptionMaterial`` getting called from the top
+    # of ``prepareForDecryption``.
+    assert decrypt_handler.get_decryption_material() is material
+    # Access permissions ride the envelope as a 4-byte big-endian signed
+    # int starting at offset 20; the handler decodes them and exposes them
+    # via ``get_current_access_permission``.
+    decoded = decrypt_handler.get_current_access_permission()
+    assert decoded is not None
+    assert (decoded.get_permission_bytes() & 0xFFFFFFFF) == (
+        permissions.get_permission_bytes() & 0xFFFFFFFF
+    )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+import hashlib
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 
@@ -281,9 +282,150 @@ def get_last_relevant_signature(document: PDDocument) -> PDSignature | None:
     return sigs[-1]
 
 
+# ------------------------------------------------------------- /ByteRange helpers
+
+
+def compute_byte_range(
+    document_bytes: bytes | bytearray, contents_open: int, contents_close: int
+) -> list[int]:
+    """Compute the four-tuple ``[start1, len1, start2, len2]`` for a
+    ``/Contents <…>`` placeholder located at ``contents_open`` (the ``<``
+    byte offset) through ``contents_close`` (the ``>`` byte offset, inclusive).
+
+    Per ISO 32000-1 §12.8.1, the digest is taken over the entire file
+    *except* the bytes strictly between ``<`` and ``>`` — the angle
+    brackets themselves are *included* in the hashed range:
+
+        range1 = [0 .. contents_open]            (includes ``<``)
+        range2 = [contents_close .. file_end]    (includes ``>``)
+
+    Raises :class:`ValueError` if the offsets don't sit inside the buffer
+    or if ``contents_close`` is not strictly greater than ``contents_open``.
+    """
+    n = len(document_bytes)
+    if not (0 <= contents_open < n and 0 <= contents_close < n):
+        raise ValueError(
+            f"/Contents placeholder offsets out of range: "
+            f"open={contents_open} close={contents_close} file_size={n}"
+        )
+    if contents_close <= contents_open:
+        raise ValueError(
+            f"/Contents placeholder is malformed: close ({contents_close}) "
+            f"must be strictly greater than open ({contents_open})"
+        )
+    start1 = 0
+    len1 = contents_open + 1  # include `<`
+    start2 = contents_close  # include `>`
+    len2 = n - start2
+    return [start1, len1, start2, len2]
+
+
+def compute_signed_digest(
+    document_bytes: bytes | bytearray,
+    byte_range: list[int],
+    *,
+    algorithm: str = "sha256",
+) -> bytes:
+    """Recompute the message digest the signature was taken over.
+
+    Concatenates the two slices identified by ``byte_range`` =
+    ``[start1, len1, start2, len2]`` and hashes them with ``algorithm``
+    (default ``"sha256"`` — matches ``adbe.pkcs7.detached`` which uses
+    SHA-256 for new signatures; pass ``"sha1"`` for ``adbe.pkcs7.sha1``).
+    """
+    if len(byte_range) != 4:
+        raise ValueError(
+            f"/ByteRange must have exactly 4 entries, got {len(byte_range)}"
+        )
+    start1, len1, start2, len2 = byte_range
+    chunk = bytes(document_bytes[start1 : start1 + len1]) + bytes(
+        document_bytes[start2 : start2 + len2]
+    )
+    return hashlib.new(algorithm, chunk).digest()
+
+
+# ----------------------------------------------------------- PKCS#7 DER scanner
+
+# OID 1.2.840.113549.1.9.4 (id-pkcs9-at-messageDigest) DER-encoded:
+#     06 09 2A 86 48 86 F7 0D 01 09 04
+# Tag 0x06 = OBJECT IDENTIFIER, length 0x09, then the body bytes:
+#     2A 86 48 86 F7 0D 01 09 04
+_MESSAGE_DIGEST_OID_DER: bytes = bytes.fromhex("06092A864886F70D010904")
+
+
+def _read_der_length(buf: bytes, offset: int) -> tuple[int, int]:
+    """Decode a DER length starting at ``offset``. Returns ``(length, n_bytes)``
+    where ``n_bytes`` is how many bytes the length encoding occupied
+    (1 for short form, 2..N for long form).
+
+    Indefinite-length form (``0x80``) is rejected — DER forbids it.
+    Raises :class:`ValueError` on malformed input.
+    """
+    if offset >= len(buf):
+        raise ValueError("DER length: unexpected EOF")
+    first = buf[offset]
+    if first < 0x80:
+        return first, 1
+    if first == 0x80:
+        raise ValueError("DER forbids indefinite-length form")
+    n = first & 0x7F
+    if n == 0 or offset + 1 + n > len(buf):
+        raise ValueError("DER length: truncated long form")
+    length = 0
+    for b in buf[offset + 1 : offset + 1 + n]:
+        length = (length << 8) | b
+    return length, 1 + n
+
+
+def extract_pkcs7_message_digest(pkcs7_der: bytes) -> bytes | None:
+    """Locate and return the ``messageDigest`` signed-attribute value from a
+    DER-encoded PKCS#7 / CMS SignedData blob.
+
+    Implementation: scans for the ``messageDigest`` OID DER prefix
+    (``06 09 2A 86 48 86 F7 0D 01 09 04``), then parses the following
+    ``SET OF AttributeValue`` to yield the inner ``OCTET STRING`` payload.
+    Returns the digest bytes on success, ``None`` if the OID is absent or
+    the surrounding ASN.1 isn't shaped like a CMS signed-attribute (the
+    caller treats ``None`` as "couldn't recover digest" — not an error).
+
+    Hand-rolled to avoid an ``asn1crypto`` dep; see ``CHANGES.md``.
+    """
+    idx = pkcs7_der.find(_MESSAGE_DIGEST_OID_DER)
+    if idx < 0:
+        return None
+    # After the OID DER (11 bytes), the AttributeValues SET begins:
+    #     31 LL  (SET tag, length, contents)
+    #         04 LL <digest>  (OCTET STRING tag, length, body)
+    cursor = idx + len(_MESSAGE_DIGEST_OID_DER)
+    if cursor >= len(pkcs7_der):
+        return None
+    try:
+        if pkcs7_der[cursor] != 0x31:  # SET (universal, constructed, tag 17)
+            return None
+        cursor += 1
+        set_len, n = _read_der_length(pkcs7_der, cursor)
+        cursor += n
+        set_end = cursor + set_len
+        if set_end > len(pkcs7_der):
+            return None
+        if cursor >= set_end or pkcs7_der[cursor] != 0x04:
+            return None  # OCTET STRING expected
+        cursor += 1
+        os_len, n = _read_der_length(pkcs7_der, cursor)
+        cursor += n
+        if cursor + os_len > set_end:
+            return None
+        return pkcs7_der[cursor : cursor + os_len]
+    except ValueError:
+        return None
+
+
 __all__ = [
     "check_certificate_usage",
     "check_responder_certificate_usage",
+    "compute_byte_range",
+    "compute_signed_digest",
+    "extract_pkcs7_message_digest",
     "get_last_relevant_signature",
     "get_mdp_permission",
     "set_mdp_permission",

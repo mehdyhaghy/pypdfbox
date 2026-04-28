@@ -513,3 +513,191 @@ def test_prepare_for_decryption_perms_mismatch_warns_but_succeeds(
     assert decoder.get_encryption_key() == handler.get_encryption_key()
     # And the warning fired.
     assert any("Perms" in rec.message for rec in caplog.records)
+
+
+# -------------------------------------------------- r6 charset (UTF-8) tests
+
+
+def test_r6_unicode_password_round_trip_utf8() -> None:
+    """ISO 32000-2 §7.6.4.3.4 / PDFBOX-4155 — r6 password bytes are UTF-8.
+
+    A password containing non-ASCII characters must round-trip when the
+    same string is supplied at decryption time. (Latin-1 fallback would
+    derive a different byte sequence and break the unwrap.)
+    """
+    user_pw = "пароль"  # Cyrillic — multi-byte under UTF-8, single-byte (lossy) under Latin-1
+    owner_pw = "Schlüssel"  # German umlaut
+
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os as _os
+
+    handler.set_encryption_key(_os.urandom(32))
+    user_bytes = user_pw.encode("utf-8")
+    owner_bytes = owner_pw.encode("utf-8")
+    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        owner_bytes, user_bytes, -3904
+    )
+    encryption = PDEncryption()
+    encryption.set_filter("Standard")
+    encryption.set_v(5)
+    encryption.set_revision(6)
+    encryption.set_length(256)
+    encryption.set_p(-3904)
+    encryption.set_o(o)
+    encryption.set_u(u)
+    encryption.set_oe(oe)
+    encryption.set_ue(ue)
+    encryption.set_perms(perms)
+
+    # Decrypt with the *string* form — handler must encode as UTF-8 internally.
+    decoder = StandardSecurityHandler()
+    decoder.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial(user_pw)
+    )
+    assert decoder.get_encryption_key() == handler.get_encryption_key()
+
+    # Same with the owner string.
+    decoder2 = StandardSecurityHandler()
+    decoder2.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial(owner_pw)
+    )
+    assert decoder2.get_encryption_key() == handler.get_encryption_key()
+
+
+def test_decryption_material_get_password_bytes_charset_switch() -> None:
+    """``get_password_bytes(revision)`` must return Latin-1 for r2-r4 and
+    UTF-8 for r5-r6 — matching upstream's ``prepareForDecryption`` charset
+    switch (PDFBOX-4155)."""
+    material = StandardDecryptionMaterial("café")
+    assert material.get_password_bytes(3) == "café".encode("latin-1")
+    assert material.get_password_bytes(6) == "café".encode("utf-8")
+    assert material.get_password_bytes(2) == b"caf\xe9"
+    assert material.get_password_bytes(5) == b"caf\xc3\xa9"
+    # bytes input passes through unchanged.
+    raw = StandardDecryptionMaterial(b"\x00\x01\x02")
+    assert raw.get_password_bytes(3) == b"\x00\x01\x02"
+    assert raw.get_password_bytes(6) == b"\x00\x01\x02"
+    # None stays None.
+    assert StandardDecryptionMaterial(None).get_password_bytes(6) is None
+
+
+def test_is_user_password_string_uses_utf8_for_r6() -> None:
+    """``is_user_password(str, ...)`` must encode the supplied string as
+    UTF-8 for r5/r6, otherwise Latin-1. Verify the r6 charset path against
+    a non-ASCII password."""
+    user_pw = "naïve"
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os as _os
+
+    handler.set_encryption_key(_os.urandom(32))
+    user_bytes = user_pw.encode("utf-8")
+    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        user_bytes, user_bytes, -3904
+    )
+    encryption = PDEncryption()
+    encryption.set_filter("Standard")
+    encryption.set_v(5)
+    encryption.set_revision(6)
+    encryption.set_length(256)
+    encryption.set_p(-3904)
+    encryption.set_o(o)
+    encryption.set_u(u)
+    encryption.set_oe(oe)
+    encryption.set_ue(ue)
+    encryption.set_perms(perms)
+
+    assert StandardSecurityHandler.is_user_password(user_pw, encryption, b"") is True
+    assert StandardSecurityHandler.is_owner_password(user_pw, encryption, b"") is True
+    # And the bytes form bypasses the charset switch entirely.
+    assert (
+        StandardSecurityHandler.is_user_password(user_bytes, encryption, b"")
+        is True
+    )
+
+
+# ---------------------------------------------- Algorithm 7 inverse helper
+
+
+def test_get_user_password_recovers_padded_user_pw_r3() -> None:
+    """Algorithm 7's inverse: given the owner password and /O, derive the
+    user-password bytes. The 32-byte result starts with the padded user
+    password — verify the leading bytes match the canonical pad."""
+    user_pw = b"user"
+    owner_pw = b"owner"
+    o = StandardSecurityHandler.compute_owner_password(owner_pw, user_pw, 3, 16)
+    recovered = StandardSecurityHandler.get_user_password(owner_pw, o, 3, 16)
+    # The recovered bytes should *be* the padded user password.
+    expected = StandardSecurityHandler._pad_password(user_pw)  # noqa: SLF001
+    assert recovered == expected
+
+
+def test_get_user_password_returns_empty_for_r5_r6() -> None:
+    """Upstream parity — for r5/r6, user password cannot be derived from
+    the owner password (the file key is wrapped, not derived). Return
+    empty bytes to match ``StandardSecurityHandler.getUserPassword``."""
+    assert StandardSecurityHandler.get_user_password(b"x", b"y" * 32, 5, 32) == b""
+    assert StandardSecurityHandler.get_user_password(b"x", b"y" * 32, 6, 32) == b""
+
+
+def test_get_user_password_r2_with_rc4_40() -> None:
+    """r2 uses a single RC4 pass; the inverse is also a single pass."""
+    user_pw = b"u"
+    owner_pw = b"o"
+    o = StandardSecurityHandler.compute_owner_password(owner_pw, user_pw, 2, 5)
+    recovered = StandardSecurityHandler.get_user_password(owner_pw, o, 2, 5)
+    assert recovered == StandardSecurityHandler._pad_password(user_pw)  # noqa: SLF001
+
+
+# --------------------------------------------------- cross-version dispatch
+
+
+def test_compute_revision_number_consistent_with_round_trip() -> None:
+    """The revision returned by ``compute_revision_number`` should match
+    what ``prepare_document`` actually selects for each (key_len, prefer_aes)
+    pair via the protection-policy code path."""
+    from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (
+        StandardProtectionPolicy,
+    )
+
+    cases = [
+        (256, False, 6),
+        (128, True, 4),
+        (128, False, 3),
+        (40, False, 2),
+    ]
+    for key_len, prefer_aes, expected_revision in cases:
+        assert (
+            StandardSecurityHandler.compute_revision_number(key_len, prefer_aes)
+            == expected_revision
+        )
+        policy = StandardProtectionPolicy(
+            owner_password="o",
+            user_password="u",
+            permissions=AccessPermission(),
+        )
+        policy.set_encryption_key_length(key_len)
+        policy.set_prefer_aes(prefer_aes)
+        handler = StandardSecurityHandler(protection_policy=policy)
+        # Drive prepare_document with a bare object that exposes only the
+        # methods the handler reaches for.
+        class _DocStub:
+            def __init__(self) -> None:
+                self.encryption = None
+
+            def set_encryption_dictionary(self, e: PDEncryption) -> None:
+                self.encryption = e
+
+        doc = _DocStub()
+        handler.prepare_document(doc)
+        assert handler.get_revision() == expected_revision

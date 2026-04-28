@@ -325,3 +325,55 @@ def test_set_flags_with_int_or_cos_integer_round_trip() -> None:
     raw = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Flags"))
     assert isinstance(raw, COSInteger)
     assert raw.int_value() == FLAG_FIXED_PITCH | FLAG_ITALIC
+
+
+# ---------- Panose 12-byte block (sFamilyClass + PANOSE-10) ----------
+
+
+def test_panose_family_class_is_signed_16_bit() -> None:
+    """Upstream's ``getFamilyClass`` returns a signed 16-bit value built from
+    ``(bytes[0] << 8) | (bytes[1] & 0xff)`` where ``bytes[0]`` is a *signed*
+    Java byte. A high byte of 0xFF yields a negative result."""
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDPanose
+
+    panose = PDPanose(b"\xff\x80" + b"\x00" * 10)
+    # In Java: ((byte)0xff) << 8 | 0x80 == (-1 << 8) | 0x80 == -256 | 128 == -128.
+    assert panose.get_family_class() == -128
+
+
+def test_panose_classification_full_layout() -> None:
+    """All ten PANOSE classification accessors line up with their byte
+    indices (0..9 of the embedded 10-byte block)."""
+    from pypdfbox.pdmodel.font.pd_font_descriptor import (
+        PDPanose,
+        PDPanoseClassification,
+    )
+
+    raw = bytes([0x00, 0x08]) + bytes(range(10, 20))  # PANOSE bytes 10..19
+    panose = PDPanose(raw)
+    cls = panose.get_panose()
+    assert isinstance(cls, PDPanoseClassification)
+    assert cls.get_bytes() == bytes(range(10, 20))
+    assert cls.get_family_kind() == 10
+    assert cls.get_serif_style() == 11
+    assert cls.get_weight() == 12
+    assert cls.get_proportion() == 13
+    assert cls.get_contrast() == 14
+    assert cls.get_stroke_variation() == 15
+    assert cls.get_arm_style() == 16
+    assert cls.get_letterform() == 17
+    assert cls.get_midline() == 18
+    assert cls.get_x_height() == 19
+
+
+def test_panose_classification_str_formatting_matches_upstream() -> None:
+    """``__str__`` mirrors upstream Java ``toString`` exactly."""
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDPanoseClassification
+
+    cls = PDPanoseClassification(bytes(range(10)))
+    expected = (
+        "{ FamilyKind = 0, SerifStyle = 1, Weight = 2, Proportion = 3, "
+        "Contrast = 4, StrokeVariation = 5, ArmStyle = 6, Letterform = 7, "
+        "Midline = 8, XHeight = 9}"
+    )
+    assert str(cls) == expected

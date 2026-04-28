@@ -5,6 +5,7 @@ from enum import Enum
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.cos.cos_object import COSObject
 
+from .pd_optional_content_configuration import PDOptionalContentConfiguration
 from .pd_optional_content_group import PDOptionalContentGroup
 
 
@@ -45,6 +46,9 @@ _AS: COSName = COSName.get_pdf_name("AS")
 _EVENT: COSName = COSName.get_pdf_name("Event")
 _CATEGORY: COSName = COSName.get_pdf_name("Category")
 _USAGE: COSName = COSName.get_pdf_name("Usage")
+_RBGROUPS: COSName = COSName.get_pdf_name("RBGroups")
+_LOCKED: COSName = COSName.get_pdf_name("Locked")
+_INTENT: COSName = COSName.get_pdf_name("Intent")
 
 _BASE_STATE_NAMES = {
     "ON": _ON,
@@ -258,7 +262,60 @@ class PDOptionalContentProperties:
                 on.add(target)
             else:
                 off.add(target)
+        if enabled:
+            self._enforce_radio_button(group, on, off)
         return found
+
+    def _enforce_radio_button(
+        self,
+        enabled_group: PDOptionalContentGroup,
+        on: COSArray,
+        off: COSArray,
+    ) -> None:
+        """When ``enabled_group`` is turned ON, force every sibling in the
+        same /D /RBGroups radio-button group to OFF (PDF 32000-1 Table 101).
+
+        Mirrors Acrobat's "radio-button group" behaviour and is *original*
+        to pypdfbox — Apache PDFBox 3.0 stores /RBGroups but does not
+        actively enforce the toggle in ``setGroupEnabled``."""
+        d = self._get_d()
+        rbgroups = d.get_dictionary_object(_RBGROUPS)
+        if not isinstance(rbgroups, COSArray):
+            return
+        target = enabled_group.get_cos_object()
+        for raw_group in rbgroups:
+            if isinstance(raw_group, COSObject):
+                raw_group = raw_group.get_object()
+            if not isinstance(raw_group, COSArray):
+                continue
+            members: list[COSDictionary] = []
+            contains_target = False
+            for entry in raw_group:
+                d_entry = self._to_dictionary(entry)
+                if d_entry is None:
+                    continue
+                members.append(d_entry)
+                if d_entry is target:
+                    contains_target = True
+            if not contains_target:
+                continue
+            for sibling in members:
+                if sibling is target:
+                    continue
+                # Remove from /ON if present, then ensure /OFF lists it.
+                for entry in list(on):
+                    if self._to_dictionary(entry) is sibling:
+                        on.remove(entry)
+                already_off = False
+                for entry in off:
+                    if self._to_dictionary(entry) is sibling:
+                        already_off = True
+                        break
+                if not already_off:
+                    off.add(sibling)
+            # An OCG normally appears in only one radio-button group; stop
+            # at the first match to avoid double-walking nested duplicates.
+            return
 
     def set_visibility(
         self, name_or_group: str | PDOptionalContentGroup, visible: bool
@@ -286,6 +343,15 @@ class PDOptionalContentProperties:
     ) -> bool:
         """Convenience wrapper: ``set_visibility(name_or_group, False)``."""
         return self.set_group_enabled(name_or_group, False)
+
+    def is_group_visible(
+        self, name_or_group: str | PDOptionalContentGroup
+    ) -> bool:
+        """Visibility-flavoured alias for :meth:`is_group_enabled` — mirrors
+        Acrobat's "Show/Hide Layer" terminology while routing through the
+        same /D BaseState + /D /ON + /D /OFF resolution. Not part of
+        upstream PDFBox 3.0; pypdfbox convenience."""
+        return self.is_group_enabled(name_or_group)
 
     # ---------- group names (upstream parity) ----------
 
@@ -454,7 +520,68 @@ class PDOptionalContentProperties:
                     # First non-"Unchanged" category result wins per OCG.
                     break
 
+    # ---------- /D default configuration wrapper ----------
+
+    def get_default_configuration(self) -> PDOptionalContentConfiguration:
+        """Return the typed wrapper for ``/OCProperties /D``. The wrapper
+        shares the underlying ``COSDictionary`` so writes round-trip.
+
+        Not part of upstream PDFBox 3.0 — pypdfbox enrichment. Apache
+        PDFBox inlines /D accessors directly on
+        ``PDOptionalContentProperties``; we keep those in place but also
+        expose the typed configuration wrapper for symmetry with /Configs
+        entries."""
+        return PDOptionalContentConfiguration(self._get_d())
+
+    # ---------- /D /Intent ----------
+
+    def get_intent(self) -> str | list[str]:
+        """Return the /D /Intent value. Defaults to "View" when absent.
+        Mirrors :meth:`PDOptionalContentGroup.get_intent`."""
+        return self.get_default_configuration().get_intent()
+
+    def set_intent(self, value: str | list[str] | None) -> None:
+        self.get_default_configuration().set_intent(value)
+
+    # ---------- /D /RBGroups ----------
+
+    def get_rbgroups(self) -> list[list[PDOptionalContentGroup]]:
+        return self.get_default_configuration().get_rbgroups()
+
+    def add_rbgroup(self, group: list[PDOptionalContentGroup]) -> None:
+        self.get_default_configuration().add_rbgroup(group)
+
+    # ---------- /D /Locked ----------
+
+    def get_locked(self) -> list[PDOptionalContentGroup]:
+        return self.get_default_configuration().get_locked()
+
+    def is_locked(self, group: PDOptionalContentGroup) -> bool:
+        return self.get_default_configuration().is_locked(group)
+
+    def set_locked(
+        self, groups: list[PDOptionalContentGroup] | None
+    ) -> None:
+        self.get_default_configuration().set_locked(groups)
+
+    def add_locked(self, group: PDOptionalContentGroup) -> None:
+        self.get_default_configuration().add_locked(group)
+
     # ---------- alternate configurations ----------
+
+    def get_configurations(self) -> list[PDOptionalContentConfiguration]:
+        """Return the typed wrappers around ``/OCProperties /Configs``
+        entries. Empty list when /Configs absent or non-array."""
+        configs = self._dict.get_dictionary_object(_CONFIGS)
+        if not isinstance(configs, COSArray):
+            return []
+        out: list[PDOptionalContentConfiguration] = []
+        for entry in configs:
+            cfg = self._to_dictionary(entry)
+            if cfg is None:
+                continue
+            out.append(PDOptionalContentConfiguration(cfg))
+        return out
 
     def get_configuration_names(self) -> list[str]:
         configs = self._dict.get_dictionary_object(_CONFIGS)
@@ -469,6 +596,38 @@ class PDOptionalContentProperties:
             if n is not None:
                 names.append(n)
         return names
+
+    def get_configuration(
+        self, name: str
+    ) -> PDOptionalContentConfiguration | None:
+        for cfg in self.get_configurations():
+            if cfg.get_name() == name:
+                return cfg
+        return None
+
+    def add_configuration(
+        self,
+        config: PDOptionalContentConfiguration | COSDictionary,
+    ) -> PDOptionalContentConfiguration:
+        """Append a configuration to ``/OCProperties /Configs``, creating
+        the array when missing. Returns the typed wrapper."""
+        if isinstance(config, PDOptionalContentConfiguration):
+            cos = config.get_cos_object()
+            wrapper = config
+        elif isinstance(config, COSDictionary):
+            cos = config
+            wrapper = PDOptionalContentConfiguration(cos)
+        else:
+            raise TypeError(
+                "config must be PDOptionalContentConfiguration or COSDictionary, "
+                f"got {type(config).__name__}"
+            )
+        configs = self._dict.get_dictionary_object(_CONFIGS)
+        if not isinstance(configs, COSArray):
+            configs = COSArray()
+            self._dict.set_item(_CONFIGS, configs)
+        configs.add(cos)
+        return wrapper
 
 
 __all__ = ["BaseState", "PDOptionalContentProperties"]

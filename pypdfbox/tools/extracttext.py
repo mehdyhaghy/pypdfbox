@@ -1,6 +1,7 @@
 """
 ``pypdfbox extracttext -i in.pdf [-o out.txt] [-startPage N] [-endPage M]
-[-password PWD] [-encoding ENC] [-sort] [-console] [-addFileName] [-append]``
+[-password PWD] [-encoding ENC] [-sort] [-console] [-addFileName] [-append]
+[-html] [-md] [-rotationMagic] [-ignoreBeads] [-debug]``
 — extract plain text from a PDF.
 
 Mirrors upstream ``org.apache.pdfbox.tools.ExtractText``. Upstream loads
@@ -9,18 +10,22 @@ permission bit, runs ``PDFTextStripper`` page-by-page over the requested
 page range, and writes the result to ``-o`` (defaulting to
 ``<input>.txt``) or to the console when ``-console`` is set.
 
-Skipped flags (require subsystems pypdfbox does not yet ship):
+Notes on flag round-out:
 
-* ``-html``  — needs ``PDFText2HTML``.
-* ``-md``    — needs ``PDFText2Markdown``.
-* ``-debug`` — upstream uses it to log timings; we leave that to callers.
+* ``-html`` / ``-md`` — pypdfbox does not ship a ``PDFText2HTML`` /
+  ``PDFText2Markdown`` subclass. We do the simplest faithful thing the
+  upstream CLI promises: extract plain text and wrap it in a minimal
+  HTML / Markdown document so callers can pipe the output into a
+  browser / renderer. Default output extension changes to ``.html`` /
+  ``.md`` accordingly. Recorded in ``CHANGES.md``.
+* ``-debug`` — upstream prints per-page timings via a JUL ``Logger``;
+  pypdfbox emits a one-line ``debug:`` summary to stderr instead.
+* ``-ignoreBeads`` — flips ``set_should_separate_by_beads(False)``,
+  matching upstream.
 * ``-alwaysNext`` — error-recovery flag for a multi-page extraction loop;
   pypdfbox's stripper already raises rather than aborting silently, so
   the equivalent is just retrying with a narrower ``-startPage``/``-endPage``
   window.
-* ``-ignoreBeads`` — flips ``setShouldSeparateByBeads(false)``; cheap to
-  add later but currently no-op since article-thread sorting isn't
-  exposed in the pypdfbox stripper output.
 
 Embedded-PDF extraction (the ``/Names → /EmbeddedFiles`` walk in
 upstream's ``call``) is not implemented; pypdfbox does not yet expose a
@@ -35,7 +40,9 @@ Exit codes follow upstream:
 from __future__ import annotations
 
 import argparse
+import html as _htmlmod
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, Iterator, TextIO
@@ -108,6 +115,26 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
             "for each rotation in turn (uses FilteredTextStripper)"
         ),
     )
+    p.add_argument(
+        "-html", "--html", dest="html", action="store_true",
+        help="wrap the extracted text in a minimal HTML document",
+    )
+    p.add_argument(
+        "-md", "--md", dest="md", action="store_true",
+        help="wrap the extracted text in a minimal Markdown document",
+    )
+    p.add_argument(
+        "-ignoreBeads", "--ignoreBeads", dest="ignore_beads",
+        action="store_true",
+        help=(
+            "disable article-bead separation (equivalent to upstream's "
+            "setShouldSeparateByBeads(false))"
+        ),
+    )
+    p.add_argument(
+        "-debug", "--debug", dest="debug", action="store_true",
+        help="print extraction timing to stderr",
+    )
     p.set_defaults(func=run)
 
 
@@ -116,9 +143,36 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
 # ---------------------------------------------------------------------------
 
 
-def _default_output(infile: Path) -> Path:
-    """Mirror upstream ``FilenameUtils.removeExtension(infile) + ".txt"``."""
+def _default_output(infile: Path, *, html: bool = False, md: bool = False) -> Path:
+    """Mirror upstream ``FilenameUtils.removeExtension(infile) + ".txt"``.
+
+    When ``-html`` or ``-md`` is set the upstream CLI swaps the default
+    extension to ``.html`` / ``.md``; we follow that.
+    """
+    if html:
+        return infile.with_suffix(".html")
+    if md:
+        return infile.with_suffix(".md")
     return infile.with_suffix(".txt")
+
+
+def _wrap_html(body: str) -> str:
+    """Minimal HTML wrapper. Mirrors upstream ``PDFText2HTML`` only at the
+    structural level — head + body + ``<pre>`` to preserve whitespace."""
+    return (
+        "<html>\n"
+        "<head><meta charset=\"UTF-8\"><title>extracttext</title></head>\n"
+        "<body>\n"
+        f"<pre>{_htmlmod.escape(body)}</pre>\n"
+        "</body>\n"
+        "</html>\n"
+    )
+
+
+def _wrap_md(body: str) -> str:
+    """Minimal Markdown wrapper — fence the extracted text so newlines
+    survive untouched."""
+    return f"```\n{body}\n```\n"
 
 
 @contextmanager
@@ -147,6 +201,7 @@ def extract_text(
     end_page: int = sys.maxsize,
     sort: bool = False,
     rotation_magic: bool = False,
+    ignore_beads: bool = False,
 ) -> None:
     """Run ``PDFTextStripper`` over ``document`` and write the resulting
     text into ``output`` (any file-like object with a ``.write(str)``).
@@ -168,11 +223,14 @@ def extract_text(
     last = min(int(end_page), total)
     if rotation_magic:
         _extract_text_rotation_magic(
-            document, output, first=first, last=last, sort=bool(sort)
+            document, output, first=first, last=last, sort=bool(sort),
+            ignore_beads=bool(ignore_beads),
         )
         return
     stripper = PDFTextStripper()
     stripper.set_sort_by_position(bool(sort))
+    if ignore_beads:
+        stripper.set_should_separate_by_beads(False)
     stripper.set_start_page(first)
     stripper.set_end_page(last)
     output.write(stripper.get_text(document))
@@ -180,6 +238,7 @@ def extract_text(
 
 def _extract_text_rotation_magic(
     document: PDDocument, output, *, first: int, last: int, sort: bool,
+    ignore_beads: bool = False,
 ) -> None:
     """Per-page rotation-aware extraction loop.
 
@@ -211,6 +270,8 @@ def _extract_text_rotation_magic(
         for angle in angles:
             stripper = FilteredTextStripper(target_angle=angle)
             stripper.set_sort_by_position(sort)
+            if ignore_beads:
+                stripper.set_should_separate_by_beads(False)
             stripper.set_start_page(page_number)
             stripper.set_end_page(page_number)
             output.write(stripper.get_text(document))
@@ -222,22 +283,33 @@ def _extract_text_rotation_magic(
 
 
 def run(args: argparse.Namespace) -> int:
+    import io as _io
+
     src = Path(args.input)
     if not src.is_file():
         print(f"extracttext: {src}: not a file", flush=True)
         return 4
 
     encoding = args.encoding or _STD_ENCODING
+    html = bool(getattr(args, "html", False))
+    md = bool(getattr(args, "md", False))
     if args.to_console:
         outfile: Path | None = None
     else:
-        outfile = Path(args.output) if args.output else _default_output(src)
+        outfile = (
+            Path(args.output)
+            if args.output
+            else _default_output(src, html=html, md=md)
+        )
 
     try:
         doc = PDDocument.load(src, password=args.password or "")
     except PDInvalidPasswordException as exc:
         print(f"extracttext: {exc}", flush=True)
         return 1
+
+    debug = bool(getattr(args, "debug", False))
+    started = time.perf_counter() if debug else 0.0
 
     try:
         ap = doc.get_current_access_permission()
@@ -246,22 +318,46 @@ def run(args: argparse.Namespace) -> int:
                   flush=True)
             return 1
 
+        # When -html/-md is set we collect the body text first, then wrap.
+        # Otherwise we stream straight into the output writer for parity
+        # with upstream's per-page write loop.
         with _open_writer(
             to_console=args.to_console,
             outfile=outfile,
             encoding=encoding,
             append=args.append,
         ) as output:
-            if args.add_file_name:
-                output.write(f"PDF file: {src}\n")
-            extract_text(
-                doc,
-                output,
-                start_page=args.start_page,
-                end_page=args.end_page,
-                sort=args.sort,
-                rotation_magic=args.rotation_magic,
-            )
+            if html or md:
+                buf = _io.StringIO()
+                if args.add_file_name:
+                    buf.write(f"PDF file: {src}\n")
+                extract_text(
+                    doc,
+                    buf,
+                    start_page=args.start_page,
+                    end_page=args.end_page,
+                    sort=args.sort,
+                    rotation_magic=args.rotation_magic,
+                    ignore_beads=args.ignore_beads,
+                )
+                wrapped = _wrap_html(buf.getvalue()) if html else _wrap_md(buf.getvalue())
+                output.write(wrapped)
+            else:
+                if args.add_file_name:
+                    output.write(f"PDF file: {src}\n")
+                extract_text(
+                    doc,
+                    output,
+                    start_page=args.start_page,
+                    end_page=args.end_page,
+                    sort=args.sort,
+                    rotation_magic=args.rotation_magic,
+                    ignore_beads=args.ignore_beads,
+                )
     finally:
         doc.close()
+    if debug:
+        elapsed = time.perf_counter() - started
+        print(f"debug: extracttext finished in {elapsed:.3f}s",
+              file=sys.stderr, flush=True)
     return 0

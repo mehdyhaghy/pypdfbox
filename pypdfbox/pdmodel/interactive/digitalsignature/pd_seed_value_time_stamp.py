@@ -57,12 +57,33 @@ class PDSeedValueTimeStamp:
         self._dict.set_int(_FF, new)
 
     def is_url_required(self) -> bool:
-        """Return ``True`` when the URL must be used (``/Ff`` bit 1)."""
+        """Return ``True`` when the URL must be used (``/Ff`` bit 1).
+
+        Note: upstream PDFBox names this ``isTimestampRequired``; both names
+        are exposed for compatibility — see :meth:`is_timestamp_required`.
+        """
         return self._is_flag(_FLAG_URL)
 
     def set_url_required(self, flag: bool) -> None:
-        """Set the URL-required ``/Ff`` bit (bit 1)."""
+        """Set the URL-required ``/Ff`` bit (bit 1).
+
+        See :meth:`set_timestamp_required` for the upstream-named alias.
+        """
         self._set_flag(_FLAG_URL, flag)
+
+    def is_timestamp_required(self) -> bool:
+        """Return ``True`` when the timestamp is required, mirroring
+        upstream ``isTimestampRequired()``. Internally checks ``/Ff != 0``
+        (any nonzero value, per upstream)."""
+        v = self._dict.get_dictionary_object(_FF)
+        if isinstance(v, COSInteger):
+            return v.value != 0
+        return False
+
+    def set_timestamp_required(self, flag: bool) -> None:
+        """Set the timestamp-required ``/Ff`` integer to ``1`` (true) or
+        ``0`` (false). Mirrors upstream ``setTimestampRequired(boolean)``."""
+        self._dict.set_int(_FF, 1 if flag else 0)
 
 
 __all__ = ["PDSeedValueTimeStamp"]

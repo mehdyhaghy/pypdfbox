@@ -103,25 +103,122 @@ class CFFType1Font(CFFFont):
         """Resolve a 1-byte character code to a glyph name via the
         font's /Encoding.
 
-        Returns ``".notdef"`` for unmapped codes or when the font has no
-        encoding. Predefined encodings (Standard/Expert) are not
-        materialised by us — fontTools normalises these to the string
-        name and we return ``".notdef"`` for them, matching the
-        upstream behaviour of letting the caller resolve via the
-        canonical encoding tables externally.
+        Returns ``".notdef"`` for unmapped codes or when the font has
+        no encoding. Predefined encodings (Standard/Expert) are
+        resolved through the canonical Adobe tables — Standard via
+        :class:`pypdfbox.fontbox.encoding.standard_encoding.StandardEncoding`
+        (Adobe Standard, used by CFF EncodingId 0) and Expert via the
+        font's parsed encoding when available.
         """
         if not 0 <= code <= 255:
             return ".notdef"
         enc = self.get_encoding()
-        if enc is None or isinstance(enc, str):
-            # Predefined encoding — caller must consult an external
-            # StandardEncoding / ExpertEncoding table.
+        if enc is None:
+            return ".notdef"
+        if isinstance(enc, str):
+            if enc == "StandardEncoding":
+                from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+                    StandardEncoding,
+                )
+
+                return StandardEncoding.INSTANCE.get_name(code)
+            if enc == "ExpertEncoding":
+                # Expert isn't part of our pdmodel encoding cluster; fall
+                # back to the per-GID charset where the predefined
+                # encoding's SIDs have already been resolved by fontTools.
+                return self._expert_code_to_name(code)
             return ".notdef"
         try:
             name = enc[code]
         except (IndexError, KeyError, TypeError):
             return ".notdef"
         return str(name) if name else ".notdef"
+
+    @staticmethod
+    def _expert_code_to_name(code: int) -> str:
+        """Look up a code in the CFF Expert encoding (Adobe Technote
+        #5176, Appendix B). Returns ``".notdef"`` for unmapped codes.
+
+        fontTools doesn't expose the Expert encoding's code-to-SID
+        table via public API; we resolve via the static table built
+        in :mod:`pypdfbox.fontbox.cff._expert_encoding`.
+        """
+        from pypdfbox.fontbox.cff._expert_encoding import (  # noqa: PLC0415
+            EXPERT_ENCODING_TABLE,
+        )
+
+        return EXPERT_ENCODING_TABLE.get(code, ".notdef")
+
+    def name_to_code(self, name: str) -> int:
+        """Resolve a glyph name to its 1-byte code via the font's
+        /Encoding. Returns ``-1`` for unmapped names."""
+        if not name:
+            return -1
+        enc = self.get_encoding()
+        if enc is None:
+            return -1
+        if isinstance(enc, str):
+            if enc == "StandardEncoding":
+                from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
+                    StandardEncoding,
+                )
+
+                code = StandardEncoding.INSTANCE.get_code(name)
+                return -1 if code is None else int(code)
+            if enc == "ExpertEncoding":
+                from pypdfbox.fontbox.cff._expert_encoding import (  # noqa: PLC0415
+                    EXPERT_ENCODING_TABLE,
+                )
+
+                for code, candidate in EXPERT_ENCODING_TABLE.items():
+                    if candidate == name:
+                        return code
+            return -1
+        # Custom encoding — list-shaped table mapping code → name.
+        try:
+            for i, candidate in enumerate(enc):
+                if candidate == name:
+                    return i
+        except TypeError:
+            return -1
+        return -1
+
+    # ---------- glyph access (parity helpers) ----------
+
+    def has_glyph(self, name: str) -> bool:  # noqa: D401 — overrides base
+        """PDFBox: ``CFFType1Font.hasGlyph(String)`` — true when the
+        charset contains ``name``. Inherited base class checks the
+        CharStrings index by name; both views agree for name-keyed CFF.
+        """
+        if not name:
+            return False
+        return name in self.get_charset() or super().has_glyph(name)
+
+    def get_path(self, name: str) -> list[tuple]:  # noqa: D401 — overrides base
+        """PDFBox: ``CFFType1Font.getPath(String)`` — name-keyed glyph
+        path. Mirrors the inherited GID-keyed
+        :meth:`CFFFont.get_path` but takes a PostScript name."""
+        return super().get_path(name)
+
+    def get_width(self, name: str) -> float:  # noqa: D401 — overrides base
+        """PDFBox: ``CFFType1Font.getWidth(String)`` — name-keyed
+        advance width."""
+        return super().get_width(name)
+
+    def get_type1_char_string(self, name: str) -> Any:
+        """PDFBox: ``CFFType1Font.getType1CharString(String)`` — return
+        the Type 1 charstring wrapper for ``name``. Falls back to the
+        ``.notdef`` glyph when the name is unknown.
+
+        Note: under the hood CFF uses Type 2 charstrings, not Type 1 —
+        upstream's method name is a historical artefact. The returned
+        wrapper is therefore a :class:`Type2CharString` (which is what
+        actually matches the on-disk encoding); this matches the
+        behaviour of ``CFFType1Font`` whose ``getType2CharString(int)``
+        is the canonical accessor.
+        """
+        gid = self.name_to_gid(name)
+        return self.get_type2_char_string(gid)
 
     def is_cid_font(self) -> bool:  # noqa: D401 — overrides base
         """A :class:`CFFType1Font` is name-keyed, never CIDKeyed."""

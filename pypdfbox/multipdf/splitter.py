@@ -26,6 +26,12 @@ _B: COSName = COSName.get_pdf_name("B")
 _PARENT: COSName = COSName.get_pdf_name("Parent")
 _POPUP: COSName = COSName.get_pdf_name("Popup")
 _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
+_FT: COSName = COSName.get_pdf_name("FT")
+_SIG: COSName = COSName.get_pdf_name("Sig")
+_V: COSName = COSName.get_pdf_name("V")
+_ACROFORM: COSName = COSName.get_pdf_name("AcroForm")
+_SIG_FLAGS: COSName = COSName.get_pdf_name("SigFlags")
+_FIELDS: COSName = COSName.get_pdf_name("Fields")
 
 # struct-tree clone helpers
 _K: COSName = COSName.get_pdf_name("K")
@@ -161,6 +167,9 @@ class Splitter:
         self._dest_to_fix_per_chunk = []
         self._id_set = set()
         self._role_set = set()
+        # Track whether any chunk dropped a signature widget; clear
+        # /SigFlags + scrub /AcroForm in destination catalogs at the end.
+        self._signatures_dropped: bool = False
 
         self._process_pages()
 
@@ -183,6 +192,14 @@ class Splitter:
                 _LOG.exception(
                     "destination fix-up failed for chunk %d; cross-chunk "
                     "/Dest links may dangle",
+                    index,
+                )
+            try:
+                self._scrub_acroform(destination_document)
+            except Exception:  # noqa: BLE001
+                _LOG.exception(
+                    "AcroForm scrub failed for chunk %d; signature flags "
+                    "may persist in chunk catalog",
                     index,
                 )
         return self._destination_documents
@@ -338,7 +355,12 @@ class Splitter:
         """Shallow-clone every annotation on ``imported`` so structure-tree
         edits and ``/Parent`` rewrites (e.g. for widget annotations) don't
         bleed back into the source document. Mirrors upstream's
-        ``processAnnotations``."""
+        ``processAnnotations``.
+
+        Signature widgets are dropped entirely (split documents have a
+        different byte range, so any contained signature would be invalid
+        anyway — see :meth:`_is_signature_widget`).
+        """
         from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
             PDAnnotation,
         )
@@ -355,6 +377,14 @@ class Splitter:
         cloned: list[PDAnnotation] = []
         for ann in annotations:
             ann_dict = ann.get_cos_object()
+
+            # Skip signature widgets entirely. Either the widget IS the
+            # field (merged) and /FT=Sig, or its /Parent chain leads to
+            # a /FT=Sig field, or it has /V pointing at a signature dict.
+            if self._is_signature_widget(ann_dict):
+                self._signatures_dropped = True
+                continue
+
             cloned_dict = COSDictionary(list(ann_dict.entry_set()))
             self._annot_dict_map[id(ann_dict)] = cloned_dict
             cloned_ann = PDAnnotation.create(cloned_dict)
@@ -395,6 +425,109 @@ class Splitter:
             # cloned dicts still live in the imported page's /Annots
             # (since we mutated in place), so this is a no-op fallback.
             pass
+
+    @staticmethod
+    def _is_signature_widget(ann_dict: COSDictionary) -> bool:
+        """Return ``True`` when ``ann_dict`` is a Widget annotation that
+        is part of a signature field. Tested in three ways:
+
+        - the widget IS the field (merged form field+widget) and
+          ``/FT == /Sig``;
+        - the widget's ``/Parent`` chain ends at a field with
+          ``/FT == /Sig``;
+        - ``/V`` resolves to a signature dictionary
+          (``/Type == /Sig`` or contains ``/ByteRange``).
+
+        Split documents have a different byte range than the source, so
+        any signature carried into them would be invalid; upstream's
+        approach is to leave AcroForm out of the chunk catalog entirely
+        (we mirror that in :meth:`_scrub_acroform`), but defensively
+        dropping the widget itself avoids orphan annotations on the
+        page when an AcroForm cleanup is incomplete.
+        """
+        try:
+            subtype = ann_dict.get_name(_SUBTYPE)
+        except AttributeError:
+            return False
+        if subtype != "Widget":
+            return False
+
+        # Direct merged widget+field: /FT lives on the widget dict itself.
+        ft = ann_dict.get_name(_FT)
+        if ft == "Sig":
+            return True
+
+        # Walk /Parent chain.
+        seen: set[int] = set()
+        parent = ann_dict.get_dictionary_object(_PARENT)
+        while isinstance(parent, COSDictionary) and id(parent) not in seen:
+            seen.add(id(parent))
+            ft = parent.get_name(_FT)
+            if ft == "Sig":
+                return True
+            if ft is not None:
+                # Field with a non-Sig FT — definitely not a sig widget.
+                return False
+            parent = parent.get_dictionary_object(_PARENT)
+
+        # /V signature dictionary check (handles fields with no /FT but a
+        # populated signature value — unusual but seen in the wild).
+        v = ann_dict.get_dictionary_object(_V)
+        if isinstance(v, COSDictionary):
+            v_type = v.get_name(_TYPE)
+            if v_type == "Sig":
+                return True
+            if v.contains_key(COSName.get_pdf_name("ByteRange")):
+                return True
+        return False
+
+    def _scrub_acroform(self, destination_document: PDDocument) -> None:
+        """Remove signature-bearing state from the destination catalog.
+        Mirrors upstream's "split documents lose AcroForm" behaviour:
+
+        - if any signature widget was dropped, clear ``/SigFlags`` and
+          remove signature-typed fields from the chunk's ``/AcroForm
+          /Fields`` array;
+        - if the resulting fields list is empty, remove ``/AcroForm``
+          from the catalog entirely.
+
+        Upstream's :class:`Splitter` doesn't carry AcroForm into chunks
+        at all because :meth:`create_new_document` only copies a small
+        whitelist of catalog entries (``/ViewerPreferences``, ``/Lang``,
+        ``/MarkInfo``, ``/Metadata``). We follow that approach but also
+        defensively scrub if a subclass added ``/AcroForm`` via an
+        override.
+        """
+        catalog = destination_document.get_document_catalog()
+        cos_catalog = catalog.get_cos_object()
+        acroform_dict = cos_catalog.get_dictionary_object(_ACROFORM)
+        if not isinstance(acroform_dict, COSDictionary):
+            return
+
+        # Always clear /SigFlags — split chunks have invalid signatures.
+        if acroform_dict.contains_key(_SIG_FLAGS):
+            acroform_dict.remove_item(_SIG_FLAGS)
+
+        fields = acroform_dict.get_dictionary_object(_FIELDS)
+        if isinstance(fields, COSArray):
+            kept = COSArray()
+            for i in range(fields.size()):
+                field = fields.get_object(i)
+                if isinstance(field, COSDictionary) and field.get_name(_FT) == "Sig":
+                    continue
+                if field is not None:
+                    kept.add(field)
+            if kept.size() == 0:
+                acroform_dict.remove_item(_FIELDS)
+            else:
+                acroform_dict.set_item(_FIELDS, kept)
+
+        # If AcroForm is now effectively empty, drop it.
+        remaining_keys = [
+            k for k in acroform_dict.key_set() if k != _TYPE
+        ]
+        if not remaining_keys:
+            cos_catalog.remove_item(_ACROFORM)
 
     def _stage_link_destination(
         self, link: Any, source_page_dict: COSDictionary

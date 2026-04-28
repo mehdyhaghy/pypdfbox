@@ -118,5 +118,17 @@ class FDArray:
     def __repr__(self) -> str:
         return f"FDArray(size={self.size()})"
 
+    # ---------- bulk views ----------
+
+    def font_dicts(self) -> list[dict[str, Any]]:
+        """All Font DICTs as a flat list. Convenience wrapper around
+        iteration; mirrors ``CFFCIDFont.getFontDicts()``."""
+        return list(iter(self))
+
+    def private_dicts(self) -> list[dict[str, Any]]:
+        """All Private DICTs as a flat list. Mirrors
+        ``CFFCIDFont.getPrivDicts()``."""
+        return [self.get_private_dict(i) for i in range(self.size())]
+
 
 __all__ = ["FDArray"]

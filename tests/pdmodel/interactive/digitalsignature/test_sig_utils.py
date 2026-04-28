@@ -9,6 +9,9 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
     check_certificate_usage,
     check_responder_certificate_usage,
+    compute_byte_range,
+    compute_signed_digest,
+    extract_pkcs7_message_digest,
     get_last_relevant_signature,
     get_mdp_permission,
     set_mdp_permission,
@@ -284,3 +287,117 @@ def test_get_last_relevant_signature_falls_back_to_last_when_no_byte_range():
     chosen = get_last_relevant_signature(doc)
     assert chosen is not None
     assert chosen.get_cos_object() is last.get_cos_object()
+
+
+# ----------------------------------------------------------------- /ByteRange
+
+
+def test_compute_byte_range_brackets_contents_inclusively() -> None:
+    """`<` at offset 50, `>` at offset 70 of a 100-byte file:
+    range1 = [0..50] (51 bytes, includes `<`),
+    range2 = [70..99] (30 bytes, includes `>`)."""
+    document = b"x" * 100
+    br = compute_byte_range(document, 50, 70)
+    assert br == [0, 51, 70, 30]
+
+
+def test_compute_byte_range_at_file_extremes() -> None:
+    document = b"<....>" + b"y" * 10
+    # `<` at 0, `>` at 5
+    br = compute_byte_range(document, 0, 5)
+    assert br == [0, 1, 5, len(document) - 5]
+
+
+def test_compute_byte_range_rejects_out_of_range_offsets() -> None:
+    document = b"x" * 50
+    with pytest.raises(ValueError, match="out of range"):
+        compute_byte_range(document, 50, 60)
+    with pytest.raises(ValueError, match="out of range"):
+        compute_byte_range(document, -1, 10)
+
+
+def test_compute_byte_range_rejects_inverted_offsets() -> None:
+    document = b"x" * 50
+    with pytest.raises(ValueError, match="malformed"):
+        compute_byte_range(document, 30, 30)
+    with pytest.raises(ValueError, match="malformed"):
+        compute_byte_range(document, 30, 20)
+
+
+def test_compute_signed_digest_concatenates_then_hashes() -> None:
+    import hashlib
+
+    document = b"AAAA" + b"x" * 192 + b"BBBB"  # 200 bytes
+    br = [0, 4, 196, 4]
+    expected = hashlib.sha256(b"AAAABBBB").digest()
+    assert compute_signed_digest(document, br) == expected
+
+
+def test_compute_signed_digest_supports_sha1() -> None:
+    import hashlib
+
+    document = b"HEAD" + b"x" * 92 + b"TAIL"
+    br = [0, 4, 96, 4]
+    expected = hashlib.sha1(b"HEADTAIL").digest()  # noqa: S324
+    assert compute_signed_digest(document, br, algorithm="sha1") == expected
+
+
+def test_compute_signed_digest_rejects_wrong_byte_range_size() -> None:
+    with pytest.raises(ValueError, match="exactly 4"):
+        compute_signed_digest(b"x" * 100, [0, 10, 90])
+
+
+# ---------------------------------------------------------- DER messageDigest
+
+
+def test_extract_pkcs7_message_digest_returns_none_when_oid_absent() -> None:
+    assert extract_pkcs7_message_digest(b"\x00" * 64) is None
+
+
+def test_extract_pkcs7_message_digest_pulls_octet_string_payload() -> None:
+    """Synthesize the DER fragment a CMS signedAttr emits:
+
+        SEQUENCE
+          OBJECT IDENTIFIER messageDigest
+          SET
+            OCTET STRING <payload>
+    """
+    digest = b"\xab" * 32  # 32-byte SHA-256 result
+    # OID DER for 1.2.840.113549.1.9.4
+    oid_der = bytes.fromhex("06092A864886F70D010904")
+    octet_string = b"\x04" + bytes([len(digest)]) + digest
+    set_ = b"\x31" + bytes([len(octet_string)]) + octet_string
+    blob = b"prefix-junk-bytes" + oid_der + set_ + b"trailing-junk"
+
+    assert extract_pkcs7_message_digest(blob) == digest
+
+
+def test_extract_pkcs7_message_digest_handles_long_form_lengths() -> None:
+    """SHA-512 has a 64-byte output — still encodes in short form, so use
+    a synthetic 200-byte value to force long-form length encoding."""
+    digest = b"\xcd" * 200  # >127, forces long-form length
+    oid_der = bytes.fromhex("06092A864886F70D010904")
+    # OCTET STRING long-form length: tag 04, length-of-length 0x81, length 0xC8.
+    octet_string = b"\x04\x81\xc8" + digest
+    # SET wrapping it: tag 31, length-of-length 0x81, length = 3 + 200 = 203.
+    set_ = b"\x31\x81\xcb" + octet_string
+    blob = oid_der + set_
+
+    assert extract_pkcs7_message_digest(blob) == digest
+
+
+def test_extract_pkcs7_message_digest_rejects_indefinite_length() -> None:
+    """DER forbids indefinite-length encoding (``80`` byte). Helper must
+    treat a malformed length as 'unrecoverable' and return None rather
+    than raising."""
+    oid_der = bytes.fromhex("06092A864886F70D010904")
+    # SET with indefinite length (0x80) — invalid DER.
+    blob = oid_der + b"\x31\x80\x04\x04abcd\x00\x00"
+    assert extract_pkcs7_message_digest(blob) is None
+
+
+def test_extract_pkcs7_message_digest_rejects_truncated_blob() -> None:
+    """If the SET length runs past EOF, return None rather than raising."""
+    oid_der = bytes.fromhex("06092A864886F70D010904")
+    blob = oid_der + b"\x31\xff"  # claims 255 bytes follow but they don't
+    assert extract_pkcs7_message_digest(blob) is None

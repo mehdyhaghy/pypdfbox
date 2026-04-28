@@ -288,3 +288,272 @@ def test_writing_mode_constants_round_trip() -> None:
         obj = PDLayoutAttributeObject()
         obj.set_writing_mode(mode)
         assert obj.get_writing_mode() == mode
+
+
+# ---------- Dictionary-key constants (upstream-parity public statics) ----------
+
+
+def test_dictionary_key_constants_match_pdf_specification() -> None:
+    cls = PDLayoutAttributeObject
+    assert cls.OWNER_LAYOUT == "Layout"
+    assert cls.PLACEMENT == "Placement"
+    assert cls.WRITING_MODE == "WritingMode"
+    assert cls.BACKGROUND_COLOR == "BackgroundColor"
+    assert cls.BORDER_COLOR == "BorderColor"
+    assert cls.BORDER_STYLE == "BorderStyle"
+    assert cls.BORDER_THICKNESS == "BorderThickness"
+    assert cls.PADDING == "Padding"
+    assert cls.COLOR == "Color"
+    assert cls.SPACE_BEFORE == "SpaceBefore"
+    assert cls.SPACE_AFTER == "SpaceAfter"
+    assert cls.START_INDENT == "StartIndent"
+    assert cls.END_INDENT == "EndIndent"
+    assert cls.TEXT_INDENT == "TextIndent"
+    assert cls.TEXT_ALIGN == "TextAlign"
+    assert cls.BBOX == "BBox"
+    assert cls.WIDTH == "Width"
+    assert cls.HEIGHT == "Height"
+    assert cls.BLOCK_ALIGN == "BlockAlign"
+    assert cls.INLINE_ALIGN == "InlineAlign"
+    assert cls.T_BORDER_STYLE == "TBorderStyle"
+    assert cls.T_PADDING == "TPadding"
+    assert cls.BASELINE_SHIFT == "BaselineShift"
+    assert cls.LINE_HEIGHT == "LineHeight"
+    assert cls.TEXT_DECORATION_COLOR == "TextDecorationColor"
+    assert cls.TEXT_DECORATION_THICKNESS == "TextDecorationThickness"
+    assert cls.TEXT_DECORATION_TYPE == "TextDecorationType"
+    assert cls.RUBY_ALIGN == "RubyAlign"
+    assert cls.RUBY_POSITION == "RubyPosition"
+    assert cls.GLYPH_ORIENTATION_VERTICAL == "GlyphOrientationVertical"
+    assert cls.COLUMN_COUNT == "ColumnCount"
+    assert cls.COLUMN_GAP == "ColumnGap"
+    assert cls.COLUMN_WIDTHS == "ColumnWidths"
+
+
+# ---------- /TBorderStyle ----------
+
+
+def test_t_border_style_default_none_when_absent() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_t_border_style() == PDLayoutAttributeObject.BORDER_STYLE_NONE
+
+
+def test_t_border_style_single_name_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_t_border_style(PDLayoutAttributeObject.BORDER_STYLE_DOTTED)
+    assert obj.get_t_border_style() == "Dotted"
+    raw = obj.get_cos_object().get_dictionary_object("TBorderStyle")
+    assert isinstance(raw, COSName)
+
+
+def test_t_border_style_four_array_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_t_border_styles(["Solid", "Dotted", "Dashed", "Double"])
+    assert obj.get_t_border_style() == ["Solid", "Dotted", "Dashed", "Double"]
+
+
+def test_t_border_style_set_all_alias() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_t_border_styles("Inset")
+    assert obj.get_t_border_style() == "Inset"
+
+
+def test_t_border_style_set_none_removes_entry() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_t_border_style("Solid")
+    obj.set_t_border_styles(None)
+    assert obj.get_cos_object().get_dictionary_object("TBorderStyle") is None
+
+
+# ---------- /TPadding ----------
+
+
+def test_t_padding_default_zero_when_absent() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_t_padding() == 0.0
+
+
+def test_t_padding_scalar_and_array_round_trip() -> None:
+    scalar = PDLayoutAttributeObject()
+    scalar.set_t_padding(4.5)
+    assert scalar.get_t_padding() == 4.5
+
+    per_side = PDLayoutAttributeObject()
+    per_side.set_t_paddings([1.0, 2.0, 3.0, 4.0])
+    assert per_side.get_t_padding() == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_t_padding_set_all_alias() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_t_paddings(7)
+    assert obj.get_t_padding() == 7.0
+    raw = obj.get_cos_object().get_dictionary_object("TPadding")
+    assert isinstance(raw, COSInteger)
+
+
+# ---------- /LineHeight ----------
+
+
+def test_line_height_default_normal_when_absent() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_line_height() == PDLayoutAttributeObject.LINE_HEIGHT_NORMAL
+    assert obj.get_line_height() == "Normal"
+
+
+def test_line_height_number_round_trip_and_set_normal_auto() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_line_height(14.5)
+    assert obj.get_line_height() == 14.5
+
+    obj.set_line_height_normal()
+    assert obj.get_line_height() == "Normal"
+    raw_normal = obj.get_cos_object().get_dictionary_object("LineHeight")
+    assert isinstance(raw_normal, COSName)
+
+    obj.set_line_height_auto()
+    assert obj.get_line_height() == "Auto"
+
+
+def test_line_height_set_none_removes_entry() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_line_height(20.0)
+    obj.set_line_height(None)
+    assert obj.get_cos_object().get_dictionary_object("LineHeight") is None
+
+
+# ---------- /TextDecorationColor / Thickness / Type ----------
+
+
+def test_text_decoration_color_round_trip_and_remove() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_text_decoration_color() is None
+    obj.set_text_decoration_color((0.25, 0.5, 0.75))
+    assert obj.get_text_decoration_color() == pytest.approx((0.25, 0.5, 0.75))
+    obj.set_text_decoration_color(None)
+    assert obj.get_text_decoration_color() is None
+
+
+def test_text_decoration_thickness_default_unspecified() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_text_decoration_thickness() == PDLayoutAttributeObject.UNSPECIFIED
+
+
+def test_text_decoration_thickness_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_text_decoration_thickness(1.25)
+    assert obj.get_text_decoration_thickness() == 1.25
+    obj.set_text_decoration_thickness(2)
+    raw = obj.get_cos_object().get_dictionary_object("TextDecorationThickness")
+    assert isinstance(raw, COSInteger)
+
+
+def test_text_decoration_type_default_none_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_text_decoration_type() == "None"
+    for value in (
+        PDLayoutAttributeObject.TEXT_DECORATION_TYPE_UNDERLINE,
+        PDLayoutAttributeObject.TEXT_DECORATION_TYPE_OVERLINE,
+        PDLayoutAttributeObject.TEXT_DECORATION_TYPE_LINE_THROUGH,
+        PDLayoutAttributeObject.TEXT_DECORATION_TYPE_NONE,
+    ):
+        obj.set_text_decoration_type(value)
+        assert obj.get_text_decoration_type() == value
+
+
+# ---------- /RubyAlign ----------
+
+
+def test_ruby_align_default_distribute_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_ruby_align() == PDLayoutAttributeObject.RUBY_ALIGN_DISTRIBUTE
+    for value in (
+        PDLayoutAttributeObject.RUBY_ALIGN_START,
+        PDLayoutAttributeObject.RUBY_ALIGN_CENTER,
+        PDLayoutAttributeObject.RUBY_ALIGN_END,
+        PDLayoutAttributeObject.RUBY_ALIGN_JUSTIFY,
+        PDLayoutAttributeObject.RUBY_ALIGN_DISTRIBUTE,
+    ):
+        obj.set_ruby_align(value)
+        assert obj.get_ruby_align() == value
+
+
+# ---------- /RubyPosition ----------
+
+
+def test_ruby_position_default_before_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert obj.get_ruby_position() == PDLayoutAttributeObject.RUBY_POSITION_BEFORE
+    for value in (
+        PDLayoutAttributeObject.RUBY_POSITION_AFTER,
+        PDLayoutAttributeObject.RUBY_POSITION_WARICHU,
+        PDLayoutAttributeObject.RUBY_POSITION_INLINE,
+        PDLayoutAttributeObject.RUBY_POSITION_BEFORE,
+    ):
+        obj.set_ruby_position(value)
+        assert obj.get_ruby_position() == value
+
+
+# ---------- /GlyphOrientationVertical ----------
+
+
+def test_glyph_orientation_vertical_default_auto_and_round_trip() -> None:
+    obj = PDLayoutAttributeObject()
+    assert (
+        obj.get_glyph_orientation_vertical()
+        == PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_AUTO
+    )
+    for value in (
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_MINUS_180_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_MINUS_90_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_ZERO_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_90_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_180_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_270_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_360_DEGREES,
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_AUTO,
+    ):
+        obj.set_glyph_orientation_vertical(value)
+        assert obj.get_glyph_orientation_vertical() == value
+
+
+# ---------- Upstream-parity setter aliases for existing arrays ----------
+
+
+def test_set_all_border_styles_and_set_border_styles() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_border_styles("Groove")
+    assert obj.get_border_style() == "Groove"
+    obj.set_border_styles(["Solid", "Dotted", "Dashed", "Double"])
+    assert obj.get_border_style() == ["Solid", "Dotted", "Dashed", "Double"]
+    obj.set_border_styles(None)
+    assert obj.get_cos_object().get_dictionary_object("BorderStyle") is None
+
+
+def test_set_all_border_thicknesses_and_set_border_thicknesses() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_border_thicknesses(2)
+    assert obj.get_border_thickness() == 2.0
+    obj.set_border_thicknesses([1.0, 2.0, 3.0, 4.0])
+    assert obj.get_border_thickness() == [1.0, 2.0, 3.0, 4.0]
+    obj.set_border_thicknesses(None)
+    assert obj.get_cos_object().get_dictionary_object("BorderThickness") is None
+
+
+def test_set_all_paddings_and_set_paddings() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_paddings(5.0)
+    assert obj.get_padding() == 5.0
+    obj.set_paddings([1.0, 2.0, 3.0, 4.0])
+    assert obj.get_padding() == [1.0, 2.0, 3.0, 4.0]
+    obj.set_paddings(None)
+    assert obj.get_cos_object().get_dictionary_object("Padding") is None
+
+
+def test_set_all_column_widths_and_set_column_gaps() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_column_widths(72.0)
+    assert obj.get_column_widths() == 72.0
+    obj.set_column_gaps([6.0, 6.0])
+    assert obj.get_column_gap() == [6.0, 6.0]
+    obj.set_column_gaps(None)
+    assert obj.get_cos_object().get_dictionary_object("ColumnGap") is None

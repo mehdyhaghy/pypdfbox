@@ -28,6 +28,7 @@ from cryptography.hazmat.primitives.serialization import pkcs7
 
 from pypdfbox.cos import COSArray, COSString
 
+from .access_permission import AccessPermission
 from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
 from .security_handler import SecurityHandler
 
@@ -87,6 +88,12 @@ class PublicKeySecurityHandler(SecurityHandler):
                 f"got {type(decryption_material).__name__}"
             )
 
+        # Stash the material on the base so callers (e.g. PDDocument) can
+        # query it back from the handler — mirrors upstream's
+        # ``SecurityHandler#setDecryptionMaterial`` invocation at the top of
+        # ``prepareForDecryption``.
+        self.set_decryption_material(decryption_material)
+
         cert = decryption_material.get_certificate()
         private_key = decryption_material.get_private_key()
         if cert is None or private_key is None:
@@ -130,6 +137,22 @@ class PublicKeySecurityHandler(SecurityHandler):
                 "Decrypted recipient envelope shorter than the 20-byte seed"
             )
         seed = envelope_plaintext[:_SEED_LENGTH]
+
+        # Per PDF 32000-1 §7.6.5: the four bytes after the seed encode the
+        # access permissions for the recipient who owns this envelope, as a
+        # big-endian two's-complement int. Decode and propagate to the base
+        # so callers (PDDocument.get_current_access_permission) see the
+        # right surface, mirroring upstream behaviour.
+        if len(envelope_plaintext) >= _SEED_LENGTH + 4:
+            perms_unsigned = int.from_bytes(
+                envelope_plaintext[_SEED_LENGTH : _SEED_LENGTH + 4], "big"
+            )
+            # Convert big-endian unsigned -> two's-complement signed.
+            if perms_unsigned & 0x80000000:
+                perms_signed = perms_unsigned - 0x1_0000_0000
+            else:
+                perms_signed = perms_unsigned
+            self.set_current_access_permission(AccessPermission(perms_signed))
 
         version = encryption.get_v()
         revision = encryption.get_revision()

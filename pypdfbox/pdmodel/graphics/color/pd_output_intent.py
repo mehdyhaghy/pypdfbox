@@ -311,6 +311,34 @@ class PDOutputIntent:
             )
         self._dictionary.set_item(_DEST_OUTPUT_PROFILE_REF, ref)
 
+    # ---------- /N helper (number of ICC components) ----------
+
+    def get_n_for_profile(self) -> int | None:
+        """Return ``/N`` from the embedded ``/DestOutputProfile`` stream
+        (number of colour components encoded in the ICC profile), or
+        ``None`` when the entry / profile is absent.
+
+        Tries the explicit ``/N`` integer on the stream dictionary first
+        (cheap, no decode); falls back to decoding the ICC header
+        colour-space signature (ICC.1:2010 §7.2 table 18) when ``/N`` is
+        missing — this matches upstream ``ICC_Profile.getNumComponents``
+        on a freshly-parsed profile."""
+        cos = self._dictionary.get_dictionary_object(_DEST_OUTPUT_PROFILE)
+        if not isinstance(cos, COSStream):
+            return None
+        # Explicit /N entry — preferred, matches the value upstream sets.
+        n = cos.get_int(_N)
+        # Some COSStream impls return -1 / 0 sentinel for missing — treat
+        # only positive ints as authoritative.
+        if isinstance(n, int) and n > 0:
+            return n
+        # Fall back to sniffing the header colour-space signature.
+        try:
+            data = PDStream(cos).to_byte_array()
+        except (OSError, ValueError):
+            return None
+        return _icc_num_components(data)
+
     # ---------- bulk ICC embed ----------
 
     def set_data(self, profile_bytes: bytes, num_components: int = 3) -> None:

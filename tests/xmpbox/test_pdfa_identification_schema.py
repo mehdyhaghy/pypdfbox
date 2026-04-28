@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.xmpbox import (
+    BadFieldValueException,
     DomXmpParser,
     PDFAIdentificationSchema,
     XMPMetadata,
@@ -93,3 +96,91 @@ def test_part_handles_string_storage_from_parser() -> None:
     # Non-numeric garbage returns None rather than raising.
     schema.set_text_property_value(PDFAIdentificationSchema.PART, "not-a-number")
     assert schema.get_part() is None
+
+
+# ---------- upstream-shaped aliases ----------
+
+
+def test_get_amd_alias_matches_get_amendment() -> None:
+    schema = _ident()
+    schema.set_amd("2014")
+    assert schema.get_amd() == "2014"
+    assert schema.get_amendment() == "2014"
+
+
+def test_get_corr_alias_matches_get_correction() -> None:
+    schema = _ident()
+    schema.set_corr("2021")
+    assert schema.get_corr() == "2021"
+    assert schema.get_correction() == "2021"
+
+
+def test_get_rev_returns_int() -> None:
+    """Upstream ``getRev()`` returns an Integer post-PDFBOX-6088."""
+    schema = _ident()
+    schema.set_rev(2020)
+    assert schema.get_rev() == 2020
+    # The string-flavoured accessor still works for back-compat callers.
+    assert schema.get_revision() == "2020"
+
+
+def test_set_rev_value_with_string_parses_int() -> None:
+    schema = _ident()
+    schema.set_rev_value_with_string("2021")
+    assert schema.get_rev() == 2021
+
+
+def test_set_rev_value_with_string_rejects_garbage() -> None:
+    schema = _ident()
+    with pytest.raises(ValueError):
+        schema.set_rev_value_with_string("nope")
+
+
+def test_set_part_value_with_int_alias() -> None:
+    schema = _ident()
+    schema.set_part_value_with_int(2)
+    assert schema.get_part() == 2
+
+
+def test_set_part_value_with_string_parses_int() -> None:
+    schema = _ident()
+    schema.set_part_value_with_string("3")
+    assert schema.get_part() == 3
+
+
+def test_set_part_value_with_string_rejects_garbage() -> None:
+    """Mirrors upstream ``IllegalArgumentException``."""
+    schema = _ident()
+    with pytest.raises(ValueError):
+        schema.set_part_value_with_string("ojoj")
+
+
+# ---------- conformance validation (PDFBOX-6088) ----------
+
+
+@pytest.mark.parametrize("value", ["A", "B", "U", "e", "f"])
+def test_set_conformance_accepts_valid_values(value: str) -> None:
+    schema = _ident()
+    schema.set_conformance(value)
+    assert schema.get_conformance() == value
+
+
+def test_set_conformance_rejects_invalid_value() -> None:
+    schema = _ident()
+    with pytest.raises(BadFieldValueException):
+        schema.set_conformance("Z")
+
+
+def test_set_conformance_none_clears_property() -> None:
+    schema = _ident()
+    schema.set_conformance("B")
+    schema.set_conformance(None)
+    assert schema.get_conformance() is None
+
+
+def test_bad_field_value_exception_subclasses_value_error() -> None:
+    """Callers that aren't aware of the upstream class can still
+    ``except ValueError``."""
+    schema = _ident()
+    with pytest.raises(ValueError):
+        schema.set_conformance("nope")

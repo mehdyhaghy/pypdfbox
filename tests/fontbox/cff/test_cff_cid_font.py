@@ -173,6 +173,22 @@ class TestFDArray:
         # Iteration yields one dict per FD.
         assert len(list(arr)) == 2
 
+    def test_bulk_views(self) -> None:
+        class _Priv:
+            rawDict = {"defaultWidthX": 1, "nominalWidthX": 2}  # noqa: N815
+
+        class _Font:
+            rawDict = {"FontName": "X"}  # noqa: N815
+            Private = _Priv
+
+        arr = FDArray.from_fonttools([_Font(), _Font(), _Font()])
+        fds = arr.font_dicts()
+        privs = arr.private_dicts()
+        assert len(fds) == 3
+        assert len(privs) == 3
+        assert all(d.get("FontName") == "X" for d in fds)
+        assert all(p.get("defaultWidthX") == 1 for p in privs)
+
 
 # ---------- CFFCIDFont (no fixture required) ----------
 
@@ -291,3 +307,65 @@ def test_from_cff_font_round_trip(cid_font: CFFCIDFont) -> None:
     again = CFFCIDFont.from_cff_font(base)
     assert again.get_ros() == cid_font.get_ros()
     assert again.get_cid_count() == cid_font.get_cid_count()
+
+
+def test_get_font_dicts_and_priv_dicts(cid_font: CFFCIDFont) -> None:
+    fds = cid_font.get_font_dicts()
+    privs = cid_font.get_priv_dicts()
+    assert isinstance(fds, list)
+    assert isinstance(privs, list)
+    assert len(fds) == cid_font.get_fd_array().size()
+    assert len(privs) == len(fds)
+    # Every Private DICT has the standard width entries.
+    for priv in privs:
+        assert isinstance(priv, dict)
+
+
+def test_selector_keyed_glyph_access(cid_font: CFFCIDFont) -> None:
+    # CID 1 — usually present in CIDKeyed CJK fonts at GID 1.
+    if cid_font.has_glyph(1):
+        path = cid_font.get_path(1)
+        width = cid_font.get_width(1)
+        assert isinstance(path, list)
+        assert isinstance(width, float)
+    # String selector form ("cid00001") goes through the same path.
+    if cid_font.has_glyph("cid00001"):
+        assert isinstance(cid_font.get_width("cid00001"), float)
+    # Bogus selector → safe defaults.
+    assert cid_font.has_glyph("not-a-cid") is False
+    assert cid_font.get_path("not-a-cid") == []
+    assert cid_font.get_width("not-a-cid") == 0.0
+
+
+def test_get_type2_char_string_takes_cid(cid_font: CFFCIDFont) -> None:
+    # Wrapper for CID 0 (always .notdef) — returned wrapper exposes the API.
+    cs = cid_font.get_type2_char_string(0)
+    assert hasattr(cs, "get_path")
+    assert hasattr(cs, "get_width")
+
+
+def test_per_fd_widths_dispatch(cid_font: CFFCIDFont) -> None:
+    # No-arg form: Top-DICT /Private (unused for CIDKeyed; usually 0.0).
+    base_dw = cid_font.get_default_width_x()
+    base_nw = cid_font.get_nominal_width_x()
+    assert isinstance(base_dw, float)
+    assert isinstance(base_nw, float)
+    # Per-GID form: route through FDSelect / FDArray.
+    gid0_dw = cid_font.get_default_width_x(0)
+    gid0_nw = cid_font.get_nominal_width_x(0)
+    assert isinstance(gid0_dw, float)
+    assert isinstance(gid0_nw, float)
+
+
+def test_get_cid_for_gid_round_trip(cid_font: CFFCIDFont) -> None:
+    """For a CIDKeyed CFF font the charset contains synthetic
+    ``cidNNNNN`` names — get_cid_for_gid must recover the CID."""
+    charset = cid_font.get_charset()
+    # GID 0 is conventionally "cid00000" or ".notdef".
+    cid0 = cid_font.get_cid_for_gid(0)
+    assert isinstance(cid0, int)
+    if len(charset) > 1 and charset[1].startswith("cid"):
+        recovered = cid_font.get_cid_for_gid(1)
+        assert recovered == int(charset[1][3:])
+        # Round-trip back to GID.
+        assert cid_font.get_gid_for_cid(recovered) == 1
