@@ -177,6 +177,18 @@ def test_get_properties_alias_returns_property_list() -> None:
     assert fetched.get_cos_object() is prop
 
 
+def test_get_ext_g_state_alias_returns_ext_gstate() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("GS0")
+    ext = COSDictionary()
+    res.put(COSName.get_pdf_name("ExtGState"), name, ext)
+
+    fetched = res.get_ext_g_state(name)
+
+    assert isinstance(fetched, PDExtendedGraphicsState)
+    assert fetched.get_cos_object() is ext
+
+
 def test_typed_add_reuses_existing_cos_object() -> None:
     res = PDResources()
     ext = PDExtendedGraphicsState()

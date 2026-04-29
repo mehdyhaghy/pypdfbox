@@ -29,6 +29,10 @@ class NameRecord:
 
     # Unicode language ids
     LANGUAGE_UNICODE: int = 0
+    # FontBox 2.x exposed these misspelled public constants. Keep aliases so
+    # code ported from that API keeps working while the correctly spelled
+    # FontBox 3.x names remain canonical.
+    LANGUGAE_UNICODE: int = LANGUAGE_UNICODE
 
     # Windows encoding ids
     ENCODING_WINDOWS_SYMBOL: int = 0
@@ -37,12 +41,14 @@ class NameRecord:
 
     # Windows language ids
     LANGUAGE_WINDOWS_EN_US: int = 0x0409
+    LANGUGAE_WINDOWS_EN_US: int = LANGUAGE_WINDOWS_EN_US
 
     # Macintosh encoding ids
     ENCODING_MACINTOSH_ROMAN: int = 0
 
     # Macintosh language ids
     LANGUAGE_MACINTOSH_ENGLISH: int = 0
+    LANGUGAE_MACINTOSH_ENGLISH: int = LANGUAGE_MACINTOSH_ENGLISH
 
     # name ids
     NAME_COPYRIGHT: int = 0

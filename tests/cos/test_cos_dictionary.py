@@ -131,6 +131,23 @@ def test_get_int_coerces_float_to_int() -> None:
     assert d.get_int("X") == 2
 
 
+def test_set_long_stores_cos_integer() -> None:
+    d = COSDictionary()
+    d.set_long("Revision", 2**40)
+
+    assert d.get_item("Revision") == COSInteger(2**40)
+    assert d.get_long("Revision") == 2**40
+
+
+def test_get_long_default_and_numeric_coercion() -> None:
+    d = COSDictionary([("Float", COSFloat(2.9)), ("Name", COSName.get_pdf_name("N"))])
+
+    assert d.get_long("Missing") == -1
+    assert d.get_long("Missing", 7) == 7
+    assert d.get_long("Float") == 2
+    assert d.get_long("Name", 11) == 11
+
+
 def test_get_string_falls_through_to_name() -> None:
     d = COSDictionary([("X", COSName.get_pdf_name("Page"))])
     assert d.get_string("X") == "Page"

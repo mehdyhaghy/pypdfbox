@@ -252,6 +252,27 @@ class XMPRightsManagementSchema(XMPSchema):
     def add_owner(self, value: str) -> None:
         self.add_qualified_bag_value(self.OWNER, value)
 
+    def remove_owner(self, value: str) -> None:
+        """Mirror of upstream ``removeOwner(String)``."""
+        raw = self._properties.get(self.OWNER)
+        if isinstance(raw, ArrayProperty):
+            kept = ArrayProperty(
+                self._metadata,
+                self._namespace,
+                self._prefix,
+                self.OWNER,
+                Cardinality.Bag,
+            )
+            for child in raw.get_all_properties():
+                if not isinstance(child, AbstractSimpleProperty):
+                    kept.add_property(child)
+                    continue
+                if child.get_string_value() != value:
+                    kept.add_property(child)
+            self._properties[self.OWNER] = kept
+            return
+        self.remove_unqualified_bag_value(self.OWNER, value)
+
     def get_owners(self) -> list[str] | None:
         raw = self._properties.get(self.OWNER)
         if isinstance(raw, ArrayProperty):

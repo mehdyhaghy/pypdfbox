@@ -113,6 +113,10 @@ class COSDictionary(COSBase):
     def set_int(self, key: COSName | str, value: int) -> None:
         self.set_item(key, COSInteger.get(value))
 
+    def set_long(self, key: COSName | str, value: int) -> None:
+        """Store an integer value under ``key``. Mirrors PDFBox ``setLong``."""
+        self.set_item(key, COSInteger.get(value))
+
     def set_float(self, key: COSName | str, value: float) -> None:
         self.set_item(key, COSFloat(value))
 
@@ -141,6 +145,17 @@ class COSDictionary(COSBase):
             return v.value
         if isinstance(v, COSFloat):
             return int(v.value)
+        return default
+
+    def get_long(self, key: COSName | str, default: int = -1) -> int:
+        """Return a numeric value as an integer, or ``default`` if absent.
+
+        Python has a single unbounded ``int`` type, so this mirrors PDFBox's
+        ``getLong`` contract while sharing the same COS storage as integers.
+        """
+        v = self.get_dictionary_object(key)
+        if isinstance(v, (COSInteger, COSFloat)):
+            return v.long_value()
         return default
 
     def get_float(self, key: COSName | str, default: float = -1.0) -> float:

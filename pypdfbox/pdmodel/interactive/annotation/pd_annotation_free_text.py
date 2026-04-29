@@ -41,7 +41,8 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
 
     # ---------- /IT intent constants (Table 174) ----------
 
-    IT_FREE_TEXT_PLAIN: str = "FreeText"
+    IT_FREE_TEXT: str = "FreeText"
+    IT_FREE_TEXT_PLAIN: str = IT_FREE_TEXT
     IT_FREE_TEXT_CALLOUT: str = "FreeTextCallout"
     IT_FREE_TEXT_TYPE_WRITER: str = "FreeTextTypeWriter"
 
@@ -120,6 +121,14 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         arr = COSArray([COSFloat(float(c)) for c in coords])
         self._dict.set_item(_CL, arr)
 
+    def get_callout(self) -> list[float] | None:
+        """Upstream-named alias for :meth:`get_callout_line`."""
+        return self.get_callout_line()
+
+    def set_callout(self, callout: list[float] | None) -> None:
+        """Upstream-named alias for :meth:`set_callout_line`."""
+        self.set_callout_line(callout)
+
     # ---------- /LE (line ending style) ----------
 
     def get_line_ending(self) -> str:
@@ -129,6 +138,14 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
 
     def set_line_ending(self, le: str) -> None:
         self._dict.set_name(_LE, le)
+
+    def get_line_ending_style(self) -> str:
+        """Upstream-named alias for :meth:`get_line_ending`."""
+        return self.get_line_ending()
+
+    def set_line_ending_style(self, style: str) -> None:
+        """Upstream-named alias for :meth:`set_line_ending`."""
+        self.set_line_ending(style)
 
     # ---------- /BS (border style dictionary) ----------
 
@@ -174,6 +191,42 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
             return
         arr = COSArray([COSFloat(float(d)) for d in diffs])
         self._dict.set_item(_RD, arr)
+
+    def get_rect_differences(self) -> list[float]:
+        """Upstream-named accessor for ``/RD``.
+
+        PDFBox returns an empty ``float[]`` when ``/RD`` is absent; keep the
+        existing ``get_rectangle_differences`` ``None`` default for backward
+        compatibility and expose the upstream default here.
+        """
+        return self.get_rectangle_differences() or []
+
+    def set_rect_differences(
+        self, *differences: float | list[float] | None
+    ) -> None:
+        """Upstream-shaped setter for ``/RD``.
+
+        Accepts either one float for all four sides, four explicit side
+        values, an existing ``list[float]`` for Python callers, or ``None`` to
+        clear the entry.
+        """
+        if len(differences) == 1:
+            difference = differences[0]
+            if difference is None:
+                self.set_rectangle_differences(None)
+                return
+            if isinstance(difference, list):
+                self.set_rectangle_differences(difference)
+                return
+            value = float(difference)
+            self.set_rectangle_differences([value, value, value, value])
+            return
+
+        if len(differences) == 4:
+            self.set_rectangle_differences([float(d) for d in differences])
+            return
+
+        raise TypeError("set_rect_differences expects 1 or 4 values")
 
 
 __all__ = ["PDAnnotationFreeText"]

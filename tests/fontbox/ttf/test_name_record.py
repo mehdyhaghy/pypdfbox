@@ -133,6 +133,15 @@ def test_language_constants() -> None:
     assert NameRecord.LANGUAGE_MACINTOSH_ENGLISH == 0
 
 
+def test_legacy_misspelled_language_constant_aliases() -> None:
+    assert NameRecord.LANGUGAE_UNICODE == NameRecord.LANGUAGE_UNICODE
+    assert NameRecord.LANGUGAE_WINDOWS_EN_US == NameRecord.LANGUAGE_WINDOWS_EN_US
+    assert (
+        NameRecord.LANGUGAE_MACINTOSH_ENGLISH
+        == NameRecord.LANGUAGE_MACINTOSH_ENGLISH
+    )
+
+
 def test_name_id_constants() -> None:
     assert NameRecord.NAME_COPYRIGHT == 0
     assert NameRecord.NAME_FONT_FAMILY_NAME == 1

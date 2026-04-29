@@ -665,3 +665,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/fontbox/afm/font_metrics.py`: added `set_char_metrics(...)`, replacing the full AFM char-metric list and rebuilding the glyph-name lookup map used by width/height helpers.
 - `pypdfbox/xmpbox/xmp_basic_schema.py`: XMP Basic `Thumbnails` now exposes the upstream-shaped Alt array of `ThumbnailType` structs through `get_thumbnails()`, `add_thumbnails()`, `set_thumbnails(...)`, and typed property accessors.
 - `pypdfbox/contentstream/pdf_stream_engine.py`: added public `increase_level()` / `decrease_level()` recursion-depth helpers and routed `process_stream()` through them; underflow now logs and clamps at zero like upstream.
+
+## Wave 49 — COS long helpers, free-text aliases, resource aliases, name constants, rights owner removal
+
+- `pypdfbox/cos/cos_dictionary.py`: added `set_long(...)` / `get_long(...)` helpers, sharing `COSInteger` storage with existing integer accessors while returning Python `int` values and PDFBox-style defaults.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_free_text.py`: free-text annotations now expose upstream-shaped aliases for callout lines, line-ending style, and rectangle differences; `IT_FREE_TEXT` was added as the canonical intent constant while `IT_FREE_TEXT_PLAIN` remains an alias.
+- `pypdfbox/pdmodel/pd_resources.py`: added `get_ext_g_state(...)` as the upstream-spelled alias for the existing extended-graphics-state lookup.
+- `pypdfbox/fontbox/ttf/name_record.py`: restored FontBox 2.x's misspelled `LANGUGAE_*` language-id constants as compatibility aliases while keeping the correctly spelled constants canonical.
+- `pypdfbox/xmpbox/xmp_rights_management_schema.py`: added `remove_owner(...)` for `xmpRights:Owner`, supporting both list-backed and typed `ArrayProperty` owner bags.

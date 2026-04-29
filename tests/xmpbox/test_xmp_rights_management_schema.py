@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from pypdfbox.xmpbox import (
+    ArrayProperty,
+    Cardinality,
     DomXmpParser,
+    ProperNameType,
     XMPMetadata,
     XMPRightsManagementSchema,
 )
@@ -90,6 +93,64 @@ def test_owners_multiple_round_trip() -> None:
     schema.add_owner("Bob")
     schema.add_owner("Carol")
     assert schema.get_owners() == ["Alice", "Bob", "Carol"]
+
+
+def test_remove_owner_removes_single_list_entry() -> None:
+    schema = _rights()
+    schema.add_owner("Alice")
+    schema.add_owner("Bob")
+    schema.add_owner("Carol")
+
+    schema.remove_owner("Bob")
+
+    assert schema.get_owners() == ["Alice", "Carol"]
+
+
+def test_remove_owner_ignores_missing_value() -> None:
+    schema = _rights()
+    schema.add_owner("Alice")
+
+    schema.remove_owner("Bob")
+
+    assert schema.get_owners() == ["Alice"]
+
+
+def test_remove_owner_handles_typed_array_property() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPRightsManagementSchema(metadata)
+    owners = ArrayProperty(
+        metadata,
+        XMPRightsManagementSchema.NAMESPACE,
+        XMPRightsManagementSchema.PREFERRED_PREFIX,
+        XMPRightsManagementSchema.OWNER,
+        Cardinality.Bag,
+    )
+    owners.add_property(
+        ProperNameType(
+            metadata,
+            XMPRightsManagementSchema.NAMESPACE,
+            XMPRightsManagementSchema.PREFERRED_PREFIX,
+            XMPRightsManagementSchema.OWNER,
+            "Alice",
+        )
+    )
+    owners.add_property(
+        ProperNameType(
+            metadata,
+            XMPRightsManagementSchema.NAMESPACE,
+            XMPRightsManagementSchema.PREFERRED_PREFIX,
+            XMPRightsManagementSchema.OWNER,
+            "Bob",
+        )
+    )
+    schema.set_property(XMPRightsManagementSchema.OWNER, owners)
+
+    schema.remove_owner("Alice")
+
+    assert schema.get_owners() == ["Bob"]
+    prop = schema.get_property(XMPRightsManagementSchema.OWNER)
+    assert isinstance(prop, ArrayProperty)
+    assert prop.get_array_type() is Cardinality.Bag
 
 
 def test_set_owners_replaces_existing_bag() -> None:

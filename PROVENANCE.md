@@ -1020,3 +1020,8 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 
 No new port files were added in Wave 48. The wave only extended existing upstream-derived modules and their existing test files:
 `COSDictionary`, `PDDocumentCatalog`, `FontMetrics`, `XMPBasicSchema`, and `PDFStreamEngine`.
+
+### Wave 49 additions
+
+No new port files were added in Wave 49. The wave only extended existing upstream-derived modules and their existing test files:
+`COSDictionary`, `PDAnnotationFreeText`, `PDResources`, `NameRecord`, and `XMPRightsManagementSchema`.

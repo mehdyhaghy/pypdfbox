@@ -363,6 +363,10 @@ class PDResources:
             return ext_g_state
         return None
 
+    def get_ext_g_state(self, name: COSName) -> PDExtendedGraphicsState | None:
+        """Upstream-spelled alias for ``get_ext_gstate``."""
+        return self.get_ext_gstate(name)
+
     def get_property_list(self, name: COSName) -> PDPropertyList | None:
         """Return the typed ``PDPropertyList`` (OCG / OCMD) for ``name``, or
         ``None`` when the entry is absent or not a dictionary."""

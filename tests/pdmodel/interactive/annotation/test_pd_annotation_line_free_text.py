@@ -11,7 +11,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
     PDBorderStyleDictionary,
 )
 
-
 # ---------- PDAnnotationLine ----------
 
 
@@ -157,6 +156,7 @@ def test_free_text_justification_constants() -> None:
 
 
 def test_free_text_intent_constants() -> None:
+    assert PDAnnotationFreeText.IT_FREE_TEXT == "FreeText"
     assert PDAnnotationFreeText.IT_FREE_TEXT_PLAIN == "FreeText"
     assert PDAnnotationFreeText.IT_FREE_TEXT_CALLOUT == "FreeTextCallout"
     assert PDAnnotationFreeText.IT_FREE_TEXT_TYPE_WRITER == "FreeTextTypeWriter"
@@ -179,6 +179,14 @@ def test_free_text_callout_line_round_trip_6_floats() -> None:
     assert ann.get_callout_line() == [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
 
 
+def test_free_text_callout_alias_matches_callout_line() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_callout([1.0, 2.0, 3.0, 4.0])
+
+    assert ann.get_callout() == [1.0, 2.0, 3.0, 4.0]
+    assert ann.get_callout_line() == [1.0, 2.0, 3.0, 4.0]
+
+
 def test_free_text_callout_line_clear() -> None:
     ann = PDAnnotationFreeText()
     ann.set_callout_line([1.0, 2.0, 3.0, 4.0])
@@ -195,6 +203,14 @@ def test_free_text_line_ending_round_trip() -> None:
     ann = PDAnnotationFreeText()
     ann.set_line_ending(PDAnnotationLine.LE_OPEN_ARROW)
     assert ann.get_line_ending() == "OpenArrow"
+
+
+def test_free_text_line_ending_style_alias_matches_line_ending() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_line_ending_style(PDAnnotationLine.LE_CLOSED_ARROW)
+
+    assert ann.get_line_ending_style() == "ClosedArrow"
+    assert ann.get_line_ending() == "ClosedArrow"
 
 
 def test_free_text_border_style_default_none() -> None:
@@ -244,4 +260,35 @@ def test_free_text_rectangle_differences_round_trip() -> None:
     ann.set_rectangle_differences([10.0, 10.0, 10.0, 10.0])
     assert ann.get_rectangle_differences() == [10.0, 10.0, 10.0, 10.0]
     ann.set_rectangle_differences(None)
+    assert ann.get_rectangle_differences() is None
+
+
+def test_free_text_rect_differences_alias_uses_upstream_empty_default() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_rect_differences() == []
+    assert ann.get_rectangle_differences() is None
+
+
+def test_free_text_rect_differences_alias_accepts_single_difference() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_rect_differences(3.5)
+
+    assert ann.get_rect_differences() == [3.5, 3.5, 3.5, 3.5]
+    assert ann.get_rectangle_differences() == [3.5, 3.5, 3.5, 3.5]
+
+
+def test_free_text_rect_differences_alias_accepts_four_differences() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_rect_differences(1.0, 2.0, 3.0, 4.0)
+
+    assert ann.get_rect_differences() == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_free_text_rect_differences_alias_accepts_list_and_clear() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_rect_differences([4.0, 3.0, 2.0, 1.0])
+    assert ann.get_rect_differences() == [4.0, 3.0, 2.0, 1.0]
+
+    ann.set_rect_differences(None)
+    assert ann.get_rect_differences() == []
     assert ann.get_rectangle_differences() is None
