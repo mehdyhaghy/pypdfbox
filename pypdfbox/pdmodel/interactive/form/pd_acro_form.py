@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_resources import PDResources
 
     from .pd_field import PDField
+    from .pd_field_tree import PDFieldTree
     from .pd_xfa_resource import PDXFAResource
 
 _logger = logging.getLogger(__name__)
@@ -105,18 +106,17 @@ class PDAcroForm:
         self._dictionary.set_item(_FIELDS, arr)
         self._invalidate_field_cache()
 
-    def get_field_tree(self) -> list[PDField]:
-        """Return every field in the AcroForm field tree, depth-first.
+    def get_field_tree(self) -> PDFieldTree:
+        """Return an iterable view over every field in the AcroForm tree.
 
         The top-level ``/Fields`` entries are returned first, followed by each
         non-terminal field's descendants in ``/Kids`` order. This mirrors the
         iteration order used by PDFBox's ``PDFieldTree`` and by
         :meth:`get_field`.
         """
-        out: list[PDField] = []
-        for field in self.get_fields():
-            self._append_field_subtree(field, out)
-        return out
+        from .pd_field_tree import PDFieldTree
+
+        return PDFieldTree(self)
 
     def get_field_iterator(self) -> Iterator[PDField]:
         return iter(self.get_field_tree())

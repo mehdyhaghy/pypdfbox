@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .type.abstract_simple_property import AbstractSimpleProperty
+from .type.integer_type import IntegerType
+from .type.text_type import TextType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -54,30 +57,72 @@ class PDFAIdentificationSchema(XMPSchema):
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
 
+    # --- typed simple-property helpers -------------------------------
+
+    def _read_text_string(self, local_name: str) -> str | None:
+        raw = self._properties.get(local_name)
+        if isinstance(raw, AbstractSimpleProperty):
+            value = raw.get_string_value()
+            return value if isinstance(value, str) else None
+        return self.get_unqualified_text_property_value(local_name)
+
+    def _read_integer(self, local_name: str) -> int | None:
+        raw = self._properties.get(local_name)
+        if raw is None:
+            return None
+        if isinstance(raw, IntegerType):
+            return raw.get_value()
+        if isinstance(raw, AbstractSimpleProperty):
+            text = raw.get_string_value()
+        elif isinstance(raw, int) and not isinstance(raw, bool):
+            return raw
+        elif isinstance(raw, str):
+            text = raw
+        else:
+            text = self.get_unqualified_text_property_value(local_name)
+            if text is None:
+                return None
+        try:
+            return int(text.strip())
+        except (AttributeError, ValueError):
+            return None
+
+    def _typed_get(
+        self, local_name: str, expected: type[AbstractSimpleProperty]
+    ) -> AbstractSimpleProperty | None:
+        raw = self._properties.get(local_name)
+        if raw is None:
+            return None
+        if isinstance(raw, expected):
+            return raw
+        if isinstance(raw, AbstractSimpleProperty):
+            return expected(
+                self._metadata,
+                self._namespace,
+                self._prefix,
+                local_name,
+                raw.get_string_value(),
+            )
+        try:
+            return expected(self._metadata, self._namespace, self._prefix, local_name, raw)
+        except ValueError:
+            return None
+
+    def _typed_set(
+        self, local_name: str, prop: AbstractSimpleProperty | None
+    ) -> None:
+        if prop is None:
+            self.remove_property(local_name)
+            return
+        prop.set_property_name(local_name)
+        self._properties[local_name] = prop
+
     # --- part (Integer) ----------------------------------------------
 
     def get_part(self) -> int | None:
         """Mirror of upstream ``getPart()`` — returns the PDF/A part as an
         ``int``, or ``None`` when absent / unparseable."""
-        raw = self._properties.get(self.PART)
-        if raw is None:
-            return None
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            return raw
-        if isinstance(raw, str):
-            try:
-                return int(raw)
-            except ValueError:
-                return None
-        # Fall back through the standard text accessor for parsed-from-XML
-        # values that may have landed in list/dict shape.
-        text = self.get_unqualified_text_property_value(self.PART)
-        if text is None:
-            return None
-        try:
-            return int(text)
-        except ValueError:
-            return None
+        return self._read_integer(self.PART)
 
     def set_part(self, value: int) -> None:
         """Mirror of upstream ``setPart(Integer)`` — store the PDF/A part as
@@ -98,12 +143,21 @@ class PDFAIdentificationSchema(XMPSchema):
         # mirrors upstream's IllegalArgumentException semantics.
         self._properties[self.PART] = int(value)
 
+    def get_part_property(self) -> IntegerType | None:
+        """Mirror of upstream ``getPartProperty()``."""
+        result = self._typed_get(self.PART, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_part_property(self, value: IntegerType | None) -> None:
+        """Mirror of upstream ``setPartProperty(IntegerType)``."""
+        self._typed_set(self.PART, value)
+
     # --- conformance (single character) ------------------------------
 
     def get_conformance(self) -> str | None:
         """Mirror of upstream ``getConformance()`` — returns the conformance
         level (``A``/``B``/``U``/``e``/``f``), or ``None`` when absent."""
-        return self.get_unqualified_text_property_value(self.CONFORMANCE)
+        return self._read_text_string(self.CONFORMANCE)
 
     def set_conformance(self, value: str | None) -> None:
         """Mirror of upstream ``setConformance(String)``. Pass ``None`` to
@@ -119,11 +173,25 @@ class PDFAIdentificationSchema(XMPSchema):
             )
         self.set_text_property_value(self.CONFORMANCE, value)
 
+    def get_conformance_property(self) -> TextType | None:
+        """Mirror of upstream ``getConformanceProperty()``."""
+        result = self._typed_get(self.CONFORMANCE, TextType)
+        return result if isinstance(result, TextType) else None
+
+    def set_conformance_property(self, value: TextType | None) -> None:
+        """Mirror of upstream ``setConformanceProperty(TextType)``."""
+        if value is not None and value.get_string_value() not in self._VALID_CONFORMANCE:
+            raise BadFieldValueException(
+                f"The value '{value.get_string_value()}' isn't a valid PDF/A "
+                "conformance level (must be A, B, U, e or f)"
+            )
+        self._typed_set(self.CONFORMANCE, value)
+
     # --- amendment / revision / correction ---------------------------
 
     def get_amendment(self) -> str | None:
         """Mirror of upstream ``getAmendment()``."""
-        return self.get_unqualified_text_property_value(self.AMD)
+        return self._read_text_string(self.AMD)
 
     def get_amd(self) -> str | None:
         """Mirror of upstream ``getAmd()`` — alias of
@@ -142,34 +210,32 @@ class PDFAIdentificationSchema(XMPSchema):
         :meth:`set_amendment`."""
         self.set_amendment(value)
 
+    def get_amd_property(self) -> TextType | None:
+        """Mirror of upstream ``getAmdProperty()``."""
+        result = self._typed_get(self.AMD, TextType)
+        return result if isinstance(result, TextType) else None
+
+    def set_amd_property(self, value: TextType | None) -> None:
+        """Mirror of upstream ``setAmdProperty(TextType)``."""
+        self._typed_set(self.AMD, value)
+
     def get_revision(self) -> str | None:
         """Return the PDF/A revision year as a string. Upstream typed it as
         ``Integer`` post-PDFBOX-6088, but pypdfbox returns the raw string for
         round-trip parity with parsed XMP packets — callers needing a
         numeric value can use :meth:`get_rev`."""
-        # Stringify ints so the accessor works after :meth:`set_rev` (which
-        # stores a numeric int per upstream IntegerType semantics).
         raw = self._properties.get(self.REV)
+        if isinstance(raw, AbstractSimpleProperty):
+            return raw.get_string_value()
         if isinstance(raw, int) and not isinstance(raw, bool):
             return str(raw)
-        return self.get_unqualified_text_property_value(self.REV)
+        return self._read_text_string(self.REV)
 
     def get_rev(self) -> int | None:
         """Mirror of upstream ``getRev()`` (post-PDFBOX-6088) — returns the
         revision as a numeric ``int`` (e.g. ``2020``), or ``None`` when
         absent / unparseable."""
-        raw = self._properties.get(self.REV)
-        if raw is None:
-            return None
-        if isinstance(raw, int) and not isinstance(raw, bool):
-            return raw
-        text = self.get_unqualified_text_property_value(self.REV)
-        if text is None:
-            return None
-        try:
-            return int(text)
-        except ValueError:
-            return None
+        return self._read_integer(self.REV)
 
     def set_revision(self, value: str | None) -> None:
         """Set the PDF/A revision year as a string. Pass ``None`` to
@@ -193,6 +259,15 @@ class PDFAIdentificationSchema(XMPSchema):
         """Mirror of upstream ``setRevValueWithString(String)``. Raises
         ``ValueError`` when the string is not a valid integer."""
         self._properties[self.REV] = int(value)
+
+    def get_rev_property(self) -> IntegerType | None:
+        """Mirror of upstream ``getRevProperty()``."""
+        result = self._typed_get(self.REV, IntegerType)
+        return result if isinstance(result, IntegerType) else None
+
+    def set_rev_property(self, value: IntegerType | None) -> None:
+        """Mirror of upstream ``setRevProperty(IntegerType)``."""
+        self._typed_set(self.REV, value)
 
     def get_correction(self) -> str | None:
         """pypdfbox enrichment — return the correction year (``corr``).

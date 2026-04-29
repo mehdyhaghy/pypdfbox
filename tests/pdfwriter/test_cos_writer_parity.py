@@ -14,8 +14,8 @@ import io
 
 import pytest
 
+from pypdfbox.cos import COSObjectKey
 from pypdfbox.pdfwriter import COSWriter, COSWriterXRefEntry
-
 
 # ---------- helpers ---------------------------------------------------------
 
@@ -86,6 +86,42 @@ def test_get_x_ref_entries_element_type() -> None:
         # Cleanup so we don't leak state across writers (each test makes
         # its own anyway, but be tidy).
         entries.pop()
+
+
+# ---------- get_x_ref_ranges -----------------------------------------------
+
+
+def test_get_x_ref_ranges_groups_sparse_entries() -> None:
+    entries = [
+        COSWriterXRefEntry(0, COSObjectKey(0, 65535), free=True),
+        COSWriterXRefEntry(10, COSObjectKey(1, 0)),
+        COSWriterXRefEntry(20, COSObjectKey(2, 0)),
+        COSWriterXRefEntry(50, COSObjectKey(5, 0)),
+        COSWriterXRefEntry(60, COSObjectKey(6, 0)),
+        COSWriterXRefEntry(70, COSObjectKey(7, 0)),
+        COSWriterXRefEntry(80, COSObjectKey(8, 0)),
+        COSWriterXRefEntry(100, COSObjectKey(10, 0)),
+    ]
+
+    with _make_writer() as w:
+        assert w.get_x_ref_ranges(entries) == [0, 3, 5, 4, 10, 1]
+
+
+def test_get_x_ref_ranges_sorts_input_before_grouping() -> None:
+    entries = [
+        COSWriterXRefEntry(70, COSObjectKey(7, 0)),
+        COSWriterXRefEntry(0, COSObjectKey(0, 65535), free=True),
+        COSWriterXRefEntry(60, COSObjectKey(6, 0)),
+        COSWriterXRefEntry(10, COSObjectKey(1, 0)),
+    ]
+
+    with _make_writer() as w:
+        assert w.get_x_ref_ranges(entries) == [0, 2, 6, 2]
+
+
+def test_get_x_ref_ranges_empty_entries() -> None:
+    with _make_writer() as w:
+        assert w.get_x_ref_ranges([]) == []
 
 
 # ---------- set_pdf_version / get_pdf_version ------------------------------

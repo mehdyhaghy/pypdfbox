@@ -5,7 +5,9 @@ import pytest
 from pypdfbox.xmpbox import (
     BadFieldValueException,
     DomXmpParser,
+    IntegerType,
     PDFAIdentificationSchema,
+    TextType,
     XMPMetadata,
 )
 
@@ -153,6 +155,90 @@ def test_set_part_value_with_string_rejects_garbage() -> None:
     schema = _ident()
     with pytest.raises(ValueError):
         schema.set_part_value_with_string("ojoj")
+
+
+def test_typed_property_getters_rehydrate_simple_values() -> None:
+    schema = _ident()
+    schema.set_part(2)
+    schema.set_amd("2014")
+    schema.set_conformance("B")
+    schema.set_rev(2020)
+
+    part = schema.get_part_property()
+    amd = schema.get_amd_property()
+    conformance = schema.get_conformance_property()
+    rev = schema.get_rev_property()
+
+    assert isinstance(part, IntegerType)
+    assert part.get_property_name() == PDFAIdentificationSchema.PART
+    assert part.get_string_value() == "2"
+    assert part.get_namespace() == PDFAIdentificationSchema.NAMESPACE
+    assert part.get_prefix() == PDFAIdentificationSchema.PREFERRED_PREFIX
+
+    assert isinstance(amd, TextType)
+    assert amd.get_property_name() == PDFAIdentificationSchema.AMD
+    assert amd.get_string_value() == "2014"
+
+    assert isinstance(conformance, TextType)
+    assert conformance.get_property_name() == PDFAIdentificationSchema.CONFORMANCE
+    assert conformance.get_string_value() == "B"
+
+    assert isinstance(rev, IntegerType)
+    assert rev.get_property_name() == PDFAIdentificationSchema.REV
+    assert rev.get_string_value() == "2020"
+
+
+def test_typed_property_setters_interoperate_with_value_getters() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PDFAIdentificationSchema(metadata)
+    part = IntegerType(metadata, schema.get_namespace(), schema.get_prefix(), "tmp", 3)
+    amd = TextType(metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "2011")
+    conformance = TextType(
+        metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "U"
+    )
+    rev = IntegerType(metadata, schema.get_namespace(), schema.get_prefix(), "tmp", 2020)
+
+    schema.set_part_property(part)
+    schema.set_amd_property(amd)
+    schema.set_conformance_property(conformance)
+    schema.set_rev_property(rev)
+
+    assert schema.get_part_property() is part
+    assert schema.get_amd_property() is amd
+    assert schema.get_conformance_property() is conformance
+    assert schema.get_rev_property() is rev
+    assert [part.get_property_name(), amd.get_property_name()] == ["part", "amd"]
+    assert [conformance.get_property_name(), rev.get_property_name()] == [
+        "conformance",
+        "rev",
+    ]
+    assert schema.get_part() == 3
+    assert schema.get_amd() == "2011"
+    assert schema.get_conformance() == "U"
+    assert schema.get_rev() == 2020
+    assert schema.get_revision() == "2020"
+
+    schema.set_part_property(None)
+    schema.set_amd_property(None)
+    schema.set_conformance_property(None)
+    schema.set_rev_property(None)
+
+    assert schema.get_part_property() is None
+    assert schema.get_amd_property() is None
+    assert schema.get_conformance_property() is None
+    assert schema.get_rev_property() is None
+    assert schema.get_part() is None
+    assert schema.get_amd() is None
+    assert schema.get_conformance() is None
+    assert schema.get_rev() is None
+
+
+def test_conformance_property_rejects_invalid_value() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PDFAIdentificationSchema(metadata)
+    prop = TextType(metadata, schema.get_namespace(), schema.get_prefix(), "tmp", "Z")
+    with pytest.raises(BadFieldValueException):
+        schema.set_conformance_property(prop)
 
 
 # ---------- conformance validation (PDFBOX-6088) ----------

@@ -1008,3 +1008,10 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `pypdfbox/pdmodel/interactive/annotation/pd_movie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDMovie.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_movie_activation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDMovieActivation.java` |
 | `tests/pdmodel/graphics/shading/test_pd_shading_type4_type5_parity.py` | 3.0.x | hand-written parity coverage for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType4.java` and `PDShadingType5.java` |
+
+### Wave 47 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/form/pd_field_tree.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldTree.java` |
+| `tests/pdmodel/interactive/form/test_pd_field_tree.py` | 3.0.x | hand-written coverage for `PDFieldTree` traversal and Python sequence compatibility |

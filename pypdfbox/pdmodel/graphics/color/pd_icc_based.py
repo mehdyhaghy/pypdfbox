@@ -7,7 +7,6 @@ from pypdfbox.pdmodel.common.pd_stream import PDStream
 from .pd_color import PDColor, _clamp_unit
 from .pd_color_space import PDColorSpace
 
-
 _N: COSName = COSName.get_pdf_name("N")
 _ALTERNATE: COSName = COSName.get_pdf_name("Alternate")
 _RANGE: COSName = COSName.get_pdf_name("Range")
@@ -51,6 +50,22 @@ class PDICCBased(PDColorSpace):
 
     def get_initial_color(self) -> PDColor:
         return self._initial_color
+
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Return the default image ``/Decode`` array for this ICCBased
+        color space.
+
+        Mirrors upstream ``PDICCBased.getDefaultDecode(int)``: each
+        component's decode pair comes from that component's ``/Range``
+        entry, with the PDF default ``(0.0, 1.0)`` used when ``/Range``
+        is absent or too short.
+        """
+        out: list[float] = []
+        for component in range(self.get_n()):
+            low, high = self.get_range_for_component(component)
+            out.append(low)
+            out.append(high)
+        return out
 
     # ---------- ICCBased-specific ----------
 

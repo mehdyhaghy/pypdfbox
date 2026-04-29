@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from .digital_signature_table import DigitalSignatureTable
@@ -576,9 +577,20 @@ class TrueTypeFont:
             return 400
         return int(self._tt["OS/2"].usWeightClass)
 
-    def get_width(self) -> int:
-        """``OS/2.usWidthClass`` (1..9). Defaults to 5 (Medium) when the
-        font omits the ``OS/2`` table."""
+    def get_width(self, name: str | None = None) -> int | float:
+        """Return width information.
+
+        With no argument, returns ``OS/2.usWidthClass`` (1..9), preserving
+        the existing table-scalar helper. With a glyph name, mirrors
+        ``FontBoxFont.getWidth(String)`` and returns the glyph advance in
+        font units, or ``0.0`` when the name does not resolve to a real
+        glyph.
+        """
+        if name is not None:
+            gid = self.name_to_gid(name)
+            if gid == 0:
+                return 0.0
+            return float(self.get_advance_width(gid))
         if "OS/2" not in self._tt:
             return 5
         return int(self._tt["OS/2"].usWidthClass)
@@ -879,22 +891,50 @@ class TrueTypeFont:
 
     # ---------- glyph helpers --------------------------------------------
 
-    def get_path(self, gid: int) -> Any | None:
-        """Return the outline of glyph ``gid`` as a fontTools ``RecordingPen``.
+    def get_path(self, gid: int | str) -> Any | None:
+        """Return the outline of a glyph as a fontTools ``RecordingPen``.
 
-        Mirrors upstream's ``getPath(int)``. Returns ``None`` when the
-        font has no ``glyf`` table (CFF) or ``gid`` is out of range —
-        callers that want an empty path can fall back to a blank pen.
+        Integer input preserves the existing GID helper. String input mirrors
+        upstream ``FontBoxFont.getPath(String)`` by resolving the glyph name
+        first. Returns ``None`` when the font has no ``glyf`` table or the
+        glyph is missing / out of range.
         """
+        if isinstance(gid, str):
+            resolved_gid = self.name_to_gid(gid)
+            if resolved_gid == 0:
+                return None
+            gid = resolved_gid
         glyph = self.get_glyph(gid)
         if glyph is None:
             return None
         return glyph.get_path()
 
+    def has_glyph(self, name: str) -> bool:
+        """Return ``True`` iff ``name`` resolves to a real non-.notdef glyph.
+
+        Mirrors upstream ``FontBoxFont.hasGlyph(String)``. The missing-glyph
+        slot (gid 0) is intentionally reported as absent.
+        """
+        return self.name_to_gid(name) != 0
+
     def get_bounding_box(self) -> tuple[int, int, int, int]:
         """Alias for :meth:`get_font_bbox` — mirrors upstream's
         ``getFontBBox()`` shorthand exposed under the broader name."""
         return self.get_font_bbox()
+
+    def get_font_matrix(self) -> list[float]:
+        """Return the TrueType font matrix.
+
+        TrueType outlines are stored in design units, so the matrix scales by
+        ``1 / unitsPerEm`` in both axes, matching upstream's
+        ``FontBoxFont.getFontMatrix()`` contract.
+        """
+        units_per_em = self.get_units_per_em()
+        scale = 1.0 / units_per_em if units_per_em else 0.001
+        return [scale, 0.0, 0.0, scale, 0.0, 0.0]
+
+    # Human-readable alias matching the CFF helper spelling.
+    get_font_b_box = get_font_bbox
 
     # ---------- font-level metadata --------------------------------------
 
@@ -942,12 +982,8 @@ class TrueTypeFont:
         if self._closed:
             return
         self._closed = True
-        try:
+        with suppress(AttributeError, OSError):
             self._tt.close()
-        except (AttributeError, OSError):
-            # Older fontTools releases used a context-manager-only API;
-            # nothing to do then.
-            pass
 
     def __enter__(self) -> TrueTypeFont:
         return self

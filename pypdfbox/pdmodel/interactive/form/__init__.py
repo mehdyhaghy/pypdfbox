@@ -8,6 +8,7 @@ from .pd_choice import PDChoice
 from .pd_combo_box import PDComboBox
 from .pd_field import PDField
 from .pd_field_factory import PDFieldFactory
+from .pd_field_tree import PDFieldTree
 from .pd_list_box import PDListBox
 from .pd_non_terminal_field import PDNonTerminalField
 from .pd_push_button import PDPushButton
@@ -28,6 +29,7 @@ __all__ = [
     "PDField",
     "PDFieldFactory",
     "PDFieldStub",
+    "PDFieldTree",
     "PDListBox",
     "PDNonTerminalField",
     "PDPushButton",

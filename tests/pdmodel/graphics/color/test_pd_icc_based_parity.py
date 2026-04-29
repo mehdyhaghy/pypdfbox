@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.graphics.color.pd_icc_based import PDICCBased
-
 
 _RANGE: COSName = COSName.get_pdf_name("Range")
 _METADATA: COSName = COSName.get_pdf_name("Metadata")
@@ -82,6 +83,39 @@ def test_pd_icc_based_set_range_for_component_pads_intermediate_slots() -> None:
     assert cs.get_range_for_component(0) == (0.0, 1.0)
     assert cs.get_range_for_component(1) == (0.0, 1.0)
     assert cs.get_range_for_component(2) == (-5.0, 5.0)
+
+
+# ---------- get_default_decode ----------
+
+
+def test_pd_icc_based_default_decode_uses_default_range() -> None:
+    cs = PDICCBased()
+    cs.set_n(3)
+    assert cs.get_default_decode(8) == [0.0, 1.0] * 3
+
+
+def test_pd_icc_based_default_decode_uses_component_ranges() -> None:
+    cs = PDICCBased()
+    cs.set_n(3)
+    rng = COSArray()
+    for v in (0.1, 0.9, 0.2, 0.8, 0.3, 0.7):
+        rng.add(COSFloat(v))
+    cs.set_range(rng)
+
+    assert cs.get_default_decode(8) == pytest.approx(
+        [0.1, 0.9, 0.2, 0.8, 0.3, 0.7]
+    )
+
+
+def test_pd_icc_based_default_decode_defaults_missing_range_pairs() -> None:
+    cs = PDICCBased()
+    cs.set_n(3)
+    rng = COSArray()
+    rng.add(COSFloat(-1.0))
+    rng.add(COSFloat(1.0))
+    cs.set_range(rng)
+
+    assert cs.get_default_decode(8) == [-1.0, 1.0, 0.0, 1.0, 0.0, 1.0]
 
 
 # ---------- get_iccprofile_bytes ----------

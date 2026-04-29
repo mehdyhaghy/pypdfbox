@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from pypdfbox.fontbox.font_box_font import FontBoxFont
 from pypdfbox.fontbox.ttf import (
     DigitalSignatureTable,
     IndexToLocationTable,
@@ -128,7 +129,7 @@ def test_get_index_to_location(liberation_sans: TrueTypeFont) -> None:
     # loca holds num_glyphs + 1 entries.
     assert len(offsets) == liberation_sans.get_number_of_glyphs() + 1
     # Offsets are monotonically non-decreasing.
-    for prev, curr in zip(offsets, offsets[1:]):
+    for prev, curr in zip(offsets, offsets[1:], strict=False):
         assert curr >= prev
 
 
@@ -175,9 +176,48 @@ def test_get_path_out_of_range_returns_none(liberation_sans: TrueTypeFont) -> No
     assert liberation_sans.get_path(n + 100) is None
 
 
+def test_get_path_accepts_glyph_name(liberation_sans: TrueTypeFont) -> None:
+    by_gid = liberation_sans.get_path(liberation_sans.name_to_gid("A"))
+    by_name = liberation_sans.get_path("A")
+    assert by_name is not None
+    assert by_gid is not None
+    assert by_name.value == by_gid.value
+
+
+def test_get_path_unknown_name_returns_none(liberation_sans: TrueTypeFont) -> None:
+    assert liberation_sans.get_path("definitelyNotAGlyphName") is None
+
+
+def test_has_glyph_uses_real_glyph_names(liberation_sans: TrueTypeFont) -> None:
+    assert liberation_sans.has_glyph("A") is True
+    assert liberation_sans.has_glyph(".notdef") is False
+    assert liberation_sans.has_glyph("definitelyNotAGlyphName") is False
+
+
+def test_get_width_with_name_returns_advance_width(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    gid = liberation_sans.name_to_gid("A")
+    assert liberation_sans.get_width("A") == float(liberation_sans.get_advance_width(gid))
+    assert liberation_sans.get_width("definitelyNotAGlyphName") == 0.0
+
+
 def test_get_bounding_box_alias(liberation_sans: TrueTypeFont) -> None:
     bbox = liberation_sans.get_bounding_box()
     assert bbox == liberation_sans.get_font_bbox()
+
+
+def test_get_font_matrix_scales_by_units_per_em(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    scale = 1.0 / liberation_sans.get_units_per_em()
+    assert liberation_sans.get_font_matrix() == [scale, 0.0, 0.0, scale, 0.0, 0.0]
+
+
+def test_truetype_font_satisfies_fontbox_protocol(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    assert isinstance(liberation_sans, FontBoxFont)
 
 
 # ---------- font-level metadata ------------------------------------------

@@ -26,6 +26,9 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
+from .cos_standard_output_stream import COSStandardOutputStream
+from .cos_writer_xref_entry import COSWriterXRefEntry
+
 # Sentinel name objects used to filter the /Encrypt and /ID entries out of the
 # encryption pipeline. Hoisted to module scope so we don't recompute on every
 # leaf visit. ISO 32000-1 §7.6.1: the /Encrypt dictionary itself is never
@@ -33,9 +36,6 @@ from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 # trailer-level handle the handler keys off of — encrypting it would make the
 # document undecryptable.
 _ID_NAME: COSName = COSName.get_pdf_name("ID")
-
-from .cos_standard_output_stream import COSStandardOutputStream
-from .cos_writer_xref_entry import COSWriterXRefEntry
 
 _logger = logging.getLogger(__name__)
 
@@ -304,6 +304,21 @@ class COSWriter(ICOSVisitor):
         live list of xref entries collected so far (empty before the
         first ``write(...)`` call)."""
         return self._xref_entries
+
+    def get_x_ref_ranges(
+        self, entries: list[COSWriterXRefEntry]
+    ) -> list[int]:
+        """Return flattened xref subsection ranges for ``entries``.
+
+        Mirrors upstream ``COSWriter.getXRefRanges``: sparse object
+        numbers are grouped into contiguous ``first, count`` pairs. For
+        example object numbers ``0, 1, 2, 5, 6, 7, 8, 10`` yield
+        ``[0, 3, 5, 4, 10, 1]``.
+        """
+        ranges: list[int] = []
+        for first, count in self._build_ranges(sorted(entries)):
+            ranges.extend((first, count))
+        return ranges
 
     def get_started_streams(self) -> set[Any]:
         """Upstream PDFBox accessor (``getStartedStreams``). Returns the
@@ -1984,5 +1999,3 @@ class COSWriter(ICOSVisitor):
             output.write(b"<")
             output.write(data.hex().upper().encode("ascii"))
             output.write(b">")
-
-
