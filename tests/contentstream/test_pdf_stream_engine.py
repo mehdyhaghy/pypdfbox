@@ -27,7 +27,6 @@ from pypdfbox.contentstream.operator.text import (
 from pypdfbox.cos import (
     COSArray,
     COSBase,
-    COSFloat,
     COSInteger,
     COSName,
     COSString,
@@ -586,6 +585,51 @@ def test_process_child_stream_increments_level() -> None:
     child = _BytesContentStream(b"(X) Tj")
     engine.process_child_stream(child, None)
     assert probe.levels == [1]
+    assert engine.get_level() == 0
+
+
+def test_level_accessors_round_trip() -> None:
+    """Public level helpers mirror upstream increaseLevel/decreaseLevel."""
+    engine = PDFStreamEngine()
+    assert engine.get_level() == 0
+    engine.increase_level()
+    engine.increase_level()
+    assert engine.get_level() == 2
+    engine.decrease_level()
+    assert engine.get_level() == 1
+    engine.decrease_level()
+    assert engine.get_level() == 0
+
+
+def test_decrease_level_below_zero_logs_and_clamps(caplog: pytest.LogCaptureFixture) -> None:
+    engine = PDFStreamEngine()
+
+    with caplog.at_level("ERROR", logger="pypdfbox.contentstream.pdf_stream_engine"):
+        engine.decrease_level()
+
+    assert engine.get_level() == 0
+    assert "level is below 0" in caplog.text
+
+
+def test_process_stream_uses_level_helpers() -> None:
+    class _LevelEngine(PDFStreamEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            self.transitions: list[tuple[str, int]] = []
+
+        def increase_level(self) -> None:
+            super().increase_level()
+            self.transitions.append(("increase", self.get_level()))
+
+        def decrease_level(self) -> None:
+            before = self.get_level()
+            super().decrease_level()
+            self.transitions.append(("decrease", before))
+
+    engine = _LevelEngine()
+    engine.process_stream(_BytesContentStream(b""))
+
+    assert engine.transitions == [("increase", 1), ("decrease", 1)]
     assert engine.get_level() == 0
 
 

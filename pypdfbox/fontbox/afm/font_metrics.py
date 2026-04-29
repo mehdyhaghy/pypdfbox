@@ -334,6 +334,14 @@ class FontMetrics:
     def get_char_metrics(self) -> list[CharMetric]:
         return list(self._char_metrics)
 
+    def set_char_metrics(self, metrics: list[CharMetric]) -> None:
+        self._char_metrics = list(metrics)
+        self._char_metrics_map = {
+            metric.get_name(): metric
+            for metric in self._char_metrics
+            if metric.get_name()
+        }
+
     def add_char_metric(self, metric: CharMetric) -> None:
         self._char_metrics.append(metric)
         if metric.get_name():

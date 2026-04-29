@@ -434,6 +434,18 @@ class PDDocumentCatalog:
             return PDDestinationNameTreeNode(value)
         return None
 
+    def set_dests(self, dests: Any) -> None:
+        """Set the catalog's legacy ``/Dests`` dictionary.
+
+        Mirrors upstream ``PDDocumentCatalog.setDests``. ``None`` removes
+        the direct catalog entry. Modern ``/Names /Dests`` name-tree wiring
+        remains the job of :class:`PDDocumentNameDictionary`.
+        """
+        if dests is None:
+            self._catalog.remove_item(_DESTS)
+            return
+        self._catalog.set_item(_DESTS, dests.get_cos_object())
+
     def find_named_destination_page(self, named_dest: Any) -> Any:
         """Resolve a :class:`PDNamedDestination` against the catalog's
         name dictionaries. Mirrors upstream

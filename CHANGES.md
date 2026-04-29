@@ -657,3 +657,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdfwriter/cos_writer.py`: added `get_x_ref_ranges(entries)`, an upstream-shaped helper that groups sparse xref entries into flattened `first, count` subsection pairs.
 - `pypdfbox/xmpbox/pdfa_identification_schema.py`: PDF/A identification now has typed property accessors for `part`, `amd`, `conformance`, and `rev` (`IntegerType` / `TextType`), and existing scalar getters read through typed fields while preserving validation and legacy scalar storage.
 - `pypdfbox/fontbox/ttf/true_type_font.py`: TrueType font glyph helpers now satisfy the broader `FontBoxFont` protocol: `get_path()` accepts a GID or glyph name, `has_glyph(name)` detects real non-.notdef glyphs, `get_width(name)` returns glyph advance width while preserving the no-arg OS/2 width-class helper, and `get_font_matrix()` / `get_font_b_box` were added.
+
+## Wave 48 — dictionary nulls, catalog dests, AFM metrics, XMP thumbnails, stream depth
+
+- `pypdfbox/cos/cos_dictionary.py`: `set_item(key, None)` and `set_name(key, None)` now remove the entry, and `get_dictionary_object(...)` resolves direct or indirect `COSNull.NULL` to `None` while preserving raw `get_item(...)` behavior.
+- `pypdfbox/pdmodel/pd_document_catalog.py`: added `set_dests(...)` for the legacy catalog-level `/Dests` dictionary, including `None` removal, while keeping modern `/Names /Dests` name-tree handling on `PDDocumentNameDictionary`.
+- `pypdfbox/fontbox/afm/font_metrics.py`: added `set_char_metrics(...)`, replacing the full AFM char-metric list and rebuilding the glyph-name lookup map used by width/height helpers.
+- `pypdfbox/xmpbox/xmp_basic_schema.py`: XMP Basic `Thumbnails` now exposes the upstream-shaped Alt array of `ThumbnailType` structs through `get_thumbnails()`, `add_thumbnails()`, `set_thumbnails(...)`, and typed property accessors.
+- `pypdfbox/contentstream/pdf_stream_engine.py`: added public `increase_level()` / `decrease_level()` recursion-depth helpers and routed `process_stream()` through them; underflow now logs and clamps at zero like upstream.

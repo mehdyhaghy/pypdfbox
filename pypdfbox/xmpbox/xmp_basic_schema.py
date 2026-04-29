@@ -3,9 +3,11 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
+from .type.array_property import ArrayProperty, Cardinality
 from .type.date_type import DateType
 from .type.integer_type import IntegerType
 from .type.text_type import TextType
+from .type.thumbnail_type import ThumbnailType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -36,9 +38,9 @@ class XMPBasicSchema(XMPSchema):
     The two surfaces are interoperable: setting via the typed form is
     visible to the string getter, and vice-versa.
 
-    The ``Thumbnails`` (Alt of Thumbnail) accessor is deferred until the
-    typed ``ThumbnailType`` struct is ported (mirrors upstream
-    ``getThumbnailsProperty()`` / ``addThumbnails(...)``).
+    ``Thumbnails`` is exposed as an ``Alt`` :class:`ArrayProperty` containing
+    :class:`ThumbnailType` structs, mirroring upstream
+    ``getThumbnailsProperty()`` / ``addThumbnails(...)``.
     """
 
     NAMESPACE = "http://ns.adobe.com/xap/1.0/"
@@ -396,3 +398,78 @@ class XMPBasicSchema(XMPSchema):
             except ValueError:
                 return None
         return None
+
+    # --- Thumbnails (Alt of ThumbnailType) ---------------------------
+
+    def _ensure_thumbnails_alt(self) -> ArrayProperty:
+        existing = self._properties.get(self.THUMBNAILS)
+        if isinstance(existing, ArrayProperty):
+            return existing
+        alt = ArrayProperty(
+            self._metadata,
+            self._namespace,
+            self._prefix,
+            self.THUMBNAILS,
+            Cardinality.Alt,
+        )
+        self._properties[self.THUMBNAILS] = alt
+        return alt
+
+    def get_thumbnails(self) -> list[ThumbnailType] | None:
+        """
+        Mirror of upstream ``getThumbnails()``. Return a fresh list of
+        :class:`ThumbnailType` entries carried by the ``Thumbnails`` Alt, or
+        ``None`` when the property is absent.
+        """
+        existing = self._properties.get(self.THUMBNAILS)
+        if not isinstance(existing, ArrayProperty):
+            return None
+        return [
+            child
+            for child in existing.get_all_properties()
+            if isinstance(child, ThumbnailType)
+        ]
+
+    def set_thumbnails(self, thumbnails: list[ThumbnailType] | None) -> None:
+        """
+        Replace the ``Thumbnails`` Alt with the supplied thumbnails. Passing
+        ``None`` removes the property.
+        """
+        if thumbnails is None:
+            self.remove_property(self.THUMBNAILS)
+            return
+        alt = ArrayProperty(
+            self._metadata,
+            self._namespace,
+            self._prefix,
+            self.THUMBNAILS,
+            Cardinality.Alt,
+        )
+        for thumbnail in thumbnails:
+            alt.add_property(thumbnail)
+        self._properties[self.THUMBNAILS] = alt
+
+    def add_thumbnails(self, thumbnail: ThumbnailType) -> None:
+        """
+        Mirror of upstream ``addThumbnails(ThumbnailType)``. Append a
+        thumbnail to the ``Thumbnails`` Alt, allocating the container on first
+        use.
+        """
+        self._ensure_thumbnails_alt().add_property(thumbnail)
+
+    def add_thumbnail(self, thumbnail: ThumbnailType) -> None:
+        """Singular convenience alias for :meth:`add_thumbnails`."""
+        self.add_thumbnails(thumbnail)
+
+    def get_thumbnails_property(self) -> ArrayProperty | None:
+        """Mirror of upstream ``getThumbnailsProperty()``."""
+        existing = self._properties.get(self.THUMBNAILS)
+        return existing if isinstance(existing, ArrayProperty) else None
+
+    def set_thumbnails_property(self, value: ArrayProperty | None) -> None:
+        """Mirror of upstream ``setThumbnailsProperty(ArrayProperty)``."""
+        if value is None:
+            self.remove_property(self.THUMBNAILS)
+            return
+        value.set_property_name(self.THUMBNAILS)
+        self._properties[self.THUMBNAILS] = value

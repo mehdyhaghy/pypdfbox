@@ -16,13 +16,15 @@ from datetime import UTC, datetime
 import pytest
 
 from pypdfbox.xmpbox import (
+    ArrayProperty,
+    Cardinality,
     DateType,
     IntegerType,
     TextType,
+    ThumbnailType,
     XMPBasicSchema,
     XMPMetadata,
 )
-
 
 # Upstream initializeParameters() — kept verbatim so future re-syncs are diffable.
 _PARAMETERS: tuple[tuple[str, str, str], ...] = (
@@ -36,7 +38,7 @@ _PARAMETERS: tuple[tuple[str, str, str], ...] = (
     ("ModifyDate", "Date", "Simple"),
     ("Nickname", "Text", "Simple"),
     ("Rating", "Integer", "Simple"),
-    # Thumbnails (Alt of ThumbnailType) deferred — see module docstring.
+    ("Thumbnails", "Thumbnail", "Alt"),
 )
 
 
@@ -94,6 +96,12 @@ _ACCESSORS: dict[str, tuple[str | None, str | None, str | None, str | None]] = {
         "get_rating_property",
         "set_rating_property",
     ),
+    "Thumbnails": (
+        "get_thumbnails",
+        "add_thumbnails",
+        "get_thumbnails_property",
+        "set_thumbnails_property",
+    ),
 }
 
 
@@ -108,11 +116,21 @@ def schema(metadata: XMPMetadata) -> XMPBasicSchema:
     return XMPBasicSchema(metadata)
 
 
-def _sample_value(type_token: str) -> object:
+def _sample_value(type_token: str, metadata: XMPMetadata | None = None) -> object:
     if type_token == "Integer":
         return 7
     if type_token == "Date":
         return datetime(2026, 4, 25, 12, 0, 0, tzinfo=UTC)
+    if type_token == "Thumbnail":
+        if metadata is None:
+            msg = "metadata is required for Thumbnail sample values"
+            raise ValueError(msg)
+        thumbnail = ThumbnailType(metadata)
+        thumbnail.set_width(160)
+        thumbnail.set_height(120)
+        thumbnail.set_format("JPEG")
+        thumbnail.set_image("base64-data")
+        return thumbnail
     return "sample-value"
 
 
@@ -131,14 +149,18 @@ def test_initialized_to_null(
 
 @pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
 def test_set_then_get_string_form(
-    schema: XMPBasicSchema, field_name: str, type_token: str, card: str
+    metadata: XMPMetadata,
+    schema: XMPBasicSchema,
+    field_name: str,
+    type_token: str,
+    card: str,
 ) -> None:
     """Translated from upstream ``testElementValue`` — string-form path."""
     getter_name, setter_name, _, _ = _ACCESSORS[field_name]
     assert getter_name is not None and setter_name is not None
-    value = _sample_value(type_token)
-    if card == "Bag":
-        # Bag-cardinality: setter is ``add_xxx``, getter returns a list.
+    value = _sample_value(type_token, metadata)
+    if card in {"Bag", "Alt"}:
+        # Array-cardinality: setter is ``add_xxx``, getter returns a list.
         getattr(schema, setter_name)(value)
         assert getattr(schema, getter_name)() == [value]
         return
@@ -166,7 +188,7 @@ def test_set_then_get_typed_form(
         pytest.skip("Bag cardinality has no typed *_property accessor in cluster #1")
     _, _, typed_getter, typed_setter = _ACCESSORS[field_name]
     assert typed_getter is not None and typed_setter is not None
-    value = _sample_value(type_token)
+    value = _sample_value(type_token, metadata)
     if type_token == "Integer":
         prop: object = IntegerType(
             metadata,
@@ -183,6 +205,16 @@ def test_set_then_get_typed_form(
             field_name,
             value,
         )
+    elif type_token == "Thumbnail":
+        prop = ArrayProperty(
+            metadata,
+            "http://ns.adobe.com/xap/1.0/",
+            "xmp",
+            field_name,
+            Cardinality.Alt,
+        )
+        assert isinstance(value, ThumbnailType)
+        prop.add_property(value)
     else:
         prop = TextType(
             metadata,
@@ -195,6 +227,16 @@ def test_set_then_get_typed_form(
     assert getattr(schema, typed_getter)() is prop
 
 
-@pytest.mark.skip(reason="ThumbnailType not yet ported")
 def test_thumbnails_property() -> None:
-    """Upstream parameter row ``Thumbnails`` — deferred until ThumbnailType lands."""
+    """Upstream parameter row ``Thumbnails`` — Alt of ThumbnailType."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPBasicSchema(metadata)
+    thumbnail = ThumbnailType(metadata)
+    thumbnail.set_width(160)
+    thumbnail.set_height(120)
+    schema.add_thumbnails(thumbnail)
+
+    prop = schema.get_thumbnails_property()
+    assert isinstance(prop, ArrayProperty)
+    assert prop.get_array_type() is Cardinality.Alt
+    assert schema.get_thumbnails() == [thumbnail]

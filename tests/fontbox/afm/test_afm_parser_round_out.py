@@ -13,6 +13,7 @@ import pytest
 
 from pypdfbox.fontbox.afm import (
     AFMParser,
+    CharMetric,
     Composite,
     CompositePart,
     FontMetrics,
@@ -20,7 +21,6 @@ from pypdfbox.fontbox.afm import (
     Ligature,
     TrackKern,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -365,6 +365,26 @@ def test_get_character_width_unknown_glyph_returns_zero() -> None:
     )
     assert fm.get_character_width("does-not-exist") == 0.0
     assert fm.get_character_height("does-not-exist") == 0.0
+
+
+def test_set_char_metrics_replaces_metrics_and_lookup_map() -> None:
+    first = CharMetric()
+    first.set_name("A")
+    first.set_wx(500)
+
+    second = CharMetric()
+    second.set_name("B")
+    second.set_wx(600)
+
+    fm = FontMetrics()
+    fm.add_char_metric(first)
+    assert fm.get_character_width("A") == 500.0
+
+    fm.set_char_metrics([second])
+
+    assert fm.get_char_metrics() == [second]
+    assert fm.get_character_width("A") == 0.0
+    assert fm.get_character_width("B") == 600.0
 
 
 # ---------------------------------------------------------------------------

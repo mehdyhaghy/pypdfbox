@@ -8,6 +8,7 @@ from .cos_boolean import COSBoolean
 from .cos_float import COSFloat
 from .cos_integer import COSInteger
 from .cos_name import COSName
+from .cos_null import COSNull
 from .cos_object import COSObject
 from .cos_string import COSString
 from .i_cos_visitor import ICOSVisitor
@@ -44,8 +45,11 @@ class COSDictionary(COSBase):
 
     # ---------- core map operations ----------
 
-    def set_item(self, key: COSName | str, value: COSBase) -> None:
-        self._items[_as_name(key)] = value
+    def set_item(self, key: COSName | str, value: COSBase | None) -> None:
+        if value is None:
+            self.remove_item(key)
+        else:
+            self._items[_as_name(key)] = value
 
     def remove_item(self, key: COSName | str) -> COSBase | None:
         return self._items.pop(_as_name(key), None)
@@ -62,7 +66,9 @@ class COSDictionary(COSBase):
         if item is None:
             return default
         if isinstance(item, COSObject):
-            return item.get_object()
+            item = item.get_object()
+        if item is COSNull.NULL:
+            return None
         return item
 
     def contains_key(self, key: COSName | str) -> bool:
@@ -92,8 +98,11 @@ class COSDictionary(COSBase):
 
     # ---------- typed convenience setters ----------
 
-    def set_name(self, key: COSName | str, value: str) -> None:
-        self.set_item(key, COSName.get_pdf_name(value))
+    def set_name(self, key: COSName | str, value: str | None) -> None:
+        if value is None:
+            self.remove_item(key)
+        else:
+            self.set_item(key, COSName.get_pdf_name(value))
 
     def set_string(self, key: COSName | str, value: str | bytes | None) -> None:
         if value is None:

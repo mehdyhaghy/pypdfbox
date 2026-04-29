@@ -8,6 +8,7 @@ from pypdfbox.cos import (
     COSFloat,
     COSInteger,
     COSName,
+    COSNull,
     COSObject,
     COSString,
 )
@@ -41,6 +42,13 @@ def test_remove_item_returns_value_or_none() -> None:
     assert d.remove_item("X") is None
 
 
+def test_set_item_with_none_removes_key() -> None:
+    d = COSDictionary([("X", COSInteger(1))])
+    d.set_item("X", None)
+    assert d.get_item("X") is None
+    assert "X" not in d
+
+
 def test_contains_key() -> None:
     d = COSDictionary()
     d.set_item("Foo", COSInteger(0))
@@ -71,6 +79,17 @@ def test_dereference_via_get_dictionary_object() -> None:
     assert d.get_dictionary_object("Ref") is inner
 
 
+def test_get_dictionary_object_returns_none_for_cos_null() -> None:
+    direct = COSDictionary([("Null", COSNull.NULL)])
+    assert direct.get_item("Null") is COSNull.NULL
+    assert direct.get_dictionary_object("Null") is None
+
+    indirect_null = COSObject(7, 0, resolved=COSNull.NULL)
+    indirect = COSDictionary([("Null", indirect_null)])
+    assert indirect.get_item("Null") is indirect_null
+    assert indirect.get_dictionary_object("Null") is None
+
+
 def test_typed_setters() -> None:
     d = COSDictionary()
     d.set_name("Type", "Page")
@@ -83,6 +102,13 @@ def test_typed_setters() -> None:
     assert d.get_int("Count") == 5
     assert d.get_float("Width") == 2.5
     assert d.get_boolean("Flag") is True
+
+
+def test_set_name_with_none_removes() -> None:
+    d = COSDictionary()
+    d.set_name("Type", "Page")
+    d.set_name("Type", None)
+    assert d.get_item("Type") is None
 
 
 def test_set_string_with_none_removes() -> None:

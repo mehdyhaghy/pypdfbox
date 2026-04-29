@@ -149,7 +149,7 @@ class PDFStreamEngine:
         :meth:`get_level`, matching upstream.
         """
         prev_resources = self._resources
-        self._level += 1
+        self.increase_level()
         try:
             stream_resources = content_stream.get_resources()
             if stream_resources is not None:
@@ -159,7 +159,7 @@ class PDFStreamEngine:
                 self._dispatch_tokens(parser)
         finally:
             self._resources = prev_resources
-            self._level -= 1
+            self.decrease_level()
 
     def process_child_stream(
         self,
@@ -356,6 +356,30 @@ class PDFStreamEngine:
         outermost stream, incremented for nested form / pattern / Type3
         streams). Mirrors upstream's ``getLevel``."""
         return self._level
+
+    def increase_level(self) -> None:
+        """Increase the recursive stream-processing level.
+
+        Mirrors upstream ``PDFStreamEngine.increaseLevel``. Callers that
+        process a potentially recursive stream manually can use this with
+        :meth:`decrease_level` so :meth:`get_level` reflects the same state
+        as the built-in :meth:`process_stream` path.
+        """
+        self._level += 1
+
+    def decrease_level(self) -> None:
+        """Decrease the recursive stream-processing level.
+
+        Mirrors upstream ``PDFStreamEngine.decreaseLevel``. If called too
+        many times, the level is kept at zero and an error is logged,
+        matching upstream's defensive handling for unbalanced recursion
+        guards.
+        """
+        if self._level <= 0:
+            _log.error("level is below 0")
+            self._level = 0
+            return
+        self._level -= 1
 
     def is_processing_page(self) -> bool:
         """``True`` while inside :meth:`process_page`. Mirrors upstream's

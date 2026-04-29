@@ -1015,3 +1015,8 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 |---|---|---|
 | `pypdfbox/pdmodel/interactive/form/pd_field_tree.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldTree.java` |
 | `tests/pdmodel/interactive/form/test_pd_field_tree.py` | 3.0.x | hand-written coverage for `PDFieldTree` traversal and Python sequence compatibility |
+
+### Wave 48 additions
+
+No new port files were added in Wave 48. The wave only extended existing upstream-derived modules and their existing test files:
+`COSDictionary`, `PDDocumentCatalog`, `FontMetrics`, `XMPBasicSchema`, and `PDFStreamEngine`.

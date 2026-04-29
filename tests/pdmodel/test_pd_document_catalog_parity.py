@@ -3,6 +3,10 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.interactive.action import PDActionURI
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDDestinationNameTreeNode,
+    PDPageXYZDestination,
+)
 
 
 def test_open_action_round_trip_with_action_uri() -> None:
@@ -117,3 +121,31 @@ def test_get_outlines_alias_matches_get_document_outline() -> None:
     assert isinstance(via_original, PDDocumentOutline)
     assert via_alias.get_cos_object() is outline.get_cos_object()
     assert via_original.get_cos_object() is outline.get_cos_object()
+
+
+def test_set_dests_round_trip_legacy_catalog_entry() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    dests = PDDestinationNameTreeNode()
+    dest = PDPageXYZDestination()
+    dest.set_page_number(3)
+    dests.set_value("chapter", dest)
+
+    catalog.set_dests(dests)
+
+    resolved = catalog.get_dests()
+    assert isinstance(resolved, PDDestinationNameTreeNode)
+    assert resolved.get_cos_object() is dests.get_cos_object()
+    fetched = resolved.get_value("chapter")
+    assert isinstance(fetched, PDPageXYZDestination)
+    assert fetched.get_page_number() == 3
+
+
+def test_set_dests_none_clears_legacy_catalog_entry() -> None:
+    doc = PDDocument()
+    catalog = doc.get_document_catalog()
+    catalog.set_dests(PDDestinationNameTreeNode())
+
+    catalog.set_dests(None)
+
+    assert catalog.get_dests() is None

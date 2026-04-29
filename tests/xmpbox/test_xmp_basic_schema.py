@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pypdfbox.xmpbox import DateType, IntegerType, TextType, XMPBasicSchema, XMPMetadata
+from pypdfbox.xmpbox import (
+    ArrayProperty,
+    Cardinality,
+    DateType,
+    IntegerType,
+    TextType,
+    ThumbnailType,
+    XMPBasicSchema,
+    XMPMetadata,
+)
 
 
 def _basic() -> XMPBasicSchema:
@@ -120,6 +129,8 @@ def test_typed_props_default_to_none() -> None:
     assert b.get_metadata_date_property() is None
     assert b.get_modifier_date_property() is None
     assert b.get_rating_property() is None
+    assert b.get_thumbnails_property() is None
+    assert b.get_thumbnails() is None
 
 
 # --- Date typed accessors --------------------------------------------
@@ -237,3 +248,75 @@ def test_advisory_bag() -> None:
     assert b.get_advisory() == ["/path/to/x", "/path/to/y"]
     b.remove_advisory("/path/to/x")
     assert b.get_advisory() == ["/path/to/y"]
+
+
+# --- Thumbnails (Alt of ThumbnailType) -------------------------------
+
+
+def _make_thumbnail(metadata: XMPMetadata, width: int, height: int) -> ThumbnailType:
+    thumbnail = ThumbnailType(metadata)
+    thumbnail.set_width(width)
+    thumbnail.set_height(height)
+    thumbnail.set_format("JPEG")
+    thumbnail.set_image("base64-data")
+    return thumbnail
+
+
+def test_add_thumbnails_appends_to_alt() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    b = XMPBasicSchema(metadata)
+    first = _make_thumbnail(metadata, 160, 120)
+    second = _make_thumbnail(metadata, 320, 240)
+
+    b.add_thumbnails(first)
+    b.add_thumbnail(second)
+
+    thumbnails = b.get_thumbnails()
+    assert thumbnails == [first, second]
+    prop = b.get_thumbnails_property()
+    assert isinstance(prop, ArrayProperty)
+    assert prop.get_array_type() is Cardinality.Alt
+
+
+def test_set_thumbnails_replaces_and_clears() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    b = XMPBasicSchema(metadata)
+    thumbnail = _make_thumbnail(metadata, 64, 64)
+
+    b.set_thumbnails([thumbnail])
+    assert b.get_thumbnails() == [thumbnail]
+    b.set_thumbnails(None)
+
+    assert b.get_thumbnails() is None
+    assert b.get_thumbnails_property() is None
+
+
+def test_thumbnails_property_round_trip_via_array_property() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    b = XMPBasicSchema(metadata)
+    alt = ArrayProperty(
+        metadata,
+        XMPBasicSchema.NAMESPACE,
+        XMPBasicSchema.PREFERRED_PREFIX,
+        XMPBasicSchema.THUMBNAILS,
+        Cardinality.Alt,
+    )
+    thumbnail = _make_thumbnail(metadata, 100, 75)
+    alt.add_property(thumbnail)
+
+    b.set_thumbnails_property(alt)
+
+    assert b.get_thumbnails_property() is alt
+    assert b.get_property(XMPBasicSchema.THUMBNAILS) is alt
+    assert b.get_thumbnails() == [thumbnail]
+
+
+def test_set_thumbnails_property_none_clears() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    b = XMPBasicSchema(metadata)
+    b.add_thumbnails(_make_thumbnail(metadata, 100, 75))
+
+    b.set_thumbnails_property(None)
+
+    assert b.get_thumbnails_property() is None
+    assert b.get_thumbnails() is None
