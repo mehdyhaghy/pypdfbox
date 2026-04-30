@@ -770,3 +770,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 63 — NameRecord Java aliases
 
 - `pypdfbox/fontbox/ttf/name_record.py`: added FontBox camelCase aliases for name-record metadata (`getPlatformId` / `setPlatformId`, `getPlatformEncodingId` / `setPlatformEncodingId`, `getLanguageId` / `setLanguageId`, `getNameId` / `setNameId`, `getStringLength` / `setStringLength`, `getStringOffset` / `setStringOffset`, and `getString` / `setString`).
+
+## Wave 64 — XMP structured-type Java aliases
+
+- `pypdfbox/xmpbox/type/job_type.py`: added XMPBox camelCase aliases for job fields (`getId` / `setId`, `getName` / `setName`, and `getUrl` / `setUrl`).
+- `pypdfbox/xmpbox/type/resource_event_type.py`: added XMPBox camelCase aliases for resource-event fields (`getAction` / `setAction`, `getChanged` / `setChanged`, `getInstanceID` / `setInstanceID`, `getParameters` / `setParameters`, `getSoftwareAgent` / `setSoftwareAgent`, and `getWhen` / `setWhen`).

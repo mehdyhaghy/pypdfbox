@@ -49,11 +49,35 @@ def test_set_and_get_string_fields(metadata: XMPMetadata) -> None:
     assert e.get_changed() == "/format"
 
 
+def test_pdfbox_camelcase_string_aliases(metadata: XMPMetadata) -> None:
+    e = ResourceEventType(metadata)
+    e.setAction("converted")
+    e.setSoftwareAgent("ImageMagick 7")
+    e.setInstanceID("xmp.iid:abc-123")
+    e.setParameters("from=jpg, to=png")
+    e.setChanged("/format")
+
+    assert e.getAction() == "converted"
+    assert e.getSoftwareAgent() == "ImageMagick 7"
+    assert e.getInstanceID() == "xmp.iid:abc-123"
+    assert e.getParameters() == "from=jpg, to=png"
+    assert e.getChanged() == "/format"
+
+
 def test_when(metadata: XMPMetadata) -> None:
     e = ResourceEventType(metadata)
     when = datetime(2025, 6, 7, 8, 9, 10, tzinfo=UTC)
     e.set_when(when)
     assert e.get_when() == when
+
+
+def test_pdfbox_camelcase_when_aliases(metadata: XMPMetadata) -> None:
+    e = ResourceEventType(metadata)
+    when = datetime(2025, 6, 7, 8, 9, 10, tzinfo=UTC)
+
+    e.setWhen(when)
+
+    assert e.getWhen() == when
 
 
 def test_field_constants() -> None:
