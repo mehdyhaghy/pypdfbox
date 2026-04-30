@@ -177,6 +177,29 @@ def test_upstream_name_aliases_return_cos_names() -> None:
     assert [name.get_name() for name in res.get_properties_names()] == ["Prop0"]
 
 
+def test_pdfbox_camelcase_name_aliases_return_cos_names() -> None:
+    res = PDResources()
+    entries = [
+        ("XObject", "Im0", COSStream()),
+        ("Font", "F0", COSDictionary()),
+        ("ColorSpace", "CS0", COSName.get_pdf_name("DeviceRGB")),
+        ("Pattern", "P0", COSDictionary()),
+        ("Shading", "Sh0", COSDictionary()),
+        ("ExtGState", "GS0", COSDictionary()),
+        ("Properties", "Prop0", COSDictionary()),
+    ]
+    for category, name, value in entries:
+        res.put(COSName.get_pdf_name(category), COSName.get_pdf_name(name), value)
+
+    assert [name.get_name() for name in res.getXObjectNames()] == ["Im0"]
+    assert [name.get_name() for name in res.getFontNames()] == ["F0"]
+    assert [name.get_name() for name in res.getColorSpaceNames()] == ["CS0"]
+    assert [name.get_name() for name in res.getPatternNames()] == ["P0"]
+    assert [name.get_name() for name in res.getShadingNames()] == ["Sh0"]
+    assert [name.get_name() for name in res.getExtGStateNames()] == ["GS0"]
+    assert [name.get_name() for name in res.getPropertiesNames()] == ["Prop0"]
+
+
 def test_get_resource_cache_returns_constructor_cache() -> None:
     cache = object()
     res = PDResources(resource_cache=cache)  # type: ignore[arg-type]

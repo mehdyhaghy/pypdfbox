@@ -4,6 +4,7 @@ from collections.abc import Iterable, Iterator
 from typing import Any
 
 from .cos_base import COSBase
+from .cos_boolean import COSBoolean
 from .cos_float import COSFloat
 from .cos_integer import COSInteger
 from .cos_name import COSName
@@ -160,6 +161,18 @@ class COSArray(COSBase):
         item = self._items[index]
         if isinstance(item, (COSInteger, COSFloat)):
             return float(item.value)
+        return default
+
+    def set_boolean(self, index: int, value: bool) -> None:
+        self.grow_to_size(index + 1)
+        self._items[index] = COSBoolean.get(value)
+
+    def get_boolean(self, index: int, default: bool = False) -> bool:
+        if index >= len(self._items):
+            return default
+        item = self._items[index]
+        if isinstance(item, COSBoolean):
+            return item.value
         return default
 
     def set_string(self, index: int, value: str) -> None:

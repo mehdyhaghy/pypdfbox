@@ -307,21 +307,39 @@ class PDResources:
     def get_xobject_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_X_OBJECT))
 
+    def getXObjectNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_xobject_names()
+
     def get_font_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_FONT))
+
+    def getFontNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_font_names()
 
     def get_color_space_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_COLOR_SPACE))
 
+    def getColorSpaceNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_color_space_names()
+
     def get_pattern_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_PATTERN))
+
+    def getPatternNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_pattern_names()
 
     def get_shading_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_SHADING))
 
+    def getShadingNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_shading_names()
+
     def get_extgstate_names(self) -> list[COSName]:
         """``/ExtGState`` keys. Upstream method name is ``getExtGStateNames``."""
         return self._names_in(self._get_subdict(_EXT_GSTATE))
+
+    def getExtGStateNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_extgstate_names()
 
     def get_ext_g_state_names(self) -> list[COSName]:
         """Upstream-spelled alias for ``get_extgstate_names``."""
@@ -330,6 +348,9 @@ class PDResources:
     def get_property_list_names(self) -> list[COSName]:
         """``/Properties`` keys. Upstream method name is ``getPropertiesNames``."""
         return self._names_in(self._get_subdict(_PROPERTIES))
+
+    def getPropertiesNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+        return self.get_property_list_names()
 
     def get_properties_names(self) -> list[COSName]:
         """Upstream-spelled alias for ``get_property_list_names``."""

@@ -47,6 +47,14 @@ def test_stamp_name_round_trip() -> None:
     assert ann.get_name() == "TopSecret"
 
 
+def test_stamp_pdfbox_camelcase_name_aliases() -> None:
+    ann = PDAnnotationStamp()
+    ann.setName(PDAnnotationStamp.NAME_FINAL)
+    assert ann.getName() == "Final"
+    ann.setName(None)
+    assert ann.getName() == "Draft"
+
+
 def test_stamp_name_clear_returns_to_default() -> None:
     ann = PDAnnotationStamp()
     ann.set_name(PDAnnotationStamp.NAME_FINAL)

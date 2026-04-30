@@ -138,6 +138,18 @@ def test_get_float_accepts_integer_values() -> None:
     assert a.get_float(1, 8.0) == 8.0
 
 
+def test_boolean_accessors_round_trip_and_default() -> None:
+    a = COSArray()
+    a.set_boolean(1, True)
+
+    assert a.get_boolean(0) is False
+    assert a.get_boolean(0, True) is True
+    assert a.get_boolean(1) is True
+
+    a.set_boolean(1, False)
+    assert a.get_boolean(1) is False
+
+
 def test_to_list_returns_copy() -> None:
     a = COSArray([COSInteger(1)])
     out = a.to_list()

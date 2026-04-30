@@ -45,7 +45,6 @@ class LangAlt(ArrayProperty):
             attr = child.get_attribute(LANG_ATTR_NAME)
             if attr is not None and attr.get_value() == lang:
                 self.remove_property(child)
-                break
         text = TextType(
             self.get_metadata(),
             self.get_namespace(),

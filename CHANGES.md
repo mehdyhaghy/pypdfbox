@@ -737,3 +737,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_resources.py`: duplicate resource-key detection now recognizes an existing indirect `COSObject` entry whose resolved target is the XObject being added.
 - `pypdfbox/fontbox/ttf/maximum_profile_table.py`: added `set_version(...)` for the parsed `maxp` table version field.
 - `pypdfbox/xmpbox/xmp_schema.py`: added `remove_unqualified_language_property_value(...)` for removing a single LangAlt language entry while preserving other languages.
+
+## Wave 58 — array booleans, resource Java aliases, stamp Java aliases, horizontal metrics aliases, LangAlt duplicate replacement
+
+- `pypdfbox/cos/cos_array.py`: added `set_boolean(...)` / `get_boolean(...)` typed helpers with PDFBox-style default handling.
+- `pypdfbox/pdmodel/pd_resources.py`: added PDFBox camelCase name-list aliases (`getXObjectNames`, `getFontNames`, `getColorSpaceNames`, `getPatternNames`, `getShadingNames`, `getExtGStateNames`, and `getPropertiesNames`).
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_rubber_stamp.py` + `pd_annotation_stamp.py`: added PDFBox camelCase `getName()` / `setName(...)` aliases over the stamp-name accessors.
+- `pypdfbox/fontbox/ttf/horizontal_metrics_table.py`: added FontBox camelCase `getAdvanceWidth(...)` and `getLeftSideBearing(...)` aliases.
+- `pypdfbox/xmpbox/type/lang_alt.py`: setting a language value now removes all existing entries for that language before appending the replacement, preventing duplicate malformed LangAlt children from surviving.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.xmpbox import Cardinality, LangAlt, TextType, XMPMetadata
+from pypdfbox.xmpbox import Attribute, Cardinality, LangAlt, TextType, XMPMetadata
 
 
 @pytest.fixture
@@ -42,6 +42,23 @@ def test_lang_alt_overwrites_same_language(metadata: XMPMetadata) -> None:
     la.set_language_value("en-US", "first")
     la.set_language_value("en-US", "second")
     assert la.get_language_value("en-US") == "second"
+    assert len(la.get_all_properties()) == 1
+
+
+def test_lang_alt_overwrite_removes_duplicate_existing_language(
+    metadata: XMPMetadata,
+) -> None:
+    la = LangAlt(metadata, "ns", "p", "title")
+    for value in ("first", "second"):
+        child = TextType(metadata, "ns", "p", "title", value)
+        child.set_attribute(
+            Attribute("http://www.w3.org/XML/1998/namespace", "xml:lang", "en-US")
+        )
+        la.add_property(child)
+
+    la.set_language_value("en-US", "third")
+
+    assert la.get_language_value("en-US") == "third"
     assert len(la.get_all_properties()) == 1
 
 
