@@ -144,6 +144,25 @@ class PDPage:
         )
         self._page.set_item(_RESOURCES, cos)
 
+    # ---------- PDContentStream surface ----------
+
+    def get_b_box(self) -> PDRectangle:
+        """Return the page content bounding box.
+
+        Mirrors upstream ``PDPage.getBBox()`` from the ``PDContentStream``
+        contract. For a page, the content stream's bounding box is the
+        resolved crop box.
+        """
+        return self.get_crop_box()
+
+    def get_bbox(self) -> PDRectangle:
+        """Alias for :meth:`get_b_box`.
+
+        ``get_b_box`` follows the PDFBox ``getBBox`` case-conversion, while
+        ``get_bbox`` matches the spelling used by several local wrappers.
+        """
+        return self.get_b_box()
+
     # ---------- contents ----------
 
     def get_contents(self) -> bytes:
@@ -375,8 +394,7 @@ class PDPage:
         self._page.set_item(_ROTATE, COSInteger.get(int(rotation)))
 
     def get_user_unit(self) -> float:
-        """``/UserUnit`` (PDF 1.6+). Default 1.0; upstream clamps below 1.0
-        but accepts whatever the dict says — we follow."""
+        """``/UserUnit`` (PDF 1.6+). Default 1.0."""
         from pypdfbox.cos import COSFloat, COSInteger
 
         value = self._page.get_dictionary_object(_USER_UNIT)
@@ -387,6 +405,8 @@ class PDPage:
     def set_user_unit(self, unit: float) -> None:
         from pypdfbox.cos import COSFloat
 
+        if unit <= 0:
+            raise ValueError("user_unit must be positive")
         self._page.set_item(_USER_UNIT, COSFloat(float(unit)))
 
     # ---------- annotations ----------

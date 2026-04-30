@@ -165,98 +165,194 @@ class OS2WindowsMetricsTable(TTFTable):
     def get_version(self) -> int:
         return self._version
 
+    def set_version(self, value: int) -> None:
+        self._version = value
+
     def get_average_char_width(self) -> int:
         return self._average_char_width
+
+    def set_average_char_width(self, value: int) -> None:
+        self._average_char_width = value
 
     def get_weight_class(self) -> int:
         return self._weight_class
 
+    def set_weight_class(self, value: int) -> None:
+        self._weight_class = value
+
     def get_width_class(self) -> int:
         return self._width_class
+
+    def set_width_class(self, value: int) -> None:
+        self._width_class = value
 
     def get_fs_type(self) -> int:
         return self._fs_type
 
+    def set_fs_type(self, value: int) -> None:
+        self._fs_type = value
+
     def get_subscript_x_size(self) -> int:
         return self._subscript_x_size
+
+    def set_subscript_x_size(self, value: int) -> None:
+        self._subscript_x_size = value
 
     def get_subscript_y_size(self) -> int:
         return self._subscript_y_size
 
+    def set_subscript_y_size(self, value: int) -> None:
+        self._subscript_y_size = value
+
     def get_subscript_x_offset(self) -> int:
         return self._subscript_x_offset
+
+    def set_subscript_x_offset(self, value: int) -> None:
+        self._subscript_x_offset = value
 
     def get_subscript_y_offset(self) -> int:
         return self._subscript_y_offset
 
+    def set_subscript_y_offset(self, value: int) -> None:
+        self._subscript_y_offset = value
+
     def get_superscript_x_size(self) -> int:
         return self._superscript_x_size
+
+    def set_superscript_x_size(self, value: int) -> None:
+        self._superscript_x_size = value
 
     def get_superscript_y_size(self) -> int:
         return self._superscript_y_size
 
+    def set_superscript_y_size(self, value: int) -> None:
+        self._superscript_y_size = value
+
     def get_superscript_x_offset(self) -> int:
         return self._superscript_x_offset
+
+    def set_superscript_x_offset(self, value: int) -> None:
+        self._superscript_x_offset = value
 
     def get_superscript_y_offset(self) -> int:
         return self._superscript_y_offset
 
+    def set_superscript_y_offset(self, value: int) -> None:
+        self._superscript_y_offset = value
+
     def get_strikeout_size(self) -> int:
         return self._strikeout_size
+
+    def set_strikeout_size(self, value: int) -> None:
+        self._strikeout_size = value
 
     def get_strikeout_position(self) -> int:
         return self._strikeout_position
 
+    def set_strikeout_position(self, value: int) -> None:
+        self._strikeout_position = value
+
     def get_family_class(self) -> int:
         return self._family_class
+
+    def set_family_class(self, value: int) -> None:
+        self._family_class = value
 
     def get_panose(self) -> bytes:
         return self._panose
 
+    def set_panose(self, value: bytes) -> None:
+        self._panose = value
+
     def get_unicode_range1(self) -> int:
         return self._unicode_range1
+
+    def set_unicode_range1(self, value: int) -> None:
+        self._unicode_range1 = value
 
     def get_unicode_range2(self) -> int:
         return self._unicode_range2
 
+    def set_unicode_range2(self, value: int) -> None:
+        self._unicode_range2 = value
+
     def get_unicode_range3(self) -> int:
         return self._unicode_range3
+
+    def set_unicode_range3(self, value: int) -> None:
+        self._unicode_range3 = value
 
     def get_unicode_range4(self) -> int:
         return self._unicode_range4
 
+    def set_unicode_range4(self, value: int) -> None:
+        self._unicode_range4 = value
+
     def get_ach_vend_id(self) -> str:
         return self._ach_vend_id
+
+    def set_ach_vend_id(self, value: str) -> None:
+        self._ach_vend_id = value
 
     def get_fs_selection(self) -> int:
         return self._fs_selection
 
+    def set_fs_selection(self, value: int) -> None:
+        self._fs_selection = value
+
     def get_first_char_index(self) -> int:
         return self._first_char_index
+
+    def set_first_char_index(self, value: int) -> None:
+        self._first_char_index = value
 
     def get_last_char_index(self) -> int:
         return self._last_char_index
 
+    def set_last_char_index(self, value: int) -> None:
+        self._last_char_index = value
+
     def get_typo_ascender(self) -> int:
         return self._typo_ascender
+
+    def set_typo_ascender(self, value: int) -> None:
+        self._typo_ascender = value
 
     def get_typo_descender(self) -> int:
         return self._typo_descender
 
+    def set_typo_descender(self, value: int) -> None:
+        self._typo_descender = value
+
     def get_typo_line_gap(self) -> int:
         return self._typo_line_gap
+
+    def set_typo_line_gap(self, value: int) -> None:
+        self._typo_line_gap = value
 
     def get_win_ascent(self) -> int:
         return self._win_ascent
 
+    def set_win_ascent(self, value: int) -> None:
+        self._win_ascent = value
+
     def get_win_descent(self) -> int:
         return self._win_descent
+
+    def set_win_descent(self, value: int) -> None:
+        self._win_descent = value
 
     def get_code_page_range1(self) -> int:
         return self._code_page_range1
 
+    def set_code_page_range1(self, value: int) -> None:
+        self._code_page_range1 = value
+
     def get_code_page_range2(self) -> int:
         return self._code_page_range2
+
+    def set_code_page_range2(self, value: int) -> None:
+        self._code_page_range2 = value
 
     def get_height(self) -> int:
         return self._sx_height

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel import PDPage, PDRectangle
 from pypdfbox.pdmodel.common.pd_stream import PDStream
@@ -41,6 +43,29 @@ def test_set_crop_box_none_removes_entry() -> None:
     mb = page.get_media_box()
     assert cb.width == mb.width
     assert cb.height == mb.height
+
+
+# ---------- PDContentStream BBox ----------
+
+
+def test_get_b_box_returns_resolved_crop_box() -> None:
+    page = PDPage(PDRectangle(0.0, 0.0, 300.0, 400.0))
+    page.set_crop_box(PDRectangle(10.0, 20.0, 110.0, 220.0))
+
+    bbox = page.get_b_box()
+
+    assert (
+        bbox.lower_left_x,
+        bbox.lower_left_y,
+        bbox.upper_right_x,
+        bbox.upper_right_y,
+    ) == (10.0, 20.0, 110.0, 220.0)
+
+
+def test_get_bbox_aliases_get_b_box() -> None:
+    page = PDPage(PDRectangle(0.0, 0.0, 300.0, 400.0))
+
+    assert page.get_bbox() == page.get_b_box()
 
 
 # ---------- bleed / trim / art boxes ----------
@@ -151,6 +176,13 @@ def test_set_user_unit_round_trip() -> None:
     assert page.get_user_unit() == 2.0
     page.set_user_unit(0.5)
     assert page.get_user_unit() == 0.5
+
+
+def test_set_user_unit_rejects_non_positive_values() -> None:
+    page = PDPage()
+    for value in (0.0, -1.0):
+        with pytest.raises(ValueError):
+            page.set_user_unit(value)
 
 
 # ---------- struct parents ----------

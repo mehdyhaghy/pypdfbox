@@ -681,3 +681,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/pattern/pd_tiling_pattern.py`: added `get_contents_for_stream_parsing()`, delegating to the random-access content stream like upstream `PDContentStream`.
 - `pypdfbox/fontbox/ttf/post_script_table.py`: added scalar setters for PostScript table metrics and memory fields, plus `set_mim_mem_type1(...)` for upstream typo compatibility.
 - `pypdfbox/filter/ascii_hex_filter.py` (NEW) + package exports: added the upstream-named `ASCIIHexFilter` alias and registry entry without changing existing `/ASCIIHexDecode` or `/AHx` resolution.
+
+## Wave 51 — COS null arrays, widget actions, page BBox, OS/2 setters, DCT decode
+
+- `pypdfbox/cos/cos_array.py`: `get_object(index)` now resolves direct or indirect `COSNull.NULL` to `None`, matching the dictionary lookup behavior and upstream `COSArray.getObject`.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py`: widget `/AA` now returns and accepts `PDAnnotationAdditionalActions`, matching the annotation additional-actions wrapper used upstream.
+- `pypdfbox/pdmodel/pd_page.py`: added `get_b_box()` / `get_bbox()` for the page content-stream bounding box and tightened `set_user_unit(...)` to reject non-positive values.
+- `pypdfbox/fontbox/ttf/os2_windows_metrics_table.py`: added upstream-shaped setters for OS/2 metric fields including version, weight/width class, Panose, Unicode ranges, typo/win metrics, and code-page ranges.
+- `pypdfbox/filter/dct_decode.py` (NEW) + package exports: added `/DCTDecode` JPEG decoding via Pillow, DecodeResult image parameters, long-name and `/DCT` short-name registry wiring, and explicit decode-only `encode()`.

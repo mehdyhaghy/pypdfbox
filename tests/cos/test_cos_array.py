@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSObject
+from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull, COSObject
 
 
 def test_empty_construction() -> None:
@@ -76,6 +76,17 @@ def test_get_object_returns_direct_value_unchanged() -> None:
     direct = COSInteger(99)
     a = COSArray([direct])
     assert a.get_object(0) is direct
+
+
+def test_get_object_returns_none_for_cos_null() -> None:
+    direct = COSArray([COSNull.NULL])
+    assert direct.get(0) is COSNull.NULL
+    assert direct.get_object(0) is None
+
+    indirect_null = COSObject(8, 0, resolved=COSNull.NULL)
+    indirect = COSArray([indirect_null])
+    assert indirect.get(0) is indirect_null
+    assert indirect.get_object(0) is None
 
 
 def test_index_of_returns_minus_one_for_missing() -> None:

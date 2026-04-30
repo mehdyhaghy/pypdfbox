@@ -62,17 +62,32 @@ def test_action_clear() -> None:
 
 
 def test_actions_aa_round_trip() -> None:
-    from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+    from pypdfbox.pdmodel.interactive.action import PDAnnotationAdditionalActions
 
     ann = PDAnnotationWidget()
     aa = COSDictionary()
     aa.set_name(COSName.TYPE, "AA")  # type: ignore[attr-defined]
     ann.set_actions(aa)
     resolved = ann.get_actions()
-    assert isinstance(resolved, PDFormFieldAdditionalActions)
+    assert isinstance(resolved, PDAnnotationAdditionalActions)
     assert resolved.get_cos_object() is aa
     ann.set_actions(None)
     assert ann.get_actions() is None
+
+
+def test_actions_round_trip_annotation_additional_actions_wrapper() -> None:
+    from pypdfbox.pdmodel.interactive.action import PDAnnotationAdditionalActions
+
+    ann = PDAnnotationWidget()
+    actions = PDAnnotationAdditionalActions()
+    actions.set_e(PDActionURI())
+
+    ann.set_actions(actions)
+
+    resolved = ann.get_actions()
+    assert isinstance(resolved, PDAnnotationAdditionalActions)
+    assert resolved.get_cos_object() is actions.get_cos_object()
+    assert isinstance(resolved.get_e(), PDActionURI)
 
 
 def test_border_style_round_trip() -> None:

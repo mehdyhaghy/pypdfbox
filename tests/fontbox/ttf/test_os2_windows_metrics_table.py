@@ -280,3 +280,74 @@ def test_ach_vend_id_decoded_as_iso_8859_1() -> None:
     table = OS2WindowsMetricsTable()
     table.read(None, MemoryTTFDataStream(raw))  # type: ignore[arg-type]
     assert table.get_ach_vend_id() == "ABCD"
+
+
+def test_upstream_metric_setters_round_trip() -> None:
+    table = OS2WindowsMetricsTable()
+    panose = b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a"
+
+    table.set_version(2)
+    table.set_average_char_width(511)
+    table.set_weight_class(OS2WindowsMetricsTable.WEIGHT_CLASS_BOLD)
+    table.set_width_class(OS2WindowsMetricsTable.WIDTH_CLASS_EXPANDED)
+    table.set_fs_type(OS2WindowsMetricsTable.FSTYPE_PREVIEW_AND_PRINT)
+    table.set_subscript_x_size(10)
+    table.set_subscript_y_size(11)
+    table.set_subscript_x_offset(-12)
+    table.set_subscript_y_offset(-13)
+    table.set_superscript_x_size(14)
+    table.set_superscript_y_size(15)
+    table.set_superscript_x_offset(16)
+    table.set_superscript_y_offset(17)
+    table.set_strikeout_size(18)
+    table.set_strikeout_position(19)
+    table.set_family_class(OS2WindowsMetricsTable.FAMILY_CLASS_SANS_SERIF)
+    table.set_panose(panose)
+    table.set_unicode_range1(0x01020304)
+    table.set_unicode_range2(0x05060708)
+    table.set_unicode_range3(0x090A0B0C)
+    table.set_unicode_range4(0x0D0E0F10)
+    table.set_ach_vend_id("TEST")
+    table.set_fs_selection(0x0040)
+    table.set_first_char_index(32)
+    table.set_last_char_index(0xFFFD)
+    table.set_typo_ascender(800)
+    table.set_typo_descender(-200)
+    table.set_typo_line_gap(90)
+    table.set_win_ascent(1000)
+    table.set_win_descent(250)
+    table.set_code_page_range1(0x0000019F)
+    table.set_code_page_range2(0x80000000)
+
+    assert table.get_version() == 2
+    assert table.get_average_char_width() == 511
+    assert table.get_weight_class() == OS2WindowsMetricsTable.WEIGHT_CLASS_BOLD
+    assert table.get_width_class() == OS2WindowsMetricsTable.WIDTH_CLASS_EXPANDED
+    assert table.get_fs_type() == OS2WindowsMetricsTable.FSTYPE_PREVIEW_AND_PRINT
+    assert table.get_subscript_x_size() == 10
+    assert table.get_subscript_y_size() == 11
+    assert table.get_subscript_x_offset() == -12
+    assert table.get_subscript_y_offset() == -13
+    assert table.get_superscript_x_size() == 14
+    assert table.get_superscript_y_size() == 15
+    assert table.get_superscript_x_offset() == 16
+    assert table.get_superscript_y_offset() == 17
+    assert table.get_strikeout_size() == 18
+    assert table.get_strikeout_position() == 19
+    assert table.get_family_class() == OS2WindowsMetricsTable.FAMILY_CLASS_SANS_SERIF
+    assert table.get_panose() == panose
+    assert table.get_unicode_range1() == 0x01020304
+    assert table.get_unicode_range2() == 0x05060708
+    assert table.get_unicode_range3() == 0x090A0B0C
+    assert table.get_unicode_range4() == 0x0D0E0F10
+    assert table.get_ach_vend_id() == "TEST"
+    assert table.get_fs_selection() == 0x0040
+    assert table.get_first_char_index() == 32
+    assert table.get_last_char_index() == 0xFFFD
+    assert table.get_typo_ascender() == 800
+    assert table.get_typo_descender() == -200
+    assert table.get_typo_line_gap() == 90
+    assert table.get_win_ascent() == 1000
+    assert table.get_win_descent() == 250
+    assert table.get_code_page_range1() == 0x0000019F
+    assert table.get_code_page_range2() == 0x80000000

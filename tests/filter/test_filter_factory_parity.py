@@ -16,6 +16,7 @@ from pypdfbox.filter import (
     ASCII85Decode,
     ASCIIHexDecode,
     CCITTFaxDecode,
+    DCTDecode,
     Filter,
     FilterFactory,
     FlateDecode,
@@ -63,6 +64,10 @@ class TestGetFilter:
     def test_get_filter_ccitt(self):
         f = FilterFactory.get_filter("CCITTFaxDecode")
         assert isinstance(f, CCITTFaxDecode)
+
+    def test_get_filter_dct(self):
+        f = FilterFactory.get_filter("DCTDecode")
+        assert isinstance(f, DCTDecode)
 
     def test_get_filter_jpx(self):
         f = FilterFactory.get_filter("JPXDecode")
@@ -112,6 +117,10 @@ class TestGetFilterByShortName:
     def test_short_ccf_returns_ccitt(self):
         f = FilterFactory.get_filter_by_short_name("CCF")
         assert isinstance(f, CCITTFaxDecode)
+
+    def test_short_dct_returns_dct(self):
+        f = FilterFactory.get_filter_by_short_name("DCT")
+        assert isinstance(f, DCTDecode)
 
     def test_short_jpx_returns_jpx(self):
         f = FilterFactory.get_filter_by_short_name("JPX")

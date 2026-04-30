@@ -4,6 +4,7 @@ from .ascii85_decode import ASCII85Decode
 from .ascii_hex_decode import ASCIIHexDecode
 from .ascii_hex_filter import ASCIIHexFilter
 from .ccitt_fax_decode import CCITTFaxDecode
+from .dct_decode import DCTDecode
 from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
@@ -21,6 +22,7 @@ __all__ = [
     "ASCIIHexFilter",
     "CCITTFaxDecode",
     "DecodeResult",
+    "DCTDecode",
     "Filter",
     "FilterFactory",
     "FlateDecode",

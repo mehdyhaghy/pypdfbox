@@ -7,6 +7,7 @@ from .cos_base import COSBase
 from .cos_float import COSFloat
 from .cos_integer import COSInteger
 from .cos_name import COSName
+from .cos_null import COSNull
 from .cos_object import COSObject
 from .cos_string import COSString
 from .i_cos_visitor import ICOSVisitor
@@ -43,7 +44,9 @@ class COSArray(COSBase):
         target; otherwise returns the entry itself."""
         item = self._items[index]
         if isinstance(item, COSObject):
-            return item.get_object()
+            item = item.get_object()
+        if item is COSNull.NULL:
+            return None
         return item
 
     def set(self, index: int, item: COSBase) -> None:

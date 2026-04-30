@@ -9,8 +9,13 @@ from .pd_annotation import PDAnnotation
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.action import (
         PDAction,
-        PDFormFieldAdditionalActions,
+        PDAnnotationAdditionalActions,
     )
+
+    from .pd_appearance_characteristics_dictionary import (
+        PDAppearanceCharacteristicsDictionary,
+    )
+    from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 
 _H: COSName = COSName.get_pdf_name("H")
@@ -88,17 +93,17 @@ class PDAnnotationWidget(PDAnnotation):
 
     # ---------- /AA (additional actions) ----------
 
-    def get_actions(self) -> PDFormFieldAdditionalActions | None:
-        """Widget ``/AA`` holds form-field actions (PDF 32000-1 Table 196)."""
-        from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+    def get_actions(self) -> PDAnnotationAdditionalActions | None:
+        """Widget ``/AA`` holds annotation additional actions."""
+        from pypdfbox.pdmodel.interactive.action import PDAnnotationAdditionalActions
 
         value = self._dict.get_dictionary_object(_AA)
         if isinstance(value, COSDictionary):
-            return PDFormFieldAdditionalActions(value)
+            return PDAnnotationAdditionalActions(value)
         return None
 
     def set_actions(
-        self, actions: PDFormFieldAdditionalActions | COSDictionary | None
+        self, actions: PDAnnotationAdditionalActions | COSDictionary | None
     ) -> None:
         if actions is None:
             self._dict.remove_item(_AA)
@@ -110,7 +115,7 @@ class PDAnnotationWidget(PDAnnotation):
 
     # ---------- /BS (border style) ----------
 
-    def get_border_style(self) -> "PDBorderStyleDictionary | None":
+    def get_border_style(self) -> PDBorderStyleDictionary | None:
         from .pd_border_style_dictionary import PDBorderStyleDictionary
 
         value = self._dict.get_dictionary_object(_BS)
@@ -119,7 +124,7 @@ class PDAnnotationWidget(PDAnnotation):
         return None
 
     def set_border_style(
-        self, bs: "PDBorderStyleDictionary | COSDictionary | None"
+        self, bs: PDBorderStyleDictionary | COSDictionary | None
     ) -> None:
         if bs is None:
             self._dict.remove_item(_BS)
@@ -131,7 +136,9 @@ class PDAnnotationWidget(PDAnnotation):
 
     # ---------- /MK (appearance characteristics) ----------
 
-    def get_appearance_characteristics(self) -> "PDAppearanceCharacteristicsDictionary | None":
+    def get_appearance_characteristics(
+        self,
+    ) -> PDAppearanceCharacteristicsDictionary | None:
         from .pd_appearance_characteristics_dictionary import (
             PDAppearanceCharacteristicsDictionary,
         )
@@ -142,7 +149,7 @@ class PDAnnotationWidget(PDAnnotation):
         return None
 
     def set_appearance_characteristics(
-        self, ac: "PDAppearanceCharacteristicsDictionary | COSDictionary | None"
+        self, ac: PDAppearanceCharacteristicsDictionary | COSDictionary | None
     ) -> None:
         if ac is None:
             self._dict.remove_item(_MK)
