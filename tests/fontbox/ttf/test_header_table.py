@@ -116,6 +116,48 @@ def test_defaults_before_read() -> None:
     assert table.get_modified() is None
 
 
+def test_upstream_header_setters_round_trip() -> None:
+    table = HeaderTable()
+    created = datetime(2022, 2, 3, 4, 5, 6, tzinfo=UTC)
+    modified = datetime(2023, 3, 4, 5, 6, 7, tzinfo=UTC)
+
+    table.set_version(1.5)
+    table.set_font_revision(2.25)
+    table.set_check_sum_adjustment(0x01020304)
+    table.set_magic_number(0x5F0F3CF5)
+    table.set_flags(0x001B)
+    table.set_units_per_em(1000)
+    table.set_created(created)
+    table.set_modified(modified)
+    table.set_x_min(-10)
+    table.set_y_min(-20)
+    table.set_x_max(900)
+    table.set_y_max(1100)
+    table.set_mac_style(HeaderTable.MAC_STYLE_BOLD)
+    table.set_lowest_rec_ppem(8)
+    table.set_font_direction_hint(2)
+    table.set_index_to_loc_format(1)
+    table.set_glyph_data_format(0)
+
+    assert table.get_version() == 1.5
+    assert table.get_font_revision() == 2.25
+    assert table.get_check_sum_adjustment() == 0x01020304
+    assert table.get_magic_number() == 0x5F0F3CF5
+    assert table.get_flags() == 0x001B
+    assert table.get_units_per_em() == 1000
+    assert table.get_created() == created
+    assert table.get_modified() == modified
+    assert table.get_x_min() == -10
+    assert table.get_y_min() == -20
+    assert table.get_x_max() == 900
+    assert table.get_y_max() == 1100
+    assert table.get_mac_style() == HeaderTable.MAC_STYLE_BOLD
+    assert table.get_lowest_rec_ppem() == 8
+    assert table.get_font_direction_hint() == 2
+    assert table.get_index_to_loc_format() == 1
+    assert table.get_glyph_data_format() == 0
+
+
 def test_signed_bbox_handles_negatives() -> None:
     raw = _build_head(x_min=-32768, y_min=-32768, x_max=32767, y_max=32767)
     table = HeaderTable()

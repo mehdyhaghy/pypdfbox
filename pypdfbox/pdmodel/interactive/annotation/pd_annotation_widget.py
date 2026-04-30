@@ -11,6 +11,7 @@ if TYPE_CHECKING:
         PDAction,
         PDAnnotationAdditionalActions,
     )
+    from pypdfbox.pdmodel.interactive.form.pd_terminal_field import PDTerminalField
 
     from .pd_appearance_characteristics_dictionary import (
         PDAppearanceCharacteristicsDictionary,
@@ -171,9 +172,28 @@ class PDAnnotationWidget(PDAnnotation):
             return value
         return None
 
-    def set_parent(self, field: COSDictionary | None) -> None:
+    def set_parent(self, field: PDTerminalField | COSDictionary | None) -> None:
+        """Set the parent field of a widget annotation.
+
+        Mirrors upstream ``setParent(PDTerminalField)`` for multi-widget
+        fields, while retaining raw ``COSDictionary`` support for callers
+        that already operate at the COS layer.
+        """
         if field is None:
             self._dict.remove_item(_PARENT)
+            return
+        from pypdfbox.pdmodel.interactive.form.pd_terminal_field import (
+            PDTerminalField,
+        )
+
+        if isinstance(field, PDTerminalField):
+            field_dict = field.get_cos_object()
+            if field_dict is self._dict:
+                raise ValueError(
+                    "set_parent() is not to be called for a field that shares "
+                    "a dictionary with its only widget"
+                )
+            self._dict.set_item(_PARENT, field_dict)
             return
         self._dict.set_item(
             _PARENT,

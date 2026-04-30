@@ -47,6 +47,14 @@ def test_null_entry_is_free_object_zero_gen_65535() -> None:
     assert n.offset == 0
 
 
+def test_nullentry_constant_matches_upstream_singleton() -> None:
+    n = COSWriterXRefEntry.NULLENTRY
+    assert n is COSWriterXRefEntry.get_null_entry()
+    assert n.is_free() is True
+    assert n.key == COSObjectKey(0, 65535)
+    assert n.offset == 0
+
+
 def test_null_entry_singleton() -> None:
     a = COSWriterXRefEntry.get_null_entry()
     b = COSWriterXRefEntry.get_null_entry()

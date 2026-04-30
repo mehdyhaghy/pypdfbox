@@ -689,3 +689,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_page.py`: added `get_b_box()` / `get_bbox()` for the page content-stream bounding box and tightened `set_user_unit(...)` to reject non-positive values.
 - `pypdfbox/fontbox/ttf/os2_windows_metrics_table.py`: added upstream-shaped setters for OS/2 metric fields including version, weight/width class, Panose, Unicode ranges, typo/win metrics, and code-page ranges.
 - `pypdfbox/filter/dct_decode.py` (NEW) + package exports: added `/DCTDecode` JPEG decoding via Pillow, DecodeResult image parameters, long-name and `/DCT` short-name registry wiring, and explicit decode-only `encode()`.
+
+## Wave 52 — xref singleton, FlateFilter, image suffixes, widget parents, header setters
+
+- `pypdfbox/pdfwriter/cos_writer_xref_entry.py`: exposed upstream's `COSWriterXRefEntry.NULLENTRY` singleton and routed `get_null_entry()` through it.
+- `pypdfbox/filter/flate_filter.py` (NEW) + package exports: added the upstream-named `FlateFilter` alias and registry entry without changing existing `/FlateDecode` or `/Fl` resolution.
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: added `is_empty()` and `get_suffix()` mapping image filters to upstream-style export suffixes.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py`: `set_parent(...)` now accepts `PDTerminalField` and rejects the shared-dictionary single-widget case, matching upstream's typed parent contract.
+- `pypdfbox/fontbox/ttf/header_table.py`: added upstream-shaped setters for parsed `head` table fields including version, revision, checksum, dates, bounding box, style flags, loca format, and glyph data format.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import ClassVar
 
 from pypdfbox.cos import COSBase, COSObjectKey
 
@@ -20,6 +21,7 @@ class COSWriterXRefEntry:
     key: COSObjectKey
     obj: COSBase | None = None
     free: bool = False
+    NULLENTRY: ClassVar[COSWriterXRefEntry]
 
     # ---------- accessors (PDFBox-style) ----------
 
@@ -65,7 +67,7 @@ class COSWriterXRefEntry:
     def get_null_entry(cls) -> COSWriterXRefEntry:
         """Return the canonical free-list head: offset 0, generation 65535,
         marked free. Mirrors upstream ``COSWriterXRefEntry.NULLENTRY``."""
-        return _NULL_ENTRY
+        return cls.NULLENTRY
 
 
 _NULL_ENTRY = COSWriterXRefEntry(
@@ -74,3 +76,4 @@ _NULL_ENTRY = COSWriterXRefEntry(
     obj=None,
     free=True,
 )
+COSWriterXRefEntry.NULLENTRY = _NULL_ENTRY

@@ -64,50 +64,101 @@ class HeaderTable(TTFTable):
     def get_version(self) -> float:
         return self._version
 
+    def set_version(self, value: float) -> None:
+        self._version = value
+
     def get_font_revision(self) -> float:
         return self._font_revision
+
+    def set_font_revision(self, value: float) -> None:
+        self._font_revision = value
 
     def get_check_sum_adjustment(self) -> int:
         return self._check_sum_adjustment
 
+    def set_check_sum_adjustment(self, value: int) -> None:
+        self._check_sum_adjustment = value
+
     def get_magic_number(self) -> int:
         return self._magic_number
+
+    def set_magic_number(self, value: int) -> None:
+        self._magic_number = value
 
     def get_flags(self) -> int:
         return self._flags
 
+    def set_flags(self, value: int) -> None:
+        self._flags = value
+
     def get_units_per_em(self) -> int:
         return self._units_per_em
+
+    def set_units_per_em(self, value: int) -> None:
+        self._units_per_em = value
 
     def get_created(self) -> datetime | None:
         return self._created
 
+    def set_created(self, value: datetime | None) -> None:
+        self._created = value
+
     def get_modified(self) -> datetime | None:
         return self._modified
+
+    def set_modified(self, value: datetime | None) -> None:
+        self._modified = value
 
     def get_x_min(self) -> int:
         return self._x_min
 
+    def set_x_min(self, value: int) -> None:
+        self._x_min = value
+
     def get_y_min(self) -> int:
         return self._y_min
+
+    def set_y_min(self, value: int) -> None:
+        self._y_min = value
 
     def get_x_max(self) -> int:
         return self._x_max
 
+    def set_x_max(self, value: int) -> None:
+        self._x_max = value
+
     def get_y_max(self) -> int:
         return self._y_max
+
+    def set_y_max(self, value: int) -> None:
+        self._y_max = value
 
     def get_mac_style(self) -> int:
         return self._mac_style
 
+    def set_mac_style(self, value: int) -> None:
+        self._mac_style = value
+
     def get_lowest_rec_ppem(self) -> int:
         return self._lowest_rec_ppem
+
+    def set_lowest_rec_ppem(self, value: int) -> None:
+        self._lowest_rec_ppem = value
 
     def get_font_direction_hint(self) -> int:
         return self._font_direction_hint
 
+    def set_font_direction_hint(self, value: int) -> None:
+        self._font_direction_hint = value
+
     def get_index_to_loc_format(self) -> int:
         return self._index_to_loc_format
 
+    def set_index_to_loc_format(self, value: int) -> None:
+        self._index_to_loc_format = value
+
     def get_glyph_data_format(self) -> int:
         return self._glyph_data_format
+
+    def set_glyph_data_format(self, value: int) -> None:
+        self._glyph_data_format = value

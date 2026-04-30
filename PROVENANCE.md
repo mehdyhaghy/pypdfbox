@@ -1043,3 +1043,12 @@ Existing upstream-derived modules extended in Wave 50: `ContentStreamWriter`, `C
 | `tests/filter/test_dct_decode.py` | 3.0.x | hand-written coverage for `/DCTDecode` decode-only behavior and registry wiring |
 
 Existing upstream-derived modules extended in Wave 51: `COSArray`, `PDAnnotationWidget`, `PDPage`, and `OS2WindowsMetricsTable`.
+
+### Wave 52 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/filter/flate_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/FlateFilter.java` |
+| `tests/filter/test_flate_filter.py` | 3.0.x | hand-written coverage for the upstream-named `FlateFilter` alias and registry wiring |
+
+Existing upstream-derived modules extended in Wave 52: `COSWriterXRefEntry`, `PDImageXObject`, `PDAnnotationWidget`, and `HeaderTable`.

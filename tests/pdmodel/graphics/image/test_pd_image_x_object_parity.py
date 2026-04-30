@@ -36,6 +36,70 @@ def test_defaults() -> None:
     assert image.get_struct_parent() == -1
     assert image.get_metadata() is None
     assert image.get_oc() is None
+    assert image.is_empty() is True
+    assert image.get_suffix() == "png"
+
+
+# ---------- stream helpers ----------
+
+
+def test_is_empty_reflects_raw_stream_length() -> None:
+    image = _make_image()
+    assert image.is_empty() is True
+
+    image.get_cos_object().set_raw_data(b"\x00\x01")
+    assert image.is_empty() is False
+
+
+def test_get_suffix_maps_native_image_filters() -> None:
+    image = _make_image()
+    cos = image.get_cos_object()
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("DCTDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "jpg"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("JPXDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "jpx"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("CCITTFaxDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "tiff"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("JBIG2Decode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "jb2"
+
+
+def test_get_suffix_maps_lossless_pdf_filters_to_png() -> None:
+    image = _make_image()
+    cos = image.get_cos_object()
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("FlateDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "png"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("LZWDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "png"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("RunLengthDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "png"
+
+
+def test_get_suffix_checks_entire_filter_chain() -> None:
+    image = _make_image()
+    filters = COSArray()
+    filters.add(COSName.get_pdf_name("ASCII85Decode"))
+    filters.add(COSName.get_pdf_name("DCTDecode"))
+    image.get_cos_object().set_item(COSName.FILTER, filters)  # type: ignore[attr-defined]
+
+    assert image.get_suffix() == "jpg"
+
+
+def test_get_suffix_unknown_filter_returns_none() -> None:
+    image = _make_image()
+    image.get_cos_object().set_item(
+        COSName.FILTER,  # type: ignore[attr-defined]
+        COSName.get_pdf_name("Crypt"),
+    )
+
+    assert image.get_suffix() is None
 
 
 # ---------- /Mask explicit-mask Image XObject ----------

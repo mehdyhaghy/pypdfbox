@@ -35,6 +35,13 @@ _STRUCT_PARENT: COSName = COSName.get_pdf_name("StructParent")
 _METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _OC: COSName = COSName.get_pdf_name("OC")
 _SMASK_IN_DATA: COSName = COSName.get_pdf_name("SMaskInData")
+_DCT_DECODE: COSName = COSName.get_pdf_name("DCTDecode")
+_JPX_DECODE: COSName = COSName.get_pdf_name("JPXDecode")
+_CCITTFAX_DECODE: COSName = COSName.get_pdf_name("CCITTFaxDecode")
+_FLATE_DECODE: COSName = COSName.get_pdf_name("FlateDecode")
+_LZW_DECODE: COSName = COSName.get_pdf_name("LZWDecode")
+_RUN_LENGTH_DECODE: COSName = COSName.get_pdf_name("RunLengthDecode")
+_JBIG2_DECODE: COSName = COSName.get_pdf_name("JBIG2Decode")
 
 
 class PDImageXObject(PDXObject):
@@ -128,6 +135,38 @@ class PDImageXObject(PDXObject):
         the same stop-filter semantics apply (e.g. images stop at
         ``DCTDecode`` to keep JPEG bytes intact for downstream encoders)."""
         return self.get_stream().create_input_stream(stop_filters)
+
+    def is_empty(self) -> bool:
+        """Return ``True`` when the underlying stream has no raw data."""
+        cos = self.get_cos_object()
+        return isinstance(cos, COSStream) and cos.get_length() == 0
+
+    def get_suffix(self) -> str | None:
+        """Return the conventional file suffix implied by the image filters.
+
+        Mirrors upstream ``PDImageXObject.getSuffix()``: no filter and
+        lossless PDF filters are treated as PNG-exportable image data,
+        JPEG/JPEG2000/CCITT/JBIG2 filters use their native suffixes, and
+        unsupported filters return ``None``.
+        """
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return None
+        filters = cos.get_filter_list()
+        if not filters:
+            return "png"
+        if _DCT_DECODE in filters:
+            return "jpg"
+        if _JPX_DECODE in filters:
+            return "jpx"
+        if _CCITTFAX_DECODE in filters:
+            return "tiff"
+        if any(f in filters for f in (_FLATE_DECODE, _LZW_DECODE, _RUN_LENGTH_DECODE)):
+            return "png"
+        if _JBIG2_DECODE in filters:
+            return "jb2"
+        _LOG.warning("get_suffix() returns None, filters: %s", filters)
+        return None
 
     # ---------- /Mask (explicit-mask Image XObject) ----------
 

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
     PDAnnotationWidget,
 )
+from pypdfbox.pdmodel.interactive.form import PDAcroForm
+from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 
 
 def test_default_constructor_sets_widget_subtype() -> None:
@@ -129,3 +133,25 @@ def test_parent_round_trip() -> None:
     assert ann.get_parent() is parent
     ann.set_parent(None)
     assert ann.get_parent() is None
+
+
+def test_set_parent_accepts_pd_terminal_field() -> None:
+    ann = PDAnnotationWidget()
+    field = PDTextField(PDAcroForm())
+    field.set_partial_name("field1")
+
+    ann.set_parent(field)
+
+    assert ann.get_parent() is field.get_cos_object()
+    assert (
+        ann.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Parent"))
+        is field.get_cos_object()
+    )
+
+
+def test_set_parent_rejects_shared_widget_field_dictionary() -> None:
+    field = PDTextField(PDAcroForm())
+    ann = field.get_widgets()[0]
+
+    with pytest.raises(ValueError, match="shares a dictionary"):
+        ann.set_parent(field)
