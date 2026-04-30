@@ -745,3 +745,9 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_rubber_stamp.py` + `pd_annotation_stamp.py`: added PDFBox camelCase `getName()` / `setName(...)` aliases over the stamp-name accessors.
 - `pypdfbox/fontbox/ttf/horizontal_metrics_table.py`: added FontBox camelCase `getAdvanceWidth(...)` and `getLeftSideBearing(...)` aliases.
 - `pypdfbox/xmpbox/type/lang_alt.py`: setting a language value now removes all existing entries for that language before appending the replacement, preventing duplicate malformed LangAlt children from surviving.
+
+## Wave 59 — dictionary Java aliases, movie Java aliases, TrueTypeFont Java aliases
+
+- `pypdfbox/cos/cos_dictionary.py`: added PDFBox camelCase aliases for core dictionary operations (`setItem`, `getItem`, `removeItem`, `getDictionaryObject`, `containsKey`, `getCOSDictionary`, and `getCOSArray`).
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_movie.py`: added PDFBox camelCase aliases for title, movie dictionary, and activation accessors (`getTitle` / `setTitle`, `getMovie` / `setMovie`, and `getActivation` / `setActivation`).
+- `pypdfbox/fontbox/ttf/true_type_font.py`: added FontBox camelCase aliases for common scalar/name/table accessors (`getUnitsPerEm`, `getNumberOfGlyphs`, `getTable`, `getTables`, `getName`, `getFamilyName`, `getFullName`, and `getVersion`).

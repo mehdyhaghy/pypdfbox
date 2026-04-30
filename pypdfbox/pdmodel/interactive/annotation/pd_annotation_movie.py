@@ -40,6 +40,12 @@ class PDAnnotationMovie(PDAnnotation):
     def set_title(self, value: str | None) -> None:
         self._dict.set_string(_T, value)
 
+    def getTitle(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_title()
+
+    def setTitle(self, value: str | None) -> None:  # noqa: N802 - upstream Java name
+        self.set_title(value)
+
     # ---------- /Movie (movie dictionary, required) ----------
 
     def get_movie_dictionary(self) -> COSDictionary | None:
@@ -54,6 +60,9 @@ class PDAnnotationMovie(PDAnnotation):
             return None
         return PDMovie(value)
 
+    def getMovie(self) -> PDMovie | None:  # noqa: N802 - upstream Java name
+        return self.get_movie()
+
     def set_movie(self, value: PDMovie | COSDictionary | None) -> None:
         if value is None:
             self._dict.remove_item(_MOVIE)
@@ -62,6 +71,11 @@ class PDAnnotationMovie(PDAnnotation):
             self._dict.set_item(_MOVIE, value.get_cos_object())
             return
         self._dict.set_item(_MOVIE, value)
+
+    def setMovie(  # noqa: N802 - upstream Java name
+        self, value: PDMovie | COSDictionary | None
+    ) -> None:
+        self.set_movie(value)
 
     # ---------- /A (activation: boolean or activation dict, default true) ----------
 
@@ -75,6 +89,9 @@ class PDAnnotationMovie(PDAnnotation):
         if isinstance(value, COSBoolean):
             return value.value
         return None
+
+    def getActivation(self) -> PDMovieActivation | bool | None:  # noqa: N802
+        return self.get_activation()
 
     def set_activation(
         self, value: PDMovieActivation | COSBase | bool | None
@@ -90,6 +107,11 @@ class PDAnnotationMovie(PDAnnotation):
             return
         cos_value = value.get_cos_object() if hasattr(value, "get_cos_object") else value
         self._dict.set_item(_A, cos_value)
+
+    def setActivation(  # noqa: N802 - upstream Java name
+        self, value: PDMovieActivation | COSBase | bool | None
+    ) -> None:
+        self.set_activation(value)
 
 
 __all__ = ["PDAnnotationMovie"]

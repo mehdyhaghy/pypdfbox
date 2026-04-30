@@ -207,6 +207,29 @@ def test_get_cos_array_returns_resolved_array_or_none() -> None:
     assert indirect.get_cos_array("Kids") is array
 
 
+def test_pdfbox_camelcase_core_aliases_delegate() -> None:
+    d = COSDictionary()
+    value = COSInteger(3)
+    d.setItem("Count", value)
+
+    assert d.getItem("Count") is value
+    assert d.getDictionaryObject("Count") is value
+    assert d.containsKey("Count")
+    assert d.removeItem("Count") is value
+    assert not d.containsKey("Count")
+
+
+def test_pdfbox_camelcase_typed_aliases_delegate() -> None:
+    child = COSDictionary()
+    kids = COSArray([COSInteger(1)])
+    d = COSDictionary()
+    d.setItem("Child", COSObject(11, 0, resolved=child))
+    d.setItem("Kids", COSObject(12, 0, resolved=kids))
+
+    assert d.getCOSDictionary("Child") is child
+    assert d.getCOSArray("Kids") is kids
+
+
 def test_invalid_key_type_raises() -> None:
     d = COSDictionary()
     with pytest.raises(TypeError):

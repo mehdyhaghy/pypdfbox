@@ -69,6 +69,14 @@ def test_get_tables_returns_directory_entries(liberation_sans: TrueTypeFont) -> 
     assert {table.get_tag() for table in tables} == set(table_map)
 
 
+def test_pdfbox_camelcase_table_aliases(liberation_sans: TrueTypeFont) -> None:
+    head = liberation_sans.getTable("head")
+
+    assert head is liberation_sans.get_table("head")
+    assert liberation_sans.getTables() == liberation_sans.get_tables()
+    assert head is not None
+
+
 def test_get_table_bytes_matches_directory_length(
     liberation_sans: TrueTypeFont,
 ) -> None:
@@ -109,6 +117,15 @@ def test_get_naming_is_cached(liberation_sans: TrueTypeFont) -> None:
     a = liberation_sans.get_naming()
     b = liberation_sans.get_naming()
     assert a is b
+
+
+def test_pdfbox_camelcase_scalar_name_aliases(liberation_sans: TrueTypeFont) -> None:
+    assert liberation_sans.getUnitsPerEm() == liberation_sans.get_units_per_em()
+    assert liberation_sans.getNumberOfGlyphs() == liberation_sans.get_number_of_glyphs()
+    assert liberation_sans.getName() == liberation_sans.get_name()
+    assert liberation_sans.getFamilyName() == liberation_sans.get_family_name()
+    assert liberation_sans.getFullName() == liberation_sans.get_full_name()
+    assert liberation_sans.getVersion() == liberation_sans.get_version()
 
 
 def test_get_post_script(liberation_sans: TrueTypeFont) -> None:

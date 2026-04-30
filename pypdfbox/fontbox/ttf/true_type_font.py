@@ -121,8 +121,14 @@ class TrueTypeFont:
     def get_units_per_em(self) -> int:
         return self.unitsPerEm
 
+    def getUnitsPerEm(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_units_per_em()
+
     def get_number_of_glyphs(self) -> int:
         return self.numGlyphs
+
+    def getNumberOfGlyphs(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_number_of_glyphs()
 
     def get_advance_width(self, gid: int) -> int:
         """Advance width (in font units) for ``gid``. Falls back to 250
@@ -172,6 +178,9 @@ class TrueTypeFont:
         """
         return self.get_table_map().get(tag)
 
+    def getTable(self, tag: str) -> TTFTable | None:  # noqa: N802
+        return self.get_table(tag)
+
     def get_tables(self) -> list[TTFTable]:
         """Return all SFNT-directory entries.
 
@@ -180,6 +189,9 @@ class TrueTypeFont:
         :meth:`get_table_map`.
         """
         return list(self.get_table_map().values())
+
+    def getTables(self) -> list[TTFTable]:  # noqa: N802
+        return self.get_tables()
 
     def get_table_bytes(self, table: str | TTFTable) -> bytes | None:
         """Return the raw on-disk bytes of ``table``, or ``None`` if absent.
@@ -531,17 +543,29 @@ class TrueTypeFont:
         """PostScript name of the font (name table, nameID 6)."""
         return self._get_name_string(6)
 
+    def getName(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_name()
+
     def get_family_name(self) -> str | None:
         """Font family name (name table, nameID 1)."""
         return self._get_name_string(1)
+
+    def getFamilyName(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_family_name()
 
     def get_full_name(self) -> str | None:
         """Full font name (name table, nameID 4)."""
         return self._get_name_string(4)
 
+    def getFullName(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_full_name()
+
     def get_version(self) -> str | None:
         """Version string (name table, nameID 5)."""
         return self._get_name_string(5)
+
+    def getVersion(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_version()
 
     # ---------- head / post / OS/2 scalar accessors --------------------
 

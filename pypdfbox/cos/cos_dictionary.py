@@ -52,12 +52,23 @@ class COSDictionary(COSBase):
         else:
             self._items[_as_name(key)] = value
 
+    def setItem(self, key: COSName | str, value: COSBase | None) -> None:  # noqa: N802
+        self.set_item(key, value)
+
     def remove_item(self, key: COSName | str) -> COSBase | None:
         return self._items.pop(_as_name(key), None)
+
+    def removeItem(self, key: COSName | str) -> COSBase | None:  # noqa: N802
+        return self.remove_item(key)
 
     def get_item(self, key: COSName | str, default: COSBase | None = None) -> COSBase | None:
         """Raw entry — may be a ``COSObject`` indirect reference."""
         return self._items.get(_as_name(key), default)
+
+    def getItem(  # noqa: N802
+        self, key: COSName | str, default: COSBase | None = None
+    ) -> COSBase | None:
+        return self.get_item(key, default)
 
     def _resolve_item(self, key: COSName | str) -> COSBase | None:
         item = self._items.get(_as_name(key))
@@ -85,8 +96,16 @@ class COSDictionary(COSBase):
             return self._resolve_item(default)
         return default
 
+    def getDictionaryObject(  # noqa: N802
+        self, key: COSName | str, default: COSBase | None = None
+    ) -> COSBase | None:
+        return self.get_dictionary_object(key, default)
+
     def contains_key(self, key: COSName | str) -> bool:
         return _as_name(key) in self._items
+
+    def containsKey(self, key: COSName | str) -> bool:  # noqa: N802
+        return self.contains_key(key)
 
     def size(self) -> int:
         return len(self._items)
@@ -195,6 +214,9 @@ class COSDictionary(COSBase):
             return v
         return None
 
+    def getCOSDictionary(self, key: COSName | str) -> COSDictionary | None:  # noqa: N802
+        return self.get_cos_dictionary(key)
+
     def get_cos_array(self, key: COSName | str) -> COSArray | None:
         """Return the resolved value as a ``COSArray`` when present.
 
@@ -205,6 +227,9 @@ class COSDictionary(COSBase):
         if isinstance(v, COSArray):
             return v
         return None
+
+    def getCOSArray(self, key: COSName | str) -> COSArray | None:  # noqa: N802
+        return self.get_cos_array(key)
 
     # ---------- visitor / Python protocols ----------
 

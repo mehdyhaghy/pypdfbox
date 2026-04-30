@@ -1082,3 +1082,8 @@ No new port files were added in Wave 57. The wave only extended existing upstrea
 
 No new port files were added in Wave 58. The wave only extended existing upstream-derived modules and their existing test files:
 `COSArray`, `PDResources`, `PDAnnotationRubberStamp`, `PDAnnotationStamp`, `HorizontalMetricsTable`, and `LangAlt`.
+
+### Wave 59 additions
+
+No new port files were added in Wave 59. The wave only extended existing upstream-derived modules and their existing test files:
+`COSDictionary`, `PDAnnotationMovie`, and `TrueTypeFont`.
