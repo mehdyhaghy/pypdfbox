@@ -360,9 +360,15 @@ class CmapSubtable(CmapLookup):
                 return 0
         return 0
 
+    def getGlyphIdUVS(self, code_point: int, variation_selector: int) -> int:  # noqa: N802
+        return self.get_glyph_id_uvs(code_point, variation_selector)
+
     def has_uvs(self) -> bool:
         """Return ``True`` if this subtable carries UVS (format-14) data."""
         return bool(self._uvs_mapping) or bool(self._default_uvs)
+
+    def hasUVS(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.has_uvs()
 
     # ----- format 2 (high-byte mapping through table — DBCS) -----
 
@@ -442,17 +448,32 @@ class CmapSubtable(CmapLookup):
     def get_platform_id(self) -> int:
         return self._platform_id
 
+    def getPlatformId(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_platform_id()
+
     def set_platform_id(self, value: int) -> None:
         self._platform_id = value
+
+    def setPlatformId(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_platform_id(value)
 
     def get_platform_encoding_id(self) -> int:
         return self._platform_encoding_id
 
+    def getPlatformEncodingId(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_platform_encoding_id()
+
     def set_platform_encoding_id(self, value: int) -> None:
         self._platform_encoding_id = value
 
+    def setPlatformEncodingId(self, value: int) -> None:  # noqa: N802
+        self.set_platform_encoding_id(value)
+
     def get_glyph_id(self, code_point_at: int) -> int:
         return self._character_code_to_glyph_id.get(code_point_at, 0)
+
+    def getGlyphId(self, code_point_at: int) -> int:  # noqa: N802 - upstream Java name
+        return self.get_glyph_id(code_point_at)
 
     def _get_char_code(self, gid: int) -> int:
         if (
@@ -462,6 +483,9 @@ class CmapSubtable(CmapLookup):
         ):
             return -1
         return self._glyph_id_to_character_code[gid]
+
+    def getCharCode(self, gid: int) -> int:  # noqa: N802 - upstream Java name
+        return self._get_char_code(gid)
 
     def get_char_codes(self, gid: int) -> list[int] | None:
         code = self._get_char_code(gid)
@@ -473,6 +497,9 @@ class CmapSubtable(CmapLookup):
                 return sorted(mapped)
             return None
         return [code]
+
+    def getCharCodes(self, gid: int) -> list[int] | None:  # noqa: N802
+        return self.get_char_codes(gid)
 
     def __repr__(self) -> str:
         return f"{{{self._platform_id} {self._platform_encoding_id}}}"

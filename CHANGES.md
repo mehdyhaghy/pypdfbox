@@ -783,3 +783,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 66 — COSDictionary typed Java aliases
 
 - `pypdfbox/cos/cos_dictionary.py`: added PDFBox camelCase aliases for dictionary collection and typed helpers, including `isEmpty`, `keySet`, `entrySet`, `addAll`, `getName` / `setName`, `getString` / `setString`, `getInt` / `setInt`, `getLong` / `setLong`, `getFloat` / `setFloat`, and `getBoolean` / `setBoolean`.
+
+## Wave 67 — CmapSubtable Java aliases
+
+- `pypdfbox/fontbox/ttf/cmap_subtable.py`: added FontBox camelCase aliases for cmap metadata and lookups, including `getPlatformId` / `setPlatformId`, `getPlatformEncodingId` / `setPlatformEncodingId`, `getGlyphId`, `getGlyphIdUVS`, `hasUVS`, `getCharCode`, and `getCharCodes`.
