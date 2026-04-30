@@ -209,6 +209,18 @@ class TestFilterGetDecodeParams:
 
 
 class TestIsDecompressionInputSizeKnown:
+    def test_ascii85_false(self):
+        assert (
+            FilterFactory.get_filter("ASCII85Decode").is_decompression_input_size_known()
+            is False
+        )
+
+    def test_ascii_hex_false(self):
+        assert (
+            FilterFactory.get_filter("ASCIIHexDecode").is_decompression_input_size_known()
+            is False
+        )
+
     def test_default_true_on_flate(self):
         # The base implementation defaults to True; concrete filters
         # inherit unless they override. FlateDecode does not override,

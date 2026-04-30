@@ -68,6 +68,9 @@ class ASCII85Decode(Filter):
         # framed always starts with b'<~' and ends with b'~>'.
         encoded.write(framed[2:])
 
+    def is_decompression_input_size_known(self) -> bool:
+        return False
+
     @staticmethod
     def _decode_bytes(data: bytes) -> bytes:
         # Strip everything after (and including) the EOD marker, if present.

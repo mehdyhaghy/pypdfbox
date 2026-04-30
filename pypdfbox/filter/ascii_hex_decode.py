@@ -68,5 +68,8 @@ class ASCIIHexDecode(Filter):
         encoded.write(binascii.hexlify(raw.read()))
         encoded.write(b">")
 
+    def is_decompression_input_size_known(self) -> bool:
+        return False
+
 
 FilterFactory.register("ASCIIHexDecode", ASCIIHexDecode())

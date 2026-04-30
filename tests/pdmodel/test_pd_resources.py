@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel import PDResources
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
@@ -140,6 +140,42 @@ def test_get_resource_cache_returns_constructor_cache() -> None:
     cache = object()
     res = PDResources(resource_cache=cache)  # type: ignore[arg-type]
     assert res.get_resource_cache() is cache
+
+
+def test_proc_set_round_trips_as_cos_names() -> None:
+    res = PDResources()
+
+    res.set_proc_set(["PDF", COSName.get_pdf_name("Text")])
+
+    assert [name.get_name() for name in res.get_proc_set()] == ["PDF", "Text"]
+    raw = res.get_cos_object().get_dictionary_object(COSName.get_pdf_name("ProcSet"))
+    assert isinstance(raw, COSArray)
+    assert raw.to_cos_name_string_list() == ["PDF", "Text"]
+
+
+def test_proc_set_missing_and_none_are_empty() -> None:
+    res = PDResources()
+    assert res.get_proc_set() == []
+
+    res.set_proc_set(["PDF"])
+    res.set_proc_set(None)
+
+    assert res.get_proc_set() == []
+    assert not res.get_cos_object().contains_key(COSName.get_pdf_name("ProcSet"))
+
+
+def test_get_proc_set_ignores_non_name_entries() -> None:
+    res = PDResources()
+    proc_set = COSArray(
+        [
+            COSName.get_pdf_name("PDF"),
+            COSInteger.get(7),
+            COSName.get_pdf_name("ImageB"),
+        ]
+    )
+    res.get_cos_object().set_item(COSName.get_pdf_name("ProcSet"), proc_set)
+
+    assert [name.get_name() for name in res.get_proc_set()] == ["PDF", "ImageB"]
 
 
 def test_has_color_space_checks_entry_presence() -> None:

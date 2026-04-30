@@ -16,7 +16,9 @@ from pypdfbox.cos import (
 from ...pd_rectangle import PDRectangle
 
 if TYPE_CHECKING:
-    pass
+    from ...graphics.pd_property_list import PDPropertyList
+    from ...pd_document import PDDocument
+    from .pd_appearance_dictionary import PDAppearanceDictionary
 
 
 # Names referenced by PDAnnotation. Several are only relevant to subclasses
@@ -285,10 +287,7 @@ class PDAnnotation:
 
     def _set_flag(self, flag: int, value: bool) -> None:
         current = self.get_annotation_flags()
-        if value:
-            new = current | flag
-        else:
-            new = current & ~flag
+        new = current | flag if value else current & ~flag
         self.set_annotation_flags(new)
 
     def is_invisible(self) -> bool:
@@ -432,7 +431,7 @@ class PDAnnotation:
 
     # ---------- /AP (appearance dictionary) ----------
 
-    def get_appearance_dictionary(self) -> "PDAppearanceDictionary | None":
+    def get_appearance_dictionary(self) -> PDAppearanceDictionary | None:
         from .pd_appearance_dictionary import PDAppearanceDictionary
 
         value = self._dict.get_dictionary_object(_AP)
@@ -441,7 +440,7 @@ class PDAnnotation:
         return None
 
     def set_appearance_dictionary(
-        self, ap: "PDAppearanceDictionary | COSDictionary | None"
+        self, ap: PDAppearanceDictionary | COSDictionary | None
     ) -> None:
         if ap is None:
             self._dict.remove_item(_AP)
@@ -516,7 +515,7 @@ class PDAnnotation:
 
     # ---------- /OC (optional content) ----------
 
-    def get_optional_content(self) -> "PDPropertyList | None":
+    def get_optional_content(self) -> PDPropertyList | None:
         """Return the ``/OC`` optional content dictionary as a typed
         :class:`PDPropertyList` (PDOptionalContentGroup or
         PDOptionalContentMembershipDictionary). ``None`` when absent or
@@ -529,7 +528,7 @@ class PDAnnotation:
         return None
 
     def set_optional_content(
-        self, oc: "PDPropertyList | COSDictionary | None"
+        self, oc: PDPropertyList | COSDictionary | None
     ) -> None:
         if oc is None:
             self._dict.remove_item(_OC)
@@ -550,6 +549,17 @@ class PDAnnotation:
             "set_optional_content expects None, COSDictionary, or "
             f"PDPropertyList; got {type(oc).__name__}"
         )
+
+    # ---------- appearance construction ----------
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Create appearance entries for this annotation.
+
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)``. The base implementation is a
+        no-op; subclasses with concrete appearance handlers override it.
+        """
+        return None
 
     # ---------- equality / repr ----------
 

@@ -62,10 +62,16 @@ class VerticalMetricsTable(TTFTable):
         # fall back to the last entry.
         return self._advance_height[-1]
 
+    def getAdvanceHeight(self, gid: int) -> int:  # noqa: N802 - upstream Java name
+        return self.get_advance_height(gid)
+
     def get_top_side_bearing(self, gid: int) -> int:
         if gid < self._num_v_metrics:
             return self._top_side_bearing[gid]
         return self._additional_top_side_bearing[gid - self._num_v_metrics]
+
+    def getTopSideBearing(self, gid: int) -> int:  # noqa: N802 - upstream Java name
+        return self.get_top_side_bearing(gid)
 
 
 __all__ = ["VerticalMetricsTable"]

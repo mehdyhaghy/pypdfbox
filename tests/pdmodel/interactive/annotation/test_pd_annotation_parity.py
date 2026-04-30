@@ -28,7 +28,6 @@ from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotationText,
 )
 
-
 # ---------- /Subtype public setter ----------
 
 
@@ -202,6 +201,21 @@ def test_appearance_state_clear() -> None:
     ann.set_appearance_state("Off")
     ann.set_appearance_state(None)
     assert ann.get_appearance_state() is None
+
+
+# ---------- appearance construction ----------
+
+
+def test_construct_appearances_base_noop_preserves_dictionary() -> None:
+    ann = PDAnnotationText()
+    raw = ann.get_cos_object()
+    before = list(raw.entry_set())
+
+    ann.construct_appearances()
+    ann.construct_appearances(None)
+
+    assert ann.get_cos_object() is raw
+    assert list(raw.entry_set()) == before
 
 
 # ---------- /P parent page back-pointer ----------

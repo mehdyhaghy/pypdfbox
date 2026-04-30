@@ -705,3 +705,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/shading/pd_shading_type3.py`: `set_extend(...)` now accepts upstream's single `COSArray` form and single `None` clearing form, in addition to the existing two-boolean form.
 - `pypdfbox/fontbox/ttf/true_type_font.py`: added `get_tables()` and extended `get_table_bytes(...)` to accept a `TTFTable` entry while preserving string-tag lookup.
 - `pypdfbox/xmpbox/xmp_media_management_schema.py`: added upstream-shaped `set_derived_from_property(...)` and `get_resource_ref_property()` aliases for the `DerivedFrom` resource reference.
+
+## Wave 54 — output-stream aliases, annotation appearance hook, ProcSet, vertical metrics aliases, ASCII filter sizing
+
+- `pypdfbox/pdfwriter/cos_standard_output_stream.py`: added PDFBox-spelled aliases for line writing and state helpers (`writeCRLF`, `writeLF`, `writeEOL`, `getPos`, `isOnNewLine`, `setOnNewLine`).
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation.py`: added base `construct_appearances(document=None)` as an upstream-shaped no-op override point for annotation subclasses.
+- `pypdfbox/pdmodel/pd_resources.py`: added legacy `/ProcSet` support via `get_proc_set()` and `set_proc_set(...)`, storing names as a `COSArray` and tolerating malformed read-side entries.
+- `pypdfbox/fontbox/ttf/vertical_metrics_table.py`: added PDFBox-style camelCase aliases `getAdvanceHeight(...)` and `getTopSideBearing(...)` over the existing vertical metrics helpers.
+- `pypdfbox/filter/ascii85_decode.py` + `ascii_hex_decode.py`: ASCII85 and ASCIIHex now report unknown decompression input size, matching upstream filter sizing semantics.

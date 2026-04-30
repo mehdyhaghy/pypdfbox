@@ -85,9 +85,17 @@ class COSStandardOutputStream:
         the trailing two-byte EOL)."""
         self.write(CRLF)
 
+    def writeCRLF(self) -> None:
+        """PDFBox-name alias for :meth:`write_crlf`."""
+        self.write_crlf()
+
     def write_lf(self) -> None:
         """Emit a single LF."""
         self.write(LF)
+
+    def writeLF(self) -> None:
+        """PDFBox-name alias for :meth:`write_lf`."""
+        self.write_lf()
 
     def write_eol(self) -> None:
         """Emit an EOL only if the previous byte wasn't already one — matches
@@ -95,6 +103,10 @@ class COSStandardOutputStream:
         if not self._on_new_line:
             self.write(EOL)
             self._on_new_line = True
+
+    def writeEOL(self) -> None:
+        """PDFBox-name alias for :meth:`write_eol`."""
+        self.write_eol()
 
     # ---------- introspection ----------
 
@@ -105,11 +117,23 @@ class COSStandardOutputStream:
     def get_pos(self) -> int:
         return self._position
 
+    def getPos(self) -> int:
+        """PDFBox-name alias for :meth:`get_pos`."""
+        return self.get_pos()
+
     def is_on_newline(self) -> bool:
         return self._on_new_line
 
+    def isOnNewLine(self) -> bool:
+        """PDFBox-name alias for :meth:`is_on_newline`."""
+        return self.is_on_newline()
+
     def set_on_newline(self, value: bool) -> None:
         self._on_new_line = value
+
+    def setOnNewLine(self, value: bool) -> None:
+        """PDFBox-name alias for :meth:`set_on_newline`."""
+        self.set_on_newline(value)
 
     # ---------- lifecycle ----------
 

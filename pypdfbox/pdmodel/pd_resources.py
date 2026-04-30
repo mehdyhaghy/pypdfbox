@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
+    COSArray,
     COSBase,
     COSDictionary,
     COSName,
@@ -47,6 +49,7 @@ class PDResources:
     - typed accessors (``get_x_object``, ``get_color_space``,
       ``get_pattern``, ``get_shading``, ``get_ext_gstate``,
       ``get_property_list``) returning the appropriate PD wrapper or ``None``;
+    - ``get_proc_set`` / ``set_proc_set`` for the legacy ``/ProcSet`` array;
     - ``add(category, value)`` and ``put(category, name, value)`` for
       registering newly-minted resources across all standard categories.
     """
@@ -123,6 +126,46 @@ class PDResources:
         """Return the resource cache associated with these resources, or
         ``None``. Mirrors upstream ``getResourceCache()``."""
         return self._cache()
+
+    # ---------- /ProcSet ----------
+
+    def get_proc_set(self) -> list[COSName]:
+        """Return the names in the legacy ``/ProcSet`` array.
+
+        Mirrors upstream ``PDResources.getProcSet``. Non-name entries are
+        ignored so malformed resource dictionaries remain readable.
+        """
+        value = self._resources.get_dictionary_object(_PROC_SET)
+        if not isinstance(value, COSArray):
+            return []
+        names: list[COSName] = []
+        for index in range(value.size()):
+            item = value.get_object(index)
+            if isinstance(item, COSName):
+                names.append(item)
+        return names
+
+    def set_proc_set(self, proc_set: Iterable[COSName | str] | None) -> None:
+        """Set the legacy ``/ProcSet`` array, or remove it when ``None``.
+
+        String entries are accepted as a Python convenience and converted to
+        ``COSName`` values before storage.
+        """
+        if proc_set is None:
+            self._resources.remove_item(_PROC_SET)
+            return
+        array = COSArray()
+        for entry in proc_set:
+            if isinstance(entry, COSName):
+                array.add(entry)
+            elif isinstance(entry, str):
+                array.add(COSName.get_pdf_name(entry))
+            else:
+                raise TypeError(
+                    "proc_set entries must be COSName or str, "
+                    f"got {type(entry).__name__}"
+                )
+        self._resources.set_item(_PROC_SET, array)
 
     # ---------- raw category accessors ----------
 
@@ -582,6 +625,7 @@ class PDResources:
 
 _X_OBJECT: COSName = COSName.get_pdf_name("XObject")
 _FONT: COSName = COSName.get_pdf_name("Font")
+_PROC_SET: COSName = COSName.get_pdf_name("ProcSet")
 _COLOR_SPACE: COSName = COSName.get_pdf_name("ColorSpace")
 _EXT_GSTATE: COSName = COSName.get_pdf_name("ExtGState")
 _SHADING: COSName = COSName.get_pdf_name("Shading")

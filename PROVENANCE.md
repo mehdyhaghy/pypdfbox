@@ -1057,3 +1057,8 @@ Existing upstream-derived modules extended in Wave 52: `COSWriterXRefEntry`, `PD
 
 No new port files were added in Wave 53. The wave only extended existing upstream-derived modules and their existing test files:
 `COSDictionary`, `PDPage`, `PDShadingType3`, `TrueTypeFont`, and `XMPMediaManagementSchema`.
+
+### Wave 54 additions
+
+No new port files were added in Wave 54. The wave only extended existing upstream-derived modules and their existing test files:
+`COSStandardOutputStream`, `PDAnnotation`, `PDResources`, `VerticalMetricsTable`, `ASCII85Decode`, and `ASCIIHexDecode`.
