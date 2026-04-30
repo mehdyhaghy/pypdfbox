@@ -89,12 +89,18 @@ class COSDocument(COSBase):
             self._objects[key] = existing
         return existing
 
+    def getObjectFromPool(self, key: COSObjectKey) -> COSObject:  # noqa: N802
+        return self.get_object_from_pool(key)
+
     def get_object(self, key: COSObjectKey) -> COSObject | None:
         """Return the ``COSObject`` registered for ``key`` or ``None`` if no
         such object has been seen by the parser yet. Mirrors PDFBox's
         ``getObjectFromPool``-companion ``getObject(COSObjectKey)`` lookup —
         does NOT auto-create a placeholder."""
         return self._objects.get(key)
+
+    def getObject(self, key: COSObjectKey) -> COSObject | None:  # noqa: N802
+        return self.get_object(key)
 
     def has_object(self, key: COSObjectKey) -> bool:
         return key in self._objects
@@ -103,11 +109,17 @@ class COSDocument(COSBase):
         """All known indirect objects in insertion order."""
         return list(self._objects.values())
 
+    def getObjects(self) -> list[COSObject]:  # noqa: N802
+        return self.get_objects()
+
     def get_object_keys(self) -> list[COSObjectKey]:
         return list(self._objects.keys())
 
     def remove_object(self, key: COSObjectKey) -> COSObject | None:
         return self._objects.pop(key, None)
+
+    def removeObject(self, key: COSObjectKey) -> COSObject | None:  # noqa: N802
+        return self.remove_object(key)
 
     def add_xref_table(self, table: dict[COSObjectKey | None, int]) -> None:
         """Bulk-register xref entries — mirrors PDFBox's ``addXRefTable``.
@@ -121,12 +133,18 @@ class COSDocument(COSBase):
             self.get_object_from_pool(key)
             self._xref_table[key] = offset
 
+    def addXRefTable(self, table: dict[COSObjectKey | None, int]) -> None:  # noqa: N802
+        self.add_xref_table(table)
+
     def get_xref_table(self) -> dict[COSObjectKey, int]:
         """Sparse object-key → byte-offset map populated by the parser.
         Mirrors PDFBox's ``getXrefTable()``. Positive offsets are absolute
         file positions; negative values encode object-stream membership
         (``-objstm_object_number`` per PDFBox convention)."""
         return self._xref_table
+
+    def getXrefTable(self) -> dict[COSObjectKey, int]:  # noqa: N802
+        return self.get_xref_table()
 
     def get_objects_by_type(self, type_name: COSName | str) -> list[COSObject]:
         """Return every resolved object whose dictionary's ``/Type`` equals
@@ -169,8 +187,14 @@ class COSDocument(COSBase):
     def get_trailer(self) -> COSDictionary | None:
         return self._trailer
 
+    def getTrailer(self) -> COSDictionary | None:  # noqa: N802
+        return self.get_trailer()
+
     def set_trailer(self, trailer: COSDictionary) -> None:
         self._trailer = trailer
+
+    def setTrailer(self, trailer: COSDictionary) -> None:  # noqa: N802
+        self.set_trailer(trailer)
 
     def get_catalog(self) -> COSDictionary | None:
         """Resolve ``trailer/Root`` to its dictionary, or ``None``."""
@@ -178,6 +202,9 @@ class COSDocument(COSBase):
             return None
         catalog = self._trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
         return catalog if isinstance(catalog, COSDictionary) else None
+
+    def getCatalog(self) -> COSDictionary | None:  # noqa: N802
+        return self.get_catalog()
 
     def get_document_id(self) -> COSArray | None:
         if self._trailer is None:
@@ -195,29 +222,47 @@ class COSDocument(COSBase):
             return False
         return self._trailer.contains_key(COSName.ENCRYPT)  # type: ignore[attr-defined]
 
+    def isEncrypted(self) -> bool:  # noqa: N802
+        return self.is_encrypted()
+
     def get_encryption_dictionary(self) -> COSDictionary | None:
         if self._trailer is None:
             return None
         enc = self._trailer.get_dictionary_object(COSName.ENCRYPT)  # type: ignore[attr-defined]
         return enc if isinstance(enc, COSDictionary) else None
 
+    def getEncryptionDictionary(self) -> COSDictionary | None:  # noqa: N802
+        return self.get_encryption_dictionary()
+
     # ---------- version ----------
 
     def get_version(self) -> float:
         return self._version
+
+    def getVersion(self) -> float:  # noqa: N802
+        return self.get_version()
 
     def set_version(self, version: float) -> None:
         if version <= 0:
             raise ValueError("version must be positive")
         self._version = version
 
+    def setVersion(self, version: float) -> None:  # noqa: N802
+        self.set_version(version)
+
     # ---------- xref-stream marker ----------
 
     def is_xref_stream(self) -> bool:
         return self._is_xref_stream
 
+    def isXRefStream(self) -> bool:  # noqa: N802
+        return self.is_xref_stream()
+
     def set_xref_stream(self, value: bool) -> None:
         self._is_xref_stream = value
+
+    def setXRefStream(self, value: bool) -> None:  # noqa: N802
+        self.set_xref_stream(value)
 
     def set_is_xref_stream(self, value: bool) -> None:
         """Mirror of upstream ``setIsXRefStream(boolean)``. Kept alongside

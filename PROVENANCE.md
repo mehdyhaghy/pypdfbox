@@ -1097,3 +1097,8 @@ No new port files were added in Wave 60. The wave only extended existing upstrea
 
 No new port files were added in Wave 61. The wave only extended existing upstream-derived modules and their existing test files:
 `COSInteger`, `COSFloat`, and `COSString`.
+
+### Wave 62 additions
+
+No new port files were added in Wave 62. The wave only extended existing upstream-derived modules and their existing test files:
+`COSDocument`.

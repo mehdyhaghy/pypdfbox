@@ -762,3 +762,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/cos/cos_integer.py`: added PDFBox camelCase aliases `getValue()`, `isValid()`, and `setValid(...)`.
 - `pypdfbox/cos/cos_float.py`: added PDFBox camelCase aliases `getValue()`, `getOriginalForm()`, and `setValue(...)`.
 - `pypdfbox/cos/cos_string.py`: added PDFBox camelCase aliases `getBytes()`, `getString()`, `isForceHexForm()`, `setForceHexForm(...)`, and `toHexString()`.
+
+## Wave 62 — COSDocument Java aliases
+
+- `pypdfbox/cos/cos_document.py`: added PDFBox camelCase aliases for object-pool, trailer/catalog, encryption, xref, version, and xref-stream accessors (`getObjectFromPool`, `getObject`, `getObjects`, `removeObject`, `addXRefTable`, `getXrefTable`, `getTrailer`, `setTrailer`, `getCatalog`, `isEncrypted`, `getEncryptionDictionary`, `getVersion`, `setVersion`, `isXRefStream`, and `setXRefStream`).

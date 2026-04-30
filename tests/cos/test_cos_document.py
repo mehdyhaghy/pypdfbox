@@ -270,3 +270,44 @@ def test_version_set_int_promoted_to_float() -> None:
     with COSDocument() as doc:
         doc.set_version(1.7)
         assert doc.get_version() == 1.7
+
+
+def test_pdfbox_camelcase_object_pool_aliases() -> None:
+    with COSDocument() as doc:
+        key = COSObjectKey(5, 0)
+        obj = doc.getObjectFromPool(key)
+
+        assert doc.getObject(key) is obj
+        assert doc.getObjects() == [obj]
+        assert doc.removeObject(key) is obj
+        assert doc.getObject(key) is None
+
+
+def test_pdfbox_camelcase_trailer_catalog_and_encryption_aliases() -> None:
+    with COSDocument() as doc:
+        catalog = COSDictionary()
+        catalog.set_name("Type", "Catalog")
+        enc = COSDictionary()
+        trailer = COSDictionary()
+        trailer.set_item(COSName.ROOT, catalog)  # type: ignore[attr-defined]
+        trailer.set_item(COSName.ENCRYPT, enc)  # type: ignore[attr-defined]
+
+        doc.setTrailer(trailer)
+
+        assert doc.getTrailer() is trailer
+        assert doc.getCatalog() is catalog
+        assert doc.isEncrypted() is True
+        assert doc.getEncryptionDictionary() is enc
+
+
+def test_pdfbox_camelcase_xref_and_version_aliases() -> None:
+    with COSDocument() as doc:
+        key = COSObjectKey(9, 0)
+
+        doc.addXRefTable({key: 321})
+        doc.setVersion(2.0)
+        doc.setXRefStream(True)
+
+        assert doc.getXrefTable()[key] == 321
+        assert doc.getVersion() == 2.0
+        assert doc.isXRefStream() is True
