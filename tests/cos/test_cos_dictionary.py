@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.cos import (
+    COSArray,
     COSBoolean,
     COSDictionary,
     COSFloat,
@@ -180,6 +181,30 @@ def test_get_long_default_and_numeric_coercion() -> None:
 def test_get_string_falls_through_to_name() -> None:
     d = COSDictionary([("X", COSName.get_pdf_name("Page"))])
     assert d.get_string("X") == "Page"
+
+
+def test_get_cos_dictionary_returns_resolved_dictionary_or_none() -> None:
+    child = COSDictionary([("Count", COSInteger(2))])
+    direct = COSDictionary([("Child", child), ("Wrong", COSInteger(1))])
+
+    assert direct.get_cos_dictionary("Child") is child
+    assert direct.get_cos_dictionary("Wrong") is None
+    assert direct.get_cos_dictionary("Missing") is None
+
+    indirect = COSDictionary([("Child", COSObject(9, 0, resolved=child))])
+    assert indirect.get_cos_dictionary("Child") is child
+
+
+def test_get_cos_array_returns_resolved_array_or_none() -> None:
+    array = COSArray([COSInteger(1), COSInteger(2)])
+    direct = COSDictionary([("Kids", array), ("Wrong", COSName.get_pdf_name("Page"))])
+
+    assert direct.get_cos_array("Kids") is array
+    assert direct.get_cos_array("Wrong") is None
+    assert direct.get_cos_array("Missing") is None
+
+    indirect = COSDictionary([("Kids", COSObject(10, 0, resolved=array))])
+    assert indirect.get_cos_array("Kids") is array
 
 
 def test_invalid_key_type_raises() -> None:

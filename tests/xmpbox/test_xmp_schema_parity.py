@@ -135,3 +135,36 @@ def test_remove_property_clears_storage() -> None:
     assert s.get_unqualified_text_property("k") is None
     # Removing a missing property is a no-op.
     s.remove_property("k")
+
+
+# --- LangAlt ordering --------------------------------------------------------
+
+
+def test_lang_alt_default_language_is_reorganized_first() -> None:
+    s = _schema()
+    s.set_unqualified_language_property_value("title", "fr-FR", "Bonjour")
+    s.set_unqualified_language_property_value("title", None, "Hello")
+    s.set_unqualified_language_property_value("title", "de-DE", "Hallo")
+
+    assert s.get_unqualified_language_property_languages_value("title") == [
+        "x-default",
+        "fr-FR",
+        "de-DE",
+    ]
+    assert s.get_unqualified_language_property_value("title") == "Hello"
+    assert s.get_unqualified_language_property_value("title", "fr-FR") == "Bonjour"
+
+
+def test_lang_alt_default_update_keeps_existing_language_order() -> None:
+    s = _schema()
+    s.set_unqualified_language_property_value("title", "fr-FR", "Bonjour")
+    s.set_unqualified_language_property_value("title", None, "Hello")
+    s.set_unqualified_language_property_value("title", "de-DE", "Hallo")
+    s.set_unqualified_language_property_value("title", None, "Updated")
+
+    assert s.get_unqualified_language_property_languages_value("title") == [
+        "x-default",
+        "fr-FR",
+        "de-DE",
+    ]
+    assert s.get_unqualified_language_property_value("title") == "Updated"

@@ -248,6 +248,18 @@ class NamingTable(TTFTable):
     def get_name_records(self) -> list[NameRecord]:
         return self._name_records
 
+    def getName(  # noqa: N802 - upstream Java name
+        self,
+        name_id: int,
+        platform_id: int | None = None,
+        encoding_id: int | None = None,
+        language_id: int | None = None,
+    ) -> str | None:
+        return self.get_name(name_id, platform_id, encoding_id, language_id)
+
+    def getNameRecords(self) -> list[NameRecord]:  # noqa: N802 - upstream Java name
+        return self.get_name_records()
+
     def iter_name_records(self) -> list[NameRecord]:
         """Alias for :meth:`get_name_records` returning a fresh list copy.
 
@@ -267,6 +279,11 @@ class NamingTable(TTFTable):
             return self._font_family
         return self._lookup_by_language(NameRecord.NAME_FONT_FAMILY_NAME, language_id)
 
+    def getFontFamily(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_font_family(language_id)
+
     def get_font_sub_family(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._font_sub_family
@@ -274,36 +291,71 @@ class NamingTable(TTFTable):
             NameRecord.NAME_FONT_SUB_FAMILY_NAME, language_id
         )
 
+    def getFontSubFamily(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_font_sub_family(language_id)
+
     def get_post_script_name(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._ps_name
         v = self._lookup_by_language(NameRecord.NAME_POSTSCRIPT_NAME, language_id)
         return v.strip() if v is not None else None
 
+    def getPostScriptName(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_post_script_name(language_id)
+
     def get_unique_id(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._unique_id
         return self._lookup_by_language(NameRecord.NAME_UNIQUE_FONT_ID, language_id)
+
+    def getUniqueId(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_unique_id(language_id)
 
     def get_full_name(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._full_name
         return self._lookup_by_language(NameRecord.NAME_FULL_FONT_NAME, language_id)
 
+    def getFullName(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_full_name(language_id)
+
     def get_version(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._version
         return self._lookup_by_language(NameRecord.NAME_VERSION, language_id)
+
+    def getVersion(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_version(language_id)
 
     def get_copyright(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._copyright
         return self._lookup_by_language(NameRecord.NAME_COPYRIGHT, language_id)
 
+    def getCopyright(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_copyright(language_id)
+
     def get_trademark(self, language_id: int | None = None) -> str | None:
         if language_id is None:
             return self._trademark
         return self._lookup_by_language(NameRecord.NAME_TRADEMARK, language_id)
+
+    def getTrademark(  # noqa: N802 - upstream Java name
+        self, language_id: int | None = None
+    ) -> str | None:
+        return self.get_trademark(language_id)
 
     # ---- language / record discovery (no upstream equivalent — additions) ----
 

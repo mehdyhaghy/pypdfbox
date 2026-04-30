@@ -713,3 +713,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_resources.py`: added legacy `/ProcSet` support via `get_proc_set()` and `set_proc_set(...)`, storing names as a `COSArray` and tolerating malformed read-side entries.
 - `pypdfbox/fontbox/ttf/vertical_metrics_table.py`: added PDFBox-style camelCase aliases `getAdvanceHeight(...)` and `getTopSideBearing(...)` over the existing vertical metrics helpers.
 - `pypdfbox/filter/ascii85_decode.py` + `ascii_hex_decode.py`: ASCII85 and ASCIIHex now report unknown decompression input size, matching upstream filter sizing semantics.
+
+## Wave 55 — COS typed helpers, markup popup, device color defaults, naming aliases, LangAlt ordering
+
+- `pypdfbox/cos/cos_dictionary.py`: added typed `get_cos_dictionary(...)` and `get_cos_array(...)` helpers that reuse resolved lookup semantics and return `None` for missing, `COSNull`, or wrong-type values.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_markup.py`: markup annotations now expose `/Popup` through `get_popup()` / `set_popup(...)` and raw rich contents through `get_rich_contents()` / `set_rich_contents(...)`.
+- `pypdfbox/pdmodel/pd_resources.py`: device color-space lookup now falls back to built-in `DeviceGray`/`DeviceRGB`/`DeviceCMYK` singletons and honors `/DefaultGray`, `/DefaultRGB`, and `/DefaultCMYK` overrides with the upstream recursion guard.
+- `pypdfbox/fontbox/ttf/naming_table.py`: added PDFBox-style camelCase aliases for name lookup, name records, and common metadata accessors.
+- `pypdfbox/xmpbox/xmp_schema.py`: LangAlt writes now keep `x-default` first when the default language value is set or updated, matching upstream ordering.

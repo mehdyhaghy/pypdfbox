@@ -34,6 +34,15 @@ _PREFIX_SHADING: str = "sh"
 _PREFIX_PATTERN: str = "p"
 _PREFIX_PROPERTY_LIST: str = "Prop"
 
+_DEFAULT_COLOR_SPACE_BY_DEVICE: dict[str, COSName] = {
+    "DeviceGray": COSName.get_pdf_name("DefaultGray"),
+    "G": COSName.get_pdf_name("DefaultGray"),
+    "DeviceRGB": COSName.get_pdf_name("DefaultRGB"),
+    "RGB": COSName.get_pdf_name("DefaultRGB"),
+    "DeviceCMYK": COSName.get_pdf_name("DefaultCMYK"),
+    "CMYK": COSName.get_pdf_name("DefaultCMYK"),
+}
+
 
 class PDResources:
     """
@@ -324,7 +333,6 @@ class PDResources:
         the entry is absent. Mirrors upstream
         ``PDResources.getColorSpace(COSName)`` — dispatch lives in
         ``PDColorSpace.create``."""
-        del was_default  # PDFBox exposes this for internal recursion only.
         # Local import keeps cluster boundaries explicit.
         from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
 
@@ -334,10 +342,27 @@ class PDResources:
             cached = cache.get_color_space(raw)
             if cached is not None:
                 return cached
+
+        if base is None:
+            default_color_space = self._get_default_color_space(name, was_default)
+            if default_color_space is not None:
+                return default_color_space
+            return PDColorSpace.create(name)
+
         color_space = PDColorSpace.create(base)
         if cache is not None and isinstance(raw, COSObject) and color_space is not None:
             cache.put_color_space(raw, color_space)
         return color_space
+
+    def _get_default_color_space(
+        self, name: COSName, was_default: bool
+    ) -> PDColorSpace | None:
+        if was_default:
+            return None
+        default_name = _DEFAULT_COLOR_SPACE_BY_DEVICE.get(name.get_name())
+        if default_name is None or not self.has_color_space(default_name):
+            return None
+        return self.get_color_space(default_name, was_default=True)
 
     def has_color_space(self, name: COSName) -> bool:
         """Return ``True`` if a ``/ColorSpace`` entry exists for ``name``."""

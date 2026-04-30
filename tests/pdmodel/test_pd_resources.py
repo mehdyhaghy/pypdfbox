@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel import PDResources
-from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
+from pypdfbox.pdmodel.graphics.color import PDCalRGB, PDDeviceGray, PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
 from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
@@ -254,3 +254,21 @@ def test_typed_put_infers_category() -> None:
 
     assert res.has_color_space(name)
     assert res.get_color_space(name) is PDDeviceRGB.INSTANCE
+
+
+def test_get_color_space_device_name_falls_back_to_builtin_singleton() -> None:
+    res = PDResources()
+
+    assert res.get_color_space(COSName.get_pdf_name("DeviceRGB")) is PDDeviceRGB.INSTANCE
+    assert res.get_color_space(COSName.get_pdf_name("DeviceGray")) is PDDeviceGray.INSTANCE
+
+
+def test_get_color_space_uses_default_device_override() -> None:
+    res = PDResources()
+    cal_rgb = PDCalRGB()
+    res.put(COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("DefaultRGB"), cal_rgb)
+
+    assert isinstance(res.get_color_space(COSName.get_pdf_name("DeviceRGB")), PDCalRGB)
+    assert res.get_color_space(COSName.get_pdf_name("DeviceRGB"), was_default=True) is (
+        PDDeviceRGB.INSTANCE
+    )

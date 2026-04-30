@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -236,10 +237,8 @@ class XMPSchema:
     def remove_unqualified_bag_value(self, local_name: str, value: str) -> None:
         existing = self._properties.get(local_name)
         if isinstance(existing, list):
-            try:
+            with suppress(ValueError):
                 existing.remove(value)
-            except ValueError:
-                pass
 
     def get_unqualified_bag_value_list(self, local_name: str) -> list[str] | None:
         v = self._properties.get(local_name)
@@ -280,7 +279,21 @@ class XMPSchema:
         if not isinstance(existing, dict):
             existing = {}
             self._properties[local_name] = existing
-        existing[lang or X_DEFAULT] = value
+        language = lang or X_DEFAULT
+        existing[language] = value
+        if language == X_DEFAULT:
+            self._reorganize_alt_order(existing)
+
+    @staticmethod
+    def _reorganize_alt_order(values: dict[str, str]) -> None:
+        """Mirror upstream ``reorganizeAltOrder``: keep x-default first."""
+        if X_DEFAULT not in values:
+            return
+        default = values.pop(X_DEFAULT)
+        rest = list(values.items())
+        values.clear()
+        values[X_DEFAULT] = default
+        values.update(rest)
 
     def get_unqualified_language_property_value(
         self, local_name: str, lang: str | None = None

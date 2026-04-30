@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSBase, COSDictionary, COSName
 
 from .pd_annotation import PDAnnotation
+
+if TYPE_CHECKING:
+    from .pd_annotation_popup import PDAnnotationPopup
 
 _CREATION_DATE: COSName = COSName.get_pdf_name("CreationDate")
 _IRT: COSName = COSName.get_pdf_name("IRT")
@@ -10,6 +15,8 @@ _SUBJ: COSName = COSName.get_pdf_name("Subj")
 _RT: COSName = COSName.get_pdf_name("RT")
 _IT: COSName = COSName.get_pdf_name("IT")
 _CA: COSName = COSName.get_pdf_name("CA")
+_POPUP: COSName = COSName.get_pdf_name("Popup")
+_RC: COSName = COSName.get_pdf_name("RC")
 
 
 class PDAnnotationMarkup(PDAnnotation):
@@ -26,9 +33,8 @@ class PDAnnotationMarkup(PDAnnotation):
     ``/Subtype`` in their constructors. ``/T`` (title popup) is inherited
     from :class:`PDAnnotation` and is not redefined here.
 
-    Lite scope: ``/Popup`` and ``/RC`` accessors are deferred (popup
-    annotations and rich-text streams require additional wrappers); see
-    ``CHANGES.md``.
+    Lite scope: rich contents are exposed as raw strings; rich text parsing is
+    left to callers.
     """
 
     # Reply-type values from PDF 1.7 reference Table 170.
@@ -66,6 +72,36 @@ class PDAnnotationMarkup(PDAnnotation):
         self._dict.set_item(
             _IRT,
             annot.get_cos_object() if hasattr(annot, "get_cos_object") else annot,
+        )
+
+    # ---------- /Popup ----------
+
+    def get_popup(self) -> PDAnnotationPopup | None:
+        """Return the popup annotation associated with this markup annotation.
+
+        Mirrors upstream ``PDAnnotationMarkup.getPopup``.
+        """
+        from .pd_annotation_popup import PDAnnotationPopup
+
+        value = self._dict.get_dictionary_object(_POPUP)
+        if isinstance(value, COSDictionary):
+            return PDAnnotationPopup(value)
+        return None
+
+    def set_popup(
+        self, popup: PDAnnotationPopup | COSDictionary | None
+    ) -> None:
+        """Set the popup annotation associated with this markup annotation.
+
+        Mirrors upstream ``PDAnnotationMarkup.setPopup`` while also accepting
+        a raw ``COSDictionary`` for callers already operating at the COS layer.
+        """
+        if popup is None:
+            self._dict.remove_item(_POPUP)
+            return
+        self._dict.set_item(
+            _POPUP,
+            popup.get_cos_object() if hasattr(popup, "get_cos_object") else popup,
         )
 
     # ---------- /Subj ----------
@@ -106,6 +142,15 @@ class PDAnnotationMarkup(PDAnnotation):
 
     def set_constant_opacity(self, ca: float) -> None:
         self._dict.set_float(_CA, float(ca))
+
+    # ---------- /RC (rich contents) ----------
+
+    def get_rich_contents(self) -> str | None:
+        """Return the raw rich text stream displayed in the popup window."""
+        return self._dict.get_string(_RC)
+
+    def set_rich_contents(self, rc: str | None) -> None:
+        self._dict.set_string(_RC, rc)
 
 
 __all__ = ["PDAnnotationMarkup"]

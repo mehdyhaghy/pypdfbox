@@ -19,6 +19,9 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_polygon import (
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_polyline import (
     PDAnnotationPolyline,
 )
+from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (
+    PDAnnotationPopup,
+)
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_squiggly import (
     PDAnnotationSquiggly,
 )
@@ -31,7 +34,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text_markup import (
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_underline import (
     PDAnnotationUnderline,
 )
-
 
 # ---------- subtype constants — note non-trivial caps ----------
 
@@ -112,6 +114,32 @@ def test_markup_in_reply_to_clear() -> None:
     assert ann.get_in_reply_to() is None
 
 
+def test_markup_popup_round_trip_with_typed_wrapper() -> None:
+    ann = PDAnnotationCaret()
+    popup = PDAnnotationPopup()
+    popup.set_open(True)
+
+    ann.set_popup(popup)
+
+    got = ann.get_popup()
+    assert isinstance(got, PDAnnotationPopup)
+    assert got.get_cos_object() is popup.get_cos_object()
+    assert got.get_open() is True
+
+
+def test_markup_popup_accepts_raw_dictionary_and_clear() -> None:
+    ann = PDAnnotationCaret()
+    popup_dict = COSDictionary()
+    ann.set_popup(popup_dict)
+
+    got = ann.get_popup()
+    assert isinstance(got, PDAnnotationPopup)
+    assert got.get_cos_object() is popup_dict
+
+    ann.set_popup(None)
+    assert ann.get_popup() is None
+
+
 def test_markup_reply_type_round_trip() -> None:
     ann = PDAnnotationCaret()
     ann.set_reply_type(PDAnnotationMarkup.RT_GROUP)
@@ -130,6 +158,15 @@ def test_markup_creation_date_round_trip() -> None:
     ann = PDAnnotationCaret()
     ann.set_creation_date("D:20260426120000Z00'00'")
     assert ann.get_creation_date() == "D:20260426120000Z00'00'"
+
+
+def test_markup_rich_contents_round_trip_and_clear() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_rich_contents("<body><p>Reviewed</p></body>")
+    assert ann.get_rich_contents() == "<body><p>Reviewed</p></body>"
+
+    ann.set_rich_contents(None)
+    assert ann.get_rich_contents() is None
 
 
 # ---------- PDAnnotationTextMarkup (via Highlight) ----------

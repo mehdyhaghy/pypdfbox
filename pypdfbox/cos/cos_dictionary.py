@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import ItemsView, Iterable, Iterator, KeysView, ValuesView
 from typing import Any
 
+from .cos_array import COSArray
 from .cos_base import COSBase
 from .cos_boolean import COSBoolean
 from .cos_float import COSFloat
@@ -182,6 +183,28 @@ class COSDictionary(COSBase):
         if isinstance(v, COSBoolean):
             return v.value
         return default
+
+    def get_cos_dictionary(self, key: COSName | str) -> COSDictionary | None:
+        """Return the resolved value as a ``COSDictionary`` when present.
+
+        Mirrors PDFBox ``COSDictionary.getCOSDictionary`` while keeping the
+        local snake_case API style.
+        """
+        v = self.get_dictionary_object(key)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def get_cos_array(self, key: COSName | str) -> COSArray | None:
+        """Return the resolved value as a ``COSArray`` when present.
+
+        Mirrors PDFBox ``COSDictionary.getCOSArray`` while keeping the local
+        snake_case API style.
+        """
+        v = self.get_dictionary_object(key)
+        if isinstance(v, COSArray):
+            return v
+        return None
 
     # ---------- visitor / Python protocols ----------
 
