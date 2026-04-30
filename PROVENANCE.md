@@ -1087,3 +1087,8 @@ No new port files were added in Wave 58. The wave only extended existing upstrea
 
 No new port files were added in Wave 59. The wave only extended existing upstream-derived modules and their existing test files:
 `COSDictionary`, `PDAnnotationMovie`, and `TrueTypeFont`.
+
+### Wave 60 additions
+
+No new port files were added in Wave 60. The wave only extended existing upstream-derived modules and their existing test files:
+`TTFTable`, `Attribute`, and `AbstractField`.

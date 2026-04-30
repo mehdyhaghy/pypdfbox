@@ -751,3 +751,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/cos/cos_dictionary.py`: added PDFBox camelCase aliases for core dictionary operations (`setItem`, `getItem`, `removeItem`, `getDictionaryObject`, `containsKey`, `getCOSDictionary`, and `getCOSArray`).
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_movie.py`: added PDFBox camelCase aliases for title, movie dictionary, and activation accessors (`getTitle` / `setTitle`, `getMovie` / `setMovie`, and `getActivation` / `setActivation`).
 - `pypdfbox/fontbox/ttf/true_type_font.py`: added FontBox camelCase aliases for common scalar/name/table accessors (`getUnitsPerEm`, `getNumberOfGlyphs`, `getTable`, `getTables`, `getName`, `getFamilyName`, `getFullName`, and `getVersion`).
+
+## Wave 60 — TTFTable Java aliases and XMP field Java aliases
+
+- `pypdfbox/fontbox/ttf/ttf_table.py`: added FontBox camelCase aliases for base table metadata (`getTag` / `setTag`, `getCheckSum` / `setCheckSum`, `getOffset` / `setOffset`, `getLength` / `setLength`, and `getInitialized`).
+- `pypdfbox/xmpbox/type/abstract_field.py`: added XMPBox camelCase aliases for `Attribute` and `AbstractField` metadata/attribute accessors, including `getName`, `setName`, `getNamespace`, `setNsURI`, `getValue`, `setValue`, `getPropertyName`, `setPropertyName`, `setAttribute`, `containsAttribute`, `getAttribute`, `getAllAttributes`, `removeAttribute`, and `getMetadata`.

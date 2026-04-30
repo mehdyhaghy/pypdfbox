@@ -24,20 +24,38 @@ class Attribute:
     def get_name(self) -> str:
         return self._name
 
+    def getName(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_name()
+
     def set_name(self, lname: str) -> None:
         self._name = lname
+
+    def setName(self, lname: str) -> None:  # noqa: N802 - upstream Java name
+        self.set_name(lname)
 
     def get_namespace(self) -> str | None:
         return self._ns_uri
 
+    def getNamespace(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_namespace()
+
     def set_ns_uri(self, ns_uri: str | None) -> None:
         self._ns_uri = ns_uri
+
+    def setNsURI(self, ns_uri: str | None) -> None:  # noqa: N802 - upstream Java name
+        self.set_ns_uri(ns_uri)
 
     def get_value(self) -> str:
         return self._value
 
+    def getValue(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_value()
+
     def set_value(self, value: str) -> None:
         self._value = value
+
+    def setValue(self, value: str) -> None:  # noqa: N802 - upstream Java name
+        self.set_value(value)
 
     def __repr__(self) -> str:
         return f"[attr:{{{self._ns_uri}}}{self._name}={self._value}]"
@@ -73,26 +91,50 @@ class AbstractField:
     def get_property_name(self) -> str | None:
         return self._property_name
 
+    def getPropertyName(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_property_name()
+
     def set_property_name(self, value: str | None) -> None:
         self._property_name = value
+
+    def setPropertyName(self, value: str | None) -> None:  # noqa: N802
+        self.set_property_name(value)
 
     def set_attribute(self, value: Attribute) -> None:
         self._attributes[value.get_name()] = value
 
+    def setAttribute(self, value: Attribute) -> None:  # noqa: N802
+        self.set_attribute(value)
+
     def contains_attribute(self, qualified_name: str) -> bool:
         return qualified_name in self._attributes
+
+    def containsAttribute(self, qualified_name: str) -> bool:  # noqa: N802
+        return self.contains_attribute(qualified_name)
 
     def get_attribute(self, qualified_name: str) -> Attribute | None:
         return self._attributes.get(qualified_name)
 
+    def getAttribute(self, qualified_name: str) -> Attribute | None:  # noqa: N802
+        return self.get_attribute(qualified_name)
+
     def get_all_attributes(self) -> list[Attribute]:
         return list(self._attributes.values())
+
+    def getAllAttributes(self) -> list[Attribute]:  # noqa: N802
+        return self.get_all_attributes()
 
     def remove_attribute(self, qualified_name: str) -> None:
         self._attributes.pop(qualified_name, None)
 
+    def removeAttribute(self, qualified_name: str) -> None:  # noqa: N802
+        self.remove_attribute(qualified_name)
+
     def get_metadata(self) -> XMPMetadata:
         return self._metadata
+
+    def getMetadata(self) -> XMPMetadata:  # noqa: N802 - upstream Java name
+        return self.get_metadata()
 
     def get_namespace(self) -> str | None:
         raise NotImplementedError

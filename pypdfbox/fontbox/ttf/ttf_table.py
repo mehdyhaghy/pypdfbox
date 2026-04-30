@@ -26,29 +26,56 @@ class TTFTable:
     def get_tag(self) -> str:
         return self._tag
 
+    def getTag(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_tag()
+
     def set_tag(self, value: str) -> None:
         self._tag = value
+
+    def setTag(self, value: str) -> None:  # noqa: N802 - upstream Java name
+        self.set_tag(value)
 
     def get_check_sum(self) -> int:
         return self._check_sum
 
+    def getCheckSum(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_check_sum()
+
     def set_check_sum(self, value: int) -> None:
         self._check_sum = value
+
+    def setCheckSum(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_check_sum(value)
 
     def get_offset(self) -> int:
         return self._offset
 
+    def getOffset(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_offset()
+
     def set_offset(self, value: int) -> None:
         self._offset = value
+
+    def setOffset(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_offset(value)
 
     def get_length(self) -> int:
         return self._length
 
+    def getLength(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_length()
+
     def set_length(self, value: int) -> None:
         self._length = value
 
+    def setLength(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_length(value)
+
     def get_initialized(self) -> bool:
         return self.initialized
+
+    def getInitialized(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.get_initialized()
 
     # ---- override points ----
     def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:  # noqa: ARG002
