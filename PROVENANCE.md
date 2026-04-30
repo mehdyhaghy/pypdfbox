@@ -1052,3 +1052,8 @@ Existing upstream-derived modules extended in Wave 51: `COSArray`, `PDAnnotation
 | `tests/filter/test_flate_filter.py` | 3.0.x | hand-written coverage for the upstream-named `FlateFilter` alias and registry wiring |
 
 Existing upstream-derived modules extended in Wave 52: `COSWriterXRefEntry`, `PDImageXObject`, `PDAnnotationWidget`, and `HeaderTable`.
+
+### Wave 53 additions
+
+No new port files were added in Wave 53. The wave only extended existing upstream-derived modules and their existing test files:
+`COSDictionary`, `PDPage`, `PDShadingType3`, `TrueTypeFont`, and `XMPMediaManagementSchema`.

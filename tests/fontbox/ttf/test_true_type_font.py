@@ -61,6 +61,14 @@ def test_get_table_unknown_tag_returns_none(liberation_sans: TrueTypeFont) -> No
     assert liberation_sans.get_table("ZZZZ") is None
 
 
+def test_get_tables_returns_directory_entries(liberation_sans: TrueTypeFont) -> None:
+    tables = liberation_sans.get_tables()
+    table_map = liberation_sans.get_table_map()
+    assert tables
+    assert len(tables) == len(table_map)
+    assert {table.get_tag() for table in tables} == set(table_map)
+
+
 def test_get_table_bytes_matches_directory_length(
     liberation_sans: TrueTypeFont,
 ) -> None:
@@ -70,6 +78,14 @@ def test_get_table_bytes_matches_directory_length(
     assert len(raw) == 54
     # head magic number (offset 12, uint32 BE = 0x5F0F3CF5).
     assert raw[12:16] == b"\x5F\x0F\x3C\xF5"
+
+
+def test_get_table_bytes_accepts_table_entry(liberation_sans: TrueTypeFont) -> None:
+    head = liberation_sans.get_table("head")
+    assert head is not None
+    raw_from_entry = liberation_sans.get_table_bytes(head)
+    raw_from_tag = liberation_sans.get_table_bytes("head")
+    assert raw_from_entry == raw_from_tag
 
 
 def test_get_table_bytes_unknown_returns_none(liberation_sans: TrueTypeFont) -> None:

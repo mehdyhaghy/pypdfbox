@@ -394,12 +394,16 @@ class PDPage:
         self._page.set_item(_ROTATE, COSInteger.get(int(rotation)))
 
     def get_user_unit(self) -> float:
-        """``/UserUnit`` (PDF 1.6+). Default 1.0."""
+        """``/UserUnit`` (PDF 1.6+). Default 1.0.
+
+        PDFBox also treats malformed non-positive values as absent.
+        """
         from pypdfbox.cos import COSFloat, COSInteger
 
         value = self._page.get_dictionary_object(_USER_UNIT)
         if isinstance(value, (COSInteger, COSFloat)):
-            return float(value.value)
+            unit = float(value.value)
+            return unit if unit > 0 else 1.0
         return 1.0
 
     def set_user_unit(self, unit: float) -> None:

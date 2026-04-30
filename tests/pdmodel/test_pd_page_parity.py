@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
+from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel import PDPage, PDRectangle
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
@@ -183,6 +183,15 @@ def test_set_user_unit_rejects_non_positive_values() -> None:
     for value in (0.0, -1.0):
         with pytest.raises(ValueError):
             page.set_user_unit(value)
+
+
+def test_get_user_unit_defaults_for_non_positive_cos_values() -> None:
+    page = PDPage()
+    page.get_cos_object().set_item(COSName.get_pdf_name("UserUnit"), COSFloat(0))
+    assert page.get_user_unit() == 1.0
+
+    page.get_cos_object().set_item(COSName.get_pdf_name("UserUnit"), COSInteger.get(-2))
+    assert page.get_user_unit() == 1.0
 
 
 # ---------- struct parents ----------

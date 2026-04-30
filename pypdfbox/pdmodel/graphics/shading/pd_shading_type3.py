@@ -158,9 +158,17 @@ class PDShadingType3(PDShading):
             isinstance(b, COSBoolean) and b.get_value(),
         )
 
-    def set_extend(self, start: bool, end: bool) -> None:
-        """Set ``/Extend`` from a pair of booleans, matching upstream's
-        2-element ``[start end]`` array form."""
+    def set_extend(self, start, end=None) -> None:
+        """Set ``/Extend``. Accepts either ``(start, end)`` as a pair of
+        booleans or the upstream-shaped single ``COSArray`` argument.
+        Pass ``None`` for the single-argument form to remove the entry."""
+        if end is None:
+            if start is None:
+                self._dict.remove_item(_EXTEND)
+                return
+            if isinstance(start, COSArray):
+                self._dict.set_item(_EXTEND, start)
+                return
         array = COSArray()
         array.add(COSBoolean.get(bool(start)))
         array.add(COSBoolean.get(bool(end)))

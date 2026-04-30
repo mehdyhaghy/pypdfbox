@@ -697,3 +697,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: added `is_empty()` and `get_suffix()` mapping image filters to upstream-style export suffixes.
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py`: `set_parent(...)` now accepts `PDTerminalField` and rejects the shared-dictionary single-widget case, matching upstream's typed parent contract.
 - `pypdfbox/fontbox/ttf/header_table.py`: added upstream-shaped setters for parsed `head` table fields including version, revision, checksum, dates, bounding box, style flags, loca format, and glyph data format.
+
+## Wave 53 — dictionary fallback lookup, user-unit parsing, shading extend overloads, TTF table helpers, XMP derived-from aliases
+
+- `pypdfbox/cos/cos_dictionary.py`: `get_dictionary_object(first, second)` now supports PDFBox's fallback-key overload when the second argument is a `COSName` or string, while preserving non-name default values.
+- `pypdfbox/pdmodel/pd_page.py`: malformed non-positive parsed `/UserUnit` values now read as the upstream default `1.0`, while setters still reject non-positive values.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading_type3.py`: `set_extend(...)` now accepts upstream's single `COSArray` form and single `None` clearing form, in addition to the existing two-boolean form.
+- `pypdfbox/fontbox/ttf/true_type_font.py`: added `get_tables()` and extended `get_table_bytes(...)` to accept a `TTFTable` entry while preserving string-tag lookup.
+- `pypdfbox/xmpbox/xmp_media_management_schema.py`: added upstream-shaped `set_derived_from_property(...)` and `get_resource_ref_property()` aliases for the `DerivedFrom` resource reference.

@@ -58,18 +58,31 @@ class COSDictionary(COSBase):
         """Raw entry — may be a ``COSObject`` indirect reference."""
         return self._items.get(_as_name(key), default)
 
-    def get_dictionary_object(
-        self, key: COSName | str, default: COSBase | None = None
-    ) -> COSBase | None:
-        """Resolved entry — dereferences ``COSObject`` if needed."""
+    def _resolve_item(self, key: COSName | str) -> COSBase | None:
         item = self._items.get(_as_name(key))
         if item is None:
-            return default
+            return None
         if isinstance(item, COSObject):
             item = item.get_object()
         if item is COSNull.NULL:
             return None
         return item
+
+    def get_dictionary_object(
+        self, key: COSName | str, default: COSBase | None = None
+    ) -> COSBase | None:
+        """Resolved entry — dereferences ``COSObject`` if needed.
+
+        When ``default`` is a ``COSName`` or ``str``, it is treated as PDFBox's
+        second-key overload and is resolved only if the first key is absent or
+        resolves to ``COSNull``.
+        """
+        item = self._resolve_item(key)
+        if item is not None:
+            return item
+        if isinstance(default, (COSName, str)):
+            return self._resolve_item(default)
+        return default
 
     def contains_key(self, key: COSName | str) -> bool:
         return _as_name(key) in self._items

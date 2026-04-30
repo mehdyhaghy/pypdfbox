@@ -172,14 +172,24 @@ class TrueTypeFont:
         """
         return self.get_table_map().get(tag)
 
-    def get_table_bytes(self, tag: str) -> bytes | None:
-        """Return the raw on-disk bytes of table ``tag``, or ``None`` if absent.
+    def get_tables(self) -> list[TTFTable]:
+        """Return all SFNT-directory entries.
 
-        Mirrors upstream's ``getTableBytes(TTFTable)``. Pulls the bytes
-        out of the in-memory SFNT buffer using the directory entry's
+        Mirrors upstream's ``getTables()`` collection helper. The entries
+        are the same :class:`TTFTable` objects exposed by
+        :meth:`get_table_map`.
+        """
+        return list(self.get_table_map().values())
+
+    def get_table_bytes(self, table: str | TTFTable) -> bytes | None:
+        """Return the raw on-disk bytes of ``table``, or ``None`` if absent.
+
+        Mirrors upstream's ``getTableBytes(TTFTable)`` while preserving the
+        earlier Python convenience of passing a table tag string. Pulls the
+        bytes out of the in-memory SFNT buffer using the directory entry's
         offset/length so callers don't have to re-read the file.
         """
-        entry = self.get_table_map().get(tag)
+        entry = self.get_table_map().get(table) if isinstance(table, str) else table
         if entry is None:
             return None
         offset = entry.get_offset()

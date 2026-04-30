@@ -90,6 +90,35 @@ def test_get_dictionary_object_returns_none_for_cos_null() -> None:
     assert indirect.get_dictionary_object("Null") is None
 
 
+def test_get_dictionary_object_falls_back_to_second_key() -> None:
+    value = COSName.get_pdf_name("DeviceRGB")
+    d = COSDictionary([("ColorSpace", value)])
+
+    assert d.get_dictionary_object("CS", "ColorSpace") is value
+    assert (
+        d.get_dictionary_object(COSName.get_pdf_name("CS"), COSName.get_pdf_name("ColorSpace"))
+        is value
+    )
+
+
+def test_get_dictionary_object_first_key_wins_and_cos_null_falls_back() -> None:
+    first = COSName.get_pdf_name("First")
+    second = COSName.get_pdf_name("Second")
+
+    d = COSDictionary([("CS", first), ("ColorSpace", second)])
+    assert d.get_dictionary_object("CS", "ColorSpace") is first
+
+    d.set_item("CS", COSNull.NULL)
+    assert d.get_dictionary_object("CS", "ColorSpace") is second
+
+
+def test_get_dictionary_object_preserves_non_name_default_value() -> None:
+    default = COSInteger.get(17)
+    d = COSDictionary()
+
+    assert d.get_dictionary_object("Missing", default) is default
+
+
 def test_typed_setters() -> None:
     d = COSDictionary()
     d.set_name("Type", "Page")

@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.common.function import (
 from pypdfbox.pdmodel.graphics.shading import PDShadingType3
 from pypdfbox.pdmodel.graphics.shading.pd_shading import PDShading
 
-
 # ---------- helpers ----------
 
 
@@ -206,3 +205,25 @@ def test_extend_truthy_inputs_are_coerced_to_bool():
     arr = s.get_cos_object().get_dictionary_object("Extend")
     assert arr.get_object(0) is COSBoolean.TRUE
     assert arr.get_object(1) is COSBoolean.FALSE
+
+
+def test_extend_accepts_upstream_cos_array_form():
+    s = PDShadingType3()
+    arr = COSArray()
+    arr.add(COSBoolean.TRUE)
+    arr.add(COSBoolean.FALSE)
+
+    s.set_extend(arr)
+
+    assert s.get_cos_object().get_dictionary_object("Extend") is arr
+    assert s.get_extend() == (True, False)
+
+
+def test_extend_single_none_removes_entry():
+    s = PDShadingType3()
+    s.set_extend(True, True)
+
+    s.set_extend(None)
+
+    assert s.get_cos_object().get_dictionary_object("Extend") is None
+    assert s.get_extend() == (False, False)

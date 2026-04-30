@@ -168,6 +168,21 @@ def test_derived_from_typed_round_trip() -> None:
     assert schema.get_derived_from() is None
 
 
+def test_derived_from_upstream_property_aliases() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    ref = ResourceRefType(metadata)
+    ref.set_instance_id("uuid:source-inst")
+
+    schema.set_derived_from_property(ref)
+
+    assert schema.get_resource_ref_property() is ref
+    assert schema.get_derived_from() is ref
+
+    schema.set_derived_from_property(None)
+    assert schema.get_resource_ref_property() is None
+
+
 def test_history_seq_typed_round_trip() -> None:
     metadata = XMPMetadata.create_xmp_metadata()
     schema = XMPMediaManagementSchema(metadata)

@@ -214,6 +214,14 @@ class XMPMediaManagementSchema(XMPSchema):
             return
         self.set_property(self.DERIVED_FROM, ref)
 
+    def set_derived_from_property(self, ref: ResourceRefType | None) -> None:
+        """Mirror upstream ``setDerivedFromProperty(ResourceRefType)``."""
+        self.set_derived_from(ref)
+
+    def get_resource_ref_property(self) -> ResourceRefType | None:
+        """Mirror upstream ``getResourceRefProperty()`` for ``DerivedFrom``."""
+        return self.get_derived_from()
+
     # --- History (Seq of ResourceEvent) -----------------------------
 
     def add_history(self, event: ResourceEventType) -> None:
