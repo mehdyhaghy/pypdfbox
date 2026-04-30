@@ -78,6 +78,28 @@ def test_add_unqualified_array_rejects_unknown_type() -> None:
         s.add_unqualified_array("foo", "Tuple")
 
 
+def test_remove_unqualified_bag_value_removes_all_matches() -> None:
+    s = _schema()
+    s.add_unqualified_bag_value("subject", "alpha")
+    s.add_unqualified_bag_value("subject", "beta")
+    s.add_unqualified_bag_value("subject", "alpha")
+
+    s.remove_unqualified_bag_value("subject", "alpha")
+
+    assert s.get_unqualified_bag_value_list("subject") == ["beta"]
+
+
+def test_remove_unqualified_sequence_value_removes_all_matches() -> None:
+    s = _schema()
+    s.add_unqualified_sequence_value("creators", "Alice")
+    s.add_unqualified_sequence_value("creators", "Bob")
+    s.add_unqualified_sequence_value("creators", "Alice")
+
+    s.remove_unqualified_sequence_value("creators", "Alice")
+
+    assert s.get_unqualified_sequence_value_list("creators") == ["Bob"]
+
+
 # --- about attribute round-trip ---------------------------------------------
 
 

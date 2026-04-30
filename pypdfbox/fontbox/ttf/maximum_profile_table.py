@@ -61,6 +61,9 @@ class MaximumProfileTable(TTFTable):
     def get_num_glyphs(self) -> int:
         return self._num_glyphs
 
+    def set_num_glyphs(self, value: int) -> None:
+        self._num_glyphs = value
+
     def get_max_points(self) -> int:
         return self._max_points
 

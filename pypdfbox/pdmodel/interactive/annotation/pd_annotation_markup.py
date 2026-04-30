@@ -17,6 +17,7 @@ _IT: COSName = COSName.get_pdf_name("IT")
 _CA: COSName = COSName.get_pdf_name("CA")
 _POPUP: COSName = COSName.get_pdf_name("Popup")
 _RC: COSName = COSName.get_pdf_name("RC")
+_EX_DATA: COSName = COSName.get_pdf_name("ExData")
 
 
 class PDAnnotationMarkup(PDAnnotation):
@@ -151,6 +152,25 @@ class PDAnnotationMarkup(PDAnnotation):
 
     def set_rich_contents(self, rc: str | None) -> None:
         self._dict.set_string(_RC, rc)
+
+    # ---------- /ExData (external data) ----------
+
+    def get_external_data(self) -> COSDictionary | None:
+        """Return the raw external data dictionary associated with this markup.
+
+        Upstream exposes ``PDExternalDataDictionary``. The typed wrapper is
+        deferred here, so callers get the resolved raw ``COSDictionary``.
+        """
+        value = self._dict.get_dictionary_object(_EX_DATA)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_external_data(self, ex_data: COSDictionary | None) -> None:
+        if ex_data is None:
+            self._dict.remove_item(_EX_DATA)
+            return
+        self._dict.set_item(_EX_DATA, ex_data)
 
 
 __all__ = ["PDAnnotationMarkup"]

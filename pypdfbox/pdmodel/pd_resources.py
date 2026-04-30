@@ -239,10 +239,14 @@ class PDResources:
         """``/XObject`` keys. Upstream method name is ``getXObjectNames``."""
         return self.get_xobject_names()
 
-    def add_x_object(self, xobject: PDXObject) -> COSName:
+    def add_x_object(
+        self, xobject: PDXObject, prefix: str | None = None
+    ) -> COSName:
         """Register ``xobject`` under a fresh key. Form XObjects are keyed
-        ``Form0``/``Form1``/…, image XObjects ``Im0``/``Im1``/…, matching
-        upstream ``createKey`` per kind."""
+        ``Form0``/``Form1``/…, image XObjects ``Im0``/``Im1``/…, unless a
+        custom ``prefix`` is supplied. Matching upstream ``createKey`` per
+        kind, returns an existing key when the same COS object is already
+        present."""
         # Local imports — cluster boundary, see ``get_x_object``.
         from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
             PDFormXObject,
@@ -251,18 +255,25 @@ class PDResources:
             PDImageXObject,
         )
 
-        if isinstance(xobject, PDFormXObject):
-            prefix = _PREFIX_FORM
+        cos_object = xobject.get_cos_object()
+        sub = self._get_or_create_subdict(_X_OBJECT)
+        existing = self._find_existing_key(sub, cos_object)
+        if existing is not None:
+            return existing
+
+        if prefix is not None:
+            key_prefix = prefix
+        elif isinstance(xobject, PDFormXObject):
+            key_prefix = _PREFIX_FORM
         elif isinstance(xobject, PDImageXObject):
-            prefix = _PREFIX_IMAGE
+            key_prefix = _PREFIX_IMAGE
         else:
             # Unknown subclass — fall back to subtype on the COS dict.
-            subtype = xobject.get_cos_object().get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
-            prefix = _PREFIX_FORM if subtype == "Form" else _PREFIX_IMAGE
+            subtype = cos_object.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
+            key_prefix = _PREFIX_FORM if subtype == "Form" else _PREFIX_IMAGE
 
-        sub = self._get_or_create_subdict(_X_OBJECT)
-        key = self._create_key(sub, prefix)
-        sub.set_item(key, xobject.get_cos_object())
+        key = self._create_key(sub, key_prefix)
+        sub.set_item(key, cos_object)
         return key
 
     def get_font(self, name: COSName) -> COSDictionary | PDFont | None:

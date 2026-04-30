@@ -110,3 +110,9 @@ def test_defaults_before_read() -> None:
     assert table.get_initialized() is False
     assert table.get_num_glyphs() == 0
     assert table.get_max_points() == 0
+
+
+def test_set_num_glyphs_round_trip() -> None:
+    table = MaximumProfileTable()
+    table.set_num_glyphs(321)
+    assert table.get_num_glyphs() == 321

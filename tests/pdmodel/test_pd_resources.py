@@ -115,6 +115,26 @@ def test_add_x_object_uses_typed_prefixes() -> None:
     assert image_name.get_name() == "Im0"
 
 
+def test_add_x_object_accepts_custom_prefix() -> None:
+    res = PDResources()
+
+    name = res.add_x_object(PDImageXObject(COSStream()), "Logo")
+
+    assert name.get_name() == "Logo0"
+    assert [n.get_name() for n in res.get_xobject_names()] == ["Logo0"]
+
+
+def test_add_x_object_reuses_existing_cos_object() -> None:
+    res = PDResources()
+    image = PDImageXObject(COSStream())
+
+    first = res.add_x_object(image, "Logo")
+    second = res.add_x_object(image, "Other")
+
+    assert second == first
+    assert [n.get_name() for n in res.get_xobject_names()] == ["Logo0"]
+
+
 def test_upstream_name_aliases_return_cos_names() -> None:
     res = PDResources()
     image = COSStream()

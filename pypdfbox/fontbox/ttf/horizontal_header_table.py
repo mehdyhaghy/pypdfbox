@@ -105,3 +105,6 @@ class HorizontalHeaderTable(TTFTable):
 
     def get_number_of_h_metrics(self) -> int:
         return self._number_of_h_metrics
+
+    def set_number_of_h_metrics(self, value: int) -> None:
+        self._number_of_h_metrics = value

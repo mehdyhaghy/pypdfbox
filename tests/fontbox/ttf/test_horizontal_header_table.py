@@ -144,3 +144,9 @@ def test_reserved_fields_default_zero() -> None:
     assert table.get_reserved3() == 0
     assert table.get_reserved4() == 0
     assert table.get_reserved5() == 0
+
+
+def test_set_number_of_h_metrics_round_trip() -> None:
+    table = HorizontalHeaderTable()
+    table.set_number_of_h_metrics(17)
+    assert table.get_number_of_h_metrics() == 17

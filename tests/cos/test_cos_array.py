@@ -100,6 +100,28 @@ def test_index_of_finds() -> None:
     assert a.index_of(n) == 1
 
 
+def test_index_of_object_finds_direct_entry() -> None:
+    n = COSInteger(7)
+    a = COSArray([COSInteger(0), n])
+    assert a.index_of_object(n) == 1
+
+
+def test_index_of_object_finds_resolved_indirect_entry() -> None:
+    target = COSInteger(7)
+    indirect = COSObject(11, 0, resolved=target)
+    a = COSArray([COSInteger(0), indirect])
+
+    assert a.index_of(target) == -1
+    assert a.index_of_object(target) == 1
+
+
+def test_index_of_object_returns_minus_one_for_missing() -> None:
+    indirect = COSObject(11, 0, resolved=COSInteger(7))
+    a = COSArray([COSInteger(0), indirect])
+
+    assert a.index_of_object(COSInteger(9)) == -1
+
+
 def test_to_list_returns_copy() -> None:
     a = COSArray([COSInteger(1)])
     out = a.to_list()

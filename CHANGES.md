@@ -721,3 +721,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_resources.py`: device color-space lookup now falls back to built-in `DeviceGray`/`DeviceRGB`/`DeviceCMYK` singletons and honors `/DefaultGray`, `/DefaultRGB`, and `/DefaultCMYK` overrides with the upstream recursion guard.
 - `pypdfbox/fontbox/ttf/naming_table.py`: added PDFBox-style camelCase aliases for name lookup, name records, and common metadata accessors.
 - `pypdfbox/xmpbox/xmp_schema.py`: LangAlt writes now keep `x-default` first when the default language value is set or updated, matching upstream ordering.
+
+## Wave 56 — array object lookup, markup external data, XObject key reuse, TTF setters, XMP removal parity
+
+- `pypdfbox/cos/cos_array.py`: added `index_of_object(...)`, matching PDFBox's resolved-entry lookup by finding either a direct value or an indirect `COSObject` whose target equals the requested object.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_markup.py`: markup annotations now expose raw `/ExData` through `get_external_data()` / `set_external_data(...)` until a typed external-data wrapper lands.
+- `pypdfbox/pdmodel/pd_resources.py`: `add_x_object(...)` now accepts a custom prefix and returns the existing key when the same XObject COS object is already registered.
+- `pypdfbox/fontbox/ttf/maximum_profile_table.py` + `horizontal_header_table.py`: added upstream-shaped setters for `numGlyphs` and `numberOfHMetrics`.
+- `pypdfbox/xmpbox/xmp_schema.py`: removing a Bag or Seq value now removes all matching entries, matching upstream array-property removal semantics.

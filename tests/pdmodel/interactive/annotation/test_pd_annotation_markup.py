@@ -169,6 +169,25 @@ def test_markup_rich_contents_round_trip_and_clear() -> None:
     assert ann.get_rich_contents() is None
 
 
+def test_markup_external_data_round_trip_and_clear() -> None:
+    ann = PDAnnotationCaret()
+    ex_data = COSDictionary()
+
+    ann.set_external_data(ex_data)
+
+    assert ann.get_external_data() is ex_data
+
+    ann.set_external_data(None)
+    assert ann.get_external_data() is None
+
+
+def test_markup_external_data_ignores_non_dictionary_value() -> None:
+    ann = PDAnnotationCaret()
+    ann.get_cos_object().set_string("ExData", "not a dictionary")
+
+    assert ann.get_external_data() is None
+
+
 # ---------- PDAnnotationTextMarkup (via Highlight) ----------
 
 

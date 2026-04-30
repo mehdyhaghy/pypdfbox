@@ -85,6 +85,15 @@ class COSArray(COSBase):
         except ValueError:
             return -1
 
+    def index_of_object(self, item: COSBase) -> int:
+        """Return the index of ``item``, resolving indirect object entries."""
+        for index, candidate in enumerate(self._items):
+            if candidate == item:
+                return index
+            if isinstance(candidate, COSObject) and candidate.get_object() == item:
+                return index
+        return -1
+
     def remove_object(self, item: COSBase) -> bool:
         """Remove the first matching item; alias for ``remove`` returning a bool."""
         return self.remove(item)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from contextlib import suppress
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -237,8 +236,7 @@ class XMPSchema:
     def remove_unqualified_bag_value(self, local_name: str, value: str) -> None:
         existing = self._properties.get(local_name)
         if isinstance(existing, list):
-            with suppress(ValueError):
-                existing.remove(value)
+            existing[:] = [item for item in existing if item != value]
 
     def get_unqualified_bag_value_list(self, local_name: str) -> list[str] | None:
         v = self._properties.get(local_name)
