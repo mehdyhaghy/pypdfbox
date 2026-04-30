@@ -1112,3 +1112,8 @@ No new port files were added in Wave 63. The wave only extended existing upstrea
 
 No new port files were added in Wave 64. The wave only extended existing upstream-derived modules and their existing test files:
 `JobType` and `ResourceEventType`.
+
+### Wave 65 additions
+
+No new port files were added in Wave 65. The wave only extended existing upstream-derived modules and their existing test files:
+`COSArray`.

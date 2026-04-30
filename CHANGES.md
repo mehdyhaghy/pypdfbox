@@ -775,3 +775,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/xmpbox/type/job_type.py`: added XMPBox camelCase aliases for job fields (`getId` / `setId`, `getName` / `setName`, and `getUrl` / `setUrl`).
 - `pypdfbox/xmpbox/type/resource_event_type.py`: added XMPBox camelCase aliases for resource-event fields (`getAction` / `setAction`, `getChanged` / `setChanged`, `getInstanceID` / `setInstanceID`, `getParameters` / `setParameters`, `getSoftwareAgent` / `setSoftwareAgent`, and `getWhen` / `setWhen`).
+
+## Wave 65 — COSArray Java aliases
+
+- `pypdfbox/cos/cos_array.py`: added PDFBox camelCase aliases for collection, typed value, and conversion helpers, including `addAll`, `getObject`, `removeObject`, `removeAll`, `retainAll`, `growToSize`, `getInt` / `setInt`, `getName` / `setName`, `getFloat` / `setFloat`, `getBoolean` / `setBoolean`, `getString` / `setString`, `setFloatArray`, `toFloatArray`, and the `toCOS...List` conversion helpers.

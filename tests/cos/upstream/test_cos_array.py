@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSString
+from pypdfbox.cos import COSArray, COSBoolean, COSFloat, COSInteger, COSName, COSString
 
 
 def test_create() -> None:
@@ -244,3 +244,58 @@ def test_to_list() -> None:
     assert len(items) == 6
     assert items[0] == COSInteger.get(0)
     assert items[5] == COSInteger.get(5)
+
+
+def test_pdfbox_collection_aliases() -> None:
+    cos_array = COSArray()
+    assert cos_array.isEmpty() is True
+
+    cos_array.addAll([COSInteger.get(1), COSInteger.get(2), COSInteger.get(3)])
+    assert cos_array.size() == 3
+    assert cos_array.indexOf(COSInteger.get(2)) == 1
+    assert cos_array.indexOf(COSInteger.get(4)) == -1
+    assert cos_array.toList() == [COSInteger.get(1), COSInteger.get(2), COSInteger.get(3)]
+
+    assert cos_array.removeAt(0) == COSInteger.get(1)
+    assert cos_array.removeObject(COSInteger.get(3)) is True
+    assert cos_array.toList() == [COSInteger.get(2)]
+
+    assert cos_array.removeAll([COSInteger.get(2)]) is True
+    cos_array.addAll([COSInteger.get(4), COSInteger.get(5), COSInteger.get(6)])
+    assert cos_array.retainAll([COSInteger.get(4), COSInteger.get(6)]) is True
+    assert cos_array.toCOSNumberIntegerList() == [4, 6]
+
+
+def test_pdfbox_typed_aliases() -> None:
+    cos_array = COSArray()
+    cos_array.growToSize(6)
+    cos_array.setName(0, "A")
+    cos_array.setInt(1, 2)
+    cos_array.setFloat(2, 3.5)
+    cos_array.setBoolean(3, True)
+    cos_array.setString(4, "text")
+
+    assert cos_array.getName(0) == "A"
+    assert cos_array.getInt(1) == 2
+    assert cos_array.getFloat(2) == pytest.approx(3.5)
+    assert cos_array.getBoolean(3) is True
+    assert cos_array.getString(4) == "text"
+    assert cos_array.getName(8, "fallback") == "fallback"
+    assert cos_array.getInt(8, 99) == 99
+
+    cos_array.setFloatArray([1.0, 2.5])
+    assert cos_array.toFloatArray() == pytest.approx([1.0, 2.5])
+    assert cos_array.toCOSNumberFloatList() == pytest.approx([1.0, 2.5])
+
+    name_array = COSArray.of_cos_names(["A", "B"])
+    assert name_array.toCOSNameStringList() == ["A", "B"]
+    string_array = COSArray.of_cos_strings(["A", "B"])
+    assert string_array.toCOSStringStringList() == ["A", "B"]
+
+
+def test_pdfbox_object_aliases() -> None:
+    target = COSString("target")
+    cos_array = COSArray([COSBoolean.TRUE, target])  # type: ignore[attr-defined]
+
+    assert cos_array.getObject(1) == target
+    assert cos_array.indexOfObject(target) == 1
