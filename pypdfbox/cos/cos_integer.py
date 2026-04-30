@@ -64,11 +64,20 @@ class COSInteger(COSNumber):
         """Mirror PDFBox's ``COSInteger.getValue()`` accessor."""
         return self._value
 
+    def getValue(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_value()
+
     def is_valid(self) -> bool:
         return self._valid
 
+    def isValid(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.is_valid()
+
     def set_valid(self, valid: bool) -> None:
         self._valid = valid
+
+    def setValid(self, valid: bool) -> None:  # noqa: N802 - upstream Java name
+        self.set_valid(valid)
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_integer(self)

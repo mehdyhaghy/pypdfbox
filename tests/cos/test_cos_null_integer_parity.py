@@ -6,7 +6,6 @@ import pytest
 
 from pypdfbox.cos import COSInteger, COSNull
 
-
 # ---------------------------------------------------------------------------
 # COSNull — singleton helpers + falsy semantics + write_pdf round-trip.
 # ---------------------------------------------------------------------------
@@ -66,6 +65,16 @@ def test_cos_integer_float_and_double_value_consistent() -> None:
 def test_cos_integer_get_value_alias() -> None:
     assert COSInteger(7).get_value() == 7
     assert COSInteger(-3).get_value() == -3
+
+
+def test_cos_integer_pdfbox_camelcase_aliases() -> None:
+    i = COSInteger(7)
+    assert i.getValue() == 7
+    assert i.isValid() is True
+    i.setValid(False)
+    assert i.is_valid() is False
+    i.set_valid(True)
+    assert i.isValid() is True
 
 
 @pytest.mark.parametrize(

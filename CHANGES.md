@@ -756,3 +756,9 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/fontbox/ttf/ttf_table.py`: added FontBox camelCase aliases for base table metadata (`getTag` / `setTag`, `getCheckSum` / `setCheckSum`, `getOffset` / `setOffset`, `getLength` / `setLength`, and `getInitialized`).
 - `pypdfbox/xmpbox/type/abstract_field.py`: added XMPBox camelCase aliases for `Attribute` and `AbstractField` metadata/attribute accessors, including `getName`, `setName`, `getNamespace`, `setNsURI`, `getValue`, `setValue`, `getPropertyName`, `setPropertyName`, `setAttribute`, `containsAttribute`, `getAttribute`, `getAllAttributes`, `removeAttribute`, and `getMetadata`.
+
+## Wave 61 — COS scalar Java aliases
+
+- `pypdfbox/cos/cos_integer.py`: added PDFBox camelCase aliases `getValue()`, `isValid()`, and `setValid(...)`.
+- `pypdfbox/cos/cos_float.py`: added PDFBox camelCase aliases `getValue()`, `getOriginalForm()`, and `setValue(...)`.
+- `pypdfbox/cos/cos_string.py`: added PDFBox camelCase aliases `getBytes()`, `getString()`, `isForceHexForm()`, `setForceHexForm(...)`, and `toHexString()`.
