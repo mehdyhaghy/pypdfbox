@@ -779,3 +779,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 65 — COSArray Java aliases
 
 - `pypdfbox/cos/cos_array.py`: added PDFBox camelCase aliases for collection, typed value, and conversion helpers, including `addAll`, `getObject`, `removeObject`, `removeAll`, `retainAll`, `growToSize`, `getInt` / `setInt`, `getName` / `setName`, `getFloat` / `setFloat`, `getBoolean` / `setBoolean`, `getString` / `setString`, `setFloatArray`, `toFloatArray`, and the `toCOS...List` conversion helpers.
+
+## Wave 66 — COSDictionary typed Java aliases
+
+- `pypdfbox/cos/cos_dictionary.py`: added PDFBox camelCase aliases for dictionary collection and typed helpers, including `isEmpty`, `keySet`, `entrySet`, `addAll`, `getName` / `setName`, `getString` / `setString`, `getInt` / `setInt`, `getLong` / `setLong`, `getFloat` / `setFloat`, and `getBoolean` / `setBoolean`.

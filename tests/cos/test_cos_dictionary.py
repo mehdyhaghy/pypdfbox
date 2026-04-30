@@ -223,11 +223,43 @@ def test_pdfbox_camelcase_typed_aliases_delegate() -> None:
     child = COSDictionary()
     kids = COSArray([COSInteger(1)])
     d = COSDictionary()
+    d.setName("Type", "Page")
+    d.setString("Title", "hello")
+    d.setInt("Count", 5)
+    d.setLong("Revision", 2**40)
+    d.setFloat("Width", 2.5)
+    d.setBoolean("Flag", True)
     d.setItem("Child", COSObject(11, 0, resolved=child))
     d.setItem("Kids", COSObject(12, 0, resolved=kids))
 
+    assert d.getName("Type") == "Page"
+    assert d.getString("Title") == "hello"
+    assert d.getInt("Count") == 5
+    assert d.getLong("Revision") == 2**40
+    assert d.getFloat("Width") == 2.5
+    assert d.getBoolean("Flag") is True
+    assert d.getString("Missing", "fallback") == "fallback"
+    assert d.getInt("Missing", 7) == 7
     assert d.getCOSDictionary("Child") is child
     assert d.getCOSArray("Kids") is kids
+
+
+def test_pdfbox_camelcase_collection_aliases_delegate() -> None:
+    a = COSDictionary([("X", COSInteger(1)), ("Y", COSInteger(2))])
+    b = COSDictionary([("Y", COSInteger(20)), ("Z", COSInteger(30))])
+
+    assert not a.isEmpty()
+    assert [key.name for key in a.keySet()] == ["X", "Y"]
+    assert [(key.name, value) for key, value in a.entrySet()] == [
+        ("X", COSInteger(1)),
+        ("Y", COSInteger(2)),
+    ]
+
+    a.addAll(b)
+
+    assert a.getInt("X") == 1
+    assert a.getInt("Y") == 20
+    assert a.getInt("Z") == 30
 
 
 def test_invalid_key_type_raises() -> None:

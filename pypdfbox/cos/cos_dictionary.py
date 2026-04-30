@@ -113,11 +113,17 @@ class COSDictionary(COSBase):
     def is_empty(self) -> bool:
         return not self._items
 
+    def isEmpty(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.is_empty()
+
     def clear(self) -> None:
         self._items.clear()
 
     def key_set(self) -> KeysView[COSName]:
         return self._items.keys()
+
+    def keySet(self) -> KeysView[COSName]:  # noqa: N802 - upstream Java name
+        return self.key_set()
 
     def values(self) -> ValuesView[COSBase]:
         return self._items.values()
@@ -125,9 +131,15 @@ class COSDictionary(COSBase):
     def entry_set(self) -> ItemsView[COSName, COSBase]:
         return self._items.items()
 
+    def entrySet(self) -> ItemsView[COSName, COSBase]:  # noqa: N802 - upstream Java name
+        return self.entry_set()
+
     def add_all(self, other: COSDictionary) -> None:
         """Merge ``other`` into self, overwriting keys present in both."""
         self._items.update(other._items)
+
+    def addAll(self, other: COSDictionary) -> None:  # noqa: N802 - upstream Java name
+        self.add_all(other)
 
     # ---------- typed convenience setters ----------
 
@@ -137,24 +149,42 @@ class COSDictionary(COSBase):
         else:
             self.set_item(key, COSName.get_pdf_name(value))
 
+    def setName(self, key: COSName | str, value: str | None) -> None:  # noqa: N802
+        self.set_name(key, value)
+
     def set_string(self, key: COSName | str, value: str | bytes | None) -> None:
         if value is None:
             self.remove_item(key)
         else:
             self.set_item(key, COSString(value))
 
+    def setString(self, key: COSName | str, value: str | bytes | None) -> None:  # noqa: N802
+        self.set_string(key, value)
+
     def set_int(self, key: COSName | str, value: int) -> None:
         self.set_item(key, COSInteger.get(value))
+
+    def setInt(self, key: COSName | str, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_int(key, value)
 
     def set_long(self, key: COSName | str, value: int) -> None:
         """Store an integer value under ``key``. Mirrors PDFBox ``setLong``."""
         self.set_item(key, COSInteger.get(value))
 
+    def setLong(self, key: COSName | str, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_long(key, value)
+
     def set_float(self, key: COSName | str, value: float) -> None:
         self.set_item(key, COSFloat(value))
 
+    def setFloat(self, key: COSName | str, value: float) -> None:  # noqa: N802
+        self.set_float(key, value)
+
     def set_boolean(self, key: COSName | str, value: bool) -> None:
         self.set_item(key, COSBoolean.get(value))
+
+    def setBoolean(self, key: COSName | str, value: bool) -> None:  # noqa: N802
+        self.set_boolean(key, value)
 
     # ---------- typed convenience getters ----------
 
@@ -166,11 +196,17 @@ class COSDictionary(COSBase):
             return v.name
         return default
 
+    def getString(self, key: COSName | str, default: str | None = None) -> str | None:  # noqa: N802
+        return self.get_string(key, default)
+
     def get_name(self, key: COSName | str, default: str | None = None) -> str | None:
         v = self.get_dictionary_object(key)
         if isinstance(v, COSName):
             return v.name
         return default
+
+    def getName(self, key: COSName | str, default: str | None = None) -> str | None:  # noqa: N802
+        return self.get_name(key, default)
 
     def get_int(self, key: COSName | str, default: int = -1) -> int:
         v = self.get_dictionary_object(key)
@@ -179,6 +215,9 @@ class COSDictionary(COSBase):
         if isinstance(v, COSFloat):
             return int(v.value)
         return default
+
+    def getInt(self, key: COSName | str, default: int = -1) -> int:  # noqa: N802
+        return self.get_int(key, default)
 
     def get_long(self, key: COSName | str, default: int = -1) -> int:
         """Return a numeric value as an integer, or ``default`` if absent.
@@ -191,17 +230,26 @@ class COSDictionary(COSBase):
             return v.long_value()
         return default
 
+    def getLong(self, key: COSName | str, default: int = -1) -> int:  # noqa: N802
+        return self.get_long(key, default)
+
     def get_float(self, key: COSName | str, default: float = -1.0) -> float:
         v = self.get_dictionary_object(key)
         if isinstance(v, (COSInteger, COSFloat)):
             return float(v.value)
         return default
 
+    def getFloat(self, key: COSName | str, default: float = -1.0) -> float:  # noqa: N802
+        return self.get_float(key, default)
+
     def get_boolean(self, key: COSName | str, default: bool = False) -> bool:
         v = self.get_dictionary_object(key)
         if isinstance(v, COSBoolean):
             return v.value
         return default
+
+    def getBoolean(self, key: COSName | str, default: bool = False) -> bool:  # noqa: N802
+        return self.get_boolean(key, default)
 
     def get_cos_dictionary(self, key: COSName | str) -> COSDictionary | None:
         """Return the resolved value as a ``COSDictionary`` when present.

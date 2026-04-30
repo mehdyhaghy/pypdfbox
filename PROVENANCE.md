@@ -1117,3 +1117,8 @@ No new port files were added in Wave 64. The wave only extended existing upstrea
 
 No new port files were added in Wave 65. The wave only extended existing upstream-derived modules and their existing test files:
 `COSArray`.
+
+### Wave 66 additions
+
+No new port files were added in Wave 66. The wave only extended existing upstream-derived modules and their existing test files:
+`COSDictionary`.
