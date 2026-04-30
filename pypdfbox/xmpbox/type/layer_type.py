@@ -55,12 +55,21 @@ class LayerType(AbstractStructuredType):
             return prop.get_string_value()
         return None
 
+    def getLayerName(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_layer_name()
+
     def set_layer_name(self, value: str) -> None:
         self.add_simple_property(self.LAYER_NAME, value)
+
+    def setLayerName(self, value: str) -> None:  # noqa: N802 - upstream Java name
+        self.set_layer_name(value)
 
     def get_layer_name_property(self) -> TextType | None:
         prop = self.get_first_equivalent_property(self.LAYER_NAME, TextType)
         return prop if isinstance(prop, TextType) else None
+
+    def getLayerNameProperty(self) -> TextType | None:  # noqa: N802
+        return self.get_layer_name_property()
 
     def set_layer_name_property(self, value: TextType | None) -> None:
         if value is None:
@@ -71,6 +80,9 @@ class LayerType(AbstractStructuredType):
         value.set_property_name(self.LAYER_NAME)
         self.add_property(value)
 
+    def setLayerNameProperty(self, value: TextType | None) -> None:  # noqa: N802
+        self.set_layer_name_property(value)
+
     # --- LayerText (Text) --------------------------------------------
 
     def get_layer_text(self) -> str | None:
@@ -79,12 +91,21 @@ class LayerType(AbstractStructuredType):
             return prop.get_string_value()
         return None
 
+    def getLayerText(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_layer_text()
+
     def set_layer_text(self, value: str) -> None:
         self.add_simple_property(self.LAYER_TEXT, value)
+
+    def setLayerText(self, value: str) -> None:  # noqa: N802 - upstream Java name
+        self.set_layer_text(value)
 
     def get_layer_text_property(self) -> TextType | None:
         prop = self.get_first_equivalent_property(self.LAYER_TEXT, TextType)
         return prop if isinstance(prop, TextType) else None
+
+    def getLayerTextProperty(self) -> TextType | None:  # noqa: N802
+        return self.get_layer_text_property()
 
     def set_layer_text_property(self, value: TextType | None) -> None:
         if value is None:
@@ -94,3 +115,6 @@ class LayerType(AbstractStructuredType):
             return
         value.set_property_name(self.LAYER_TEXT)
         self.add_property(value)
+
+    def setLayerTextProperty(self, value: TextType | None) -> None:  # noqa: N802
+        self.set_layer_text_property(value)

@@ -35,6 +35,17 @@ def test_set_and_get_dimensions(metadata: XMPMetadata) -> None:
     assert dim.get_unit() == "pixel"
 
 
+def test_pdfbox_camelcase_aliases(metadata: XMPMetadata) -> None:
+    dim = DimensionsType(metadata)
+    dim.setW(800.0)
+    dim.setH(600.0)
+    dim.setUnit("pixel")
+
+    assert dim.getW() == pytest.approx(800.0)
+    assert dim.getH() == pytest.approx(600.0)
+    assert dim.getUnit() == "pixel"
+
+
 def test_repr(metadata: XMPMetadata) -> None:
     dim = DimensionsType(metadata)
     dim.set_w(10.0)

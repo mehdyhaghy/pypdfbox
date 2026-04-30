@@ -52,6 +52,15 @@ def test_set_and_get_layer_fields(metadata: XMPMetadata) -> None:
     assert layer.get_layer_text() == "Big news today!"
 
 
+def test_pdfbox_camelcase_field_aliases(metadata: XMPMetadata) -> None:
+    layer = LayerType(metadata)
+    layer.setLayerName("Headline")
+    layer.setLayerText("Big news today!")
+
+    assert layer.getLayerName() == "Headline"
+    assert layer.getLayerText() == "Big news today!"
+
+
 def test_field_constants() -> None:
     assert LayerType.LAYER_NAME == "LayerName"
     assert LayerType.LAYER_TEXT == "LayerText"
@@ -109,6 +118,32 @@ def test_typed_property_setter_round_trip(metadata: XMPMetadata) -> None:
     same = layer.get_layer_name_property()
     assert same is text
     assert layer.get_layer_name() == "Typed"
+
+
+def test_pdfbox_camelcase_property_aliases(metadata: XMPMetadata) -> None:
+    layer = LayerType(metadata)
+    name = TextType(
+        metadata,
+        LayerType.NAMESPACE,
+        LayerType.PREFERRED_PREFIX,
+        LayerType.LAYER_NAME,
+        "Typed",
+    )
+    text = TextType(
+        metadata,
+        LayerType.NAMESPACE,
+        LayerType.PREFERRED_PREFIX,
+        LayerType.LAYER_TEXT,
+        "Body",
+    )
+
+    layer.setLayerNameProperty(name)
+    layer.setLayerTextProperty(text)
+
+    assert layer.getLayerNameProperty() is name
+    assert layer.getLayerTextProperty() is text
+    assert layer.getLayerName() == "Typed"
+    assert layer.getLayerText() == "Body"
 
 
 def test_typed_property_setter_none_removes(metadata: XMPMetadata) -> None:
