@@ -80,44 +80,86 @@ class NameRecord:
     def get_platform_id(self) -> int:
         return self._platform_id
 
+    def getPlatformId(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_platform_id()
+
     def set_platform_id(self, value: int) -> None:
         self._platform_id = value
+
+    def setPlatformId(self, value: int) -> None:  # noqa: N802
+        self.set_platform_id(value)
 
     def get_platform_encoding_id(self) -> int:
         return self._platform_encoding_id
 
+    def getPlatformEncodingId(self) -> int:  # noqa: N802
+        return self.get_platform_encoding_id()
+
     def set_platform_encoding_id(self, value: int) -> None:
         self._platform_encoding_id = value
+
+    def setPlatformEncodingId(self, value: int) -> None:  # noqa: N802
+        self.set_platform_encoding_id(value)
 
     def get_language_id(self) -> int:
         return self._language_id
 
+    def getLanguageId(self) -> int:  # noqa: N802
+        return self.get_language_id()
+
     def set_language_id(self, value: int) -> None:
         self._language_id = value
+
+    def setLanguageId(self, value: int) -> None:  # noqa: N802
+        self.set_language_id(value)
 
     def get_name_id(self) -> int:
         return self._name_id
 
+    def getNameId(self) -> int:  # noqa: N802
+        return self.get_name_id()
+
     def set_name_id(self, value: int) -> None:
         self._name_id = value
+
+    def setNameId(self, value: int) -> None:  # noqa: N802
+        self.set_name_id(value)
 
     def get_string_length(self) -> int:
         return self._string_length
 
+    def getStringLength(self) -> int:  # noqa: N802
+        return self.get_string_length()
+
     def set_string_length(self, value: int) -> None:
         self._string_length = value
+
+    def setStringLength(self, value: int) -> None:  # noqa: N802
+        self.set_string_length(value)
 
     def get_string_offset(self) -> int:
         return self._string_offset
 
+    def getStringOffset(self) -> int:  # noqa: N802
+        return self.get_string_offset()
+
     def set_string_offset(self, value: int) -> None:
         self._string_offset = value
+
+    def setStringOffset(self, value: int) -> None:  # noqa: N802
+        self.set_string_offset(value)
 
     def get_string(self) -> str | None:
         return self._string
 
+    def getString(self) -> str | None:  # noqa: N802
+        return self.get_string()
+
     def set_string(self, value: str | None) -> None:
         self._string = value
+
+    def setString(self, value: str | None) -> None:  # noqa: N802
+        self.set_string(value)
 
     def __repr__(self) -> str:
         return (

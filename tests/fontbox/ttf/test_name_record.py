@@ -81,6 +81,25 @@ def test_setters_round_trip() -> None:
     assert nr.get_string() == "PostScriptName"
 
 
+def test_pdfbox_camelcase_aliases_round_trip() -> None:
+    nr = NameRecord()
+    nr.setPlatformId(3)
+    nr.setPlatformEncodingId(1)
+    nr.setLanguageId(0x0409)
+    nr.setNameId(6)
+    nr.setStringLength(10)
+    nr.setStringOffset(0x100)
+    nr.setString("PostScriptName")
+
+    assert nr.getPlatformId() == 3
+    assert nr.getPlatformEncodingId() == 1
+    assert nr.getLanguageId() == 0x0409
+    assert nr.getNameId() == 6
+    assert nr.getStringLength() == 10
+    assert nr.getStringOffset() == 0x100
+    assert nr.getString() == "PostScriptName"
+
+
 def test_set_string_accepts_none() -> None:
     nr = NameRecord()
     nr.set_string("foo")

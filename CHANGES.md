@@ -766,3 +766,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 62 — COSDocument Java aliases
 
 - `pypdfbox/cos/cos_document.py`: added PDFBox camelCase aliases for object-pool, trailer/catalog, encryption, xref, version, and xref-stream accessors (`getObjectFromPool`, `getObject`, `getObjects`, `removeObject`, `addXRefTable`, `getXrefTable`, `getTrailer`, `setTrailer`, `getCatalog`, `isEncrypted`, `getEncryptionDictionary`, `getVersion`, `setVersion`, `isXRefStream`, and `setXRefStream`).
+
+## Wave 63 — NameRecord Java aliases
+
+- `pypdfbox/fontbox/ttf/name_record.py`: added FontBox camelCase aliases for name-record metadata (`getPlatformId` / `setPlatformId`, `getPlatformEncodingId` / `setPlatformEncodingId`, `getLanguageId` / `setLanguageId`, `getNameId` / `setNameId`, `getStringLength` / `setStringLength`, `getStringOffset` / `setStringOffset`, and `getString` / `setString`).

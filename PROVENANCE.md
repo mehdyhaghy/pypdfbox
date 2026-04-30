@@ -1102,3 +1102,8 @@ No new port files were added in Wave 61. The wave only extended existing upstrea
 
 No new port files were added in Wave 62. The wave only extended existing upstream-derived modules and their existing test files:
 `COSDocument`.
+
+### Wave 63 additions
+
+No new port files were added in Wave 63. The wave only extended existing upstream-derived modules and their existing test files:
+`NameRecord`.
