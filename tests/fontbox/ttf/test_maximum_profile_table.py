@@ -116,3 +116,9 @@ def test_set_num_glyphs_round_trip() -> None:
     table = MaximumProfileTable()
     table.set_num_glyphs(321)
     assert table.get_num_glyphs() == 321
+
+
+def test_set_version_round_trip() -> None:
+    table = MaximumProfileTable()
+    table.set_version(1.0)
+    assert table.get_version() == 1.0

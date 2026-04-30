@@ -100,6 +100,18 @@ def test_remove_unqualified_sequence_value_removes_all_matches() -> None:
     assert s.get_unqualified_sequence_value_list("creators") == ["Bob"]
 
 
+def test_remove_unqualified_language_property_value() -> None:
+    s = _schema()
+    s.set_unqualified_language_property_value("title", None, "Default")
+    s.set_unqualified_language_property_value("title", "en-US", "English")
+
+    s.remove_unqualified_language_property_value("title", None)
+
+    assert s.get_unqualified_language_property_value("title", None) is None
+    assert s.get_unqualified_language_property_value("title", "en-US") == "English"
+    assert s.get_unqualified_language_property_languages_value("title") == ["en-US"]
+
+
 # --- about attribute round-trip ---------------------------------------------
 
 

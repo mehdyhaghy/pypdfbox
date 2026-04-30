@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_caret import (
@@ -37,6 +39,25 @@ def test_caret_inherits_markup_subject() -> None:
     ann = PDAnnotationCaret()
     ann.set_subject("Insert here")
     assert ann.get_subject() == "Insert here"
+
+
+def test_caret_rectangle_difference_aliases_round_trip_and_clear() -> None:
+    ann = PDAnnotationCaret()
+
+    ann.set_rect_differences([1, 2.5, 3, 4])
+
+    assert ann.get_rectangle_differences() == [1.0, 2.5, 3.0, 4.0]
+    assert ann.get_rect_differences() == [1.0, 2.5, 3.0, 4.0]
+
+    ann.set_rect_differences(None)
+    assert ann.get_rectangle_differences() is None
+
+
+def test_caret_rectangle_difference_alias_rejects_wrong_length() -> None:
+    ann = PDAnnotationCaret()
+
+    with pytest.raises(ValueError):
+        ann.set_rect_differences([1, 2, 3])
 
 
 def test_caret_factory_dispatch() -> None:

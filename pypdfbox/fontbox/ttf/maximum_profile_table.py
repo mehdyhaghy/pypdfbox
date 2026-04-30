@@ -58,6 +58,9 @@ class MaximumProfileTable(TTFTable):
     def get_version(self) -> float:
         return self._version
 
+    def set_version(self, value: float) -> None:
+        self._version = value
+
     def get_num_glyphs(self) -> int:
         return self._num_glyphs
 

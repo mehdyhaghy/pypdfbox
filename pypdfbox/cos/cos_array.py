@@ -150,6 +150,18 @@ class COSArray(COSBase):
             return int(item.value)
         return default
 
+    def set_float(self, index: int, value: float) -> None:
+        self.grow_to_size(index + 1)
+        self._items[index] = COSFloat(value)
+
+    def get_float(self, index: int, default: float = -1.0) -> float:
+        if index >= len(self._items):
+            return default
+        item = self._items[index]
+        if isinstance(item, (COSInteger, COSFloat)):
+            return float(item.value)
+        return default
+
     def set_string(self, index: int, value: str) -> None:
         self.grow_to_size(index + 1)
         self._items[index] = COSString(value)

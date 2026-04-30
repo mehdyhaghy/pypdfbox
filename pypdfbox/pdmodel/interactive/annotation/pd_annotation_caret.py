@@ -58,6 +58,16 @@ class PDAnnotationCaret(PDAnnotationMarkup):
             )
         self._dict.set_item(_RD, COSArray([COSFloat(float(v)) for v in rd]))
 
+    def get_rect_differences(self) -> list[float] | None:
+        """Upstream-spelled alias for ``get_rectangle_differences``."""
+        return self.get_rectangle_differences()
+
+    def set_rect_differences(
+        self, rd: list[float] | tuple[float, ...] | None
+    ) -> None:
+        """Upstream-spelled alias for ``set_rectangle_differences``."""
+        self.set_rectangle_differences(rd)
+
     # ---------- /Sy (caret symbol) ----------
 
     def get_symbol(self) -> str:

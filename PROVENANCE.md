@@ -1072,3 +1072,8 @@ No new port files were added in Wave 55. The wave only extended existing upstrea
 
 No new port files were added in Wave 56. The wave only extended existing upstream-derived modules and their existing test files:
 `COSArray`, `PDAnnotationMarkup`, `PDResources`, `MaximumProfileTable`, `HorizontalHeaderTable`, and `XMPSchema`.
+
+### Wave 57 additions
+
+No new port files were added in Wave 57. The wave only extended existing upstream-derived modules and their existing test files:
+`COSArray`, `PDAnnotationCaret`, `PDResources`, `MaximumProfileTable`, and `XMPSchema`.

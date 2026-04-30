@@ -301,6 +301,14 @@ class XMPSchema:
             return None
         return v.get(lang or X_DEFAULT)
 
+    def remove_unqualified_language_property_value(
+        self, local_name: str, lang: str | None = None
+    ) -> None:
+        v = self._properties.get(local_name)
+        if not isinstance(v, dict):
+            return
+        v.pop(lang or X_DEFAULT, None)
+
     def get_unqualified_language_property_languages_value(
         self, local_name: str
     ) -> list[str] | None:

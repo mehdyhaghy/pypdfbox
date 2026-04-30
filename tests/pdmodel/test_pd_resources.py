@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSInteger,
+    COSName,
+    COSObject,
+    COSStream,
+)
 from pypdfbox.pdmodel import PDResources
 from pypdfbox.pdmodel.graphics.color import PDCalRGB, PDDeviceGray, PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
@@ -133,6 +140,20 @@ def test_add_x_object_reuses_existing_cos_object() -> None:
 
     assert second == first
     assert [n.get_name() for n in res.get_xobject_names()] == ["Logo0"]
+
+
+def test_add_x_object_reuses_existing_indirect_cos_object() -> None:
+    res = PDResources()
+    image = PDImageXObject(COSStream())
+    existing_name = COSName.get_pdf_name("ImExisting")
+    xobjects = COSDictionary()
+    xobjects.set_item(existing_name, COSObject(7, 0, resolved=image.get_cos_object()))
+    res.get_cos_object().set_item(COSName.get_pdf_name("XObject"), xobjects)
+
+    added_name = res.add_x_object(image, "Other")
+
+    assert added_name == existing_name
+    assert [n.get_name() for n in res.get_xobject_names()] == ["ImExisting"]
 
 
 def test_upstream_name_aliases_return_cos_names() -> None:

@@ -122,6 +122,22 @@ def test_index_of_object_returns_minus_one_for_missing() -> None:
     assert a.index_of_object(COSInteger(9)) == -1
 
 
+def test_float_accessors_round_trip_and_default() -> None:
+    a = COSArray()
+    a.set_float(2, 1.25)
+
+    assert a.get_float(0, 9.0) == 9.0
+    assert a.get_float(2) == 1.25
+    assert a.get_float(3, 7.5) == 7.5
+
+
+def test_get_float_accepts_integer_values() -> None:
+    a = COSArray([COSInteger(3), COSName.get_pdf_name("NotNumber")])
+
+    assert a.get_float(0) == 3.0
+    assert a.get_float(1, 8.0) == 8.0
+
+
 def test_to_list_returns_copy() -> None:
     a = COSArray([COSInteger(1)])
     out = a.to_list()

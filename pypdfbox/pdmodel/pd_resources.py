@@ -572,6 +572,8 @@ class PDResources:
         for key, existing in sub.entry_set():
             if existing is value:
                 return key
+            if isinstance(existing, COSObject) and existing.get_object() is value:
+                return key
         return None
 
     @staticmethod

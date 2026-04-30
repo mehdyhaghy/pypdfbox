@@ -729,3 +729,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_resources.py`: `add_x_object(...)` now accepts a custom prefix and returns the existing key when the same XObject COS object is already registered.
 - `pypdfbox/fontbox/ttf/maximum_profile_table.py` + `horizontal_header_table.py`: added upstream-shaped setters for `numGlyphs` and `numberOfHMetrics`.
 - `pypdfbox/xmpbox/xmp_schema.py`: removing a Bag or Seq value now removes all matching entries, matching upstream array-property removal semantics.
+
+## Wave 57 — array float helpers, caret aliases, indirect XObject reuse, maxp version setter, XMP language removal
+
+- `pypdfbox/cos/cos_array.py`: added `set_float(...)` / `get_float(...)` typed helpers with PDFBox-style defaults and integer-to-float read compatibility.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_caret.py`: added `get_rect_differences()` / `set_rect_differences(...)` aliases over the existing rectangle-difference accessors.
+- `pypdfbox/pdmodel/pd_resources.py`: duplicate resource-key detection now recognizes an existing indirect `COSObject` entry whose resolved target is the XObject being added.
+- `pypdfbox/fontbox/ttf/maximum_profile_table.py`: added `set_version(...)` for the parsed `maxp` table version field.
+- `pypdfbox/xmpbox/xmp_schema.py`: added `remove_unqualified_language_property_value(...)` for removing a single LangAlt language entry while preserving other languages.
