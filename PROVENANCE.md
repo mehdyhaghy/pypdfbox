@@ -1137,3 +1137,8 @@ No new port files were added in Wave 68. The wave only extended existing upstrea
 
 No new port files were added in Wave 69. The wave only extended existing upstream-derived modules and their existing test files:
 `VersionType`.
+
+### Wave 70 additions
+
+No new port files were added in Wave 70. The wave only extended existing upstream-derived modules and their existing test files:
+`ResourceRefType`.

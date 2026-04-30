@@ -57,11 +57,53 @@ def test_set_and_get_string_fields(metadata: XMPMetadata) -> None:
     assert r.get_to_part() == "/to"
 
 
+def test_pdfbox_camelcase_string_aliases(metadata: XMPMetadata) -> None:
+    r = ResourceRefType(metadata)
+    r.setDocumentID("uuid:doc-123")
+    r.setInstanceID("uuid:inst-456")
+    r.setFilePath("/tmp/file.pdf")
+    r.setManageTo("http://manager.example.com/to")
+    r.setManageUI("http://manager.example.com/ui")
+    r.setManager("ContentManager")
+    r.setManagerVariant("Variant1")
+    r.setPartMapping("part-mapping")
+    r.setRenditionParams("rendition-params")
+    r.setVersionID("v1")
+    r.setMaskMarkers("none")
+    r.setRenditionClass("default")
+    r.setFromPart("/from")
+    r.setToPart("/to")
+
+    assert r.getDocumentID() == "uuid:doc-123"
+    assert r.getInstanceID() == "uuid:inst-456"
+    assert r.getFilePath() == "/tmp/file.pdf"
+    assert r.getManageTo() == "http://manager.example.com/to"
+    assert r.getManageUI() == "http://manager.example.com/ui"
+    assert r.getManager() == "ContentManager"
+    assert r.getManagerVariant() == "Variant1"
+    assert r.getPartMapping() == "part-mapping"
+    assert r.getRenditionParams() == "rendition-params"
+    assert r.getVersionID() == "v1"
+    assert r.getMaskMarkers() == "none"
+    assert r.getRenditionClass() == "default"
+    assert r.getFromPart() == "/from"
+    assert r.getToPart() == "/to"
+
+
 def test_last_modify_date(metadata: XMPMetadata) -> None:
     r = ResourceRefType(metadata)
     when = datetime(2024, 5, 1, 12, 0, 0, tzinfo=UTC)
     r.set_last_modify_date(when)
     assert r.get_last_modify_date() == when
+
+
+def test_pdfbox_camelcase_last_modify_date_aliases(metadata: XMPMetadata) -> None:
+    r = ResourceRefType(metadata)
+    when = datetime(2024, 5, 1, 12, 0, 0, tzinfo=UTC)
+
+    r.setLastModifyDate(when)
+
+    assert r.getLastModifyDate() == when
 
 
 def test_alternate_paths(metadata: XMPMetadata) -> None:
@@ -73,6 +115,17 @@ def test_alternate_paths(metadata: XMPMetadata) -> None:
     assert paths == ["/a/b", "/c/d"]
     seq = r.get_alternate_paths_property()
     assert isinstance(seq, ArrayProperty)
+
+
+def test_pdfbox_camelcase_alternate_path_aliases(metadata: XMPMetadata) -> None:
+    r = ResourceRefType(metadata)
+    assert r.getAlternatePaths() is None
+
+    r.addAlternatePath("/a/b")
+    r.addAlternatePath("/c/d")
+
+    assert r.getAlternatePaths() == ["/a/b", "/c/d"]
+    assert isinstance(r.getAlternatePathsProperty(), ArrayProperty)
 
 
 def test_initial_fields_none(metadata: XMPMetadata) -> None:

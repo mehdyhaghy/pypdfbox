@@ -796,3 +796,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 69 — XMP version Java aliases
 
 - `pypdfbox/xmpbox/type/version_type.py`: added XMPBox camelCase aliases for version fields (`getComments` / `setComments`, `getEvent` / `setEvent`, `getModifier` / `setModifier`, `getModifyDate` / `setModifyDate`, and `getVersion` / `setVersion`).
+
+## Wave 70 — XMP resource reference Java aliases
+
+- `pypdfbox/xmpbox/type/resource_ref_type.py`: added XMPBox camelCase aliases for resource-reference fields, including document/instance IDs, file path, management fields, part/rendition fields, last-modify date, and alternate-path helpers.
