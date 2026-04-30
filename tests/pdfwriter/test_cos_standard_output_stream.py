@@ -23,6 +23,12 @@ def test_initial_state() -> None:
     assert out.is_on_newline() is False
 
 
+def test_upstream_class_constants_are_exposed() -> None:
+    assert COSStandardOutputStream.CRLF == CRLF == b"\r\n"
+    assert COSStandardOutputStream.LF == b"\n"
+    assert COSStandardOutputStream.EOL == EOL == b"\n"
+
+
 def test_write_bytes_advances_position() -> None:
     out, sink = _stream()
     out.write(b"abc")

@@ -18,7 +18,7 @@ from pypdfbox.cos import (
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import PDFStreamParser
 from pypdfbox.pdfwriter import ContentStreamWriter
-
+from pypdfbox.pdfwriter.content_stream_writer import EOL, SPACE
 
 # ---------- helpers ---------------------------------------------------------
 
@@ -39,6 +39,14 @@ def _emit_token(token: object) -> bytes:
     sink = io.BytesIO()
     ContentStreamWriter(sink).write_token(token)
     return sink.getvalue()
+
+
+# ---------- upstream constants ---------------------------------------------
+
+
+def test_upstream_class_constants_are_exposed() -> None:
+    assert ContentStreamWriter.SPACE == SPACE == b" "
+    assert ContentStreamWriter.EOL == EOL == b"\n"
 
 
 # ---------- COS leaf types --------------------------------------------------
@@ -277,9 +285,7 @@ def _tokens_equal(a: object, b: object) -> bool:
         return all(_tokens_equal(a.get(i), b.get(i)) for i in range(a.size()))
     if isinstance(a, COSBoolean) and isinstance(b, COSBoolean):
         return a.get_value() == b.get_value()
-    if isinstance(a, COSNull) and isinstance(b, COSNull):
-        return True
-    return False
+    return isinstance(a, COSNull) and isinstance(b, COSNull)
 
 
 def test_round_trip_simple_text_block() -> None:
@@ -292,7 +298,7 @@ def test_round_trip_simple_text_block() -> None:
 
     reparsed = PDFStreamParser(RandomAccessReadBuffer(rewritten)).parse()
     assert len(reparsed) == len(tokens)
-    for a, b in zip(tokens, reparsed):
+    for a, b in zip(tokens, reparsed, strict=True):
         assert _tokens_equal(a, b), f"{a!r} != {b!r}"
 
 
@@ -306,7 +312,7 @@ def test_round_trip_with_cm_and_path_ops() -> None:
 
     reparsed = PDFStreamParser(RandomAccessReadBuffer(rewritten)).parse()
     assert len(reparsed) == len(tokens)
-    for a, b in zip(tokens, reparsed):
+    for a, b in zip(tokens, reparsed, strict=True):
         assert _tokens_equal(a, b), f"{a!r} != {b!r}"
 
 
@@ -320,5 +326,5 @@ def test_round_trip_with_array_operand_tj() -> None:
 
     reparsed = PDFStreamParser(RandomAccessReadBuffer(rewritten)).parse()
     assert len(reparsed) == len(tokens)
-    for a, b in zip(tokens, reparsed):
+    for a, b in zip(tokens, reparsed, strict=True):
         assert _tokens_equal(a, b), f"{a!r} != {b!r}"

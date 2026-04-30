@@ -673,3 +673,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_resources.py`: added `get_ext_g_state(...)` as the upstream-spelled alias for the existing extended-graphics-state lookup.
 - `pypdfbox/fontbox/ttf/name_record.py`: restored FontBox 2.x's misspelled `LANGUGAE_*` language-id constants as compatibility aliases while keeping the correctly spelled constants canonical.
 - `pypdfbox/xmpbox/xmp_rights_management_schema.py`: added `remove_owner(...)` for `xmpRights:Owner`, supporting both list-backed and typed `ArrayProperty` owner bags.
+
+## Wave 50 — writer constants, page contents, tiling stream parsing, PostScript setters, ASCIIHexFilter
+
+- `pypdfbox/pdfwriter/content_stream_writer.py` + `cos_standard_output_stream.py`: exposed upstream-shaped class constants for content-stream spacing and output-stream line endings (`SPACE`, `EOL`, `CRLF`, `LF`).
+- `pypdfbox/pdmodel/pd_page.py`: added `has_contents()`, matching upstream's absent/empty stream handling and non-empty `/Contents` array behavior.
+- `pypdfbox/pdmodel/graphics/pattern/pd_tiling_pattern.py`: added `get_contents_for_stream_parsing()`, delegating to the random-access content stream like upstream `PDContentStream`.
+- `pypdfbox/fontbox/ttf/post_script_table.py`: added scalar setters for PostScript table metrics and memory fields, plus `set_mim_mem_type1(...)` for upstream typo compatibility.
+- `pypdfbox/filter/ascii_hex_filter.py` (NEW) + package exports: added the upstream-named `ASCIIHexFilter` alias and registry entry without changing existing `/ASCIIHexDecode` or `/AHx` resolution.

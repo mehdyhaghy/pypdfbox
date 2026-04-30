@@ -32,6 +32,10 @@ class COSStandardOutputStream:
     Mirrors ``org.apache.pdfbox.pdfwriter.COSStandardOutputStream``.
     """
 
+    CRLF: bytes = CRLF
+    LF: bytes = LF
+    EOL: bytes = EOL
+
     def __init__(self, out: _Writable, position: int = 0) -> None:
         self._out = out
         self._position = position

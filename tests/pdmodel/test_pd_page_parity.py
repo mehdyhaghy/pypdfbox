@@ -4,7 +4,6 @@ from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel import PDPage, PDRectangle
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
-
 # ---------- crop box ----------
 
 
@@ -183,6 +182,36 @@ def test_set_struct_parents_round_trip() -> None:
 def test_get_content_streams_empty_when_absent() -> None:
     page = PDPage()
     assert page.get_content_streams() == []
+
+
+def test_has_contents_false_when_absent() -> None:
+    page = PDPage()
+    assert page.has_contents() is False
+
+
+def test_has_contents_false_for_empty_stream() -> None:
+    page = PDPage()
+    page.set_contents(COSStream())
+    assert page.has_contents() is False
+
+
+def test_has_contents_true_for_non_empty_stream() -> None:
+    page = PDPage()
+    s = COSStream()
+    s.create_output_stream().write(b"q Q")
+    page.set_contents(s)
+    assert page.has_contents() is True
+
+
+def test_has_contents_uses_array_presence_not_substream_size() -> None:
+    page = PDPage()
+    assert page.has_contents() is False
+
+    page.set_contents(COSArray())
+    assert page.has_contents() is False
+
+    page.set_contents(COSArray([COSStream()]))
+    assert page.has_contents() is True
 
 
 def test_get_content_streams_single_stream() -> None:

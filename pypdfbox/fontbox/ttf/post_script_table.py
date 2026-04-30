@@ -66,9 +66,8 @@ class PostScriptTable(TTFTable):
             index = data.read_unsigned_short()
             glyph_name_index[i] = index
             # PDFBOX-808: 32768..65535 reserved
-            if index <= 32767:
-                if index > max_index:
-                    max_index = index
+            if index <= 32767 and index > max_index:
+                max_index = index
 
         name_array: list[str] | None = None
         if max_index >= wgl4_names.NUMBER_OF_MAC_GLYPHS:
@@ -151,29 +150,60 @@ class PostScriptTable(TTFTable):
     def get_format_type(self) -> float:
         return self._format_type
 
+    def set_format_type(self, value: float) -> None:
+        self._format_type = value
+
     def get_italic_angle(self) -> float:
         return self._italic_angle
+
+    def set_italic_angle(self, value: float) -> None:
+        self._italic_angle = value
 
     def get_underline_position(self) -> int:
         return self._underline_position
 
+    def set_underline_position(self, value: int) -> None:
+        self._underline_position = value
+
     def get_underline_thickness(self) -> int:
         return self._underline_thickness
+
+    def set_underline_thickness(self, value: int) -> None:
+        self._underline_thickness = value
 
     def get_is_fixed_pitch(self) -> int:
         return self._is_fixed_pitch
 
+    def set_is_fixed_pitch(self, value: int) -> None:
+        self._is_fixed_pitch = value
+
     def get_min_mem_type42(self) -> int:
         return self._min_mem_type42
+
+    def set_min_mem_type42(self, value: int) -> None:
+        self._min_mem_type42 = value
 
     def get_max_mem_type42(self) -> int:
         return self._max_mem_type42
 
+    def set_max_mem_type42(self, value: int) -> None:
+        self._max_mem_type42 = value
+
     def get_min_mem_type1(self) -> int:
         return self._mim_mem_type1
 
+    def set_min_mem_type1(self, value: int) -> None:
+        self._mim_mem_type1 = value
+
+    def set_mim_mem_type1(self, value: int) -> None:
+        """Typo-compatible alias for upstream's ``setMimMemType1``."""
+        self.set_min_mem_type1(value)
+
     def get_max_mem_type1(self) -> int:
         return self._max_mem_type1
+
+    def set_max_mem_type1(self, value: int) -> None:
+        self._max_mem_type1 = value
 
     def get_glyph_names(self) -> list[str] | None:
         return self._glyph_names

@@ -179,6 +179,15 @@ class PDTilingPattern(PDAbstractPattern):
             return None
         return cos.create_raw_input_stream()
 
+    def get_contents_for_stream_parsing(self) -> BinaryIO | None:
+        """Random-access content stream used by parsers.
+
+        Mirrors upstream ``PDContentStream.getContentsForStreamParsing``,
+        whose default implementation delegates to
+        ``getContentsForRandomAccess``.
+        """
+        return self.get_contents_for_random_access()
+
     # ---------- /Resources ----------
 
     def get_resources(self) -> PDResources | None:

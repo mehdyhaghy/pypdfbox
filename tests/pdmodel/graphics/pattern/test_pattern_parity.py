@@ -425,6 +425,21 @@ def test_tiling_get_contents_for_random_access_returns_raw_stream() -> None:
     assert raw.read() == b"hello world"
 
 
+def test_tiling_get_contents_for_stream_parsing_delegates_to_raw_stream() -> None:
+    """``getContentsForStreamParsing()`` follows upstream's default
+    ``PDContentStream`` implementation and delegates to the random-access
+    content stream."""
+    pattern = PDTilingPattern()
+    cs = pattern.get_content_stream()
+    with cs.create_output_stream() as out:
+        out.write(b"BT /F1 12 Tf ET")
+
+    stream = pattern.get_contents_for_stream_parsing()
+    assert stream is not None
+    stream.seek(0)
+    assert stream.read() == b"BT /F1 12 Tf ET"
+
+
 def test_tiling_get_contents_returns_none_for_non_stream() -> None:
     """A pattern whose underlying COSDictionary isn't a stream → ``None``
     rather than raising — matches upstream's ``return null``."""
@@ -439,6 +454,7 @@ def test_tiling_get_contents_returns_none_for_non_stream() -> None:
     pattern._resource_cache = None  # type: ignore[attr-defined]
     assert pattern.get_contents() is None
     assert pattern.get_contents_for_random_access() is None
+    assert pattern.get_contents_for_stream_parsing() is None
 
 
 # ---------- PDShadingPattern typed /ExtGState override ----------

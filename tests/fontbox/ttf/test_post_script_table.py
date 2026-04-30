@@ -191,6 +191,32 @@ def test_set_glyph_names_round_trip() -> None:
     assert t.get_name(0) is None
 
 
+def test_scalar_setters_round_trip() -> None:
+    t = PostScriptTable()
+    t.set_format_type(2.5)
+    t.set_italic_angle(-12.25)
+    t.set_underline_position(-80)
+    t.set_underline_thickness(24)
+    t.set_is_fixed_pitch(1)
+    t.set_min_mem_type42(10)
+    t.set_max_mem_type42(20)
+    t.set_min_mem_type1(30)
+    t.set_max_mem_type1(40)
+
+    assert t.get_format_type() == 2.5
+    assert t.get_italic_angle() == -12.25
+    assert t.get_underline_position() == -80
+    assert t.get_underline_thickness() == 24
+    assert t.get_is_fixed_pitch() == 1
+    assert t.get_min_mem_type42() == 10
+    assert t.get_max_mem_type42() == 20
+    assert t.get_min_mem_type1() == 30
+    assert t.get_max_mem_type1() == 40
+
+    t.set_mim_mem_type1(31)
+    assert t.get_min_mem_type1() == 31
+
+
 def test_format_4_synthesizes_a_names_from_cids() -> None:
     # Format 4.0 (CID Mac fonts): per-glyph 16-bit CID. Names are "aN".
     cids = [0, 42, 65535]

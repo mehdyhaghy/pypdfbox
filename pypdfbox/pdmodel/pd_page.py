@@ -188,6 +188,20 @@ class PDPage:
         with stream.create_input_stream() as src:
             return src.read()
 
+    def has_contents(self) -> bool:
+        """Return whether this page has one or more content streams.
+
+        Mirrors upstream ``PDPage.hasContents()``: a direct stream counts
+        only when it has bytes, while an array counts when the array is
+        present and non-empty.
+        """
+        contents = self._page.get_dictionary_object(_CONTENTS)
+        if isinstance(contents, COSStream):
+            return contents.has_data()
+        if isinstance(contents, COSArray):
+            return not contents.is_empty()
+        return False
+
     def set_contents(
         self,
         stream: COSStream | list[COSStream] | COSArray | None,

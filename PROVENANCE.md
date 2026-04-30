@@ -1025,3 +1025,12 @@ No new port files were added in Wave 48. The wave only extended existing upstrea
 
 No new port files were added in Wave 49. The wave only extended existing upstream-derived modules and their existing test files:
 `COSDictionary`, `PDAnnotationFreeText`, `PDResources`, `NameRecord`, and `XMPRightsManagementSchema`.
+
+### Wave 50 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/filter/ascii_hex_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCIIHexFilter.java` |
+| `tests/filter/test_ascii_hex_filter.py` | 3.0.x | hand-written coverage for the upstream-named `ASCIIHexFilter` alias and registry wiring |
+
+Existing upstream-derived modules extended in Wave 50: `ContentStreamWriter`, `COSStandardOutputStream`, `PDPage`, `PDTilingPattern`, and `PostScriptTable`.

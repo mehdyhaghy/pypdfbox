@@ -14,6 +14,7 @@ from pypdfbox.cos import (
     COSNull,
     COSString,
 )
+
 # The PDFStreamParser ships its own ``Operator`` value type alongside the
 # canonical ``pypdfbox.contentstream.operator.Operator``. Until the parser
 # is rewired to emit the canonical class, the writer must accept both so
@@ -59,6 +60,9 @@ class ContentStreamWriter:
     ``<<>>``) and the raw image bytes copied verbatim between ``ID`` and
     ``EI``.
     """
+
+    SPACE: bytes = SPACE
+    EOL: bytes = EOL
 
     def __init__(self, output: BinaryIO) -> None:
         """``output`` must be a writable binary stream (anything exposing
