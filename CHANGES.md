@@ -792,3 +792,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/xmpbox/type/dimensions_type.py`: added XMPBox camelCase aliases for dimensions fields (`getH` / `setH`, `getW` / `setW`, and `getUnit` / `setUnit`).
 - `pypdfbox/xmpbox/type/layer_type.py`: added XMPBox camelCase aliases for Photoshop layer fields and typed properties (`getLayerName` / `setLayerName`, `getLayerText` / `setLayerText`, `getLayerNameProperty` / `setLayerNameProperty`, and `getLayerTextProperty` / `setLayerTextProperty`).
+
+## Wave 69 — XMP version Java aliases
+
+- `pypdfbox/xmpbox/type/version_type.py`: added XMPBox camelCase aliases for version fields (`getComments` / `setComments`, `getEvent` / `setEvent`, `getModifier` / `setModifier`, `getModifyDate` / `setModifyDate`, and `getVersion` / `setVersion`).

@@ -1132,3 +1132,8 @@ No new port files were added in Wave 67. The wave only extended existing upstrea
 
 No new port files were added in Wave 68. The wave only extended existing upstream-derived modules and their existing test files:
 `DimensionsType` and `LayerType`.
+
+### Wave 69 additions
+
+No new port files were added in Wave 69. The wave only extended existing upstream-derived modules and their existing test files:
+`VersionType`.
