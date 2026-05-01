@@ -74,6 +74,28 @@ _STRUCTURED: dict[str, type] = {
 }
 
 
+# Namespace URIs of the built-in XMP schemas the upstream TypeMapping
+# pre-registers via ``addNameSpace`` during initialization. Recorded here as
+# string literals to avoid importing the schema classes (which would create a
+# package-level import cycle) — they are stable parts of the XMP standard.
+_BUILTIN_SCHEMA_NAMESPACES: frozenset[str] = frozenset(
+    {
+        "http://ns.adobe.com/xap/1.0/",  # XMP Basic
+        "http://purl.org/dc/elements/1.1/",  # Dublin Core
+        "http://www.aiim.org/pdfa/ns/extension/",  # PDF/A Extension
+        "http://ns.adobe.com/xap/1.0/mm/",  # XMP Media Management
+        "http://ns.adobe.com/pdf/1.3/",  # Adobe PDF
+        "http://www.aiim.org/pdfa/ns/id/",  # PDF/A Identification
+        "http://ns.adobe.com/xap/1.0/rights/",  # XMP Rights Management
+        "http://ns.adobe.com/photoshop/1.0/",  # Photoshop
+        "http://ns.adobe.com/xap/1.0/bj/",  # XMP Basic Job Ticket
+        "http://ns.adobe.com/exif/1.0/",  # Exif
+        "http://ns.adobe.com/tiff/1.0/",  # TIFF
+        "http://ns.adobe.com/xap/1.0/t/pg/",  # XMP Paged Text
+    }
+)
+
+
 class TypeMapping:
     """
     Registry that instantiates typed XMP properties by short type name.
@@ -89,6 +111,17 @@ class TypeMapping:
 
     def __init__(self, metadata: XMPMetadata) -> None:
         self._metadata = metadata
+        # ns -> typeName for namespaces registered via
+        # ``add_to_defined_structured_types`` (mirrors upstream
+        # ``definedStructuredNamespaces``).
+        self._defined_structured_namespaces: dict[str, str] = {}
+        # typeName -> ns lookup populated alongside the namespace map so that
+        # ``is_defined_type`` is a constant-time membership check.
+        self._defined_structured_types: dict[str, str] = {}
+        # Namespaces registered through ``add_new_namespace`` (deferred-schema
+        # equivalent of upstream ``schemaMap`` entries created via
+        # ``addNewNameSpace``).
+        self._defined_namespaces: dict[str, str | None] = {}
 
     def get_metadata(self) -> XMPMetadata:
         return self._metadata
@@ -104,6 +137,56 @@ class TypeMapping:
             getattr(cls, "NAMESPACE", None) == namespace
             for cls in _STRUCTURED.values()
         )
+
+    def is_defined_schema(self, namespace: str) -> bool:
+        """
+        Return ``True`` for any of the built-in XMP schema namespaces upstream
+        pre-registers (Dublin Core, XMP Basic, Photoshop, TIFF, Exif, ...) plus
+        any namespace added via :meth:`add_new_namespace`.
+        """
+        return (
+            namespace in _BUILTIN_SCHEMA_NAMESPACES
+            or namespace in self._defined_namespaces
+        )
+
+    def is_defined_type(self, name: str) -> bool:
+        """Return ``True`` if ``name`` was registered via
+        :meth:`add_to_defined_structured_types`."""
+        return name in self._defined_structured_types
+
+    def is_defined_type_namespace(self, namespace: str) -> bool:
+        """Return ``True`` if ``namespace`` was registered via
+        :meth:`add_to_defined_structured_types`."""
+        return namespace in self._defined_structured_namespaces
+
+    def is_defined_namespace(self, namespace: str) -> bool:
+        """Composite check covering every namespace TypeMapping knows about:
+        a built-in/registered schema, a namespace owned by a built-in
+        structured type, or a defined-type namespace."""
+        return (
+            self.is_defined_schema(namespace)
+            or self.is_structured_type_namespace(namespace)
+            or self.is_defined_type_namespace(namespace)
+        )
+
+    def add_new_namespace(
+        self, namespace: str, preferred_prefix: str | None = None
+    ) -> None:
+        """Register an extra schema namespace (mirror of upstream
+        ``addNewNameSpace``). The preferred prefix is recorded for callers
+        that want to resolve it later; upstream stashes it on the schema
+        factory which we do not yet wire."""
+        self._defined_namespaces[namespace] = preferred_prefix
+
+    def add_to_defined_structured_types(
+        self, type_name: str, namespace: str
+    ) -> None:
+        """Register a structured type that was *defined* (rather than built
+        in). Mirror of upstream ``addToDefinedStructuredTypes`` minus the
+        ``PropertiesDescription`` argument, which depends on the
+        reflection-based annotation machinery deferred to a later wave."""
+        self._defined_structured_namespaces[namespace] = type_name
+        self._defined_structured_types[type_name] = namespace
 
     def instanciate_simple_property(
         self,

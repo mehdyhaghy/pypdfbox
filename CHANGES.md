@@ -896,3 +896,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## ContentStreamWriter — write_tokens iterable acceptance
 
 - `pypdfbox/pdfwriter/content_stream_writer.py`: `write_tokens(...)` now accepts any iterable (generator, `deque`, `map`, custom `Iterable`) as the single-argument `List<?>` overload, not just `list` / `tuple`. Token / bytes-like single-argument calls (`write_tokens(cos_array)`, `write_tokens(b"raw")`) keep their varargs semantics. Upstream's Java signature is `writeTokens(List<?>)` only; this is a Pythonic ergonomic extension — output bytes are unchanged for any input upstream would have accepted.
+
+## PDFontDescriptor — mask-based flag accessors + set_panose writer
+
+- `pypdfbox/pdmodel/font/pd_font_descriptor.py`: round-out additions. New public `is_flag_bit_on(mask)` / `set_flag_bit(mask, value)` mask-based flag accessors mirror upstream's *private* `isFlagBitOn(int)` / `setFlagBit(int, boolean)` helpers — exposed publicly here because the `FLAG_*` constants are part of the pypdfbox public surface; complements the existing `get_flag(bit)` / `set_flag(bit, value)` 1-based-index accessors. New `set_panose(PDPanose | bytes | bytearray | None)` writer is a pypdfbox extension — upstream PDFBox 3.0 `PDFontDescriptor` exposes only the read side (`getPanose()`); the new writer lazily creates the `/Style` dict, stores the 12-byte buffer as a `COSString`, and on `None` removes `/Panose` (and the now-empty `/Style` dict). Accepts a `PDPanose` wrapper or raw 12-byte buffer. No upstream method renamed or behaviour changed.

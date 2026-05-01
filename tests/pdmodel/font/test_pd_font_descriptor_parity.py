@@ -396,3 +396,131 @@ def test_existing_dictionary_type_not_overwritten() -> None:
     # public constructor split).
     assert cos.get_dictionary_object(COSName.get_pdf_name("Type")) is None
     assert fd.get_cos_object() is cos
+
+
+# ---------- mask-based flag accessors (is_flag_bit_on / set_flag_bit) ----------
+
+
+def test_is_flag_bit_on_with_mask() -> None:
+    """``is_flag_bit_on`` mirrors upstream's private ``isFlagBitOn(int bit)``
+    where ``bit`` is the *mask* (e.g. ``FLAG_FIXED_PITCH``), not a 1-based
+    index. Distinct semantics from ``get_flag(1)``."""
+    fd = PDFontDescriptor()
+    assert fd.is_flag_bit_on(FLAG_FIXED_PITCH) is False
+    assert fd.is_flag_bit_on(FLAG_FORCE_BOLD) is False
+
+    fd.set_flags(FLAG_FIXED_PITCH | FLAG_FORCE_BOLD)
+    assert fd.is_flag_bit_on(FLAG_FIXED_PITCH) is True
+    assert fd.is_flag_bit_on(FLAG_FORCE_BOLD) is True
+    assert fd.is_flag_bit_on(FLAG_SERIF) is False
+
+
+def test_set_flag_bit_with_mask_round_trip() -> None:
+    """Mask-based mutator agrees with the named predicates."""
+    fd = PDFontDescriptor()
+    fd.set_flag_bit(FLAG_SERIF, True)
+    assert fd.is_serif() is True
+    assert fd.is_flag_bit_on(FLAG_SERIF) is True
+    assert fd.get_flags() == FLAG_SERIF
+
+    fd.set_flag_bit(FLAG_ITALIC, True)
+    assert fd.is_italic() is True
+    assert fd.get_flags() == FLAG_SERIF | FLAG_ITALIC
+
+    fd.set_flag_bit(FLAG_SERIF, False)
+    assert fd.is_serif() is False
+    assert fd.get_flags() == FLAG_ITALIC
+
+
+def test_get_flag_index_vs_is_flag_bit_on_mask_disagree_on_call_args() -> None:
+    """``get_flag(1)`` and ``is_flag_bit_on(1)`` happen to agree because
+    ``1 << 0 == 1``, but ``get_flag(2)`` (bit index 2 == mask 2) and
+    ``is_flag_bit_on(2)`` agree only by coincidence at low bits.
+    For ``FLAG_ALL_CAP`` (mask 65536), the *index* form takes 17."""
+    fd = PDFontDescriptor()
+    fd.set_all_cap(True)
+    # Mask form: pass FLAG_ALL_CAP directly.
+    assert fd.is_flag_bit_on(FLAG_ALL_CAP) is True
+    # Index form: pass 17 (1-based bit index).
+    assert fd.get_flag(17) is True
+    # Crosscheck: passing the mask to the *index* form would be wrong.
+    assert fd.get_flag(FLAG_ALL_CAP) is False  # 65536th bit, definitely unset
+
+
+# ---------- set_panose writer (pypdfbox extension) ----------
+
+
+def test_set_panose_creates_style_dict_from_pd_panose() -> None:
+    fd = PDFontDescriptor()
+    payload = bytes([0x00, 0x08, 2, 11, 6, 3, 5, 4, 5, 2, 2, 4])
+    fd.set_panose(PDPanose(payload))
+
+    cos = fd.get_cos_object()
+    style = cos.get_dictionary_object(COSName.get_pdf_name("Style"))
+    assert isinstance(style, COSDictionary)
+    raw = style.get_dictionary_object(COSName.get_pdf_name("Panose"))
+    assert isinstance(raw, COSString)
+    assert raw.get_bytes() == payload
+
+    # And the round-trip via get_panose works.
+    rebuilt = fd.get_panose()
+    assert isinstance(rebuilt, PDPanose)
+    assert rebuilt.get_bytes() == payload
+
+
+def test_set_panose_accepts_raw_bytes() -> None:
+    fd = PDFontDescriptor()
+    payload = bytes(range(12))
+    fd.set_panose(payload)
+
+    out = fd.get_panose()
+    assert isinstance(out, PDPanose)
+    assert out.get_bytes() == payload
+
+
+def test_set_panose_accepts_bytearray() -> None:
+    fd = PDFontDescriptor()
+    payload = bytearray(b"\x00\x08" + bytes(10))
+    fd.set_panose(payload)
+    assert fd.get_panose().get_bytes() == bytes(payload)
+
+
+def test_set_panose_none_removes_entry_and_empty_style_dict() -> None:
+    fd = PDFontDescriptor()
+    fd.set_panose(bytes(12))
+    assert fd.get_panose() is not None
+
+    fd.set_panose(None)
+    assert fd.get_panose() is None
+    # Empty Style dict is removed entirely.
+    style = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Style"))
+    assert style is None
+
+
+def test_set_panose_none_preserves_non_empty_style_dict() -> None:
+    """If /Style carries other keys, removing /Panose leaves the dict in place."""
+    fd = PDFontDescriptor()
+    fd.set_panose(bytes(12))
+    style = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Style"))
+    assert isinstance(style, COSDictionary)
+    style.set_name(COSName.get_pdf_name("Custom"), "Value")
+
+    fd.set_panose(None)
+    surviving = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Style"))
+    assert isinstance(surviving, COSDictionary)
+    assert surviving.get_dictionary_object(COSName.get_pdf_name("Panose")) is None
+    assert surviving.get_name(COSName.get_pdf_name("Custom")) == "Value"
+
+
+def test_set_panose_none_no_op_when_style_missing() -> None:
+    fd = PDFontDescriptor()
+    fd.set_panose(None)  # must not raise
+    assert fd.get_panose() is None
+
+
+def test_set_panose_overwrites_existing_panose() -> None:
+    fd = PDFontDescriptor()
+    fd.set_panose(bytes(12))
+    new_payload = bytes([0xFF, 0x80] + list(range(10, 20)))
+    fd.set_panose(new_payload)
+    assert fd.get_panose().get_bytes() == new_payload

@@ -135,3 +135,63 @@ def test_existing_structured_types_still_dispatch(mapping: TypeMapping) -> None:
     assert isinstance(
         mapping.instanciate_structured_type("ResourceEvent"), ResourceEventType
     )
+
+
+def test_is_defined_schema_recognizes_builtin_namespaces(
+    mapping: TypeMapping,
+) -> None:
+    # A handful of upstream-registered schema namespaces.
+    assert mapping.is_defined_schema("http://ns.adobe.com/xap/1.0/") is True
+    assert mapping.is_defined_schema("http://purl.org/dc/elements/1.1/") is True
+    assert mapping.is_defined_schema("http://ns.adobe.com/photoshop/1.0/") is True
+    assert mapping.is_defined_schema("http://ns.adobe.com/tiff/1.0/") is True
+    # Unknown namespaces are not schemas.
+    assert mapping.is_defined_schema("http://example.com/unknown/") is False
+
+
+def test_add_new_namespace_marks_namespace_as_schema(mapping: TypeMapping) -> None:
+    ns = "http://example.com/custom/"
+    assert mapping.is_defined_schema(ns) is False
+    mapping.add_new_namespace(ns, "cust")
+    assert mapping.is_defined_schema(ns) is True
+    assert mapping.is_defined_namespace(ns) is True
+
+
+def test_add_new_namespace_optional_prefix(mapping: TypeMapping) -> None:
+    ns = "http://example.com/np/"
+    mapping.add_new_namespace(ns)
+    assert mapping.is_defined_schema(ns) is True
+
+
+def test_defined_structured_types_round_trip(mapping: TypeMapping) -> None:
+    ns = "http://example.com/myType/"
+    assert mapping.is_defined_type("MyType") is False
+    assert mapping.is_defined_type_namespace(ns) is False
+    mapping.add_to_defined_structured_types("MyType", ns)
+    assert mapping.is_defined_type("MyType") is True
+    assert mapping.is_defined_type_namespace(ns) is True
+    assert mapping.is_defined_namespace(ns) is True
+
+
+def test_is_defined_namespace_covers_structured_namespaces(
+    mapping: TypeMapping,
+) -> None:
+    # Built-in structured types like Job have their own namespace.
+    job_ns = "http://ns.adobe.com/xap/1.0/sType/Job#"
+    assert mapping.is_structured_type_namespace(job_ns) is True
+    assert mapping.is_defined_namespace(job_ns) is True
+
+
+def test_is_defined_namespace_unknown(mapping: TypeMapping) -> None:
+    assert mapping.is_defined_namespace("http://nowhere.example/") is False
+
+
+def test_defined_state_is_per_instance(metadata: XMPMetadata) -> None:
+    """Mappings registered on one TypeMapping must not bleed into another."""
+    a = TypeMapping(metadata)
+    b = TypeMapping(metadata)
+    a.add_new_namespace("http://example.com/iso/", "iso")
+    a.add_to_defined_structured_types("Iso", "http://example.com/iso-t/")
+    assert b.is_defined_schema("http://example.com/iso/") is False
+    assert b.is_defined_type("Iso") is False
+    assert b.is_defined_type_namespace("http://example.com/iso-t/") is False

@@ -98,6 +98,24 @@ class PDFontDescriptor:
         """Set the value of an individual flag bit (1-based, per Table 123)."""
         self._set_flag(1 << (int(bit) - 1), value)
 
+    def is_flag_bit_on(self, mask: int) -> bool:
+        """Return whether the supplied flag *mask* is set in /Flags.
+
+        Mask-based counterpart of :meth:`get_flag` (which takes a 1-based
+        index). Mirrors upstream's private ``isFlagBitOn(int bit)`` — exposed
+        publicly here because the ``FLAG_*`` masks are part of the public
+        Python surface.
+        """
+        return self._flag(int(mask))
+
+    def set_flag_bit(self, mask: int, value: bool) -> None:
+        """Set or clear the supplied flag *mask* in /Flags.
+
+        Mask-based counterpart of :meth:`set_flag`. Mirrors upstream's
+        private ``setFlagBit(int bit, boolean value)``.
+        """
+        self._set_flag(int(mask), value)
+
     def is_fixed_pitch(self) -> bool:
         return self._flag(FLAG_FIXED_PITCH)
 
@@ -380,6 +398,37 @@ class PDFontDescriptor:
         if len(data) >= PDPanose.LENGTH:
             return PDPanose(data)
         return None
+
+    def set_panose(self, panose: PDPanose | bytes | bytearray | None) -> None:
+        """Write the /Style/Panose entry (creating the /Style dict on demand).
+
+        pypdfbox extension — upstream PDFBox 3.0 ``PDFontDescriptor`` exposes
+        only the read side (:meth:`get_panose`). Accepts either a
+        :class:`PDPanose` wrapper or a raw 12-byte buffer. Passing ``None``
+        removes the /Panose entry; if /Style becomes empty afterwards the
+        /Style dict is removed too.
+        """
+        try:
+            from pypdfbox.cos import COSString
+        except ImportError:  # pragma: no cover - circular safety
+            return
+        existing = self._dict.get_dictionary_object(_STYLE)
+        style = existing if isinstance(existing, COSDictionary) else None
+        if panose is None:
+            if style is None:
+                return
+            style.remove_item(_PANOSE)
+            if len(style) == 0:
+                self._dict.remove_item(_STYLE)
+            return
+        if isinstance(panose, PDPanose):
+            data = panose.get_bytes()
+        else:
+            data = bytes(panose)
+        if style is None:
+            style = COSDictionary()
+            self._dict.set_item(_STYLE, style)
+        style.set_item(_PANOSE, COSString(data))
 
     # ---------- /Lang (PDF 32000-1 Table 122) ----------
     # Note: upstream PDFBox 3.0 PDFontDescriptor does NOT expose these — they
