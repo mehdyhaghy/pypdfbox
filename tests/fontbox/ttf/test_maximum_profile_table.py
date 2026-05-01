@@ -122,3 +122,47 @@ def test_set_version_round_trip() -> None:
     table = MaximumProfileTable()
     table.set_version(1.0)
     assert table.get_version() == 1.0
+
+
+def test_setters_round_trip_all_max_fields() -> None:
+    # Mirrors the upstream Java setter surface — every numeric maxXxx getter
+    # also has a setter pair (PDFBox MaximumProfileTable).
+    table = MaximumProfileTable()
+    table.set_max_points(150)
+    table.set_max_contours(15)
+    table.set_max_composite_points(300)
+    table.set_max_composite_contours(25)
+    table.set_max_zones(2)
+    table.set_max_twilight_points(64)
+    table.set_max_storage(128)
+    table.set_max_function_defs(96)
+    table.set_max_instruction_defs(8)
+    table.set_max_stack_elements(512)
+    table.set_max_size_of_instructions(2048)
+    table.set_max_component_elements(7)
+    table.set_max_component_depth(4)
+
+    assert table.get_max_points() == 150
+    assert table.get_max_contours() == 15
+    assert table.get_max_composite_points() == 300
+    assert table.get_max_composite_contours() == 25
+    assert table.get_max_zones() == 2
+    assert table.get_max_twilight_points() == 64
+    assert table.get_max_storage() == 128
+    assert table.get_max_function_defs() == 96
+    assert table.get_max_instruction_defs() == 8
+    assert table.get_max_stack_elements() == 512
+    assert table.get_max_size_of_instructions() == 2048
+    assert table.get_max_component_elements() == 7
+    assert table.get_max_component_depth() == 4
+
+
+def test_setters_overwrite_values_after_read() -> None:
+    table = MaximumProfileTable()
+    table.read(None, MemoryTTFDataStream(_build_v10()))  # type: ignore[arg-type]
+    # Setters should be allowed to write back values, including 0 — they do
+    # NOT re-trigger the PDFBOX-6105 "0 → 1" fix-up (that only runs in read()).
+    table.set_max_component_depth(0)
+    assert table.get_max_component_depth() == 0
+    table.set_num_glyphs(9999)
+    assert table.get_num_glyphs() == 9999

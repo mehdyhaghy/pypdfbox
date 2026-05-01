@@ -39,5 +39,4 @@ class PDPageFitRectangleDestination(PDPageDestination):
     def set_top(self, top: float | None) -> None:
         self._set_float(5, top)
 
-
 __all__ = ["PDPageFitRectangleDestination"]

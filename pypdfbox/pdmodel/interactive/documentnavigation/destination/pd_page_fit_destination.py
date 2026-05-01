@@ -22,5 +22,4 @@ class PDPageFitDestination(PDPageDestination):
     def set_fit_bounding_box(self, fit_bounding_box: bool) -> None:
         self._set_type(self.TYPE_BOUNDED if fit_bounding_box else self.TYPE)
 
-
 __all__ = ["PDPageFitDestination"]

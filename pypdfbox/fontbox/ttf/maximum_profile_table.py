@@ -70,38 +70,77 @@ class MaximumProfileTable(TTFTable):
     def get_max_points(self) -> int:
         return self._max_points
 
+    def set_max_points(self, value: int) -> None:
+        self._max_points = value
+
     def get_max_contours(self) -> int:
         return self._max_contours
+
+    def set_max_contours(self, value: int) -> None:
+        self._max_contours = value
 
     def get_max_composite_points(self) -> int:
         return self._max_composite_points
 
+    def set_max_composite_points(self, value: int) -> None:
+        self._max_composite_points = value
+
     def get_max_composite_contours(self) -> int:
         return self._max_composite_contours
+
+    def set_max_composite_contours(self, value: int) -> None:
+        self._max_composite_contours = value
 
     def get_max_zones(self) -> int:
         return self._max_zones
 
+    def set_max_zones(self, value: int) -> None:
+        self._max_zones = value
+
     def get_max_twilight_points(self) -> int:
         return self._max_twilight_points
+
+    def set_max_twilight_points(self, value: int) -> None:
+        self._max_twilight_points = value
 
     def get_max_storage(self) -> int:
         return self._max_storage
 
+    def set_max_storage(self, value: int) -> None:
+        self._max_storage = value
+
     def get_max_function_defs(self) -> int:
         return self._max_function_defs
+
+    def set_max_function_defs(self, value: int) -> None:
+        self._max_function_defs = value
 
     def get_max_instruction_defs(self) -> int:
         return self._max_instruction_defs
 
+    def set_max_instruction_defs(self, value: int) -> None:
+        self._max_instruction_defs = value
+
     def get_max_stack_elements(self) -> int:
         return self._max_stack_elements
+
+    def set_max_stack_elements(self, value: int) -> None:
+        self._max_stack_elements = value
 
     def get_max_size_of_instructions(self) -> int:
         return self._max_size_of_instructions
 
+    def set_max_size_of_instructions(self, value: int) -> None:
+        self._max_size_of_instructions = value
+
     def get_max_component_elements(self) -> int:
         return self._max_component_elements
 
+    def set_max_component_elements(self, value: int) -> None:
+        self._max_component_elements = value
+
     def get_max_component_depth(self) -> int:
         return self._max_component_depth
+
+    def set_max_component_depth(self, value: int) -> None:
+        self._max_component_depth = value

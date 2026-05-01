@@ -33,5 +33,4 @@ class PDPageXYZDestination(PDPageDestination):
     def set_zoom(self, zoom: float | None) -> None:
         self._set_float(4, zoom)
 
-
 __all__ = ["PDPageXYZDestination"]

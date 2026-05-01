@@ -28,5 +28,4 @@ class PDPageFitWidthDestination(PDPageDestination):
     def set_top(self, top: float | None) -> None:
         self._set_float(2, top)
 
-
 __all__ = ["PDPageFitWidthDestination"]

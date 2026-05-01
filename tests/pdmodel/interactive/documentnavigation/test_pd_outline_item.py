@@ -48,7 +48,7 @@ def test_document_outline_root_iterates_children_with_destinations_and_actions()
     action_item = PDOutlineItem()
     action_item.set_title("GoTo action")
     action_destination = PDPageXYZDestination()
-    action_destination.set_page_number(1)
+    action_destination.set_page(PDPage().get_cos_object())
     action_destination.set_zoom(1.25)
     action = PDActionGoTo()
     action.set_destination(action_destination)
@@ -77,7 +77,7 @@ def test_document_outline_root_iterates_children_with_destinations_and_actions()
     assert isinstance(resolved_action, PDActionGoTo)
     resolved_action_destination = resolved_action.get_destination()
     assert isinstance(resolved_action_destination, PDPageXYZDestination)
-    assert resolved_action_destination.get_page_number() == 1
+    assert isinstance(resolved_action_destination.get_page(), COSDictionary)
     assert resolved_action_destination.get_zoom() == 1.25
 
 

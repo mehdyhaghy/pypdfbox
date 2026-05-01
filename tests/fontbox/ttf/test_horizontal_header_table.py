@@ -150,3 +150,52 @@ def test_set_number_of_h_metrics_round_trip() -> None:
     table = HorizontalHeaderTable()
     table.set_number_of_h_metrics(17)
     assert table.get_number_of_h_metrics() == 17
+
+
+def test_setters_round_trip_all_fields() -> None:
+    # Mirrors the upstream Java setter surface — every getter has a setter pair.
+    table = HorizontalHeaderTable()
+    table.set_version(1.0)
+    table.set_ascender(900)
+    table.set_descender(-250)
+    table.set_line_gap(120)
+    table.set_advance_width_max(2500)
+    table.set_min_left_side_bearing(-30)
+    table.set_min_right_side_bearing(-15)
+    table.set_x_max_extent(1800)
+    table.set_caret_slope_rise(2)
+    table.set_caret_slope_run(1)
+    table.set_reserved1(10)
+    table.set_reserved2(-20)
+    table.set_reserved3(30)
+    table.set_reserved4(-40)
+    table.set_reserved5(50)
+    table.set_metric_data_format(-1)
+
+    assert table.get_version() == 1.0
+    assert table.get_ascender() == 900
+    assert table.get_descender() == -250
+    assert table.get_line_gap() == 120
+    assert table.get_advance_width_max() == 2500
+    assert table.get_min_left_side_bearing() == -30
+    assert table.get_min_right_side_bearing() == -15
+    assert table.get_x_max_extent() == 1800
+    assert table.get_caret_slope_rise() == 2
+    assert table.get_caret_slope_run() == 1
+    assert table.get_reserved1() == 10
+    assert table.get_reserved2() == -20
+    assert table.get_reserved3() == 30
+    assert table.get_reserved4() == -40
+    assert table.get_reserved5() == 50
+    assert table.get_metric_data_format() == -1
+
+
+def test_setters_overwrite_values_after_read() -> None:
+    table = HorizontalHeaderTable()
+    table.read(None, MemoryTTFDataStream(_build_hhea()))  # type: ignore[arg-type]
+    table.set_ascender(123)
+    table.set_descender(-321)
+    table.set_advance_width_max(0)
+    assert table.get_ascender() == 123
+    assert table.get_descender() == -321
+    assert table.get_advance_width_max() == 0

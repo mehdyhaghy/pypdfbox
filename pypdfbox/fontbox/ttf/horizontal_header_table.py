@@ -58,50 +58,98 @@ class HorizontalHeaderTable(TTFTable):
     def get_version(self) -> float:
         return self._version
 
+    def set_version(self, value: float) -> None:
+        self._version = value
+
     def get_ascender(self) -> int:
         return self._ascender
+
+    def set_ascender(self, value: int) -> None:
+        self._ascender = value
 
     def get_descender(self) -> int:
         return self._descender
 
+    def set_descender(self, value: int) -> None:
+        self._descender = value
+
     def get_line_gap(self) -> int:
         return self._line_gap
+
+    def set_line_gap(self, value: int) -> None:
+        self._line_gap = value
 
     def get_advance_width_max(self) -> int:
         return self._advance_width_max
 
+    def set_advance_width_max(self, value: int) -> None:
+        self._advance_width_max = value
+
     def get_min_left_side_bearing(self) -> int:
         return self._min_left_side_bearing
+
+    def set_min_left_side_bearing(self, value: int) -> None:
+        self._min_left_side_bearing = value
 
     def get_min_right_side_bearing(self) -> int:
         return self._min_right_side_bearing
 
+    def set_min_right_side_bearing(self, value: int) -> None:
+        self._min_right_side_bearing = value
+
     def get_x_max_extent(self) -> int:
         return self._x_max_extent
+
+    def set_x_max_extent(self, value: int) -> None:
+        self._x_max_extent = value
 
     def get_caret_slope_rise(self) -> int:
         return self._caret_slope_rise
 
+    def set_caret_slope_rise(self, value: int) -> None:
+        self._caret_slope_rise = value
+
     def get_caret_slope_run(self) -> int:
         return self._caret_slope_run
+
+    def set_caret_slope_run(self, value: int) -> None:
+        self._caret_slope_run = value
 
     def get_reserved1(self) -> int:
         return self._reserved1
 
+    def set_reserved1(self, value: int) -> None:
+        self._reserved1 = value
+
     def get_reserved2(self) -> int:
         return self._reserved2
+
+    def set_reserved2(self, value: int) -> None:
+        self._reserved2 = value
 
     def get_reserved3(self) -> int:
         return self._reserved3
 
+    def set_reserved3(self, value: int) -> None:
+        self._reserved3 = value
+
     def get_reserved4(self) -> int:
         return self._reserved4
+
+    def set_reserved4(self, value: int) -> None:
+        self._reserved4 = value
 
     def get_reserved5(self) -> int:
         return self._reserved5
 
+    def set_reserved5(self, value: int) -> None:
+        self._reserved5 = value
+
     def get_metric_data_format(self) -> int:
         return self._metric_data_format
+
+    def set_metric_data_format(self, value: int) -> None:
+        self._metric_data_format = value
 
     def get_number_of_h_metrics(self) -> int:
         return self._number_of_h_metrics

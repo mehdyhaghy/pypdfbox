@@ -107,5 +107,4 @@ class PDPageDestination(PDDestination):
         self._array.grow_to_size(index + 1, COSNull.NULL)
         self._array.set(index, COSFloat(value) if value is not None else COSNull.NULL)
 
-
 __all__ = ["PDPageDestination"]
