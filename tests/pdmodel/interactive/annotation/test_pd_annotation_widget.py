@@ -155,3 +155,35 @@ def test_set_parent_rejects_shared_widget_field_dictionary() -> None:
 
     with pytest.raises(ValueError, match="shares a dictionary"):
         ann.set_parent(field)
+
+
+# ---------- /H highlighting-mode constants (PDF 32000-1 Table 188) ----------
+
+
+def test_highlight_mode_constants_match_spec() -> None:
+    cls = PDAnnotationWidget
+    assert cls.HIGHLIGHT_MODE_NONE == "N"
+    assert cls.HIGHLIGHT_MODE_INVERT == "I"
+    assert cls.HIGHLIGHT_MODE_OUTLINE == "O"
+    assert cls.HIGHLIGHT_MODE_PUSH == "P"
+    assert cls.HIGHLIGHT_MODE_TOGGLE == "T"
+
+
+def test_highlight_mode_constants_round_trip_via_setter() -> None:
+    cls = PDAnnotationWidget
+    for mode in (
+        cls.HIGHLIGHT_MODE_NONE,
+        cls.HIGHLIGHT_MODE_INVERT,
+        cls.HIGHLIGHT_MODE_OUTLINE,
+        cls.HIGHLIGHT_MODE_PUSH,
+        cls.HIGHLIGHT_MODE_TOGGLE,
+    ):
+        ann = cls()
+        ann.set_highlighting_mode(mode)
+        assert ann.get_highlighting_mode() == mode
+
+
+def test_highlight_mode_invalid_value_raises() -> None:
+    ann = PDAnnotationWidget()
+    with pytest.raises(ValueError, match="Invalid highlighting mode"):
+        ann.set_highlighting_mode("Z")

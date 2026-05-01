@@ -38,6 +38,7 @@ from .pd_appearance_content_stream import PDAppearanceContentStream
 from .pd_appearance_dictionary import PDAppearanceDictionary
 from .pd_appearance_entry import PDAppearanceEntry
 from .pd_appearance_stream import PDAppearanceStream
+from .pd_border_effect_dictionary import PDBorderEffectDictionary
 from .pd_border_style_dictionary import PDBorderStyleDictionary
 from .pd_icon_fit import PDIconFit
 from .pd_ink_list import PDInkList
@@ -84,6 +85,7 @@ __all__ = [
     "PDAppearanceDictionary",
     "PDAppearanceEntry",
     "PDAppearanceStream",
+    "PDBorderEffectDictionary",
     "PDBorderStyleDictionary",
     "PDIconFit",
     "PDInkList",

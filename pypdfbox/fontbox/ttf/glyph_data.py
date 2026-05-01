@@ -6,6 +6,126 @@ if TYPE_CHECKING:
     from fontTools.pens.recordingPen import RecordingPen
 
 
+class GlyfDescript:
+    """Glyph-flag constants from the TrueType ``glyf`` table.
+
+    Mirrors ``org.apache.fontbox.ttf.GlyfDescript`` at the constant
+    level. The full upstream class is an abstract base for
+    :class:`GlyfSimpleDescript` and :class:`GlyfCompositeDescript`; we
+    don't port those because pypdfbox parses ``glyf`` via fontTools.
+    What callers do still want is the public outline-flag values, so
+    the bit constants are surfaced here verbatim.
+
+    See "Outline flags" in the
+    `'glyf' table <https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6glyf.html>`_
+    of the TrueType reference manual.
+    """
+
+    #: If set, the point is on the curve.
+    ON_CURVE = 0x01
+    #: If set, the x-coordinate is 1 byte long.
+    X_SHORT_VECTOR = 0x02
+    #: If set, the y-coordinate is 1 byte long.
+    Y_SHORT_VECTOR = 0x04
+    #: If set, the next byte specifies the number of additional times
+    #: this set of flags is to be repeated.
+    REPEAT = 0x08
+    #: Sign / delta indicator for the x-coordinate (see upstream doc).
+    X_DUAL = 0x10
+    #: Sign / delta indicator for the y-coordinate (see upstream doc).
+    Y_DUAL = 0x20
+
+
+class GlyphDescription:
+    """Adapter mirroring ``org.apache.fontbox.ttf.GlyphDescription``.
+
+    Upstream ``GlyphDescription`` is the common interface implemented
+    by ``GlyfSimpleDescript`` and ``GlyfCompositeDescript``. pypdfbox
+    decodes glyph contours via fontTools, so this adapter wraps a
+    fontTools ``Glyph`` and surfaces the same public queries —
+    :meth:`is_composite`, :meth:`get_contour_count`,
+    :meth:`get_point_count`, :meth:`get_end_pt_of_contours`,
+    :meth:`get_x_coordinate`, :meth:`get_y_coordinate`,
+    :meth:`get_flags`, :meth:`resolve` — without re-implementing the
+    parser hierarchy.
+    """
+
+    def __init__(self, glyf_table: Any | None, glyph: Any | None) -> None:
+        self._glyf_table = glyf_table
+        self._glyph = glyph
+        # Lazy-decoded coordinate arrays; populated on first query.
+        self._coords: Any | None = None
+        self._end_pts: list[int] | None = None
+        self._flags: Any | None = None
+
+    def _ensure_decoded(self) -> None:
+        if self._coords is not None:
+            return
+        if self._glyph is None or self._glyf_table is None:
+            self._coords = []
+            self._end_pts = []
+            self._flags = b""
+            return
+        # ``getCoordinates`` resolves composite components against the
+        # parent ``glyf`` table, matching upstream behaviour where a
+        # composite description exposes the union of its parts' points.
+        coords, end_pts, flags = self._glyph.getCoordinates(self._glyf_table)
+        self._coords = coords
+        self._end_pts = list(end_pts)
+        self._flags = flags
+
+    def is_composite(self) -> bool:
+        if self._glyph is None:
+            return False
+        return bool(self._glyph.isComposite())
+
+    def get_contour_count(self) -> int:
+        if self._glyph is None:
+            return 0
+        n = int(getattr(self._glyph, "numberOfContours", 0))
+        # Composite glyphs encode -1 in the file but conceptually have
+        # the contour count of the resolved outline.
+        if n < 0:
+            self._ensure_decoded()
+            assert self._end_pts is not None
+            return len(self._end_pts)
+        return n
+
+    def get_point_count(self) -> int:
+        self._ensure_decoded()
+        assert self._coords is not None
+        return len(self._coords)
+
+    def get_end_pt_of_contours(self, i: int) -> int:
+        self._ensure_decoded()
+        assert self._end_pts is not None
+        return int(self._end_pts[i])
+
+    def get_x_coordinate(self, i: int) -> int:
+        self._ensure_decoded()
+        assert self._coords is not None
+        return int(self._coords[i][0])
+
+    def get_y_coordinate(self, i: int) -> int:
+        self._ensure_decoded()
+        assert self._coords is not None
+        return int(self._coords[i][1])
+
+    def get_flags(self, i: int) -> int:
+        self._ensure_decoded()
+        assert self._flags is not None
+        return int(self._flags[i])
+
+    def resolve(self) -> None:
+        """Force-decode any deferred composite resolution.
+
+        Mirrors upstream ``GlyphDescription.resolve()``. fontTools
+        decodes lazily on first coordinate access, so this just
+        triggers that decode.
+        """
+        self._ensure_decoded()
+
+
 class BoundingBox:
     """Lightweight bounding box.
 
@@ -201,6 +321,19 @@ class GlyphData:
         self._ensure_initialised()
         return self._y_max
 
+    def get_description(self) -> GlyphDescription:
+        """Return a :class:`GlyphDescription` view of this glyph.
+
+        Mirrors upstream ``GlyphData.getDescription()``. For empty /
+        no-outline glyphs this is a description backed by a zero-point
+        fontTools Glyph (matching upstream's ``initEmptyData`` path
+        which constructs an empty ``GlyfSimpleDescript``).
+        """
+        if self._empty or self._glyf_table is None or self._glyph_name is None:
+            return GlyphDescription(None, None)
+        glyph = self._glyf_table[self._glyph_name]
+        return GlyphDescription(self._glyf_table, glyph)
+
     def get_path(self) -> RecordingPen:
         """Return a recorded outline of this glyph.
 
@@ -227,4 +360,4 @@ class GlyphData:
         return pen
 
 
-__all__ = ["BoundingBox", "GlyphData"]
+__all__ = ["BoundingBox", "GlyfDescript", "GlyphData", "GlyphDescription"]

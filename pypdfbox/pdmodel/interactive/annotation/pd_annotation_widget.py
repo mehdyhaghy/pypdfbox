@@ -41,6 +41,16 @@ class PDAnnotationWidget(PDAnnotation):
 
     SUB_TYPE: str = "Widget"
 
+    # ---------- /H (highlighting mode) constants ----------
+    #
+    # PDF 32000-1:2008 Table 188: highlighting mode values.
+
+    HIGHLIGHT_MODE_NONE: str = "N"
+    HIGHLIGHT_MODE_INVERT: str = "I"
+    HIGHLIGHT_MODE_OUTLINE: str = "O"
+    HIGHLIGHT_MODE_PUSH: str = "P"
+    HIGHLIGHT_MODE_TOGGLE: str = "T"
+
     def __init__(self, annot: COSDictionary | None = None) -> None:
         super().__init__(annot)
         # Upstream's COSDictionary-taking constructor stamps /Type /Annot
@@ -67,7 +77,13 @@ class PDAnnotationWidget(PDAnnotation):
         if mode is None:
             self._dict.remove_item(_H)
             return
-        if mode not in ("N", "I", "O", "P", "T"):
+        if mode not in (
+            self.HIGHLIGHT_MODE_NONE,
+            self.HIGHLIGHT_MODE_INVERT,
+            self.HIGHLIGHT_MODE_OUTLINE,
+            self.HIGHLIGHT_MODE_PUSH,
+            self.HIGHLIGHT_MODE_TOGGLE,
+        ):
             raise ValueError(
                 f"Invalid highlighting mode {mode!r}; expected one of N, I, O, P, T"
             )

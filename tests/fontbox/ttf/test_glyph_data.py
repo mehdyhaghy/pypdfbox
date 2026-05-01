@@ -11,7 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.fontbox.ttf import BoundingBox, GlyphData, TrueTypeFont
+from pypdfbox.fontbox.ttf import (
+    BoundingBox,
+    GlyfDescript,
+    GlyphData,
+    GlyphDescription,
+    TrueTypeFont,
+)
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -173,3 +179,85 @@ def test_letter_a_has_outline(liberation_sans: TrueTypeFont) -> None:
     assert bb.as_tuple() == (4.0, 0.0, 1362.0, 1409.0)
     pen = g.get_path()
     assert pen.value, "letter 'A' must have a non-empty path"
+
+
+# ---------- GlyfDescript flag constants -----------------------------------
+
+
+def test_glyf_descript_flag_constants() -> None:
+    # Mirrors the public bit values from upstream GlyfDescript.
+    assert GlyfDescript.ON_CURVE == 0x01
+    assert GlyfDescript.X_SHORT_VECTOR == 0x02
+    assert GlyfDescript.Y_SHORT_VECTOR == 0x04
+    assert GlyfDescript.REPEAT == 0x08
+    assert GlyfDescript.X_DUAL == 0x10
+    assert GlyfDescript.Y_DUAL == 0x20
+
+
+# ---------- GlyphDescription via empty GlyphData --------------------------
+
+
+def test_empty_glyph_data_description_is_empty() -> None:
+    g = GlyphData()
+    desc = g.get_description()
+    assert isinstance(desc, GlyphDescription)
+    assert desc.is_composite() is False
+    assert desc.get_contour_count() == 0
+    assert desc.get_point_count() == 0
+    # resolve() on an empty description must not raise.
+    desc.resolve()
+
+
+# ---------- GlyphDescription via real font --------------------------------
+
+
+def test_notdef_description_matches_glyf(liberation_sans: TrueTypeFont) -> None:
+    g = liberation_sans.get_glyph(0)
+    assert g is not None
+    desc = g.get_description()
+    assert isinstance(desc, GlyphDescription)
+    assert desc.is_composite() is False
+    # .notdef in Liberation Sans: two contours, eight points (4-pt outer
+    # + 4-pt inner rectangle).
+    assert desc.get_contour_count() == 2
+    assert desc.get_point_count() == 8
+    # First contour ends before the second; both endpoint indices are
+    # within range and strictly increasing.
+    e0 = desc.get_end_pt_of_contours(0)
+    e1 = desc.get_end_pt_of_contours(1)
+    assert 0 <= e0 < e1
+    assert e1 == desc.get_point_count() - 1
+
+
+def test_notdef_description_coordinates_lie_inside_bbox(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    g = liberation_sans.get_glyph(0)
+    assert g is not None
+    desc = g.get_description()
+    bb = g.get_bounding_box()
+    for i in range(desc.get_point_count()):
+        x = desc.get_x_coordinate(i)
+        y = desc.get_y_coordinate(i)
+        assert bb.contains(x, y), f"point ({x},{y}) outside bbox {bb}"
+
+
+def test_notdef_description_flags_are_on_curve(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    # .notdef is a pure straight-line rectangle: every point is on-curve.
+    g = liberation_sans.get_glyph(0)
+    assert g is not None
+    desc = g.get_description()
+    for i in range(desc.get_point_count()):
+        assert desc.get_flags(i) & GlyfDescript.ON_CURVE
+
+
+def test_description_resolve_is_idempotent(liberation_sans: TrueTypeFont) -> None:
+    g = liberation_sans.get_glyph(0)
+    assert g is not None
+    desc = g.get_description()
+    desc.resolve()
+    desc.resolve()
+    # State after a second resolve must still match expectations.
+    assert desc.get_point_count() == 8
