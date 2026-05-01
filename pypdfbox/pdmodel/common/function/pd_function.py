@@ -324,6 +324,28 @@ class PDFunction:
 
     # ---------- upstream-named aliases ----------
 
+    def get_domain_values(self) -> COSArray | None:
+        """Upstream-named alias for :meth:`get_domain` (PDFBox protected
+        ``getDomainValues()``). Returns the raw ``/Domain`` ``COSArray`` or
+        ``None`` when the key is absent / malformed."""
+        return self.get_domain()
+
+    def get_range_values(self) -> COSArray | None:
+        """Upstream-named alias for :meth:`get_range` (PDFBox protected
+        ``getRangeValues()``). Returns the raw ``/Range`` ``COSArray`` or
+        ``None`` when the key is absent."""
+        return self.get_range()
+
+    def set_domain_values(self, domain_values: COSArray | None) -> None:
+        """Upstream-named alias for :meth:`set_domain` (PDFBox
+        ``setDomainValues(COSArray)``)."""
+        self.set_domain(domain_values)
+
+    def set_range_values(self, range_values: COSArray | None) -> None:
+        """Upstream-named alias for :meth:`set_range` (PDFBox
+        ``setRangeValues(COSArray)``)."""
+        self.set_range(range_values)
+
     def clip_to_range(self, values: list[float]) -> list[float]:
         """Upstream-named alias for :meth:`clip_output` (PDFBox
         ``clipToRange(float[])``)."""

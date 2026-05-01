@@ -256,3 +256,77 @@ def test_eval_uses_get_function_type() -> None:
     )
     fn.eval([0.5])
     assert fn.get_function_type() == 3
+
+
+# ---------- get_functions_array (raw COSArray accessor) ----------
+
+
+def test_get_functions_array_returns_underlying_cos_array() -> None:
+    """Mirrors upstream ``getFunctions()`` which returns ``COSArray``."""
+    fn = _stitch(
+        functions=[
+            _type2([0.0], [1.0], 1.0),
+            _type2([1.0], [0.0], 1.0),
+        ],
+        domain=[0.0, 1.0],
+        bounds=[0.5],
+        encode=[0.0, 1.0, 0.0, 1.0],
+    )
+    arr = fn.get_functions_array()
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 2
+    # Same instance round-trips back via the raw accessor.
+    assert arr is fn.get_cos_object().get_dictionary_object("Functions")
+
+
+def test_get_functions_array_returns_none_when_absent() -> None:
+    fn = PDFunctionType3()
+    assert fn.get_functions_array() is None
+
+
+def test_get_functions_array_returns_none_when_not_array() -> None:
+    """Defensive: malformed /Functions entry (non-array) → None."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 3)
+    raw.set_int("Functions", 0)  # malformed — not a COSArray
+    fn = PDFunctionType3(raw)
+    assert fn.get_functions_array() is None
+
+
+# ---------- get_encode_for_parameter ----------
+
+
+def test_get_encode_for_parameter_returns_pair() -> None:
+    """Each /Encode pair is one entry per subfunction."""
+    fn = _stitch(
+        functions=[
+            _type2([0.0], [1.0], 1.0),
+            _type2([0.0], [1.0], 1.0),
+            _type2([0.0], [1.0], 1.0),
+        ],
+        domain=[0.0, 9.0],
+        bounds=[3.0, 6.0],
+        encode=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    )
+    assert fn.get_encode_for_parameter(0) == pytest.approx((0.1, 0.2))
+    assert fn.get_encode_for_parameter(1) == pytest.approx((0.3, 0.4))
+    assert fn.get_encode_for_parameter(2) == pytest.approx((0.5, 0.6))
+
+
+def test_get_encode_for_parameter_out_of_range_returns_none() -> None:
+    fn = _stitch(
+        functions=[_type2([0.0], [1.0], 1.0)],
+        domain=[0.0, 1.0],
+        bounds=[],
+        encode=[0.0, 1.0],
+    )
+    assert fn.get_encode_for_parameter(0) == pytest.approx((0.0, 1.0))
+    assert fn.get_encode_for_parameter(1) is None
+    assert fn.get_encode_for_parameter(99) is None
+
+
+def test_get_encode_for_parameter_returns_none_when_encode_absent() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 3)
+    fn = PDFunctionType3(raw)
+    assert fn.get_encode_for_parameter(0) is None

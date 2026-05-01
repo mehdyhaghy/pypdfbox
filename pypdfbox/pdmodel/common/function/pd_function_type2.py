@@ -111,13 +111,9 @@ class PDFunctionType2(PDFunction):
         Type 2 always takes a single input; only ``input[0]`` is used.
         Output is clipped to ``/Range`` when present.
 
-        Output dimension is ``len(/C0)``, matching upstream PDFBox
-        ``PDFunctionType2.eval`` which sizes the result by ``c0.size()``
-        only. If ``/C1`` is shorter (a malformed function), missing entries
-        are treated as ``0.0`` so eval never raises ``IndexError`` —
-        upstream would throw ``ArrayIndexOutOfBoundsException`` here, but
-        we surface a defined fallback because shading renderers call this
-        in tight inner loops.
+        Output dimension is ``min(len(/C0), len(/C1))`` to match upstream
+        PDFBox ``PDFunctionType2.eval`` (``new float[Math.min(c0.size(),
+        c1.size())]``).
         """
         clipped = self.clip_input(input)
         x = clipped[0] if clipped else 0.0
@@ -125,12 +121,20 @@ class PDFunctionType2(PDFunction):
         c1 = self.get_c1()
         n = self.get_n()
         x_pow = x ** n
-        # Sized by /C0 per spec. /C1 short-fall is padded with 0.0 to keep
-        # eval defined when callers feed in a malformed dictionary.
-        if len(c1) < len(c0):
-            c1 = c1 + [0.0] * (len(c0) - len(c1))
-        result = [c0[j] + x_pow * (c1[j] - c0[j]) for j in range(len(c0))]
+        # Sized by min(c0, c1) — upstream parity.
+        size = min(len(c0), len(c1))
+        result = [c0[j] + x_pow * (c1[j] - c0[j]) for j in range(size)]
         return self.clip_output(result)
+
+    def __str__(self) -> str:
+        """Mirror upstream ``toString()`` —
+        ``"FunctionType2{C0: <c0> C1: <c1> N: <n>}"``."""
+        return (
+            "FunctionType2{"
+            f"C0: {self.get_c0_array()} "
+            f"C1: {self.get_c1_array()} "
+            f"N: {self.get_n()}}}"
+        )
 
 
 __all__ = ["PDFunctionType2"]

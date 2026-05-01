@@ -605,3 +605,55 @@ def test_set_oc_properties_none_removes_entry() -> None:
 
     cat.set_oc_properties(None)
     assert COSName.get_pdf_name("OCProperties") not in cat
+
+
+# ---------- AcroForm caching ----------
+
+
+def test_get_acro_form_returns_cached_wrapper_after_set() -> None:
+    """Repeated ``get_acro_form`` calls return the same wrapper instance
+    after the first lookup (parity with upstream ``cachedAcroForm``)."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_acro_form(PDAcroForm(doc))
+    a = cat.get_acro_form()
+    b = cat.get_acro_form()
+    assert a is b
+
+
+def test_set_acro_form_clears_cached_wrapper() -> None:
+    """A subsequent ``set_acro_form`` invalidates the cache so the next
+    ``get_acro_form`` materialises the freshly-installed value (mirrors
+    upstream's ``cachedAcroForm = null`` reset — the supplied PDAcroForm
+    is not preserved by reference; only the backing /AcroForm dict is)."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    first = PDAcroForm(doc)
+    cat.set_acro_form(first)
+    cached_first = cat.get_acro_form()
+    assert cached_first is not None
+    assert cached_first.get_cos_object() is first.get_cos_object()
+
+    second = PDAcroForm(doc)
+    cat.set_acro_form(second)
+    out = cat.get_acro_form()
+    # Cache was cleared — different wrapper than the previously-cached one.
+    assert out is not cached_first
+    # The swap took effect — backing dicts match the new wrapper.
+    assert out is not None
+    assert out.get_cos_object() is second.get_cos_object()
+
+
+def test_set_acro_form_none_clears_cache_and_returns_none() -> None:
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_acro_form(PDAcroForm(doc))
+    assert cat.get_acro_form() is not None
+    cat.set_acro_form(None)
+    assert cat.get_acro_form() is None

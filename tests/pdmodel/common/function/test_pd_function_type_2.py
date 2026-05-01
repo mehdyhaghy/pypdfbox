@@ -189,8 +189,10 @@ def test_eval_uses_only_first_input() -> None:
     assert fn.eval([0.5, 99.0]) == pytest.approx([0.5])
 
 
-def test_eval_output_dim_follows_c0() -> None:
-    """If /C1 is longer than /C0 (malformed), output is still sized by /C0."""
+def test_eval_output_dim_follows_min_of_c0_and_c1() -> None:
+    """Output is sized by ``min(len(/C0), len(/C1))`` — upstream parity
+    (PDFunctionType2.eval allocates ``new float[Math.min(c0.size(),
+    c1.size())]``)."""
     # /C0 = [0,0,0]  /C1 = [1,1,1,1,1] — extra C1 entries get ignored.
     fn = _make([0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], 1.0, domain=[0.0, 1.0])
     out = fn.eval([0.5])
@@ -198,14 +200,13 @@ def test_eval_output_dim_follows_c0() -> None:
     assert out == pytest.approx([0.5, 0.5, 0.5])
 
 
-def test_eval_pads_when_c1_shorter_than_c0() -> None:
-    """If /C1 is shorter than /C0, missing entries treated as 0.0 — defensive
-    fallback (upstream would raise IndexError on a malformed dictionary)."""
+def test_eval_truncates_when_c1_shorter_than_c0() -> None:
+    """Mirror upstream: when /C1 is shorter, output is sized by /C1
+    (the smaller of the two), not padded out to /C0."""
     fn = _make([0.5, 0.5, 0.5], [1.0], 1.0, domain=[0.0, 1.0])
+    # Sized by len(/C1) = 1 — only j=0 is evaluated.
     # j=0: 0.5 + 1.0*(1.0-0.5) = 1.0
-    # j=1: 0.5 + 1.0*(0.0-0.5) = 0.0
-    # j=2: 0.5 + 1.0*(0.0-0.5) = 0.0
-    assert fn.eval([1.0]) == pytest.approx([1.0, 0.0, 0.0])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
 
 
 # --------------------------------------------------------------------------
@@ -283,3 +284,31 @@ def test_eval_with_default_c0_c1_n_is_identity() -> None:
     assert fn.eval([0.0]) == pytest.approx([0.0])
     assert fn.eval([0.5]) == pytest.approx([0.5])
     assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+# --------------------------------------------------------------------------
+# __str__ format mirrors upstream toString()
+# --------------------------------------------------------------------------
+
+
+def test_str_matches_upstream_format() -> None:
+    """Upstream toString: ``"FunctionType2{C0: <c0> C1: <c1> N: <n>}"``."""
+    fn = _make([0.25], [0.75], 2.0)
+    rendered = str(fn)
+    # Anchor on the structural markers — float reprs differ per platform but
+    # the surrounding shape is stable.
+    assert rendered.startswith("FunctionType2{")
+    assert rendered.endswith("}")
+    assert "C0:" in rendered
+    assert "C1:" in rendered
+    assert "N:" in rendered
+
+
+def test_str_includes_default_c0_c1_n_when_keys_absent() -> None:
+    """With no /C0 /C1 /N, the rendered string carries the spec defaults."""
+    fn = PDFunctionType2()
+    rendered = str(fn)
+    assert "C0:" in rendered
+    assert "C1:" in rendered
+    # N defaults to 1.0 — accept either "1.0" or "1" in rendering.
+    assert "N: 1" in rendered

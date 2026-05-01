@@ -30,7 +30,13 @@ class PDFunctionType3(PDFunction):
 
     def get_functions(self) -> list[PDFunction]:
         """Each ``/Functions`` entry is wrapped via ``PDFunction.create``.
-        Entries that are not COSDictionary/COSStream are skipped."""
+        Entries that are not COSDictionary/COSStream are skipped.
+
+        Upstream returns the raw ``COSArray`` here; this port returns a
+        materialised list of typed wrappers because that is the typical
+        consumer (eval dispatch, shading renderers). Use
+        :meth:`get_functions_array` for the raw COSArray.
+        """
         item = self.get_cos_object().get_dictionary_object(_FUNCTIONS)
         out: list[PDFunction] = []
         if not isinstance(item, COSArray):
@@ -43,6 +49,31 @@ class PDFunctionType3(PDFunction):
             if sub is not None:
                 out.append(sub)
         return out
+
+    def get_functions_array(self) -> COSArray | None:
+        """Return the raw ``/Functions`` ``COSArray`` (or ``None`` when
+        absent / malformed). Mirrors upstream ``PDFunctionType3.getFunctions()``
+        which returns ``COSArray`` directly. Use :meth:`get_functions` for
+        a materialised list of typed :class:`PDFunction` wrappers."""
+        item = self.get_cos_object().get_dictionary_object(_FUNCTIONS)
+        if isinstance(item, COSArray):
+            return item
+        return None
+
+    def get_encode_for_parameter(self, n: int) -> tuple[float, float] | None:
+        """Return the ``(encode_min, encode_max)`` ``/Encode`` pair for
+        subfunction ``n``. Returns ``None`` when ``/Encode`` is absent or
+        does not cover index ``n``. Mirrors upstream private helper
+        ``getEncodeForParameter(int)``; exposed publicly here so callers
+        building stitching dictionaries can introspect per-subfunction
+        encode ranges without recomputing the offset arithmetic."""
+        encode = self.get_encode()
+        if encode is None:
+            return None
+        flat = encode.to_float_array()
+        if 2 * n + 1 >= len(flat):
+            return None
+        return (flat[2 * n], flat[2 * n + 1])
 
     def set_functions(self, functions: COSArray | None) -> None:
         """Replace ``/Functions`` with the supplied COSArray, or remove the key

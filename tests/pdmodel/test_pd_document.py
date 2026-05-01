@@ -475,3 +475,80 @@ def test_save_incremental_on_closed_doc_raises() -> None:
     doc.close()
     with pytest.raises(ValueError):
         doc.save_incremental(io.BytesIO())
+
+
+# ---------- get_last_signature_dictionary ----------
+
+
+def test_get_last_signature_dictionary_empty_when_no_acroform() -> None:
+    """No ``/AcroForm`` → no signatures → ``None``."""
+    doc = PDDocument()
+    assert doc.get_last_signature_dictionary() is None
+
+
+def test_get_last_signature_dictionary_returns_most_recent() -> None:
+    """When multiple signatures are present, the last entry of the field
+    tree wins. Mirrors upstream ``getLastSignatureDictionary``."""
+    from pypdfbox.cos import COSArray
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    acro = PDAcroForm(doc)
+    cat.set_acro_form(acro)
+
+    fields = COSArray()
+    acro.get_cos_object().set_item(COSName.get_pdf_name("Fields"), fields)
+
+    # Build two signature fields with sig dicts in /V.
+    last_sig: PDSignature | None = None
+    for name in ("Signature1", "Signature2"):
+        sig_field = COSDictionary()
+        sig_field.set_item(COSName.get_pdf_name("FT"), COSName.get_pdf_name("Sig"))
+        sig_field.set_string(COSName.get_pdf_name("T"), name)
+        sig = PDSignature()
+        sig.set_name(f"signer-{name}")
+        sig_field.set_item(COSName.get_pdf_name("V"), sig.get_cos_object())
+        fields.add(sig_field)
+        last_sig = sig
+
+    out = doc.get_last_signature_dictionary()
+    assert out is not None
+    assert isinstance(out, PDSignature)
+    # Same backing dictionary as the last signature added.
+    assert last_sig is not None
+    assert out.get_cos_object() is last_sig.get_cos_object()
+
+
+# ---------- document information caching ----------
+
+
+def test_get_document_information_returns_cached_wrapper() -> None:
+    """Repeated calls return the same wrapper instance (parity with
+    upstream ``documentInformation`` caching)."""
+    doc = PDDocument()
+    a = doc.get_document_information()
+    b = doc.get_document_information()
+    assert a is b
+
+
+def test_set_document_information_updates_cache() -> None:
+    """``set_document_information`` swaps the cached wrapper so the next
+    ``get_document_information`` returns the supplied instance."""
+    from pypdfbox.pdmodel import PDDocumentInformation
+
+    doc = PDDocument()
+    # Force lazy-build of the original wrapper.
+    original = doc.get_document_information()
+    fresh = PDDocumentInformation()
+    fresh.set_title("Fresh")
+    doc.set_document_information(fresh)
+    assert doc.get_document_information() is fresh
+    assert doc.get_document_information() is not original
+    # Trailer reflects the swap.
+    trailer = doc.get_document().get_trailer()
+    assert trailer is not None
+    assert trailer.get_dictionary_object(COSName.INFO) is fresh.get_cos_object()  # type: ignore[attr-defined]

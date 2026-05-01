@@ -623,10 +623,13 @@ def test_clip_value_to_range_swapped_bounds() -> None:
 
 
 def test_str_reports_function_type_number() -> None:
-    raw = COSDictionary()
-    raw.set_int("FunctionType", 2)
+    # Type 4 keeps the base-class ``__str__`` ("FunctionType<n>") since the
+    # subclass does not override toString upstream either. Type 2 has its
+    # own override (see test_pd_function_type_2.py for that format).
+    raw = COSStream()
+    raw.set_int("FunctionType", 4)
     fn = PDFunction.create(raw)
-    assert str(fn) == "FunctionType2"
+    assert str(fn) == "FunctionType4"
 
 
 # ---------- /Type = /Function set on stream construction ----------
@@ -665,3 +668,77 @@ def test_identity_get_function_type_raises() -> None:
     fn = PDFunctionTypeIdentity()
     with pytest.raises(NotImplementedError):
         fn.get_function_type()
+
+
+# ---------- *_values upstream-named aliases ----------
+
+
+def test_get_domain_values_alias_returns_underlying_array() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.set_float_array([0.0, 1.0])
+    raw.set_item("Domain", domain)
+    fn = PDFunction.create(raw)
+    assert fn.get_domain_values() is domain
+
+
+def test_get_domain_values_alias_returns_none_when_absent() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    fn = PDFunction.create(raw)
+    assert fn.get_domain_values() is None
+
+
+def test_get_range_values_alias_returns_underlying_array() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    rng = COSArray()
+    rng.set_float_array([-2.0, 2.0])
+    raw.set_item("Range", rng)
+    fn = PDFunction.create(raw)
+    assert fn.get_range_values() is rng
+
+
+def test_get_range_values_alias_returns_none_when_absent() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    fn = PDFunction.create(raw)
+    assert fn.get_range_values() is None
+
+
+def test_set_domain_values_alias_round_trips() -> None:
+    fn = PDFunctionType2()
+    domain = COSArray()
+    domain.set_float_array([0.0, 0.5])
+    fn.set_domain_values(domain)
+    assert fn.get_domain() is domain
+    # Numeric round-trip via the typed accessor.
+    assert fn.get_domain_for_input(0) == pytest.approx((0.0, 0.5))
+
+
+def test_set_domain_values_alias_with_none_removes_entry() -> None:
+    fn = PDFunctionType2()
+    arr = COSArray()
+    arr.set_float_array([0.0, 1.0])
+    fn.set_domain_values(arr)
+    fn.set_domain_values(None)
+    assert fn.get_domain() is None
+
+
+def test_set_range_values_alias_round_trips() -> None:
+    fn = PDFunctionType2()
+    rng = COSArray()
+    rng.set_float_array([-1.0, 1.0, -2.0, 2.0])
+    fn.set_range_values(rng)
+    assert fn.get_range() is rng
+    assert fn.get_number_of_output_parameters() == 2
+
+
+def test_set_range_values_alias_with_none_removes_entry() -> None:
+    fn = PDFunctionType2()
+    arr = COSArray()
+    arr.set_float_array([0.0, 1.0])
+    fn.set_range_values(arr)
+    fn.set_range_values(None)
+    assert fn.get_range() is None

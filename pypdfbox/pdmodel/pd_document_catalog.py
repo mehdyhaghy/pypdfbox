@@ -80,6 +80,11 @@ class PDDocumentCatalog:
         if catalog.get_dictionary_object(_TYPE) is None:
             catalog.set_item(_TYPE, _CATALOG)
         self._catalog = catalog
+        # Cached :class:`PDAcroForm` wrapper. Mirrors upstream's
+        # ``cachedAcroForm`` field — the same wrapper instance is returned
+        # across calls so the AcroForm stays reference-stable. Cleared by
+        # :meth:`set_acro_form`.
+        self._cached_acro_form: Any = None
 
     # ---------- COS surface ----------
 
@@ -316,18 +321,33 @@ class PDDocumentCatalog:
     # ---------- /AcroForm ----------
 
     def get_acro_form(self) -> Any:
+        """Return the document's ``/AcroForm`` as a :class:`PDAcroForm`,
+        or ``None`` when absent.
+
+        The wrapper is cached after the first call — mirrors upstream's
+        ``cachedAcroForm`` field. Cleared by :meth:`set_acro_form` and by
+        any swap that would invalidate the underlying dictionary
+        identity."""
         from .interactive.form import PDAcroForm
 
+        if self._cached_acro_form is not None:
+            return self._cached_acro_form
         v = self._catalog.get_dictionary_object(_ACRO_FORM)
         if isinstance(v, COSDictionary):
-            return PDAcroForm(self._document, v)
+            self._cached_acro_form = PDAcroForm(self._document, v)
+            return self._cached_acro_form
         return None
 
     def set_acro_form(self, acro_form: Any) -> None:
+        """Replace ``/AcroForm`` and clear the cached wrapper so the next
+        :meth:`get_acro_form` call materialises the new value (mirrors
+        upstream's ``cachedAcroForm = null`` reset)."""
         if acro_form is None:
             self._catalog.remove_item(_ACRO_FORM)
+            self._cached_acro_form = None
             return
         self._catalog.set_item(_ACRO_FORM, acro_form.get_cos_object())
+        self._cached_acro_form = None
 
     # ---------- stubs for later clusters ----------
 

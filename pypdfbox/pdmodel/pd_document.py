@@ -85,6 +85,12 @@ class PDDocument:
         # Cached high-level wrappers, lazily built.
         self._catalog: PDDocumentCatalog | None = None
         self._pages: PDPageTree | None = None
+        # Cached PDDocumentInformation wrapper. Mirrors upstream's
+        # ``documentInformation`` field — the same wrapper instance is
+        # returned across calls so ``getDocumentInformation()`` stays
+        # reference-stable. Cleared when ``set_document_information`` is
+        # called.
+        self._document_information: PDDocumentInformation | None = None
 
         # Mirror the upstream ``allSecurityToBeRemoved`` flag.
         self._all_security_to_be_removed: bool = False
@@ -232,9 +238,16 @@ class PDDocument:
         """Return the trailer's ``/Info`` dictionary wrapped as
         ``PDDocumentInformation``. If absent, an empty wrapper is created
         and wired into the trailer so subsequent setters round-trip
-        (matches upstream ``PDDocument.getDocumentInformation``)."""
+        (matches upstream ``PDDocument.getDocumentInformation``).
+
+        The wrapper is cached after the first call — repeated invocations
+        return the same instance, mirroring upstream's
+        ``documentInformation`` field. ``set_document_information`` clears
+        the cache."""
         from .pd_document_information import PDDocumentInformation
 
+        if self._document_information is not None:
+            return self._document_information
         trailer = self._document.get_trailer()
         if trailer is None:
             trailer = COSDictionary()
@@ -243,15 +256,20 @@ class PDDocument:
         if not isinstance(info, COSDictionary):
             info = COSDictionary()
             trailer.set_item(_INFO, info)
-        return PDDocumentInformation(info)
+        self._document_information = PDDocumentInformation(info)
+        return self._document_information
 
     def set_document_information(self, info: PDDocumentInformation) -> None:
-        """Replace the trailer's ``/Info`` entry."""
+        """Replace the trailer's ``/Info`` entry. The cached
+        :class:`PDDocumentInformation` wrapper is updated so subsequent
+        :meth:`get_document_information` calls return ``info`` (mirrors
+        upstream's assignment to ``this.documentInformation``)."""
         trailer = self._document.get_trailer()
         if trailer is None:
             trailer = COSDictionary()
             self._document.set_trailer(trailer)
         trailer.set_item(_INFO, info.get_cos_object())
+        self._document_information = info
 
     # ---------- pages ----------
 
@@ -1045,6 +1063,16 @@ class PDDocument:
             if sig is not None:
                 out.append(sig)
         return out
+
+    def get_last_signature_dictionary(self) -> PDSignature | None:
+        """Return the most recently added signature in the document's
+        ``/AcroForm`` field tree, or ``None`` when no signed signature
+        field is present. Mirrors upstream
+        ``PDDocument.getLastSignatureDictionary``."""
+        sigs = self.get_signature_dictionaries()
+        if sigs:
+            return sigs[-1]
+        return None
 
     def requires_full_save(self) -> bool:
         """Return ``True`` when the document has unsaved changes that cannot
