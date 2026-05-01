@@ -66,3 +66,22 @@ def test_caret_factory_dispatch() -> None:
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationCaret)
     assert ann.get_subtype() == "Caret"
+
+
+def test_caret_set_rect_differences_uniform() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_rect_differences_uniform(2.5)
+    assert ann.get_rect_differences() == [2.5, 2.5, 2.5, 2.5]
+
+
+def test_caret_set_rect_differences_lrtb() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_rect_differences_lrtb(1.0, 2.0, 3.0, 4.0)
+    assert ann.get_rect_differences() == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_caret_set_rect_differences_uniform_overrides_existing() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_rect_differences_lrtb(9.0, 9.0, 9.0, 9.0)
+    ann.set_rect_differences_uniform(0.0)
+    assert ann.get_rect_differences() == [0.0, 0.0, 0.0, 0.0]

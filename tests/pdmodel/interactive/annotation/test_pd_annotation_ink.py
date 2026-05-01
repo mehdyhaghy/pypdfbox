@@ -87,3 +87,49 @@ def test_ink_factory_dispatch() -> None:
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationInk)
     assert ann.get_subtype() == "Ink"
+
+
+def test_ink_get_ink_paths_default_empty() -> None:
+    """Upstream returns float[0][0] when /InkList absent — empty list, not None."""
+    assert PDAnnotationInk().get_ink_paths() == []
+
+
+def test_ink_set_ink_paths_round_trip() -> None:
+    ann = PDAnnotationInk()
+    ann.set_ink_paths(
+        [
+            [10.0, 20.0, 30.0, 40.0],
+            [50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
+        ]
+    )
+    assert ann.get_ink_paths() == [
+        [10.0, 20.0, 30.0, 40.0],
+        [50.0, 60.0, 70.0, 80.0, 90.0, 100.0],
+    ]
+
+
+def test_ink_set_ink_paths_writes_inner_cos_arrays() -> None:
+    ann = PDAnnotationInk()
+    ann.set_ink_paths([[1.0, 2.0], [3.0, 4.0, 5.0, 6.0]])
+    raw = ann.get_cos_object().get_dictionary_object(COSName.get_pdf_name("InkList"))
+    assert isinstance(raw, COSArray)
+    assert raw.size() == 2
+    for inner in raw:
+        assert isinstance(inner, COSArray)
+
+
+def test_ink_set_ink_paths_none_clears() -> None:
+    ann = PDAnnotationInk()
+    ann.set_ink_paths([[1.0, 2.0]])
+    ann.set_ink_paths(None)
+    assert ann.get_ink_paths() == []
+
+
+def test_ink_get_ink_paths_substitutes_empty_for_non_array() -> None:
+    ann = PDAnnotationInk()
+    outer = COSArray()
+    outer.add(COSArray([COSFloat(1.0), COSFloat(2.0)]))
+    outer.add(COSFloat(42.0))  # bogus non-array entry
+    ann.get_cos_object().set_item(COSName.get_pdf_name("InkList"), outer)
+
+    assert ann.get_ink_paths() == [[1.0, 2.0], []]

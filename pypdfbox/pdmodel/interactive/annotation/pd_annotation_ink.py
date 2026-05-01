@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_annotation_markup import PDAnnotationMarkup
 
@@ -40,6 +40,47 @@ class PDAnnotationInk(PDAnnotationMarkup):
             return
         arr = ink.get_cos_array() if isinstance(ink, PDInkList) else ink
         self._dict.set_item(_INK_LIST, arr)
+
+    # ---------- raw float[][] accessors (upstream parity) ----------
+
+    def get_ink_paths(self) -> list[list[float]]:
+        """Return ``/InkList`` as a raw list of float lists — one inner
+        list per stroked path, each a series of alternating x/y
+        coordinates.
+
+        Mirrors upstream ``getInkList() -> float[][]``: returns an empty
+        list when ``/InkList`` is absent (not ``None``), and substitutes
+        an empty inner list for any non-array entry.
+        """
+        value = self._dict.get_dictionary_object(_INK_LIST)
+        if not isinstance(value, COSArray):
+            return []
+        result: list[list[float]] = []
+        for i in range(value.size()):
+            item = value.get(i)
+            if isinstance(item, COSArray):
+                result.append(item.to_float_array())
+            else:
+                result.append([])
+        return result
+
+    def set_ink_paths(
+        self,
+        paths: list[list[float]] | list[tuple[float, ...]] | tuple | None,
+    ) -> None:
+        """Replace ``/InkList`` from a raw list of float lists. ``None``
+        removes the entry.
+
+        Mirrors upstream ``setInkList(float[][])``.
+        """
+        if paths is None:
+            self._dict.remove_item(_INK_LIST)
+            return
+        outer = COSArray()
+        for path in paths:
+            inner = COSArray([COSFloat(float(c)) for c in path])
+            outer.add(inner)
+        self._dict.set_item(_INK_LIST, outer)
 
 
 __all__ = ["PDAnnotationInk"]

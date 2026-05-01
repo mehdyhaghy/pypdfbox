@@ -107,3 +107,44 @@ def test_vertices_writes_cosfloat_array() -> None:
     assert raw.size() == 4
     for item in raw:
         assert isinstance(item, COSFloat)
+
+
+def test_polygon_get_path_default_none() -> None:
+    assert PDAnnotationPolygon().get_path() is None
+
+
+def test_polygon_get_path_returns_nested_arrays() -> None:
+    ann = PDAnnotationPolygon()
+    outer = COSArray()
+    outer.add(COSArray([COSFloat(1.0), COSFloat(2.0)]))
+    outer.add(COSArray([COSFloat(3.0), COSFloat(4.0), COSFloat(5.0), COSFloat(6.0)]))
+    outer.add(
+        COSArray(
+            [
+                COSFloat(7.0),
+                COSFloat(8.0),
+                COSFloat(9.0),
+                COSFloat(10.0),
+                COSFloat(11.0),
+                COSFloat(12.0),
+            ]
+        )
+    )
+    ann.get_cos_object().set_item(COSName.get_pdf_name("Path"), outer)
+
+    path = ann.get_path()
+    assert path == [
+        [1.0, 2.0],
+        [3.0, 4.0, 5.0, 6.0],
+        [7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+    ]
+
+
+def test_polygon_get_path_substitutes_empty_for_non_array() -> None:
+    ann = PDAnnotationPolygon()
+    outer = COSArray()
+    outer.add(COSArray([COSFloat(1.0), COSFloat(2.0)]))
+    outer.add(COSFloat(99.0))  # not a COSArray — should become []
+    ann.get_cos_object().set_item(COSName.get_pdf_name("Path"), outer)
+
+    assert ann.get_path() == [[1.0, 2.0], []]

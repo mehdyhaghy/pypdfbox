@@ -68,6 +68,38 @@ class PDAnnotationCaret(PDAnnotationMarkup):
         """Upstream-spelled alias for ``set_rectangle_differences``."""
         self.set_rectangle_differences(rd)
 
+    def set_rect_differences_uniform(self, difference: float) -> None:
+        """Set the same ``/RD`` margin on all four sides.
+
+        Mirrors upstream ``setRectDifferences(float)`` overload — the
+        single-argument form that applies an equal difference for left,
+        top, right and bottom.
+        """
+        self.set_rectangle_differences(
+            [float(difference), float(difference), float(difference), float(difference)]
+        )
+
+    def set_rect_differences_lrtb(
+        self,
+        difference_left: float,
+        difference_top: float,
+        difference_right: float,
+        difference_bottom: float,
+    ) -> None:
+        """Set ``/RD`` from individual side margins.
+
+        Mirrors upstream ``setRectDifferences(float, float, float, float)``
+        overload (left, top, right, bottom — the spec ordering for ``/RD``).
+        """
+        self.set_rectangle_differences(
+            [
+                float(difference_left),
+                float(difference_top),
+                float(difference_right),
+                float(difference_bottom),
+            ]
+        )
+
     # ---------- /Sy (caret symbol) ----------
 
     def get_symbol(self) -> str:

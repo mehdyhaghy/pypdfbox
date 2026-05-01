@@ -16,6 +16,7 @@ _VERTICES: COSName = COSName.get_pdf_name("Vertices")
 _IC: COSName = COSName.get_pdf_name("IC")
 _BS: COSName = COSName.get_pdf_name("BS")
 _BE: COSName = COSName.get_pdf_name("BE")
+_PATH: COSName = COSName.get_pdf_name("Path")
 _MEASURE: COSName = COSName.get_pdf_name("Measure")
 
 
@@ -111,6 +112,28 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
             self._dict.remove_item(_BE)
             return
         self._dict.set_item(_BE, be)
+
+    # ---------- /Path (PDF 2.0) ----------
+
+    def get_path(self) -> list[list[float]] | None:
+        """PDF 2.0: return the ``/Path`` operands array — a list where each
+        inner list supplies operands for a path-building operator
+        (``m``, ``l`` or ``c``). The first inner list has 2 elements; the
+        rest have 2 or 6. Returns ``None`` when ``/Path`` is absent.
+
+        Mirrors upstream ``getPath()`` returning ``float[][]``.
+        """
+        value = self._dict.get_dictionary_object(_PATH)
+        if not isinstance(value, COSArray):
+            return None
+        result: list[list[float]] = []
+        for i in range(value.size()):
+            item = value.get(i)
+            if isinstance(item, COSArray):
+                result.append(item.to_float_array())
+            else:
+                result.append([])
+        return result
 
     # ---------- /Measure ----------
 
