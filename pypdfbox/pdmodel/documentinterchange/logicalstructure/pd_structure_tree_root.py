@@ -12,6 +12,7 @@ from .pd_structure_element import PDStructureElement
 from .pd_structure_node import PDStructureNode
 
 _ID_TREE: COSName = COSName.get_pdf_name("IDTree")
+_K: COSName = COSName.get_pdf_name("K")
 _PARENT_TREE: COSName = COSName.get_pdf_name("ParentTree")
 _PARENT_TREE_NEXT_KEY: COSName = COSName.get_pdf_name("ParentTreeNextKey")
 _ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
@@ -96,6 +97,12 @@ class PDStructureTreeRoot(PDStructureNode):
     wrapper exposing ``PDAttributeObject``-typed entries.
     """
 
+    #: ``/Type`` value for a structure-tree root dictionary. Mirrors upstream
+    #: PDFBox's private ``TYPE`` constant; we expose it publicly to match the
+    #: pattern already used on :class:`PDStructureElement.TYPE` and
+    #: :class:`PDObjectReference.TYPE`.
+    TYPE: str = _STRUCT_TREE_ROOT_NAME
+
     def __init__(self, struct_tree_root: COSDictionary | None = None) -> None:
         super().__init__(
             struct_tree_root if struct_tree_root is not None else _STRUCT_TREE_ROOT_NAME
@@ -107,6 +114,21 @@ class PDStructureTreeRoot(PDStructureNode):
     #
     # PDStructureNode provides ``get_kids`` / ``set_kids`` / ``append_kid`` /
     # ``remove_kid``; we keep no override here.
+
+    def get_k(self) -> COSBase | None:
+        """Return the raw ``/K`` entry. This may be a structure-element
+        :class:`COSDictionary` or a :class:`COSArray` of them; use
+        :meth:`get_kids` for a typed list. Mirrors upstream
+        ``PDStructureTreeRoot.getK()``."""
+        return self._dictionary.get_dictionary_object(_K)
+
+    def set_k(self, k: COSBase | None) -> None:
+        """Set the raw ``/K`` entry. Pass ``None`` to remove the entry.
+        Mirrors upstream ``PDStructureTreeRoot.setK(COSBase)``."""
+        if k is None:
+            self._dictionary.remove_item(_K)
+            return
+        self._dictionary.set_item(_K, k)
 
     # ---------- /RoleMap ----------
 

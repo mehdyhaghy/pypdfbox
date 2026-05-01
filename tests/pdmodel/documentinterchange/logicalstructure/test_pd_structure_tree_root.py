@@ -171,6 +171,43 @@ def test_struct_element_append_kid_round_trip() -> None:
     assert kids[1] is second
 
 
+def test_struct_tree_root_type_constant_matches_pdf_spec() -> None:
+    assert PDStructureTreeRoot.TYPE == "StructTreeRoot"
+    root = PDStructureTreeRoot()
+    assert root.get_type() == PDStructureTreeRoot.TYPE
+
+
+def test_struct_tree_root_get_k_returns_none_when_absent() -> None:
+    root = PDStructureTreeRoot()
+    assert root.get_k() is None
+
+
+def test_struct_tree_root_set_k_round_trip_with_dictionary() -> None:
+    root = PDStructureTreeRoot()
+    elem = COSDictionary()
+    elem.set_name(COSName.TYPE, "StructElem")  # type: ignore[attr-defined]
+    root.set_k(elem)
+    assert root.get_k() is elem
+
+
+def test_struct_tree_root_set_k_round_trip_with_array() -> None:
+    root = PDStructureTreeRoot()
+    arr = COSArray()
+    arr.add(COSDictionary())
+    arr.add(COSDictionary())
+    root.set_k(arr)
+    assert root.get_k() is arr
+
+
+def test_struct_tree_root_set_k_none_removes_entry() -> None:
+    root = PDStructureTreeRoot()
+    root.set_k(COSDictionary())
+    assert root.get_k() is not None
+    root.set_k(None)
+    assert root.get_k() is None
+    assert root.get_cos_object().get_dictionary_object(COSName.get_pdf_name("K")) is None
+
+
 def test_mark_info_boolean_round_trip() -> None:
     mi = PDMarkInfo()
     assert not mi.is_marked()

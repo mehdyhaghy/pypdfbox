@@ -72,3 +72,41 @@ def test_document_catalog_additional_actions_wraps_existing_dict() -> None:
     resolved = aa2.get_wc()
     assert isinstance(resolved, PDActionURI)
     assert resolved.get_uri() == "https://example.test/wc"
+
+
+_CATALOG_ALIASES = [
+    ("wc", "will_close", "WC"),
+    ("ws", "will_save", "WS"),
+    ("ds", "did_save", "DS"),
+    ("wp", "will_print", "WP"),
+    ("dp", "did_print", "DP"),
+]
+
+
+@pytest.mark.parametrize(("short", "alias", "key"), _CATALOG_ALIASES)
+def test_document_catalog_alias_set_none_removes_entry(
+    short: str, alias: str, key: str
+) -> None:
+    aa = PDDocumentCatalogAdditionalActions()
+    action = PDActionURI()
+    action.set_uri(f"https://example.test/{alias}-remove")
+    getattr(aa, f"set_{alias}")(action)
+    assert getattr(aa, f"get_{alias}")() is not None
+
+    getattr(aa, f"set_{alias}")(None)
+
+    assert getattr(aa, f"get_{alias}")() is None
+    assert getattr(aa, f"get_{short}")() is None
+    assert not aa.get_cos_object().contains_key(COSName.get_pdf_name(key))
+
+
+@pytest.mark.parametrize(("attr", "key"), [(t[0], t[1]) for t in _TRIGGERS])
+def test_document_catalog_get_returns_none_when_entry_is_not_a_dictionary(
+    attr: str, key: str
+) -> None:
+    # Defensively, when a malformed producer leaves a non-dictionary value at
+    # /WC etc., the typed accessor must return None rather than raise.
+    aa = PDDocumentCatalogAdditionalActions()
+    aa.get_cos_object().set_name(COSName.get_pdf_name(key), "Bogus")
+
+    assert getattr(aa, f"get_{attr}")() is None

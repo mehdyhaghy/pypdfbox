@@ -37,5 +37,10 @@ class PDParentTreeValue:
     def __repr__(self) -> str:
         return repr(self._obj)
 
+    def __str__(self) -> str:
+        """Mirror upstream ``PDParentTreeValue.toString()`` which delegates to
+        the underlying ``COSArray``/``COSDictionary``'s ``toString``."""
+        return str(self._obj)
+
 
 __all__ = ["PDParentTreeValue"]

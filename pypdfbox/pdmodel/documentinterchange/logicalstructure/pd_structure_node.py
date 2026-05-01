@@ -135,6 +135,27 @@ class PDStructureNode:
         arr.add(cos_kid)
         self._dictionary.set_item(_K, arr)
 
+    def _append_objectable_kid(self, objectable: Any) -> None:
+        """Append a ``COSObjectable``-style kid (anything exposing
+        ``get_cos_object``). Mirrors upstream protected
+        ``PDStructureNode.appendObjectableKid``; ``None`` is a no-op."""
+        if objectable is None:
+            return
+        if hasattr(objectable, "get_cos_object"):
+            self.append_kid(objectable.get_cos_object())
+        else:
+            self.append_kid(objectable)
+
+    def _remove_objectable_kid(self, objectable: Any) -> bool:
+        """Remove a ``COSObjectable``-style kid. Mirrors upstream protected
+        ``PDStructureNode.removeObjectableKid``; returns ``False`` when the
+        argument is ``None`` or the kid is absent."""
+        if objectable is None:
+            return False
+        if hasattr(objectable, "get_cos_object"):
+            return self.remove_kid(objectable.get_cos_object())
+        return self.remove_kid(objectable)
+
     def insert_before(self, new_kid: Any, before_kid: Any) -> bool:
         """Insert ``new_kid`` immediately before ``before_kid`` in ``/K``.
 

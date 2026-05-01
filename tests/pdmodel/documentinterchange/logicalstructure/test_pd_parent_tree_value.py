@@ -32,3 +32,17 @@ def test_repr_delegates_to_underlying() -> None:
     arr.add(COSInteger.get(7))
     val = PDParentTreeValue(arr)
     assert repr(arr) == repr(val)
+
+
+def test_str_delegates_to_underlying_array() -> None:
+    arr = COSArray()
+    arr.add(COSInteger.get(11))
+    val = PDParentTreeValue(arr)
+    assert str(val) == str(arr)
+
+
+def test_str_delegates_to_underlying_dictionary() -> None:
+    d = COSDictionary()
+    d.set_string("Name", "Foo")
+    val = PDParentTreeValue(d)
+    assert str(val) == str(d)

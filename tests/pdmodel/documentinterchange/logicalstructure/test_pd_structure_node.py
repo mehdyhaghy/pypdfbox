@@ -153,6 +153,50 @@ def test_structure_node_append_and_remove_typed_kids() -> None:
     assert isinstance(kids[1], PDObjectReference)
 
 
+# ---------- PDStructureNode protected objectable kid helpers ----------
+
+
+def test_structure_node_append_objectable_kid_unwraps_cos_object() -> None:
+    node = PDStructureNode("StructElem")
+    elem = PDStructureElement(structure_type="P")
+    node._append_objectable_kid(elem)
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert raw_k is elem.get_cos_object()
+
+
+def test_structure_node_append_objectable_kid_none_is_noop() -> None:
+    node = PDStructureNode("StructElem")
+    node._append_objectable_kid(None)
+    assert node.get_cos_object().get_dictionary_object(_K) is None
+
+
+def test_structure_node_append_objectable_kid_accepts_cos_dictionary() -> None:
+    node = PDStructureNode("StructElem")
+    raw = COSDictionary()
+    node._append_objectable_kid(raw)
+    assert node.get_cos_object().get_dictionary_object(_K) is raw
+
+
+def test_structure_node_remove_objectable_kid_returns_true_on_success() -> None:
+    node = PDStructureNode("StructElem")
+    elem = PDStructureElement(structure_type="P")
+    node._append_objectable_kid(elem)
+    assert node._remove_objectable_kid(elem) is True
+    assert node.get_kids() == []
+
+
+def test_structure_node_remove_objectable_kid_none_returns_false() -> None:
+    node = PDStructureNode("StructElem")
+    assert node._remove_objectable_kid(None) is False
+
+
+def test_structure_node_remove_objectable_kid_unknown_returns_false() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    other = PDStructureElement(structure_type="P")
+    assert node._remove_objectable_kid(other) is False
+
+
 # ---------- PDStructureNode.insert_before ----------
 
 
