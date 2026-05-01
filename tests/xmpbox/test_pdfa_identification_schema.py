@@ -270,3 +270,26 @@ def test_bad_field_value_exception_subclasses_value_error() -> None:
     schema = _ident()
     with pytest.raises(ValueError):
         schema.set_conformance("nope")
+
+
+# ---------- XMPMetadata convenience accessors ----------
+
+
+def test_create_and_add_pdfa_identification_schema_installs_fresh() -> None:
+    """Mirror of upstream ``createAndAddPDFAIdentificationSchema``."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = metadata.create_and_add_pdfa_identification_schema()
+    assert isinstance(schema, PDFAIdentificationSchema)
+    # The schema is registered and reachable via the typed lookup.
+    assert metadata.get_pdfa_identification_schema() is schema
+
+
+def test_create_and_add_pdfa_identification_schema_installs_unconditionally() -> None:
+    """Upstream ``createAndAdd*`` semantics — always installs a *new* instance,
+    unlike :meth:`add_pdfa_identification_schema` which is idempotent."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    first = metadata.create_and_add_pdfa_identification_schema()
+    second = metadata.create_and_add_pdfa_identification_schema()
+    # Each call returns a freshly-built schema (matches upstream behaviour).
+    assert first is not second
+    assert isinstance(second, PDFAIdentificationSchema)

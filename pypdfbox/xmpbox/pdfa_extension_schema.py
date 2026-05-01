@@ -117,6 +117,18 @@ class PDFAExtensionSchema(XMPSchema):
         """
         return self._properties.get(self.SCHEMAS)
 
+    def get_schemas_property(self) -> Any | None:
+        """
+        Mirror of upstream ``getSchemasProperty()``. Upstream returns the
+        ``ArrayProperty`` backing ``pdfaExtension:schemas``; pypdfbox's
+        lite-surface stores extension entries as a ``list[dict[str, str]]``
+        rather than a typed ``ArrayProperty`` (the typed Bag-of-struct
+        wrapper lands in a later cluster), so this method returns whatever
+        ``get_schemas_element`` would — kept as a separate method so callers
+        coding against the upstream API can find it under the upstream name.
+        """
+        return self.get_schemas_element()
+
     def get_count(self) -> int:
         """
         Return the number of extension schemas declared. Mirrors the cardinality

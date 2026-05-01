@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, BinaryIO
 
 from PIL import Image
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
+from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import (
     PDColorSpace,
     PDDeviceCMYK,
@@ -134,12 +134,8 @@ def _build_image_xobject(
         # JPEG-stored CMYK uses the Adobe inversion convention (255 =
         # ink-off) while PDF /DeviceCMYK assumes 0 = ink-off. The
         # ``[1 0 1 0 1 0 1 0]`` decode array mirrors upstream's
-        # JPEGFactory.createFromByteArray decode setup.
-        decode = COSArray()
-        for _ in range(4):
-            decode.add(COSInteger.get(1))
-            decode.add(COSInteger.get(0))
-        image.get_cos_object().set_item(COSName.get_pdf_name("Decode"), decode)
+        # ``pdImage.setDecode(decode)`` line.
+        image.set_decode([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0])
 
     return image
 

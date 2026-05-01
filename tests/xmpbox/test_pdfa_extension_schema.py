@@ -134,6 +134,68 @@ def test_xmp_metadata_add_pdf_extension_schema_alias() -> None:
     assert metadata.get_pdfa_extension_schema() is schema
 
 
+def test_get_schemas_property_alias_of_get_schemas_element() -> None:
+    """Mirror of upstream ``getSchemasProperty()`` — returns whatever
+    backs ``pdfaExtension:schemas`` (``None`` when absent, otherwise the
+    same object :meth:`get_schemas_element` returns)."""
+    schema = _ext()
+    # Default: no schemas declared yet.
+    assert schema.get_schemas_property() is None
+    schema.add_extension_schema("Demo", "http://example.com/ns/demo/", "demo")
+    assert schema.get_schemas_property() is schema.get_schemas_element()
+    raw = schema.get_schemas_property()
+    assert isinstance(raw, list)
+    assert len(raw) == 1
+
+
+def test_xmp_metadata_create_and_add_pdfa_extension_schema_with_default_ns() -> None:
+    """Mirror of upstream ``createAndAddPDFAExtensionSchemaWithDefaultNS``."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = metadata.create_and_add_pdfa_extension_schema_with_default_ns()
+    assert isinstance(schema, PDFAExtensionSchema)
+    assert metadata.get_pdfa_extension_schema() is schema
+    # Default nested namespaces are registered.
+    namespaces = schema.get_namespaces()
+    assert (
+        namespaces[PDFAExtensionSchema.PDFASCHEMA_PREFIX]
+        == PDFAExtensionSchema.PDFASCHEMA_NAMESPACE
+    )
+
+
+def test_xmp_metadata_create_and_add_pdfa_extension_schema_with_ns_adds_extras() -> None:
+    """Mirror of upstream ``createAndAddPDFAExtensionSchemaWithNS(Map)``."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = metadata.create_and_add_pdfa_extension_schema_with_ns(
+        {"custom": "http://example.com/ns/custom/"}
+    )
+    assert isinstance(schema, PDFAExtensionSchema)
+    namespaces = schema.get_namespaces()
+    # User-supplied binding is registered.
+    assert namespaces["custom"] == "http://example.com/ns/custom/"
+    # Default nested-struct namespaces are still present.
+    assert (
+        namespaces[PDFAExtensionSchema.PDFASCHEMA_PREFIX]
+        == PDFAExtensionSchema.PDFASCHEMA_NAMESPACE
+    )
+
+
+def test_xmp_metadata_create_and_add_pdfa_extension_schema_with_ns_accepts_none() -> None:
+    """Passing ``None`` (or an empty dict) is the same as the default-NS form."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = metadata.create_and_add_pdfa_extension_schema_with_ns(None)
+    assert isinstance(schema, PDFAExtensionSchema)
+    assert metadata.get_pdfa_extension_schema() is schema
+
+
+def test_xmp_metadata_get_pdf_extension_schema_alias() -> None:
+    """Mirror of upstream ``getPDFExtensionSchema`` — the alternate spelling
+    upstream uses for this accessor."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    assert metadata.get_pdf_extension_schema() is None
+    schema = metadata.add_pdfa_extension_schema()
+    assert metadata.get_pdf_extension_schema() is schema
+
+
 def test_dispatch_via_parser_creates_typed_wrapper() -> None:
     # A packet whose only schema is pdfaExtension:schemas (Bag of structs)
     # should dispatch to PDFAExtensionSchema via the registry, even though the

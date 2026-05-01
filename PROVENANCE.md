@@ -762,6 +762,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/multipdf/pdf_merger_utility.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` (structure-tree merging deferred) |
 | `pypdfbox/pdmodel/graphics/image/jpeg_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactory.java` |
 | `pypdfbox/pdmodel/graphics/image/lossless_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactory.java` |
+| `pypdfbox/pdmodel/graphics/image/ccitt_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/CCITTFactory.java` (only `createFromImage(BufferedImage)` is ported; the TIFF-extraction path `createFromFile`/`createFromByteArray` is deferred — see CHANGES.md) |
 | `pypdfbox/fontbox/cmap/cmap_manager.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/CMapManager.java` (relocated to `fontbox/cmap` to co-locate with the resources directory it reads) |
 | `pypdfbox/fontbox/cmap/resources/Adobe-CNS1-UCS2` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Adobe-CNS1-UCS2` |
 | `pypdfbox/fontbox/cmap/resources/Adobe-GB1-UCS2` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Adobe-GB1-UCS2` |

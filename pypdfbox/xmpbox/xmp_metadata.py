@@ -268,6 +268,21 @@ class XMPMetadata:
         self.add_schema(schema)
         return schema
 
+    def create_and_add_pdfa_identification_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``createAndAddPDFAIdentificationSchema``. Installs
+        a fresh :class:`PDFAIdentificationSchema` on this metadata (with
+        ``rdf:about=""``) and returns it. Upstream creates unconditionally —
+        we keep that behaviour so the method always returns the
+        newly-installed instance, even if a prior schema was present.
+        """
+        from .pdfa_identification_schema import PDFAIdentificationSchema
+
+        schema = PDFAIdentificationSchema(self)
+        schema.set_about_as_simple("")
+        self.add_schema(schema)
+        return schema
+
     # --- PDF/UA identification schema -------------------------------
 
     def get_pdfua_identification_schema(self) -> XMPSchema | None:
@@ -407,6 +422,51 @@ class XMPMetadata:
     def add_pdf_extension_schema(self) -> XMPSchema:
         """Upstream-compatible alias of :meth:`add_pdfa_extension_schema`."""
         return self.add_pdfa_extension_schema()
+
+    def get_pdf_extension_schema(self) -> XMPSchema | None:
+        """Mirror of upstream ``getPDFExtensionSchema`` — returns the
+        registered :class:`PDFAExtensionSchema` instance if the packet
+        declares one, or ``None`` otherwise. Alias of
+        :meth:`get_pdfa_extension_schema`."""
+        return self.get_pdfa_extension_schema()
+
+    def create_and_add_pdfa_extension_schema_with_default_ns(self) -> XMPSchema:
+        """
+        Mirror of upstream ``createAndAddPDFAExtensionSchemaWithDefaultNS``.
+        Installs a fresh :class:`PDFAExtensionSchema` (with ``rdf:about=""``
+        and the default ``pdfaSchema`` / ``pdfaProperty`` / ``pdfaType``
+        nested namespaces registered by the constructor) and returns it.
+        Upstream creates unconditionally — we keep that behaviour.
+        """
+        from .pdfa_extension_schema import PDFAExtensionSchema
+
+        schema = PDFAExtensionSchema(self)
+        schema.set_about_as_simple("")
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_pdfa_extension_schema_with_ns(
+        self, namespaces: dict[str, str] | None = None
+    ) -> XMPSchema:
+        """
+        Mirror of upstream
+        ``createAndAddPDFAExtensionSchemaWithNS(Map<String, String>)``.
+        Installs a fresh :class:`PDFAExtensionSchema` and registers any
+        additional ``prefix -> namespace_uri`` bindings provided via
+        ``namespaces``. The default nested-struct namespaces
+        (``pdfaSchema`` / ``pdfaProperty`` / ``pdfaType``) are still
+        registered by the constructor, so they remain present even when the
+        caller passes a custom map.
+        """
+        from .pdfa_extension_schema import PDFAExtensionSchema
+
+        schema = PDFAExtensionSchema(self)
+        schema.set_about_as_simple("")
+        if namespaces:
+            for prefix, ns_uri in namespaces.items():
+                schema.add_namespace(prefix, ns_uri)
+        self.add_schema(schema)
+        return schema
 
     # --- XMP Basic Job Ticket schema ----------------------------------
 
