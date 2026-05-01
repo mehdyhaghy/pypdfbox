@@ -160,6 +160,64 @@ def test_initial_position_argument_respected() -> None:
     assert out.get_position() == 102
 
 
+def test_write_bytes_alias_writes_full_buffer() -> None:
+    out, sink = _stream()
+    out.write_bytes(b"%PDF-1.7")
+    assert sink.getvalue() == b"%PDF-1.7"
+    assert out.get_position() == 8
+    assert out.is_on_newline() is False
+
+
+def test_write_bytes_accepts_memoryview_and_bytearray() -> None:
+    out, sink = _stream()
+    out.write_bytes(bytearray(b"abc"))
+    out.write_bytes(memoryview(b"def"))
+    assert sink.getvalue() == b"abcdef"
+    assert out.get_position() == 6
+
+
+def test_get_out_returns_underlying_sink() -> None:
+    sink = io.BytesIO()
+    out = COSStandardOutputStream(sink)
+    assert out.get_out() is sink
+
+
+def test_context_manager_flushes_and_closes() -> None:
+    class _Tracker(io.BytesIO):
+        flushed = False
+        closed_calls = 0
+
+        def flush(self) -> None:
+            self.flushed = True
+            super().flush()
+
+        def close(self) -> None:
+            self.closed_calls += 1
+            super().close()
+
+    sink = _Tracker()
+    with COSStandardOutputStream(sink) as out:
+        out.write(b"hi")
+    assert sink.flushed is True
+    assert sink.closed_calls == 1
+
+
+def test_context_manager_closes_even_when_body_raises() -> None:
+    class _Tracker(io.BytesIO):
+        closed_calls = 0
+
+        def close(self) -> None:
+            self.closed_calls += 1
+            super().close()
+
+    sink = _Tracker()
+    with pytest.raises(RuntimeError):
+        with COSStandardOutputStream(sink) as out:
+            out.write(b"x")
+            raise RuntimeError("boom")
+    assert sink.closed_calls == 1
+
+
 def test_multi_write_sequence() -> None:
     out, sink = _stream()
     out.write(b"%PDF-1.4")

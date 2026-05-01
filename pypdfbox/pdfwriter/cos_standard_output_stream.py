@@ -43,6 +43,13 @@ class COSStandardOutputStream:
 
     # ---------- byte writers ----------
 
+    def write_bytes(self, data: bytes | bytearray | memoryview) -> None:
+        """Write the entire buffer. Mirrors upstream ``write(byte[] b)``
+        which delegates to ``write(b, 0, b.length)``. Provided as a named
+        alias so call sites that read like the Java original keep their
+        meaning."""
+        self.write(data)
+
     def write(
         self,
         data: bytes | bytearray | memoryview,
@@ -135,6 +142,12 @@ class COSStandardOutputStream:
         """PDFBox-name alias for :meth:`set_on_newline`."""
         self.set_on_newline(value)
 
+    def get_out(self) -> _Writable:
+        """Return the underlying byte sink. Mirrors access to
+        ``FilterOutputStream.out`` — the upstream class exposes the
+        wrapped stream via that protected field."""
+        return self._out
+
     # ---------- lifecycle ----------
 
     def flush(self) -> None:
@@ -146,3 +159,16 @@ class COSStandardOutputStream:
         close = getattr(self._out, "close", None)
         if callable(close):
             close()
+
+    # ---------- context manager ----------
+
+    def __enter__(self) -> COSStandardOutputStream:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        # Mirrors ``FilterOutputStream.close()`` semantics on try-with-resources:
+        # flush first to commit any buffered bytes, then close.
+        try:
+            self.flush()
+        finally:
+            self.close()

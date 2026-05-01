@@ -39,6 +39,20 @@ class COSWriterXRefEntry:
 
     # ---------- ordering ----------
 
+    def compare_to(self, other: COSWriterXRefEntry | None) -> int:
+        """Mirrors upstream ``compareTo``: compares by object number, and
+        returns ``-1`` when ``other`` is ``None`` (matches the Java behavior
+        used by code that sorts xref tables and tolerates null sentinels)."""
+        if other is None:
+            return -1
+        a = self.key.object_number
+        b = other.key.object_number
+        if a < b:
+            return -1
+        if a > b:
+            return 1
+        return 0
+
     # ``order=False`` on the dataclass + custom ``__lt__`` so sorting matches
     # upstream ``compareTo`` (object number only, ignoring offset / free flag).
     def __lt__(self, other: object) -> bool:
@@ -60,6 +74,22 @@ class COSWriterXRefEntry:
         if not isinstance(other, COSWriterXRefEntry):
             return NotImplemented
         return self.key.object_number >= other.key.object_number
+
+    # ---------- functional update helpers ----------
+
+    def with_free(self, free: bool) -> COSWriterXRefEntry:
+        """Functional substitute for upstream ``setFree(boolean)``.
+
+        Upstream mutates ``free`` in-place; our value type is frozen, so we
+        return a new instance with the flag toggled. Callers that previously
+        wrote ``entry.setFree(true)`` should write
+        ``entry = entry.with_free(True)``.
+        """
+        if self.free == free:
+            return self
+        return COSWriterXRefEntry(
+            offset=self.offset, key=self.key, obj=self.obj, free=free
+        )
 
     # ---------- well-known instances ----------
 

@@ -59,3 +59,39 @@ def test_null_entry_singleton() -> None:
     a = COSWriterXRefEntry.get_null_entry()
     b = COSWriterXRefEntry.get_null_entry()
     assert a is b
+
+
+def test_compare_to_matches_upstream_signs() -> None:
+    a = COSWriterXRefEntry(offset=0, key=COSObjectKey(2, 0))
+    b = COSWriterXRefEntry(offset=0, key=COSObjectKey(5, 0))
+    c = COSWriterXRefEntry(offset=99, key=COSObjectKey(2, 0))
+    assert a.compare_to(b) == -1
+    assert b.compare_to(a) == 1
+    # Same object number → 0 regardless of offset/free.
+    assert a.compare_to(c) == 0
+
+
+def test_compare_to_none_returns_minus_one() -> None:
+    # Mirrors upstream ``compareTo(null)`` returning -1.
+    a = COSWriterXRefEntry(offset=0, key=COSObjectKey(7, 0))
+    assert a.compare_to(None) == -1
+
+
+def test_with_free_returns_new_instance() -> None:
+    a = COSWriterXRefEntry(offset=42, key=COSObjectKey(3, 0))
+    assert a.is_free() is False
+    b = a.with_free(True)
+    assert b is not a
+    assert b.is_free() is True
+    # Original is untouched (frozen).
+    assert a.is_free() is False
+    # Other fields preserved.
+    assert b.offset == 42
+    assert b.key == COSObjectKey(3, 0)
+    assert b.obj is None
+
+
+def test_with_free_no_op_when_flag_unchanged() -> None:
+    a = COSWriterXRefEntry(offset=42, key=COSObjectKey(3, 0))
+    # When the flag value isn't changing, return self (no allocation churn).
+    assert a.with_free(False) is a

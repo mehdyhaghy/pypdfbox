@@ -15,9 +15,15 @@ class RenderState(Enum):
     OFF = "OFF"
 
     @classmethod
-    def value_of(cls, name: str) -> "RenderState":
-        """Mirrors upstream ``RenderState.valueOf(String)`` — look up by the
-        spec name (case-insensitive)."""
+    def value_of(cls, name: str | COSName | None) -> "RenderState | None":
+        """Mirrors upstream ``RenderState.valueOf(String|COSName)`` — look
+        up by spec name (case-insensitive). Per upstream
+        ``RenderState.valueOf(COSName)``, a ``None`` argument resolves to
+        ``None`` rather than raising."""
+        if name is None:
+            return None
+        if isinstance(name, COSName):
+            name = name.name
         upper = name.upper()
         for member in cls:
             if member.value == upper:

@@ -40,12 +40,35 @@ class PDViewportDictionary:
             return PDRectangle.from_cos_array(bbox)
         return None
 
-    def set_b_box(self, rectangle: PDRectangle | None) -> None:
-        """Set the rectangle specifying the location of the viewport."""
+    def set_b_box(self, rectangle: PDRectangle | COSArray | None) -> None:
+        """Set the rectangle specifying the location of the viewport.
+
+        Accepts a :class:`PDRectangle`, a raw ``COSArray`` (already-parsed
+        rectangle), or ``None`` to clear the entry. Mirrors PDFBox's
+        ``setItem(BBox, rectangle)`` which round-trips whatever ``COSBase``
+        the supplied ``COSObjectable`` produces.
+        """
         if rectangle is None:
             self._dict.remove_item(_BBOX)
             return
+        if isinstance(rectangle, COSArray):
+            self._dict.set_item(_BBOX, rectangle)
+            return
         self._dict.set_item(_BBOX, rectangle.get_cos_object())
+
+    # Upstream PDFBox spelling is ``getBBox`` / ``setBBox`` — the
+    # camelCase→snake_case rule splits at every uppercase boundary giving
+    # ``get_b_box``, but PDFBox developers reach for ``get_bbox`` first
+    # since "BBox" reads as a single acronym. Expose both with identical
+    # semantics; ``get_b_box`` / ``set_b_box`` remain for back-compat with
+    # earlier callers.
+    def get_bbox(self) -> PDRectangle | None:
+        """Alias for :meth:`get_b_box`. Mirrors PDFBox ``getBBox()``."""
+        return self.get_b_box()
+
+    def set_bbox(self, rectangle: PDRectangle | COSArray | None) -> None:
+        """Alias for :meth:`set_b_box`. Mirrors PDFBox ``setBBox()``."""
+        self.set_b_box(rectangle)
 
     def get_name(self) -> str | None:
         """Retrieve the name of the viewport."""

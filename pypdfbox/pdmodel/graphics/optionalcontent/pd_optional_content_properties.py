@@ -24,9 +24,15 @@ class BaseState(Enum):
         return COSName.get_pdf_name(self.value)
 
     @classmethod
-    def value_of(cls, name: str) -> "BaseState":
-        """Mirrors upstream ``BaseState.valueOf(String)`` — looks up by spec
-        name (case-insensitive)."""
+    def value_of(cls, name: str | COSName | None) -> "BaseState":
+        """Mirrors upstream ``BaseState.valueOf(String|COSName)`` — looks up
+        by spec name (case-insensitive). Per upstream
+        ``BaseState.valueOf(COSName)``, a ``None`` argument resolves to
+        :attr:`BaseState.ON` rather than raising."""
+        if name is None:
+            return cls.ON
+        if isinstance(name, COSName):
+            name = name.name
         upper = name.upper()
         for member in cls:
             if member.value.upper() == upper:
@@ -113,6 +119,15 @@ class PDOptionalContentProperties:
             if ocg is not None:
                 out.append(PDOptionalContentGroup(ocg))
         return out
+
+    def get_optional_content_groups(self) -> list[PDOptionalContentGroup]:
+        """Return every optional content group in ``/OCProperties /OCGs``.
+
+        Mirrors PDFBox ``PDOptionalContentProperties.getOptionalContentGroups()``.
+        Equivalent to :meth:`get_groups`; exists to match the upstream
+        spelling so callers porting Java code find it on first lookup.
+        """
+        return self.get_groups()
 
     def get_group(self, name: str) -> PDOptionalContentGroup | None:
         for entry in self._get_ocgs():
