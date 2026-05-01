@@ -4,6 +4,7 @@ from pypdfbox.cos import COSBase
 
 from .. import Operator
 from ..operator_processor import OperatorProcessor
+from ...operator_name import OperatorName
 
 
 class BeginInlineImage(OperatorProcessor):
@@ -24,7 +25,7 @@ class BeginInlineImage(OperatorProcessor):
     (BeginInlineImage)`` registration surface.
     """
 
-    OPERATOR_NAME = "BI"
+    OPERATOR_NAME = OperatorName.BEGIN_INLINE_IMAGE
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         self._log_invocation(operator, operands)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName, COSString
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
@@ -44,14 +44,22 @@ class PDMeasureDictionary:
         Defaults to :attr:`PDRectlinearMeasureDictionary.SUBTYPE` (``"RL"``)
         if the entry is missing — matches upstream's
         ``getNameAsString(COSName.SUBTYPE, PDRectlinearMeasureDictionary.SUBTYPE)``.
+
+        Per upstream ``COSDictionary.getNameAsString``, a ``/Subtype`` stored
+        as a ``COSString`` (rather than a ``COSName``) is also returned as
+        its string value, not the default.
         """
         # Local import to avoid an import cycle with the subclass.
         from .pd_rectlinear_measure_dictionary import (  # noqa: PLC0415
             PDRectlinearMeasureDictionary,
         )
 
-        value = self._dict.get_name(_SUBTYPE, PDRectlinearMeasureDictionary.SUBTYPE)
-        return value if value is not None else PDRectlinearMeasureDictionary.SUBTYPE
+        raw = self._dict.get_dictionary_object(_SUBTYPE)
+        if isinstance(raw, COSName):
+            return raw.name
+        if isinstance(raw, COSString):
+            return raw.get_string()
+        return PDRectlinearMeasureDictionary.SUBTYPE
 
     def _set_subtype(self, subtype: str) -> None:
         """Set the subtype of the measure dictionary.

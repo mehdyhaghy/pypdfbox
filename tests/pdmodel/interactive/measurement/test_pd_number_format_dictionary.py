@@ -191,3 +191,49 @@ def test_constructor_does_not_overwrite_type():
     nf = PDNumberFormatDictionary(src)
     # The wrapping ctor should not overwrite an existing /Type when passed a dict.
     assert nf.get_cos_object().get_name(COSName.TYPE) == "Other"
+
+
+def test_fractional_display_invalid_does_not_mutate_dict():
+    # Mirrors upstream: invalid argument throws before any setString call.
+    nf = PDNumberFormatDictionary()
+    nf.set_fractional_display("F")
+    with pytest.raises(ValueError):
+        nf.set_fractional_display("X")
+    # /F entry survives the rejected call unchanged.
+    assert nf.get_fractional_display() == "F"
+
+
+def test_label_position_invalid_does_not_mutate_dict():
+    nf = PDNumberFormatDictionary()
+    nf.set_label_position_to_value("P")
+    with pytest.raises(ValueError):
+        nf.set_label_position_to_value("X")
+    # /O entry survives the rejected call unchanged.
+    assert nf.get_label_position_to_value() == "P"
+
+
+def test_units_set_none_clears_entry():
+    # Mirrors upstream setString(key, null) which removes the entry.
+    nf = PDNumberFormatDictionary()
+    nf.set_units("ft")
+    assert nf.get_cos_object().contains_key("U")
+    nf.set_units(None)
+    assert not nf.get_cos_object().contains_key("U")
+    assert nf.get_units() is None
+
+
+def test_thousands_separator_set_none_falls_back_to_default():
+    # Setting None clears the entry, so the next read returns the upstream default.
+    nf = PDNumberFormatDictionary()
+    nf.set_thousands_separator(".")
+    nf.set_thousands_separator(None)
+    assert not nf.get_cos_object().contains_key("RT")
+    assert nf.get_thousands_separator() == ","
+
+
+def test_decimal_separator_set_none_falls_back_to_default():
+    nf = PDNumberFormatDictionary()
+    nf.set_decimal_separator(",")
+    nf.set_decimal_separator(None)
+    assert not nf.get_cos_object().contains_key("RD")
+    assert nf.get_decimal_separator() == "."

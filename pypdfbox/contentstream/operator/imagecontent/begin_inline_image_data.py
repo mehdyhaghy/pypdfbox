@@ -4,6 +4,7 @@ from pypdfbox.cos import COSBase
 
 from .. import Operator
 from ..operator_processor import OperatorProcessor
+from ...operator_name import OperatorName
 
 
 class BeginInlineImageData(OperatorProcessor):
@@ -24,7 +25,7 @@ class BeginInlineImageData(OperatorProcessor):
     matches upstream's ``OperatorRegistry`` listing.
     """
 
-    OPERATOR_NAME = "ID"
+    OPERATOR_NAME = OperatorName.BEGIN_INLINE_IMAGE_DATA
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         self._log_invocation(operator, operands)

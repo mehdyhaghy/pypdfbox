@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotationPolygon,
     PDAnnotationPolyline,
@@ -69,6 +69,25 @@ def test_measure_set_subtype_writes_name() -> None:
     md = PDMeasureDictionary()
     md._set_subtype("RL")
     assert md.get_cos_object().get_name(_SUBTYPE) == "RL"
+
+
+def test_measure_get_subtype_handles_cos_string_storage() -> None:
+    # Mirrors upstream getNameAsString(): /Subtype stored as a COSString
+    # (rather than a COSName) is still surfaced as its string value, not
+    # silently swapped for the "RL" default.
+    raw = COSDictionary()
+    raw.set_item(_SUBTYPE, COSString("GEO"))
+    md = PDMeasureDictionary(raw)
+    assert md.get_subtype() == "GEO"
+
+
+def test_measure_get_subtype_handles_unrelated_value() -> None:
+    # /Subtype set to a non-name, non-string value falls back to the
+    # default ("RL") rather than crashing.
+    raw = COSDictionary()
+    raw.set_int(_SUBTYPE, 7)
+    md = PDMeasureDictionary(raw)
+    assert md.get_subtype() == "RL"
 
 
 # ---------- PDRectlinearMeasureDictionary ----------

@@ -4,6 +4,7 @@ from pypdfbox.cos import COSBase
 
 from .. import Operator
 from ..operator_processor import OperatorProcessor
+from ...operator_name import OperatorName
 
 
 class EndInlineImage(OperatorProcessor):
@@ -25,7 +26,7 @@ class EndInlineImage(OperatorProcessor):
     :meth:`PDFStreamEngine.show_inline_image`.
     """
 
-    OPERATOR_NAME = "EI"
+    OPERATOR_NAME = OperatorName.END_INLINE_IMAGE
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         self._log_invocation(operator, operands)
