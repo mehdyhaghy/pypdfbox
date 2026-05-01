@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import (
+    MissingOperandException,
+    Operator,
+)
 from pypdfbox.contentstream.operator.color.set_non_stroking_cmyk import (
     SetNonStrokingCMYK,
 )
@@ -205,12 +210,44 @@ def test_registry_lookup_returns_correct_instance_per_new_operator() -> None:
 # ---------- registry dispatch ----------
 
 
+# Operators with upstream-faithful arity validation: ``process()`` raises
+# ``MissingOperandException`` when invoked with too few operands. The
+# blanket "every stub accepts empty operands" smoke test below skips
+# these — see the dedicated arity-validation test that follows.
+_OPERATORS_WITH_ARITY_VALIDATION: frozenset[str] = frozenset(
+    {"m", "l", "c", "re"}
+)
+
+
 def test_registry_process_each_new_operator_does_not_raise() -> None:
-    """Every stub must accept its operator without raising. Operands are
-    deliberately empty — the lite scaffold only logs."""
+    """Every pure no-op stub must accept its operator without raising.
+    Operands are deliberately empty — the lite scaffold only logs.
+
+    Operators that ported upstream's ``MissingOperandException`` arity
+    check are exercised separately in
+    :func:`test_registry_process_arity_validating_operators_raise`.
+    """
     registry = OperatorRegistry()
     for name, _cls in _NEW_OPERATORS:
+        if name in _OPERATORS_WITH_ARITY_VALIDATION:
+            continue
         registry.process(Operator(name), [])
+
+
+def test_registry_process_arity_validating_operators_raise() -> None:
+    """Operators that mirror upstream's arity check must raise
+    ``MissingOperandException`` when invoked with no operands.
+
+    Iterates the intersection with ``_NEW_OPERATORS`` so the test only
+    covers operators that this fixture file is responsible for; per-
+    operator tests in ``tests/contentstream/operator/path/`` cover the
+    rest in isolation.
+    """
+    registry = OperatorRegistry()
+    new_op_names = {name for name, _ in _NEW_OPERATORS}
+    for name in _OPERATORS_WITH_ARITY_VALIDATION & new_op_names:
+        with pytest.raises(MissingOperandException):
+            registry.process(Operator(name), [])
 
 
 # ---------- integration: total registry size ----------

@@ -200,23 +200,31 @@ class PDViewerPreferences:
         ) or self.NON_FULL_SCREEN_PAGE_MODE.UseNone.value
 
     def set_non_full_screen_page_mode(
-        self, value: NON_FULL_SCREEN_PAGE_MODE | str
+        self, value: NON_FULL_SCREEN_PAGE_MODE | str | None
     ) -> None:
-        self._prefs.set_name(_NON_FULL_SCREEN_PAGE_MODE, str(value))
+        if value is None:
+            self._prefs.remove_item(_NON_FULL_SCREEN_PAGE_MODE)
+        else:
+            self._prefs.set_name(_NON_FULL_SCREEN_PAGE_MODE, str(value))
 
     def get_reading_direction(self) -> str:
         return self._prefs.get_name(
             _DIRECTION, self.READING_DIRECTION.L2R.value
         ) or self.READING_DIRECTION.L2R.value
 
-    def set_reading_direction(self, value: READING_DIRECTION | str) -> None:
-        self._prefs.set_name(_DIRECTION, str(value))
+    def set_reading_direction(
+        self, value: READING_DIRECTION | str | None
+    ) -> None:
+        if value is None:
+            self._prefs.remove_item(_DIRECTION)
+        else:
+            self._prefs.set_name(_DIRECTION, str(value))
 
     # Upstream-named accessors (``getDirection`` / ``setDirection``).
     def get_direction(self) -> str:
         return self.get_reading_direction()
 
-    def set_direction(self, value: READING_DIRECTION | str) -> None:
+    def set_direction(self, value: READING_DIRECTION | str | None) -> None:
         self.set_reading_direction(value)
 
     def get_view_area(self) -> str:
@@ -224,47 +232,65 @@ class PDViewerPreferences:
             _VIEW_AREA, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
-    def set_view_area(self, value: BOUNDARY | str) -> None:
-        self._prefs.set_name(_VIEW_AREA, str(value))
+    def set_view_area(self, value: BOUNDARY | str | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_VIEW_AREA)
+        else:
+            self._prefs.set_name(_VIEW_AREA, str(value))
 
     def get_view_clip(self) -> str:
         return self._prefs.get_name(
             _VIEW_CLIP, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
-    def set_view_clip(self, value: BOUNDARY | str) -> None:
-        self._prefs.set_name(_VIEW_CLIP, str(value))
+    def set_view_clip(self, value: BOUNDARY | str | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_VIEW_CLIP)
+        else:
+            self._prefs.set_name(_VIEW_CLIP, str(value))
 
     def get_print_area(self) -> str:
         return self._prefs.get_name(
             _PRINT_AREA, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
-    def set_print_area(self, value: BOUNDARY | str) -> None:
-        self._prefs.set_name(_PRINT_AREA, str(value))
+    def set_print_area(self, value: BOUNDARY | str | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_PRINT_AREA)
+        else:
+            self._prefs.set_name(_PRINT_AREA, str(value))
 
     def get_print_clip(self) -> str:
         return self._prefs.get_name(
             _PRINT_CLIP, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
-    def set_print_clip(self, value: BOUNDARY | str) -> None:
-        self._prefs.set_name(_PRINT_CLIP, str(value))
+    def set_print_clip(self, value: BOUNDARY | str | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_PRINT_CLIP)
+        else:
+            self._prefs.set_name(_PRINT_CLIP, str(value))
 
     def get_duplex(self) -> str | None:
         # Upstream returns null when /Duplex is absent (no spec default).
         return self._prefs.get_name(_DUPLEX)
 
-    def set_duplex(self, value: DUPLEX | str) -> None:
-        self._prefs.set_name(_DUPLEX, str(value))
+    def set_duplex(self, value: DUPLEX | str | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_DUPLEX)
+        else:
+            self._prefs.set_name(_DUPLEX, str(value))
 
     def get_print_scaling(self) -> str:
         return self._prefs.get_name(
             _PRINT_SCALING, self.PRINT_SCALING.AppDefault.value
         ) or self.PRINT_SCALING.AppDefault.value
 
-    def set_print_scaling(self, value: PRINT_SCALING | str) -> None:
-        self._prefs.set_name(_PRINT_SCALING, str(value))
+    def set_print_scaling(self, value: PRINT_SCALING | str | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_PRINT_SCALING)
+        else:
+            self._prefs.set_name(_PRINT_SCALING, str(value))
 
     # ---------- numeric / array accessors (PDF 32000-1 / 32000-2 enrichment) ----------
 
@@ -330,6 +356,28 @@ class PDViewerPreferences:
             self._prefs.remove_item(_ENFORCE)
         else:
             self._prefs.set_item(_ENFORCE, value)
+
+    def get_enforce_names(self) -> list[str]:
+        """Decode ``/Enforce`` as a list of viewer-preference name tokens
+        (PDF 32000-2 §12.4.4 Table 152). Returns an empty list when the
+        entry is absent. Non-name entries inside the array are skipped."""
+        arr = self.get_enforce()
+        if arr is None:
+            return []
+        out: list[str] = []
+        for i in range(arr.size()):
+            name = arr.get_name(i)
+            if name is not None:
+                out.append(name)
+        return out
+
+    def set_enforce_names(self, names: list[str] | None) -> None:
+        """Encode a list of viewer-preference name tokens into ``/Enforce``.
+        Passing ``None`` or an empty list removes the entry."""
+        if not names:
+            self._prefs.remove_item(_ENFORCE)
+            return
+        self._prefs.set_item(_ENFORCE, COSArray.of_cos_names(names))
 
     def __repr__(self) -> str:
         return "PDViewerPreferences(...)"

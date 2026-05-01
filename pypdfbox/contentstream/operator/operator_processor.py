@@ -67,5 +67,16 @@ class OperatorProcessor(ABC):
             operands,
         )
 
+    def check_array_types_class(
+        self, operands: list[COSBase], expected: type
+    ) -> bool:
+        """Return ``True`` iff every entry in ``operands`` is an instance
+        of ``expected``. Mirrors upstream's
+        ``OperatorProcessor.checkArrayTypesClass``: graphics operators use
+        it to silently skip processing when the operand stack contains a
+        non-number (rather than raising) — matches the upstream PDFBox
+        leniency for malformed content streams."""
+        return all(isinstance(o, expected) for o in operands)
+
 
 __all__ = ["OperatorProcessor"]

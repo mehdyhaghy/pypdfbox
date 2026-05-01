@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import (
+    MissingOperandException,
+    Operator,
+)
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -103,8 +108,13 @@ def test_process_unknown_operator_silently_skipped() -> None:
 
 
 def test_process_all_default_operators_no_raise() -> None:
-    """Every default handler must accept its operator without raising
-    in the lite scaffold (operands deliberately empty — stubs log only)."""
+    """Every default handler without arity validation must accept its
+    operator without raising in the lite scaffold (operands deliberately
+    empty — stubs log only).
+
+    ``m`` and ``l`` mirror upstream's ``MissingOperandException``
+    behaviour and are exercised separately below.
+    """
     registry = OperatorRegistry()
     for name in (
         "Tj",
@@ -117,10 +127,17 @@ def test_process_all_default_operators_no_raise() -> None:
         "Tm",
         "q",
         "Q",
-        "m",
-        "l",
     ):
         registry.process(Operator(name), [])
+
+
+def test_process_move_to_and_line_to_raise_on_empty_operands() -> None:
+    """``m`` and ``l`` mirror upstream's arity check and raise
+    ``MissingOperandException`` with no operands."""
+    registry = OperatorRegistry()
+    for name in ("m", "l"):
+        with pytest.raises(MissingOperandException):
+            registry.process(Operator(name), [])
 
 
 # ---------- registration overrides ----------

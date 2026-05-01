@@ -101,3 +101,82 @@ def test_format_label_index_matches_compute_label_for_offset() -> None:
         assert r.format_label_index(offset) == r.compute_label_for_offset(
             offset
         )
+
+
+# ---------- PDPageLabels.has_label_range / remove_label_range ----------
+
+
+def test_has_label_range_default_only() -> None:
+    """A fresh ``PDPageLabels`` always has the required default range at 0."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    assert labels.has_label_range(0) is True
+    assert labels.has_label_range(1) is False
+    assert labels.has_label_range(-1) is False
+
+
+def test_has_label_range_after_set() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(3, style=PDPageLabels.STYLE_DECIMAL)
+    assert labels.has_label_range(0) is True
+    assert labels.has_label_range(3) is True
+    assert labels.has_label_range(4) is False
+
+
+def test_remove_label_range_returns_true_when_removed() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(2, style=PDPageLabels.STYLE_ROMAN_UPPER)
+    assert labels.has_label_range(2) is True
+    assert labels.remove_label_range(2) is True
+    assert labels.has_label_range(2) is False
+    # Idempotent — second remove returns False.
+    assert labels.remove_label_range(2) is False
+
+
+def test_remove_label_range_returns_false_when_absent() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    assert labels.remove_label_range(99) is False
+    # Default range still present.
+    assert labels.has_label_range(0) is True
+
+
+def test_remove_default_range_allowed() -> None:
+    """Removing the default range at 0 is permitted (matches the
+    underlying TreeMap behaviour upstream uses)."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    assert labels.remove_label_range(0) is True
+    assert labels.get_page_range_count() == 0
+    assert labels.has_label_range(0) is False
+
+
+# ---------- PDPageLabels.get_first_page_index / get_last_page_index ----------
+
+
+def test_first_and_last_page_index_default() -> None:
+    """Fresh PDPageLabels: only the default range at 0 — first == last == 0."""
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    assert labels.get_first_page_index() == 0
+    assert labels.get_last_page_index() == 0
+
+
+def test_first_and_last_page_index_multi_range() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(0, style=PDPageLabels.STYLE_ROMAN_LOWER)
+    labels.set_label_range(7, style=PDPageLabels.STYLE_DECIMAL)
+    labels.set_label_range(3, style=PDPageLabels.STYLE_LETTERS_UPPER)
+    assert labels.get_first_page_index() == 0
+    assert labels.get_last_page_index() == 7
+
+
+def test_first_and_last_page_index_when_empty() -> None:
+    doc = _doc_with_pages(0)
+    labels = PDPageLabels(doc)
+    labels.remove_label_range(0)
+    assert labels.get_first_page_index() is None
+    assert labels.get_last_page_index() is None

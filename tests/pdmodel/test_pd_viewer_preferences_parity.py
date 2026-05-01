@@ -268,3 +268,134 @@ def test_constants_round_trip_via_cos_dictionary() -> None:
     assert cos.get_name(COSName.get_pdf_name("PrintScaling")) == "None"
     assert cos.get_name(COSName.get_pdf_name("Duplex")) == "DuplexFlipLongEdge"
     assert cos.get_name(COSName.get_pdf_name("ViewArea")) == "MediaBox"
+
+
+# ---------- name-valued setters accept None to clear the entry ----------
+
+
+def test_set_view_area_none_removes_entry() -> None:
+    """``set_view_area(None)`` removes ``/ViewArea`` (entry-clearing parity
+    with ``PDPageLabelRange.set_style(None)``). The getter then falls
+    back to the spec default ``CropBox``."""
+    p = PDViewerPreferences()
+    p.set_view_area(PDViewerPreferences.BOUNDARY.MediaBox)
+    assert p.get_cos_object().contains_key(COSName.get_pdf_name("ViewArea"))
+    p.set_view_area(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("ViewArea"))
+    assert p.get_view_area() == "CropBox"
+
+
+def test_set_view_clip_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_view_clip(PDViewerPreferences.BOUNDARY.BleedBox)
+    p.set_view_clip(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("ViewClip"))
+
+
+def test_set_print_area_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_print_area(PDViewerPreferences.BOUNDARY.TrimBox)
+    p.set_print_area(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("PrintArea"))
+
+
+def test_set_print_clip_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_print_clip(PDViewerPreferences.BOUNDARY.ArtBox)
+    p.set_print_clip(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("PrintClip"))
+
+
+def test_set_duplex_none_removes_entry() -> None:
+    """``set_duplex(None)`` removes ``/Duplex`` — and ``get_duplex()``
+    correctly returns ``None`` since /Duplex has no spec default."""
+    p = PDViewerPreferences()
+    p.set_duplex(PDViewerPreferences.DUPLEX.Simplex)
+    assert p.get_duplex() == "Simplex"
+    p.set_duplex(None)
+    assert p.get_duplex() is None
+
+
+def test_set_print_scaling_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_print_scaling(PDViewerPreferences.PRINT_SCALING.None_)
+    p.set_print_scaling(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("PrintScaling"))
+    # Getter falls back to spec default.
+    assert p.get_print_scaling() == "AppDefault"
+
+
+def test_set_non_full_screen_page_mode_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_non_full_screen_page_mode(
+        PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOutlines
+    )
+    p.set_non_full_screen_page_mode(None)
+    assert not p.get_cos_object().contains_key(
+        COSName.get_pdf_name("NonFullScreenPageMode")
+    )
+    assert p.get_non_full_screen_page_mode() == "UseNone"
+
+
+def test_set_reading_direction_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_reading_direction(PDViewerPreferences.READING_DIRECTION.R2L)
+    p.set_reading_direction(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("Direction"))
+    assert p.get_reading_direction() == "L2R"
+
+
+def test_set_direction_none_removes_entry() -> None:
+    """The ``set_direction`` upstream-style alias also accepts ``None``."""
+    p = PDViewerPreferences()
+    p.set_direction(PDViewerPreferences.DIRECTION_R2L)
+    p.set_direction(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("Direction"))
+
+
+# ---------- /Enforce typed list helpers ----------
+
+
+def test_get_enforce_names_default_empty() -> None:
+    """Absent ``/Enforce`` decodes to an empty list."""
+    p = PDViewerPreferences()
+    assert p.get_enforce_names() == []
+
+
+def test_set_enforce_names_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_enforce_names(["PrintScaling", "Duplex"])
+    assert p.get_enforce_names() == ["PrintScaling", "Duplex"]
+    arr = p.get_enforce()
+    assert arr is not None
+    assert arr.size() == 2
+    assert arr.get_name(0) == "PrintScaling"
+    assert arr.get_name(1) == "Duplex"
+
+
+def test_set_enforce_names_none_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_enforce_names(["PrintScaling"])
+    assert p.get_enforce() is not None
+    p.set_enforce_names(None)
+    assert p.get_enforce() is None
+    assert p.get_enforce_names() == []
+
+
+def test_set_enforce_names_empty_removes_entry() -> None:
+    p = PDViewerPreferences()
+    p.set_enforce_names(["PrintScaling"])
+    p.set_enforce_names([])
+    assert p.get_enforce() is None
+
+
+def test_get_enforce_names_skips_non_name_entries() -> None:
+    """Non-/Name entries inside ``/Enforce`` are silently skipped."""
+    from pypdfbox.cos import COSArray, COSInteger
+    p = PDViewerPreferences()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("PrintScaling"))
+    arr.add(COSInteger.get(42))  # not a name — skipped
+    arr.add(COSName.get_pdf_name("Duplex"))
+    p.set_enforce(arr)
+    assert p.get_enforce_names() == ["PrintScaling", "Duplex"]

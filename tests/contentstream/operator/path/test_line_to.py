@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import (
+    MissingOperandException,
+    Operator,
+)
 from pypdfbox.contentstream.operator.path import LineTo
 from pypdfbox.contentstream.operator.path.line_to import LineTo as LineToDirect
-from pypdfbox.cos import COSFloat
+from pypdfbox.cos import COSFloat, COSName, COSString
 
 
 def test_class_attribute_operator_name() -> None:
@@ -25,5 +30,25 @@ def test_process_with_two_operands_is_noop() -> None:
     )
 
 
-def test_process_accepts_empty_operands_list() -> None:
-    LineTo().process(Operator.get_operator("l"), [])
+def test_process_with_empty_operands_raises_missing_operand() -> None:
+    with pytest.raises(MissingOperandException):
+        LineTo().process(Operator.get_operator("l"), [])
+
+
+def test_process_with_one_operand_raises_missing_operand() -> None:
+    with pytest.raises(MissingOperandException):
+        LineTo().process(Operator.get_operator("l"), [COSFloat(1.0)])
+
+
+def test_process_with_non_number_first_operand_is_silent_no_op() -> None:
+    LineTo().process(
+        Operator.get_operator("l"),
+        [COSName("oops"), COSFloat(2.0)],
+    )
+
+
+def test_process_with_non_number_second_operand_is_silent_no_op() -> None:
+    LineTo().process(
+        Operator.get_operator("l"),
+        [COSFloat(1.0), COSString("nope")],
+    )

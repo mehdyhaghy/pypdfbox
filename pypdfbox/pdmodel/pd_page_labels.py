@@ -176,6 +176,40 @@ class PDPageLabels:
         """Sorted list of start-page indices (one per defined range)."""
         return sorted(self._labels)
 
+    def get_first_page_index(self) -> int | None:
+        """Smallest start-page index across all defined ranges (mirrors
+        Java's ``NavigableSet.first()`` on ``getPageIndices()``). Returns
+        ``None`` only if every range was somehow removed — the default
+        range at index 0 is added by the constructor, so the typical
+        return is 0."""
+        if not self._labels:
+            return None
+        return min(self._labels)
+
+    def get_last_page_index(self) -> int | None:
+        """Largest start-page index across all defined ranges (mirrors
+        Java's ``NavigableSet.last()`` on ``getPageIndices()``). Returns
+        ``None`` if every range was removed."""
+        if not self._labels:
+            return None
+        return max(self._labels)
+
+    def has_label_range(self, start_page: int) -> bool:
+        """``True`` if a range is defined at ``start_page``."""
+        return start_page in self._labels
+
+    def remove_label_range(self, start_page: int) -> bool:
+        """Remove the range entry at ``start_page``. Returns ``True`` if
+        the entry existed and was removed, ``False`` otherwise. Removing
+        the required default range at index 0 is permitted but not
+        recommended — the resulting object will not satisfy PDF 32000-1
+        §12.4.2's "range starting at the first page" requirement until a
+        new entry is added."""
+        if start_page in self._labels:
+            del self._labels[start_page]
+            return True
+        return False
+
     def find_label_range_containing(
         self, page_index: int
     ) -> PDPageLabelRange | None:
