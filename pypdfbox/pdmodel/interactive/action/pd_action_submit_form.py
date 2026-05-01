@@ -205,6 +205,16 @@ class PDActionSubmitForm(PDAction):
     def set_include(self, b: bool) -> None:
         self._set_flag(_FLAG_INCLUDE_EXCLUDE, b)
 
+    # bit 2 — IncludeNoValueFields
+    def is_include_no_value_fields(self) -> bool:
+        """Return whether the IncludeNoValueFields flag (Table 237 bit 2)
+        is set. When ``True`` the submission includes successful fields
+        that have no value; when ``False`` such fields are excluded."""
+        return self._get_flag(_FLAG_INCLUDE_NO_VALUE_FIELDS)
+
+    def set_include_no_value_fields(self, b: bool) -> None:
+        self._set_flag(_FLAG_INCLUDE_NO_VALUE_FIELDS, b)
+
     # bit 3 — ExportFormat
     def is_export_format(self) -> bool:
         return self._get_flag(_FLAG_EXPORT_FORMAT)

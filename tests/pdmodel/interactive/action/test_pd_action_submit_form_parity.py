@@ -216,6 +216,20 @@ def test_is_include_default_false_round_trip() -> None:
     assert action.get_flags() == 0
 
 
+def test_is_include_no_value_fields_round_trip() -> None:
+    """Bit 2 (IncludeNoValueFields) — when set, the submission includes
+    successful fields that have no value (PDF 32000-1 §12.7.5.2 Table
+    237). Defaults to clear; round-trips through the bit-twiddle helper."""
+    action = PDActionSubmitForm()
+    assert action.is_include_no_value_fields() is False
+    action.set_include_no_value_fields(True)
+    assert action.is_include_no_value_fields() is True
+    assert action.get_flags() == 0b10  # 1 << 1
+    action.set_include_no_value_fields(False)
+    assert action.is_include_no_value_fields() is False
+    assert action.get_flags() == 0
+
+
 def test_is_export_format_round_trip() -> None:
     """Bit 3 (ExportFormat)."""
     action = PDActionSubmitForm()
