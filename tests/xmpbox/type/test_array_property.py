@@ -62,3 +62,76 @@ def test_array_holds_mixed_simple_property_types(metadata: XMPMetadata) -> None:
     arr.add_property(TextType(metadata, "ns", "p", "li", "two"))
     elements = arr.get_elements_as_string()
     assert elements == ["1", "two"]
+
+
+def test_get_properties_by_local_name_returns_none_when_empty(
+    metadata: XMPMetadata,
+) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    assert arr.get_properties_by_local_name("missing") is None
+
+
+def test_get_properties_by_local_name_filters_by_local_name(
+    metadata: XMPMetadata,
+) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    a = TextType(metadata, "ns", "p", "alpha", "1")
+    b = TextType(metadata, "ns", "p", "beta", "2")
+    c = TextType(metadata, "ns", "p", "alpha", "3")
+    arr.add_property(a)
+    arr.add_property(b)
+    arr.add_property(c)
+    matches = arr.get_properties_by_local_name("alpha")
+    assert matches == [a, c]
+    assert arr.get_properties_by_local_name("beta") == [b]
+    assert arr.get_properties_by_local_name("missing") is None
+
+
+def test_get_property_returns_first_match(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    first = TextType(metadata, "ns", "p", "alpha", "first")
+    second = TextType(metadata, "ns", "p", "alpha", "second")
+    arr.add_property(first)
+    arr.add_property(second)
+    assert arr.get_property("alpha") is first
+    assert arr.get_property("missing") is None
+
+
+def test_get_array_property_returns_only_array_children(
+    metadata: XMPMetadata,
+) -> None:
+    outer = ArrayProperty(metadata, "ns", "p", "outer", Cardinality.Bag)
+    inner = ArrayProperty(metadata, "ns", "p", "nested", Cardinality.Seq)
+    text = TextType(metadata, "ns", "p", "scalar", "leaf")
+    outer.add_property(inner)
+    outer.add_property(text)
+    assert outer.get_array_property("nested") is inner
+    # scalar field exists but is not an array — upstream casts and crashes;
+    # we choose to return None instead (documented in the docstring).
+    assert outer.get_array_property("scalar") is None
+    assert outer.get_array_property("missing") is None
+
+
+def test_namespace_prefix_map_round_trip(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    assert arr.get_all_namespaces_with_prefix() == {}
+    arr.add_namespace("http://example.com/ns/", "ex")
+    arr.add_namespace("http://example.com/other/", None)
+    assert arr.get_namespace_prefix("http://example.com/ns/") == "ex"
+    # None prefix is normalised to empty string, mirroring the structured-type
+    # base class behaviour.
+    assert arr.get_namespace_prefix("http://example.com/other/") == ""
+    assert arr.get_namespace_prefix("http://example.com/missing/") is None
+    full = arr.get_all_namespaces_with_prefix()
+    assert full == {
+        "http://example.com/ns/": "ex",
+        "http://example.com/other/": "",
+    }
+
+
+def test_get_all_namespaces_with_prefix_is_live_view(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    view = arr.get_all_namespaces_with_prefix()
+    arr.add_namespace("http://example.com/ns/", "ex")
+    # Mirrors upstream's getAllNamespacesWithPrefix which exposes the backing map.
+    assert view["http://example.com/ns/"] == "ex"

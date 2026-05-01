@@ -23,6 +23,7 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_SYMBOLIC,
     PDFontDescriptor,
     PDPanose,
+    PDPanoseClassification,
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
@@ -524,3 +525,43 @@ def test_set_panose_overwrites_existing_panose() -> None:
     new_payload = bytes([0xFF, 0x80] + list(range(10, 20)))
     fd.set_panose(new_payload)
     assert fd.get_panose().get_bytes() == new_payload
+
+
+# ---------- PDPanose / PDPanoseClassification Pythonic protocols ----------
+
+
+def test_pd_panose_dunder_bytes_returns_raw_buffer() -> None:
+    payload = bytes([0x00, 0x08, 2, 11, 6, 3, 5, 4, 5, 2, 2, 4])
+    panose = PDPanose(payload)
+    assert bytes(panose) == payload
+    # Also matches the named accessor.
+    assert bytes(panose) == panose.get_bytes()
+
+
+def test_pd_panose_dunder_len_matches_buffer_length() -> None:
+    panose = PDPanose(bytes(PDPanose.LENGTH))
+    assert len(panose) == PDPanose.LENGTH
+    assert len(panose) == 12
+
+    # Constructor accepts any length — len() reports actual buffer size.
+    short = PDPanose(bytes(5))
+    assert len(short) == 5
+    over = PDPanose(bytes(24))
+    assert len(over) == 24
+
+
+def test_pd_panose_classification_dunder_bytes_returns_raw_buffer() -> None:
+    payload = bytes([2, 11, 6, 3, 5, 4, 5, 2, 2, 4])
+    pc = PDPanoseClassification(payload)
+    assert bytes(pc) == payload
+    assert bytes(pc) == pc.get_bytes()
+
+
+def test_pd_panose_classification_dunder_len_matches_buffer_length() -> None:
+    pc = PDPanoseClassification(bytes(PDPanoseClassification.LENGTH))
+    assert len(pc) == PDPanoseClassification.LENGTH
+    assert len(pc) == 10
+
+    # Verbatim storage — non-spec lengths are reflected exactly.
+    short = PDPanoseClassification(bytes(3))
+    assert len(short) == 3

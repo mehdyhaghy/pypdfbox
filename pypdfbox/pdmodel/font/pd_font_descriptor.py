@@ -499,6 +499,14 @@ class PDPanoseClassification:
     def get_x_height(self) -> int:
         return self._bytes[9]
 
+    def __bytes__(self) -> bytes:
+        """Pythonic alias for :meth:`get_bytes` — enables ``bytes(classification)``."""
+        return self._bytes
+
+    def __len__(self) -> int:
+        """Number of bytes actually stored (typically :attr:`LENGTH` == 10)."""
+        return len(self._bytes)
+
     def __str__(self) -> str:
         return (
             "{ FamilyKind = "
@@ -566,6 +574,14 @@ class PDPanose:
     def get_panose(self) -> PDPanoseClassification:
         """The 10-byte PANOSE classification (bytes 2-11)."""
         return PDPanoseClassification(self._bytes[2:12])
+
+    def __bytes__(self) -> bytes:
+        """Pythonic alias for :meth:`get_bytes` — enables ``bytes(panose)``."""
+        return self._bytes
+
+    def __len__(self) -> int:
+        """Number of bytes actually stored (typically :attr:`LENGTH` == 12)."""
+        return len(self._bytes)
 
 
 __all__ = [
