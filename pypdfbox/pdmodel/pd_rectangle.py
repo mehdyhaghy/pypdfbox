@@ -22,6 +22,11 @@ class PDRectangle:
     # ---------- common paper-size constants ----------
     # 1 PostScript point = 1/72 inch. Mirrors upstream constants.
 
+    #: User-space units per inch (PostScript points).
+    POINTS_PER_INCH: float = 72.0
+    #: User-space units per millimetre (= ``POINTS_PER_INCH / 25.4``).
+    POINTS_PER_MM: float = 72.0 / 25.4
+
     LETTER_WIDTH: float = 612.0
     LETTER_HEIGHT: float = 792.0
     A4_WIDTH: float = 595.0
@@ -142,6 +147,25 @@ class PDRectangle:
     def get_height(self) -> float:
         return self.height
 
+    # ---------- geometry ----------
+
+    def contains(self, x: float, y: float) -> bool:
+        """Return ``True`` when the point ``(x, y)`` lies inside this rectangle
+        (inclusive on all four edges). Mirrors upstream
+        ``contains(float, float)``."""
+        return (
+            self._lower_left_x <= x <= self._upper_right_x
+            and self._lower_left_y <= y <= self._upper_right_y
+        )
+
+    def create_retranslated_rectangle(self) -> PDRectangle:
+        """Return a new rectangle with the same width/height but origin at
+        ``(0, 0)``. Mirrors upstream ``createRetranslatedRectangle()``.
+
+        Example: ``[100, 100, 400, 400]`` → ``[0, 0, 300, 300]``.
+        """
+        return PDRectangle(0.0, 0.0, self.width, self.height)
+
     # ---------- COS round-trip ----------
 
     def to_cos_array(self) -> COSArray:
@@ -205,3 +229,16 @@ class PDRectangle:
 PDRectangle.LETTER = PDRectangle(0.0, 0.0, 612.0, 792.0)  # type: ignore[attr-defined]
 PDRectangle.A4 = PDRectangle(0.0, 0.0, 595.0, 842.0)  # type: ignore[attr-defined]
 PDRectangle.LEGAL = PDRectangle(0.0, 0.0, 612.0, 1008.0)  # type: ignore[attr-defined]
+
+# Additional paper-size constants. Mirrors upstream constants computed as
+# ``mm * POINTS_PER_MM`` (= ``mm * 72 / 25.4``). Tabloid is 11" x 17".
+_PPI: float = PDRectangle.POINTS_PER_INCH
+_PPMM: float = PDRectangle.POINTS_PER_MM
+PDRectangle.TABLOID = PDRectangle(0.0, 0.0, 11.0 * _PPI, 17.0 * _PPI)  # type: ignore[attr-defined]
+PDRectangle.A0 = PDRectangle(0.0, 0.0, 841.0 * _PPMM, 1189.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A1 = PDRectangle(0.0, 0.0, 594.0 * _PPMM, 841.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A2 = PDRectangle(0.0, 0.0, 420.0 * _PPMM, 594.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A3 = PDRectangle(0.0, 0.0, 297.0 * _PPMM, 420.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A5 = PDRectangle(0.0, 0.0, 148.0 * _PPMM, 210.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A6 = PDRectangle(0.0, 0.0, 105.0 * _PPMM, 148.0 * _PPMM)  # type: ignore[attr-defined]
+del _PPI, _PPMM

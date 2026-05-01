@@ -17,6 +17,7 @@ _LENGTH: COSName = COSName.LENGTH  # type: ignore[attr-defined]
 _METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _DL: COSName = COSName.get_pdf_name("DL")
 _DECODE_PARMS: COSName = COSName.get_pdf_name("DecodeParms")
+_DP: COSName = COSName.get_pdf_name("DP")
 _F: COSName = COSName.get_pdf_name("F")
 _FFILTER: COSName = COSName.get_pdf_name("FFilter")
 _FDECODE_PARMS: COSName = COSName.get_pdf_name("FDecodeParms")
@@ -259,15 +260,22 @@ class PDStream:
     def get_decode_parms(self) -> list[COSDictionary] | None:
         """``/DecodeParms`` chain as a list of dictionaries (one per
         filter, in the same order as ``get_filters``). Returns ``None``
-        when no ``/DecodeParms`` entry is present.
+        when neither ``/DecodeParms`` nor ``/DP`` is present.
 
         PDF allows ``/DecodeParms`` to be either a single dictionary
         (when ``/Filter`` has one entry) or an array of dictionaries (one
         per filter, with the null object ``COSNull`` standing in for "no
-        params for this filter")."""
+        params for this filter").
+
+        Per PDF Reference 1.5 implementation note 7, some producers spell
+        the entry ``/DP`` rather than ``/DecodeParms``; we fall back to
+        ``/DP`` when the canonical key is absent. Mirrors upstream
+        ``getDecodeParms()``."""
         from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
 
         parms = self._stream.get_dictionary_object(_DECODE_PARMS)
+        if parms is None:
+            parms = self._stream.get_dictionary_object(_DP)
         if parms is None:
             return None
         if isinstance(parms, COSDictionary):

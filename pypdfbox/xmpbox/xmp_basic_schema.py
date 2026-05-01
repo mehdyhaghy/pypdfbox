@@ -113,6 +113,37 @@ class XMPBasicSchema(XMPSchema):
                 return None
         return None
 
+    def _array_property_for_bag(self, local_name: str) -> ArrayProperty | None:
+        """
+        Return an :class:`ArrayProperty` wrapper for a Bag property whose
+        backing storage is either an existing wrapper or a plain ``list``
+        of strings (cluster-#1 storage shape). Returns ``None`` when the
+        property is absent.
+        """
+        existing = self._properties.get(local_name)
+        if isinstance(existing, ArrayProperty):
+            return existing
+        if not isinstance(existing, list):
+            return None
+        wrapper = ArrayProperty(
+            self._metadata,
+            self._namespace,
+            self._prefix,
+            local_name,
+            Cardinality.Bag,
+        )
+        for item in existing:
+            wrapper.add_property(
+                TextType(
+                    self._metadata,
+                    self._namespace,
+                    self._prefix,
+                    "li",
+                    str(item),
+                )
+            )
+        return wrapper
+
     # --- Advisory (Bag of XPath / Text) ------------------------------
 
     def add_advisory(self, xpath: str) -> None:
@@ -126,6 +157,15 @@ class XMPBasicSchema(XMPSchema):
     def get_advisory(self) -> list[str] | None:
         """Mirror of upstream ``getAdvisory`` — return the Advisory bag."""
         return self.get_unqualified_bag_value_list(self.ADVISORY)
+
+    def get_advisory_property(self) -> ArrayProperty | None:
+        """
+        Mirror of upstream ``getAdvisoryProperty()``. Cluster #1 stores Bag
+        contents as a plain Python list; this materialises the entries into
+        an :class:`ArrayProperty` wrapper on demand for callers that expect
+        the typed return shape.
+        """
+        return self._array_property_for_bag(self.ADVISORY)
 
     # --- creator tool (AgentName / Text) -----------------------------
 
@@ -358,6 +398,14 @@ class XMPBasicSchema(XMPSchema):
 
     def get_identifiers(self) -> list[str] | None:
         return self.get_unqualified_bag_value_list(self.IDENTIFIER)
+
+    def get_identifiers_property(self) -> ArrayProperty | None:
+        """
+        Mirror of upstream ``getIdentifiersProperty()``. Materialises the
+        plain-list cluster-#1 storage into an :class:`ArrayProperty` wrapper
+        on demand.
+        """
+        return self._array_property_for_bag(self.IDENTIFIER)
 
     # --- rating (Integer) --------------------------------------------
 

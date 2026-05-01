@@ -125,6 +125,44 @@ def test_set_decode_parms_none_removes_entry() -> None:
     assert stream.get_decode_parms() is None
 
 
+def test_get_decode_parms_falls_back_to_dp() -> None:
+    """Per PDF Reference 1.5 implementation note 7, some producers spell
+    the entry ``/DP`` rather than ``/DecodeParms``. ``get_decode_parms``
+    should fall back to ``/DP`` when the canonical key is absent."""
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream(input_data=b"x")
+    dp = COSDictionary()
+    dp.set_int("Predictor", 15)
+    # Stash directly under /DP — bypasses set_decode_parms which uses
+    # the canonical /DecodeParms key.
+    stream.get_cos_object().set_item(COSName.get_pdf_name("DP"), dp)
+
+    out = stream.get_decode_parms()
+    assert out is not None
+    assert len(out) == 1
+    assert out[0].get_int("Predictor") == 15
+
+
+def test_get_decode_parms_prefers_decodeparms_over_dp() -> None:
+    """When both ``/DecodeParms`` and ``/DP`` are present, the canonical
+    ``/DecodeParms`` key wins."""
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream(input_data=b"x")
+    canonical = COSDictionary()
+    canonical.set_int("Predictor", 12)
+    stream.set_decode_parms(canonical)
+
+    legacy = COSDictionary()
+    legacy.set_int("Predictor", 99)
+    stream.get_cos_object().set_item(COSName.get_pdf_name("DP"), legacy)
+
+    out = stream.get_decode_parms()
+    assert out is not None
+    assert out[0].get_int("Predictor") == 12
+
+
 def test_get_metadata_absent_returns_none() -> None:
     stream = PDStream()
     assert stream.get_metadata() is None

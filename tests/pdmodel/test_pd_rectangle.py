@@ -116,3 +116,85 @@ def test_equality_and_hash() -> None:
     assert a != c
     # Non-rectangle comparison.
     assert (a == COSName.get_pdf_name("foo")) is False
+
+
+# ---------- contains ----------
+
+
+def test_contains_inside_point() -> None:
+    r = PDRectangle(10.0, 20.0, 110.0, 220.0)
+    assert r.contains(50.0, 100.0) is True
+
+
+def test_contains_outside_point() -> None:
+    r = PDRectangle(10.0, 20.0, 110.0, 220.0)
+    assert r.contains(0.0, 0.0) is False
+    assert r.contains(200.0, 100.0) is False
+    assert r.contains(50.0, 500.0) is False
+
+
+def test_contains_edge_inclusive() -> None:
+    # Upstream ``contains`` is inclusive on all four edges.
+    r = PDRectangle(10.0, 20.0, 110.0, 220.0)
+    assert r.contains(10.0, 20.0) is True  # lower-left corner
+    assert r.contains(110.0, 220.0) is True  # upper-right corner
+    assert r.contains(10.0, 100.0) is True  # left edge
+    assert r.contains(50.0, 220.0) is True  # top edge
+
+
+# ---------- create_retranslated_rectangle ----------
+
+
+def test_create_retranslated_rectangle() -> None:
+    r = PDRectangle(100.0, 100.0, 400.0, 400.0)
+    t = r.create_retranslated_rectangle()
+    assert t.lower_left_x == 0.0
+    assert t.lower_left_y == 0.0
+    assert t.upper_right_x == 300.0
+    assert t.upper_right_y == 300.0
+
+
+def test_create_retranslated_rectangle_returns_new_instance() -> None:
+    r = PDRectangle(10.0, 20.0, 110.0, 220.0)
+    t = r.create_retranslated_rectangle()
+    assert t is not r
+    # Original unchanged.
+    assert r.lower_left_x == 10.0
+    assert r.lower_left_y == 20.0
+    # Translated dimensions match.
+    assert t.width == r.width
+    assert t.height == r.height
+
+
+# ---------- paper-size constants ----------
+
+
+def test_points_per_inch_constant() -> None:
+    assert PDRectangle.POINTS_PER_INCH == 72.0
+
+
+def test_points_per_mm_constant() -> None:
+    assert PDRectangle.POINTS_PER_MM == pytest.approx(72.0 / 25.4)
+
+
+def test_tabloid_constant() -> None:
+    tabloid: PDRectangle = PDRectangle.TABLOID  # type: ignore[attr-defined]
+    assert tabloid.width == pytest.approx(11.0 * 72.0)
+    assert tabloid.height == pytest.approx(17.0 * 72.0)
+
+
+def test_a_series_constants() -> None:
+    # A-series sizes are computed as ``mm * POINTS_PER_MM``. Values match
+    # ISO 216 paper sizes within float tolerance.
+    ppmm = 72.0 / 25.4
+    a_sizes = {
+        "A0": (PDRectangle.A0, 841.0, 1189.0),  # type: ignore[attr-defined]
+        "A1": (PDRectangle.A1, 594.0, 841.0),  # type: ignore[attr-defined]
+        "A2": (PDRectangle.A2, 420.0, 594.0),  # type: ignore[attr-defined]
+        "A3": (PDRectangle.A3, 297.0, 420.0),  # type: ignore[attr-defined]
+        "A5": (PDRectangle.A5, 148.0, 210.0),  # type: ignore[attr-defined]
+        "A6": (PDRectangle.A6, 105.0, 148.0),  # type: ignore[attr-defined]
+    }
+    for _name, (rect, mm_w, mm_h) in a_sizes.items():
+        assert rect.width == pytest.approx(mm_w * ppmm)
+        assert rect.height == pytest.approx(mm_h * ppmm)

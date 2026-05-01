@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .type.integer_type import IntegerType
 from .type.resource_event_type import ResourceEventType
 from .type.resource_ref_type import ResourceRefType
 from .type.version_type import VersionType
@@ -72,6 +73,10 @@ class XMPMediaManagementSchema(XMPSchema):
     VERSIONS = "Versions"
     MANIFEST = "Manifest"
     INGREDIENTS = "Ingredients"
+    LAST_URL = "LastURL"
+    SAVE_ID = "SaveID"
+    RENDITION_OF = "RenditionOf"
+    MANAGED_FROM = "ManagedFrom"
 
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
@@ -284,6 +289,79 @@ class XMPMediaManagementSchema(XMPSchema):
         if not isinstance(v, list):
             v = [v]
         return [item for item in v if isinstance(item, ResourceRefType)]
+
+    # --- LastURL -----------------------------------------------------
+
+    def get_last_url(self) -> str | None:
+        """Mirror of upstream ``getLastURL()``."""
+        return self.get_unqualified_text_property_value(self.LAST_URL)
+
+    def set_last_url(self, value: str | None) -> None:
+        """Mirror of upstream ``setLastURL(String)``."""
+        if value is None:
+            self.remove_property(self.LAST_URL)
+            return
+        self.set_text_property_value(self.LAST_URL, value)
+
+    # --- SaveID (Integer) -------------------------------------------
+
+    def get_save_id(self) -> int | None:
+        """Mirror of upstream ``getSaveID()``."""
+        v = self._properties.get(self.SAVE_ID)
+        if isinstance(v, IntegerType):
+            return v.get_value()
+        if isinstance(v, bool):
+            return int(v)
+        if isinstance(v, int):
+            return v
+        if isinstance(v, str):
+            try:
+                return int(v.strip())
+            except ValueError:
+                return None
+        return None
+
+    def set_save_id(self, value: int | str | None) -> None:
+        """Mirror of upstream ``setSaveId(Integer)``."""
+        if value is None:
+            self.remove_property(self.SAVE_ID)
+            return
+        prop = IntegerType(
+            self._metadata, self._namespace, self._prefix, self.SAVE_ID, value
+        )
+        self._properties[self.SAVE_ID] = prop
+
+    # --- RenditionOf (single ResourceRef) ---------------------------
+
+    def get_rendition_of(self) -> ResourceRefType | None:
+        """Mirror of upstream ``getRenditionOfProperty()`` — single ResourceRef."""
+        v = self._properties.get(self.RENDITION_OF)
+        if isinstance(v, ResourceRefType):
+            return v
+        return None
+
+    def set_rendition_of(self, ref: ResourceRefType | None) -> None:
+        """Mirror of upstream ``setRenditionOfProperty(ResourceRefType)``."""
+        if ref is None:
+            self.remove_property(self.RENDITION_OF)
+            return
+        self.set_property(self.RENDITION_OF, ref)
+
+    # --- ManagedFrom (single ResourceRef) ---------------------------
+
+    def get_managed_from(self) -> ResourceRefType | None:
+        """Mirror of upstream ``getManagedFromProperty()``."""
+        v = self._properties.get(self.MANAGED_FROM)
+        if isinstance(v, ResourceRefType):
+            return v
+        return None
+
+    def set_managed_from(self, ref: ResourceRefType | None) -> None:
+        """Mirror of upstream ``setManagedFromProperty(ResourceRefType)``."""
+        if ref is None:
+            self.remove_property(self.MANAGED_FROM)
+            return
+        self.set_property(self.MANAGED_FROM, ref)
 
     # --- Ingredients (Bag of ResourceRef) ---------------------------
 

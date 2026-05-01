@@ -256,3 +256,55 @@ def test_namespace_registration_for_resource_types() -> None:
     assert namespaces.get(ResourceRefType.PREFERRED_PREFIX) == ResourceRefType.NAMESPACE
     assert namespaces.get(ResourceEventType.PREFERRED_PREFIX) == ResourceEventType.NAMESPACE
     assert namespaces.get(VersionType.PREFERRED_PREFIX) == VersionType.NAMESPACE
+
+
+def test_last_url_round_trip() -> None:
+    schema = _mm()
+    assert schema.get_last_url() is None
+    schema.set_last_url("https://dam.example.com/asset/42/last")
+    assert schema.get_last_url() == "https://dam.example.com/asset/42/last"
+    schema.set_last_url(None)
+    assert schema.get_last_url() is None
+
+
+def test_save_id_round_trip() -> None:
+    schema = _mm()
+    assert schema.get_save_id() is None
+    schema.set_save_id(7)
+    assert schema.get_save_id() == 7
+    # decimal-string accepted, mirrors IntegerType coercion
+    schema.set_save_id("42")
+    assert schema.get_save_id() == 42
+    schema.set_save_id(None)
+    assert schema.get_save_id() is None
+
+
+def test_save_id_constant_matches_upstream() -> None:
+    assert XMPMediaManagementSchema.SAVE_ID == "SaveID"
+    assert XMPMediaManagementSchema.LAST_URL == "LastURL"
+    assert XMPMediaManagementSchema.RENDITION_OF == "RenditionOf"
+    assert XMPMediaManagementSchema.MANAGED_FROM == "ManagedFrom"
+
+
+def test_rendition_of_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_rendition_of() is None
+    ref = ResourceRefType(metadata)
+    ref.set_document_id("uuid:render-1")
+    schema.set_rendition_of(ref)
+    assert schema.get_rendition_of() is ref
+    schema.set_rendition_of(None)
+    assert schema.get_rendition_of() is None
+
+
+def test_managed_from_round_trip() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    assert schema.get_managed_from() is None
+    ref = ResourceRefType(metadata)
+    ref.set_document_id("uuid:src-1")
+    schema.set_managed_from(ref)
+    assert schema.get_managed_from() is ref
+    schema.set_managed_from(None)
+    assert schema.get_managed_from() is None

@@ -320,3 +320,33 @@ def test_set_thumbnails_property_none_clears() -> None:
 
     assert b.get_thumbnails_property() is None
     assert b.get_thumbnails() is None
+
+
+def test_get_advisory_property_returns_array_wrapper() -> None:
+    b = _basic()
+    assert b.get_advisory_property() is None
+    b.add_advisory("/x:foo")
+    b.add_advisory("/x:bar")
+
+    prop = b.get_advisory_property()
+    assert isinstance(prop, ArrayProperty)
+    assert prop.get_array_type() == Cardinality.Bag
+    assert prop.get_property_name() == XMPBasicSchema.ADVISORY
+    # the cluster-1 string getter still mirrors the entries
+    assert b.get_advisory() == ["/x:foo", "/x:bar"]
+
+
+def test_get_identifiers_property_returns_array_wrapper() -> None:
+    b = _basic()
+    assert b.get_identifiers_property() is None
+    b.add_identifier("urn:isbn:0451524934")
+    b.add_identifier("urn:isbn:0140177396")
+
+    prop = b.get_identifiers_property()
+    assert isinstance(prop, ArrayProperty)
+    assert prop.get_array_type() == Cardinality.Bag
+    assert prop.get_property_name() == XMPBasicSchema.IDENTIFIER
+    assert b.get_identifiers() == [
+        "urn:isbn:0451524934",
+        "urn:isbn:0140177396",
+    ]
