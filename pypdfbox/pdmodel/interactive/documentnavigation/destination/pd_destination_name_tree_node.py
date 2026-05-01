@@ -24,14 +24,22 @@ class PDDestinationNameTreeNode(PDNameTreeNode[PDPageDestination]):
 
     # ---------- generic name-tree extension points ----------
 
-    def convert_cos_to_value(self, base: COSBase) -> PDPageDestination:
-        destination = PDDestination.create(base)
-        if not isinstance(destination, PDPageDestination):
-            raise OSError(
-                f"Expected PDPageDestination in destination name tree leaf, got "
-                f"{type(destination).__name__}"
-            )
-        return destination
+    def convert_cos_to_value(self, base: COSBase) -> PDPageDestination | None:
+        # Mirrors upstream's ``convertCOSToPD``: when the leaf value is a
+        # COSDictionary, the actual destination lives under the ``/D`` key
+        # (named-destination indirection inlined into the leaf entry).
+        from pypdfbox.cos import COSDictionary as _COSDictionary
+        from pypdfbox.cos import COSName as _COSName
+
+        destination_base: COSBase | None = base
+        if isinstance(base, _COSDictionary):
+            destination_base = base.get_dictionary_object(_COSName.get_pdf_name("D"))
+        destination = PDDestination.create(destination_base)
+        if isinstance(destination, PDPageDestination):
+            return destination
+        # PDFBOX-5975: an invalid tree entry must surface as ``None``, not an
+        # exception — mirrors upstream behaviour added for the same JIRA.
+        return None
 
     def convert_value_to_cos(self, value: PDPageDestination) -> COSBase:
         return value.get_cos_object()

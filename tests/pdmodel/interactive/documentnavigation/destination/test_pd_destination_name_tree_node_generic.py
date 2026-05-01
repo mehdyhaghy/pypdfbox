@@ -159,3 +159,46 @@ def test_nested_kids_to_names_entry_reachable_from_root() -> None:
     resolved = tree.get_value("deep-key")
     assert isinstance(resolved, PDPageXYZDestination)
     assert resolved.get_page_number() == 7
+
+
+# --------- (6) /D-indirected destination dictionary leaf (upstream parity) ---------
+
+
+def test_convert_cos_value_dereferences_d_dictionary_entry() -> None:
+    """Upstream PDDestinationNameTreeNode.convertCOSToPD dereferences /D
+    when the leaf value is a COSDictionary (named-destination indirection
+    inlined into the leaf). Verify the same indirection works here."""
+    inner_dest = _xyz(11).get_cos_object()
+    wrapper = COSDictionary()
+    wrapper.set_item(COSName.get_pdf_name("D"), inner_dest)
+
+    arr = COSArray()
+    arr.add(COSString("section-3"))
+    arr.add(wrapper)
+    node = COSDictionary()
+    node.set_item(_NAMES, arr)
+
+    tree = PDDestinationNameTreeNode(node)
+    resolved = tree.get_value("section-3")
+    assert isinstance(resolved, PDPageXYZDestination)
+    assert resolved.get_page_number() == 11
+
+
+# --------- (7) PDFBOX-5975: invalid tree entry returns None, not raises ---------
+
+
+def test_convert_cos_value_returns_none_for_invalid_entry() -> None:
+    """PDFBOX-5975 — a leaf whose COS value is not a recognised page
+    destination must surface as ``None`` rather than raise. Match upstream
+    behaviour added for the same JIRA."""
+    arr = COSArray()
+    arr.add(COSString("bad"))
+    # /D missing: convert_cos_to_value sees a dict with no /D entry, so
+    # PDDestination.create receives None and returns None — must propagate
+    # to a None get_value result, not raise.
+    arr.add(COSDictionary())
+    node = COSDictionary()
+    node.set_item(_NAMES, arr)
+
+    tree = PDDestinationNameTreeNode(node)
+    assert tree.get_value("bad") is None

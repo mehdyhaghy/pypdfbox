@@ -105,6 +105,10 @@ class Operator:
     def set_operands(self, operands: list[COSBase]) -> None:
         self._operands = operands
 
+    @property
+    def operands(self) -> list[COSBase]:
+        return self._operands
+
     # ---------- inline image data (ID operator) ----------
 
     def get_image_data(self) -> bytes | None:
@@ -112,6 +116,10 @@ class Operator:
 
     def set_image_data(self, image_data: bytes | None) -> None:
         self._image_data = image_data
+
+    @property
+    def image_data(self) -> bytes | None:
+        return self._image_data
 
     # ---------- inline image parameters (BI operator) ----------
 
@@ -121,10 +129,20 @@ class Operator:
     def set_image_parameters(self, params: COSDictionary | None) -> None:
         self._image_parameters = params
 
-    # ---------- repr ----------
+    @property
+    def image_parameters(self) -> COSDictionary | None:
+        return self._image_parameters
+
+    # ---------- repr / str ----------
 
     def __repr__(self) -> str:
+        # Mirrors upstream ``Operator.toString()`` — ``"PDFOperator{<op>}"``.
         return f"PDFOperator{{{self._name}}}"
+
+    def __str__(self) -> str:
+        # Java's ``toString()`` is the canonical string form; ``__str__``
+        # delegates to ``__repr__`` so ``str(op)`` matches upstream output.
+        return self.__repr__()
 
 
 __all__ = [

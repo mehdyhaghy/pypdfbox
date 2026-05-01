@@ -868,3 +868,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## XMP simple-type parity round-out (URLType / RenditionClassType)
 
 - `pypdfbox/xmpbox/type/type_mapping.py`: the `"URL"` short type-name now resolves to the new `URLType` class (was previously aliased to `URIType` while the dedicated class was unported), matching upstream `Types.URL(true, Text, URLType.class)`. `create_url(...)` now returns `URLType`; a new `create_rendition_class(...)` factory mirrors upstream `TypeMapping.createRenditionClass`. The `"RenditionClass"` short type-name is registered for `instanciate_simple_property`.
+
+## Name-tree subclass parity round-out
+
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_destination_name_tree_node.py`: `convert_cos_to_value` now mirrors upstream `convertCOSToPD` — when the leaf COS value is a `COSDictionary`, the `/D` entry is dereferenced before dispatch (named-destination indirection inlined into the leaf). Invalid leaf entries return `None` instead of raising, matching PDFBOX-5975. Previous pypdfbox behaviour raised `OSError` on any non-`PDPageDestination` result.

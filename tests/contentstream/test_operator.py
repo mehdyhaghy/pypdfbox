@@ -69,3 +69,35 @@ def test_image_parameters_round_trip() -> None:
     params.set_item(COSName.get_pdf_name("W"), COSInteger.get(8))
     op.set_image_parameters(params)
     assert op.get_image_parameters() is params
+
+
+def test_str_matches_pdfbox_to_string_format() -> None:
+    # Java's ``toString()`` returns ``"PDFOperator{<name>}"`` —
+    # ``str(op)`` must match (not just ``repr``).
+    op = Operator.get_operator("Tj")
+    assert str(op) == "PDFOperator{Tj}"
+
+
+def test_operands_property_mirrors_getter() -> None:
+    op = Operator("re")
+    operands = [COSInteger.get(0), COSInteger.get(0), COSInteger.get(100), COSInteger.get(50)]
+    op.set_operands(operands)
+    assert op.operands is operands
+    assert op.operands is op.get_operands()
+
+
+def test_image_data_property_mirrors_getter() -> None:
+    op = Operator.get_operator(OperatorName.BEGIN_INLINE_IMAGE_DATA)
+    assert op.image_data is None
+    op.set_image_data(b"\xde\xad\xbe\xef")
+    assert op.image_data == b"\xde\xad\xbe\xef"
+    assert op.image_data is op.get_image_data()
+
+
+def test_image_parameters_property_mirrors_getter() -> None:
+    op = Operator.get_operator(OperatorName.BEGIN_INLINE_IMAGE)
+    assert op.image_parameters is None
+    params = COSDictionary()
+    op.set_image_parameters(params)
+    assert op.image_parameters is params
+    assert op.image_parameters is op.get_image_parameters()

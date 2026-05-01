@@ -268,3 +268,55 @@ def test_lower_upper_limit_can_be_cleared() -> None:
     leaf.set_upper_limit(None)
     assert leaf.get_lower_limit() is None
     assert leaf.get_upper_limit() is None
+
+
+# ---------- round-out: get_number_of_values + __contains__ parity ----------
+
+
+def test_get_number_of_values_flat_and_nested() -> None:
+    flat = _IntNumberTreeNode()
+    flat.set_numbers({1: 10, 2: 20, 3: 30})
+    assert flat.get_number_of_values() == 3
+
+    leaf_one = _IntNumberTreeNode()
+    leaf_one.set_numbers({1: 10, 2: 20})
+    leaf_two = _IntNumberTreeNode()
+    leaf_two.set_numbers({100: 1000})
+    root = _IntNumberTreeNode()
+    root.set_kids([leaf_one, leaf_two])
+    assert root.get_number_of_values() == 3
+
+    empty = _IntNumberTreeNode()
+    assert empty.get_number_of_values() == 0
+
+
+def test_get_number_of_values_recurses_through_intermediate_kids() -> None:
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({1: 1, 2: 2, 3: 3})
+    intermediate = _IntNumberTreeNode()
+    intermediate.set_kids([leaf])
+    root = _IntNumberTreeNode()
+    root.set_kids([intermediate])
+    assert root.get_number_of_values() == 3
+
+
+def test_contains_operator_walks_tree() -> None:
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({5: 50, 10: 100})
+    root = _IntNumberTreeNode()
+    root.set_kids([leaf])
+
+    assert 5 in root
+    assert 10 in root
+    assert 7 not in root
+    # Non-int keys (including bool, which subclasses int) are rejected.
+    assert "5" not in root  # type: ignore[operator]
+    assert True not in root  # type: ignore[operator]
+
+
+def test_contains_operator_on_flat_node() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10, 2: 20})
+    assert 1 in tree
+    assert 2 in tree
+    assert 99 not in tree

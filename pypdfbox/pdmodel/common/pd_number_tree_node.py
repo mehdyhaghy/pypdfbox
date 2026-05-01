@@ -176,6 +176,29 @@ class PDNumberTreeNode[T](ABC):
         """Alias for :meth:`get_value` matching the PDFBox accessor name."""
         return self.get_value(index)
 
+    def get_number_of_values(self) -> int:
+        """Total leaf-value count across this subtree.
+
+        Counterpart of :meth:`PDNameTreeNode.get_number_of_values` — the
+        on-disk format does not record subtree sizes, so we recurse through
+        ``/Kids``.
+        """
+        numbers_array = self._node.get_dictionary_object(_NUMS)
+        if isinstance(numbers_array, COSArray):
+            return numbers_array.size() // 2
+        kids = self.get_kids()
+        if not kids:
+            return 0
+        return sum(child.get_number_of_values() for child in kids)
+
+    def __contains__(self, index: object) -> bool:
+        if not isinstance(index, int) or isinstance(index, bool):
+            # ``bool`` is a subclass of ``int`` in Python; PDF number-tree
+            # keys are integers, not booleans, so reject the surprising
+            # ``True in tree`` case explicitly.
+            return False
+        return self.get_value(index) is not None
+
     # ---------- /Limits ----------
 
     def get_lower_limit(self) -> int | None:
