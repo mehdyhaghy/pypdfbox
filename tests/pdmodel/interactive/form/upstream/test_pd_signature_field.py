@@ -1,6 +1,7 @@
 """Ported from upstream PDFBox 3.0 ``PDSignatureFieldTest``.
 
-Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDSignatureFieldTest.java``
+Source:
+``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDSignatureFieldTest.java``
 
 Skipped upstream cases:
 - ``setValueForAbstractedSignatureField`` — upstream throws
@@ -33,15 +34,18 @@ def test_create_default_signature_field(acro_form: PDAcroForm) -> None:
     """Upstream: ``createDefaultSignatureField`` — ``/FT`` is ``"Sig"`` and
     the field is retrievable from the AcroForm by partial name.
 
-    Note: upstream additionally promotes the field dict to a widget by
-    writing ``/Type /Annot`` and ``/Subtype /Widget``. That promotion is
-    deferred in this lite port and is recorded in ``CHANGES.md``.
+    Fresh construction also promotes the field dict to a widget by writing
+    ``/Type /Annot`` and ``/Subtype /Widget``.
     """
     sig_field = PDSignatureField(acro_form)
-    sig_field.set_partial_name("SignatureField")
 
     assert sig_field.get_field_type() == sig_field.get_cos_object().get_name(_FT)
     assert sig_field.get_field_type() == "Sig"
+    assert sig_field.get_partial_name() == "Signature1"
+    widget = sig_field.get_widgets()[0]
+    assert widget.get_subtype() == "Widget"
+    assert widget.is_printed()
+    assert widget.is_locked()
 
     acro_form.set_fields([sig_field])
-    assert acro_form.get_field("SignatureField") is not None
+    assert acro_form.get_field("Signature1") is not None

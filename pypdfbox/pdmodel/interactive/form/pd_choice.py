@@ -33,8 +33,8 @@ class PDChoice(PDVariableText):
     Concrete dispatch (combo / list) is done by :class:`PDFieldFactory` based
     on the ``FLAG_COMBO`` bit.
 
-    Deferred upstream behavior: ``set_value(list)`` does not validate against
-    available options; appearance regeneration is not performed.
+    Deferred upstream behavior: appearance regeneration is not performed by
+    this base class.
     """
 
     FT = "Ch"
@@ -148,7 +148,7 @@ class PDChoice(PDVariableText):
             raise ValueError(
                 "The number of export values must match the number of display values"
             )
-        pairs = list(zip(export_values, display_values))
+        pairs = list(zip(export_values, display_values, strict=True))
         if self.is_sort():
             pairs.sort(key=lambda kv: kv[1])
         options = COSArray()
@@ -227,6 +227,31 @@ class PDChoice(PDVariableText):
             return COSString(values[0])
         return COSArray.of_cos_strings(values)
 
+    def _selected_option_indices_for_values(self, values: list[str]) -> list[int]:
+        options = self.get_options_export_values()
+        if not options:
+            return []
+        indices: list[int] = []
+        for value in values:
+            try:
+                indices.append(options.index(value))
+            except ValueError as exc:
+                if self.is_combo() and bool(getattr(self, "is_edit", lambda: False)()):
+                    return []
+                raise ValueError(f"value {value!r} is not one of the field options") from exc
+        return indices
+
+    def _normalize_value_for_set(self, value: list[str] | str) -> list[str]:
+        values = [value] if isinstance(value, str) else list(value)
+        if len(values) > 1 and not self.is_multi_select():
+            raise ValueError("multiple values are only allowed for multi-select choice fields")
+        indices = self._selected_option_indices_for_values(values)
+        if indices:
+            self.set_selected_options_indices(indices)
+        else:
+            self.set_selected_options_indices(None)
+        return values
+
     def get_value(self) -> list[str]:
         item = self.get_inheritable_attribute(_V)
         return self._read_string_or_array(item)
@@ -234,8 +259,10 @@ class PDChoice(PDVariableText):
     def set_value(self, value: list[str] | str | None) -> None:
         if value is None:
             self._field.remove_item(_V)
+            self.set_selected_options_indices(None)
             return
-        cos = self._write_string_or_array(value)
+        values = self._normalize_value_for_set(value)
+        cos = self._write_string_or_array(values)
         self._field.set_item(_V, cos)
 
     def get_value_as_string(self) -> str:

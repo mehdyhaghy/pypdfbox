@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import logging
+
+import pytest
+
+from pypdfbox.cos import COSArray, COSDictionary
 from pypdfbox.pdmodel.interactive.form import (
     PDAcroForm,
     PDFieldStub,
@@ -59,3 +64,49 @@ def test_get_field_iterator_uses_pd_field_tree_iteration() -> None:
         "address.city",
         "name",
     ]
+
+
+def test_pd_field_tree_rejects_null_root() -> None:
+    with pytest.raises(ValueError, match="root cannot be null"):
+        PDFieldTree(None)  # type: ignore[arg-type]
+
+
+def test_iterator_public_surface_returns_independent_iterators() -> None:
+    tree = _form_with_nested_fields().get_field_tree()
+
+    first = tree.iterator()
+    second = tree.iterator()
+
+    assert first.has_next()
+    assert second.has_next()
+    assert first.next().get_fully_qualified_name() == "address"
+    assert second.next().get_fully_qualified_name() == "address"
+    with pytest.raises(NotImplementedError, match="remove"):
+        first.remove()
+
+
+def test_iterator_skips_repeated_cos_dictionary_to_avoid_recursion(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    form = PDAcroForm()
+    parent = COSDictionary()
+    parent.set_string("T", "parent")
+    child = COSDictionary()
+    child.set_string("T", "child")
+
+    parent_kids = COSArray()
+    parent_kids.add(child)
+    parent.set_item("Kids", parent_kids)
+    child_kids = COSArray()
+    child_kids.add(parent)
+    child.set_item("Kids", child_kids)
+
+    fields = COSArray()
+    fields.add(parent)
+    form.get_cos_object().set_item("Fields", fields)
+
+    with caplog.at_level(logging.ERROR, logger="pypdfbox.pdmodel.interactive.form.pd_field_tree"):
+        names = [field.get_fully_qualified_name() for field in form.get_field_tree()]
+
+    assert names == ["parent", "parent.child"]
+    assert "already exists elsewhere, ignored to avoid recursion" in caplog.text

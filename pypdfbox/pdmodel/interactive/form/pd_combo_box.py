@@ -57,5 +57,15 @@ class PDComboBox(PDChoice):
 
             PDAppearanceGenerator().generate(self)
 
+    def construct_appearances(self) -> None:
+        """Rebuild widget appearances for this combo box.
+
+        Mirrors upstream ``PDComboBox.constructAppearances`` via the port's
+        shared :class:`PDAppearanceGenerator`.
+        """
+        from .pd_appearance_generator import PDAppearanceGenerator
+
+        PDAppearanceGenerator().generate(self)
+
 
 __all__ = ["PDComboBox"]

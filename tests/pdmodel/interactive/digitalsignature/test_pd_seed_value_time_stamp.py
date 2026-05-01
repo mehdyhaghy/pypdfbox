@@ -159,9 +159,7 @@ def test_signature_field_seed_value_time_stamp_round_trip() -> None:
         PDSignatureField,
     )
 
-    form = PDAcroForm.__new__(PDAcroForm)
-    # Bypass full PDAcroForm wiring; PDSignatureField only needs ``form``
-    # bound for its parent constructor's TYPE_CHECKING reference.
+    form = PDAcroForm()
     field = PDSignatureField(form)
 
     sv = PDSeedValue()

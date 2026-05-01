@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase
+from typing import Any
 
-from .. import Operator
+from pypdfbox.cos import COSArray, COSBase, COSNumber
+from pypdfbox.pdmodel.graphics.color import PDColor
+
+from .. import Operator, OperatorName
 from ..operator_processor import OperatorProcessor
 
 
@@ -11,11 +14,60 @@ class SetStrokingColor(OperatorProcessor):
     device, CIE-based (other than ICCBased), or Indexed colour space.
     Mirrors ``org.apache.pdfbox.contentstream.operator.color.SetStrokingColor``.
 
-    Lite stub: registry-routing scaffold only — the colour-state
-    bookkeeping arrives with the rendering cluster.
+    When bound to an engine with a graphics state, mirrors PDFBox's
+    ``getColor`` / ``setColor`` / ``getColorSpace`` hooks through their
+    snake_case counterparts.
     """
 
-    OPERATOR_NAME = "SC"
+    OPERATOR_NAME = OperatorName.STROKING_COLOR
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
-        self._log_invocation(operator, operands)
+        del operator
+        color_space = self.get_color_space()
+        if color_space is None:
+            return
+
+        component_count = color_space.get_number_of_components()
+        if len(operands) < component_count:
+            return
+        if component_count and not all(
+            isinstance(operand, COSNumber) for operand in operands
+        ):
+            return
+
+        array = COSArray()
+        array.add_all(operands)
+        self.set_color(PDColor(array, color_space))
+
+    def get_color(self) -> PDColor | None:
+        """Return the current stroking color, if a graphics state exists."""
+        graphics_state = self._graphics_state()
+        getter = getattr(graphics_state, "get_stroking_color", None)
+        if getter is not None:
+            return getter()
+        return getattr(graphics_state, "stroking_color", None)
+
+    def set_color(self, color: PDColor) -> None:
+        """Set the current stroking color."""
+        if self._context is not None:
+            self._context.set_stroking_color(color)
+        graphics_state = self._graphics_state()
+        setter = getattr(graphics_state, "set_stroking_color", None)
+        if setter is not None:
+            setter(color)
+            return
+        if graphics_state is not None:
+            graphics_state.stroking_color = color
+
+    def get_color_space(self) -> Any | None:
+        """Return the current stroking color space, if available."""
+        graphics_state = self._graphics_state()
+        getter = getattr(graphics_state, "get_stroking_color_space", None)
+        if getter is not None:
+            return getter()
+        return getattr(graphics_state, "stroking_color_space", None)
+
+    def _graphics_state(self) -> Any | None:
+        if self._context is None:
+            return None
+        return self._context.get_graphics_state()

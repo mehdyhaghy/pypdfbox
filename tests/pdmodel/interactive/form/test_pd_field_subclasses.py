@@ -153,6 +153,7 @@ def test_choice_value_single_and_multi_round_trip() -> None:
     assert lb.get_value() == []
     lb.set_value("one")
     assert lb.get_value() == ["one"]
+    lb.set_multi_select(True)
     lb.set_value(["one", "two"])
     assert lb.get_value() == ["one", "two"]
 
@@ -175,7 +176,23 @@ def test_signature_field_fresh_has_ft_sig() -> None:
     sig = PDSignatureField(form)
     assert sig.get_field_type() == "Sig"
     assert sig.get_cos_object().get_name(COSName.get_pdf_name("FT")) == "Sig"
+    assert sig.get_partial_name() == "Signature1"
     assert sig.get_signature() is None
+    widget = sig.get_widgets()[0]
+    assert widget.get_subtype() == "Widget"
+    assert widget.is_printed() is True
+    assert widget.is_locked() is True
+
+
+def test_signature_field_fresh_name_skips_existing_signature_fields() -> None:
+    form = PDAcroForm()
+    first = PDSignatureField(form)
+    form.set_fields([first])
+
+    second = PDSignatureField(form)
+
+    assert first.get_partial_name() == "Signature1"
+    assert second.get_partial_name() == "Signature2"
 
 
 def test_signature_field_raw_value_round_trip() -> None:

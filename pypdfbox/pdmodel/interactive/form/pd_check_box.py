@@ -113,5 +113,8 @@ class PDCheckBox(PDButton):
 
             PDAppearanceGenerator().generate(self)
 
+    def construct_appearances(self) -> None:
+        super().construct_appearances()
+
 
 __all__ = ["PDCheckBox"]

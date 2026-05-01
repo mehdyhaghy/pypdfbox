@@ -78,6 +78,17 @@ class CMapManager:
         return target
 
     @classmethod
+    def get_predefined_c_map(cls, cmap_name: str) -> CMap | None:
+        """Alias for :meth:`get_predefined_cmap`.
+
+        ``getPredefinedCMap`` mechanically snake-cases to
+        ``get_predefined_c_map``. The shorter ``cmap`` spelling is the
+        established pypdfbox API, so this alias keeps both surfaces
+        available without changing cache or missing-resource semantics.
+        """
+        return cls.get_predefined_cmap(cmap_name)
+
+    @classmethod
     def parse_cmap(cls, source: object) -> CMap | None:
         """Parse a CMap from an arbitrary input source (parity hook).
 
@@ -89,6 +100,11 @@ class CMapManager:
         if source is None:
             return None
         return CMapParser().parse(source)
+
+    @classmethod
+    def parse_c_map(cls, source: object) -> CMap | None:
+        """Alias for :meth:`parse_cmap` using strict snake_case form."""
+        return cls.parse_cmap(source)
 
     @classmethod
     def clear_cache(cls) -> None:

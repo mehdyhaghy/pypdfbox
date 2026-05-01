@@ -131,6 +131,13 @@ Cluster #2 (PDFStreamEngine + OperatorProcessor base + 9 PRD §6.7 text operator
 | `pypdfbox/contentstream/operator/text/show_text_line.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/ShowTextLine.java` |
 | `pypdfbox/contentstream/operator/text/show_text_line_and_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/ShowTextLineAndSpace.java` |
 
+Cluster #3 lite (color operator hooks).
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/color/set_stroking_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingColor.java` |
+
 ### `pypdfbox/text/`
 _(not started)_
 
@@ -943,6 +950,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/form/pd_button.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDButton.java` |
 | `tests/pdmodel/interactive/form/upstream/test_pd_text_field.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDTextFieldTest.java` |
 | `tests/pdmodel/interactive/form/upstream/test_pd_choice.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDChoiceTest.java` (subset — PDFBOX-6150 fixture-loading test skipped) |
+| `tests/pdmodel/interactive/form/upstream/test_pd_list_box.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestListBox.java` (subset — PDF write/annotation setup and deferred `PDChoice.setValue(List)` validation/index sync skipped) |
 | `tests/pdmodel/interactive/form/upstream/test_pd_button.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDButtonTest.java` (subset — Acrobat-PDF fixture-loading tests skipped) |
 | `tests/pdmodel/interactive/form/upstream/test_pd_signature_field.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDSignatureFieldTest.java` (subset — setValueForAbstractedSignatureField and PDFBOX-4822 byte-range test skipped) |
 | `tests/pdmodel/encryption/upstream/test_public_key_security_handler.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/encryption/TestPublicKeyEncryption.java` (subset — full PDF write/read cycle deferred; handler-level assertions translated using `cryptography` for cert/key generation in lieu of the upstream Bouncy-Castle keystore) |

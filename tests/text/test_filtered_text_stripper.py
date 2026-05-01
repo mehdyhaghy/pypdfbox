@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+from unittest.mock import patch
 
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
@@ -24,7 +25,6 @@ from pypdfbox.text import (
     TextPosition,
     get_angle,
 )
-
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -129,10 +129,22 @@ def test_angle_collector_picks_up_every_rotation(tmp_path: Path) -> None:
         collector = AngleCollector()
         collector.set_start_page(1)
         collector.set_end_page(1)
-        collector.get_text(doc)
+        text = collector.get_text(doc)
+        assert text.strip() == ""
         assert collector.get_angles() == {0, 90, 180, 270}
     finally:
         doc.close()
+
+
+def test_angle_collector_public_process_text_position_collects_angle() -> None:
+    _, b, _, d = _rotation_matrix(90)
+    pos = TextPosition(
+        text="x", x=0.0, y=0.0, font_size=12.0,
+        text_matrix=[1.0, b, 0.0, d, 0.0, 0.0],
+    )
+    collector = AngleCollector()
+    assert collector.process_text_position(pos) is None
+    assert collector.get_angles() == {90}
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +163,36 @@ def test_filtered_text_stripper_target_angle_setter_normalises() -> None:
     assert stripper.get_target_angle() == 270
     stripper.set_target_angle(450)
     assert stripper.get_target_angle() == 90
+
+
+def test_filtered_text_stripper_should_skip_glyph_uses_public_angle_helper() -> None:
+    _, b, _, d = _rotation_matrix(90)
+    pos = TextPosition(
+        text="x", x=0.0, y=0.0, font_size=12.0,
+        text_matrix=[1.0, b, 0.0, d, 0.0, 0.0],
+    )
+    stripper = FilteredTextStripper(target_angle=90)
+    assert stripper.should_skip_glyph(pos) is False
+    stripper.set_target_angle(0)
+    assert stripper.should_skip_glyph(pos) is True
+
+
+def test_filtered_text_stripper_process_text_position_delegates_only_on_match() -> None:
+    pos90 = TextPosition(
+        text="vertical", x=0.0, y=0.0, font_size=12.0,
+        text_matrix=[0.0, 1.0, -1.0, 0.0, 0.0, 0.0],
+    )
+    pos0 = TextPosition(
+        text="horizontal", x=0.0, y=0.0, font_size=12.0,
+        text_matrix=[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    )
+    stripper = FilteredTextStripper(target_angle=90)
+
+    with patch.object(PDFTextStripper, "process_text_position") as base_hook:
+        stripper.process_text_position(pos90)
+        stripper.process_text_position(pos0)
+
+    base_hook.assert_called_once_with(pos90)
 
 
 def _extract(stripper: PDFTextStripper, doc: PDDocument) -> str:

@@ -75,5 +75,8 @@ class PDPushButton(PDButton):
 
         PDAppearanceGenerator().generate(self)
 
+    def construct_appearances(self) -> None:
+        """No-op, mirroring upstream ``PDPushButton.constructAppearances``."""
+
 
 __all__ = ["PDPushButton"]

@@ -91,10 +91,17 @@ class AngleCollector(PDFTextStripper):
         iteration is the caller's responsibility (use ``sorted(...)``)."""
         return self._angles
 
+    def process_text_position(self, text: TextPosition) -> None:
+        self._angles.add(get_angle(text))
+
+    def should_skip_glyph(self, text: TextPosition) -> bool:
+        self.process_text_position(text)
+        return True
+
     def _emit(self, s, state, positions):  # type: ignore[override]
-        # Record the angle. We still call super so the parent populates
-        # ``positions`` with the (filterless) extraction; upstream's
-        # ``processTextPosition`` short-circuits at the same point.
+        # Record the angle from parser state before ``should_skip_glyph``
+        # suppresses output. This preserves upstream AngleCollector's
+        # side-effect-only behaviour while avoiding a second parse pass.
         self._angles.add(_state_angle(state))
         super()._emit(s, state, positions)
 
@@ -123,6 +130,13 @@ class FilteredTextStripper(PDFTextStripper):
 
     def set_target_angle(self, angle: int) -> None:
         self._target_angle = (int(angle) + 360) % 360
+
+    def process_text_position(self, text: TextPosition) -> None:
+        if get_angle(text) == self._target_angle:
+            super().process_text_position(text)
+
+    def should_skip_glyph(self, text: TextPosition) -> bool:
+        return get_angle(text) != self._target_angle
 
     def _emit(self, s, state, positions):  # type: ignore[override]
         if _state_angle(state) != self._target_angle:

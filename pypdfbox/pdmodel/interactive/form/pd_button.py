@@ -166,5 +166,26 @@ class PDButton(PDTerminalField):
                 return key.name
         return None
 
+    def construct_appearances(self) -> None:
+        """Sync widget appearance states against existing normal appearances.
+
+        Mirrors upstream ``PDButton.constructAppearances``: it does not create
+        missing appearance streams, it only sets each widget's ``/AS`` to the
+        field ``/V`` when that state exists in ``/AP /N``; otherwise ``/Off``.
+        """
+        value = self.get_cos_object().get_dictionary_object(_V)
+        if not isinstance(value, COSName):
+            value = COSName.get_pdf_name("Off")
+        off = COSName.get_pdf_name("Off")
+        for widget in self.get_widgets():
+            cos = widget.get_cos_object()
+            ap = cos.get_dictionary_object(COSName.get_pdf_name("AP"))
+            if not isinstance(ap, COSDictionary):
+                continue
+            normal = ap.get_dictionary_object(COSName.get_pdf_name("N"))
+            if not isinstance(normal, COSDictionary):
+                continue
+            widget.set_appearance_state(value.name if normal.contains_key(value) else off.name)
+
 
 __all__ = ["PDButton"]

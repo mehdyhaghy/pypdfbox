@@ -20,8 +20,8 @@ class PDVariableText(PDTerminalField):
     """Abstract intermediate for fields with variable text. Mirrors PDFBox
     ``PDVariableText`` lite surface (``/DA``, ``/Q``, ``/DS``, ``/RV``).
 
-    Deferred upstream surface: appearance regeneration on /DA change,
-    ``getStringOrStream`` for rich-text /RV stream values.
+    Deferred upstream surface: ``getStringOrStream`` for rich-text /RV stream
+    values.
     """
 
     QUADDING_LEFT = 0
@@ -46,12 +46,13 @@ class PDVariableText(PDTerminalField):
 
     def set_default_appearance(self, da_value: str | None) -> None:
         self._field.set_string(_DA, da_value)
-        if not self._field.contains_key("Kids"):
-            return
-        for widget in self.get_widgets():
-            widget_cos = widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
-            if widget_cos.contains_key(_DA):
-                widget_cos.set_string(_DA, da_value)
+        if self._field.contains_key("Kids"):
+            for widget in self.get_widgets():
+                widget_cos = (
+                    widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
+                )
+                if widget_cos.contains_key(_DA):
+                    widget_cos.set_string(_DA, da_value)
 
     # ---------- /DS ----------
 

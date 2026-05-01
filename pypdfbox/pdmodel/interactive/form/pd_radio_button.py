@@ -45,11 +45,9 @@ class PDRadioButton(PDButton):
         widget list and returns the index of the first widget whose
         ``/AS`` is not ``/Off``.
         """
-        idx = 0
-        for widget in self.get_widgets():
+        for idx, widget in enumerate(self.get_widgets()):
             if widget.get_appearance_state() != "Off":
                 return idx
-            idx += 1
         return -1
 
     def get_selected_export_values(self) -> list[str]:
@@ -95,6 +93,9 @@ class PDRadioButton(PDButton):
             from .pd_appearance_generator import PDAppearanceGenerator
 
             PDAppearanceGenerator().generate(self)
+
+    def construct_appearances(self) -> None:
+        super().construct_appearances()
 
 
 __all__ = ["PDRadioButton"]

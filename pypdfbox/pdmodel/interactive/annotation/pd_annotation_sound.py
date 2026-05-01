@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 
 from .pd_annotation_markup import PDAnnotationMarkup
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
 
 _SOUND: COSName = COSName.get_pdf_name("Sound")
 _NAME: COSName = COSName.get_pdf_name("Name")
@@ -35,8 +42,34 @@ class PDAnnotationSound(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``. ``None`` clears the
+        custom handler and restores the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate sound annotation appearances.
+
+        A custom handler, when configured, is invoked exactly as upstream does.
+        The built-in ``PDSoundAppearanceHandler`` is not ported yet, so the
+        default path remains a no-op like the base annotation implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
     # ---------- /Sound (sound stream, required) ----------
 

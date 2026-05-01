@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+from collections import deque
 from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .pd_acro_form import PDAcroForm
     from .pd_field import PDField
+
+_logger = logging.getLogger(__name__)
 
 
 class PDFieldTree(Sequence["PDField"]):
@@ -18,11 +22,16 @@ class PDFieldTree(Sequence["PDField"]):
     """
 
     def __init__(self, acro_form: PDAcroForm) -> None:
+        if acro_form is None:
+            raise ValueError("root cannot be null")
         self._acro_form = acro_form
 
     def __iter__(self) -> Iterator[PDField]:
-        for field in self._acro_form.get_fields():
-            yield from self._walk(field)
+        return self.iterator()
+
+    def iterator(self) -> Iterator[PDField]:
+        """Return an iterator which walks all fields in the tree, in order."""
+        return _FieldIterator(self._acro_form)
 
     def __len__(self) -> int:
         return len(self._as_list())
@@ -33,17 +42,48 @@ class PDFieldTree(Sequence["PDField"]):
     def _as_list(self) -> list[PDField]:
         return list(iter(self))
 
-    def _walk(self, field: PDField) -> Iterator[PDField]:
-        yield field
-        if field.is_terminal():
+
+class _FieldIterator(Iterator["PDField"]):
+    """PDFBox-style field iterator with COSDictionary identity cycle guard."""
+
+    def __init__(self, form: PDAcroForm) -> None:
+        self._queue: deque[PDField] = deque()
+        self._seen: set[int] = set()
+        for field in form.get_fields():
+            self._enqueue_kids(field)
+
+    def __next__(self) -> PDField:
+        if not self._queue:
+            raise StopIteration
+        return self._queue.popleft()
+
+    def has_next(self) -> bool:
+        return bool(self._queue)
+
+    def next(self) -> PDField:
+        return self.__next__()
+
+    def remove(self) -> None:
+        raise NotImplementedError("remove")
+
+    def _enqueue_kids(self, node: PDField) -> None:
+        self._queue.append(node)
+        self._seen.add(id(node.get_cos_object()))
+        if node.is_terminal():
             return
 
         from .pd_non_terminal_field import PDNonTerminalField
 
-        if not isinstance(field, PDNonTerminalField):
+        if not isinstance(node, PDNonTerminalField):
             return
-        for child in field.get_children():
-            yield from self._walk(child)
+        for child in node.get_children():
+            if id(child.get_cos_object()) in self._seen:
+                _logger.error(
+                    "Child of field '%s' already exists elsewhere, ignored to avoid recursion",
+                    node.get_fully_qualified_name(),
+                )
+            else:
+                self._enqueue_kids(child)
 
 
 __all__ = ["PDFieldTree"]

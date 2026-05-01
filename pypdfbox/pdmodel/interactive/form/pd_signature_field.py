@@ -22,10 +22,8 @@ class PDSignatureField(PDTerminalField):
     """``/FT /Sig`` signature field. Mirrors PDFBox ``PDSignatureField`` lite
     surface.
 
-    Deferred upstream behavior: typed ``PDSignature`` / ``PDSeedValue`` /
-    ``PDSignatureLock`` wrapping is not implemented — accessors return raw
-    ``COSBase`` / ``COSDictionary``. Auto-naming the partial field name on
-    fresh construction is also deferred.
+    Deferred upstream behavior: none on the core field dictionary surface;
+    actual signing remains in the digital-signature module.
     """
 
     FT = "Sig"
@@ -36,10 +34,28 @@ class PDSignatureField(PDTerminalField):
         field: COSDictionary | None = None,
         parent: PDNonTerminalField | None = None,
     ) -> None:
+        new_field = field is None
         if field is None:
             field = COSDictionary()
             field.set_name(_FT_KEY, self.FT)
         super().__init__(form, field, parent)
+        if new_field:
+            self.set_partial_name(self._generate_partial_name())
+            widget = self.get_widgets()[0]
+            widget.set_printed(True)
+            widget.set_locked(True)
+
+    def _generate_partial_name(self) -> str:
+        field_name = "Signature"
+        sig_names = {
+            field.get_partial_name()
+            for field in self.get_acro_form().get_field_tree()
+            if isinstance(field, PDSignatureField)
+        }
+        index = 1
+        while f"{field_name}{index}" in sig_names:
+            index += 1
+        return f"{field_name}{index}"
 
     # ---------- /V ----------
 
@@ -117,6 +133,15 @@ class PDSignatureField(PDTerminalField):
         from .pd_appearance_generator import PDAppearanceGenerator
 
         PDAppearanceGenerator().generate(self)
+
+    def construct_appearances(self) -> None:
+        """No-op for visible signature appearance generation.
+
+        Mirrors upstream ``PDSignatureField.constructAppearances``: PDFBox
+        intentionally does not synthesize visible signature appearances here
+        (PDFBOX-3524); callers must provide/update those manually.
+        """
+        return None
 
     def get_value_as_string(self) -> str:
         """Upstream PDFBox returns ``""`` — the signature dictionary has no

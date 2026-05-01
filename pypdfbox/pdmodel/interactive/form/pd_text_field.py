@@ -19,8 +19,7 @@ _DV: COSName = COSName.get_pdf_name("DV")
 class PDTextField(PDVariableText):
     """``/FT /Tx`` text field. Mirrors PDFBox ``PDTextField`` lite surface.
 
-    Deferred upstream behavior: ``set_value`` does not regenerate the widget
-    appearance stream nor handle rich-text DOM serialization to ``/RV``.
+    Deferred upstream behavior: rich-text DOM serialization to ``/RV``.
     """
 
     FT = "Tx"
@@ -148,6 +147,16 @@ class PDTextField(PDVariableText):
 
     def get_value_as_string(self) -> str:
         return self.get_value()
+
+    def construct_appearances(self) -> None:
+        """Rebuild widget appearances for this text field.
+
+        Mirrors upstream ``PDTextField.constructAppearances`` via the port's
+        shared :class:`PDAppearanceGenerator`.
+        """
+        from .pd_appearance_generator import PDAppearanceGenerator
+
+        PDAppearanceGenerator().generate(self)
 
 
 __all__ = ["PDTextField"]

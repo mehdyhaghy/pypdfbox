@@ -155,9 +155,17 @@ class TestCacheAndMissing:
     def test_unknown_returns_none(self):
         assert CMapManager.get_predefined_cmap("NoSuchCMap-XYZ") is None
 
+    def test_strict_snake_case_alias_preserves_missing_none_contract(self):
+        assert CMapManager.get_predefined_c_map("NoSuchCMap-XYZ") is None
+
     def test_cache_returns_same_instance(self):
         first = CMapManager.get_predefined_cmap("Identity-H")
         second = CMapManager.get_predefined_cmap("Identity-H")
+        assert first is second
+
+    def test_strict_snake_case_alias_shares_cache(self):
+        first = CMapManager.get_predefined_cmap("Identity-H")
+        second = CMapManager.get_predefined_c_map("Identity-H")
         assert first is second
 
     def test_clear_cache_drops_instance(self):
@@ -405,6 +413,9 @@ class TestParseCMap:
     def test_returns_none_for_none_source(self):
         assert CMapManager.parse_cmap(None) is None
 
+    def test_strict_snake_case_alias_returns_none_for_none_source(self):
+        assert CMapManager.parse_c_map(None) is None
+
     def test_parses_minimal_bytes(self):
         # Minimal CMap fragment with just enough to populate name + a
         # codespace range. Exercises the bytes-input coercion path.
@@ -418,3 +429,15 @@ class TestParseCMap:
         cmap = CMapManager.parse_cmap(data)
         assert cmap is not None
         assert cmap.get_name() == "Test-CMap"
+
+    def test_strict_snake_case_alias_parses_minimal_bytes(self):
+        data = (
+            b"/CMapName /Alias-Test-CMap def\n"
+            b"1 begincodespacerange\n"
+            b"<00> <FF>\n"
+            b"endcodespacerange\n"
+            b"endcmap\n"
+        )
+        cmap = CMapManager.parse_c_map(data)
+        assert cmap is not None
+        assert cmap.get_name() == "Alias-Test-CMap"

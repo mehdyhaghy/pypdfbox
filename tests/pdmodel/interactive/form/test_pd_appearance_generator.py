@@ -111,6 +111,18 @@ def test_generate_appearance_stream_carries_value_text() -> None:
     assert b"EMC" in body
 
 
+def test_text_field_construct_appearances_creates_normal_appearance() -> None:
+    tf = _build_text_field("constructed")
+
+    tf.construct_appearances()
+
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    assert b"constructed" in body
+    assert b"Tj" in body
+
+
 def test_generate_sets_form_xobject_metadata() -> None:
     tf = _build_text_field()
     PDAppearanceGenerator().generate(tf)
@@ -511,3 +523,18 @@ def test_signature_signed_emits_name_and_date() -> None:
     assert b"Sign here" not in body
     # Solid border (no dash array).
     assert b"[3 3] 0 d" not in body
+
+
+def test_signature_field_construct_appearances_does_not_generate_placeholder() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    form = PDAcroForm()
+    sig = PDSignatureField(form)
+    sig.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 50))
+
+    sig.construct_appearances()
+
+    widget_cos = sig.get_widgets()[0].get_cos_object()
+    assert widget_cos.get_dictionary_object(_AP) is None

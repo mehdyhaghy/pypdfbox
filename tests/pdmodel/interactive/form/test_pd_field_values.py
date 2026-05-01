@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
@@ -15,6 +17,7 @@ from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 
 _V: COSName = COSName.get_pdf_name("V")
 _FT: COSName = COSName.get_pdf_name("FT")
+_I: COSName = COSName.get_pdf_name("I")
 
 
 # ---------- Text field ----------
@@ -131,6 +134,7 @@ def test_combo_box_single_value_round_trip() -> None:
 def test_list_box_multi_value_round_trip() -> None:
     form = PDAcroForm()
     lb = PDListBox(form)
+    lb.set_multi_select(True)
     lb.set_value(["A", "B"])
     assert lb.get_value() == ["A", "B"]
     assert lb.get_value_as_string() == "A,B"
@@ -139,10 +143,65 @@ def test_list_box_multi_value_round_trip() -> None:
     assert raw.size() == 2
 
 
+def test_choice_set_value_syncs_selected_option_indices() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["one", "two", "three"])
+    lb.set_multi_select(True)
+
+    lb.set_value(["three", "one"])
+
+    assert lb.get_value() == ["three", "one"]
+    assert lb.get_selected_options_indices() == [2, 0]
+
+
+def test_choice_clear_value_removes_selected_option_indices() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["one", "two"])
+    lb.set_value("two")
+    assert lb.get_cos_object().get_dictionary_object(_I) is not None
+
+    lb.set_value(None)
+
+    assert lb.get_value() == []
+    assert lb.get_cos_object().get_dictionary_object(_I) is None
+
+
+def test_choice_rejects_unknown_option_when_options_exist() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["one", "two"])
+
+    with pytest.raises(ValueError, match="not one of the field options"):
+        lb.set_value("three")
+
+
+def test_choice_rejects_multiple_values_without_multi_select() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["one", "two"])
+
+    with pytest.raises(ValueError, match="multi-select"):
+        lb.set_value(["one", "two"])
+
+
+def test_editable_combo_box_accepts_free_text_without_index() -> None:
+    form = PDAcroForm()
+    combo = PDComboBox(form)
+    combo.set_options(["one", "two"])
+    combo.set_edit(True)
+
+    combo.set_value("free text")
+
+    assert combo.get_value() == ["free text"]
+    assert combo.get_cos_object().get_dictionary_object(_I) is None
+
+
 def test_choice_clear_value() -> None:
     form = PDAcroForm()
     combo = PDComboBox(form)
-    combo.set_value(["x", "y"])
+    combo.set_value("x")
     combo.set_value(None)
     assert combo.get_value() == []
     assert combo.get_value_as_string() == ""

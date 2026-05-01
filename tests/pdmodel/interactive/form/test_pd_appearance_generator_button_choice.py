@@ -103,6 +103,23 @@ def test_check_box_set_value_no_regenerate_skips_ap() -> None:
     assert widget_cos.get_dictionary_object(_AP) is None
 
 
+def test_check_box_construct_appearances_syncs_existing_ap_only() -> None:
+    form = PDAcroForm()
+    cb = PDCheckBox(form)
+    widget_cos = cb.get_cos_object()
+    ap = COSDictionary()
+    n = COSDictionary()
+    n.set_item(COSName.get_pdf_name("Yes"), COSStream())
+    n.set_item(_OFF, COSStream())
+    ap.set_item(_N, n)
+    widget_cos.set_item(_AP, ap)
+    cb.set_value("Yes")
+
+    cb.construct_appearances()
+
+    assert widget_cos.get_name(_AS) == "Yes"
+
+
 def test_check_box_preserves_existing_on_state_name() -> None:
     """Re-running generation keeps a non-default on-state name (/Custom)."""
     form = PDAcroForm()
@@ -177,6 +194,23 @@ def test_radio_button_set_value_regenerate_appearance() -> None:
     assert widget_cos.get_name(_AS) == "Yes"
 
 
+def test_radio_button_construct_appearances_syncs_existing_ap_only() -> None:
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    widget_cos = rb.get_cos_object()
+    ap = COSDictionary()
+    n = COSDictionary()
+    n.set_item(COSName.get_pdf_name("Yes"), COSStream())
+    n.set_item(_OFF, COSStream())
+    ap.set_item(_N, n)
+    widget_cos.set_item(_AP, ap)
+    rb.set_value("Yes")
+
+    rb.construct_appearances()
+
+    assert widget_cos.get_name(_AS) == "Yes"
+
+
 # ---------- push button (skipped) ----------
 
 
@@ -191,6 +225,17 @@ def test_push_button_generate_emits_caption_stream() -> None:
     assert isinstance(ap, COSDictionary)
     n = ap.get_dictionary_object(_N)
     assert isinstance(n, COSStream)
+
+
+def test_push_button_construct_appearances_is_no_op() -> None:
+    form = PDAcroForm()
+    pb = PDPushButton(form)
+    pb.get_cos_object().set_item(_RECT, _rect(0, 0, 100, 30))
+
+    pb.construct_appearances()
+
+    widget_cos = pb.get_widgets()[0].get_cos_object()
+    assert widget_cos.get_dictionary_object(_AP) is None
 
 
 # ---------- combo box ----------
@@ -234,6 +279,24 @@ def test_combo_box_empty_value_no_text_string() -> None:
     # BT/ET still emitted, but no Tj because no value.
     assert b"BT" in body
     assert b"Tj" not in body
+
+
+def test_combo_box_construct_appearances_creates_ap() -> None:
+    form = PDAcroForm()
+    cb = PDComboBox(form)
+    cos = cb.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 120, 20))
+    cos.set_string(_DA, "/Helv 10 Tf 0 g")
+    cb.set_options(["alpha", "beta", "gamma"])
+    cb.set_value("gamma")
+
+    cb.construct_appearances()
+
+    widget_cos = cb.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    assert b"gamma" in body
+    assert b"Tj" in body
 
 
 # ---------- list box ----------
@@ -287,3 +350,21 @@ def test_list_box_set_value_no_regenerate_skips_ap() -> None:
     lb.set_value("one")
     widget_cos = lb.get_widgets()[0].get_cos_object()
     assert widget_cos.get_dictionary_object(_AP) is None
+
+
+def test_list_box_construct_appearances_creates_ap() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    cos = lb.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 120, 60))
+    cos.set_string(_DA, "/Helv 10 Tf 0 g")
+    lb.set_options(["one", "two", "three"])
+    lb.set_value("two")
+
+    lb.construct_appearances()
+
+    widget_cos = lb.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    assert b"two" in body
+    assert b"Tj" in body
