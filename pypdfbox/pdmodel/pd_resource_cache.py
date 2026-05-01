@@ -97,6 +97,23 @@ class PDResourceCache(ABC):
     ) -> None:
         """Cache ``property_list`` under ``indirect``."""
 
+    # Mechanical snake_case mirrors of upstream's ``getProperties`` /
+    # ``put(COSObject, PDPropertyList)`` — pypdfbox standardised on the
+    # ``*_property_list`` spelling internally, but upstream callers and
+    # ported tests reach for ``get_properties`` / ``put_properties``.
+
+    def get_properties(self, indirect: COSObject) -> PDPropertyList | None:
+        """Alias of :meth:`get_property_list`. Mirrors upstream
+        ``ResourceCache.getProperties``."""
+        return self.get_property_list(indirect)
+
+    def put_properties(
+        self, indirect: COSObject, property_list: PDPropertyList
+    ) -> None:
+        """Alias of :meth:`put_property_list`. Mirrors upstream
+        ``ResourceCache.put(COSObject, PDPropertyList)``."""
+        self.put_property_list(indirect, property_list)
+
     # ---------- CID fonts (default no-op for binary compatibility) ----------
 
     def get_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
@@ -138,6 +155,16 @@ class PDResourceCache(ABC):
         ``ResourceCache.removeExtState``."""
         return None
 
+    def remove_ext_state(
+        self, indirect: COSObject
+    ) -> PDExtendedGraphicsState | None:
+        """Alias of :meth:`remove_ext_g_state`. Mirrors upstream
+        ``ResourceCache.removeExtState`` — pypdfbox uses
+        ``remove_ext_g_state`` internally to match the ``get_ext_g_state`` /
+        ``put_ext_g_state`` family, but ported tests and callers translating
+        upstream code mechanically reach for ``remove_ext_state``."""
+        return self.remove_ext_g_state(indirect)
+
     def remove_font(self, indirect: COSObject) -> PDFont | None:
         """Remove and return the cached font for ``indirect``, or ``None``.
         Mirrors upstream ``ResourceCache.removeFont``."""
@@ -172,6 +199,13 @@ class PDResourceCache(ABC):
         ``None``. Mirrors upstream ``ResourceCache.removeProperties``."""
         return None
 
+    def remove_properties(
+        self, indirect: COSObject
+    ) -> PDPropertyList | None:
+        """Alias of :meth:`remove_property_list`. Mirrors upstream
+        ``ResourceCache.removeProperties``."""
+        return self.remove_property_list(indirect)
+
     def remove_x_object(self, indirect: COSObject) -> PDXObject | None:
         """Remove and return the cached XObject for ``indirect``, or
         ``None``. Mirrors upstream ``ResourceCache.removeXObject``."""
@@ -193,7 +227,19 @@ class DefaultResourceCache(PDResourceCache):
     workload demands eviction, subclass and override).
     """
 
-    def __init__(self) -> None:
+    #: Upstream stable-cache threshold: after this many ``remove_*`` calls for
+    #: the same key, removals are ignored to keep heavily shared resources
+    #: cached. Mirrors ``DefaultResourceCache.maxRemovals = 3``. Surfaced as a
+    #: class constant so callers and ported tests can reference it.
+    MAX_REMOVALS: int = 3
+
+    def __init__(self, enable_stable_cache: bool = True) -> None:
+        # Upstream parameter ``enableStableCache`` (default ``true``) gates
+        # the post-``MAX_REMOVALS`` "stop honouring removals" behaviour.
+        # pypdfbox doesn't yet implement the SoftReference-driven eviction
+        # path, so the flag is currently stored for API parity only — see
+        # ``CHANGES.md`` for the deviation note.
+        self._stable_cache_enabled: bool = enable_stable_cache
         self._fonts: dict[COSObject, PDFont] = {}
         self._cid_fonts: dict[COSObject, PDCIDFont] = {}
         self._font_descriptors: dict[COSObject, PDFontDescriptor] = {}
@@ -328,6 +374,12 @@ class DefaultResourceCache(PDResourceCache):
         return self._xobjects.pop(indirect, None)
 
     # ---------- maintenance ----------
+
+    def is_stable_cache_enabled(self) -> bool:
+        """Return ``True`` if this cache was constructed with the stable-cache
+        guard enabled (the default). Mirrors the upstream ``enableStableCache``
+        constructor flag — read-only, since upstream exposes no setter."""
+        return self._stable_cache_enabled
 
     def clear(self) -> None:
         """Drop every cached entry across all categories. No upstream

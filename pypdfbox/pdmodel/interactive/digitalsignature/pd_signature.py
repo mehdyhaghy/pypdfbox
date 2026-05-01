@@ -410,5 +410,29 @@ class PDSignature:
         # in CHANGES.md.
         return result
 
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Human-readable summary used by :meth:`PDSignatureField.get_value_as_string`.
+
+        Mirrors upstream behavior of ``PDSignature.toString()`` — Java's default
+        ``Object.toString()`` is ``ClassName@hashcode``, which is not useful, so
+        the lite port returns a compact key=value summary of the populated
+        identity fields (``/Name``, ``/Reason``, ``/Location``, ``/M``,
+        ``/ContactInfo``). Empty/absent entries are omitted.
+        """
+        parts: list[str] = []
+        for label, value in (
+            ("name", self.get_name()),
+            ("reason", self.get_reason()),
+            ("location", self.get_location()),
+            ("date", self.get_sign_date()),
+            ("contact", self.get_contact_info()),
+        ):
+            if value:
+                parts.append(f"{label}={value}")
+        body = ", ".join(parts) if parts else "<empty>"
+        return f"PDSignature({body})"
+
 
 __all__ = ["PDPropBuild", "PDSignature", "SignatureValidationResult"]

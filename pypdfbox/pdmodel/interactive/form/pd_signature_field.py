@@ -96,6 +96,10 @@ class PDSignatureField(PDTerminalField):
                 _V,
                 value.get_cos_object() if hasattr(value, "get_cos_object") else value,
             )
+        # Mirror upstream PDSignatureField.setValue(PDSignature): notify the
+        # field tree that the value changed so any visibility-driven cache
+        # (appearance regeneration etc.) gets a chance to react.
+        self.apply_change()
         if regenerate_appearance:
             from .pd_appearance_generator import PDAppearanceGenerator
 
@@ -144,11 +148,15 @@ class PDSignatureField(PDTerminalField):
         return None
 
     def get_value_as_string(self) -> str:
-        """Upstream PDFBox returns ``""`` — the signature dictionary has no
-        single textual representation. Callers wanting metadata should use
-        :meth:`get_signature` and inspect ``/Name``, ``/Reason``, ``/Location``.
+        """Return ``str(self.get_signature())`` when ``/V`` is present, else ``""``.
+
+        Mirrors upstream ``PDSignatureField.getValueAsString()`` which returns
+        ``signature.toString()`` when a signature is present, otherwise the
+        empty string. The ``__str__`` form on :class:`PDSignature` is a compact
+        summary of the populated identity fields.
         """
-        return ""
+        signature = self.get_signature()
+        return str(signature) if signature is not None else ""
 
     # ---------- /SV ----------
 

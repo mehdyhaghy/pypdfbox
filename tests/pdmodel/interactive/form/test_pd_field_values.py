@@ -226,8 +226,10 @@ def test_signature_field_set_raw_value_round_trip() -> None:
     resolved = sig.get_value()
     assert resolved is not None
     assert resolved.get_cos_object() is raw
-    # get_value_as_string still returns "" — signatures are not single-string.
-    assert sig.get_value_as_string() == ""
+    # get_value_as_string mirrors upstream: returns str(signature). The compact
+    # PDSignature.__str__ includes only populated identity fields, so an empty
+    # /Type-only dictionary yields the "<empty>" placeholder body.
+    assert sig.get_value_as_string() == "PDSignature(<empty>)"
 
 
 # ---------- Non-terminal field ----------

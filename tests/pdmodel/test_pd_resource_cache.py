@@ -309,3 +309,89 @@ def test_pd_resource_cache_defaults_match_upstream_null_returns() -> None:
     assert cache.remove_pattern(key) is None
     assert cache.remove_property_list(key) is None
     assert cache.remove_x_object(key) is None
+
+
+# ---------- upstream-name aliases ----------
+
+
+def test_get_properties_alias_round_trips_through_property_list() -> None:
+    """``get_properties`` / ``put_properties`` mirror upstream
+    ``getProperties`` / ``put(COSObject, PDPropertyList)`` — they must hit
+    the same backing store as ``get_property_list`` / ``put_property_list``."""
+    cache = DefaultResourceCache()
+    key = _ref(50)
+    prop = object()
+    cache.put_properties(key, prop)  # type: ignore[arg-type]
+    assert cache.get_properties(key) is prop
+    # Both name spellings address the same slot.
+    assert cache.get_property_list(key) is prop
+
+
+def test_remove_properties_alias_pops_property_list() -> None:
+    """``remove_properties`` mirrors upstream ``removeProperties`` — must
+    drop the same entry ``remove_property_list`` would."""
+    cache = DefaultResourceCache()
+    key = _ref(51)
+    prop = object()
+    cache.put_property_list(key, prop)  # type: ignore[arg-type]
+    assert cache.remove_properties(key) is prop
+    assert cache.get_property_list(key) is None
+    # Idempotent on a missing key.
+    assert cache.remove_properties(key) is None
+
+
+def test_remove_ext_state_alias_pops_ext_g_state() -> None:
+    """``remove_ext_state`` mirrors upstream ``removeExtState`` — pypdfbox
+    standardised on ``remove_ext_g_state`` to match ``get_ext_g_state`` /
+    ``put_ext_g_state``, but the upstream-mechanical name must work too."""
+    cache = DefaultResourceCache()
+    key = _ref(52)
+    ext = object()
+    cache.put_ext_g_state(key, ext)  # type: ignore[arg-type]
+    assert cache.remove_ext_state(key) is ext
+    assert cache.get_ext_g_state(key) is None
+
+
+def test_minimal_cache_aliases_inherit_none_defaults() -> None:
+    """Subclasses that don't override the new aliases inherit the upstream
+    ``null`` defaults — ``get_properties`` falls through to the abstract
+    ``get_property_list`` (here, a ``None`` stub), and the remove aliases
+    return ``None``."""
+    cache = _MinimalCache()
+    key = _ref(53)
+    # ``put_properties`` must not raise on the minimal subclass.
+    cache.put_properties(key, object())  # type: ignore[arg-type]
+    assert cache.get_properties(key) is None
+    assert cache.remove_properties(key) is None
+    assert cache.remove_ext_state(key) is None
+
+
+# ---------- stable-cache flag + MAX_REMOVALS constant ----------
+
+
+def test_max_removals_constant_matches_upstream() -> None:
+    """Upstream ``DefaultResourceCache.maxRemovals = 3``. Surface it as a
+    class constant so callers can refer to the threshold without hard-coding
+    it."""
+    assert DefaultResourceCache.MAX_REMOVALS == 3
+
+
+def test_stable_cache_enabled_by_default() -> None:
+    """Mirrors the upstream no-arg constructor, which delegates to
+    ``DefaultResourceCache(true)``."""
+    assert DefaultResourceCache().is_stable_cache_enabled() is True
+
+
+def test_stable_cache_can_be_disabled_via_constructor() -> None:
+    """Upstream ``DefaultResourceCache(boolean enableStableCache)``. When
+    callers pass ``False``, the flag must round-trip through
+    ``is_stable_cache_enabled``."""
+    cache = DefaultResourceCache(enable_stable_cache=False)
+    assert cache.is_stable_cache_enabled() is False
+    # Removals still work regardless of the flag (eviction policy is a no-op
+    # until SoftReference semantics are implemented — see CHANGES.md).
+    key = _ref(60)
+    font = COSDictionary()
+    cache.put_font(key, font)
+    assert cache.remove_font(key) is font
+    assert cache.get_font(key) is None

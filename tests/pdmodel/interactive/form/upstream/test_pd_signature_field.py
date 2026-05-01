@@ -49,3 +49,53 @@ def test_create_default_signature_field(acro_form: PDAcroForm) -> None:
 
     acro_form.set_fields([sig_field])
     assert acro_form.get_field("Signature1") is not None
+
+
+# ---------------------------------------------------------------------------
+# Round-out parity gaps below (not from upstream JUnit but mirroring upstream
+# Java contracts on PDSignatureField.setValue / getValueAsString).
+# ---------------------------------------------------------------------------
+
+
+def test_set_value_invokes_apply_change(acro_form: PDAcroForm) -> None:
+    """Upstream PDSignatureField.setValue(PDSignature) ends with applyChange().
+    Verify the lite port routes set_value through apply_change as well so any
+    subclass that overrides apply_change for cache invalidation gets notified.
+    """
+    from pypdfbox.pdmodel.interactive.digitalsignature import PDSignature
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    calls: list[str] = []
+
+    class TrackedSignatureField(PDSignatureField):
+        def apply_change(self) -> None:  # type: ignore[override]
+            calls.append("apply_change")
+            super().apply_change()
+
+    sig_field = TrackedSignatureField(acro_form)
+    calls.clear()
+    sig_field.set_value(PDSignature())
+    assert calls == ["apply_change"]
+
+
+def test_get_value_as_string_for_populated_signature(acro_form: PDAcroForm) -> None:
+    """Upstream returns ``signature.toString()``; lite port returns
+    ``str(signature)`` which surfaces the populated identity fields."""
+    from pypdfbox.pdmodel.interactive.digitalsignature import PDSignature
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig_field = PDSignatureField(acro_form)
+    assert sig_field.get_value_as_string() == ""
+
+    sig = PDSignature()
+    sig.set_name("Carol")
+    sig.set_reason("Approval")
+    sig_field.set_value(sig)
+
+    s = sig_field.get_value_as_string()
+    assert "name=Carol" in s
+    assert "reason=Approval" in s

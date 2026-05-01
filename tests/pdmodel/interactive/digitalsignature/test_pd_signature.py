@@ -297,3 +297,42 @@ def test_pd_seed_value_set_digest_method_none_removes_entry() -> None:
     sv.set_digest_method(None)
     assert sv.get_digest_method() == []
     assert not sv.get_cos_object().contains_key("DigestMethod")
+
+
+# ---------------------------------------------------------------------------
+# PDSignature.__str__ — parity backing for PDSignatureField.getValueAsString()
+# ---------------------------------------------------------------------------
+
+
+def test_pd_signature_str_empty_when_no_identity_fields() -> None:
+    """An untouched signature has only ``/Type /Sig`` populated. None of the
+    identity fields surface in ``__str__`` so the body is the placeholder."""
+    sig = PDSignature()
+    assert str(sig) == "PDSignature(<empty>)"
+
+
+def test_pd_signature_str_includes_populated_identity_fields_in_order() -> None:
+    sig = PDSignature()
+    sig.set_name("Alice Example")
+    sig.set_reason("I approve this document")
+    sig.set_location("Berlin")
+    sig.set_sign_date("D:20260501123000Z")
+    sig.set_contact_info("alice@example.com")
+    s = str(sig)
+    # name then reason then location then date then contact (declaration order).
+    assert s == (
+        "PDSignature("
+        "name=Alice Example, "
+        "reason=I approve this document, "
+        "location=Berlin, "
+        "date=D:20260501123000Z, "
+        "contact=alice@example.com"
+        ")"
+    )
+
+
+def test_pd_signature_str_omits_absent_fields() -> None:
+    sig = PDSignature()
+    sig.set_name("Bob")
+    # No reason / location / date / contact set.
+    assert str(sig) == "PDSignature(name=Bob)"
