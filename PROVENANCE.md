@@ -1167,3 +1167,14 @@ Existing upstream-derived modules extended in Wave 71: `Filter` (`SYSPROP_DEFLAT
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/contentstream/operator/state/empty_graphics_stack_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/EmptyGraphicsStackException.java` |
+
+### Wave 73 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/filter/dct_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/DCTFilter.java` (alias module; codec body in `dct_decode.py`) |
+| `pypdfbox/filter/ccitt_fax_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CCITTFaxFilter.java` (alias module; codec body in `ccitt_fax_decode.py`) |
+| `pypdfbox/filter/tiff_extension.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/TIFFExtension.java` |
+| `tests/filter/test_dct_filter.py` | 3.0.x | hand-written coverage for the upstream-named `DCTFilter` alias and registry wiring |
+| `tests/filter/test_ccitt_fax_filter.py` | 3.0.x | hand-written coverage for the upstream-named `CCITTFaxFilter` alias and registry wiring |
+| `tests/filter/test_tiff_extension.py` | 3.0.x | hand-written coverage pinning every `TIFFExtension` constant value |

@@ -5,7 +5,9 @@ from .ascii85_filter import ASCII85Filter
 from .ascii_hex_decode import ASCIIHexDecode
 from .ascii_hex_filter import ASCIIHexFilter
 from .ccitt_fax_decode import CCITTFaxDecode
+from .ccitt_fax_filter import CCITTFaxFilter
 from .dct_decode import DCTDecode
+from .dct_filter import DCTFilter
 from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
@@ -17,6 +19,7 @@ from .lzw_decode import LZWDecode
 from .lzw_filter import LZWFilter
 from .run_length_decode import RunLengthDecode
 from .run_length_filter import RunLengthDecodeFilter
+from .tiff_extension import TIFFExtension
 
 __all__ = [
     "ASCII85Decode",
@@ -24,8 +27,10 @@ __all__ = [
     "ASCIIHexDecode",
     "ASCIIHexFilter",
     "CCITTFaxDecode",
+    "CCITTFaxFilter",
     "DecodeResult",
     "DCTDecode",
+    "DCTFilter",
     "Filter",
     "FilterFactory",
     "FlateDecode",
@@ -36,4 +41,5 @@ __all__ = [
     "LZWFilter",
     "RunLengthDecode",
     "RunLengthDecodeFilter",
+    "TIFFExtension",
 ]

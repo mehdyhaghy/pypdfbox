@@ -144,6 +144,98 @@ def test_trailer_keys_with_indirect_refs_propagate() -> None:
     assert merged.get_int("Size") == 2
 
 
+def test_get_trailer_count_matches_section_count() -> None:
+    r = XrefTrailerResolver()
+    assert r.get_trailer_count() == 0
+    r.begin_section(100)
+    r.begin_section(200)
+    r.begin_section(300)
+    assert r.get_trailer_count() == 3
+    assert r.get_trailer_count() == r.section_count()
+
+
+def test_get_current_trailer_returns_active_section_trailer() -> None:
+    r = XrefTrailerResolver()
+    assert r.get_current_trailer() is None
+    r.begin_section(100)
+    assert r.get_current_trailer() is None  # no trailer set yet
+    t1 = COSDictionary()
+    t1.set_int("Size", 5)
+    r.set_trailer(t1)
+    assert r.get_current_trailer() is t1
+    # Begin a new section — current trailer flips to that section's
+    # (initially None until set_trailer is called).
+    r.begin_section(200)
+    assert r.get_current_trailer() is None
+    t2 = COSDictionary()
+    t2.set_int("Size", 7)
+    r.set_trailer(t2)
+    assert r.get_current_trailer() is t2
+
+
+def test_get_first_and_last_trailer_by_offset() -> None:
+    r = XrefTrailerResolver()
+    assert r.get_first_trailer() is None
+    assert r.get_last_trailer() is None
+    # Insert sections out of offset order to confirm sort, not insertion order.
+    r.begin_section(5000)
+    t_high = COSDictionary()
+    t_high.set_int("Pos", 5000)
+    r.set_trailer(t_high)
+    r.begin_section(1000)
+    t_low = COSDictionary()
+    t_low.set_int("Pos", 1000)
+    r.set_trailer(t_low)
+    r.begin_section(3000)
+    t_mid = COSDictionary()
+    t_mid.set_int("Pos", 3000)
+    r.set_trailer(t_mid)
+    first = r.get_first_trailer()
+    last = r.get_last_trailer()
+    assert first is t_low
+    assert last is t_high
+
+
+def test_get_first_trailer_skips_synthetic_negative_offset() -> None:
+    r = XrefTrailerResolver()
+    r.begin_section(-1)
+    synthetic = COSDictionary()
+    r.set_trailer(synthetic)
+    assert r.get_first_trailer() is None
+    assert r.get_last_trailer() is None
+    r.begin_section(500)
+    real = COSDictionary()
+    r.set_trailer(real)
+    assert r.get_first_trailer() is real
+    assert r.get_last_trailer() is real
+
+
+def test_reset_clears_entries_but_preserves_sections() -> None:
+    r = XrefTrailerResolver()
+    r.begin_section(100)
+    r.set_entry(COSObjectKey(1, 0), _entry(10))
+    t1 = COSDictionary()
+    t1.set_int("Size", 2)
+    r.set_trailer(t1)
+    r.begin_section(200)
+    r.set_entry(COSObjectKey(2, 0), _entry(20))
+    t2 = COSDictionary()
+    t2.set_int("Size", 4)
+    r.set_trailer(t2)
+    assert r.get_xref_table()  # non-empty
+    r.reset()
+    assert r.get_xref_table() == {}
+    # Section envelopes (and trailers) survive — section_count unchanged.
+    assert r.section_count() == 2
+    assert r.get_first_trailer() is t1  # trailer at offset 100 preserved
+    assert r.get_last_trailer() is t2  # trailer at offset 200 preserved
+    # After reset, set_entry without a fresh begin_section must raise —
+    # current pointer was cleared.
+    import pytest
+    with pytest.raises(RuntimeError):
+        r.set_entry(COSObjectKey(3, 0), _entry(30))
+
+
 def test_int_helper_used_consistently() -> None:
     """Smoke test using COSInteger directly to make sure the trailer's
     typed accessors round-trip without the dictionary copy losing the

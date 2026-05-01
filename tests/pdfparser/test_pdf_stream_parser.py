@@ -230,3 +230,31 @@ def test_dash_inside_number_dropped() -> None:
     # PDFBOX-4064 — internal '-' is silently discarded.
     toks = tokens(b"1-2 Tj")
     assert isinstance(toks[0], COSInteger) and toks[0].value == 12
+
+
+# ---------- alternate constructors / lifecycle ----------
+
+
+def test_from_bytes_constructor_parses_same_as_buffer() -> None:
+    raw = b"100 200 m"
+    via_factory = PDFStreamParser.from_bytes(raw).parse()
+    via_buffer = parser(raw).parse()
+    assert len(via_factory) == len(via_buffer) == 3
+    assert isinstance(via_factory[2], Operator) and via_factory[2].name == "m"
+    assert isinstance(via_buffer[2], Operator) and via_buffer[2].name == "m"
+
+
+def test_close_is_idempotent_and_marks_closed() -> None:
+    p = PDFStreamParser.from_bytes(b"q Q")
+    assert not p.is_closed()
+    p.parse()
+    p.close()
+    assert p.is_closed()
+    # Second close must be a no-op, not raise.
+    p.close()
+    assert p.is_closed()
+
+
+def test_is_closed_initially_false_after_construction() -> None:
+    p = parser(b"q Q")
+    assert p.is_closed() is False

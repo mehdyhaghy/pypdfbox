@@ -124,3 +124,55 @@ class XrefTrailerResolver:
 
     def visited_offsets(self) -> set[int]:
         return set(self._visited_offsets)
+
+    # ---------- per-section accessors (upstream parity) ----------
+
+    def get_trailer_count(self) -> int:
+        """Return the number of registered xref sections (each with a
+        trailer slot). Mirrors PDFBox's ``getTrailerCount()`` — note that
+        upstream counts byte-position keys, which equals one per section
+        because every section is registered at a unique start offset."""
+        return len(self._sections)
+
+    def get_current_trailer(self) -> COSDictionary | None:
+        """Return the trailer of the most recently begun section, or
+        ``None`` if the current section has no trailer set yet (or no
+        section has been started). Mirrors PDFBox's
+        ``getCurrentTrailer()``."""
+        if self._current is None:
+            return None
+        return self._current.trailer
+
+    def get_first_trailer(self) -> COSDictionary | None:
+        """Return the trailer of the section with the smallest start
+        offset, or ``None`` if no sections exist. Sections registered
+        with a negative start offset (synthetic / unknown position) are
+        ignored — matches upstream which keys ``bytePosToXrefMap`` by
+        the actual start byte position. Mirrors
+        ``XrefTrailerResolver.getFirstTrailer()``."""
+        ranked = [s for s in self._sections if s.start_offset >= 0]
+        if not ranked:
+            return None
+        ranked.sort(key=lambda s: s.start_offset)
+        return ranked[0].trailer
+
+    def get_last_trailer(self) -> COSDictionary | None:
+        """Return the trailer of the section with the largest start
+        offset, or ``None`` if no sections exist. Mirrors
+        ``XrefTrailerResolver.getLastTrailer()``."""
+        ranked = [s for s in self._sections if s.start_offset >= 0]
+        if not ranked:
+            return None
+        ranked.sort(key=lambda s: s.start_offset)
+        return ranked[-1].trailer
+
+    def reset(self) -> None:
+        """Clear every section's entry map and forget the current
+        section so the resolver can be re-driven by a recovery pass.
+        Trailers and start offsets are preserved on each section,
+        matching upstream's ``reset()`` (which clears the per-object
+        ``xrefTable`` map but keeps the ``XrefTrailerObj`` envelope and
+        its trailer)."""
+        for section in self._sections:
+            section.entries.clear()
+        self._current = None

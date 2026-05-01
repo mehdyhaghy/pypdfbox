@@ -11,7 +11,7 @@ from pypdfbox.cos import (
     COSNull,
     COSNumber,
 )
-from pypdfbox.io import RandomAccessRead
+from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .cos_parser import COSParser
 from .parse_error import PDFParseError
@@ -119,6 +119,16 @@ class PDFStreamParser(COSParser):
         self._inline_image_depth = 0
         self._inline_offset = 0
 
+    # ---------- alternate constructors ----------
+
+    @classmethod
+    def from_bytes(cls, data: bytes) -> PDFStreamParser:
+        """Construct a parser over an in-memory byte buffer. Mirrors
+        the upstream ``PDFStreamParser(byte[] bytes)`` convenience
+        constructor that wraps the bytes in a ``RandomAccessReadBuffer``
+        before delegating to the primary constructor."""
+        return cls(RandomAccessReadBuffer(data))
+
     # ---------- public API ----------
 
     def parse_next_token(self) -> COSBase | Operator | None:
@@ -199,6 +209,21 @@ class PDFStreamParser(COSParser):
         """Return the current source read position. Mirrors PDFBox's
         ``getPosition()`` accessor."""
         return self.position
+
+    def close(self) -> None:
+        """Close the underlying random-access source if it is still
+        open. Mirrors PDFBox's public ``close()`` on PDFStreamParser
+        which releases the source after parsing finishes. Idempotent —
+        repeat calls are no-ops."""
+        src = self._src
+        if src is not None and not src.is_closed():
+            src.close()
+
+    def is_closed(self) -> bool:
+        """Return ``True`` once the underlying source has been closed.
+        Convenience accessor matching upstream's ``source.isClosed()``
+        idiom used throughout PDFBox parsers."""
+        return self._src is None or self._src.is_closed()
 
     # ---------- numbers ----------
 
