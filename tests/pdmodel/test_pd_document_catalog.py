@@ -64,9 +64,22 @@ def test_get_metadata_absent_returns_none() -> None:
     assert doc.get_document_catalog().get_metadata() is None
 
 
-def test_get_actions_absent_returns_none() -> None:
+def test_get_actions_auto_creates_empty_aa() -> None:
+    """Mirrors upstream ``getActions`` — auto-creates ``/AA`` when absent
+    so callers can attach triggers without first wiring the sub-dict."""
+    from pypdfbox.pdmodel.interactive.action import (
+        PDDocumentCatalogAdditionalActions,
+    )
+
     doc = PDDocument()
-    assert doc.get_document_catalog().get_actions() is None
+    cat = doc.get_document_catalog()
+    actions = cat.get_actions()
+    assert isinstance(actions, PDDocumentCatalogAdditionalActions)
+    # Side effect — /AA is now stored in the catalog dict.
+    assert COSName.get_pdf_name("AA") in cat
+    # Identity stays stable across calls (backed by the same /AA dict).
+    again = cat.get_actions()
+    assert again.get_cos_object() is actions.get_cos_object()
 
 
 def test_get_output_intents_absent_returns_empty_list() -> None:
@@ -657,3 +670,87 @@ def test_set_acro_form_none_clears_cache_and_returns_none() -> None:
     assert cat.get_acro_form() is not None
     cat.set_acro_form(None)
     assert cat.get_acro_form() is None
+
+
+# ---------- get_acro_form(fixup) overload ----------
+
+
+def test_get_acro_form_with_fixup_invokes_apply_once() -> None:
+    """``get_acro_form(fixup)`` mirrors upstream's
+    ``getAcroForm(PDDocumentFixup)`` overload — the fixup's ``apply()`` is
+    called once, and a second call with the same instance is a no-op."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_acro_form(PDAcroForm(doc))
+
+    calls: list[int] = []
+
+    class _Fixup:
+        def apply(self) -> None:
+            calls.append(1)
+
+    fixup = _Fixup()
+    cat.get_acro_form(fixup)
+    cat.get_acro_form(fixup)
+    assert calls == [1]
+
+
+def test_get_acro_form_with_new_fixup_clears_cache() -> None:
+    """A fresh fixup invalidates the cached wrapper so the post-apply
+    ``/AcroForm`` dictionary is re-read."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_acro_form(PDAcroForm(doc))
+    cached_first = cat.get_acro_form()
+    assert cached_first is not None
+
+    class _Fixup:
+        def apply(self) -> None:
+            return None
+
+    new_form = cat.get_acro_form(_Fixup())
+    # New fixup → cache cleared → fresh wrapper minted from the same dict.
+    assert new_form is not cached_first
+    assert new_form.get_cos_object() is cached_first.get_cos_object()
+
+
+def test_get_acro_form_no_fixup_returns_unfixed() -> None:
+    """``get_acro_form(None)`` (or no-arg) returns the AcroForm without
+    re-applying any previously-applied fixup."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_acro_form(PDAcroForm(doc))
+
+    calls: list[int] = []
+
+    class _Fixup:
+        def apply(self) -> None:
+            calls.append(1)
+
+    fixup = _Fixup()
+    cat.get_acro_form(fixup)
+    cat.get_acro_form()  # no-arg: no re-apply
+    cat.get_acro_form(None)  # explicit None: no re-apply
+    assert calls == [1]
+
+
+# ---------- get_threads auto-create parity ----------
+
+
+def test_get_threads_auto_creates_threads_array() -> None:
+    """Mirrors upstream ``getThreads`` — auto-creates ``/Threads`` when
+    absent so callers can mutate the catalog-backed array."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    threads = cat.get_threads()
+    assert threads == []
+    # Side effect: /Threads is now stored in the catalog.
+    arr = cat.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Threads"))
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 0

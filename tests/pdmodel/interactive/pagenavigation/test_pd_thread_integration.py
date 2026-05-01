@@ -41,10 +41,13 @@ def test_document_catalog_set_threads_none_removes_entry() -> None:
     catalog = doc.get_document_catalog()
     catalog.set_threads([PDThread()])
     catalog.set_threads(None)
-    assert catalog.get_threads() == []
+    # ``set_threads(None)`` strips ``/Threads`` from the catalog. Note the
+    # check happens before any read, since :meth:`get_threads` mirrors
+    # upstream by auto-creating an empty array on miss.
     assert not catalog.get_cos_object().contains_key(
         COSName.get_pdf_name("Threads")
     )
+    assert catalog.get_threads() == []
 
 
 def test_document_catalog_set_threads_rejects_non_thread() -> None:

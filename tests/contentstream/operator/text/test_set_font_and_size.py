@@ -5,6 +5,7 @@ import pytest
 from pypdfbox.contentstream import (
     MissingOperandException,
     Operator,
+    OperatorName,
     PDFStreamEngine,
 )
 from pypdfbox.contentstream.operator.text import SetFontAndSize
@@ -90,3 +91,63 @@ def test_re_export_canonical() -> None:
     )
 
     assert Reexport is SetFontAndSize
+
+
+def test_get_name_matches_operator_name_constant() -> None:
+    assert SetFontAndSize().get_name() == OperatorName.SET_FONT_AND_SIZE
+
+
+def test_zero_operands_message_carries_operator_name() -> None:
+    """``MissingOperandException`` mirrors upstream's verbatim message."""
+    p, _ = _bind()
+    op = Operator.get_operator("Tf")
+    with pytest.raises(MissingOperandException) as exc_info:
+        p.process(op, [])
+    msg = str(exc_info.value)
+    assert "Tf" in msg
+    assert "too few operands" in msg
+    assert exc_info.value.operator is op
+    assert exc_info.value.operands == []
+
+
+def test_one_operand_message_carries_partial_operands() -> None:
+    """The single-operand list is preserved on the exception so callers
+    can inspect what was supplied."""
+    p, _ = _bind()
+    name = COSName.get_pdf_name("F1")
+    with pytest.raises(MissingOperandException) as exc_info:
+        p.process(Operator.get_operator("Tf"), [name])
+    assert exc_info.value.operands == [name]
+
+
+def test_negative_size_propagates() -> None:
+    """A negative ``Tf`` size is unusual but legal at the operator
+    level — upstream stores whatever ``floatValue()`` returns. We do
+    the same; downstream graphics-state policy decides what to do."""
+    p, engine = _bind()
+    p.process(
+        Operator.get_operator("Tf"),
+        [COSName.get_pdf_name("F1"), COSFloat(-10.0)],
+    )
+    assert engine.calls == [(COSName.get_pdf_name("F1"), -10.0)]
+
+
+def test_zero_size_propagates() -> None:
+    """A zero ``Tf`` size reaches the engine — no clamping at the
+    operator layer (matches upstream)."""
+    p, engine = _bind()
+    p.process(
+        Operator.get_operator("Tf"),
+        [COSName.get_pdf_name("F1"), COSInteger.get(0)],
+    )
+    assert engine.calls == [(COSName.get_pdf_name("F1"), 0.0)]
+
+
+def test_get_context_unbound_raises() -> None:
+    """Calling ``process`` before registration raises ``RuntimeError``."""
+    p = SetFontAndSize()
+    with pytest.raises(RuntimeError):
+        p.process(
+            Operator.get_operator("Tf"),
+            [COSName.get_pdf_name("F1"), COSFloat(12.0)],
+        )

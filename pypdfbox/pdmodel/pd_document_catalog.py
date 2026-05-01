@@ -85,6 +85,10 @@ class PDDocumentCatalog:
         # across calls so the AcroForm stays reference-stable. Cleared by
         # :meth:`set_acro_form`.
         self._cached_acro_form: Any = None
+        # Mirrors upstream's ``acroFormFixupApplied`` field — the most
+        # recently applied fixup object is remembered so subsequent calls
+        # to :meth:`get_acro_form` with the same fixup don't re-apply it.
+        self._acro_form_fixup_applied: Any = None
 
     # ---------- COS surface ----------
 
@@ -320,16 +324,37 @@ class PDDocumentCatalog:
 
     # ---------- /AcroForm ----------
 
-    def get_acro_form(self) -> Any:
+    def get_acro_form(self, acro_form_fixup: Any = None) -> Any:
         """Return the document's ``/AcroForm`` as a :class:`PDAcroForm`,
         or ``None`` when absent.
 
         The wrapper is cached after the first call — mirrors upstream's
         ``cachedAcroForm`` field. Cleared by :meth:`set_acro_form` and by
         any swap that would invalidate the underlying dictionary
-        identity."""
+        identity.
+
+        ``acro_form_fixup`` mirrors the upstream
+        ``getAcroForm(PDDocumentFixup)`` overload: any object exposing an
+        ``apply()`` method (typically a ``PDDocumentFixup`` subclass) is
+        invoked once and remembered. Subsequent calls with the same fixup
+        object skip re-application; passing ``None`` (the default) leaves
+        any previously-applied fixup state intact. The cache is cleared
+        whenever a fresh fixup is applied so the next read materialises
+        the post-fixup ``/AcroForm`` dictionary.
+
+        pypdfbox does not yet ship the ``AcroFormDefaultFixup`` upstream
+        applies in the no-arg overload — passing ``None`` is the documented
+        way to request the unfixed AcroForm (parity with upstream's
+        ``getAcroForm(null)`` contract)."""
         from .interactive.form import PDAcroForm
 
+        if (
+            acro_form_fixup is not None
+            and acro_form_fixup is not self._acro_form_fixup_applied
+        ):
+            acro_form_fixup.apply()
+            self._cached_acro_form = None
+            self._acro_form_fixup_applied = acro_form_fixup
         if self._cached_acro_form is not None:
             return self._cached_acro_form
         v = self._catalog.get_dictionary_object(_ACRO_FORM)
@@ -391,12 +416,20 @@ class PDDocumentCatalog:
         self._catalog.set_item(_METADATA, metadata.get_cos_object())
 
     def get_actions(self) -> Any:
+        """Return the catalog's additional-actions ``/AA`` wrapper.
+
+        Mirrors upstream's auto-create behaviour — if ``/AA`` is absent
+        the entry is materialised in place as an empty dictionary so the
+        caller can attach trigger actions without having to wire the
+        sub-dictionary first. Always returns a non-``None``
+        :class:`PDDocumentCatalogAdditionalActions`."""
         from .interactive.action import PDDocumentCatalogAdditionalActions
 
         v = self._catalog.get_dictionary_object(_AA)
-        if isinstance(v, COSDictionary):
-            return PDDocumentCatalogAdditionalActions(v)
-        return None
+        if not isinstance(v, COSDictionary):
+            v = COSDictionary()
+            self._catalog.set_item(_AA, v)
+        return PDDocumentCatalogAdditionalActions(v)
 
     def set_actions(self, aa: Any) -> None:
         if aa is None:
@@ -610,15 +643,18 @@ class PDDocumentCatalog:
         """Return the article-thread list as :class:`PDThread` wrappers.
 
         ``/Threads`` is an array of indirect references to thread
-        dictionaries. Returns an empty list when the entry is absent.
-        Non-dictionary entries (rare but legal under defensive parsing)
-        are skipped.
+        dictionaries. Mirrors upstream's auto-create behaviour — if
+        ``/Threads`` is absent the entry is materialised in place as an
+        empty array so callers that mutate the returned list-like value
+        write back into the catalog. Non-dictionary entries (rare but
+        legal under defensive parsing) are skipped.
         """
         from pypdfbox.pdmodel.interactive.pagenavigation import PDThread
 
         arr = self._catalog.get_dictionary_object(_THREADS)
         if not isinstance(arr, COSArray):
-            return []
+            arr = COSArray()
+            self._catalog.set_item(_THREADS, arr)
         result: list[Any] = []
         for i in range(arr.size()):
             entry = arr.get_object(i)
