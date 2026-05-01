@@ -41,6 +41,16 @@ class AppendMode(Enum):
     APPEND = "APPEND"
     PREPEND = "PREPEND"
 
+    def is_overwrite(self) -> bool:
+        """``True`` if this mode is :attr:`OVERWRITE`. Mirrors upstream's
+        ``AppendMode.isOverwrite()``."""
+        return self is AppendMode.OVERWRITE
+
+    def is_prepend(self) -> bool:
+        """``True`` if this mode is :attr:`PREPEND`. Mirrors upstream's
+        ``AppendMode.isPrepend()``."""
+        return self is AppendMode.PREPEND
+
 
 class PDPageContentStream:
     """High-level PDF content-stream writer. Mirrors
@@ -791,6 +801,11 @@ class PDPageContentStream:
         self._write_operands(m)
         self._write_operator(b"Tr")
 
+    def set_rendering_mode(self, mode: int) -> None:
+        """Alias for :meth:`set_text_rendering_mode` matching upstream's
+        ``setRenderingMode`` Java method name."""
+        self.set_text_rendering_mode(mode)
+
     # ------------------------------------------------------------------
     # graphics state
     # ------------------------------------------------------------------
@@ -1261,6 +1276,31 @@ class PDPageContentStream:
         self._buffer.append(0x20)
         self._write_operator(b"BMC")
 
+    def begin_marked_content_with_mcid(
+        self,
+        tag: COSName | str,
+        mcid: int,
+    ) -> None:
+        """Emit ``/<tag> <</MCID <mcid>>> BDC``.
+
+        Mirrors upstream's ``beginMarkedContent(COSName tag, int mcid)``
+        overload — used by tagged-PDF authoring to associate a marked
+        content sequence with an entry in the structure tree without
+        registering a property list under ``/Resources/Properties``.
+
+        Raises :class:`ValueError` when ``mcid`` is negative, matching
+        upstream's ``IllegalArgumentException``.
+        """
+        n = int(mcid)
+        if n < 0:
+            raise ValueError(f"mcid should not be negative; got {mcid!r}")
+        self._write_name(_to_cos_name(tag))
+        self._buffer.append(0x20)
+        self._buffer.extend(b"<</MCID ")
+        self._buffer.extend(str(n).encode("ascii"))
+        self._buffer.extend(b">> ")
+        self._write_operator(b"BDC")
+
     def begin_marked_content_with_dict(
         self,
         tag: COSName | str,
@@ -1309,6 +1349,52 @@ class PDPageContentStream:
         self._write_name(key)
         self._buffer.append(0x20)
         self._write_operator(b"DP")
+
+    # ------------------------------------------------------------------
+    # raw byte / comment writers
+    # ------------------------------------------------------------------
+
+    def add_comment(self, comment: str) -> None:
+        """Emit ``%<comment>\\n`` — write a PDF comment line.
+
+        Mirrors upstream's ``addComment(String comment)``. The argument is
+        encoded as US-ASCII; embedded newlines are rejected with
+        :class:`ValueError` because the next line would otherwise be
+        parsed as ordinary content-stream tokens.
+        """
+        if "\n" in comment or "\r" in comment:
+            raise ValueError("comment should not include a newline")
+        self._buffer.append(0x25)  # %
+        self._buffer.extend(comment.encode("ascii"))
+        self._buffer.append(0x0A)
+
+    def append_raw_commands(self, data: str | bytes | bytearray | int | float) -> None:
+        """Append raw bytes to the content stream verbatim.
+
+        Mirrors upstream's deprecated ``appendRawCommands`` overloads
+        (``String``, ``byte[]``, ``int``, ``float``, ``double``). Use of
+        this method is discouraged — prefer the typed operator methods on
+        this class. Provided for porting parity with PDFBox callers.
+
+        - ``str`` → encoded as US-ASCII and appended.
+        - ``bytes`` / ``bytearray`` → appended verbatim.
+        - ``int`` / ``float`` → formatted as a numeric operand (4-decimal
+          format, trailing-zero trim, trailing space) matching upstream's
+          ``writeOperand`` overloads.
+        """
+        if isinstance(data, bool):
+            raise TypeError("append_raw_commands does not accept bool")
+        if isinstance(data, (bytes, bytearray)):
+            self._buffer.extend(bytes(data))
+        elif isinstance(data, str):
+            self._buffer.extend(data.encode("ascii"))
+        elif isinstance(data, (int, float)):
+            self._write_operands(data)
+        else:
+            raise TypeError(
+                "append_raw_commands expects str, bytes, int, or float; "
+                f"got {type(data).__name__}"
+            )
 
     # ------------------------------------------------------------------
     # resource key allocation

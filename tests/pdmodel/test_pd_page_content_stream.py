@@ -1311,3 +1311,103 @@ def test_alpha_blend_pattern_shading_combined_round_trip() -> None:
     assert [n.get_name() for n in pat_sub.key_set()] == ["p0"]
     sh_sub = res.get_dictionary_object(COSName.get_pdf_name("Shading"))
     assert [n.get_name() for n in sh_sub.key_set()] == ["sh0"]
+
+
+# ------------------------------------------------------------------
+# AppendMode predicates / new aliases / raw-write helpers
+# ------------------------------------------------------------------
+
+
+def test_append_mode_is_overwrite_and_is_prepend() -> None:
+    assert AppendMode.OVERWRITE.is_overwrite() is True
+    assert AppendMode.OVERWRITE.is_prepend() is False
+    assert AppendMode.APPEND.is_overwrite() is False
+    assert AppendMode.APPEND.is_prepend() is False
+    assert AppendMode.PREPEND.is_overwrite() is False
+    assert AppendMode.PREPEND.is_prepend() is True
+
+
+def test_set_rendering_mode_alias_emits_tr() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_rendering_mode(2)
+    assert _stream_bytes(page) == b"2 Tr\n"
+
+
+def test_set_rendering_mode_alias_validates_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_rendering_mode(8)
+    cs.close()
+
+
+def test_begin_marked_content_with_mcid_emits_bdc() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content_with_mcid("P", 7)
+        cs.end_marked_content()
+    assert _stream_bytes(page) == b"/P <</MCID 7>> BDC\nEMC\n"
+
+
+def test_begin_marked_content_with_mcid_rejects_negative() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.begin_marked_content_with_mcid("P", -1)
+    cs.close()
+
+
+def test_begin_marked_content_with_mcid_zero_allowed() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_marked_content_with_mcid(COSName.get_pdf_name("Span"), 0)
+    assert _stream_bytes(page) == b"/Span <</MCID 0>> BDC\n"
+
+
+def test_add_comment_writes_percent_and_newline() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.add_comment("hello world")
+        cs.move_to(0, 0)
+    assert _stream_bytes(page) == b"%hello world\n0 0 m\n"
+
+
+def test_add_comment_rejects_embedded_newline() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.add_comment("first\nsecond")
+    with pytest.raises(ValueError):
+        cs.add_comment("first\rsecond")
+    cs.close()
+
+
+def test_append_raw_commands_str_bytes_and_numeric() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.append_raw_commands("BT\n")
+        cs.append_raw_commands(b"/F0 12 Tf\n")
+        cs.append_raw_commands(7)
+        cs.append_raw_commands(2.5)
+        cs.append_raw_commands("ET\n")
+    assert _stream_bytes(page) == b"BT\n/F0 12 Tf\n7 2.5 ET\n"
+
+
+def test_append_raw_commands_rejects_bool_and_other_types() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(TypeError):
+        cs.append_raw_commands(True)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        cs.append_raw_commands(object())  # type: ignore[arg-type]
+    cs.close()

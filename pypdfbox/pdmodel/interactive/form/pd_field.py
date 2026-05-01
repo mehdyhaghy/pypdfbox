@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
@@ -60,6 +60,13 @@ class PDField:
         return self._field.get_string(_T)
 
     def set_partial_name(self, name: str | None) -> None:
+        # Mirrors upstream PDField.setPartialName: a partial name shall not
+        # contain a period. Upstream raises IllegalArgumentException; we use
+        # the closest Python analogue, ValueError.
+        if name is not None and "." in name:
+            raise ValueError(
+                f"A field partial name shall not contain a period character: {name}"
+            )
         self._field.set_string(_T, name)
 
     def get_alternate_field_name(self) -> str | None:
@@ -168,6 +175,62 @@ class PDField:
 
     def is_terminal(self) -> bool:
         raise NotImplementedError
+
+    # ---------- /Kids descent ----------
+
+    def find_kid(self, name: list[str], name_index: int) -> PDField | None:
+        """Walk ``/Kids`` looking for a field whose ``/T`` matches ``name[name_index]``.
+
+        Mirrors upstream package-private ``PDField.findKid``. Recurses until
+        the path is consumed. Returns ``None`` if no kid matches.
+        """
+        from .pd_field_factory import PDFieldFactory
+        from .pd_non_terminal_field import PDNonTerminalField
+
+        kids = self._field.get_dictionary_object(COSName.get_pdf_name("Kids"))
+        if not isinstance(kids, COSArray):
+            return None
+        result: PDField | None = None
+        for i in range(kids.size()):
+            if result is not None:
+                break
+            kid_dict = kids.get_object(i)
+            if not isinstance(kid_dict, COSDictionary):
+                continue
+            kid_name = kid_dict.get_string(_T)
+            if kid_name == name[name_index]:
+                parent = self if isinstance(self, PDNonTerminalField) else None
+                result = PDFieldFactory.create_field(
+                    self._acro_form, kid_dict, parent
+                )
+                if result is not None and len(name) > name_index + 1:
+                    result = result.find_kid(name, name_index + 1)
+        return result
+
+    # ---------- equality / repr ----------
+
+    def __eq__(self, other: object) -> bool:
+        # Mirrors upstream PDField.equals: two fields are equal iff their
+        # backing COSDictionary objects compare equal. COSDictionary uses
+        # identity equality in pypdfbox, so this collapses to "same dict".
+        if self is other:
+            return True
+        if not isinstance(other, PDField):
+            return False
+        return self._field == other.get_cos_object()
+
+    def __hash__(self) -> int:
+        # Hash on the dictionary identity so equal fields hash equal.
+        return hash(id(self._field))
+
+    def __str__(self) -> str:
+        # Mirrors upstream PDField.toString: "<fqn>{type: <Class> value: <V>}".
+        fqn = self.get_fully_qualified_name() or ""
+        value = self.get_inheritable_attribute(COSName.get_pdf_name("V"))
+        return f"{fqn}{{type: {type(self).__name__} value: {value}}}"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 __all__ = ["PDField"]
