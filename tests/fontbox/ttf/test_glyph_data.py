@@ -62,6 +62,46 @@ def test_bounding_box_setters() -> None:
     assert b.as_tuple() == (1.5, 2.5, 3.5, 4.5)
 
 
+def test_bounding_box_contains_inside() -> None:
+    b = BoundingBox(0, 0, 10, 10)
+    assert b.contains(5, 5)
+
+
+def test_bounding_box_contains_on_edge() -> None:
+    # Upstream contract: edge points are inside.
+    b = BoundingBox(0, 0, 10, 10)
+    assert b.contains(0, 0)
+    assert b.contains(10, 10)
+    assert b.contains(0, 5)
+    assert b.contains(5, 10)
+
+
+def test_bounding_box_contains_outside() -> None:
+    b = BoundingBox(0, 0, 10, 10)
+    assert not b.contains(-1, 5)
+    assert not b.contains(11, 5)
+    assert not b.contains(5, -1)
+    assert not b.contains(5, 11)
+
+
+def test_bounding_box_str_matches_upstream() -> None:
+    # Upstream toString: "[ll_x,ll_y,ur_x,ur_y]" with no spaces.
+    b = BoundingBox(1.0, 2.0, 3.0, 4.0)
+    assert str(b) == "[1.0,2.0,3.0,4.0]"
+
+
+def test_bounding_box_from_numbers() -> None:
+    b = BoundingBox.from_numbers([1, 2, 5, 9])
+    assert b.as_tuple() == (1.0, 2.0, 5.0, 9.0)
+
+
+def test_bounding_box_from_numbers_wrong_arity() -> None:
+    with pytest.raises(ValueError):
+        BoundingBox.from_numbers([1, 2, 3])
+    with pytest.raises(ValueError):
+        BoundingBox.from_numbers([1, 2, 3, 4, 5])
+
+
 # ---------- empty GlyphData ------------------------------------------------
 
 

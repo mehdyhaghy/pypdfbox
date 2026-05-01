@@ -37,6 +37,13 @@ class Encoding:
         if name not in self._name_to_code:
             self._name_to_code[name] = code
 
+    def add_character_encoding(self, code: int, name: str) -> None:
+        """Snake_case alias of :meth:`add` matching the upstream fontbox base
+        class ``Encoding.addCharacterEncoding`` (which is ``protected`` in
+        Java; in Python the mapping is exposed at the same name for
+        clarity in subclasses translated from upstream)."""
+        self.add(code, name)
+
     def overwrite(self, code: int, name: str) -> None:
         """Add a (code, name) pair, replacing any existing reverse mapping."""
         old_name = self._code_to_name.get(code)

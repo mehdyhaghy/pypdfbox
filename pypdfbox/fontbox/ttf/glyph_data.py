@@ -28,6 +28,18 @@ class BoundingBox:
         self._upper_right_x = float(max_x)
         self._upper_right_y = float(max_y)
 
+    @classmethod
+    def from_numbers(cls, numbers: list[float] | tuple[float, ...]) -> BoundingBox:
+        """Mirror upstream ``BoundingBox(List<Number>)`` constructor.
+
+        Accepts a 4-element sequence ``[minX, minY, maxX, maxY]``.
+        """
+        if len(numbers) != 4:
+            raise ValueError(
+                f"BoundingBox.from_numbers requires 4 values, got {len(numbers)}"
+            )
+        return cls(numbers[0], numbers[1], numbers[2], numbers[3])
+
     def get_lower_left_x(self) -> float:
         return self._lower_left_x
 
@@ -58,12 +70,32 @@ class BoundingBox:
     def get_height(self) -> float:
         return self._upper_right_y - self._lower_left_y
 
+    def contains(self, x: float, y: float) -> bool:
+        """Return True if (x, y) is on the edge or inside the rectangle.
+
+        Mirrors upstream ``BoundingBox.contains(float, float)``.
+        """
+        return (
+            x >= self._lower_left_x
+            and x <= self._upper_right_x
+            and y >= self._lower_left_y
+            and y <= self._upper_right_y
+        )
+
     def as_tuple(self) -> tuple[float, float, float, float]:
         return (
             self._lower_left_x,
             self._lower_left_y,
             self._upper_right_x,
             self._upper_right_y,
+        )
+
+    def __str__(self) -> str:
+        # Mirrors upstream ``BoundingBox.toString()`` —
+        # "[lowerLeftX,lowerLeftY,upperRightX,upperRightY]".
+        return (
+            f"[{self._lower_left_x},{self._lower_left_y},"
+            f"{self._upper_right_x},{self._upper_right_y}]"
         )
 
     def __repr__(self) -> str:

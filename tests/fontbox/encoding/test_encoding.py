@@ -97,3 +97,22 @@ def test_get_encoding_name_default_raises() -> None:
 
     with pytest.raises(NotImplementedError):
         E().get_encoding_name()
+
+
+def test_add_character_encoding_alias_matches_add() -> None:
+    # ``add_character_encoding`` is the snake_case spelling of upstream
+    # fontbox base ``Encoding.addCharacterEncoding``.
+    class E(Encoding):
+        def __init__(self) -> None:
+            super().__init__()
+            self.add_character_encoding(65, "A")
+            self.add_character_encoding(66, "B")
+
+        def get_encoding_name(self) -> str:
+            return "E"
+
+    enc = E()
+    assert enc.get_name(65) == "A"
+    assert enc.get_name(66) == "B"
+    assert enc.get_code("A") == 65
+    assert enc.get_code("B") == 66
