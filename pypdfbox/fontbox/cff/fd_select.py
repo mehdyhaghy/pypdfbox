@@ -68,6 +68,14 @@ class FDSelect:
     def __getitem__(self, gid: int) -> int:
         return self.get_fd_index(gid)
 
+    def __contains__(self, gid: object) -> bool:
+        """Whether ``gid`` falls inside the covered range ``[0, num_glyphs)``.
+        Mirrors the Pythonic membership test; upstream PDFBox has no direct
+        equivalent (callers typically clamp before calling ``getFDIndex``)."""
+        if not isinstance(gid, int) or isinstance(gid, bool):
+            return False
+        return 0 <= gid < self.get_num_glyphs()
+
     def __repr__(self) -> str:
         return f"FDSelect(format={self.get_format()}, num_glyphs={self.get_num_glyphs()})"
 
@@ -101,6 +109,15 @@ class Format0FDSelect(FDSelect):
 
     def __getitem__(self, gid: int) -> int:
         return self.get_fd_index(gid)
+
+    def get_fds(self) -> list[int]:
+        """Return a copy of the raw per-GID Font DICT byte array.
+
+        Mirrors upstream ``CFFParser.Format0FDSelect``'s package-private
+        ``int[] fds`` field — exposed here so writers / round-trip tests
+        can re-serialise the on-disk Format 0 payload.
+        """
+        return list(self._fds)
 
 
 class Format3FDSelect(FDSelect):
@@ -148,6 +165,28 @@ class Format3FDSelect(FDSelect):
 
     def __getitem__(self, gid: int) -> int:
         return self.get_fd_index(gid)
+
+    def get_ranges(self) -> list[tuple[int, int]]:
+        """Return a copy of the ``(first_gid, fd_index)`` ranges.
+
+        Mirrors upstream ``CFFParser.Format3FDSelect``'s package-private
+        ``Range3[] range3`` field — exposed for inspection / re-serialisation.
+        """
+        return list(self._ranges)
+
+    def get_sentinel(self) -> int:
+        """The sentinel GID (one past the last covered GID).
+
+        Mirrors upstream ``CFFParser.Format3FDSelect``'s package-private
+        ``sentinel`` field — needed when re-serialising to the on-disk
+        Format 3 payload (CFF spec §19, Table 28).
+        """
+        return self._sentinel
+
+    def get_num_ranges(self) -> int:
+        """Number of ``(first_gid, fd_index)`` ranges. Equivalent to
+        the on-disk ``nRanges`` field of CFF Format 3 FDSelect."""
+        return len(self._ranges)
 
 
 __all__ = ["FDSelect", "Format0FDSelect", "Format3FDSelect"]

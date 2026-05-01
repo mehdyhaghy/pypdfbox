@@ -335,6 +335,21 @@ class XMPMetadata:
         self.add_schema(schema)
         return schema
 
+    def create_and_add_xmp_rights_management_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``XMPMetadata.createAndAddXMPRightsManagementSchema``:
+        always create a fresh :class:`XMPRightsManagementSchema`, set its
+        ``rdf:about`` to the empty string, attach it to this metadata via
+        :meth:`add_schema`, and return it. Unlike :meth:`add_xmp_rights_management_schema`,
+        repeated calls return distinct instances — upstream behaviour.
+        """
+        from .xmp_rights_management_schema import XMPRightsManagementSchema
+
+        schema = XMPRightsManagementSchema(self)
+        schema.set_about_as_simple("")
+        self.add_schema(schema)
+        return schema
+
     # --- XMP Media Management schema ---------------------------------
 
     def get_xmp_media_management_schema(self) -> XMPSchema | None:

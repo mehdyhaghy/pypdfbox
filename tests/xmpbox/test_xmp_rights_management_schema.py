@@ -233,3 +233,46 @@ def test_xmp_metadata_get_xmp_rights_management_schema_returns_typed_wrapper() -
 def test_dom_parser_get_namespace_table_includes_xmp_rights() -> None:
     table = DomXmpParser().get_namespace_table()
     assert table.get("xmpRights") == "http://ns.adobe.com/xap/1.0/rights/"
+
+
+def test_upstream_spelling_constants_alias_python_constants() -> None:
+    """Upstream PDFBox names the constants ``USAGETERMS`` and ``WEBSTATEMENT``
+    (single word). Our snake-case ``USAGE_TERMS`` / ``WEB_STATEMENT`` remain
+    primary; the upstream spellings are aliases pointing at the same value
+    so callers porting Java code can use either identifier."""
+    assert XMPRightsManagementSchema.USAGETERMS == "UsageTerms"
+    assert XMPRightsManagementSchema.WEBSTATEMENT == "WebStatement"
+    assert XMPRightsManagementSchema.USAGETERMS is XMPRightsManagementSchema.USAGE_TERMS
+    assert (
+        XMPRightsManagementSchema.WEBSTATEMENT
+        is XMPRightsManagementSchema.WEB_STATEMENT
+    )
+
+
+def test_create_and_add_xmp_rights_management_schema_always_creates_fresh() -> None:
+    """Mirror of upstream ``XMPMetadata.createAndAddXMPRightsManagementSchema``.
+
+    Unlike ``add_xmp_rights_management_schema`` (idempotent reuse), the
+    ``create_and_add_*`` form always creates a new instance even when one
+    already exists. Each instance has ``rdf:about`` set to the empty string."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    first = metadata.create_and_add_xmp_rights_management_schema()
+    assert isinstance(first, XMPRightsManagementSchema)
+    assert first.get_about() == ""
+
+    second = metadata.create_and_add_xmp_rights_management_schema()
+    assert isinstance(second, XMPRightsManagementSchema)
+    assert second is not first
+    assert second.get_about() == ""
+
+
+def test_constants_using_upstream_spellings_round_trip_value() -> None:
+    """Reading/writing through the upstream-spelling constants hits the same
+    backing storage as the snake_case spellings."""
+    schema = _rights()
+    schema.set_text_property_value(XMPRightsManagementSchema.WEBSTATEMENT, "https://example.com/r")
+    assert schema.get_web_statement() == "https://example.com/r"
+    schema.set_unqualified_language_property_value(
+        XMPRightsManagementSchema.USAGETERMS, "x-default", "Permitted use only."
+    )
+    assert schema.get_usage_terms() == "Permitted use only."

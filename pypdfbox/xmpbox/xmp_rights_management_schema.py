@@ -59,6 +59,12 @@ class XMPRightsManagementSchema(XMPSchema):
     OWNER = "Owner"
     USAGE_TERMS = "UsageTerms"
     WEB_STATEMENT = "WebStatement"
+    # Upstream-spelling aliases: PDFBox uses single-word ``USAGETERMS`` /
+    # ``WEBSTATEMENT`` constant names. Expose them as Python class attributes
+    # so callers porting Java code can reference the upstream identifier
+    # directly without translation.
+    USAGETERMS = USAGE_TERMS
+    WEBSTATEMENT = WEB_STATEMENT
 
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)

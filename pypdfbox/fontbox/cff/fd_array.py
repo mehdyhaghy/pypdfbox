@@ -94,6 +94,27 @@ class FDArray:
         subrs = getattr(priv, "Subrs", None)
         return len(subrs) if subrs is not None else 0
 
+    def get_font_name(self, fd_index: int) -> str:
+        """Return the ``FontName`` (PostScript name) of the Font DICT at
+        ``fd_index``, or ``""`` when missing / out of range.
+
+        Mirrors the per-FD ``FontName`` Top DICT operator (CFF spec §9,
+        Table 9). PDFBox callers typically read this via
+        ``getFontDict(i).get("FontName")``; this helper gives a typed
+        accessor that also tolerates the fontTools attribute form.
+        """
+        font = self._raw_font_dict(fd_index)
+        if font is None:
+            return ""
+        # fontTools surfaces ``FontName`` either as an attribute or via
+        # the ``rawDict`` mapping; check both.
+        name = getattr(font, "FontName", None)
+        if name is None:
+            raw = getattr(font, "rawDict", None)
+            if isinstance(raw, dict):
+                name = raw.get("FontName")
+        return str(name) if name is not None else ""
+
     # ---------- raw underlying access (advanced callers) ----------
 
     def get_raw_font_dict(self, fd_index: int) -> Any | None:
@@ -114,6 +135,15 @@ class FDArray:
     def __iter__(self):
         for i in range(self.size()):
             yield self.get_font_dict(i)
+
+    def __contains__(self, fd_index: object) -> bool:
+        """Whether ``fd_index`` is a valid FDArray slot.
+
+        Mirrors the Pythonic membership test; upstream PDFBox callers
+        typically range-check manually (``0 <= i < size()``)."""
+        if not isinstance(fd_index, int) or isinstance(fd_index, bool):
+            return False
+        return 0 <= fd_index < self.size()
 
     def __repr__(self) -> str:
         return f"FDArray(size={self.size()})"

@@ -190,6 +190,120 @@ class TestFDArray:
         assert all(p.get("defaultWidthX") == 1 for p in privs)
 
 
+# ---------- New parity-roundout tests (Wave 75) ----------
+
+
+class TestFDSelectContains:
+    def test_format0_contains(self) -> None:
+        sel = Format0FDSelect([1, 2, 3, 0, 1])
+        # In-range GIDs.
+        assert 0 in sel
+        assert 4 in sel
+        # Out-of-range / negative / non-int.
+        assert 5 not in sel
+        assert -1 not in sel
+        assert "0" not in sel
+        # ``True`` is an ``int`` in Python; we explicitly reject it so
+        # ``True in sel`` doesn't sneak past as ``1 in sel``.
+        assert True not in sel  # noqa: FBT003
+        assert False not in sel  # noqa: FBT003
+
+    def test_format3_contains(self) -> None:
+        sel = Format3FDSelect(ranges=[(0, 1), (3, 2)], sentinel=8)
+        assert 0 in sel
+        assert 7 in sel
+        assert 8 not in sel  # at sentinel
+        assert -1 not in sel
+
+    def test_empty_fdselect_contains(self) -> None:
+        assert 0 not in FDSelect(None)
+
+
+class TestFormat0FDSelectGetFds:
+    def test_get_fds_returns_copy(self) -> None:
+        original = [4, 4, 0, 1, 2]
+        sel = Format0FDSelect(original)
+        fds = sel.get_fds()
+        assert fds == original
+        # Mutating the returned list must not affect the FDSelect.
+        fds[0] = 99
+        assert sel.get_fd_index(0) == 4
+
+    def test_get_fds_empty(self) -> None:
+        assert Format0FDSelect().get_fds() == []
+
+
+class TestFormat3FDSelectAccessors:
+    def test_get_ranges_and_sentinel(self) -> None:
+        ranges = [(0, 1), (3, 2), (7, 0)]
+        sel = Format3FDSelect(ranges=ranges, sentinel=10)
+        assert sel.get_ranges() == ranges
+        assert sel.get_sentinel() == 10
+        assert sel.get_num_ranges() == 3
+
+    def test_get_ranges_returns_copy(self) -> None:
+        sel = Format3FDSelect(ranges=[(0, 1), (5, 2)], sentinel=10)
+        out = sel.get_ranges()
+        out.append((99, 99))
+        assert sel.get_num_ranges() == 2
+
+    def test_empty_ranges(self) -> None:
+        sel = Format3FDSelect()
+        assert sel.get_ranges() == []
+        assert sel.get_sentinel() == 0
+        assert sel.get_num_ranges() == 0
+
+
+class TestFDArrayContains:
+    def test_contains_valid_index(self) -> None:
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font(), _Font()])
+        assert 0 in arr
+        assert 1 in arr
+        assert 2 not in arr
+        assert -1 not in arr
+        assert "0" not in arr
+        assert True not in arr  # noqa: FBT003
+
+    def test_empty_fdarray_contains(self) -> None:
+        assert 0 not in FDArray(None)
+
+
+class TestFDArrayGetFontName:
+    def test_get_font_name_attribute_form(self) -> None:
+        class _Font:
+            FontName = "MyFont-Bold"  # noqa: N815
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.get_font_name(0) == "MyFont-Bold"
+
+    def test_get_font_name_rawdict_fallback(self) -> None:
+        class _Font:
+            rawDict = {"FontName": "FromRawDict"}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.get_font_name(0) == "FromRawDict"
+
+    def test_get_font_name_missing(self) -> None:
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.get_font_name(0) == ""
+
+    def test_get_font_name_out_of_range(self) -> None:
+        arr = FDArray(None)
+        assert arr.get_font_name(0) == ""
+        assert arr.get_font_name(-1) == ""
+
+
 # ---------- CFFCIDFont (no fixture required) ----------
 
 
