@@ -87,3 +87,52 @@ def test_field_seq_population(metadata: XMPMetadata) -> None:
 def test_value_type_description_alias_is_pdfatypetype() -> None:
     # The alias module re-exports the canonical class — same identity.
     assert PDFAValueTypeDescriptionType is PDFATypeType
+
+
+def test_add_field_description_creates_seq(metadata: XMPMetadata) -> None:
+    pt = PDFATypeType(metadata)
+    f = PDFAFieldType(metadata)
+    f.add_simple_property(PDFAFieldType.NAME, "fieldA")
+
+    pt.add_field_description(f)
+
+    arr = pt.get_fields()
+    assert isinstance(arr, ArrayProperty)
+    assert arr.get_array_type() is Cardinality.Seq
+    assert pt.get_field_descriptions() == [f]
+
+
+def test_add_field_description_appends_to_existing_seq(
+    metadata: XMPMetadata,
+) -> None:
+    pt = PDFATypeType(metadata)
+    f1 = PDFAFieldType(metadata)
+    f1.add_simple_property(PDFAFieldType.NAME, "f1")
+    pt.add_field_description(f1)
+
+    f2 = PDFAFieldType(metadata)
+    f2.add_simple_property(PDFAFieldType.NAME, "f2")
+    pt.add_field_description(f2)
+
+    descriptions = pt.get_field_descriptions()
+    assert descriptions == [f1, f2]
+
+
+def test_get_field_descriptions_when_unset_returns_empty(
+    metadata: XMPMetadata,
+) -> None:
+    pt = PDFATypeType(metadata)
+    assert pt.get_field_descriptions() == []
+
+
+def test_get_field_descriptions_filters_non_field_entries(
+    metadata: XMPMetadata,
+) -> None:
+    pt = PDFATypeType(metadata)
+    seq = pt.create_array_property(PDFATypeType.FIELD, Cardinality.Seq)
+    seq.add_property(TextType(metadata, None, "rdf", "li", "ignored"))
+    f = PDFAFieldType(metadata)
+    seq.add_property(f)
+    pt.add_property(seq)
+
+    assert pt.get_field_descriptions() == [f]

@@ -35,7 +35,7 @@ from .job_type import JobType
 from .lang_alt import LangAlt
 from .layer_type import LayerType
 from .mime_type import MIMEType
-from .pdfa_field_description_type import PDFAFieldType
+from .pdfa_field_description_type import PDFAFieldDescriptionType, PDFAFieldType
 from .pdfa_property_type import PDFAPropertyType
 from .pdfa_schema_type import PDFASchemaType
 from .pdfa_type_type import PDFATypeType
@@ -74,6 +74,7 @@ __all__ = [
     "LangAlt",
     "LayerType",
     "MIMEType",
+    "PDFAFieldDescriptionType",
     "PDFAFieldType",
     "PDFAPropertyType",
     "PDFASchemaType",

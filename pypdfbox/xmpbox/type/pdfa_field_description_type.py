@@ -53,3 +53,14 @@ class PDFAFieldType(AbstractStructuredType):
         if isinstance(prop, TextType):
             return prop.get_string_value()
         return None
+
+
+# Schema-level naming alias preserved for callers that prefer the descriptive
+# form. ``PDFAFieldType`` is the canonical upstream class name and the alias
+# resolves to the same object so structural identity (``isinstance`` checks)
+# is preserved across both spellings. Mirrors the symmetric
+# :data:`PDFAValueTypeDescriptionType` alias for :class:`PDFATypeType`.
+PDFAFieldDescriptionType = PDFAFieldType
+
+
+__all__ = ["PDFAFieldDescriptionType", "PDFAFieldType"]

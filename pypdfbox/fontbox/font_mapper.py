@@ -39,6 +39,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
+from .cid_font_mapping import CIDFontMapping
 from .font_box_font import FontBoxFont
 from .font_mapping import FontMapping
 
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
     # for encodings, so we pull PDFontDescriptor / Standard14Fonts in
     # at type-check time only and resolve them lazily inside
     # :class:`DefaultFontMapper`.
+    from pypdfbox.pdmodel.font.pd_cid_system_info import PDCIDSystemInfo
     from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 
 
@@ -111,6 +113,27 @@ class FontMapper(ABC):
         Used as the universal fallback path when the caller doesn't
         care which on-disk format ends up serving the metrics.
         """
+
+    def get_cid_font(
+        self,
+        base_font: str,
+        font_descriptor: PDFontDescriptor | None,
+        cid_system_info: PDCIDSystemInfo | None,
+    ) -> CIDFontMapping | None:
+        """Locate a CFF CID-keyed font (or substitute), if available.
+
+        Mirrors upstream abstract
+        ``CIDFontMapping getCIDFont(String, PDFontDescriptor, PDCIDSystemInfo)``.
+        Upstream Java declares this abstract on the interface; pypdfbox
+        keeps it concrete with a default ``None`` return (recorded in
+        CHANGES.md) so existing :class:`FontMapper` subclasses don't
+        spontaneously become abstract again. Real CID-aware mappers
+        override it; the bundled :class:`DefaultFontMapper` cannot
+        materialise CID fonts without an on-disk font scanner and so
+        inherits the default ``None``.
+        """
+        del base_font, font_descriptor, cid_system_info
+        return None
 
     # ---------- camelCase aliases (porting parity) ----------
 

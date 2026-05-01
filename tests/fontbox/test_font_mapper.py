@@ -296,3 +296,66 @@ def test_camelcase_aliases_dispatch_to_snake_case() -> None:
     assert snake is not None and camel is not None
     # Both reach the same cached wrapper.
     assert snake.get_font() is camel.get_font()
+
+
+# ---------------------------------------------------------------------------
+# FontMapper.get_cid_font — third interface method
+# ---------------------------------------------------------------------------
+
+
+def test_default_mapper_returns_none_for_cid_lookup() -> None:
+    """Default mapper has no on-disk font scanner — CID lookup returns None."""
+    assert DefaultFontMapper().get_cid_font("AnyFont", None, None) is None
+
+
+def test_get_cid_font_is_concrete_with_default_none() -> None:
+    """Subclasses don't have to override ``get_cid_font`` (deviation).
+
+    Upstream Java declares the method abstract on the interface; pypdfbox
+    keeps it concrete with a default ``None`` return so existing
+    :class:`FontMapper` subclasses don't spontaneously become abstract.
+    Recorded in CHANGES.md.
+    """
+
+    class _NoCID(FontMapper):
+        def get_true_type_font(self, base_font, font_descriptor):  # type: ignore[override]
+            return None
+
+        def get_open_type_font(self, base_font, font_descriptor):  # type: ignore[override]
+            return None
+
+        def get_font_box_font(self, base_font, font_descriptor):  # type: ignore[override]
+            return None
+
+    mapper = _NoCID()  # type: ignore[abstract]
+    assert mapper.get_cid_font("X", None, None) is None
+
+
+def test_subclasses_can_override_get_cid_font() -> None:
+    from pypdfbox.fontbox.cid_font_mapping import CIDFontMapping
+
+    sentinel: list[tuple[str, object | None, object | None]] = []
+
+    class _CIDMapper(FontMapper):
+        def get_true_type_font(self, base_font, font_descriptor):  # type: ignore[override]
+            return None
+
+        def get_open_type_font(self, base_font, font_descriptor):  # type: ignore[override]
+            return None
+
+        def get_font_box_font(self, base_font, font_descriptor):  # type: ignore[override]
+            return None
+
+        def get_cid_font(self, base_font, font_descriptor, cid_system_info):  # type: ignore[override]
+            sentinel.append((base_font, font_descriptor, cid_system_info))
+            wrapper = (
+                DefaultFontMapper().get_font_box_font("Helvetica", None)
+            )
+            assert wrapper is not None
+            return CIDFontMapping(wrapper.get_font(), None, is_fallback=False)
+
+    mapper = _CIDMapper()  # type: ignore[abstract]
+    result = mapper.get_cid_font("CIDName", None, None)
+    assert result is not None
+    assert result.is_cid_font() is True
+    assert sentinel == [("CIDName", None, None)]

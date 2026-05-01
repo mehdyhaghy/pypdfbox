@@ -747,6 +747,10 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/font_mapping.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMapping.java` (relocated to `fontbox` package per task brief; upstream is in `pdfbox.pdmodel.font`) |
 | `pypdfbox/fontbox/font_mappers.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMappers.java` (relocated to `fontbox` package) |
 | `pypdfbox/fontbox/font_mapper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/{FontMapper.java,FontMapperImpl.java}` (default impl trimmed to Standard 14 — system-font scanner deferred since matplotlib/font_manager / fontconfig would be a new dep) |
+| `pypdfbox/fontbox/font_format.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontFormat.java` (relocated to `fontbox` package alongside the rest of the FontMapper cluster) |
+| `pypdfbox/fontbox/font_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontInfo.java` (relocated to `fontbox` package; package-private helpers exposed as public methods since Python has no equivalent visibility level) |
+| `pypdfbox/fontbox/font_provider.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontProvider.java` (relocated to `fontbox` package; no concrete `FileSystemFontProvider` shipped — see CHANGES.md) |
+| `pypdfbox/fontbox/cid_font_mapping.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/CIDFontMapping.java` (relocated to `fontbox` package) |
 | `pypdfbox/multipdf/__init__.py` | 3.0.x | new package — sibling files below |
 | `pypdfbox/multipdf/overlay.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Overlay.java` (PDFBOX-6048 lower-left positioning per CLAUDE.md alignment note) |
 | `pypdfbox/multipdf/pdf_clone_utility.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFCloneUtility.java` |

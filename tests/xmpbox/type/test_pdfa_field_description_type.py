@@ -6,8 +6,12 @@ from pypdfbox.xmpbox import XMPMetadata
 from pypdfbox.xmpbox.type import (
     AbstractStructuredType,
     ChoiceType,
+    PDFAFieldDescriptionType,
     PDFAFieldType,
     TextType,
+)
+from pypdfbox.xmpbox.type.pdfa_field_description_type import (
+    PDFAFieldDescriptionType as DirectFieldAlias,
 )
 
 
@@ -67,3 +71,30 @@ def test_field_type_table() -> None:
         "valueType": "Choice",
         "description": "Text",
     }
+
+
+def test_field_description_alias_is_pdfa_field_type() -> None:
+    # Symmetric to ``PDFAValueTypeDescriptionType is PDFATypeType``: the
+    # schema-level descriptive name resolves to the canonical class so
+    # ``isinstance`` semantics are preserved across both spellings.
+    assert PDFAFieldDescriptionType is PDFAFieldType
+
+
+def test_direct_field_description_alias_is_pdfa_field_type() -> None:
+    assert DirectFieldAlias is PDFAFieldType
+
+
+def test_field_description_alias_instance_is_pdfa_field_type(
+    metadata: XMPMetadata,
+) -> None:
+    inst = PDFAFieldDescriptionType(metadata)
+    assert isinstance(inst, PDFAFieldType)
+    assert inst.get_namespace() == "http://www.aiim.org/pdfa/ns/field#"
+    assert inst.get_prefix() == "pdfaField"
+
+
+def test_module_all_exports_alias() -> None:
+    from pypdfbox.xmpbox.type import pdfa_field_description_type as mod
+
+    assert "PDFAFieldDescriptionType" in mod.__all__
+    assert "PDFAFieldType" in mod.__all__
