@@ -25,11 +25,13 @@ from .pdfa_type_type import PDFATypeType
 from .proper_name_type import ProperNameType
 from .rational_type import RationalType
 from .real_type import RealType
+from .rendition_class_type import RenditionClassType
 from .resource_event_type import ResourceEventType
 from .resource_ref_type import ResourceRefType
 from .text_type import TextType
 from .thumbnail_type import ThumbnailType
 from .uri_type import URIType
+from .url_type import URLType
 from .version_type import VersionType
 
 if TYPE_CHECKING:
@@ -44,10 +46,11 @@ _SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
     "Date": DateType,
     "Real": RealType,
     "URI": URIType,
-    "URL": URIType,
+    "URL": URLType,
     "ProperName": ProperNameType,
     "AgentName": AgentNameType,
     "MIMEType": MIMEType,
+    "RenditionClass": RenditionClassType,
     "GUID": GUIDType,
     "Choice": ChoiceType,
     "Rational": RationalType,
@@ -163,8 +166,13 @@ class TypeMapping:
 
     def create_url(
         self, ns_uri: str | None, prefix: str | None, name: str, value: str
-    ) -> URIType:
-        return URIType(self._metadata, ns_uri, prefix, name, value)
+    ) -> URLType:
+        return URLType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_rendition_class(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> RenditionClassType:
+        return RenditionClassType(self._metadata, ns_uri, prefix, name, value)
 
     def create_proper_name(
         self, ns_uri: str | None, prefix: str | None, name: str, value: str

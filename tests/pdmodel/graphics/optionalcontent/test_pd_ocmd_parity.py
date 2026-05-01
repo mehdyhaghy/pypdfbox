@@ -128,3 +128,109 @@ def test_set_visibility_expression_none_removes_entry() -> None:
     assert ocmd.get_visibility_expression() is None
     raw = ocmd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("VE"))
     assert raw is None
+
+
+# ---------- /Type accessor (PDFBox getType parity) ----------
+
+
+def test_get_type_returns_ocmd_for_fresh_dict() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    assert ocmd.get_type() == COSName.get_pdf_name("OCMD")
+
+
+def test_get_type_returns_ocmd_when_existing_dict_round_tripped() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    g = PDOptionalContentGroup("Layer")
+    ocmd.set_ocgs([g])
+    # round-trip via wrapping the same dict again
+    again = PDOptionalContentMembershipDictionary(ocmd.get_cos_object())
+    assert again.get_type() == COSName.get_pdf_name("OCMD")
+
+
+# ---------- get_visibility_policy_name (upstream COSName return) ----------
+
+
+def test_get_visibility_policy_name_default_any_on() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    assert ocmd.get_visibility_policy_name() == COSName.get_pdf_name("AnyOn")
+
+
+def test_get_visibility_policy_name_after_set() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_visibility_policy("AllOff")
+    assert ocmd.get_visibility_policy_name() == COSName.get_pdf_name("AllOff")
+
+
+def test_set_visibility_policy_name_round_trips_cos_name() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_visibility_policy_name(COSName.get_pdf_name("AnyOff"))
+    assert ocmd.get_visibility_policy() == "AnyOff"
+    assert ocmd.get_visibility_policy_name() == COSName.get_pdf_name("AnyOff")
+
+
+def test_set_visibility_policy_name_accepts_arbitrary_cos_name() -> None:
+    # Upstream setVisibilityPolicy(COSName) does not validate; mirror that.
+    ocmd = PDOptionalContentMembershipDictionary()
+    ocmd.set_visibility_policy_name(COSName.get_pdf_name("Bogus"))
+    raw = ocmd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("P"))
+    assert raw == COSName.get_pdf_name("Bogus")
+
+
+def test_set_visibility_policy_name_rejects_non_cos_name() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    with pytest.raises(TypeError):
+        ocmd.set_visibility_policy_name("AllOn")  # type: ignore[arg-type]
+
+
+# ---------- get_ocgs_property_list (upstream List<PDPropertyList> return) ----
+
+
+def test_get_ocgs_property_list_default_empty() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    assert ocmd.get_ocgs_property_list() == []
+
+
+def test_get_ocgs_property_list_returns_ocgs() -> None:
+    from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
+
+    ocmd = PDOptionalContentMembershipDictionary()
+    g1 = PDOptionalContentGroup("L1")
+    g2 = PDOptionalContentGroup("L2")
+    ocmd.set_ocgs([g1, g2])
+
+    plist = ocmd.get_ocgs_property_list()
+    assert len(plist) == 2
+    assert all(isinstance(p, PDPropertyList) for p in plist)
+
+
+def test_get_ocgs_property_list_includes_nested_ocmd() -> None:
+    """Upstream returns ``List<PDPropertyList>`` so nested OCMDs surface;
+    :meth:`get_ocgs` filters them out, but the property-list flavour does not.
+    """
+    outer = PDOptionalContentMembershipDictionary()
+    g = PDOptionalContentGroup("Real")
+    nested = PDOptionalContentMembershipDictionary()
+    arr = COSArray()
+    arr.add(g.get_cos_object())
+    arr.add(nested.get_cos_object())
+    outer.get_cos_object().set_item(COSName.get_pdf_name("OCGs"), arr)
+
+    plist = outer.get_ocgs_property_list()
+    # Both entries surface; nested OCMD makes it through.
+    assert len(plist) == 2
+    assert any(
+        isinstance(p, PDOptionalContentMembershipDictionary) for p in plist
+    )
+    # ``get_ocgs`` continues to filter to OCG only.
+    assert len(outer.get_ocgs()) == 1
+
+
+def test_get_ocgs_property_list_handles_single_dictionary_entry() -> None:
+    ocmd = PDOptionalContentMembershipDictionary()
+    g = PDOptionalContentGroup("Solo")
+    ocmd.get_cos_object().set_item(
+        COSName.get_pdf_name("OCGs"), g.get_cos_object()
+    )
+    plist = ocmd.get_ocgs_property_list()
+    assert len(plist) == 1
+    assert plist[0].get_cos_object() is g.get_cos_object()

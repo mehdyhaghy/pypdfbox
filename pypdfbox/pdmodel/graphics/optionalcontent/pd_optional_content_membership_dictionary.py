@@ -84,6 +84,21 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    # ---------- /Type ----------
+
+    def get_type(self) -> COSName:
+        """Return the /Type value, always ``/OCMD`` for an OCMD.
+
+        Mirrors the PDFBox convention of exposing a ``getType()`` accessor on
+        typed COS wrappers — handy when callers need to round-trip without
+        hard-coding the literal name.
+        """
+        value = self._dict.get_dictionary_object(_TYPE)
+        if isinstance(value, COSName):
+            return value
+        # Defensive: if /Type was somehow stripped, return the canonical name.
+        return _OCMD
+
     # ---------- /OCGs ----------
 
     def get_o_cgs(self) -> list[PDOptionalContentGroup]:
@@ -146,6 +161,32 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
         """
         return self.get_o_cgs()
 
+    def get_ocgs_property_list(self) -> list[PDPropertyList]:
+        """Return /OCGs entries as ``PDPropertyList`` instances.
+
+        Strict parity with upstream ``getOCGs() : List<PDPropertyList>`` —
+        unlike :meth:`get_ocgs` (which filters down to
+        ``PDOptionalContentGroup`` only), this preserves every
+        ``PDPropertyList`` subclass returned by ``PDPropertyList.create``,
+        including nested ``PDOptionalContentMembershipDictionary`` entries.
+        """
+        base = self._dict.get_dictionary_object(_OCGS)
+        if base is None:
+            return []
+        if isinstance(base, COSDictionary):
+            wrapped = PDPropertyList.create(base)
+            return [wrapped] if wrapped is not None else []
+        if isinstance(base, COSArray):
+            result: list[PDPropertyList] = []
+            for i in range(base.size()):
+                elem = base.get_object(i)
+                if isinstance(elem, COSDictionary):
+                    wrapped = PDPropertyList.create(elem)
+                    if wrapped is not None:
+                        result.append(wrapped)
+            return result
+        return []
+
     def set_ocgs(
         self,
         ocgs: (
@@ -204,6 +245,33 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
         return MembershipDictionaryVisibilityPolicy.value_of(
             self.get_visibility_policy()
         )
+
+    def get_visibility_policy_name(self) -> COSName:
+        """Return /P as a ``COSName``, defaulting to ``/AnyOn``.
+
+        Strict parity with upstream
+        ``getVisibilityPolicy() : COSName`` (which returns the raw
+        ``COSName`` rather than its string form).
+        """
+        value = self._dict.get_dictionary_object(_P)
+        if isinstance(value, COSName):
+            return value
+        return _ANY_ON
+
+    def set_visibility_policy_name(self, visibility_policy: COSName) -> None:
+        """Write /P with a raw ``COSName``.
+
+        Strict parity with upstream
+        ``setVisibilityPolicy(COSName visibilityPolicy)`` — accepts any
+        ``COSName`` without enum-style validation. Use
+        :meth:`set_visibility_policy` if you want the spec-name guard.
+        """
+        if not isinstance(visibility_policy, COSName):
+            raise TypeError(
+                "visibility_policy must be COSName, "
+                f"got {type(visibility_policy).__name__}"
+            )
+        self._dict.set_item(_P, visibility_policy)
 
     # ---------- /VE (visibility expression) ----------
 

@@ -17,11 +17,13 @@ from pypdfbox.xmpbox import (
     MIMEType,
     ProperNameType,
     RealType,
+    RenditionClassType,
     ResourceEventType,
     ResourceRefType,
     TextType,
     TypeMapping,
     URIType,
+    URLType,
     VersionType,
     XMPMetadata,
 )
@@ -47,7 +49,10 @@ def test_create_simple_types(mapping: TypeMapping) -> None:
     )
     assert isinstance(mapping.create_real("ns", "p", "n", 1.5), RealType)
     assert isinstance(mapping.create_uri("ns", "p", "n", "u"), URIType)
-    assert isinstance(mapping.create_url("ns", "p", "n", "u"), URIType)
+    assert isinstance(mapping.create_url("ns", "p", "n", "u"), URLType)
+    assert isinstance(
+        mapping.create_rendition_class("ns", "p", "n", "s"), RenditionClassType
+    )
     assert isinstance(mapping.create_proper_name("ns", "p", "n", "s"), ProperNameType)
     assert isinstance(mapping.create_agent_name("ns", "p", "n", "s"), AgentNameType)
     assert isinstance(mapping.create_mime_type("ns", "p", "n", "s"), MIMEType)
@@ -78,10 +83,11 @@ def test_create_array_and_lang_alt(mapping: TypeMapping) -> None:
         ("Boolean", True, BooleanType),
         ("Real", 1.5, RealType),
         ("URI", "https://example.com/", URIType),
-        ("URL", "https://example.com/", URIType),
+        ("URL", "https://example.com/", URLType),
         ("ProperName", "Bob", ProperNameType),
         ("AgentName", "agent", AgentNameType),
         ("MIMEType", "image/png", MIMEType),
+        ("RenditionClass", "default", RenditionClassType),
         ("GUID", "abc-123", GUIDType),
         ("Choice", "x", ChoiceType),
     ],

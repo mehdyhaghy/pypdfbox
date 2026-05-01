@@ -43,12 +43,14 @@ from .pdfa_value_type_description_type import PDFAValueTypeDescriptionType
 from .proper_name_type import ProperNameType
 from .rational_type import RationalType
 from .real_type import RealType
+from .rendition_class_type import RenditionClassType
 from .resource_event_type import ResourceEventType
 from .resource_ref_type import ResourceRefType
 from .text_type import TextType
 from .thumbnail_type import ThumbnailType
 from .type_mapping import TypeMapping
 from .uri_type import URIType
+from .url_type import URLType
 from .version_type import VersionType
 
 __all__ = [
@@ -80,11 +82,13 @@ __all__ = [
     "ProperNameType",
     "RationalType",
     "RealType",
+    "RenditionClassType",
     "ResourceEventType",
     "ResourceRefType",
     "TextType",
     "ThumbnailType",
     "TypeMapping",
     "URIType",
+    "URLType",
     "VersionType",
 ]

@@ -36,6 +36,7 @@ from pypdfbox.xmpbox.type import (
     TextType,
     ThumbnailType,
     URIType,
+    URLType,
 )
 
 _TYPE_TO_CLS: dict[str, type[AbstractSimpleProperty]] = {
@@ -45,7 +46,7 @@ _TYPE_TO_CLS: dict[str, type[AbstractSimpleProperty]] = {
     "AgentName": AgentNameType,
     "Date": DateType,
     "URI": URIType,
-    "URL": URIType,
+    "URL": URLType,
     "Integer": IntegerType,
     "Real": RealType,
     "Boolean": BooleanType,
