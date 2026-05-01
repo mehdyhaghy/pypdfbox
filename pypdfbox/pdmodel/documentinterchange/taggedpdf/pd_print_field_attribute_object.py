@@ -100,6 +100,19 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     def set_description(self, description: str | None) -> None:
         self.set_alternate_name(description)
 
+    def __str__(self) -> str:
+        """Mirror upstream ``PDPrintFieldAttributeObject.toString()`` which
+        appends ``", Role=<role>"`` / ``", Checked=<state>"`` /
+        ``", Desc=<desc>"`` for each entry that is specified."""
+        sb = super().__str__()
+        if self.is_specified(self.ROLE):
+            sb = f"{sb}, Role={self.get_role()}"
+        if self.is_specified(self.CHECKED):
+            sb = f"{sb}, Checked={self.get_checked_state()}"
+        if self.is_specified(self.DESC):
+            sb = f"{sb}, Desc={self.get_alternate_name()}"
+        return sb
+
     def __repr__(self) -> str:
         return (
             f"PDPrintFieldAttributeObject(O={self.get_owner()}, "

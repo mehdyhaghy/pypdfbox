@@ -172,6 +172,24 @@ class PDAttributeObject:
             return
         self._structure_element.attribute_changed(self)
 
+    # ---------- string formatting helpers (PDFBox parity) ----------
+
+    @staticmethod
+    def array_to_string(array: object) -> str:
+        """Format a sequence as ``"[a, b, c]"``. Mirrors upstream
+        ``PDAttributeObject.arrayToString(Object[])`` /
+        ``arrayToString(float[])`` which both delegate to
+        ``StringJoiner(", ", "[", "]")``."""
+        if array is None:
+            raise TypeError("array_to_string requires a sequence, got None")
+        return "[" + ", ".join(str(item) for item in array) + "]"
+
+    def __str__(self) -> str:
+        """Mirror upstream ``PDAttributeObject.toString()`` which returns
+        ``"O=" + owner``. Subclasses extend this by appending their typed
+        attributes when ``is_specified()`` reports them."""
+        return f"O={self.get_owner()}"
+
     def __repr__(self) -> str:
         return f"O={self.get_owner()}"
 

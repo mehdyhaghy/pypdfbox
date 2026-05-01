@@ -328,3 +328,142 @@ def test_round_trip_with_array_operand_tj() -> None:
     assert len(reparsed) == len(tokens)
     for a, b in zip(tokens, reparsed, strict=True):
         assert _tokens_equal(a, b), f"{a!r} != {b!r}"
+
+
+# ---------- edge cases / parity round-out -----------------------------------
+
+
+def test_write_tokens_no_args_emits_just_newline() -> None:
+    """Upstream ``writeTokens(Object...)`` with an empty varargs array
+    still appends the trailing ``\\n``."""
+    out = _emit()
+    assert out == b"\n"
+
+
+def test_write_tokens_empty_list_emits_nothing() -> None:
+    """Upstream ``writeTokens(List<?>)`` with an empty list produces no
+    output (no trailing newline)."""
+    out = _emit_list([])
+    assert out == b""
+
+
+def test_write_tokens_empty_tuple_emits_nothing() -> None:
+    """Tuple form takes the ``List<?>`` path — no trailing newline."""
+    sink = io.BytesIO()
+    ContentStreamWriter(sink).write_tokens(())
+    assert sink.getvalue() == b""
+
+
+def test_write_tokens_accepts_generator() -> None:
+    """pypdfbox extension: any iterable (generator, ``map``, custom)
+    triggers the ``List<?>`` overload — no trailing newline. Upstream
+    Java would only accept ``List<?>`` here; in Python any iterable is
+    natural."""
+
+    def _gen() -> object:
+        yield COSInteger.get(1)
+        yield COSInteger.get(2)
+        yield Operator.get_operator(OperatorName.BEGIN_TEXT)
+
+    sink = io.BytesIO()
+    ContentStreamWriter(sink).write_tokens(_gen())
+    assert sink.getvalue() == b"1 2 BT\n"
+
+
+def test_write_tokens_accepts_iterator() -> None:
+    """``iter([...])`` is a plain ``Iterator`` — also covered."""
+    sink = io.BytesIO()
+    ContentStreamWriter(sink).write_tokens(iter([COSInteger.get(7)]))
+    assert sink.getvalue() == b"7 "
+
+
+def test_write_tokens_single_cos_array_is_token_not_iterable() -> None:
+    """A single ``COSArray`` argument keeps the *varargs* semantics
+    (emit + trailing newline) — even though ``COSArray`` is itself
+    iterable, it is a token type."""
+    arr = COSArray([COSInteger.get(1), COSInteger.get(2)])
+    sink = io.BytesIO()
+    ContentStreamWriter(sink).write_tokens(arr)
+    # Token + SPACE + EOL (varargs trailing newline).
+    assert sink.getvalue() == b"[1 2 ] \n"
+
+
+def test_inline_image_with_empty_params_dict() -> None:
+    """``BI ... ID ... EI`` with no parameter entries — no key/value
+    lines between ``BI`` and ``ID``."""
+    bi = Operator.get_operator(OperatorName.BEGIN_INLINE_IMAGE)
+    bi.set_image_parameters(COSDictionary())
+    bi.set_image_data(b"\xff\xff")
+    out = _emit_token(bi)
+    assert out == b"BI\nID\n\xff\xff\nEI\n"
+
+
+def test_inline_image_with_empty_image_data_bytes() -> None:
+    """Empty (``b""``) image data still emits the ``ID`` / ``EI`` frame
+    correctly — only the data bytes themselves are omitted."""
+    bi = Operator.get_operator(OperatorName.BEGIN_INLINE_IMAGE)
+    params = COSDictionary()
+    params.set_int("W", 0)
+    params.set_int("H", 0)
+    bi.set_image_parameters(params)
+    bi.set_image_data(b"")
+    out = _emit_token(bi)
+    assert out == b"BI\n/W 0 \n/H 0 \nID\n\nEI\n"
+
+
+def test_random_access_write_only_sink_works_end_to_end() -> None:
+    """A sink that exposes only ``write_bytes(...)`` (no ``write``) is
+    the ``RandomAccessWrite`` shape; ``ContentStreamWriter`` must
+    transparently fall through to it for both raw and string paths."""
+
+    class _RawWrite:
+        """Mimics ``RandomAccessWrite``: only ``write_bytes`` available."""
+
+        def __init__(self) -> None:
+            self.buf = bytearray()
+
+        def write_bytes(
+            self, data: bytes | bytearray | memoryview, off: int = 0, length: int | None = None
+        ) -> None:
+            if length is None:
+                self.buf.extend(bytes(data)[off:])
+            else:
+                self.buf.extend(bytes(data)[off : off + length])
+
+    sink = _RawWrite()
+    writer = ContentStreamWriter(sink)
+    writer.write_tokens(
+        COSString(b"Hi"),
+        COSInteger.get(2),
+        Operator.get_operator(OperatorName.SHOW_TEXT_LINE),
+    )
+    # Mirrors what ``BytesIO`` would have collected for the same call.
+    # Operator's own EOL plus the varargs ``write_tokens`` trailing EOL.
+    assert bytes(sink.buf) == b"(Hi) 2 '\n\n"
+
+
+def test_random_access_write_inline_image_data() -> None:
+    """The inline-image ``ID``-payload path also uses the low-level
+    write helper, so the ``write_bytes``-only sink must round-trip the
+    binary image bytes verbatim."""
+
+    class _RawWrite:
+        def __init__(self) -> None:
+            self.buf = bytearray()
+
+        def write_bytes(
+            self, data: bytes | bytearray | memoryview, off: int = 0, length: int | None = None
+        ) -> None:
+            if length is None:
+                self.buf.extend(bytes(data)[off:])
+            else:
+                self.buf.extend(bytes(data)[off : off + length])
+
+    bi = Operator.get_operator(OperatorName.BEGIN_INLINE_IMAGE)
+    params = COSDictionary()
+    params.set_int("W", 1)
+    bi.set_image_parameters(params)
+    bi.set_image_data(b"\x00\x01\x02\x03")
+    sink = _RawWrite()
+    ContentStreamWriter(sink).write_token(bi)
+    assert bytes(sink.buf) == b"BI\n/W 1 \nID\n\x00\x01\x02\x03\nEI\n"

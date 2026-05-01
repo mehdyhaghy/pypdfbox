@@ -892,3 +892,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## DateConverter port — xmpbox utility for ISO 8601 / PDF date strings
 
 - `pypdfbox/xmpbox/date_converter.py` (NEW): port of `org.apache.xmpbox.DateConverter`. Surfaces `DateConverter.to_calendar(str | None) -> datetime | None` and `DateConverter.to_iso8601(datetime, print_millis=False) -> str` (also exposed as module-level functions). Returns timezone-aware `datetime` instead of `java.util.Calendar`; naive ISO 8601 strings are anchored to UTC (matches upstream `fromISO8601` `LocalDateTime.atZone(ZoneId.of("UTC"))` fallback). Year 0 input is rejected with `OSError` because Python `datetime` does not support year 0 — upstream `0000-01-01` round-trips to `0001-01-01` via `GregorianCalendar` BCE handling. The constructor raises `TypeError` to mirror upstream `private DateConverter()`. Wired into `pypdfbox.xmpbox.__init__` for re-export.
+
+## ContentStreamWriter — write_tokens iterable acceptance
+
+- `pypdfbox/pdfwriter/content_stream_writer.py`: `write_tokens(...)` now accepts any iterable (generator, `deque`, `map`, custom `Iterable`) as the single-argument `List<?>` overload, not just `list` / `tuple`. Token / bytes-like single-argument calls (`write_tokens(cos_array)`, `write_tokens(b"raw")`) keep their varargs semantics. Upstream's Java signature is `writeTokens(List<?>)` only; this is a Pythonic ergonomic extension — output bytes are unchanged for any input upstream would have accepted.

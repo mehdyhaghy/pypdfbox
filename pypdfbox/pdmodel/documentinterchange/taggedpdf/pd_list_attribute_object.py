@@ -43,6 +43,14 @@ class PDListAttributeObject(PDStandardAttributeObject):
     def set_list_numbering(self, list_numbering: str) -> None:
         self._set_name("ListNumbering", list_numbering)
 
+    def __str__(self) -> str:
+        """Mirror upstream ``PDListAttributeObject.toString()`` which
+        appends ``", ListNumbering=<value>"`` when the entry is specified."""
+        base = super().__str__()
+        if self.is_specified(self.LIST_NUMBERING):
+            return f"{base}, ListNumbering={self.get_list_numbering()}"
+        return base
+
     def __repr__(self) -> str:
         return (
             f"PDListAttributeObject(O={self.get_owner()}, "

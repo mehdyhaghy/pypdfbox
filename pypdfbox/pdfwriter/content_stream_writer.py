@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Iterator
 from typing import Any, BinaryIO
 
 from pypdfbox.contentstream import Operator, OperatorName
@@ -90,17 +91,46 @@ class ContentStreamWriter:
           with a single ``\\n`` to match upstream).
         - ``writer.write_tokens([t1, t2, t3])`` — list form (no trailing
           newline; matches upstream's ``writeTokens(List<?>)``).
+
+        Any non-token iterable (list, tuple, generator, custom iterable)
+        passed as the *only* positional argument is treated as the
+        ``List<?>`` overload. Token types (``COSBase``, ``Operator``) and
+        bytes-like operands are excluded from the iterable detection so
+        that ``write_tokens(some_cos_array)`` keeps the varargs semantics
+        even though ``COSArray`` is itself iterable.
         """
         # Disambiguate: a single iterable argument that isn't itself a
         # COSBase / Operator behaves like the ``List<?>`` overload (no
         # trailing newline). Anything else is the varargs overload.
-        if len(tokens) == 1 and isinstance(tokens[0], (list, tuple)):
+        if len(tokens) == 1 and self._is_list_overload(tokens[0]):
             for token in tokens[0]:
                 self._write_object(token)
             return
         for token in tokens:
             self._write_object(token)
         self._write(EOL)
+
+    @staticmethod
+    def _is_list_overload(arg: Any) -> bool:
+        """Return ``True`` if ``arg`` should trigger the ``List<?>``
+        overload of :meth:`write_tokens` (no trailing newline).
+
+        Lists and tuples always qualify. Other iterables (generators,
+        deques, custom iterables) qualify too, *except* for token /
+        bytes-like types that need to be passed through to the varargs
+        arm and dispatched as a single token.
+        """
+        if isinstance(arg, (list, tuple)):
+            return True
+        if isinstance(
+            arg,
+            (COSBase, Operator, _ParserOperator, bytes, bytearray, memoryview, str),
+        ):
+            return False
+        # Iterators and generic iterables (e.g. ``deque``, ``map``,
+        # generator expressions) — pypdfbox extension over upstream's
+        # ``List<?>`` (see CHANGES.md).
+        return isinstance(arg, (Iterable, Iterator))
 
     # ---------- dispatch ----------
 

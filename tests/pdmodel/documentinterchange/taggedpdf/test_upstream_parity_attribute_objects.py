@@ -235,3 +235,63 @@ def test_export_format_owner_round_trip_via_constructor_owner_kwarg() -> None:
     ):
         obj = PDExportFormatAttributeObject(owner=owner)
         assert obj.get_owner() == owner
+
+
+# ---------- upstream-parity __str__ / toString ----------
+
+
+def test_pd_attribute_object_str_matches_upstream_owner_only() -> None:
+    """Upstream ``PDAttributeObject.toString()`` returns ``"O=" + owner``."""
+    # Use a concrete subclass with no extra entries set; PDListAttributeObject's
+    # __str__ falls through to the base when ListNumbering is unspecified.
+    obj = PDListAttributeObject()
+    assert str(obj) == "O=List"
+
+
+def test_pd_list_attribute_object_str_appends_list_numbering_when_specified() -> None:
+    """Upstream ``PDListAttributeObject.toString()`` appends
+    ``", ListNumbering=<value>"`` when the entry is specified."""
+    obj = PDListAttributeObject()
+    # Default: no ListNumbering written, so __str__ stays at the owner level.
+    assert str(obj) == "O=List"
+    obj.set_list_numbering(PDListAttributeObject.LIST_NUMBERING_DECIMAL)
+    assert str(obj) == "O=List, ListNumbering=Decimal"
+
+
+def test_pd_print_field_str_appends_specified_entries_in_upstream_order() -> None:
+    """Upstream ``PDPrintFieldAttributeObject.toString()`` appends
+    Role/Checked/Desc in that order, only when each is specified."""
+    obj = PDPrintFieldAttributeObject()
+    assert str(obj) == "O=PrintField"
+    obj.set_role(PDPrintFieldAttributeObject.ROLE_RB)
+    assert str(obj) == "O=PrintField, Role=rb"
+    obj.set_checked_state(PDPrintFieldAttributeObject.CHECKED_STATE_ON)
+    assert str(obj) == "O=PrintField, Role=rb, Checked=on"
+    obj.set_alternate_name("Submit")
+    assert str(obj) == "O=PrintField, Role=rb, Checked=on, Desc=Submit"
+
+
+def test_pd_print_field_str_skips_unset_entries() -> None:
+    """Only specified entries are appended; ordering follows upstream."""
+    obj = PDPrintFieldAttributeObject()
+    obj.set_alternate_name("just-desc")
+    assert str(obj) == "O=PrintField, Desc=just-desc"
+    obj2 = PDPrintFieldAttributeObject()
+    obj2.set_checked_state(PDPrintFieldAttributeObject.CHECKED_STATE_NEUTRAL)
+    assert str(obj2) == "O=PrintField, Checked=neutral"
+
+
+def test_pd_attribute_object_array_to_string_matches_upstream_format() -> None:
+    """Upstream ``PDAttributeObject.arrayToString(...)`` formats sequences as
+    ``"[a, b, c]"`` via ``StringJoiner(", ", "[", "]")``."""
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDAttributeObject,
+    )
+
+    assert PDAttributeObject.array_to_string([]) == "[]"
+    assert PDAttributeObject.array_to_string(["a"]) == "[a]"
+    assert PDAttributeObject.array_to_string(["a", "b", "c"]) == "[a, b, c]"
+    # float array path on upstream renders Float.toString — Python's str(float)
+    # collapses 1.0 to "1.0" too, so the visible output matches.
+    assert PDAttributeObject.array_to_string([1.0, 2.5, 3.0]) == "[1.0, 2.5, 3.0]"
+    assert PDAttributeObject.array_to_string((4, 5, 6)) == "[4, 5, 6]"
