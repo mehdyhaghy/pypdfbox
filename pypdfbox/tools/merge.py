@@ -114,11 +114,23 @@ def run(args: argparse.Namespace) -> int:
     # cheap insurance against any lazily-resolved indirect refs.
     open_sources: list[PDDocument] = []
     try:
-        for raw in inputs:
-            src = PDDocument.load(raw)
-            open_sources.append(src)
-            _import_source(src, out_doc)
-        out_doc.save(output)
+        try:
+            for raw in inputs:
+                src = PDDocument.load(raw)
+                open_sources.append(src)
+                _import_source(src, out_doc)
+            out_doc.save(output)
+        except OSError as exc:
+            # Mirror upstream PDFMerger's user-visible error format:
+            #   "Error merging documents [<ExcClass>]: <message>"
+            # and its exit code (4). The cli.py top-level catches OSError
+            # too, but emitting the merge-specific format here keeps the
+            # error message consistent with PDFBox.
+            print(
+                f"Error merging documents [{type(exc).__name__}]: {exc}",
+                flush=True,
+            )
+            return 4
     finally:
         out_doc.close()
         for src in open_sources:

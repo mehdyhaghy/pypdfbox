@@ -38,5 +38,26 @@ class PDMediaPlayParameters:
             return
         self._dict.set_item(_BE, be)
 
+    def get_or_create_mh(self) -> COSDictionary:
+        existing = self._dict.get_dictionary_object(_MH)
+        if isinstance(existing, COSDictionary):
+            return existing
+        fresh = COSDictionary()
+        self._dict.set_item(_MH, fresh)
+        return fresh
+
+    def get_or_create_be(self) -> COSDictionary:
+        existing = self._dict.get_dictionary_object(_BE)
+        if isinstance(existing, COSDictionary):
+            return existing
+        fresh = COSDictionary()
+        self._dict.set_item(_BE, fresh)
+        return fresh
+
+    def __repr__(self) -> str:
+        mh_state = "set" if self.get_mh() is not None else "unset"
+        be_state = "set" if self.get_be() is not None else "unset"
+        return f"PDMediaPlayParameters(MH={mh_state}, BE={be_state})"
+
 
 __all__ = ["PDMediaPlayParameters"]

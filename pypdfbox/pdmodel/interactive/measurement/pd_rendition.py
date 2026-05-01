@@ -71,5 +71,27 @@ class PDRendition:
             return
         self._dict.set_item(_BE, be)
 
+    def get_type(self) -> str | None:
+        return self._dict.get_name(_TYPE)
+
+    def get_or_create_mh(self) -> COSDictionary:
+        existing = self._dict.get_dictionary_object(_MH)
+        if isinstance(existing, COSDictionary):
+            return existing
+        fresh = COSDictionary()
+        self._dict.set_item(_MH, fresh)
+        return fresh
+
+    def get_or_create_be(self) -> COSDictionary:
+        existing = self._dict.get_dictionary_object(_BE)
+        if isinstance(existing, COSDictionary):
+            return existing
+        fresh = COSDictionary()
+        self._dict.set_item(_BE, fresh)
+        return fresh
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(S={self.get_subtype()!r}, N={self.get_n()!r})"
+
 
 __all__ = ["PDRendition"]

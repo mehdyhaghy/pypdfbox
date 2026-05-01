@@ -37,8 +37,60 @@ def test_split_with_page_range(make_pdf) -> None:
         ["split", "-i", str(pdf), "-startPage", "3", "-endPage", "5"]
     )
     parts = sorted(pdf.parent.glob("ranged-*.pdf"))
-    # pages 3..5 inclusive = 3 pages, default split=1 → 3 files.
+    # Upstream parity: a bare range with no -split emits the entire range
+    # as a SINGLE output file (PDFSplit.java sets splitAtPage=numberOfPages
+    # or endPage when start/end are present and split is unset).
+    assert len(parts) == 1
+    with PDDocument.load(parts[0]) as d:
+        assert d.get_number_of_pages() == 3
+
+
+def test_split_with_page_range_and_explicit_split(make_pdf) -> None:
+    pdf = make_pdf("rangesplit.pdf", page_count=10)
+    cli.run_cli(
+        [
+            "split", "-i", str(pdf),
+            "-startPage", "3", "-endPage", "8",
+            "-split", "2",
+        ]
+    )
+    parts = sorted(pdf.parent.glob("rangesplit-*.pdf"))
+    # Pages 3..8 inclusive = 6 pages, split=2 → 3 files of 2 pages each.
     assert len(parts) == 3
+    sizes = [PDDocument.load(p).get_number_of_pages() for p in parts]
+    assert sizes == [2, 2, 2]
+
+
+def test_split_only_start_page(make_pdf) -> None:
+    pdf = make_pdf("startonly.pdf", page_count=5)
+    cli.run_cli(["split", "-i", str(pdf), "-startPage", "3"])
+    parts = sorted(pdf.parent.glob("startonly-*.pdf"))
+    # startPage=3 only, no -split: pages 3..5 = single file with 3 pages.
+    assert len(parts) == 1
+    with PDDocument.load(parts[0]) as d:
+        assert d.get_number_of_pages() == 3
+
+
+def test_split_password_flag_accepts_unencrypted_doc(make_pdf) -> None:
+    pdf = make_pdf("nopwd.pdf", page_count=2)
+    rc = cli.run_cli(
+        ["split", "-i", str(pdf), "-password", "ignored"]
+    )
+    # PDDocument.load tolerates a password on an unencrypted doc; verify
+    # the flag is accepted end-to-end.
+    assert rc == 0
+    parts = sorted(pdf.parent.glob("nopwd-*.pdf"))
+    assert len(parts) == 2
+
+
+def test_split_password_long_form(make_pdf) -> None:
+    pdf = make_pdf("nopwd2.pdf", page_count=2)
+    rc = cli.run_cli(
+        ["split", "-i", str(pdf), "--password", "ignored"]
+    )
+    assert rc == 0
+    parts = sorted(pdf.parent.glob("nopwd2-*.pdf"))
+    assert len(parts) == 2
 
 
 def test_split_custom_prefix(tmp_path: Path, make_pdf) -> None:

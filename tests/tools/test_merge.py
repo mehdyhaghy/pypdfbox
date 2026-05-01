@@ -61,3 +61,19 @@ def test_merge_long_form_flags(tmp_path: Path, make_pdf) -> None:
     rc = cli.run_cli(["merge", "--input", str(a), str(b), "--output", str(out)])
     assert rc == 0
     assert out.is_file()
+
+
+def test_merge_load_error_uses_upstream_message_format(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], make_pdf
+) -> None:
+    """Mirror upstream PDFMerger's user-visible error format:
+    ``Error merging documents [<ExcClass>]: <message>`` with exit code 4."""
+    good = make_pdf("good.pdf")
+    bad = tmp_path / "bad.pdf"
+    bad.write_bytes(b"not a real pdf")
+    out = tmp_path / "out.pdf"
+    rc = cli.run_cli(["merge", "-i", str(good), str(bad), "-o", str(out)])
+    assert rc == 4
+    captured = capsys.readouterr().out
+    assert "Error merging documents [" in captured
+    assert "]:" in captured
