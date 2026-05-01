@@ -203,3 +203,47 @@ def test_embedded_file_mac_res_fork_aliases_round_trip() -> None:
 def test_embedded_file_mac_res_fork_alias_default_none() -> None:
     embedded = PDEmbeddedFile()
     assert embedded.get_mac_res_fork() is None
+
+
+# ---------- Class-level Type-name constants ----------
+
+
+def test_complex_filespec_type_constant_matches_dict_entry() -> None:
+    spec = PDComplexFileSpecification()
+    cos = spec.get_cos_object()
+    assert PDComplexFileSpecification.FILESPEC == "Filespec"
+    assert cos.get_name(COSName.TYPE) == PDComplexFileSpecification.FILESPEC  # type: ignore[attr-defined]
+
+
+def test_embedded_file_type_constant_matches_stream_entry() -> None:
+    embedded = PDEmbeddedFile()
+    assert PDEmbeddedFile.EMBEDDED_FILE == "EmbeddedFile"
+    assert (
+        embedded.get_cos_object().get_name(COSName.TYPE)  # type: ignore[attr-defined]
+        == PDEmbeddedFile.EMBEDDED_FILE
+    )
+
+
+# ---------- PDEmbeddedFile string-form check sum (upstream-typed) ----------
+
+
+def test_embedded_file_check_sum_string_round_trip() -> None:
+    embedded = PDEmbeddedFile()
+    assert embedded.get_check_sum_string() is None
+    embedded.set_check_sum_string("abcdef0123456789")
+    assert embedded.get_check_sum_string() == "abcdef0123456789"
+
+
+def test_embedded_file_check_sum_string_clear() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_check_sum_string("deadbeef")
+    embedded.set_check_sum_string(None)
+    assert embedded.get_check_sum_string() is None
+    assert embedded.get_check_sum() is None
+
+
+def test_embedded_file_check_sum_string_clear_when_no_params_is_noop() -> None:
+    embedded = PDEmbeddedFile()
+    # No /Params dict yet — clearing should not raise nor create one.
+    embedded.set_check_sum_string(None)
+    assert embedded.get_check_sum_string() is None

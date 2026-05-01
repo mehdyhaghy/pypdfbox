@@ -11,6 +11,7 @@ plain :class:`XMPSchema`. Writing, ``TypeMapping``, and the rich
 from __future__ import annotations
 
 from .adobe_pdf_schema import AdobePDFSchema
+from .date_converter import DateConverter
 from .dom_xmp_parser import DomXmpParser, XmpParsingException
 from .dublin_core_schema import DublinCoreSchema
 from .exif_schema import ExifSchema
@@ -75,6 +76,7 @@ __all__ = [
     "Cardinality",
     "ChoiceType",
     "ColorantType",
+    "DateConverter",
     "DateType",
     "DimensionsType",
     "DomXmpParser",

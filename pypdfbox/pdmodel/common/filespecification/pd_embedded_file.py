@@ -122,6 +122,10 @@ class PDEmbeddedFile(PDStream):
     caller already has a PDF-formatted date) or ``None`` (clears the entry).
     """
 
+    #: Value written to the ``/Type`` entry of an embedded file stream
+    #: dictionary. Mirrors upstream ``COSName.EMBEDDED_FILE``.
+    EMBEDDED_FILE: str = "EmbeddedFile"
+
     def __init__(
         self,
         stream_or_document: COSStream | object | None = None,
@@ -236,6 +240,27 @@ class PDEmbeddedFile(PDStream):
         cs = COSString(bytes(checksum))
         cs.set_force_hex_form(True)
         self._ensure_params_dict().set_item(_CHECK_SUM, cs)
+
+    # Upstream's ``getCheckSum()`` / ``setCheckSum(String)`` are typed as
+    # ``String`` not ``byte[]``, so the string-form aliases below preserve
+    # the verbatim Java surface. They round-trip the checksum as a textual
+    # COSString — useful when callers already have a textual representation.
+    # The byte-form ``get_check_sum`` / ``set_check_sum`` above remains the
+    # primary API in pypdfbox (a deviation noted in CHANGES.md).
+
+    def get_check_sum_string(self) -> str | None:
+        params = self._params_dict()
+        if params is None:
+            return None
+        return params.get_string(_CHECK_SUM)
+
+    def set_check_sum_string(self, checksum: str | None) -> None:
+        if checksum is None:
+            params = self._params_dict()
+            if params is not None:
+                params.remove_item(_CHECK_SUM)
+            return
+        self._ensure_params_dict().set_string(_CHECK_SUM, checksum)
 
     # ---------- /Params/Creator ----------
 

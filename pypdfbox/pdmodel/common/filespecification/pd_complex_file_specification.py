@@ -21,6 +21,10 @@ class PDComplexFileSpecification(PDFileSpecification):
     """``/Type /Filespec`` dictionary form of a file specification. Mirrors
     PDFBox ``PDComplexFileSpecification``."""
 
+    #: Value written to the ``/Type`` entry of a complex file specification
+    #: dictionary. Mirrors upstream ``COSName.FILESPEC``.
+    FILESPEC: str = "Filespec"
+
     def __init__(self, dict_: COSDictionary | None = None) -> None:
         if dict_ is None:
             self._fs: COSDictionary = COSDictionary()

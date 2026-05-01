@@ -432,6 +432,7 @@ Cluster #1 — XMP packet read path. Wraps `xml.etree.ElementTree` (stdlib).
 | `pypdfbox/xmpbox/xmp_rights_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPRightsManagementSchema.java` (typed `Certificate` / `Marked` / `Owner` / `UsageTerms` / `WebStatement` accessors) |
 | `pypdfbox/xmpbox/xmp_media_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPMediaManagementSchema.java` (typed `DocumentID` / `InstanceID` / `OriginalDocumentID` / `VersionID` / `RenditionClass` / `RenditionParams` / `ManageTo` / `ManageUI` / `Manager` / `ManagerVariant` accessors; `DerivedFrom` / `Ingredients` deferred) |
 | `pypdfbox/xmpbox/dom_xmp_parser.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java` (+ `XmpParsingException.java`; read path only, ElementTree-backed) |
+| `pypdfbox/xmpbox/date_converter.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/DateConverter.java` (returns `datetime.datetime` instead of `Calendar`; naive ISO 8601 strings are anchored to UTC matching upstream's `fromISO8601` fallback; year-0 input rejected — Python `datetime` does not support year 0, deviates from upstream `0000-01-01` → `0001-01-01`) |
 
 ### `pypdfbox/tools/`
 
