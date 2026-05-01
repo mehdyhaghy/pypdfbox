@@ -843,6 +843,10 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/xmpbox/upstream/test_xmp_basic_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPBasicTest.java` |
 | `tests/xmpbox/upstream/test_dublin_core_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/DublinCoreTest.java` |
 | `tests/fontbox/afm/upstream/test_afm_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/AFMParserTest.java` |
+| `tests/fontbox/afm/upstream/test_font_metrics.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/FontMetricsTest.java` |
+| `tests/fontbox/afm/upstream/test_char_metric.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/CharMetricTest.java` |
+| `tests/fontbox/afm/upstream/test_composite.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/CompositeTest.java` |
+| `tests/fontbox/afm/upstream/test_kern_pair.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/KernPairTest.java` |
 | `pypdfbox/pdmodel/pdfua_flavour.py` | 3.0.x | pypdfbox addition (no upstream Java class — modeled on veraPDF PDF/UA flavour metadata) |
 | `pypdfbox/tools/listbookmarks.py` | 3.0.x | `pdfbox-examples/src/main/java/org/apache/pdfbox/examples/pdmodel/PrintBookmarks.java` |
 | `pypdfbox/xmpbox/pdfua_identification_schema.py` | 3.0.x | pypdfbox addition (no upstream Java class — mirrors `PDFAIdentificationSchema` shape for PDF/UA `pdfuaid` namespace) |

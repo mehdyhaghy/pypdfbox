@@ -111,6 +111,19 @@ class PDDocument:
         # Policy staged by ``protect()`` and consumed by the writer at save.
         self._protection_policy: Any = None
 
+        # Pick up handler / encryption stashed by ``Loader.load_pdf`` when
+        # the COSDocument has already been auto-decrypted. This lets a
+        # caller-visible PDDocument wrapper (created after the transient
+        # decrypt-time wrapper has been discarded) report the correct
+        # ``get_current_access_permission`` without re-running the
+        # password-derivation pipeline.
+        loader_handler = getattr(self._document, "_loader_security_handler", None)
+        loader_encryption = getattr(self._document, "_loader_encryption", None)
+        if loader_handler is not None:
+            self._security_handler = loader_handler
+        if loader_encryption is not None:
+            self._encryption = loader_encryption
+
         # Optional ``Long`` seed consumed by COSWriter when deriving the
         # trailer's ``/ID`` array on a full save. ``None`` (the default) lets
         # the writer pick a random / time-based seed; a caller-supplied value

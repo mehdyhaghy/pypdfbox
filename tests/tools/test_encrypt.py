@@ -203,3 +203,33 @@ def test_encrypt_cli_invalid_key_length_returns_four(
     )
     assert rc == 4
     assert "Error encrypting" in capsys.readouterr().out
+
+
+# ------------------------------ upstream parity: print-faithful flag
+
+
+def test_encrypt_cli_no_can_print_faithful(
+    tmp_path: Path, make_pdf
+) -> None:
+    """`--no-canPrintFaithful` must clear the FAITHFUL_PRINT_BIT (the
+    high-quality print bit, 12) — verified by reading /P off the saved
+    /Encrypt dictionary. Upstream maps `-canPrintFaithful` directly to
+    `AccessPermission.setCanPrintFaithful`."""
+    src = make_pdf("faithful.pdf")
+    enc = tmp_path / "enc.pdf"
+    rc = cli.run_cli(
+        [
+            "encrypt", "-i", str(src), "-o", str(enc),
+            "-U", "user", "-keyLength", "128",
+            "--no-canPrintFaithful",
+        ]
+    )
+    assert rc == 0
+    with PDDocument.load(enc, password="user") as doc:
+        encryption = doc.get_encryption()
+        ap = AccessPermission(encryption.get_p())
+        # The faithful (high-quality) print bit must be off.
+        assert ap.can_print_faithful() is False
+        # Other defaults stay on.
+        assert ap.can_print() is True
+        assert ap.can_modify() is True

@@ -40,6 +40,7 @@ try:
 except ImportError:  # pragma: no cover
     from cryptography.hazmat.primitives.ciphers.algorithms import ARC4 as _ARC4
 
+from .access_permission import AccessPermission
 from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
@@ -652,6 +653,15 @@ class StandardSecurityHandler(SecurityHandler):
                         "Verification of /Perms failed — using /P from "
                         "the encryption dictionary"
                     )
+            # R5/R6: differentiating owner vs user path needs separate
+            # validation-salt checks (Algorithm 11/12). For now, default to
+            # /P-derived permissions; callers needing owner-vs-user distinction
+            # in R5/R6 can probe via ``compute_revision_5_or_6_owner_password``
+            # (left as future work — the existing standard tests in
+            # tests/pdmodel/encryption cover the key-derivation correctness).
+            ap = AccessPermission(self._permissions)
+            ap.set_read_only()
+            self.set_current_access_permission(ap)
             return
 
         # Revisions 2-4: try owner password first, then user password.
@@ -668,6 +678,12 @@ class StandardSecurityHandler(SecurityHandler):
         )
         if owner_key is not None:
             self.set_encryption_key(owner_key)
+            # Owner authenticated — full permissions. Mirrors upstream
+            # ``StandardSecurityHandler#prepareForDecryption`` setting
+            # ``setCurrentAccessPermission(AccessPermission.getOwnerAccessPermission())``.
+            self.set_current_access_permission(
+                AccessPermission.get_owner_access_permission()
+            )
             return
 
         user_key = self._compute_encryption_key_via_user_password(
@@ -682,6 +698,10 @@ class StandardSecurityHandler(SecurityHandler):
         )
         if user_key is not None:
             self.set_encryption_key(user_key)
+            # User authenticated — permissions limited by the /P bits.
+            ap = AccessPermission(self._permissions)
+            ap.set_read_only()
+            self.set_current_access_permission(ap)
             return
 
         raise PDInvalidPasswordException()

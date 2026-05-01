@@ -107,6 +107,15 @@ class Loader:
                 if owned:
                     access.close()
                 raise
+            # Stash the prepared security handler / encryption on the
+            # COSDocument so a *fresh* PDDocument wrapper (e.g. via
+            # ``PDDocument.load`` which re-wraps the result) can pick them
+            # up without re-running the (expensive) PBKDF2-based key
+            # derivation. This is the only path where ``_security_handler``
+            # would otherwise be lost between the transient decrypt-time
+            # wrapper and the caller-visible wrapper.
+            document._loader_security_handler = pd._security_handler  # noqa: SLF001
+            document._loader_encryption = pd._encryption  # noqa: SLF001
         return document
 
     @staticmethod

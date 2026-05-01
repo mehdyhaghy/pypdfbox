@@ -118,10 +118,9 @@ def _build_access_permission(args: argparse.Namespace) -> AccessPermission:
     ap.set_can_modify(args.can_modify)
     ap.set_can_modify_annotations(args.can_modify_annotations)
     ap.set_can_print(args.can_print)
-    # Upstream's ``-canPrintFaithful`` corresponds to AccessPermission's
-    # "print-degraded" bit (it controls high-quality printing; print
-    # degraded is the inverted-name companion in the spec).
-    ap.set_can_print_degraded(args.can_print_faithful)
+    # Upstream's ``-canPrintFaithful`` maps directly to
+    # ``AccessPermission.setCanPrintFaithful`` (the high-quality print bit).
+    ap.set_can_print_faithful(args.can_print_faithful)
     return ap
 
 
