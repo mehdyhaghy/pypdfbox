@@ -351,3 +351,81 @@ def test_destination_document_information_overrides(tmp_path: Path) -> None:
 
     with PDDocument.load(str(out)) as merged:
         assert merged.get_document_information().get_title() == "merged-title"
+
+
+# ---------- stream-cache / compress-parameters parity ----------
+
+
+def test_stream_cache_create_function_default_is_none() -> None:
+    util = PDFMergerUtility()
+    assert util.get_stream_cache_create_function() is None
+
+
+def test_stream_cache_create_function_setter_round_trip() -> None:
+    util = PDFMergerUtility()
+
+    def fake_factory() -> object:
+        return object()
+
+    util.set_stream_cache_create_function(fake_factory)
+    assert util.get_stream_cache_create_function() is fake_factory
+
+
+def test_compress_parameters_default_is_none() -> None:
+    util = PDFMergerUtility()
+    assert util.get_compress_parameters() is None
+
+
+def test_compress_parameters_setter_round_trip() -> None:
+    util = PDFMergerUtility()
+    sentinel = object()
+    util.set_compress_parameters(sentinel)
+    assert util.get_compress_parameters() is sentinel
+
+
+def test_merge_documents_kwargs_stage_setter_values(tmp_path: Path) -> None:
+    """Passing ``stream_cache_create_function`` / ``compress_parameters``
+    to :meth:`merge_documents` stages them on the instance, mirroring
+    upstream's overloaded ``mergeDocuments`` signatures."""
+    a = tmp_path / "a.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(1), a)
+
+    sc_fn = lambda: object()  # noqa: E731 — test sentinel
+    compress_sentinel = object()
+
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.set_destination_file_name(str(out))
+    util.merge_documents(
+        stream_cache_create_function=sc_fn,
+        compress_parameters=compress_sentinel,
+    )
+    assert util.get_stream_cache_create_function() is sc_fn
+    assert util.get_compress_parameters() is compress_sentinel
+    assert out.exists()
+
+
+def test_merge_documents_random_access_read_kwargs_stage_setter_values(
+    tmp_path: Path,
+) -> None:
+    """The :class:`RandomAccessRead` overload threads the same parity
+    kwargs through to :meth:`merge_documents`."""
+    from pypdfbox.io import RandomAccessReadBuffer
+
+    a = tmp_path / "a.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(1), a)
+    sc_fn = lambda: object()  # noqa: E731 — test sentinel
+    compress_sentinel = object()
+
+    util = PDFMergerUtility()
+    util.set_destination_file_name(str(out))
+    util.merge_documents_random_access_read(
+        [RandomAccessReadBuffer(a.read_bytes())],
+        stream_cache_create_function=sc_fn,
+        compress_parameters=compress_sentinel,
+    )
+    assert util.get_stream_cache_create_function() is sc_fn
+    assert util.get_compress_parameters() is compress_sentinel
+    assert out.exists()

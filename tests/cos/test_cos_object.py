@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSInteger, COSObject
+from pypdfbox.cos import COSInteger, COSNull, COSObject
 
 
 def test_basic_construction() -> None:
@@ -73,3 +73,67 @@ def test_visitor_dispatch() -> None:
 
 def test_repr_uses_pdf_indirect_syntax() -> None:
     assert repr(COSObject(7, 0)) == "COSObject(7 0 R)"
+
+
+def test_is_object_null_when_unresolved() -> None:
+    obj = COSObject(4, 0)
+    assert obj.is_object_null()
+
+
+def test_is_object_null_after_resolution() -> None:
+    obj = COSObject(4, 0, resolved=COSInteger(1))
+    assert not obj.is_object_null()
+
+
+def test_is_dereferenced_starts_false_until_load() -> None:
+    obj = COSObject(8, 0, loader=lambda o: COSInteger(5))
+    assert not obj.is_dereferenced()
+    obj.get_object()
+    assert obj.is_dereferenced()
+
+
+def test_is_dereferenced_true_when_constructed_with_resolved() -> None:
+    assert COSObject(9, 0, resolved=COSInteger(0)).is_dereferenced()
+
+
+def test_is_dereferenced_after_failed_load_remains_true() -> None:
+    """A loader that returns ``None`` (free xref entry) still flips the
+    dereferenced flag — preventing endless retry loops."""
+    obj = COSObject(10, 0, loader=lambda o: None)
+    assert obj.get_object() is None
+    assert obj.is_dereferenced()
+    assert obj.is_object_null()
+
+
+def test_get_object_does_not_recurse_through_loader() -> None:
+    """A loader that re-enters ``get_object()`` must not loop forever —
+    upstream marks the object dereferenced before invoking the loader."""
+    holder: list[COSObject] = []
+
+    def loader(o: COSObject) -> COSInteger | None:
+        # Re-entrant call inside the loader: must short-circuit.
+        holder.append(o)
+        assert o.get_object() is None  # not yet attached
+        return COSInteger(11)
+
+    obj = COSObject(11, 0, loader=loader)
+    assert obj.get_object() == COSInteger(11)
+    assert len(holder) == 1
+
+
+def test_set_to_null_pins_to_cos_null() -> None:
+    obj = COSObject(12, 0, loader=lambda o: COSInteger(99))
+    obj.set_to_null()
+    # Loader is dropped; the resolved object is the canonical COSNull.NULL.
+    assert obj.get_object() is COSNull.NULL
+    assert obj.is_dereferenced()
+    # ``is_object_null`` is False because COSNull.NULL is a concrete object,
+    # mirroring upstream where ``baseObject`` is non-null after setToNull.
+    assert not obj.is_object_null()
+
+
+def test_set_object_marks_dereferenced() -> None:
+    obj = COSObject(13, 0)
+    assert not obj.is_dereferenced()
+    obj.set_object(COSInteger(7))
+    assert obj.is_dereferenced()

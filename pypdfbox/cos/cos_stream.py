@@ -326,12 +326,24 @@ class COSStream(COSDictionary):
 
     # ---------- /Filter introspection ----------
 
+    def get_filters(self) -> COSBase | None:
+        """Return the raw ``/Filter`` value as stored on the dictionary.
+
+        Per ISO 32000-2 §7.4.2 the entry is one of:
+        - absent → ``None``
+        - a single ``COSName``
+        - a ``COSArray`` of ``COSName``
+
+        Mirrors upstream ``COSStream.getFilters()``. Use
+        :meth:`get_filter_list` to receive a normalized list of names."""
+        return self.get_dictionary_object(COSName.FILTER)  # type: ignore[attr-defined,no-any-return]
+
     def get_filter_list(self) -> list[COSName]:
         """Return the ``/Filter`` chain as a list of ``COSName``.
 
         Per PDF spec, ``/Filter`` may be absent, a single name, or an
         array of names. Returns ``[]`` when absent."""
-        f = self.get_dictionary_object(COSName.FILTER)  # type: ignore[attr-defined]
+        f = self.get_filters()
         if f is None:
             return []
         if isinstance(f, COSName):
@@ -345,6 +357,28 @@ class COSStream(COSDictionary):
                     raise TypeError(f"non-name entry in /Filter array: {entry!r}")
             return out
         raise TypeError(f"unexpected /Filter type: {type(f).__name__}")
+
+    # ---------- text-string convenience ----------
+
+    def to_text_string(self) -> str:
+        """Return the decoded body interpreted as a PDF text string.
+
+        Mirrors upstream ``COSStream.toTextString``: decode the body
+        through the ``/Filter`` chain, wrap the result in a ``COSString``,
+        and return its text-string representation (UTF-16BE BOM,
+        UTF-8 BOM, or PDFDocEncoding fallback). Returns ``""`` when the
+        body cannot be read for any reason — matches the upstream
+        swallow-and-log behavior."""
+        # Local import to avoid a static cycle (COSString lives next door
+        # but importing eagerly would tighten module-load ordering).
+        from .cos_string import COSString  # noqa: PLC0415
+
+        try:
+            with self.create_input_stream() as src:
+                data = src.read()
+        except (OSError, ValueError):
+            return ""
+        return COSString(data).get_string()
 
     # ---------- lifecycle ----------
 

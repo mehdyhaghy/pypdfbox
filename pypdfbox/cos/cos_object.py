@@ -34,6 +34,11 @@ class COSObject(COSBase):
         self._generation_number = generation_number
         self._loader = loader
         self._object: COSBase | None = resolved
+        # Whether a load attempt has run. Distinct from ``_object is None``:
+        # an unresolvable reference (free xref entry) leaves ``_object`` at
+        # ``None`` *after* the loader ran, which still counts as
+        # dereferenced. Mirrors upstream ``isDereferenced`` semantics.
+        self._dereferenced: bool = resolved is not None
 
     @property
     def object_number(self) -> int:
@@ -53,14 +58,20 @@ class COSObject(COSBase):
         """Resolve and cache the referenced object, invoking the loader on
         first access. Returns ``None`` if the reference cannot be resolved
         (e.g., free entry in the xref)."""
-        if self._object is None and self._loader is not None:
+        if not self._dereferenced and self._loader is not None:
+            # Mark dereferenced *before* invoking the loader so a recursive
+            # call (object graph cycles) doesn't re-enter and loop forever.
+            # Mirrors upstream ``COSObject.getObject``.
+            self._dereferenced = True
             self._object = self._loader(self)
+            self._loader = None
         return self._object
 
     def set_object(self, value: COSBase | None) -> None:
         """Manually attach a resolved object (used by the parser when it
         loads xref entries eagerly)."""
         self._object = value
+        self._dereferenced = True
 
     def set_loader(self, loader: Callable[[COSObject], COSBase | None] | None) -> None:
         """Attach (or replace) the lazy loader. ``None`` removes any loader.
@@ -70,6 +81,28 @@ class COSObject(COSBase):
 
     def is_object_loaded(self) -> bool:
         return self._object is not None
+
+    def is_dereferenced(self) -> bool:
+        """Return ``True`` once a load attempt has been made (whether it
+        produced a value or not). Mirrors upstream ``isDereferenced``."""
+        return self._dereferenced
+
+    def is_object_null(self) -> bool:
+        """Return ``True`` when no resolved object is attached. Mirrors
+        upstream ``isObjectNull`` — a free xref entry shows up as a
+        dereferenced object whose base is still null."""
+        return self._object is None
+
+    def set_to_null(self) -> None:
+        """Pin the referenced object to ``COSNull.NULL`` and drop the
+        loader so it can't replace it on next access. Mirrors upstream
+        ``setToNull``."""
+        # Local import to avoid a hard cos→cos_null cycle at module load.
+        from .cos_null import COSNull  # noqa: PLC0415
+
+        self._object = COSNull.NULL
+        self._loader = None
+        self._dereferenced = True
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_object(self)

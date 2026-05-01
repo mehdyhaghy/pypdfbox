@@ -125,3 +125,51 @@ def test_construct_with_initial_dict_items() -> None:
     with COSStream(items=pairs) as s:
         assert s.get_name("Type") == "XObject"
         assert s.get_int("Length") == 0
+
+
+def test_get_filters_returns_none_when_absent() -> None:
+    with COSStream() as s:
+        assert s.get_filters() is None
+
+
+def test_get_filters_returns_single_name() -> None:
+    with COSStream() as s:
+        s.set_item(COSName.FILTER, COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+        assert s.get_filters() is COSName.FLATE_DECODE  # type: ignore[attr-defined]
+
+
+def test_get_filters_returns_array() -> None:
+    with COSStream() as s:
+        chain = COSArray(
+            [COSName.get_pdf_name("ASCII85Decode"), COSName.get_pdf_name("FlateDecode")]
+        )
+        s.set_item(COSName.FILTER, chain)  # type: ignore[attr-defined]
+        result = s.get_filters()
+        assert isinstance(result, COSArray)
+        assert [n.name for n in result] == ["ASCII85Decode", "FlateDecode"]  # type: ignore[union-attr]
+
+
+def test_to_text_string_pdfdocencoding() -> None:
+    with COSStream() as s:
+        s.set_raw_data(b"Hello PDF")
+        assert s.to_text_string() == "Hello PDF"
+
+
+def test_to_text_string_utf16_bom() -> None:
+    with COSStream() as s:
+        s.set_raw_data(b"\xfe\xff" + "Tëst".encode("utf-16-be"))
+        assert s.to_text_string() == "Tëst"
+
+
+def test_to_text_string_empty_when_no_data() -> None:
+    """Mirrors upstream's swallow-and-log behavior — an unreadable body
+    yields ``""`` instead of raising."""
+    with COSStream() as s:
+        assert s.to_text_string() == ""
+
+
+def test_to_text_string_decodes_through_filter_chain() -> None:
+    with COSStream() as s:
+        with s.create_output_stream(COSName.FLATE_DECODE) as out:  # type: ignore[attr-defined]
+            out.write(b"compressed payload")
+        assert s.to_text_string() == "compressed payload"

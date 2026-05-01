@@ -161,6 +161,15 @@ class PDFMergerUtility:
         # across consecutive ``append_document`` calls so a multi-source
         # merge keeps generating fresh ``dummyFieldName`` suffixes.
         self._next_field_num: int = 1
+        # Stream-cache creation function for newly-created destination
+        # documents. Recorded only — destination ``PDDocument`` construction
+        # in this port does not yet thread the function through (mirrors
+        # upstream's ``mergeDocuments(StreamCacheCreateFunction)`` overload
+        # signature; see ``CHANGES.md``).
+        self._stream_cache_create_function: Any = None
+        # Compression parameters — same advisory-only treatment as the
+        # stream-cache function above.
+        self._compress_parameters: Any = None
 
     # ---------- properties / config ----------
 
@@ -226,6 +235,32 @@ class PDFMergerUtility:
     def set_destination_metadata(self, metadata: Any) -> None:
         self._destination_metadata = metadata
 
+    def get_stream_cache_create_function(self) -> Any:
+        """Return the stream-cache creation function staged for destination
+        document construction. Mirrors the upstream
+        ``mergeDocuments(StreamCacheCreateFunction)`` overload signature —
+        recorded but advisory in this port (see ``CHANGES.md``)."""
+        return self._stream_cache_create_function
+
+    def set_stream_cache_create_function(self, fn: Any) -> None:
+        """Stage a stream-cache creation function for the next merge run.
+        Recorded only — destination ``PDDocument`` construction in this
+        port does not yet thread the function through (see
+        ``CHANGES.md``)."""
+        self._stream_cache_create_function = fn
+
+    def get_compress_parameters(self) -> Any:
+        """Return the compression parameters staged for destination
+        ``PDDocument.save``. Mirrors upstream's
+        ``mergeDocuments(StreamCacheCreateFunction, CompressParameters)``
+        overload signature — recorded but advisory in this port."""
+        return self._compress_parameters
+
+    def set_compress_parameters(self, params: Any) -> None:
+        """Stage compression parameters for the next merge run. Recorded
+        only — see ``CHANGES.md``."""
+        self._compress_parameters = params
+
     # ---------- source management ----------
 
     def add_source(self, source: SourceLike) -> None:
@@ -266,11 +301,35 @@ class PDFMergerUtility:
 
     # ---------- merge entry points ----------
 
-    def merge_documents(self, memory_usage_setting: Any = None) -> None:
-        """Run the merge. ``memory_usage_setting`` is accepted for upstream
-        signature parity but currently ignored (see ``CHANGES.md``).
+    def merge_documents(
+        self,
+        memory_usage_setting: Any = None,
+        stream_cache_create_function: Any = None,
+        compress_parameters: Any = None,
+    ) -> None:
+        """Run the merge.
+
+        Mirrors upstream's three overloads:
+
+        - ``mergeDocuments()`` (no-args) — default behaviour;
+        - ``mergeDocuments(StreamCacheCreateFunction)`` — stages the
+          stream-cache function via :meth:`set_stream_cache_create_function`
+          for the duration of this run;
+        - ``mergeDocuments(StreamCacheCreateFunction, CompressParameters)``
+          — also stages compression parameters via
+          :meth:`set_compress_parameters`.
+
+        ``memory_usage_setting``, ``stream_cache_create_function``, and
+        ``compress_parameters`` are accepted for upstream signature parity
+        but currently ignored at the merge level (see ``CHANGES.md``).
+        Passing one of the latter two also flips the corresponding setter
+        so callers reading back via the getters see the staged value.
         """
         del memory_usage_setting  # parity placeholder — see docstring
+        if stream_cache_create_function is not None:
+            self.set_stream_cache_create_function(stream_cache_create_function)
+        if compress_parameters is not None:
+            self.set_compress_parameters(compress_parameters)
         if self._document_merge_mode == DocumentMergeMode.OPTIMIZE_RESOURCES_MODE:
             # OPTIMIZE_RESOURCES_MODE deferred — fall back to legacy.
             _LOG.info(
@@ -283,6 +342,8 @@ class PDFMergerUtility:
         self,
         sources: Iterable[RandomAccessRead],
         memory_usage_setting: Any = None,
+        stream_cache_create_function: Any = None,
+        compress_parameters: Any = None,
     ) -> None:
         """Merge a sequence of :class:`RandomAccessRead` sources into the
         configured destination.
@@ -295,8 +356,11 @@ class PDFMergerUtility:
         them, mirroring upstream's contract that
         ``RandomAccessRead`` ownership belongs to the caller.
 
-        ``memory_usage_setting`` is accepted for upstream signature parity
-        but is currently ignored (see ``CHANGES.md``).
+        ``memory_usage_setting``, ``stream_cache_create_function``, and
+        ``compress_parameters`` are accepted for upstream signature parity
+        but are currently ignored at the merge level (see ``CHANGES.md``).
+        Passing the latter two also stages the value on this instance so
+        callers reading back via the getters see the staged value.
         """
         del memory_usage_setting  # parity placeholder — see docstring
         for src in sources:
@@ -307,7 +371,10 @@ class PDFMergerUtility:
                     f"{type(src).__name__}"
                 )
             self.add_source(src)
-        self.merge_documents()
+        self.merge_documents(
+            stream_cache_create_function=stream_cache_create_function,
+            compress_parameters=compress_parameters,
+        )
 
     def _legacy_merge_documents(self) -> None:
         if not self._sources:

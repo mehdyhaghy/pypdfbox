@@ -821,6 +821,10 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/action/pd_action_uri.py`: `get_uri()` now matches upstream `PDActionURI.getURI()` byte handling — UTF-16 BE/LE when a BOM is present; otherwise UTF-8 (was previously decoded via `COSDictionary.get_string`, which falls back to PDFDocEncoding and produced mojibake for valid UTF-8 URIs).
 - `pypdfbox/pdmodel/interactive/action/pd_action_java_script.py`: added the upstream string-constructor overload — `PDActionJavaScript("...")` constructs the action and immediately writes the source to `/JS`, matching `PDActionJavaScript(String js)` upstream.
 
+## PDFMergerUtility — stream-cache / compress-parameters parity round-out
+
+- `pypdfbox/multipdf/pdf_merger_utility.py`: added `get_stream_cache_create_function` / `set_stream_cache_create_function` and `get_compress_parameters` / `set_compress_parameters` accessor pairs, mirroring upstream's `mergeDocuments(StreamCacheCreateFunction)` and `mergeDocuments(StreamCacheCreateFunction, CompressParameters)` overloads. `merge_documents` and `merge_documents_random_access_read` now accept `stream_cache_create_function` / `compress_parameters` keyword arguments and stage them on the instance for the duration of the run. Both arguments are advisory only — destination ``PDDocument`` construction in this port does not yet thread them through, matching the existing `memory_usage_setting` parity placeholder.
+
 ## Outline cluster — equality / hashing, /Type normalization, iterator cycle-aware hasNext
 
 - `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_node.py`: added `__eq__` / `__hash__` mirroring upstream `PDDictionaryWrapper#equals` / `#hashCode` — two outline wrappers compare equal when (and only when) they wrap the same `COSDictionary` instance, so fresh wrappers returned by `get_next_sibling` / `get_first_child` compare equal to the original. `PDOutlineItemIterator.has_next` is now cycle-aware (matches upstream `PDOutlineItemIterator#hasNext`): returns `False` once the cursor would revisit a previously yielded node, instead of returning `True` followed by a synthetic `StopIteration` from `__next__`.
