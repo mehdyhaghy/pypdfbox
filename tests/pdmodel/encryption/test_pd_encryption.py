@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSArray, COSDictionary, COSString
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
 from pypdfbox.pdmodel.encryption.protection_policy import (
@@ -244,3 +244,97 @@ def test_standard_protection_policy_setters() -> None:
     assert spp.get_owner_password() == "o"
     assert spp.get_user_password() == "u"
     assert spp.get_permissions() is new_perms
+
+
+# ---------- /Recipients (public-key handler helpers) ----------
+
+
+def test_set_recipients_round_trip() -> None:
+    enc = PDEncryption()
+    envelopes = [b"first envelope bytes", b"\x00\x01\x02", b""]
+    enc.set_recipients(envelopes)
+
+    array = enc.get_recipients()
+    assert array is not None
+    assert array.size() == 3
+    assert array.is_direct()
+    # Stored as COSString preserving exact bytes.
+    for i, raw in enumerate(envelopes):
+        entry = array.get(i)
+        assert isinstance(entry, COSString)
+        assert entry.get_bytes() == raw
+
+
+def test_set_recipients_replaces_existing() -> None:
+    enc = PDEncryption()
+    enc.set_recipients([b"a", b"b"])
+    enc.set_recipients([b"only"])
+    assert enc.get_recipients_length() == 1
+    rec = enc.get_recipient_string_at(0)
+    assert rec is not None
+    assert rec.get_bytes() == b"only"
+
+
+def test_get_recipients_length_returns_zero_when_absent() -> None:
+    enc = PDEncryption()
+    assert enc.get_recipients_length() == 0
+
+
+def test_get_recipient_string_at_returns_none_when_absent() -> None:
+    enc = PDEncryption()
+    assert enc.get_recipient_string_at(0) is None
+
+
+def test_get_recipient_string_at_returns_cos_string() -> None:
+    enc = PDEncryption()
+    enc.set_recipients([b"alpha", b"beta"])
+    first = enc.get_recipient_string_at(0)
+    second = enc.get_recipient_string_at(1)
+    assert isinstance(first, COSString)
+    assert isinstance(second, COSString)
+    assert first.get_bytes() == b"alpha"
+    assert second.get_bytes() == b"beta"
+
+
+def test_set_recipients_accepts_tuple() -> None:
+    enc = PDEncryption()
+    enc.set_recipients((b"x", b"y"))
+    assert enc.get_recipients_length() == 2
+
+
+# ---------- stream/string filter name (Identity-defaulting accessors) ----------
+
+
+def test_get_stream_filter_name_defaults_to_identity() -> None:
+    enc = PDEncryption()
+    # Raw absent state → None on get_stm_f, but Identity on get_stream_filter_name.
+    assert enc.get_stm_f() is None
+    assert enc.get_stream_filter_name() == "Identity"
+
+
+def test_get_string_filter_name_defaults_to_identity() -> None:
+    enc = PDEncryption()
+    assert enc.get_str_f() is None
+    assert enc.get_string_filter_name() == "Identity"
+
+
+def test_set_stream_filter_name_round_trip() -> None:
+    enc = PDEncryption()
+    enc.set_stream_filter_name("StdCF")
+    assert enc.get_stream_filter_name() == "StdCF"
+    assert enc.get_stm_f() == "StdCF"
+
+
+def test_set_string_filter_name_round_trip() -> None:
+    enc = PDEncryption()
+    enc.set_string_filter_name("StdCF")
+    assert enc.get_string_filter_name() == "StdCF"
+    assert enc.get_str_f() == "StdCF"
+
+
+def test_recipients_array_after_get_recipients_for_existing_array() -> None:
+    """``get_recipients`` returns the stored COSArray when /Recipients exists."""
+    enc = PDEncryption()
+    enc.set_recipients([b"a"])
+    arr = enc.get_recipients()
+    assert isinstance(arr, COSArray)

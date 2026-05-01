@@ -169,6 +169,45 @@ class PDEncryption:
             return v
         return None
 
+    def set_recipients(self, recipients: list[bytes] | tuple[bytes, ...]) -> None:
+        """Store ``recipients`` as ``/Recipients`` — an array of PKCS#7 envelopes.
+
+        Mirrors upstream ``setRecipients(byte[][])``: each entry becomes a
+        ``COSString``. The array is marked direct (``setDirect(true)``) so
+        signature dictionaries embed it inline rather than as an indirect
+        object — required by Adobe Reader.
+        """
+        array = COSArray()
+        for recipient in recipients:
+            array.add(COSString(bytes(recipient)))
+        self._dict.set_item(_RECIPIENTS, array)
+        array.set_direct(True)
+
+    def get_recipients_length(self) -> int:
+        """Number of entries in ``/Recipients``.
+
+        Mirrors upstream ``getRecipientsLength`` — raises ``AttributeError``
+        if ``/Recipients`` is absent (matches upstream's NPE on a missing
+        array; callers must check ``get_recipients()`` first).
+        """
+        array = self._dict.get_dictionary_object(_RECIPIENTS)
+        if not isinstance(array, COSArray):
+            return 0
+        return array.size()
+
+    def get_recipient_string_at(self, i: int) -> COSString | None:
+        """Return the ``COSString`` at position ``i`` in ``/Recipients``.
+
+        Mirrors upstream ``getRecipientStringAt(int)``.
+        """
+        array = self._dict.get_dictionary_object(_RECIPIENTS)
+        if not isinstance(array, COSArray):
+            return None
+        v = array.get(i)
+        if isinstance(v, COSString):
+            return v
+        return None
+
     # ---------- /CF — crypt-filter sub-dictionary ----------
 
     def get_cf(self) -> COSDictionary | None:
@@ -188,12 +227,39 @@ class PDEncryption:
     def set_stm_f(self, name: str) -> None:
         self._dict.set_name(_STM_F, name)
 
+    def get_stream_filter_name(self) -> str:
+        """Return ``/StmF`` (defaults to ``Identity``).
+
+        Mirrors upstream ``getStreamFilterName`` — unlike :py:meth:`get_stm_f`
+        which preserves the raw absent/None state, this method substitutes
+        the spec-mandated ``Identity`` default for an absent entry.
+        """
+        v = self._dict.get_name(_STM_F)
+        return v if v is not None else _IDENTITY
+
+    def set_stream_filter_name(self, name: str) -> None:
+        """Set ``/StmF``. Mirrors upstream ``setStreamFilterName``."""
+        self._dict.set_name(_STM_F, name)
+
     # ---------- /StrF — default string filter name ----------
 
     def get_str_f(self) -> str | None:
         return self._dict.get_name(_STR_F)
 
     def set_str_f(self, name: str) -> None:
+        self._dict.set_name(_STR_F, name)
+
+    def get_string_filter_name(self) -> str:
+        """Return ``/StrF`` (defaults to ``Identity``).
+
+        Mirrors upstream ``getStringFilterName`` — see
+        :py:meth:`get_stream_filter_name` for the Identity-default rationale.
+        """
+        v = self._dict.get_name(_STR_F)
+        return v if v is not None else _IDENTITY
+
+    def set_string_filter_name(self, name: str) -> None:
+        """Set ``/StrF``. Mirrors upstream ``setStringFilterName``."""
         self._dict.set_name(_STR_F, name)
 
     # ---------- /EFF — default embedded-file filter name ----------

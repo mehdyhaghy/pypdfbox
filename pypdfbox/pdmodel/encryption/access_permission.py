@@ -104,6 +104,69 @@ class AccessPermission:
         call sites that just want default/owner permissions."""
         return cls()
 
+    @classmethod
+    def from_bytes(cls, b: bytes) -> AccessPermission:
+        """Build an ``AccessPermission`` from a 4-byte big-endian buffer.
+
+        Mirrors the upstream ``AccessPermission(byte[] b)`` constructor —
+        bytes are interpreted most-significant-byte first to recreate the
+        signed 32-bit ``/P`` integer used by the public-key handler.
+        """
+        if len(b) < 4:
+            msg = f"AccessPermission.from_bytes requires 4 bytes, got {len(b)}"
+            raise ValueError(msg)
+        # Upstream reads with sign extension on the top byte: shifting a
+        # signed int left preserves the high bit, so a leading 0xFF stays
+        # 0xFFFFFFFF after the loop. Replicate that with int.from_bytes
+        # signed=True to keep the negative-int semantics of /P.
+        permissions = int.from_bytes(bytes(b[:4]), "big", signed=True)
+        return cls(permissions)
+
+    # ---------- public-key permission encoding ----------
+
+    def get_permission_bytes_for_public_key(self) -> int:
+        """Return the integer used by the public-key handler.
+
+        Mirrors upstream ``getPermissionBytesForPublicKey`` — the format is
+        not defined in the PDF spec but Adobe products require:
+
+        * bit 1 set (reserved-but-required for public-key)
+        * bits 7 and 8 cleared
+        * bits 13–32 cleared
+
+        These tweaks mutate the receiver in-place to match upstream
+        behaviour (a subsequent ``get_permission_bytes`` returns the same
+        value).
+        """
+        # Upstream silently ignores readOnly inside this helper (it mutates
+        # `bytes` regardless). Mirror that by bypassing the readOnly gate
+        # rather than going through the public setters.
+        self._bytes |= 1 << 0  # bit 1 (1-based) ON
+        self._bytes &= ~(1 << 6)  # bit 7 OFF
+        self._bytes &= ~(1 << 7)  # bit 8 OFF
+        # Clear bits 13..32 (1-based), i.e. mask off the high 20 bits of a
+        # 32-bit signed int. We additionally clear all bits above bit 32
+        # so a Python negative int collapses to the same 12-bit value Java
+        # produces.
+        self._bytes &= 0x00000FFF
+        return self._bytes
+
+    # ---------- revision-3 helper ----------
+
+    def has_any_revision3_permission_set(self) -> bool:
+        """True if any permission introduced at /R 3 is set.
+
+        Mirrors upstream ``hasAnyRevision3PermissionSet`` — used by the
+        standard security handler when computing the user-password hash to
+        decide whether the document needs at least revision 3.
+        """
+        return (
+            self.can_fill_in_form()
+            or self.can_extract_for_accessibility()
+            or self.can_assemble_document()
+            or self.can_print_faithful()
+        )
+
     # ---------- internal bit helpers ----------
 
     @staticmethod
