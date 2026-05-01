@@ -131,3 +131,28 @@ class RandomAccessRead(ABC):
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
+
+    # ------------------------------------------------------------------
+    # Upstream Java aliases (camelCase mirrors of the snake_case API).
+    # Provided so PDFBox developers can call the names they know; semantics
+    # are unchanged. Not enumerated in __all__; they are method aliases only.
+    # ------------------------------------------------------------------
+
+    def getPosition(self) -> int:  # noqa: N802 — upstream Java alias
+        return self.get_position()
+
+    def isClosed(self) -> bool:  # noqa: N802 — upstream Java alias
+        return self.is_closed()
+
+    def isEOF(self) -> bool:  # noqa: N802 — upstream Java alias
+        return self.is_eof()
+
+    def readFully(  # noqa: N802 — upstream Java alias
+        self, buf: bytearray, offset: int = 0, length: int | None = None
+    ) -> None:
+        self.read_fully(buf, offset, length)
+
+    def createView(  # noqa: N802 — upstream Java alias
+        self, start_position: int, length: int
+    ) -> RandomAccessRead:
+        return self.create_view(start_position, length)

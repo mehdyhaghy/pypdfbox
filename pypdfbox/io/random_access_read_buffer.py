@@ -17,6 +17,11 @@ class RandomAccessReadBuffer(RandomAccessRead):
     EOF, length) is identical.
     """
 
+    # Mirrors upstream RandomAccessReadBuffer.DEFAULT_CHUNK_SIZE_4KB.
+    # Our BytesIO-backed implementation does not actually chunk, but the
+    # public constant is part of the upstream API surface.
+    DEFAULT_CHUNK_SIZE_4KB: int = 1 << 12
+
     def __init__(self, source: bytes | bytearray | memoryview | BinaryIO) -> None:
         if isinstance(source, (bytes, bytearray, memoryview)):
             self._buf = io.BytesIO(bytes(source))
@@ -37,6 +42,28 @@ class RandomAccessReadBuffer(RandomAccessRead):
     @classmethod
     def from_stream(cls, stream: BinaryIO) -> RandomAccessReadBuffer:
         return cls(stream)
+
+    @classmethod
+    def create_buffer_from_stream(cls, stream: BinaryIO) -> RandomAccessReadBuffer:
+        """
+        Create a buffer from ``stream`` and close ``stream`` afterwards.
+
+        Mirrors upstream
+        ``RandomAccessReadBuffer.createBufferFromStream(InputStream)``,
+        which copies the stream into memory and then calls
+        ``inputStream.close()`` on the source. Whether copying succeeds or
+        raises, the source is closed.
+        """
+        try:
+            buf = cls(stream)
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+        return buf
+
+    # Upstream Java alias (camelCase mirror).
+    createBufferFromStream = create_buffer_from_stream  # noqa: N815
 
     def _check_open(self) -> None:
         if self._closed:

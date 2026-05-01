@@ -77,3 +77,10 @@ def test_context_manager() -> None:
         w.write_bytes(b"ctx")
         assert w.to_bytes() == b"ctx"
     assert w.is_closed()
+
+
+def test_is_closed_camelcase_alias() -> None:
+    w = RandomAccessWriteBuffer()
+    assert not w.isClosed()
+    w.close()
+    assert w.isClosed()

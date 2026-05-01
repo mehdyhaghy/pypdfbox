@@ -172,3 +172,51 @@ def test_factory_constructors() -> None:
     b = RandomAccessReadBuffer.from_stream(io.BytesIO(b"abc"))
     assert a.length() == 3
     assert b.length() == 3
+
+
+def test_default_chunk_size_4kb_constant() -> None:
+    # Upstream public constant — pypdfbox does not chunk internally
+    # but the constant is part of the documented surface.
+    assert RandomAccessReadBuffer.DEFAULT_CHUNK_SIZE_4KB == 4096
+
+
+def test_create_buffer_from_stream_consumes_and_closes_source() -> None:
+    src = io.BytesIO(b"hello")
+    rab = RandomAccessReadBuffer.create_buffer_from_stream(src)
+    assert rab.length() == 5
+    assert rab.read() == ord("h")
+    # Upstream contract: the source InputStream is closed by the factory.
+    assert src.closed
+
+
+def test_create_buffer_from_stream_closes_source_on_failure() -> None:
+    class BoomStream(io.BytesIO):
+        def read(self, *_args: object, **_kw: object) -> bytes:  # type: ignore[override]
+            raise RuntimeError("boom")
+
+    src = BoomStream(b"abc")
+    with pytest.raises(RuntimeError):
+        RandomAccessReadBuffer.create_buffer_from_stream(src)
+    assert src.closed
+
+
+def test_create_buffer_from_stream_camelcase_alias() -> None:
+    src = io.BytesIO(b"xy")
+    rab = RandomAccessReadBuffer.createBufferFromStream(src)
+    assert rab.length() == 2
+    assert src.closed
+
+
+def test_camelcase_aliases_on_read_api() -> None:
+    rab = RandomAccessReadBuffer(b"abcd")
+    # getPosition / isEOF / isClosed / readFully / createView
+    assert rab.getPosition() == 0
+    assert not rab.isEOF()
+    assert not rab.isClosed()
+    buf = bytearray(3)
+    rab.readFully(buf)
+    assert bytes(buf) == b"abc"
+    view = rab.createView(0, 2)
+    assert view.length() == 2
+    rab.close()
+    assert rab.isClosed()

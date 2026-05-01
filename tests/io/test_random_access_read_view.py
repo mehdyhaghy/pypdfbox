@@ -114,3 +114,18 @@ def test_view_of_view_is_forbidden() -> None:
     v1 = p.create_view(2, 6)
     with pytest.raises(OSError):
         v1.create_view(1, 4)
+
+
+def test_camelcase_aliases_on_view() -> None:
+    # The Java aliases (getPosition / isEOF / isClosed / createView) are
+    # inherited from the RandomAccessRead ABC and must work on the view too.
+    p = _parent()
+    v = RandomAccessReadView(p, start_position=2, length=4)
+    assert v.getPosition() == 0
+    assert not v.isEOF()
+    assert not v.isClosed()
+    v.seek(4)
+    assert v.isEOF()
+    # createView on a view is forbidden upstream — the alias preserves that.
+    with pytest.raises(OSError):
+        v.createView(0, 1)
