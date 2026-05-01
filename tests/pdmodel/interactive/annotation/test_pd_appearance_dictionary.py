@@ -12,6 +12,7 @@ from pypdfbox.pdmodel.interactive.annotation.pd_appearance_entry import (
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
     PDAppearanceStream,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 # ---------- PDAppearanceDictionary ----------
@@ -189,3 +190,68 @@ def test_appearance_stream_get_cos_object() -> None:
 def test_appearance_stream_rejects_non_stream() -> None:
     with pytest.raises(TypeError):
         PDAppearanceStream(COSDictionary())  # type: ignore[arg-type]
+
+
+# ---------- PDAppearanceStream — PDFormXObject parity additions ----------
+
+
+def test_appearance_stream_form_type_defaults_to_one_when_absent() -> None:
+    """Mirrors upstream ``PDFormXObject.getFormType()`` defaulting to 1."""
+    pap = PDAppearanceStream(COSStream())
+    assert pap.get_form_type() == 1
+
+
+def test_appearance_stream_set_form_type_round_trip() -> None:
+    pap = PDAppearanceStream(COSStream())
+    pap.set_form_type(1)
+    assert pap.get_form_type() == 1
+    # The value lives under the /FormType entry on the stream dict.
+    assert pap.get_cos_object().get_int(COSName.get_pdf_name("FormType")) == 1
+
+
+def test_appearance_stream_get_bbox_returns_none_when_absent() -> None:
+    pap = PDAppearanceStream(COSStream())
+    assert pap.get_bbox() is None
+
+
+def test_appearance_stream_set_bbox_round_trip() -> None:
+    pap = PDAppearanceStream(COSStream())
+    bbox = PDRectangle.from_xywh(0.0, 0.0, 100.0, 50.0)
+    pap.set_bbox(bbox)
+    rt = pap.get_bbox()
+    assert rt is not None
+    assert rt.get_lower_left_x() == 0.0
+    assert rt.get_lower_left_y() == 0.0
+    assert rt.get_upper_right_x() == 100.0
+    assert rt.get_upper_right_y() == 50.0
+
+
+def test_appearance_stream_set_bbox_none_clears_entry() -> None:
+    pap = PDAppearanceStream(COSStream())
+    pap.set_bbox(PDRectangle.from_width_height(10.0, 20.0))
+    assert pap.get_bbox() is not None
+    pap.set_bbox(None)
+    assert pap.get_bbox() is None
+    assert not pap.get_cos_object().contains_key(COSName.get_pdf_name("BBox"))
+
+
+def test_appearance_stream_set_bbox_rejects_bad_type() -> None:
+    pap = PDAppearanceStream(COSStream())
+    with pytest.raises(TypeError):
+        pap.set_bbox("not a rectangle")  # type: ignore[arg-type]
+
+
+def test_appearance_stream_struct_parents_default_minus_one() -> None:
+    """Mirrors upstream ``PDFormXObject.getStructParents()`` whose backing
+    ``COSDictionary.getInt`` defaults to -1 when the key is absent."""
+    pap = PDAppearanceStream(COSStream())
+    assert pap.get_struct_parents() == -1
+
+
+def test_appearance_stream_set_struct_parents_round_trip() -> None:
+    pap = PDAppearanceStream(COSStream())
+    pap.set_struct_parents(7)
+    assert pap.get_struct_parents() == 7
+    assert (
+        pap.get_cos_object().get_int(COSName.get_pdf_name("StructParents")) == 7
+    )

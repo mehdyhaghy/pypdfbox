@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 _RESOURCES: COSName = COSName.RESOURCES  # type: ignore[attr-defined]
+_FORM_TYPE: COSName = COSName.get_pdf_name("FormType")
+_BBOX: COSName = COSName.get_pdf_name("BBox")
+_STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
 
 
 class PDAppearanceStream:
@@ -73,6 +77,55 @@ class PDAppearanceStream:
             else resources
         )
         self._stream.set_item(_RESOURCES, target)
+
+    # ---------- /FormType ----------
+
+    def get_form_type(self) -> int:
+        """Return the form type. Currently ``1`` is the only defined value;
+        upstream ``PDFormXObject.getFormType()`` defaults to ``1`` when the
+        entry is absent (PDF 32000-1:2008 §8.10.2)."""
+        return self._stream.get_int(_FORM_TYPE, 1)
+
+    def set_form_type(self, form_type: int) -> None:
+        """Set the form type entry. Mirrors upstream
+        ``PDFormXObject.setFormType(int)``."""
+        self._stream.set_int(_FORM_TYPE, int(form_type))
+
+    # ---------- /BBox ----------
+
+    def get_bbox(self) -> PDRectangle | None:
+        """Return the ``/BBox`` rectangle in form coordinates, or ``None``
+        when absent. Mirrors upstream ``PDFormXObject.getBBox()``."""
+        array = self._stream.get_cos_array(_BBOX)
+        if array is None:
+            return None
+        return PDRectangle.from_cos_array(array)
+
+    def set_bbox(self, bbox: PDRectangle | None) -> None:
+        """Set the ``/BBox`` entry. ``None`` clears it. Mirrors upstream
+        ``PDFormXObject.setBBox(PDRectangle)``."""
+        if bbox is None:
+            self._stream.remove_item(_BBOX)
+            return
+        if not isinstance(bbox, PDRectangle):
+            raise TypeError(
+                "set_bbox requires a PDRectangle or None; got "
+                f"{type(bbox).__name__}"
+            )
+        self._stream.set_item(_BBOX, bbox.get_cos_array())
+
+    # ---------- /StructParents ----------
+
+    def get_struct_parents(self) -> int:
+        """Return the structural parent tree key, or ``-1`` when absent.
+        Mirrors upstream ``PDFormXObject.getStructParents()`` whose
+        underlying ``getInt`` defaults to ``-1``."""
+        return self._stream.get_int(_STRUCT_PARENTS)
+
+    def set_struct_parents(self, struct_parent: int) -> None:
+        """Set the structural parent tree key. Mirrors upstream
+        ``PDFormXObject.setStructParents(int)``."""
+        self._stream.set_int(_STRUCT_PARENTS, int(struct_parent))
 
 
 __all__ = ["PDAppearanceStream"]

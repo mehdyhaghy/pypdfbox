@@ -288,3 +288,61 @@ def test_get_action_dispatches_via_pd_action_factory() -> None:
     rt = ann.get_action()
     assert isinstance(rt, PDActionURI)
     assert isinstance(rt, PDAction)
+
+
+# ---------------------------------------------------------------- /PA upstream-named aliases
+
+
+def test_get_previous_uri_default_none() -> None:
+    """``get_previous_uri`` mirrors upstream ``getPreviousURI()`` —
+    returns ``None`` when ``/PA`` is absent."""
+    ann = PDAnnotationLink()
+    assert ann.get_previous_uri() is None
+
+
+def test_set_previous_uri_round_trip() -> None:
+    """``set_previous_uri`` mirrors upstream ``setPreviousURI(PDActionURI)``
+    and writes the action under ``/PA``."""
+    ann = PDAnnotationLink()
+    action = PDActionURI()
+    action.set_uri("https://prev.test")
+    ann.set_previous_uri(action)
+    rt = ann.get_previous_uri()
+    assert isinstance(rt, PDActionURI)
+    assert rt.get_uri() == "https://prev.test"
+
+
+def test_previous_uri_alias_writes_same_pa_entry() -> None:
+    """``set_previous_uri`` and ``set_p_a`` must write the same ``/PA``
+    entry — they are simply different names for the same accessor."""
+    ann_a = PDAnnotationLink()
+    ann_b = PDAnnotationLink()
+    action_a = PDActionURI()
+    action_a.set_uri("https://a.test")
+    action_b = PDActionURI()
+    action_b.set_uri("https://a.test")
+    ann_a.set_p_a(action_a)
+    ann_b.set_previous_uri(action_b)
+    assert (
+        ann_a.get_cos_object().get_dictionary_object(  # type: ignore[attr-defined]
+            COSName.get_pdf_name("PA")
+        )
+        is not None
+    )
+    assert (
+        ann_b.get_cos_object().get_dictionary_object(  # type: ignore[attr-defined]
+            COSName.get_pdf_name("PA")
+        )
+        is not None
+    )
+    # Cross-read: setter via one name, getter via the other.
+    assert ann_a.get_previous_uri() is not None
+    assert ann_b.get_p_a() is not None
+
+
+def test_previous_uri_clear_via_alias() -> None:
+    ann = PDAnnotationLink()
+    ann.set_previous_uri(PDActionURI())
+    ann.set_previous_uri(None)
+    assert ann.get_previous_uri() is None
+    assert ann.get_p_a() is None

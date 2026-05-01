@@ -193,6 +193,16 @@ class PDAnnotationLink(PDAnnotation):
             action.get_cos_object() if hasattr(action, "get_cos_object") else action,
         )
 
+    def get_previous_uri(self) -> PDAction | None:
+        """Upstream-named accessor for ``/PA``. Mirrors
+        ``getPreviousURI()`` — returns the previous URI action."""
+        return self.get_p_a()
+
+    def set_previous_uri(self, action: PDAction | COSDictionary | None) -> None:
+        """Upstream-named setter for ``/PA``. Mirrors
+        ``setPreviousURI(PDActionURI)``."""
+        self.set_p_a(action)
+
     # ---------- convenience: extract URL from /A when /Subtype /URI ----------
 
     def get_url_uri(self) -> str | None:

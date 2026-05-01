@@ -10,6 +10,8 @@ _CAP: COSName = COSName.get_pdf_name("Cap")
 _CO: COSName = COSName.get_pdf_name("CO")
 _LL: COSName = COSName.get_pdf_name("LL")
 _LLE: COSName = COSName.get_pdf_name("LLE")
+_LLO: COSName = COSName.get_pdf_name("LLO")
+_CP: COSName = COSName.get_pdf_name("CP")
 
 
 class PDAnnotationLine(PDAnnotation):
@@ -28,6 +30,11 @@ class PDAnnotationLine(PDAnnotation):
     """
 
     SUB_TYPE: str = "Line"
+
+    # ---------- /IT intent constants (Table 174) ----------
+
+    IT_LINE_ARROW: str = "LineArrow"
+    IT_LINE_DIMENSION: str = "LineDimension"
 
     # ---------- /LE line-ending style constants (Table 176) ----------
 
@@ -118,6 +125,12 @@ class PDAnnotationLine(PDAnnotation):
     def set_caption(self, value: bool) -> None:
         self._dict.set_item(_CAP, COSBoolean.get(value))
 
+    def has_caption(self) -> bool:
+        """Upstream-named accessor for ``/Cap``. Mirrors
+        ``hasCaption()`` — whether the contents shall be shown as a
+        caption in the appearance of the line."""
+        return self.get_caption()
+
     # ---------- /CO (caption offset) ----------
 
     def _get_co_array(self) -> COSArray | None:
@@ -172,6 +185,33 @@ class PDAnnotationLine(PDAnnotation):
 
     def set_leader_line_extension_length(self, length: float) -> None:
         self._dict.set_float(_LLE, float(length))
+
+    # ---------- /LLO (leader line offset length) ----------
+
+    def get_leader_line_offset_length(self) -> float:
+        """Mirrors upstream ``getLeaderLineOffsetLength()`` — default
+        ``0`` per spec when ``/LLO`` is absent."""
+        return self._dict.get_float(_LLO, 0.0)
+
+    def set_leader_line_offset_length(self, length: float) -> None:
+        """Mirrors upstream ``setLeaderLineOffsetLength(float)``."""
+        self._dict.set_float(_LLO, float(length))
+
+    # ---------- /CP (caption positioning) ----------
+
+    def get_caption_positioning(self) -> str | None:
+        """Mirrors upstream ``getCaptionPositioning()`` — returns the
+        ``/CP`` name (``"Inline"`` or ``"Top"``), or ``None`` when
+        unset."""
+        return self._dict.get_name(_CP)
+
+    def set_caption_positioning(self, caption_positioning: str | None) -> None:
+        """Mirrors upstream ``setCaptionPositioning(String)``. Allowed
+        values are ``"Inline"`` and ``"Top"``."""
+        if caption_positioning is None:
+            self._dict.remove_item(_CP)
+            return
+        self._dict.set_name(_CP, caption_positioning)
 
 
 __all__ = ["PDAnnotationLine"]

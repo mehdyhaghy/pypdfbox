@@ -292,3 +292,56 @@ def test_free_text_rect_differences_alias_accepts_list_and_clear() -> None:
     ann.set_rect_differences(None)
     assert ann.get_rect_differences() == []
     assert ann.get_rectangle_differences() is None
+
+
+# ---------------------------------------------------------------- line parity round-out
+
+
+def test_line_intent_constants_match_upstream() -> None:
+    assert PDAnnotationLine.IT_LINE_ARROW == "LineArrow"
+    assert PDAnnotationLine.IT_LINE_DIMENSION == "LineDimension"
+
+
+def test_line_has_caption_default_false() -> None:
+    ann = PDAnnotationLine()
+    assert ann.has_caption() is False
+
+
+def test_line_has_caption_mirrors_get_caption() -> None:
+    ann = PDAnnotationLine()
+    ann.set_caption(True)
+    assert ann.has_caption() is True
+    assert ann.has_caption() == ann.get_caption()
+    ann.set_caption(False)
+    assert ann.has_caption() is False
+
+
+def test_line_leader_line_offset_length_default_zero() -> None:
+    ann = PDAnnotationLine()
+    assert ann.get_leader_line_offset_length() == 0.0
+
+
+def test_line_leader_line_offset_length_round_trip() -> None:
+    ann = PDAnnotationLine()
+    ann.set_leader_line_offset_length(7.5)
+    assert ann.get_leader_line_offset_length() == 7.5
+
+
+def test_line_caption_positioning_default_none() -> None:
+    ann = PDAnnotationLine()
+    assert ann.get_caption_positioning() is None
+
+
+def test_line_caption_positioning_round_trip() -> None:
+    ann = PDAnnotationLine()
+    ann.set_caption_positioning("Inline")
+    assert ann.get_caption_positioning() == "Inline"
+    ann.set_caption_positioning("Top")
+    assert ann.get_caption_positioning() == "Top"
+
+
+def test_line_caption_positioning_clear() -> None:
+    ann = PDAnnotationLine()
+    ann.set_caption_positioning("Top")
+    ann.set_caption_positioning(None)
+    assert ann.get_caption_positioning() is None
