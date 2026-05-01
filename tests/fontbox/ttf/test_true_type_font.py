@@ -311,3 +311,105 @@ def test_context_manager_closes() -> None:
         assert font.get_units_per_em() > 0
     # ``__exit__`` invokes ``close``.
     assert font._closed is True  # noqa: SLF001
+
+
+# ---------- get_advance_height ------------------------------------------
+
+
+def test_get_advance_height_falls_back_when_no_vmtx(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    # LiberationSans has no ``vmtx`` table — upstream returns 250 in this
+    # case (matches ``VerticalMetricsTable`` default fallback).
+    assert liberation_sans.get_vertical_metrics() is None
+    assert liberation_sans.get_advance_height(0) == 250
+    assert liberation_sans.get_advance_height(123) == 250
+
+
+# ---------- get_table_n_bytes -------------------------------------------
+
+
+def test_get_table_n_bytes_caps_at_table_length(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    full = liberation_sans.get_table_bytes("head")
+    assert full is not None
+    # limit larger than the table -> entire table.
+    larger = liberation_sans.get_table_n_bytes("head", 1024)
+    assert larger == full
+    # limit smaller than the table -> truncated prefix.
+    head_prefix = liberation_sans.get_table_n_bytes("head", 16)
+    assert head_prefix is not None
+    assert head_prefix == full[:16]
+    assert len(head_prefix) == 16
+
+
+def test_get_table_n_bytes_negative_limit_yields_empty(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    assert liberation_sans.get_table_n_bytes("head", -5) == b""
+
+
+def test_get_table_n_bytes_unknown_table(liberation_sans: TrueTypeFont) -> None:
+    assert liberation_sans.get_table_n_bytes("ZZZZ", 16) is None
+
+
+def test_get_table_n_bytes_accepts_table_entry(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    head = liberation_sans.get_table("head")
+    assert head is not None
+    by_entry = liberation_sans.get_table_n_bytes(head, 8)
+    by_tag = liberation_sans.get_table_n_bytes("head", 8)
+    assert by_entry == by_tag
+    assert by_entry is not None
+    assert len(by_entry) == 8
+
+
+# ---------- GSUB feature toggles ----------------------------------------
+
+
+def test_enable_gsub_default(liberation_sans: TrueTypeFont) -> None:
+    # Each access mints a wrapper — instantiate one to confirm default.
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    assert f.is_enable_gsub() is True
+    f.set_enable_gsub(False)
+    assert f.is_enable_gsub() is False
+    f.set_enable_gsub(True)
+    assert f.is_enable_gsub() is True
+
+
+def test_enable_disable_gsub_feature() -> None:
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    assert f.get_enabled_gsub_features() == []
+    f.enable_gsub_feature("liga")
+    f.enable_gsub_feature("kern")
+    assert f.get_enabled_gsub_features() == ["liga", "kern"]
+    f.disable_gsub_feature("liga")
+    assert f.get_enabled_gsub_features() == ["kern"]
+    # Disabling an absent tag is a silent no-op (matches upstream).
+    f.disable_gsub_feature("never-added")
+    assert f.get_enabled_gsub_features() == ["kern"]
+
+
+def test_enable_vertical_substitutions_registers_vrt2_and_vert() -> None:
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    f.enable_vertical_substitutions()
+    assert f.get_enabled_gsub_features() == ["vrt2", "vert"]
+
+
+def test_enabled_features_isolated_per_font() -> None:
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f1 = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    f2 = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    f1.enable_gsub_feature("liga")
+    assert f1.get_enabled_gsub_features() == ["liga"]
+    # The second font must not see ``liga`` — features are per-instance.
+    assert f2.get_enabled_gsub_features() == []

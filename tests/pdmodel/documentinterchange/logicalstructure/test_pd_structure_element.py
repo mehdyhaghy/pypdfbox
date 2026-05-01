@@ -698,3 +698,102 @@ def test_get_marked_content_references_skips_object_references() -> None:
 def test_get_marked_content_references_empty_when_no_kids() -> None:
     elem = PDStructureElement(structure_type="P")
     assert elem.get_marked_content_references() == []
+
+
+# ---------- /ID upstream-spelled accessors ----------
+
+
+def test_get_element_identifier_returns_none_when_absent() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.get_element_identifier() is None
+
+
+def test_set_element_identifier_round_trip() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_element_identifier("e-42")
+    assert elem.get_element_identifier() == "e-42"
+    # Shorter spelling is the same slot.
+    assert elem.get_id() == "e-42"
+
+
+def test_get_element_identifier_reads_value_set_via_set_id() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_id("identical")
+    assert elem.get_element_identifier() == "identical"
+
+
+# ---------- /R increment ----------
+
+
+def test_increment_revision_number_from_default_zero() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.get_revision_number() == 0
+    elem.increment_revision_number()
+    assert elem.get_revision_number() == 1
+
+
+def test_increment_revision_number_from_existing_value() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_revision_number(5)
+    elem.increment_revision_number()
+    elem.increment_revision_number()
+    assert elem.get_revision_number() == 7
+
+
+# ---------- typed /K remove + insert overloads ----------
+
+
+def test_remove_kid_element_clears_parent_on_success() -> None:
+    parent = PDStructureElement(structure_type="P")
+    child = PDStructureElement(structure_type="Span")
+    parent.append_kid_element(child)
+    # /P should be wired by append_kid_element.
+    assert child.get_parent() is parent.get_cos_object()
+    removed = parent.remove_kid_element(child)
+    assert removed is True
+    assert child.get_parent() is None
+
+
+def test_remove_kid_element_returns_false_when_not_a_kid() -> None:
+    parent = PDStructureElement(structure_type="P")
+    stranger = PDStructureElement(structure_type="Span")
+    # Manually wire /P so we can verify it is *not* cleared on a failed remove.
+    stranger.set_parent(parent)
+    removed = parent.remove_kid_element(stranger)
+    assert removed is False
+    # /P stays put — upstream contract: only successful remove clears /P.
+    assert stranger.get_parent() is parent.get_cos_object()
+
+
+def test_remove_kid_element_silent_on_none() -> None:
+    parent = PDStructureElement(structure_type="P")
+    assert parent.remove_kid_element(None) is False  # type: ignore[arg-type]
+
+
+def test_insert_before_element_inserts_typed_kid() -> None:
+    parent = PDStructureElement(structure_type="P")
+    a = PDStructureElement(structure_type="Span")
+    b = PDStructureElement(structure_type="Span")
+    parent.append_kid_element(a)
+    inserted = parent.insert_before_element(b, a)
+    assert inserted is True
+    kids = parent.get_kids()
+    assert len(kids) == 2
+    assert kids[0].get_cos_object() is b.get_cos_object()
+    assert kids[1].get_cos_object() is a.get_cos_object()
+
+
+def test_insert_before_element_returns_false_when_ref_missing() -> None:
+    parent = PDStructureElement(structure_type="P")
+    a = PDStructureElement(structure_type="Span")
+    b = PDStructureElement(structure_type="Span")
+    # Don't append a — ref is missing.
+    assert parent.insert_before_element(b, a) is False
+
+
+def test_insert_before_element_silent_on_none_args() -> None:
+    parent = PDStructureElement(structure_type="P")
+    a = PDStructureElement(structure_type="Span")
+    parent.append_kid_element(a)
+    assert parent.insert_before_element(None, a) is False  # type: ignore[arg-type]
+    assert parent.insert_before_element(a, None) is False

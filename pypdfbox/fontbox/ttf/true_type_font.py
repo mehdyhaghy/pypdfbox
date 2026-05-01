@@ -47,6 +47,14 @@ class TrueTypeFont:
 
     def __init__(self, data: TTFDataStream) -> None:
         self._data: TTFDataStream = data
+        # Mirrors upstream's ``enableGsub`` flag: callers can suppress the
+        # GSUB table if a font's substitution rules misbehave. Defaults to
+        # ``True`` to match upstream.
+        self._enable_gsub: bool = True
+        # Mirrors upstream's ``enabledGsubFeatures`` list: tags consumers
+        # have explicitly opted into (e.g. ``"vrt2"`` / ``"vert"`` for
+        # vertical writing).
+        self._enabled_gsub_features: list[str] = []
         # Materialise the SFNT bytes into a BytesIO for fontTools. The
         # legacy TTFDataStream surface only guarantees random-access
         # reads, so we round-trip through bytes rather than wrapping it.
@@ -144,6 +152,17 @@ class TrueTypeFont:
         # Monospaced fonts may omit trailing entries — fall back to last.
         return widths[-1]
 
+    def get_advance_height(self, gid: int) -> int:
+        """Advance height (in font units) for ``gid``. Falls back to 250
+        when the font lacks a ``vmtx`` table — matches upstream's
+        ``VerticalMetricsTable.getAdvanceHeight`` default for fonts with
+        no vertical metrics.
+        """
+        vmtx = self.get_vertical_metrics()
+        if vmtx is None:
+            return 250
+        return vmtx.get_advance_height(gid)
+
     # ---------- typed-table accessors (legacy surface) ------------------
 
     def get_table_map(self) -> dict[str, TTFTable]:
@@ -209,6 +228,25 @@ class TrueTypeFont:
         if offset < 0 or length < 0 or offset + length > len(self._raw_bytes):
             return None
         return self._raw_bytes[offset : offset + length]
+
+    def get_table_n_bytes(self, table: str | TTFTable, limit: int) -> bytes | None:
+        """Return up to ``limit`` raw on-disk bytes of ``table``.
+
+        Mirrors upstream's ``getTableNBytes(TTFTable, int)`` — used by the
+        embedded-font header parser to peek at large tables without
+        decoding them in full. Negative ``limit`` clamps to 0; a ``limit``
+        larger than the table is silently capped to the table length.
+        Returns ``None`` for an unknown / malformed table entry.
+        """
+        entry = self.get_table_map().get(table) if isinstance(table, str) else table
+        if entry is None:
+            return None
+        offset = entry.get_offset()
+        length = entry.get_length()
+        if offset < 0 or length < 0 or offset + length > len(self._raw_bytes):
+            return None
+        capped = max(0, min(int(limit), length))
+        return self._raw_bytes[offset : offset + capped]
 
     def get_header(self) -> HeaderTable | None:
         if self._head is not None:
@@ -493,6 +531,68 @@ class TrueTypeFont:
         t.populate_from_fonttools(self._tt)
         self._gsub = t
         return t
+
+    # ---------- GSUB feature toggles -----------------------------------
+
+    def is_enable_gsub(self) -> bool:
+        """``True`` when the GSUB table is enabled for this font.
+
+        Mirrors upstream's ``isEnableGsub()``. Defaults to ``True``;
+        callers can suppress GSUB on a per-font basis via
+        :meth:`set_enable_gsub` when its substitution rules misbehave.
+        """
+        return self._enable_gsub
+
+    def set_enable_gsub(self, enable: bool) -> None:  # noqa: FBT001
+        """Enable or disable the GSUB table for this font.
+
+        Mirrors upstream's ``setEnableGsub(boolean)``.
+        """
+        self._enable_gsub = bool(enable)
+
+    def enable_gsub_feature(self, feature_tag: str) -> None:
+        """Opt into a particular GSUB feature (e.g. ``"liga"``, ``"vrt2"``).
+
+        Mirrors upstream's ``enableGsubFeature(String)``. The feature may
+        not be supported by the font or by pypdfbox yet — this just records
+        the request.
+        """
+        self._enabled_gsub_features.append(feature_tag)
+
+    def disable_gsub_feature(self, feature_tag: str) -> None:
+        """Remove a previously-enabled GSUB feature tag.
+
+        Mirrors upstream's ``disableGsubFeature(String)`` — uses
+        ``list.remove`` semantics, so removing a tag that was never added
+        raises :class:`ValueError`, matching Java's behaviour where the
+        underlying ``ArrayList.remove(Object)`` is a no-op only when the
+        tag is present.
+        """
+        # ``list.remove`` mirrors ``ArrayList.remove(Object)`` for the
+        # present-tag case. Upstream silently ignores absent tags
+        # (``ArrayList.remove(Object)`` returns ``false`` rather than
+        # throwing); match that to avoid surprising callers.
+        with suppress(ValueError):
+            self._enabled_gsub_features.remove(feature_tag)
+
+    def enable_vertical_substitutions(self) -> None:
+        """Enable the GSUB features used for vertical writing.
+
+        Mirrors upstream's ``enableVerticalSubstitutions()`` — registers
+        the standard ``vrt2`` and ``vert`` feature tags.
+        """
+        self.enable_gsub_feature("vrt2")
+        self.enable_gsub_feature("vert")
+
+    def get_enabled_gsub_features(self) -> list[str]:
+        """Return a copy of the currently-enabled GSUB feature tags.
+
+        Not present on upstream as a public accessor (the field is
+        package-private), but exposed here so tests and consumers can
+        observe the result of :meth:`enable_gsub_feature` /
+        :meth:`disable_gsub_feature` without reaching into private state.
+        """
+        return list(self._enabled_gsub_features)
 
     # ---------- GPOS (glyph positioning) accessor ----------------------
 

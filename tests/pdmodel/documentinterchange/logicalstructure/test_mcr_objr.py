@@ -188,3 +188,43 @@ def test_objr_set_referenced_object_none_clears_obj() -> None:
     objr.set_referenced_object(None)
     assert objr.get_obj() is None
     assert objr.get_referenced_object() is None
+
+
+# ---------- PDMarkedContentReference typed /Pg accessors ----------
+
+
+def test_mcr_get_page_returns_none_when_pg_absent() -> None:
+    mcr = PDMarkedContentReference()
+    assert mcr.get_page() is None
+
+
+def test_mcr_set_page_then_get_page_returns_pdpage() -> None:
+    from pypdfbox.pdmodel.pd_page import PDPage
+
+    mcr = PDMarkedContentReference()
+    page = PDPage()
+    mcr.set_page(page)
+    got = mcr.get_page()
+    assert isinstance(got, PDPage)
+    # Same underlying COSDictionary — no copy.
+    assert got.get_cos_object() is page.get_cos_object()
+
+
+def test_mcr_set_page_none_removes_pg() -> None:
+    from pypdfbox.pdmodel.pd_page import PDPage
+
+    mcr = PDMarkedContentReference()
+    mcr.set_page(PDPage())
+    assert mcr.get_pg() is not None
+    mcr.set_page(None)
+    assert mcr.get_pg() is None
+    assert mcr.get_page() is None
+
+
+def test_mcr_get_page_skips_non_dictionary_pg() -> None:
+    # Hand-construct a /Pg that is not a dict — get_page should return None.
+    raw = COSDictionary()
+    raw.set_name(_TYPE, "MCR")
+    raw.set_int(_PG, 42)  # nonsense /Pg shape
+    mcr = PDMarkedContentReference(raw)
+    assert mcr.get_page() is None

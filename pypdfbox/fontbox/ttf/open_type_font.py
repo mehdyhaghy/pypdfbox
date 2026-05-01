@@ -56,6 +56,20 @@ class OpenTypeFont(TrueTypeFont):
         """
         return self.has_table("CFF ")
 
+    def has_layout_tables(self) -> bool:
+        """``True`` if the font carries any OpenType Layout (Advanced
+        Typographic) table.
+
+        Mirrors ``OpenTypeFont.hasLayoutTables()`` — checks for ``BASE``,
+        ``GDEF``, ``GPOS``, ``GSUB`` or ``OTL `` (the latter being the
+        legacy Apple table name). Used by upstream callers that need to
+        decide whether to route shaping through HarfBuzz vs the simpler
+        cmap-only path.
+        """
+        return any(
+            self.has_table(tag) for tag in ("BASE", "GDEF", "GPOS", "GSUB", "OTL ")
+        )
+
     # ---------- CFF accessor ------------------------------------------
 
     def get_cff(self) -> AnyCFF | None:

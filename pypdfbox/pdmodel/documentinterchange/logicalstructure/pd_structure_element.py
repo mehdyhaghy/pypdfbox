@@ -190,6 +190,22 @@ class PDStructureElement(PDStructureNode):
     def set_id(self, id_: str | None) -> None:
         self._dictionary.set_string(_ID, id_)
 
+    def get_element_identifier(self) -> str | None:
+        """Return the element identifier (``/ID``).
+
+        Upstream-spelled accessor for ``/ID`` (mirrors PDFBox
+        ``getElementIdentifier``); :meth:`get_id` is the shorter pypdfbox
+        spelling and remains an alias for the same slot.
+        """
+        return self._dictionary.get_string(_ID)
+
+    def set_element_identifier(self, identifier: str | None) -> None:
+        """Set the element identifier (``/ID``).
+
+        Upstream-spelled mutator (mirrors PDFBox ``setElementIdentifier``).
+        """
+        self._dictionary.set_string(_ID, identifier)
+
     # ---------- /R revision number ----------
 
     def get_revision_number(self) -> int:
@@ -199,6 +215,10 @@ class PDStructureElement(PDStructureNode):
         if revision_number < 0:
             raise ValueError("The revision number shall be > -1")
         self._dictionary.set_int(_R, revision_number)
+
+    def increment_revision_number(self) -> None:
+        """Bump ``/R`` by one. Mirrors upstream ``incrementRevisionNumber``."""
+        self.set_revision_number(self.get_revision_number() + 1)
 
     # ---------- /T title ----------
 
@@ -501,6 +521,38 @@ class PDStructureElement(PDStructureNode):
         if mcid < 0:
             raise ValueError("MCID is negative")
         self.append_kid(mcid)
+
+    # ---------- typed /K remove + insert overloads ----------
+
+    def remove_kid_element(self, structure_element: PDStructureElement) -> bool:
+        """Remove a ``PDStructureElement`` kid and clear its ``/P`` parent
+        pointer when the removal succeeds.
+
+        Mirrors upstream ``removeKid(PDStructureElement)`` (PDStructureNode
+        ancestor): the base ``remove_kid`` only updates ``/K``; this
+        overload additionally clears the kid's parent back-pointer when
+        the kid was actually present, matching upstream's contract.
+        Returns ``True`` when the kid was removed, ``False`` otherwise.
+        """
+        if structure_element is None:
+            return False
+        removed = self.remove_kid(structure_element)
+        if removed:
+            structure_element.set_parent(None)
+        return removed
+
+    def insert_before_element(
+        self, new_kid: PDStructureElement, before_kid: Any
+    ) -> bool:
+        """Insert a ``PDStructureElement`` before ``before_kid`` in ``/K``.
+
+        Mirrors upstream ``insertBefore(PDStructureElement, Object)`` —
+        a thin typed alias over :meth:`PDStructureNode.insert_before` that
+        documents the upstream overload's contract.
+        """
+        if new_kid is None or before_kid is None:
+            return False
+        return self.insert_before(new_kid, before_kid)
 
     # ---------- /A attribute object maintenance ----------
 

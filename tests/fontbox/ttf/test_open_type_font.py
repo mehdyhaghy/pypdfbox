@@ -135,3 +135,34 @@ def test_get_cff_returns_none_when_no_cff_table() -> None:
     font = parser.parse(FIXTURE_TTF.read_bytes())
     assert isinstance(font, OpenTypeFont)
     assert font.get_cff() is None
+
+
+# ---------- has_layout_tables -------------------------------------------
+
+
+def test_has_layout_tables_false_for_minimal_otf(
+    name_keyed_otf: OpenTypeFont,
+) -> None:
+    # Synthesised CFF font has no GPOS/GSUB/BASE/GDEF/OTL — predicate must
+    # return False.
+    assert name_keyed_otf.has_layout_tables() is False
+
+
+def test_has_layout_tables_true_when_gsub_present() -> None:
+    """A real font shipped with a GSUB table (LiberationSans) reports
+    ``has_layout_tables()`` as True even when consumed via OTFParser.
+    """
+    if not FIXTURE_TTF.exists():
+        pytest.skip("TTF fixture not present")
+    parser = OTFParser()
+    font = parser.parse(FIXTURE_TTF.read_bytes())
+    assert isinstance(font, OpenTypeFont)
+    # LiberationSans ships GSUB / GPOS — pick whichever the predicate sees.
+    assert font.has_layout_tables() is (
+        font.has_table("GSUB")
+        or font.has_table("GPOS")
+        or font.has_table("BASE")
+        or font.has_table("GDEF")
+        or font.has_table("OTL ")
+    )
+    assert font.has_layout_tables() is True
