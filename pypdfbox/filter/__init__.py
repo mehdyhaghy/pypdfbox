@@ -17,6 +17,7 @@ from .jbig2_decode import JBIG2Decode
 from .jpx_decode import JPXDecode
 from .lzw_decode import LZWDecode
 from .lzw_filter import LZWFilter
+from .missing_image_reader_exception import MissingImageReaderException
 from .run_length_decode import RunLengthDecode
 from .run_length_filter import RunLengthDecodeFilter
 from .tiff_extension import TIFFExtension
@@ -39,6 +40,7 @@ __all__ = [
     "JPXDecode",
     "LZWDecode",
     "LZWFilter",
+    "MissingImageReaderException",
     "RunLengthDecode",
     "RunLengthDecodeFilter",
     "TIFFExtension",

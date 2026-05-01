@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .missing_resource_exception import MissingResourceException
 from .page_layout import PageLayout
 from .page_mode import PageMode
 from .pd_document import PDDocument
@@ -17,6 +18,7 @@ from .pd_resources import PDResources
 from .pd_viewer_preferences import PDViewerPreferences
 
 __all__ = [
+    "MissingResourceException",
     "PDDocument",
     "PDDeveloperExtension",
     "PDDocumentCatalog",

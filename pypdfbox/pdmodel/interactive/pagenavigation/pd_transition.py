@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSInteger, COSName
 
 from .pd_transition_direction import PDTransitionDirection
 from .pd_transition_dimension import PDTransitionDimension
@@ -102,6 +102,19 @@ class PDTransition:
         else:
             self._dictionary.set_item(_DI, COSInteger.get(direction))
 
+    def get_direction_cos(self) -> COSBase:
+        """Return the raw ``/Di`` value as a :class:`COSBase`.
+
+        Mirrors upstream ``PDTransition.getDirection()``, which returns the
+        underlying ``COSBase`` (either a ``COSInteger`` or ``COSName.NONE``)
+        rather than a Python ``int``. When ``/Di`` is absent the upstream
+        contract is to return ``COSInteger.ZERO``.
+        """
+        item = self._dictionary.get_dictionary_object(_DI)
+        if item is None:
+            return COSInteger.ZERO  # type: ignore[attr-defined]
+        return item
+
     # ---------- fly scale (/SS) ----------
 
     def get_fly_scale(self) -> float:
@@ -128,6 +141,23 @@ class PDTransition:
 
     def set_fly_area_to_show(self, b: bool) -> None:
         self._dictionary.set_boolean(_B, b)
+
+    # ---------- fly area opaque upstream-name aliases ----------
+    #
+    # Upstream PDFBox names these ``isFlyAreaOpaque`` / ``setFlyAreaOpaque``.
+    # The ``..._to_show`` accessors above predate this round-out; we provide
+    # the snake_case equivalents of the upstream names so PDFBox developers
+    # can reach for what they expect.
+
+    def is_fly_area_opaque(self) -> bool:
+        """Alias of :meth:`is_fly_area_to_show` matching upstream
+        ``isFlyAreaOpaque``."""
+        return self._dictionary.get_boolean(_B, False)
+
+    def set_fly_area_opaque(self, opaque: bool) -> None:
+        """Alias of :meth:`set_fly_area_to_show` matching upstream
+        ``setFlyAreaOpaque``."""
+        self._dictionary.set_boolean(_B, opaque)
 
 
 __all__ = ["PDTransition"]

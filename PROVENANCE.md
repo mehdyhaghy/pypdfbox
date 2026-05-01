@@ -103,6 +103,7 @@ PDF stream filters per ISO 32000-1 §7.4. Per PRD §3.7, filters that wrap stdli
 | `pypdfbox/filter/ccitt_fax_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CCITTFaxFilter.java` | API surface; T.4 / T.6 decoding delegated to libtiff via Pillow (synthetic TIFF wrapper around the encoded strip). Decode-only (no encoder use case yet). |
 | `pypdfbox/filter/jpx_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JPXFilter.java` | API surface; JPEG 2000 decoding delegated to OpenJPEG via Pillow. Decode-only (no encoder use case yet). |
 | `pypdfbox/filter/jbig2_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JBIG2Filter.java` | API surface only — original implementation that wraps the MIT-licensed `jbig2-parser` (Rust-backed) library. `/JBIG2Globals` resolution + prepend logic and bilevel parameter surfacing are original; PDFBox upstream uses Levigo's `jbig2-imageio` SPI which we replaced. Decode-only (no encoder use case yet). |
+| `pypdfbox/filter/missing_image_reader_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/MissingImageReaderException.java` (extends `OSError` per CLAUDE.md `IOException` mapping) |
 
 ### `pypdfbox/contentstream/`
 
@@ -165,6 +166,7 @@ Cluster #1 (PDDocument / PDPage / PDPageTree / PDDocumentCatalog / PDResources /
 | `pypdfbox/pdmodel/pd_resources.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDResources.java` (cluster #1 surface — resource-dict accessors; XObject / font / colorspace lookups stubbed for later clusters) |
 | `pypdfbox/pdmodel/pd_resource_cache.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java`, `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/DefaultResourceCache.java` (interface + default in-memory impl; soft-reference eviction not ported — explicit `clear()` instead, see `CHANGES.md`) |
 | `pypdfbox/pdmodel/pd_rectangle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDRectangle.java` |
+| `pypdfbox/pdmodel/missing_resource_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/MissingResourceException.java` (extends `OSError` per CLAUDE.md `IOException` mapping) |
 
 Cluster #2 (PDDocumentInformation / PDPageLabels / PDViewerPreferences).
 

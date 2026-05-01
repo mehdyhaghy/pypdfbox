@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.pagenavigation import (
     PDTransition,
     PDTransitionDimension,
+    PDTransitionDirection,
     PDTransitionMotion,
 )
 
@@ -90,3 +91,51 @@ def test_is_fly_area_to_show_matches_getter() -> None:
     transition.set_fly_area_to_show(True)
     assert transition.is_fly_area_to_show() is True
     assert transition.get_fly_area_to_show() is True
+
+
+def test_is_fly_area_opaque_default_is_false() -> None:
+    # Upstream-name accessor: matches PDFBox `isFlyAreaOpaque()` default.
+    transition = PDTransition(COSDictionary())
+    assert transition.is_fly_area_opaque() is False
+
+
+def test_set_fly_area_opaque_round_trip() -> None:
+    transition = PDTransition()
+    transition.set_fly_area_opaque(True)
+    assert transition.is_fly_area_opaque() is True
+    transition.set_fly_area_opaque(False)
+    assert transition.is_fly_area_opaque() is False
+
+
+def test_fly_area_opaque_and_to_show_share_storage() -> None:
+    # Both accessor families read/write the same /B entry — they're aliases.
+    transition = PDTransition()
+    transition.set_fly_area_opaque(True)
+    assert transition.is_fly_area_to_show() is True
+    assert transition.get_fly_area_to_show() is True
+    transition.set_fly_area_to_show(False)
+    assert transition.is_fly_area_opaque() is False
+
+
+def test_get_direction_cos_default_is_cos_integer_zero() -> None:
+    # Upstream `getDirection()` returns COSInteger.ZERO when /Di is absent.
+    transition = PDTransition(COSDictionary())
+    raw = transition.get_direction_cos()
+    assert isinstance(raw, COSInteger)
+    assert raw.value == 0
+
+
+def test_get_direction_cos_returns_cos_integer_when_int_set() -> None:
+    transition = PDTransition()
+    transition.set_direction(PDTransitionDirection.RIGHT_TO_LEFT)
+    raw = transition.get_direction_cos()
+    assert isinstance(raw, COSInteger)
+    assert raw.value == 180
+
+
+def test_get_direction_cos_returns_cos_name_when_none_set() -> None:
+    transition = PDTransition()
+    transition.set_direction(PDTransitionDirection.NONE)
+    raw = transition.get_direction_cos()
+    assert isinstance(raw, COSName)
+    assert raw == COSName.get_pdf_name("None")
