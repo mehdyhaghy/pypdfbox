@@ -38,6 +38,28 @@ class PDOutlineNode:
     def get_cos_object(self) -> COSDictionary:
         return self._dictionary
 
+    # ---------- equality / hashing (PDDictionaryWrapper parity) ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Equality by underlying ``COSDictionary`` identity, mirroring
+        upstream ``PDDictionaryWrapper#equals``. Two outline wrappers
+        compare equal when (and only when) they wrap the same
+        ``COSDictionary`` instance — fresh wrappers returned by accessors
+        such as ``get_next_sibling`` therefore compare equal across
+        calls.
+        """
+        if self is other:
+            return True
+        if isinstance(other, PDOutlineNode):
+            return self._dictionary is other._dictionary
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        """Hash by ``id`` of the wrapped dictionary, paired with
+        :meth:`__eq__`. Mirrors upstream ``PDDictionaryWrapper#hashCode``,
+        which delegates to the dictionary's hash."""
+        return id(self._dictionary)
+
     # ---------- parent ----------
 
     def get_parent(self) -> PDOutlineNode | None:
@@ -233,7 +255,13 @@ class PDOutlineItemIterator:
         self._seen: set[int] = set()
 
     def has_next(self) -> bool:
-        return self._cursor is not None
+        """``True`` when a subsequent :meth:`__next__` call would yield an
+        item, mirroring upstream ``PDOutlineItemIterator#hasNext``: the
+        cursor must be non-``None`` *and* not already in the visited set
+        (so a cycle in ``/Next`` doesn't dangle a phantom ``True``)."""
+        if self._cursor is None:
+            return False
+        return id(self._cursor.get_cos_object()) not in self._seen
 
     def __iter__(self) -> Iterator[PDOutlineItem]:
         return self

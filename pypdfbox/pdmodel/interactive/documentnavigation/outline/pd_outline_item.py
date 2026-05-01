@@ -70,6 +70,13 @@ class PDOutlineItem(PDOutlineNode):
         exposes this for hand-built test fixtures and we mirror that."""
         self._set_next_sibling(node)
 
+    def set_previous_sibling(self, node: PDOutlineNode) -> None:
+        """Public alias of the internal previous-sibling setter — paired
+        with :meth:`set_next_sibling` for hand-built test fixtures that
+        wire up a chain by hand instead of going through
+        :meth:`insert_sibling_before`."""
+        self._set_previous_sibling(node)
+
     # ---------- sibling insertion ----------
 
     def insert_sibling_after(self, new_sibling: PDOutlineItem) -> None:

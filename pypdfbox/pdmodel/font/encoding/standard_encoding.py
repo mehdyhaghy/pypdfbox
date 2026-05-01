@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pypdfbox.cos import COSBase, COSName
 from pypdfbox.fontbox.encoding.standard_encoding import _TABLE
 
 from .encoding import Encoding
@@ -20,6 +21,10 @@ class StandardEncoding(Encoding):
         super().__init__()
         for code, name in _TABLE:
             self.add(code, name)
+
+    def get_cos_object(self) -> COSBase:
+        # Upstream returns COSName.STANDARD_ENCODING directly.
+        return COSName.STANDARD_ENCODING  # type: ignore[attr-defined]
 
     def get_encoding_name(self) -> str:
         return "StandardEncoding"

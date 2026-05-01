@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pypdfbox.cos import COSBase, COSName
 from pypdfbox.fontbox.encoding.win_ansi_encoding import _TABLE
 
 from .encoding import Encoding
@@ -22,6 +23,12 @@ class WinAnsiEncoding(Encoding):
         for i in range(0o41, 256):
             if i not in self._code_to_name:
                 self.add(i, "bullet")
+
+    def get_cos_object(self) -> COSBase:
+        # Upstream returns COSName.WIN_ANSI_ENCODING directly. The base-class
+        # implementation arrives at the same interned COSName via the encoding
+        # name, but mirroring the override keeps the surface explicit.
+        return COSName.get_pdf_name("WinAnsiEncoding")
 
     def get_encoding_name(self) -> str:
         return "WinAnsiEncoding"

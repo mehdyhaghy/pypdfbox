@@ -20,8 +20,12 @@ class PDDocumentOutline(PDOutlineNode):
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         super().__init__(dictionary)
-        if self._dictionary.get_dictionary_object(_TYPE) is None:
-            self._dictionary.set_item(_TYPE, _OUTLINES)
+        # Upstream ``PDDocumentOutline(COSDictionary)`` unconditionally
+        # writes ``/Type /Outlines`` on the wrapped dictionary — even
+        # when a stale or wrong ``/Type`` is already present. Mirror that
+        # behavior so wrapping a half-built outline dict normalizes the
+        # type marker.
+        self._dictionary.set_item(_TYPE, _OUTLINES)
 
     # ---------- open / closed (root defaults to open) ----------
 

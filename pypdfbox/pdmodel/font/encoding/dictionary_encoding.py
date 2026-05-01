@@ -60,6 +60,10 @@ class DictionaryEncoding(Encoding):
             if base_encoding is not None:
                 self._encoding.set_item(_BASE_ENCODING, base_encoding)
                 self._base_encoding = Encoding.get_instance(base_encoding)
+                if self._base_encoding is None:
+                    # Upstream raises IllegalArgumentException for an invalid
+                    # base encoding name. Mirror with ValueError.
+                    raise ValueError(f"Invalid encoding: {base_encoding}")
             else:
                 self._base_encoding = None
             if differences is not None:
@@ -150,14 +154,19 @@ class DictionaryEncoding(Encoding):
     def get_differences(self) -> dict[int, str]:
         return dict(self._differences)
 
-    def get_encoding_name(self) -> str | None:
-        # Custom dictionary encodings have no canonical PDF name.
-        if self._base_encoding is not None:
-            base = self._base_encoding.get_encoding_name()
-            if base is not None:
-                return f"differences with {base}"
+    def get_encoding_name(self) -> str:
+        """Return the encoding identifier.
+
+        Mirrors upstream ``DictionaryEncoding.getEncodingName()``: when there
+        is no base encoding (Type 3 fonts) the ``/Differences`` array is the
+        complete encoding so the result is just ``"differences"``; otherwise
+        the result is ``"<base name> with differences"``.
+        """
+        if self._base_encoding is None:
+            # In Type 3 the /Differences array shall specify the complete
+            # character encoding.
             return "differences"
-        return "differences"
+        return f"{self._base_encoding.get_encoding_name()} with differences"
 
     def add(self, code: int, name: str) -> None:
         """Add a (code, name) pair. Also recorded in the ``/Differences``
