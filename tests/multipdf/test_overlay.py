@@ -521,3 +521,83 @@ def test_overlay_no_overlay_configured_leaves_pages_untouched() -> None:
             .get_dictionary_object(COSName.CONTENTS)
             is original
         )
+
+
+# ---------- upstream-parity round-out ----------
+
+
+def test_overlay_uses_ol_prefix_for_form_xobject() -> None:
+    """Round-out — upstream registers the overlay form XObject under the
+    ``OL`` prefix (``resources.add(overlayFormXObject, "OL")`` in Java).
+    The resulting /XObject key must therefore be ``OL0`` / ``OL1`` / …
+    rather than the default ``Form*``."""
+    base = _build_base_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(_build_overlay_doc())
+    overlay.overlay({})
+
+    for i in range(base.get_number_of_pages()):
+        page = base.get_page(i)
+        names = _resolve_xobject_keys(page)
+        assert names, f"page {i} missing /XObject"
+        assert all(n.startswith("OL") for n in names), (
+            f"page {i}: expected OL-prefixed keys, got {names}"
+        )
+
+
+def test_overlay_form_bbox_uses_create_retranslated_rectangle() -> None:
+    """Upstream calls ``layoutPage.overlayMediaBox.createRetranslatedRectangle()``
+    for the form XObject's /BBox — i.e. the box's lower-left translates to
+    (0, 0) and width/height carry over. Verifies the round-out swaps the
+    manual ``PDRectangle(0, 0, w, h)`` construction for the upstream call."""
+    base = _build_base_doc(1)
+    # Overlay doc with a non-zero lower-left to make the retranslation
+    # observable: a retranslated 200x200 box is always (0, 0, 200, 200)
+    # regardless of the source's lower-left corner.
+    overlay_doc = PDDocument()
+    page = PDPage(PDRectangle(50.0, 100.0, 250.0, 300.0))
+    overlay_doc.add_page(page)
+    with PDPageContentStream(overlay_doc, page) as cs:
+        cs.add_rect(60.0, 110.0, 50.0, 50.0)
+        cs.fill()
+
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(overlay_doc)
+    overlay.overlay({})
+
+    # Reach into the registered form XObject and check its /BBox entry.
+    base_page = base.get_page(0)
+    res = base_page.get_resources()
+    sub = res.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("XObject")
+    )
+    assert isinstance(sub, COSDictionary)
+    keys = list(sub.key_set())
+    assert keys, "no overlay form XObject registered"
+    form_stream = sub.get_dictionary_object(keys[0])
+    assert isinstance(form_stream, COSStream)
+    bbox = form_stream.get_dictionary_object(COSName.get_pdf_name("BBox"))
+    assert isinstance(bbox, COSArray)
+    # Retranslated: (0, 0, width, height) where width=200, height=200.
+    floats = [bbox.get(i).float_value() for i in range(4)]  # type: ignore[union-attr]
+    assert floats == [0.0, 0.0, 200.0, 200.0]
+
+
+def test_position_value_of_known_names() -> None:
+    """``Position.value_of`` mirrors Java's ``Enum.valueOf`` — exact-name
+    lookup; raises ValueError on unknown names."""
+    assert Position.value_of("FOREGROUND") is Position.FOREGROUND
+    assert Position.value_of("BACKGROUND") is Position.BACKGROUND
+
+
+def test_position_value_of_unknown_name_raises() -> None:
+    with pytest.raises(ValueError, match="No Position constant"):
+        Position.value_of("MIDDLE")
+
+
+def test_position_value_of_is_case_sensitive() -> None:
+    """Java's ``Enum.valueOf`` is case-sensitive; ours must match."""
+    with pytest.raises(ValueError):
+        Position.value_of("foreground")

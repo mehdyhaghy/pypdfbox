@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from enum import Enum
 from typing import IO
 from xml.etree import ElementTree as ET
 
@@ -21,7 +22,59 @@ from .xmp_schema import X_DEFAULT, XMPSchema
 
 
 class XmpParsingException(ValueError):
-    """Raised when an XMP packet is malformed or cannot be parsed."""
+    """Raised when an XMP packet is malformed or cannot be parsed.
+
+    Mirrors ``org.apache.xmpbox.xml.XmpParsingException`` (PDFBox 3.0.x): an
+    ``ErrorType`` discriminator categorises the failure mode so callers can
+    branch on the cause without parsing the message string. Constructing with
+    only a message (no error type) is also supported for backward
+    compatibility — ``error_type`` defaults to :attr:`ErrorType.UNDEFINED` in
+    that case.
+    """
+
+    class ErrorType(Enum):
+        """Mirrors upstream ``XmpParsingException.ErrorType``."""
+
+        UNDEFINED = "Undefined"
+        CONFIGURATION = "Configuration"
+        XPACKET_BAD_START = "XpacketBadStart"
+        XPACKET_BAD_END = "XpacketBadEnd"
+        NO_ROOT_ELEMENT = "NoRootElement"
+        NO_SCHEMA = "NoSchema"
+        INVALID_PDFA_SCHEMA = "InvalidPdfaSchema"
+        NO_TYPE = "NoType"
+        INVALID_TYPE = "InvalidType"
+        FORMAT = "Format"
+        NO_VALUE_TYPE = "NoValueType"
+        REQUIRED_PROPERTY = "RequiredProperty"
+        INVALID_PREFIX = "InvalidPrefix"
+
+    def __init__(
+        self,
+        error_or_message: "XmpParsingException.ErrorType | str",
+        message: str | None = None,
+        cause: BaseException | None = None,
+    ) -> None:
+        if isinstance(error_or_message, XmpParsingException.ErrorType):
+            error = error_or_message
+            msg = "" if message is None else message
+        else:
+            # Backward-compatible single-message form: defaults to UNDEFINED.
+            error = XmpParsingException.ErrorType.UNDEFINED
+            msg = error_or_message
+        super().__init__(msg)
+        self._error_type = error
+        if cause is not None:
+            self.__cause__ = cause
+
+    def get_error_type(self) -> "XmpParsingException.ErrorType":
+        """Returns the categorical error type (upstream ``getErrorType``)."""
+        return self._error_type
+
+    @property
+    def error_type(self) -> "XmpParsingException.ErrorType":
+        """Pythonic accessor for :meth:`get_error_type`."""
+        return self._error_type
 
 
 # XML namespace constants used by the parser.
@@ -114,11 +167,17 @@ class DomXmpParser:
             # honored by the underlying expat parser.
             root = ET.fromstring(body)
         except ET.ParseError as exc:
-            raise XmpParsingException(f"malformed XMP packet: {exc}") from exc
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.FORMAT,
+                f"malformed XMP packet: {exc}",
+            ) from exc
 
         rdf = self._find_rdf_root(root)
         if rdf is None:
-            raise XmpParsingException("no rdf:RDF element found in XMP packet")
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.NO_ROOT_ELEMENT,
+                "no rdf:RDF element found in XMP packet",
+            )
 
         metadata = XMPMetadata(
             xpacket_begin=xpacket_begin,

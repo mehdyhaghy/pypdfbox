@@ -25,6 +25,12 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 
+# Resource key prefix used for the form XObject the overlay registers in
+# the host page's /Resources /XObject subdictionary. Matches upstream's
+# literal ``resources.add(overlayFormXObject, "OL")`` call in
+# ``Overlay.overlayPage``.
+_OVERLAY_KEY_PREFIX: str = "OL"
+
 
 class Position(Enum):
     """Possible location of the overlaid pages: foreground or background.
@@ -34,6 +40,22 @@ class Position(Enum):
 
     FOREGROUND = "FOREGROUND"
     BACKGROUND = "BACKGROUND"
+
+    @classmethod
+    def value_of(cls, name: str) -> Position:
+        """Return the ``Position`` member with the given name.
+
+        Mirrors Java's ``Enum.valueOf(String)`` — case-sensitive lookup
+        against the member name (``"FOREGROUND"`` / ``"BACKGROUND"``).
+        Raises :class:`ValueError` for unknown names, just like Java's
+        ``IllegalArgumentException``.
+        """
+        try:
+            return cls[name]
+        except KeyError as exc:
+            raise ValueError(
+                f"No Position constant with name {name!r}"
+            ) from exc
 
 
 class _LayoutPage:
@@ -444,12 +466,16 @@ class Overlay:
             resources = PDResources()
             page.set_resources(resources)
         overlay_form = self._create_overlay_form_x_object(layout_page, cloner)
-        form_id = resources.add(COSName.get_pdf_name("XObject"), overlay_form.get_cos_object())
-        # ``PDResources.add`` returned key uses the "Form" prefix already
-        # — overlay's choice of "OL" prefix in upstream is cosmetic; we
-        # keep the standard prefix because the stamp consumes the COSName
-        # we're handed back, not a fixed string. Mirrors observable
-        # behaviour (the XObject is reachable from /Resources /XObject).
+        # Mirrors upstream's literal ``resources.add(overlayFormXObject, "OL")``
+        # — the registered key is allocated under the ``OL`` prefix so it
+        # is observable as ``/OL0``, ``/OL1`` … in the page's /XObject
+        # subdictionary. Round-trip parity test:
+        # ``test_overlay_uses_ol_prefix_for_form_xobject`` exercises this.
+        form_id = resources.add(
+            COSName.get_pdf_name("XObject"),
+            overlay_form.get_cos_object(),
+            prefix=_OVERLAY_KEY_PREFIX,
+        )
         array.add(self._create_overlay_stream(page, layout_page, form_id))
 
     def _get_layout_page(
@@ -514,17 +540,13 @@ class Overlay:
             xobj_form.set_resources(PDResources(cloned))
         xobj_form.set_form_type(1)
         # PDFBOX-6048: use the real lower-left corner of the overlay's
-        # MediaBox as the /BBox origin. ``PDRectangle`` exposes the four
-        # corners as plain floats; we re-translate to (0, 0) to keep the
-        # upstream-equivalent geometry but with the real corner reflected
-        # in the affine transform below (in :meth:`_create_overlay_stream`).
-        bbox = PDRectangle(
-            0.0,
-            0.0,
-            layout_page.overlay_media_box.get_width(),
-            layout_page.overlay_media_box.get_height(),
+        # MediaBox as the /BBox origin via ``create_retranslated_rectangle``
+        # (mirrors upstream's ``createRetranslatedRectangle()`` call). The
+        # real corner is reflected in the affine transform below (in
+        # :meth:`_create_overlay_stream`).
+        xobj_form.set_bbox(
+            layout_page.overlay_media_box.create_retranslated_rectangle()
         )
-        xobj_form.set_bbox(bbox)
         # /Matrix — apply rotation around (0,0) for non-zero overlay rotations.
         matrix = self._rotation_matrix(layout_page)
         xobj_form.set_matrix(matrix)

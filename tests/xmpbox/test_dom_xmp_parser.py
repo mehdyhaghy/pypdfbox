@@ -152,6 +152,68 @@ def test_parse_missing_rdf_root_raises() -> None:
         DomXmpParser().parse(b"<root><child/></root>")
 
 
+def test_xmp_parsing_exception_default_error_type_is_undefined() -> None:
+    """Single-message construction stays back-compat and reports UNDEFINED."""
+    exc = XmpParsingException("some failure")
+    assert exc.get_error_type() is XmpParsingException.ErrorType.UNDEFINED
+    assert exc.error_type is XmpParsingException.ErrorType.UNDEFINED
+    assert str(exc) == "some failure"
+
+
+def test_xmp_parsing_exception_with_explicit_error_type() -> None:
+    exc = XmpParsingException(
+        XmpParsingException.ErrorType.NO_SCHEMA, "missing schema"
+    )
+    assert exc.get_error_type() is XmpParsingException.ErrorType.NO_SCHEMA
+    assert str(exc) == "missing schema"
+
+
+def test_xmp_parsing_exception_with_cause_chains_through() -> None:
+    inner = ValueError("inner")
+    exc = XmpParsingException(
+        XmpParsingException.ErrorType.FORMAT, "wrapping", cause=inner
+    )
+    assert exc.__cause__ is inner
+    assert exc.get_error_type() is XmpParsingException.ErrorType.FORMAT
+
+
+def test_xmp_parsing_exception_error_type_enum_membership() -> None:
+    # Mirror the upstream Java enum: every documented error type must exist
+    # by upstream-Java name and resolve to a unique value.
+    expected_names = {
+        "Undefined",
+        "Configuration",
+        "XpacketBadStart",
+        "XpacketBadEnd",
+        "NoRootElement",
+        "NoSchema",
+        "InvalidPdfaSchema",
+        "NoType",
+        "InvalidType",
+        "Format",
+        "NoValueType",
+        "RequiredProperty",
+        "InvalidPrefix",
+    }
+    actual_names = {member.value for member in XmpParsingException.ErrorType}
+    assert actual_names == expected_names
+
+
+def test_parse_malformed_sets_format_error_type() -> None:
+    with pytest.raises(XmpParsingException) as info:
+        DomXmpParser().parse(b"<rdf:RDF unclosed")
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.FORMAT
+
+
+def test_parse_missing_rdf_root_sets_no_root_element_error_type() -> None:
+    with pytest.raises(XmpParsingException) as info:
+        DomXmpParser().parse(b"<root><child/></root>")
+    assert (
+        info.value.get_error_type()
+        is XmpParsingException.ErrorType.NO_ROOT_ELEMENT
+    )
+
+
 def test_multiple_descriptions_for_same_namespace_merge() -> None:
     # Mirrors the shape of upstream PDFBOX-5976: one schema's properties
     # spread across multiple rdf:Description blocks.
