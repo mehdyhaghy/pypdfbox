@@ -53,6 +53,13 @@ def test_jbig2_filter_registered_under_long_name_only() -> None:
         FilterFactory.get("JBIG2")
 
 
+def test_jbig2_globals_class_constant_matches_pdf_spec_key() -> None:
+    """Mirrors upstream's ``COSName.JBIG2_GLOBALS`` reference site —
+    porters reaching for the constant land on a stable name on the
+    filter class."""
+    assert JBIG2Decode.JBIG2_GLOBALS == "JBIG2Globals"
+
+
 # ---------- decode: happy paths via mocked codec ----------------------
 
 

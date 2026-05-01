@@ -46,6 +46,16 @@ def test_predefined_match_get_pdf_name() -> None:
     assert COSName.TYPE is COSName.get_pdf_name("Type")  # type: ignore[attr-defined]
 
 
+def test_predefined_encoding_constants() -> None:
+    # Upstream exposes interned ``COSName`` constants for the predefined
+    # ``/Encoding`` names; mirror those for parity (referenced by the
+    # encoding subclasses' ``getCOSObject`` overrides).
+    assert COSName.STANDARD_ENCODING is COSName.get_pdf_name("StandardEncoding")  # type: ignore[attr-defined]
+    assert COSName.MAC_EXPERT_ENCODING is COSName.get_pdf_name("MacExpertEncoding")  # type: ignore[attr-defined]
+    assert COSName.MAC_ROMAN_ENCODING is COSName.get_pdf_name("MacRomanEncoding")  # type: ignore[attr-defined]
+    assert COSName.WIN_ANSI_ENCODING is COSName.get_pdf_name("WinAnsiEncoding")  # type: ignore[attr-defined]
+
+
 def test_visitor_dispatch() -> None:
     from tests.cos.helpers import RecordingVisitor
 

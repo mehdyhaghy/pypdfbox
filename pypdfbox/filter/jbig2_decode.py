@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import io
-from typing import BinaryIO
+from typing import BinaryIO, Final
 
 from PIL import Image
 
@@ -12,7 +12,7 @@ from .filter import Filter
 from .filter_factory import FilterFactory
 
 # ISO 32000-1 §7.4.7 JBIG2Decode parameter keys.
-_JBIG2_GLOBALS = "JBIG2Globals"
+_JBIG2_GLOBALS: Final[str] = "JBIG2Globals"
 
 
 def _resolve_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
@@ -86,6 +86,11 @@ class JBIG2Decode(Filter):
 
     Mirrors `org.apache.pdfbox.filter.JBIG2Filter`.
     """
+
+    #: ``/JBIG2Globals`` parameter key per ISO 32000-1 §7.4.7. Exposed
+    #: as a class attribute so callers reaching for the upstream
+    #: ``COSName.JBIG2_GLOBALS`` reference site land on a stable name.
+    JBIG2_GLOBALS: Final[str] = _JBIG2_GLOBALS
 
     def decode(
         self,

@@ -78,6 +78,14 @@ class JPXDecode(Filter):
         out_params.set_int("Height", height)
         out_params.set_int("BitsPerComponent", bpc)
         out_params.set_int("ColorComponents", num_components)
+
+        # Per ISO 32000-1 §8.9.5.1 Note 5: "Decode shall be ignored,
+        # except in the case where the image is treated as a mask."
+        # Upstream JPXFilter clears the entry post-decode so downstream
+        # colorspace handling doesn't double-apply the linear remap.
+        if not out_params.get_boolean("ImageMask", False):
+            out_params.remove_item("Decode")
+
         return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
     def encode(

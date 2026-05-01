@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Mapping
+
 from pypdfbox.cos import COSBase
 
 from .encoding import Encoding
@@ -17,11 +19,13 @@ class BuiltInEncoding(Encoding):
     encodings have no PDF representation, so :meth:`get_cos_object` raises.
     """
 
-    def __init__(self, code_to_name: dict[int, str]) -> None:
+    def __init__(self, code_to_name: Mapping[int, str]) -> None:
         super().__init__()
         # Upstream uses ``codeToName.forEach(this::add)``; ``add`` keeps the
         # first reverse-mapping for a given glyph name, matching Java's
-        # ``Map.putIfAbsent`` semantics.
+        # ``Map.putIfAbsent`` semantics. Accept any ``Mapping`` (parity with
+        # Java's ``Map<Integer, String>`` interface) — callers may pass an
+        # ``OrderedDict``, ``MappingProxyType``, or a plain ``dict``.
         for code, name in code_to_name.items():
             self.add(code, name)
 

@@ -25,6 +25,14 @@ def test_get_cos_object():
     assert cos.name == "MacExpertEncoding"
 
 
+def test_get_cos_object_returns_interned_constant():
+    # Upstream returns ``COSName.MAC_EXPERT_ENCODING`` directly — verify the
+    # pypdfbox override yields the same interned ``COSName`` constant rather
+    # than minting a fresh instance on every call.
+    cos = MacExpertEncoding.INSTANCE.get_cos_object()
+    assert cos is COSName.MAC_EXPERT_ENCODING  # type: ignore[attr-defined]
+
+
 def test_space_is_mapped():
     # Space is one of the few common entries.
     assert MacExpertEncoding.INSTANCE.get_name(0x20) == "space"

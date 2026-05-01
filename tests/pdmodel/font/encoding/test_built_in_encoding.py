@@ -78,3 +78,29 @@ def test_snapshot_maps_are_copies():
     snap[99] = "Z"
     # Mutating the snapshot must not affect the encoding.
     assert enc.get_name(99) == ".notdef"
+
+
+def test_accepts_ordered_dict():
+    # Java's ``Map`` interface is the upstream parameter type — accept any
+    # ``Mapping`` so callers can pass an ``OrderedDict`` to control insertion
+    # order (relevant for the reverse map's first-wins tie-break).
+    from collections import OrderedDict
+
+    od: OrderedDict[int, str] = OrderedDict()
+    od[97] = "A"  # inserted first -> wins reverse mapping
+    od[65] = "A"
+    enc = BuiltInEncoding(od)
+    assert enc.get_name(65) == "A"
+    assert enc.get_name(97) == "A"
+    assert enc.get_code("A") == 97
+
+
+def test_accepts_mapping_proxy():
+    # ``MappingProxyType`` is the canonical read-only ``Mapping`` view in
+    # Python — verify the broadened parameter type accepts it.
+    from types import MappingProxyType
+
+    proxy = MappingProxyType({65: "A", 66: "B"})
+    enc = BuiltInEncoding(proxy)
+    assert enc.get_name(65) == "A"
+    assert enc.get_code("B") == 66

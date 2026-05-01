@@ -13,6 +13,7 @@ from .filter import Filter
 from .filter_factory import FilterFactory
 from .flate_decode import FlateDecode
 from .flate_filter import FlateFilter
+from .identity_filter import IdentityFilter
 from .jbig2_decode import JBIG2Decode
 from .jpx_decode import JPXDecode
 from .lzw_decode import LZWDecode
@@ -36,6 +37,7 @@ __all__ = [
     "FilterFactory",
     "FlateDecode",
     "FlateFilter",
+    "IdentityFilter",
     "JBIG2Decode",
     "JPXDecode",
     "LZWDecode",

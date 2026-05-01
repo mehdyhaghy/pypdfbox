@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pypdfbox.cos import COSBase, COSName
 from pypdfbox.fontbox.encoding.mac_expert_encoding import _TABLE
 
 from .encoding import Encoding
@@ -17,6 +18,10 @@ class MacExpertEncoding(Encoding):
         super().__init__()
         for code, name in _TABLE:
             self.add(code, name)
+
+    def get_cos_object(self) -> COSBase:
+        # Upstream returns COSName.MAC_EXPERT_ENCODING directly.
+        return COSName.MAC_EXPERT_ENCODING  # type: ignore[attr-defined]
 
     def get_encoding_name(self) -> str:
         return "MacExpertEncoding"

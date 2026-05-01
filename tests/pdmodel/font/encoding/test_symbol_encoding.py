@@ -25,6 +25,13 @@ def test_get_cos_object():
     assert cos.name == "SymbolEncoding"
 
 
+def test_get_cos_object_is_stable():
+    # Upstream's explicit override returns ``COSName.getPDFName(...)`` which
+    # is interned — repeated calls must produce the same ``COSName`` object.
+    enc = SymbolEncoding.INSTANCE
+    assert enc.get_cos_object() is enc.get_cos_object()
+
+
 def test_greek_capitals_are_mapped():
     enc = SymbolEncoding.INSTANCE
     # 0x41 = 'A' position is "Alpha" in Symbol encoding.

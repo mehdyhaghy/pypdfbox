@@ -65,3 +65,49 @@ def test_jpx_decode_invalid_input_raises_oserror() -> None:
 def test_jpx_encode_raises_not_implemented() -> None:
     with pytest.raises(NotImplementedError, match="decode-only"):
         JPXDecode().encode(io.BytesIO(b""), io.BytesIO(), COSDictionary())
+
+
+def test_jpx_decode_clears_decode_entry_when_not_image_mask() -> None:
+    """Per ISO 32000-1 §8.9.5.1 Note 5 / upstream JPXFilter: the
+    ``/Decode`` array is ignored for JPX-encoded images and must be
+    stripped from the parameters so downstream colorspace handling
+    doesn't double-apply the linear remap."""
+    src = Image.new("RGB", (4, 4), color=(10, 20, 30))
+    encoded_bytes = _encode_jp2(src)
+
+    params = COSDictionary()
+    from pypdfbox.cos import COSArray, COSFloat
+
+    decode_arr = COSArray()
+    for _ in range(3):
+        decode_arr.add(COSFloat(0.0))
+        decode_arr.add(COSFloat(1.0))
+    params.set_item("Decode", decode_arr)
+
+    result = JPXDecode().decode(
+        io.BytesIO(encoded_bytes), io.BytesIO(), params
+    )
+
+    assert "Decode" not in result.parameters
+
+
+def test_jpx_decode_preserves_decode_entry_when_image_mask() -> None:
+    """When ``/ImageMask`` is true, the ``/Decode`` array is meaningful
+    and upstream preserves it."""
+    src = Image.new("L", (4, 4), color=255)
+    encoded_bytes = _encode_jp2(src)
+
+    params = COSDictionary()
+    from pypdfbox.cos import COSArray, COSFloat
+
+    params.set_boolean("ImageMask", True)
+    decode_arr = COSArray()
+    decode_arr.add(COSFloat(1.0))
+    decode_arr.add(COSFloat(0.0))
+    params.set_item("Decode", decode_arr)
+
+    result = JPXDecode().decode(
+        io.BytesIO(encoded_bytes), io.BytesIO(), params
+    )
+
+    assert "Decode" in result.parameters

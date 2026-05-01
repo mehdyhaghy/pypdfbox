@@ -26,6 +26,13 @@ def test_get_cos_object():
     assert cos.name == "ZapfDingbatsEncoding"
 
 
+def test_get_cos_object_is_stable():
+    # Upstream's explicit override returns ``COSName.getPDFName(...)`` which
+    # is interned — repeated calls must produce the same ``COSName`` object.
+    enc = ZapfDingbatsEncoding.INSTANCE
+    assert enc.get_cos_object() is enc.get_cos_object()
+
+
 def test_space_is_mapped():
     assert ZapfDingbatsEncoding.INSTANCE.get_name(0o40) == "space"
 

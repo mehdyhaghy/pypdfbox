@@ -104,6 +104,7 @@ PDF stream filters per ISO 32000-1 §7.4. Per PRD §3.7, filters that wrap stdli
 | `pypdfbox/filter/jpx_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JPXFilter.java` | API surface; JPEG 2000 decoding delegated to OpenJPEG via Pillow. Decode-only (no encoder use case yet). |
 | `pypdfbox/filter/jbig2_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JBIG2Filter.java` | API surface only — original implementation that wraps the MIT-licensed `jbig2-parser` (Rust-backed) library. `/JBIG2Globals` resolution + prepend logic and bilevel parameter surfacing are original; PDFBox upstream uses Levigo's `jbig2-imageio` SPI which we replaced. Decode-only (no encoder use case yet). |
 | `pypdfbox/filter/missing_image_reader_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/MissingImageReaderException.java` (extends `OSError` per CLAUDE.md `IOException` mapping) |
+| `pypdfbox/filter/identity_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/IdentityFilter.java` | full port — pass-through `decode`/`encode` via `io_utils.copy`. Not registered in `FilterFactory` (upstream class is package-private; reached only through `CryptFilter`). |
 
 ### `pypdfbox/contentstream/`
 
