@@ -45,6 +45,15 @@ class OperatorProcessor(ABC):
         engine-dispatch path. Standalone registry use leaves it unset."""
         self._context = context
 
+    def get_context(self) -> PDFStreamEngine | None:
+        """Return the bound :class:`PDFStreamEngine`, or ``None`` when
+        the processor has not been registered with one yet. Mirrors
+        upstream ``OperatorProcessor.getContext`` (which is
+        ``protected final`` in Java); the lite scaffold variant returns
+        ``None`` rather than raising because it is intended for
+        standalone registry use where no engine need exist."""
+        return self._context
+
     @abstractmethod
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         """Handle one occurrence of the operator with its operand list."""

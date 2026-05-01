@@ -7,7 +7,7 @@ that ``PublicKeySecurityHandler`` consumes when wrapping a document.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 
 from .protection_policy import ProtectionPolicy
 
@@ -46,6 +46,12 @@ class PublicKeyProtectionPolicy(ProtectionPolicy):
         # Mirrors ``getRecipientsIterator`` — return the live list so callers
         # can iterate. Defensive copy avoided to match upstream semantics.
         return self._recipients
+
+    def get_recipients_iterator(self) -> Iterator[PublicKeyRecipient]:
+        """Mirror upstream ``getRecipientsIterator`` — return an iterator
+        over the live recipient list. Java callers commonly walk the list
+        through this rather than the underlying collection."""
+        return iter(self._recipients)
 
     def get_number_of_recipients(self) -> int:
         return len(self._recipients)

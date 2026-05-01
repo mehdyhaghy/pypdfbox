@@ -217,3 +217,35 @@ def test_handler_get_name_matches_operator_name() -> None:
         assert cls().get_name() == expected, (
             f"{cls.__name__}.get_name() != {expected!r}"
         )
+
+
+# ---------- lite OperatorProcessor.get_context ----------
+
+
+def test_lite_processor_get_context_returns_none_when_unbound() -> None:
+    """Mirrors upstream ``OperatorProcessor.getContext`` accessor; lite
+    scaffold returns ``None`` (rather than raising) so standalone
+    registry use needs no engine."""
+    p = MoveTo()
+    assert p.get_context() is None
+
+
+def test_lite_processor_get_context_returns_engine_when_bound() -> None:
+    """``set_context`` round-trip through ``get_context`` — the accessor
+    must report the engine that ``set_context`` recorded."""
+    from pypdfbox.contentstream import PDFStreamEngine
+
+    engine = PDFStreamEngine()
+    p = MoveTo()
+    p.set_context(engine)
+    assert p.get_context() is engine
+
+
+def test_lite_processor_get_context_returns_constructor_engine() -> None:
+    """The lite ``OperatorProcessor`` constructor accepts an engine
+    context; ``get_context`` reports the same instance."""
+    from pypdfbox.contentstream import PDFStreamEngine
+
+    engine = PDFStreamEngine()
+    p = LineTo(engine)
+    assert p.get_context() is engine

@@ -194,9 +194,12 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             BeginMarkedContentWithProps(),        # BDC
             EndMarkedContent(),                   # EMC
         ):
-            # Most lite stubs are registered directly because their
-            # semantics are routed through this class' process_operator
-            # override or remain context-free scaffolding.
+            # Lite stubs are scaffolding (semantics route through this
+            # class' ``process_operator`` override) but we still bind the
+            # engine context so ``engine.get_operator(name)._context`` is
+            # consistent with upstream's ``addOperator(new X(this))``
+            # invariant — every registered processor sees its engine.
+            processor.set_context(self)
             self._operators[processor.get_name()] = processor
 
         # Device color operators need engine context so they can forward

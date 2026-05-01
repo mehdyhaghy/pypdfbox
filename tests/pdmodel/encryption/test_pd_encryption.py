@@ -211,6 +211,20 @@ def test_protection_policy_invalid_key_length() -> None:
         pp.set_encryption_key_length(64)
 
 
+def test_protection_policy_default_key_length_class_constant() -> None:
+    # Mirrors upstream's ``private static final short DEFAULT_KEY_LENGTH``
+    # — exposed as a class attribute for parity. Subclasses inherit it.
+    from pypdfbox.pdmodel.encryption import StandardProtectionPolicy
+
+    assert ProtectionPolicy.DEFAULT_KEY_LENGTH == 40
+    assert ProtectionPolicy.DEFAULT_KEY_LENGTH == DEFAULT_KEY_LENGTH
+    # Inherited by subclasses (Java sees the same value through the base).
+    assert StandardProtectionPolicy.DEFAULT_KEY_LENGTH == 40
+    # Default-constructed instance picks up the class constant as its
+    # initial key length.
+    assert ProtectionPolicy().get_encryption_key_length() == ProtectionPolicy.DEFAULT_KEY_LENGTH
+
+
 # ---------- StandardProtectionPolicy ----------
 
 

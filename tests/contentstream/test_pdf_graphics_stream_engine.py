@@ -228,6 +228,25 @@ def test_constructor_registers_marked_content_operators() -> None:
         assert name in ops, f"missing marked-content operator: {name}"
 
 
+def test_constructor_binds_engine_context_to_every_registered_operator() -> None:
+    """Upstream PDFGraphicsStreamEngine constructs every operator
+    handler via ``addOperator(new X(this))`` so the engine reference is
+    available on each processor. Verify the same invariant holds for
+    pypdfbox: every registered processor's ``_context`` should be this
+    engine, regardless of whether it was wired through ``add_operator``
+    or through the lite-stub direct-registration path."""
+    engine = _RecordingGraphicsEngine()
+    ops = engine.get_operators()
+    # Sample a path operator (lite stub), a state operator (lite stub),
+    # a colour operator (engine-bound), and a text operator (engine-bound)
+    # — all should report the engine as their context.
+    for name in ("m", "h", "q", "Q", "cm", "BMC", "G", "BT"):
+        processor = ops[name]
+        assert processor._context is engine, (
+            f"operator {name!r} processor was not bound to engine context"
+        )
+
+
 # ---------- end-to-end dispatch via the operator stream ----------
 
 

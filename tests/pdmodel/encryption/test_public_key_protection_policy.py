@@ -95,3 +95,39 @@ def test_prefer_aes_round_trip() -> None:
     assert policy.is_prefer_aes() is True
     policy.set_prefer_aes(False)
     assert policy.is_prefer_aes() is False
+
+
+def test_get_recipients_iterator_empty() -> None:
+    policy = PublicKeyProtectionPolicy()
+    it = policy.get_recipients_iterator()
+    # Behaves like Java's ``Iterator`` — exhausted iterator on empty list.
+    assert list(it) == []
+
+
+def test_get_recipients_iterator_walks_in_insertion_order() -> None:
+    policy = PublicKeyProtectionPolicy()
+    r1 = PublicKeyRecipient()
+    r2 = PublicKeyRecipient()
+    r3 = PublicKeyRecipient()
+    policy.add_recipient(r1)
+    policy.add_recipient(r2)
+    policy.add_recipient(r3)
+    walked = list(policy.get_recipients_iterator())
+    assert walked == [r1, r2, r3]
+
+
+def test_get_recipients_iterator_returns_iterator_protocol() -> None:
+    # Must be a single-pass iterator (matches Java ``Iterator``), not the
+    # underlying list — calling next() on it should pull elements one by one
+    # and a fresh call to the method gives a fresh iterator.
+    policy = PublicKeyProtectionPolicy()
+    r1 = PublicKeyRecipient()
+    policy.add_recipient(r1)
+    it = policy.get_recipients_iterator()
+    assert iter(it) is it  # iterator protocol
+    assert next(it) is r1
+    with pytest.raises(StopIteration):
+        next(it)
+    # A second call returns a fresh iterator from the start of the list.
+    again = policy.get_recipients_iterator()
+    assert next(again) is r1

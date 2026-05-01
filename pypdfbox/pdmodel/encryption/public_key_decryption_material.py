@@ -36,10 +36,15 @@ class PublicKeyDecryptionMaterial:
         certificate: CertificateLike | None = None,
         private_key: PrivateKeyLike | None = None,
         password: bytes | None = None,
+        alias: str | None = None,
     ) -> None:
         self._certificate: Certificate | None = None
         self._private_key_raw: PrivateKeyLike | None = None
         self._password: bytes | None = password
+        # Mirrors the ``alias`` slot in upstream's keystore-based ctor —
+        # held for parity with PDFBox callers that pass it through; we
+        # don't index a Java KeyStore so it's purely descriptive.
+        self._alias: str | None = alias
         if certificate is not None:
             self.set_certificate(certificate)
         if private_key is not None:
@@ -91,6 +96,21 @@ class PublicKeyDecryptionMaterial:
 
     def set_password(self, password: bytes | None) -> None:
         self._password = password
+
+    # ---------- alias (keystore parity) ----------
+
+    def get_alias(self) -> str | None:
+        """Return the keystore alias supplied at construction time.
+
+        Mirrors the third argument of upstream's
+        ``PublicKeyDecryptionMaterial(KeyStore, alias, password)`` ctor.
+        Optional — ``None`` means "no specific alias" (upstream allowed
+        ``null`` when the keystore held a single entry).
+        """
+        return self._alias
+
+    def set_alias(self, alias: str | None) -> None:
+        self._alias = alias
 
 
 __all__ = ["PublicKeyDecryptionMaterial"]

@@ -42,6 +42,23 @@ def test_default_state() -> None:
     assert material.get_certificate() is None
     assert material.get_private_key() is None
     assert material.get_password() is None
+    assert material.get_alias() is None
+
+
+def test_alias_round_trip_via_constructor() -> None:
+    # Mirrors upstream's ``PublicKeyDecryptionMaterial(KeyStore, alias, pwd)``
+    # — alias is purely descriptive in the lite port but must be retrievable.
+    material = PublicKeyDecryptionMaterial(alias="signing-key")
+    assert material.get_alias() == "signing-key"
+
+
+def test_alias_setter_round_trip() -> None:
+    material = PublicKeyDecryptionMaterial()
+    material.set_alias("primary")
+    assert material.get_alias() == "primary"
+    # Upstream allowed ``null`` when the keystore had a single entry.
+    material.set_alias(None)
+    assert material.get_alias() is None
 
 
 def test_password_round_trip() -> None:

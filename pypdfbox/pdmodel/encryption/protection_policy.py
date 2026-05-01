@@ -11,6 +11,11 @@ class ProtectionPolicy:
     public-key variants) carry the credential material.
     """
 
+    # Mirrors the upstream ``private static final short DEFAULT_KEY_LENGTH``
+    # constant. Exposed as a class attribute so subclasses / callers can
+    # reference it without re-importing the module-level alias.
+    DEFAULT_KEY_LENGTH: int = DEFAULT_KEY_LENGTH
+
     def __init__(self) -> None:
         self._encryption_key_length: int = DEFAULT_KEY_LENGTH
         self._prefer_aes: bool = False
