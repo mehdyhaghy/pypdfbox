@@ -72,6 +72,19 @@ class PDPageTree:
             root.set_item(_TYPE, _PAGES)
             root.set_item(_KIDS, COSArray())
             root.set_int(_COUNT, 0)
+        else:
+            # Repair bad PDFs which contain a Page dict directly as the page
+            # tree root instead of a /Pages intermediate node (PDFBOX-3154).
+            # Wrap the lone page in a synthetic /Pages node with a single-kid
+            # /Kids array and /Count 1 so iteration and indexing still work.
+            type_name = root.get_dictionary_object(_TYPE)
+            if isinstance(type_name, COSName) and type_name == _PAGE:
+                kids = COSArray()
+                kids.add(root)
+                wrapper = COSDictionary()
+                wrapper.set_item(_KIDS, kids)
+                wrapper.set_int(_COUNT, 1)
+                root = wrapper
         self._root = root
         self._document = document
 
@@ -152,8 +165,25 @@ class PDPageTree:
             raise IndexError(f"page index out of range: {index}")
         for i, page in enumerate(self):
             if i == index:
+                self._sanitize_type(page.get_cos_object())
                 return page
         raise IndexError(f"page index out of range: {index}")  # pragma: no cover
+
+    @staticmethod
+    def _sanitize_type(dictionary: COSDictionary) -> None:
+        """Normalize the ``/Type`` entry of a leaf page dictionary.
+
+        Mirrors upstream ``PDPageTree.sanitizeType``:
+        - missing ``/Type`` is set to ``/Page`` (defensive against
+          malformed PDFs that omit the entry on otherwise-valid pages);
+        - any ``/Type`` other than ``/Page`` raises ``ValueError`` (upstream
+          throws ``IllegalStateException``)."""
+        type_name = dictionary.get_dictionary_object(_TYPE)
+        if type_name is None:
+            dictionary.set_item(_TYPE, _PAGE)
+            return
+        if isinstance(type_name, COSName) and type_name != _PAGE:
+            raise ValueError(f"Expected 'Page' but found {type_name}")
 
     def get(self, index: int) -> PDPage:
         """0-based accessor — matches upstream's ``get(int)``."""

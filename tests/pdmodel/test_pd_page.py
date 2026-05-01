@@ -208,3 +208,77 @@ def test_unwrap_via_cos_integer_rotation() -> None:
     page = PDPage()
     page.get_cos_object().set_item(COSName.get_pdf_name("Rotate"), COSInteger.get(270))
     assert page.get_rotation() == 270
+
+
+def test_set_transition_with_duration_writes_dur() -> None:
+    """``set_transition(transition, duration)`` mirrors upstream's
+    two-argument overload by also setting ``/Dur`` on the page dict."""
+    from pypdfbox.cos import COSFloat
+
+    page = PDPage()
+    trans = PDTransition(style="Wipe")
+    page.set_transition(trans, 4.5)
+    dur = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Dur"))
+    assert isinstance(dur, COSFloat)
+    assert dur.value == pytest.approx(4.5)
+    # And /Trans is still in place.
+    resolved = page.get_transition()
+    assert isinstance(resolved, PDTransition)
+    assert resolved.get_style() == "Wipe"
+
+
+def test_set_transition_default_duration_omits_dur() -> None:
+    """Single-argument ``set_transition`` must not write ``/Dur`` —
+    mirrors the upstream one-argument overload exactly."""
+    page = PDPage()
+    page.set_transition(PDTransition(style="Box"))
+    assert page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Dur")) is None
+
+
+def test_set_viewports_round_trip() -> None:
+    """``set_viewports`` accepts ``PDViewportDictionary`` instances and
+    is mirrored by ``get_viewports``; ``None`` removes the entry."""
+    from pypdfbox.pdmodel.interactive.measurement.pd_viewport_dictionary import (
+        PDViewportDictionary,
+    )
+
+    page = PDPage()
+    vp1 = PDViewportDictionary()
+    vp1.get_cos_object().set_name(COSName.get_pdf_name("Name"), "vp1")
+    vp2 = PDViewportDictionary()
+    vp2.get_cos_object().set_name(COSName.get_pdf_name("Name"), "vp2")
+    page.set_viewports([vp1, vp2])
+
+    resolved = page.get_viewports()
+    assert resolved is not None
+    assert len(resolved) == 2
+    assert {vp.get_cos_object().get_name(COSName.get_pdf_name("Name")) for vp in resolved} == {
+        "vp1",
+        "vp2",
+    }
+
+    page.set_viewports(None)
+    assert page.get_viewports() is None
+
+
+def test_set_viewports_rejects_bad_entry() -> None:
+    page = PDPage()
+    with pytest.raises(TypeError):
+        page.set_viewports(["not-a-viewport"])  # type: ignore[list-item]
+
+
+def test_get_resource_cache_default_none() -> None:
+    """A freshly constructed page has no resource cache attached."""
+    page = PDPage()
+    assert page.get_resource_cache() is None
+
+
+def test_set_resource_cache_round_trip() -> None:
+    """``set_resource_cache`` stores the cache and ``get_resource_cache``
+    returns it verbatim; ``None`` detaches."""
+    page = PDPage()
+    sentinel = object()
+    page.set_resource_cache(sentinel)
+    assert page.get_resource_cache() is sentinel
+    page.set_resource_cache(None)
+    assert page.get_resource_cache() is None

@@ -39,6 +39,7 @@ _GROUP: COSName = COSName.get_pdf_name("Group")
 _METADATA: COSName = COSName.get_pdf_name("Metadata")
 _TABS: COSName = COSName.get_pdf_name("Tabs")
 _VP: COSName = COSName.get_pdf_name("VP")
+_DUR: COSName = COSName.get_pdf_name("Dur")
 
 
 class PDPage:
@@ -526,11 +527,27 @@ class PDPage:
             arr.add(bead.get_cos_object())
         self._page.set_item(_BEADS, arr)
 
-    def set_transition(self, trans: Any) -> None:
+    def set_transition(self, trans: Any, duration: float | None = None) -> None:
+        """Replace ``/Trans``. Pass ``None`` for ``trans`` to remove the entry.
+
+        Mirrors upstream ``PDPage.setTransition(PDTransition)`` and
+        ``PDPage.setTransition(PDTransition, float)``: when ``duration`` is
+        supplied it is also written to ``/Dur`` (the maximum length of time,
+        in seconds, that the page shall be displayed during presentations
+        before the viewer advances automatically).
+        """
         if trans is None:
             self._page.remove_item(_TRANS)
+            if duration is not None:
+                from pypdfbox.cos import COSFloat
+
+                self._page.set_item(_DUR, COSFloat(float(duration)))
             return
         self._page.set_item(_TRANS, trans.get_cos_object())
+        if duration is not None:
+            from pypdfbox.cos import COSFloat
+
+            self._page.set_item(_DUR, COSFloat(float(duration)))
 
     def get_actions(self) -> Any:
         from pypdfbox.pdmodel.interactive.action import PDPageAdditionalActions
@@ -639,6 +656,53 @@ class PDPage:
             if isinstance(entry, COSDictionary):
                 result.append(PDViewportDictionary(entry))
         return result
+
+    def set_viewports(self, viewports: list[Any] | None) -> None:
+        """Replace ``/VP`` with an array built from ``viewports``. ``None``
+        removes the entry entirely (mirrors upstream's null-deletes-entry
+        contract)."""
+        from .interactive.measurement.pd_viewport_dictionary import (
+            PDViewportDictionary,
+        )
+
+        if viewports is None:
+            self._page.remove_item(_VP)
+            return
+        arr = COSArray()
+        for vp in viewports:
+            if isinstance(vp, PDViewportDictionary):
+                arr.add(vp.get_cos_object())
+                continue
+            if isinstance(vp, COSDictionary):
+                arr.add(vp)
+                continue
+            if hasattr(vp, "get_cos_object"):
+                cos = vp.get_cos_object()
+                if isinstance(cos, COSDictionary):
+                    arr.add(cos)
+                    continue
+            raise TypeError(
+                "PDPage.set_viewports entries must be PDViewportDictionary "
+                f"or COSDictionary; got {type(vp).__name__}"
+            )
+        self._page.set_item(_VP, arr)
+
+    # ---------- resource cache ----------
+
+    def get_resource_cache(self) -> Any:
+        """Return the resource cache associated with this page, or ``None``
+        if there is none. Mirrors upstream ``PDPage.getResourceCache()``.
+
+        This wrapper does not yet wire the ResourceCache through the page
+        constructor; the accessor exists so callers porting from PDFBox
+        can rely on the method being present and getting ``None`` until a
+        cache is attached via :meth:`set_resource_cache`."""
+        return getattr(self, "_resource_cache", None)
+
+    def set_resource_cache(self, cache: Any) -> None:
+        """Attach a :class:`PDResourceCache` to this page. Pass ``None`` to
+        detach. Companion to :meth:`get_resource_cache`."""
+        self._resource_cache = cache
 
     # ---------- transition ----------
 

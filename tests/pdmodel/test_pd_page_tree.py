@@ -212,3 +212,42 @@ def test_count_recomputed_when_stored_count_wrong() -> None:
     # Stomp on /Count to lie about the size.
     tree.get_cos_object().set_int(COSName.COUNT, 99)  # type: ignore[attr-defined]
     assert len(tree) == 2  # walk wins
+
+
+def test_constructor_repairs_bare_page_root() -> None:
+    """PDFBOX-3154: a page-tree root that is itself a /Type /Page dict
+    must be wrapped in a synthetic /Pages node with one /Kid."""
+    raw_page = COSDictionary()
+    raw_page.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    raw_page.set_string(COSName.get_pdf_name("Label"), "lonely")
+    tree = PDPageTree(raw_page)
+    # The root is no longer the page itself.
+    assert tree.get_cos_object() is not raw_page
+    assert len(tree) == 1
+    only_page = tree[0]
+    assert only_page.get_cos_object() is raw_page
+    assert _label(only_page) == "lonely"
+
+
+def test_get_sets_missing_type_to_page() -> None:
+    """PDPageTree.get sanitizes /Type — missing /Type defaults to /Page
+    so callers can rely on the entry being present after retrieval."""
+    tree = PDPageTree()
+    p = _make_page("untyped")
+    # Strip the /Type entry that PDPage's constructor wrote.
+    p.get_cos_object().remove_item(COSName.TYPE)  # type: ignore[attr-defined]
+    tree.add(p)
+    fetched = tree[0]
+    assert fetched.get_cos_object().get_name(COSName.TYPE) == "Page"  # type: ignore[attr-defined]
+
+
+def test_get_rejects_non_page_type() -> None:
+    """A /Type that isn't /Page should not be silently accepted on
+    leaf retrieval — upstream throws IllegalStateException."""
+    tree = PDPageTree()
+    bogus = COSDictionary()
+    bogus.set_item(COSName.TYPE, COSName.get_pdf_name("Bogus"))  # type: ignore[attr-defined]
+    # add() doesn't validate, but get()'s sanitize_type does.
+    tree.add(bogus)
+    with pytest.raises(ValueError, match="Expected 'Page'"):
+        _ = tree[0]
