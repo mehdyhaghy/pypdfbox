@@ -452,6 +452,22 @@ class PDStream:
         arr = COSArray(list(parms))
         self._stream.set_item(_FDECODE_PARMS, arr)
 
+    def get_file_decode_params(self) -> list[COSDictionary] | None:
+        """Snake_case spelling of upstream ``getFileDecodeParams()`` — note
+        that upstream is inconsistent (``getDecodeParms`` vs.
+        ``getFileDecodeParams``) so we provide both spellings of the
+        ``/FDecodeParms`` accessor. Delegates to
+        :meth:`get_file_decode_parms`."""
+        return self.get_file_decode_parms()
+
+    def set_file_decode_params(
+        self,
+        parms: COSDictionary | Sequence[COSDictionary] | None,
+    ) -> None:
+        """Snake_case spelling of upstream ``setFileDecodeParams(List)``.
+        Delegates to :meth:`set_file_decode_parms`."""
+        self.set_file_decode_parms(parms)
+
     # ---------- bytes convenience ----------
 
     def to_byte_array(self) -> bytes:

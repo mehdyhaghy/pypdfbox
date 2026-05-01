@@ -73,6 +73,16 @@ class TextPosition:
         same accessor name on top of the dataclass for API familiarity."""
         return self.text
 
+    def set_unicode(self, value: str) -> None:
+        """Replace the decoded characters.
+
+        Mirrors upstream's package-private ``setUnicode``: used when the
+        caller has post-processed the decoded text (e.g. NFKC
+        normalisation, glyph-list remapping) and wants the corrected
+        string visible through subsequent :meth:`get_unicode` calls.
+        """
+        self.text = value
+
     def get_character(self) -> str:
         """Upstream alias for the decoded characters.
 
@@ -84,6 +94,40 @@ class TextPosition:
     def get_visible_text(self) -> str:
         """Visible decoded text. Lite alias for :meth:`get_unicode`."""
         return self.get_unicode()
+
+    def get_character_codes(self) -> list[int]:
+        """Internal PDF character codes for the glyphs in this run.
+
+        Upstream returns the ``int[]`` captured at decode time. The lite
+        port doesn't track raw character codes (decoding goes straight
+        from byte stream to Unicode via ``/ToUnicode`` / ``/Differences``)
+        so we approximate with the Unicode code points of the decoded
+        text. Callers that depend on the *original* PDF code values
+        should treat this as best-effort — see ``CHANGES.md``.
+        """
+        return [ord(ch) for ch in self.text]
+
+    def get_visually_ordered_unicode(self) -> str:
+        """Same as :meth:`get_unicode` but reversed when the run contains
+        right-to-left text.
+
+        Mirrors upstream's ``getVisuallyOrderedUnicode``: PDF Arabic and
+        Hebrew runs are emitted in logical order (the order a typist
+        enters them); some downstream consumers want them in visual order
+        (the order they appear left-to-right on the rendered page). When
+        any code point in the run has bidirectional class ``R`` (Hebrew /
+        general RTL) or ``AL`` (Arabic letters) we return the string
+        reversed; otherwise we return it unchanged. A single-codepoint
+        string is returned as-is even if RTL — there's nothing to
+        reorder.
+        """
+        text = self.text
+        if len(text) <= 1:
+            return text
+        for ch in text:
+            if unicodedata.bidirectional(ch) in ("R", "AL"):
+                return text[::-1]
+        return text
 
     # ------------------------------------------------------------------
     # Coordinates
@@ -223,6 +267,16 @@ class TextPosition:
         """Direction-adjusted run width."""
         return self.width
 
+    def get_height(self) -> float:
+        """Maximum height of all characters in this run.
+
+        Upstream tracks ``maxHeight`` separately from the font size; in
+        lite mode we use the font size as the height proxy (same value
+        :meth:`get_height_dir` returns) so the two accessors agree. See
+        ``CHANGES.md`` for the deferred per-glyph metrics.
+        """
+        return self.font_size
+
     def get_height_dir(self) -> float:
         """Directional height. Lite approximation returns ``font_size``."""
         return self.font_size
@@ -248,6 +302,33 @@ class TextPosition:
         b_start = other.x
         b_end = other.x + other.width
         return not (a_end <= b_start or b_end <= a_start)
+
+    def completely_contains(self, other: TextPosition) -> bool:
+        """Return True when ``other``'s bounding box fits entirely inside
+        ``self``'s bounding box.
+
+        Mirrors upstream's ``completelyContains``: a strict containment
+        check used by glyph-collision detection (the laxer
+        :meth:`contains` allows fractional X overlap). The bounding box
+        is ``(x, y) -> (x + width, y + height)`` in user space, where
+        ``height`` is :meth:`get_height_dir`. ``None`` is never
+        contained.
+        """
+        if other is None:
+            return False
+        this_left = self.x
+        this_right = self.x + self.width
+        other_left = other.x
+        other_right = other.x + other.width
+        if this_left > other_left or other_right > this_right:
+            return False
+        this_top = self.y
+        this_bottom = self.y + self.get_height_dir()
+        other_top = other.y
+        other_bottom = other.y + other.get_height_dir()
+        if this_top > other_top or other_bottom > this_bottom:
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Per-character widths

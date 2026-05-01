@@ -59,6 +59,16 @@ class COSDocument(COSBase):
         self._linearized_dict: PDLinearizationDictionary | None = None
         self._linearized_resolved: bool = False
         self._closed: bool = False
+        # Encryption-state flag: ``True`` once the parser has applied the
+        # security handler to every encrypted stream/string in the pool.
+        # Mirrors PDFBox's ``isDecrypted`` boolean. The writer consults this
+        # to avoid double-encrypting on save (it must produce ciphertext
+        # again from the now-plaintext object graph).
+        self._is_decrypted: bool = False
+        # Hybrid-xref marker: ``True`` for documents that ship BOTH a plain
+        # cross-reference table AND a cross-reference stream (PDF 1.5+
+        # backward-compat trick). Mirrors PDFBox's ``hasHybridXRef`` flag.
+        self._has_hybrid_xref: bool = False
         # Highest object number seen by the parser — used by the writer when
         # allocating new indirect objects so it doesn't collide with existing
         # ones. ``0`` means "no objects seen yet".
@@ -146,17 +156,33 @@ class COSDocument(COSBase):
     def getXrefTable(self) -> dict[COSObjectKey, int]:  # noqa: N802
         return self.get_xref_table()
 
-    def get_objects_by_type(self, type_name: COSName | str) -> list[COSObject]:
+    def get_objects_by_type(
+        self,
+        type_name: COSName | str,
+        type_alt: COSName | str | None = None,
+    ) -> list[COSObject]:
         """Return every resolved object whose dictionary's ``/Type`` equals
-        ``type_name``. Matches PDFBox semantics (returns an empty list when
-        no objects match)."""
+        ``type_name`` (or, when ``type_alt`` is given, either of the two
+        names). Matches PDFBox semantics — both the single-arg and the
+        two-arg overloads of ``getObjectsByType``. The two-arg form is used
+        upstream where a /Type entry has both a long and an abbreviated
+        spelling (e.g. ``/CIDFontType0`` vs ``/Font``)."""
         target = type_name if isinstance(type_name, COSName) else COSName.get_pdf_name(type_name)
+        target_alt: COSName | None
+        if type_alt is None:
+            target_alt = None
+        else:
+            target_alt = (
+                type_alt if isinstance(type_alt, COSName) else COSName.get_pdf_name(type_alt)
+            )
         out: list[COSObject] = []
         for cos_obj in self._objects.values():
             resolved = cos_obj.get_object()
             if isinstance(resolved, COSDictionary):
                 t = resolved.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
-                if isinstance(t, COSName) and t == target:
+                if isinstance(t, COSName) and (
+                    t == target or (target_alt is not None and t == target_alt)
+                ):
                     out.append(cos_obj)
         return out
 
@@ -234,6 +260,31 @@ class COSDocument(COSBase):
     def getEncryptionDictionary(self) -> COSDictionary | None:  # noqa: N802
         return self.get_encryption_dictionary()
 
+    def set_encryption_dictionary(self, enc_dictionary: COSDictionary) -> None:
+        """Write ``trailer/Encrypt`` — used by the writer when a save
+        operation needs to install (or replace) the encryption parameters.
+        Mirrors upstream ``setEncryptionDictionary(COSDictionary)``. The
+        trailer is auto-created when absent so callers building a document
+        from scratch do not have to seed it first."""
+        if self._trailer is None:
+            self._trailer = COSDictionary()
+        self._trailer.set_item(COSName.ENCRYPT, enc_dictionary)  # type: ignore[attr-defined]
+
+    def is_decrypted(self) -> bool:
+        """``True`` once the parser has run the security handler over every
+        encrypted stream/string in this document's object pool. The writer
+        checks this to know whether the in-memory graph is plaintext (and
+        must be re-enciphered on save) or already-ciphertext. Mirrors
+        upstream ``isDecrypted()``."""
+        return self._is_decrypted
+
+    def set_decrypted(self) -> None:
+        """Mark the document as decrypted — called by the parser/security
+        handler once the cipher has been undone over the entire object
+        pool. One-way (matches upstream ``setDecrypted()`` which has no
+        corresponding ``setDecrypted(false)``)."""
+        self._is_decrypted = True
+
     # ---------- version ----------
 
     def get_version(self) -> float:
@@ -268,6 +319,48 @@ class COSDocument(COSBase):
         """Mirror of upstream ``setIsXRefStream(boolean)``. Kept alongside
         :meth:`set_xref_stream` for naming parity with PDFBox 3.x."""
         self._is_xref_stream = value
+
+    # ---------- hybrid-xref marker ----------
+
+    def has_hybrid_xref(self) -> bool:
+        """``True`` when the parser saw BOTH a plain cross-reference table
+        and a cross-reference stream in this document. The hybrid trick
+        (PDF 1.5+) is used to keep older readers working while the
+        canonical xref information lives in a stream. Mirrors upstream
+        ``hasHybridXRef()``."""
+        return self._has_hybrid_xref
+
+    def set_has_hybrid_xref(self) -> None:
+        """Mark the document as hybrid-xref. One-way, matches upstream
+        ``setHasHybridXRef()`` (no boolean parameter — the flag is set
+        when the parser detects the second xref form, never cleared)."""
+        self._has_hybrid_xref = True
+
+    # ---------- COSStream factory ----------
+
+    def create_cos_stream(
+        self,
+        dictionary: COSDictionary | None = None,
+    ) -> Any:
+        """Allocate a fresh ``COSStream`` bound to this document's scratch
+        file. Mirrors upstream ``createCOSStream()``. When ``dictionary``
+        is supplied, every entry is copied onto the new stream — matches
+        the parser-helper overload ``createCOSStream(COSDictionary, long,
+        long)`` minus the on-disk view (we don't carry a parser-level
+        random-access read view through this surface yet).
+
+        The returned ``COSStream`` does NOT own the scratch file (the
+        document does), so closing the stream releases its buffer but
+        leaves the document scratch intact."""
+        # Local import to avoid a hard cos_document → cos_stream cycle at
+        # module load time.
+        from .cos_stream import COSStream  # noqa: PLC0415
+
+        stream = COSStream(self._scratch_file)
+        if dictionary is not None:
+            for key, value in dictionary.entry_set():
+                stream.set_item(key, value)
+        return stream
 
     # ---------- highest xref object number ----------
 

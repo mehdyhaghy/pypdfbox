@@ -311,3 +311,104 @@ def test_pdfbox_camelcase_xref_and_version_aliases() -> None:
         assert doc.getXrefTable()[key] == 321
         assert doc.getVersion() == 2.0
         assert doc.isXRefStream() is True
+
+
+def test_decrypted_flag_default_and_one_way_setter() -> None:
+    with COSDocument() as doc:
+        assert doc.is_decrypted() is False
+        doc.set_decrypted()
+        assert doc.is_decrypted() is True
+        # set_decrypted is one-way — calling again is a no-op (matches
+        # upstream which has no setDecrypted(false)).
+        doc.set_decrypted()
+        assert doc.is_decrypted() is True
+
+
+def test_set_encryption_dictionary_writes_to_trailer() -> None:
+    with COSDocument() as doc:
+        # Auto-creates trailer when absent.
+        enc = COSDictionary()
+        enc.set_int("V", 4)
+        doc.set_encryption_dictionary(enc)
+        assert doc.is_encrypted() is True
+        assert doc.get_encryption_dictionary() is enc
+        # Replacing the dictionary on an existing trailer keeps the trailer.
+        existing_trailer = doc.get_trailer()
+        enc2 = COSDictionary()
+        enc2.set_int("V", 5)
+        doc.set_encryption_dictionary(enc2)
+        assert doc.get_trailer() is existing_trailer
+        assert doc.get_encryption_dictionary() is enc2
+
+
+def test_hybrid_xref_marker_default_and_one_way_setter() -> None:
+    with COSDocument() as doc:
+        assert doc.has_hybrid_xref() is False
+        doc.set_has_hybrid_xref()
+        assert doc.has_hybrid_xref() is True
+        # One-way (matches upstream — no setHasHybridXRef(false)).
+        doc.set_has_hybrid_xref()
+        assert doc.has_hybrid_xref() is True
+
+
+def test_create_cos_stream_uses_document_scratch_file() -> None:
+    scratch = ScratchFile()
+    with COSDocument(scratch_file=scratch) as doc:
+        stream = doc.create_cos_stream()
+        # Empty stream is valid (no data yet).
+        assert stream.has_data() is False
+        # Writing should not raise — proves the stream is wired to the
+        # document's scratch file.
+        stream.set_raw_data(b"hello")
+        assert stream.get_raw_data() == b"hello"
+        # The stream does NOT own the scratch file — closing the stream
+        # leaves the document's scratch usable.
+        stream.close()
+        # Document close releases the shared scratch file.
+
+
+def test_create_cos_stream_copies_dictionary_entries() -> None:
+    with COSDocument() as doc:
+        seed = COSDictionary()
+        seed.set_int("Length", 7)
+        seed.set_name("Filter", "FlateDecode")
+        stream = doc.create_cos_stream(seed)
+        assert stream.get_int(COSName.LENGTH, -1) == 7  # type: ignore[attr-defined]
+        assert stream.get_dictionary_object(  # type: ignore[attr-defined]
+            COSName.FILTER  # type: ignore[attr-defined]
+        ) == COSName.get_pdf_name("FlateDecode")
+        stream.close()
+
+
+def test_get_objects_by_type_two_arg_overload_matches_either_name() -> None:
+    """The two-arg overload matches /Type entries against either of the
+    two given names. Used upstream for short / long /Type aliases."""
+    with COSDocument() as doc:
+        from pypdfbox.cos.cos_object import COSObject
+
+        # Build two objects: one with /Type /Page, one with /Type /XObject.
+        page = COSDictionary()
+        page.set_item(COSName.TYPE, COSName.get_pdf_name("Page"))  # type: ignore[attr-defined]
+        xobj = COSDictionary()
+        xobj.set_item(COSName.TYPE, COSName.get_pdf_name("XObject"))  # type: ignore[attr-defined]
+
+        page_obj = COSObject(1, 0)
+        page_obj.set_object(page)
+        xobj_obj = COSObject(2, 0)
+        xobj_obj.set_object(xobj)
+        doc._objects[COSObjectKey(1, 0)] = page_obj
+        doc._objects[COSObjectKey(2, 0)] = xobj_obj
+
+        # Single-arg form — matches only /Page.
+        page_only = doc.get_objects_by_type("Page")
+        assert page_only == [page_obj]
+
+        # Two-arg form — matches either /Page or /XObject.
+        both = doc.get_objects_by_type("Page", "XObject")
+        assert page_obj in both
+        assert xobj_obj in both
+        assert len(both) == 2
+
+        # Two-arg form with non-matching second name — same as single-arg.
+        only_page = doc.get_objects_by_type("Page", "Catalog")
+        assert only_page == [page_obj]

@@ -315,3 +315,98 @@ def test_get_text_matrix_returns_stored():
     matrix = [1.0, 0.0, 0.0, 1.0, 5.0, 7.0]
     tp = _make(text_matrix=matrix)
     assert tp.get_text_matrix() == matrix
+
+
+# ---------------------------------------------------------------------------
+# Wave: set_unicode / get_visually_ordered_unicode / get_height /
+# get_character_codes / completely_contains
+# ---------------------------------------------------------------------------
+
+
+def test_set_unicode_replaces_text():
+    tp = _make(text="abc")
+    tp.set_unicode("xyz")
+    assert tp.get_unicode() == "xyz"
+    assert tp.text == "xyz"
+
+
+def test_get_visually_ordered_unicode_ltr_unchanged():
+    tp = _make(text="hello")
+    assert tp.get_visually_ordered_unicode() == "hello"
+
+
+def test_get_visually_ordered_unicode_rtl_reversed():
+    # Hebrew alef + bet + gimel — bidirectional class "R"
+    tp = _make(text="אבג")
+    assert tp.get_visually_ordered_unicode() == "גבא"
+
+
+def test_get_visually_ordered_unicode_arabic_reversed():
+    # Arabic letters — bidirectional class "AL"
+    tp = _make(text="ابت")
+    assert tp.get_visually_ordered_unicode() == "تبا"
+
+
+def test_get_visually_ordered_unicode_single_codepoint_unchanged():
+    # Single-codepoint RTL run has nothing to reorder.
+    tp = _make(text="א")
+    assert tp.get_visually_ordered_unicode() == "א"
+
+
+def test_get_visually_ordered_unicode_empty_unchanged():
+    tp = _make(text="")
+    assert tp.get_visually_ordered_unicode() == ""
+
+
+def test_get_height_returns_font_size():
+    tp = _make(font_size=18.0)
+    assert tp.get_height() == 18.0
+
+
+def test_get_height_matches_get_height_dir():
+    tp = _make(font_size=11.5)
+    assert tp.get_height() == tp.get_height_dir()
+
+
+def test_get_character_codes_returns_codepoints():
+    tp = _make(text="ABC")
+    assert tp.get_character_codes() == [ord("A"), ord("B"), ord("C")]
+
+
+def test_get_character_codes_empty_text():
+    tp = _make(text="")
+    assert tp.get_character_codes() == []
+
+
+def test_completely_contains_true_when_other_inside():
+    outer = _make(x=0.0, y=0.0, width=100.0, font_size=20.0)
+    inner = _make(x=10.0, y=5.0, width=50.0, font_size=10.0)
+    assert outer.completely_contains(inner) is True
+
+
+def test_completely_contains_false_when_other_extends_left():
+    outer = _make(x=10.0, y=0.0, width=50.0, font_size=20.0)
+    other = _make(x=0.0, y=0.0, width=20.0, font_size=10.0)
+    assert outer.completely_contains(other) is False
+
+
+def test_completely_contains_false_when_other_extends_right():
+    outer = _make(x=0.0, y=0.0, width=50.0, font_size=20.0)
+    other = _make(x=40.0, y=0.0, width=20.0, font_size=10.0)
+    assert outer.completely_contains(other) is False
+
+
+def test_completely_contains_false_when_other_extends_below():
+    outer = _make(x=0.0, y=0.0, width=100.0, font_size=10.0)
+    other = _make(x=10.0, y=5.0, width=20.0, font_size=20.0)
+    assert outer.completely_contains(other) is False
+
+
+def test_completely_contains_false_for_none():
+    outer = _make(x=0.0, y=0.0, width=100.0, font_size=10.0)
+    assert outer.completely_contains(None) is False  # type: ignore[arg-type]
+
+
+def test_completely_contains_self_is_true():
+    tp = _make(x=5.0, y=5.0, width=10.0, font_size=10.0)
+    assert tp.completely_contains(tp) is True

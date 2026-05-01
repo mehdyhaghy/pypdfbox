@@ -323,3 +323,56 @@ def test_constructor_rejects_cos_stream_with_input_data() -> None:
     cs = COSStream()
     with pytest.raises(TypeError):
         PDStream(cs, b"oops")
+
+
+# ---------- file decode params: upstream Java naming parity ----------
+
+
+def test_get_file_decode_params_matches_get_file_decode_parms() -> None:
+    """``get_file_decode_params`` mirrors upstream Java's
+    ``getFileDecodeParams`` spelling and returns the same list as our
+    earlier-named ``get_file_decode_parms``."""
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream()
+    p1 = COSDictionary()
+    p1.set_int("Predictor", 12)
+    stream.set_file_decode_parms([p1])
+
+    out_legacy = stream.get_file_decode_parms()
+    out_upstream_named = stream.get_file_decode_params()
+    assert out_upstream_named == out_legacy
+    assert out_upstream_named is not None
+    assert out_upstream_named[0].get_int("Predictor") == 12
+
+
+def test_set_file_decode_params_writes_through_to_dictionary() -> None:
+    """``set_file_decode_params`` mirrors upstream's ``setFileDecodeParams``
+    spelling and round-trips through both accessor names."""
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream()
+    p1 = COSDictionary()
+    p1.set_int("Predictor", 1)
+    p2 = COSDictionary()
+    p2.set_int("Predictor", 12)
+    stream.set_file_decode_params([p1, p2])
+
+    # Both accessors return the same data.
+    legacy = stream.get_file_decode_parms()
+    upstream_named = stream.get_file_decode_params()
+    assert legacy is not None
+    assert upstream_named is not None
+    assert [d.get_int("Predictor") for d in upstream_named] == [1, 12]
+    assert [d.get_int("Predictor") for d in legacy] == [1, 12]
+
+
+def test_set_file_decode_params_none_removes_entry() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream()
+    stream.set_file_decode_params(COSDictionary())
+    assert stream.get_file_decode_params() is not None
+    stream.set_file_decode_params(None)
+    assert stream.get_file_decode_params() is None
+    assert stream.get_file_decode_parms() is None
