@@ -208,6 +208,43 @@ class TestFilterGetDecodeParams:
         assert out.size() == 0
 
 
+class TestGetAllFilters:
+    """Mirror upstream ``FilterFactory#getAllFilters`` (package-private,
+    used in tests). The Java map keys both long and short names to the
+    same singleton; we deduplicate so callers iterating the result don't
+    process the same filter instance twice."""
+
+    def test_returns_list_of_filter_instances(self):
+        result = FilterFactory.get_all_filters()
+        assert isinstance(result, list)
+        for f in result:
+            assert isinstance(f, Filter)
+
+    def test_includes_each_concrete_filter(self):
+        # We don't pin the exact size — new filters can be added — but
+        # every concrete filter type registered today must be present.
+        types = {type(f) for f in FilterFactory.get_all_filters()}
+        for cls in (
+            FlateDecode,
+            ASCIIHexDecode,
+            ASCII85Decode,
+            LZWDecode,
+            RunLengthDecode,
+            CCITTFaxDecode,
+            DCTDecode,
+            JPXDecode,
+            JBIG2Decode,
+        ):
+            assert cls in types
+
+    def test_deduplicates_short_and_long_aliases(self):
+        # The registry keys flate under both ``FlateDecode`` and ``Fl``;
+        # the de-duplicated result must list each Filter instance once.
+        result = FilterFactory.get_all_filters()
+        ids = [id(f) for f in result]
+        assert len(ids) == len(set(ids))
+
+
 class TestIsDecompressionInputSizeKnown:
     def test_ascii85_false(self):
         assert (

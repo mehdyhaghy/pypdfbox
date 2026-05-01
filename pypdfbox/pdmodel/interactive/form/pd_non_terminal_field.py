@@ -2,15 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 
 from .pd_field import PDField
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
+
     from .pd_acro_form import PDAcroForm
 
 _KIDS: COSName = COSName.get_pdf_name("Kids")
 _V: COSName = COSName.get_pdf_name("V")
+_DV: COSName = COSName.get_pdf_name("DV")
+_FT: COSName = COSName.get_pdf_name("FT")
+_FF: COSName = COSName.get_pdf_name("Ff")
 
 
 class PDNonTerminalField(PDField):
@@ -86,6 +91,60 @@ class PDNonTerminalField(PDField):
         if isinstance(item, COSName):
             return item.name
         return ""
+
+    # ---------- /DV (raw COSBase per upstream) ----------
+
+    def get_default_value(self) -> COSBase | None:
+        """Returns the raw ``/DV`` entry on this node. Mirrors upstream
+        ``PDNonTerminalField.getDefaultValue`` which returns ``COSBase``.
+
+        Like :meth:`get_value`, this returns the local value without walking
+        the inheritance chain. Per PDF 32000-1 §12.7.4 children inherit
+        ``/DV`` lazily via :meth:`PDField.get_inheritable_attribute`.
+        """
+        return self._field.get_dictionary_object(_DV)
+
+    def set_default_value(self, value: COSBase | None) -> None:
+        if value is None:
+            self._field.remove_item(_DV)
+        else:
+            self._field.set_item(_DV, value)
+
+    # ---------- non-inherited /FT, /Ff overrides ----------
+
+    def get_field_type(self) -> str | None:
+        """Returns the local ``/FT`` entry without walking the parent chain.
+
+        Mirrors upstream ``PDNonTerminalField.getFieldType`` — non-terminal
+        fields carry ``/FT`` as an inheritable attribute for their descendants
+        but the type does not logically belong to the non-terminal node itself.
+        """
+        item = self._field.get_dictionary_object(_FT)
+        if isinstance(item, COSName):
+            return item.name
+        return None
+
+    def get_field_flags(self) -> int:
+        """Returns the local ``/Ff`` entry without walking the parent chain.
+
+        Mirrors upstream ``PDNonTerminalField.getFieldFlags`` — there is no
+        need to walk up since ``/Ff`` is inherited by descendants, not by this
+        node itself.
+        """
+        item = self._field.get_dictionary_object(_FF)
+        if isinstance(item, COSInteger):
+            return item.value
+        return 0
+
+    # ---------- widgets ----------
+
+    def get_widgets(self) -> list[PDAnnotationWidget]:
+        """Non-terminal fields have no widgets — always returns an empty list.
+
+        Mirrors upstream ``PDNonTerminalField.getWidgets`` which returns
+        ``Collections.emptyList()``.
+        """
+        return []
 
 
 __all__ = ["PDNonTerminalField"]

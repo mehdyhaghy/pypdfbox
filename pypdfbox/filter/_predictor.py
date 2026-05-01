@@ -30,6 +30,17 @@ def _row_bytes(columns: int, colors: int, bits_per_component: int) -> int:
     return (columns * colors * bits_per_component + 7) // 8
 
 
+def calculate_row_length(colors: int, bits_per_component: int, columns: int) -> int:
+    """Public mirror of ``Predictor#calculateRowLength`` (Java).
+
+    Returns the width of one scanline in whole bytes (rounded up). The
+    parameter order matches the upstream Java signature
+    ``(colors, bitsPerComponent, columns)`` rather than the internal
+    helper's ``(columns, colors, bitsPerComponent)``.
+    """
+    return _row_bytes(columns, colors, bits_per_component)
+
+
 def _bytes_per_pixel(colors: int, bits_per_component: int) -> int:
     """Bytes between adjacent pixels along a row, rounded up to >= 1.
 
@@ -38,6 +49,63 @@ def _bytes_per_pixel(colors: int, bits_per_component: int) -> int:
     """
     bits_per_pixel = colors * bits_per_component
     return max(1, (bits_per_pixel + 7) // 8)
+
+
+def decode_predictor_row(
+    predictor: int,
+    colors: int,
+    bits_per_component: int,
+    columns: int,
+    actline: bytearray,
+    lastline: bytes | bytearray,
+) -> None:
+    """Decode a single predictor-encoded row in place.
+
+    Mirrors ``org.apache.pdfbox.filter.Predictor#decodePredictorRow``.
+    ``actline`` is the (mutable) current row to be decoded; ``lastline``
+    is the *raw, already-decoded* previous row (use a zero-filled buffer
+    of the same length when decoding the first row). For PNG predictors
+    (``10..14``) the per-row filter-tag byte is *not* part of ``actline``
+    — callers must strip it and pass it in via ``predictor`` (i.e. add
+    10 to the tag byte). ``predictor == 1`` is a passthrough and leaves
+    ``actline`` unchanged.
+    """
+    if predictor == 1:
+        return
+    rowlength = len(actline)
+    if rowlength == 0:
+        return
+    bpp = _bytes_per_pixel(colors, bits_per_component)
+    if predictor == 2:
+        # TIFF Predictor 2 — delegate to bulk path on a 1-row buffer.
+        actline[:] = _untiff(bytes(actline), columns, colors, bits_per_component)
+        return
+    if predictor == 10:
+        # None — no transformation.
+        return
+    if predictor == 11:
+        for p in range(bpp, rowlength):
+            actline[p] = (actline[p] + actline[p - bpp]) & 0xFF
+        return
+    if predictor == 12:
+        for p in range(rowlength):
+            actline[p] = (actline[p] + lastline[p]) & 0xFF
+        return
+    if predictor == 13:
+        for p in range(rowlength):
+            left = actline[p - bpp] if p - bpp >= 0 else 0
+            up = lastline[p]
+            actline[p] = (actline[p] + (left + up) // 2) & 0xFF
+        return
+    if predictor == 14:
+        for p in range(rowlength):
+            left = actline[p - bpp] if p - bpp >= 0 else 0
+            up = lastline[p]
+            up_left = lastline[p - bpp] if p - bpp >= 0 else 0
+            actline[p] = (actline[p] + _paeth(left, up, up_left)) & 0xFF
+        return
+    # Unknown predictor — upstream's switch falls through silently
+    # (default: break). Match that behavior.
 
 
 # ---------------------------------------------------------------------

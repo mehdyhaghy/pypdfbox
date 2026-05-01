@@ -95,6 +95,22 @@ class FilterFactory:
     def registered_names(cls) -> list[str]:
         return sorted(cls._registry.keys())
 
+    @classmethod
+    def get_all_filters(cls) -> list[Filter]:
+        """Return every registered ``Filter`` instance, deduplicated.
+
+        Mirrors ``FilterFactory#getAllFilters`` (package-private in
+        upstream, used in tests). The Java map keys both long and short
+        ``COSName`` entries to the same singleton; we keep just one copy
+        per filter instance here so consumers iterating over the result
+        don't double-process a stream.
+        """
+        seen: list[Filter] = []
+        for instance in cls._registry.values():
+            if instance not in seen:
+                seen.append(instance)
+        return seen
+
 
 # Upstream exposes ``FilterFactory.INSTANCE`` as a class-level singleton.
 # Bind it after the class body so the attribute is concrete (no metaclass

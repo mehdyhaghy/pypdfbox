@@ -14,6 +14,33 @@ _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
 _T: COSName = COSName.get_pdf_name("T")
 _FT: COSName = COSName.get_pdf_name("FT")
 _FF: COSName = COSName.get_pdf_name("Ff")
+_PARENT: COSName = COSName.get_pdf_name("Parent")
+_P: COSName = COSName.get_pdf_name("P")
+
+
+def _find_field_type(
+    dic: COSDictionary, seen: set[int] | None = None
+) -> str | None:
+    """Walk ``/Parent`` (then ``/P``) up the dictionary chain to find ``/FT``.
+
+    Mirrors upstream ``PDFieldFactory.findFieldType``. Cycle-safe per
+    PDFBOX-5896 — a dictionary already visited returns ``None``.
+    """
+    if seen is None:
+        seen = set()
+    key = id(dic)
+    if key in seen:
+        return None
+    seen.add(key)
+    item = dic.get_dictionary_object(_FT)
+    if isinstance(item, COSName):
+        return item.name
+    base = dic.get_dictionary_object(_PARENT)
+    if not isinstance(base, COSDictionary):
+        base = dic.get_dictionary_object(_P)
+    if isinstance(base, COSDictionary):
+        return _find_field_type(base, seen)
+    return None
 
 
 def _resolve_field_type(
@@ -61,6 +88,16 @@ class PDFieldFactory:
     FIELD_TYPE_BUTTON = "Btn"
     FIELD_TYPE_CHOICE = "Ch"
     FIELD_TYPE_SIGNATURE = "Sig"
+
+    @staticmethod
+    def find_field_type(field: COSDictionary) -> str | None:
+        """Resolve ``/FT`` for a field dictionary, walking ``/Parent`` (then
+        ``/P``) up the chain with cycle detection.
+
+        Mirrors upstream ``PDFieldFactory.findFieldType``. Lifted to a public
+        helper because callers outside the factory benefit from the same walk.
+        """
+        return _find_field_type(field)
 
     @staticmethod
     def create_field(

@@ -11,7 +11,12 @@ import pytest
 
 from pypdfbox.cos import COSDictionary
 from pypdfbox.filter import FlateDecode, LZWDecode
-from pypdfbox.filter._predictor import predict, unpredict
+from pypdfbox.filter._predictor import (
+    calculate_row_length,
+    decode_predictor_row,
+    predict,
+    unpredict,
+)
 
 ALL_PREDICTORS = [1, 2, 10, 11, 12, 13, 14, 15]
 PNG_PREDICTORS = [10, 11, 12, 13, 14, 15]
@@ -249,3 +254,104 @@ def test_lzw_predictor_1_passthrough_encode() -> None:
     dec = io.BytesIO()
     lzw.decode(io.BytesIO(enc.getvalue()), dec, params)
     assert dec.getvalue() == b"hello LZW"
+
+
+# ---------- calculate_row_length parity (Predictor#calculateRowLength) ----
+
+
+@pytest.mark.parametrize(
+    ("colors", "bpc", "columns", "expected"),
+    [
+        # 8-bit grayscale, 16 columns -> 16 bytes
+        (1, 8, 16, 16),
+        # 8-bit RGB, 10 columns -> 30 bytes
+        (3, 8, 10, 30),
+        # 16-bit grayscale, 6 columns -> 12 bytes
+        (1, 16, 6, 12),
+        # 1-bit grayscale, 17 columns -> ceil(17/8) = 3 bytes
+        (1, 1, 17, 3),
+        # 4-bit grayscale, 5 columns -> ceil(20/8) = 3 bytes
+        (1, 4, 5, 3),
+        # zero columns -> zero bytes
+        (1, 8, 0, 0),
+    ],
+)
+def test_calculate_row_length_matches_upstream_signature(
+    colors: int, bpc: int, columns: int, expected: int
+) -> None:
+    # Note the (colors, bitsPerComponent, columns) parameter order, which
+    # mirrors the Java method.
+    assert calculate_row_length(colors, bpc, columns) == expected
+
+
+# ---------- decode_predictor_row parity ----------------------------------
+
+
+def test_decode_predictor_row_passthrough_predictor_1() -> None:
+    row = bytearray(b"\x01\x02\x03\x04")
+    last = bytearray(4)
+    decode_predictor_row(1, 1, 8, 4, row, last)
+    assert bytes(row) == b"\x01\x02\x03\x04"
+
+
+def test_decode_predictor_row_png_sub_first_row() -> None:
+    # Predictor 11 (PNG Sub): each byte was encoded as cur - left.
+    # Encoded ramp 1, 1, 1, 1 -> decoded ramp 1, 2, 3, 4.
+    row = bytearray(b"\x01\x01\x01\x01")
+    last = bytearray(4)  # zero-filled for first row
+    decode_predictor_row(11, 1, 8, 4, row, last)
+    assert bytes(row) == b"\x01\x02\x03\x04"
+
+
+def test_decode_predictor_row_png_up() -> None:
+    # Predictor 12 (PNG Up): cur += prior_row[i].
+    last = bytearray(b"\x10\x20\x30\x40")
+    row = bytearray(b"\x01\x02\x03\x04")
+    decode_predictor_row(12, 1, 8, 4, row, last)
+    assert bytes(row) == b"\x11\x22\x33\x44"
+
+
+def test_decode_predictor_row_round_trips_against_bulk_unpredict() -> None:
+    # Build a multi-row image, run the bulk unpredict, then replay the
+    # same operation row-by-row with decode_predictor_row and ensure we
+    # get the same answer. Validates the per-row helper against the
+    # already-tested bulk path.
+    columns, colors, bpc = 8, 1, 8
+    rows = 5
+    raw = bytes(range(columns * rows))
+
+    # Encode the whole thing with predictor 12 (PNG Up).
+    encoded = predict(raw, 12, columns, colors, bpc)
+    expected = unpredict(encoded, 12, columns, colors, bpc)
+
+    # Now reproduce row-by-row through decode_predictor_row.
+    rb = calculate_row_length(colors, bpc, columns)
+    stride = rb + 1  # +1 for PNG filter-tag byte
+    out = bytearray()
+    last = bytearray(rb)
+    for row_start in range(0, len(encoded), stride):
+        tag = encoded[row_start]
+        cur = bytearray(encoded[row_start + 1 : row_start + 1 + rb])
+        # decode_predictor_row takes the predictor value (10..14),
+        # which is tag + 10 per the upstream contract.
+        decode_predictor_row(tag + 10, colors, bpc, columns, cur, last)
+        out.extend(cur)
+        last = cur
+    assert bytes(out) == expected
+
+
+def test_decode_predictor_row_tiff_predictor_2() -> None:
+    # Predictor 2 (TIFF) on 8-bit grayscale, 4 columns: encoded row is
+    # cur - left, so decoded ramp 1,2,3,4 -> encoded 1,1,1,1.
+    row = bytearray(b"\x01\x01\x01\x01")
+    last = bytearray(4)
+    decode_predictor_row(2, 1, 8, 4, row, last)
+    assert bytes(row) == b"\x01\x02\x03\x04"
+
+
+def test_decode_predictor_row_unknown_predictor_is_noop() -> None:
+    # Upstream's switch falls through silently for unknown predictors.
+    row = bytearray(b"\x01\x02\x03\x04")
+    last = bytearray(4)
+    decode_predictor_row(99, 1, 8, 4, row, last)
+    assert bytes(row) == b"\x01\x02\x03\x04"
