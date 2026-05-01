@@ -59,5 +59,24 @@ class PDPageAdditionalActions:
     def set_close_action(self, action: PDAction | None) -> None:
         self.set_c(action)
 
+    # ------------------------------------------------------------------
+    # Introspection helpers
+    # ------------------------------------------------------------------
+
+    def is_empty(self) -> bool:
+        """Return ``True`` when neither ``/O`` nor ``/C`` is set. Matches
+        upstream's notion of an "empty" additional-actions entry — a
+        producer that finds no triggers attached can elide the dictionary
+        entirely."""
+        return not self._actions.contains_key(_O) and not self._actions.contains_key(_C)
+
+    def __repr__(self) -> str:
+        flags: list[str] = []
+        if self._actions.contains_key(_O):
+            flags.append("O")
+        if self._actions.contains_key(_C):
+            flags.append("C")
+        return f"PDPageAdditionalActions({','.join(flags) or 'empty'})"
+
 
 __all__ = ["PDPageAdditionalActions"]

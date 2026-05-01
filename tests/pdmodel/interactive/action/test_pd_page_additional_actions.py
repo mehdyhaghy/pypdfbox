@@ -132,3 +132,68 @@ def test_page_additional_actions_constructor_accepts_seeded_dict() -> None:
     resolved = aa.get_o()
     assert isinstance(resolved, PDActionURI)
     assert resolved.get_uri() == "https://example.test/seeded"
+
+
+# ---------- introspection helpers ----------
+
+
+def test_page_additional_actions_is_empty_default_true() -> None:
+    aa = PDPageAdditionalActions()
+    assert aa.is_empty() is True
+
+
+def test_page_additional_actions_is_empty_false_when_o_set() -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/o")
+    aa.set_o(action)
+    assert aa.is_empty() is False
+
+
+def test_page_additional_actions_is_empty_false_when_c_set() -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/c")
+    aa.set_c(action)
+    assert aa.is_empty() is False
+
+
+def test_page_additional_actions_is_empty_true_after_clearing_both() -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/o")
+    aa.set_o(action)
+    aa.set_c(action)
+    assert aa.is_empty() is False
+    aa.set_o(None)
+    aa.set_c(None)
+    assert aa.is_empty() is True
+
+
+def test_page_additional_actions_repr_empty() -> None:
+    assert repr(PDPageAdditionalActions()) == "PDPageAdditionalActions(empty)"
+
+
+def test_page_additional_actions_repr_with_o_only() -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/o")
+    aa.set_o(action)
+    assert repr(aa) == "PDPageAdditionalActions(O)"
+
+
+def test_page_additional_actions_repr_with_c_only() -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/c")
+    aa.set_c(action)
+    assert repr(aa) == "PDPageAdditionalActions(C)"
+
+
+def test_page_additional_actions_repr_with_both() -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/x")
+    aa.set_o(action)
+    aa.set_c(action)
+    assert repr(aa) == "PDPageAdditionalActions(O,C)"

@@ -399,3 +399,47 @@ def test_get_enforce_names_skips_non_name_entries() -> None:
     arr.add(COSName.get_pdf_name("Duplex"))
     p.set_enforce(arr)
     assert p.get_enforce_names() == ["PrintScaling", "Duplex"]
+
+
+# ---------- /NumCopies entry-clearing and raw accessor ----------
+
+
+def test_set_num_copies_none_removes_entry() -> None:
+    """``set_num_copies(None)`` clears ``/NumCopies`` (parity with the
+    other viewer-preference setters' ``None``-clearing semantics)."""
+    p = PDViewerPreferences()
+    p.set_num_copies(7)
+    assert p.get_cos_object().contains_key(COSName.get_pdf_name("NumCopies"))
+    p.set_num_copies(None)
+    assert not p.get_cos_object().contains_key(COSName.get_pdf_name("NumCopies"))
+    # After clearing, getter falls back to spec default (1).
+    assert p.get_num_copies() == 1
+
+
+def test_get_num_copies_raw_default_none() -> None:
+    """``get_num_copies_raw`` returns ``None`` when the entry is absent —
+    distinct from ``get_num_copies`` which falls back to the spec default
+    of 1."""
+    p = PDViewerPreferences()
+    assert p.get_num_copies_raw() is None
+    assert p.get_num_copies() == 1
+
+
+def test_get_num_copies_raw_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_num_copies(4)
+    assert p.get_num_copies_raw() == 4
+    assert p.get_num_copies() == 4
+
+
+def test_get_num_copies_raw_does_not_clamp_below_one() -> None:
+    """Unlike ``get_num_copies`` (which clamps <1 values up to 1), the raw
+    accessor returns the exact stored value so callers can detect
+    malformed producer output."""
+    p = PDViewerPreferences()
+    p.get_cos_object().set_int(COSName.get_pdf_name("NumCopies"), 0)
+    assert p.get_num_copies_raw() == 0
+    assert p.get_num_copies() == 1
+    p.get_cos_object().set_int(COSName.get_pdf_name("NumCopies"), -3)
+    assert p.get_num_copies_raw() == -3
+    assert p.get_num_copies() == 1

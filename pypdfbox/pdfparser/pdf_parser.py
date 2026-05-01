@@ -749,6 +749,14 @@ class PDFParser:
         record_size = w1 + w2 + w3
         if record_size <= 0:
             raise PDFParseError("xref stream /W field widths sum to zero")
+        # PDFBOX-6037: cap the entry width at 20 bytes — anything wider
+        # is malformed and would tend to mask attacker-supplied size
+        # explosions. Mirrors upstream
+        # ``PDFXrefStreamParser.initParserValues``.
+        if record_size > 20:
+            raise PDFParseError(
+                f"xref stream /W defines an entry wider than 20 bytes: {widths!r}"
+            )
         cursor = 0
         for first, count in index_pairs:
             for i in range(count):

@@ -61,6 +61,7 @@ def _parser(data: bytes, document: COSDocument | None = None) -> COSParser:
         # Xref entry points
         "parse_xref_object_stream",
         "parse_xref_table",
+        "parse_xref_stream",
         # Header
         "parse_pdf_header",
         # Brute-force scan helpers

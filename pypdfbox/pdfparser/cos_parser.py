@@ -1279,16 +1279,37 @@ class COSParser(BaseParser):
         entry_size = sum(w)
         if entry_size <= 0:
             raise PDFParseError("xref stream /W defines a zero-byte entry")
+        # PDFBOX-6037: an entry wider than 20 bytes is nonsensical (the
+        # spec caps practical widths well below this). Mirrors upstream
+        # ``PDFXrefStreamParser.initParserValues``.
+        if entry_size > 20:
+            raise PDFParseError(
+                f"xref stream /W defines an entry wider than 20 bytes: {w!r}"
+            )
         # /Index defaults to [0 /Size] per ISO 32000-1 §7.5.8.2.
         index_obj = xref_stream_dict.get_dictionary_object(COSName.get_pdf_name("Index"))
         index_pairs: list[tuple[int, int]] = []
         if isinstance(index_obj, COSArray):
+            # Upstream ``PDFXrefStreamParser.initParserValues`` rejects
+            # an empty /Index or one whose length is odd — the array
+            # must be a sequence of ``[first count]`` pairs.
+            if index_obj.size() == 0 or index_obj.size() % 2 == 1:
+                raise PDFParseError(
+                    f"xref stream /Index has odd or empty length: {index_obj.size()}"
+                )
             i = 0
             while i + 1 < index_obj.size():
                 first = index_obj.get(i)
                 count = index_obj.get(i + 1)
-                if isinstance(first, COSInteger) and isinstance(count, COSInteger):
-                    index_pairs.append((first.int_value(), count.int_value()))
+                # Upstream rejects non-integer entries with
+                # "Xref stream must have integer in /Index array".
+                if not isinstance(first, COSInteger) or not isinstance(
+                    count, COSInteger
+                ):
+                    raise PDFParseError(
+                        "xref stream /Index entries must be integers"
+                    )
+                index_pairs.append((first.int_value(), count.int_value()))
                 i += 2
         if not index_pairs:
             size_obj = xref_stream_dict.get_dictionary_object(

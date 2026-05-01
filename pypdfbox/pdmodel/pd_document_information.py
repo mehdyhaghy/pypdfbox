@@ -225,6 +225,19 @@ class PDDocumentInformation:
         the documented ordering and stays stable for callers that iterate)."""
         return sorted(key.get_name() for key in self._info.key_set())
 
+    def get_metadata_keys_set(self) -> set[str]:
+        """Return all metadata key names as a ``set``. Mirrors the upstream
+        ``Set<String> getMetadataKeys()`` contract for callers that want
+        membership-test semantics rather than the sorted list. The two
+        accessors share underlying state — order is the only difference."""
+        return {key.get_name() for key in self._info.key_set()}
+
+    def contains_property(self, property_key: str) -> bool:
+        """Return ``True`` when ``property_key`` is present in the underlying
+        info dictionary. A convenience over inspecting
+        ``get_metadata_keys()`` for a one-off membership check."""
+        return self._info.contains_key(property_key)
+
     def get_custom_metadata_value(self, field_name: str) -> str | None:
         return self._info.get_string(field_name)
 

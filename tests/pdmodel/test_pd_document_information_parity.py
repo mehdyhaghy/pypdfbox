@@ -175,3 +175,50 @@ def test_set_custom_metadata_value_appears_in_metadata_keys() -> None:
     info.set_custom_metadata_value("Department", "Eng")
     keys = info.get_metadata_keys()
     assert "Department" in keys
+
+
+# ---------- get_metadata_keys_set / contains_property ----------
+
+
+def test_get_metadata_keys_set_default_empty() -> None:
+    info = PDDocumentInformation()
+    assert info.get_metadata_keys_set() == set()
+
+
+def test_get_metadata_keys_set_returns_set_instance() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_author("A")
+    keys = info.get_metadata_keys_set()
+    assert isinstance(keys, set)
+    assert keys == {"Title", "Author"}
+
+
+def test_get_metadata_keys_set_matches_list_form() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_creator("C")
+    info.set_custom_metadata_value("Department", "Eng")
+    assert info.get_metadata_keys_set() == set(info.get_metadata_keys())
+
+
+def test_contains_property_default_false() -> None:
+    info = PDDocumentInformation()
+    assert info.contains_property("Title") is False
+    assert info.contains_property("NonExistent") is False
+
+
+def test_contains_property_true_after_set() -> None:
+    info = PDDocumentInformation()
+    info.set_title("My Doc")
+    assert info.contains_property("Title") is True
+    info.set_title(None)
+    assert info.contains_property("Title") is False
+
+
+def test_contains_property_works_for_custom_keys() -> None:
+    info = PDDocumentInformation()
+    info.set_custom_metadata_value("Company", "ACME")
+    assert info.contains_property("Company") is True
+    info.set_custom_metadata_value("Company", None)
+    assert info.contains_property("Company") is False

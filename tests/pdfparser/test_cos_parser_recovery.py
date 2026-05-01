@@ -335,3 +335,63 @@ def test_parse_xref_stream_merges_into_existing_table() -> None:
     assert COSObjectKey(99, 0) in out
     assert COSObjectKey(0, 0) in out
     assert COSObjectKey(1, 0) in out
+
+
+def test_parse_xref_stream_rejects_total_width_above_20() -> None:
+    """PDFBOX-6037: ``/W`` whose three field widths sum to more than 20
+    bytes is malformed and must be rejected. Mirrors upstream
+    ``PDFXrefStreamParser.initParserValues``."""
+    from pypdfbox.pdfparser import PDFParseError
+
+    p = _parser(b"")
+    # 7 + 7 + 7 = 21 — one byte over the cap.
+    with pytest.raises(PDFParseError):
+        p.parse_xref_stream(_xref_stream_dict([7, 7, 7], size=1))
+
+
+def test_parse_xref_stream_total_width_at_20_is_allowed() -> None:
+    """Boundary: ``/W`` summing to exactly 20 is legal — only > 20 is
+    rejected per upstream."""
+    p = _parser(b"")
+    table = p.parse_xref_stream(_xref_stream_dict([1, 8, 11], size=2))
+    # Two records of 20 bytes each at body offsets 0 and 20.
+    assert sorted(table.values()) == [0, 20]
+
+
+def test_parse_xref_stream_rejects_odd_index_length() -> None:
+    """Upstream ``initParserValues`` rejects an /Index whose size is
+    not even — entries must come in ``[first count]`` pairs."""
+    from pypdfbox.pdfparser import PDFParseError
+
+    p = _parser(b"")
+    with pytest.raises(PDFParseError):
+        # Three integers — odd length.
+        p.parse_xref_stream(_xref_stream_dict([1, 2, 1], index=[10, 2, 20]))
+
+
+def test_parse_xref_stream_rejects_empty_index_array() -> None:
+    """Upstream rejects an explicitly empty /Index array (vs. an
+    absent one, which falls back to ``[0 /Size]``)."""
+    from pypdfbox.pdfparser import PDFParseError
+
+    p = _parser(b"")
+    d = _xref_stream_dict([1, 2, 1], size=1)
+    # Force an explicit, empty /Index array.
+    d.set_item(COSName.get_pdf_name("Index"), COSArray())
+    with pytest.raises(PDFParseError):
+        p.parse_xref_stream(d)
+
+
+def test_parse_xref_stream_rejects_non_integer_index_entries() -> None:
+    """Upstream rejects /Index entries that are not COSInteger with
+    "Xref stream must have integer in /Index array"."""
+    from pypdfbox.pdfparser import PDFParseError
+
+    p = _parser(b"")
+    d = _xref_stream_dict([1, 2, 1], size=1)
+    bad = COSArray()
+    bad.add(COSInteger.get(0))
+    bad.add(COSName.get_pdf_name("oops"))  # not an integer
+    d.set_item(COSName.get_pdf_name("Index"), bad)
+    with pytest.raises(PDFParseError):
+        p.parse_xref_stream(d)

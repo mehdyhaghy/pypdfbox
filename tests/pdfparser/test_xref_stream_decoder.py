@@ -364,6 +364,20 @@ def test_xref_stream_w_field_widths_must_sum_above_zero() -> None:
         PDFParser(RandomAccessReadBuffer(pdf)).parse()
 
 
+def test_xref_stream_w_widths_above_20_rejected() -> None:
+    """PDFBOX-6037: ``/W`` whose three field widths sum to more than 20
+    bytes is malformed and the body decoder must reject it before any
+    reads. Catches an attacker-supplied size explosion."""
+    pdf = (
+        b"%PDF-1.5\n"
+        b"1 0 obj\n<< /Type /XRef /Size 1 /W [ 7 7 7 ] /Length 21 >>\n"
+        b"stream\n" + b"\x00" * 21 + b"\nendstream\nendobj\n"
+        b"startxref\n9\n%%EOF"
+    )
+    with pytest.raises(PDFParseError):
+        PDFParser(RandomAccessReadBuffer(pdf)).parse()
+
+
 def test_xref_stream_records_truncated_relative_to_index() -> None:
     """If the body is shorter than ``/Index`` declares, fail loudly."""
     pdf = (

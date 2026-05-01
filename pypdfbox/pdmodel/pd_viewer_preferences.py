@@ -299,7 +299,19 @@ class PDViewerPreferences:
         v = self._prefs.get_int(_NUM_COPIES, 1)
         return v if v >= 1 else 1
 
-    def set_num_copies(self, value: int) -> None:
+    def get_num_copies_raw(self) -> int | None:
+        """Return the raw ``/NumCopies`` integer (no clamping, no spec
+        default). Returns ``None`` when the entry is absent. Useful when a
+        caller wants to detect malformed producer values that
+        ``get_num_copies`` would otherwise hide behind the ``1`` clamp."""
+        if not self._prefs.contains_key(_NUM_COPIES):
+            return None
+        return self._prefs.get_int(_NUM_COPIES, 1)
+
+    def set_num_copies(self, value: int | None) -> None:
+        if value is None:
+            self._prefs.remove_item(_NUM_COPIES)
+            return
         self._prefs.set_int(_NUM_COPIES, value)
 
     def get_print_page_range(self) -> COSArray | None:
