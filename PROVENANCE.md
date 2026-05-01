@@ -1150,3 +1150,12 @@ No new port files were added in Wave 69. The wave only extended existing upstrea
 
 No new port files were added in Wave 70. The wave only extended existing upstream-derived modules and their existing test files:
 `ResourceRefType`.
+
+### Wave 71 additions
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/filter/ascii85_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/ASCII85Filter.java` (alias module; codec body in `ascii85_decode.py`) |
+| `tests/filter/test_ascii85_filter.py` | 3.0.x | hand-written coverage for the upstream-named `ASCII85Filter` alias and registry wiring |
+
+Existing upstream-derived modules extended in Wave 71: `Filter` (`SYSPROP_DEFLATELEVEL`, `SYSPROP_CCITTFAX_MAXBYTES`, `get_compression_level`), `FlateDecode` (encode honours configured deflate level).

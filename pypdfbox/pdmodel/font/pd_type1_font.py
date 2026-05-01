@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import logging
+from typing import BinaryIO
 
 from pypdfbox.cos import COSDictionary
 from pypdfbox.fontbox.type1.type1_font import Type1Font
@@ -10,6 +12,30 @@ from .pd_simple_font import PDSimpleFont
 from .standard14_fonts import Standard14Fonts
 
 _LOG = logging.getLogger(__name__)
+
+# Alternative glyph names commonly encountered in substitute fonts.
+# Mirrors the ``ALT_NAMES`` table on upstream ``PDType1Font`` — when a
+# requested ligature name is not present in the underlying program, we
+# retry with these underscore-separated component spellings (e.g.
+# ``ff`` -> ``f_f``). The misspelled ``ellipsis`` -> ``elipsis`` entry is
+# load-bearing for some ArialMT-substituted Type 1 PDFs.
+_ALT_NAMES: dict[str, str] = {
+    "ff": "f_f",
+    "ffi": "f_f_i",
+    "ffl": "f_f_l",
+    "fi": "f_i",
+    "fl": "f_l",
+    "st": "s_t",
+    "IJ": "I_J",
+    "ij": "i_j",
+    "ellipsis": "elipsis",  # misspelled in ArialMT
+}
+
+# First byte of a PFB-wrapped Type 1 font program — see PDFBOX-2607.
+# Upstream uses this constant to detect when an embedded ``/FontFile``
+# stream contains the entire PFB envelope (header + segments) rather
+# than the bare two binary segments specified by PDF 32000-1 §9.9.
+_PFB_START_MARKER: int = 0x80
 
 
 class PDType1Font(PDSimpleFont):
@@ -23,6 +49,12 @@ class PDType1Font(PDSimpleFont):
     """
 
     SUB_TYPE = "Type1"
+
+    # Re-exposed at class level so external callers can mirror the
+    # ``PDType1Font.ALT_NAMES`` / ``PDType1Font.PFB_START_MARKER`` access
+    # patterns from upstream.
+    ALT_NAMES = _ALT_NAMES
+    PFB_START_MARKER = _PFB_START_MARKER
 
     def __init__(self, font_dict: COSDictionary | None = None) -> None:
         super().__init__(font_dict)
@@ -335,6 +367,121 @@ class PDType1Font(PDSimpleFont):
         if base_font is None or not Standard14Fonts.containsName(base_font):
             return None
         return Standard14Fonts.get_afm(base_font)
+
+    # ---------- code / name resolution ----------
+
+    def code_to_name(self, code: int) -> str:
+        """Resolve a 1-byte character code to the glyph name *as it
+        appears in the underlying font*. Mirrors upstream
+        ``PDType1Font.codeToName``.
+
+        Goes through ``/Encoding`` first (so ``/Differences`` overlays
+        win, exactly like the encode path) and then through
+        :meth:`get_name_in_font` to handle ligature spelling mismatches
+        and AGL fallbacks. Returns ``".notdef"`` when the font has no
+        ``/Encoding`` entry (matches upstream's null-encoding fallback).
+        """
+        encoding = self.get_encoding_typed()
+        name = encoding.get_name(code) if encoding is not None else ".notdef"
+        return self.get_name_in_font(name)
+
+    def get_name_in_font(self, name: str) -> str:
+        """Map a PostScript glyph name to the spelling actually present
+        in the embedded program. Mirrors upstream
+        ``PDType1Font.getNameInFont``.
+
+        Resolution order:
+
+        1. ``name`` itself when the font is embedded (upstream trusts
+           the embedded program to round-trip its own names) or when the
+           program already contains a glyph by that exact name.
+        2. The :data:`ALT_NAMES` ligature spelling (``ff`` -> ``f_f``
+           etc.) when the program lacks ``name`` but carries the
+           component spelling.
+        3. ``".notdef"`` when a program is loaded and lacks every
+           candidate.
+
+        When no embedded program is available at all (no /FontFile and
+        we have nothing to substitute against), ``name`` is returned
+        unchanged — we have no negative evidence to remap on. This
+        deviates slightly from upstream, which always has a generic
+        substitute font in hand and can therefore reach a real
+        ``.notdef`` decision; see CHANGES.md.
+        """
+        program = self._get_type1_font()
+        if self.is_embedded():
+            return name
+        if program is None:
+            # No embedded program and no substitute loaded — pass
+            # through unchanged.
+            return name
+        if program.has_glyph(name):
+            return name
+        alt = _ALT_NAMES.get(name)
+        if alt is not None and name != ".notdef" and program.has_glyph(alt):
+            return alt
+        return ".notdef"
+
+    # ---------- glyph existence probes ----------
+
+    def has_glyph(self, name: str) -> bool:
+        """``True`` iff the underlying font program carries a glyph for
+        ``name`` (after ``ALT_NAMES`` remapping). Mirrors upstream
+        ``PDType1Font.hasGlyph(String)``.
+        """
+        resolved = self.get_name_in_font(name)
+        if resolved == ".notdef":
+            return False
+        program = self._get_type1_font()
+        if program is None:
+            # is_embedded() short-circuits get_name_in_font to return
+            # ``name`` unchanged; without a parsed program we can't
+            # confirm presence either way, so report False.
+            return False
+        return program.has_glyph(resolved)
+
+    def has_glyph_for_code(self, code: int) -> bool:
+        """``True`` iff ``/Encoding`` maps ``code`` to anything other
+        than ``.notdef``. Mirrors upstream
+        ``PDType1Font.hasGlyph(int)`` — the upstream overload is purely
+        encoding-based; it does not consult the font program.
+        """
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return False
+        return encoding.get_name(code) != ".notdef"
+
+    # ---------- byte-stream reader ----------
+
+    def read_code(self, stream: BinaryIO | bytes) -> int:
+        """Read one byte from ``stream`` and return its integer code.
+
+        Mirrors upstream ``PDType1Font.readCode`` — Type 1 fonts always
+        use single-byte character codes regardless of encoding, so the
+        reader is just a one-byte pull. Accepts either a binary file
+        object (anything with a ``.read(int)`` method) or a raw
+        ``bytes``/``bytearray`` for caller convenience. Returns ``-1``
+        at end-of-stream to mirror Java's ``InputStream.read`` contract.
+        """
+        if isinstance(stream, (bytes, bytearray, memoryview)):
+            stream = io.BytesIO(bytes(stream))
+        chunk = stream.read(1)
+        if not chunk:
+            return -1
+        return chunk[0]
+
+    # ---------- embedded program alias ----------
+
+    def get_type1_font(self) -> Type1Font | None:
+        """Return the embedded :class:`Type1Font` program, or ``None``
+        when the font is not embedded / failed to parse. Mirrors
+        upstream ``PDType1Font.getType1Font``. Distinct from
+        :meth:`get_font_program` (which mirrors the upstream
+        ``getFontProgram`` accessor on ``PDVectorFont``); both currently
+        delegate to the same lazy parser, but we keep separate names so
+        callers can match the upstream surface they were trained on.
+        """
+        return self._get_type1_font()
 
 
 __all__ = ["PDType1Font"]

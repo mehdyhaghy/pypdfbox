@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDocument
+from pypdfbox.cos import COSDictionary, COSDocument
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParseError, PDFParser
+from pypdfbox.pdfparser.pdf_parser import SYSPROP_EOFLOOKUPRANGE
+from pypdfbox.pdfparser.xref_trailer_resolver import XrefTrailerResolver
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 # ---------- helpers ----------
@@ -177,3 +179,108 @@ def test_get_pd_document_before_parse_raises() -> None:
     p = _parser(_minimal_pdf_bytes())
     with pytest.raises(PDFParseError):
         p.get_pd_document()
+
+
+# ---------- get_trailer / get_root / get_xref_trailer_resolver ----------
+
+
+def test_get_trailer_returns_none_before_parse() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    assert p.get_trailer() is None
+
+
+def test_get_trailer_returns_dictionary_after_parse() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    p.parse()
+    trailer = p.get_trailer()
+    assert isinstance(trailer, COSDictionary)
+    assert trailer.get_int("Size") == 4
+
+
+def test_get_root_returns_none_before_parse() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    assert p.get_root() is None
+
+
+def test_get_root_returns_catalog_after_parse() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    p.parse()
+    root = p.get_root()
+    assert isinstance(root, COSDictionary)
+    assert root.get_name("Type") == "Catalog"
+
+
+def test_get_xref_trailer_resolver_returns_resolver() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    resolver = p.get_xref_trailer_resolver()
+    assert isinstance(resolver, XrefTrailerResolver)
+    # Same instance on repeated calls.
+    assert p.get_xref_trailer_resolver() is resolver
+
+
+def test_get_xref_trailer_resolver_populated_after_parse() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    p.parse()
+    resolver = p.get_xref_trailer_resolver()
+    xref = resolver.get_xref_table()
+    # Three in-use objects from the minimal PDF.
+    assert len(xref) >= 3
+
+
+# ---------- set_eof_lookup_range / get_eof_lookup_range ----------
+
+
+def test_eof_lookup_range_default_value() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    # Default mirrors module-level _TAIL_SCAN_BYTES (4096).
+    assert p.get_eof_lookup_range() == 4096
+
+
+def test_set_eof_lookup_range_updates_value() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    p.set_eof_lookup_range(8192)
+    assert p.get_eof_lookup_range() == 8192
+
+
+def test_set_eof_lookup_range_ignores_small_values() -> None:
+    """Mirrors upstream's guard: byte_count <= 15 is a no-op."""
+    p = _parser(_minimal_pdf_bytes())
+    p.set_eof_lookup_range(8192)
+    p.set_eof_lookup_range(15)  # ignored
+    assert p.get_eof_lookup_range() == 8192
+    p.set_eof_lookup_range(0)  # ignored
+    assert p.get_eof_lookup_range() == 8192
+
+
+def test_set_eof_lookup_range_does_not_break_parse() -> None:
+    """A larger window should still find startxref correctly."""
+    pdf = _minimal_pdf_bytes()
+    p = _parser(pdf)
+    p.set_eof_lookup_range(10_000)
+    doc = p.parse()
+    assert doc is not None
+
+
+def test_sysprop_eof_lookup_range_constant() -> None:
+    """Constant must match upstream verbatim for source-level parity."""
+    assert SYSPROP_EOFLOOKUPRANGE == (
+        "org.apache.pdfbox.pdfparser.nonSequentialPDFParser.eofLookupRange"
+    )
+
+
+# ---------- parse_pdf_header (Java-style boolean alias) ----------
+
+
+def test_parse_pdf_header_returns_true_on_success() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    assert p.parse_pdf_header() is True
+
+
+def test_parse_pdf_header_returns_false_on_missing_header() -> None:
+    p = _parser(b"not a pdf at all")
+    assert p.parse_pdf_header() is False
+
+
+def test_parse_pdf_header_returns_false_on_malformed_version() -> None:
+    p = _parser(b"%PDF-bad\nrest")
+    assert p.parse_pdf_header() is False

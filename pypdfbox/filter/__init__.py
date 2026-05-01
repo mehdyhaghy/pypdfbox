@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .ascii85_decode import ASCII85Decode
+from .ascii85_filter import ASCII85Filter
 from .ascii_hex_decode import ASCIIHexDecode
 from .ascii_hex_filter import ASCIIHexFilter
 from .ccitt_fax_decode import CCITTFaxDecode
@@ -19,6 +20,7 @@ from .run_length_filter import RunLengthDecodeFilter
 
 __all__ = [
     "ASCII85Decode",
+    "ASCII85Filter",
     "ASCIIHexDecode",
     "ASCIIHexFilter",
     "CCITTFaxDecode",

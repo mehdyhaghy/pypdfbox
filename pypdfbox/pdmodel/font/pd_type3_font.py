@@ -236,16 +236,31 @@ class PDType3Font(PDSimpleFont):
             return widths[index]
         return 0.0
 
-    def has_glyph(self, code: int) -> bool:
-        """``True`` when the font defines a paintable glyph for ``code``.
+    @overload
+    def has_glyph(self, key: int) -> bool: ...
+    @overload
+    def has_glyph(self, key: str) -> bool: ...
+    def has_glyph(self, key: int | str) -> bool:
+        """``True`` when the font defines a paintable glyph for ``key``.
 
-        A Type 3 glyph exists iff (a) ``/Encoding`` maps ``code`` to a
-        glyph name other than ``.notdef`` and (b) ``/CharProcs`` carries
-        a stream for that name. Mirrors upstream ``hasGlyph(int)``."""
+        Polymorphic — mirrors both upstream call shapes:
+
+        - ``has_glyph(int code)``: glyph exists iff (a) ``/Encoding``
+          maps ``code`` to a glyph name other than ``.notdef`` and
+          (b) ``/CharProcs`` carries a stream for that name.
+          Mirrors upstream ``hasGlyph(int)``.
+        - ``has_glyph(str name)``: glyph exists iff ``/CharProcs``
+          carries a stream registered under the literal ``name``.
+          Mirrors upstream ``hasGlyph(String)``.
+        """
+        if isinstance(key, bool):  # bool is an int — disallow.
+            raise TypeError("has_glyph(bool) is not a valid call")
+        if isinstance(key, str):
+            return self._get_char_proc_by_name(key) is not None
         encoding = self.get_encoding_typed()
         if encoding is None:
             return False
-        name = encoding.get_name(int(code))
+        name = encoding.get_name(int(key))
         if name is None or name == ".notdef":
             return False
         return self._get_char_proc_by_name(name) is not None
@@ -256,6 +271,26 @@ class PDType3Font(PDSimpleFont):
         program to reference. Mirrors upstream
         ``PDType3Font.isEmbedded() → true``."""
         return True
+
+    def is_standard_14(self) -> bool:
+        """Type 3 fonts are never one of the 14 PDF Standard fonts.
+
+        Mirrors upstream ``PDType3Font.isStandard14() → false``: the
+        Standard 14 set is pre-defined Type 1 fonts, so a Type 3 font
+        with a colliding ``/BaseFont`` name (e.g. ``Helvetica``) still
+        must not be classified as Standard 14.
+        """
+        return False
+
+    def is_font_symbolic(self) -> bool:
+        """Type 3 fonts are never symbolic in the PDFBox sense.
+
+        Mirrors upstream protected ``isFontSymbolic() → false``. The
+        symbolic flag in ``/FontDescriptor`` may still be set on the
+        dictionary, but PDFBox treats Type 3 as non-symbolic for
+        encoding-resolution purposes.
+        """
+        return False
 
 
 __all__ = ["PDType3Font"]

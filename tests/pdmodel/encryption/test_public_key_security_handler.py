@@ -75,6 +75,63 @@ def test_security_handler_filter_constant() -> None:
     assert PublicKeySecurityHandler.FILTER == "Adobe.PubSec"
 
 
+def test_get_filter_instance_accessor_matches_constant() -> None:
+    handler = PublicKeySecurityHandler()
+    assert handler.get_filter() == "Adobe.PubSec"
+    assert handler.get_filter() == PublicKeySecurityHandler.FILTER
+
+
+def test_prepare_document_for_encryption_alias_routes_to_prepare_document() -> None:
+    """The upstream-spelled hook delegates to :meth:`prepare_document`."""
+    handler = PublicKeySecurityHandler()
+    # No policy attached — both spellings must surface the same error.
+    with pytest.raises(ValueError, match="PublicKeyProtectionPolicy"):
+        handler.prepare_document_for_encryption(object())
+
+
+def test_get_number_of_recipients_without_policy_returns_zero() -> None:
+    handler = PublicKeySecurityHandler()
+    assert handler.get_number_of_recipients() == 0
+
+
+def test_get_number_of_recipients_passes_through_policy() -> None:
+    policy = PublicKeyProtectionPolicy()
+    policy.add_recipient(PublicKeyRecipient())
+    policy.add_recipient(PublicKeyRecipient())
+    handler = PublicKeySecurityHandler(policy)
+    assert handler.get_number_of_recipients() == 2
+
+
+def test_compute_version_number_branches() -> None:
+    """Mirror upstream ``SecurityHandler#computeVersionNumber`` per branch."""
+    # Default state — no policy, default 40-bit base key length.
+    handler = PublicKeySecurityHandler()
+    handler.set_key_length(40)
+    assert handler.compute_version_number() == 1
+
+    handler.set_key_length(128)
+    assert handler.compute_version_number() == 2
+
+    # Policy with preferAES + 128 keyLength → V=4.
+    policy = PublicKeyProtectionPolicy()
+    policy.set_encryption_key_length(128)
+    policy.set_prefer_aes(True)
+    handler = PublicKeySecurityHandler(policy)
+    assert handler.compute_version_number() == 4
+
+    # Policy with 256 keyLength → V=5 (AES-256, irrespective of preferAES).
+    policy = PublicKeyProtectionPolicy()
+    policy.set_encryption_key_length(256)
+    handler = PublicKeySecurityHandler(policy)
+    assert handler.compute_version_number() == 5
+
+    # 128-bit policy without preferAES falls back to V=2 (RC4-128).
+    policy = PublicKeyProtectionPolicy()
+    policy.set_encryption_key_length(128)
+    handler = PublicKeySecurityHandler(policy)
+    assert handler.compute_version_number() == 2
+
+
 def test_prepare_document_requires_recipients() -> None:
     handler = PublicKeySecurityHandler(PublicKeyProtectionPolicy())
     with pytest.raises(ValueError, match="recipient"):

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+import os
 from abc import ABC, abstractmethod
-from typing import BinaryIO
+from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSArray, COSDictionary
 
 from .decode_result import DecodeResult
+
+_LOG = logging.getLogger(__name__)
 
 
 class Filter(ABC):
@@ -20,6 +24,25 @@ class Filter(ABC):
 
     Mirrors `org.apache.pdfbox.filter.Filter`.
     """
+
+    # ------------------------------------------------------------------
+    # Upstream system-property constants (mirror Java statics).
+    # ------------------------------------------------------------------
+
+    #: Environment-variable name controlling the zlib deflate level used
+    #: by ``FlateDecode.encode``. Mirrors
+    #: ``org.apache.pdfbox.filter.Filter#SYSPROP_DEFLATELEVEL``. Java
+    #: reads this via ``System.getProperty``; the Python port reads it
+    #: from ``os.environ`` since Python has no system-properties facility.
+    #: Valid values are ``-1`` (zlib default) through ``9`` (best
+    #: compression); ``0`` means "no compression". Out-of-range values
+    #: are clamped by :meth:`get_compression_level`.
+    SYSPROP_DEFLATELEVEL: Final[str] = "org.apache.pdfbox.filter.deflatelevel"
+
+    #: Environment-variable name capping the per-image buffer
+    #: ``CCITTFaxDecode`` will pre-allocate. Mirrors
+    #: ``org.apache.pdfbox.filter.Filter#SYSPROP_CCITTFAX_MAXBYTES``.
+    SYSPROP_CCITTFAX_MAXBYTES: Final[str] = "org.apache.pdfbox.filter.ccittmaxbytes"
 
     @abstractmethod
     def decode(
@@ -90,6 +113,31 @@ class Filter(ABC):
                     return entry
                 return COSDictionary()
         return COSDictionary()
+
+    @staticmethod
+    def get_compression_level() -> int:
+        """Return the zlib deflate level configured for pypdfbox.
+
+        Reads the :data:`SYSPROP_DEFLATELEVEL` environment variable (the
+        Python-side stand-in for Java system properties) and clamps the
+        result to ``-1..9`` — the range zlib accepts where ``-1`` means
+        "library default" (zlib's :data:`Z_DEFAULT_COMPRESSION`) and
+        ``9`` means "best compression". An unset or unparseable value
+        defaults to ``-1``.
+
+        Mirrors ``org.apache.pdfbox.filter.Filter#getCompressionLevel``.
+        """
+        value = os.environ.get(Filter.SYSPROP_DEFLATELEVEL, "-1")
+        try:
+            level = int(value)
+        except ValueError:
+            _LOG.warning(
+                "Invalid %s=%r; falling back to default (-1)",
+                Filter.SYSPROP_DEFLATELEVEL,
+                value,
+            )
+            level = -1
+        return max(-1, min(9, level))
 
     def is_decompression_input_size_known(self) -> bool:
         """Whether the decompressed size of the input is known up front.

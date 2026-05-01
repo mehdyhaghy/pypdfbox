@@ -436,5 +436,78 @@ class PublicKeySecurityHandler(SecurityHandler):
             digest.update(b"\xff\xff\xff\xff")
         return digest.digest()[: key_length_bits // 8]
 
+    # ---------------------------------------- additional upstream parity surface
+
+    def get_filter(self) -> str:
+        """Return the ``/Filter`` name produced by this handler.
+
+        Mirrors upstream ``SecurityHandler#getFilter`` — for the public-key
+        handler this is always ``Adobe.PubSec`` (PDF 32000-1 §7.6.5).
+        """
+        return self.FILTER
+
+    def prepare_document_for_encryption(self, document: object) -> None:
+        """Alias for :meth:`prepare_document` matching upstream's
+        ``PublicKeySecurityHandler#prepareDocumentForEncryption(PDDocument)``.
+
+        Upstream renames the abstract base hook ``prepareDocumentForEncryption``;
+        this lite port collapses that into :meth:`prepare_document`. The alias
+        keeps the upstream-named call site working verbatim.
+        """
+        self.prepare_document(document)
+
+    def compute_version_number(self) -> int:
+        """Pick a ``/V`` value from the attached policy's key length.
+
+        Mirrors upstream ``SecurityHandler#computeVersionNumber``:
+
+        - ``keyLength == 40``  → 1 (RC4-40)
+        - ``keyLength == 128 && preferAES`` → 4 (AES-128)
+        - ``keyLength == 256`` → 5 (AES-256)
+        - otherwise            → 2 (RC4-128)
+
+        Used by :meth:`prepare_document_for_encryption` upstream; the lite
+        handler picks V/R inline (AES-only), so this accessor is exposed as a
+        parity surface for callers that mirror upstream's algorithm pre-flight.
+        """
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
+        )
+
+        policy = self._protection_policy
+        key_length = self._key_length
+        if isinstance(policy, PublicKeyProtectionPolicy):
+            policy_length = policy.get_encryption_key_length()
+            if policy_length:
+                key_length = policy_length
+
+        if key_length == 40:
+            return 1
+        prefer_aes = (
+            isinstance(policy, PublicKeyProtectionPolicy)
+            and policy.is_prefer_aes()
+        )
+        if key_length == 128 and prefer_aes:
+            return 4
+        if key_length == 256:
+            return 5
+        return 2
+
+    def get_number_of_recipients(self) -> int:
+        """Return the recipient count from the attached policy, or ``0``.
+
+        Convenience passthrough — upstream callers reach this via
+        ``handler.getProtectionPolicy().getNumberOfRecipients()``; this alias
+        avoids a ``None`` check on the policy slot.
+        """
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
+        )
+
+        policy = self._protection_policy
+        if isinstance(policy, PublicKeyProtectionPolicy):
+            return policy.get_number_of_recipients()
+        return 0
+
 
 __all__ = ["PublicKeySecurityHandler"]

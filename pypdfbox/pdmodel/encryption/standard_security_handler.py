@@ -123,6 +123,12 @@ class StandardSecurityHandler(SecurityHandler):
     """Concrete handler for ``/Filter /Standard`` revisions 2 through 6."""
 
     FILTER = "Standard"
+    # PDFBox upstream exposes ``PROTECTION_POLICY_CLASS`` as a public static
+    # final pointer at ``StandardProtectionPolicy``. We populate it lazily
+    # below the class body to avoid the standard-policy → handler import
+    # cycle. Kept as a class attribute so ``StandardSecurityHandler.PROTECTION_POLICY_CLASS``
+    # mirrors the upstream constant access pattern.
+    PROTECTION_POLICY_CLASS: type | None = None
 
     def __init__(self, protection_policy: object | None = None) -> None:
         super().__init__()
@@ -163,7 +169,57 @@ class StandardSecurityHandler(SecurityHandler):
     def set_protection_policy(self, policy: object | None) -> None:
         self._protection_policy = policy
 
+    def has_protection_policy(self) -> bool:
+        """Return True when this handler was constructed with a policy.
+
+        Mirrors upstream ``SecurityHandler#hasProtectionPolicy`` — surfaced on
+        ``StandardSecurityHandler`` so callers don't have to reach through
+        the base abstraction.
+        """
+        return self._protection_policy is not None
+
+    def get_filter(self) -> str:
+        """Return the ``/Filter`` name handled by this implementation.
+
+        Matches upstream's pattern of consulting ``FILTER`` via the instance —
+        callers asking ``handler.get_filter()`` always get ``"Standard"``.
+        """
+        return self.FILTER
+
     # ----------------------------------------------------- upstream parity
+
+    def compute_revision_number_from_version(self, version: int) -> int:
+        """Pick the revision matching ``version`` and the active policy.
+
+        Mirrors upstream's private ``computeRevisionNumber(int version)``.
+        ``version`` is the /V value:
+
+        * V=5     → r6 (the deprecated r5 is upgraded per PDF 32000-2 note);
+        * V=4     → r4;
+        * V=2 / V=3, or any V<2 with revision-3 permissions set → r3;
+        * V<2 without revision-3 permissions → r2.
+
+        Falls back to r4 when none of the above apply (matches upstream's
+        terminal ``return REVISION_4``).
+        """
+        version = int(version)
+        permissions = None
+        policy = self._protection_policy
+        if policy is not None and hasattr(policy, "get_permissions"):
+            permissions = policy.get_permissions()
+        any_r3 = bool(
+            permissions is not None
+            and getattr(permissions, "has_any_revision_3_permission_set", lambda: False)()
+        )
+        if version < 2 and not any_r3:
+            return 2
+        if version == 5:
+            return 6
+        if version == 4:
+            return 4
+        if version in (2, 3) or any_r3:
+            return 3
+        return 4
 
     @staticmethod
     def compute_revision_number(key_length: int, prefer_aes: bool = False) -> int:
@@ -631,6 +687,15 @@ class StandardSecurityHandler(SecurityHandler):
         raise PDInvalidPasswordException()
 
     # ----------------------------------------------------------- write path
+
+    def prepare_document_for_encryption(self, document: object) -> None:
+        """Upstream-named alias for :meth:`prepare_document`.
+
+        Mirrors PDFBox's ``StandardSecurityHandler#prepareDocumentForEncryption``
+        — the actual logic lives in ``prepare_document`` so subclasses and
+        existing callers keep working.
+        """
+        self.prepare_document(document)
 
     def prepare_document(self, document: object) -> None:
         """Populate ``/Encrypt`` on ``document`` from the protection policy.
@@ -1253,6 +1318,17 @@ def _signed32(value: int) -> int:
     if value & 0x80000000:
         value -= 0x100000000
     return value
+
+
+# Bind ``PROTECTION_POLICY_CLASS`` after class construction. Done at the
+# bottom of the module to avoid a top-level circular import — every module
+# in this package imports this file, so referencing
+# ``StandardProtectionPolicy`` at class-body time would deadlock.
+from .standard_protection_policy import (  # noqa: E402
+    StandardProtectionPolicy as _StandardProtectionPolicy,
+)
+
+StandardSecurityHandler.PROTECTION_POLICY_CLASS = _StandardProtectionPolicy
 
 
 __all__ = [

@@ -231,3 +231,69 @@ class TestFilterFactoryIntegration:
 
     def test_factory_returns_flate_decode_instance(self) -> None:
         assert isinstance(FilterFactory.get("FlateDecode"), FlateDecode)
+
+
+class TestCompressionLevel:
+    """Exercises ``Filter.get_compression_level`` + ``SYSPROP_DEFLATELEVEL``.
+
+    Mirrors PDFBox's ``Filter#getCompressionLevel`` which reads the
+    ``org.apache.pdfbox.filter.deflatelevel`` system property and clamps
+    to ``-1..9``. The Python port reads it from ``os.environ``.
+    """
+
+    def test_sysprop_constant_value(self) -> None:
+        from pypdfbox.filter import Filter
+        assert Filter.SYSPROP_DEFLATELEVEL == "org.apache.pdfbox.filter.deflatelevel"
+
+    def test_default_is_minus_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pypdfbox.filter import Filter
+        monkeypatch.delenv(Filter.SYSPROP_DEFLATELEVEL, raising=False)
+        assert Filter.get_compression_level() == -1
+
+    def test_explicit_max(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pypdfbox.filter import Filter
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "9")
+        assert Filter.get_compression_level() == 9
+
+    def test_explicit_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pypdfbox.filter import Filter
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "0")
+        assert Filter.get_compression_level() == 0
+
+    def test_clamps_above_nine(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pypdfbox.filter import Filter
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "42")
+        assert Filter.get_compression_level() == 9
+
+    def test_clamps_below_minus_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pypdfbox.filter import Filter
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "-50")
+        assert Filter.get_compression_level() == -1
+
+    def test_unparseable_falls_back(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from pypdfbox.filter import Filter
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "not-an-int")
+        assert Filter.get_compression_level() == -1
+
+    def test_flate_encode_honors_max_level(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Highly repetitive input — level 9 should produce output no larger
+        # than level 0 (which is store-only) and round-trip identically.
+        from pypdfbox.filter import Filter
+        payload = b"abc" * 4000
+        flate = FlateDecode()
+
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "0")
+        enc_zero = io.BytesIO()
+        flate.encode(io.BytesIO(payload), enc_zero, None)
+
+        monkeypatch.setenv(Filter.SYSPROP_DEFLATELEVEL, "9")
+        enc_nine = io.BytesIO()
+        flate.encode(io.BytesIO(payload), enc_nine, None)
+
+        assert len(enc_nine.getvalue()) <= len(enc_zero.getvalue())
+
+        # Round-trip through both produces the original bytes regardless.
+        for enc in (enc_zero, enc_nine):
+            dec = io.BytesIO()
+            flate.decode(io.BytesIO(enc.getvalue()), dec, None)
+            assert dec.getvalue() == payload

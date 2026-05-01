@@ -804,3 +804,13 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 70 — XMP resource reference Java aliases
 
 - `pypdfbox/xmpbox/type/resource_ref_type.py`: added XMPBox camelCase aliases for resource-reference fields, including document/instance IDs, file path, management fields, part/rendition fields, last-modify date, and alternate-path helpers.
+
+## Wave 71 — Filter parity (ASCII85 alias, deflate-level configuration)
+
+- `pypdfbox/filter/ascii85_filter.py`: new upstream-named alias module mirroring `org.apache.pdfbox.filter.ASCII85Filter`, registered alongside the existing `ASCII85Decode` codec.
+- `pypdfbox/filter/filter.py`: added upstream-parity statics `SYSPROP_DEFLATELEVEL`, `SYSPROP_CCITTFAX_MAXBYTES`, and `get_compression_level()`. Java reads these as system properties (`-D...`); the Python port reads them from `os.environ` because Python lacks an equivalent property facility.
+- `pypdfbox/filter/flate_decode.py`: `encode` now honours `Filter.get_compression_level()`, matching upstream's `Deflater(getCompressionLevel())` behaviour. Default (`-1`, zlib default) preserves prior output.
+
+## PDType1Font — name-resolution / glyph-probe round-out
+
+- `pypdfbox/pdmodel/font/pd_type1_font.py`: added `ALT_NAMES` ligature-fallback table and `PFB_START_MARKER` constants, `code_to_name(code)`, `get_name_in_font(name)`, `has_glyph(name)`, `has_glyph_for_code(code)`, `read_code(stream | bytes)`, and `get_type1_font()` (alias of `get_font_program`). **Behavior deviation**: upstream `getNameInFont` always has a generic substitute font in hand, so it can return `".notdef"` when neither the embedded program nor the substitute carries the name. The Python port has no built-in system-font substitution path; when there is no embedded program at all, `get_name_in_font` returns the input name unchanged rather than `".notdef"` — we have no negative evidence to remap on. Once an embedded program (or an injected `set_font_program`) is available, behavior matches upstream.

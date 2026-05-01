@@ -24,12 +24,22 @@ from .filter_factory import FilterFactory
 _EOD: Final[int] = 128
 _MAX_RUN: Final[int] = 128  # max literal-or-repeat run length per packet
 
+# Upstream-named alias for the ``128`` end-of-data marker. Java has it
+# as ``private static final int RUN_LENGTH_EOD = 128`` on the filter
+# class; porters who translate that constant verbatim land here.
+RUN_LENGTH_EOD: Final[int] = _EOD
+
 
 class RunLengthDecode(Filter):
     """RunLengthDecode filter (ISO 32000-1 §7.4.5).
 
     Mirrors `org.apache.pdfbox.filter.RunLengthDecodeFilter`.
     """
+
+    # Mirror of upstream's ``RUN_LENGTH_EOD`` constant. Exposed as a
+    # class attribute so callers can write ``RunLengthDecode.RUN_LENGTH_EOD``
+    # the way upstream tests reference it via ``RunLengthDecodeFilter``.
+    RUN_LENGTH_EOD: Final[int] = _EOD
 
     def decode(
         self,

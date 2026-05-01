@@ -10,6 +10,10 @@ from io import BytesIO
 
 from pypdfbox.cos import COSName
 from pypdfbox.filter import FilterFactory, RunLengthDecode, RunLengthDecodeFilter
+from pypdfbox.filter.run_length_decode import (
+    RUN_LENGTH_EOD as DECODE_RUN_LENGTH_EOD,
+)
+from pypdfbox.filter.run_length_filter import RUN_LENGTH_EOD
 from pypdfbox.filter.run_length_filter import (
     RunLengthDecodeFilter as DirectRunLengthDecodeFilter,
 )
@@ -88,3 +92,34 @@ def test_cross_class_round_trip_decode_then_filter() -> None:
 
 def test_factory_is_registered_filter() -> None:
     assert FilterFactory.is_registered("RunLengthDecodeFilter")
+
+
+# ---------- upstream parity: RUN_LENGTH_EOD constant ----------------
+
+
+def test_run_length_eod_module_constant_value() -> None:
+    # ISO 32000-1 §7.4.5: 128 is the end-of-data marker.
+    assert RUN_LENGTH_EOD == 128
+
+
+def test_run_length_eod_re_exported_from_both_modules() -> None:
+    # The alias module re-exports the same constant the codec module owns.
+    assert RUN_LENGTH_EOD is DECODE_RUN_LENGTH_EOD
+
+
+def test_run_length_eod_class_attribute_matches() -> None:
+    # Upstream Java exposes ``RUN_LENGTH_EOD`` as a private static int on
+    # the filter class; we expose it as a class attribute on both
+    # ``RunLengthDecode`` and the alias subclass for parity.
+    assert RunLengthDecode.RUN_LENGTH_EOD == 128
+    assert RunLengthDecodeFilter.RUN_LENGTH_EOD == 128
+    # Subclass inherits the same int value.
+    assert RunLengthDecodeFilter.RUN_LENGTH_EOD == RunLengthDecode.RUN_LENGTH_EOD
+
+
+def test_encoded_empty_stream_ends_with_run_length_eod() -> None:
+    # Empty input encodes to a single byte: the EOD marker. Use the
+    # named constant rather than a literal 0x80 to lock in the value.
+    enc = BytesIO()
+    RunLengthDecodeFilter().encode(BytesIO(b""), enc, None)
+    assert enc.getvalue() == bytes((RUN_LENGTH_EOD,))

@@ -26,6 +26,21 @@ class BaseParser:
     DIGITS: ClassVar[bytes] = b"0123456789"
     HEX_DIGITS: ClassVar[bytes] = b"0123456789ABCDEFabcdef"
 
+    # Upstream (org.apache.pdfbox.pdfparser.BaseParser) string constants.
+    DEF: ClassVar[str] = "def"
+    ENDOBJ_STRING: ClassVar[str] = "endobj"
+    ENDSTREAM_STRING: ClassVar[str] = "endstream"
+    STREAM_STRING: ClassVar[str] = "stream"
+
+    # Upstream ASCII byte constants.
+    ASCII_LF: ClassVar[int] = 0x0A
+    ASCII_CR: ClassVar[int] = 0x0D
+    ASCII_SPACE: ClassVar[int] = 0x20
+
+    # Upstream object/generation number thresholds (PDF spec).
+    OBJECT_NUMBER_THRESHOLD: ClassVar[int] = 10_000_000_000
+    GENERATION_NUMBER_THRESHOLD: ClassVar[int] = 65535
+
     def __init__(self, source: RandomAccessRead) -> None:
         self._src = source
 
@@ -108,6 +123,55 @@ class BaseParser:
             return False
         return not cls.is_whitespace(b) and not cls.is_delimiter(b)
 
+    @classmethod
+    def is_space(cls, b: int) -> bool:
+        """Upstream-name alias: matches ASCII space (0x20) only — distinct
+        from ``is_whitespace`` which covers the full PDF whitespace set."""
+        return b == cls.ASCII_SPACE
+
+    @classmethod
+    def is_end_of_name(cls, b: int) -> bool:
+        """Mirrors upstream ``BaseParser.isEndOfName(int)``. A PDF name
+        terminates on whitespace, EOL, ``> < [ ] / ) ( % \\f`` or EOF."""
+        if b < 0:
+            return True
+        # whitespace bytes (incl. NUL, HT, LF, FF, CR, SPACE) terminate the name
+        if cls.is_whitespace(b):
+            return True
+        return b in (0x3E, 0x3C, 0x5B, 0x5D, 0x29, 0x28, 0x2F, 0x25, 0x0C)
+
+    # ---------- one-arg/no-arg classifier overloads (upstream parity) ----------
+
+    def is_whitespace_at(self) -> bool:
+        """No-arg upstream alias: peeks the next byte and reports whether
+        it is a PDF whitespace character. Mirrors upstream
+        ``BaseParser.isWhitespace()``."""
+        return self.is_whitespace(self._src.peek())
+
+    def is_space_at(self) -> bool:
+        """No-arg upstream alias: peeks the next byte and reports whether
+        it is an ASCII space. Mirrors upstream ``BaseParser.isSpace()``."""
+        return self.is_space(self._src.peek())
+
+    def is_digit_at(self) -> bool:
+        """No-arg upstream alias: peeks the next byte and reports whether
+        it is a digit. Mirrors upstream ``BaseParser.isDigit()``."""
+        return self.is_digit(self._src.peek())
+
+    def is_eol_at(self) -> bool:
+        """No-arg upstream alias: peeks the next byte and reports whether
+        it is an EOL byte (CR or LF). Mirrors upstream
+        ``BaseParser.isEOL()``."""
+        return self.is_eol(self._src.peek())
+
+    def is_closing(self, b: int | None = None) -> bool:
+        """Reports whether the byte (or the peek byte, if ``b`` is None)
+        closes a PDF array. Mirrors upstream ``BaseParser.isClosing()`` /
+        ``isClosing(int)``."""
+        if b is None:
+            b = self._src.peek()
+        return b == 0x5D  # ']'
+
     # ---------- whitespace / comments / EOL ----------
 
     def skip_whitespace(self) -> None:
@@ -154,6 +218,74 @@ class BaseParser:
                 break
             out.append(b)
         return bytes(out)
+
+    def skip_spaces(self) -> None:
+        """Upstream-name alias for ``skip_whitespace`` — mirrors upstream
+        ``BaseParser.skipSpaces()`` (which skips PDF whitespace and
+        ``%``-comments to EOL)."""
+        self.skip_whitespace()
+
+    def skip_linebreak(self) -> bool:
+        """Skip one line break (CR, LF, or CRLF). Returns ``True`` if a
+        line break was consumed. Mirrors upstream
+        ``BaseParser.skipLinebreak()``."""
+        b = self._src.read()
+        if b == RandomAccessRead.EOF:
+            return False
+        if b == 0x0D:  # CR — may be followed by LF
+            nxt = self._src.read()
+            if nxt != 0x0A and nxt != RandomAccessRead.EOF:
+                self._src.rewind(1)
+            return True
+        if b == 0x0A:
+            return True
+        self._src.rewind(1)
+        return False
+
+    def skip_white_spaces(self) -> None:
+        """Skip the upcoming CR / LF / CRLF that follows a stream keyword,
+        plus any leading ASCII spaces. Mirrors upstream
+        ``BaseParser.skipWhiteSpaces()`` — note this is *not* the general
+        whitespace skipper (that's ``skip_spaces`` / ``skip_whitespace``)."""
+        # Per ISO 32000-1 §7.3.8.1: a stream keyword is followed by either
+        # CRLF or LF — but real-world PDFs add leading spaces (see
+        # brother_scan_cover.pdf). Eat spaces, then a single line break.
+        b = self._src.read()
+        while b == self.ASCII_SPACE:
+            b = self._src.read()
+        if b == RandomAccessRead.EOF:
+            return
+        if b == 0x0D:
+            nxt = self._src.read()
+            if nxt != 0x0A and nxt != RandomAccessRead.EOF:
+                self._src.rewind(1)
+        elif b != 0x0A:
+            self._src.rewind(1)
+
+    def read_line(self) -> str:
+        """Read bytes until (and consuming) the next EOL marker (CR, LF,
+        or CRLF) and return them as a string. Mirrors upstream
+        ``BaseParser.readLine()`` — raises ``PDFParseError`` if already at
+        EOF when called."""
+        if self._src.is_eof():
+            raise PDFParseError(
+                "expected line, hit EOF", position=self.position
+            )
+        out = bytearray()
+        while True:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                break
+            if self.is_eol(b):
+                # CRLF is a single EOL marker — consume the LF after CR.
+                if b == 0x0D and self._src.peek() == 0x0A:
+                    self._src.read()
+                break
+            out.append(b)
+        try:
+            return out.decode("ascii")
+        except UnicodeDecodeError:
+            return out.decode("latin-1")
 
     # ---------- numbers ----------
 
@@ -401,3 +533,49 @@ class BaseParser:
                 raise PDFParseError(
                     f"expected {expected!r} at byte {start_pos}", position=start_pos
                 )
+
+    def read_expected_char(self, ec: int | str) -> None:
+        """Read one byte and raise unless it matches ``ec``. Mirrors
+        upstream ``BaseParser.readExpectedChar(char)``. Accepts an int
+        (byte value) or a single-character ``str`` for ergonomics."""
+        if isinstance(ec, str):
+            if len(ec) != 1:
+                raise ValueError("read_expected_char expects a single character")
+            ec_int = ord(ec)
+        else:
+            ec_int = ec
+        start_pos = self.position
+        b = self._src.read()
+        if b != ec_int:
+            raise PDFParseError(
+                f"expected {chr(ec_int)!r} at byte {start_pos}, got {b}",
+                position=start_pos,
+            )
+
+    # ---------- object / generation number readers ----------
+
+    def read_object_number(self) -> int:
+        """Read an object number, validating against the upstream
+        ``OBJECT_NUMBER_THRESHOLD`` (10**10) and rejecting negative
+        values. Mirrors upstream ``BaseParser.readObjectNumber()``."""
+        self.skip_whitespace()
+        value = self.read_int()
+        if value < 0 or value >= self.OBJECT_NUMBER_THRESHOLD:
+            raise PDFParseError(
+                f"object number {value!r} has more than 10 digits or is negative",
+                position=self.position,
+            )
+        return value
+
+    def read_generation_number(self) -> int:
+        """Read a generation number, validating against the upstream
+        ``GENERATION_NUMBER_THRESHOLD`` (65535) and rejecting negative
+        values. Mirrors upstream ``BaseParser.readGenerationNumber()``."""
+        self.skip_whitespace()
+        value = self.read_int()
+        if value < 0 or value > self.GENERATION_NUMBER_THRESHOLD:
+            raise PDFParseError(
+                f"generation number {value!r} has more than 5 digits",
+                position=self.position,
+            )
+        return value

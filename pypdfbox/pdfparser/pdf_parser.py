@@ -22,8 +22,20 @@ from .cos_parser import COSParser
 from .parse_error import PDFParseError
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
-# How many trailing bytes to scan for ``startxref`` / ``%%EOF``.
+# How many trailing bytes to scan for ``startxref`` / ``%%EOF``. Mirrors the
+# upstream ``COSParser.DEFAULT_TRAIL_BYTECOUNT`` knob (default 2048 in PDFBox;
+# pypdfbox bumps the floor to 4096 to absorb noisier tails). Per-instance
+# overrides go through :meth:`PDFParser.set_eof_lookup_range`.
 _TAIL_SCAN_BYTES: int = 4096
+
+# Upstream system-property name that lets callers override the EOF lookup
+# range without code changes (``-Dorg.apache.pdfbox.pdfparser…``). Exposed
+# verbatim for source-level parity with PDFBox; pypdfbox does not consult
+# environment variables on its own — callers wire up the override
+# explicitly via :meth:`PDFParser.set_eof_lookup_range` when desired.
+SYSPROP_EOFLOOKUPRANGE: str = (
+    "org.apache.pdfbox.pdfparser.nonSequentialPDFParser.eofLookupRange"
+)
 
 
 class PDFParser:
@@ -82,6 +94,10 @@ class PDFParser:
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
         self._pd_document: Any | None = None
+        # How many trailing bytes :meth:`find_startxref_offset` reads when
+        # hunting for the ``startxref`` directive. Mirrors upstream
+        # ``COSParser.readTrailBytes`` and the ``setEOFLookupRange`` knob.
+        self._eof_lookup_range: int = _TAIL_SCAN_BYTES
         # Optional linearization parameter dictionary (PDF 32000-1 Annex F).
         # Populated by :meth:`_detect_linearization` when the **first**
         # indirect object after the header carries a truthy ``/Linearized``
@@ -158,6 +174,52 @@ class PDFParser:
 
         self._pd_document = PDDocument(self._document)
         return self._pd_document
+
+    # ---------- trailer / root accessors ----------
+
+    def get_trailer(self) -> COSDictionary | None:
+        """Return the consolidated trailer dictionary (the merged view of
+        every parsed xref section's trailer fragment) or ``None`` before
+        :meth:`parse` has run. Mirrors upstream
+        ``COSParser.retrieveTrailer()``'s return surface — pypdfbox keeps
+        the trailer permanently on :class:`COSDocument`, this accessor just
+        forwards through the ``XrefTrailerResolver`` for parity with code
+        that talks to the parser directly."""
+        return self._resolver.get_trailer()
+
+    def get_root(self) -> COSDictionary | None:
+        """Resolve the trailer's ``/Root`` entry to its dictionary.
+
+        Returns ``None`` when the trailer is absent or ``/Root`` is missing
+        / not a dictionary. Mirrors the ``trailer.getCOSDictionary(ROOT)``
+        access pattern in upstream ``PDFParser.initialParse``."""
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            return None
+        root = trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
+        return root if isinstance(root, COSDictionary) else None
+
+    def get_xref_trailer_resolver(self) -> XrefTrailerResolver:
+        """Return the parser's ``XrefTrailerResolver``. Diagnostic surface
+        — upstream PDFBox exposes the resolver via a protected field
+        (``COSParser.xrefTrailerResolver``); pypdfbox surfaces it through
+        an explicit accessor so tests / callers can introspect the merged
+        xref table after :meth:`parse`."""
+        return self._resolver
+
+    # ---------- EOF lookup range (PDFBox-style knob) ----------
+
+    def set_eof_lookup_range(self, byte_count: int) -> None:
+        """Adjust how many trailing bytes :meth:`find_startxref_offset`
+        scans. Mirrors upstream ``COSParser.setEOFLookupRange(int)``;
+        values ``<= 15`` are ignored (matches the upstream guard)."""
+        if byte_count > 15:
+            self._eof_lookup_range = int(byte_count)
+
+    def get_eof_lookup_range(self) -> int:
+        """Return the current EOF-lookup byte count (the window
+        :meth:`find_startxref_offset` uses to locate ``startxref``)."""
+        return self._eof_lookup_range
 
     # ---------- lenient mode ----------
 
@@ -463,13 +525,34 @@ class PDFParser:
         except ValueError as exc:
             raise PDFParseError(f"malformed %PDF version {version_bytes!r}") from exc
 
+    def parse_pdf_header(self) -> bool:
+        """Validate the ``%PDF-x.y`` magic and record the version on the
+        underlying :class:`COSDocument` (when one has been instantiated).
+        Returns ``True`` on success, ``False`` when no header is found.
+
+        Java-style boolean alias for :meth:`parse_header` — mirrors
+        upstream ``COSParser.parsePDFHeader()`` whose contract is "did we
+        find a PDF header?"."""
+        try:
+            version = self.parse_header()
+        except PDFParseError:
+            return False
+        if self._document is not None:
+            self._document.set_version(version)
+        self._version = version
+        return True
+
     # ---------- step 2: locate startxref ----------
 
     def find_startxref_offset(self) -> int:
         """Return the byte offset given by the ``startxref`` directive
-        near the end of the file. Raises ``PDFParseError`` if not found."""
+        near the end of the file. Raises ``PDFParseError`` if not found.
+
+        The trailing-byte scan window honours :meth:`get_eof_lookup_range`
+        (default :data:`_TAIL_SCAN_BYTES`), matching upstream's
+        ``readTrailBytes`` knob."""
         length = self._src.length()
-        scan_from = max(0, length - _TAIL_SCAN_BYTES)
+        scan_from = max(0, length - self._eof_lookup_range)
         self._src.seek(scan_from)
         tail = bytearray(length - scan_from)
         n = self._src.read_into(tail)

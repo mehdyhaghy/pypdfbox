@@ -21,6 +21,15 @@ class PDTrueTypeFont(PDSimpleFont):
 
     SUB_TYPE = "TrueType"
 
+    # PDF 32000-1 §9.6.6.4 / Adobe Tech Note #5014: symbolic TrueType
+    # fonts that map bytes through a (3, 0) Windows-Symbol cmap may use
+    # one of three "private use" code-point bases. We try each in turn
+    # when the raw byte does not resolve, mirroring upstream's three
+    # ``START_RANGE_F***`` constants on :class:`PDTrueTypeFont`.
+    START_RANGE_F000 = 0xF000
+    START_RANGE_F100 = 0xF100
+    START_RANGE_F200 = 0xF200
+
     def __init__(self, font_dict: COSDictionary | None = None) -> None:
         super().__init__(font_dict)
         # Lazily-loaded embedded TTF — None means "not yet attempted",
@@ -32,6 +41,9 @@ class PDTrueTypeFont(PDSimpleFont):
         # rendering / construction; consumed by :meth:`subset` on save.
         # ``.notdef`` (GID 0) is implicitly preserved by the subsetter.
         self._subset_codepoints: set[int] = set()
+        # Memoised inverted ``code → gid`` map used by the embedding /
+        # encoding path. Built lazily by :meth:`get_gid_to_code`.
+        self._gid_to_code: dict[int, int] | None = None
 
     # ---------- font identity ----------
 
@@ -294,6 +306,32 @@ class PDTrueTypeFont(PDSimpleFont):
             # still "code is GID"; otherwise we have no answer.
             return code if self.is_symbolic() else 0
         return self._code_to_gid(code, ttf)
+
+    def get_gid_to_code(self) -> dict[int, int]:
+        """Inverted ``glyph id → first character code`` mapping.
+
+        Walks codes 0..255, looks each one up via :meth:`code_to_gid`,
+        and records the *first* code that resolves to each GID — any
+        later collisions are dropped (mirrors upstream's
+        ``putIfAbsent`` semantics in ``getGIDToCode``). The result is
+        memoised for the lifetime of the font instance, since the
+        encoding / embedded program are immutable from this class's
+        perspective.
+
+        Used by the simple-font embedding path to round-trip
+        ``unicode → glyph name → gid → code`` when the font has no
+        explicit ``/Encoding``. Mirrors upstream
+        ``PDTrueTypeFont.getGIDToCode()``.
+        """
+        if self._gid_to_code is not None:
+            return self._gid_to_code
+        mapping: dict[int, int] = {}
+        for code in range(256):
+            gid = self.code_to_gid(code)
+            if gid not in mapping:
+                mapping[gid] = code
+        self._gid_to_code = mapping
+        return mapping
 
     def _code_to_gid(self, code: int, ttf: TrueTypeFont) -> int:
         """Resolve a one-byte character code to a TrueType glyph ID via

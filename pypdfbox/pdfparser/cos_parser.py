@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -36,6 +38,27 @@ class COSParser(BaseParser):
         obj = parser.parse_direct_object()
     """
 
+    # System-property name controlling how many trailing bytes of a PDF
+    # source are scanned for the ``%%EOF`` / ``startxref`` markers.
+    # Mirrors upstream ``COSParser.SYSPROP_EOFLOOKUPRANGE``. The pypdfbox
+    # parser does not consult ``System.getProperty`` (Java-only); the
+    # constant exists for downstream callers reading PDFBox-style config.
+    SYSPROP_EOFLOOKUPRANGE: ClassVar[str] = (
+        "org.apache.pdfbox.pdfparser.nonSequentialPDFParser.eofLookupRange"
+    )
+
+    # Default trailing byte count scanned for ``%%EOF`` and the ``startxref``
+    # offset. Mirrors upstream ``COSParser.DEFAULT_TRAIL_BYTECOUNT`` (which
+    # is private upstream but exposed here for parity-test access — same
+    # 2048-byte default).
+    DEFAULT_TRAIL_BYTECOUNT: ClassVar[int] = 2048
+
+    # Marker character arrays used by upstream's brute-force scanners.
+    # Mirrors ``COSParser.EOF_MARKER`` / ``COSParser.OBJ_MARKER`` — kept
+    # as ``bytes`` since pypdfbox sources are byte streams.
+    EOF_MARKER: ClassVar[bytes] = b"%%EOF"
+    OBJ_MARKER: ClassVar[bytes] = b"obj"
+
     def __init__(
         self, source: RandomAccessRead, document: COSDocument | None = None
     ) -> None:
@@ -50,6 +73,22 @@ class COSParser(BaseParser):
         # is already permissive — the flag is exposed for API parity and
         # stored only; no behaviour branches off it yet.
         self._lenient: bool = True
+        # Number of trailing bytes scanned for ``%%EOF``. Mirrors upstream
+        # ``COSParser.readTrailBytes``. Configurable via
+        # :meth:`set_eof_lookup_range`.
+        self._read_trail_bytes: int = self.DEFAULT_TRAIL_BYTECOUNT
+        # Length of the source at construction time. Mirrors upstream
+        # ``COSParser.fileLen``.
+        try:
+            self._file_len: int = source.length()
+        except Exception:  # noqa: BLE001 — length() is best-effort here
+            self._file_len = -1
+        # Latches set by upstream's xref-recovery path. We don't drive
+        # them automatically (the recovery walker lives in ``PDFParser``)
+        # but mirror the protected fields so callers reading state via
+        # ``isInitialParseDone`` / ``isTrailerWasRebuild`` find them.
+        self._initial_parse_done: bool = False
+        self._trailer_was_rebuild: bool = False
 
     @property
     def document(self) -> COSDocument | None:
@@ -622,13 +661,143 @@ class COSParser(BaseParser):
     def set_lenient(self, lenient: bool) -> None:
         """Toggle lenient parsing mode. The pypdfbox tokenizer is
         already permissive — the flag is stored for API parity. Mirrors
-        upstream ``COSParser.setLenient``."""
+        upstream ``COSParser.setLenient``.
+
+        Per upstream contract this method may only be called before the
+        initial parse runs; once ``set_initial_parse_done(True)`` has
+        been recorded, attempts to flip leniency raise ``ValueError`` —
+        upstream throws ``IllegalArgumentException`` for the same case."""
+        if self._initial_parse_done:
+            raise ValueError("Cannot change leniency after parsing")
         self._lenient = bool(lenient)
 
     def is_lenient(self) -> bool:
         """Return the current lenient-mode flag. Mirrors upstream
         ``COSParser.isLenient``."""
         return self._lenient
+
+    # Initial-parse latch. Upstream stores this as a protected boolean
+    # (``initialParseDone``) and uses it to lock leniency changes once a
+    # parse has begun. The accessors below mirror that state.
+
+    def is_initial_parse_done(self) -> bool:
+        """Return ``True`` once :meth:`set_initial_parse_done` has been
+        called. Mirrors upstream ``COSParser.initialParseDone`` (no
+        explicit getter upstream — the field is package-protected; we
+        expose a getter for parity testability)."""
+        return self._initial_parse_done
+
+    def set_initial_parse_done(self, done: bool) -> None:
+        """Latch the initial-parse-done flag. Once set to ``True`` the
+        leniency toggle becomes read-only (see :meth:`set_lenient`).
+        Mirrors the package-protected upstream assignment to
+        ``initialParseDone``."""
+        self._initial_parse_done = bool(done)
+
+    # Trailer-rebuilt latch. Upstream sets ``trailerWasRebuild = true``
+    # whenever ``retrieveTrailer`` falls through to the brute-force
+    # rebuild path. We expose a getter so callers downstream can
+    # distinguish a recovered trailer from a normally-parsed one.
+
+    def is_trailer_was_rebuild(self) -> bool:
+        """Return ``True`` if the trailer was rebuilt by the brute-force
+        recovery path. Mirrors upstream ``COSParser.trailerWasRebuild``
+        (no upstream accessor — exposed here for parity testability)."""
+        return self._trailer_was_rebuild
+
+    # File-length accessor. Upstream stores ``fileLen`` as a protected
+    # ``long`` populated at construction; downstream subclasses
+    # (``PDFParser``) read it. Mirroring the read/write surface keeps
+    # those subclasses happy without touching the private field directly.
+
+    def get_file_len(self) -> int:
+        """Return the source length recorded at parser construction
+        (or ``-1`` if the source could not be sized). Mirrors upstream
+        ``COSParser.fileLen`` access (the field is protected upstream;
+        we expose a getter for parity)."""
+        return self._file_len
+
+    def set_file_len(self, file_len: int) -> None:
+        """Override the recorded source length. Used by downstream
+        subclasses (``PDFParser``) when the source is wrapped or
+        truncated post-construction. Mirrors upstream's protected
+        assignment to ``COSParser.fileLen``."""
+        self._file_len = int(file_len)
+
+    # ``%%EOF`` / ``startxref`` lookup window.
+
+    def set_eof_lookup_range(self, byte_count: int) -> None:
+        """Override how many trailing bytes of the source are scanned
+        for ``%%EOF`` / ``startxref``. Values of 15 or fewer are
+        rejected silently (matching upstream — values that small can't
+        cover the marker plus its preceding offset). Mirrors upstream
+        ``COSParser.setEOFLookupRange``."""
+        if byte_count > 15:
+            self._read_trail_bytes = int(byte_count)
+
+    def get_eof_lookup_range(self) -> int:
+        """Return the configured ``%%EOF`` lookup-window size. No
+        upstream getter exists — this companion is exposed for parity
+        testability and to let subclasses read the active value without
+        reaching into the private field."""
+        return self._read_trail_bytes
+
+    # ``isString`` — non-consuming match check.
+
+    def is_string(self, expected: bytes | bytearray | str) -> bool:
+        """Return ``True`` if ``expected`` is the next sequence of bytes
+        at the current source position, *without* advancing the cursor.
+        Mirrors upstream ``COSParser.isString(char[])``.
+
+        ``expected`` may be ``bytes``/``bytearray`` (preferred) or a
+        ``str`` (treated as ASCII for parity with the upstream
+        ``char[]`` overload)."""
+        if isinstance(expected, str):
+            expected = expected.encode("ascii")
+        origin = self.position
+        try:
+            for c in expected:
+                b = self._src.read()
+                if b == RandomAccessRead.EOF or b != c:
+                    return False
+            return True
+        finally:
+            self.seek(origin)
+
+    # ``lastIndexOf`` — backward sub-byte search utility.
+
+    def last_index_of(
+        self, pattern: bytes | bytearray | str, buf: bytes | bytearray, end_off: int
+    ) -> int:
+        """Return the offset of the last occurrence of ``pattern`` in
+        ``buf`` searching backward from ``end_off`` (exclusive), or
+        ``-1`` if no match. Mirrors upstream
+        ``COSParser.lastIndexOf(char[], byte[], int)``.
+
+        The implementation mirrors the upstream Boyer-Moore-ish
+        backwards walk (no library shortcut — semantics must include
+        the ``end_off`` exclusive bound and accept any partial-match
+        reset behaviour)."""
+        if isinstance(pattern, str):
+            pattern = pattern.encode("ascii")
+        last_pat_off = len(pattern) - 1
+        if last_pat_off < 0:
+            return -1
+        buf_off = end_off
+        pat_off = last_pat_off
+        lookup_ch = pattern[pat_off]
+        while True:
+            buf_off -= 1
+            if buf_off < 0:
+                return -1
+            if buf[buf_off] == lookup_ch:
+                pat_off -= 1
+                if pat_off < 0:
+                    return buf_off
+                lookup_ch = pattern[pat_off]
+            elif pat_off < last_pat_off:
+                pat_off = last_pat_off
+                lookup_ch = pattern[pat_off]
 
     # Xref entry points — full implementations live in PDFParser
     # (cluster #3). Aliases here are deferred placeholders so calls

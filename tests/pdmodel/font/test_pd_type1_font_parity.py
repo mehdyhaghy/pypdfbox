@@ -227,3 +227,137 @@ def test_get_path_returns_empty_when_no_embedded_program() -> None:
     # we just need to confirm the alias is wired and falls through to []
     # when the program is absent.
     assert PDType1Font().get_path("A") == []
+
+
+# ---------- ALT_NAMES / PFB_START_MARKER constants ----------
+
+
+def test_alt_names_constant_exposes_upstream_table() -> None:
+    """``PDType1Font.ALT_NAMES`` mirrors the upstream Java ``ALT_NAMES``
+    map (ligature-component fallbacks)."""
+    table = PDType1Font.ALT_NAMES
+    assert table["ff"] == "f_f"
+    assert table["ffi"] == "f_f_i"
+    assert table["ffl"] == "f_f_l"
+    assert table["fi"] == "f_i"
+    assert table["fl"] == "f_l"
+    assert table["st"] == "s_t"
+    assert table["IJ"] == "I_J"
+    assert table["ij"] == "i_j"
+    # Misspelled entry from ArialMT — load-bearing for substitution.
+    assert table["ellipsis"] == "elipsis"
+
+
+def test_pfb_start_marker_constant() -> None:
+    """``PDType1Font.PFB_START_MARKER`` matches upstream's 0x80
+    detector for PFB-wrapped /FontFile streams."""
+    assert PDType1Font.PFB_START_MARKER == 0x80
+
+
+# ---------- code_to_name / get_name_in_font ----------
+
+
+def test_code_to_name_via_encoding() -> None:
+    """``code_to_name`` runs the typed /Encoding lookup and then falls
+    through ``get_name_in_font``. With no embedded program the name
+    is returned unchanged."""
+    enc = COSDictionary()
+    enc.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Encoding"))
+    enc.set_item(
+        COSName.get_pdf_name("BaseEncoding"), COSName.get_pdf_name("WinAnsiEncoding")
+    )
+    diffs = COSArray([COSInteger.get(65), COSName.get_pdf_name("Lslash")])
+    enc.set_item(_DIFFERENCES, diffs)
+
+    font = PDType1Font()
+    font.get_cos_object().set_item(_ENCODING, enc)
+
+    # Code 65 -> /Differences-supplied "Lslash"; with no embedded program
+    # the name passes through get_name_in_font unchanged.
+    assert font.code_to_name(65) == "Lslash"
+
+
+def test_code_to_name_returns_notdef_when_no_encoding() -> None:
+    # Upstream falls back to ".notdef" when the font has no /Encoding.
+    assert PDType1Font().code_to_name(65) == ".notdef"
+
+
+def test_get_name_in_font_passthrough_without_program() -> None:
+    """When the font has no embedded program, ``get_name_in_font``
+    returns the input unchanged — there's nothing to remap against."""
+    font = PDType1Font()
+    assert font.get_name_in_font("A") == "A"
+    assert font.get_name_in_font("ff") == "ff"
+
+
+# ---------- has_glyph(name) / has_glyph_for_code(code) ----------
+
+
+def test_has_glyph_for_code_via_encoding() -> None:
+    """``has_glyph_for_code`` is encoding-based: it returns True iff
+    the typed /Encoding maps the code to anything but .notdef."""
+    enc = COSDictionary()
+    enc.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Encoding"))
+    enc.set_item(
+        COSName.get_pdf_name("BaseEncoding"), COSName.get_pdf_name("WinAnsiEncoding")
+    )
+    font = PDType1Font()
+    font.get_cos_object().set_item(_ENCODING, enc)
+    # 65 == "A" in WinAnsi.
+    assert font.has_glyph_for_code(65) is True
+    # 0 falls in the .notdef block.
+    assert font.has_glyph_for_code(0) is False
+
+
+def test_has_glyph_for_code_false_when_no_encoding() -> None:
+    assert PDType1Font().has_glyph_for_code(65) is False
+
+
+def test_has_glyph_false_when_no_program() -> None:
+    """Without an embedded program we can't confirm glyph presence —
+    ``has_glyph`` reports False rather than guessing."""
+    assert PDType1Font().has_glyph("A") is False
+
+
+# ---------- read_code ----------
+
+
+def test_read_code_reads_single_byte_from_stream() -> None:
+    import io as _io
+
+    stream = _io.BytesIO(b"\x41\x42\x43")
+    font = PDType1Font()
+    assert font.read_code(stream) == 0x41
+    assert font.read_code(stream) == 0x42
+    assert font.read_code(stream) == 0x43
+
+
+def test_read_code_returns_minus_one_at_eof() -> None:
+    import io as _io
+
+    font = PDType1Font()
+    assert font.read_code(_io.BytesIO(b"")) == -1
+
+
+def test_read_code_accepts_bytes_argument() -> None:
+    """For caller convenience ``read_code`` also accepts a bytes
+    payload — it wraps it in BytesIO internally."""
+    font = PDType1Font()
+    assert font.read_code(b"\x7f") == 0x7F
+    assert font.read_code(b"") == -1
+
+
+# ---------- get_type1_font alias ----------
+
+
+def test_get_type1_font_none_when_not_embedded() -> None:
+    """``get_type1_font`` mirrors upstream's ``getType1Font`` accessor —
+    returns ``None`` when no /FontFile is present."""
+    assert PDType1Font().get_type1_font() is None
+
+
+def test_get_type1_font_matches_get_font_program_alias() -> None:
+    """Both accessors delegate to the same lazy parser. With no
+    embedded program both should agree on ``None``."""
+    font = PDType1Font()
+    assert font.get_type1_font() is font.get_font_program()

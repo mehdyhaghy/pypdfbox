@@ -261,6 +261,57 @@ class LZWDecode(Filter):
         writer.write_bits(EOD, chunk)
         writer.flush()
 
+    # ------------------------------------------------------------------
+    # Upstream parity helpers.
+    #
+    # Upstream's ``LZWFilter`` keeps ``calculateChunk``, ``findPatternCode``
+    # and ``createCodeTable`` as ``private static`` methods. They're not
+    # part of the Java public API but porters translating PDFBox code
+    # often need to call them from a sibling class (or from a test).
+    # Exposing snake-cased equivalents as public static methods on the
+    # filter class avoids forcing porters to reach into the underscore-
+    # prefixed module-level helpers.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_chunk(tab_size: int, early_change: bool) -> int:
+        """Return code-width (9..12) for the next code, given table size.
+
+        Mirrors ``org.apache.pdfbox.filter.LZWFilter#calculateChunk``.
+        """
+        return _calculate_chunk(tab_size, early_change)
+
+    @staticmethod
+    def find_pattern_code(
+        code_table: list[bytes | None], pattern: bytes
+    ) -> int:
+        """Return the index of ``pattern`` in ``code_table``, or -1.
+
+        For single-byte patterns the answer is the byte value itself
+        (the first 256 entries are byte literals). Reserved codes 256
+        (``CLEAR_TABLE``) and 257 (``EOD``) are skipped because their
+        slots are placeholders, not data patterns.
+
+        Mirrors ``org.apache.pdfbox.filter.LZWFilter#findPatternCode``.
+        """
+        if len(pattern) == 1:
+            return pattern[0]
+        # Skip 256 + 2 reserved entries; they never match longer patterns.
+        for i in range(258, len(code_table)):
+            if code_table[i] == pattern:
+                return i
+        return -1
+
+    @staticmethod
+    def create_code_table() -> list[bytes | None]:
+        """Build a fresh code table seeded with the 256 single-byte
+        literals plus placeholders for ``CLEAR_TABLE`` (256) and
+        ``EOD`` (257).
+
+        Mirrors ``org.apache.pdfbox.filter.LZWFilter#createCodeTable``.
+        """
+        return _initial_code_table()
+
     @staticmethod
     def _do_lzw_decode(
         encoded: BinaryIO, decoded: BinaryIO, early_change: bool

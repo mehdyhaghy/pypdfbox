@@ -72,7 +72,11 @@ class FlateDecode(Filter):
                     data = predict(data, predictor, columns, colors, bits_per_component)
                 except OSError as exc:
                     raise OSError(f"FlateDecode: {exc}") from exc
-        encoded.write(zlib.compress(data))
+        # Honour the upstream compression-level configuration (Java's
+        # ``-Dorg.apache.pdfbox.filter.deflatelevel=...`` exposed as the
+        # ``SYSPROP_DEFLATELEVEL`` env var). ``-1`` means zlib default.
+        level = Filter.get_compression_level()
+        encoded.write(zlib.compress(data, level))
 
 
 # Register both the long name and (implicitly via the factory's

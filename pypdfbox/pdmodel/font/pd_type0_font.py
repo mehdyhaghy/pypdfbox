@@ -754,6 +754,109 @@ class PDType0Font(PDFont):
             return False
         return descendant.is_damaged()
 
+    # ---------- /BaseFont / Standard14 ----------
+
+    def get_base_font(self) -> str | None:
+        """Return the ``/BaseFont`` (PostScript name) entry.
+
+        Mirrors upstream ``PDType0Font.getBaseFont``. ``get_name`` is the
+        PDFBox public-API spelling and forwards to the same value; both
+        accessors are kept for callers that prefer the dictionary-key
+        spelling.
+        """
+        return self._dict.get_name(_BASE_FONT)
+
+    def is_standard14(self) -> bool:
+        """Type 0 (composite) fonts are never one of the 14 PDF standard
+        fonts. Mirrors upstream ``PDType0Font.isStandard14`` which hard-
+        codes ``return false``.
+        """
+        return False
+
+    # ---------- glyph / metric delegators ----------
+
+    def has_glyph(self, code: int) -> bool:
+        """``True`` when the descendant CIDFont reports a non-zero advance
+        for the CID resolved from ``code``.
+
+        Mirrors upstream ``PDType0Font.hasGlyph(int)`` — Type 0 has no
+        glyph store of its own, so the question is delegated to the
+        descendant after CID resolution.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return False
+        return descendant.has_glyph(self.code_to_cid(code))
+
+    def get_width_from_font(self, code: int) -> float:
+        """Glyph advance read directly from the descendant's embedded
+        program (rather than the ``/W`` array).
+
+        Mirrors upstream ``PDType0Font.getWidthFromFont`` which forwards
+        to the descendant after CID resolution. Returns ``0.0`` when the
+        descendant cannot supply a font-derived width (e.g. no embedded
+        program, or the descendant is :class:`PDCIDFontType0` with a CFF
+        program that lacks the metric).
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return 0.0
+        get_wff = getattr(descendant, "get_width_from_font", None)
+        if not callable(get_wff):
+            return 0.0
+        return get_wff(self.code_to_cid(code))
+
+    def get_displacement(self, code: int) -> tuple[float, float]:
+        """Glyph displacement vector ``(dx, dy)`` for ``code`` in em.
+
+        Mirrors upstream ``PDType0Font.getDisplacement``: when the font is
+        vertical, ``dx`` is zero and ``dy`` comes from the descendant's
+        ``/W2`` y-component scaled by ``1/1000``. Otherwise falls through
+        to the horizontal default ``(width/1000, 0)``.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return (self.get_glyph_width(code) / 1000.0, 0.0)
+        cid = self.code_to_cid(code)
+        if self.is_vertical():
+            return (0.0, descendant.get_height(cid) / 1000.0)
+        return (descendant.get_glyph_width(cid) / 1000.0, 0.0)
+
+    def get_position_vector(self, code: int) -> tuple[float, float]:
+        """Position vector ``(v_x, v_y)`` for ``code`` in em (units of
+        1/1 em, i.e. already scaled from 1/1000 em).
+
+        Mirrors upstream ``PDType0Font.getPositionVector`` which scales
+        the descendant's raw 1/1000-em vector by ``-1/1000`` (negation
+        per PDF 32000-1 §9.7.3 Note for vertical writing — the position
+        vector is *added* to the origin rather than subtracted).
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return (0.0, 0.0)
+        v_x, v_y = descendant.get_position_vector(self.code_to_cid(code))
+        return (-v_x / 1000.0, -v_y / 1000.0)
+
+    # ---------- glyph-ID encoding ----------
+
+    def encode_glyph_id(self, glyph_id: int) -> bytes:
+        """Encode a glyph index ``glyph_id`` as the two-byte big-endian
+        sequence used in Identity-H/Identity-V content streams.
+
+        Mirrors upstream ``PDType0Font.encodeGlyphId(int)`` which forwards
+        to the descendant. For TrueType-backed Type 0 fonts under
+        Identity-H the GID and CID coincide (``/CIDToGIDMap /Identity``)
+        so the descendant's encoding is a plain 2-byte big-endian write
+        of the GID, which is what we emit here when the descendant lacks
+        a more specialised encoder.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is not None:
+            encoder = getattr(descendant, "encode_glyph_id", None)
+            if callable(encoder):
+                return encoder(glyph_id)
+        return (int(glyph_id) & 0xFFFF).to_bytes(2, "big")
+
     # ---------- /FontMatrix ----------
 
     def get_font_matrix(self) -> list[float]:

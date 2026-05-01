@@ -189,3 +189,103 @@ def test_compute_user_and_owner_password_aliases_match_internals() -> None:
         user_pw, o_internal, -3904, document_id, 3, 16
     )
     assert u_alias == u_internal
+
+
+# ----------------------------------------------- upstream constant / shape
+
+
+def test_filter_constant_matches_pdfbox() -> None:
+    assert StandardSecurityHandler.FILTER == "Standard"
+
+
+def test_get_filter_returns_filter_constant() -> None:
+    assert StandardSecurityHandler().get_filter() == "Standard"
+
+
+def test_protection_policy_class_constant_points_at_standard_policy() -> None:
+    # Mirrors upstream's ``public static final Class<?> PROTECTION_POLICY_CLASS``.
+    assert StandardSecurityHandler.PROTECTION_POLICY_CLASS is StandardProtectionPolicy
+
+
+# -------------------------------------------------- has_protection_policy
+
+
+def test_has_protection_policy_false_without_policy() -> None:
+    assert StandardSecurityHandler().has_protection_policy() is False
+
+
+def test_has_protection_policy_true_with_policy() -> None:
+    policy = StandardProtectionPolicy("o", "u", AccessPermission())
+    assert StandardSecurityHandler(protection_policy=policy).has_protection_policy() is True
+
+
+def test_has_protection_policy_tracks_set_protection_policy() -> None:
+    handler = StandardSecurityHandler()
+    assert handler.has_protection_policy() is False
+    handler.set_protection_policy(
+        StandardProtectionPolicy("o", "u", AccessPermission())
+    )
+    assert handler.has_protection_policy() is True
+    handler.set_protection_policy(None)
+    assert handler.has_protection_policy() is False
+
+
+# ---------------------------------------- compute_revision_number_from_version
+
+
+def test_compute_revision_number_from_version_v5_picks_r6() -> None:
+    # Note in PDF 32000-2: V=5 was a deprecated Adobe extension; prepare_document
+    # always upgrades to r6.
+    handler = StandardSecurityHandler()
+    assert handler.compute_revision_number_from_version(5) == 6
+
+
+def test_compute_revision_number_from_version_v4_picks_r4() -> None:
+    handler = StandardSecurityHandler()
+    assert handler.compute_revision_number_from_version(4) == 4
+
+
+def test_compute_revision_number_from_version_v2_picks_r3() -> None:
+    handler = StandardSecurityHandler()
+    assert handler.compute_revision_number_from_version(2) == 3
+
+
+def test_compute_revision_number_from_version_v3_picks_r3() -> None:
+    handler = StandardSecurityHandler()
+    assert handler.compute_revision_number_from_version(3) == 3
+
+
+def test_compute_revision_number_from_version_v1_picks_r2_without_policy() -> None:
+    # Without a policy (or without revision-3 perms) V<2 collapses to r2.
+    handler = StandardSecurityHandler()
+    assert handler.compute_revision_number_from_version(1) == 2
+
+
+# ----------------------------------------------- prepare_document_for_encryption
+
+
+def test_prepare_document_for_encryption_alias_runs_prepare_document() -> None:
+    """Upstream-named alias should produce an encryption dictionary identical
+    to the one ``prepare_document`` writes when both are called with the same
+    policy + document fixture."""
+
+    class _StubDocument:
+        def __init__(self) -> None:
+            self.encryption_dictionary = None
+
+        def set_encryption_dictionary(self, enc: object) -> None:
+            self.encryption_dictionary = enc
+
+    policy = StandardProtectionPolicy("owner", "user", AccessPermission())
+    policy.set_encryption_key_length(128)
+
+    handler = StandardSecurityHandler(protection_policy=policy)
+    doc = _StubDocument()
+    handler.prepare_document_for_encryption(doc)
+
+    assert doc.encryption_dictionary is not None
+    # Round-trip: the dictionary should be a valid /Standard r3 / V=2 entry
+    # for the 128-bit RC4 default (no AES preference set).
+    assert doc.encryption_dictionary.get_filter() == "Standard"
+    assert doc.encryption_dictionary.get_revision() == 3
+    assert doc.encryption_dictionary.get_v() == 2

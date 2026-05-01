@@ -283,3 +283,65 @@ def test_round_trip_via_raw_dict() -> None:
     assert font.get_base_font() == "ABCDEF+LiberationSans"
     assert font.is_subset() is True
     assert font.is_embedded() is False
+
+
+# ---------- private-use start-range constants ----------
+
+
+def test_start_range_constants_match_upstream() -> None:
+    """The three Windows-Symbol private-use start ranges must match the
+    upstream PDFBox class constants exactly."""
+    assert PDTrueTypeFont.START_RANGE_F000 == 0xF000
+    assert PDTrueTypeFont.START_RANGE_F100 == 0xF100
+    assert PDTrueTypeFont.START_RANGE_F200 == 0xF200
+
+
+# ---------- get_gid_to_code ----------
+
+
+def test_get_gid_to_code_symbolic_no_ttf_is_identity() -> None:
+    """Symbolic font + no embedded TTF: ``code_to_gid`` is the identity
+    over 0..255, so the inverted map is just ``{i: i}``."""
+    font = PDTrueTypeFont()
+    fd = PDFontDescriptor()
+    fd.set_flags(FLAG_SYMBOLIC)
+    font.set_font_descriptor(fd)
+    mapping = font.get_gid_to_code()
+    assert mapping == {i: i for i in range(256)}
+
+
+def test_get_gid_to_code_nonsymbolic_no_ttf_collapses_to_zero() -> None:
+    """Nonsymbolic font + no embedded TTF: every code maps to GID 0, so
+    only the *first* code (0) survives the ``putIfAbsent``-style merge."""
+    font = PDTrueTypeFont()
+    font.set_font_descriptor(PDFontDescriptor())
+    mapping = font.get_gid_to_code()
+    assert mapping == {0: 0}
+
+
+def test_get_gid_to_code_is_memoised() -> None:
+    """Repeat invocations must return the same ``dict`` instance — the
+    encoding and embedded program are immutable from this class's
+    perspective, so we cache."""
+    font = PDTrueTypeFont()
+    fd = PDFontDescriptor()
+    fd.set_flags(FLAG_SYMBOLIC)
+    font.set_font_descriptor(fd)
+    first = font.get_gid_to_code()
+    second = font.get_gid_to_code()
+    assert first is second
+
+
+def test_get_gid_to_code_with_embedded_ttf_winansi() -> None:
+    """Nonsymbolic font + WinAnsi /Encoding + embedded TTF: code 'A' must
+    invert to itself in the GID→code map (i.e. the GID for 'A' resolves
+    back to 0x41)."""
+    font = _font_with_embedded_ttf()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    gid_a = font.code_to_gid(ord("A"))
+    assert gid_a > 0
+    mapping = font.get_gid_to_code()
+    assert mapping.get(gid_a) == ord("A")

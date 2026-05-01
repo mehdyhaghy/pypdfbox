@@ -59,6 +59,10 @@ ARRAY_OPEN: bytes = b"["
 ARRAY_CLOSE: bytes = b"]"
 STREAM: bytes = b"stream"
 ENDSTREAM: bytes = b"endstream"
+# Default ``%PDF-x.y`` marker (PDF 32000-1 §7.5.2). Mirrors upstream
+# ``COSWriter.VERSION`` byte literal — exposed as a module-level constant
+# so PDFBox-style callers can refer to it under the same name.
+VERSION: bytes = b"PDF-1.4"
 # Binary-marker bytes for the header comment. Identical to upstream
 # ``COSWriter.GARBAGE`` so the emitted file is byte-identical to what
 # PDFBox produces (ISO 32000-1 §7.5.2 only requires any 4 bytes ≥ 0x80).
@@ -290,11 +294,50 @@ class COSWriter(ICOSVisitor):
     def get_standard_output(self) -> COSStandardOutputStream:
         return self._standard_output
 
+    def get_output(self) -> Any:
+        """Return the raw output sink the writer was constructed with.
+
+        Mirrors upstream ``COSWriter.getOutput()`` — for callers that need
+        to bypass the ``COSStandardOutputStream`` framing layer (e.g. to
+        splice external bytes verbatim into the file)."""
+        return self._output
+
     def get_startxref(self) -> int:
         return self._startxref
 
+    def set_startxref(self, value: int) -> None:
+        """Override the ``startxref`` offset stamped at the tail of the
+        file. Mirrors upstream ``COSWriter.setStartxref(long)`` — used by
+        hybrid / xref-stream paths that need to point ``startxref`` at the
+        traditional table even though the body emitted a stream first."""
+        if not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"set_startxref requires a non-negative int; got {value!r}"
+            )
+        self._startxref = value
+
     def get_xref_entries(self) -> list[COSWriterXRefEntry]:
         return self._xref_entries
+
+    def add_xref_entry(self, entry: COSWriterXRefEntry) -> None:
+        """Append ``entry`` to the writer's xref-entry list. Mirrors
+        upstream ``COSWriter.addXRefEntry(XReferenceEntry)`` — exposed so
+        custom serialisation paths (e.g. signature post-processing, hybrid
+        layouts) can register entries without subclassing."""
+        if not isinstance(entry, COSWriterXRefEntry):
+            raise TypeError(
+                f"add_xref_entry expects COSWriterXRefEntry; got "
+                f"{type(entry).__name__}"
+            )
+        self._xref_entries.append(entry)
+
+    def is_compress(self) -> bool:
+        """``True`` if the writer is configured to compress non-stream
+        objects into ``/Type /ObjStm`` streams. Mirrors upstream
+        ``COSWriter.isCompress()`` — currently equivalent to
+        :py:meth:`is_object_stream_output` since pypdfbox doesn't carry a
+        separate ``CompressParameters`` toggle."""
+        return self._object_stream
 
     # Upstream PDFBox spelling — ``getXRefEntries`` mirrors
     # ``COSWriter.getXRefEntries`` literally. Kept as a thin alias so
@@ -354,6 +397,43 @@ class COSWriter(ICOSVisitor):
         over the internal :py:meth:`_do_write_object` so PDFBox-style
         callers can drive the writer directly."""
         self._do_write_object(obj)
+
+    def do_write_object(
+        self,
+        key_or_obj: COSObjectKey | COSBase,
+        obj: COSBase | None = None,
+    ) -> None:
+        """Emit a single indirect object frame.
+
+        Two upstream overloads collapse onto this one method:
+
+        * ``do_write_object(obj)`` — assigns / reuses a key, mirrors
+          upstream ``doWriteObject(COSBase)``.
+        * ``do_write_object(key, obj)`` — uses ``key`` verbatim, mirrors
+          upstream ``doWriteObject(COSObjectKey, COSBase)``. ``None`` /
+          dangling ``COSObject`` payloads are skipped to keep the xref
+          table consistent (matches upstream's null guard).
+        """
+        if obj is None and not isinstance(key_or_obj, COSObjectKey):
+            self._do_write_object(key_or_obj)
+            return
+        if not isinstance(key_or_obj, COSObjectKey):
+            raise TypeError(
+                "do_write_object(key, obj) requires a COSObjectKey as the "
+                f"first argument; got {type(key_or_obj).__name__}"
+            )
+        if obj is None:
+            return
+        if isinstance(obj, COSObject) and obj.get_object() is None:
+            return
+        self._do_write_object_with_key(key_or_obj, obj)
+
+    def write_reference(self, obj: COSBase) -> None:
+        """Emit ``num gen R`` for ``obj``. Mirrors upstream
+        ``COSWriter.writeReference(COSBase)`` — exposed for callers that
+        want to splice references into custom byte streams without
+        triggering the full visitor pipeline."""
+        self._write_reference(obj)
 
     def write_header(self, version: str | None = None) -> None:
         """Emit the ``%PDF-x.y`` header line + the binary-marker comment.
@@ -1973,11 +2053,34 @@ class COSWriter(ICOSVisitor):
         return COSWriter.format_float(obj.value)
 
     @staticmethod
-    def write_string(string: COSString, output: COSStandardOutputStream) -> None:
+    def write_string(
+        string: COSString | bytes | bytearray | memoryview,
+        output: Any,
+    ) -> None:
         """Serialize ``string`` as either a literal ``(...)`` or hex
-        ``<...>`` PDF string. Matches upstream ``COSWriter.writeString``."""
-        data = string.get_bytes()
-        force_hex = string.is_force_hex_form()
+        ``<...>`` PDF string. Matches upstream ``COSWriter.writeString``.
+
+        Two upstream overloads share this entry point:
+
+        * ``writeString(COSString, OutputStream)`` — honours
+          :py:meth:`COSString.is_force_hex_form`.
+        * ``writeString(byte[], OutputStream)`` — always writes literal
+          unless the bytes themselves are non-ASCII / contain EOL bytes.
+
+        ``output`` may be a :class:`COSStandardOutputStream` or any
+        ``write(bytes)`` sink (mirrors upstream's ``OutputStream`` accept
+        signature)."""
+        if isinstance(string, COSString):
+            data = string.get_bytes()
+            force_hex = string.is_force_hex_form()
+        elif isinstance(string, (bytes, bytearray, memoryview)):
+            data = bytes(string)
+            force_hex = False
+        else:
+            raise TypeError(
+                "write_string expects a COSString or bytes-like input; "
+                f"got {type(string).__name__}"
+            )
         is_ascii = True
         if not force_hex:
             for b in data:
@@ -1986,14 +2089,26 @@ class COSWriter(ICOSVisitor):
                 if b >= 0x80 or b in (0x0D, 0x0A):
                     is_ascii = False
                     break
+        # Branch on the output API surface so callers can pass either a
+        # ``COSStandardOutputStream`` (writeByte support) or a plain
+        # ``write(bytes)`` sink. The byte-by-byte path is hot when escaping
+        # literal-form payloads, so we cache the resolved write function.
+        write_byte = getattr(output, "write_byte", None)
+
+        def _emit_byte(b: int) -> None:
+            if write_byte is not None:
+                write_byte(b)
+            else:
+                output.write(bytes((b,)))
+
         if is_ascii and not force_hex:
             output.write(b"(")
             for b in data:
                 if b in (0x28, 0x29, 0x5C):  # ( ) \
                     output.write(b"\\")
-                    output.write_byte(b)
+                    _emit_byte(b)
                 else:
-                    output.write_byte(b)
+                    _emit_byte(b)
             output.write(b")")
         else:
             output.write(b"<")

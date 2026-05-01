@@ -401,3 +401,199 @@ def test_close_is_idempotent() -> None:
     w = COSWriter(sink)
     w.close()
     w.close()  # should not raise
+
+
+# ---------- upstream parity aliases ----------------------------------------
+
+
+def test_module_version_constant_matches_upstream() -> None:
+    """``pypdfbox.pdfwriter.cos_writer.VERSION`` mirrors the upstream byte
+    literal — exposed so callers can probe the default header version
+    without reading state off a writer instance."""
+    from pypdfbox.pdfwriter.cos_writer import VERSION
+
+    assert VERSION == b"PDF-1.4"
+
+
+def test_get_output_returns_constructed_sink() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        assert w.get_output() is sink
+    finally:
+        w.close()
+
+
+def test_set_startxref_round_trips() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        assert w.get_startxref() == 0
+        w.set_startxref(12345)
+        assert w.get_startxref() == 12345
+    finally:
+        w.close()
+
+
+def test_set_startxref_rejects_negative() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        with pytest.raises(ValueError):
+            w.set_startxref(-1)
+    finally:
+        w.close()
+
+
+def test_add_xref_entry_appends() -> None:
+    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.pdfwriter.cos_writer_xref_entry import COSWriterXRefEntry
+
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        before = len(w.get_xref_entries())
+        entry = COSWriterXRefEntry(
+            offset=42, key=COSObjectKey(7, 0), obj=COSName.TYPE, free=False  # type: ignore[attr-defined]
+        )
+        w.add_xref_entry(entry)
+        assert len(w.get_xref_entries()) == before + 1
+        assert w.get_xref_entries()[-1] is entry
+    finally:
+        w.close()
+
+
+def test_add_xref_entry_rejects_wrong_type() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        with pytest.raises(TypeError):
+            w.add_xref_entry("nope")  # type: ignore[arg-type]
+    finally:
+        w.close()
+
+
+def test_is_compress_default_false() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        assert w.is_compress() is False
+    finally:
+        w.close()
+
+
+def test_is_compress_tracks_object_stream_toggle() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        w.set_object_stream(True)
+        assert w.is_compress() is True
+        w.set_object_stream(False)
+        assert w.is_compress() is False
+    finally:
+        w.close()
+
+
+def test_write_reference_emits_indirect_token() -> None:
+    """``write_reference(obj)`` is the public alias over the internal
+    helper. Drives the writer to assign a key, then checks the emitted
+    ``num gen R`` token."""
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        target = COSDictionary()
+        target.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
+        # Wrap in a COSObject so the writer can attach a key.
+        ref_holder = COSObject(7, 0, resolved=target)
+        w.write_reference(ref_holder)
+        assert sink.getvalue() == b"7 0 R"
+    finally:
+        w.close()
+
+
+def test_do_write_object_dispatches_on_arity() -> None:
+    """Single-arg form mirrors upstream ``doWriteObject(obj)``;
+    two-arg form mirrors ``doWriteObject(key, obj)``."""
+    from pypdfbox.cos import COSObjectKey
+
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        # Two-arg form: emit a synthetic dict at key (99, 0). We're
+        # exercising the standalone helper (not a full save), so we
+        # check the emitted bytes + xref entry directly.
+        synthetic = COSDictionary()
+        synthetic.set_name(COSName.TYPE, "Page")  # type: ignore[attr-defined]
+        w.do_write_object(COSObjectKey(99, 0), synthetic)
+        entries = w.get_xref_entries()
+        assert any(e.get_key() == COSObjectKey(99, 0) for e in entries)
+    # The emit produced an indirect-object frame at key (99, 0) — verify
+    # the framing keywords landed even without a full ``write(doc)``.
+    out = sink.getvalue()
+    assert out.startswith(b"99 0 obj")
+    assert b"endobj" in out
+
+
+def test_do_write_object_skips_dangling_cosobject() -> None:
+    """Two-arg form must skip ``COSObject`` payloads whose target is
+    ``None`` — matches upstream's null guard so we don't punch a hole
+    in the xref table."""
+    from pypdfbox.cos import COSObjectKey
+
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        before = len(w.get_xref_entries())
+        dangling = COSObject(99, 0)  # no resolved target
+        w.do_write_object(COSObjectKey(99, 0), dangling)
+        # No xref entry emitted.
+        assert len(w.get_xref_entries()) == before
+    finally:
+        w.close()
+
+
+def test_do_write_object_rejects_non_key_first_arg() -> None:
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        # Two-arg form with a non-key first argument is a bug.
+        with pytest.raises(TypeError):
+            w.do_write_object("not-a-key", COSDictionary())  # type: ignore[arg-type]
+    finally:
+        w.close()
+
+
+def test_write_string_accepts_bytes_overload() -> None:
+    """Upstream has both ``writeString(COSString, ...)`` and
+    ``writeString(byte[], ...)``. Bytes input always emits literal form
+    when the payload is ASCII / EOL-free."""
+    from pypdfbox.pdfwriter.cos_standard_output_stream import COSStandardOutputStream
+
+    sink = io.BytesIO()
+    out = COSStandardOutputStream(sink)
+    COSWriter.write_string(b"hello", out)
+    assert sink.getvalue() == b"(hello)"
+
+
+def test_write_string_bytes_falls_back_to_hex_for_high_bytes() -> None:
+    from pypdfbox.pdfwriter.cos_standard_output_stream import COSStandardOutputStream
+
+    sink = io.BytesIO()
+    out = COSStandardOutputStream(sink)
+    COSWriter.write_string(bytes([0xDE, 0xAD]), out)
+    assert sink.getvalue() == b"<DEAD>"
+
+
+def test_write_string_accepts_plain_write_sink() -> None:
+    """Bytes overload works against any ``write(bytes)`` sink — does
+    not require ``COSStandardOutputStream``. Mirrors upstream's
+    ``OutputStream`` parameter type."""
+    sink = io.BytesIO()
+    COSWriter.write_string(b"plain(sink)", sink)
+    # Parens get escaped in literal form.
+    assert sink.getvalue() == b"(plain\\(sink\\))"
+
+
+def test_write_string_rejects_unsupported_input() -> None:
+    sink = io.BytesIO()
+    with pytest.raises(TypeError):
+        COSWriter.write_string(123, sink)  # type: ignore[arg-type]

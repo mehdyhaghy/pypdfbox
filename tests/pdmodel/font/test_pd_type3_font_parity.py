@@ -226,3 +226,69 @@ def test_widths_round_trip_after_first_last_char() -> None:
     assert font.get_first_char() == 65
     assert font.get_last_char() == 67
     assert font.get_widths() == pytest.approx([500.0, 500.0, 500.0], rel=1e-6)
+
+
+# ---------- is_standard_14 (Type 3 override) ----------
+
+
+def test_is_standard_14_always_false_even_with_standard_basefont() -> None:
+    """Upstream ``PDType3Font.isStandard14()`` returns ``false`` flat-out;
+    a Type 3 font that happens to carry a Standard 14 ``/BaseFont`` (e.g.
+    ``Helvetica``) must still be classified as non-Standard 14."""
+    font = PDType3Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert font.is_standard_14() is False
+
+
+def test_is_standard_14_false_when_no_basefont() -> None:
+    assert PDType3Font().is_standard_14() is False
+
+
+# ---------- is_font_symbolic (Type 3 override) ----------
+
+
+def test_is_font_symbolic_always_false() -> None:
+    """Mirrors upstream protected ``isFontSymbolic() → false``: Type 3
+    fonts are non-symbolic for encoding-resolution purposes."""
+    assert PDType3Font().is_font_symbolic() is False
+
+
+# ---------- has_glyph(str) (string overload) ----------
+
+
+def test_has_glyph_str_true_when_charproc_registered() -> None:
+    font = PDType3Font()
+    char_procs = COSDictionary()
+    char_procs.set_item(COSName.get_pdf_name("A"), COSStream())
+    font.set_char_procs(char_procs)
+    assert font.has_glyph("A") is True
+
+
+def test_has_glyph_str_false_when_no_charprocs() -> None:
+    assert PDType3Font().has_glyph("A") is False
+
+
+def test_has_glyph_str_false_when_name_not_in_charprocs() -> None:
+    font = PDType3Font()
+    char_procs = COSDictionary()
+    char_procs.set_item(COSName.get_pdf_name("A"), COSStream())
+    font.set_char_procs(char_procs)
+    assert font.has_glyph("B") is False
+
+
+def test_has_glyph_str_false_when_entry_not_a_stream() -> None:
+    """Mirrors upstream's stream-typed lookup: a non-stream entry under
+    the requested name must register as ``False``."""
+    font = PDType3Font()
+    char_procs = COSDictionary()
+    char_procs.set_item(COSName.get_pdf_name("A"), COSDictionary())
+    font.set_char_procs(char_procs)
+    assert font.has_glyph("A") is False
+
+
+def test_has_glyph_rejects_bool() -> None:
+    """``bool`` is an ``int`` in Python — disallow to avoid ambiguous
+    code-vs-name dispatch (mirrors :meth:`get_char_proc`)."""
+    font = PDType3Font()
+    with pytest.raises(TypeError):
+        font.has_glyph(True)  # type: ignore[arg-type]

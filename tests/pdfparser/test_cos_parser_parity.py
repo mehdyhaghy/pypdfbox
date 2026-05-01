@@ -66,6 +66,19 @@ def _parser(data: bytes, document: COSDocument | None = None) -> COSParser:
         # Brute-force scan helpers
         "bf_search_for_objects",
         "bf_search_for_xref",
+        # Initial-parse / trailer-rebuild latches
+        "is_initial_parse_done",
+        "set_initial_parse_done",
+        "is_trailer_was_rebuild",
+        # File-length accessors
+        "get_file_len",
+        "set_file_len",
+        # EOF lookup window
+        "set_eof_lookup_range",
+        "get_eof_lookup_range",
+        # Match / search utilities
+        "is_string",
+        "last_index_of",
     ],
 )
 def test_alias_method_exists(method_name: str) -> None:
@@ -294,3 +307,184 @@ def test_unread_alias_rewinds_one_byte() -> None:
     assert first == ord("a")
     p.unread(first)
     assert p.peek() == ord("a")
+
+
+# ---------- upstream class constants ----------
+
+
+def test_sysprop_eof_lookup_range_constant_matches_upstream() -> None:
+    # Upstream: COSParser.SYSPROP_EOFLOOKUPRANGE
+    assert COSParser.SYSPROP_EOFLOOKUPRANGE == (
+        "org.apache.pdfbox.pdfparser.nonSequentialPDFParser.eofLookupRange"
+    )
+
+
+def test_default_trail_bytecount_matches_upstream() -> None:
+    # Upstream: COSParser.DEFAULT_TRAIL_BYTECOUNT (private; mirrored
+    # public for parity).
+    assert COSParser.DEFAULT_TRAIL_BYTECOUNT == 2048
+
+
+def test_eof_and_obj_marker_constants() -> None:
+    # Upstream: COSParser.EOF_MARKER / COSParser.OBJ_MARKER (char[];
+    # we mirror as bytes).
+    assert COSParser.EOF_MARKER == b"%%EOF"
+    assert COSParser.OBJ_MARKER == b"obj"
+
+
+# ---------- EOF lookup-range accessor ----------
+
+
+def test_get_eof_lookup_range_default_is_2048() -> None:
+    assert _parser(b"").get_eof_lookup_range() == COSParser.DEFAULT_TRAIL_BYTECOUNT
+
+
+def test_set_eof_lookup_range_round_trip() -> None:
+    p = _parser(b"")
+    p.set_eof_lookup_range(4096)
+    assert p.get_eof_lookup_range() == 4096
+
+
+def test_set_eof_lookup_range_rejects_values_at_or_below_15() -> None:
+    p = _parser(b"")
+    p.set_eof_lookup_range(15)  # exactly the upstream rejection boundary
+    assert p.get_eof_lookup_range() == COSParser.DEFAULT_TRAIL_BYTECOUNT
+    p.set_eof_lookup_range(0)
+    assert p.get_eof_lookup_range() == COSParser.DEFAULT_TRAIL_BYTECOUNT
+    p.set_eof_lookup_range(-100)
+    assert p.get_eof_lookup_range() == COSParser.DEFAULT_TRAIL_BYTECOUNT
+
+
+def test_set_eof_lookup_range_accepts_16() -> None:
+    p = _parser(b"")
+    p.set_eof_lookup_range(16)
+    assert p.get_eof_lookup_range() == 16
+
+
+# ---------- file-length accessor ----------
+
+
+def test_get_file_len_reflects_source_length() -> None:
+    data = b"%PDF-1.7\n" + b"x" * 100
+    p = _parser(data)
+    assert p.get_file_len() == len(data)
+
+
+def test_set_file_len_round_trip() -> None:
+    p = _parser(b"abc")
+    p.set_file_len(999)
+    assert p.get_file_len() == 999
+
+
+# ---------- initial-parse-done latch ----------
+
+
+def test_is_initial_parse_done_default_is_false() -> None:
+    assert _parser(b"").is_initial_parse_done() is False
+
+
+def test_set_initial_parse_done_round_trip() -> None:
+    p = _parser(b"")
+    p.set_initial_parse_done(True)
+    assert p.is_initial_parse_done() is True
+    p.set_initial_parse_done(False)
+    assert p.is_initial_parse_done() is False
+
+
+def test_set_lenient_after_initial_parse_done_raises() -> None:
+    # Upstream: setLenient throws IllegalArgumentException once
+    # initialParseDone is true. We mirror with ValueError (Python's
+    # spelling for the same contract).
+    p = _parser(b"")
+    p.set_initial_parse_done(True)
+    with pytest.raises(ValueError):
+        p.set_lenient(False)
+
+
+def test_set_lenient_before_initial_parse_done_still_works() -> None:
+    p = _parser(b"")
+    p.set_lenient(False)
+    assert p.is_lenient() is False
+
+
+# ---------- trailer-was-rebuild latch ----------
+
+
+def test_is_trailer_was_rebuild_default_is_false() -> None:
+    assert _parser(b"").is_trailer_was_rebuild() is False
+
+
+# ---------- isString — non-consuming match ----------
+
+
+def test_is_string_matches_at_current_position() -> None:
+    p = _parser(b"%PDF-1.7\n")
+    assert p.is_string(b"%PDF-") is True
+    # Match is non-consuming.
+    assert p.position == 0
+
+
+def test_is_string_returns_false_on_mismatch() -> None:
+    p = _parser(b"%PDF-1.7\n")
+    assert p.is_string(b"%FDF-") is False
+    assert p.position == 0
+
+
+def test_is_string_returns_false_at_eof() -> None:
+    p = _parser(b"")
+    assert p.is_string(b"x") is False
+
+
+def test_is_string_accepts_str_argument() -> None:
+    # Upstream signature is char[]; pypdfbox accepts str for parity
+    # ergonomics — must behave identically to the bytes form.
+    p = _parser(b"trailer\n")
+    assert p.is_string("trailer") is True
+    assert p.is_string("xref") is False
+
+
+def test_is_string_does_not_consume_on_partial_match() -> None:
+    # ``%P`` matches the first two bytes but ``D`` mismatches the third;
+    # cursor must still be at offset 0.
+    p = _parser(b"%PDF-1.7\n")
+    assert p.is_string(b"%PX") is False
+    assert p.position == 0
+
+
+# ---------- lastIndexOf — backwards sub-byte search ----------
+
+
+def test_last_index_of_finds_pattern() -> None:
+    buf = b"abcdef-trailer-zzz"
+    # end_off is exclusive — pass len(buf) to scan the whole buffer.
+    assert _parser(b"").last_index_of(b"trailer", buf, len(buf)) == 7
+
+
+def test_last_index_of_returns_minus_one_when_absent() -> None:
+    buf = b"abcdef-zzz"
+    assert _parser(b"").last_index_of(b"trailer", buf, len(buf)) == -1
+
+
+def test_last_index_of_picks_last_occurrence() -> None:
+    buf = b"xrefxref"
+    # Two occurrences of "xref"; backwards walk should land on the
+    # second (offset 4).
+    assert _parser(b"").last_index_of(b"xref", buf, len(buf)) == 4
+
+
+def test_last_index_of_respects_end_off_exclusive() -> None:
+    buf = b"xrefxref"
+    # end_off=4 should exclude bytes 4..7 — only the leading xref
+    # (offset 0) is reachable.
+    assert _parser(b"").last_index_of(b"xref", buf, 4) == 0
+
+
+def test_last_index_of_empty_pattern_returns_minus_one() -> None:
+    # Defensive: upstream's loop would never terminate for an empty
+    # pattern; we early-return -1.
+    assert _parser(b"").last_index_of(b"", b"abc", 3) == -1
+
+
+def test_last_index_of_accepts_str_pattern() -> None:
+    buf = b"prefix-OBJ-suffix"
+    assert _parser(b"").last_index_of("OBJ", buf, len(buf)) == 7

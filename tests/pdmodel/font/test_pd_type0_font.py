@@ -478,3 +478,130 @@ def test_loaded_font_is_truetype_round_trip(liberation_bytes: bytes) -> None:
     # Re-parse the embedded program — should round-trip without error.
     ttf = TrueTypeFont.from_bytes(embedded.to_byte_array())
     assert ttf.get_units_per_em() > 0
+
+
+# ---------- get_base_font / is_standard14 ----------
+
+
+def test_get_base_font_returns_postscript_name() -> None:
+    font = _build_type0(_build_descendant())
+    assert font.get_base_font() == "TestType0"
+
+
+def test_get_base_font_matches_get_name() -> None:
+    font = _build_type0(_build_descendant())
+    assert font.get_base_font() == font.get_name()
+
+
+def test_is_standard14_always_false() -> None:
+    # Mirrors upstream — Type 0 fonts are never one of the 14 standard fonts.
+    font = _build_type0(_build_descendant())
+    assert font.is_standard14() is False
+
+
+def test_is_standard14_false_without_descendant() -> None:
+    font = _build_type0(None)
+    assert font.is_standard14() is False
+
+
+# ---------- has_glyph ----------
+
+
+def test_has_glyph_true_when_descendant_has_default_width() -> None:
+    font = _build_type0(_build_descendant(dw=500), encoding_name="Identity-H")
+    assert font.has_glyph(0x41) is True
+
+
+def test_has_glyph_false_when_descendant_has_zero_default_width() -> None:
+    font = _build_type0(_build_descendant(dw=0), encoding_name="Identity-H")
+    assert font.has_glyph(0x41) is False
+
+
+def test_has_glyph_false_without_descendant() -> None:
+    font = _build_type0(None)
+    assert font.has_glyph(0x41) is False
+
+
+# ---------- get_width_from_font ----------
+
+
+def test_get_width_from_font_zero_without_descendant() -> None:
+    font = _build_type0(None)
+    assert font.get_width_from_font(0x41) == 0.0
+
+
+def test_get_width_from_font_zero_without_embedded_program() -> None:
+    # PDCIDFontType2 with no /FontFile2 returns 0.0.
+    font = _build_type0(_build_descendant())
+    assert font.get_width_from_font(0x41) == 0.0
+
+
+def test_get_width_from_font_uses_descendant_embedded(
+    liberation_bytes: bytes,
+) -> None:
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    # Identity-H means CID == codepoint for ASCII; 'A' has a positive
+    # advance in Liberation Sans.
+    assert font.get_width_from_font(ord("A")) > 0.0
+
+
+# ---------- get_displacement ----------
+
+
+def test_get_displacement_horizontal_returns_width_over_1000() -> None:
+    font = _build_type0(_build_descendant(dw=600), encoding_name="Identity-H")
+    dx, dy = font.get_displacement(0x41)
+    assert dx == 0.6
+    assert dy == 0.0
+
+
+def test_get_displacement_without_descendant_horizontal() -> None:
+    font = _build_type0(None, encoding_name="Identity-H")
+    dx, dy = font.get_displacement(0x41)
+    assert dx == 0.0
+    assert dy == 0.0
+
+
+# ---------- get_position_vector ----------
+
+
+def test_get_position_vector_returns_zero_without_descendant() -> None:
+    font = _build_type0(None)
+    assert font.get_position_vector(0x41) == (0.0, 0.0)
+
+
+def test_get_position_vector_negates_and_scales_by_1000() -> None:
+    """Upstream's ``getPositionVector`` calls ``descendant.getPositionVector(code).scale(-1/1000f)``.
+
+    PDCIDFont's default ``/DW2`` (when missing) yields ``(v_x, v_y)`` =
+    ``(-1000, 880)`` — see :meth:`PDCIDFont.get_position_vector`. After
+    ``scale(-1/1000)`` the vector becomes ``(1.0, -0.88)``.
+    """
+    font = _build_type0(_build_descendant(), encoding_name="Identity-H")
+    v_x, v_y = font.get_position_vector(0x41)
+    assert v_x == 1.0
+    assert v_y == -0.88
+
+
+# ---------- encode_glyph_id ----------
+
+
+def test_encode_glyph_id_two_byte_be_fallback() -> None:
+    # No descendant, or a descendant without an encode_glyph_id method,
+    # falls back to the 2-byte big-endian form used by Identity-H.
+    font = _build_type0(None)
+    assert font.encode_glyph_id(0x41) == b"\x00\x41"
+    assert font.encode_glyph_id(0x1234) == b"\x12\x34"
+
+
+def test_encode_glyph_id_truncates_to_16_bits() -> None:
+    font = _build_type0(None)
+    # GID 0x1_0042 -> low 16 bits = 0x0042.
+    assert font.encode_glyph_id(0x10042) == b"\x00\x42"
+
+
+def test_encode_glyph_id_with_descendant() -> None:
+    font = _build_type0(_build_descendant(), encoding_name="Identity-H")
+    # PDCIDFont has no overridden encode_glyph_id, so we still hit the
+    # 2-byte BE fallback path.
+    assert font.encode_glyph_id(7) == b"\x00\x07"

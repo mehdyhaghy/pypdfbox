@@ -263,3 +263,35 @@ def test_subset_tag_propagates_to_descendant(liberation_bytes: bytes) -> None:
     descendant = font.get_descendant_font()
     assert descendant is not None
     assert descendant.get_name() == "ABCDEF+LiberationSans"
+
+
+def test_get_base_font_returns_postscript_name(liberation_bytes: bytes) -> None:
+    """Upstream: ``getBaseFont`` returns the dictionary's ``/BaseFont``
+    entry — the PostScript name.
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.get_base_font() == "LiberationSans"
+
+
+def test_is_standard14_returns_false(liberation_bytes: bytes) -> None:
+    """Upstream: ``isStandard14()`` is hard-coded ``return false`` for
+    Type 0 fonts.
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.is_standard14() is False
+
+
+def test_has_glyph_true_for_a(liberation_bytes: bytes) -> None:
+    """Upstream: ``hasGlyph(int)`` delegates to the descendant — Liberation
+    Sans has a glyph for ``A``.
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.has_glyph(ord("A")) is True
+
+
+def test_get_width_from_font_for_a(liberation_bytes: bytes) -> None:
+    """Upstream: ``getWidthFromFont(int)`` reads metrics straight from the
+    embedded program.
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.get_width_from_font(ord("A")) > 0.0
