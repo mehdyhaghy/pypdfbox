@@ -2,16 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSName, COSStream
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+    from pypdfbox.pdmodel.pd_resources import PDResources
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 _METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _XOBJECT: COSName = COSName.get_pdf_name("XObject")
+_GROUP: COSName = COSName.get_pdf_name("Group")
+_S: COSName = COSName.get_pdf_name("S")
+_TRANSPARENCY: COSName = COSName.get_pdf_name("Transparency")
 
 
 class PDXObject:
@@ -25,6 +29,62 @@ class PDXObject:
     ``pypdfbox.pdmodel.pd_resources.PDResources.get_x_object`` (the only
     place dispatch is currently exercised).
     """
+
+    @staticmethod
+    def create_x_object(
+        base: COSBase | None,
+        resources: PDResources | None = None,
+    ) -> PDXObject | None:
+        """Build the typed ``PDXObject`` for ``base``. Mirrors upstream
+        ``PDXObject.createXObject(COSBase, PDResources)``.
+
+        - ``None`` → ``None`` (matches upstream's ``TODO throw an
+          exception?`` placeholder which currently returns ``null``).
+        - ``COSStream`` with ``/Subtype /Image`` → :class:`PDImageXObject`.
+        - ``COSStream`` with ``/Subtype /Form`` → :class:`PDFormXObject`,
+          or :class:`PDTransparencyGroup` when the form has a
+          ``/Group /S /Transparency`` entry. (The transparency-group form
+          subclass is not yet ported — when absent we fall back to the
+          plain :class:`PDFormXObject` which still exposes the group dict
+          via :meth:`PDFormXObject.get_group_attributes`.)
+        - any other ``COSStream`` /Subtype value → ``OSError`` with the
+          subtype reproduced verbatim (matches upstream's
+          ``IOException("Invalid XObject Subtype: ...")``).
+        - non-stream ``base`` → ``OSError`` (mirrors upstream's
+          ``IOException("Unexpected object type: ...")``).
+        """
+        if base is None:
+            return None
+        if not isinstance(base, COSStream):
+            raise OSError(
+                f"Unexpected object type: {type(base).__name__}"
+            )
+        # Local imports — cluster boundary, avoids a circular import at
+        # module load (graphics → form/image which themselves import
+        # PDXObject).
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+            PDFormXObject,
+        )
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            PDImageXObject,
+        )
+
+        subtype = base.get_name(_SUBTYPE)
+        if subtype == "Image":
+            return PDImageXObject(base)
+        if subtype == "Form":
+            # When the form carries /Group /S /Transparency, upstream
+            # returns a PDTransparencyGroup. Until that subclass is
+            # ported, return a plain PDFormXObject — the transparency
+            # group attributes are still discoverable via
+            # ``get_group_attributes()``.
+            return PDFormXObject(base)
+        if subtype == "PS":
+            # PDPostScriptXObject is not yet ported; surface this as the
+            # same OSError shape upstream uses for the general invalid
+            # subtype branch so callers get a deterministic failure.
+            raise OSError("PDPostScriptXObject is not yet supported")
+        raise OSError(f"Invalid XObject Subtype: {subtype}")
 
     def __init__(
         self,

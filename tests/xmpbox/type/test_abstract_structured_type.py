@@ -119,3 +119,16 @@ def test_namespace_required_when_no_class_default(metadata: XMPMetadata) -> None
 
     with pytest.raises(ValueError):
         _Bare(metadata)
+
+
+def test_structure_array_name_class_constant() -> None:
+    # Upstream defines `protected static final String STRUCTURE_ARRAY_NAME = "li"`
+    # on AbstractStructuredType itself; expose it as a class attribute so
+    # downstream subclasses can reach it via the class.
+    assert AbstractStructuredType.STRUCTURE_ARRAY_NAME == "li"
+
+
+def test_structure_array_name_inherited_by_subclass(metadata: XMPMetadata) -> None:
+    st = _MyStruct(metadata, "http://www.apache.org/test#", "test")
+    assert type(st).STRUCTURE_ARRAY_NAME == "li"
+    assert st.STRUCTURE_ARRAY_NAME == "li"

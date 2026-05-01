@@ -46,7 +46,12 @@ class AbstractSimpleProperty(AbstractField):
         return self._raw_value
 
     def __repr__(self) -> str:
-        return f"[{type(self).__name__}:{self.get_string_value()}]"
+        # Mirrors upstream AbstractSimpleProperty#toString:
+        # "[" + propertyName + "=" + simpleClassName + ":" + stringValue + "]"
+        return (
+            f"[{self.get_property_name()}="
+            f"{type(self).__name__}:{self.get_string_value()}]"
+        )
 
     def get_namespace(self) -> str | None:
         return self._namespace

@@ -36,6 +36,12 @@ class AbstractStructuredType(AbstractField):
     (mirroring the upstream annotation values).
     """
 
+    # Mirrors upstream `protected static final String STRUCTURE_ARRAY_NAME = "li"`.
+    # Kept as a class attribute (in addition to the module-level constant above)
+    # so subclasses can reach it via `type(self).STRUCTURE_ARRAY_NAME` or
+    # `AbstractStructuredType.STRUCTURE_ARRAY_NAME`, matching upstream lookup.
+    STRUCTURE_ARRAY_NAME: str = STRUCTURE_ARRAY_NAME
+
     NAMESPACE: str | None = None
     PREFERRED_PREFIX: str | None = None
     _FIELD_TYPES: dict[str, str] = {}

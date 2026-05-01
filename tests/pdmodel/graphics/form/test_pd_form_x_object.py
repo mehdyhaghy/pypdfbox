@@ -5,7 +5,10 @@ import datetime as _dt
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.pdmodel.common.pd_stream import PDStream
-from pypdfbox.pdmodel.graphics.form import PDFormXObject
+from pypdfbox.pdmodel.graphics.form import (
+    PDFormXObject,
+    PDTransparencyGroupAttributes,
+)
 from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
     PDOptionalContentGroup,
 )
@@ -216,6 +219,67 @@ def test_group_round_trip_raw_dict() -> None:
     form.set_group(None)
     assert form.get_group() is None
     assert not form.get_cos_object().contains_key(_GROUP)
+
+
+# ---------- /Group typed attributes (mirrors upstream getGroup/setGroup) ----------
+
+
+def test_group_attributes_none_when_absent() -> None:
+    form = _new_form()
+    assert form.get_group_attributes() is None
+
+
+def test_group_attributes_round_trip_typed() -> None:
+    form = _new_form()
+    attrs = PDTransparencyGroupAttributes()
+    form.set_group_attributes(attrs)
+    got = form.get_group_attributes()
+    # set_group_attributes caches the typed instance; the second call
+    # returns the same wrapper object.
+    assert got is attrs
+    # The dictionary is also installed on the underlying form stream.
+    assert form.get_cos_object().get_dictionary_object(_GROUP) is attrs.get_cos_object()
+
+
+def test_group_attributes_clear_removes_key() -> None:
+    form = _new_form()
+    form.set_group_attributes(PDTransparencyGroupAttributes())
+    assert form.get_cos_object().contains_key(_GROUP)
+    form.set_group_attributes(None)
+    assert form.get_group_attributes() is None
+    assert not form.get_cos_object().contains_key(_GROUP)
+
+
+def test_group_attributes_wraps_existing_dict_lazily() -> None:
+    # When the form already has a /Group raw dictionary (e.g. parsed from
+    # disk), get_group_attributes should wrap and cache it on first call.
+    form = _new_form()
+    raw = COSDictionary()
+    raw.set_name(COSName.get_pdf_name("S"), "Transparency")
+    form.set_group(raw)
+
+    first = form.get_group_attributes()
+    assert first is not None
+    assert isinstance(first, PDTransparencyGroupAttributes)
+    assert first.get_cos_object() is raw
+    # Caching: the second call returns the same wrapper.
+    assert form.get_group_attributes() is first
+
+
+def test_set_group_raw_dict_invalidates_typed_cache() -> None:
+    # If a caller installs a typed wrapper, then later overwrites the
+    # /Group entry with a raw dict, the typed cache must drop so a
+    # subsequent get_group_attributes wraps the new dict.
+    form = _new_form()
+    form.set_group_attributes(PDTransparencyGroupAttributes())
+
+    other = COSDictionary()
+    other.set_name(COSName.get_pdf_name("S"), "Transparency")
+    form.set_group(other)
+
+    rewrapped = form.get_group_attributes()
+    assert rewrapped is not None
+    assert rewrapped.get_cos_object() is other
 
 
 # ---------- /StructParents ----------

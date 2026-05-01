@@ -14,6 +14,9 @@ from pypdfbox.cos import (
     COSString,
 )
 from pypdfbox.pdmodel.common.pd_stream import PDStream
+from pypdfbox.pdmodel.graphics.form.pd_transparency_group_attributes import (
+    PDTransparencyGroupAttributes,
+)
 from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
 from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
@@ -54,6 +57,8 @@ class PDFormXObject(PDXObject):
 
     def __init__(self, stream: PDStream | COSStream) -> None:
         super().__init__(stream, _FORM)
+        # Mirror upstream: lazily-resolved cached typed group attributes.
+        self._group_attributes: PDTransparencyGroupAttributes | None = None
 
     # ---------- /FormType ----------
 
@@ -195,8 +200,44 @@ class PDFormXObject(PDXObject):
         cos = self.get_cos_object()
         if value is None:
             cos.remove_item(_GROUP)
+            self._group_attributes = None
             return
         cos.set_item(_GROUP, value)
+        # Drop the typed cache — caller passed a raw dict that may not be
+        # the cached object.
+        self._group_attributes = None
+
+    # Typed /Group access mirroring upstream ``getGroup() /
+    # setGroup(PDTransparencyGroupAttributes)``. The earlier raw form
+    # above is kept for backward compatibility with call sites that
+    # already store/retrieve the dictionary directly.
+
+    def get_group_attributes(self) -> PDTransparencyGroupAttributes | None:
+        """Typed ``/Group`` transparency-group attributes, or ``None``
+        when no ``/Group`` entry exists. Mirrors upstream
+        ``getGroup()`` (which returns ``PDTransparencyGroupAttributes``).
+        Lazily wraps and caches the underlying dictionary."""
+        if self._group_attributes is not None:
+            return self._group_attributes
+        value = self.get_cos_object().get_dictionary_object(_GROUP)
+        if isinstance(value, COSDictionary):
+            self._group_attributes = PDTransparencyGroupAttributes(value)
+            return self._group_attributes
+        return None
+
+    def set_group_attributes(
+        self, group: PDTransparencyGroupAttributes | None
+    ) -> None:
+        """Set the typed transparency-group attributes. Mirrors upstream
+        ``setGroup(PDTransparencyGroupAttributes)``. ``None`` clears the
+        ``/Group`` entry."""
+        cos = self.get_cos_object()
+        if group is None:
+            cos.remove_item(_GROUP)
+            self._group_attributes = None
+            return
+        cos.set_item(_GROUP, group.get_cos_object())
+        self._group_attributes = group
 
     # ---------- /Ref ----------
 

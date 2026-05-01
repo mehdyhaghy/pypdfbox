@@ -59,3 +59,17 @@ def test_text_repr_contains_class_and_value(metadata: XMPMetadata) -> None:
     text = TextType(metadata, "ns", "p", "title", "v")
     assert "TextType" in repr(text)
     assert "v" in repr(text)
+
+
+def test_simple_property_repr_matches_upstream_to_string(metadata: XMPMetadata) -> None:
+    # Upstream AbstractSimpleProperty#toString returns
+    # "[" + propertyName + "=" + simpleClassName + ":" + stringValue + "]".
+    text = TextType(metadata, "ns", "p", "title", "hello")
+    assert repr(text) == "[title=TextType:hello]"
+
+
+def test_simple_property_repr_includes_property_name(metadata: XMPMetadata) -> None:
+    text = TextType(metadata, "ns", "p", "renamed-name", "v")
+    assert "renamed-name=" in repr(text)
+    text.set_property_name("brand-new")
+    assert "brand-new=" in repr(text)
