@@ -24,6 +24,20 @@ _PAGES: COSName = COSName.PAGES  # type: ignore[attr-defined]
 _KIDS: COSName = COSName.KIDS  # type: ignore[attr-defined]
 _COUNT: COSName = COSName.COUNT  # type: ignore[attr-defined]
 _PARENT: COSName = COSName.PARENT  # type: ignore[attr-defined]
+# Legacy single-letter alias for /Parent — upstream PDFBox falls back to
+# ``COSName.P`` whenever ``/Parent`` is absent (see every
+# ``getCOSDictionary(COSName.PARENT, COSName.P)`` call in PDPageTree.java).
+_P: COSName = COSName.get_pdf_name("P")
+
+
+def _resolve_parent(node: COSDictionary) -> COSDictionary | None:
+    """Return ``node``'s ancestor following the upstream
+    ``/Parent`` → ``/P`` fallback semantics."""
+    parent = node.get_dictionary_object(_PARENT)
+    if isinstance(parent, COSDictionary):
+        return parent
+    parent = node.get_dictionary_object(_P)
+    return parent if isinstance(parent, COSDictionary) else None
 
 
 def _is_page_dict(node: COSDictionary) -> bool:
@@ -223,9 +237,7 @@ class PDPageTree:
         """Remove ``page`` from its parent's ``/Kids`` and decrement
         ``/Count`` up the chain. Returns True if removal occurred."""
         page_dict = _unwrap_page_dict(page)
-        parent = page_dict.get_dictionary_object(_PARENT)
-        if not isinstance(parent, COSDictionary):
-            parent = self._root
+        parent = _resolve_parent(page_dict) or self._root
         kids = _kids_array(parent)
         if kids is None:
             return False
@@ -236,6 +248,21 @@ class PDPageTree:
         self._decrement_count_chain(parent, 1)
         return True
 
+    def remove_at(self, index: int) -> PDPage:
+        """Remove the page at zero-based ``index`` and return it.
+
+        Mirrors upstream ``PDPageTree.remove(int)`` (renamed because
+        Python can't overload the single-arg ``remove`` already bound to
+        the by-page variant). Raises :class:`IndexError` when ``index``
+        is out of range, which matches Python list semantics; upstream
+        throws ``IndexOutOfBoundsException`` for the same condition.
+        """
+        page = self[index]
+        # ``self.remove`` takes care of /Kids splice + /Count decrement
+        # along the parent chain.
+        self.remove(page)
+        return page
+
     def insert_before(
         self, new_page: PDPage | COSDictionary, target: PDPage | COSDictionary
     ) -> None:
@@ -243,9 +270,7 @@ class PDPageTree:
         parent's ``/Kids``."""
         target_dict = _unwrap_page_dict(target)
         new_dict = _unwrap_page_dict(new_page)
-        parent = target_dict.get_dictionary_object(_PARENT)
-        if not isinstance(parent, COSDictionary):
-            parent = self._root
+        parent = _resolve_parent(target_dict) or self._root
         kids = _kids_array(parent)
         if kids is None:
             raise ValueError("target page has no /Kids parent array")
@@ -261,9 +286,7 @@ class PDPageTree:
     ) -> None:
         target_dict = _unwrap_page_dict(target)
         new_dict = _unwrap_page_dict(new_page)
-        parent = target_dict.get_dictionary_object(_PARENT)
-        if not isinstance(parent, COSDictionary):
-            parent = self._root
+        parent = _resolve_parent(target_dict) or self._root
         kids = _kids_array(parent)
         if kids is None:
             raise ValueError("target page has no /Kids parent array")
@@ -290,8 +313,7 @@ class PDPageTree:
             value = cursor.get_dictionary_object(key)
             if value is not None:
                 return value
-            parent = cursor.get_dictionary_object(_PARENT)
-            cursor = parent if isinstance(parent, COSDictionary) else None
+            cursor = _resolve_parent(cursor)
         return None
 
     # ---------- internals ----------
@@ -328,5 +350,4 @@ class PDPageTree:
         while cursor is not None and id(cursor) not in seen:
             seen.add(id(cursor))
             cls._increment_count(cursor, -delta)
-            parent = cursor.get_dictionary_object(_PARENT)
-            cursor = parent if isinstance(parent, COSDictionary) else None
+            cursor = _resolve_parent(cursor)

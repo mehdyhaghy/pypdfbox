@@ -69,6 +69,7 @@ PDF-specific parsing — port territory.
 | `pypdfbox/pdfparser/xref_trailer_resolver.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java` |
 | `pypdfbox/pdfparser/pdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFParser.java` (traditional xref + trailer + /Prev + stream body; xref-streams / object-streams / malformed recovery deferred) |
 | `pypdfbox/pdfparser/pdf_stream_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java` |
+| `pypdfbox/pdfparser/endstream_filter_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/EndstreamFilterStream.java` |
 | `pypdfbox/loader.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/Loader.java` (path / bytes / stream forms only — encryption + password params deferred) |
 
 Original work (no PROVENANCE entry needed; listed here for clarity):
@@ -496,8 +497,9 @@ Not yet ported (classes not implemented in pypdfbox): `SequenceRandomAccessReadT
 | `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` |
 | `tests/pdfparser/upstream/test_pdf_stream_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFStreamParserTest.java` |
 | `tests/pdfparser/upstream/test_cos_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/COSParserTest.java` (parse-header / brute-force / rebuild-trailer / parse-xref-stream / parse-xref-table subset; fixture-corpus-driven cases skipped) |
+| `tests/pdfparser/upstream/test_endstream_filter_stream.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/EndstreamFilterStreamTest.java` (the byte-sequence test is a direct port; the `embedded_zip.pdf` round-trip case is skipped — fixture not in pypdfbox corpus and it really tests `readUntilEndStream` plumbing rather than the filter helper) |
 
-Not yet ported (classes not implemented in pypdfbox): `EndstreamFilterStreamTest`, `PDFObjectStreamParserTest`, `TestPDFParser`.
+Not yet ported (classes not implemented in pypdfbox): `PDFObjectStreamParserTest`, `TestPDFParser`.
 
 ### `tests/filter/upstream/`
 

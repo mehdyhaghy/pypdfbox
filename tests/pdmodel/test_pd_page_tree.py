@@ -251,3 +251,56 @@ def test_get_rejects_non_page_type() -> None:
     tree.add(bogus)
     with pytest.raises(ValueError, match="Expected 'Page'"):
         _ = tree[0]
+
+
+def test_remove_at_returns_removed_page() -> None:
+    """``remove_at(int)`` mirrors upstream's ``remove(int)`` overload —
+    splice by index, return the page, decrement the count chain."""
+    tree = PDPageTree()
+    a = _make_page("a")
+    b = _make_page("b")
+    c = _make_page("c")
+    for page in (a, b, c):
+        tree.add(page)
+
+    removed = tree.remove_at(1)
+    assert removed.get_cos_object() is b.get_cos_object()
+    assert [_label(p) for p in tree] == ["a", "c"]
+    assert len(tree) == 2
+
+
+def test_remove_at_negative_index() -> None:
+    """``remove_at`` reuses ``__getitem__`` semantics — negative indices
+    address from the end."""
+    tree = PDPageTree()
+    a = _make_page("a")
+    b = _make_page("b")
+    tree.add(a)
+    tree.add(b)
+
+    removed = tree.remove_at(-1)
+    assert _label(removed) == "b"
+    assert [_label(p) for p in tree] == ["a"]
+
+
+def test_remove_at_out_of_range() -> None:
+    tree = PDPageTree()
+    tree.add(_make_page("only"))
+    with pytest.raises(IndexError):
+        tree.remove_at(5)
+
+
+def test_inheritable_attribute_walks_via_p_alias() -> None:
+    """Inheritable lookup must follow the legacy ``/P`` parent shortcut
+    when ``/Parent`` is absent (matches upstream
+    ``getCOSDictionary(PARENT, P)``)."""
+    grandparent = COSDictionary()
+    grandparent.set_int(COSName.get_pdf_name("Rotate"), 270)
+    parent = COSDictionary()
+    parent.set_item(COSName.get_pdf_name("P"), grandparent)
+    leaf = COSDictionary()
+    leaf.set_item(COSName.get_pdf_name("P"), parent)
+
+    value = PDPageTree.get_inheritable_attribute(leaf, COSName.get_pdf_name("Rotate"))
+    assert isinstance(value, COSInteger)
+    assert value.value == 270

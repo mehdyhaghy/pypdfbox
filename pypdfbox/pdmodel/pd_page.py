@@ -28,6 +28,10 @@ _ART_BOX: COSName = COSName.get_pdf_name("ArtBox")
 _ROTATE: COSName = COSName.get_pdf_name("Rotate")
 _USER_UNIT: COSName = COSName.get_pdf_name("UserUnit")
 _PARENT: COSName = COSName.PARENT  # type: ignore[attr-defined]
+# /P is the legacy single-letter alias upstream PDFBox falls back to when
+# /Parent is missing (see ``getCOSDictionary(COSName.PARENT, COSName.P)``
+# in PDPageTree). Kept here so PDPage's inheritable walk matches.
+_P: COSName = COSName.get_pdf_name("P")
 _CONTENTS: COSName = COSName.CONTENTS  # type: ignore[attr-defined]
 _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 _AA: COSName = COSName.get_pdf_name("AA")
@@ -86,7 +90,13 @@ class PDPage:
 
     def _get_inheritable(self, key: COSName) -> COSBase | None:
         """Walk this page's ``/Parent`` chain looking for ``key``.
-        Mirrors upstream ``PDPageTree.getInheritableAttribute``."""
+        Mirrors upstream ``PDPageTree.getInheritableAttribute``.
+
+        Upstream PDFBox accepts ``/P`` as a legacy alias for ``/Parent``
+        (see ``COSDictionary.getCOSDictionary(COSName.PARENT, COSName.P)``
+        used throughout PDPageTree); we honour the same fallback here so
+        pages that use the short-form key still resolve their ancestors.
+        """
         node: COSDictionary | None = self._page
         seen: set[int] = set()
         while node is not None and id(node) not in seen:
@@ -95,6 +105,8 @@ class PDPage:
             if value is not None:
                 return value
             parent = node.get_dictionary_object(_PARENT)
+            if not isinstance(parent, COSDictionary):
+                parent = node.get_dictionary_object(_P)
             node = parent if isinstance(parent, COSDictionary) else None
         return None
 
@@ -703,6 +715,47 @@ class PDPage:
         """Attach a :class:`PDResourceCache` to this page. Pass ``None`` to
         detach. Companion to :meth:`get_resource_cache`."""
         self._resource_cache = cache
+
+    def remove_page_resource_from_cache(self) -> None:
+        """Purge cached resources owned by this page from the attached
+        :class:`PDResourceCache`.
+
+        Mirrors upstream ``PDPage.removePageResourceFromCache()``: a no-op
+        when no cache is attached; otherwise iterates every entry of the
+        page's *own* (non-inherited) ``/Resources`` sub-dictionaries —
+        ``/ColorSpace``, ``/ExtGState``, ``/Pattern``, ``/Properties``,
+        ``/Shading``, ``/Font``, ``/XObject`` — and removes any indirect
+        objects from the cache. Direct resources (those stored inline)
+        are not cached so we skip them.
+        """
+        cache = getattr(self, "_resource_cache", None)
+        if cache is None:
+            return
+        # Limit purge to *this page's* resources — never remove inherited
+        # ancestor resources. Use direct lookup, not the inheritable walk.
+        own_resources = self._page.get_dictionary_object(_RESOURCES)
+        if not isinstance(own_resources, COSDictionary):
+            return
+        kinds_with_remover = (
+            ("ColorSpace", "remove_color_space"),
+            ("ExtGState", "remove_ext_state"),
+            ("Pattern", "remove_pattern"),
+            ("Properties", "remove_properties"),
+            ("Shading", "remove_shading"),
+            ("Font", "remove_font"),
+            ("XObject", "remove_x_object"),
+        )
+        for kind, remover_name in kinds_with_remover:
+            kind_dict = own_resources.get_dictionary_object(COSName.get_pdf_name(kind))
+            if not isinstance(kind_dict, COSDictionary):
+                continue
+            remover = getattr(cache, remover_name, None)
+            if remover is None:
+                continue
+            for entry in list(kind_dict.values()):
+                # Only indirect objects are cached upstream.
+                if isinstance(entry, COSObject):
+                    remover(entry)
 
     # ---------- transition ----------
 

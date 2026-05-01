@@ -282,3 +282,109 @@ def test_set_resource_cache_round_trip() -> None:
     assert page.get_resource_cache() is sentinel
     page.set_resource_cache(None)
     assert page.get_resource_cache() is None
+
+
+def test_inheritable_walks_via_p_alias() -> None:
+    """Upstream PDFBox falls back to ``/P`` when ``/Parent`` is absent
+    (``COSDictionary.getCOSDictionary(PARENT, P)``); inheritable lookups
+    must traverse that legacy short form too."""
+    grandparent = COSDictionary()
+    grandparent.set_int(COSName.get_pdf_name("Rotate"), 90)
+    parent = COSDictionary()
+    # Legacy /P short form, not /Parent.
+    parent.set_item(COSName.get_pdf_name("P"), grandparent)
+    child_dict = COSDictionary()
+    child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child_dict.set_item(COSName.get_pdf_name("P"), parent)
+    page = PDPage(child_dict)
+    assert page.get_rotation() == 90
+
+
+def test_remove_page_resource_from_cache_no_cache_is_noop() -> None:
+    """Without a resource cache attached, ``remove_page_resource_from_cache``
+    must silently return — mirrors upstream's early-out."""
+    page = PDPage()
+    # Should not raise even though there's no /Resources and no cache.
+    page.remove_page_resource_from_cache()
+
+
+def test_remove_page_resource_from_cache_purges_indirect_objects() -> None:
+    """Indirect resource entries are forwarded to the cache's typed
+    removers; direct entries are skipped."""
+    from pypdfbox.cos import COSObject
+
+    class _CountingCache:
+        def __init__(self) -> None:
+            self.removed_xobjects: list[COSObject] = []
+            self.removed_fonts: list[COSObject] = []
+            self.removed_color_spaces: list[COSObject] = []
+
+        def remove_x_object(self, obj: COSObject) -> None:
+            self.removed_xobjects.append(obj)
+
+        def remove_font(self, obj: COSObject) -> None:
+            self.removed_fonts.append(obj)
+
+        def remove_color_space(self, obj: COSObject) -> None:
+            self.removed_color_spaces.append(obj)
+
+    page = PDPage()
+    cache = _CountingCache()
+    page.set_resource_cache(cache)
+
+    # Build /Resources with both indirect and direct entries.
+    resources = COSDictionary()
+    page.get_cos_object().set_item(COSName.RESOURCES, resources)  # type: ignore[attr-defined]
+
+    xobject_dict = COSDictionary()
+    indirect_xobject = COSObject(7, resolved=COSStream())
+    xobject_dict.set_item(COSName.get_pdf_name("Im0"), indirect_xobject)
+    # Direct entry — should be skipped (no remover invocation).
+    xobject_dict.set_item(COSName.get_pdf_name("Im1"), COSStream())
+    resources.set_item(COSName.get_pdf_name("XObject"), xobject_dict)
+
+    font_dict = COSDictionary()
+    indirect_font = COSObject(8, resolved=COSDictionary())
+    font_dict.set_item(COSName.get_pdf_name("F0"), indirect_font)
+    resources.set_item(COSName.get_pdf_name("Font"), font_dict)
+
+    page.remove_page_resource_from_cache()
+    assert cache.removed_xobjects == [indirect_xobject]
+    assert cache.removed_fonts == [indirect_font]
+    # No /ColorSpace entry — remover never called.
+    assert cache.removed_color_spaces == []
+
+
+def test_remove_page_resource_from_cache_skips_inherited_resources() -> None:
+    """Inherited (parent-owned) /Resources must not be purged — upstream
+    explicitly limits the purge to ``page.getCOSDictionary(RESOURCES)``,
+    *not* the inheritable lookup."""
+    from pypdfbox.cos import COSObject
+
+    class _CountingCache:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def remove_x_object(self, obj: COSObject) -> None:  # noqa: ARG002
+            self.calls += 1
+
+    parent = COSDictionary()
+    parent_resources = COSDictionary()
+    parent_xobject_dict = COSDictionary()
+    parent_xobject_dict.set_item(
+        COSName.get_pdf_name("Im0"),
+        COSObject(9, resolved=COSStream()),
+    )
+    parent_resources.set_item(COSName.get_pdf_name("XObject"), parent_xobject_dict)
+    parent.set_item(COSName.RESOURCES, parent_resources)  # type: ignore[attr-defined]
+
+    child_dict = COSDictionary()
+    child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child_dict.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    page = PDPage(child_dict)
+    cache = _CountingCache()
+    page.set_resource_cache(cache)
+
+    page.remove_page_resource_from_cache()
+    # Parent resources are inherited; the purge must not reach them.
+    assert cache.calls == 0
