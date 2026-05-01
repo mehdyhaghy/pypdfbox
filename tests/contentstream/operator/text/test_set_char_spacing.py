@@ -76,3 +76,34 @@ def test_re_export_canonical() -> None:
     )
 
     assert Reexport is SetCharSpacing
+
+
+def test_process_uses_last_argument_when_malformed() -> None:
+    """Upstream uses the LAST argument so malformed multi-arg `Tc`
+    instructions still parse — see the comment in
+    ``SetCharSpacing.java#process``: 'we will assume the last argument
+    in the list'."""
+    p = SetCharSpacing()
+    engine = _bind(p)
+    # Two-argument malformed `Tc` — must pick up the LAST value.
+    p.process(
+        Operator.get_operator("Tc"),
+        [COSFloat(99.0), COSFloat(0.5)],
+    )
+    assert engine.spacing == 0.5
+    assert engine.calls == 1
+
+
+def test_process_last_argument_drops_when_non_number() -> None:
+    """When the LAST operand is non-numeric the call is dropped, even
+    if an earlier operand was a number — matches upstream's
+    ``charSpacing instanceof COSNumber`` short-circuit on the
+    last-arg pick."""
+    p = SetCharSpacing()
+    engine = _bind(p)
+    p.process(
+        Operator.get_operator("Tc"),
+        [COSFloat(2.0), COSString(b"oops")],
+    )
+    assert engine.spacing is None
+    assert engine.calls == 0

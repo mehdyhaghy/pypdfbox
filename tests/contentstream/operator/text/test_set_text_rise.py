@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.contentstream import (
-    MissingOperandException,
     Operator,
     PDFStreamEngine,
 )
@@ -62,12 +59,14 @@ def test_process_no_op_when_engine_lacks_notifier() -> None:
     p.process(Operator.get_operator("Ts"), [COSFloat(1.0)])
 
 
-def test_zero_operands_raises() -> None:
+def test_zero_operands_silently_returns() -> None:
+    """Upstream `SetTextRise.process` returns silently on empty args."""
     p = SetTextRise()
     engine = _Spy()
     engine.add_operator(p)
-    with pytest.raises(MissingOperandException):
-        p.process(Operator.get_operator("Ts"), [])
+    p.process(Operator.get_operator("Ts"), [])
+    assert engine.rise is None
+    assert engine.calls == 0
 
 
 def test_wrong_type_silently_drops() -> None:

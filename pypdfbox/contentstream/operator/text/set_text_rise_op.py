@@ -3,7 +3,6 @@ from __future__ import annotations
 from pypdfbox.cos import COSBase, COSNumber
 
 from .. import (
-    MissingOperandException,
     Operator,
     OperatorName,
     OperatorProcessor,
@@ -20,8 +19,9 @@ class SetTextRise(OperatorProcessor):
     when present, otherwise no-ops — cluster #2's base engine doesn't
     track text state.
 
-    A missing operand raises :class:`MissingOperandException`; a wrong-
-    typed operand is silently dropped.
+    Following upstream ``SetTextRise.process`` an empty operand list
+    returns silently (no ``MissingOperandException``); a wrong-typed
+    operand is also silently dropped.
 
     Filename suffixed with ``_op`` to avoid colliding with the pre-
     existing ``set_text_rise.py`` lite-stub module routed via
@@ -30,7 +30,7 @@ class SetTextRise(OperatorProcessor):
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         if not operands:
-            raise MissingOperandException(operator, operands)
+            return
         rise = operands[0]
         if not isinstance(rise, COSNumber):
             return

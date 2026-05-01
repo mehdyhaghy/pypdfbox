@@ -66,6 +66,35 @@ class Type1Mapping:
     def char_string(self) -> "Type1CharString | None":
         return self._char_string
 
+    # ---------- tuple-style unpacking ----------
+
+    def as_tuple(self) -> tuple[int, str, "Type1CharString | None"]:
+        """Return the row as a ``(code, name, char_string)`` tuple.
+
+        Convenient for assertions and when serialising encoding vectors
+        for diff'ing against upstream output.
+        """
+        return (self._code, self._name, self._char_string)
+
+    def __iter__(self):
+        """Iterate ``(code, name, char_string)`` so callers can write
+        ``code, name, cs = mapping`` the same way they would for a
+        ``namedtuple``."""
+        yield self._code
+        yield self._name
+        yield self._char_string
+
+    def with_char_string(
+        self, char_string: "Type1CharString | None"
+    ) -> "Type1Mapping":
+        """Return a copy with ``char_string`` replaced.
+
+        Type1Mapping is immutable; this is the canonical way to swap in
+        a re-parsed charstring (e.g. after lazy decryption) without
+        mutating the original row.
+        """
+        return Type1Mapping(self._code, self._name, char_string)
+
     # ---------- value semantics ----------
 
     def __eq__(self, other: object) -> bool:

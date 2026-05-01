@@ -69,3 +69,57 @@ def test_code_is_coerced_to_int() -> None:
 def test_name_is_coerced_to_str() -> None:
     m = Type1Mapping(code=65, name="A", char_string=None)
     assert isinstance(m.name, str)
+
+
+# ---------- tuple-style unpacking ----------
+
+
+def test_as_tuple_returns_three_field_tuple() -> None:
+    cs = _DummyCharString("A")
+    m = Type1Mapping(code=65, name="A", char_string=cs)
+    assert m.as_tuple() == (65, "A", cs)
+
+
+def test_as_tuple_with_none_charstring() -> None:
+    m = Type1Mapping(code=0, name=".notdef", char_string=None)
+    assert m.as_tuple() == (0, ".notdef", None)
+
+
+def test_iter_supports_unpacking() -> None:
+    cs = _DummyCharString("A")
+    m = Type1Mapping(code=65, name="A", char_string=cs)
+    code, name, char_string = m  # tuple-style unpack
+    assert code == 65
+    assert name == "A"
+    assert char_string is cs
+
+
+def test_iter_yields_three_items_in_order() -> None:
+    m = Type1Mapping(code=65, name="A", char_string=None)
+    assert list(m) == [65, "A", None]
+
+
+# ---------- with_char_string ----------
+
+
+def test_with_char_string_returns_new_instance() -> None:
+    original = Type1Mapping(code=65, name="A", char_string=None)
+    new_cs = _DummyCharString("A")
+    updated = original.with_char_string(new_cs)
+    # original is untouched
+    assert original.char_string is None
+    # updated has the new charstring but same code+name
+    assert updated.code == 65
+    assert updated.name == "A"
+    assert updated.char_string is new_cs
+    # they are distinct instances
+    assert updated is not original
+
+
+def test_with_char_string_to_none() -> None:
+    cs = _DummyCharString("A")
+    original = Type1Mapping(code=65, name="A", char_string=cs)
+    cleared = original.with_char_string(None)
+    assert cleared.char_string is None
+    # original still has its charstring
+    assert original.char_string is cs

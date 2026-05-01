@@ -20,12 +20,20 @@ class SetCharSpacing(OperatorProcessor):
     raises :class:`MissingOperandException`; a wrong-typed operand is
     silently dropped (matching upstream's ``instanceof COSNumber``
     short-circuit).
+
+    Upstream `SetCharSpacing.process` notes that "there are some
+    documents which are incorrectly structured, and have a wrong number
+    of arguments to this, so we will assume the last argument in the
+    list" and reads ``arguments.get(arguments.size() - 1)``. Mirrored
+    here so malformed multi-arg ``Tc`` instructions parse identically.
     """
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         if not operands:
             raise MissingOperandException(operator, operands)
-        spacing = operands[0]
+        # Upstream uses the LAST argument to tolerate malformed PDFs that
+        # emit too many operands before a `Tc`. See SetCharSpacing.java.
+        spacing = operands[-1]
         if not isinstance(spacing, COSNumber):
             return
         self.get_context().set_character_spacing(spacing.float_value())

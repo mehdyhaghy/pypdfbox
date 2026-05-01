@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.contentstream import (
-    MissingOperandException,
     Operator,
     PDFStreamEngine,
 )
@@ -47,11 +44,13 @@ def test_process_accepts_cos_integer() -> None:
     assert engine.spacing == 3.0
 
 
-def test_zero_operands_raises() -> None:
+def test_zero_operands_silently_returns() -> None:
+    """Upstream `SetWordSpacing.process` returns silently on empty args."""
     p = SetWordSpacing()
-    _bind(p)
-    with pytest.raises(MissingOperandException):
-        p.process(Operator.get_operator("Tw"), [])
+    engine = _bind(p)
+    p.process(Operator.get_operator("Tw"), [])
+    assert engine.spacing is None
+    assert engine.calls == 0
 
 
 def test_wrong_type_silently_drops() -> None:
