@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import (
+    MissingOperandException,
+    Operator,
+)
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -10,7 +15,7 @@ from pypdfbox.contentstream.operator.operator_registry import (
 from pypdfbox.contentstream.operator.state.set_graphics_state_parameters import (
     SetGraphicsStateParameters,
 )
-from pypdfbox.cos import COSName
+from pypdfbox.cos import COSInteger, COSName, COSString
 
 
 def test_class_advertises_gs_operator_name() -> None:
@@ -29,9 +34,24 @@ def test_process_with_extgstate_name_operand_does_not_raise() -> None:
     p.process(Operator.get_operator("gs"), [COSName.get_pdf_name("GS1")])
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Upstream throws ``MissingOperandException`` when no operand is
+    # supplied; we mirror that.
     p = SetGraphicsStateParameters()
-    p.process(Operator.get_operator("gs"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("gs"), [])
+
+
+def test_process_with_non_name_operand_silently_returns() -> None:
+    # Upstream ``return``s after the ``instanceof COSName`` check when
+    # the operand is some other COS type — content stream is malformed
+    # but execution continues.
+    p = SetGraphicsStateParameters()
+    p.process(
+        Operator.get_operator("gs"),
+        [COSString("GS1")],
+    )
+    p.process(Operator.get_operator("gs"), [COSInteger.get(1)])
 
 
 def test_default_registry_routes_gs_to_set_graphics_state_parameters() -> None:

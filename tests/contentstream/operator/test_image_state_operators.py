@@ -32,7 +32,7 @@ from pypdfbox.contentstream.operator.state.set_graphics_state_parameters import 
 from pypdfbox.contentstream.operator.state.set_rendering_intent import (
     SetRenderingIntent,
 )
-from pypdfbox.cos import COSBase, COSName
+from pypdfbox.cos import COSArray, COSBase, COSInteger, COSName
 
 
 # (operator-name, expected handler class) for every cluster-#3 stub.
@@ -84,12 +84,15 @@ def test_registry_lookup_returns_correct_instance_per_new_operator() -> None:
 
 
 def test_registry_process_each_new_operator_does_not_raise() -> None:
-    """Every stub must accept its operator without raising. Most stubs
-    are zero-operand and pass an empty list; ``Do`` validates arity
-    upstream-parity and so is exercised with a valid ``COSName``."""
+    """Every stub must accept its operator without raising. Stubs that
+    validate arity upstream-parity (``Do``, ``d``, ``ri``, ``gs``) are
+    exercised with valid operands; the rest are zero-operand."""
     registry = OperatorRegistry()
     operands_by_name: dict[str, list[COSBase]] = {
         "Do": [COSName.get_pdf_name("Im0")],
+        "d": [COSArray(), COSInteger.get(0)],
+        "ri": [COSName.get_pdf_name("RelativeColorimetric")],
+        "gs": [COSName.get_pdf_name("GS1")],
     }
     for name, _cls in _NEW_OPERATORS:
         registry.process(Operator(name), operands_by_name.get(name, []))

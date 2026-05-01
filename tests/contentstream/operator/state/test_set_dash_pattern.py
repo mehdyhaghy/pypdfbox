@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import (
+    MissingOperandException,
+    Operator,
+)
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -10,7 +15,7 @@ from pypdfbox.contentstream.operator.operator_registry import (
 from pypdfbox.contentstream.operator.state.set_dash_pattern import (
     SetDashPattern,
 )
-from pypdfbox.cos import COSArray, COSFloat, COSInteger
+from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 
 
 def test_class_advertises_d_operator_name() -> None:
@@ -41,9 +46,40 @@ def test_process_with_dashed_pattern_does_not_raise() -> None:
     )
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Upstream throws ``MissingOperandException`` when fewer than two
+    # operands are supplied; we mirror that.
     p = SetDashPattern()
-    p.process(Operator.get_operator("d"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("d"), [])
+
+
+def test_process_with_one_operand_raises_missing_operand() -> None:
+    # ``d`` is a two-operand operator (array + phase); a single operand
+    # still triggers the size-2 guard.
+    p = SetDashPattern()
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("d"), [COSArray()])
+
+
+def test_process_with_non_array_first_operand_silently_returns() -> None:
+    # Upstream ``return``s after the ``instanceof COSArray`` check when
+    # the first operand is some other COS type.
+    p = SetDashPattern()
+    p.process(
+        Operator.get_operator("d"),
+        [COSName.get_pdf_name("Bogus"), COSInteger.get(0)],
+    )
+
+
+def test_process_with_non_number_phase_silently_returns() -> None:
+    # Upstream ``return``s after the ``instanceof COSNumber`` check
+    # when the phase operand is not a number.
+    p = SetDashPattern()
+    p.process(
+        Operator.get_operator("d"),
+        [COSArray(), COSName.get_pdf_name("Bogus")],
+    )
 
 
 def test_default_registry_routes_d_to_set_dash_pattern() -> None:

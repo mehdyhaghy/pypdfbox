@@ -307,3 +307,115 @@ def test_xfa_is_dynamic_false_when_no_xfa() -> None:
     field.set_partial_name("name")
     form.set_fields([field])
     assert form.xfa_is_dynamic() is False  # no /XFA, has fields
+
+
+# ---------- Wave 71 — get_default_appearance_if_exists +
+# remove_field / remove_fields parity helpers.
+
+
+def test_get_default_appearance_if_exists_returns_none_when_absent() -> None:
+    """``get_default_appearance_if_exists`` is tri-state: ``None`` when
+    /DA is absent, otherwise the string value (which may be empty)."""
+    form = PDAcroForm()
+    assert form.get_default_appearance_if_exists() is None
+    form.set_default_appearance("/Helv 0 Tf 0 g")
+    assert form.get_default_appearance_if_exists() == "/Helv 0 Tf 0 g"
+    form.set_default_appearance("")
+    assert form.get_default_appearance_if_exists() == ""
+
+
+def test_get_default_appearance_if_exists_distinguishes_empty_from_absent() -> None:
+    """Empty ``/DA`` is distinguishable from missing ``/DA``: the plain
+    accessor returns ``""`` for both, the tri-state returns ``None`` only
+    when the entry is absent."""
+    form = PDAcroForm()
+    assert form.get_default_appearance() == ""
+    assert form.get_default_appearance_if_exists() is None
+    form.set_default_appearance("")
+    assert form.get_default_appearance() == ""
+    assert form.get_default_appearance_if_exists() == ""
+
+
+def test_remove_field_removes_top_level_field() -> None:
+    """``remove_field`` drops a root-level field from ``/Fields``."""
+    form = PDAcroForm()
+    a = PDFieldStub(form)
+    a.set_partial_name("a")
+    b = PDFieldStub(form)
+    b.set_partial_name("b")
+    form.set_fields([a, b])
+
+    assert form.remove_field(a) is True
+    remaining = form.get_fields()
+    assert len(remaining) == 1
+    assert remaining[0].get_partial_name() == "b"
+
+
+def test_remove_field_returns_false_when_not_present() -> None:
+    """``remove_field`` returns ``False`` when the field is not part of
+    its expected container."""
+    form = PDAcroForm()
+    detached = PDFieldStub(form)
+    detached.set_partial_name("orphan")
+    # Form has no /Fields entries — removing should be a no-op.
+    assert form.remove_field(detached) is False
+
+
+def test_remove_field_removes_child_from_parent_kids() -> None:
+    """``remove_field`` honours the parent back-pointer: a child field
+    is dropped from its parent's ``/Kids`` array, not from ``/Fields``."""
+    form = PDAcroForm()
+    parent = PDNonTerminalField(form)
+    parent.set_partial_name("address")
+    street = PDFieldStub(form)
+    street.set_partial_name("street")
+    city = PDFieldStub(form)
+    city.set_partial_name("city")
+    parent.set_children([street, city])
+    form.set_fields([parent])
+
+    assert form.remove_field(street) is True
+    children = parent.get_children()
+    assert len(children) == 1
+    assert children[0].get_partial_name() == "city"
+    # Root /Fields is unaffected.
+    assert len(form.get_fields()) == 1
+
+
+def test_remove_fields_removes_each_and_returns_count() -> None:
+    """``remove_fields`` walks its argument and returns the number of
+    fields actually removed."""
+    form = PDAcroForm()
+    a = PDFieldStub(form)
+    a.set_partial_name("a")
+    b = PDFieldStub(form)
+    b.set_partial_name("b")
+    c = PDFieldStub(form)
+    c.set_partial_name("c")
+    form.set_fields([a, b, c])
+
+    detached = PDFieldStub(form)
+    detached.set_partial_name("orphan")
+
+    # Two-of-three present; one orphan that won't be removed.
+    removed = form.remove_fields([a, c, detached])
+    assert removed == 2
+    remaining = [f.get_partial_name() for f in form.get_fields()]
+    assert remaining == ["b"]
+
+
+def test_remove_field_invalidates_field_cache() -> None:
+    """Removing a field while caching is enabled drops the cache so the
+    next ``get_field`` rebuilds against the new tree."""
+    form = PDAcroForm()
+    keep = PDFieldStub(form)
+    keep.set_partial_name("keep")
+    drop = PDFieldStub(form)
+    drop.set_partial_name("drop")
+    form.set_fields([keep, drop])
+    form.set_cache_fields(True)
+    assert form.get_field("drop") is not None
+
+    form.remove_field(drop)
+    assert form.get_field("drop") is None
+    assert form.get_field("keep") is not None

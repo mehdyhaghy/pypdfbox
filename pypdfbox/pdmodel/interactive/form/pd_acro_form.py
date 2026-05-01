@@ -194,6 +194,47 @@ class PDAcroForm:
         if self._cache_fields:
             self._field_cache = None
 
+    def remove_field(self, field: PDField) -> bool:
+        """Detach ``field`` from the form's tree without flattening.
+
+        When the field has a parent, it is dropped from the parent's
+        ``/Kids`` array; otherwise from the form's root ``/Fields``
+        array. Returns ``True`` when an entry was removed, ``False``
+        when the field was not found in the expected container.
+
+        Mirrors upstream ``PDAcroForm.removeFields`` (package-private in
+        3.0.x) — exposed here as a public single-field helper since the
+        lite surface uses :meth:`flatten` for the multi-field path."""
+        parent = field.get_parent()
+        if parent is None:
+            container = self._dictionary.get_dictionary_object(_FIELDS)
+            if not isinstance(container, COSArray):
+                return False
+            removed = container.remove_object(field.get_cos_object())
+        else:
+            kids = parent.get_cos_object().get_dictionary_object(
+                COSName.get_pdf_name("Kids")
+            )
+            if not isinstance(kids, COSArray):
+                return False
+            removed = kids.remove_object(field.get_cos_object())
+        if removed:
+            self._invalidate_field_cache()
+        return bool(removed)
+
+    def remove_fields(self, fields: list[PDField]) -> int:
+        """Detach each entry in ``fields`` from the form's tree.
+
+        Returns the number of fields actually removed. Mirrors upstream
+        ``PDAcroForm.removeFields`` — each field is removed from its
+        parent's ``/Kids`` (or the form's root ``/Fields`` when there is
+        no parent)."""
+        count = 0
+        for field in fields:
+            if self.remove_field(field):
+                count += 1
+        return count
+
     # ---------- /SigFlags ----------
 
     def _get_sig_flags(self) -> int:
@@ -281,6 +322,17 @@ class PDAcroForm:
         here for parity with ``PDAcroForm.getDefaultAppearance``."""
         value = self._dictionary.get_string(_DA, "")
         return value if value is not None else ""
+
+    def get_default_appearance_if_exists(self) -> str | None:
+        """Return ``/DA`` as a tri-state — ``None`` when the entry is
+        absent, otherwise the string value (which may be empty).
+
+        Used by writers that want to round-trip ``/DA`` without inventing
+        an empty default. Mirrors the convention of
+        :meth:`get_need_appearances_if_exists`."""
+        if not self._dictionary.contains_key(_DA):
+            return None
+        return self._dictionary.get_string(_DA, "")
 
     def set_default_appearance(self, da: str) -> None:
         self._dictionary.set_string(_DA, da)
