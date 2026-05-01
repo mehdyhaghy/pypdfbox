@@ -96,6 +96,7 @@ _ALIASES: dict[str, str] = {
     "TimesNewRomanPS-ItalicMT": "Times-Italic",
     "TimesNewRomanPSMT": "Times-Roman",
     # Courier family substitutes (Microsoft "Courier New" branch).
+    "CourierCourierNew": "Courier",
     "CourierNew": "Courier",
     "CourierNew,Bold": "Courier-Bold",
     "CourierNew,BoldItalic": "Courier-BoldOblique",
@@ -107,6 +108,18 @@ _ALIASES: dict[str, str] = {
     "CourierNewPS-BoldMT": "Courier-Bold",
     "CourierNewPS-ItalicMT": "Courier-Oblique",
     "CourierNewPSMT": "Courier",
+    # Acrobat treats these "Symbol,*" names as Standard 14 too — Acrobat
+    # preflight reports them as such even though only the upright Symbol
+    # font exists in the Adobe AFM set.
+    "Symbol,Bold": "Symbol",
+    "Symbol,BoldItalic": "Symbol",
+    "Symbol,Italic": "Symbol",
+    # Acrobat also accepts the bare "Times" family name (Apple-style)
+    # alongside Adobe's "Times-Roman" canonical family.
+    "Times": "Times-Roman",
+    "Times,Bold": "Times-Bold",
+    "Times,BoldItalic": "Times-BoldItalic",
+    "Times,Italic": "Times-Italic",
 }
 
 

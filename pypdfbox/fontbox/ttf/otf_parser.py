@@ -23,6 +23,13 @@ class OTFParser(TTFParser):
         """Return an :class:`OpenTypeFont` instead of a plain TTF."""
         return OpenTypeFont(data)
 
+    def _allow_cff(self) -> bool:
+        """OTF parsers accept CFF outlines (``OTTO`` scaler type).
+
+        Mirrors upstream ``OTFParser.allowCFF()``.
+        """
+        return True
+
     def _check_scaler_type(self, scaler: int) -> None:
         """Accept ``OTTO`` (and tolerate a TrueType-flavoured stream).
 

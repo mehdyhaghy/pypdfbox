@@ -96,6 +96,30 @@ class TTFParser:
         self._check_tables(font)
         return font
 
+    def parse_embedded(
+        self,
+        source: bytes
+        | bytearray
+        | memoryview
+        | str
+        | os.PathLike[str]
+        | BinaryIO
+        | TTFDataStream
+        | RandomAccessRead,
+    ) -> TrueTypeFont:
+        """Parse ``source`` as a font embedded inside a PDF.
+
+        Mirrors upstream ``TTFParser.parseEmbedded(InputStream)``:
+        flips the parser into embedded mode (``is_embedded = True``)
+        for the duration of the call so the post-parse table check
+        tolerates the partial table sets typical of embedded subsets,
+        then delegates to :meth:`parse`. The flag is left ``True``
+        afterwards (matching upstream's ``this.isEmbedded = true``
+        side-effect).
+        """
+        self._is_embedded = True
+        return self.parse(source)
+
     # ---------- factory hook for OTF subclass --------------------------
 
     def _new_font(self, data: TTFDataStream) -> TrueTypeFont:
@@ -104,6 +128,20 @@ class TTFParser:
         Overridden by :class:`OTFParser` to return :class:`OpenTypeFont`.
         """
         return TrueTypeFont(data)
+
+    def _allow_cff(self) -> bool:
+        """Whether CFF outlines (an ``OTTO``-flavoured SFNT) are
+        acceptable inputs to this parser.
+
+        Mirrors upstream ``TTFParser.allowCFF()`` (a protected
+        no-arg hook). The base ``TTFParser`` rejects CFF; the
+        :class:`OTFParser` subclass overrides this to return
+        ``True``. Kept as a hook so future code paths that need to
+        gate on the setting (e.g. when a generic SFNT loader has to
+        decide between TTF/OTF parsers) stay parity-compatible with
+        upstream code.
+        """
+        return False
 
     # ---------- internals ----------------------------------------------
 

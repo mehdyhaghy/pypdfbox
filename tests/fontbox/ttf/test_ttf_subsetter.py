@@ -175,3 +175,95 @@ def test_empty_subset_keeps_only_notdef(liberation_sans: TrueTypeFont) -> None:
     assert tt["maxp"].numGlyphs == 1
     glyph_order = tt.getGlyphOrder()
     assert glyph_order[0] == ".notdef"
+
+
+# ---------- get_gid_map (upstream getGIDMap) ------------------------------
+
+
+def test_get_gid_map_includes_notdef(liberation_sans: TrueTypeFont) -> None:
+    """``get_gid_map`` must always carry new GID 0 -> old GID 0
+    (.notdef), matching upstream behaviour."""
+    sub = TTFSubsetter(liberation_sans)
+    sub.add_all(ord(c) for c in "AB")
+    gid_map = sub.get_gid_map()
+    assert gid_map[0] == 0
+
+
+def test_get_gid_map_translates_widths(liberation_sans: TrueTypeFont) -> None:
+    """Widths queried at ``new_gid`` in the subset font equal widths
+    queried at ``old_gid`` in the source font. Mirrors upstream's
+    ``testPDFBox3319`` advance-width / lsb assertion using the
+    fixture font we actually have in the corpus."""
+    sub = TTFSubsetter(liberation_sans)
+    for ch in "ABCxyz":
+        sub.add(ord(ch))
+    gid_map = sub.get_gid_map()
+    sub_ttf = TrueTypeFont.from_bytes(sub.to_bytes())
+    for new_gid, old_gid in gid_map.items():
+        assert sub_ttf.get_advance_width(new_gid) == liberation_sans.get_advance_width(
+            old_gid,
+        )
+
+
+def test_get_gid_map_size_matches_subset_glyph_count(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add_all(ord(c) for c in "Hello")
+    gid_map = sub.get_gid_map()
+    sub_ttf = TrueTypeFont.from_bytes(sub.to_bytes())
+    assert len(gid_map) == sub_ttf.get_number_of_glyphs()
+
+
+# ---------- force_invisible (upstream forceInvisible) ---------------------
+
+
+def test_force_invisible_zeroes_advance_width(liberation_sans: TrueTypeFont) -> None:
+    """Mirror upstream PDFBOX-5230: when a codepoint is added AND
+    flagged invisible, its glyph in the subset has zero advance
+    width — but a sibling un-flagged codepoint still has a non-zero
+    width."""
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    sub.add(ord("B"))
+    sub.force_invisible(ord("B"))
+    sub_ttf = TrueTypeFont.from_bytes(sub.to_bytes())
+    cmap = sub_ttf.get_unicode_cmap_subtable()
+    assert cmap is not None
+    gid_a = cmap.get_glyph_id(ord("A"))
+    gid_b = cmap.get_glyph_id(ord("B"))
+    assert gid_a != 0
+    assert gid_b != 0
+    assert sub_ttf.get_advance_width(gid_a) > 0
+    assert sub_ttf.get_advance_width(gid_b) == 0
+
+
+def test_force_invisible_without_add_is_noop(liberation_sans: TrueTypeFont) -> None:
+    """Upstream contract (PDFBOX-5230 javadoc): the codepoint is NOT
+    automatically added to the subset by ``force_invisible``. With
+    only ``force_invisible('Z')`` and no ``add``, the subset must
+    still contain just ``.notdef``."""
+    sub = TTFSubsetter(liberation_sans)
+    sub.force_invisible(ord("Z"))
+    out = sub.to_bytes()
+    tt = _load_fonttools(out)
+    assert tt["maxp"].numGlyphs == 1
+
+
+def test_force_invisible_unmapped_codepoint_silently_skipped(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """A codepoint that doesn't map to any glyph in the source font
+    must be silently ignored (matches upstream, where the GID lookup
+    yields 0 and the invisibleGlyphIds set stays empty)."""
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    # U+E000 is in the Private Use Area and not mapped by Liberation Sans.
+    sub.force_invisible(0xE000)
+    sub_ttf = TrueTypeFont.from_bytes(sub.to_bytes())
+    cmap = sub_ttf.get_unicode_cmap_subtable()
+    assert cmap is not None
+    gid_a = cmap.get_glyph_id(ord("A"))
+    # 'A' must still render normally — force_invisible on PUA must not
+    # accidentally taint the subset.
+    assert sub_ttf.get_advance_width(gid_a) > 0

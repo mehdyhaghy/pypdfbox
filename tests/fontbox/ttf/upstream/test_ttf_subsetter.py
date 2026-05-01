@@ -21,8 +21,6 @@ Tests skipped (and why):
 * ``testPDFBox3319`` — needs system-installed SimHei.
 * ``testPDFBox3379`` — needs DejaVuSansMono fixture not in our corpus.
 * ``testPDFBox5728`` — needs NotoMono-Regular fixture.
-* ``testPDFBox5230`` — relies on upstream's ``forceInvisible`` (an
-  embedder-level concern; not part of the library-first wrapper API).
 * ``testPDFBox6015`` — exercises a 0/1-cmap font fixture (Keyboard.ttf)
   that we don't ship.
 """
@@ -148,8 +146,34 @@ def test_pdfbox_5728_noto_mono() -> None:
     pytest.skip("PDFBOX-5728 needs NotoMono-Regular fixture not in corpus")
 
 
-def test_pdfbox_5230_force_invisible() -> None:
-    pytest.skip("forceInvisible is an embedder-level concern, not in library-first wrapper")
+def test_pdfbox_5230_force_invisible(liberation_sans: TrueTypeFont) -> None:
+    """PDFBOX-5230: ``forceInvisible`` zeroes the glyph + advance width
+    for the named codepoint without disturbing other added glyphs.
+
+    Adapted to LiberationSans (the one font fixture we ship): the
+    upstream test uses NotoSans + a ZWNJ codepoint, but the contract
+    is the same — flag a codepoint invisible, the corresponding glyph
+    in the subset must have zero advance and an empty contour."""
+    subsetter = TTFSubsetter(liberation_sans)
+    subsetter.add(ord("A"))
+    subsetter.add(ord("B"))
+    # First flush: B has its normal width.
+    baos = io.BytesIO()
+    subsetter.write_to_stream(baos)
+    sub_normal = TrueTypeFont.from_bytes(baos.getvalue())
+    cmap = sub_normal.get_unicode_cmap_subtable()
+    assert cmap is not None
+    assert sub_normal.get_advance_width(cmap.get_glyph_id(ord("B"))) > 0
+
+    # Second flush after force_invisible: B is now zero-width.
+    subsetter.force_invisible(ord("B"))
+    baos2 = io.BytesIO()
+    subsetter.write_to_stream(baos2)
+    sub_invisible = TrueTypeFont.from_bytes(baos2.getvalue())
+    cmap2 = sub_invisible.get_unicode_cmap_subtable()
+    assert cmap2 is not None
+    assert sub_invisible.get_advance_width(cmap2.get_glyph_id(ord("A"))) > 0
+    assert sub_invisible.get_advance_width(cmap2.get_glyph_id(ord("B"))) == 0
 
 
 def test_pdfbox_6015_keyboard_ttf() -> None:

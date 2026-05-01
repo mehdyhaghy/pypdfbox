@@ -123,6 +123,13 @@ class PDFontFactory:
         if sub_type == PDType3Font.SUB_TYPE:
             return PDType3Font(font_dict)
         if sub_type == PDMMType1Font.SUB_TYPE:
+            # MMType1 with /FontDescriptor /FontFile3 /Subtype /Type1C is
+            # a CFF-backed multiple-master Type 1 font; route to
+            # PDType1CFont so the CFF program is consulted (mirrors
+            # upstream PDFontFactory.createFont — the MMType1 + FontFile3
+            # branch returns PDType1CFont).
+            if _font_file3_subtype(font_dict) == _TYPE1C:
+                return PDType1CFont(font_dict)
             return PDMMType1Font(font_dict)
         if sub_type == PDCIDFontType0.SUB_TYPE:
             # CIDFontType0 is normally reached via PDType0Font.get_descendant_font;

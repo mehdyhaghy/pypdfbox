@@ -186,3 +186,49 @@ def test_get_font_descriptor_italic_variants_have_negative_italic_angle() -> Non
 def test_get_font_descriptor_rejects_unknown_name() -> None:
     with pytest.raises(ValueError):
         Standard14Fonts.get_font_descriptor("NotAFont")
+
+
+# ---------- upstream-only aliases (round-out parity) ----------
+
+
+@pytest.mark.parametrize(
+    ("alias", "canonical"),
+    [
+        # Adobe Supplement to ISO 32000 — bare "Times" family (Apple-style
+        # naming) and the "Symbol,*" pseudo-italic/bold variants Acrobat
+        # treats as Standard 14 even though only upright Symbol exists.
+        ("Times", "Times-Roman"),
+        ("Times,Bold", "Times-Bold"),
+        ("Times,Italic", "Times-Italic"),
+        ("Times,BoldItalic", "Times-BoldItalic"),
+        ("Symbol,Bold", "Symbol"),
+        ("Symbol,Italic", "Symbol"),
+        ("Symbol,BoldItalic", "Symbol"),
+        # Acrobat-only "CourierCourierNew" double-prefix substitution.
+        ("CourierCourierNew", "Courier"),
+    ],
+)
+def test_upstream_only_aliases_resolve_to_canonical_names(
+    alias: str, canonical: str
+) -> None:
+    assert Standard14Fonts.contains_name(alias) is True
+    assert Standard14Fonts.get_mapped_font_name(alias) == canonical
+
+
+def test_upstream_only_aliases_appear_in_get_aliases() -> None:
+    aliases = Standard14Fonts.get_aliases()
+    assert aliases["Times"] == "Times-Roman"
+    assert aliases["Symbol,Bold"] == "Symbol"
+    assert aliases["Symbol,BoldItalic"] == "Symbol"
+    assert aliases["CourierCourierNew"] == "Courier"
+
+
+def test_upstream_only_aliases_route_average_widths_to_canonical_table() -> None:
+    # All "Times" aliases must produce the same width table as Times-Roman.
+    times = Standard14Fonts.get_average_widths("Times")
+    times_roman = Standard14Fonts.get_average_widths("Times-Roman")
+    assert times == times_roman
+    # Symbol,Italic must map to plain Symbol's table.
+    symbol_italic = Standard14Fonts.get_average_widths("Symbol,Italic")
+    symbol = Standard14Fonts.get_average_widths("Symbol")
+    assert symbol_italic == symbol

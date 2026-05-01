@@ -28,7 +28,9 @@ from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
 
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
@@ -198,3 +200,48 @@ def test_bare_cid_font_type2_does_not_warn(caplog: pytest.LogCaptureFixture) -> 
         out = PDFontFactory.create_font(raw)
     assert out is None
     assert caplog.records == []
+
+
+# ---------- MMType1 + /FontFile3 (Type1C-marked CFF program) ----------
+
+
+def _attach_font_file3_with_subtype(font_dict: COSDictionary, subtype: str) -> COSStream:
+    """Attach a /FontDescriptor with an empty /FontFile3 stream of the
+    requested /Subtype. Mirrors the upstream test fixture for routing
+    /MMType1 with a CFF-marked FontFile3 to PDType1CFont.
+    """
+    descriptor = COSDictionary()
+    stream = COSStream()
+    stream.set_name(_SUBTYPE, subtype)
+    descriptor.set_item(_FONT_FILE3, stream)
+    font_dict.set_item(_FONT_DESCRIPTOR, descriptor)
+    return stream
+
+
+def test_mm_type1_with_type1c_font_file3_routes_to_pd_type1c_font() -> None:
+    # Mirrors upstream PDFontFactory.createFont: /MMType1 with a
+    # /FontDescriptor /FontFile3 of /Subtype /Type1C is a CFF-backed
+    # multiple-master Type 1 font and must dispatch to PDType1CFont.
+    raw = _make_font_dict("MMType1")
+    _attach_font_file3_with_subtype(raw, "Type1C")
+    out = PDFontFactory.create_font(raw)
+    assert isinstance(out, PDType1CFont)
+
+
+def test_mm_type1_without_font_file3_still_returns_pd_mm_type1_font() -> None:
+    # Bare /MMType1 (no embedded program at all) keeps the existing
+    # PDMMType1Font dispatch path.
+    raw = _make_font_dict("MMType1")
+    out = PDFontFactory.create_font(raw)
+    assert isinstance(out, PDMMType1Font)
+    assert not isinstance(out, PDType1CFont)
+
+
+def test_mm_type1_with_non_type1c_font_file3_stays_on_pd_mm_type1_font() -> None:
+    # /FontFile3 carrying a non-Type1C marker (e.g. /OpenType) is not a
+    # CFF program — must NOT be promoted to PDType1CFont.
+    raw = _make_font_dict("MMType1")
+    _attach_font_file3_with_subtype(raw, "OpenType")
+    out = PDFontFactory.create_font(raw)
+    assert isinstance(out, PDMMType1Font)
+    assert not isinstance(out, PDType1CFont)

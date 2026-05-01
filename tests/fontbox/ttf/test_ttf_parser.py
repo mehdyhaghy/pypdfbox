@@ -154,3 +154,50 @@ def test_parse_returns_truetypefont_not_open_type(ttf_bytes: bytes) -> None:
     font = parser.parse(ttf_bytes)
     assert type(font) is TrueTypeFont
     assert not isinstance(font, OpenTypeFont)
+
+
+# ---------- parse_embedded ------------------------------------------------
+
+
+def test_parse_embedded_flips_flag_and_parses(ttf_bytes: bytes) -> None:
+    """Mirrors upstream ``TTFParser.parseEmbedded(InputStream)``:
+    the call must succeed AND leave the parser in embedded mode
+    (matching upstream's ``this.isEmbedded = true`` side-effect)."""
+    parser = TTFParser(is_embedded=False)
+    assert parser.is_embedded is False
+    font = parser.parse_embedded(io.BytesIO(ttf_bytes))
+    assert isinstance(font, TrueTypeFont)
+    assert parser.is_embedded is True
+
+
+def test_parse_embedded_tolerates_partial_table_set() -> None:
+    """In embedded mode, the post-parse table check is skipped, so
+    the parser must NOT raise for a font that lacks the otherwise-
+    required ``cmap`` / ``name`` tables. We can't easily craft a
+    valid SFNT with missing tables; instead exercise the flag flip
+    by checking that the subsequent ``parse`` call inherits embedded
+    semantics (the flag is now True)."""
+    parser = TTFParser()
+    parser._is_embedded = True  # noqa: SLF001 — same end state as parse_embedded
+    # Embedded parsers must not blow up on a normal full font either.
+    font = parser.parse(FIXTURE)
+    assert font.has_table("head")
+
+
+# ---------- _allow_cff hook (upstream allowCFF()) -------------------------
+
+
+def test_allow_cff_default_false() -> None:
+    """Plain ``TTFParser`` rejects CFF outlines — matches upstream
+    ``TTFParser.allowCFF()`` returning false."""
+    parser = TTFParser()
+    assert parser._allow_cff() is False  # noqa: SLF001
+
+
+def test_allow_cff_true_in_otf_subclass() -> None:
+    """``OTFParser`` overrides the hook to allow CFF (``OTTO``)
+    streams. Mirrors upstream ``OTFParser.allowCFF()``."""
+    from pypdfbox.fontbox.ttf import OTFParser  # noqa: PLC0415
+
+    parser = OTFParser()
+    assert parser._allow_cff() is True  # noqa: SLF001

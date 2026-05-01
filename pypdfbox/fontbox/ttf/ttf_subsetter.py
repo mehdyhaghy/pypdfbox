@@ -76,6 +76,12 @@ class TTFSubsetter:
         # font's selected cmap exactly.
         self._unicodes: set[int] = set()
         self._glyph_ids: set[int] = {0}  # always keep .notdef
+        # Codepoints whose glyphs should be forced to zero-width and
+        # contour-free in the emitted subset. Mirrors upstream
+        # ``invisibleGlyphIds`` (which stores GIDs); we record the
+        # codepoint and let fontTools resolve to GID at flush time so
+        # the lookup matches whatever cmap fontTools would have used.
+        self._invisible_unicodes: set[int] = set()
 
         self._prefix: str | None = None
 
@@ -106,6 +112,48 @@ class TTFSubsetter:
         """
         for gid in glyph_ids:
             self._glyph_ids.add(int(gid))
+
+    def force_invisible(self, unicode_codepoint: int) -> None:
+        """Force the glyph for ``unicode_codepoint`` to be zero-width
+        and contour-free in the emitted subset.
+
+        Mirrors upstream ``TTFSubsetter.forceInvisible(int)``: the
+        codepoint is *not* automatically added to the subset (the
+        caller still has to :meth:`add` it separately, exactly as in
+        upstream). When that codepoint resolves to a non-zero GID via
+        the font's Unicode cmap, the corresponding glyph in the output
+        is replaced with an empty contour and zero advance width — used
+        by upstream for soft-hyphens / ZWNJ etc. when text extraction
+        wants them invisible.
+        """
+        self._invisible_unicodes.add(int(unicode_codepoint))
+
+    # ---------- introspection --------------------------------------------
+
+    def get_gid_map(self) -> dict[int, int]:
+        """Return the ``new_gid -> old_gid`` mapping for the subset.
+
+        Mirrors upstream ``TTFSubsetter.getGIDMap()``: callers use this
+        to translate width / metric lookups across the subsetting
+        boundary (a width queried at the *new* GID in the subset font
+        equals the width at the *old* GID in the source font).
+
+        The map always includes new GID ``0`` -> old GID ``0`` (the
+        ``.notdef`` glyph upstream always preserves at index 0).
+        """
+        # Compose the same set fontTools.subset would compose at flush
+        # time: explicitly registered GIDs plus GIDs reachable from the
+        # registered Unicode codepoints via the font's Unicode cmap.
+        old_gids: set[int] = set(self._glyph_ids)
+        cmap = self._ttf.get_unicode_cmap_subtable()
+        if cmap is not None:
+            for cp in self._unicodes:
+                gid = cmap.get_glyph_id(int(cp))
+                if gid != 0:
+                    old_gids.add(gid)
+        # New GIDs are assigned in ascending order of the old GID set
+        # (matches the sorted iteration order upstream's TreeSet uses).
+        return {new_gid: old_gid for new_gid, old_gid in enumerate(sorted(old_gids))}
 
     # ---------- options ---------------------------------------------------
 
@@ -190,6 +238,9 @@ class TTFSubsetter:
         )
         subsetter.subset(tt)
 
+        if self._invisible_unicodes:
+            self._apply_invisible(tt, self._invisible_unicodes)
+
         if self._prefix:
             self._apply_prefix(tt, self._prefix)
 
@@ -198,6 +249,37 @@ class TTFSubsetter:
         return buf.getvalue()
 
     # ---------- helpers ---------------------------------------------------
+
+    @staticmethod
+    def _apply_invisible(tt: Any, codepoints: set[int]) -> None:
+        """Replace the glyph for each codepoint in ``codepoints`` with
+        a zero-width, contour-free glyph in the *subset* font ``tt``.
+
+        Upstream zeros out the ``glyf`` and ``hmtx`` entries directly.
+        We achieve the same observable result via fontTools' table
+        APIs: build an empty ``Glyph`` for the target glyph name and
+        write a zero-advance entry into the ``hmtx`` table.
+        """
+        from fontTools.ttLib.tables._g_l_y_f import Glyph  # noqa: PLC0415
+
+        cmap = tt.getBestCmap() or {}
+        if "glyf" not in tt:
+            return
+        glyf = tt["glyf"]
+        hmtx = tt["hmtx"] if "hmtx" in tt else None
+        empty_glyph = Glyph()
+        empty_glyph.numberOfContours = 0
+        for cp in codepoints:
+            gname = cmap.get(int(cp))
+            if not gname:
+                continue
+            try:
+                glyf[gname] = empty_glyph
+            except (KeyError, AttributeError):
+                continue
+            if hmtx is not None and gname in hmtx.metrics:
+                # (advance_width, lsb) — zero both per upstream
+                hmtx.metrics[gname] = (0, 0)
 
     @staticmethod
     def _apply_prefix(tt: Any, prefix: str) -> None:
