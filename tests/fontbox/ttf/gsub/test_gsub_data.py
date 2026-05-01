@@ -80,3 +80,34 @@ def test_apply_substitution_lookup_list_expands_to_multiple_glyphs() -> None:
     # Input glyph 1 expands to two glyphs (10, 11).
     gd = GsubData(glyph_substitution_map={(1,): (10, 11)})
     assert gd.apply_substitution_lookup_list([1, 2]) == [10, 11, 2]
+
+
+def test_get_feature_returns_per_feature_substitution_map() -> None:
+    feature_map = {(1,): (2,)}
+    gd = GsubData(feature_list={"liga": feature_map})
+    assert gd.get_feature("liga") is feature_map
+    assert gd.get_feature("missing") is None
+
+
+def test_get_supported_features_returns_fresh_set() -> None:
+    gd = GsubData(feature_list={"liga": {}, "kern": {}})
+    supported = gd.get_supported_features()
+    assert supported == {"liga", "kern"}
+    supported.add("scratch")
+    assert "scratch" not in gd.get_supported_features()
+
+
+def test_no_data_found_sentinel_raises_on_every_accessor() -> None:
+    import pytest
+
+    sentinel = GsubData.NO_DATA_FOUND
+    with pytest.raises(NotImplementedError):
+        sentinel.get_language()
+    with pytest.raises(NotImplementedError):
+        sentinel.get_active_script_name()
+    with pytest.raises(NotImplementedError):
+        sentinel.is_feature_supported("liga")
+    with pytest.raises(NotImplementedError):
+        sentinel.get_feature("liga")
+    with pytest.raises(NotImplementedError):
+        sentinel.get_supported_features()

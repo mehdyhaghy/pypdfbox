@@ -336,3 +336,26 @@ def test_get_color_space_uses_default_device_override() -> None:
     assert res.get_color_space(COSName.get_pdf_name("DeviceRGB"), was_default=True) is (
         PDDeviceRGB.INSTANCE
     )
+
+
+def test_typed_add_optional_content_group_uses_oc_prefix() -> None:
+    """Upstream ``PDResources.add(PDPropertyList)`` routes
+    ``PDOptionalContentGroup`` instances to the ``"oc"`` prefix while keeping
+    the bare ``PDPropertyList`` flavour on ``"Prop"``."""
+    from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (
+        PDOptionalContentGroup,
+    )
+
+    res = PDResources()
+    ocg = PDOptionalContentGroup("Layer 1")
+    plain = PDPropertyList(COSDictionary())
+
+    ocg_name = res.add(ocg)
+    plain_name = res.add(plain)
+
+    assert ocg_name.get_name() == "oc0"
+    assert plain_name.get_name() == "Prop0"
+    assert sorted(n.get_name() for n in res.get_property_list_names()) == [
+        "Prop0",
+        "oc0",
+    ]

@@ -98,6 +98,30 @@ class GsubData:
         """
         return self.feature_list.get(feature_tag)
 
+    def get_feature(
+        self, feature_name: str
+    ) -> dict[tuple[int, ...], tuple[int, ...]] | None:
+        """Per-feature substitution map, or ``None`` if absent.
+
+        Mirrors ``GsubData.getFeature(String featureName)`` upstream.
+        Upstream returns a ``ScriptFeature`` value object whose data
+        boils down to ``feature_name`` plus the per-feature substitution
+        map; we keep the substitution map shape that all other accessors
+        already speak (and that ``apply_substitution_lookup_list``
+        consumes), so consumers don't need a second value-class hop.
+        """
+        return self.feature_list.get(feature_name)
+
+    def get_supported_features(self) -> set[str]:
+        """Set of feature tags supported by this GSUB data.
+
+        Mirrors ``GsubData.getSupportedFeatures()`` upstream. Returns a
+        fresh ``set`` each call so callers can mutate freely without
+        corrupting the underlying ``feature_list`` keys (Python sets
+        aren't shareably immutable, and copying tag strings is cheap).
+        """
+        return set(self.feature_list.keys())
+
     def apply_substitution_lookup_list(
         self, glyph_ids: list[int]
     ) -> list[int]:
@@ -135,6 +159,37 @@ class GsubData:
                 out.append(glyph_ids[i])
                 i += 1
         return out
+
+
+class _NoDataFoundGsubData(GsubData):
+    """Sentinel used when a font carries no GSUB data.
+
+    Mirrors upstream's ``GsubData.NO_DATA_FOUND`` anonymous class — every
+    accessor raises rather than silently returning empty values, so
+    callers are forced to guard with ``is GsubData.NO_DATA_FOUND``
+    before reading anything.
+    """
+
+    def get_language(self) -> str:  # type: ignore[override]
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_active_script_name(self) -> str:  # type: ignore[override]
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def is_feature_supported(self, feature_tag: str) -> bool:  # type: ignore[override]
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_feature(  # type: ignore[override]
+        self, feature_name: str
+    ) -> dict[tuple[int, ...], tuple[int, ...]] | None:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_supported_features(self) -> set[str]:  # type: ignore[override]
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+
+# Class-level sentinel matching upstream ``GsubData.NO_DATA_FOUND``.
+GsubData.NO_DATA_FOUND = _NoDataFoundGsubData()  # type: ignore[attr-defined]
 
 
 __all__ = ["GsubData"]

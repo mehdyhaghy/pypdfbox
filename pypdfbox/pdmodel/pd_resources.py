@@ -33,6 +33,7 @@ _PREFIX_EXT_GSTATE: str = "gs"
 _PREFIX_SHADING: str = "sh"
 _PREFIX_PATTERN: str = "p"
 _PREFIX_PROPERTY_LIST: str = "Prop"
+_PREFIX_OPTIONAL_CONTENT_GROUP: str = "oc"
 
 _DEFAULT_COLOR_SPACE_BY_DEVICE: dict[str, COSName] = {
     "DeviceGray": COSName.get_pdf_name("DefaultGray"),
@@ -661,7 +662,17 @@ class PDResources:
         elif category is _PATTERN:
             prefix = _PREFIX_PATTERN
         elif category is _PROPERTIES:
-            prefix = _PREFIX_PROPERTY_LIST
+            # Upstream PDResources.add(PDPropertyList) routes
+            # PDOptionalContentGroup to prefix "oc" and falls back to "Prop"
+            # for other property-list flavours.
+            from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (  # noqa: PLC0415
+                PDOptionalContentGroup,
+            )
+
+            if isinstance(original_value, PDOptionalContentGroup):
+                prefix = _PREFIX_OPTIONAL_CONTENT_GROUP
+            else:
+                prefix = _PREFIX_PROPERTY_LIST
         else:
             raise ValueError(
                 f"PDResources.add: unknown resource category {category!s}"
