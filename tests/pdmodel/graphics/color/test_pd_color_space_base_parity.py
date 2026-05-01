@@ -11,7 +11,6 @@ from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
-
 # ---------- get_name ----------
 
 
@@ -118,3 +117,89 @@ def test_indexed_get_array_returns_cos_array() -> None:
     assert isinstance(arr, COSArray)
     # Same object as get_cos_object for array-form color spaces.
     assert arr is indexed.get_cos_object()
+
+
+# ---------- to_rgb(value) on the device color spaces ----------
+
+
+def test_device_rgb_to_rgb_is_identity() -> None:
+    # Upstream PDDeviceRGB.toRGB(float[]) returns the input unchanged.
+    value = [0.1, 0.5, 0.9]
+    result = PDDeviceRGB.INSTANCE.to_rgb(value)
+    assert result == value
+
+
+def test_device_rgb_to_rgb_returns_same_object() -> None:
+    # Upstream returns the array argument directly — preserve that.
+    value = [0.0, 0.0, 0.0]
+    assert PDDeviceRGB.INSTANCE.to_rgb(value) is value
+
+
+def test_device_gray_to_rgb_replicates_component() -> None:
+    # Upstream PDDeviceGray.toRGB(float[]) -> {v[0], v[0], v[0]}.
+    assert PDDeviceGray.INSTANCE.to_rgb([0.0]) == [0.0, 0.0, 0.0]
+    assert PDDeviceGray.INSTANCE.to_rgb([0.42]) == [0.42, 0.42, 0.42]
+    assert PDDeviceGray.INSTANCE.to_rgb([1.0]) == [1.0, 1.0, 1.0]
+
+
+def test_device_cmyk_to_rgb_white_is_white() -> None:
+    # CMYK (0, 0, 0, 0) -> white in the simple subtractive model.
+    assert PDDeviceCMYK.INSTANCE.to_rgb([0.0, 0.0, 0.0, 0.0]) == [1.0, 1.0, 1.0]
+
+
+def test_device_cmyk_to_rgb_black_is_black() -> None:
+    # K=1 forces black regardless of the other components.
+    assert PDDeviceCMYK.INSTANCE.to_rgb([0.0, 0.0, 0.0, 1.0]) == [0.0, 0.0, 0.0]
+    assert PDDeviceCMYK.INSTANCE.to_rgb([0.5, 0.7, 0.2, 1.0]) == [0.0, 0.0, 0.0]
+
+
+def test_device_cmyk_to_rgb_pure_cyan() -> None:
+    # C=1 => no red; M=0,Y=0,K=0 => full green and blue.
+    assert PDDeviceCMYK.INSTANCE.to_rgb([1.0, 0.0, 0.0, 0.0]) == [0.0, 1.0, 1.0]
+
+
+# ---------- COSDictionary with /ColorSpace (PDFBOX-4833) ----------
+
+
+def test_create_unwraps_dictionary_with_colorspace_entry() -> None:
+    # A dict that wraps /ColorSpace -> /DeviceRGB should resolve to the
+    # device singleton, mirroring upstream PDFBOX-4833 handling.
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+
+    wrapper = COSDictionary()
+    wrapper.set_item(
+        COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("DeviceRGB")
+    )
+    assert PDColorSpace.create(wrapper) is PDDeviceRGB.INSTANCE
+
+
+def test_create_dictionary_self_reference_raises() -> None:
+    # PDFBOX-5315: a /ColorSpace entry pointing at its own dictionary
+    # would loop forever — upstream throws IOException, pypdfbox raises
+    # OSError per the test-porting guide.
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+
+    wrapper = COSDictionary()
+    wrapper.set_item(COSName.get_pdf_name("ColorSpace"), wrapper)
+    with pytest.raises(OSError, match="Recursion in colorspace"):
+        PDColorSpace.create(wrapper)
+
+
+# ---------- was_default flag plumbing ----------
+
+
+def test_create_accepts_was_default_flag() -> None:
+    # The third positional argument mirrors upstream's internal-use
+    # `create(COSBase, PDResources, boolean)` overload. With no resources
+    # supplied it should be a structural no-op for device names.
+    from pypdfbox.cos import COSName
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+
+    assert (
+        PDColorSpace.create(
+            COSName.get_pdf_name("DeviceRGB"), None, True
+        )
+        is PDDeviceRGB.INSTANCE
+    )

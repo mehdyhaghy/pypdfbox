@@ -30,6 +30,16 @@ class PDDeviceRGB(PDDeviceColorSpace):
     def get_default_decode(self, bits_per_component: int) -> list[float]:
         return [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
 
+    def to_rgb(self, value: list[float]) -> list[float]:
+        """Convert a single DeviceRGB color value into sRGB. Mirrors
+        upstream ``PDDeviceRGB.toRGB(float[])`` — DeviceRGB is the
+        identity in pypdfbox's lite color pipeline (no ICC profile
+        applied), so the input list is returned unchanged.
+
+        ``value`` must be a list of three floats in ``[0.0, 1.0]``.
+        """
+        return value
+
 
 PDDeviceRGB.INSTANCE = PDDeviceRGB()
 

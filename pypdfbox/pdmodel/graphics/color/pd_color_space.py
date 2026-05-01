@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from pypdfbox.cos import COSArray, COSBase
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_resources import PDResources
@@ -32,6 +32,7 @@ class PDColorSpace(ABC):
     def create(
         base: COSBase | None,
         resources: PDResources | None = None,
+        was_default: bool = False,
     ) -> PDColorSpace | None:
         """Build a typed ``PDColorSpace`` from its COS form.
 
@@ -56,8 +57,22 @@ class PDColorSpace(ABC):
         ``resources`` is keyword-only-ish (positional for upstream
         parity); pass ``None`` for the common case where the dispatch is
         purely structural and no name resolution is needed.
+
+        The ``was_default`` flag mirrors upstream's internal-use
+        ``create(COSBase, PDResources, boolean)`` overload — set when
+        the call is already resolving a ``DefaultGray`` /
+        ``DefaultRGB`` / ``DefaultCMYK`` mapping. In pypdfbox the
+        actual default-color-space lookup happens inside
+        :meth:`PDResources.get_color_space`, so this flag is
+        propagated through recursive ``create()`` calls (e.g. when
+        unwrapping a PDFBOX-4833 dictionary) but does not itself
+        trigger a default lookup here.
+
+        A ``COSDictionary`` whose ``/ColorSpace`` entry references a
+        valid color-space form is unwrapped (PDFBOX-4833). A
+        ``/ColorSpace`` entry that points back to its containing
+        dictionary (PDFBOX-5315) raises :class:`OSError`.
         """
-        from pypdfbox.cos import COSName
         from pypdfbox.cos.cos_object import COSObject
 
         from .pd_cal_gray import PDCalGray
@@ -131,6 +146,22 @@ class PDColorSpace(ABC):
                         base.get_object(1), resources
                     )
                 return PDPattern(underlying, resources=resources)
+
+        # PDFBOX-4833: a dictionary with a /ColorSpace entry — unwrap it.
+        if isinstance(base, COSDictionary) and base.contains_key(
+            COSName.get_pdf_name("ColorSpace")
+        ):
+            inner = base.get_dictionary_object(
+                COSName.get_pdf_name("ColorSpace")
+            )
+            # PDFBOX-5315: a /ColorSpace entry that points back at its
+            # containing dictionary is a self-recursion — bail out
+            # rather than spin into infinite recursion.
+            if inner is base:
+                raise OSError(
+                    "Recursion in colorspace: /ColorSpace points to itself"
+                )
+            return PDColorSpace.create(inner, resources, was_default)
         return None
 
     # ---------- COS surface ----------

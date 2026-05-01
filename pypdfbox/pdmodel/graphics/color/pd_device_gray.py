@@ -29,6 +29,16 @@ class PDDeviceGray(PDDeviceColorSpace):
     def get_default_decode(self, bits_per_component: int) -> list[float]:
         return [0.0, 1.0]
 
+    def to_rgb(self, value: list[float]) -> list[float]:
+        """Convert a single DeviceGray color value into sRGB. Mirrors
+        upstream ``PDDeviceGray.toRGB(float[])`` — replicates the gray
+        component across the three sRGB channels.
+
+        ``value`` must be a list of one float in ``[0.0, 1.0]``.
+        """
+        g = value[0]
+        return [g, g, g]
+
 
 PDDeviceGray.INSTANCE = PDDeviceGray()
 

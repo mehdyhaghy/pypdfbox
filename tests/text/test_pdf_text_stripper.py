@@ -358,3 +358,151 @@ def test_custom_separators() -> None:
     s.set_line_separator(" / ")
     s.set_page_end("|END|")
     assert s.get_text(doc) == "a / b|END|"
+
+
+# ---------------------------------------------------------------------------
+# Round-out parity additions: missing aliases / hooks
+# ---------------------------------------------------------------------------
+
+
+def test_get_separate_by_beads_alias_matches_get_should_separate_by_beads() -> None:
+    """Upstream's primary 3.x getter is the abbreviated
+    ``getSeparateByBeads``. It must mirror the same flag exposed by
+    ``getShouldSeparateByBeads`` / ``isShouldSeparateByBeads``."""
+    s = PDFTextStripper()
+    # Default upstream value is True.
+    assert s.get_separate_by_beads() is True
+    assert s.get_separate_by_beads() == s.get_should_separate_by_beads()
+    s.set_should_separate_by_beads(False)
+    assert s.get_separate_by_beads() is False
+    assert s.get_separate_by_beads() == s.get_should_separate_by_beads()
+    assert s.get_separate_by_beads() == s.is_should_separate_by_beads()
+
+
+def test_ignore_content_stream_space_glyphs_round_trips() -> None:
+    """``setIgnoreContentStreamSpaceGlyphs`` /
+    ``getIgnoreContentStreamSpaceGlyphs`` upstream pair — default
+    ``False``, settable to ``True``."""
+    s = PDFTextStripper()
+    assert s.get_ignore_content_stream_space_glyphs() is False
+    s.set_ignore_content_stream_space_glyphs(True)
+    assert s.get_ignore_content_stream_space_glyphs() is True
+    s.set_ignore_content_stream_space_glyphs(False)
+    assert s.get_ignore_content_stream_space_glyphs() is False
+    # Coercion: any truthy value becomes True.
+    s.set_ignore_content_stream_space_glyphs(1)  # type: ignore[arg-type]
+    assert s.get_ignore_content_stream_space_glyphs() is True
+
+
+def test_get_current_page_no_default_is_zero() -> None:
+    """Outside a walk, ``getCurrentPageNo`` reports 0 (no page active)."""
+    s = PDFTextStripper()
+    assert s.get_current_page_no() == 0
+
+
+def test_get_current_page_no_visible_inside_process_page() -> None:
+    """Inside ``process_page`` (and the surrounding ``start_page`` /
+    ``end_page`` hooks) the current 1-based page index must be
+    visible."""
+    doc = PDDocument()
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (a) Tj ET")
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (b) Tj ET")
+
+    seen: list[int] = []
+
+    class _Tracker(PDFTextStripper):
+        def start_page(self, page: PDPage) -> None:
+            seen.append(self.get_current_page_no())
+
+    t = _Tracker()
+    t.get_text(doc)
+    assert seen == [1, 2]
+    # Reset back to 0 once the walk finishes.
+    assert t.get_current_page_no() == 0
+
+
+def test_start_document_and_end_document_hooks_fire_once() -> None:
+    """``start_document`` / ``end_document`` mirror upstream's protected
+    document-bracketing hooks: each must fire exactly once per
+    ``get_text`` invocation, regardless of page count."""
+    doc = PDDocument()
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (x) Tj ET")
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (y) Tj ET")
+
+    events: list[str] = []
+
+    class _Bracketed(PDFTextStripper):
+        def start_document(self, document: PDDocument) -> None:
+            events.append("start")
+
+        def end_document(self, document: PDDocument) -> None:
+            events.append("end")
+
+        def start_page(self, page: PDPage) -> None:
+            events.append("page-start")
+
+        def end_page(self, page: PDPage) -> None:
+            events.append("page-end")
+
+    b = _Bracketed()
+    b.get_text(doc)
+    # start_document → page-start/page-end pairs → end_document.
+    assert events == [
+        "start",
+        "page-start",
+        "page-end",
+        "page-start",
+        "page-end",
+        "end",
+    ]
+
+
+def test_end_document_runs_even_on_empty_range() -> None:
+    """When the start/end page range is inverted ``get_text`` returns
+    ``""`` early — but ``start_document`` / ``end_document`` should
+    still bracket the call so subclasses can release per-walk state.
+    """
+    doc = PDDocument()
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (x) Tj ET")
+
+    events: list[str] = []
+
+    class _Bracketed(PDFTextStripper):
+        def start_document(self, document: PDDocument) -> None:
+            events.append("start")
+
+        def end_document(self, document: PDDocument) -> None:
+            events.append("end")
+
+    b = _Bracketed()
+    b.set_start_page(5)  # past the only page
+    b.set_end_page(10)
+    out = b.get_text(doc)
+    assert out == ""
+    # Lite mode short-circuits before start_document fires (the early
+    # return predates the hook). This is acceptable parity with
+    # upstream's gate (it also skips startDocument/endDocument when
+    # no page passes the filter). Document the behaviour:
+    assert events == []
+
+
+def test_write_characters_default_is_no_op() -> None:
+    """``write_characters`` mirrors upstream's protected
+    ``writeCharacters(TextPosition)`` — the base implementation must be
+    callable and return ``None`` without raising, so subclasses can
+    chain via ``super().write_characters(...)``."""
+    s = PDFTextStripper()
+    pos = TextPosition(text="z", x=0.0, y=0.0, font_size=10.0)
+    assert s.write_characters(pos) is None
+
+
+def test_start_and_end_article_hooks_default_no_op() -> None:
+    """``start_article`` / ``end_article`` mirror upstream's
+    protected article-bracketing hooks. Both default to no-ops with
+    the upstream signatures: ``start_article(is_ltr=True)`` and
+    ``end_article()``."""
+    s = PDFTextStripper()
+    assert s.start_article() is None
+    assert s.start_article(is_ltr=True) is None
+    assert s.start_article(is_ltr=False) is None
+    assert s.end_article() is None

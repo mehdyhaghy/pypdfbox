@@ -103,6 +103,21 @@ class PDFTextStripper:
         self._average_char_tolerance: float = 0.3
         self._add_more_formatting: bool = False
         self._lenient_stream_parsing: bool = True
+        # Inert holder mirroring upstream's
+        # ``setIgnoreContentStreamSpaceGlyphs`` (added on 3.x). When
+        # ``True``, the upstream extractor drops space glyphs found in
+        # the content stream and relies purely on the gap heuristic for
+        # word breaks. The lite stripper exposes the flag so callers
+        # can configure it identically; the formatting layer doesn't
+        # currently consume it because the lite walk doesn't materialise
+        # individual space glyphs separately from their host runs.
+        self._ignore_content_stream_space_glyphs: bool = False
+        # 1-based current-page cursor. Upstream ``getCurrentPageNo``
+        # exposes this for subclasses that want to disambiguate the
+        # active page within ``processPage`` / ``startPage`` /
+        # ``endPage`` hooks. Reset at the start of every ``get_text``
+        # walk; updated by ``process_page`` once we know the page index.
+        self._current_page_no: int = 0
         # Per-page CMap cache + active page handle for /ToUnicode lookup.
         # ``_cmap_cache`` keys are font resource names (the same ones the
         # ``Tf`` operator names); the value is the parsed ``CMap`` or
@@ -188,6 +203,14 @@ class PDFTextStripper:
         # branches. Mirror both so callers can pick either spelling.
         return self._should_separate_by_beads
 
+    def get_separate_by_beads(self) -> bool:
+        # Upstream's primary getter on 3.x is the abbreviated
+        # ``getSeparateByBeads`` (no ``Should`` infix); the longer
+        # ``getShouldSeparateByBeads`` is the alias. Mirror the
+        # primary spelling explicitly so direct ports of upstream
+        # snippets work without rewriting the call site.
+        return self._should_separate_by_beads
+
     def set_sort_by_position(self, value: bool) -> None:
         self._sort_by_position = bool(value)
 
@@ -246,6 +269,19 @@ class PDFTextStripper:
     def is_lenient_stream_parsing(self) -> bool:
         return self._lenient_stream_parsing
 
+    def set_ignore_content_stream_space_glyphs(self, value: bool) -> None:
+        """Mirror upstream's ``setIgnoreContentStreamSpaceGlyphs``.
+
+        When ``True`` the extractor is asked to ignore literal space
+        glyphs encoded in the content stream and rely solely on the gap
+        heuristic for word breaks. The lite stripper stores the flag for
+        API parity; see CHANGES.md for the consumer-side gap.
+        """
+        self._ignore_content_stream_space_glyphs = bool(value)
+
+    def get_ignore_content_stream_space_glyphs(self) -> bool:
+        return self._ignore_content_stream_space_glyphs
+
     def set_should_flip_axes(self, value: bool) -> None:
         """Toggle axis-flipped extraction (transposes the role of X and Y
         in the line-break / word-gap heuristic). Mirrors upstream
@@ -284,6 +320,17 @@ class PDFTextStripper:
     def get_end_bookmark(self) -> PDOutlineItem | None:
         return self._end_bookmark
 
+    def get_current_page_no(self) -> int:
+        """Return the 1-based index of the page currently being
+        processed by ``process_page`` (or ``0`` outside a walk).
+
+        Mirrors upstream's protected ``getCurrentPageNo`` accessor —
+        exposed publicly here because Python lacks Java's package /
+        protected distinction and subclasses outside the package would
+        otherwise have no way to consult it.
+        """
+        return self._current_page_no
+
     # ---------- public API ----------
 
     def get_text(self, document: PDDocument) -> str:
@@ -321,15 +368,26 @@ class PDFTextStripper:
         def _sink(piece: str) -> None:
             chunks.append(piece)
 
-        for one_based in range(first, last + 1):
-            page = pages[one_based - 1]
-            self.write_page_start(_sink)
-            if self._article_start:
-                self.write_article_start(_sink)
-            chunks.append(self.process_page(page))
-            if self._article_end:
-                self.write_article_end(_sink)
-            self.write_page_end(_sink)
+        # Mirror upstream's ``startDocument`` / ``endDocument`` hooks —
+        # invoked once per ``get_text`` walk around the page loop. The
+        # base implementations are no-ops; subclasses override.
+        self.start_document(document)
+        try:
+            for one_based in range(first, last + 1):
+                page = pages[one_based - 1]
+                self._current_page_no = one_based
+                self.start_page(page)
+                self.write_page_start(_sink)
+                if self._article_start:
+                    self.write_article_start(_sink)
+                chunks.append(self.process_page(page))
+                if self._article_end:
+                    self.write_article_end(_sink)
+                self.write_page_end(_sink)
+                self.end_page(page)
+        finally:
+            self.end_document(document)
+            self._current_page_no = 0
         return "".join(chunks)
 
     @staticmethod
@@ -1136,6 +1194,74 @@ class PDFTextStripper:
 
     def write_article_end(self, sink: Callable[[str], None]) -> None:
         sink(self._article_end)
+
+    def write_characters(self, text: TextPosition) -> None:
+        """Per-glyph character-write hook.
+
+        Mirrors upstream PDFBox's protected ``writeCharacters(TextPosition)``
+        — the lowest-level emission hook, called for the unicode payload
+        of a single ``TextPosition``. The default is a no-op because the
+        lite stripper composes runs at the ``write_string`` level
+        (``TextPosition`` granularity, not glyph granularity); subclasses
+        that want to capture or transform per-glyph output can override.
+        """
+        return None
+
+    def start_document(self, document: PDDocument) -> None:
+        """Hook invoked once at the start of every ``get_text`` walk.
+
+        Mirrors upstream's protected ``startDocument(PDDocument)``. The
+        base implementation is a no-op; subclasses override to install
+        per-document state (e.g. a streaming writer).
+        """
+        return None
+
+    def end_document(self, document: PDDocument) -> None:
+        """Hook invoked once at the end of every ``get_text`` walk.
+
+        Mirrors upstream's protected ``endDocument(PDDocument)``. The
+        base implementation is a no-op; subclasses override to flush
+        per-document state.
+        """
+        return None
+
+    def start_page(self, page: PDPage) -> None:
+        """Hook invoked at the start of every page in the walk, before
+        ``process_page`` runs and before ``write_page_start`` emits the
+        page-start separator.
+
+        Mirrors upstream's protected ``startPage(PDPage)``. Distinct
+        from :meth:`write_page_start`: this hook does not write to the
+        sink — it lets subclasses observe the page boundary without
+        committing characters.
+        """
+        return None
+
+    def end_page(self, page: PDPage) -> None:
+        """Hook invoked at the end of every page in the walk, after
+        ``write_page_end`` has emitted the page-end separator.
+
+        Mirrors upstream's protected ``endPage(PDPage)``.
+        """
+        return None
+
+    def start_article(self, is_ltr: bool = True) -> None:
+        """Hook invoked at the start of an article (bead-bounded
+        column). Mirrors upstream's protected ``startArticle(boolean)``;
+        ``is_ltr`` tracks whether the article's primary text direction
+        is left-to-right (the default).
+
+        The lite stripper treats the page as a single article, so this
+        hook is observable but not actively dispatched by the page loop
+        — callers and subclass tests can drive it directly. The base
+        implementation is a no-op for parity with upstream.
+        """
+        return None
+
+    def end_article(self) -> None:
+        """Hook invoked at the end of an article. Mirrors upstream's
+        protected ``endArticle``."""
+        return None
 
 
 class _TextState:
