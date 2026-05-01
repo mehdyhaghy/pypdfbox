@@ -127,6 +127,12 @@ class CMap:
         as a yes/no predicate. Equivalent to ``has_unicode_mappings()``."""
         return self.has_unicode_mappings()
 
+    def has_cid_mapping(self) -> bool:
+        """Singular alias for :meth:`has_cid_mappings`. Mirrors the
+        ``has_unicode_mapping`` enrichment so callers can spell either
+        predicate consistently. Equivalent to ``has_cid_mappings()``."""
+        return self.has_cid_mappings()
+
     # ---------- to_unicode ----------
 
     def to_unicode(self, code: int, strict: bool = False) -> str | None:
@@ -141,14 +147,14 @@ class CMap:
             Default ``False`` preserves the lenient upstream PDFBox
             behaviour (callers fall back to font-level encoding).
         """
-        unicode_ = self._to_unicode_with_len(code, 1) if code < 256 else None
+        unicode_ = self.to_unicode_with_length(code, 1) if code < 256 else None
         if unicode_ is None:
             if code <= 0xFFFF:
-                unicode_ = self._to_unicode_with_len(code, 2)
+                unicode_ = self.to_unicode_with_length(code, 2)
             elif code <= 0xFFFFFF:
-                unicode_ = self._to_unicode_with_len(code, 3)
+                unicode_ = self.to_unicode_with_length(code, 3)
             else:
-                unicode_ = self._to_unicode_with_len(code, 4)
+                unicode_ = self.to_unicode_with_length(code, 4)
         if unicode_ is None and strict:
             raise CMapMappingError(
                 f"No Unicode mapping for code 0x{code:X} in CMap "
@@ -156,17 +162,26 @@ class CMap:
             )
         return unicode_
 
-    def _to_unicode_with_len(self, code: int, length: int) -> str | None:
+    def to_unicode_with_length(self, code: int, length: int) -> str | None:
+        """Returns the Unicode string for ``code`` interpreted as ``length``
+        input bytes, or ``None`` if no mapping is defined.
+
+        Mirrors upstream ``CMap.toUnicode(int code, int length)`` —
+        the unambiguous overload for callers that already know the
+        origin byte length (1, 2, 3, or 4)."""
         if length == 1:
             return self._char_to_unicode_one_byte.get(code)
         if length == 2:
             return self._char_to_unicode_two_bytes.get(code)
         return self._char_to_unicode_more_bytes.get(code)
 
+    # Internal alias retained for hot-path callers in this module.
+    _to_unicode_with_len = to_unicode_with_length
+
     def to_unicode_bytes(self, code: bytes | bytearray | memoryview) -> str | None:
         """Lookup by raw input code bytes — the unambiguous form."""
         data = bytes(code)
-        return self._to_unicode_with_len(_to_int(data), len(data))
+        return self.to_unicode_with_length(_to_int(data), len(data))
 
     # ---------- read_code / read_cid ----------
 

@@ -658,3 +658,31 @@ def test_advanced_annotations_round_trip() -> None:
     assert gs.get_cos_object().get_dictionary_object("AAPL:AA") is aa
     gs.set_advanced_annotations(None)
     assert gs.get_advanced_annotations() is None
+
+
+# ---------- resource cache (upstream two-arg constructor) ----------
+
+
+def test_default_constructor_resource_cache_is_none() -> None:
+    gs = PDExtendedGraphicsState()
+    assert gs.get_resource_cache() is None
+
+
+def test_constructor_accepts_resource_cache() -> None:
+    cache = object()  # opaque sentinel
+    gs = PDExtendedGraphicsState(COSDictionary(), cache)
+    assert gs.get_resource_cache() is cache
+
+
+def test_resource_cache_propagates_to_typed_soft_mask() -> None:
+    from pypdfbox.pdmodel.graphics.state.pd_soft_mask import PDSoftMask
+
+    cache = object()
+    gs = PDExtendedGraphicsState(COSDictionary(), cache)
+    sm_dict = COSDictionary()
+    sm_dict.set_name("S", "Luminosity")
+    gs.set_soft_mask(sm_dict)
+    sm = gs.get_soft_mask_typed()
+    assert isinstance(sm, PDSoftMask)
+    # Resource cache plumbed through PDSoftMask.create.
+    assert sm.get_resource_cache() is cache

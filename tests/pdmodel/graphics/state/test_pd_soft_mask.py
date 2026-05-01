@@ -116,3 +116,80 @@ def test_transfer_function_round_trip() -> None:
 def test_constructor_rejects_non_dictionary() -> None:
     with pytest.raises(TypeError):
         PDSoftMask(42)  # type: ignore[arg-type]
+
+
+# ---------- resource cache (upstream two-arg constructor) ----------
+
+
+def test_default_constructor_resource_cache_is_none() -> None:
+    sm = PDSoftMask()
+    assert sm.get_resource_cache() is None
+
+
+def test_constructor_accepts_resource_cache() -> None:
+    cache = object()  # opaque sentinel — no typed cache yet
+    sm = PDSoftMask(COSDictionary(), cache)
+    assert sm.get_resource_cache() is cache
+
+
+def test_create_passes_resource_cache_through() -> None:
+    cache = object()
+    base = COSDictionary()
+    base.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Alpha"))
+    sm = PDSoftMask.create(base, cache)
+    assert isinstance(sm, PDSoftMask)
+    assert sm.get_resource_cache() is cache
+
+
+def test_create_none_name_with_cache_still_returns_none() -> None:
+    # The /None mask short-circuits before the cache is consulted —
+    # mirrors upstream behaviour exactly.
+    cache = object()
+    assert PDSoftMask.create(COSName.get_pdf_name("None"), cache) is None
+
+
+# ---------- initial transformation matrix ----------
+
+
+def test_initial_transformation_matrix_default_is_none() -> None:
+    sm = PDSoftMask()
+    assert sm.get_initial_transformation_matrix() is None
+
+
+def test_initial_transformation_matrix_round_trip() -> None:
+    sm = PDSoftMask()
+    matrix = object()  # opaque — Matrix wrapper not ported yet
+    sm.set_initial_transformation_matrix(matrix)
+    assert sm.get_initial_transformation_matrix() is matrix
+
+
+# ---------- typed transfer function ----------
+
+
+def test_transfer_function_typed_absent_returns_none() -> None:
+    sm = PDSoftMask()
+    assert sm.get_transfer_function_typed() is None
+
+
+def test_transfer_function_typed_identity_returns_pd_function() -> None:
+    from pypdfbox.pdmodel.common.function.pd_function import PDFunctionTypeIdentity
+
+    sm = PDSoftMask()
+    sm.set_transfer_function(COSName.get_pdf_name("Identity"))
+    assert isinstance(sm.get_transfer_function_typed(), PDFunctionTypeIdentity)
+
+
+def test_transfer_function_typed_function_dict() -> None:
+    from pypdfbox.cos import COSInteger
+    from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+
+    sm = PDSoftMask()
+    fn = COSDictionary()
+    fn.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.add(COSFloat(0.0))
+    domain.add(COSFloat(1.0))
+    fn.set_item("Domain", domain)
+    fn.set_item("N", COSInteger.get(1))
+    sm.set_transfer_function(fn)
+    assert isinstance(sm.get_transfer_function_typed(), PDFunctionType2)

@@ -286,3 +286,77 @@ def test_read_code_byte_length_matches_code_length_at() -> None:
         buf = bytes([first_byte, 0x40])
         _, length = cmap.read_code(buf)
         assert length == expected
+
+
+# ---------- has_cid_mapping (singular alias) ----------
+
+
+def test_has_cid_mapping_false_on_empty() -> None:
+    cmap = CMap()
+    assert cmap.has_cid_mapping() is False
+    assert cmap.has_cid_mappings() is False
+
+
+def test_has_cid_mapping_true_after_add_cid_mapping() -> None:
+    cmap = CMap()
+    cmap.add_cid_mapping(b"\x00\x20", 32)
+    assert cmap.has_cid_mapping() is True
+    # Singular and plural forms agree.
+    assert cmap.has_cid_mapping() == cmap.has_cid_mappings()
+
+
+def test_has_cid_mapping_true_after_add_cid_range() -> None:
+    cmap = CMap()
+    cmap.add_cid_range(b"\x00\x00", b"\x00\x10", cid=100)
+    assert cmap.has_cid_mapping() is True
+
+
+def test_has_cid_mapping_ignores_unicode_only() -> None:
+    cmap = CMap()
+    cmap.add_base_font_character(b"A", "Alpha")
+    # Unicode mapping alone doesn't count as a CID mapping.
+    assert cmap.has_cid_mapping() is False
+
+
+# ---------- to_unicode_with_length (public 2-arg overload) ----------
+
+
+def test_to_unicode_with_length_one_byte() -> None:
+    cmap = CMap()
+    cmap.add_base_font_character(b"A", "Alpha")
+    assert cmap.to_unicode_with_length(0x41, 1) == "Alpha"
+
+
+def test_to_unicode_with_length_two_bytes_ignores_one_byte_dict() -> None:
+    cmap = CMap()
+    cmap.add_base_font_character(b"\x00\x41", "TwoByteA")
+    cmap.add_base_font_character(b"A", "OneByteA")
+    # Same int 0x41 maps differently depending on the explicit byte length.
+    assert cmap.to_unicode_with_length(0x41, 1) == "OneByteA"
+    assert cmap.to_unicode_with_length(0x41, 2) == "TwoByteA"
+
+
+def test_to_unicode_with_length_three_and_four_bytes() -> None:
+    cmap = CMap()
+    cmap.add_base_font_character(b"\xab\xcd\xef", "ThreeByte")
+    cmap.add_base_font_character(b"\x12\x34\x56\x78", "FourByte")
+    # 3- and 4-byte mappings share the same "more bytes" dict but
+    # use distinct integer keys, so both round-trip cleanly.
+    assert cmap.to_unicode_with_length(0xABCDEF, 3) == "ThreeByte"
+    assert cmap.to_unicode_with_length(0x12345678, 4) == "FourByte"
+
+
+def test_to_unicode_with_length_returns_none_when_unmapped() -> None:
+    cmap = CMap()
+    cmap.add_base_font_character(b"A", "Alpha")
+    assert cmap.to_unicode_with_length(0x42, 1) is None
+    assert cmap.to_unicode_with_length(0x41, 2) is None
+
+
+def test_to_unicode_delegates_to_to_unicode_with_length() -> None:
+    cmap = CMap()
+    cmap.add_base_font_character(b"\x00\x41", "TwoByte")
+    # 1-byte lookup miss falls through to the 2-byte attempt.
+    assert cmap.to_unicode(0x41) == "TwoByte"
+    # And the explicit 2-byte form returns the same value.
+    assert cmap.to_unicode_with_length(0x41, 2) == "TwoByte"

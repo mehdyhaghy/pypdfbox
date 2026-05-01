@@ -68,10 +68,25 @@ class PDExtendedGraphicsState:
     mapping. Soft mask / transfer function support is deferred.
     """
 
-    def __init__(self, dictionary: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        dictionary: COSDictionary | None = None,
+        resource_cache: Any | None = None,
+    ) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
         if self._dict.get_dictionary_object(_TYPE) is None:
             self._dict.set_item(_TYPE, _EXT_G_STATE)
+        # Optional resource cache — mirrors the upstream two-arg
+        # constructor. Forwarded to :meth:`get_soft_mask_typed` so cached
+        # form XObjects survive activation.
+        self._resource_cache = resource_cache
+
+    def get_resource_cache(self) -> Any | None:
+        """Return the optional resource cache passed at construction
+        time. Mirrors upstream's package-private ``cache`` field —
+        exposed publicly for parity with renderer / soft-mask plumbing.
+        """
+        return self._resource_cache
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict
@@ -585,7 +600,7 @@ class PDExtendedGraphicsState:
             PDSoftMask,
         )
 
-        return PDSoftMask.create(self.get_soft_mask())
+        return PDSoftMask.create(self.get_soft_mask(), self._resource_cache)
 
     # ---------- TR / TR2 (transfer functions) ----------
 

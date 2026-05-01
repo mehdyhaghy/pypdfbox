@@ -45,7 +45,11 @@ class PDSoftMask:
     decoding (group XObject parsing, function evaluation, channel pick).
     """
 
-    def __init__(self, dictionary: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        dictionary: COSDictionary | None = None,
+        resource_cache: Any | None = None,
+    ) -> None:
         if dictionary is None:
             self._dict = COSDictionary()
             self._dict.set_item(_TYPE, _MASK)
@@ -56,22 +60,34 @@ class PDSoftMask:
                     f"{type(dictionary).__name__}"
                 )
             self._dict = dictionary
+        self._resource_cache = resource_cache
+        # CTM at the time the ExtGState was activated. Mirrors upstream
+        # ``setInitialTransformationMatrix`` / ``getInitialTransformationMatrix``
+        # — see the comment at PDExtendedGraphicsState.copyIntoGraphicsState
+        # in upstream which writes this on /SMask activation.
+        self._ctm: Any | None = None
 
     # ---------- factory ----------
 
     @staticmethod
-    def create(base: COSBase | None) -> PDSoftMask | None:
+    def create(
+        base: COSBase | None, resource_cache: Any | None = None
+    ) -> PDSoftMask | None:
         """Wrap ``base`` as a :class:`PDSoftMask` when it is a soft-mask
         dictionary. Returns ``None`` for the special ``/None`` mask name
         (PDF spec: "the value of the soft-mask parameter shall be set to
         None") or for any non-dictionary value. Mirrors upstream
-        ``PDSoftMask.create``."""
+        ``PDSoftMask.create``.
+
+        ``resource_cache`` (optional) is forwarded to the constructed
+        wrapper so that ``getGroup`` lookups can re-use cached XObjects;
+        mirrors upstream's two-arg overload."""
         if base is None:
             return None
         if isinstance(base, COSName) and base.name == "None":
             return None
         if isinstance(base, COSDictionary):
-            return PDSoftMask(base)
+            return PDSoftMask(base, resource_cache)
         return None
 
     # ---------- COS surface ----------
@@ -165,6 +181,50 @@ class PDSoftMask:
         values come from a luminance reading of the group's RGB)."""
         s = self.get_subtype()
         return isinstance(s, COSName) and s.name == "Luminosity"
+
+    # ---------- typed transfer function ----------
+
+    def get_transfer_function_typed(self) -> Any | None:
+        """Return ``/TR`` resolved to a typed :class:`PDFunction` (or
+        ``None`` when absent). Mirrors upstream
+        ``PDSoftMask.getTransferFunction()`` which returns a
+        ``PDFunction``. Companion to :meth:`get_transfer_function`
+        (which returns the raw COS object)."""
+        from pypdfbox.pdmodel.common.function.pd_function import (  # noqa: PLC0415
+            PDFunction,
+        )
+
+        base = self.get_transfer_function()
+        if base is None:
+            return None
+        return PDFunction.create(base)
+
+    # ---------- initial transformation matrix (CTM at activation) ----------
+
+    def set_initial_transformation_matrix(self, ctm: Any) -> None:
+        """Record the CTM in effect when the ExtGState that owns this
+        soft mask was activated. Required for correct compositing because
+        the soft mask's group XObject is positioned in the parent's user
+        space at activation time, not at paint time. Mirrors upstream
+        ``PDSoftMask.setInitialTransformationMatrix`` (package-private
+        upstream — exposed publicly here for renderer interop and tests).
+        """
+        self._ctm = ctm
+
+    def get_initial_transformation_matrix(self) -> Any | None:
+        """Return the CTM recorded by
+        :meth:`set_initial_transformation_matrix`, or ``None`` when the
+        soft mask has not yet been activated."""
+        return self._ctm
+
+    # ---------- resource cache ----------
+
+    def get_resource_cache(self) -> Any | None:
+        """Return the optional resource cache supplied at construction
+        time (or via :meth:`PDSoftMask.create`). Mirrors upstream's
+        ``resourceCache`` field — propagated to ``getGroup`` consumers
+        so XObject parsing can share parsed forms across pages."""
+        return self._resource_cache
 
 
 __all__ = ["PDSoftMask"]
