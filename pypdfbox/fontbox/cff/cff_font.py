@@ -78,6 +78,10 @@ class CFFFont:
         # ``get_property`` / ``get_top_dict`` consult before falling
         # through to fontTools.
         self._top_overlay: dict[str, Any] = {}
+        # Font name override populated by :meth:`set_name` (mirrors
+        # upstream package-private ``CFFFont.setName``). When ``None`` the
+        # primary fontset name is used.
+        self._name_override: str | None = None
 
     # ---------- factory ----------
 
@@ -108,6 +112,8 @@ class CFFFont:
 
     @property
     def name(self) -> str | None:
+        if self._name_override is not None:
+            return self._name_override
         names = self.font_names
         return names[0] if names else None
 
@@ -124,6 +130,16 @@ class CFFFont:
         upstream contract where the field is non-null but may be blank).
         """
         return self.name or ""
+
+    def set_name(self, name: str | None) -> None:
+        """PDFBox: ``CFFFont.setName(String)`` — override the PostScript
+        font name returned by :meth:`get_name`. Pass ``None`` to clear
+        the override and fall back to the parsed fontset name.
+
+        Upstream this is package-private; we expose it for parity with
+        callers (and tests) that synthesise a :class:`CFFFont` outside
+        the parser path."""
+        self._name_override = name
 
     def get_top_dict(self) -> dict[str, Any]:
         """PDFBox: ``CFFFont.getTopDict()`` — Top DICT entries as a plain
@@ -639,6 +655,21 @@ class CFFFont:
             sequence=cs,  # fontTools T2CharString from the parsed font
             default_width_x=int(self.get_default_width_x()),
             nominal_width_x=int(self.get_nominal_width_x()),
+        )
+
+    def __repr__(self) -> str:
+        """Mirror upstream ``CFFFont.toString()``:
+        ``ClassName[name=..., topDict=..., charset=..., charStrings=...]``.
+
+        We diverge slightly: ``charStrings`` is summarised as the count
+        rather than the full byte dump (upstream's
+        ``Arrays.deepToString`` produces megabytes of output for real
+        fonts; counts are more useful for debugging in Python)."""
+        return (
+            f"{type(self).__name__}[name={self.get_name()},"
+            f" topDict={self.get_top_dict()},"
+            f" charset={self.get_charset()},"
+            f" charStrings={self.get_num_char_strings()}]"
         )
 
 

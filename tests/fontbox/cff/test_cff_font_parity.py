@@ -380,3 +380,56 @@ class TestReadEncoding:
         stream = io.BytesIO(bytes([0x00, 0x03, 0x41]))
         with pytest.raises(EOFError):
             read_encoding(stream, self.CHARSET)
+
+
+# ---------- set_name override (mirrors CFFFont.setName) ----------
+
+
+def test_set_name_overrides_fontset_name() -> None:
+    """``set_name`` populates the override consulted by ``get_name``
+    and the ``name`` property — round-trip and clear semantics both
+    work."""
+    f = CFFFont()
+    # Nothing parsed → empty default.
+    assert f.get_name() == ""
+    f.set_name("CustomFontName")
+    assert f.get_name() == "CustomFontName"
+    assert f.name == "CustomFontName"
+    # Clearing the override restores the default ("" for an unparsed font).
+    f.set_name(None)
+    assert f.get_name() == ""
+
+
+def test_set_name_takes_precedence_over_parsed_name(cff_font: CFFFont) -> None:
+    """When the font set already has a name, ``set_name`` still wins."""
+    original = cff_font.get_name()
+    assert original  # parsed font must have a non-empty name
+    try:
+        cff_font.set_name("Synthetic-Override")
+        assert cff_font.get_name() == "Synthetic-Override"
+    finally:
+        cff_font.set_name(None)
+    assert cff_font.get_name() == original
+
+
+# ---------- __repr__ (mirrors CFFFont.toString) ----------
+
+
+def test_repr_shape_unparsed() -> None:
+    """``repr`` mirrors upstream ``toString()`` shape:
+    ``ClassName[name=..., topDict=..., charset=..., charStrings=...]``."""
+    f = CFFFont()
+    text = repr(f)
+    assert text.startswith("CFFFont[")
+    assert "name=" in text
+    assert "topDict=" in text
+    assert "charset=" in text
+    assert "charStrings=" in text
+    assert text.endswith("]")
+
+
+def test_repr_includes_font_name(cff_font: CFFFont) -> None:
+    text = repr(cff_font)
+    assert cff_font.get_name() in text
+    # charStrings count appears as a number, not a byte dump.
+    assert f"charStrings={cff_font.get_num_char_strings()}" in text

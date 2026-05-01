@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .empty_graphics_stack_exception import EmptyGraphicsStackException
 from .restore_graphics_state import RestoreGraphicsState
 from .save_graphics_state import SaveGraphicsState
 from .set_dash_pattern import SetDashPattern
@@ -12,6 +13,7 @@ from .set_line_width import SetLineWidth
 from .set_rendering_intent import SetRenderingIntent
 
 __all__ = [
+    "EmptyGraphicsStackException",
     "RestoreGraphicsState",
     "SaveGraphicsState",
     "SetDashPattern",

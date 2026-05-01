@@ -23,6 +23,14 @@ class CFFType1Font(CFFFont):
     :meth:`from_cff_font`.
     """
 
+    def __init__(self) -> None:
+        super().__init__()
+        # Private DICT mutation overlay populated by
+        # :meth:`add_to_private_dict` (mirror of upstream package-private
+        # ``CFFType1Font.addToPrivateDict``). Layered on top of the
+        # parsed Top.Private rawDict by :meth:`get_private_dict`.
+        self._private_overlay: dict[str, Any] = {}
+
     # ---------- factories ----------
 
     @classmethod
@@ -48,6 +56,27 @@ class CFFType1Font(CFFFont):
         instance._fontset = base._fontset  # noqa: SLF001
         instance._top = base._top  # noqa: SLF001
         return instance
+
+    # ---------- private DICT overlay ----------
+
+    def add_to_private_dict(self, name: str, value: Any) -> None:
+        """PDFBox: ``CFFType1Font.addToPrivateDict(String, Object)`` —
+        store a custom value in the Private DICT overlay. Subsequent
+        :meth:`get_private_dict` lookups see the new value.
+
+        ``None`` values are dropped (matches upstream's null-guard).
+        """
+        if value is None:
+            return
+        self._private_overlay[name] = value
+
+    def get_private_dict(self) -> dict[str, Any]:  # noqa: D401 — overrides base
+        """PDFBox: ``CFFType1Font.getPrivateDict()`` — Private DICT
+        entries with any :meth:`add_to_private_dict` overlay layered on
+        top of the fontTools-parsed Top.Private rawDict."""
+        merged = super().get_private_dict()
+        merged.update(self._private_overlay)
+        return merged
 
     # ---------- encoding ----------
 

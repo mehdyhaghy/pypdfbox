@@ -369,3 +369,55 @@ def test_get_cid_for_gid_round_trip(cid_font: CFFCIDFont) -> None:
         assert recovered == int(charset[1][3:])
         # Round-trip back to GID.
         assert cid_font.get_gid_for_cid(recovered) == 1
+
+
+# ---------- ROS / FDArray setter overrides (mirror upstream package-private setters) ----------
+
+
+class TestCFFCIDFontSetters:
+    """Coverage for ``set_registry`` / ``set_ordering`` / ``set_supplement``
+    / ``set_font_dict`` / ``set_priv_dict`` / ``set_fd_select``. These
+    mirror upstream's package-private setters; we expose them publicly
+    for parity with callers that synthesise a CFFCIDFont outside the
+    parser path."""
+
+    def test_set_registry_ordering_supplement(self) -> None:
+        cf = CFFCIDFont()
+        # Defaults are empty / zero on an unparsed font.
+        assert cf.get_ros() == ("", "", 0)
+        cf.set_registry("Adobe")
+        cf.set_ordering("Japan1")
+        cf.set_supplement(6)
+        assert cf.get_registry() == "Adobe"
+        assert cf.get_ordering() == "Japan1"
+        assert cf.get_supplement() == 6
+        # Triple convenience picks up all three overrides.
+        assert cf.get_ros() == ("Adobe", "Japan1", 6)
+
+    def test_set_supplement_coerces_to_int(self) -> None:
+        cf = CFFCIDFont()
+        cf.set_supplement("4")  # type: ignore[arg-type]
+        assert cf.get_supplement() == 4
+        assert isinstance(cf.get_supplement(), int)
+
+    def test_set_font_dict_overrides_fd_array_view(self) -> None:
+        cf = CFFCIDFont()
+        synthetic = [{"FontName": "FD0"}, {"FontName": "FD1"}]
+        cf.set_font_dict(synthetic)
+        out = cf.get_font_dicts()
+        assert out == synthetic
+        # Returned list is independent — mutating it doesn't bleed back.
+        out.append({"FontName": "FD2"})
+        assert len(cf.get_font_dicts()) == 2
+
+    def test_set_priv_dict_overrides_fd_array_view(self) -> None:
+        cf = CFFCIDFont()
+        synthetic = [{"defaultWidthX": 250}, {"defaultWidthX": 500}]
+        cf.set_priv_dict(synthetic)
+        assert cf.get_priv_dicts() == synthetic
+
+    def test_set_fd_select_overrides_lazy_load(self) -> None:
+        cf = CFFCIDFont()
+        synthetic = FDSelect.from_fonttools(None)
+        cf.set_fd_select(synthetic)
+        assert cf.get_fd_select() is synthetic

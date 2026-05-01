@@ -25,6 +25,15 @@ class CFFCIDFont(CFFFont):
         super().__init__()
         self._fd_select: FDSelect | None = None
         self._fd_array: FDArray | None = None
+        # ROS / FDArray overrides populated by the ``set_*`` mirror-methods
+        # below. Upstream these setters are package-private; we expose
+        # them for parity with callers (and tests) that synthesise a
+        # :class:`CFFCIDFont` outside the parser path.
+        self._registry_override: str | None = None
+        self._ordering_override: str | None = None
+        self._supplement_override: int | None = None
+        self._font_dicts_override: list[dict[str, Any]] | None = None
+        self._priv_dicts_override: list[dict[str, Any]] | None = None
 
     # ---------- factories ----------
 
@@ -57,21 +66,52 @@ class CFFCIDFont(CFFFont):
 
     def get_registry(self) -> str:
         """Registry component of /ROS (e.g. ``"Adobe"``)."""
+        if self._registry_override is not None:
+            return self._registry_override
         ros = self._ros()
         return ros[0] if ros else ""
 
+    def set_registry(self, registry: str) -> None:
+        """PDFBox: ``CFFCIDFont.setRegistry(String)`` — override the
+        Registry component of /ROS. Upstream this is package-private;
+        we expose it for parity with callers that synthesise a
+        :class:`CFFCIDFont` outside the parser path."""
+        self._registry_override = registry
+
     def get_ordering(self) -> str:
         """Ordering component of /ROS (e.g. ``"Japan1"``, ``"GB1"``)."""
+        if self._ordering_override is not None:
+            return self._ordering_override
         ros = self._ros()
         return ros[1] if ros else ""
 
+    def set_ordering(self, ordering: str) -> None:
+        """PDFBox: ``CFFCIDFont.setOrdering(String)`` — override the
+        Ordering component of /ROS."""
+        self._ordering_override = ordering
+
     def get_supplement(self) -> int:
         """Supplement component of /ROS (e.g. ``6``)."""
+        if self._supplement_override is not None:
+            return self._supplement_override
         ros = self._ros()
         return int(ros[2]) if ros else 0
 
+    def set_supplement(self, supplement: int) -> None:
+        """PDFBox: ``CFFCIDFont.setSupplement(int)`` — override the
+        Supplement component of /ROS."""
+        self._supplement_override = int(supplement)
+
     def get_ros(self) -> tuple[str, str, int]:
         """Convenience: full Registry/Ordering/Supplement triple."""
+        # Honour ``set_*`` overrides individually so callers can
+        # partially override (e.g. set the supplement only).
+        if (
+            self._registry_override is not None
+            or self._ordering_override is not None
+            or self._supplement_override is not None
+        ):
+            return (self.get_registry(), self.get_ordering(), self.get_supplement())
         ros = self._ros()
         if not ros:
             return ("", "", 0)
@@ -96,6 +136,11 @@ class CFFCIDFont(CFFFont):
             )
             self._fd_select = FDSelect.from_fonttools(raw)
         return self._fd_select
+
+    def set_fd_select(self, fd_select: FDSelect) -> None:
+        """PDFBox: ``CFFCIDFont.setFdSelect(FDSelect)`` — override the
+        /FDSelect returned by :meth:`get_fd_select`."""
+        self._fd_select = fd_select
 
     def get_fd_array(self) -> FDArray:
         """The /FDArray of per-FD Font DICTs."""
@@ -156,15 +201,32 @@ class CFFCIDFont(CFFFont):
         """PDFBox: ``CFFCIDFont.getFontDicts()`` — every Font DICT in
         /FDArray, in array order. Mirrors upstream's
         ``List<Map<String, Object>>`` shape."""
+        if self._font_dicts_override is not None:
+            return list(self._font_dicts_override)
         arr = self.get_fd_array()
         return [arr.get_font_dict(i) for i in range(arr.size())]
+
+    def set_font_dict(self, font_dict: list[dict[str, Any]]) -> None:
+        """PDFBox: ``CFFCIDFont.setFontDict(List<Map<String, Object>>)``
+        — override the Font DICT list returned by
+        :meth:`get_font_dicts`. Upstream this is package-private; we
+        expose it for parity."""
+        self._font_dicts_override = list(font_dict)
 
     def get_priv_dicts(self) -> list[dict[str, Any]]:
         """PDFBox: ``CFFCIDFont.getPrivDicts()`` — every Private DICT
         in /FDArray, in array order. (Note the upstream typo ``Priv``
         rather than ``Private`` is preserved for parity.)"""
+        if self._priv_dicts_override is not None:
+            return list(self._priv_dicts_override)
         arr = self.get_fd_array()
         return [arr.get_private_dict(i) for i in range(arr.size())]
+
+    def set_priv_dict(self, priv_dict: list[dict[str, Any]]) -> None:
+        """PDFBox: ``CFFCIDFont.setPrivDict(List<Map<String, Object>>)``
+        — override the Private DICT list returned by
+        :meth:`get_priv_dicts`."""
+        self._priv_dicts_override = list(priv_dict)
 
     # ---------- selector-keyed glyph access ----------
 

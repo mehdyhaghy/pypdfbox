@@ -53,6 +53,15 @@ class PDFStreamEngine:
 
     def __init__(self) -> None:
         self._operators: dict[str, OperatorProcessor] = {}
+        # Initial CTM seeded by the page-renderer subclass at
+        # ``init_page`` time. Mirrors upstream ``initialMatrix``.
+        self._initial_matrix: Any | None = None
+        # Mirrors upstream ``shouldProcessColorOperators`` — flipped to
+        # ``False`` for Type3 charprocs starting with ``d1`` and for
+        # uncoloured tiling patterns. The colour-operator handlers
+        # consult :meth:`is_should_process_color_operators` before
+        # mutating colour state.
+        self._should_process_color_operators: bool = True
         # The fields below correspond to upstream private state; they are
         # carried as attributes here so cluster #3 can populate them
         # without touching the dispatch surface again. ``_resources`` is
@@ -386,6 +395,44 @@ class PDFStreamEngine:
         ``isProcessingPage``."""
         return self._is_processing_page
 
+    def get_initial_matrix(self) -> Any | None:
+        """Return the stream's initial transformation matrix, or ``None``
+        when no page has been initialised yet (cluster #2 default — the
+        rendering subclass populates this in its ``init_page`` override).
+        Mirrors upstream ``getInitialMatrix``."""
+        return self._initial_matrix
+
+    def set_initial_matrix(self, matrix: Any | None) -> None:
+        """Set the stream's initial transformation matrix. Companion
+        writer for :meth:`get_initial_matrix`. Upstream sets this through
+        the private ``initPage`` path; pypdfbox exposes it as a writer so
+        subclasses can populate it without re-implementing the dispatch
+        surface."""
+        self._initial_matrix = matrix
+
+    def is_should_process_color_operators(self) -> bool:
+        """Tells whether colour operators should be processed. Mirrors
+        upstream ``isShouldProcessColorOperators``.
+
+        Returns ``False`` in two cases that the rendering subclass /
+        Type3 path flips:
+
+        - Type3 charprocs that start with the ``d1`` operator (the glyph
+          colour comes from the surrounding text-state colour, not from
+          the charproc itself).
+        - Uncoloured tiling patterns (the colour is supplied at paint
+          time by the caller).
+
+        The colour-operator handlers consult this before mutating colour
+        state."""
+        return self._should_process_color_operators
+
+    def _set_should_process_color_operators(self, value: bool) -> None:
+        """Internal setter used by the Type3 / tiling-pattern entry
+        points. Not part of the public upstream surface — upstream sets
+        the flag from the same private code paths."""
+        self._should_process_color_operators = value
+
     def set_resources(self, res: PDResources) -> None:
         """Push a new resource stack frame, making ``res`` the active
         :meth:`get_resources` result. Mirrors upstream's ``setResources``
@@ -545,6 +592,24 @@ class PDFStreamEngine:
         """``TJ`` notification — cluster #2 no-op. Subclasses iterate
         the array, dispatching numbers as positioning adjustments and
         strings as glyph runs."""
+
+    def begin_marked_content_sequence(
+        self, tag: COSName, properties: COSDictionary | None
+    ) -> None:
+        """``BMC`` / ``BDC`` notification. Base no-op — subclasses
+        override (e.g. the structure-tree extractor records the tag).
+        Mirrors upstream ``beginMarkedContentSequence``."""
+
+    def end_marked_content_sequence(self) -> None:
+        """``EMC`` notification. Base no-op — subclasses override.
+        Mirrors upstream ``endMarkedContentSequence``."""
+
+    def marked_content_point(
+        self, tag: COSName, properties: COSDictionary | None
+    ) -> None:
+        """``MP`` / ``DP`` notification. Base no-op — subclasses override
+        (the marked-content extractor records the point). Mirrors
+        upstream ``markedContentPoint``."""
 
     def show_inline_image(self, inline_image: PDInlineImage) -> None:
         """``BI`` / ``ID`` / ``EI`` notification — base no-op.

@@ -272,3 +272,42 @@ class TestReadEncodingType1Flavour:
         assert encoding[0x42] == 35
         assert encoding[0x90] == 200
         assert sup == [(0x90, 200)]
+
+
+# ---------- add_to_private_dict (mirrors CFFType1Font.addToPrivateDict) ----------
+
+
+def test_add_to_private_dict_overlay_unparsed() -> None:
+    """``add_to_private_dict`` populates an overlay surfaced through
+    ``get_private_dict``; the parsed Top.Private rawDict (if any)
+    remains as the underlay."""
+    f = CFFType1Font()
+    # No parsed font → empty base; overlay shows up as the only entry.
+    f.add_to_private_dict("BlueValues", [-20, 0, 700, 720])
+    assert f.get_private_dict() == {"BlueValues": [-20, 0, 700, 720]}
+    # ``None`` is a no-op (matches upstream null-guard).
+    f.add_to_private_dict("StdHW", None)
+    assert "StdHW" not in f.get_private_dict()
+
+
+def test_add_to_private_dict_layers_over_parsed_dict() -> None:
+    """When the font has a parsed Top.Private rawDict, the overlay
+    layers on top — overlay wins on key collision."""
+    class _Priv:
+        rawDict = {"defaultWidthX": 250, "nominalWidthX": 500}  # noqa: N815
+
+    class _Top:
+        Private = _Priv
+
+    f = CFFType1Font()
+    f._top = _Top()  # noqa: SLF001
+    base = f.get_private_dict()
+    assert base == {"defaultWidthX": 250, "nominalWidthX": 500}
+    # Overlay adds a new key.
+    f.add_to_private_dict("BlueValues", [0, 100])
+    merged = f.get_private_dict()
+    assert merged["BlueValues"] == [0, 100]
+    assert merged["defaultWidthX"] == 250
+    # Overlay overrides on collision.
+    f.add_to_private_dict("defaultWidthX", 999)
+    assert f.get_private_dict()["defaultWidthX"] == 999
