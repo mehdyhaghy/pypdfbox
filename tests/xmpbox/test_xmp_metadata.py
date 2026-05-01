@@ -65,3 +65,16 @@ def test_get_all_schemas_returns_defensive_copy() -> None:
     snapshot = meta.get_all_schemas()
     snapshot.clear()
     assert meta.get_all_schemas() == [schema]
+
+
+def test_create_and_add_dublin_core_schema_alias() -> None:
+    """Mirror of upstream ``XMPMetadata.createAndAddDublinCoreSchema``: the
+    alias delegates to :meth:`add_dublin_core_schema` and is idempotent."""
+    meta = XMPMetadata.create_xmp_metadata()
+    schema = meta.create_and_add_dublin_core_schema()
+    assert isinstance(schema, DublinCoreSchema)
+    # Repeat call returns the same instance (idempotent like upstream).
+    assert meta.create_and_add_dublin_core_schema() is schema
+    # Alias and primary share storage.
+    assert meta.add_dublin_core_schema() is schema
+    assert meta.get_dublin_core_schema() is schema

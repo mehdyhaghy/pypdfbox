@@ -200,3 +200,45 @@ def test_typed_setter_rejects_non_text_type() -> None:
         schema.set_pdf_version_property(object())  # type: ignore[arg-type]
     with pytest.raises(TypeError):
         schema.set_producer_property(123)  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# XMPSchema base-class additions exercised through AdobePDFSchema.
+# ---------------------------------------------------------------------------
+
+
+def test_create_text_type_uses_pdf_namespace_and_prefix() -> None:
+    """``create_text_type`` mirrors upstream
+    ``AbstractStructuredType.createTextType`` (inherited by ``XMPSchema``)
+    — the produced ``TextType`` carries the schema's own namespace + prefix."""
+    schema = _adobe()
+    text = schema.create_text_type(AdobePDFSchema.PRODUCER, "ProducerOne")
+    assert isinstance(text, TextType)
+    assert text.get_namespace() == AdobePDFSchema.NAMESPACE
+    assert text.get_prefix() == AdobePDFSchema.PREFERRED_PREFIX
+    assert text.get_property_name() == AdobePDFSchema.PRODUCER
+    assert text.get_string_value() == "ProducerOne"
+
+
+def test_create_text_type_feeds_typed_setter() -> None:
+    """The factory output round-trips through the typed setter just as
+    upstream ``setProducer(value)`` calls ``createTextType`` then
+    ``addProperty``."""
+    schema = _adobe()
+    schema.set_producer_property(
+        schema.create_text_type(AdobePDFSchema.PRODUCER, "ProducerTwo")
+    )
+    assert schema.get_producer() == "ProducerTwo"
+    assert schema.get_producer_property().get_string_value() == "ProducerTwo"
+
+
+def test_set_text_property_value_as_simple_round_trip_for_pdf_fields() -> None:
+    """``set_text_property_value_as_simple`` mirrors upstream
+    ``XMPSchema.setTextPropertyValueAsSimple``."""
+    schema = _adobe()
+    schema.set_text_property_value_as_simple(AdobePDFSchema.KEYWORDS, "alpha beta")
+    schema.set_text_property_value_as_simple(AdobePDFSchema.PDF_VERSION, "1.7")
+    schema.set_text_property_value_as_simple(AdobePDFSchema.PRODUCER, "P")
+    assert schema.get_keywords() == "alpha beta"
+    assert schema.get_pdf_version() == "1.7"
+    assert schema.get_producer() == "P"

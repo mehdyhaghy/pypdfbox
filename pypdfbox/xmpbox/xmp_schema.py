@@ -172,6 +172,31 @@ class XMPSchema:
     def set_text_property_value(self, local_name: str, value: str) -> None:
         self._properties[local_name] = value
 
+    def set_text_property_value_as_simple(self, simple_name: str, value: str) -> None:
+        """
+        Mirror of upstream ``XMPSchema.setTextPropertyValueAsSimple`` —
+        identical to :meth:`set_text_property_value` for properties whose name
+        is already unqualified (no prefix). Provided for parity with upstream
+        Java callers that distinguish the two overloads.
+        """
+        self.set_text_property_value(simple_name, value)
+
+    def create_text_type(self, property_name: str, value: str):
+        """
+        Mirror of upstream ``AbstractStructuredType.createTextType`` (inherited
+        by every ``XMPSchema``): build a :class:`TextType` configured with this
+        schema's namespace and prefix and the given local name + value. Used by
+        upstream subclasses inside their string-form setters (e.g.
+        ``setKeywords``, ``setCoverage``); exposed here so pypdfbox callers can
+        construct schema-bound ``TextType`` instances without restating the
+        namespace/prefix.
+        """
+        from .type.text_type import TextType
+
+        return TextType(
+            self._metadata, self._namespace, self._prefix, property_name, value
+        )
+
     def add_unqualified_text_property(self, local_name: str, value: str) -> None:
         """
         Mirror of upstream ``addUnqualifiedTextProperty``. Equivalent to

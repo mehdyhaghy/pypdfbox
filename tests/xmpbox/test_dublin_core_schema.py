@@ -395,3 +395,42 @@ def test_typed_setters_visible_to_string_accessors() -> None:
     )
     dc.set_format_property(text)
     assert dc.get_format() == "image/jpeg"
+
+
+# ---------------------------------------------------------------------------
+# XMPSchema base-class additions exercised through DublinCoreSchema.
+# ---------------------------------------------------------------------------
+
+
+def test_create_text_type_factory_uses_schema_namespace_and_prefix() -> None:
+    """``create_text_type`` mirrors upstream
+    ``XMPSchema.createTextType``: returns a ``TextType`` configured with the
+    schema's own namespace and prefix and the supplied local name + value."""
+    dc = _dc()
+    text = dc.create_text_type(DublinCoreSchema.COVERAGE, "global")
+    assert isinstance(text, TextType)
+    assert text.get_namespace() == DublinCoreSchema.NAMESPACE
+    assert text.get_prefix() == DublinCoreSchema.PREFERRED_PREFIX
+    assert text.get_property_name() == DublinCoreSchema.COVERAGE
+    assert text.get_string_value() == "global"
+
+
+def test_set_text_property_value_as_simple_round_trip() -> None:
+    """``set_text_property_value_as_simple`` mirrors upstream
+    ``XMPSchema.setTextPropertyValueAsSimple`` — for unqualified names it is
+    equivalent to :meth:`set_text_property_value`."""
+    dc = _dc()
+    dc.set_text_property_value_as_simple(DublinCoreSchema.IDENTIFIER, "urn:doc:99")
+    assert dc.get_identifier() == "urn:doc:99"
+    # Write a second time to confirm it overwrites rather than appends.
+    dc.set_text_property_value_as_simple(DublinCoreSchema.IDENTIFIER, "urn:doc:100")
+    assert dc.get_identifier() == "urn:doc:100"
+
+
+def test_create_text_type_round_trips_through_typed_setter() -> None:
+    """The factory's output is suitable input for the typed setters — confirms
+    the namespace/prefix wiring matches what the schema's typed-store expects."""
+    dc = _dc()
+    text = dc.create_text_type(DublinCoreSchema.SOURCE, "origin")
+    dc.set_source_property(text)
+    assert dc.get_source() == "origin"

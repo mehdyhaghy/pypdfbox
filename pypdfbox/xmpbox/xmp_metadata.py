@@ -220,6 +220,11 @@ class XMPMetadata:
         self.add_schema(schema)
         return schema
 
+    def create_and_add_dublin_core_schema(self) -> XMPSchema:
+        """Upstream-named alias of :meth:`add_dublin_core_schema` mirroring
+        ``XMPMetadata.createAndAddDublinCoreSchema``."""
+        return self.add_dublin_core_schema()
+
     def get_xmp_basic_schema(self) -> XMPSchema | None:
         from .xmp_basic_schema import XMPBasicSchema
 

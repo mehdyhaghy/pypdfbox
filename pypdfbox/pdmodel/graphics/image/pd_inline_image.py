@@ -154,6 +154,15 @@ class PDInlineImage:
     def get_cos_object(self) -> COSDictionary:
         return self._parameters
 
+    def get_resources(self) -> PDResources | None:
+        """The page-level ``PDResources`` passed at construction time.
+        Used internally to resolve named color spaces in inline-image
+        ``/CS`` arrays. Mirrors the upstream private ``resources`` field
+        — upstream does not expose a public getter, but pypdfbox exposes
+        one for parity-test introspection.
+        """
+        return self._resources
+
     # ---------- /W /Width ----------
 
     def get_width(self) -> int:
@@ -342,6 +351,11 @@ class PDInlineImage:
 
     def get_interpolate(self) -> bool:
         return _two_key_boolean(self._parameters, _I, _INTERPOLATE, False)
+
+    def is_interpolate(self) -> bool:
+        """Alias of :meth:`get_interpolate` matching the ``isXxx`` boolean
+        convention used by :class:`PDImageXObject` for the same flag."""
+        return self.get_interpolate()
 
     def set_interpolate(self, value: bool) -> None:
         self._parameters.set_boolean(_I, bool(value))

@@ -333,3 +333,35 @@ def test_create_input_stream_is_binary_io() -> None:
     stream = img.create_input_stream()
     assert isinstance(stream, io.BytesIO)
     stream.close()
+
+
+# ---------- get_resources / is_interpolate mirror methods ----------
+
+
+def test_get_resources_returns_constructor_argument() -> None:
+    """``get_resources`` exposes the page-level ``PDResources`` passed at
+    construction time — the same instance used internally for resolving
+    named color spaces in inline /CS arrays."""
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    resources = PDResources()
+    img = PDInlineImage(_basic_dict(), b"\x00", resources)
+    assert img.get_resources() is resources
+
+
+def test_get_resources_returns_none_when_not_provided() -> None:
+    img = PDInlineImage(_basic_dict(), b"\x00", None)
+    assert img.get_resources() is None
+
+
+def test_is_interpolate_alias_matches_get_interpolate() -> None:
+    """``is_interpolate`` mirrors :meth:`PDImageXObject.is_interpolate`
+    naming; both readers must agree on the underlying /I (or /Interpolate)
+    entry value."""
+    img = PDInlineImage(_basic_dict(), b"\x00", None)
+    assert img.get_interpolate() is False
+    assert img.is_interpolate() is False
+
+    img.set_interpolate(True)
+    assert img.get_interpolate() is True
+    assert img.is_interpolate() is True

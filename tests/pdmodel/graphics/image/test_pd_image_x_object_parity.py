@@ -325,3 +325,56 @@ def test_oc_returns_bare_property_list_for_unknown_type() -> None:
     direct = PDPropertyList.create(other)
     assert direct is not None
     assert type(direct) is PDPropertyList
+
+
+# ---------- mechanical aliases mirroring upstream camelCase ----------
+
+
+def test_get_interpolate_alias_matches_is_interpolate() -> None:
+    """``getInterpolate`` is the upstream interface name; ``isInterpolate``
+    follows the Python-side ``isXxx`` pattern. Both should agree."""
+    image = _make_image()
+    assert image.get_interpolate() is False
+    assert image.is_interpolate() is False
+
+    image.set_interpolate(True)
+    assert image.get_interpolate() is True
+    assert image.is_interpolate() is True
+    # Both accessors read the same /Interpolate entry.
+    assert image.get_interpolate() == image.is_interpolate()
+
+
+def test_get_optional_content_alias_round_trip() -> None:
+    """``get_optional_content`` / ``set_optional_content`` mirror upstream
+    ``getOptionalContent`` / ``setOptionalContent`` and share state with
+    the short-form ``get_oc`` / ``set_oc`` accessors."""
+    image = _make_image()
+    assert image.get_optional_content() is None
+    assert image.get_oc() is None
+
+    ocg_dict = COSDictionary()
+    ocg_dict.set_name(COSName.TYPE, "OCG")  # type: ignore[attr-defined]
+    ocg_dict.set_string(COSName.get_pdf_name("Name"), "layer-1")
+    ocg = PDOptionalContentGroup(ocg_dict)
+
+    image.set_optional_content(ocg)
+    fetched_long = image.get_optional_content()
+    fetched_short = image.get_oc()
+    assert fetched_long is not None
+    assert fetched_short is not None
+    # Both accessors return wrappers around the same COS dict.
+    assert fetched_long.get_cos_object() is ocg_dict
+    assert fetched_short.get_cos_object() is ocg_dict
+
+
+def test_set_optional_content_none_clears_entry() -> None:
+    image = _make_image()
+    ocmd_dict = COSDictionary()
+    ocmd_dict.set_name(COSName.TYPE, "OCMD")  # type: ignore[attr-defined]
+    image.set_optional_content(PDOptionalContentMembershipDictionary(ocmd_dict))
+    assert image.get_optional_content() is not None
+
+    image.set_optional_content(None)
+    assert image.get_optional_content() is None
+    # Underlying COS dictionary no longer carries the /OC entry either.
+    assert image.get_cos_object().get_dictionary_object(COSName.get_pdf_name("OC")) is None

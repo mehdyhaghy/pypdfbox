@@ -283,6 +283,11 @@ class PDImageXObject(PDXObject):
         """``/Interpolate`` flag; default ``False`` per PDF 32000-1 Table 89."""
         return self.get_cos_object().get_boolean(_INTERPOLATE, False)
 
+    def get_interpolate(self) -> bool:
+        """Mechanical mirror of upstream ``PDImage.getInterpolate()``;
+        identical to :meth:`is_interpolate`."""
+        return self.is_interpolate()
+
     def set_interpolate(self, value: bool) -> None:
         self.get_cos_object().set_boolean(_INTERPOLATE, bool(value))
 
@@ -357,6 +362,20 @@ class PDImageXObject(PDXObject):
             cos.remove_item(_OC)
             return
         cos.set_item(_OC, value.get_cos_object())
+
+    # Mechanical aliases mirroring upstream
+    # ``PDImageXObject.getOptionalContent()`` / ``setOptionalContent()``
+    # — the longer-named accessors are the ones used in the upstream
+    # public API; ``get_oc`` / ``set_oc`` remain for the short COS-key
+    # form.
+    def get_optional_content(self) -> PDPropertyList | None:
+        """Typed ``/OC`` optional content membership; mirrors upstream
+        ``PDImageXObject.getOptionalContent()``."""
+        return self.get_oc()
+
+    def set_optional_content(self, value: PDPropertyList | None) -> None:
+        """Mirrors upstream ``PDImageXObject.setOptionalContent()``."""
+        self.set_oc(value)
 
     # ---------- PIL image helper ----------
 
