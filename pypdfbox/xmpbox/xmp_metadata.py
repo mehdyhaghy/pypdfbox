@@ -17,6 +17,16 @@ DEFAULT_XPACKET_ENCODING = "UTF-8"
 DEFAULT_XPACKET_END = "w"
 DEFAULT_RDF_PREFIX = "rdf"
 DEFAULT_RDF_LOCAL_NAME = "RDF"
+# Element / attribute local names re-used across the RDF wire format. Mirrors
+# the remaining ``org.apache.xmpbox.XmpConstants`` constants — the parser and
+# (eventual) serializer both reach for these so they live with the rest.
+LIST_NAME = "li"
+LANG_NAME = "lang"
+ABOUT_NAME = "about"
+DESCRIPTION_NAME = "Description"
+RESOURCE_NAME = "Resource"
+PARSE_TYPE = "parseType"
+X_DEFAULT = "x-default"
 
 
 class XMPMetadata:

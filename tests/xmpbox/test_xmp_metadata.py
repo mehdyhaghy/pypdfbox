@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pypdfbox.xmpbox import DublinCoreSchema, XMPBasicSchema, XMPMetadata, XMPSchema
+from pypdfbox.xmpbox import xmp_metadata as xmp_constants
 
 
 def test_create_xmp_metadata_uses_defaults() -> None:
@@ -65,6 +66,33 @@ def test_get_all_schemas_returns_defensive_copy() -> None:
     snapshot = meta.get_all_schemas()
     snapshot.clear()
     assert meta.get_all_schemas() == [schema]
+
+
+def test_xmp_constants_rdf_wire_names() -> None:
+    """Mirror of upstream ``org.apache.xmpbox.XmpConstants``: the seven
+    RDF wire-format local names live alongside the rest of the
+    constants in :mod:`pypdfbox.xmpbox.xmp_metadata`."""
+    assert xmp_constants.LIST_NAME == "li"
+    assert xmp_constants.LANG_NAME == "lang"
+    assert xmp_constants.ABOUT_NAME == "about"
+    assert xmp_constants.DESCRIPTION_NAME == "Description"
+    assert xmp_constants.RESOURCE_NAME == "Resource"
+    assert xmp_constants.PARSE_TYPE == "parseType"
+    assert xmp_constants.X_DEFAULT == "x-default"
+
+
+def test_xmp_constants_existing_constants_unchanged() -> None:
+    """Sanity check that adding the wire-name constants did not move
+    the older RDF / xpacket constants."""
+    assert (
+        xmp_constants.RDF_NAMESPACE
+        == "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    )
+    assert xmp_constants.DEFAULT_RDF_PREFIX == "rdf"
+    assert xmp_constants.DEFAULT_RDF_LOCAL_NAME == "RDF"
+    assert xmp_constants.DEFAULT_XPACKET_ID == "W5M0MpCehiHzreSzNTczkc9d"
+    assert xmp_constants.DEFAULT_XPACKET_ENCODING == "UTF-8"
+    assert xmp_constants.DEFAULT_XPACKET_END == "w"
 
 
 def test_create_and_add_dublin_core_schema_alias() -> None:

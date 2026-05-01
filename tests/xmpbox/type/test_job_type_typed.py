@@ -76,3 +76,27 @@ def test_field_constants() -> None:
     assert StructuredJobType.ID == "id"
     assert StructuredJobType.NAME == "name"
     assert StructuredJobType.URL == "url"
+
+
+def test_url_field_is_typed_as_url(metadata: XMPMetadata) -> None:
+    """Mirror of upstream ``@PropertyType(type = Types.URL)`` on
+    :data:`JobType.URL`: the stored property must be a :class:`URLType`,
+    not a plain :class:`TextType`."""
+    from pypdfbox.xmpbox.type.url_type import URLType
+
+    job = StructuredJobType(metadata)
+    job.set_url("http://jobs.example.com/1")
+    prop = job.get_property(StructuredJobType.URL)
+    assert isinstance(prop, URLType)
+
+
+def test_id_and_name_fields_are_typed_as_text(metadata: XMPMetadata) -> None:
+    """Mirror of upstream ``@PropertyType(type = Types.Text)`` on
+    :data:`JobType.ID` and :data:`JobType.NAME`."""
+    from pypdfbox.xmpbox.type.text_type import TextType
+
+    job = StructuredJobType(metadata)
+    job.set_id("j1")
+    job.set_name("Print Run")
+    assert isinstance(job.get_property(StructuredJobType.ID), TextType)
+    assert isinstance(job.get_property(StructuredJobType.NAME), TextType)

@@ -87,3 +87,35 @@ def test_field_constants() -> None:
     assert ResourceEventType.PARAMETERS == "parameters"
     assert ResourceEventType.SOFTWARE_AGENT == "softwareAgent"
     assert ResourceEventType.WHEN == "when"
+
+
+def test_instance_id_field_is_typed_as_guid(metadata: XMPMetadata) -> None:
+    """Mirror of upstream ``@PropertyType(type = Types.GUID)`` on
+    :data:`ResourceEventType.INSTANCE_ID`."""
+    from pypdfbox.xmpbox.type.guid_type import GUIDType
+
+    e = ResourceEventType(metadata)
+    e.set_instance_id("xmp.iid:abc-123")
+    assert isinstance(e.get_property(ResourceEventType.INSTANCE_ID), GUIDType)
+
+
+def test_software_agent_field_is_typed_as_agent_name(metadata: XMPMetadata) -> None:
+    """Mirror of upstream ``@PropertyType(type = Types.AgentName)`` on
+    :data:`ResourceEventType.SOFTWARE_AGENT`."""
+    from pypdfbox.xmpbox.type.agent_name_type import AgentNameType
+
+    e = ResourceEventType(metadata)
+    e.set_software_agent("ImageMagick 7")
+    assert isinstance(
+        e.get_property(ResourceEventType.SOFTWARE_AGENT), AgentNameType
+    )
+
+
+def test_action_field_is_typed_as_choice(metadata: XMPMetadata) -> None:
+    """Mirror of upstream ``@PropertyType(type = Types.Choice)`` on
+    :data:`ResourceEventType.ACTION`."""
+    from pypdfbox.xmpbox.type.choice_type import ChoiceType
+
+    e = ResourceEventType(metadata)
+    e.set_action("converted")
+    assert isinstance(e.get_property(ResourceEventType.ACTION), ChoiceType)

@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import io
+import logging
 
 import pytest
 
-from pypdfbox.io import close_quietly, copy, populate_buffer, to_byte_array
+from pypdfbox.io import (
+    close_and_log_exception,
+    close_quietly,
+    copy,
+    populate_buffer,
+    to_byte_array,
+    unmap,
+)
 
 
 def test_copy_returns_total_bytes_and_writes_all() -> None:
@@ -83,3 +91,82 @@ def test_populate_buffer_handles_short_reads() -> None:
     n = populate_buffer(src, buf)
     assert n == 6
     assert bytes(buf) == b"abcdef"
+
+
+# ----- close_and_log_exception parity -----
+
+
+def test_close_and_log_exception_success_returns_initial_none() -> None:
+    src = io.BytesIO(b"hi")
+    result = close_and_log_exception(
+        src, logging.getLogger("pypdfbox.tests.iou"), "src"
+    )
+    assert result is None
+    assert src.closed
+
+
+def test_close_and_log_exception_success_returns_initial_when_set() -> None:
+    src = io.BytesIO(b"hi")
+    initial = OSError("earlier failure")
+    result = close_and_log_exception(
+        src, logging.getLogger("pypdfbox.tests.iou"), "src", initial
+    )
+    assert result is initial
+    assert src.closed
+
+
+def test_close_and_log_exception_returns_close_error_when_initial_none(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    class Bad:
+        def close(self) -> None:
+            raise OSError("close kaboom")
+
+    logger = logging.getLogger("pypdfbox.tests.iou.bad")
+    caplog.set_level(logging.WARNING, logger="pypdfbox.tests.iou.bad")
+    result = close_and_log_exception(Bad(), logger, "the-resource")
+    assert isinstance(result, OSError)
+    assert "close kaboom" in str(result)
+    assert any("the-resource" in r.getMessage() for r in caplog.records)
+
+
+def test_close_and_log_exception_preserves_initial_on_close_failure() -> None:
+    class Bad:
+        def close(self) -> None:
+            raise OSError("close kaboom")
+
+    initial = RuntimeError("primary problem")
+    logger = logging.getLogger("pypdfbox.tests.iou.bad2")
+    result = close_and_log_exception(Bad(), logger, "res", initial)
+    # Initial exception is returned unchanged so the caller doesn't lose it.
+    assert result is initial
+
+
+# ----- unmap stub -----
+
+
+def test_unmap_none_is_noop() -> None:
+    unmap(None)  # must not raise
+
+
+def test_unmap_calls_close_on_object_with_close() -> None:
+    closed = []
+
+    class FakeMmap:
+        def close(self) -> None:
+            closed.append(True)
+
+    unmap(FakeMmap())
+    assert closed == [True]
+
+
+def test_unmap_swallows_close_errors() -> None:
+    class Bad:
+        def close(self) -> None:
+            raise RuntimeError("nope")
+
+    unmap(Bad())  # must not raise
+
+
+def test_unmap_object_without_close_is_noop() -> None:
+    unmap(b"\x00\x01\x02")  # bytes have no close — must not raise

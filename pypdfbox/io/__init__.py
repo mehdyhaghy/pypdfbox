@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from .io_utils import close_quietly, copy, populate_buffer, to_byte_array
+from .io_utils import (
+    close_and_log_exception,
+    close_quietly,
+    copy,
+    populate_buffer,
+    to_byte_array,
+    unmap,
+)
 from .memory_usage_setting import UNLIMITED, MemoryUsageSetting, StorageMode
 from .random_access_read import RandomAccessRead
 from .random_access_read_buffer import RandomAccessReadBuffer
@@ -27,8 +34,10 @@ __all__ = [
     "ScratchFile",
     "ScratchFileBuffer",
     "StorageMode",
+    "close_and_log_exception",
     "close_quietly",
     "copy",
     "populate_buffer",
     "to_byte_array",
+    "unmap",
 ]
