@@ -29,7 +29,10 @@ class PDFontSetting:
         if font_setting is None:
             arr = COSArray()
             arr.add(COSNull.NULL)
-            arr.add(COSFloat(0.0))
+            # Upstream's no-arg constructor seeds the size slot with
+            # COSFloat(1) — match that so a freshly-built setting reports
+            # ``get_font_size() == 1.0`` (parity).
+            arr.add(COSFloat(1.0))
             self._array: COSArray = arr
             return
         if isinstance(font_setting, COSArray):
@@ -82,6 +85,25 @@ class PDFontSetting:
     def set_font_size(self, size: float) -> None:
         self._array.grow_to_size(2)
         self._array.set(1, COSFloat(float(size)))
+
+    # ---------- python protocols ----------
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PDFontSetting):
+            return NotImplemented
+        # Two wrappers compare equal iff they share the same backing
+        # COSArray. COSArray itself uses identity equality; mirror that.
+        return self._array is other._array
+
+    def __hash__(self) -> int:
+        # PDFontSetting wraps a mutable COSArray; hash by identity to
+        # stay consistent with __eq__'s identity comparison.
+        return id(self._array)
+
+    def __repr__(self) -> str:
+        size = self.get_font_size()
+        slot0 = self._array.get_object(0) if self._array.size() >= 1 else None
+        return f"PDFontSetting(font={slot0!r}, size={size!r})"
 
 
 __all__ = ["PDFontSetting"]

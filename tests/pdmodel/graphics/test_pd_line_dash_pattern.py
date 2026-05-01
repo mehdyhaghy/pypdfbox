@@ -126,3 +126,29 @@ def test_from_cos_array_requires_inner_array() -> None:
     bad.add(COSInteger.get(2))
     with pytest.raises(TypeError):
         PDLineDashPattern.from_cos_array(bad)
+
+
+def test_str_matches_upstream_to_string_shape() -> None:
+    """Mirrors upstream ``PDLineDashPattern.toString()``:
+    ``PDLineDashPattern{array=[...], phase=N}``.
+    Java's ``Float.toString`` always emits a trailing ``.0`` for integral
+    floats, so ``new float[]{3, 2}`` renders as ``[3.0, 2.0]``.
+    """
+    array = COSArray()
+    array.set_float_array([3, 2])
+    pattern = PDLineDashPattern(array, 1)
+    assert str(pattern) == "PDLineDashPattern{array=[3.0, 2.0], phase=1}"
+
+
+def test_str_empty_pattern() -> None:
+    pattern = PDLineDashPattern()
+    assert str(pattern) == "PDLineDashPattern{array=[], phase=0}"
+
+
+def test_str_includes_phase() -> None:
+    array = COSArray()
+    array.set_float_array([1.5])
+    pattern = PDLineDashPattern(array, 0)
+    text = str(pattern)
+    assert text.startswith("PDLineDashPattern{array=[1.5]")
+    assert text.endswith("phase=0}")

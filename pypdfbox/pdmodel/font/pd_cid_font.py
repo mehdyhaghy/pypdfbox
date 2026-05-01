@@ -49,6 +49,18 @@ class PDCIDFont(PDFont):
     def get_subtype(self) -> str | None:  # pragma: no cover - overridden
         raise NotImplementedError("PDCIDFont subclasses must implement get_subtype()")
 
+    # ---------- font identity ----------
+
+    def get_base_font(self) -> str | None:
+        """``/BaseFont`` — the PostScript name of the CIDFont.
+
+        Mirrors upstream ``PDCIDFont.getBaseFont``. PDFBox surfaces this
+        in addition to ``getName`` (the latter aliases the former on
+        :class:`PDCIDFont`); we expose both so that ports of upstream
+        callers find the API they expect.
+        """
+        return self._dict.get_name(COSName.get_pdf_name("BaseFont"))
+
     # ---------- parent Type0 font ----------
 
     def get_parent(self) -> PDType0Font | None:
@@ -454,6 +466,81 @@ class PDCIDFont(PDFont):
         the upstream signature usable on either subtype.
         """
         return int(code)
+
+    # ---------- code -> width (PDFontLike contract) ----------
+
+    def get_width(self, code: int) -> float:
+        """Width of the glyph for character ``code`` in 1/1000 em.
+
+        Mirrors upstream ``PDCIDFont.getWidth(int code)``: resolves
+        ``code -> CID`` via :meth:`code_to_cid`, then looks up the CID's
+        advance through :meth:`get_glyph_width` (which honours ``/W``
+        with ``/DW`` fallback). Surfaced separately from
+        :meth:`get_glyph_width` because PDFBox callers commonly hold a
+        character code rather than a CID.
+        """
+        return self.get_glyph_width(self.code_to_cid(code))
+
+    def has_explicit_width(self, code: int) -> bool:
+        """``True`` when ``code`` resolves to a CID that has its own
+        entry in ``/W``. Mirrors upstream
+        ``PDCIDFont.hasExplicitWidth(int code)``.
+
+        Distinct from :meth:`has_glyph` — that method also returns
+        ``True`` when only ``/DW`` makes the CID renderable. This one
+        reports whether the ``/W`` table specifically carries the CID
+        (the renderer uses it to decide whether to override embedded
+        program widths per PDFBOX-563).
+        """
+        cid = self.code_to_cid(code)
+        return cid in self.get_widths()
+
+    # ---------- vertical displacement (PDF 32000-1 §9.7.4.3) ----------
+
+    def get_vertical_displacement_vector_y(self, code: int) -> float:
+        """``w1y`` — the y-component of the vertical displacement vector
+        for ``code`` in 1/1000 em. Mirrors upstream
+        ``PDCIDFont.getVerticalDisplacementVectorY(int code)``.
+
+        Resolves ``code -> CID`` via :meth:`code_to_cid` and then looks
+        up the CID in the parsed ``/W2`` table. CIDs absent from ``/W2``
+        fall back to the ``displacementVectorY`` slot of ``/DW2``
+        (which per spec defaults to ``-1000``).
+        """
+        cid = self.code_to_cid(code)
+        triple = self.get_widths2().get(cid)
+        if triple is not None:
+            return triple[0]
+        # /DW2 is [position_vector_y displacement_vector_y]; the second
+        # entry is what we want here. get_default_position_vector
+        # returns (v_y, v_x) — i.e. (position_vector_y, displacement_vector_y).
+        _, displacement_vector_y = self.get_default_position_vector()
+        return displacement_vector_y
+
+    # ---------- /CIDToGIDMap binary parsing ----------
+
+    def read_cid_to_gid_map(self) -> list[int] | None:
+        """Decode the ``/CIDToGIDMap`` stream to a list of GIDs indexed
+        by CID. Mirrors upstream ``PDCIDFont.readCIDToGIDMap``.
+
+        Returns ``None`` when ``/CIDToGIDMap`` is absent or is the name
+        ``/Identity`` (callers treat absence as identity per PDF 32000-1
+        §9.7.4.2). The stream is a packed sequence of 16-bit
+        big-endian unsigned GID words; trailing odd bytes are ignored
+        the way the upstream loop ignores them.
+        """
+        v = self._dict.get_dictionary_object(_CID_TO_GID_MAP)
+        if not isinstance(v, COSStream):
+            return None
+        with v.create_input_stream() as fh:
+            raw = fh.read()
+        n = len(raw) // 2
+        result = [0] * n
+        offset = 0
+        for i in range(n):
+            result[i] = (raw[offset] & 0xFF) << 8 | (raw[offset + 1] & 0xFF)
+            offset += 2
+        return result
 
 
 __all__ = ["PDCIDFont"]

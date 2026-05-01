@@ -250,3 +250,137 @@ def test_code_to_cid_default_returns_code() -> None:
     assert font.code_to_cid(0) == 0
     assert font.code_to_cid(42) == 42
     assert font.code_to_cid(0xFFFF) == 0xFFFF
+
+
+# ---------- get_base_font ----------
+
+
+def test_get_base_font_none_when_absent() -> None:
+    font = PDCIDFontType0()
+    assert font.get_base_font() is None
+
+
+def test_get_base_font_round_trip() -> None:
+    from pypdfbox.cos import COSDictionary, COSName
+
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "CIDFontType2")  # type: ignore[attr-defined]
+    raw.set_name(COSName.get_pdf_name("BaseFont"), "ArialMT")
+    font = PDCIDFontType2(raw)
+    assert font.get_base_font() == "ArialMT"
+    # Mirrors get_name on PDCIDFont (PDFont.get_name reads /BaseFont).
+    assert font.get_name() == "ArialMT"
+
+
+# ---------- get_width (code -> width via CID) ----------
+
+
+def test_get_width_returns_dw_when_no_w_table() -> None:
+    font = PDCIDFontType0()
+    font.set_dw(777)
+    assert font.get_width(5) == 777.0
+
+
+def test_get_width_uses_w_table_via_code_to_cid() -> None:
+    font = PDCIDFontType0()
+    font.set_w(_w_range(10, 12, 600))
+    assert font.get_width(10) == 600.0
+    assert font.get_width(11) == 600.0
+    assert font.get_width(12) == 600.0
+    # Outside /W -> /DW (default 1000)
+    assert font.get_width(13) == 1000.0
+
+
+# ---------- has_explicit_width ----------
+
+
+def test_has_explicit_width_true_for_w_entry() -> None:
+    font = PDCIDFontType0()
+    font.set_w(_w_range(5, 7, 500))
+    assert font.has_explicit_width(5) is True
+    assert font.has_explicit_width(6) is True
+    assert font.has_explicit_width(7) is True
+
+
+def test_has_explicit_width_false_for_unmapped_cid_even_with_dw() -> None:
+    """``has_explicit_width`` is strictly about ``/W`` membership — a
+    positive ``/DW`` does NOT make a CID 'explicitly' wide."""
+    font = PDCIDFontType0()
+    font.set_dw(900)
+    assert font.has_explicit_width(42) is False
+
+
+def test_has_explicit_width_false_when_no_w() -> None:
+    font = PDCIDFontType0()
+    assert font.has_explicit_width(0) is False
+
+
+# ---------- get_vertical_displacement_vector_y ----------
+
+
+def test_get_vertical_displacement_vector_y_default_dw2() -> None:
+    """Spec default for /DW2 displacement_vector_y is -1000 when /DW2
+    and /W2 are both absent."""
+    font = PDCIDFontType0()
+    assert font.get_vertical_displacement_vector_y(0) == -1000.0
+    assert font.get_vertical_displacement_vector_y(42) == -1000.0
+
+
+def test_get_vertical_displacement_vector_y_uses_dw2_when_set() -> None:
+    font = PDCIDFontType2()
+    dw2 = COSArray()
+    for v in (900, -880):
+        dw2.add(COSInteger.get(v))
+    font.set_dw2(dw2)
+    assert font.get_vertical_displacement_vector_y(0) == -880.0
+
+
+def test_get_vertical_displacement_vector_y_uses_w2_when_present() -> None:
+    """``/W2`` form 2: ``c1 c2 w1y v_x v_y`` — the ``w1y`` slot is what
+    ``get_vertical_displacement_vector_y`` returns."""
+    font = PDCIDFontType2()
+    arr = COSArray()
+    for v in (5, 5, -880, -500, 900):
+        arr.add(COSInteger.get(v))
+    font.set_w2(arr)
+    assert font.get_vertical_displacement_vector_y(5) == -880.0
+    # CID outside /W2 -> /DW2 displacement_vector_y default (-1000).
+    assert font.get_vertical_displacement_vector_y(6) == -1000.0
+
+
+# ---------- read_cid_to_gid_map ----------
+
+
+def test_read_cid_to_gid_map_none_when_absent() -> None:
+    font = PDCIDFontType2()
+    assert font.read_cid_to_gid_map() is None
+
+
+def test_read_cid_to_gid_map_none_for_identity_name() -> None:
+    """``/CIDToGIDMap /Identity`` is not a stream — upstream's typed
+    getCOSStream() returns null in that case."""
+    font = PDCIDFontType2()
+    font.set_cid_to_gid_map("Identity")
+    assert font.read_cid_to_gid_map() is None
+
+
+def test_read_cid_to_gid_map_decodes_big_endian_words() -> None:
+    font = PDCIDFontType2()
+    stream = COSStream()
+    stream.set_data(
+        b"\x00\x00"  # CID 0 -> GID 0
+        b"\x00\x2a"  # CID 1 -> GID 42
+        b"\x01\x00"  # CID 2 -> GID 256
+        b"\xff\xff"  # CID 3 -> GID 65535
+    )
+    font.set_cid_to_gid_map(stream)
+    out = font.read_cid_to_gid_map()
+    assert out == [0, 42, 256, 0xFFFF]
+
+
+def test_read_cid_to_gid_map_ignores_trailing_odd_byte() -> None:
+    font = PDCIDFontType2()
+    stream = COSStream()
+    stream.set_data(b"\x12\x34\xff")  # 3 bytes -> 1 GID, trailing byte discarded
+    font.set_cid_to_gid_map(stream)
+    assert font.read_cid_to_gid_map() == [0x1234]

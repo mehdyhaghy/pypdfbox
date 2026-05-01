@@ -22,7 +22,10 @@ def test_empty_wrapper_round_trip() -> None:
     assert isinstance(arr, COSArray)
     assert arr.size() == 2
     assert fs.get_font() is None
-    assert fs.get_font_size() == 0.0
+    # Upstream's no-arg ``PDFontSetting()`` seeds the size slot with
+    # ``COSFloat(1)`` — match that for parity (so a freshly-built setting
+    # reports a default size of 1.0, not 0.0).
+    assert fs.get_font_size() == 1.0
 
 
 def test_set_font_size_round_trip() -> None:
@@ -122,6 +125,50 @@ def test_set_font_setting_none_removes_font_key() -> None:
     gs.set_font_setting(None)
     assert gs.get_cos_object().get_item("Font") is None
     assert gs.get_font_setting() is None
+
+
+def test_default_size_matches_upstream_one() -> None:
+    """Upstream's no-arg constructor adds ``COSFloat(1)`` for the size
+    slot. Verify that's what we see — both via the typed accessor and
+    directly on the underlying COSArray."""
+    from pypdfbox.cos import COSNumber
+
+    fs = PDFontSetting()
+    assert fs.get_font_size() == 1.0
+    entry = fs.get_cos_object().get_object(1)
+    assert isinstance(entry, COSNumber)
+    assert float(entry.value) == 1.0
+
+
+def test_eq_by_array_identity() -> None:
+    """Two wrappers compare equal iff they share the same backing
+    COSArray (identity). This mirrors COSArray's own identity-based
+    equality and matches Java upstream where ``PDFontSetting`` inherits
+    ``Object.equals``.
+    """
+    arr = COSArray()
+    arr.add(COSNull.NULL)
+    arr.add(COSFloat(5.0))
+    a = PDFontSetting(arr)
+    b = PDFontSetting(arr)
+    # Same backing array → equal.
+    assert a == b
+    # Distinct backing array → not equal even if contents match.
+    arr2 = COSArray()
+    arr2.add(COSNull.NULL)
+    arr2.add(COSFloat(5.0))
+    c = PDFontSetting(arr2)
+    assert a != c
+    # Cross-type comparison returns NotImplemented → False under ==.
+    assert a != "not a font setting"
+
+
+def test_repr_includes_font_and_size() -> None:
+    fs = PDFontSetting()
+    fs.set_font_size(7.5)
+    text = repr(fs)
+    assert "PDFontSetting" in text
+    assert "size=7.5" in text
 
 
 def test_typed_wrapper_coexists_with_raw_helpers() -> None:

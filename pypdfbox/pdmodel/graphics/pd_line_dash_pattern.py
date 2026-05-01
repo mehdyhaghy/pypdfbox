@@ -146,5 +146,22 @@ class PDLineDashPattern:
     def __repr__(self) -> str:
         return f"PDLineDashPattern(array={self._array!r}, phase={self._phase!r})"
 
+    def __str__(self) -> str:
+        # Match upstream ``PDLineDashPattern.toString()`` shape so debug
+        # output diffs cleanly against Java logs:
+        # ``PDLineDashPattern{array=[...], phase=N}``. Java's
+        # ``Arrays.toString(float[])`` formats with a leading space after
+        # commas and no trailing zero stripping.
+        formatted = ", ".join(self._format_float(v) for v in self._array)
+        return f"PDLineDashPattern{{array=[{formatted}], phase={self._phase}}}"
+
+    @staticmethod
+    def _format_float(value: float) -> str:
+        # Upstream uses Java ``Float.toString`` which always includes a
+        # trailing ".0" for integral values (e.g. ``3.0`` not ``3``).
+        if value == int(value):
+            return f"{int(value)}.0"
+        return repr(value)
+
 
 __all__ = ["PDLineDashPattern"]

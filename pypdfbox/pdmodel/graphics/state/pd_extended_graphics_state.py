@@ -438,6 +438,13 @@ class PDExtendedGraphicsState:
     def get_strokeOverprint(self) -> bool:  # noqa: N802 - upstream-style accessor name preserved
         return self._dict.get_boolean(_OP, False)
 
+    def get_stroke_overprint(self) -> bool:
+        """Snake_case spelling of :meth:`get_strokeOverprint` for callers
+        that prefer PEP 8 style. Behaviour is identical — both read the
+        ``/OP`` boolean (default ``False``).
+        """
+        return self.get_strokeOverprint()
+
     def set_stroke_overprint(self, op: bool) -> None:
         self._dict.set_boolean(_OP, bool(op))
 

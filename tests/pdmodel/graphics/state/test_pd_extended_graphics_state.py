@@ -184,6 +184,19 @@ def test_stroke_overprint_round_trip() -> None:
     assert gs.get_strokeOverprint() is True
 
 
+def test_get_stroke_overprint_snake_case_alias() -> None:
+    """``get_stroke_overprint()`` is the PEP 8 spelling of the legacy
+    ``get_strokeOverprint()`` accessor — both must read the same /OP
+    boolean and stay in sync after each setter.
+    """
+    gs = PDExtendedGraphicsState()
+    assert gs.get_stroke_overprint() is False
+    assert gs.get_stroke_overprint() == gs.get_strokeOverprint()
+    gs.set_stroke_overprint(True)
+    assert gs.get_stroke_overprint() is True
+    assert gs.get_stroke_overprint() == gs.get_strokeOverprint()
+
+
 def test_non_stroking_overprint_falls_back_to_stroking() -> None:
     gs = PDExtendedGraphicsState()
     # When /op is absent, upstream falls back to /OP.
