@@ -4,12 +4,15 @@ from typing import TYPE_CHECKING
 
 from .type import (
     AbstractSimpleProperty,
+    Attribute,
     DateType,
     GPSCoordinateType,
     IntegerType,
+    LangAlt,
     RationalType,
     TextType,
 )
+from .type.lang_alt import LANG_ATTR_NAME, X_DEFAULT, XML_NS_URI
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -285,6 +288,39 @@ class ExifSchema(XMPSchema):
 
     def get_user_comment_languages(self) -> list[str] | None:
         return self.get_unqualified_language_property_languages_value(self.USER_COMMENT)
+
+    def get_user_comment_property(self) -> LangAlt | None:
+        """
+        Mirror of upstream ``getUserCommentProperty()`` — returns the typed
+        :class:`LangAlt` view of the ``UserComment`` slot, or ``None`` when no
+        value has been set. Upstream returns the raw ``ArrayProperty``;
+        :class:`LangAlt` is our typed subclass carrying language-tagged
+        :class:`TextType` children.
+        """
+        raw = self._properties.get(self.USER_COMMENT)
+        if not isinstance(raw, dict) or not raw:
+            return None
+        la = LangAlt(
+            self._metadata, self._namespace, self._prefix, self.USER_COMMENT
+        )
+        keys = list(raw.keys())
+        if X_DEFAULT in keys:
+            keys.remove(X_DEFAULT)
+            keys.insert(0, X_DEFAULT)
+        for lang in keys:
+            value = raw[lang]
+            if not isinstance(value, str):
+                continue
+            text = TextType(
+                self._metadata,
+                self._namespace,
+                self._prefix,
+                self.USER_COMMENT,
+                value,
+            )
+            text.set_attribute(Attribute(XML_NS_URI, LANG_ATTR_NAME, lang))
+            la.add_property(text)
+        return la
 
     # --- ExifVersion (Text) -----------------------------------------
 

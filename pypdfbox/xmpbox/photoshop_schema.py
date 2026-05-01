@@ -370,6 +370,37 @@ class PhotoshopSchema(XMPSchema):
             return
         self._properties[self.DOCUMENT_ANCESTORS] = list(values)
 
+    def get_document_ancestors_property(self) -> ArrayProperty | None:
+        """
+        Mirror of upstream ``getDocumentAncestorsProperty()`` — returns the
+        typed Bag :class:`ArrayProperty` view of the ``DocumentAncestors``
+        slot, or ``None`` when the property is absent. Synthesized on demand
+        from the simple-list storage so callers always see an upstream-shaped
+        ``ArrayProperty`` carrying :class:`TextType` children.
+        """
+        items = self.get_unqualified_bag_value_list(self.DOCUMENT_ANCESTORS)
+        if items is None:
+            return None
+        bag = ArrayProperty(
+            self._metadata,
+            self._namespace,
+            self._prefix,
+            self.DOCUMENT_ANCESTORS,
+            Cardinality.Bag,
+        )
+        for item in items:
+            if isinstance(item, str):
+                bag.add_property(
+                    TextType(
+                        self._metadata,
+                        self._namespace,
+                        self._prefix,
+                        self.DOCUMENT_ANCESTORS,
+                        item,
+                    )
+                )
+        return bag
+
     # --- Headline (Text) ---------------------------------------------
 
     def get_headline(self) -> str | None:
@@ -593,6 +624,18 @@ class PhotoshopSchema(XMPSchema):
         :class:`LayerType` to the ``TextLayers`` Seq, allocating the
         container on first use.
         """
+        self._ensure_text_layers_seq().add_property(layer)
+
+    def add_text_layers(self, layer_name: str, layer_text: str) -> None:
+        """
+        Mirror of upstream ``addTextLayers(String layerName, String layerText)``.
+        Build a fresh :class:`LayerType` populated with ``layer_name`` /
+        ``layer_text`` and append it to the ``TextLayers`` Seq, allocating the
+        container on first use.
+        """
+        layer = LayerType(self._metadata)
+        layer.set_layer_name(layer_name)
+        layer.set_layer_text(layer_text)
         self._ensure_text_layers_seq().add_property(layer)
 
     def remove_text_layer(self, layer_name: str) -> None:

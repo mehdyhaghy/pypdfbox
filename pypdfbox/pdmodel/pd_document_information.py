@@ -196,7 +196,16 @@ class PDDocumentInformation:
     # ---------- trapped ----------
 
     def get_trapped(self) -> str | None:
-        return self._info.get_name(_TRAPPED)
+        # Mirrors upstream ``getNameAsString`` semantics: real-world PDFs
+        # occasionally store /Trapped as a COSString instead of the
+        # spec-mandated COSName. Accept both so we don't surprise readers
+        # with ``None`` for files Java PDFBox happily reads.
+        v = self._info.get_dictionary_object(_TRAPPED)
+        if isinstance(v, COSName):
+            return v.name
+        if isinstance(v, COSString):
+            return v.get_string()
+        return None
 
     def set_trapped(self, value: str | None) -> None:
         if value is not None and value not in _VALID_TRAPPED:

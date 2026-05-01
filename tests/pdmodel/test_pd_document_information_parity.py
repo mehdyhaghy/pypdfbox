@@ -127,6 +127,32 @@ def test_trapped_rejects_invalid_value() -> None:
         info.set_trapped("Maybe")
 
 
+def test_trapped_reads_cos_string_value() -> None:
+    """Some real-world PDFs store /Trapped as a COSString instead of the
+    spec-mandated COSName. Upstream ``getTrapped()`` reads via
+    ``getNameAsString`` which accepts both — match that lenience."""
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("Trapped"), COSString("True"))
+    info = PDDocumentInformation(raw)
+    assert info.get_trapped() == "True"
+
+
+def test_trapped_reads_cos_name_value() -> None:
+    """The spec-correct COSName form still reads back."""
+    raw = COSDictionary()
+    raw.set_name(COSName.get_pdf_name("Trapped"), "Unknown")
+    info = PDDocumentInformation(raw)
+    assert info.get_trapped() == "Unknown"
+
+
+def test_trapped_returns_none_for_unexpected_type() -> None:
+    """Non-name, non-string values yield None (no exception)."""
+    raw = COSDictionary()
+    raw.set_int(COSName.get_pdf_name("Trapped"), 1)
+    info = PDDocumentInformation(raw)
+    assert info.get_trapped() is None
+
+
 # ---------- custom metadata ----------
 
 

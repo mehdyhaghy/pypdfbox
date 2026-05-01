@@ -520,3 +520,37 @@ def test_text_layers_property_setter_with_none_clears_property() -> None:
     schema.set_text_layers_property(None)
     assert schema.get_text_layers_property() is None
     assert schema.get_text_layers() is None
+
+
+def test_document_ancestors_property_returns_bag_array_property() -> None:
+    """Wave round-out: parity with upstream ``getDocumentAncestorsProperty``."""
+    schema = _photoshop()
+    assert schema.get_document_ancestors_property() is None
+    schema.add_document_ancestors("uuid:parent-1")
+    schema.add_document_ancestors("uuid:parent-2")
+    bag = schema.get_document_ancestors_property()
+    assert isinstance(bag, ArrayProperty)
+    assert bag.get_array_type() == Cardinality.Bag
+    children = bag.get_all_properties()
+    assert len(children) == 2
+    assert all(isinstance(child, TextType) for child in children)
+    assert {child.get_string_value() for child in children} == {
+        "uuid:parent-1",
+        "uuid:parent-2",
+    }
+    # Plain-list view stays consistent with the typed view.
+    assert schema.get_document_ancestors() == ["uuid:parent-1", "uuid:parent-2"]
+
+
+def test_add_text_layers_upstream_method_appends_layer() -> None:
+    """Wave round-out: parity with upstream ``addTextLayers(name, text)``."""
+    schema = _photoshop()
+    schema.add_text_layers("Layer1", "Hello")
+    schema.add_text_layers("Layer2", "World")
+    layers = schema.get_text_layers()
+    assert layers is not None
+    assert len(layers) == 2
+    assert layers[0].get_layer_name() == "Layer1"
+    assert layers[0].get_layer_text() == "Hello"
+    assert layers[1].get_layer_name() == "Layer2"
+    assert layers[1].get_layer_text() == "World"

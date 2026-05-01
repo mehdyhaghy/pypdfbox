@@ -309,3 +309,30 @@ def test_set_renditions_none_clears_entry() -> None:
     nd.set_renditions(PDRenditionsNameTreeNode())
     nd.set_renditions(None)
     assert nd.get_renditions() is None
+
+
+# ---------- pdmodel package-level exports ----------
+
+
+def test_pd_document_name_dictionary_exported_from_pdmodel() -> None:
+    """Mirrors upstream ``org.apache.pdfbox.pdmodel.PDDocumentNameDictionary``
+    package placement — importable from the ``pypdfbox.pdmodel`` namespace."""
+    import pypdfbox.pdmodel as pdmodel
+
+    assert pdmodel.PDDocumentNameDictionary is PDDocumentNameDictionary
+    assert "PDDocumentNameDictionary" in pdmodel.__all__
+
+
+def test_pd_document_name_destination_dictionary_exported_from_pdmodel() -> None:
+    """Mirrors upstream
+    ``org.apache.pdfbox.pdmodel.PDDocumentNameDestinationDictionary``
+    package placement — importable from the ``pypdfbox.pdmodel`` namespace."""
+    import pypdfbox.pdmodel as pdmodel
+    from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+        PDDocumentNameDestinationDictionary,
+    )
+
+    assert pdmodel.PDDocumentNameDestinationDictionary is (
+        PDDocumentNameDestinationDictionary
+    )
+    assert "PDDocumentNameDestinationDictionary" in pdmodel.__all__

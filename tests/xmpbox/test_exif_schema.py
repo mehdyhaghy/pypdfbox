@@ -10,6 +10,7 @@ from pypdfbox.xmpbox import (
     ExifSchema,
     GPSCoordinateType,
     IntegerType,
+    LangAlt,
     RationalType,
     TextType,
     XMPMetadata,
@@ -716,3 +717,25 @@ def test_dom_parser_dispatches_rational_attribute_form_onto_typed_schema() -> No
     coord = schema.get_gps_latitude_property()
     assert isinstance(coord, GPSCoordinateType)
     assert coord.parse() == (48, 51.0, 30.0, "N")
+
+
+def test_user_comment_property_returns_lang_alt() -> None:
+    """Wave round-out: parity with upstream ``getUserCommentProperty``."""
+    schema = _exif()
+    assert schema.get_user_comment_property() is None
+    schema.set_user_comment("hello")
+    schema.add_user_comment("fr", "bonjour")
+    la = schema.get_user_comment_property()
+    assert isinstance(la, LangAlt)
+    assert la.get_language_value("x-default") == "hello"
+    assert la.get_language_value("fr") == "bonjour"
+    children = la.get_all_properties()
+    # x-default sorted first to match upstream reorganizeAltOrder.
+    first_attr = children[0].get_attribute("xml:lang")
+    assert first_attr is not None
+    assert first_attr.get_value() == "x-default"
+
+
+def test_user_comment_property_none_when_empty() -> None:
+    schema = _exif()
+    assert schema.get_user_comment_property() is None

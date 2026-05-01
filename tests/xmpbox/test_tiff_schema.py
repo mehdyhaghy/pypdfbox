@@ -5,6 +5,7 @@ from pypdfbox.xmpbox import (
     DateType,
     DomXmpParser,
     IntegerType,
+    LangAlt,
     ProperNameType,
     RationalType,
     TextType,
@@ -497,3 +498,39 @@ def test_all_typed_property_getters_return_none_when_empty() -> None:
     assert schema.get_resolution_unit_property() is None
     assert schema.get_x_resolution_property() is None
     assert schema.get_y_resolution_property() is None
+
+
+def test_image_description_property_returns_lang_alt() -> None:
+    """Wave round-out: parity with upstream ``getImageDescriptionProperty``."""
+    schema = _tiff()
+    assert schema.get_image_description_property() is None
+    schema.set_image_description("Sunset")
+    schema.add_image_description("fr", "Coucher de soleil")
+    la = schema.get_image_description_property()
+    assert isinstance(la, LangAlt)
+    assert la.get_language_value("x-default") == "Sunset"
+    assert la.get_language_value("fr") == "Coucher de soleil"
+    # x-default must be the first child (matches upstream reorganizeAltOrder).
+    children = la.get_all_properties()
+    assert len(children) == 2
+    first_attr = children[0].get_attribute("xml:lang")
+    assert first_attr is not None
+    assert first_attr.get_value() == "x-default"
+
+
+def test_copyright_property_returns_lang_alt() -> None:
+    """Wave round-out: parity with upstream ``getCopyrightProperty``."""
+    schema = _tiff()
+    assert schema.get_copyright_property() is None
+    schema.set_copyright("(c) 2026 Example")
+    schema.add_copyright("de", "(c) 2026 Beispiel")
+    la = schema.get_copyright_property()
+    assert isinstance(la, LangAlt)
+    assert la.get_language_value("x-default") == "(c) 2026 Example"
+    assert la.get_language_value("de") == "(c) 2026 Beispiel"
+
+
+def test_lang_alt_property_accessors_none_when_empty() -> None:
+    schema = _tiff()
+    assert schema.get_image_description_property() is None
+    assert schema.get_copyright_property() is None

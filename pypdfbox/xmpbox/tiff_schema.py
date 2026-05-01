@@ -5,12 +5,15 @@ from typing import TYPE_CHECKING
 from .type import (
     AbstractSimpleProperty,
     AgentNameType,
+    Attribute,
     DateType,
     IntegerType,
+    LangAlt,
     ProperNameType,
     RationalType,
     TextType,
 )
+from .type.lang_alt import LANG_ATTR_NAME, X_DEFAULT, XML_NS_URI
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -232,6 +235,34 @@ class TiffSchema(XMPSchema):
     ) -> None:
         self._typed_set(local_name, value)
 
+    # --- internal: LangAlt typed-view fabricator ---------------------
+
+    def _build_lang_alt(self, local_name: str) -> LangAlt | None:
+        """
+        Synthesize a typed :class:`LangAlt` view from the dict-form storage
+        used for LangAlt slots. Mirrors upstream's ``getXxxProperty()``
+        accessors which return the underlying ``ArrayProperty`` carrying the
+        per-language children. Returns ``None`` when the slot is empty.
+        """
+        raw = self._properties.get(local_name)
+        if not isinstance(raw, dict) or not raw:
+            return None
+        la = LangAlt(self._metadata, self._namespace, self._prefix, local_name)
+        keys = list(raw.keys())
+        if X_DEFAULT in keys:
+            keys.remove(X_DEFAULT)
+            keys.insert(0, X_DEFAULT)
+        for lang in keys:
+            value = raw[lang]
+            if not isinstance(value, str):
+                continue
+            text = TextType(
+                self._metadata, self._namespace, self._prefix, local_name, value
+            )
+            text.set_attribute(Attribute(XML_NS_URI, LANG_ATTR_NAME, lang))
+            la.add_property(text)
+        return la
+
     # --- ImageDescription (LangAlt) ---------------------------------
 
     def set_image_description(self, value: str) -> None:
@@ -247,6 +278,15 @@ class TiffSchema(XMPSchema):
     def get_image_description_languages(self) -> list[str] | None:
         return self.get_unqualified_language_property_languages_value(self.IMAGE_DESCRIPTION)
 
+    def get_image_description_property(self) -> LangAlt | None:
+        """
+        Mirror of upstream ``getImageDescriptionProperty()`` — returns the
+        typed :class:`LangAlt` view of the ``ImageDescription`` slot, or
+        ``None`` when no value has been set. Upstream returns the raw
+        ``ArrayProperty``; :class:`LangAlt` is our typed subclass.
+        """
+        return self._build_lang_alt(self.IMAGE_DESCRIPTION)
+
     # --- Copyright (LangAlt) ----------------------------------------
 
     def set_copyright(self, value: str) -> None:
@@ -261,6 +301,14 @@ class TiffSchema(XMPSchema):
 
     def get_copyright_languages(self) -> list[str] | None:
         return self.get_unqualified_language_property_languages_value(self.COPYRIGHT)
+
+    def get_copyright_property(self) -> LangAlt | None:
+        """
+        Mirror of upstream ``getCopyrightProperty()`` — returns the typed
+        :class:`LangAlt` view of the ``Copyright`` slot, or ``None`` when no
+        value has been set.
+        """
+        return self._build_lang_alt(self.COPYRIGHT)
 
     # --- Artist (ProperName) ----------------------------------------
 
