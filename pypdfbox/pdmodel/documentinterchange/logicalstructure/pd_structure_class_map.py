@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSObject
 
@@ -93,12 +93,48 @@ class PDStructureClassMap:
             arr.add(attr.get_cos_object())
         self._dictionary.set_item(name, arr)
 
+    def set_class(
+        self, name: str, attribute: PDAttributeObject | Iterable[PDAttributeObject]
+    ) -> None:
+        """Replace any existing entry for ``name`` with ``attribute``.
+
+        Unlike :meth:`add_class` (which appends), ``set_class`` first removes
+        any prior value. A single :class:`PDAttributeObject` is stored as a
+        bare ``COSDictionary``; a multi-element iterable is stored as a
+        ``COSArray``; a single-element iterable is stored as a bare
+        ``COSDictionary`` to match the on-disk shape upstream PDFBox produces.
+        """
+        if attribute is None:
+            raise TypeError("attribute must not be None")
+        self._dictionary.remove_item(name)
+        self.add_class(name, attribute)
+
     def remove_class(self, name: str) -> None:
         """Remove the entry for ``name``. No-op when absent."""
         self._dictionary.remove_item(name)
 
     def is_empty(self) -> bool:
         return self._dictionary.is_empty()
+
+    def size(self) -> int:
+        """Return the number of class-name entries (mirrors ``len()``)."""
+        return self._dictionary.size()
+
+    def get_keys(self) -> list[str]:
+        """Return the list of class names in declaration order."""
+        return [k.get_name() for k in self._dictionary.key_set()]
+
+    def __len__(self) -> int:
+        return self._dictionary.size()
+
+    def __iter__(self) -> Iterator[str]:
+        for key in self._dictionary.key_set():
+            yield key.get_name()
+
+    def __contains__(self, name: object) -> bool:
+        if not isinstance(name, str):
+            return False
+        return self._dictionary.get_dictionary_object(name) is not None
 
     def __repr__(self) -> str:
         return f"PDStructureClassMap(size={self._dictionary.size()})"

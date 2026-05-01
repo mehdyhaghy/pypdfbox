@@ -119,6 +119,92 @@ def test_add_class_rejects_none() -> None:
         cm.add_class("Bad", None)  # type: ignore[arg-type]
 
 
+# ---------- set_class (replace semantics) ----------
+
+
+def test_set_class_replaces_existing_single_entry() -> None:
+    cm = PDStructureClassMap()
+    cm.add_class("MyClass", _make_attr("Layout"))
+    cm.set_class("MyClass", _make_attr("List"))
+
+    classes = cm.get_class("MyClass")
+    assert len(classes) == 1
+    assert classes[0].get_owner() == "List"
+
+
+def test_set_class_replaces_existing_array_entry() -> None:
+    cm = PDStructureClassMap()
+    cm.add_class("MyClass", [_make_attr("Layout"), _make_attr("Table")])
+    assert len(cm.get_class("MyClass")) == 2
+
+    cm.set_class("MyClass", _make_attr("List"))
+    classes = cm.get_class("MyClass")
+    assert len(classes) == 1
+    assert classes[0].get_owner() == "List"
+
+
+def test_set_class_with_iterable_stores_array() -> None:
+    cm = PDStructureClassMap()
+    cm.set_class("MyClass", [_make_attr("Layout"), _make_attr("List")])
+    raw = cm.get_cos_object().get_dictionary_object("MyClass")
+    assert isinstance(raw, COSArray)
+    assert raw.size() == 2
+
+
+def test_set_class_when_absent_acts_like_add() -> None:
+    cm = PDStructureClassMap()
+    cm.set_class("New", _make_attr("Layout"))
+    assert len(cm.get_class("New")) == 1
+
+
+def test_set_class_rejects_none() -> None:
+    cm = PDStructureClassMap()
+    with pytest.raises(TypeError):
+        cm.set_class("Bad", None)  # type: ignore[arg-type]
+
+
+# ---------- pythonic accessors ----------
+
+
+def test_size_and_len_match_entry_count() -> None:
+    cm = PDStructureClassMap()
+    assert cm.size() == 0
+    assert len(cm) == 0
+    cm.add_class("A", _make_attr())
+    cm.add_class("B", _make_attr())
+    assert cm.size() == 2
+    assert len(cm) == 2
+
+
+def test_get_keys_returns_class_names_in_order() -> None:
+    cm = PDStructureClassMap()
+    cm.add_class("First", _make_attr())
+    cm.add_class("Second", _make_attr())
+    cm.add_class("Third", _make_attr())
+    assert cm.get_keys() == ["First", "Second", "Third"]
+
+
+def test_iter_yields_class_names() -> None:
+    cm = PDStructureClassMap()
+    cm.add_class("A", _make_attr())
+    cm.add_class("B", _make_attr())
+    assert list(iter(cm)) == ["A", "B"]
+
+
+def test_contains_for_known_name() -> None:
+    cm = PDStructureClassMap()
+    cm.add_class("Known", _make_attr())
+    assert "Known" in cm
+    assert "Unknown" not in cm
+
+
+def test_contains_with_non_string_returns_false() -> None:
+    cm = PDStructureClassMap()
+    cm.add_class("X", _make_attr())
+    assert (123 in cm) is False  # type: ignore[operator]
+    assert (None in cm) is False  # type: ignore[operator]
+
+
 def test_class_map_wraps_existing_cos_dictionary_with_array_entry() -> None:
     raw_dict = COSDictionary()
     arr = COSArray()
