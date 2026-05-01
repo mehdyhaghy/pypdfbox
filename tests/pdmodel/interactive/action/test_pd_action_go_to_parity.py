@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageDestination,
@@ -50,15 +50,20 @@ def test_get_destination_dispatches_name_to_str() -> None:
 
 
 def test_set_destination_pd_page_destination_round_trips() -> None:
-    """A typed ``PDPageDestination`` round-trips through ``/D``."""
+    """A typed ``PDPageDestination`` round-trips through ``/D``.
+
+    Note: GoTo requires a page-dictionary target (PDF 32000-1 §12.6.4.2);
+    ``set_page_number`` is reserved for remote-destination arrays."""
     action = PDActionGoTo()
     dest = PDPageXYZDestination()
-    dest.set_page_number(5)
+    page = COSDictionary()
+    page.set_name(COSName.get_pdf_name("Type"), "Page")
+    dest.set_page(page)
     action.set_destination(dest)
 
     resolved = action.get_destination()
     assert isinstance(resolved, PDPageXYZDestination)
-    assert resolved.get_page_number() == 5
+    assert resolved.get_page() is page
 
 
 def test_set_destination_named_string_round_trips() -> None:

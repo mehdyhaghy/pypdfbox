@@ -264,6 +264,96 @@ class Type1Font:
             self._meta_cache["name"] = str(value)
         return self._meta_cache["name"]  # type: ignore[no-any-return]
 
+    def get_font_name(self) -> str:
+        """Upstream ``Type1Font.getFontName()`` — alias of :meth:`get_name`.
+
+        Java exposes both ``getName()`` (from ``FontBoxFont``) and
+        ``getFontName()`` (Type1 specific) returning the same string. We
+        mirror that surface so PDFBox-style call sites work unchanged.
+        """
+        return self.get_name()
+
+    def get_font_matrix(self) -> list[float]:
+        """Upstream ``Type1Font.getFontMatrix()`` — getter form of the
+        :attr:`font_matrix` property. Returns a fresh list so callers may
+        mutate freely (Java returns an unmodifiable list)."""
+        return list(self.font_matrix)
+
+    def get_version(self) -> str:
+        """``FontInfo /version``. Empty string when absent.
+
+        Upstream Java field is ``version`` exposed through ``getVersion``;
+        the parsed PostScript dict surfaces it as either ``version`` (the
+        spec-canonical lowercase key) or, in some lenient parsers, as
+        ``Version``. Probe both."""
+        if "version" not in self._meta_cache:
+            info = self._font_info()
+            value = info.get("version")
+            if value is None:
+                value = info.get("Version")
+            if value is None:
+                logger.debug("Type1Font: FontInfo /version missing, returning ''")
+                value = ""
+            self._meta_cache["version"] = str(value)
+        return self._meta_cache["version"]  # type: ignore[no-any-return]
+
+    def get_paint_type(self) -> int:
+        """Top-level ``/PaintType``. ``0`` when absent (Type 1 default —
+        filled glyphs; ``2`` denotes outline / stroked glyphs)."""
+        value = self._font_dict().get("PaintType")
+        if value is None:
+            logger.debug("Type1Font: /PaintType missing, returning 0")
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /PaintType %r not int, returning 0", value)
+            return 0
+
+    def get_font_type(self) -> int:
+        """Top-level ``/FontType``. ``0`` when absent (Type 1 fonts are
+        always ``1`` in spec but a missing key shouldn't crash the
+        accessor — Java field defaults to 0)."""
+        value = self._font_dict().get("FontType")
+        if value is None:
+            logger.debug("Type1Font: /FontType missing, returning 0")
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /FontType %r not int, returning 0", value)
+            return 0
+
+    def get_subrs_array(self) -> list[Any]:
+        """Upstream ``Type1Font.getSubrsArray()`` — return the raw subrs
+        list (each entry is the encrypted charstring bytes upstream; in
+        our fontTools-backed path each entry is a :class:`T1CharString`).
+
+        Returns an empty list when ``Private/Subrs`` is missing. Distinct
+        from :meth:`get_subrs` which returns the *count*."""
+        subrs = self._private_dict().get("Subrs")
+        if subrs is None:
+            return []
+        try:
+            return list(subrs)
+        except TypeError:
+            logger.debug("Type1Font: /Private/Subrs %r not iterable, returning []", subrs)
+            return []
+
+    def get_ascii_segment(self) -> bytes:
+        """Upstream ``Type1Font.getASCIISegment()`` — raw segment 1
+        (cleartext PostScript header) bytes that produced this font.
+
+        Empty bytes when the font was not built from segment data."""
+        return self._segment1
+
+    def get_binary_segment(self) -> bytes:
+        """Upstream ``Type1Font.getBinarySegment()`` — raw segment 2
+        (encrypted eexec body) bytes that produced this font.
+
+        Empty bytes when the font was not built from segment data."""
+        return self._segment2
+
     def get_family_name(self) -> str:
         """``FontInfo /FamilyName``. Empty string when absent."""
         if "family" not in self._meta_cache:
@@ -637,6 +727,21 @@ class Type1Font:
             font_name=self.get_name(),
             glyph_name=glyph_name,
             sequence=cs,
+        )
+
+    def __str__(self) -> str:
+        """Mirror upstream ``Type1Font.toString()``:
+        ``<qualname>[fontName=<name>, fullName=<full>, encoding=<enc>,
+        charStringsDict=<map>]`` — handy when fonts show up in log
+        messages and stack traces."""
+        try:
+            charstrings = self.get_char_strings_subroutines_charset()
+        except Exception:  # noqa: BLE001 — defensive, never raise from __str__
+            charstrings = {}
+        return (
+            f"{self.__class__.__module__}.{self.__class__.__qualname__}"
+            f"[fontName={self.get_name()}, fullName={self.get_full_name()}, "
+            f"encoding={self.get_encoding()}, charStringsDict={charstrings}]"
         )
 
 

@@ -8,7 +8,7 @@ typed setter.
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
@@ -31,15 +31,20 @@ def test_get_destination_returns_none_when_d_absent() -> None:
 
 
 def test_set_destination_with_pd_destination_round_trip() -> None:
+    """GoTo (local) destinations require a page-dictionary at index 0;
+    ``set_page_number`` is for remote destinations only (PDF 32000-1
+    §12.6.4.2)."""
     action = PDActionGoTo()
     dest = PDPageXYZDestination()
-    dest.set_page_number(2)
+    page = COSDictionary()
+    page.set_name(COSName.get_pdf_name("Type"), "Page")
+    dest.set_page(page)
     action.set_destination(dest)
 
     resolved = action.get_destination()
     assert isinstance(resolved, PDDestination)
     assert isinstance(resolved, PDPageXYZDestination)
-    assert resolved.get_page_number() == 2
+    assert resolved.get_page() is page
 
 
 def test_set_destination_with_string_writes_named_destination() -> None:

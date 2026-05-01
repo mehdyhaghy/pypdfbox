@@ -17,7 +17,23 @@ class PDActionJavaScript(PDAction):
 
     SUB_TYPE = "JavaScript"
 
-    def __init__(self, action: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        action: COSDictionary | str | None = None,
+    ) -> None:
+        """Construct a JavaScript action.
+
+        Mirrors upstream's three constructors:
+
+        - ``PDActionJavaScript()`` — no-arg, sets ``/S = /JavaScript``.
+        - ``PDActionJavaScript(String js)`` — also writes the JS source to
+          ``/JS``. Pass a ``str`` here.
+        - ``PDActionJavaScript(COSDictionary)`` — wraps an existing dict.
+        """
+        if isinstance(action, str):
+            super().__init__(None, self.SUB_TYPE)
+            self.set_action(action)
+            return
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
     def get_action(self) -> str | None:

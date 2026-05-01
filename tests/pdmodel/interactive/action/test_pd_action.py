@@ -55,12 +55,16 @@ def test_action_factory_preserves_unknown_subtype() -> None:
 def test_goto_destination_round_trip() -> None:
     action = PDActionGoTo()
     dest = PDPageXYZDestination()
-    dest.set_page_number(3)
+    # GoTo (local) destinations require a page dictionary at index 0;
+    # ``set_page_number`` is for remote-destination targets only.
+    page = COSDictionary()
+    page.set_name(COSName.TYPE, "Page")
+    dest.set_page(page)
     action.set_destination(dest)
 
     resolved = action.get_destination()
     assert isinstance(resolved, PDPageXYZDestination)
-    assert resolved.get_page_number() == 3
+    assert resolved.get_page() is page
 
 
 def test_uri_named_launch_remote_and_javascript_accessors() -> None:

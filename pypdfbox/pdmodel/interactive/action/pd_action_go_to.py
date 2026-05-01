@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import PDDestination
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
+    PDPageDestination,
+)
 
 from .pd_action import PDAction
 
@@ -42,9 +45,26 @@ class PDActionGoTo(PDAction):
 
     def set_destination(self, destination: PDDestination | str | COSBase | None) -> None:
         """Write ``/D`` from a typed destination, a named-destination
-        string, a raw ``COSBase``, or ``None`` (which removes the entry)."""
+        string, a raw ``COSBase``, or ``None`` (which removes the entry).
+
+        Mirrors upstream ``PDActionGoTo#setDestination`` validation: when a
+        :class:`PDPageDestination` is supplied with a non-empty backing array
+        whose first element is *not* a page ``COSDictionary``, raises
+        :class:`ValueError` (Python equivalent of ``IllegalArgumentException``).
+        Indirect-reference page targets are accepted because resolution may
+        defer until write time."""
         if destination is None:
             self._action.remove_item(_D)
+            return
+        if isinstance(destination, PDPageDestination):
+            dest_array = destination.get_cos_object()
+            if isinstance(dest_array, COSArray) and dest_array.size() >= 1:
+                page = dest_array.get_object(0)
+                if not isinstance(page, COSDictionary):
+                    raise ValueError(
+                        "Destination of a GoTo action must be a page dictionary object"
+                    )
+            self._action.set_item(_D, dest_array)
             return
         if isinstance(destination, PDDestination):
             self._action.set_item(_D, destination.get_cos_object())
