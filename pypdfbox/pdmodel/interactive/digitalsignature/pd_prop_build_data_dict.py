@@ -81,10 +81,10 @@ class PDPropBuildDataDict:
 
         Returns ``-1`` (PDFBox ``getLong`` default) if absent.
         """
-        return self._dict.get_int(_R)
+        return self._dict.get_long(_R)
 
     def set_revision(self, revision: int) -> None:
-        self._dict.set_int(_R, revision)
+        self._dict.set_long(_R, revision)
 
     # ---------- /V minimum revision (deprecated PDF 1.7) ----------
 
@@ -93,10 +93,10 @@ class PDPropBuildDataDict:
 
         Note: deprecated for PDF v1.7. Returns ``-1`` if absent.
         """
-        return self._dict.get_int(_V)
+        return self._dict.get_long(_V)
 
     def set_minimum_revision(self, revision: int) -> None:
-        self._dict.set_int(_V, revision)
+        self._dict.set_long(_V, revision)
 
     # ---------- /PreRelease ----------
 

@@ -22,6 +22,25 @@ class PDSignatureLock:
 
     TYPE = "SigFieldLock"
 
+    # ---------- /Action values (PDF 32000-1 §12.7.4.5 Table 233) ----------
+    # All form fields do not permit changes after signing.
+    ACTION_ALL = "All"
+    # Form fields specified in /Fields do not permit changes after signing.
+    ACTION_INCLUDE = "Include"
+    # Form fields not specified in /Fields do not permit changes after signing.
+    ACTION_EXCLUDE = "Exclude"
+
+    # ---------- /P permission values (PDF 32000-1 §12.7.4.5 Table 233) ----------
+    # No changes to the document are permitted; any change invalidates the
+    # signature.
+    P_NO_CHANGES = 1
+    # Permitted changes are filling in forms, instantiating page templates,
+    # and signing.
+    P_ALLOW_FORM_FILL = 2
+    # Permitted changes are the same as for /P 2, plus annotation creation,
+    # deletion, and modification.
+    P_ALLOW_FORM_FILL_AND_ANNOTATIONS = 3
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dict = COSDictionary()

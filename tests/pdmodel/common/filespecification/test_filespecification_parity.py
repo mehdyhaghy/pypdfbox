@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSString
+from pypdfbox.cos import COSDictionary, COSName, COSObject, COSStream, COSString
 from pypdfbox.pdmodel.common.filespecification import (
     PDComplexFileSpecification,
     PDEmbeddedFile,
+    PDFileSpecification,
     PDSimpleFileSpecification,
 )
 
@@ -143,3 +144,62 @@ def test_complex_volatile_round_trip() -> None:
     assert spec.is_volatile() is True
     spec.set_volatile(False)
     assert spec.is_volatile() is False
+
+
+def test_complex_constructor_none_creates_typed_dict() -> None:
+    spec = PDComplexFileSpecification(None)
+    cos = spec.get_cos_object()
+    assert isinstance(cos, COSDictionary)
+    assert cos.get_name(COSName.TYPE) == "Filespec"  # type: ignore[attr-defined]
+
+
+def test_complex_get_filename_none_when_no_entries_set() -> None:
+    spec = PDComplexFileSpecification()
+    assert spec.get_filename() is None
+
+
+# ---------- create_fs(COSObject) — indirect-reference auto-deref ----------
+
+
+def test_create_fs_with_indirect_cos_string_returns_simple() -> None:
+    inner = COSString("indirect.pdf")
+    ref = COSObject(1, 0, resolved=inner)
+    spec = PDFileSpecification.create_fs(ref)
+    assert isinstance(spec, PDSimpleFileSpecification)
+    assert spec.get_file() == "indirect.pdf"
+
+
+def test_create_fs_with_indirect_cos_dictionary_returns_complex() -> None:
+    inner = COSDictionary()
+    inner.set_string(COSName.get_pdf_name("F"), "wrapped.pdf")
+    ref = COSObject(2, 0, resolved=inner)
+    spec = PDFileSpecification.create_fs(ref)
+    assert isinstance(spec, PDComplexFileSpecification)
+    assert spec.get_file() == "wrapped.pdf"
+
+
+def test_create_fs_with_unresolved_indirect_returns_none() -> None:
+    # COSObject without a resolved value and without a loader stays unresolved.
+    ref = COSObject(3, 0)
+    assert PDFileSpecification.create_fs(ref) is None
+
+
+# ---------- PDEmbeddedFile mac-res-fork mechanical-name aliases ----------
+
+
+def test_embedded_file_mac_res_fork_aliases_round_trip() -> None:
+    embedded = PDEmbeddedFile()
+    rf = COSStream()
+    embedded.set_mac_res_fork(rf)
+    fetched = embedded.get_mac_res_fork()
+    assert fetched is rf
+    # The pythonic-named accessor should see the same stream.
+    assert embedded.get_mac_resource_fork() is rf
+    embedded.set_mac_res_fork(None)
+    assert embedded.get_mac_res_fork() is None
+    assert embedded.get_mac_resource_fork() is None
+
+
+def test_embedded_file_mac_res_fork_alias_default_none() -> None:
+    embedded = PDEmbeddedFile()
+    assert embedded.get_mac_res_fork() is None

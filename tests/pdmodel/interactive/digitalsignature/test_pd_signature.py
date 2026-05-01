@@ -81,6 +81,40 @@ def test_pd_signature_lock_round_trip_action_and_fields() -> None:
     assert lock.get_p() == 2
 
 
+def test_pd_signature_lock_action_constants_match_pdf_spec() -> None:
+    """PDF 32000-1 §12.7.4.5 Table 233 SigFieldLock /Action values."""
+    assert PDSignatureLock.ACTION_ALL == "All"
+    assert PDSignatureLock.ACTION_INCLUDE == "Include"
+    assert PDSignatureLock.ACTION_EXCLUDE == "Exclude"
+
+
+def test_pd_signature_lock_action_constants_round_trip() -> None:
+    lock = PDSignatureLock()
+    lock.set_action(PDSignatureLock.ACTION_ALL)
+    assert lock.get_action() == "All"
+    lock.set_action(PDSignatureLock.ACTION_INCLUDE)
+    assert lock.get_action() == "Include"
+    lock.set_action(PDSignatureLock.ACTION_EXCLUDE)
+    assert lock.get_action() == "Exclude"
+
+
+def test_pd_signature_lock_p_permission_constants_match_pdf_spec() -> None:
+    """PDF 32000-1 §12.7.4.5 Table 233 SigFieldLock /P values."""
+    assert PDSignatureLock.P_NO_CHANGES == 1
+    assert PDSignatureLock.P_ALLOW_FORM_FILL == 2
+    assert PDSignatureLock.P_ALLOW_FORM_FILL_AND_ANNOTATIONS == 3
+
+
+def test_pd_signature_lock_p_permission_constants_round_trip() -> None:
+    lock = PDSignatureLock()
+    lock.set_p(PDSignatureLock.P_NO_CHANGES)
+    assert lock.get_p() == 1
+    lock.set_p(PDSignatureLock.P_ALLOW_FORM_FILL)
+    assert lock.get_p() == 2
+    lock.set_p(PDSignatureLock.P_ALLOW_FORM_FILL_AND_ANNOTATIONS)
+    assert lock.get_p() == 3
+
+
 # ---------------------------------------------------------------------------
 # /Type, /Cert, /M accessors
 # ---------------------------------------------------------------------------

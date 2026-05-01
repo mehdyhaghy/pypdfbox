@@ -302,5 +302,16 @@ class PDEmbeddedFile(PDStream):
         mac = _get_or_create_dict(params, _MAC)
         mac.set_item(_RES_FORK, stream)
 
+    # Upstream Java method names ``getMacResFork`` / ``setMacResFork`` —
+    # mechanical snake_case aliases delegating to the resource-fork accessors.
+    # The parameter type stays ``COSStream`` (deviation noted in CHANGES.md);
+    # upstream Java types it as ``String`` but the PDF spec defines /ResFork
+    # as a stream entry.
+    def get_mac_res_fork(self) -> COSStream | None:
+        return self.get_mac_resource_fork()
+
+    def set_mac_res_fork(self, stream: COSStream | None) -> None:
+        self.set_mac_resource_fork(stream)
+
 
 __all__ = ["PDEmbeddedFile"]

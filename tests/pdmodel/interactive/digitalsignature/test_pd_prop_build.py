@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDPropBuild,
     PDPropBuildDataDict,
@@ -69,11 +69,33 @@ def test_data_dict_revision_round_trip() -> None:
     assert d.get_revision() == 2042
 
 
+def test_data_dict_revision_stored_as_cos_integer() -> None:
+    """Upstream uses setLong/getLong; the COS storage is a numeric integer."""
+    d = PDPropBuildDataDict()
+    d.set_revision(2042)
+    assert isinstance(d.get_cos_object().get_item("R"), COSInteger)
+
+
+def test_data_dict_revision_supports_large_values() -> None:
+    """Upstream uses long, so values beyond Java int range must round-trip."""
+    d = PDPropBuildDataDict()
+    big = 2**40 + 7
+    d.set_revision(big)
+    assert d.get_revision() == big
+
+
 def test_data_dict_minimum_revision_round_trip() -> None:
     d = PDPropBuildDataDict()
     assert d.get_minimum_revision() == -1
     d.set_minimum_revision(7)
     assert d.get_minimum_revision() == 7
+
+
+def test_data_dict_minimum_revision_supports_large_values() -> None:
+    d = PDPropBuildDataDict()
+    big = 2**40 + 11
+    d.set_minimum_revision(big)
+    assert d.get_minimum_revision() == big
 
 
 def test_data_dict_pre_release_default_false() -> None:

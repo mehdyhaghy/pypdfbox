@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSString
+from pypdfbox.cos import COSBase, COSDictionary, COSObject, COSString
 
 
 class PDFileSpecification:
@@ -11,12 +11,21 @@ class PDFileSpecification:
     def create_fs(base: COSBase | None) -> PDFileSpecification | None:
         """Dispatch on the COS form: ``COSString`` → simple, ``COSDictionary``
         → complex. Returns ``None`` when ``base`` is ``None``. Raises
-        ``OSError`` on an unrecognised type (mirrors upstream ``IOException``)."""
+        ``OSError`` on an unrecognised type (mirrors upstream ``IOException``).
+
+        If ``base`` is a ``COSObject`` (indirect reference), it is dereferenced
+        first so callers don't have to. Upstream Java relies on the parser
+        having already resolved indirect references before classification;
+        in pypdfbox we resolve here so callers with raw refs work too."""
         from .pd_complex_file_specification import PDComplexFileSpecification
         from .pd_simple_file_specification import PDSimpleFileSpecification
 
         if base is None:
             return None
+        if isinstance(base, COSObject):
+            base = base.get_object()
+            if base is None:
+                return None
         if isinstance(base, COSString):
             return PDSimpleFileSpecification(base)
         if isinstance(base, COSDictionary):
