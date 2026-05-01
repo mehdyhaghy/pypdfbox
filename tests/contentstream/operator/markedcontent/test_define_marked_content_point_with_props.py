@@ -89,3 +89,14 @@ def test_process_without_context_is_no_op() -> None:
         Operator.get_operator("DP"),
         [COSName.get_pdf_name("X"), COSDictionary()],
     )
+
+
+def test_name_property_matches_get_name() -> None:
+    p = DefineMarkedContentPointWithProps()
+    assert p.name == p.get_name() == p.OPERATOR_NAME == "DP"
+
+
+def test_constructor_accepts_engine_context() -> None:
+    engine = _Spy()
+    p = DefineMarkedContentPointWithProps(engine)
+    assert p.get_context() is engine

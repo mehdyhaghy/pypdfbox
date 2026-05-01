@@ -50,6 +50,17 @@ class PDSeedValue:
     FLAG_ADD_REV_INFO = _FLAG_ADD_REV_INFO
     FLAG_DIGEST_METHOD = _FLAG_DIGEST_METHOD
 
+    # Allowed /DigestMethod values (PDF 32000-1 Table 234). Upstream stores
+    # these as the private static ``allowedDigestNames`` list and validates
+    # each entry passed to ``setDigestMethod``.
+    ALLOWED_DIGEST_NAMES: tuple[str, ...] = (
+        "SHA1",
+        "SHA256",
+        "SHA384",
+        "SHA512",
+        "RIPEMD160",
+    )
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dict = COSDictionary()
@@ -191,6 +202,10 @@ class PDSeedValue:
         if names is None:
             self._dict.remove_item(_DIGEST_METHOD)
             return
+        # Integrity check — mirrors upstream's IllegalArgumentException.
+        for digest_name in names:
+            if digest_name not in self.ALLOWED_DIGEST_NAMES:
+                raise ValueError(f"Specified digest {digest_name} isn't allowed.")
         self._dict.set_item(_DIGEST_METHOD, COSArray.of_cos_names(names))
 
     # ---------- /LegalAttestation (array of text strings) ----------

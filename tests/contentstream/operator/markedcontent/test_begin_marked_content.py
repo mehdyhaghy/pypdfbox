@@ -67,3 +67,19 @@ def test_process_engine_without_hook_is_silent() -> None:
     p = BeginMarkedContent()
     engine.add_operator(p)
     p.process(Operator.get_operator("BMC"), [COSName.get_pdf_name("P")])
+
+
+def test_name_property_matches_get_name() -> None:
+    # ``name`` is a Pythonic alias mirroring Operator.name and must
+    # return the same token as get_name() / OPERATOR_NAME.
+    p = BeginMarkedContent()
+    assert p.name == p.get_name() == p.OPERATOR_NAME == "BMC"
+
+
+def test_constructor_accepts_engine_context() -> None:
+    # Upstream constructor: BeginMarkedContentSequence(PDFStreamEngine).
+    # Our base ``OperatorProcessor`` mirrors that — the context is bound
+    # via the constructor, retrievable via get_context().
+    engine = _Spy()
+    p = BeginMarkedContent(engine)
+    assert p.get_context() is engine

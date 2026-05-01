@@ -50,3 +50,14 @@ def test_process_engine_without_hook_is_silent() -> None:
     p = EndMarkedContent()
     engine.add_operator(p)
     p.process(Operator.get_operator("EMC"), [])
+
+
+def test_name_property_matches_get_name() -> None:
+    p = EndMarkedContent()
+    assert p.name == p.get_name() == p.OPERATOR_NAME == "EMC"
+
+
+def test_constructor_accepts_engine_context() -> None:
+    engine = _Spy()
+    p = EndMarkedContent(engine)
+    assert p.get_context() is engine

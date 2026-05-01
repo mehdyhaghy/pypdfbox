@@ -99,3 +99,14 @@ def test_process_without_context_is_no_op() -> None:
         Operator.get_operator("BDC"),
         [COSName.get_pdf_name("P"), COSDictionary()],
     )
+
+
+def test_name_property_matches_get_name() -> None:
+    p = BeginMarkedContentWithProps()
+    assert p.name == p.get_name() == p.OPERATOR_NAME == "BDC"
+
+
+def test_constructor_accepts_engine_context() -> None:
+    engine = _Spy()
+    p = BeginMarkedContentWithProps(engine)
+    assert p.get_context() is engine

@@ -63,3 +63,14 @@ def test_process_engine_without_hook_is_silent() -> None:
     p = DefineMarkedContentPoint()
     engine.add_operator(p)
     p.process(Operator.get_operator("MP"), [COSName.get_pdf_name("X")])
+
+
+def test_name_property_matches_get_name() -> None:
+    p = DefineMarkedContentPoint()
+    assert p.name == p.get_name() == p.OPERATOR_NAME == "MP"
+
+
+def test_constructor_accepts_engine_context() -> None:
+    engine = _Spy()
+    p = DefineMarkedContentPoint(engine)
+    assert p.get_context() is engine

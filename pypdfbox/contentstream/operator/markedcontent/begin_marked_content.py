@@ -40,3 +40,11 @@ class BeginMarkedContent(OperatorProcessor):
 
     def get_name(self) -> str:
         return self.OPERATOR_NAME
+
+    @property
+    def name(self) -> str:
+        """Pythonic accessor mirroring :class:`Operator.name`. Returns
+        the same token as :meth:`get_name` — the upstream-faithful path
+        is :meth:`get_name`; :attr:`name` is provided for symmetry with
+        :class:`Operator` and idiomatic Python attribute access."""
+        return self.OPERATOR_NAME

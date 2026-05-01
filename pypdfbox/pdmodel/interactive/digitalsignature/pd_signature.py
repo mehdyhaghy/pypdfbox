@@ -34,6 +34,20 @@ class PDSignature:
 
     TYPE = "Sig"
 
+    # /Filter values (PDF 32000-1 Table 252). Upstream exposes these as
+    # ``COSName`` constants; we expose plain strings since the snake_case
+    # accessors (``set_filter`` / ``get_filter``) operate on names-as-strings.
+    FILTER_ADOBE_PPKLITE = "Adobe.PPKLite"
+    FILTER_ENTRUST_PPKEF = "Entrust.PPKEF"
+    FILTER_CICI_SIGNIT = "CICI.SignIt"
+    FILTER_VERISIGN_PPKVS = "VeriSign.PPKVS"
+
+    # /SubFilter values (PDF 32000-1 Table 252).
+    SUBFILTER_ADBE_X509_RSA_SHA1 = "adbe.x509.rsa_sha1"
+    SUBFILTER_ADBE_PKCS7_DETACHED = "adbe.pkcs7.detached"
+    SUBFILTER_ETSI_CADES_DETACHED = "ETSI.CAdES.detached"
+    SUBFILTER_ADBE_PKCS7_SHA1 = "adbe.pkcs7.sha1"
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dict = COSDictionary()
@@ -65,7 +79,10 @@ class PDSignature:
     # ---------- /Filter ----------
 
     def get_filter(self) -> str | None:
-        return self._dict.get_name(_FILTER)
+        # Upstream uses getNameAsString — accept either a name or a string,
+        # to be permissive with non-conformant writers that store /Filter
+        # as a COSString instead of a COSName.
+        return self._dict.get_string(_FILTER)
 
     def set_filter(self, name: str | None) -> None:
         if name is None:
@@ -76,7 +93,8 @@ class PDSignature:
     # ---------- /SubFilter ----------
 
     def get_sub_filter(self) -> str | None:
-        return self._dict.get_name(_SUB_FILTER)
+        # Upstream uses getNameAsString — see ``get_filter`` for rationale.
+        return self._dict.get_string(_SUB_FILTER)
 
     def set_sub_filter(self, name: str | None) -> None:
         if name is None:
@@ -253,6 +271,21 @@ class PDSignature:
             return None
         start1, len1, start2, len2 = br
         return document_bytes[start1 : start1 + len1] + document_bytes[start2 : start2 + len2]
+
+    def get_signed_content(self, pdf_file: bytes) -> bytes:
+        """Return the bytes of ``pdf_file`` covered by ``/ByteRange``.
+
+        Mirrors upstream ``PDSignature.getSignedContent(byte[])``. This is
+        the byte sequence the signature is computed over — i.e. the PDF
+        with the ``/Contents`` hex placeholder excised.
+
+        Raises :class:`IndexError` if ``/ByteRange`` is absent or malformed
+        (parity with upstream's ``IndexOutOfBoundsException`` contract).
+        """
+        signed = self.get_signed_data(pdf_file)
+        if signed is None:
+            raise IndexError("missing or malformed /ByteRange")
+        return signed
 
     # ---------- verify ----------
 

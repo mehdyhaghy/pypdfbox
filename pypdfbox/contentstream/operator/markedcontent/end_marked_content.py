@@ -30,3 +30,9 @@ class EndMarkedContent(OperatorProcessor):
 
     def get_name(self) -> str:
         return self.OPERATOR_NAME
+
+    @property
+    def name(self) -> str:
+        """Pythonic accessor mirroring :class:`Operator.name`. Returns
+        the same token as :meth:`get_name`."""
+        return self.OPERATOR_NAME
