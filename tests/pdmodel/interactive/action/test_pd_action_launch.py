@@ -123,3 +123,30 @@ def test_existing_dict_wraps_without_resetting_subtype() -> None:
     assert action.get_d() == "preview"
     assert action.get_open_in_new_window() is True
     assert action.get_cos_object() is raw
+
+
+def test_set_open_in_new_window_none_removes_entry() -> None:
+    """Mirrors upstream ``setOpenInNewWindow(null)`` which removes the
+    ``/NewWindow`` entry — falling back to user preference."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionLaunch()
+    action.set_open_in_new_window(True)
+    assert COSName.get_pdf_name("NewWindow") in action.get_cos_object()
+
+    action.set_open_in_new_window(None)
+    assert COSName.get_pdf_name("NewWindow") not in action.get_cos_object()
+    assert action.get_open_in_new_window_mode() is OpenMode.USER_PREFERENCE
+
+
+def test_should_open_in_new_window_alias() -> None:
+    """``should_open_in_new_window`` matches the upstream-spelling alias on
+    :class:`PDActionRemoteGoTo`. Defaults false, follows the bool getter."""
+    action = PDActionLaunch()
+    assert action.should_open_in_new_window() is False
+
+    action.set_open_in_new_window(True)
+    assert action.should_open_in_new_window() is True
+
+    action.set_open_in_new_window(False)
+    assert action.should_open_in_new_window() is False

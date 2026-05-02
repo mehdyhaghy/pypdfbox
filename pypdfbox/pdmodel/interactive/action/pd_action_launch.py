@@ -76,12 +76,17 @@ class PDActionLaunch(PDAction):
         :meth:`get_open_in_new_window_mode`."""
         return self._action.get_boolean(_NEW_WINDOW, False)
 
-    def set_open_in_new_window(self, value: bool | OpenMode) -> None:
+    def set_open_in_new_window(self, value: bool | OpenMode | None) -> None:
         """Set ``/NewWindow``.
 
-        Accepts a plain ``bool`` or an :class:`OpenMode`.
-        :attr:`OpenMode.USER_PREFERENCE` removes the entry; ``NEW_WINDOW`` /
-        ``SAME_WINDOW`` map to ``True`` / ``False`` respectively."""
+        Accepts a plain ``bool``, an :class:`OpenMode`, or ``None``.
+        :attr:`OpenMode.USER_PREFERENCE` and ``None`` both remove the entry
+        (mirrors upstream ``setOpenInNewWindow(null)`` which falls through
+        to user preference); ``NEW_WINDOW`` / ``SAME_WINDOW`` map to
+        ``True`` / ``False`` respectively."""
+        if value is None:
+            self._action.remove_item(_NEW_WINDOW)
+            return
         if isinstance(value, OpenMode):
             if value is OpenMode.USER_PREFERENCE:
                 self._action.remove_item(_NEW_WINDOW)
@@ -106,6 +111,12 @@ class PDActionLaunch(PDAction):
         """``True`` iff ``/NewWindow`` is explicitly ``true``. Convenience
         predicate; absence yields ``False``."""
         return self.get_open_in_new_window_mode() is OpenMode.NEW_WINDOW
+
+    def should_open_in_new_window(self) -> bool:
+        """Return ``/NewWindow`` defaulting to ``False``. Parity with the
+        :class:`PDActionRemoteGoTo` accessor of the same name; semantically
+        equivalent to :meth:`get_open_in_new_window`."""
+        return self.get_open_in_new_window()
 
     # /Win — Windows launch parameters dict (Table 197).
     def get_win_launch_params(self) -> PDWindowsLaunchParams | None:

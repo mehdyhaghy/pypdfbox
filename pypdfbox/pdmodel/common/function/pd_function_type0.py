@@ -110,6 +110,71 @@ class PDFunctionType0(PDFunction):
         else:
             self.get_cos_object().set_item(_DECODE, decode)
 
+    # ---------- upstream-named aliases ----------
+
+    def set_encode_values(self, encode_values: COSArray | None) -> None:
+        """Upstream-named alias for :meth:`set_encode` (PDFBox
+        ``setEncodeValues(COSArray)``)."""
+        self.set_encode(encode_values)
+
+    def set_decode_values(self, decode_values: COSArray | None) -> None:
+        """Upstream-named alias for :meth:`set_decode` (PDFBox
+        ``setDecodeValues(COSArray)``)."""
+        self.set_decode(decode_values)
+
+    def get_encode_for_parameter(self, n: int) -> tuple[float, float] | None:
+        """Return the ``(min, max)`` ``/Encode`` pair for input dimension ``n``.
+
+        Mirrors PDFBox ``getEncodeForParameter(int)``. When ``/Encode`` is
+        absent or too short for ``n``, the default ``(0, Size[n] - 1)`` pair
+        is returned per PDF 32000-1 §7.10.2 Table 38. Returns ``None`` when
+        ``n`` is negative or exceeds the declared input dimension count
+        (mirrors upstream's "null when out of range" contract — upstream
+        returns null for ``encodeValues.size() < paramNum * 2 + 1`` after
+        defaults are filled in).
+        """
+        if n < 0:
+            return None
+        sizes = self._get_size_list()
+        num_in = self.get_number_of_input_parameters()
+        if n >= max(num_in, len(sizes)):
+            return None
+        encode = self.get_encode()
+        if encode is not None:
+            flat = encode.to_float_array()
+            if 2 * n + 1 < len(flat):
+                return (flat[2 * n], flat[2 * n + 1])
+        # Default: (0, Size[n] - 1)
+        if n < len(sizes):
+            upper = sizes[n] - 1
+            return (0.0, float(max(0, upper)))
+        return None
+
+    def get_decode_for_parameter(self, n: int) -> tuple[float, float] | None:
+        """Return the ``(min, max)`` ``/Decode`` pair for output dimension ``n``.
+
+        Mirrors PDFBox ``getDecodeForParameter(int)``. When ``/Decode`` is
+        absent or too short for ``n``, the default falls back to the
+        function's ``/Range`` pair for output dimension ``n`` per PDF 32000-1
+        §7.10.2 Table 38. Returns ``None`` when ``n`` is negative or exceeds
+        the declared output dimension count.
+        """
+        if n < 0:
+            return None
+        num_out = self.get_number_of_output_parameters()
+        if n >= num_out:
+            return None
+        decode = self.get_decode()
+        if decode is not None:
+            flat = decode.to_float_array()
+            if 2 * n + 1 < len(flat):
+                return (flat[2 * n], flat[2 * n + 1])
+        # Default: /Range pair for output n.
+        rng_pairs = self.get_ranges_for_outputs()
+        if n < len(rng_pairs):
+            return rng_pairs[n]
+        return None
+
     # ---------- sample table ----------
 
     def get_samples(self) -> list[list[int]]:

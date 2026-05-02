@@ -171,3 +171,35 @@ def test_new_window_stored_as_cos_boolean() -> None:
     action.set_new_window(True)
     raw = action.get_cos_object().get_item(_NEW_WINDOW)
     assert isinstance(raw, COSBoolean)
+
+
+def test_set_open_in_new_window_none_removes_entry() -> None:
+    """Mirrors upstream ``setOpenInNewWindow(null)`` which removes the
+    entry, falling back to user preference."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionRemoteGoTo()
+    action.set_new_window(True)
+    assert action.get_cos_object().contains_key(_NEW_WINDOW)
+
+    action.set_open_in_new_window(None)
+    assert not action.get_cos_object().contains_key(_NEW_WINDOW)
+    assert action.get_open_in_new_window() is OpenMode.USER_PREFERENCE
+
+
+def test_is_new_window_predicate() -> None:
+    """``is_new_window`` is true only when ``/NewWindow`` is explicitly true."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionRemoteGoTo()
+    # Absent — false.
+    assert action.is_new_window() is False
+
+    action.set_open_in_new_window(OpenMode.SAME_WINDOW)
+    assert action.is_new_window() is False
+
+    action.set_open_in_new_window(OpenMode.NEW_WINDOW)
+    assert action.is_new_window() is True
+
+    action.set_open_in_new_window(OpenMode.USER_PREFERENCE)
+    assert action.is_new_window() is False

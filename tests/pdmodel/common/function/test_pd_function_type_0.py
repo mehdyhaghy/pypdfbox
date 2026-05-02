@@ -157,6 +157,112 @@ def test_set_decode_round_trips_then_clears() -> None:
     assert fn.get_decode() is None
 
 
+# ---------- upstream-named aliases ----------
+
+
+def test_set_encode_values_alias_round_trips() -> None:
+    """``set_encode_values`` mirrors upstream PDFBox ``setEncodeValues``."""
+    fn = PDFunctionType0()
+    enc = COSArray()
+    enc.set_float_array([0.0, 5.0])
+    fn.set_encode_values(enc)
+    assert fn.get_encode() is enc
+    fn.set_encode_values(None)
+    assert fn.get_encode() is None
+
+
+def test_set_decode_values_alias_round_trips() -> None:
+    """``set_decode_values`` mirrors upstream PDFBox ``setDecodeValues``."""
+    fn = PDFunctionType0()
+    dec = COSArray()
+    dec.set_float_array([-1.0, 1.0])
+    fn.set_decode_values(dec)
+    assert fn.get_decode() is dec
+    fn.set_decode_values(None)
+    assert fn.get_decode() is None
+
+
+# ---------- get_encode_for_parameter / get_decode_for_parameter ----------
+
+
+def test_get_encode_for_parameter_explicit_pair() -> None:
+    fn = _build(
+        domain=[0.0, 1.0, 0.0, 1.0],
+        range_=[0.0, 1.0],
+        size=[4, 4],
+        bits=8,
+        samples=[0] * 16,
+        encode=[0.0, 3.0, 0.0, 3.0],
+    )
+    assert fn.get_encode_for_parameter(0) == (0.0, 3.0)
+    assert fn.get_encode_for_parameter(1) == (0.0, 3.0)
+
+
+def test_get_encode_for_parameter_default_uses_size_minus_one() -> None:
+    """When ``/Encode`` is absent, the default per PDF 32000-1 Table 38
+    is ``(0, Size[i] - 1)`` for each input dimension."""
+    fn = _build(
+        domain=[0.0, 1.0, 0.0, 1.0],
+        range_=[0.0, 1.0],
+        size=[4, 8],
+        bits=8,
+        samples=[0] * 32,
+    )
+    assert fn.get_encode_for_parameter(0) == (0.0, 3.0)
+    assert fn.get_encode_for_parameter(1) == (0.0, 7.0)
+
+
+def test_get_encode_for_parameter_out_of_range_returns_none() -> None:
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[0.0, 1.0],
+        size=[4],
+        bits=8,
+        samples=[0, 1, 2, 3],
+    )
+    assert fn.get_encode_for_parameter(-1) is None
+    assert fn.get_encode_for_parameter(5) is None
+
+
+def test_get_decode_for_parameter_explicit_pair() -> None:
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[0.0, 1.0, 0.0, 1.0],
+        size=[2],
+        bits=8,
+        samples=[0, 0],
+        decode=[-2.0, 2.0, -3.0, 3.0],
+    )
+    assert fn.get_decode_for_parameter(0) == (-2.0, 2.0)
+    assert fn.get_decode_for_parameter(1) == (-3.0, 3.0)
+
+
+def test_get_decode_for_parameter_default_falls_back_to_range() -> None:
+    """When ``/Decode`` is absent the default is the function's ``/Range``
+    pair for that output dimension (PDF 32000-1 Table 38)."""
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[-5.0, 5.0, -10.0, 10.0],
+        size=[2],
+        bits=8,
+        samples=[0, 0],
+    )
+    assert fn.get_decode_for_parameter(0) == (-5.0, 5.0)
+    assert fn.get_decode_for_parameter(1) == (-10.0, 10.0)
+
+
+def test_get_decode_for_parameter_out_of_range_returns_none() -> None:
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[0.0, 1.0],
+        size=[2],
+        bits=8,
+        samples=[0, 0],
+    )
+    assert fn.get_decode_for_parameter(-1) is None
+    assert fn.get_decode_for_parameter(2) is None
+
+
 # ---------- get_samples (lazy decode) ----------
 
 

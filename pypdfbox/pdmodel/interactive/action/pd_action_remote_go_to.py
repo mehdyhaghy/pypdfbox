@@ -144,11 +144,16 @@ class PDActionRemoteGoTo(PDAction):
         ``shouldOpenInNewWindow`` spelling."""
         return self.get_new_window()
 
-    def set_open_in_new_window(self, value: bool | OpenMode) -> None:
-        """Set ``/NewWindow``. Accepts a plain ``bool`` or an
-        :class:`OpenMode`; :attr:`OpenMode.USER_PREFERENCE` removes the
-        entry. Mirrors upstream ``setOpenInNewWindow(OpenMode)`` while
-        retaining the historical bool overload."""
+    def set_open_in_new_window(self, value: bool | OpenMode | None) -> None:
+        """Set ``/NewWindow``. Accepts a plain ``bool``, an :class:`OpenMode`,
+        or ``None``; both :attr:`OpenMode.USER_PREFERENCE` and ``None``
+        remove the entry (mirrors upstream ``setOpenInNewWindow(null)``
+        which falls through to user preference). Mirrors upstream
+        ``setOpenInNewWindow(OpenMode)`` while retaining the historical
+        bool overload."""
+        if value is None:
+            self._action.remove_item(_NEW_WINDOW)
+            return
         if isinstance(value, OpenMode):
             if value is OpenMode.USER_PREFERENCE:
                 self._action.remove_item(_NEW_WINDOW)
@@ -167,6 +172,12 @@ class PDActionRemoteGoTo(PDAction):
         if isinstance(entry, COSBoolean):
             return OpenMode.NEW_WINDOW if entry.get_value() else OpenMode.SAME_WINDOW
         return OpenMode.USER_PREFERENCE
+
+    def is_new_window(self) -> bool:
+        """``True`` iff ``/NewWindow`` is explicitly ``true``. Convenience
+        predicate paralleling :class:`PDActionEmbeddedGoTo.is_new_window`
+        / :class:`PDActionLaunch.is_new_window`; absence yields ``False``."""
+        return self.get_open_in_new_window() is OpenMode.NEW_WINDOW
 
 
 __all__ = ["PDActionRemoteGoTo"]
