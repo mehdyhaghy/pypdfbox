@@ -140,6 +140,48 @@ class PDExportFormatAttributeObject(PDLayoutAttributeObject):
     def set_summary(self, summary: str | None) -> None:
         self._set_string(PDTableAttributeObject.SUMMARY, summary)
 
+    # ---------- owner predicate (parity helper) ----------
+
+    @classmethod
+    def is_valid_owner(cls, owner: str | None) -> bool:
+        """Return ``True`` when ``owner`` is one of the seven export-format
+        owner names defined in PDF 32000-1:2008 §14.8.5.2 (``XML-1.00``,
+        ``HTML-3.2``, ``HTML-4.01``, ``OEB-1.00``, ``RTF-1.05``, ``CSS-1.00``,
+        ``CSS-2.00``).
+
+        Predicate-only helper — upstream's ``setOwner(String)`` does not
+        validate the name; this method is provided so callers (and the
+        ``PDAttributeObject.create`` factory) can centralise the membership
+        test rather than open-coding the constant set."""
+        if owner is None:
+            return False
+        return owner in cls._VALID_OWNERS
+
+    def __str__(self) -> str:
+        """Mirror upstream ``PDExportFormatAttributeObject.toString()`` which
+        extends the layout-level ``toString()`` by appending
+        ``", ListNumbering=<v>"``, ``", RowSpan=<v>"``, ``", ColSpan=<v>"``,
+        ``", Headers=<v>"``, ``", Scope=<v>"`` and ``", Summary=<v>"``
+        for each entry that :meth:`is_specified` reports.
+
+        Headers is rendered via :meth:`PDAttributeObject.array_to_string`
+        to match upstream's ``arrayToString(this.getHeaders())`` formatting
+        (``"[a, b, c]"``)."""
+        sb = super().__str__()
+        if self.is_specified(PDListAttributeObject.LIST_NUMBERING):
+            sb = f"{sb}, ListNumbering={self.get_list_numbering()}"
+        if self.is_specified(PDTableAttributeObject.ROW_SPAN):
+            sb = f"{sb}, RowSpan={self.get_row_span()}"
+        if self.is_specified(PDTableAttributeObject.COL_SPAN):
+            sb = f"{sb}, ColSpan={self.get_col_span()}"
+        if self.is_specified(PDTableAttributeObject.HEADERS):
+            sb = f"{sb}, Headers={self.array_to_string(self.get_headers())}"
+        if self.is_specified(PDTableAttributeObject.SCOPE):
+            sb = f"{sb}, Scope={self.get_scope()}"
+        if self.is_specified(PDTableAttributeObject.SUMMARY):
+            sb = f"{sb}, Summary={self.get_summary()}"
+        return sb
+
     def __repr__(self) -> str:
         return f"PDExportFormatAttributeObject(O={self.get_owner()})"
 

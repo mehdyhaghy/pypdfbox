@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING, Any, BinaryIO
 
@@ -8,6 +9,8 @@ from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
 from .pd_page import PDPage
 from .pd_page_tree import PDPageTree
+
+_LOG = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .interactive.digitalsignature.pd_signature import PDSignature
@@ -57,6 +60,24 @@ class PDDocument:
     or printing raise ``NotImplementedError`` with a cluster pointer (see
     ``CHANGES.md`` for the consolidated list).
     """
+
+    #: Default PDF version stamped on the catalog of an empty
+    #: :class:`PDDocument`. Mirrors upstream's hard-coded ``"1.4"`` literal in
+    #: the no-arg constructor — exposed as a class-level constant so callers
+    #: (and tests) can branch on it without re-stating the value.
+    DEFAULT_VERSION: float = 1.4
+
+    #: Sentinel ``/ByteRange`` reserved by :meth:`add_signature` until the
+    #: real byte offsets are known. Mirrors upstream's package-private
+    #: ``RESERVE_BYTE_RANGE = {0, 1000000000, 1000000000, 1000000000}`` —
+    #: exposed here so external-signing callers writing their own placeholder
+    #: pipelines can re-use the same shape.
+    RESERVE_BYTE_RANGE: tuple[int, int, int, int] = (
+        0,
+        1_000_000_000,
+        1_000_000_000,
+        1_000_000_000,
+    )
 
     def __init__(
         self,
@@ -145,6 +166,14 @@ class PDDocument:
         # ``PDDocument.setDocumentId(Long)`` transient field.
         self._document_id_seed: int | None = None
 
+        # Cached :class:`AccessPermission` result for
+        # :meth:`get_current_access_permission`. Mirrors upstream's
+        # ``accessPermission`` field — first call snapshots the permission
+        # so subsequent calls return the same instance (some upstream tests
+        # rely on reference identity, e.g. when downstream callers stash the
+        # permission in a side channel and expect it to keep matching).
+        self._access_permission: Any = None
+
         # Pending signature staged by ``add_signature(...)`` and consumed by
         # the next ``save_incremental`` call. ``_pending_signature_dict`` is
         # the COSDictionary backing the PDSignature (so the writer emits its
@@ -179,9 +208,13 @@ class PDDocument:
         pages.set_item(_KIDS, COSArray())
         pages.set_int(_COUNT, 0)
         catalog.set_item(_PAGES, pages)
-        # Mirror upstream's no-arg PDDocument: stamp /Version "1.4" on the
-        # catalog so it matches the default header version.
-        catalog.set_item(COSName.get_pdf_name("Version"), COSName.get_pdf_name("1.4"))
+        # Mirror upstream's no-arg PDDocument: stamp /Version on the catalog
+        # so it matches the default header version. The literal value lives in
+        # :attr:`DEFAULT_VERSION` so subclasses / callers can override.
+        catalog.set_item(
+            COSName.get_pdf_name("Version"),
+            COSName.get_pdf_name(f"{self.DEFAULT_VERSION:.1f}"),
+        )
         trailer.set_item(_ROOT, catalog)
         self._document.set_trailer(trailer)
 
@@ -855,11 +888,20 @@ class PDDocument:
 
         self._security_handler = handler
         self._encryption = encryption
+        # A successful decrypt may upgrade the document's permission set —
+        # invalidate the cached AccessPermission so the next call re-derives.
+        self._access_permission = None
 
     def protect(self, protection_policy: Any) -> None:
         """Stage an encryption policy on the document — actual key
         derivation and ``/Encrypt`` synthesis happen at save time via the
-        writer. Mirrors upstream ``PDDocument.protect``."""
+        writer. Mirrors upstream ``PDDocument.protect``.
+
+        If :meth:`set_all_security_to_be_removed` was previously called with
+        ``True``, that flag is force-cleared with a warning — ``protect``
+        implies ``setAllSecurityToBeRemoved(false)`` (matches upstream's
+        guard, which warns and resets the flag rather than failing the
+        call)."""
         from pypdfbox.pdmodel.encryption.standard_protection_policy import (
             StandardProtectionPolicy,
         )
@@ -870,6 +912,15 @@ class PDDocument:
                 "PDDocument.protect: only StandardProtectionPolicy is supported "
                 "(public-key handler dispatch is deferred)"
             )
+
+        if self._all_security_to_be_removed:
+            _LOG.warning(
+                "do not call set_all_security_to_be_removed(True) before "
+                "calling protect(), as protect() implies "
+                "set_all_security_to_be_removed(False)"
+            )
+            self._all_security_to_be_removed = False
+
         self._protection_policy = protection_policy
 
     def get_current_access_permission(self) -> Any:
@@ -877,17 +928,28 @@ class PDDocument:
         recent successful :meth:`decrypt` call (owner-level when no
         decryption occurred but the document is unencrypted). When the
         document is encrypted but not yet decrypted, returns a
-        no-permission default."""
+        no-permission default.
+
+        The result is cached after the first call and reused on subsequent
+        calls — mirrors upstream's ``accessPermission`` field, so callers
+        can rely on reference identity across reads."""
         from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
+
+        if self._access_permission is not None:
+            return self._access_permission
 
         if self._security_handler is not None:
             current = getattr(
                 self._security_handler, "get_current_access_permission", None
             )
             if callable(current):
-                return current()
+                self._access_permission = current()
+                return self._access_permission
         if not self.is_encrypted():
-            return AccessPermission.get_owner_access_permission()
+            self._access_permission = AccessPermission.get_owner_access_permission()
+            return self._access_permission
+        # Encrypted but not yet decrypted — return a no-permission default.
+        # Don't cache: a follow-up decrypt() should be able to upgrade.
         return AccessPermission(0)
 
     def add_signature(
@@ -1125,6 +1187,21 @@ class PDDocument:
             if sig is not None:
                 out.append(sig)
         return out
+
+    def has_signatures(self) -> bool:
+        """Return ``True`` when at least one signed signature dictionary is
+        present in the document's ``/AcroForm`` field tree.
+
+        Convenience predicate — equivalent to
+        ``bool(doc.get_signature_dictionaries())`` but spares callers from
+        building the intermediate list when they only need the boolean.
+        Pypdfbox-specific addition (no upstream equivalent on
+        ``PDDocument`` itself; upstream callers reach for
+        ``getSignatureDictionaries().size() > 0``)."""
+        for sig_field in self.get_signature_fields():
+            if sig_field.get_signature() is not None:
+                return True
+        return False
 
     def get_last_signature_dictionary(self) -> PDSignature | None:
         """Return the most recently added signature in the document's

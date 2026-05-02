@@ -701,3 +701,185 @@ def test_add_signature_rejects_second_call() -> None:
     doc.add_signature(PDSignature())
     with pytest.raises(ValueError, match="Only one signature"):
         doc.add_signature(PDSignature())
+
+
+# ---------- Wave 194: class constants + protect parity + access cache ----------
+
+
+def test_default_version_constant_exposes_1_4() -> None:
+    """``DEFAULT_VERSION`` mirrors upstream's hard-coded ``"1.4"`` literal."""
+    assert PDDocument.DEFAULT_VERSION == 1.4
+
+
+def test_default_version_constant_drives_empty_skeleton() -> None:
+    """The empty-document constructor stamps the catalog ``/Version`` with
+    :attr:`PDDocument.DEFAULT_VERSION`. Round-trip through the literal so a
+    future bump (e.g. to 1.7) reaches the catalog without code changes."""
+    doc = PDDocument()
+    catalog_dict = doc.get_document_catalog().get_cos_object()
+    version = catalog_dict.get_dictionary_object(COSName.get_pdf_name("Version"))
+    assert version is not None
+    expected = f"{PDDocument.DEFAULT_VERSION:.1f}"
+    assert version.get_name() == expected
+    doc.close()
+
+
+def test_reserve_byte_range_matches_upstream() -> None:
+    """``RESERVE_BYTE_RANGE`` equals the upstream Java
+    ``int[] {0, 1000000000, 1000000000, 1000000000}`` literal."""
+    assert PDDocument.RESERVE_BYTE_RANGE == (0, 1_000_000_000, 1_000_000_000, 1_000_000_000)
+    # Tuple shape is (start1, len1, start2, len2) — 4 entries.
+    assert len(PDDocument.RESERVE_BYTE_RANGE) == 4
+
+
+def test_protect_clears_security_removal_flag(caplog: pytest.LogCaptureFixture) -> None:
+    """``protect()`` warns and force-clears
+    ``set_all_security_to_be_removed(True)`` (mirrors upstream's
+    ``setAllSecurityToBeRemoved(false)`` reset inside ``protect``)."""
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (
+        StandardProtectionPolicy,
+    )
+
+    doc = PDDocument()
+    doc.set_all_security_to_be_removed(True)
+    assert doc.is_all_security_to_be_removed() is True
+
+    policy = StandardProtectionPolicy("owner-pwd", "user-pwd", None)
+    with caplog.at_level("WARNING", logger="pypdfbox.pdmodel.pd_document"):
+        doc.protect(policy)
+
+    assert doc.is_all_security_to_be_removed() is False
+    # A warning should have been logged about the conflict.
+    assert any("protect" in rec.message.lower() for rec in caplog.records)
+    doc.close()
+
+
+def test_protect_no_warning_when_flag_not_set(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``protect()`` does NOT log when the security-removal flag was never
+    set — only the conflicting case warns."""
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (
+        StandardProtectionPolicy,
+    )
+
+    doc = PDDocument()
+    policy = StandardProtectionPolicy("owner-pwd", "user-pwd", None)
+    with caplog.at_level("WARNING", logger="pypdfbox.pdmodel.pd_document"):
+        doc.protect(policy)
+    assert not caplog.records
+    doc.close()
+
+
+def test_get_current_access_permission_caches_result() -> None:
+    """Repeated ``get_current_access_permission`` calls return the same
+    instance — mirrors upstream's cached ``accessPermission`` field."""
+    doc = PDDocument()
+    first = doc.get_current_access_permission()
+    second = doc.get_current_access_permission()
+    assert first is second
+    doc.close()
+
+
+def test_get_current_access_permission_uncached_when_encrypted_undecoded() -> None:
+    """An encrypted-but-not-yet-decrypted doc returns a fresh no-permission
+    object on each call — the cache only kicks in for owner-level / handler-
+    derived results so a follow-up ``decrypt()`` can still upgrade."""
+    from pypdfbox.cos import COSDictionary as _COSDict
+    from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
+
+    doc = PDDocument()
+    # Inject a synthetic /Encrypt dict so ``is_encrypted`` flips True without
+    # actually decrypting anything.
+    enc = _COSDict()
+    enc.set_string(COSName.get_pdf_name("Filter"), "Standard")
+    enc.set_int(COSName.get_pdf_name("V"), 1)
+    enc.set_int(COSName.get_pdf_name("R"), 2)
+    trailer = doc.get_document().get_trailer()
+    assert trailer is not None
+    trailer.set_item(COSName.ENCRYPT, enc)
+
+    assert doc.is_encrypted() is True
+    first = doc.get_current_access_permission()
+    second = doc.get_current_access_permission()
+    # Both are no-permission AccessPermission objects, but NOT cached
+    # (the encrypted-undecrypted branch deliberately skips the cache).
+    assert isinstance(first, AccessPermission)
+    assert isinstance(second, AccessPermission)
+    doc.close()
+
+
+# ---------- Wave 194: has_signatures predicate ----------
+
+
+def test_has_signatures_false_on_fresh_document() -> None:
+    """A pristine doc has no signatures — ``has_signatures()`` returns False
+    without raising."""
+    doc = PDDocument()
+    assert doc.has_signatures() is False
+    doc.close()
+
+
+def test_has_signatures_false_when_acroform_absent() -> None:
+    """Doc without /AcroForm reports no signatures (no KeyError leak)."""
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    assert doc.has_signatures() is False
+    doc.close()
+
+
+def test_has_signatures_true_when_signed_field_present() -> None:
+    """A signature field with a populated /V signals
+    ``has_signatures() == True``. Builds the field directly via the AcroForm
+    surface — independent of ``add_signature``'s staging path."""
+    from pypdfbox.cos import COSArray as _COSArray
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    catalog = doc.get_document_catalog()
+    acro_form = PDAcroForm(doc)
+    catalog.set_acro_form(acro_form)
+    acro_form_dict = acro_form.get_cos_object()
+
+    sig = PDSignature()
+    field = COSDictionary()
+    field.set_item(COSName.get_pdf_name("FT"), COSName.get_pdf_name("Sig"))
+    field.set_string(COSName.get_pdf_name("T"), "Signature1")
+    field.set_item(COSName.get_pdf_name("V"), sig.get_cos_object())
+
+    fields = _COSArray()
+    fields.add(field)
+    acro_form_dict.set_item(COSName.get_pdf_name("Fields"), fields)
+
+    assert doc.has_signatures() is True
+    doc.close()
+
+
+def test_has_signatures_false_when_field_has_no_value() -> None:
+    """An empty signature field (no /V) is ignored — ``has_signatures()``
+    only counts fields that have actually been signed."""
+    from pypdfbox.cos import COSArray as _COSArray
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    catalog = doc.get_document_catalog()
+    acro_form = PDAcroForm(doc)
+    catalog.set_acro_form(acro_form)
+    acro_form_dict = acro_form.get_cos_object()
+
+    field = COSDictionary()
+    field.set_item(COSName.get_pdf_name("FT"), COSName.get_pdf_name("Sig"))
+    field.set_string(COSName.get_pdf_name("T"), "Signature1")
+    # No /V — the field is unsigned.
+
+    fields = _COSArray()
+    fields.add(field)
+    acro_form_dict.set_item(COSName.get_pdf_name("Fields"), fields)
+
+    assert doc.has_signatures() is False
+    doc.close()
