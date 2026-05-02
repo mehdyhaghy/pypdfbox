@@ -327,3 +327,100 @@ def test_revisions_round_trip_through_cos_array() -> None:
     rebuilt: Revisions[str] = Revisions(arr)
     assert rebuilt.size() == 1
     assert rebuilt.get_revision_number_at(0) == 3
+
+
+# ---------- PDStructureNode.create_object ----------
+
+
+def test_structure_node_create_object_struct_elem() -> None:
+    node = PDStructureNode("StructElem")
+    kid = COSDictionary()
+    kid.set_name(_TYPE, "StructElem")
+    result = node.create_object(kid)
+    assert isinstance(result, PDStructureElement)
+    assert result.get_cos_object() is kid
+
+
+def test_structure_node_create_object_no_type_is_struct_elem() -> None:
+    node = PDStructureNode("StructElem")
+    kid = COSDictionary()  # No /Type → treated as StructElem
+    result = node.create_object(kid)
+    assert isinstance(result, PDStructureElement)
+    assert result.get_cos_object() is kid
+
+
+def test_structure_node_create_object_mcr() -> None:
+    node = PDStructureNode("StructElem")
+    kid = COSDictionary()
+    kid.set_name(_TYPE, "MCR")
+    result = node.create_object(kid)
+    assert isinstance(result, PDMarkedContentReference)
+    assert result.get_cos_object() is kid
+
+
+def test_structure_node_create_object_objr() -> None:
+    node = PDStructureNode("StructElem")
+    kid = COSDictionary()
+    kid.set_name(_TYPE, "OBJR")
+    result = node.create_object(kid)
+    assert isinstance(result, PDObjectReference)
+    assert result.get_cos_object() is kid
+
+
+def test_structure_node_create_object_int_returns_mcid() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.create_object(COSInteger.get(7)) == 7
+
+
+def test_structure_node_create_object_unknown_dict_type_returns_none() -> None:
+    node = PDStructureNode("StructElem")
+    kid = COSDictionary()
+    kid.set_name(_TYPE, "ZZUnknownTypeZZ")
+    # wrap_kid preserves unknown dicts; create_object strictly returns None
+    # to match upstream's createObject contract.
+    assert node.create_object(kid) is None
+
+
+def test_structure_node_create_object_none_returns_none() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.create_object(None) is None
+
+
+# ---------- PDStructureNode._insert_objectable_before ----------
+
+
+def test_structure_node_insert_objectable_before_unwraps_cos_object() -> None:
+    node = PDStructureNode("StructElem")
+    head = PDStructureElement(structure_type="P")
+    tail = PDStructureElement(structure_type="P")
+    middle = PDStructureElement(structure_type="P")
+    node.set_kids([head, tail])
+
+    assert node._insert_objectable_before(middle, tail) is True
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert isinstance(raw_k, COSArray)
+    assert raw_k.get_object(0) is head.get_cos_object()
+    assert raw_k.get_object(1) is middle.get_cos_object()
+    assert raw_k.get_object(2) is tail.get_cos_object()
+
+
+def test_structure_node_insert_objectable_before_none_is_noop() -> None:
+    node = PDStructureNode("StructElem")
+    only = COSDictionary()
+    node.append_kid(only)
+    assert node._insert_objectable_before(None, only) is False
+    # /K untouched
+    assert node.get_cos_object().get_dictionary_object(_K) is only
+
+
+def test_structure_node_insert_objectable_before_accepts_raw_cos_dictionary() -> None:
+    node = PDStructureNode("StructElem")
+    a, b = COSDictionary(), COSDictionary()
+    node.set_kids([a, b])
+    new_kid = COSDictionary()  # no get_cos_object — passed through
+    assert node._insert_objectable_before(new_kid, b) is True
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert isinstance(raw_k, COSArray)
+    assert raw_k.get_object(0) is a
+    assert raw_k.get_object(1) is new_kid
+    assert raw_k.get_object(2) is b

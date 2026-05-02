@@ -419,3 +419,117 @@ def test_remove_field_invalidates_field_cache() -> None:
     form.remove_field(drop)
     assert form.get_field("drop") is None
     assert form.get_field("keep") is not None
+
+
+# ---------- Wave 113 — set_fields(None), /Fields-removed parity, raw
+# /SigFlags accessors + class-level flag constants.
+
+
+def test_set_fields_with_none_clears_root_fields() -> None:
+    """``set_fields(None)`` resets the form's ``/Fields`` entry to an
+    empty array — symmetric with ``set_calc_order(None)``. Upstream's
+    ``setFields(null)`` would NPE, so this is a pypdfbox-only hardening."""
+    form = PDAcroForm()
+    a = PDFieldStub(form)
+    a.set_partial_name("a")
+    form.set_fields([a])
+    assert len(form.get_fields()) == 1
+
+    form.set_fields(None)
+    assert form.get_fields() == []
+    # /Fields entry is still present (as empty array) — matches the
+    # constructor's default-state shape, not "entry absent".
+    from pypdfbox.cos import COSArray, COSName
+    fields_entry = form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Fields"))
+    assert isinstance(fields_entry, COSArray)
+    assert fields_entry.size() == 0
+
+
+def test_set_fields_invalidates_field_cache_when_cleared() -> None:
+    """Clearing fields via ``set_fields(None)`` drops the cache so the
+    next ``get_field`` reflects the empty tree (mirrors upstream
+    ``testFieldsEntry`` once /Fields is cleared)."""
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    form.set_cache_fields(True)
+    assert form.get_field("name") is not None
+
+    form.set_fields(None)
+    assert form.get_field("name") is None
+
+
+def test_get_fields_handles_missing_fields_entry() -> None:
+    """Upstream parity with ``PDAcroFormTest.testFieldsEntry``: when
+    ``/Fields`` is missing entirely (PDFBOX-2965 — some PDFs drop the
+    required entry), ``get_fields`` returns an empty list and
+    ``get_field`` returns ``None`` without raising."""
+    from pypdfbox.cos import COSName
+
+    form = PDAcroForm()
+    # Drop the required /Fields entry the constructor seeds.
+    form.get_cos_object().remove_item(COSName.get_pdf_name("Fields"))
+
+    assert form.get_fields() == []
+    assert form.get_field("foo") is None
+    # Iteration over the field tree must also be safe.
+    assert list(form.get_field_tree()) == []
+
+
+def test_get_field_with_none_argument_returns_none() -> None:
+    """Defensive null-guard mirrors upstream's
+    ``Objects.equals(field.getFullyQualifiedName(), null)`` walk —
+    passing ``None`` should never raise, just return ``None``."""
+    form = PDAcroForm()
+    a = PDFieldStub(form)
+    a.set_partial_name("a")
+    form.set_fields([a])
+    assert form.get_field(None) is None  # type: ignore[arg-type]
+
+
+def test_signature_flag_constants_match_pdf_spec() -> None:
+    """``FLAG_SIGNATURES_EXIST`` and ``FLAG_APPEND_ONLY`` are exposed at
+    class scope so callers can drive ``set_signature_flags`` directly.
+    Values mirror PDF 32000-1 §12.7.3 Table 219 (1 and 2 respectively)."""
+    assert PDAcroForm.FLAG_SIGNATURES_EXIST == 1
+    assert PDAcroForm.FLAG_APPEND_ONLY == 2
+
+
+def test_get_signature_flags_round_trips_raw_int() -> None:
+    """``get_signature_flags`` exposes the raw ``/SigFlags`` integer —
+    callers can persist or compare against bit masks directly without
+    losing reserved bits."""
+    form = PDAcroForm()
+    assert form.get_signature_flags() == 0
+
+    form.set_signature_flags(
+        PDAcroForm.FLAG_SIGNATURES_EXIST | PDAcroForm.FLAG_APPEND_ONLY
+    )
+    assert form.get_signature_flags() == 3
+    assert form.is_signatures_exist() is True
+    assert form.is_appendonly() is True
+
+    # Reserved/unknown bits must round-trip too.
+    form.set_signature_flags(0xFF)
+    assert form.get_signature_flags() == 0xFF
+    assert form.is_signatures_exist() is True
+    assert form.is_appendonly() is True
+
+
+def test_set_signature_flags_preserves_unrelated_bits_when_toggling() -> None:
+    """Setting raw flags then toggling individual flags via the typed
+    helpers must preserve unrelated bits (parity with the bit-by-bit
+    upstream ``setFlag`` semantics)."""
+    form = PDAcroForm()
+    # Set a custom bit (bit 7) plus signatures-exist.
+    form.set_signature_flags(0x80 | PDAcroForm.FLAG_SIGNATURES_EXIST)
+    form.set_appendonly(True)
+    # All three bits live together.
+    assert form.get_signature_flags() == (
+        0x80 | PDAcroForm.FLAG_SIGNATURES_EXIST | PDAcroForm.FLAG_APPEND_ONLY
+    )
+
+    # Clearing only one flag preserves the other two.
+    form.set_signatures_exist(False)
+    assert form.get_signature_flags() == (0x80 | PDAcroForm.FLAG_APPEND_ONLY)

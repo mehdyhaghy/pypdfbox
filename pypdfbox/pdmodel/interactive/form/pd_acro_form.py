@@ -99,10 +99,18 @@ class PDAcroForm:
                 out.append(field)
         return out
 
-    def set_fields(self, fields: list[PDField]) -> None:
+    def set_fields(self, fields: list[PDField] | None) -> None:
+        """Replace the form's root ``/Fields`` array.
+
+        ``None`` is normalised to an empty array (matching the
+        constructor's behaviour) — upstream's ``setFields(null)`` would
+        NPE in ``new COSArray(null)``; we treat it as a clear instead so
+        callers can reset the form to "no fields" with a single call.
+        """
         arr = COSArray()
-        for f in fields:
-            arr.add(f.get_cos_object())
+        if fields is not None:
+            for f in fields:
+                arr.add(f.get_cos_object())
         self._dictionary.set_item(_FIELDS, arr)
         self._invalidate_field_cache()
 
@@ -237,6 +245,14 @@ class PDAcroForm:
 
     # ---------- /SigFlags ----------
 
+    # Bit positions in /SigFlags (PDF 32000-1 §12.7.3 Table 219). Mirror
+    # upstream's package-private ``FLAG_SIGNATURES_EXIST`` and
+    # ``FLAG_APPEND_ONLY`` constants — exposed publicly here so callers
+    # who want to drive ``set_signature_flags`` directly don't have to
+    # re-derive the bit positions.
+    FLAG_SIGNATURES_EXIST: int = _FLAG_SIGNATURES_EXIST
+    FLAG_APPEND_ONLY: int = _FLAG_APPEND_ONLY
+
     def _get_sig_flags(self) -> int:
         return self._dictionary.get_int(_SIG_FLAGS, 0)
 
@@ -247,6 +263,26 @@ class PDAcroForm:
         else:
             flags &= ~mask
         self._dictionary.set_int(_SIG_FLAGS, flags)
+
+    def get_signature_flags(self) -> int:
+        """Return the raw ``/SigFlags`` integer (0 when absent).
+
+        Pypdfbox-only convenience over upstream's bit-by-bit
+        ``isSignaturesExist`` / ``isAppendOnly``: useful when you want
+        to round-trip the flag bitmask without losing reserved bits or
+        when persisting the AcroForm state across calls. The two
+        documented flag bits are :attr:`FLAG_SIGNATURES_EXIST` and
+        :attr:`FLAG_APPEND_ONLY`."""
+        return self._get_sig_flags()
+
+    def set_signature_flags(self, flags: int) -> None:
+        """Replace the raw ``/SigFlags`` integer.
+
+        Pypdfbox-only convenience — mirrors :meth:`get_signature_flags`.
+        Pass ``0`` to clear all signature flags (the entry stays present
+        as an integer 0; use the document-level helper to drop the entry
+        entirely)."""
+        self._dictionary.set_int(_SIG_FLAGS, int(flags))
 
     def is_signatures_exist(self) -> bool:
         return bool(self._get_sig_flags() & _FLAG_SIGNATURES_EXIST)
@@ -738,7 +774,7 @@ class PDAcroForm:
         if isinstance(bbox_arr, COSArray) and bbox_arr.size() >= 4:
             try:
                 vals = [float(bbox_arr.get_object(i).value) for i in range(4)]  # type: ignore[union-attr]
-            except AttributeError, TypeError:
+            except (AttributeError, TypeError):
                 vals = []
             if len(vals) == 4:
                 bbox = (

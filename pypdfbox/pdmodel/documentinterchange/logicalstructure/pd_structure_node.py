@@ -135,6 +135,49 @@ class PDStructureNode:
         arr.add(cos_kid)
         self._dictionary.set_item(_K, arr)
 
+    def create_object(self, kid: Any) -> Any:
+        """Convert a single ``/K`` kid (a ``COSBase``) to its typed wrapper.
+
+        Mirrors upstream protected ``PDStructureNode.createObject``:
+
+        * ``COSDictionary`` (or a ``COSObject`` indirecting one) with
+          ``/Type StructElem`` (or no ``/Type``) → :class:`PDStructureElement`.
+        * ``/Type MCR`` → :class:`PDMarkedContentReference`.
+        * ``/Type OBJR`` → :class:`PDObjectReference`.
+        * ``COSInteger`` → ``int`` (the MCID value).
+        * Anything else → ``None``.
+
+        Differs from :meth:`wrap_kid` which preserves unknown COS objects
+        as a raw fallback; ``create_object`` strictly returns ``None`` for
+        unrecognized kids, matching upstream's contract.
+        """
+        from pypdfbox.cos import COSObject
+
+        from .pd_marked_content_reference import PDMarkedContentReference
+        from .pd_object_reference import PDObjectReference
+
+        kid_dic: COSDictionary | None = None
+        if isinstance(kid, COSDictionary):
+            kid_dic = kid
+        elif isinstance(kid, COSObject):
+            base = kid.get_object()
+            if isinstance(base, COSDictionary):
+                kid_dic = base
+        if kid_dic is not None:
+            type_name = kid_dic.get_name(_TYPE)
+            if type_name is None or type_name == _STRUCT_ELEM_NAME:
+                from .pd_structure_element import PDStructureElement
+
+                return PDStructureElement(kid_dic)
+            if type_name == "MCR":
+                return PDMarkedContentReference(kid_dic)
+            if type_name == "OBJR":
+                return PDObjectReference(kid_dic)
+            return None
+        if isinstance(kid, COSInteger):
+            return kid.value
+        return None
+
     def _append_objectable_kid(self, objectable: Any) -> None:
         """Append a ``COSObjectable``-style kid (anything exposing
         ``get_cos_object``). Mirrors upstream protected
@@ -155,6 +198,20 @@ class PDStructureNode:
         if hasattr(objectable, "get_cos_object"):
             return self.remove_kid(objectable.get_cos_object())
         return self.remove_kid(objectable)
+
+    def _insert_objectable_before(self, new_kid: Any, ref_kid: Any) -> bool:
+        """Insert a ``COSObjectable``-style ``new_kid`` before ``ref_kid``.
+
+        Mirrors upstream protected ``PDStructureNode.insertObjectableBefore``:
+        ``new_kid`` is unwrapped via ``get_cos_object`` when present, then
+        the call is delegated to :meth:`insert_before`. ``None`` ``new_kid``
+        is a silent no-op (returns ``False``).
+        """
+        if new_kid is None:
+            return False
+        if hasattr(new_kid, "get_cos_object"):
+            return self.insert_before(new_kid.get_cos_object(), ref_kid)
+        return self.insert_before(new_kid, ref_kid)
 
     def insert_before(self, new_kid: Any, before_kid: Any) -> bool:
         """Insert ``new_kid`` immediately before ``before_kid`` in ``/K``.
