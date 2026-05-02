@@ -73,6 +73,48 @@ class ArrayProperty(AbstractField):
         with contextlib.suppress(ValueError):
             self._properties.remove(prop)
 
+    def remove_properties_by_name(self, local_name: str) -> None:
+        """
+        Remove every child property whose local name matches ``local_name``.
+        No-op when the container is empty or has no matches. Mirrors
+        ``ComplexPropertyContainer.removePropertiesByName`` upstream.
+        """
+        if not self._properties:
+            return
+        self._properties = [
+            p for p in self._properties if p.get_property_name() != local_name
+        ]
+
+    def is_same_property(
+        self, prop1: AbstractField, prop2: AbstractField
+    ) -> bool:
+        """
+        Return ``True`` when two properties have identical concrete class,
+        identical local name, and (for simple properties) identical string
+        value. Mirrors ``ComplexPropertyContainer.isSameProperty`` upstream.
+        """
+        if type(prop1) is not type(prop2):
+            return False
+        pn1 = prop1.get_property_name()
+        pn2 = prop2.get_property_name()
+        if pn1 is None and pn2 is None:
+            return True
+        if pn1 is None or pn2 is None or pn1 != pn2:
+            return False
+        get1 = getattr(prop1, "get_string_value", None)
+        get2 = getattr(prop2, "get_string_value", None)
+        if get1 is not None and get2 is not None:
+            return get1() == get2()
+        return prop1 is prop2
+
+    def contains_property(self, prop: AbstractField) -> bool:
+        """
+        Return ``True`` when an equivalent property (per :meth:`is_same_property`)
+        is already in this container. Mirrors
+        ``ComplexPropertyContainer.containsProperty`` upstream.
+        """
+        return any(self.is_same_property(p, prop) for p in self._properties)
+
     def get_all_properties(self) -> list[AbstractField]:
         return list(self._properties)
 

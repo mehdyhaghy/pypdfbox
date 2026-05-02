@@ -135,3 +135,35 @@ def test_get_all_namespaces_with_prefix_is_live_view(metadata: XMPMetadata) -> N
     arr.add_namespace("http://example.com/ns/", "ex")
     # Mirrors upstream's getAllNamespacesWithPrefix which exposes the backing map.
     assert view["http://example.com/ns/"] == "ex"
+
+
+def test_remove_properties_by_name_drops_all_matches(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    arr.add_property(TextType(metadata, "ns", "p", "name", "a"))
+    arr.add_property(TextType(metadata, "ns", "p", "name", "b"))
+    arr.add_property(IntegerType(metadata, "ns", "p", "other", 1))
+    arr.remove_properties_by_name("name")
+    assert [p.get_property_name() for p in arr.get_all_properties()] == ["other"]
+
+
+def test_remove_properties_by_name_empty_is_noop(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    arr.remove_properties_by_name("missing")
+    assert arr.get_all_properties() == []
+
+
+def test_is_same_property_class_and_value(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    a = TextType(metadata, "ns", "p", "name", "x")
+    b = TextType(metadata, "ns", "p", "name", "x")
+    diff_class = IntegerType(metadata, "ns", "p", "name", 0)
+    assert arr.is_same_property(a, b) is True
+    assert arr.is_same_property(a, diff_class) is False
+
+
+def test_contains_property_round_trip(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    a = TextType(metadata, "ns", "p", "tag", "x")
+    arr.add_property(a)
+    assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "x")) is True
+    assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "y")) is False
