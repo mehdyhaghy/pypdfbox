@@ -8,7 +8,6 @@ from pypdfbox.pdmodel.common.filespecification import (
     PDSimpleFileSpecification,
 )
 
-
 # ---------- PDSimpleFileSpecification ----------
 
 
@@ -247,3 +246,64 @@ def test_embedded_file_check_sum_string_clear_when_no_params_is_noop() -> None:
     # No /Params dict yet — clearing should not raise nor create one.
     embedded.set_check_sum_string(None)
     assert embedded.get_check_sum_string() is None
+
+
+# ---------- /EF embedded file None-removal (parity with upstream Java
+# ----------  setItem(name, null) → remove behavior) ----------
+
+
+def test_complex_set_embedded_file_none_removes_f_entry() -> None:
+    spec = PDComplexFileSpecification()
+    embedded = PDEmbeddedFile()
+    spec.set_embedded_file(embedded)
+    assert spec.get_embedded_file() is not None
+    # Clearing must not raise and must remove the /F entry from the /EF dict.
+    spec.set_embedded_file(None)
+    assert spec.get_embedded_file() is None
+
+
+def test_complex_set_embedded_file_unicode_none_removes_uf_entry() -> None:
+    spec = PDComplexFileSpecification()
+    embedded = PDEmbeddedFile()
+    spec.set_embedded_file_unicode(embedded)
+    assert spec.get_embedded_file_unicode() is not None
+    spec.set_embedded_file_unicode(None)
+    assert spec.get_embedded_file_unicode() is None
+
+
+def test_complex_set_embedded_file_none_when_no_ef_dict_is_noop() -> None:
+    # Pristine spec — no /EF at all. Setting None must not create an /EF dict
+    # and must not raise.
+    spec = PDComplexFileSpecification()
+    spec.set_embedded_file(None)
+    spec.set_embedded_file_unicode(None)
+    cos = spec.get_cos_object()
+    ef = cos.get_dictionary_object(COSName.get_pdf_name("EF"))
+    assert ef is None
+
+
+def test_complex_set_embedded_file_none_leaves_other_keys_intact() -> None:
+    # Setting one key to None must NOT collaterally remove sibling /EF entries.
+    spec = PDComplexFileSpecification()
+    f_embed = PDEmbeddedFile()
+    uf_embed = PDEmbeddedFile()
+    spec.set_embedded_file(f_embed)
+    spec.set_embedded_file_unicode(uf_embed)
+    spec.set_embedded_file(None)
+    assert spec.get_embedded_file() is None
+    fetched_uf = spec.get_embedded_file_unicode()
+    assert fetched_uf is not None
+    assert fetched_uf.get_cos_object() is uf_embed.get_cos_object()
+
+
+def test_complex_get_embedded_file_after_clear_round_trip_to_set_again() -> None:
+    spec = PDComplexFileSpecification()
+    first = PDEmbeddedFile()
+    spec.set_embedded_file(first)
+    spec.set_embedded_file(None)
+    assert spec.get_embedded_file() is None
+    second = PDEmbeddedFile()
+    spec.set_embedded_file(second)
+    fetched = spec.get_embedded_file()
+    assert fetched is not None
+    assert fetched.get_cos_object() is second.get_cos_object()

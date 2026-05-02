@@ -168,6 +168,51 @@ class PDFontFactory:
         )
         return None
 
+    # ---------- descendant-CIDFont dispatch ----------
+
+    @staticmethod
+    def create_descendant_font(
+        font_dict: COSDictionary,
+        parent: PDType0Font | None = None,
+    ) -> PDCIDFont | None:
+        """Build a :class:`PDCIDFont` from a Type0 descendant font dict.
+
+        Mirrors PDFBox's package-private
+        ``PDFontFactory.createDescendantFont(COSDictionary, PDType0Font)``
+        — used internally by :class:`PDType0Font` to wrap the entry in
+        ``/DescendantFonts``. Surfaced publicly here because pypdfbox
+        callers occasionally need to wrap a descendant dict from the
+        outside (e.g. when stitching a Type0 chain together post-parse).
+
+        ``font_dict`` must be a font dictionary (``/Type /Font``) whose
+        ``/Subtype`` is ``CIDFontType0`` or ``CIDFontType2``. ``parent``
+        is the wrapping :class:`PDType0Font` and is forwarded so the
+        descendant can resolve its parent CMap when answering
+        ``code_to_cid`` / ``code_to_gid``.
+
+        Returns ``None`` for ``None`` / non-dictionary inputs (matching
+        the lenient pattern :meth:`create_font` follows). Raises
+        :class:`OSError` for valid font dicts whose ``/Subtype`` is
+        neither ``CIDFontType0`` nor ``CIDFontType2`` — upstream raises
+        ``IOException`` ("Invalid font type") in the same situation.
+        """
+        if font_dict is None:
+            return None
+        if not isinstance(font_dict, COSDictionary):
+            raise TypeError(
+                "PDFontFactory.create_descendant_font expects "
+                f"COSDictionary, got {type(font_dict).__name__}"
+            )
+        sub_type = font_dict.get_name(_SUBTYPE)
+        if sub_type == PDCIDFontType0.SUB_TYPE:
+            return PDCIDFontType0(font_dict, parent)
+        if sub_type == PDCIDFontType2.SUB_TYPE:
+            return PDCIDFontType2(font_dict, parent)
+        raise OSError(
+            f"Invalid descendant font type: {sub_type!r} "
+            "(expected /CIDFontType0 or /CIDFontType2)"
+        )
+
     # ---------- typed-result convenience wrappers ----------
 
     @staticmethod

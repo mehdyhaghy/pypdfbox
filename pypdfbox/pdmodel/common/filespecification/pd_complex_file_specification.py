@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream
 
 from .pd_file_specification import PDFileSpecification
+
+if TYPE_CHECKING:
+    from .pd_embedded_file import PDEmbeddedFile
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _FILESPEC: COSName = COSName.get_pdf_name("Filespec")
@@ -110,7 +115,7 @@ class PDComplexFileSpecification(PDFileSpecification):
 
     # ---------- embedded file accessors ----------
 
-    def _get_embedded(self, key: COSName) -> "PDEmbeddedFile | None":  # noqa: F821
+    def _get_embedded(self, key: COSName) -> PDEmbeddedFile | None:
         from .pd_embedded_file import PDEmbeddedFile
 
         base = self._get_object_from_ef_dictionary(key)
@@ -118,34 +123,38 @@ class PDComplexFileSpecification(PDFileSpecification):
             return PDEmbeddedFile(base)
         return None
 
-    def _set_embedded(self, key: COSName, file: "PDEmbeddedFile | None") -> None:  # noqa: F821
+    def _set_embedded(self, key: COSName, file: PDEmbeddedFile | None) -> None:
         ef = self._get_ef_dictionary()
         if ef is None and file is not None:
             ef = COSDictionary()
             self._fs.set_item(_EF, ef)
             self._ef_dictionary = ef
         if ef is not None:
-            ef.set_item(key, file.get_cos_object())
+            # ``COSDictionary.set_item(key, None)`` removes the entry, so
+            # ``set_embedded_file(None)`` clears the slot without raising.
+            # Mirrors upstream Java where ``setItem(key, COSObjectable)``
+            # accepts a null value as a removal.
+            ef.set_item(key, file.get_cos_object() if file is not None else None)
 
-    def get_embedded_file(self) -> "PDEmbeddedFile | None":  # noqa: F821
+    def get_embedded_file(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_F)
 
-    def set_embedded_file(self, file: "PDEmbeddedFile | None") -> None:  # noqa: F821
+    def set_embedded_file(self, file: PDEmbeddedFile | None) -> None:
         self._set_embedded(_F, file)
 
-    def get_embedded_file_dos(self) -> "PDEmbeddedFile | None":  # noqa: F821
+    def get_embedded_file_dos(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_DOS)
 
-    def get_embedded_file_mac(self) -> "PDEmbeddedFile | None":  # noqa: F821
+    def get_embedded_file_mac(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_MAC)
 
-    def get_embedded_file_unix(self) -> "PDEmbeddedFile | None":  # noqa: F821
+    def get_embedded_file_unix(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_UNIX)
 
-    def get_embedded_file_unicode(self) -> "PDEmbeddedFile | None":  # noqa: F821
+    def get_embedded_file_unicode(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_UF)
 
-    def set_embedded_file_unicode(self, file: "PDEmbeddedFile | None") -> None:  # noqa: F821
+    def set_embedded_file_unicode(self, file: PDEmbeddedFile | None) -> None:
         self._set_embedded(_UF, file)
 
     # ---------- /Desc description ----------
