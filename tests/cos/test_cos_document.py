@@ -6,6 +6,7 @@ from pypdfbox.cos import (
     COSArray,
     COSDictionary,
     COSDocument,
+    COSDocumentState,
     COSInteger,
     COSName,
     COSObjectKey,
@@ -412,3 +413,87 @@ def test_get_objects_by_type_two_arg_overload_matches_either_name() -> None:
         # Two-arg form with non-matching second name — same as single-arg.
         only_page = doc.get_objects_by_type("Page", "Catalog")
         assert only_page == [page_obj]
+
+
+# -- Wave 171 round-out --------------------------------------------------
+
+
+def test_cos_name_id_and_linearized_constants() -> None:
+    # Both well-known names are interned via COSName.get_pdf_name and exposed
+    # as class attributes for cheap reuse — mirrors PDFBox's catalog of
+    # predefined names.
+    assert COSName.ID is COSName.get_pdf_name("ID")  # type: ignore[attr-defined]
+    assert COSName.LINEARIZED is COSName.get_pdf_name("Linearized")  # type: ignore[attr-defined]
+    assert str(COSName.ID) == "/ID"  # type: ignore[attr-defined]
+    assert str(COSName.LINEARIZED) == "/Linearized"  # type: ignore[attr-defined]
+
+
+def test_get_document_id_uses_typed_cos_array_accessor() -> None:
+    # When /ID is present but the value is not an array, the typed accessor
+    # must filter it out (mirrors upstream getCOSArray's None-on-mistype
+    # behaviour rather than raising).
+    with COSDocument() as doc:
+        trailer = COSDictionary()
+        # Set a non-array value at /ID — get_document_id() must return None.
+        trailer.set_int("ID", 7)
+        doc.set_trailer(trailer)
+        assert doc.get_document_id() is None
+
+
+def test_get_document_id_returns_array_when_present() -> None:
+    with COSDocument() as doc:
+        ids = COSArray([COSString(b"\x00" * 16), COSString(b"\xff" * 16)])
+        trailer = COSDictionary()
+        trailer.set_item(COSName.ID, ids)  # type: ignore[attr-defined]
+        doc.set_trailer(trailer)
+        assert doc.get_document_id() is ids
+
+
+def test_set_document_id_uses_id_constant_round_trip() -> None:
+    # set_document_id stores under COSName.ID — round-trips via the constant
+    # rather than a fresh get_pdf_name lookup.
+    with COSDocument() as doc:
+        ids = COSArray([COSString(b"a"), COSString(b"b")])
+        doc.set_document_id(ids)
+        # The trailer's /ID entry, fetched by the constant, must be the
+        # same array instance we set.
+        trailer = doc.get_trailer()
+        assert trailer is not None
+        assert trailer.get_dictionary_object(COSName.ID) is ids  # type: ignore[attr-defined]
+
+
+# COSDocumentState -------------------------------------------------------
+
+
+def test_cos_document_state_initial_parsing() -> None:
+    state = COSDocumentState()
+    # Initial state is "parsing" → not yet accepting updates.
+    assert state.is_accepting_updates() is False
+
+
+def test_cos_document_state_flip_accepts_updates() -> None:
+    state = COSDocumentState()
+    state.set_parsing(False)
+    assert state.is_accepting_updates() is True
+    # And flippable back to parsing if needed.
+    state.set_parsing(True)
+    assert state.is_accepting_updates() is False
+
+
+def test_cos_document_get_document_state_default() -> None:
+    with COSDocument() as doc:
+        state = doc.get_document_state()
+        assert isinstance(state, COSDocumentState)
+        # Repeat call returns the same instance (state is per-document).
+        assert doc.get_document_state() is state
+        # Default state mirrors a freshly-constructed COSDocumentState —
+        # parsing in progress, not yet accepting updates.
+        assert state.is_accepting_updates() is False
+
+
+def test_cos_document_state_flip_visible_through_document() -> None:
+    with COSDocument() as doc:
+        state = doc.get_document_state()
+        state.set_parsing(False)
+        # The flag is observable via the document-level accessor too.
+        assert doc.get_document_state().is_accepting_updates() is True

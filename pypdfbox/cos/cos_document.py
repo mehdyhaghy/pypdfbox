@@ -7,6 +7,7 @@ from pypdfbox.io import RandomAccessRead, ScratchFile
 from .cos_array import COSArray
 from .cos_base import COSBase
 from .cos_dictionary import COSDictionary
+from .cos_document_state import COSDocumentState
 from .cos_name import COSName
 from .cos_object import COSObject
 from .cos_object_key import COSObjectKey
@@ -82,6 +83,10 @@ class COSDocument(COSBase):
         # integers encode object-stream membership (``-objstm_object_number``)
         # following the PDFBox convention.
         self._xref_table: dict[COSObjectKey, int] = {}
+        # Lifecycle state object — initial state is "parsing". The parser
+        # flips it to "accepting updates" once xref consumption is complete.
+        # Mirrors upstream ``COSDocumentState documentState``.
+        self._document_state: COSDocumentState = COSDocumentState()
 
     # ---------- object pool ----------
 
@@ -233,15 +238,21 @@ class COSDocument(COSBase):
         return self.get_catalog()
 
     def get_document_id(self) -> COSArray | None:
+        """Return ``trailer/ID`` as a typed ``COSArray`` or ``None`` if the
+        trailer is missing / has no ``/ID`` entry / the entry is not an
+        array. Mirrors upstream ``getDocumentID()`` which calls
+        ``getTrailer().getCOSArray(COSName.ID)``."""
         if self._trailer is None:
             return None
-        ids = self._trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
-        return ids if isinstance(ids, COSArray) else None
+        return self._trailer.get_cos_array(COSName.ID)  # type: ignore[attr-defined]
 
     def set_document_id(self, ids: COSArray) -> None:
+        """Write ``trailer/ID``. The trailer is auto-created when absent —
+        mirrors PDFBox's ``setDocumentID`` while sparing callers from
+        seeding a trailer first when building a document from scratch."""
         if self._trailer is None:
             self._trailer = COSDictionary()
-        self._trailer.set_item(COSName.get_pdf_name("ID"), ids)
+        self._trailer.set_item(COSName.ID, ids)  # type: ignore[attr-defined]
 
     def is_encrypted(self) -> bool:
         if self._trailer is None:
@@ -395,6 +406,15 @@ class COSDocument(COSBase):
         if offset < 0:
             raise ValueError("startxref offset must be non-negative")
         self._start_xref = offset
+
+    # ---------- document state ----------
+
+    def get_document_state(self) -> COSDocumentState:
+        """Return the lifecycle marker for this document — initially
+        ``parsing``, flipped by the parser to ``accepting updates`` once
+        xref consumption completes. Mirrors upstream ``getDocumentState()``.
+        """
+        return self._document_state
 
     # ---------- visitor / lifecycle ----------
 

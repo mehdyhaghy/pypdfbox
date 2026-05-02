@@ -5,6 +5,7 @@ from .cos_base import COSBase
 from .cos_boolean import COSBoolean
 from .cos_dictionary import COSDictionary
 from .cos_document import COSDocument
+from .cos_document_state import COSDocumentState
 from .cos_float import COSFloat
 from .cos_integer import COSInteger
 from .cos_name import COSName
@@ -22,6 +23,7 @@ __all__ = [
     "COSBoolean",
     "COSDictionary",
     "COSDocument",
+    "COSDocumentState",
     "COSFloat",
     "COSInteger",
     "COSName",

@@ -532,15 +532,52 @@ class PDPageContentStream:
         self._write_operator(b"w")
 
     def set_line_cap_style(self, cap: int) -> None:
-        self._write_operands(int(cap))
+        """Emit ``<cap> J`` — set the line cap style.
+
+        ``cap`` must be 0 (butt), 1 (round), or 2 (projecting square),
+        matching PDF 32000-1 §8.4.3.3. Values outside that range raise
+        :class:`ValueError`, mirroring upstream's
+        ``IllegalArgumentException`` from ``setLineCapStyle``.
+        """
+        c = int(cap)
+        if not 0 <= c <= 2:
+            raise ValueError(
+                f"unknown value for line cap style: {cap!r} (expected 0..2)"
+            )
+        self._write_operands(c)
         self._write_operator(b"J")
 
     def set_line_join_style(self, join: int) -> None:
-        self._write_operands(int(join))
+        """Emit ``<join> j`` — set the line join style.
+
+        ``join`` must be 0 (miter), 1 (round), or 2 (bevel), matching PDF
+        32000-1 §8.4.3.4. Values outside that range raise
+        :class:`ValueError`, mirroring upstream's
+        ``IllegalArgumentException`` from ``setLineJoinStyle``.
+        """
+        j = int(join)
+        if not 0 <= j <= 2:
+            raise ValueError(
+                f"unknown value for line join style: {join!r} (expected 0..2)"
+            )
+        self._write_operands(j)
         self._write_operator(b"j")
 
     def set_miter_limit(self, miter: float) -> None:
-        self._write_operands(miter)
+        """Emit ``<miter> M`` — set the miter limit.
+
+        ``miter`` must be strictly positive — Acrobat Reader will not
+        render content with a non-positive miter limit. Values ``<= 0``
+        raise :class:`ValueError`, mirroring upstream's
+        ``IllegalArgumentException`` from ``setMiterLimit``.
+        """
+        m = float(miter)
+        if m <= 0.0:
+            raise ValueError(
+                f"miter limit <= 0 is invalid and will not render in "
+                f"Acrobat Reader; got {miter!r}"
+            )
+        self._write_operands(m)
         self._write_operator(b"M")
 
     def set_dash_pattern(self, dash: list[float], phase: float) -> None:
@@ -1292,11 +1329,20 @@ class PDPageContentStream:
         x: float = 0.0,
         y: float = 0.0,
     ) -> None:
-        """Emit ``q 1 0 0 1 <x> <y> cm /<key> Do Q``."""
+        """Emit ``q 1 0 0 1 <x> <y> cm /<key> Do Q``.
+
+        Raises :class:`RuntimeError` when called inside a text block
+        (between ``BT`` / ``ET``) — matches upstream's
+        ``IllegalStateException`` from ``drawForm``.
+        """
         if not isinstance(form_xobject, PDFormXObject):
             raise TypeError(
                 f"PDPageContentStream.draw_form expects PDFormXObject; got "
                 f"{type(form_xobject).__name__}"
+            )
+        if self._in_text_mode:
+            raise RuntimeError(
+                "draw_form is not allowed within a text block (BT/ET)."
             )
         key = self._resource_key_for_xobject(form_xobject)
         self.save_graphics_state()
@@ -1621,12 +1667,22 @@ def _to_cos_name(name: COSName | str) -> COSName:
 def _format_number(value: float) -> bytes:
     """Format a numeric operand using up to 4 decimal places with trailing
     zeros stripped. Matches upstream's
-    ``formatDecimal.setMaximumFractionDigits(4)``."""
+    ``formatDecimal.setMaximumFractionDigits(4)``.
+
+    Non-finite values (``inf`` / ``-inf`` / ``nan``) raise
+    :class:`ValueError`, mirroring upstream's ``writeOperand(float)``
+    ``IllegalArgumentException`` guard ("X is not a finite number")."""
     # Integers stay integer-formatted (no trailing ".0") to match upstream
     # ``NumberFormat`` behaviour on whole numbers.
     if isinstance(value, int) and not isinstance(value, bool):
         return str(value).encode("ascii")
     f = float(value)
+    # Reject inf / -inf / nan up-front — emitting these into a content
+    # stream would produce unparseable PDF.
+    import math as _math  # noqa: PLC0415
+
+    if not _math.isfinite(f):
+        raise ValueError(f"{value!r} is not a finite number")
     if f.is_integer():
         return str(int(f)).encode("ascii")
     text = format(f, ".4f").rstrip("0").rstrip(".")

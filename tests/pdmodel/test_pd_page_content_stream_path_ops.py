@@ -216,3 +216,119 @@ def test_set_text_rendering_mode_rejects_out_of_range() -> None:
             cs.set_text_rendering_mode(8)
         with pytest.raises(ValueError):
             cs.set_text_rendering_mode(-1)
+
+
+# ------------------------------------------------------------------
+# Wave 171: line cap / join / miter validation, finite-number guard,
+# draw_form text-mode guard. Mirrors upstream's
+# ``IllegalArgumentException`` / ``IllegalStateException`` guards in
+# PDAbstractContentStream (setLineCapStyle / setLineJoinStyle /
+# setMiterLimit / writeOperand(float) / drawForm).
+# ------------------------------------------------------------------
+
+
+def test_set_line_cap_style_accepts_0_through_2() -> None:
+    for cap in range(3):
+        doc = PDDocument()
+        page = _make_page(doc)
+        with PDPageContentStream(doc, page) as cs:
+            cs.set_line_cap_style(cap)
+        assert _stream_bytes(page) == f"{cap} J\n".encode("ascii")
+
+
+def test_set_line_cap_style_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(ValueError):
+            cs.set_line_cap_style(3)
+        with pytest.raises(ValueError):
+            cs.set_line_cap_style(-1)
+
+
+def test_set_line_join_style_accepts_0_through_2() -> None:
+    for join in range(3):
+        doc = PDDocument()
+        page = _make_page(doc)
+        with PDPageContentStream(doc, page) as cs:
+            cs.set_line_join_style(join)
+        assert _stream_bytes(page) == f"{join} j\n".encode("ascii")
+
+
+def test_set_line_join_style_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(ValueError):
+            cs.set_line_join_style(3)
+        with pytest.raises(ValueError):
+            cs.set_line_join_style(-1)
+
+
+def test_set_miter_limit_rejects_zero_and_negative() -> None:
+    """Upstream ``setMiterLimit`` throws when ``miter <= 0`` because
+    Acrobat Reader will not render the content."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(ValueError):
+            cs.set_miter_limit(0)
+        with pytest.raises(ValueError):
+            cs.set_miter_limit(-1.0)
+
+
+def test_set_miter_limit_accepts_small_positive() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_miter_limit(0.0001)
+    assert _stream_bytes(page) == b"0.0001 M\n"
+
+
+def test_numeric_operand_rejects_inf_and_nan() -> None:
+    """Mirrors upstream's ``writeOperand(float)`` guard
+    (``Float.isFinite`` check) — non-finite values are rejected at the
+    point of formatting so they never reach the content stream."""
+    import math
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        with pytest.raises(ValueError):
+            cs.move_to(math.inf, 0)
+        with pytest.raises(ValueError):
+            cs.move_to(0, -math.inf)
+        with pytest.raises(ValueError):
+            cs.move_to(math.nan, 0)
+
+
+def test_draw_form_inside_text_block_raises() -> None:
+    """Mirrors upstream's ``IllegalStateException`` from ``drawForm``
+    when called between BT and ET — translated to :class:`RuntimeError`
+    (matches the ``draw_image`` translation)."""
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    form = PDFormXObject(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        with pytest.raises(RuntimeError):
+            cs.draw_form(form)
+        cs.end_text()
+
+
+def test_draw_form_outside_text_block_succeeds() -> None:
+    """Sanity: outside a text block ``draw_form`` still emits
+    ``q ... cm /<key> Do Q`` as before."""
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    form = PDFormXObject(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.draw_form(form, 5, 7)
+    body = _stream_bytes(page)
+    assert b"Do" in body
+    assert body.startswith(b"q\n")
+    assert body.endswith(b"Q\n")
