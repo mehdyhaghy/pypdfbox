@@ -443,3 +443,149 @@ def test_get_num_copies_raw_does_not_clamp_below_one() -> None:
     p.get_cos_object().set_int(COSName.get_pdf_name("NumCopies"), -3)
     assert p.get_num_copies_raw() == -3
     assert p.get_num_copies() == 1
+
+
+# ---------- typed enum-returning accessors ----------
+
+
+def test_get_non_full_screen_page_mode_enum_default() -> None:
+    p = PDViewerPreferences()
+    assert (
+        p.get_non_full_screen_page_mode_enum()
+        is PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseNone
+    )
+
+
+def test_get_non_full_screen_page_mode_enum_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_non_full_screen_page_mode(
+        PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOutlines
+    )
+    assert (
+        p.get_non_full_screen_page_mode_enum()
+        is PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOutlines
+    )
+    p.set_non_full_screen_page_mode(
+        PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOC
+    )
+    assert (
+        p.get_non_full_screen_page_mode_enum()
+        is PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOC
+    )
+
+
+def test_get_non_full_screen_page_mode_enum_unknown_token_returns_none() -> None:
+    """Producer-written non-standard tokens decode to ``None`` (callers can
+    fall back to ``get_non_full_screen_page_mode`` for the raw string)."""
+    p = PDViewerPreferences()
+    p.get_cos_object().set_name(
+        COSName.get_pdf_name("NonFullScreenPageMode"), "Bogus"
+    )
+    assert p.get_non_full_screen_page_mode_enum() is None
+    assert p.get_non_full_screen_page_mode() == "Bogus"
+
+
+def test_get_reading_direction_enum_default_l2r() -> None:
+    p = PDViewerPreferences()
+    assert (
+        p.get_reading_direction_enum()
+        is PDViewerPreferences.READING_DIRECTION.L2R
+    )
+
+
+def test_get_reading_direction_enum_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_reading_direction(PDViewerPreferences.READING_DIRECTION.R2L)
+    assert (
+        p.get_reading_direction_enum()
+        is PDViewerPreferences.READING_DIRECTION.R2L
+    )
+
+
+def test_get_reading_direction_enum_unknown_token_returns_none() -> None:
+    p = PDViewerPreferences()
+    p.get_cos_object().set_name(COSName.get_pdf_name("Direction"), "TopToBottom")
+    assert p.get_reading_direction_enum() is None
+
+
+def test_get_view_area_enum_default_crop_box() -> None:
+    p = PDViewerPreferences()
+    assert p.get_view_area_enum() is PDViewerPreferences.BOUNDARY.CropBox
+
+
+def test_get_view_area_enum_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_view_area(PDViewerPreferences.BOUNDARY.MediaBox)
+    assert p.get_view_area_enum() is PDViewerPreferences.BOUNDARY.MediaBox
+
+
+def test_get_view_clip_enum_default_and_round_trip() -> None:
+    p = PDViewerPreferences()
+    assert p.get_view_clip_enum() is PDViewerPreferences.BOUNDARY.CropBox
+    p.set_view_clip(PDViewerPreferences.BOUNDARY.BleedBox)
+    assert p.get_view_clip_enum() is PDViewerPreferences.BOUNDARY.BleedBox
+
+
+def test_get_print_area_enum_default_and_round_trip() -> None:
+    p = PDViewerPreferences()
+    assert p.get_print_area_enum() is PDViewerPreferences.BOUNDARY.CropBox
+    p.set_print_area(PDViewerPreferences.BOUNDARY.TrimBox)
+    assert p.get_print_area_enum() is PDViewerPreferences.BOUNDARY.TrimBox
+
+
+def test_get_print_clip_enum_default_and_round_trip() -> None:
+    p = PDViewerPreferences()
+    assert p.get_print_clip_enum() is PDViewerPreferences.BOUNDARY.CropBox
+    p.set_print_clip(PDViewerPreferences.BOUNDARY.ArtBox)
+    assert p.get_print_clip_enum() is PDViewerPreferences.BOUNDARY.ArtBox
+
+
+def test_get_view_area_enum_unknown_token_returns_none() -> None:
+    p = PDViewerPreferences()
+    p.get_cos_object().set_name(COSName.get_pdf_name("ViewArea"), "WeirdBox")
+    assert p.get_view_area_enum() is None
+
+
+def test_get_duplex_enum_default_none() -> None:
+    """Mirrors ``get_duplex``: absent ``/Duplex`` returns ``None``."""
+    p = PDViewerPreferences()
+    assert p.get_duplex_enum() is None
+
+
+def test_get_duplex_enum_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_duplex(PDViewerPreferences.DUPLEX.DuplexFlipShortEdge)
+    assert (
+        p.get_duplex_enum() is PDViewerPreferences.DUPLEX.DuplexFlipShortEdge
+    )
+    p.set_duplex(PDViewerPreferences.DUPLEX.Simplex)
+    assert p.get_duplex_enum() is PDViewerPreferences.DUPLEX.Simplex
+
+
+def test_get_duplex_enum_unknown_token_returns_none() -> None:
+    p = PDViewerPreferences()
+    p.get_cos_object().set_name(COSName.get_pdf_name("Duplex"), "Triplex")
+    assert p.get_duplex_enum() is None
+
+
+def test_get_print_scaling_enum_default_app_default() -> None:
+    p = PDViewerPreferences()
+    assert (
+        p.get_print_scaling_enum()
+        is PDViewerPreferences.PRINT_SCALING.AppDefault
+    )
+
+
+def test_get_print_scaling_enum_round_trip() -> None:
+    p = PDViewerPreferences()
+    p.set_print_scaling(PDViewerPreferences.PRINT_SCALING.None_)
+    assert (
+        p.get_print_scaling_enum()
+        is PDViewerPreferences.PRINT_SCALING.None_
+    )
+
+
+def test_get_print_scaling_enum_unknown_token_returns_none() -> None:
+    p = PDViewerPreferences()
+    p.get_cos_object().set_name(COSName.get_pdf_name("PrintScaling"), "Custom")
+    assert p.get_print_scaling_enum() is None

@@ -391,6 +391,98 @@ class PDViewerPreferences:
             return
         self._prefs.set_item(_ENFORCE, COSArray.of_cos_names(names))
 
+    # ---------- typed enum-returning accessors (companions to the string
+    # getters; mirror upstream's Java enums but as a typed view). Return
+    # ``None`` when the stored token is not a recognized enum member, so
+    # callers can defensively handle producer-written non-standard values.
+
+    def get_non_full_screen_page_mode_enum(
+        self,
+    ) -> "PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE | None":
+        """Return ``/NonFullScreenPageMode`` decoded as a
+        :class:`NON_FULL_SCREEN_PAGE_MODE` enum. Returns the spec default
+        ``UseNone`` when absent, and ``None`` when the stored token is not
+        one of the four enum members."""
+        try:
+            return PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE(
+                self.get_non_full_screen_page_mode()
+            )
+        except ValueError:
+            return None
+
+    def get_reading_direction_enum(
+        self,
+    ) -> "PDViewerPreferences.READING_DIRECTION | None":
+        """Return ``/Direction`` decoded as a :class:`READING_DIRECTION`
+        enum. Returns the spec default ``L2R`` when absent, and ``None``
+        when the stored token is not a recognized enum member."""
+        try:
+            return PDViewerPreferences.READING_DIRECTION(
+                self.get_reading_direction()
+            )
+        except ValueError:
+            return None
+
+    def get_view_area_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+        """Return ``/ViewArea`` decoded as a :class:`BOUNDARY` enum. Returns
+        the spec default ``CropBox`` when absent, and ``None`` when the
+        stored token is not a recognized enum member."""
+        try:
+            return PDViewerPreferences.BOUNDARY(self.get_view_area())
+        except ValueError:
+            return None
+
+    def get_view_clip_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+        """Return ``/ViewClip`` decoded as a :class:`BOUNDARY` enum. Returns
+        the spec default ``CropBox`` when absent, and ``None`` when the
+        stored token is not a recognized enum member."""
+        try:
+            return PDViewerPreferences.BOUNDARY(self.get_view_clip())
+        except ValueError:
+            return None
+
+    def get_print_area_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+        """Return ``/PrintArea`` decoded as a :class:`BOUNDARY` enum.
+        Returns the spec default ``CropBox`` when absent, and ``None``
+        when the stored token is not a recognized enum member."""
+        try:
+            return PDViewerPreferences.BOUNDARY(self.get_print_area())
+        except ValueError:
+            return None
+
+    def get_print_clip_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+        """Return ``/PrintClip`` decoded as a :class:`BOUNDARY` enum.
+        Returns the spec default ``CropBox`` when absent, and ``None``
+        when the stored token is not a recognized enum member."""
+        try:
+            return PDViewerPreferences.BOUNDARY(self.get_print_clip())
+        except ValueError:
+            return None
+
+    def get_duplex_enum(self) -> "PDViewerPreferences.DUPLEX | None":
+        """Return ``/Duplex`` decoded as a :class:`DUPLEX` enum. Returns
+        ``None`` when ``/Duplex`` is absent (no spec default per PDF
+        32000-1 Table 150) or when the stored token is not a recognized
+        enum member."""
+        raw = self.get_duplex()
+        if raw is None:
+            return None
+        try:
+            return PDViewerPreferences.DUPLEX(raw)
+        except ValueError:
+            return None
+
+    def get_print_scaling_enum(
+        self,
+    ) -> "PDViewerPreferences.PRINT_SCALING | None":
+        """Return ``/PrintScaling`` decoded as a :class:`PRINT_SCALING`
+        enum. Returns the spec default ``AppDefault`` when absent, and
+        ``None`` when the stored token is not a recognized enum member."""
+        try:
+            return PDViewerPreferences.PRINT_SCALING(self.get_print_scaling())
+        except ValueError:
+            return None
+
     def __repr__(self) -> str:
         return "PDViewerPreferences(...)"
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_annotation_line import PDAnnotationLine
 from .pd_annotation_markup import PDAnnotationMarkup
@@ -200,6 +201,33 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         compatibility and expose the upstream default here.
         """
         return self.get_rectangle_differences() or []
+
+    # ---------- /RD as PDRectangle (upstream singular accessors) ----------
+
+    def get_rect_difference(self) -> PDRectangle | None:
+        """Return the ``/RD`` entry as a :class:`PDRectangle`, or ``None``.
+
+        Mirrors upstream's ``getRectDifference()``: ``/RD`` is stored as a
+        4-element COSArray of left/top/right/bottom margins, and PDFBox
+        wraps it in a ``PDRectangle`` for the singular-named accessor.
+        Returns ``None`` when the entry is missing or has fewer than four
+        numeric entries.
+        """
+        value = self._dict.get_dictionary_object(_RD)
+        if isinstance(value, COSArray) and value.size() >= 4:
+            return PDRectangle.from_cos_array(value)
+        return None
+
+    def set_rect_difference(self, rd: PDRectangle | None) -> None:
+        """Set ``/RD`` from a :class:`PDRectangle`.
+
+        Mirrors upstream's ``setRectDifference(PDRectangle rd)``. Passing
+        ``None`` clears the entry.
+        """
+        if rd is None:
+            self._dict.remove_item(_RD)
+            return
+        self._dict.set_item(_RD, rd.to_cos_array())
 
     def set_rect_differences(
         self, *differences: float | list[float] | None

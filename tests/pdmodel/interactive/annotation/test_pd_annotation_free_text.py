@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_free_text import (
     PDAnnotationFreeText,
@@ -11,6 +11,7 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_line import (
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (
     PDAnnotationMarkup,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 def test_free_text_subtype_constant() -> None:
@@ -89,3 +90,54 @@ def test_free_text_factory_dispatch() -> None:
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationFreeText)
     assert ann.get_subtype() == "FreeText"
+
+
+# ---------- /RD as PDRectangle (singular upstream accessors) ----------
+
+
+def test_free_text_rect_difference_default_none() -> None:
+    ann = PDAnnotationFreeText()
+    assert ann.get_rect_difference() is None
+
+
+def test_free_text_rect_difference_round_trip() -> None:
+    ann = PDAnnotationFreeText()
+    rect = PDRectangle(2.0, 3.0, 5.0, 7.0)
+    ann.set_rect_difference(rect)
+
+    rt = ann.get_rect_difference()
+    assert rt is not None
+    # PDRectangle normalizes to (min, min, max, max) — our values already
+    # are in (lower-left, upper-right) order so round-trip is exact.
+    assert rt.get_lower_left_x() == 2.0
+    assert rt.get_lower_left_y() == 3.0
+    assert rt.get_upper_right_x() == 5.0
+    assert rt.get_upper_right_y() == 7.0
+
+
+def test_free_text_rect_difference_clear() -> None:
+    ann = PDAnnotationFreeText()
+    ann.set_rect_difference(PDRectangle(1.0, 2.0, 3.0, 4.0))
+    ann.set_rect_difference(None)
+    assert ann.get_rect_difference() is None
+
+
+def test_free_text_rect_difference_via_plural_round_trip() -> None:
+    """Both plural and singular accessors read/write the same ``/RD`` entry."""
+    ann = PDAnnotationFreeText()
+    ann.set_rectangle_differences([1.0, 2.0, 3.0, 4.0])
+
+    rt = ann.get_rect_difference()
+    assert rt is not None
+    assert rt.get_lower_left_x() == 1.0
+    assert rt.get_upper_right_y() == 4.0
+
+
+def test_free_text_rect_difference_short_array_returns_none() -> None:
+    ann = PDAnnotationFreeText()
+    cos = ann.get_cos_object()
+    cos.set_item(  # type: ignore[attr-defined]
+        COSName.get_pdf_name("RD"),
+        COSArray([COSFloat(1.0), COSFloat(2.0)]),
+    )
+    assert ann.get_rect_difference() is None

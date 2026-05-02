@@ -212,6 +212,39 @@ def test_text_markup_quad_points_clear() -> None:
     assert ann.get_quad_points() is None
 
 
+def test_text_markup_quad_points_empty_array_round_trip() -> None:
+    """Upstream constructor seeds ``setQuadPoints(new float[0])`` — an
+    empty array round-trips as an empty list (not null), distinct from a
+    missing entry."""
+    ann = PDAnnotationHighlight()
+    ann.set_quad_points([])
+    assert ann.get_quad_points() == []
+
+
+def test_text_markup_quad_points_works_for_all_subtypes() -> None:
+    qp = [0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0]
+    for cls in (
+        PDAnnotationHighlight,
+        PDAnnotationUnderline,
+        PDAnnotationStrikeout,
+        PDAnnotationSquiggly,
+    ):
+        ann = cls()
+        ann.set_quad_points(qp)
+        assert ann.get_quad_points() == qp
+
+
+def test_text_markup_subtypes_share_common_base() -> None:
+    for cls in (
+        PDAnnotationHighlight,
+        PDAnnotationUnderline,
+        PDAnnotationStrikeout,
+        PDAnnotationSquiggly,
+    ):
+        assert issubclass(cls, PDAnnotationTextMarkup)
+        assert isinstance(cls(), PDAnnotationTextMarkup)
+
+
 # ---------- Ink ----------
 
 
