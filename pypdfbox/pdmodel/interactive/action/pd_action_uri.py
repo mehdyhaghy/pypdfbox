@@ -56,5 +56,29 @@ class PDActionURI(PDAction):
         """Set ``/IsMap``. Synonym of :meth:`set_track_mouse_position`."""
         self._action.set_boolean(_IS_MAP, value)
 
+    # Predicate accessors — useful for callers that need to distinguish
+    # "absent" from "explicitly empty" without re-fetching the entry.
+    def has_uri(self) -> bool:
+        """Return ``True`` iff a ``/URI`` entry is present (regardless of
+        whether it decodes to an empty string)."""
+        return self._action.contains_key(_URI)
+
+    def has_is_map(self) -> bool:
+        """Return ``True`` iff an explicit ``/IsMap`` entry is present.
+        Useful for distinguishing the spec default from an explicit
+        ``false``."""
+        return self._action.contains_key(_IS_MAP)
+
+    # Typed COS-level accessor for the raw ``/URI`` entry. Lets callers
+    # inspect the underlying bytes / encoding without going through the
+    # tolerant decode in :meth:`get_uri`.
+    def get_uri_as_cos_string(self) -> COSString | None:
+        """Return the raw ``/URI`` :class:`COSString`, or ``None`` when
+        the entry is absent or not a ``COSString``."""
+        base = self._action.get_dictionary_object(_URI)
+        if isinstance(base, COSString):
+            return base
+        return None
+
 
 __all__ = ["PDActionURI"]

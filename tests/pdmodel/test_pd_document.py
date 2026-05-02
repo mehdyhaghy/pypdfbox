@@ -437,6 +437,57 @@ def test_register_true_type_font_for_closing_appends() -> None:
     assert sentinel in doc._fonts_to_close  # noqa: SLF001 — test introspection
 
 
+# ---------- get_fonts_to_subset ----------
+
+
+def test_get_fonts_to_subset_returns_empty_set_by_default() -> None:
+    """Fresh documents start with an empty subset queue."""
+    doc = PDDocument()
+    fonts = doc.get_fonts_to_subset()
+    assert isinstance(fonts, set)
+    assert fonts == set()
+
+
+def test_get_fonts_to_subset_returns_live_backing_store() -> None:
+    """Mirrors upstream: the returned set is the document's own backing
+    store, so callers may mutate it in place and subsequent calls see
+    the same set."""
+    doc = PDDocument()
+    fonts = doc.get_fonts_to_subset()
+    sentinel = object()
+    fonts.add(sentinel)
+    assert doc.get_fonts_to_subset() is fonts
+    assert sentinel in doc.get_fonts_to_subset()
+
+
+# ---------- set_encryption_dictionary(None) ----------
+
+
+def test_set_encryption_dictionary_none_clears_trailer_and_cache() -> None:
+    """Passing ``None`` drops ``/Encrypt`` from the trailer and clears the
+    cached :class:`PDEncryption` wrapper. Mirrors upstream
+    ``setEncryptionDictionary(null)``."""
+    doc = PDDocument()
+    enc = COSDictionary()
+    enc.set_item(COSName.FILTER, COSName.get_pdf_name("Standard"))
+    doc.set_encryption_dictionary(enc)
+    trailer = doc.get_document().get_trailer()
+    assert trailer is not None
+    assert trailer.get_item(COSName.ENCRYPT) is enc
+
+    doc.set_encryption_dictionary(None)
+    assert trailer.get_item(COSName.ENCRYPT) is None
+    assert doc._encryption is None  # noqa: SLF001 — test introspection
+
+
+def test_set_encryption_dictionary_none_is_noop_without_trailer() -> None:
+    """Clearing on a document that has no /Encrypt entry must not raise."""
+    doc = PDDocument()
+    # No /Encrypt has ever been set — clearing should silently succeed.
+    doc.set_encryption_dictionary(None)
+    assert doc._encryption is None  # noqa: SLF001 — test introspection
+
+
 # ---------- resource cache ----------
 
 

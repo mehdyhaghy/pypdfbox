@@ -81,3 +81,53 @@ def test_get_destination_dispatches_cos_name_to_str() -> None:
     action.get_cos_object().set_item(_D, COSName.get_pdf_name("Outline1"))
 
     assert action.get_destination() == "Outline1"
+
+
+def test_get_d_returns_raw_cos_base_for_array_form() -> None:
+    """``get_d`` is an untyped passthrough — the explicit-array form
+    surfaces as a ``COSArray`` rather than a typed destination."""
+    action = PDActionGoTo()
+    arr = COSArray([COSInteger.get(0), COSName.get_pdf_name("XYZ")])
+    action.set_d(arr)
+
+    assert action.get_d() is arr
+
+
+def test_get_d_none_when_d_absent() -> None:
+    action = PDActionGoTo()
+    assert action.get_d() is None
+
+
+def test_set_d_none_removes_entry() -> None:
+    action = PDActionGoTo()
+    action.set_destination("Chapter1")
+    assert action.get_cos_object().contains_key(_D)
+
+    action.set_d(None)
+    assert not action.get_cos_object().contains_key(_D)
+    assert action.get_d() is None
+
+
+def test_get_named_destination_only_returns_string_form() -> None:
+    """``get_named_destination`` narrows to ``COSString`` form; the
+    explicit-array form yields ``None`` even though ``get_destination``
+    would dispatch it."""
+    action = PDActionGoTo()
+    action.set_destination("Chapter1")
+    assert action.get_named_destination() == "Chapter1"
+
+    action.set_destination(COSArray([COSInteger.get(0), COSName.get_pdf_name("XYZ")]))
+    assert action.get_named_destination() is None
+
+
+def test_set_named_destination_round_trip_and_removal() -> None:
+    action = PDActionGoTo()
+    action.set_named_destination("Section2")
+
+    raw = action.get_cos_object().get_dictionary_object(_D)
+    assert isinstance(raw, COSString)
+    assert action.get_named_destination() == "Section2"
+
+    action.set_named_destination(None)
+    assert not action.get_cos_object().contains_key(_D)
+    assert action.get_named_destination() is None

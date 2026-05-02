@@ -74,5 +74,43 @@ class PDActionGoTo(PDAction):
             return
         self._action.set_item(_D, destination)
 
+    # Raw ``/D`` accessors mirroring the sibling actions
+    # (``PDActionRemoteGoTo``, ``PDActionThread``) which expose ``get_d`` /
+    # ``set_d`` as untyped passthroughs to the dictionary entry.
+    def get_d(self) -> COSBase | None:
+        """Return the raw ``/D`` entry as a :class:`COSBase`, or ``None``
+        when absent. Untyped passthrough — use :meth:`get_destination`
+        for the dispatched typed result."""
+        return self._action.get_dictionary_object(_D)
+
+    def set_d(self, destination: COSBase | None) -> None:
+        """Write ``/D`` from a raw :class:`COSBase`, or remove the entry
+        when ``destination`` is ``None``. Untyped passthrough — use
+        :meth:`set_destination` for the dispatched typed setter."""
+        if destination is None:
+            self._action.remove_item(_D)
+            return
+        self._action.set_item(_D, destination)
+
+    # Named-destination convenience accessors mirroring
+    # :class:`PDActionRemoteGoTo`. ``/D`` may be a ``COSString`` naming an
+    # entry in the document's ``/Names`` ``/Dests`` tree (PDF 32000-1
+    # §12.3.2.3); these helpers narrow the typed dispatch to that case.
+    def get_named_destination(self) -> str | None:
+        """Return ``/D`` when it is a string-form named destination,
+        otherwise ``None``. Mirrors :meth:`PDActionRemoteGoTo.get_named_destination`."""
+        d = self._action.get_dictionary_object(_D)
+        if isinstance(d, COSString):
+            return d.get_string()
+        return None
+
+    def set_named_destination(self, name: str | None) -> None:
+        """Write ``/D`` as a string-form named destination, or remove the
+        entry when ``name`` is ``None``."""
+        if name is None:
+            self._action.remove_item(_D)
+            return
+        self._action.set_string(_D, name)
+
 
 __all__ = ["PDActionGoTo"]

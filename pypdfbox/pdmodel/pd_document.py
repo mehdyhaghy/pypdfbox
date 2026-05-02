@@ -110,6 +110,13 @@ class PDDocument:
         # so this list is effectively a registration log — see
         # ``register_true_type_font_for_closing``.
         self._fonts_to_close: list[Any] = []
+        # Set of fonts queued for subsetting prior to the next full save.
+        # Mirrors upstream's package-private ``fontsToSubset`` field —
+        # populated by ``PDFont`` subclasses when a glyph is referenced and
+        # drained by the writer's subset pass. Pypdfbox keeps the surface so
+        # callers (and the writer) can inspect / extend the set even before
+        # subsetting itself ships. See ``get_fonts_to_subset``.
+        self._fonts_to_subset: set[Any] = set()
         # Active security handler after ``decrypt()`` succeeds — used by
         # ``get_current_access_permission`` and by the writer for encrypt
         # passes.
@@ -717,8 +724,22 @@ class PDDocument:
 
     def set_encryption_dictionary(self, encryption: Any) -> None:
         """Replace the trailer's ``/Encrypt`` entry. Accepts a
-        :class:`PDEncryption` (preferred) or a raw ``COSDictionary``."""
+        :class:`PDEncryption` (preferred) or a raw ``COSDictionary``.
+
+        Passing ``None`` clears the cached :class:`PDEncryption` wrapper
+        and removes ``/Encrypt`` from the trailer so the next save emits
+        an unencrypted document — mirrors upstream
+        ``PDDocument.setEncryptionDictionary(null)`` (which simply nulls
+        the cached field; pypdfbox additionally drops the trailer entry
+        because we keep the trailer authoritative)."""
         from pypdfbox.cos import COSDictionary as _COSDictionary
+
+        if encryption is None:
+            self._encryption = None
+            trailer = self._document.get_trailer()
+            if trailer is not None:
+                trailer.remove_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+            return
 
         if isinstance(encryption, _COSDictionary):
             enc_dict = encryption
@@ -1146,6 +1167,16 @@ class PDDocument:
         to keep the upstream API surface complete; full lifecycle
         management lands when font subsetting does (see ``CHANGES.md``)."""
         self._fonts_to_close.append(font)
+
+    def get_fonts_to_subset(self) -> set[Any]:
+        """Return the live set of fonts queued for subsetting on the next
+        full save. Mirrors upstream's package-private
+        ``PDDocument.getFontsToSubset()`` — the returned set is the
+        document's own backing store, so callers may add / remove fonts in
+        place. Empty by default; subset-aware ``PDFont`` subclasses
+        populate it as glyphs are referenced. The writer drains and clears
+        it during a full save (subset pass)."""
+        return self._fonts_to_subset
 
     def save_incremental_for_external_signing(
         self, output: BinaryIO

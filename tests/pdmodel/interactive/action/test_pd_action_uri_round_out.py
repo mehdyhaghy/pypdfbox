@@ -5,7 +5,7 @@ PDF dictionary entry name verbatim.
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSBoolean, COSName
+from pypdfbox.cos import COSBoolean, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 
 _URI: COSName = COSName.get_pdf_name("URI")
@@ -71,3 +71,48 @@ def test_is_map_stored_as_cos_boolean() -> None:
 
     raw = action.get_cos_object().get_item(_IS_MAP)
     assert isinstance(raw, COSBoolean)
+
+
+def test_has_uri_tracks_presence() -> None:
+    action = PDActionURI()
+    assert action.has_uri() is False
+
+    action.set_uri("https://example.test/")
+    assert action.has_uri() is True
+
+    action.set_uri(None)
+    assert action.has_uri() is False
+
+
+def test_has_is_map_distinguishes_default_from_explicit_false() -> None:
+    """``get_is_map`` collapses absence and explicit ``false`` to
+    ``False``; ``has_is_map`` lets callers tell them apart."""
+    action = PDActionURI()
+    assert action.has_is_map() is False
+    assert action.get_is_map() is False
+
+    action.set_is_map(False)
+    assert action.has_is_map() is True
+    assert action.get_is_map() is False
+
+    action.set_is_map(True)
+    assert action.has_is_map() is True
+    assert action.get_is_map() is True
+
+
+def test_get_uri_as_cos_string_returns_raw_entry() -> None:
+    action = PDActionURI()
+    assert action.get_uri_as_cos_string() is None
+
+    action.set_uri("https://example.test/")
+    raw = action.get_uri_as_cos_string()
+    assert isinstance(raw, COSString)
+    assert raw.get_string() == "https://example.test/"
+
+
+def test_get_uri_as_cos_string_none_when_not_a_string() -> None:
+    """When ``/URI`` is present but not a ``COSString`` (malformed
+    producer), the typed accessor declines to surface it."""
+    action = PDActionURI()
+    action.get_cos_object().set_item(_URI, COSName.get_pdf_name("NotAString"))
+    assert action.get_uri_as_cos_string() is None
