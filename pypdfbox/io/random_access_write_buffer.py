@@ -60,3 +60,22 @@ class RandomAccessWriteBuffer(RandomAccessWrite):
     def length(self) -> int:
         self._check_open()
         return self._buf.getbuffer().nbytes
+
+    def is_empty(self) -> bool:
+        """True when no bytes have been written (or after :meth:`clear`)."""
+        self._check_open()
+        return self._buf.getbuffer().nbytes == 0
+
+    def tell(self) -> int:
+        """
+        Current write position, in bytes. Python file-like idiom; equivalent
+        to the underlying ``BytesIO.tell()``.
+        """
+        self._check_open()
+        return self._buf.tell()
+
+    def __len__(self) -> int:
+        return self.length()
+
+    def __bytes__(self) -> bytes:
+        return self.to_bytes()

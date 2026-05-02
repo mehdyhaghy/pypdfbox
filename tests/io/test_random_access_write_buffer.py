@@ -84,3 +84,69 @@ def test_is_closed_camelcase_alias() -> None:
     assert not w.isClosed()
     w.close()
     assert w.isClosed()
+
+
+def test_is_empty_initial_and_after_writes() -> None:
+    w = RandomAccessWriteBuffer()
+    assert w.is_empty()
+    w.write_bytes(b"x")
+    assert not w.is_empty()
+
+
+def test_is_empty_after_clear() -> None:
+    w = RandomAccessWriteBuffer()
+    w.write_bytes(b"discard")
+    assert not w.is_empty()
+    w.clear()
+    assert w.is_empty()
+
+
+def test_is_empty_raises_when_closed() -> None:
+    w = RandomAccessWriteBuffer()
+    w.close()
+    with pytest.raises(ValueError):
+        w.is_empty()
+
+
+def test_dunder_len_matches_length() -> None:
+    w = RandomAccessWriteBuffer()
+    assert len(w) == 0
+    w.write_bytes(b"abcde")
+    assert len(w) == 5
+    assert len(w) == w.length()
+
+
+def test_dunder_bytes_matches_to_bytes() -> None:
+    w = RandomAccessWriteBuffer()
+    w.write_bytes(b"hello")
+    assert bytes(w) == b"hello"
+    assert bytes(w) == w.to_bytes()
+
+
+def test_dunder_bytes_empty() -> None:
+    w = RandomAccessWriteBuffer()
+    assert bytes(w) == b""
+
+
+def test_tell_advances_with_writes() -> None:
+    w = RandomAccessWriteBuffer()
+    assert w.tell() == 0
+    w.write(0x41)
+    assert w.tell() == 1
+    w.write_bytes(b"BCD")
+    assert w.tell() == 4
+
+
+def test_tell_resets_with_clear() -> None:
+    w = RandomAccessWriteBuffer()
+    w.write_bytes(b"abcdef")
+    assert w.tell() == 6
+    w.clear()
+    assert w.tell() == 0
+
+
+def test_tell_raises_when_closed() -> None:
+    w = RandomAccessWriteBuffer()
+    w.close()
+    with pytest.raises(ValueError):
+        w.tell()

@@ -395,6 +395,90 @@ class TextPosition:
         return self.text_matrix
 
     # ------------------------------------------------------------------
+    # Value-based equality (upstream parity)
+    # ------------------------------------------------------------------
+
+    # Subset of fields used by upstream ``TextPosition.equals`` /
+    # ``hashCode``. Per the PDFBOX-4701 comment in upstream, the decoded
+    # ``unicode`` text is intentionally excluded — it is mutated in
+    # place by ``mergeDiacritic`` and would otherwise break the
+    # equals/hash contract for keys already inserted into a ``HashSet``.
+    _EQ_FIELDS: tuple[str, ...] = (
+        "x",
+        "y",
+        "width",
+        "font_size",
+        "font_size_in_pt",
+        "page_width",
+        "page_height",
+        "rotation",
+        "width_of_space",
+        "font_name",
+        "resolved_font_name",
+        "font",
+    )
+
+    def equals(self, other: object) -> bool:
+        """Value-based equality on the upstream-stable subset of fields.
+
+        Mirrors ``org.apache.pdfbox.text.TextPosition.equals`` (and its
+        explicit comment ``do not compare mutable fields (PDFBOX-4701)``).
+        Returns ``True`` only when ``other`` is also a
+        :class:`TextPosition` and every field listed in
+        :attr:`_EQ_FIELDS` is equal — the decoded :attr:`text` is
+        deliberately excluded so post-construction mutation (e.g. via
+        :meth:`merge_diacritic`) does not change a position's identity
+        in a hashed container.
+
+        The dataclass-generated ``__eq__`` remains in place for plain
+        ``==`` comparisons (it compares *all* fields, including the
+        decoded text) — :meth:`equals` is the upstream-parity entry
+        point for callers porting Java code that depends on the
+        narrower contract.
+        """
+        if other is self:
+            return True
+        if not isinstance(other, TextPosition):
+            return False
+        for name in self._EQ_FIELDS:
+            if getattr(self, name) != getattr(other, name):
+                return False
+        # Element-wise compare of the optional text matrix list.
+        if self.text_matrix != other.text_matrix:
+            return False
+        return True
+
+    def __hash__(self) -> int:
+        """Hash on the same upstream-stable subset used by :meth:`equals`.
+
+        The dataclass decorator would otherwise leave ``__hash__`` as
+        ``None`` (because we keep ``eq=True`` for the all-field
+        comparison), making :class:`TextPosition` unhashable. We restore
+        hashability by producing a tuple-hash over the immutable subset
+        — sufficient for use as a dict key or set member while
+        preserving the PDFBOX-4701 invariant that mutating decoded text
+        doesn't move a position in a hashed container.
+        """
+        tm = tuple(self.text_matrix) if self.text_matrix is not None else None
+        return hash(
+            (
+                self.x,
+                self.y,
+                self.width,
+                self.font_size,
+                self.font_size_in_pt,
+                self.page_width,
+                self.page_height,
+                self.rotation,
+                self.width_of_space,
+                self.font_name,
+                self.resolved_font_name,
+                id(self.font) if self.font is not None else 0,
+                tm,
+            )
+        )
+
+    # ------------------------------------------------------------------
     # String representation
     # ------------------------------------------------------------------
 

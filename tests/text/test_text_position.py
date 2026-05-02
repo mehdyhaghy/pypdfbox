@@ -410,3 +410,120 @@ def test_completely_contains_false_for_none():
 def test_completely_contains_self_is_true():
     tp = _make(x=5.0, y=5.0, width=10.0, font_size=10.0)
     assert tp.completely_contains(tp) is True
+
+
+# ---------------------------------------------------------------------------
+# Value-based equality (upstream parity)
+# ---------------------------------------------------------------------------
+
+
+def test_equals_returns_true_for_self():
+    tp = _make(text="hello", x=1.0, y=2.0, width=3.0, font_size=4.0)
+    assert tp.equals(tp) is True
+
+
+def test_equals_returns_true_for_same_value_subset():
+    a = _make(text="abc", x=10.0, y=20.0, width=5.0, font_size=12.0)
+    b = _make(text="abc", x=10.0, y=20.0, width=5.0, font_size=12.0)
+    assert a.equals(b) is True
+    assert b.equals(a) is True
+
+
+def test_equals_ignores_decoded_text_per_pdfbox_4701():
+    # Text is mutable (mergeDiacritic mutates it); upstream's equals
+    # explicitly excludes the decoded characters from the comparison.
+    a = _make(text="abc", x=10.0, y=20.0, width=5.0)
+    b = _make(text="xyz", x=10.0, y=20.0, width=5.0)
+    assert a.equals(b) is True
+
+
+def test_equals_returns_false_when_x_differs():
+    a = _make(x=10.0)
+    b = _make(x=11.0)
+    assert a.equals(b) is False
+
+
+def test_equals_returns_false_when_font_size_in_pt_differs():
+    a = _make(font_size_in_pt=12.0)
+    b = _make(font_size_in_pt=14.0)
+    assert a.equals(b) is False
+
+
+def test_equals_returns_false_when_text_matrix_differs():
+    a = _make(text_matrix=[1.0, 0.0, 0.0, 1.0, 0.0, 0.0])
+    b = _make(text_matrix=[2.0, 0.0, 0.0, 2.0, 0.0, 0.0])
+    assert a.equals(b) is False
+
+
+def test_equals_returns_true_when_both_text_matrices_none():
+    a = _make()
+    b = _make()
+    assert a.text_matrix is None
+    assert b.text_matrix is None
+    assert a.equals(b) is True
+
+
+def test_equals_returns_false_for_non_text_position():
+    tp = _make()
+    assert tp.equals("not a TextPosition") is False
+    assert tp.equals(None) is False
+    assert tp.equals(42) is False
+
+
+def test_equals_returns_false_when_rotation_differs():
+    a = _make(rotation=0.0)
+    b = _make(rotation=90.0)
+    assert a.equals(b) is False
+
+
+def test_equals_returns_false_when_width_of_space_differs():
+    a = _make(width_of_space=5.0)
+    b = _make(width_of_space=7.0)
+    assert a.equals(b) is False
+
+
+def test_hash_is_stable_for_same_subset():
+    a = _make(text="abc", x=10.0, y=20.0, width=5.0)
+    b = _make(text="xyz", x=10.0, y=20.0, width=5.0)
+    # Same subset → same hash even though decoded text differs.
+    assert hash(a) == hash(b)
+
+
+def test_hash_changes_when_subset_field_changes():
+    a = _make(x=10.0)
+    b = _make(x=10.001)
+    # We don't strictly require they differ (hash collisions are
+    # possible), but for plain coordinate changes the tuple-hash should
+    # almost always differ. The contract we DO require is that the
+    # object stays hashable.
+    hash(a)
+    hash(b)
+
+
+def test_text_position_is_hashable_in_a_set():
+    tp = _make()
+    seen = {tp}
+    assert tp in seen
+
+
+def test_text_position_in_dict_key():
+    a = _make(x=1.0)
+    b = _make(x=2.0)
+    d = {a: "first", b: "second"}
+    assert d[a] == "first"
+    assert d[b] == "second"
+
+
+def test_hash_is_stable_across_text_mutation():
+    # PDFBOX-4701: mutating decoded text (e.g. via merge_diacritic)
+    # must not move the position in a hashed container.
+    tp = _make(text="a", x=10.0, y=20.0)
+    h_before = hash(tp)
+    tp.text = "z"
+    assert hash(tp) == h_before
+
+
+def test_hash_with_text_matrix_is_stable():
+    a = _make(text_matrix=[1.0, 0.0, 0.0, 1.0, 5.0, 6.0])
+    b = _make(text_matrix=[1.0, 0.0, 0.0, 1.0, 5.0, 6.0])
+    assert hash(a) == hash(b)

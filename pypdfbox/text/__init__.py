@@ -11,6 +11,7 @@ from .pdf_text_stripper_by_area import PDFTextStripperByArea
 from .position_wrapper import PositionWrapper
 from .text_metrics import TextMetrics
 from .text_position import TextPosition
+from .text_position_comparator import TextPositionComparator
 from .word_with_text_positions import WordWithTextPositions
 
 __all__ = [
@@ -22,6 +23,7 @@ __all__ = [
     "PositionWrapper",
     "TextMetrics",
     "TextPosition",
+    "TextPositionComparator",
     "WordWithTextPositions",
     "get_angle",
 ]
