@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import BinaryIO
+from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSDictionary
 
@@ -11,11 +11,11 @@ from .filter import Filter
 from .filter_factory import FilterFactory
 
 # Reserved LZW codes per ISO 32000-1 §7.4.4.
-CLEAR_TABLE = 256
-EOD = 257
+CLEAR_TABLE: Final[int] = 256
+EOD: Final[int] = 257
 
 # Code-table cap: codes are 9..12 bits, so 4096 entries max.
-MAX_TABLE_SIZE = 4096
+MAX_TABLE_SIZE: Final[int] = 4096
 
 
 class _BitReader:
@@ -158,6 +158,21 @@ class LZWDecode(Filter):
 
     Mirrors `org.apache.pdfbox.filter.LZWFilter`.
     """
+
+    #: Reserved code that resets the dictionary to its initial 258-entry
+    #: state. Mirrors upstream's ``public static final long CLEAR_TABLE = 256``
+    #: so direct ports translating ``LZWFilter.CLEAR_TABLE`` resolve here
+    #: without falling back to the module-level constant.
+    CLEAR_TABLE: Final[int] = CLEAR_TABLE
+
+    #: End-of-data marker per ISO 32000-1 §7.4.4. Mirrors upstream's
+    #: ``public static final long EOD = 257``.
+    EOD: Final[int] = EOD
+
+    #: Code-table cap (12-bit codes → 4096 entries). Upstream keeps this
+    #: as a private constant (``MAX_TABLE_SIZE``) but exposing it on the
+    #: class makes the size assertion testable from outside the module.
+    MAX_TABLE_SIZE: Final[int] = MAX_TABLE_SIZE
 
     def decode(
         self,

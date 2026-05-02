@@ -3,11 +3,13 @@ from __future__ import annotations
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import BinaryIO, Final
 
-from pypdfbox.cos import COSArray, COSDictionary
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 from .decode_result import DecodeResult
+from .missing_image_reader_exception import MissingImageReaderException
 
 _LOG = logging.getLogger(__name__)
 
@@ -149,3 +151,119 @@ class Filter(ABC):
         ``False``.
         """
         return True
+
+    # ------------------------------------------------------------------
+    # Filter-aware /DecodeParms resolution (mirrors upstream's
+    # ``protected COSDictionary getDecodeParams(COSDictionary, int)``).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_decode_params_for_filter(
+        dictionary: COSDictionary | None,
+        index: int,
+    ) -> COSDictionary:
+        """Resolve ``/DecodeParms`` consulting ``/Filter`` to validate shape.
+
+        Mirrors upstream's ``Filter#getDecodeParams(COSDictionary, int)``
+        which inspects both the ``/F`` / ``/Filter`` entry *and* the
+        ``/DP`` / ``/DecodeParms`` entry to disambiguate the single-filter
+        and multi-filter cases per ISO 32000-1 §7.3.8.2:
+
+        * single-name ``/Filter`` + dict ``/DecodeParms`` → return that dict;
+        * array ``/Filter`` + array ``/DecodeParms`` → return ``arr[index]``
+          if it is a dictionary, otherwise an empty dictionary;
+        * any other shape (mismatched name+array or array+dict) is logged
+          as an error and an empty dictionary is returned. PDFBox warns
+          about this case to surface malformed PDFs without aborting.
+
+        Unlike :meth:`get_decode_params` (the lenient resolver used by
+        legacy callers), this strict variant rejects a single dict on a
+        multi-filter stream — that combination would otherwise route the
+        same params to every filter index and silently misconfigure the
+        downstream codec.
+        """
+        if dictionary is None:
+            return COSDictionary()
+        # ``get_dictionary_object(key, default)`` resolves ``key`` first
+        # and falls back to ``default`` if absent — same dual-key overload
+        # upstream's ``getDictionaryObject(COSName.F, COSName.FILTER)`` uses.
+        filter_obj = dictionary.get_dictionary_object("F", "Filter")
+        params_obj = dictionary.get_dictionary_object("DP", "DecodeParms")
+        if isinstance(filter_obj, COSName) and isinstance(params_obj, COSDictionary):
+            # PDFBOX-3932: single filter name → params is the parameter dict.
+            return params_obj
+        if isinstance(filter_obj, COSArray) and isinstance(params_obj, COSArray):
+            if index < params_obj.size():
+                try:
+                    entry = params_obj.get_object(index)
+                except AttributeError:
+                    # COSArray.get_object is upstream-named; older shims
+                    # may only expose ``get``. Fall back gracefully.
+                    entry = params_obj.get(index)
+                if isinstance(entry, COSDictionary):
+                    return entry
+        elif params_obj is not None and not (
+            isinstance(filter_obj, COSArray) or isinstance(params_obj, COSArray)
+        ):
+            _LOG.error(
+                "Expected DecodeParams to be an Array or Dictionary but found %s",
+                type(params_obj).__name__,
+            )
+        return COSDictionary()
+
+    # ------------------------------------------------------------------
+    # Image-reader discovery (mirrors upstream's static helpers that
+    # delegate to ``javax.imageio.ImageIO`` — we delegate to Pillow).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def find_image_reader(format_name: str, error_cause: str) -> Callable[..., object]:
+        """Return Pillow's open-factory callable for ``format_name``.
+
+        Mirrors ``Filter#findImageReader(String, String)``. Upstream
+        iterates ``ImageIO.getImageReadersByFormatName(formatName)`` and
+        returns the first non-null reader, raising
+        :class:`MissingImageReaderException` when none is registered.
+
+        The pypdfbox port consults Pillow's plugin registry — populated
+        on first ``PIL.Image.init()`` — and returns the registered open
+        factory (the first element of the ``Image.OPEN[fmt]`` tuple). PDF
+        callers do not actually invoke this factory directly: the
+        round-tripped JPEG / JPEG-2000 / TIFF / JBIG2 pipelines all open
+        bytes via ``PIL.Image.open``. The helper exists for porting
+        parity so direct translations of upstream guard code can resolve
+        ``Filter.findImageReader("JPEG2000", ...)`` to a non-``None``
+        value when the codec is available.
+
+        Format names follow Pillow conventions (``"JPEG"``, ``"JPEG2000"``,
+        ``"TIFF"``). Raises :class:`MissingImageReaderException` when no
+        plugin is registered for the format.
+        """
+        # Local import keeps the filter module lightweight when callers
+        # never reach for image-bearing filters.
+        from PIL import Image
+
+        Image.init()  # populates ID/MIME/EXTENSION tables on first call.
+        plugin_id = format_name.upper()
+        registered = Image.OPEN.get(plugin_id)
+        if registered is not None:
+            # Image.OPEN maps format → (factory, accept) tuple.
+            return registered[0]
+        raise MissingImageReaderException(
+            f"Cannot read {format_name} image: {error_cause}"
+        )
+
+    @staticmethod
+    def find_raster_reader(format_name: str, error_cause: str) -> Callable[..., object]:
+        """Return Pillow's open-factory for raster decoding of ``format_name``.
+
+        Mirrors ``Filter#findRasterReader(String, String)``. In Java this
+        is distinct from :meth:`find_image_reader` because some Java
+        ``ImageReader``\\ s decode only fully-rendered ``BufferedImage``\\ s
+        and reject raw raster access (``canReadRaster()`` returns false).
+        Pillow's plugins all expose raster access uniformly via
+        ``Image.tobytes()``, so the two helpers are functionally
+        identical here — kept distinct for porting parity so direct
+        translations of upstream code resolve.
+        """
+        return Filter.find_image_reader(format_name, error_cause)

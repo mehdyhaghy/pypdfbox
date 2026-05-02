@@ -597,3 +597,177 @@ def test_write_string_rejects_unsupported_input() -> None:
     sink = io.BytesIO()
     with pytest.raises(TypeError):
         COSWriter.write_string(123, sink)  # type: ignore[arg-type]
+
+
+# ---------- set_compress / is_compress -------------------------------------
+
+
+def test_set_compress_toggles_object_stream_flag() -> None:
+    """``set_compress`` is the upstream-mirroring setter that ``is_compress``
+    reads back. Pairs with ``set_object_stream`` since pypdfbox folds the
+    upstream ``CompressParameters`` toggle onto a single bool."""
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        assert w.is_compress() is False
+        w.set_compress(True)
+        assert w.is_compress() is True
+        # Reading back via the alternate name ``is_object_stream_output``
+        # must also see the flip — they share storage.
+        assert w.is_object_stream_output() is True
+        w.set_compress(False)
+        assert w.is_compress() is False
+        assert w.is_object_stream_output() is False
+    finally:
+        w.close()
+
+
+def test_set_compress_coerces_truthy_to_bool() -> None:
+    """``set_compress`` accepts any truthy/falsy value and stores a clean
+    ``bool``, mirroring how ``set_xref_stream`` and ``set_object_stream``
+    behave today."""
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        w.set_compress(1)  # type: ignore[arg-type]
+        assert w.is_compress() is True
+        w.set_compress(0)  # type: ignore[arg-type]
+        assert w.is_compress() is False
+    finally:
+        w.close()
+
+
+# ---------- is_incremental -------------------------------------------------
+
+
+def test_is_incremental_default_false() -> None:
+    """A vanilla writer is in full-save mode."""
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        assert w.is_incremental() is False
+    finally:
+        w.close()
+
+
+def test_is_incremental_true_when_constructed_for_increment() -> None:
+    """Incremental writers expose ``is_incremental() == True`` so the
+    signature pipeline can introspect mode."""
+    sink = io.BytesIO()
+    w = COSWriter(sink, incremental=True)
+    try:
+        assert w.is_incremental() is True
+    finally:
+        w.close()
+
+
+# ---------- get_number -----------------------------------------------------
+
+
+def test_get_number_starts_at_zero() -> None:
+    """Before any object has been numbered, the running counter is 0."""
+    sink = io.BytesIO()
+    w = COSWriter(sink)
+    try:
+        assert w.get_number() == 0
+    finally:
+        w.close()
+
+
+def test_get_number_advances_after_write() -> None:
+    """Writing a document with un-keyed indirect children advances
+    ``get_number`` past every freshly-minted key."""
+    # Build a catalog that references a fresh /Pages dict via a key-less
+    # COSObject so the writer must mint a new (num, 0) for it.
+    pages = COSDictionary()
+    pages.set_name(COSName.TYPE, "Pages")  # type: ignore[attr-defined]
+    pages.set_int(COSName.COUNT, 0)  # type: ignore[attr-defined]
+    pages_obj = COSObject(0, 0, resolved=pages)  # declared 0,0 → mint fresh
+    catalog = COSDictionary()
+    catalog.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
+    catalog.set_item(COSName.PAGES, pages_obj)  # type: ignore[attr-defined]
+    doc = _make_doc(catalog)
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        w.write(doc)
+        # Catalog (declared 1) + freshly-minted /Pages → number must
+        # have advanced at least once past the seed.
+        assert w.get_number() >= 1
+
+
+# ---------- format_xref_offset / format_xref_generation --------------------
+
+
+def test_format_xref_offset_pads_to_ten_digits() -> None:
+    """Mirrors upstream's ``DecimalFormat("0000000000")``."""
+    assert COSWriter.format_xref_offset(0) == b"0000000000"
+    assert COSWriter.format_xref_offset(42) == b"0000000042"
+    assert COSWriter.format_xref_offset(1234567890) == b"1234567890"
+
+
+def test_format_xref_offset_does_not_truncate_large_values() -> None:
+    """An 11-digit offset is technically illegal per spec (the 20-byte
+    row would overflow), but the formatter itself must NOT silently
+    truncate — it just emits the full digits and lets the downstream
+    xref pass catch the violation if any."""
+    out = COSWriter.format_xref_offset(99999999999)
+    assert out == b"99999999999"
+
+
+def test_format_xref_offset_rejects_negative() -> None:
+    with pytest.raises(ValueError):
+        COSWriter.format_xref_offset(-1)
+
+
+def test_format_xref_offset_rejects_non_int() -> None:
+    with pytest.raises(TypeError):
+        COSWriter.format_xref_offset("0")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        COSWriter.format_xref_offset(1.5)  # type: ignore[arg-type]
+
+
+def test_format_xref_offset_rejects_bool() -> None:
+    """``bool`` is a subclass of ``int`` in Python; reject explicitly so
+    ``True`` doesn't sneak through as offset 1."""
+    with pytest.raises(TypeError):
+        COSWriter.format_xref_offset(True)  # type: ignore[arg-type]
+
+
+def test_format_xref_generation_pads_to_five_digits() -> None:
+    """Mirrors upstream's ``DecimalFormat("00000")``."""
+    assert COSWriter.format_xref_generation(0) == b"00000"
+    assert COSWriter.format_xref_generation(7) == b"00007"
+    assert COSWriter.format_xref_generation(65535) == b"65535"
+
+
+def test_format_xref_generation_rejects_out_of_range() -> None:
+    """Generation is bounded by ISO 32000-1 §7.5.4 to [0, 65535]."""
+    with pytest.raises(ValueError):
+        COSWriter.format_xref_generation(-1)
+    with pytest.raises(ValueError):
+        COSWriter.format_xref_generation(65536)
+
+
+def test_format_xref_generation_rejects_non_int() -> None:
+    with pytest.raises(TypeError):
+        COSWriter.format_xref_generation("0")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        COSWriter.format_xref_generation(False)  # type: ignore[arg-type]
+
+
+def test_format_xref_helpers_match_internal_emission() -> None:
+    """Public helpers must produce the exact bytes the internal xref
+    emission path uses — round-trip via writing a tiny document and
+    sniffing the row format."""
+    doc = _make_doc()
+    raw = _write(doc)
+    # An xref row is exactly 20 bytes including its CRLF terminator.
+    # Pull the first row after ``xref\n0 N\n`` and confirm offset/gen
+    # bytes are formatted via the same helpers.
+    xref_idx = raw.index(b"xref")
+    after_header = raw[xref_idx:].split(b"\n", 2)[2]
+    # First entry is the free-list head: offset 0, generation 65535.
+    head_offset = COSWriter.format_xref_offset(0)
+    head_gen = COSWriter.format_xref_generation(65535)
+    expected_head = head_offset + b" " + head_gen + b" f"
+    assert after_header.startswith(expected_head)

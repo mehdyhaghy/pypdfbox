@@ -339,6 +339,39 @@ class COSWriter(ICOSVisitor):
         separate ``CompressParameters`` toggle."""
         return self._object_stream
 
+    def set_compress(self, value: bool) -> None:
+        """Toggle compression of non-stream indirect objects into
+        ``/Type /ObjStm`` streams. Paired with :py:meth:`is_compress`.
+
+        Type-2 xref entries are the only way to address packed objects
+        per PDF 32000-1 §7.5.7, so callers must also enable
+        :py:meth:`set_xref_stream` (or :py:meth:`set_hybrid_xref`)
+        before the actual ``write()`` call. We don't auto-promote so
+        that reading either getter back stays honest about which flags
+        the caller flipped."""
+        self._object_stream = bool(value)
+
+    def is_incremental(self) -> bool:
+        """``True`` if this writer was constructed for an incremental
+        update (the body, xref, and trailer get appended to the source
+        bytes instead of replacing them).
+
+        Mirrors upstream's private ``incrementalUpdate`` field —
+        upstream lacks a public getter, but pypdfbox callers regularly
+        need to introspect the mode (e.g. signature pipelines that
+        configure differently for full vs. append saves)."""
+        return self._incremental_update
+
+    def get_number(self) -> int:
+        """Return the running object-number counter — i.e. the highest
+        ``(num, 0)`` key minted by :py:meth:`_get_object_key` so far.
+
+        Mirrors upstream's private ``number`` field. Useful for tests
+        and for callers that need to mint a fresh number externally
+        (the value is read-only here; mutation goes through key
+        assignment)."""
+        return self._number
+
     # Upstream PDFBox spelling — ``getXRefEntries`` mirrors
     # ``COSWriter.getXRefEntries`` literally. Kept as a thin alias so
     # PDFBox-style callers can reach the list under either spelling.
@@ -534,6 +567,43 @@ class COSWriter(ICOSVisitor):
         return None
 
     # ---- static helpers ----
+
+    @staticmethod
+    def format_xref_offset(offset: int) -> bytes:
+        """Format an xref-table offset as 10-digit ASCII bytes.
+
+        Mirrors upstream's private ``formatXrefOffset`` ``DecimalFormat``
+        constant. Exposed publicly so callers writing custom xref
+        layouts (e.g. signature post-processing) can reuse the same
+        formatter the writer applies internally — keeps the 20-byte
+        row width per ISO 32000-1 §7.5.4 byte-for-byte consistent."""
+        if not isinstance(offset, int) or isinstance(offset, bool):
+            raise TypeError(
+                f"format_xref_offset requires an int; got {type(offset).__name__}"
+            )
+        if offset < 0:
+            raise ValueError(
+                f"xref offset must be non-negative; got {offset}"
+            )
+        return _format_xref_offset(offset)
+
+    @staticmethod
+    def format_xref_generation(gen: int) -> bytes:
+        """Format an xref-table generation as 5-digit ASCII bytes.
+
+        Mirrors upstream's private ``formatXrefGeneration``
+        ``DecimalFormat`` constant. Generation numbers are bounded to
+        65535 by ISO 32000-1 §7.5.4; we accept that ceiling as the
+        widest valid value rather than blindly zero-padding any int."""
+        if not isinstance(gen, int) or isinstance(gen, bool):
+            raise TypeError(
+                f"format_xref_generation requires an int; got {type(gen).__name__}"
+            )
+        if gen < 0 or gen > 65535:
+            raise ValueError(
+                f"generation must be in [0, 65535]; got {gen}"
+            )
+        return _format_xref_generation(gen)
 
     @staticmethod
     def to_hex_string(value: bytes) -> str:
