@@ -1093,3 +1093,262 @@ def test_set_base_uri_none_when_uri_absent_is_a_noop() -> None:
     assert COSName.get_pdf_name("URI") not in cat
     cat.set_base_uri(None)
     assert COSName.get_pdf_name("URI") not in cat
+
+
+# ---------- get_page_mode_or_default / get_page_layout_or_default ----------
+
+
+def test_get_page_mode_or_default_returns_use_none_when_absent() -> None:
+    """Mirrors upstream ``getPageMode()`` — implicit ``UseNone`` when
+    ``/PageMode`` is absent (PDF 32000-1 §7.7.3.3 Table 28)."""
+    from pypdfbox.pdmodel.page_mode import PageMode
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_page_mode_or_default() is PageMode.USE_NONE
+
+
+def test_get_page_mode_or_default_returns_use_none_when_unrecognised() -> None:
+    """An unrecognised ``/PageMode`` value also collapses to the spec
+    default — matches upstream's ``IllegalArgumentException`` →
+    ``USE_NONE`` fallback in ``getPageMode()``."""
+    from pypdfbox.pdmodel.page_mode import PageMode
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PageMode"), COSName.get_pdf_name("BogusMode")
+    )
+    assert cat.get_page_mode_or_default() is PageMode.USE_NONE
+
+
+def test_get_page_mode_or_default_returns_explicit_value() -> None:
+    """When ``/PageMode`` is set to a recognised value, the helper
+    returns it unchanged (no default substitution)."""
+    from pypdfbox.pdmodel.page_mode import PageMode
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_page_mode(PageMode.USE_OUTLINES)
+    assert cat.get_page_mode_or_default() is PageMode.USE_OUTLINES
+
+
+def test_get_page_layout_or_default_returns_single_page_when_absent() -> None:
+    """Mirrors upstream ``getPageLayout()`` — implicit ``SinglePage``
+    when ``/PageLayout`` is absent."""
+    from pypdfbox.pdmodel.page_layout import PageLayout
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_page_layout_or_default() is PageLayout.SINGLE_PAGE
+
+
+def test_get_page_layout_or_default_returns_single_page_when_unrecognised() -> None:
+    """An unrecognised ``/PageLayout`` value collapses to ``SinglePage``
+    — matches upstream's ``IllegalArgumentException`` → ``SINGLE_PAGE``
+    fallback."""
+    from pypdfbox.pdmodel.page_layout import PageLayout
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PageLayout"),
+        COSName.get_pdf_name("BogusLayout"),
+    )
+    assert cat.get_page_layout_or_default() is PageLayout.SINGLE_PAGE
+
+
+def test_get_page_layout_or_default_returns_explicit_value() -> None:
+    """When ``/PageLayout`` is set to a recognised value, the helper
+    returns it unchanged."""
+    from pypdfbox.pdmodel.page_layout import PageLayout
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_page_layout(PageLayout.TWO_COLUMN_LEFT)
+    assert cat.get_page_layout_or_default() is PageLayout.TWO_COLUMN_LEFT
+
+
+# ---------- presence predicates ----------
+
+
+def test_has_acro_form_reflects_entry_presence() -> None:
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_acro_form() is False
+
+    cat.set_acro_form(PDAcroForm(doc))
+    assert cat.has_acro_form() is True
+
+    # Stray non-dict entry counts as "no" (defensive parity with
+    # ``get_acro_form`` returning ``None`` for malformed values).
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("AcroForm"), COSString("not-a-dict")
+    )
+    assert cat.has_acro_form() is False
+
+    cat.set_acro_form(None)
+    assert cat.has_acro_form() is False
+
+
+def test_has_struct_tree_root_reflects_entry_presence() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureTreeRoot,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_struct_tree_root() is False
+
+    cat.set_struct_tree_root(PDStructureTreeRoot())
+    assert cat.has_struct_tree_root() is True
+
+    cat.set_struct_tree_root(None)
+    assert cat.has_struct_tree_root() is False
+
+
+def test_has_metadata_requires_stream_not_dict() -> None:
+    """``/Metadata`` must be a stream — a stray dict-typed entry should
+    read as absent, mirroring :meth:`get_metadata`'s type guard."""
+    from pypdfbox.cos import COSStream
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_metadata() is False
+
+    # A plain dict is wrong shape — has_metadata stays False.
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Metadata"), COSDictionary()
+    )
+    assert cat.has_metadata() is False
+
+    # A real stream flips it to True.
+    cat.set_metadata(COSStream())
+    assert cat.has_metadata() is True
+
+
+def test_has_outline_reflects_entry_presence() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_outline() is False
+
+    cat.set_document_outline(PDDocumentOutline())
+    assert cat.has_outline() is True
+
+    cat.set_document_outline(None)
+    assert cat.has_outline() is False
+
+
+def test_has_page_labels_reflects_entry_presence() -> None:
+    from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_page_labels() is False
+
+    cat.set_page_labels(PDPageLabels(doc))
+    assert cat.has_page_labels() is True
+
+    cat.set_page_labels(None)
+    assert cat.has_page_labels() is False
+
+
+def test_has_open_action_accepts_dict_or_array() -> None:
+    """``/OpenAction`` is legitimately either an action dictionary or a
+    destination array — both shapes flip the predicate to ``True``."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_open_action() is False
+
+    # Action dictionary form.
+    action = COSDictionary()
+    action.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("URI"))
+    cat.set_open_action(action)
+    assert cat.has_open_action() is True
+
+    # Destination array form.
+    cat.set_open_action(COSArray())
+    assert cat.has_open_action() is True
+
+    cat.set_open_action(None)
+    assert cat.has_open_action() is False
+
+
+def test_has_open_action_false_for_unrecognised_value() -> None:
+    """A non-dict, non-array stray value (e.g. an integer) reads as
+    absent — matches :meth:`get_open_action`'s ``None`` fallback."""
+    from pypdfbox.cos import COSInteger
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("OpenAction"), COSInteger.get(1)
+    )
+    assert cat.has_open_action() is False
+
+
+def test_has_names_reflects_entry_presence() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_names() is False
+
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Names"), COSDictionary())
+    assert cat.has_names() is True
+
+    cat.set_names(None)
+    assert cat.has_names() is False
+
+
+def test_has_oc_properties_reflects_entry_presence() -> None:
+    from pypdfbox.pdmodel.graphics.optionalcontent import (
+        PDOptionalContentProperties,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_oc_properties() is False
+
+    cat.set_oc_properties(PDOptionalContentProperties())
+    assert cat.has_oc_properties() is True
+
+    cat.set_oc_properties(None)
+    assert cat.has_oc_properties() is False
+
+
+# ---------- is_tagged ----------
+
+
+def test_is_tagged_false_when_mark_info_absent() -> None:
+    """``is_tagged`` follows the strict spec: needs ``/MarkInfo /Marked``
+    set to ``True``. A document with no ``/MarkInfo`` reads as untagged
+    even when ``/StructTreeRoot`` is present."""
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureTreeRoot,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.is_tagged() is False
+
+    # Adding only a struct tree root is not enough — spec requires the
+    # producer commitment carried by ``/MarkInfo /Marked``.
+    cat.set_struct_tree_root(PDStructureTreeRoot())
+    assert cat.is_tagged() is False
+
+
+def test_is_tagged_true_when_mark_info_marked() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_document_marked(True)
+    assert cat.is_tagged() is True
+
+
+def test_is_tagged_false_when_mark_info_explicitly_unmarked() -> None:
+    """``/MarkInfo`` present but ``/Marked = false`` is explicitly
+    untagged."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_document_marked(False)
+    assert cat.is_tagged() is False

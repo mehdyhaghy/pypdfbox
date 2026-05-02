@@ -25,6 +25,19 @@ class Encoding:
     CHAR_CODE: int = 0
     CHAR_NAME: int = 1
 
+    #: Names recognized by upstream ``Encoding.getInstance(COSName)`` —
+    #: the four PDF-spec ``/Encoding`` values. ``SymbolEncoding`` and
+    #: ``ZapfDingbatsEncoding`` are font-program built-ins (not valid
+    #: ``/Encoding`` entries), but pypdfbox still resolves them through
+    #: :meth:`get_instance` for ergonomic symmetry. Use this constant to
+    #: test "is this a PDF-spec predefined encoding name?".
+    PREDEFINED_NAMES: frozenset[str] = frozenset({
+        "StandardEncoding",
+        "WinAnsiEncoding",
+        "MacRomanEncoding",
+        "MacExpertEncoding",
+    })
+
     def __init__(self) -> None:
         self._code_to_name: dict[int, str] = {}
         self._name_to_code: dict[str, int] = {}
@@ -147,6 +160,58 @@ class Encoding:
         ``DictionaryEncoding`` instances may return ``None``.
         """
         return None
+
+    # -- predicates / typed accessors --------------------------------------
+
+    def is_predefined(self) -> bool:
+        """``True`` when :meth:`get_encoding_name` returns one of the four
+        PDF-spec predefined encoding names (``StandardEncoding``,
+        ``WinAnsiEncoding``, ``MacRomanEncoding``, ``MacExpertEncoding``).
+
+        Built-in font encodings, ``DictionaryEncoding``, ``SymbolEncoding``,
+        and ``ZapfDingbatsEncoding`` all return ``False`` — the latter two
+        are font-program built-ins, not values that may appear as a PDF
+        ``/Encoding`` name entry.
+        """
+        return self.get_encoding_name() in self.PREDEFINED_NAMES
+
+    def size(self) -> int:
+        """Number of (code, name) mappings in this encoding.
+
+        Equivalent to ``len(encoding)``; provided as a method-style
+        accessor matching upstream ``Map.size()`` ergonomics.
+        """
+        return len(self._code_to_name)
+
+    def __len__(self) -> int:
+        return len(self._code_to_name)
+
+    def get_codes_for_name(self, name: str) -> list[int]:
+        """Return all character codes that map to ``name``, sorted ascending.
+
+        Differs from :meth:`get_code` which returns only the first
+        reverse-mapped code (matching ``Map.putIfAbsent`` semantics).
+        Useful when a single glyph appears at multiple codes — for example
+        :class:`WinAnsiEncoding` maps every otherwise-unused code in 0o41+
+        to ``bullet``, so ``get_code("bullet")`` returns one code while
+        ``get_codes_for_name("bullet")`` returns the full set.
+
+        Returns an empty list when ``name`` is not in the encoding.
+        """
+        if name is None:  # type: ignore[unreachable]
+            return []
+        return sorted(c for c, n in self._code_to_name.items() if n == name)
+
+    def get_glyph_names(self) -> set[str]:
+        """Return the set of distinct glyph names in this encoding.
+
+        Equivalent to ``set(self.get_code_to_name_map().values())`` but
+        avoids materializing the snapshot dict. Useful for set-style
+        membership checks across multiple encodings (e.g. determining the
+        intersection of glyphs supported by a base encoding and a font's
+        built-in encoding).
+        """
+        return set(self._code_to_name.values())
 
     # -- factory -----------------------------------------------------------
 

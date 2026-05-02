@@ -219,6 +219,34 @@ class PDDocumentCatalog:
             return
         self._catalog.set_item(_PAGE_MODE, COSName.get_pdf_name(mode))
 
+    def get_page_mode_or_default(self) -> PageMode:
+        """Return the catalog's ``/PageMode`` with the spec default applied.
+
+        Mirrors upstream Java ``PDDocumentCatalog.getPageMode()`` exactly:
+        when ``/PageMode`` is absent or carries an unrecognised name, the
+        document's open-mode is implicitly ``UseNone`` (PDF 32000-1
+        §7.7.3.3 Table 28). pypdfbox's :meth:`get_page_mode` keeps the
+        more tolerant ``None`` posture for callers that want to
+        distinguish "explicit" vs "default"; this helper provides the
+        upstream-compatible default-applying read.
+        """
+        mode = self.get_page_mode()
+        return PageMode.USE_NONE if mode is None else mode
+
+    def get_page_layout_or_default(self) -> PageLayout:
+        """Return the catalog's ``/PageLayout`` with the spec default applied.
+
+        Mirrors upstream Java ``PDDocumentCatalog.getPageLayout()`` exactly:
+        when ``/PageLayout`` is absent, empty, or carries an unrecognised
+        name, the implicit layout is ``SinglePage`` (PDF 32000-1 §7.7.3.3
+        Table 28). pypdfbox's :meth:`get_page_layout` keeps the more
+        tolerant ``None`` posture for callers that want to distinguish
+        "explicit" vs "default"; this helper provides the upstream-
+        compatible default-applying read.
+        """
+        layout = self.get_page_layout()
+        return PageLayout.SINGLE_PAGE if layout is None else layout
+
     # ---------- /StructTreeRoot ----------
 
     def get_struct_tree_root(self) -> Any:
@@ -1041,6 +1069,88 @@ class PDDocumentCatalog:
         wrapper.set_base(base)
         if base is None and v.is_empty():
             self._catalog.remove_item(_URI)
+
+    # ---------- presence predicates ----------
+
+    # Lightweight ``has_*`` predicates that ask "does the catalog carry a
+    # well-formed entry of the expected COS shape?" without materialising
+    # the typed wrapper. Cheaper than ``get_<x>() is not None`` for hot
+    # paths (no wrapper allocation), and clearer at the call site than a
+    # raw ``contains_key`` check (which doesn't validate the value's type).
+
+    def has_acro_form(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/AcroForm``
+        dictionary entry."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_ACRO_FORM), COSDictionary
+        )
+
+    def has_struct_tree_root(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed
+        ``/StructTreeRoot`` dictionary entry."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_STRUCT_TREE_ROOT),
+            COSDictionary,
+        )
+
+    def has_metadata(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Metadata``
+        stream entry. Mirrors :meth:`get_metadata`'s type-check posture
+        — a stray non-stream value reads as absent."""
+        from pypdfbox.cos import COSStream
+
+        return isinstance(
+            self._catalog.get_dictionary_object(_METADATA), COSStream
+        )
+
+    def has_outline(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Outlines``
+        dictionary entry."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_OUTLINES), COSDictionary
+        )
+
+    def has_page_labels(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed
+        ``/PageLabels`` number-tree entry."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_PAGE_LABELS), COSDictionary
+        )
+
+    def has_open_action(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed
+        ``/OpenAction`` entry — either an action dictionary or a
+        destination array (PDF 32000-1 §12.6.4.4)."""
+        v = self._catalog.get_dictionary_object(_OPEN_ACTION)
+        return isinstance(v, COSDictionary | COSArray)
+
+    def has_names(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Names``
+        name-dictionary entry."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_NAMES), COSDictionary
+        )
+
+    def has_oc_properties(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed
+        ``/OCProperties`` dictionary entry (optional content groups)."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_OC_PROPERTIES),
+            COSDictionary,
+        )
+
+    def is_tagged(self) -> bool:
+        """Return ``True`` when the document advertises a tagged-PDF
+        accessibility tree.
+
+        Spec-wise (PDF 32000-1 §14.8.1) a document is "tagged" iff its
+        ``/MarkInfo`` dictionary has ``/Marked = true``. ``/StructTreeRoot``
+        on its own indicates structural information without the producer's
+        commitment that the structure tree fully complies with §14.8 — so
+        we follow the strict spec definition (``/MarkInfo /Marked``)
+        rather than the looser "structure tree exists" heuristic some
+        readers use. Defaults to ``False`` when ``/MarkInfo`` is absent."""
+        return self.is_document_marked()
 
     # ---------- raw COS passthrough used by tests ----------
 
