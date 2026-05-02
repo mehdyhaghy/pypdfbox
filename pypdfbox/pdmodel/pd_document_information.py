@@ -18,7 +18,19 @@ _MOD_DATE: COSName = COSName.get_pdf_name("ModDate")
 _TRAPPED: COSName = COSName.get_pdf_name("Trapped")
 
 
-_VALID_TRAPPED = frozenset({"True", "False", "Unknown"})
+#: PDF spec value for /Trapped meaning the document has been fully
+#: pre-trapped before printing (PDF 32000-1:2008 §14.11.6).
+TRAPPED_TRUE: str = "True"
+
+#: PDF spec value for /Trapped meaning the document has not been trapped.
+TRAPPED_FALSE: str = "False"
+
+#: PDF spec value for /Trapped meaning trapping state is unknown — also
+#: the implicit default when /Trapped is absent.
+TRAPPED_UNKNOWN: str = "Unknown"
+
+
+_VALID_TRAPPED = frozenset({TRAPPED_TRUE, TRAPPED_FALSE, TRAPPED_UNKNOWN})
 
 
 # Standard /Info dictionary keys per PDF 32000-1:2008 §14.3.3, Table 317.
@@ -138,6 +150,14 @@ class PDDocumentInformation:
     #: custom metadata.
     STANDARD_KEYS: frozenset[str] = _STANDARD_KEYS
 
+    #: PDF spec values for /Trapped (PDF 32000-1:2008 §14.11.6). Exposed at
+    #: class level so callers can write
+    #: ``info.set_trapped(PDDocumentInformation.TRAPPED_TRUE)`` without having
+    #: to import the module-level constants.
+    TRAPPED_TRUE: str = TRAPPED_TRUE
+    TRAPPED_FALSE: str = TRAPPED_FALSE
+    TRAPPED_UNKNOWN: str = TRAPPED_UNKNOWN
+
     def __init__(self, info: COSDictionary | None = None) -> None:
         self._info = info if info is not None else COSDictionary()
 
@@ -239,6 +259,24 @@ class PDDocumentInformation:
         else:
             self._info.set_name(_TRAPPED, value)
 
+    def is_trapped(self) -> bool | None:
+        """Return ``True`` / ``False`` for /Trapped, ``None`` otherwise.
+
+        Pypdfbox addition. Maps the spec values ``True``/``False`` to native
+        booleans for callers that just want a tri-state answer:
+
+        * ``True``     → trapping was performed
+        * ``False``    → trapping was *not* performed
+        * ``Unknown``  → ``None`` (matches the spec's "not known" semantic)
+        * absent / unexpected types → ``None``
+        """
+        v = self.get_trapped()
+        if v == TRAPPED_TRUE:
+            return True
+        if v == TRAPPED_FALSE:
+            return False
+        return None
+
     # ---------- custom metadata ----------
 
     def get_metadata_keys(self) -> list[str]:
@@ -268,6 +306,20 @@ class PDDocumentInformation:
     ) -> None:
         self._info.set_string(field_name, field_value)
 
+    def get_standard_metadata_keys(self) -> list[str]:
+        """Return only the *standard* metadata keys (per PDF 32000-1:2008
+        §14.3.3) that are actually present in the info dictionary, in
+        sorted order.
+
+        Pypdfbox addition — the inverse of :meth:`get_custom_metadata_keys`.
+        Useful for callers iterating only the spec-defined fields.
+        """
+        return sorted(
+            key.get_name()
+            for key in self._info.key_set()
+            if key.get_name() in _STANDARD_KEYS
+        )
+
     def get_custom_metadata_keys(self) -> list[str]:
         """Return only the *non-standard* metadata keys present in the info
         dictionary, in sorted order. Filters out keys defined by PDF
@@ -282,6 +334,66 @@ class PDDocumentInformation:
             for key in self._info.key_set()
             if key.get_name() not in _STANDARD_KEYS
         )
+
+    # ---------- predicates ----------
+
+    def has_title(self) -> bool:
+        """Return ``True`` when /Title is present in the info dictionary."""
+        return self._info.contains_key(_TITLE)
+
+    def has_author(self) -> bool:
+        """Return ``True`` when /Author is present in the info dictionary."""
+        return self._info.contains_key(_AUTHOR)
+
+    def has_subject(self) -> bool:
+        """Return ``True`` when /Subject is present in the info dictionary."""
+        return self._info.contains_key(_SUBJECT)
+
+    def has_keywords(self) -> bool:
+        """Return ``True`` when /Keywords is present in the info dictionary."""
+        return self._info.contains_key(_KEYWORDS)
+
+    def has_creator(self) -> bool:
+        """Return ``True`` when /Creator is present in the info dictionary."""
+        return self._info.contains_key(_CREATOR)
+
+    def has_producer(self) -> bool:
+        """Return ``True`` when /Producer is present in the info dictionary."""
+        return self._info.contains_key(_PRODUCER)
+
+    def has_creation_date(self) -> bool:
+        """Return ``True`` when /CreationDate is present in the info dictionary."""
+        return self._info.contains_key(_CREATION_DATE)
+
+    def has_modification_date(self) -> bool:
+        """Return ``True`` when /ModDate is present in the info dictionary."""
+        return self._info.contains_key(_MOD_DATE)
+
+    def has_trapped(self) -> bool:
+        """Return ``True`` when /Trapped is present in the info dictionary."""
+        return self._info.contains_key(_TRAPPED)
+
+    # ---------- bulk operations ----------
+
+    def clear(self) -> None:
+        """Remove all entries from the underlying info dictionary.
+
+        Pypdfbox addition — convenience over ``get_cos_object().clear()``.
+        Leaves the wrapper attached to the same dictionary instance so any
+        prior reference (e.g. on the document trailer) remains valid.
+        """
+        self._info.clear()
+
+    def copy_from(self, other: PDDocumentInformation) -> None:
+        """Copy every entry from ``other`` into this info dictionary,
+        overwriting any colliding keys but leaving non-colliding existing
+        entries intact.
+
+        Pypdfbox addition — mirrors ``Map.putAll`` semantics on top of
+        :meth:`COSDictionary.add_all`. Useful when stamping fresh metadata
+        onto an existing document without dropping unrelated custom keys.
+        """
+        self._info.add_all(other.get_cos_object())
 
     # ---------- introspection ----------
 
@@ -304,7 +416,12 @@ class PDDocumentInformation:
         )
 
 
-__all__ = ["PDDocumentInformation"]
+__all__ = [
+    "PDDocumentInformation",
+    "TRAPPED_TRUE",
+    "TRAPPED_FALSE",
+    "TRAPPED_UNKNOWN",
+]
 
 
 # Suppress unused-import in typing-only branch (kept for future expansion).
