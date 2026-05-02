@@ -4040,7 +4040,7 @@ class PDFRenderer(PDFStreamEngine):
             base_font = font.get_name() if hasattr(font, "get_name") else None
         except Exception:  # noqa: BLE001
             return
-        if base_font is None or not Standard14Fonts.containsName(base_font):
+        if base_font is None or not Standard14Fonts.contains_name(base_font):
             return
         self._warned_standard14_fonts.add(key)
         _log.debug(

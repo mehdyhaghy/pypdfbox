@@ -43,47 +43,47 @@ def test_class_constants_match_canonical_names() -> None:
     assert Standard14Fonts.ZAPF_DINGBATS == "ZapfDingbats"
 
 
-# ---------- containsName / getMappedFontName ----------
+# ---------- contains_name / get_mapped_font_name ----------
 
 
 @pytest.mark.parametrize("name", _BASE_14)
 def test_contains_name_recognises_all_14_base_names(name: str) -> None:
-    assert Standard14Fonts.containsName(name) is True
+    assert Standard14Fonts.contains_name(name) is True
 
 
 @pytest.mark.parametrize("name", _BASE_14)
 def test_get_mapped_font_name_is_identity_for_canonical_names(name: str) -> None:
-    assert Standard14Fonts.getMappedFontName(name) == name
+    assert Standard14Fonts.get_mapped_font_name(name) == name
 
 
 def test_contains_name_recognises_arial_alias() -> None:
-    assert Standard14Fonts.containsName("Arial") is True
+    assert Standard14Fonts.contains_name("Arial") is True
 
 
 def test_get_mapped_font_name_resolves_arial_to_helvetica() -> None:
-    assert Standard14Fonts.getMappedFontName("Arial") == "Helvetica"
+    assert Standard14Fonts.get_mapped_font_name("Arial") == "Helvetica"
 
 
 def test_get_mapped_font_name_resolves_microsoft_aliases() -> None:
-    assert Standard14Fonts.getMappedFontName("TimesNewRoman") == "Times-Roman"
-    assert Standard14Fonts.getMappedFontName("CourierNew") == "Courier"
-    assert Standard14Fonts.getMappedFontName("ArialMT") == "Helvetica"
-    assert Standard14Fonts.getMappedFontName("CourierNewPS-BoldMT") == "Courier-Bold"
+    assert Standard14Fonts.get_mapped_font_name("TimesNewRoman") == "Times-Roman"
+    assert Standard14Fonts.get_mapped_font_name("CourierNew") == "Courier"
+    assert Standard14Fonts.get_mapped_font_name("ArialMT") == "Helvetica"
+    assert Standard14Fonts.get_mapped_font_name("CourierNewPS-BoldMT") == "Courier-Bold"
 
 
 def test_lookup_is_case_insensitive_on_input() -> None:
-    assert Standard14Fonts.containsName("helvetica") is True
-    assert Standard14Fonts.containsName("ARIAL") is True
+    assert Standard14Fonts.contains_name("helvetica") is True
+    assert Standard14Fonts.contains_name("ARIAL") is True
     # Output is always the exactly-cased canonical name.
-    assert Standard14Fonts.getMappedFontName("helvetica-bold") == "Helvetica-Bold"
-    assert Standard14Fonts.getMappedFontName("zapfdingbats") == "ZapfDingbats"
+    assert Standard14Fonts.get_mapped_font_name("helvetica-bold") == "Helvetica-Bold"
+    assert Standard14Fonts.get_mapped_font_name("zapfdingbats") == "ZapfDingbats"
 
 
 def test_unknown_names_are_rejected() -> None:
-    assert Standard14Fonts.containsName("NotAFont") is False
-    assert Standard14Fonts.containsName(None) is False
-    assert Standard14Fonts.getMappedFontName("NotAFont") is None
-    assert Standard14Fonts.getMappedFontName(None) is None
+    assert Standard14Fonts.contains_name("NotAFont") is False
+    assert Standard14Fonts.contains_name(None) is False
+    assert Standard14Fonts.get_mapped_font_name("NotAFont") is None
+    assert Standard14Fonts.get_mapped_font_name(None) is None
 
 
 # ---------- get_average_widths ----------
@@ -232,3 +232,151 @@ def test_upstream_only_aliases_route_average_widths_to_canonical_table() -> None
     symbol_italic = Standard14Fonts.get_average_widths("Symbol,Italic")
     symbol = Standard14Fonts.get_average_widths("Symbol")
     assert symbol_italic == symbol
+
+
+# ---------- is_canonical_name (Wave 202) ----------
+
+
+@pytest.mark.parametrize("name", _BASE_14)
+def test_is_canonical_name_true_for_each_of_the_14_base_names(name: str) -> None:
+    assert Standard14Fonts.is_canonical_name(name) is True
+
+
+@pytest.mark.parametrize(
+    "alias",
+    ["Arial", "ArialMT", "TimesNewRoman", "CourierNew", "Times", "Symbol,Bold"],
+)
+def test_is_canonical_name_false_for_aliases(alias: str) -> None:
+    """Aliases are recognised by ``contains_name`` but not ``is_canonical_name``."""
+    assert Standard14Fonts.contains_name(alias) is True
+    assert Standard14Fonts.is_canonical_name(alias) is False
+
+
+def test_is_canonical_name_is_case_insensitive() -> None:
+    assert Standard14Fonts.is_canonical_name("helvetica") is True
+    assert Standard14Fonts.is_canonical_name("HELVETICA-BOLD") is True
+    assert Standard14Fonts.is_canonical_name("zapfdingbats") is True
+
+
+def test_is_canonical_name_handles_none_and_unknown() -> None:
+    assert Standard14Fonts.is_canonical_name(None) is False
+    assert Standard14Fonts.is_canonical_name("") is False
+    assert Standard14Fonts.is_canonical_name("NotAFont") is False
+
+
+# ---------- has_alias (Wave 202) ----------
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "Arial",
+        "ArialMT",
+        "TimesNewRoman",
+        "TimesNewRomanPS-BoldMT",
+        "CourierNew",
+        "CourierCourierNew",
+        "Times",
+        "Times,Bold",
+        "Symbol,Italic",
+    ],
+)
+def test_has_alias_true_for_registered_aliases(alias: str) -> None:
+    assert Standard14Fonts.has_alias(alias) is True
+
+
+@pytest.mark.parametrize("name", _BASE_14)
+def test_has_alias_false_for_canonical_names(name: str) -> None:
+    """Canonical names are not aliases of themselves."""
+    assert Standard14Fonts.has_alias(name) is False
+
+
+def test_has_alias_handles_none_and_unknown() -> None:
+    assert Standard14Fonts.has_alias(None) is False
+    assert Standard14Fonts.has_alias("") is False
+    assert Standard14Fonts.has_alias("NotAFont") is False
+
+
+def test_has_alias_is_case_insensitive() -> None:
+    assert Standard14Fonts.has_alias("arial") is True
+    assert Standard14Fonts.has_alias("ARIALMT") is True
+
+
+def test_is_canonical_name_and_has_alias_partition_known_names() -> None:
+    """Every known name is exactly one of: canonical or alias (never both, never neither)."""
+    for known in Standard14Fonts.get_all_names():
+        is_canonical = Standard14Fonts.is_canonical_name(known)
+        is_alias = Standard14Fonts.has_alias(known)
+        assert is_canonical ^ is_alias, known  # exclusive-or: exactly one
+        assert Standard14Fonts.contains_name(known) is True
+
+
+# ---------- resolve (Wave 202) ----------
+
+
+def test_resolve_returns_canonical_for_known_canonical_name() -> None:
+    assert Standard14Fonts.resolve("Helvetica") == "Helvetica"
+
+
+def test_resolve_returns_canonical_for_known_alias() -> None:
+    assert Standard14Fonts.resolve("ArialMT") == "Helvetica"
+
+
+def test_resolve_returns_default_for_unknown_name() -> None:
+    assert Standard14Fonts.resolve("NotAFont") is None
+    assert Standard14Fonts.resolve("NotAFont", default="Helvetica") == "Helvetica"
+    assert Standard14Fonts.resolve("NotAFont", default="fallback") == "fallback"
+
+
+def test_resolve_returns_default_for_none_input() -> None:
+    assert Standard14Fonts.resolve(None) is None
+    assert Standard14Fonts.resolve(None, default="Helvetica") == "Helvetica"
+
+
+def test_resolve_can_echo_input_via_default() -> None:
+    """Common pattern: ``resolve(name, default=name)`` keeps unknown names as-is."""
+    assert Standard14Fonts.resolve("MyCustomFont", default="MyCustomFont") == "MyCustomFont"
+    assert Standard14Fonts.resolve("Arial", default="Arial") == "Helvetica"
+
+
+def test_resolve_is_case_insensitive() -> None:
+    assert Standard14Fonts.resolve("arial") == "Helvetica"
+    assert Standard14Fonts.resolve("HELVETICA-BOLD") == "Helvetica-Bold"
+
+
+# ---------- get_all_names (Wave 202) ----------
+
+
+def test_get_all_names_includes_every_canonical_name() -> None:
+    all_names = Standard14Fonts.get_all_names()
+    assert isinstance(all_names, set)
+    for canonical in _BASE_14:
+        assert canonical in all_names
+
+
+def test_get_all_names_includes_every_alias() -> None:
+    all_names = Standard14Fonts.get_all_names()
+    aliases = Standard14Fonts.get_aliases()
+    for alias in aliases:
+        assert alias in all_names, alias
+
+
+def test_get_all_names_size_matches_canonical_plus_aliases() -> None:
+    all_names = Standard14Fonts.get_all_names()
+    # 14 canonical + the alias map's keys (no canonical/alias collisions).
+    assert len(all_names) == 14 + len(Standard14Fonts.get_aliases())
+
+
+def test_get_all_names_returns_a_defensive_copy() -> None:
+    a = Standard14Fonts.get_all_names()
+    a.add("BogusFont")
+    # A second call must not see the mutation.
+    assert "BogusFont" not in Standard14Fonts.get_all_names()
+
+
+def test_get_names_and_get_all_names_differ_by_alias_set() -> None:
+    """Pypdfbox extension: ``get_names`` is canonical-only; ``get_all_names`` matches upstream."""
+    canonical = Standard14Fonts.get_names()
+    all_names = Standard14Fonts.get_all_names()
+    assert canonical < all_names  # strict subset
+    assert all_names - canonical == set(Standard14Fonts.get_aliases())

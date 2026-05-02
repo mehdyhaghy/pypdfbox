@@ -65,7 +65,7 @@ def _default_encoding(name: str) -> Encoding:
 
 
 # Common alias -> canonical Standard 14 name. Aliases are matched
-# case-insensitively by ``getMappedFontName`` / ``containsName``.
+# case-insensitively by ``get_mapped_font_name`` / ``contains_name``.
 _ALIASES: dict[str, str] = {
     # Helvetica family substitutes (Microsoft "Arial" branch).
     "Arial": "Helvetica",
@@ -185,11 +185,6 @@ class Standard14Fonts:
             return False
         return name.lower() in _NAME_LOOKUP
 
-    # camelCase alias kept for legacy callers; prefer ``contains_name``.
-    @classmethod
-    def containsName(cls, name: str | None) -> bool:  # noqa: N802 - upstream name
-        return cls.contains_name(name)
-
     @classmethod
     def is_standard_14(cls, name: str | None) -> bool:
         """Upstream alias for :meth:`contains_name`.
@@ -198,6 +193,34 @@ class Standard14Fonts:
         ``Standard14Fonts``; the two have identical semantics.
         """
         return cls.contains_name(name)
+
+    @classmethod
+    def is_canonical_name(cls, name: str | None) -> bool:
+        """Return True iff ``name`` is one of the 14 base PostScript names.
+
+        Aliases (e.g. ``"Arial"``, ``"TimesNewRoman"``) return False — use
+        :meth:`contains_name` to accept either form. Lookup is
+        case-insensitive on the input.
+        """
+        if name is None:
+            return False
+        canonical = _NAME_LOOKUP.get(name.lower())
+        return canonical is not None and canonical.lower() == name.lower()
+
+    @classmethod
+    def has_alias(cls, name: str | None) -> bool:
+        """Return True iff ``name`` is a registered substitute alias.
+
+        Returns False for the 14 canonical names (use
+        :meth:`is_canonical_name` for those) and for unknown names.
+        Lookup is case-insensitive on the input.
+        """
+        if name is None:
+            return False
+        canonical = _NAME_LOOKUP.get(name.lower())
+        if canonical is None:
+            return False
+        return canonical.lower() != name.lower()
 
     @classmethod
     def get_mapped_font_name(cls, name: str | None) -> str | None:
@@ -211,19 +234,41 @@ class Standard14Fonts:
             return None
         return _NAME_LOOKUP.get(name.lower())
 
-    # camelCase alias kept for legacy callers; prefer ``get_mapped_font_name``.
     @classmethod
-    def getMappedFontName(cls, name: str | None) -> str | None:  # noqa: N802 - upstream name
-        return cls.get_mapped_font_name(name)
+    def resolve(cls, name: str | None, default: str | None = None) -> str | None:
+        """Like :meth:`get_mapped_font_name`, but with a caller-supplied default.
+
+        Convenience for callers that want a fallback (the input itself, a
+        sentinel, or ``"Helvetica"``) instead of ``None`` for unknown
+        names. ``default`` is returned when ``name`` is ``None`` or not
+        one of the Standard 14 / known aliases.
+        """
+        if name is None:
+            return default
+        return _NAME_LOOKUP.get(name.lower(), default)
 
     @classmethod
     def get_names(cls) -> set[str]:
         """Return the 14 canonical PostScript names.
 
-        Mirrors upstream ``Standard14Fonts.getNames`` — set semantics, no
-        ordering guarantee, exactly the canonical names (aliases excluded).
+        Pypdfbox extension — upstream ``Standard14Fonts.getNames`` returns
+        the keys of the alias map (canonical names *and* aliases). Use
+        :meth:`get_all_names` for upstream-strict semantics; this method
+        is the common case (a 14-element set, aliases excluded).
         """
         return set(_FAMILY_FLAGS)
+
+    @classmethod
+    def get_all_names(cls) -> set[str]:
+        """Return the canonical names *and* every registered alias.
+
+        Mirrors upstream ``Standard14Fonts.getNames`` exactly — the result
+        is the union of the 14 canonical PostScript names and every alias
+        (Arial branch, TimesNewRoman branch, CourierNew branch, ``-PS`` /
+        ``-MT`` variants, etc.). The set is freshly constructed; mutating
+        it does not affect future lookups.
+        """
+        return set(_FAMILY_FLAGS) | set(_ALIASES)
 
     @classmethod
     def get_aliases(cls) -> dict[str, str]:
@@ -251,11 +296,6 @@ class Standard14Fonts:
         if canonical is None:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
         return load_standard14(canonical)
-
-    # camelCase alias kept for upstream-API parity; prefer ``get_afm``.
-    @classmethod
-    def getAFM(cls, name: str) -> AfmMetrics:  # noqa: N802 - upstream name
-        return cls.get_afm(name)
 
     # ---- Metrics ------------------------------------------------------
 

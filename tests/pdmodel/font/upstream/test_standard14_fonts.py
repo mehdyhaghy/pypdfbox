@@ -52,7 +52,7 @@ def test_contains_name_for_canonical_names(name: str) -> None:
 
     Ports ``Standard14FontsTest.testContainsName``.
     """
-    assert Standard14Fonts.containsName(name) is True
+    assert Standard14Fonts.contains_name(name) is True
 
 
 @pytest.mark.parametrize(
@@ -92,9 +92,9 @@ def test_contains_name_for_aliases(alias: str, canonical: str) -> None:
 
     Ports ``Standard14FontsTest.testContainsName`` (alias half).
     """
-    assert Standard14Fonts.containsName(alias) is True
+    assert Standard14Fonts.contains_name(alias) is True
     # Round-trip parity — the alias must rewrite to the right canonical name.
-    assert Standard14Fonts.getMappedFontName(alias) == canonical
+    assert Standard14Fonts.get_mapped_font_name(alias) == canonical
 
 
 def test_contains_name_returns_false_for_unknown() -> None:
@@ -102,7 +102,7 @@ def test_contains_name_returns_false_for_unknown() -> None:
 
     Ports ``Standard14FontsTest.testContainsName`` (negative half).
     """
-    assert Standard14Fonts.containsName("NotARealFontName") is False
+    assert Standard14Fonts.contains_name("NotARealFontName") is False
 
 
 # ---------- getMappedFontName ----------
@@ -114,7 +114,7 @@ def test_get_mapped_font_name_is_identity_for_canonical(name: str) -> None:
 
     Ports ``Standard14FontsTest.testGetMappedFontName``.
     """
-    assert Standard14Fonts.getMappedFontName(name) == name
+    assert Standard14Fonts.get_mapped_font_name(name) == name
 
 
 # ---------- getAFM ----------
@@ -127,7 +127,7 @@ def test_get_afm_returns_parsed_metrics_for_each_canonical(name: str) -> None:
     Ports ``Standard14FontsTest.testGetAFM`` — upstream asserts the result
     is non-null; we additionally assert the parsed font name round-trips.
     """
-    afm = Standard14Fonts.getAFM(name)
+    afm = Standard14Fonts.get_afm(name)
     assert isinstance(afm, AfmMetrics)
     assert afm.get_font_name() == name
 
@@ -136,10 +136,10 @@ def test_get_afm_caches_per_canonical_name() -> None:
     """Two calls with the same canonical name share an instance.
 
     Mirrors upstream's parsed-once-then-cached contract on
-    ``Standard14Fonts.getAFM``.
+    ``Standard14Fonts.get_afm``.
     """
-    first = Standard14Fonts.getAFM("Helvetica")
-    second = Standard14Fonts.getAFM("Helvetica")
+    first = Standard14Fonts.get_afm("Helvetica")
+    second = Standard14Fonts.get_afm("Helvetica")
     assert first is second
 
 
@@ -150,6 +150,6 @@ def test_get_afm_caches_through_alias() -> None:
     ``getAFM("Arial")`` and ``getAFM("Helvetica")`` return the same
     instance.
     """
-    via_alias = Standard14Fonts.getAFM("Arial")
-    via_canonical = Standard14Fonts.getAFM("Helvetica")
+    via_alias = Standard14Fonts.get_afm("Arial")
+    via_canonical = Standard14Fonts.get_afm("Helvetica")
     assert via_alias is via_canonical

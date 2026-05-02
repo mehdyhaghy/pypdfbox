@@ -171,7 +171,7 @@ class PDType1Font(PDSimpleFont):
 
         # 3. Standard 14 fallback via the bundled AFM.
         base_font = self.get_name()
-        if base_font is not None and Standard14Fonts.containsName(base_font):
+        if base_font is not None and Standard14Fonts.contains_name(base_font):
             # If the PDF supplied an /Encoding, honour it for code -> name;
             # otherwise use the font's PostScript default encoding.
             typed_encoding = self.get_encoding_typed()
@@ -186,7 +186,7 @@ class PDType1Font(PDSimpleFont):
                 from .encoding.symbol_encoding import SymbolEncoding
                 from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
 
-                canonical = Standard14Fonts.getMappedFontName(base_font)
+                canonical = Standard14Fonts.get_mapped_font_name(base_font)
                 if canonical == "Symbol":
                     glyph_name = SymbolEncoding.INSTANCE.get_name(code)
                 elif canonical == "ZapfDingbats":
@@ -463,7 +463,7 @@ class PDType1Font(PDSimpleFont):
         ``PDType1Font.getStandard14AFM``.
         """
         base_font = self.get_name()
-        if base_font is None or not Standard14Fonts.containsName(base_font):
+        if base_font is None or not Standard14Fonts.contains_name(base_font):
             return None
         return Standard14Fonts.get_afm(base_font)
 
