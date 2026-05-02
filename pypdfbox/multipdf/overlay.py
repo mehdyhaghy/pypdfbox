@@ -256,23 +256,24 @@ class Overlay:
     # ---------- internal: loading ----------
 
     def _load_pdfs(self) -> None:
+        # Upstream behaviour (Overlay.loadPDFs): when *both* a filename and
+        # a PDDocument were configured for the same slot, the **filename
+        # wins** — the PDF is reloaded from disk and the previously-staged
+        # PDDocument is replaced. We mirror that precedence here.
         # input PDF
-        if self._input_filename is not None and self._input_pdf is None:
+        if self._input_filename is not None:
             self._input_pdf = self._load_pdf(self._input_filename)
         if self._input_pdf is None:
             raise ValueError("No input document")
         # default overlay PDF
-        if self._default_overlay_filename is not None and self._default_overlay_document is None:
+        if self._default_overlay_filename is not None:
             self._default_overlay_document = self._load_pdf(self._default_overlay_filename)
         if self._default_overlay_document is not None:
             self._default_overlay_page = self._create_layout_page_from_document(
                 self._default_overlay_document
             )
         # first page overlay PDF
-        if (
-            self._first_page_overlay_filename is not None
-            and self._first_page_overlay_document is None
-        ):
+        if self._first_page_overlay_filename is not None:
             self._first_page_overlay_document = self._load_pdf(
                 self._first_page_overlay_filename
             )
@@ -281,10 +282,7 @@ class Overlay:
                 self._first_page_overlay_document
             )
         # last page overlay PDF
-        if (
-            self._last_page_overlay_filename is not None
-            and self._last_page_overlay_document is None
-        ):
+        if self._last_page_overlay_filename is not None:
             self._last_page_overlay_document = self._load_pdf(
                 self._last_page_overlay_filename
             )
@@ -293,10 +291,7 @@ class Overlay:
                 self._last_page_overlay_document
             )
         # odd pages overlay PDF
-        if (
-            self._odd_page_overlay_filename is not None
-            and self._odd_page_overlay_document is None
-        ):
+        if self._odd_page_overlay_filename is not None:
             self._odd_page_overlay_document = self._load_pdf(
                 self._odd_page_overlay_filename
             )
@@ -305,10 +300,7 @@ class Overlay:
                 self._odd_page_overlay_document
             )
         # even pages overlay PDF
-        if (
-            self._even_page_overlay_filename is not None
-            and self._even_page_overlay_document is None
-        ):
+        if self._even_page_overlay_filename is not None:
             self._even_page_overlay_document = self._load_pdf(
                 self._even_page_overlay_filename
             )
@@ -317,10 +309,7 @@ class Overlay:
                 self._even_page_overlay_document
             )
         # all pages overlay PDF
-        if (
-            self._all_pages_overlay_filename is not None
-            and self._all_pages_overlay_document is None
-        ):
+        if self._all_pages_overlay_filename is not None:
             self._all_pages_overlay_document = self._load_pdf(
                 self._all_pages_overlay_filename
             )

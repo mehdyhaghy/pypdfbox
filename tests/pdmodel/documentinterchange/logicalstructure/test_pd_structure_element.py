@@ -797,3 +797,128 @@ def test_insert_before_element_silent_on_none_args() -> None:
     parent.append_kid_element(a)
     assert parent.insert_before_element(None, a) is False  # type: ignore[arg-type]
     assert parent.insert_before_element(a, None) is False
+
+
+# ---------- append_kid_marked_content_object (PDMarkedContent overload) ----------
+
+
+def test_append_kid_marked_content_object_appends_mcid() -> None:
+    """Mirror upstream ``appendKid(PDMarkedContent)``: the mcid of the
+    marked-content sequence is appended as a raw integer ``/K`` entry."""
+    from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import (
+        PDMarkedContent,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    props = COSDictionary()
+    props.set_int(COSName.get_pdf_name("MCID"), 5)
+    mc = PDMarkedContent(tag=COSName.get_pdf_name("Span"), properties=props)
+    elem.append_kid_marked_content_object(mc)
+    kids = elem.get_kids()
+    assert kids == [5]
+
+
+def test_append_kid_marked_content_object_none_is_silent_noop() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.append_kid_marked_content_object(None)
+    assert elem.get_kids() == []
+
+
+def test_append_kid_marked_content_object_missing_mcid_raises() -> None:
+    """Mirror upstream IllegalArgumentException — when ``MCID`` is absent
+    from the marked-content properties (or properties is ``None``),
+    :meth:`PDMarkedContent.get_mcid` returns ``-1`` and we reject the
+    append, matching upstream's "mcid is negative or doesn't exist"
+    contract."""
+    import pytest
+
+    from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import (
+        PDMarkedContent,
+    )
+
+    elem = PDStructureElement(structure_type="P")
+    # properties=None -> get_mcid() returns -1 (mirrors upstream).
+    mc = PDMarkedContent(tag=COSName.get_pdf_name("Span"), properties=None)
+    with pytest.raises(ValueError):
+        elem.append_kid_marked_content_object(mc)
+
+
+# ---------- insert_before_mcid (COSInteger overload) ----------
+
+
+def test_insert_before_mcid_inserts_integer_kid() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(2)
+    inserted = parent.insert_before_mcid(1, 2)
+    assert inserted is True
+    assert parent.get_kids() == [1, 2]
+
+
+def test_insert_before_mcid_returns_false_when_ref_missing() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(5)
+    # Ref kid 99 is not present.
+    assert parent.insert_before_mcid(7, 99) is False
+
+
+def test_insert_before_mcid_silent_on_none_ref() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(5)
+    assert parent.insert_before_mcid(7, None) is False
+
+
+# ---------- remove_kid_mcid / _marked_content / _object_reference ----------
+
+
+def test_remove_kid_mcid_removes_integer_entry() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(0)
+    parent.append_kid_mcid(7)
+    removed = parent.remove_kid_mcid(7)
+    assert removed is True
+    assert parent.get_kids() == [0]
+
+
+def test_remove_kid_mcid_returns_false_when_absent() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(0)
+    assert parent.remove_kid_mcid(99) is False
+
+
+def test_remove_kid_marked_content_removes_mcr_kid() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_marked_content_reference import (
+        PDMarkedContentReference,
+    )
+
+    parent = PDStructureElement(structure_type="P")
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(3)
+    parent.append_kid_marked_content(mcr)
+    assert len(parent.get_kids()) == 1
+    removed = parent.remove_kid_marked_content(mcr)
+    assert removed is True
+    assert parent.get_kids() == []
+
+
+def test_remove_kid_marked_content_silent_on_none() -> None:
+    parent = PDStructureElement(structure_type="P")
+    assert parent.remove_kid_marked_content(None) is False
+
+
+def test_remove_kid_object_reference_removes_objr_kid() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_object_reference import (
+        PDObjectReference,
+    )
+
+    parent = PDStructureElement(structure_type="P")
+    objr = PDObjectReference()
+    parent.append_kid_object_reference(objr)
+    assert len(parent.get_kids()) == 1
+    removed = parent.remove_kid_object_reference(objr)
+    assert removed is True
+    assert parent.get_kids() == []
+
+
+def test_remove_kid_object_reference_silent_on_none() -> None:
+    parent = PDStructureElement(structure_type="P")
+    assert parent.remove_kid_object_reference(None) is False

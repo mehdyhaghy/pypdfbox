@@ -601,3 +601,142 @@ def test_position_value_of_is_case_sensitive() -> None:
     """Java's ``Enum.valueOf`` is case-sensitive; ours must match."""
     with pytest.raises(ValueError):
         Position.value_of("foreground")
+
+
+# ---------- file-path-vs-PDDocument precedence (upstream parity) ----------
+
+
+def test_input_file_overrides_input_pdf_when_both_set(tmp_path: Path) -> None:
+    """Upstream ``Overlay.loadPDFs`` reloads from filename even when an
+    ``inputPDFDocument`` was already staged via ``setInputPDF``. The
+    file-path setter must win — the staged PDF gets discarded."""
+    on_disk = _build_base_doc(num_pages=3)
+    base_path = tmp_path / "on_disk.pdf"
+    on_disk.save(str(base_path))
+    on_disk.close()
+
+    # Stage a different (2-page) PDF via setInputPDF first.
+    staged = _build_base_doc(num_pages=2)
+    overlay_doc = _build_overlay_doc()
+
+    overlay = Overlay()
+    overlay.set_input_pdf(staged)
+    overlay.set_input_file(str(base_path))  # filename should win
+    overlay.set_default_overlay_pdf(overlay_doc)
+    result = overlay.overlay({})
+
+    # If the filename won, ``result`` is the freshly-loaded 3-page doc,
+    # NOT the staged 2-page one.
+    assert result is not staged
+    assert result.get_number_of_pages() == 3
+
+
+def test_default_overlay_file_overrides_default_overlay_pdf(tmp_path: Path) -> None:
+    """Same precedence rule applies to the default overlay slot — when
+    both ``set_default_overlay_file`` and ``set_default_overlay_pdf`` are
+    configured, the file is reloaded and replaces the staged PDF."""
+    # Build two distinguishable overlay PDFs — different MediaBox sizes.
+    a = PDDocument()
+    a.add_page(PDPage(PDRectangle.from_width_height(100.0, 100.0)))
+    a_path = tmp_path / "overlay_a.pdf"
+    a.save(str(a_path))
+    a.close()
+
+    b_doc = PDDocument()
+    b_doc.add_page(PDPage(PDRectangle.from_width_height(300.0, 300.0)))
+
+    base = _build_base_doc(num_pages=1)
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(b_doc)
+    overlay.set_default_overlay_file(str(a_path))  # file wins
+    overlay.overlay({})
+
+    # The default-overlay layout should be derived from a_path (100x100),
+    # not b_doc (300x300). Inspect the cached _LayoutPage's media box.
+    layout = overlay._default_overlay_page  # noqa: SLF001
+    assert layout is not None
+    assert layout.overlay_media_box.get_width() == 100.0
+    assert layout.overlay_media_box.get_height() == 100.0
+
+
+def test_first_last_odd_even_overlay_file_overrides_pdf(tmp_path: Path) -> None:
+    """Filename precedence applies uniformly to first/last/odd/even slots."""
+    # One small file overlay PDF and one big in-memory overlay PDF.
+    small = PDDocument()
+    small.add_page(PDPage(PDRectangle.from_width_height(50.0, 50.0)))
+    small_path = tmp_path / "small.pdf"
+    small.save(str(small_path))
+    small.close()
+
+    def _big() -> PDDocument:
+        d = PDDocument()
+        d.add_page(PDPage(PDRectangle.from_width_height(500.0, 500.0)))
+        return d
+
+    base = _build_base_doc(num_pages=2)
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    # All four slots: stage big PDF first, then file path → file wins.
+    for set_pdf, set_file in (
+        (overlay.set_first_page_overlay_pdf, overlay.set_first_page_overlay_file),
+        (overlay.set_last_page_overlay_pdf, overlay.set_last_page_overlay_file),
+        (overlay.set_odd_page_overlay_pdf, overlay.set_odd_page_overlay_file),
+        (overlay.set_even_page_overlay_pdf, overlay.set_even_page_overlay_file),
+    ):
+        set_pdf(_big())
+        set_file(str(small_path))
+    overlay.overlay({})
+
+    # Each slot's cached layout MUST reflect the small (50x50) file, not
+    # the staged big (500x500) PDF.
+    for layout in (
+        overlay._first_page_overlay_page,  # noqa: SLF001
+        overlay._last_page_overlay_page,  # noqa: SLF001
+        overlay._odd_page_overlay_page,  # noqa: SLF001
+        overlay._even_page_overlay_page,  # noqa: SLF001
+    ):
+        assert layout is not None
+        assert layout.overlay_media_box.get_width() == 50.0
+
+
+def test_all_pages_overlay_file_overrides_pdf(tmp_path: Path) -> None:
+    """Filename precedence for the all-pages overlay slot. The file is a
+    single-page 50x50; the staged PDF is a 2-page 500x500 doc. After
+    overlay() the cached layout map must contain a single 50x50 entry."""
+    small = PDDocument()
+    small.add_page(PDPage(PDRectangle.from_width_height(50.0, 50.0)))
+    small_path = tmp_path / "all_small.pdf"
+    small.save(str(small_path))
+    small.close()
+
+    big = PDDocument()
+    for _ in range(2):
+        big.add_page(PDPage(PDRectangle.from_width_height(500.0, 500.0)))
+
+    base = _build_base_doc(num_pages=1)
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_all_pages_overlay_pdf(big)
+    overlay.set_all_pages_overlay_file(str(small_path))  # file wins
+    overlay.overlay({})
+
+    # The all-pages overlay layout map should only have the single page
+    # from the small file (size 1), not 2 from the big in-memory PDF.
+    assert overlay._number_of_overlay_pages == 1  # noqa: SLF001
+    layout = overlay._specific_page_overlay_layout[0]  # noqa: SLF001
+    assert layout.overlay_media_box.get_width() == 50.0
+
+
+def test_input_pdf_alone_still_works_when_no_filename_set() -> None:
+    """Sanity: when only ``set_input_pdf`` is used (no filename), the
+    staged PDF is what ``overlay()`` operates on. Regression-guards
+    against the precedence fix accidentally breaking the PDF-only path."""
+    base = _build_base_doc(num_pages=2)
+    overlay_doc = _build_overlay_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(overlay_doc)
+    result = overlay.overlay({})
+    assert result is base
+    assert result.get_number_of_pages() == 2

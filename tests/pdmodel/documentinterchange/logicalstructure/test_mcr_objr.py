@@ -228,3 +228,22 @@ def test_mcr_get_page_skips_non_dictionary_pg() -> None:
     raw.set_int(_PG, 42)  # nonsense /Pg shape
     mcr = PDMarkedContentReference(raw)
     assert mcr.get_page() is None
+
+
+def test_mcr_str_renders_mcid_format() -> None:
+    """Mirrors upstream ``PDMarkedContentReference.toString()``."""
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(42)
+    assert str(mcr) == "mcid=42"
+
+
+def test_mcr_str_matches_repr() -> None:
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(7)
+    assert str(mcr) == repr(mcr) == "mcid=7"
+
+
+def test_mcr_str_when_mcid_absent_uses_default_minus_one() -> None:
+    # No /MCID set — get_mcid() returns -1 (mirrors upstream getInt default).
+    mcr = PDMarkedContentReference()
+    assert str(mcr) == "mcid=-1"

@@ -119,5 +119,16 @@ class PDMarkedContentReference:
     def __repr__(self) -> str:
         return f"mcid={self.get_mcid()}"
 
+    def __str__(self) -> str:
+        """Render as ``mcid=<mcid>``. Mirrors upstream
+        ``PDMarkedContentReference.toString()`` (PDF 32000-1 §14.7.4.4).
+
+        Java callers reach for ``toString()``; the equivalent Python entry
+        point is ``str()``. ``__repr__`` already returns the same format —
+        we mirror it on ``__str__`` so ``str(mcr)`` and ``repr(mcr)`` agree
+        and both line up with the upstream rendering.
+        """
+        return f"mcid={self.get_mcid()}"
+
 
 __all__ = ["PDMarkedContentReference"]

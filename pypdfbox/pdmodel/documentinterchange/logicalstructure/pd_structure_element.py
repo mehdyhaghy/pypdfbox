@@ -522,6 +522,22 @@ class PDStructureElement(PDStructureNode):
             raise ValueError("MCID is negative")
         self.append_kid(mcid)
 
+    def append_kid_marked_content_object(self, marked_content: Any) -> None:
+        """Append the ``MCID`` of a :class:`PDMarkedContent` as a kid.
+
+        Mirrors upstream ``appendKid(PDMarkedContent)``: pulls the
+        marked-content sequence's ``MCID`` and appends it as an integer
+        ``/K`` entry. ``None`` is a silent no-op (matches upstream's
+        null-guard); a missing or negative ``MCID`` raises
+        ``ValueError`` (upstream throws ``IllegalArgumentException``).
+        """
+        if marked_content is None:
+            return
+        mcid = marked_content.get_mcid()
+        if mcid < 0:
+            raise ValueError("MCID is negative or doesn't exist")
+        self.append_kid(mcid)
+
     # ---------- typed /K remove + insert overloads ----------
 
     def remove_kid_element(self, structure_element: PDStructureElement) -> bool:
@@ -553,6 +569,51 @@ class PDStructureElement(PDStructureNode):
         if new_kid is None or before_kid is None:
             return False
         return self.insert_before(new_kid, before_kid)
+
+    def insert_before_mcid(self, mcid: int, before_kid: Any) -> bool:
+        """Insert a marked-content identifier (integer) before ``before_kid``.
+
+        Mirrors upstream ``insertBefore(COSInteger, Object)``: a typed
+        alias for inserting a raw integer MCID into ``/K``. Returns
+        ``False`` when ``before_kid`` is missing (no insert performed) or
+        either argument is ``None``.
+        """
+        if before_kid is None:
+            return False
+        return self.insert_before(mcid, before_kid)
+
+    # ---------- typed /K remove overloads (mcr / objr / mcid) ----------
+
+    def remove_kid_mcid(self, mcid: int) -> bool:
+        """Remove a marked-content identifier from ``/K``.
+
+        Mirrors upstream ``removeKid(COSInteger)``: a typed alias over
+        :meth:`PDStructureNode.remove_kid`. Returns ``True`` when the
+        integer was present and removed.
+        """
+        return self.remove_kid(mcid)
+
+    def remove_kid_marked_content(self, marked_content_reference: Any) -> bool:
+        """Remove a ``PDMarkedContentReference`` kid from ``/K``.
+
+        Mirrors upstream ``removeKid(PDMarkedContentReference)`` — a typed
+        alias over :meth:`PDStructureNode.remove_kid`. ``None`` is a
+        silent no-op returning ``False``.
+        """
+        if marked_content_reference is None:
+            return False
+        return self.remove_kid(marked_content_reference)
+
+    def remove_kid_object_reference(self, object_reference: Any) -> bool:
+        """Remove a ``PDObjectReference`` kid from ``/K``.
+
+        Mirrors upstream ``removeKid(PDObjectReference)`` — a typed alias
+        over :meth:`PDStructureNode.remove_kid`. ``None`` is a silent
+        no-op returning ``False``.
+        """
+        if object_reference is None:
+            return False
+        return self.remove_kid(object_reference)
 
     # ---------- /A attribute object maintenance ----------
 
