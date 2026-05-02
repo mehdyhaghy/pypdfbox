@@ -3,27 +3,11 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
+from ..date_converter import to_calendar, to_iso8601
 from .abstract_simple_property import AbstractSimpleProperty
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
-
-
-def _parse_iso8601(value: str) -> datetime:
-    # XMP / upstream DateConverter handles a few oddball ISO 8601 forms;
-    # stdlib datetime.fromisoformat covers the canonical RFC 3339 subset
-    # used in XMP packets. Trailing 'Z' is normalised to '+00:00' so 3.10
-    # callers parse cleanly.
-    cleaned = value.strip()
-    if cleaned.endswith("Z"):
-        cleaned = cleaned[:-1] + "+00:00"
-    return datetime.fromisoformat(cleaned)
-
-
-def _format_iso8601(value: datetime) -> str:
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=UTC)
-    return value.isoformat()
 
 
 class DateType(AbstractSimpleProperty):
@@ -34,7 +18,9 @@ class DateType(AbstractSimpleProperty):
     ``java.util.Calendar``; the Python port stores a timezone-aware
     :class:`datetime.datetime` (the closest stdlib equivalent — ``Calendar``
     is a TZ-aware moment in time). Accepts a :class:`datetime`, :class:`date`,
-    or an ISO 8601 string.
+    or any string form recognised by :func:`pypdfbox.xmpbox.DateConverter`
+    (full ISO 8601, partial ISO 8601 like ``YYYY``, ``YYYY-MM``, ``YYYY-MM-DD``,
+    or PDF dictionary form ``D:YYYYMMDDhhmmss``).
     """
 
     def __init__(
@@ -49,6 +35,8 @@ class DateType(AbstractSimpleProperty):
 
     def set_value(self, value: Any) -> None:
         if value is None:
+            # Upstream's setValue rejects null with IllegalArgumentException
+            # before ever reaching the field; we mirror that with ValueError.
             raise ValueError("Value null is not allowed for the Date type")
         if isinstance(value, datetime):
             self._date_value = value
@@ -57,12 +45,21 @@ class DateType(AbstractSimpleProperty):
             self._date_value = datetime(value.year, value.month, value.day, tzinfo=UTC)
             return
         if isinstance(value, str):
+            # Delegate to DateConverter so we accept the same string surface as
+            # upstream Java's DateType (which calls DateConverter.toCalendar).
             try:
-                self._date_value = _parse_iso8601(value)
-            except (ValueError, TypeError) as exc:
+                parsed = to_calendar(value)
+            except OSError as exc:
                 raise ValueError(
                     f"Value given is not allowed for the Date type: {value!r}"
                 ) from exc
+            if parsed is None:
+                # to_calendar returns None for empty / whitespace strings;
+                # upstream rejects those at isGoodType.
+                raise ValueError(
+                    f"Value given is not allowed for the Date type: {value!r}"
+                )
+            self._date_value = parsed
             return
         raise ValueError(
             f"Value given is not allowed for the Date type: {type(value).__name__},"
@@ -73,4 +70,5 @@ class DateType(AbstractSimpleProperty):
         return self._date_value
 
     def get_string_value(self) -> str:
-        return _format_iso8601(self._date_value)
+        # Mirror DateConverter.toISO8601 used by upstream DateType.getStringValue.
+        return to_iso8601(self._date_value)

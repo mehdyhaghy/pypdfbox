@@ -77,15 +77,35 @@ class Splitter:
     follow the split.
     """
 
+    # ---------- defaults & sentinels (class constants) ----------
+    #
+    # Mirrors the field initialisers on upstream
+    # ``org.apache.pdfbox.multipdf.Splitter``. Surfacing them as class
+    # constants lets callers compare ``get_start_page() ==
+    # Splitter.START_PAGE_DEFAULT`` (or use :meth:`has_start_page`) to
+    # distinguish "untouched" from "explicitly set to N" — same semantic
+    # as upstream's ``Integer.MIN_VALUE`` / ``Integer.MAX_VALUE`` sentinels.
+
+    #: Default split granularity — every page becomes a new document.
+    DEFAULT_SPLIT_LENGTH: int = 1
+
+    #: Sentinel meaning "no lower clamp". Mirrors upstream's
+    #: ``Integer.MIN_VALUE`` initialiser on ``startPage``.
+    START_PAGE_DEFAULT: int = -(2**31)
+
+    #: Sentinel meaning "no upper clamp". Mirrors upstream's
+    #: ``Integer.MAX_VALUE`` initialiser on ``endPage``.
+    END_PAGE_DEFAULT: int = 2**31 - 1
+
     def __init__(self) -> None:
         self._source_document: PDDocument | None = None
         self._current_destination_document: PDDocument | None = None
 
-        self._split_length: int = 1
+        self._split_length: int = self.DEFAULT_SPLIT_LENGTH
         # Sentinels used to mean "no clamp"; mirror upstream
         # Integer.MIN_VALUE / Integer.MAX_VALUE.
-        self._start_page: int = -(2**31)
-        self._end_page: int = 2**31 - 1
+        self._start_page: int = self.START_PAGE_DEFAULT
+        self._end_page: int = self.END_PAGE_DEFAULT
 
         self._destination_documents: list[PDDocument] = []
         self._page_dict_map: dict[int, COSDictionary] = {}
@@ -111,46 +131,105 @@ class Splitter:
 
     # ---------- configuration ----------
 
-    def set_split_at_page(self, split: int) -> None:
+    def set_split_at_page(self, split: int) -> Splitter:
+        """Set the split granularity. Mirrors upstream
+        ``setSplitAtPage(int)`` — rejects ``split <= 0``. Returns ``self``
+        so callers can chain configuration calls."""
         if split <= 0:
             raise ValueError("Number of pages is smaller than one")
         self._split_length = split
+        return self
 
-    def set_split(self, split: int) -> None:
-        """Alias for :meth:`set_split_at_page`."""
-        self.set_split_at_page(split)
+    def set_split(self, split: int) -> Splitter:
+        """Alias for :meth:`set_split_at_page`. Returns ``self`` for
+        fluent chaining."""
+        return self.set_split_at_page(split)
 
-    def set_start_page(self, start: int) -> None:
+    def get_split_at_page(self) -> int:
+        """Return the configured split granularity. Defaults to
+        :attr:`DEFAULT_SPLIT_LENGTH` (= 1) when no setter has been called.
+        Upstream lacks this getter — surfaced here so callers and tests
+        don't need to read the private field directly."""
+        return self._split_length
+
+    def set_start_page(self, start: int) -> Splitter:
+        """Set the 1-based inclusive lower page bound. Mirrors upstream
+        ``setStartPage(int)`` — rejects ``start <= 0``. Returns ``self``
+        for fluent chaining."""
         if start <= 0:
             raise ValueError("Start page is smaller than one")
         self._start_page = start
+        return self
 
-    def set_end_page(self, end: int) -> None:
+    def get_start_page(self) -> int:
+        """Return the configured start page. Defaults to
+        :attr:`START_PAGE_DEFAULT` (= ``Integer.MIN_VALUE``) when no
+        setter has been called — use :meth:`has_start_page` to
+        distinguish "untouched" from "explicitly set"."""
+        return self._start_page
+
+    def has_start_page(self) -> bool:
+        """``True`` when :meth:`set_start_page` has been called with an
+        explicit value (i.e. the field is not the default sentinel).
+        Predicate helper that lets callers branch on "user supplied a
+        bound" vs "no clamp" without having to know the sentinel value."""
+        return self._start_page != self.START_PAGE_DEFAULT
+
+    def set_end_page(self, end: int) -> Splitter:
+        """Set the 1-based inclusive upper page bound. Mirrors upstream
+        ``setEndPage(int)`` — rejects ``end <= 0`` and ``end <
+        startPage`` (when start was explicitly set). Returns ``self``
+        for fluent chaining."""
         if end <= 0:
             raise ValueError("End page is smaller than one")
         if end < self._start_page:
             raise ValueError("End page is smaller than startPage")
         self._end_page = end
+        return self
+
+    def get_end_page(self) -> int:
+        """Return the configured end page. Defaults to
+        :attr:`END_PAGE_DEFAULT` (= ``Integer.MAX_VALUE``) when no
+        setter has been called — use :meth:`has_end_page` to
+        distinguish "untouched" from "explicitly set"."""
+        return self._end_page
+
+    def has_end_page(self) -> bool:
+        """``True`` when :meth:`set_end_page` has been called with an
+        explicit value (i.e. the field is not the default sentinel)."""
+        return self._end_page != self.END_PAGE_DEFAULT
 
     def get_stream_cache_create_function(self) -> Callable[[], Any] | None:
         return self._stream_cache_create_function
 
     def set_stream_cache_create_function(
         self, fn: Callable[[], Any] | None
-    ) -> None:
+    ) -> Splitter:
+        """Record the stream-cache factory used for new destination
+        documents. Returns ``self`` for fluent chaining."""
         self._stream_cache_create_function = fn
+        return self
+
+    def has_stream_cache_create_function(self) -> bool:
+        """``True`` when a stream-cache factory has been registered."""
+        return self._stream_cache_create_function is not None
 
     def set_memory_usage_setting(
         self, setting: MemoryUsageSetting | None
-    ) -> None:
+    ) -> Splitter:
         """Record a :class:`MemoryUsageSetting` for newly-created destination
         documents. Recorded only — destination ``PDDocument`` construction
         in this port does not yet thread the setting through (see
-        ``CHANGES.md``)."""
+        ``CHANGES.md``). Returns ``self`` for fluent chaining."""
         self._memory_usage_setting = setting
+        return self
 
     def get_memory_usage_setting(self) -> MemoryUsageSetting | None:
         return self._memory_usage_setting
+
+    def has_memory_usage_setting(self) -> bool:
+        """``True`` when a :class:`MemoryUsageSetting` has been registered."""
+        return self._memory_usage_setting is not None
 
     # ---------- core ----------
 
