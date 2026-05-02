@@ -42,6 +42,28 @@ class PDAnnotationStamp(PDAnnotationMarkup):
     NAME_SOLD: str = "Sold"
     NAME_TOP_SECRET: str = "TopSecret"
 
+    #: All 14 standard stamp icon names from Table 183 — the values a
+    #: conforming reader is required to recognise. Useful for validating
+    #: ``/Name`` against the spec set.
+    STANDARD_NAMES: frozenset[str] = frozenset(
+        {
+            NAME_APPROVED,
+            NAME_AS_IS,
+            NAME_CONFIDENTIAL,
+            NAME_DEPARTMENTAL,
+            NAME_DRAFT,
+            NAME_EXPERIMENTAL,
+            NAME_EXPIRED,
+            NAME_FINAL,
+            NAME_FOR_COMMENT,
+            NAME_FOR_PUBLIC_RELEASE,
+            NAME_NOT_APPROVED,
+            NAME_NOT_FOR_PUBLIC_RELEASE,
+            NAME_SOLD,
+            NAME_TOP_SECRET,
+        }
+    )
+
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
         if annotation_dict is None:
@@ -65,6 +87,17 @@ class PDAnnotationStamp(PDAnnotationMarkup):
 
     def setName(self, name: str | None) -> None:  # noqa: N802 - upstream Java name
         self.set_name(name)
+
+    def is_standard_name(self) -> bool:
+        """Return ``True`` if ``/Name`` is one of the 14 spec-defined icons.
+
+        Conforming readers (PDF 32000-1:2008 §12.5.6.14) must recognise the
+        icons in :data:`STANDARD_NAMES`; non-standard ``/Name`` values are
+        permitted but their appearance is reader-defined. The default
+        ``Draft`` (the spec default when ``/Name`` is absent) is treated as
+        standard.
+        """
+        return self.get_name() in self.STANDARD_NAMES
 
 
 __all__ = ["PDAnnotationStamp"]

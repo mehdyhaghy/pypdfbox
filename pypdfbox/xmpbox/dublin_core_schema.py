@@ -176,8 +176,17 @@ class DublinCoreSchema(XMPSchema):
     # title (LangAlt, Simple)
     # ================================================================
 
-    def set_title(self, value: str) -> None:
-        self.set_unqualified_language_property_value(self.TITLE, None, value)
+    def set_title(self, value: str, lang: str | None = None) -> None:
+        """
+        Set the title for the document.
+
+        Mirrors upstream's overloaded ``setTitle`` pair: ``setTitle(value)``
+        defaults the language qualifier to ``x-default``; ``setTitle(lang,
+        value)`` writes a specific language. The Python form merges both into
+        a single signature with optional ``lang`` — pass a language code to
+        target a specific entry in the title's lang-alt array.
+        """
+        self.set_unqualified_language_property_value(self.TITLE, lang, value)
 
     def set_title_lang(self, lang: str | None, value: str) -> None:
         # Upstream overload: ``setTitle(String lang, String value)``.
@@ -204,8 +213,15 @@ class DublinCoreSchema(XMPSchema):
     # description (LangAlt, Simple)
     # ================================================================
 
-    def set_description(self, value: str) -> None:
-        self.set_unqualified_language_property_value(self.DESCRIPTION, None, value)
+    def set_description(self, value: str, lang: str | None = None) -> None:
+        """
+        Set the description of the resource.
+
+        Mirrors upstream's overloaded ``setDescription`` / ``addDescription``
+        pair: with no ``lang`` the value is stored under ``x-default``; with
+        a ``lang`` the value is written under that language code.
+        """
+        self.set_unqualified_language_property_value(self.DESCRIPTION, lang, value)
 
     def add_description(self, lang: str | None, value: str) -> None:
         self.set_unqualified_language_property_value(self.DESCRIPTION, lang, value)
@@ -230,6 +246,19 @@ class DublinCoreSchema(XMPSchema):
 
     def add_rights(self, lang: str | None, value: str) -> None:
         """Mirror of upstream ``addRights(lang, value)``."""
+        self.set_unqualified_language_property_value(self.RIGHTS, lang, value)
+
+    def set_rights(self, value: str, lang: str | None = None) -> None:
+        """
+        Set the rights statement for the resource.
+
+        Symmetric with :meth:`set_title` / :meth:`set_description`: with no
+        ``lang`` the value is stored under ``x-default``; with a ``lang`` the
+        value is written under that specific language code. Upstream exposes
+        only ``addRights(lang, value)``; this convenience makes the default-
+        language path read naturally for callers porting code that uses the
+        title/description setters.
+        """
         self.set_unqualified_language_property_value(self.RIGHTS, lang, value)
 
     def get_rights(self, lang: str | None = None) -> str | None:

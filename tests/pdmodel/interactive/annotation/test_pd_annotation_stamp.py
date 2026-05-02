@@ -111,3 +111,61 @@ def test_stamp_factory_routes_via_rubber_stamp() -> None:
     ann = PDAnnotation.create(d)
     # Should be a /Stamp annotation, not Unknown
     assert ann.get_subtype() == "Stamp"
+
+
+# ---------- STANDARD_NAMES + is_standard_name ----------
+
+
+def test_stamp_standard_names_set_size_and_contents() -> None:
+    # PDF 32000-1:2008 Table 183 enumerates exactly 14 standard icons.
+    assert len(PDAnnotationStamp.STANDARD_NAMES) == 14
+    expected = {
+        "Approved",
+        "AsIs",
+        "Confidential",
+        "Departmental",
+        "Draft",
+        "Experimental",
+        "Expired",
+        "Final",
+        "ForComment",
+        "ForPublicRelease",
+        "NotApproved",
+        "NotForPublicRelease",
+        "Sold",
+        "TopSecret",
+    }
+    assert expected == PDAnnotationStamp.STANDARD_NAMES
+
+
+def test_stamp_standard_names_is_frozenset() -> None:
+    assert isinstance(PDAnnotationStamp.STANDARD_NAMES, frozenset)
+
+
+def test_stamp_is_standard_name_default_draft() -> None:
+    # Spec default (no /Name entry) is "Draft" — a standard icon.
+    ann = PDAnnotationStamp()
+    assert ann.is_standard_name() is True
+
+
+def test_stamp_is_standard_name_each_constant() -> None:
+    ann = PDAnnotationStamp()
+    for name in PDAnnotationStamp.STANDARD_NAMES:
+        ann.set_name(name)
+        assert ann.is_standard_name() is True, f"{name} should be standard"
+
+
+def test_stamp_is_standard_name_rejects_custom() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name("CompanyLogo")
+    assert ann.is_standard_name() is False
+    ann.set_name("approved")  # case-sensitive
+    assert ann.is_standard_name() is False
+
+
+def test_stamp_is_standard_name_after_clear_returns_true() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name("Custom")
+    assert ann.is_standard_name() is False
+    ann.set_name(None)  # falls back to NAME_DRAFT
+    assert ann.is_standard_name() is True

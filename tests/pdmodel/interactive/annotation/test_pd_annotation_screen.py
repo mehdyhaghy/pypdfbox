@@ -112,3 +112,40 @@ def test_factory_routes_to_screen() -> None:
     d.set_name(COSName.SUBTYPE, "Screen")  # type: ignore[attr-defined]
     ann = PDAnnotation.create(d)
     assert isinstance(ann, PDAnnotationScreen)
+
+
+# ---------- get_actions / set_actions (Widget-style /AA aliases) ----------
+
+
+def test_actions_alias_default_none() -> None:
+    assert PDAnnotationScreen().get_actions() is None
+
+
+def test_actions_alias_round_trip() -> None:
+    ann = PDAnnotationScreen()
+    aa = PDAnnotationAdditionalActions(COSDictionary())
+    ann.set_actions(aa)
+    got = ann.get_actions()
+    assert got is not None
+    assert got.get_cos_object() is aa.get_cos_object()
+    # Same backing /AA dict — both accessor pairs see it.
+    assert ann.get_additional_actions() is not None
+    assert ann.get_additional_actions().get_cos_object() is aa.get_cos_object()
+
+
+def test_actions_alias_clear() -> None:
+    ann = PDAnnotationScreen()
+    ann.set_actions(PDAnnotationAdditionalActions(COSDictionary()))
+    ann.set_actions(None)
+    assert ann.get_actions() is None
+    assert ann.get_additional_actions() is None
+
+
+def test_actions_alias_writes_through_to_long_name() -> None:
+    # Setting via the long-form name is observable via the short alias.
+    ann = PDAnnotationScreen()
+    aa = PDAnnotationAdditionalActions(COSDictionary())
+    ann.set_additional_actions(aa)
+    got = ann.get_actions()
+    assert got is not None
+    assert got.get_cos_object() is aa.get_cos_object()

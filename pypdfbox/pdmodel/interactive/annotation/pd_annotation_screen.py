@@ -110,5 +110,20 @@ class PDAnnotationScreen(PDAnnotation):
             aa.get_cos_object() if hasattr(aa, "get_cos_object") else aa,
         )
 
+    # Upstream ``PDAnnotationWidget`` exposes the ``/AA`` field through the
+    # shorter ``getActions``/``setActions`` pair. Mirror that naming on
+    # ``PDAnnotationScreen`` since both annotations carry the same trigger-
+    # event additional-action dictionary.
+
+    def get_actions(self) -> "PDAnnotationAdditionalActions | None":
+        """Alias for :meth:`get_additional_actions` matching upstream Widget."""
+        return self.get_additional_actions()
+
+    def set_actions(
+        self, actions: "PDAnnotationAdditionalActions | COSDictionary | None"
+    ) -> None:
+        """Alias for :meth:`set_additional_actions` matching upstream Widget."""
+        self.set_additional_actions(actions)
+
 
 __all__ = ["PDAnnotationScreen"]

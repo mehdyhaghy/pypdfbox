@@ -434,3 +434,75 @@ def test_create_text_type_round_trips_through_typed_setter() -> None:
     text = dc.create_text_type(DublinCoreSchema.SOURCE, "origin")
     dc.set_source_property(text)
     assert dc.get_source() == "origin"
+
+
+# ---------------------------------------------------------------------------
+# Overload-merging setters — set_title / set_description / set_rights accept
+# an optional ``lang`` kwarg (mirrors upstream's two-arg overloads).
+# ---------------------------------------------------------------------------
+
+
+def test_set_title_with_lang_kwarg_writes_specific_language() -> None:
+    """``set_title(value, lang=...)`` should write the value under the
+    specified language code, mirroring the Java overload
+    ``setTitle(lang, value)`` while keeping a Python-natural call site."""
+    dc = _dc()
+    dc.set_title("Hello")  # default — x-default
+    dc.set_title("Bonjour", lang="fr")  # specific language
+    dc.set_title("Hallo", lang="de")
+    assert dc.get_title() == "Hello"
+    assert dc.get_title("fr") == "Bonjour"
+    assert dc.get_title("de") == "Hallo"
+    langs = dc.get_title_languages() or []
+    assert "x-default" in langs
+    assert "fr" in langs
+    assert "de" in langs
+
+
+def test_set_title_default_lang_is_equivalent_to_set_title_lang_none() -> None:
+    """Calling ``set_title(value)`` without ``lang`` is identical to
+    ``set_title_lang(None, value)`` — preserves the back-compat surface."""
+    dc1 = _dc()
+    dc2 = _dc()
+    dc1.set_title("Title A")
+    dc2.set_title_lang(None, "Title A")
+    assert dc1.get_title() == dc2.get_title() == "Title A"
+
+
+def test_set_description_with_lang_kwarg() -> None:
+    """``set_description(value, lang=...)`` mirrors the upstream
+    ``addDescription(lang, value)`` overload while preserving the
+    one-arg default-language form."""
+    dc = _dc()
+    dc.set_description("desc")
+    dc.set_description("Beschreibung", lang="de")
+    dc.set_description("descripcion", lang="es")
+    assert dc.get_description() == "desc"
+    assert dc.get_description("de") == "Beschreibung"
+    assert dc.get_description("es") == "descripcion"
+
+
+def test_set_rights_default_and_localized() -> None:
+    """``set_rights`` is symmetric with ``set_title`` / ``set_description``:
+    no ``lang`` writes the default (x-default) entry; passing ``lang``
+    targets that language slot."""
+    dc = _dc()
+    dc.set_rights("All rights reserved")
+    dc.set_rights("Tous droits reserves", lang="fr")
+    assert dc.get_rights() == "All rights reserved"
+    assert dc.get_rights("fr") == "Tous droits reserves"
+    langs = dc.get_rights_languages() or []
+    assert "x-default" in langs
+    assert "fr" in langs
+
+
+def test_set_rights_overwrites_existing_default() -> None:
+    """A second ``set_rights`` call without ``lang`` overwrites the prior
+    default-language value rather than appending."""
+    dc = _dc()
+    dc.set_rights("v1")
+    dc.set_rights("v2")
+    assert dc.get_rights() == "v2"
+    # Only one language slot — x-default — should be present.
+    langs = dc.get_rights_languages() or []
+    assert langs == ["x-default"]
