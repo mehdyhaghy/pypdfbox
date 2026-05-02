@@ -206,6 +206,17 @@ class PDInlineImage:
                 return _DEVICEGRAY
         return cs
 
+    def get_color_space_cos_object(self) -> COSBase | None:
+        """Raw ``/CS`` (or long-form ``/ColorSpace`` fallback) value —
+        the underlying ``COSName`` or ``COSArray`` — without resolving
+        through :class:`PDColorSpace`. Mirrors
+        :meth:`PDImageXObject.get_color_space_cos_object`. Returns
+        ``None`` when neither key is present. Useful for callers that
+        want to inspect the COS shape (e.g. to detect ``/I`` /
+        ``/Indexed`` arrays) before paying the resolution cost.
+        """
+        return _two_key_object(self._parameters, _CS, _COLORSPACE)
+
     def get_color_space(self) -> PDColorSpace:
         cs = _two_key_object(self._parameters, _CS, _COLORSPACE)
         if cs is not None:
@@ -280,6 +291,26 @@ class PDInlineImage:
         self._parameters.set_item(_CS, base)
 
     # ---------- /F /Filter ----------
+
+    def get_filter_cos_object(self) -> COSBase | None:
+        """Raw ``/F`` (or long-form ``/Filter`` fallback) value — a
+        single ``COSName``, a ``COSArray`` of names, or ``None`` when
+        absent. Mirrors :meth:`PDImageXObject.get_filter`. Use
+        :meth:`get_filters` for the normalised ``list[str]`` form.
+        """
+        return _two_key_object(self._parameters, _F, _FILTER)
+
+    def has_filters(self) -> bool:
+        """``True`` when ``/F`` (or ``/Filter``) carries at least one
+        filter name. Convenience predicate parallel to
+        :meth:`PDImageXObject` callers that want to short-circuit
+        without building the filter-name list."""
+        value = _two_key_object(self._parameters, _F, _FILTER)
+        if isinstance(value, COSName):
+            return True
+        if isinstance(value, COSArray):
+            return any(isinstance(item, COSName) for item in value)
+        return False
 
     def get_filters(self) -> list[str]:
         """A (possibly empty) list of filter names applied to the raw
@@ -449,6 +480,26 @@ class PDInlineImage:
             filter_obj.decode(src, dst, self._parameters, index)
             current = dst.getvalue()
         return io.BytesIO(current)
+
+    # ---------- suffix predicates ----------
+
+    def is_jpeg(self) -> bool:
+        """``True`` when this inline image carries a ``DCTDecode``
+        (or short-form ``DCT``) filter — the JPEG payload form. Parallel
+        to :meth:`get_suffix` returning ``"jpg"`` but cheaper because no
+        suffix dispatch is needed."""
+        filters = self.get_filters()
+        return _DCT_DECODE in filters or _DCT_DECODE_ABBREVIATION in filters
+
+    def is_ccitt(self) -> bool:
+        """``True`` when this inline image carries a ``CCITTFaxDecode``
+        (or short-form ``CCF``) filter — the fax/T.6 payload form.
+        Parallel to :meth:`get_suffix` returning ``"tiff"``."""
+        filters = self.get_filters()
+        return (
+            _CCITTFAX_DECODE in filters
+            or _CCITTFAX_DECODE_ABBREVIATION in filters
+        )
 
     # ---------- suffix ----------
 

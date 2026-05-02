@@ -790,3 +790,152 @@ def test_set_rendering_intent_accepts_enum() -> None:
     assert gs.get_rendering_intent() is None
     assert gs.get_rendering_intent_typed() is None
     assert gs.get_cos_object().get_item("RI") is None
+
+
+# ---------- Wave 180: line cap / join constants ----------
+
+
+def test_line_cap_constants_match_spec_codes() -> None:
+    """PDF 32000-1 §8.4.3.3 (Table 54): /LC entry is 0/1/2 for
+    butt/round/projecting-square. Constants should match those codes
+    so downstream code can avoid magic numbers."""
+    assert PDExtendedGraphicsState.BUTT_CAP == 0
+    assert PDExtendedGraphicsState.ROUND_CAP == 1
+    assert PDExtendedGraphicsState.PROJECTING_SQUARE_CAP == 2
+
+
+def test_line_join_constants_match_spec_codes() -> None:
+    """PDF 32000-1 §8.4.3.4 (Table 55): /LJ entry is 0/1/2 for
+    miter/round/bevel."""
+    assert PDExtendedGraphicsState.MITER_JOIN == 0
+    assert PDExtendedGraphicsState.ROUND_JOIN == 1
+    assert PDExtendedGraphicsState.BEVEL_JOIN == 2
+
+
+def test_line_cap_constants_round_trip_through_setter() -> None:
+    """Setting and reading via the named constants stores the matching
+    integer code in the dictionary — i.e. constants are interchangeable
+    with their literal int values."""
+    gs = PDExtendedGraphicsState()
+    gs.set_line_cap_style(PDExtendedGraphicsState.PROJECTING_SQUARE_CAP)
+    assert gs.get_line_cap_style() == 2
+    assert gs.get_line_cap_style() == PDExtendedGraphicsState.PROJECTING_SQUARE_CAP
+
+
+def test_line_join_constants_round_trip_through_setter() -> None:
+    gs = PDExtendedGraphicsState()
+    gs.set_line_join_style(PDExtendedGraphicsState.BEVEL_JOIN)
+    assert gs.get_line_join_style() == 2
+    assert gs.get_line_join_style() == PDExtendedGraphicsState.BEVEL_JOIN
+
+
+# ---------- Wave 180: get_line_dash_pattern defensive shape check ----------
+
+
+def test_get_line_dash_pattern_returns_none_when_d_is_not_array() -> None:
+    """Upstream's getLineDashPattern silently returns null for any
+    malformed /D entry — the rest of the ExtGState dictionary stays
+    usable. We must mirror that defensive behaviour rather than raising."""
+    gs = PDExtendedGraphicsState()
+    gs.get_cos_object().set_name("D", "BadValue")
+    assert gs.get_line_dash_pattern() is None
+
+
+def test_get_line_dash_pattern_returns_none_when_size_not_two() -> None:
+    """Per PDF 32000-1 §8.4.3.6 the on-disk form is exactly
+    [dash_array, phase] (size 2). A wrong-size COSArray must be treated
+    as absent, matching upstream's ``dp.size() == 2`` guard."""
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    inner = COSArray()
+    inner.add(COSFloat(3.0))
+    arr.add(inner)
+    arr.add(COSFloat(0.0))
+    arr.add(COSName.get_pdf_name("Extra"))  # makes size 3
+    gs.get_cos_object().set_item("D", arr)
+    assert gs.get_line_dash_pattern() is None
+
+
+def test_get_line_dash_pattern_returns_none_when_inner_not_array() -> None:
+    """Upstream's instanceof guard rejects /D entries whose first slot
+    isn't a COSArray; ours must do the same instead of raising."""
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("BadInner"))
+    arr.add(COSFloat(0.0))
+    gs.get_cos_object().set_item("D", arr)
+    assert gs.get_line_dash_pattern() is None
+
+
+def test_get_line_dash_pattern_returns_none_when_phase_not_number() -> None:
+    """Upstream rejects entries whose phase slot isn't a COSNumber."""
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    inner = COSArray()
+    inner.add(COSFloat(3.0))
+    arr.add(inner)
+    arr.add(COSName.get_pdf_name("NotANumber"))
+    gs.get_cos_object().set_item("D", arr)
+    assert gs.get_line_dash_pattern() is None
+
+
+def test_get_line_dash_pattern_well_formed_round_trips() -> None:
+    """Sanity check: the defensive guards don't break the well-formed
+    case — a [[3, 2], 0] pattern still resolves to a typed wrapper."""
+    from pypdfbox.cos import COSInteger
+    from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
+
+    gs = PDExtendedGraphicsState()
+    arr = COSArray()
+    inner = COSArray()
+    inner.add(COSFloat(3.0))
+    inner.add(COSFloat(2.0))
+    arr.add(inner)
+    arr.add(COSInteger.get(0))
+    gs.get_cos_object().set_item("D", arr)
+    pattern = gs.get_line_dash_pattern()
+    assert isinstance(pattern, PDLineDashPattern)
+    assert pattern.get_dash_array() == [3.0, 2.0]
+    assert pattern.get_phase() == 0
+
+
+# ---------- Wave 180: copy_into_graphics_state TR / TR2 precedence ----------
+
+
+def test_copy_into_graphics_state_copies_transfer() -> None:
+    """When only /TR is present, copy_into_graphics_state should forward
+    the function to the target's set_transfer setter."""
+    gs = PDExtendedGraphicsState()
+    identity = COSName.get_pdf_name("Identity")
+    gs.set_transfer(identity)
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert target.get("transfer") is identity
+
+
+def test_copy_into_graphics_state_copies_transfer2() -> None:
+    """When only /TR2 is present, copy_into_graphics_state forwards
+    /TR2's value to set_transfer (upstream uses the same setter for
+    both — TR2 just carries the spec-allowed /Default name)."""
+    gs = PDExtendedGraphicsState()
+    default_name = COSName.get_pdf_name("Default")
+    gs.set_transfer2(default_name)
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert target.get("transfer") is default_name
+
+
+def test_copy_into_graphics_state_tr2_takes_precedence_over_tr() -> None:
+    """PDF 32000-1 §11.7.5.3: 'If both TR and TR2 are present in the
+    same graphics state parameter dictionary, TR2 shall take
+    precedence.' The /TR branch must skip when /TR2 is also present so
+    the /TR2 value wins regardless of dictionary key order."""
+    gs = PDExtendedGraphicsState()
+    tr_value = COSName.get_pdf_name("Identity")
+    tr2_value = COSName.get_pdf_name("Default")
+    gs.set_transfer(tr_value)
+    gs.set_transfer2(tr2_value)
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    # /TR2 wins — final value must be tr2_value, never tr_value.
+    assert target.get("transfer") is tr2_value

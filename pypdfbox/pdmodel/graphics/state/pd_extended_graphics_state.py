@@ -69,6 +69,20 @@ class PDExtendedGraphicsState:
     mapping. Soft mask / transfer function support is deferred.
     """
 
+    # ---------- line cap style codes (PDF 32000-1 §8.4.3.3, Table 54) ----------
+    # The integer values stored in the ``/LC`` entry. Provided as named
+    # constants so callers don't have to hard-code magic numbers — upstream
+    # PDFBox uses raw ints throughout, but the Pythonic spelling makes
+    # ``set_line_cap_style(PDExtendedGraphicsState.BUTT_CAP)`` self-documenting.
+    BUTT_CAP: int = 0
+    ROUND_CAP: int = 1
+    PROJECTING_SQUARE_CAP: int = 2
+
+    # ---------- line join style codes (PDF 32000-1 §8.4.3.4, Table 55) ----------
+    MITER_JOIN: int = 0
+    ROUND_JOIN: int = 1
+    BEVEL_JOIN: int = 2
+
     def __init__(
         self,
         dictionary: COSDictionary | None = None,
@@ -233,6 +247,20 @@ class PDExtendedGraphicsState:
                 self._copy_value(
                     graphics_state, "set_blend_mode", "blend_mode", self.get_blend_mode()
                 )
+            elif key == _TR:
+                # Per PDF 32000-1 §11.7.5.3: "If both TR and TR2 are present
+                # in the same graphics state parameter dictionary, TR2 shall
+                # take precedence." Skip /TR when /TR2 is also present so the
+                # /TR2 branch wins.
+                if self._dict.contains_key(_TR2):
+                    continue
+                self._copy_value(
+                    graphics_state, "set_transfer", "transfer", self.get_transfer()
+                )
+            elif key == _TR2:
+                self._copy_value(
+                    graphics_state, "set_transfer", "transfer", self.get_transfer2()
+                )
 
     @staticmethod
     def _copy_value(
@@ -337,9 +365,20 @@ class PDExtendedGraphicsState:
         from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 
         base = self._dict.get_dictionary_object(_D)
-        if isinstance(base, COSArray):
-            return PDLineDashPattern.from_cos_array(base)
-        return None
+        # Mirror upstream's defensive shape check: a malformed ``/D`` entry
+        # (size != 2, or wrong inner types) silently returns ``None`` rather
+        # than raising — PDF readers must tolerate broken ExtGState entries
+        # so the rest of the dictionary stays usable. PDFBox's
+        # ``getLineDashPattern`` returns ``null`` in exactly these cases.
+        if not isinstance(base, COSArray) or base.size() != 2:
+            return None
+        inner = base.get_object(0)
+        phase = base.get_object(1)
+        if not isinstance(inner, COSArray):
+            return None
+        if not isinstance(phase, COSNumber):
+            return None
+        return PDLineDashPattern.from_cos_array(base)
 
     def set_line_dash_pattern(
         self, dash_pattern: PDLineDashPattern | COSArray | None

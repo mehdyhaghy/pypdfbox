@@ -416,3 +416,211 @@ def test_get_decode_as_floats_returns_list_of_floats() -> None:
 def test_get_decode_as_floats_returns_none_when_absent() -> None:
     img = PDInlineImage(_basic_dict(), b"\x00", None)
     assert img.get_decode_as_floats() is None
+
+
+# ---------- /CS raw COS accessor ----------
+
+
+def test_get_color_space_cos_object_returns_short_name() -> None:
+    """Raw ``/CS`` access returns the COSName verbatim (no short→long
+    expansion). Mirrors :meth:`PDImageXObject.get_color_space_cos_object`."""
+    d = _basic_dict()
+    cs_name = COSName.get_pdf_name("RGB")
+    d.set_item(COSName.get_pdf_name("CS"), cs_name)
+    img = PDInlineImage(d, b"\x00", None)
+
+    raw = img.get_color_space_cos_object()
+    # Identity preserved — the short ``/RGB`` form is returned as-is so
+    # callers can distinguish abbreviated inline color spaces from the
+    # long form.
+    assert raw is cs_name
+    assert isinstance(raw, COSName)
+    assert raw.get_name() == "RGB"
+
+
+def test_get_color_space_cos_object_returns_long_name_when_only_long_set() -> None:
+    """Long-form ``/ColorSpace`` is the fallback when ``/CS`` is absent."""
+    d = _basic_dict()
+    long_name = COSName.get_pdf_name("DeviceRGB")
+    d.set_item(COSName.get_pdf_name("ColorSpace"), long_name)
+    img = PDInlineImage(d, b"\x00", None)
+
+    assert img.get_color_space_cos_object() is long_name
+
+
+def test_get_color_space_cos_object_returns_array_form() -> None:
+    """Array color spaces (e.g. ``[/I /DeviceRGB N <hex>]``) come back
+    intact — no copy and no short-form expansion."""
+    d = _basic_dict()
+    array = COSArray()
+    array.add(COSName.get_pdf_name("I"))
+    array.add(COSName.get_pdf_name("RGB"))
+    array.add(COSInteger.get(1))
+    d.set_item(COSName.get_pdf_name("CS"), array)
+    img = PDInlineImage(d, b"\x00", None)
+
+    raw = img.get_color_space_cos_object()
+    assert raw is array
+
+
+def test_get_color_space_cos_object_returns_none_when_absent() -> None:
+    img = PDInlineImage(_basic_dict(), b"\x00", None)
+    assert img.get_color_space_cos_object() is None
+
+
+# ---------- /F raw COS accessor + has_filters() ----------
+
+
+def test_get_filter_cos_object_returns_single_name() -> None:
+    d = _basic_dict()
+    name = COSName.get_pdf_name("FlateDecode")
+    d.set_item(COSName.get_pdf_name("F"), name)
+    img = PDInlineImage(d, zlib.compress(b""), None)
+
+    raw = img.get_filter_cos_object()
+    assert raw is name
+    assert isinstance(raw, COSName)
+
+
+def test_get_filter_cos_object_returns_array_form() -> None:
+    d = _basic_dict()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("ASCIIHexDecode"))
+    arr.add(COSName.get_pdf_name("FlateDecode"))
+    d.set_item(COSName.get_pdf_name("F"), arr)
+    payload = zlib.compress(b"foo").hex().encode("ascii") + b">"
+    img = PDInlineImage(d, payload, None)
+
+    assert img.get_filter_cos_object() is arr
+
+
+def test_get_filter_cos_object_long_form_fallback() -> None:
+    """``/Filter`` (long form) is the fallback when ``/F`` is absent."""
+    d = _basic_dict()
+    name = COSName.get_pdf_name("FlateDecode")
+    d.set_item(COSName.get_pdf_name("Filter"), name)
+    img = PDInlineImage(d, zlib.compress(b""), None)
+
+    assert img.get_filter_cos_object() is name
+
+
+def test_get_filter_cos_object_returns_none_when_absent() -> None:
+    img = PDInlineImage(_basic_dict(), b"", None)
+    assert img.get_filter_cos_object() is None
+
+
+def test_has_filters_false_when_no_filter_entry() -> None:
+    img = PDInlineImage(_basic_dict(), b"", None)
+    assert img.has_filters() is False
+
+
+def test_has_filters_true_for_single_name() -> None:
+    d = _basic_dict()
+    d.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("FlateDecode"))
+    img = PDInlineImage(d, zlib.compress(b""), None)
+    assert img.has_filters() is True
+
+
+def test_has_filters_true_for_non_empty_array() -> None:
+    d = _basic_dict()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("FlateDecode"))
+    d.set_item(COSName.get_pdf_name("F"), arr)
+    img = PDInlineImage(d, zlib.compress(b""), None)
+    assert img.has_filters() is True
+
+
+def test_has_filters_false_for_empty_array() -> None:
+    """An empty ``/F`` array — pathological but seen in malformed PDFs —
+    must report no filters rather than raising."""
+    d = _basic_dict()
+    d.set_item(COSName.get_pdf_name("F"), COSArray())
+    img = PDInlineImage(d, b"", None)
+    assert img.has_filters() is False
+    # Mirror cross-check: get_filters() also reports an empty list.
+    assert img.get_filters() == []
+
+
+# ---------- is_jpeg / is_ccitt predicates ----------
+
+
+def test_is_jpeg_true_for_long_dct_decode() -> None:
+    d = _basic_dict()
+    d.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("DCTDecode"))
+    # Bypass the actual filter pipeline — predicate lookup is metadata-only.
+    img = PDInlineImage.__new__(PDInlineImage)
+    img._parameters = d
+    img._resources = None
+    img._raw_data = b""
+    img._decoded_data = b""
+    assert img.is_jpeg() is True
+    assert img.is_ccitt() is False
+
+
+def test_is_jpeg_true_for_short_dct_abbreviation() -> None:
+    d = _basic_dict()
+    d.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("DCT"))
+    img = PDInlineImage.__new__(PDInlineImage)
+    img._parameters = d
+    img._resources = None
+    img._raw_data = b""
+    img._decoded_data = b""
+    assert img.is_jpeg() is True
+
+
+def test_is_jpeg_false_when_no_filters() -> None:
+    img = PDInlineImage(_basic_dict(), b"\x00", None)
+    assert img.is_jpeg() is False
+    assert img.is_ccitt() is False
+
+
+def test_is_ccitt_true_for_long_name() -> None:
+    d = _basic_dict()
+    d.set_item(
+        COSName.get_pdf_name("F"), COSName.get_pdf_name("CCITTFaxDecode")
+    )
+    img = PDInlineImage.__new__(PDInlineImage)
+    img._parameters = d
+    img._resources = None
+    img._raw_data = b""
+    img._decoded_data = b""
+    assert img.is_ccitt() is True
+    assert img.is_jpeg() is False
+
+
+def test_is_ccitt_true_for_short_abbreviation() -> None:
+    d = _basic_dict()
+    d.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("CCF"))
+    img = PDInlineImage.__new__(PDInlineImage)
+    img._parameters = d
+    img._resources = None
+    img._raw_data = b""
+    img._decoded_data = b""
+    assert img.is_ccitt() is True
+
+
+def test_is_jpeg_with_flate_returns_false() -> None:
+    """A plain FlateDecode inline image is neither JPEG nor CCITT."""
+    d = _basic_dict()
+    d.set_item(COSName.get_pdf_name("F"), COSName.get_pdf_name("FlateDecode"))
+    img = PDInlineImage(d, zlib.compress(b""), None)
+    assert img.is_jpeg() is False
+    assert img.is_ccitt() is False
+    # Suffix dispatch agrees — png is the default for non-JPEG/non-CCITT.
+    assert img.get_suffix() == "png"
+
+
+def test_is_jpeg_inside_filter_chain() -> None:
+    """A multi-filter chain that includes DCTDecode still classifies as
+    JPEG — the predicate matches if any filter in the chain is DCT."""
+    d = _basic_dict()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("ASCIIHexDecode"))
+    arr.add(COSName.get_pdf_name("DCTDecode"))
+    d.set_item(COSName.get_pdf_name("F"), arr)
+    img = PDInlineImage.__new__(PDInlineImage)
+    img._parameters = d
+    img._resources = None
+    img._raw_data = b""
+    img._decoded_data = b""
+    assert img.is_jpeg() is True
