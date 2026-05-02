@@ -320,3 +320,145 @@ def test_contains_operator_on_flat_node() -> None:
     assert 1 in tree
     assert 2 in tree
     assert 99 not in tree
+
+
+# ---------- Wave 197 round-out: predicates, value_type, remove_*, merge ----------
+
+
+def test_has_numbers_predicate() -> None:
+    flat = _IntNumberTreeNode()
+    assert flat.has_numbers() is False
+    flat.set_numbers({1: 10})
+    assert flat.has_numbers() is True
+    flat.set_numbers(None)
+    assert flat.has_numbers() is False
+
+
+def test_has_kids_predicate() -> None:
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({1: 10})
+    root = _IntNumberTreeNode()
+    assert root.has_kids() is False
+    root.set_kids([leaf])
+    assert root.has_kids() is True
+    # When the root carries /Kids, /Nums must be absent (already exercised
+    # elsewhere) and has_numbers should reflect it.
+    assert root.has_numbers() is False
+
+
+def test_has_predicates_independent_of_each_other() -> None:
+    # An empty fresh node has neither /Kids nor /Nums.
+    empty = _IntNumberTreeNode()
+    assert empty.has_kids() is False
+    assert empty.has_numbers() is False
+
+
+def test_get_value_type_default_is_none() -> None:
+    tree = _IntNumberTreeNode()
+    # Default ctor never passes ``value_type`` → exposed as None.
+    assert tree.get_value_type() is None
+
+
+def test_get_value_type_round_trip() -> None:
+    class _Marker:
+        pass
+
+    tree = _IntNumberTreeNode(value_type=_Marker)
+    assert tree.get_value_type() is _Marker
+
+
+def test_remove_numbers_clears_entries() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10, 2: 20})
+    assert tree.has_numbers() is True
+    tree.remove_numbers()
+    assert tree.has_numbers() is False
+    assert tree.get_cos_object().get_dictionary_object(_NUMS) is None
+    assert tree.get_cos_object().get_dictionary_object(_LIMITS) is None
+    # Calling on an already-empty node must be a no-op.
+    tree.remove_numbers()
+    assert tree.has_numbers() is False
+
+
+def test_remove_kids_clears_entries() -> None:
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({1: 10})
+    root = _IntNumberTreeNode()
+    root.set_kids([leaf])
+    assert root.has_kids() is True
+    root.remove_kids()
+    assert root.has_kids() is False
+    assert root.get_cos_object().get_dictionary_object(_KIDS) is None
+    assert root.get_cos_object().get_dictionary_object(_LIMITS) is None
+
+
+def test_remove_numbers_notifies_parent() -> None:
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({5: 50, 10: 100})
+    root = _IntNumberTreeNode()
+    root.set_kids([leaf])
+    # Parent picks up leaf's limits via _calculate_limits chain.
+    assert leaf.get_lower_limit() == 5
+    assert leaf.get_upper_limit() == 10
+
+    leaf.remove_numbers()
+    # After removing leaf's numbers, the leaf's own /Limits is gone.
+    assert leaf.get_lower_limit() is None
+    assert leaf.get_upper_limit() is None
+
+
+def test_merge_with_dict_combines_values() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10, 2: 20})
+    tree.merge({3: 30, 4: 40})
+    assert tree.get_numbers() == {1: 10, 2: 20, 3: 30, 4: 40}
+
+
+def test_merge_with_other_node_combines_values() -> None:
+    a = _IntNumberTreeNode()
+    a.set_numbers({1: 10, 2: 20})
+
+    b = _IntNumberTreeNode()
+    b.set_numbers({3: 30, 4: 40})
+
+    a.merge(b)
+    assert a.get_numbers() == {1: 10, 2: 20, 3: 30, 4: 40}
+
+
+def test_merge_overwrites_on_key_collision() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10, 2: 20})
+    tree.merge({2: 999, 3: 30})
+    assert tree.get_numbers() == {1: 10, 2: 999, 3: 30}
+
+
+def test_merge_none_is_noop() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10})
+    tree.merge(None)
+    assert tree.get_numbers() == {1: 10}
+
+
+def test_merge_empty_dict_is_noop() -> None:
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({1: 10})
+    tree.merge({})
+    assert tree.get_numbers() == {1: 10}
+
+
+def test_merge_into_empty_node() -> None:
+    tree = _IntNumberTreeNode()
+    tree.merge({1: 10, 2: 20})
+    assert tree.get_numbers() == {1: 10, 2: 20}
+
+
+def test_merge_rebalances_into_kids_above_threshold() -> None:
+    # Merging in enough entries to cross _MAX_NUMS (64) flips the root
+    # from leaf-shape to kids-shape, mirroring set_numbers behaviour.
+    tree = _IntNumberTreeNode()
+    tree.set_numbers({i: i * 10 for i in range(40)})
+    tree.merge({i: i * 10 for i in range(40, 130)})
+    # Root must now be in kids-shape.
+    assert tree.has_numbers() is False
+    assert tree.has_kids() is True
+    assert tree.get_numbers() == {i: i * 10 for i in range(130)}

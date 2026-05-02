@@ -97,6 +97,23 @@ class FontMetrics:
 
     # ---------- character lookups ----------
 
+    def get_char_metric(self, name: str) -> CharMetric | None:
+        """Look up the :class:`CharMetric` for glyph ``name``.
+
+        Convenience wrapper over the internal name -> metric map populated
+        by :meth:`add_char_metric` / :meth:`set_char_metrics`. Returns
+        ``None`` when the glyph is unknown or when ``name`` is ``None``.
+        """
+        if name is None:
+            return None
+        return self._char_metrics_map.get(name)
+
+    def has_char_metric(self, name: str) -> bool:
+        """``True`` when a :class:`CharMetric` exists for glyph ``name``."""
+        if name is None:
+            return False
+        return name in self._char_metrics_map
+
     def get_character_width(self, name: str) -> float:
         """Width (``WX``) of glyph ``name``; ``0.0`` if not present."""
         metric = self._char_metrics_map.get(name)
@@ -183,6 +200,10 @@ class FontMetrics:
     def set_font_b_box(self, value: BoundingBox | None) -> None:
         self._font_b_box = value
 
+    def has_font_b_box(self) -> bool:
+        """``True`` when a ``FontBBox`` directive has been recorded."""
+        return self._font_b_box is not None
+
     def get_font_version(self) -> str | None:
         return self._font_version
 
@@ -242,6 +263,10 @@ class FontMetrics:
         self._v_vector = (
             None if value is None else (float(value[0]), float(value[1]))
         )
+
+    def has_v_vector(self) -> bool:
+        """``True`` when a ``VVector`` directive has been recorded."""
+        return self._v_vector is not None
 
     def get_is_fixed_v(self) -> bool:
         # Match upstream: when not explicitly set, default depends on whether
@@ -308,6 +333,10 @@ class FontMetrics:
         self._char_width = (
             None if value is None else (float(value[0]), float(value[1]))
         )
+
+    def has_char_width(self) -> bool:
+        """``True`` when a ``CharWidth`` directive has been recorded."""
+        return self._char_width is not None
 
     def get_is_fixed_pitch(self) -> bool:
         return self._is_fixed_pitch
@@ -382,3 +411,17 @@ class FontMetrics:
 
     def add_kern_pair1(self, kern_pair: KernPair) -> None:
         self._kern_pairs1.append(kern_pair)
+
+    def get_total_kern_pair_count(self) -> int:
+        """Total number of kern pairs across all three lists.
+
+        Sum of :meth:`get_kern_pairs`, :meth:`get_kern_pairs0`, and
+        :meth:`get_kern_pairs1` lengths. Convenience helper not present
+        upstream; useful for parity diagnostics where the writing
+        direction of a kern pair is not under test.
+        """
+        return (
+            len(self._kern_pairs)
+            + len(self._kern_pairs0)
+            + len(self._kern_pairs1)
+        )

@@ -34,9 +34,19 @@ class PDNumberTreeNode[T](ABC):
     ``create_child_node``.
     """
 
-    def __init__(self, node: COSDictionary | None = None) -> None:
+    def __init__(
+        self,
+        node: COSDictionary | None = None,
+        value_type: type | None = None,
+    ) -> None:
         self._node: COSDictionary = node if node is not None else COSDictionary()
         self._parent: PDNumberTreeNode[T] | None = None
+        # Mirrors PDFBox's ``Class<? extends COSObjectable> valueType``
+        # constructor parameter. Concrete subclasses already pin ``T``;
+        # the field is exposed so dynamic factories that build typed
+        # number trees from a raw COSDictionary can inspect the leaf
+        # value class without re-deriving it.
+        self._value_type: type | None = value_type
 
     # ---------- COS plumbing ----------
 
@@ -54,6 +64,34 @@ class PDNumberTreeNode[T](ABC):
 
     def is_root_node(self) -> bool:
         return self._parent is None
+
+    # ---------- value type plumbing ----------
+
+    def get_value_type(self) -> type | None:
+        """The ``Class<? extends COSObjectable>`` PDFBox stores at
+        construction. Concrete subclasses pin ``T`` and may safely
+        return ``None`` here; the value is purely informational and
+        is never inspected by the base class behaviour.
+
+        Mirrors :meth:`PDNameTreeNode.get_value_type`.
+        """
+        return self._value_type
+
+    # ---------- structural predicates ----------
+
+    def has_numbers(self) -> bool:
+        """``True`` when this node carries a leaf ``/Nums`` entry.
+
+        A leaf node has ``/Nums`` (and possibly ``/Limits``); an
+        intermediate node has ``/Kids`` (and possibly ``/Limits``).
+        Useful for callers that want to inspect the on-disk shape
+        before reaching into the (potentially expensive) flatten /
+        descent paths."""
+        return isinstance(self._node.get_dictionary_object(_NUMS), COSArray)
+
+    def has_kids(self) -> bool:
+        """``True`` when this node carries a ``/Kids`` entry."""
+        return isinstance(self._node.get_dictionary_object(_KIDS), COSArray)
 
     # ---------- subclass extension points ----------
 
@@ -198,6 +236,49 @@ class PDNumberTreeNode[T](ABC):
             # ``True in tree`` case explicitly.
             return False
         return self.get_value(index) is not None
+
+    # ---------- removal & merge helpers ----------
+
+    def remove_numbers(self) -> None:
+        """Drop the ``/Nums`` and ``/Limits`` entries from this node.
+
+        Equivalent to ``set_numbers(None)``; provided as a verb-shaped
+        helper for parity with :meth:`PDNameTreeNode.remove_names` and
+        for callers that want a no-arg cleanup without re-running the
+        sort/limit-write logic."""
+        self._node.remove_item(_NUMS)
+        self._node.remove_item(_LIMITS)
+        self._notify_parent_limits_changed()
+
+    def remove_kids(self) -> None:
+        """Drop the ``/Kids`` and ``/Limits`` entries from this node.
+
+        Mirrors :meth:`PDNameTreeNode.remove_kids`."""
+        self._node.remove_item(_KIDS)
+        self._node.remove_item(_LIMITS)
+        self._notify_parent_limits_changed()
+
+    def merge(self, other: PDNumberTreeNode[T] | dict[int, T] | None) -> None:
+        """Merge ``other`` into this node, overwriting on key collisions.
+
+        Accepts either another ``PDNumberTreeNode`` (whose flattened
+        index-to-value mapping is read via ``get_numbers``) or a plain
+        ``dict[int, T]``. The result is rebalanced through
+        ``set_numbers``, which preserves the leaf-vs-kids decision based
+        on cardinality.
+
+        Mirrors :meth:`PDNameTreeNode.merge`."""
+        if other is None:
+            return
+        if isinstance(other, PDNumberTreeNode):
+            other_numbers = other.get_numbers() or {}
+        else:
+            other_numbers = dict(other)
+        if not other_numbers:
+            return
+        existing = self.get_numbers() or {}
+        existing.update(other_numbers)
+        self.set_numbers(existing)
 
     # ---------- /Limits ----------
 
