@@ -922,3 +922,65 @@ def test_remove_kid_object_reference_removes_objr_kid() -> None:
 def test_remove_kid_object_reference_silent_on_none() -> None:
     parent = PDStructureElement(structure_type="P")
     assert parent.remove_kid_object_reference(None) is False
+
+
+# ---------- iter_kid_elements / count_kids / clear_kids / get_role_map ----
+
+
+def test_iter_kid_elements_filters_to_struct_elements() -> None:
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_object_reference import (
+        PDObjectReference,
+    )
+
+    parent = PDStructureElement(structure_type="Sect")
+    child_a = PDStructureElement(structure_type="P")
+    child_b = PDStructureElement(structure_type="H1")
+    objr = PDObjectReference()
+    parent.append_kid_element(child_a)
+    parent.append_kid_object_reference(objr)
+    parent.append_kid_mcid(7)
+    parent.append_kid_element(child_b)
+
+    got = list(parent.iter_kid_elements())
+    assert len(got) == 2
+    assert all(isinstance(g, PDStructureElement) for g in got)
+    got_cos = [g.get_cos_object() for g in got]
+    assert got_cos == [child_a.get_cos_object(), child_b.get_cos_object()]
+
+
+def test_iter_kid_elements_empty_when_no_struct_element_kids() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(0)
+    assert list(parent.iter_kid_elements()) == []
+
+
+def test_count_kids_matches_get_kids_length() -> None:
+    parent = PDStructureElement(structure_type="P")
+    assert parent.count_kids() == 0
+    parent.append_kid_mcid(0)
+    parent.append_kid_mcid(1)
+    parent.append_kid_mcid(2)
+    assert parent.count_kids() == 3
+    assert parent.count_kids() == len(parent.get_kids())
+
+
+def test_clear_kids_removes_k_entry() -> None:
+    parent = PDStructureElement(structure_type="P")
+    parent.append_kid_mcid(0)
+    parent.append_kid_mcid(1)
+    assert parent.count_kids() == 2
+    parent.clear_kids()
+    assert parent.count_kids() == 0
+    assert parent.get_cos_object().get_dictionary_object(COSName.get_pdf_name("K")) is None
+
+
+def test_get_role_map_returns_role_map_when_root_reachable() -> None:
+    root = _make_root_with_role_map({"MyHeader": "H1", "MyPara": "P"})
+    elem = PDStructureElement(structure_type="MyHeader")
+    elem.get_cos_object().set_item(_P, root)
+    assert elem.get_role_map() == {"MyHeader": "H1", "MyPara": "P"}
+
+
+def test_get_role_map_empty_when_no_root() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.get_role_map() == {}

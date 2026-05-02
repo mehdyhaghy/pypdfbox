@@ -766,6 +766,54 @@ class PDStructureElement(PDStructureNode):
             if isinstance(kid, PDObjectReference):
                 yield kid
 
+    def iter_kid_elements(self) -> Iterator[PDStructureElement]:
+        """Yield direct ``/K`` kids that are :class:`PDStructureElement`.
+
+        pypdfbox addition: complements :meth:`iter_object_references` and
+        :meth:`get_marked_content_references` so callers can filter the
+        mixed ``/K`` list by kind without writing the ``isinstance`` check
+        themselves. Non-recursive — use :meth:`iter_descendants` for the
+        full sub-tree.
+        """
+        for kid in self.get_kids():
+            if isinstance(kid, PDStructureElement):
+                yield kid
+
+    # ---------- /K convenience helpers (pypdfbox additions) ----------
+
+    def count_kids(self) -> int:
+        """Return the number of direct ``/K`` kids.
+
+        pypdfbox addition: thin wrapper over ``len(get_kids())`` for callers
+        that prefer an accessor over the list-builder. Mirrors common Java
+        ``size()`` idioms without forcing the kid list to be materialised
+        twice on the caller side.
+        """
+        return len(self.get_kids())
+
+    def clear_kids(self) -> None:
+        """Remove the ``/K`` entry entirely.
+
+        pypdfbox addition: ``set_kids(None)`` is the upstream-aligned way
+        to drop the slot, but calling it ``clear_kids`` reads better at
+        call sites that are unsetting (rather than replacing) the kid
+        list. Purely additive — delegates to :meth:`set_kids`.
+        """
+        self.set_kids(None)
+
+    def get_role_map(self) -> dict[str, str]:
+        """Return the structure tree root's ``/RoleMap`` reachable from
+        this element as a ``{name: name}`` dict.
+
+        Mirrors upstream ``PDStructureElement.getRoleMap()`` (private in
+        Java; lifted to public here because pypdfbox callers commonly
+        want to inspect the role map without re-walking the parent
+        chain themselves). Returns an empty dict when no
+        ``StructTreeRoot`` ancestor is reachable or it has no
+        ``/RoleMap``.
+        """
+        return self._find_role_map()
+
     def get_marked_content_references(self) -> list[Any]:
         """Return the direct marked-content references of this element.
 

@@ -902,3 +902,194 @@ def test_set_oc_properties_accepts_raw_cos_dictionary() -> None:
     )
     assert stored is raw_oc
     assert doc.get_version() == 1.5
+
+
+# ---------- /NeedsRendering ----------
+
+
+def test_needs_rendering_defaults_to_false_when_absent() -> None:
+    """``/NeedsRendering`` is optional (PDF 32000-1 §7.7.3.4 Table 28); when
+    omitted the implicit default is ``False``."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.is_needs_rendering() is False
+    assert COSName.get_pdf_name("NeedsRendering") not in cat
+
+
+def test_needs_rendering_round_trip() -> None:
+    """``set_needs_rendering(True)`` writes the boolean entry; reading
+    it back returns ``True``. Setting it to ``False`` keeps the entry
+    explicitly written so producers can distinguish "explicitly off"
+    from "absent"."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    cat.set_needs_rendering(True)
+    assert cat.is_needs_rendering() is True
+    assert (
+        cat.get_cos_object().get_boolean(
+            COSName.get_pdf_name("NeedsRendering"), False
+        )
+        is True
+    )
+
+    cat.set_needs_rendering(False)
+    assert cat.is_needs_rendering() is False
+    assert COSName.get_pdf_name("NeedsRendering") in cat
+
+
+def test_needs_rendering_set_none_removes_entry() -> None:
+    """Passing ``None`` removes the entry entirely (back to implicit
+    default)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_needs_rendering(True)
+    assert COSName.get_pdf_name("NeedsRendering") in cat
+
+    cat.set_needs_rendering(None)
+    assert COSName.get_pdf_name("NeedsRendering") not in cat
+    assert cat.is_needs_rendering() is False
+
+
+# ---------- /OCProperties long-form alias ----------
+
+
+def test_get_optional_content_properties_alias_matches_get_oc_properties() -> None:
+    """``get_optional_content_properties`` is a long-form alias —
+    delegates to :meth:`get_oc_properties` and returns a wrapper around
+    the same backing :class:`COSDictionary`."""
+    from pypdfbox.pdmodel.graphics.optionalcontent import (
+        PDOptionalContentProperties,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_optional_content_properties() is None
+
+    raw = COSDictionary()
+    cat.get_cos_object().set_item(COSName.get_pdf_name("OCProperties"), raw)
+    fetched = cat.get_optional_content_properties()
+    assert isinstance(fetched, PDOptionalContentProperties)
+    assert fetched.get_cos_object() is raw
+    via_short = cat.get_oc_properties()
+    assert via_short.get_cos_object() is fetched.get_cos_object()
+
+
+def test_set_optional_content_properties_alias_bumps_version() -> None:
+    """``set_optional_content_properties`` shares the version-bump side
+    effect — optional content groups require PDF 1.5 (matches upstream
+    ``setOCProperties``)."""
+    from pypdfbox.pdmodel.graphics.optionalcontent import (
+        PDOptionalContentProperties,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    doc.set_version(1.4)
+
+    props = PDOptionalContentProperties()
+    cat.set_optional_content_properties(props)
+    assert doc.get_version() == 1.5
+    assert cat.get_optional_content_properties() is not None
+
+    cat.set_optional_content_properties(None)
+    assert cat.get_optional_content_properties() is None
+
+
+# ---------- /URI /Base catalog-level shortcut ----------
+
+
+def test_get_base_uri_absent_returns_none() -> None:
+    """``/URI`` absent → ``None``; ``/URI`` present without ``/Base`` →
+    ``None``."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_base_uri() is None
+
+    # /URI present but empty.
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("URI"), COSDictionary()
+    )
+    assert cat.get_base_uri() is None
+
+
+def test_set_base_uri_creates_uri_dict_on_demand() -> None:
+    """Writing ``/URI /Base`` materialises the ``/URI`` sub-dictionary
+    on the catalog when absent — mirrors the
+    :meth:`set_document_marked` style auto-create behaviour."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert COSName.get_pdf_name("URI") not in cat
+
+    cat.set_base_uri("https://example.com/")
+    assert cat.get_base_uri() == "https://example.com/"
+    uri_dict = cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("URI")
+    )
+    assert isinstance(uri_dict, COSDictionary)
+    assert uri_dict.get_string("Base") == "https://example.com/"
+
+
+def test_set_base_uri_round_trip_with_existing_uri_dict() -> None:
+    """Writing ``/URI /Base`` reuses the existing ``/URI`` sub-dictionary
+    rather than replacing it — preserves any sibling entries some
+    producers attach (PDF 32000-1 §12.6.4.7 only defines ``/Base`` but
+    leaves the dictionary extensible)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    existing = COSDictionary()
+    existing.set_string("Custom", "keep-me")
+    cat.get_cos_object().set_item(COSName.get_pdf_name("URI"), existing)
+
+    cat.set_base_uri("https://pdf.example/")
+    fetched = cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("URI")
+    )
+    assert fetched is existing  # not replaced
+    assert fetched.get_string("Base") == "https://pdf.example/"
+    assert fetched.get_string("Custom") == "keep-me"
+
+
+def test_set_base_uri_none_clears_base_and_removes_empty_uri_dict() -> None:
+    """Setting ``/Base`` to ``None`` clears just that entry; if the
+    ``/URI`` dictionary becomes empty as a result it is removed from the
+    catalog so the catalog stays minimal."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_base_uri("https://example.com/")
+    assert COSName.get_pdf_name("URI") in cat
+
+    cat.set_base_uri(None)
+    assert cat.get_base_uri() is None
+    assert COSName.get_pdf_name("URI") not in cat
+
+
+def test_set_base_uri_none_preserves_non_empty_uri_dict() -> None:
+    """If sibling entries remain after clearing ``/Base``, the ``/URI``
+    dictionary is left in place (only the ``/Base`` key is removed)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_base_uri("https://example.com/")
+    uri_dict = cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("URI")
+    )
+    assert isinstance(uri_dict, COSDictionary)
+    uri_dict.set_string("Custom", "stay")
+
+    cat.set_base_uri(None)
+    assert cat.get_base_uri() is None
+    fetched = cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("URI")
+    )
+    assert isinstance(fetched, COSDictionary)
+    assert fetched.get_string("Custom") == "stay"
+
+
+def test_set_base_uri_none_when_uri_absent_is_a_noop() -> None:
+    """Clearing ``/Base`` when ``/URI`` is absent is a no-op (no fresh
+    dictionary materialised)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert COSName.get_pdf_name("URI") not in cat
+    cat.set_base_uri(None)
+    assert COSName.get_pdf_name("URI") not in cat

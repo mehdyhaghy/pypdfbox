@@ -44,6 +44,7 @@ _URI: COSName = COSName.get_pdf_name("URI")
 _REQUIREMENTS: COSName = COSName.get_pdf_name("Requirements")
 _AF: COSName = COSName.get_pdf_name("AF")
 _PIECE_INFO: COSName = COSName.get_pdf_name("PieceInfo")
+_NEEDS_RENDERING: COSName = COSName.get_pdf_name("NeedsRendering")
 
 
 class PDDocumentCatalog:
@@ -967,6 +968,79 @@ class PDDocumentCatalog:
             self._catalog.remove_item(_PIECE_INFO)
             return
         self._catalog.set_item(_PIECE_INFO, piece_info)
+
+    # ---------- /NeedsRendering (PDF 1.7+, §7.7.3.4 Table 28) ----------
+
+    def is_needs_rendering(self) -> bool:
+        """Return the catalog's ``/NeedsRendering`` flag (PDF 32000-1
+        §7.7.3.4 Table 28; PDF 1.7+).
+
+        ``True`` indicates that the document, when consumed by an XFA-aware
+        viewer, must regenerate its appearance from the form data before
+        being displayed (Forms Architecture / dynamic XFA). Defaults to
+        ``False`` when the entry is absent — matches the upstream PDF spec
+        default. Upstream PDFBox does not yet surface this flag; pypdfbox
+        ports it for forward parity (PDF 4.x line and PDF 2.0 ISO 32000-2
+        §7.7.2 retain the entry)."""
+        return self._catalog.get_boolean(_NEEDS_RENDERING, False)
+
+    def set_needs_rendering(self, needs_rendering: bool | None) -> None:
+        """Write the catalog's ``/NeedsRendering`` flag. Pass ``None`` to
+        remove the entry entirely (returns to the implicit default)."""
+        if needs_rendering is None:
+            self._catalog.remove_item(_NEEDS_RENDERING)
+            return
+        self._catalog.set_boolean(_NEEDS_RENDERING, needs_rendering)
+
+    # ---------- /OCProperties long-form alias ----------
+
+    def get_optional_content_properties(self) -> Any:
+        """Long-form alias for :meth:`get_oc_properties`. Mirrors the
+        spec name ("Optional Content Properties Dictionary",
+        PDF 32000-1 §8.11.4) for callers preferring the descriptive
+        spelling over the abbreviated upstream ``getOCProperties``."""
+        return self.get_oc_properties()
+
+    def set_optional_content_properties(self, oc_properties: Any) -> None:
+        """Long-form alias for :meth:`set_oc_properties`. Same side
+        effects (auto-bumps document version to 1.5 when ``oc_properties``
+        is non-``None``)."""
+        self.set_oc_properties(oc_properties)
+
+    # ---------- /URI /Base catalog-level shortcut ----------
+
+    def get_base_uri(self) -> str | None:
+        """Return the catalog's ``/URI /Base`` string, or ``None`` when
+        either ``/URI`` or ``/URI /Base`` is absent.
+
+        Catalog-level shortcut that reads the ``/Base`` entry inside the
+        ``/URI`` sub-dictionary (PDF 32000-1 §12.6.4.7). Mirrors the
+        :meth:`is_document_marked` / :meth:`has_user_properties` style of
+        ``MarkInfo`` shortcuts — saves callers from materialising
+        :class:`PDURIDictionary` for the common single-string case."""
+        v = self._catalog.get_dictionary_object(_URI)
+        if not isinstance(v, COSDictionary):
+            return None
+        from .interactive.action import PDURIDictionary
+
+        return PDURIDictionary(v).get_base()
+
+    def set_base_uri(self, base: str | None) -> None:
+        """Write the catalog's ``/URI /Base`` string. Creates ``/URI`` on
+        demand. Pass ``None`` to clear the ``/Base`` entry; the
+        ``/URI`` dictionary itself is removed when emptied."""
+        from .interactive.action import PDURIDictionary
+
+        v = self._catalog.get_dictionary_object(_URI)
+        if not isinstance(v, COSDictionary):
+            if base is None:
+                return
+            v = COSDictionary()
+            self._catalog.set_item(_URI, v)
+        wrapper = PDURIDictionary(v)
+        wrapper.set_base(base)
+        if base is None and v.is_empty():
+            self._catalog.remove_item(_URI)
 
     # ---------- raw COS passthrough used by tests ----------
 
