@@ -42,7 +42,9 @@ from .type import (
     IntegerType,
     LangAlt,
     LayerType,
+    LocaleType,
     MIMEType,
+    PartType,
     ProperNameType,
     RationalType,
     RealType,
@@ -55,6 +57,7 @@ from .type import (
     URIType,
     URLType,
     VersionType,
+    XPathType,
 )
 from .xmp_basic_job_ticket_schema import JobType, XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
@@ -89,7 +92,9 @@ __all__ = [
     "JobType",
     "LangAlt",
     "LayerType",
+    "LocaleType",
     "MIMEType",
+    "PartType",
     "BadFieldValueException",
     "PDFAExtensionSchema",
     "PDFAIdentificationSchema",
@@ -115,5 +120,6 @@ __all__ = [
     "XMPRightsManagementSchema",
     "XMPSchema",
     "XMPageTextSchema",
+    "XPathType",
     "XmpParsingException",
 ]

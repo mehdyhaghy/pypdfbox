@@ -34,7 +34,9 @@ from .integer_type import IntegerType
 from .job_type import JobType
 from .lang_alt import LangAlt
 from .layer_type import LayerType
+from .locale_type import LocaleType
 from .mime_type import MIMEType
+from .part_type import PartType
 from .pdfa_field_description_type import PDFAFieldDescriptionType, PDFAFieldType
 from .pdfa_property_type import PDFAPropertyType
 from .pdfa_schema_type import PDFASchemaType
@@ -52,6 +54,7 @@ from .type_mapping import TypeMapping
 from .uri_type import URIType
 from .url_type import URLType
 from .version_type import VersionType
+from .xpath_type import XPathType
 
 __all__ = [
     "AbstractField",
@@ -73,7 +76,9 @@ __all__ = [
     "JobType",
     "LangAlt",
     "LayerType",
+    "LocaleType",
     "MIMEType",
+    "PartType",
     "PDFAFieldDescriptionType",
     "PDFAFieldType",
     "PDFAPropertyType",
@@ -92,4 +97,5 @@ __all__ = [
     "URIType",
     "URLType",
     "VersionType",
+    "XPathType",
 ]

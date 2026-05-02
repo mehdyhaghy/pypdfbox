@@ -87,3 +87,41 @@ def test_constructor_wraps_existing_dictionary() -> None:
     # Round-trip via a fresh wrapper around the same dictionary.
     r2 = PDPageLabelRange(d)
     assert r2.get_style() == PDPageLabelRange.STYLE_ROMAN_UPPER
+
+
+def test_set_prefix_empty_string_round_trips() -> None:
+    """An empty prefix is a legal value (matches upstream's ``setString``
+    behaviour), distinct from ``None`` which clears the entry."""
+    r = PDPageLabelRange()
+    r.set_prefix("")
+    # Upstream stores the empty string; our get_prefix mirrors that.
+    assert r.get_prefix() == ""
+    # ``compute_label_for_offset`` with an empty prefix and no style yields
+    # an empty label — no spurious whitespace or formatting.
+    assert r.compute_label_for_offset(0) == ""
+
+
+def test_set_prefix_none_after_value_clears_entry() -> None:
+    """Setting prefix to ``None`` removes the /P entry entirely (mirrors
+    upstream ``setPrefix(null)``)."""
+    r = PDPageLabelRange()
+    r.set_prefix("draft-")
+    assert r.get_prefix() == "draft-"
+    r.set_prefix(None)
+    assert r.get_prefix() is None
+    # /P key really gone from the underlying dictionary.
+    assert not r.get_cos_object().contains_key("P")
+
+
+def test_compute_label_trims_prefix_at_first_nul() -> None:
+    """PDFBOX-1047: a prefix containing a NUL is truncated at the first NUL
+    byte when rendering labels (the underlying dict still holds the raw
+    string, only ``compute_label_for_offset`` trims)."""
+    r = PDPageLabelRange()
+    r.set_style(PDPageLabelRange.STYLE_DECIMAL)
+    r.set_prefix("App\x00endix-")
+    # Render-time trim — only "App" survives.
+    assert r.compute_label_for_offset(0) == "App1"
+    # Underlying dict keeps the raw prefix unchanged (round-trip
+    # serialization should not silently rewrite it).
+    assert r.get_prefix() == "App\x00endix-"

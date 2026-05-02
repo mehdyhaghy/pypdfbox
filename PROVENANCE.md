@@ -1204,3 +1204,14 @@ Existing upstream-derived modules extended in Wave 71: `Filter` (`SYSPROP_DEFLAT
 | `tests/xmpbox/type/test_boolean_type.py` | 3.0.x | hand-written coverage for `BooleanType` constants + value coercion |
 | `tests/xmpbox/type/test_url_type.py` | 3.0.x | hand-written coverage for the `URLType` simple property + registry wiring |
 | `tests/xmpbox/type/test_rendition_class_type.py` | 3.0.x | hand-written coverage for the `RenditionClassType` simple property + registry wiring |
+
+### XMP simple-type parity round-out (LocaleType / XPathType / PartType)
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/xmpbox/type/locale_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/LocaleType.java` |
+| `pypdfbox/xmpbox/type/xpath_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/XPathType.java` |
+| `pypdfbox/xmpbox/type/part_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/PartType.java` |
+| `tests/xmpbox/type/test_locale_type.py` | 3.0.x | hand-written coverage for the `LocaleType` simple property + registry wiring |
+| `tests/xmpbox/type/test_xpath_type.py` | 3.0.x | hand-written coverage for the `XPathType` simple property + registry wiring |
+| `tests/xmpbox/type/test_part_type.py` | 3.0.x | hand-written coverage for the `PartType` simple property + registry wiring |

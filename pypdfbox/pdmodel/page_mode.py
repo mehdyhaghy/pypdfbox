@@ -52,6 +52,15 @@ class PageMode(StrEnum):
                 return member
         raise ValueError(value)
 
+    @classmethod
+    def values(cls) -> list[PageMode]:
+        """Return all members in declaration order.
+
+        Mirrors Java's auto-generated ``MyEnum.values()`` static method;
+        equivalent to ``list(PageMode)``.
+        """
+        return list(cls)
+
     def string_value(self) -> str:
         """Return the string value, as used in a PDF file. Mirrors
         upstream ``stringValue()``."""

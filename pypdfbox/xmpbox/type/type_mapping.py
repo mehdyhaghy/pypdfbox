@@ -17,7 +17,9 @@ from .integer_type import IntegerType
 from .job_type import JobType
 from .lang_alt import LangAlt
 from .layer_type import LayerType
+from .locale_type import LocaleType
 from .mime_type import MIMEType
+from .part_type import PartType
 from .pdfa_field_description_type import PDFAFieldType
 from .pdfa_property_type import PDFAPropertyType
 from .pdfa_schema_type import PDFASchemaType
@@ -33,6 +35,7 @@ from .thumbnail_type import ThumbnailType
 from .uri_type import URIType
 from .url_type import URLType
 from .version_type import VersionType
+from .xpath_type import XPathType
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
@@ -54,6 +57,9 @@ _SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
     "GUID": GUIDType,
     "Choice": ChoiceType,
     "Rational": RationalType,
+    "Locale": LocaleType,
+    "XPath": XPathType,
+    "Part": PartType,
 }
 
 
@@ -286,6 +292,21 @@ class TypeMapping:
         self, ns_uri: str | None, prefix: str | None, name: str, value: str
     ) -> RationalType:
         return RationalType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_locale(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> LocaleType:
+        return LocaleType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_xpath(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> XPathType:
+        return XPathType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_part(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> PartType:
+        return PartType(self._metadata, ns_uri, prefix, name, value)
 
     def create_array_property(
         self,

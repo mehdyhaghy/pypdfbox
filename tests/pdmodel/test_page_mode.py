@@ -47,3 +47,25 @@ def test_from_string_unknown_raises() -> None:
 def test_from_string_empty_raises() -> None:
     with pytest.raises(ValueError):
         PageMode.from_string("")
+
+
+def test_values_returns_all_members_in_declaration_order() -> None:
+    """``PageMode.values()`` mirrors Java's enum ``values()``: a list of all
+    members in declaration order, equivalent to ``list(PageMode)``."""
+    members = PageMode.values()
+    assert isinstance(members, list)
+    assert members == list(PageMode)
+    assert members[0] is PageMode.USE_NONE
+    assert members[-1] is PageMode.USE_ATTACHMENTS
+    # Every iteration returns a fresh list — callers can mutate without
+    # affecting the enum.
+    members.append(PageMode.USE_NONE)  # type: ignore[arg-type]
+    assert len(PageMode.values()) == 6
+
+
+def test_str_returns_pdf_string_value() -> None:
+    """StrEnum's ``__str__`` is the underlying PDF name string, not the
+    Pythonic identifier — so ``str(PageMode.USE_OPTIONAL_CONTENT) == 'UseOC'``.
+    """
+    assert str(PageMode.USE_OPTIONAL_CONTENT) == "UseOC"
+    assert str(PageMode.USE_NONE) == "UseNone"
