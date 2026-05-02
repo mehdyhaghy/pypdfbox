@@ -259,3 +259,42 @@ def test_set_metadata_from_string_rejects_non_string() -> None:
     meta = PDMetadata()
     with pytest.raises(TypeError):
         meta.set_metadata_from_string(b"bytes-not-allowed")  # type: ignore[arg-type]
+
+
+# ---------- is_empty / get_metadata_size ----------
+
+
+def test_is_empty_true_for_fresh_metadata() -> None:
+    meta = PDMetadata()
+    assert meta.is_empty() is True
+
+
+def test_is_empty_false_after_import() -> None:
+    meta = PDMetadata(b"<rdf:RDF/>")
+    assert meta.is_empty() is False
+
+
+def test_is_empty_true_after_construction_from_empty_cos_stream() -> None:
+    """A ``PDMetadata`` wrapped around a fresh empty ``COSStream`` is
+    empty (no body), even though it isn't tagged with /Type or /Subtype."""
+    meta = PDMetadata(COSStream())
+    assert meta.is_empty() is True
+
+
+def test_get_metadata_size_zero_for_empty() -> None:
+    meta = PDMetadata()
+    assert meta.get_metadata_size() == 0
+
+
+def test_get_metadata_size_matches_byte_length() -> None:
+    packet = b"<rdf:RDF/>"
+    meta = PDMetadata(packet)
+    assert meta.get_metadata_size() == len(packet)
+
+
+def test_get_metadata_size_matches_utf8_byte_length() -> None:
+    """Non-ASCII XMP packets must report the encoded byte length, not
+    the codepoint count."""
+    packet = "<x>héllo</x>"  # 'é' is 2 bytes in UTF-8
+    meta = PDMetadata(packet)
+    assert meta.get_metadata_size() == len(packet.encode("utf-8"))

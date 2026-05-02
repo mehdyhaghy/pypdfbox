@@ -55,6 +55,21 @@ class PDNameTreeNode[T](ABC):
     def is_root_node(self) -> bool:
         return self._parent is None
 
+    def is_leaf_node(self) -> bool:
+        """``True`` when this node carries ``/Names`` directly (no
+        ``/Kids`` array). PDF name trees are required to be either a leaf
+        (``/Names`` is the value mapping) or an intermediate node
+        (``/Kids`` references child nodes), but never both at the same
+        level. Mirrors the upstream-implied predicate used by traversal
+        helpers."""
+        return self._node.contains_key(_NAMES) and not self._node.contains_key(_KIDS)
+
+    def is_intermediate_node(self) -> bool:
+        """``True`` when this node carries ``/Kids`` (no ``/Names``).
+        Complement of :meth:`is_leaf_node` for nodes that have been
+        populated; an empty (freshly-constructed) node is neither."""
+        return self._node.contains_key(_KIDS) and not self._node.contains_key(_NAMES)
+
     # ---------- value type plumbing ----------
 
     def get_value_type(self) -> type | None:
@@ -256,6 +271,17 @@ class PDNameTreeNode[T](ABC):
 
     def remove_kids(self) -> None:
         """Drop the ``/Kids`` and ``/Limits`` entries from this node."""
+        self._node.remove_item(_KIDS)
+        self._node.remove_item(_LIMITS)
+
+    def clear(self) -> None:
+        """Drop ``/Names``, ``/Kids`` and ``/Limits`` from this node.
+
+        Verb-shaped helper for callers that want to reset a node to its
+        empty state without inspecting which arm (leaf-vs-intermediate)
+        is currently populated. Equivalent to calling :meth:`remove_names`
+        and :meth:`remove_kids` back-to-back."""
+        self._node.remove_item(_NAMES)
         self._node.remove_item(_KIDS)
         self._node.remove_item(_LIMITS)
 

@@ -211,6 +211,26 @@ class PDMetadata(PDStream):
         ``getMetadataAsString()``. Empty stream → empty string."""
         return self.export_xmp_metadata().decode("utf-8")
 
+    def is_empty(self) -> bool:
+        """``True`` when the wrapped stream carries no XMP packet bytes.
+
+        Convenience for callers that want to skip parser invocation on a
+        freshly-constructed (or untouched) metadata stream. Inherited
+        ``PDStream.is_empty`` does the same job — exposed here so the
+        intent reads as "no XMP packet" at the call site."""
+        return not self.get_cos_object().has_data()
+
+    def get_metadata_size(self) -> int:
+        """Return the byte length of the XMP packet body.
+
+        Equivalent to ``len(export_xmp_metadata())`` but avoids
+        materialising the bytes when the stream's raw buffer can answer
+        the question directly. Empty stream → ``0``."""
+        cos = self.get_cos_object()
+        if not cos.has_data():
+            return 0
+        return cos.get_length()
+
     def set_metadata_from_string(self, xmp: str) -> None:
         """Replace the stream body with ``xmp`` encoded as UTF-8.
 

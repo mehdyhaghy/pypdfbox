@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import io
 import logging
 import secrets
 import string
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any, overload
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.ttf import TrueTypeFont, TTFSubsetter
 
 from .pd_simple_font import PDSimpleFont
+
+if TYPE_CHECKING:
+    from typing import BinaryIO
 
 _LOG = logging.getLogger(__name__)
 
@@ -270,6 +274,38 @@ class PDTrueTypeFont(PDSimpleFont):
             return []
         return _draw_glyph_by_gid(ttf, gid)
 
+    def get_path_by_name(self, name: str) -> list[tuple]:
+        """Glyph outline for the PostScript glyph ``name``, with the same
+        name-resolution fallbacks upstream applies in ``getPath(String)``:
+
+        1. Try ``name`` directly against the embedded font's glyph map.
+        2. If that fails, treat ``name`` as a GID *pseudo-name* — a
+           decimal integer string — and draw the glyph at that GID
+           (provided the integer is in range).
+        3. ``.notdef`` and any unresolved name returns an empty path.
+
+        Mirrors upstream ``PDTrueTypeFont.getPath(String)``. Distinct
+        from :meth:`get_path` which is the simpler "name → fontTools
+        glyph set" lookup; ``get_path_by_name`` adds the GID pseudo-name
+        fallback used by upstream's encoded-glyph decoder.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return []
+        if name and name != ".notdef":
+            path = _draw_glyph_by_name(ttf, name)
+            if path:
+                return path
+            # GID pseudo-name fallback (e.g. "42").
+            try:
+                gid = int(name)
+            except (TypeError, ValueError):
+                return []
+            if gid <= 0 or gid >= ttf.get_number_of_glyphs():
+                return []
+            return _draw_glyph_by_gid(ttf, gid)
+        return []
+
     # ---------- code -> glyph name ----------
 
     def get_glyph_name_for_code(self, code: int) -> str | None:
@@ -306,6 +342,68 @@ class PDTrueTypeFont(PDSimpleFont):
             # still "code is GID"; otherwise we have no answer.
             return code if self.is_symbolic() else 0
         return self._code_to_gid(code, ttf)
+
+    @overload
+    def has_glyph(self, key: int) -> bool: ...
+    @overload
+    def has_glyph(self, key: str) -> bool: ...
+    def has_glyph(self, key: int | str) -> bool:
+        """``True`` when this font has a paintable glyph for ``key``.
+
+        Polymorphic — mirrors both upstream call shapes:
+
+        - ``has_glyph(int code)``: glyph exists iff :meth:`code_to_gid`
+          resolves ``code`` to a non-zero GID. Mirrors upstream
+          ``PDTrueTypeFont.hasGlyph(int)``.
+        - ``has_glyph(str name)``: glyph exists iff the embedded TTF's
+          glyph table carries a non-``.notdef`` glyph under ``name``,
+          and the GID is below the maximum profile's glyph count.
+          Mirrors upstream ``PDTrueTypeFont.hasGlyph(String)``.
+
+        Returns ``False`` when the font has no embedded program (the
+        only case where we cannot answer reliably).
+        """
+        if isinstance(key, bool):  # bool is an int — disallow.
+            raise TypeError("has_glyph(bool) is not a valid call")
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return False
+        if isinstance(key, str):
+            gid = ttf.name_to_gid(key)
+            if gid == 0:
+                return False
+            num_glyphs = ttf.get_number_of_glyphs()
+            return gid < num_glyphs
+        return self._code_to_gid(int(key), ttf) != 0
+
+    def get_font_box_font(self) -> TrueTypeFont | None:
+        """Return the underlying :class:`TrueTypeFont` font program.
+
+        Mirrors upstream ``PDTrueTypeFont.getFontBoxFont`` (declared on
+        :class:`PDFontLike`). For TrueType fonts this is the same object
+        returned by :meth:`get_true_type_font`; the alias exists so
+        callers porting from the upstream ``PDFontLike``/``PDVectorFont``
+        surfaces find the method they expect.
+        """
+        return self.get_true_type_font()
+
+    def read_code(self, stream: BinaryIO | bytes | bytearray | memoryview) -> int:
+        """Read one byte from ``stream`` and return its integer code.
+
+        Mirrors upstream ``PDTrueTypeFont.readCode(InputStream)`` —
+        TrueType simple fonts use single-byte character codes, so the
+        reader is just a one-byte pull. Accepts either a binary file
+        object (anything with a ``.read(int)`` method) or a raw
+        ``bytes`` / ``bytearray`` / ``memoryview`` for caller
+        convenience. Returns ``-1`` at end-of-stream to mirror Java's
+        ``InputStream.read`` contract.
+        """
+        if isinstance(stream, (bytes, bytearray, memoryview)):
+            stream = io.BytesIO(bytes(stream))
+        chunk = stream.read(1)
+        if not chunk:
+            return -1
+        return chunk[0]
 
     def get_gid_to_code(self) -> dict[int, int]:
         """Inverted ``glyph id → first character code`` mapping.

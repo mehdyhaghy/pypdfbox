@@ -255,6 +255,26 @@ class PDStream:
         need to skip filter wiring when the stream has no encoding chain."""
         return not self._stream.contains_key(_FILTER)
 
+    def has_filter(self, name: COSName | str) -> bool:
+        """``True`` when ``name`` appears in the ``/Filter`` chain.
+
+        Accepts either a ``COSName`` or a plain ``str`` filter name (the
+        string form is resolved via :meth:`COSName.get_pdf_name`). Useful
+        for callers that branch on the presence of a specific encoding
+        filter without iterating the chain manually."""
+        target = _to_name(name)
+        return target in self.get_filters()
+
+    def get_first_filter(self) -> COSName | None:
+        """Return the first ``/Filter`` entry, or ``None`` when the chain
+        is empty / absent.
+
+        Convenience for the (very common) single-filter case where callers
+        otherwise have to write ``self.get_filters()[0] if
+        self.get_filters() else None``."""
+        filters = self.get_filters()
+        return filters[0] if filters else None
+
     # ---------- decode parameters ----------
 
     def get_decode_parms(self) -> list[COSDictionary] | None:
@@ -330,6 +350,16 @@ class PDStream:
         if isinstance(meta, COSStream):
             return meta
         raise TypeError(f"unexpected /Metadata type: {type(meta).__name__}")
+
+    def has_metadata(self) -> bool:
+        """``True`` when the wrapped stream carries a ``/Metadata`` entry
+        whose value is a ``COSStream``.
+
+        Mirrors the natural "is this stream tagged with stream-level XMP"
+        predicate; complements :meth:`get_metadata` which returns the
+        ``COSStream`` itself (or ``None``). Returns ``False`` for the
+        ``COSNull`` case that upstream's ``getMetadata`` allows."""
+        return self.get_metadata() is not None
 
     def set_metadata(self, stream: PDMetadata | COSStream | None) -> None:
         """Set ``/Metadata`` (or remove when ``None``). Accepts a typed
@@ -476,6 +506,15 @@ class PDStream:
         if not self._stream.has_data():
             return b""
         return self._stream.to_byte_array()
+
+    def is_empty(self) -> bool:
+        """``True`` when the wrapped ``COSStream`` carries no body bytes.
+
+        Useful for short-circuiting filter / decode pipelines that would
+        otherwise create empty ``BytesIO`` handles. Note this checks the
+        live raw buffer — a stream whose ``/Length`` was set but whose
+        body was never populated still reports ``True``."""
+        return not self._stream.has_data()
 
 
 def _to_name(value: COSName | str) -> COSName:

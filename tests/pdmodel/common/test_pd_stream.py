@@ -376,3 +376,97 @@ def test_set_file_decode_params_none_removes_entry() -> None:
     stream.set_file_decode_params(None)
     assert stream.get_file_decode_params() is None
     assert stream.get_file_decode_parms() is None
+
+
+# ---------- has_filter predicate ----------
+
+
+def test_has_filter_true_for_registered_name() -> None:
+    stream = PDStream(input_data=b"x", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    assert stream.has_filter(COSName.FLATE_DECODE) is True  # type: ignore[attr-defined]
+
+
+def test_has_filter_accepts_str_argument() -> None:
+    stream = PDStream(input_data=b"x", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    assert stream.has_filter("FlateDecode") is True
+    assert stream.has_filter("ASCII85Decode") is False
+
+
+def test_has_filter_false_when_no_filter_set() -> None:
+    stream = PDStream()
+    assert stream.has_filter("FlateDecode") is False
+
+
+def test_has_filter_walks_chain() -> None:
+    stream = PDStream()
+    stream.set_filters(["ASCII85Decode", "FlateDecode"])
+    assert stream.has_filter("ASCII85Decode") is True
+    assert stream.has_filter("FlateDecode") is True
+    assert stream.has_filter("LZWDecode") is False
+
+
+# ---------- get_first_filter convenience ----------
+
+
+def test_get_first_filter_none_when_chain_empty() -> None:
+    stream = PDStream()
+    assert stream.get_first_filter() is None
+
+
+def test_get_first_filter_returns_single_filter() -> None:
+    stream = PDStream()
+    stream.set_filters(COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    assert stream.get_first_filter() == COSName.FLATE_DECODE  # type: ignore[attr-defined]
+
+
+def test_get_first_filter_returns_first_of_chain() -> None:
+    stream = PDStream()
+    stream.set_filters(["ASCII85Decode", "FlateDecode"])
+    first = stream.get_first_filter()
+    assert first is not None
+    assert first.get_name() == "ASCII85Decode"
+
+
+# ---------- has_metadata predicate ----------
+
+
+def test_has_metadata_false_when_absent() -> None:
+    stream = PDStream()
+    assert stream.has_metadata() is False
+
+
+def test_has_metadata_true_after_set() -> None:
+    stream = PDStream()
+    stream.set_metadata(COSStream())
+    assert stream.has_metadata() is True
+
+
+def test_has_metadata_false_after_clear() -> None:
+    stream = PDStream()
+    stream.set_metadata(COSStream())
+    stream.set_metadata(None)
+    assert stream.has_metadata() is False
+
+
+# ---------- is_empty predicate ----------
+
+
+def test_is_empty_true_for_fresh_stream() -> None:
+    stream = PDStream()
+    assert stream.is_empty() is True
+
+
+def test_is_empty_false_after_embedding_bytes() -> None:
+    stream = PDStream(input_data=b"x")
+    assert stream.is_empty() is False
+
+
+def test_is_empty_after_create_output_stream_with_no_writes() -> None:
+    """An output stream that closes without writing should leave the
+    body empty — ``is_empty`` should still report ``True``. Note this
+    depends on COSStream behavior: opening + closing the writer
+    typically leaves the buffer at zero bytes."""
+    stream = PDStream()
+    with stream.create_output_stream():
+        pass
+    assert stream.is_empty() is True

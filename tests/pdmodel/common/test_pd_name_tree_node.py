@@ -350,3 +350,79 @@ def test_contains_operator_walks_tree() -> None:
     assert "missing" not in root
     # Non-string types just return False instead of raising.
     assert 123 not in root  # type: ignore[operator]
+
+
+# ---------- is_leaf_node / is_intermediate_node predicates ----------
+
+
+def test_is_leaf_node_true_when_only_names() -> None:
+    tree = PDStringNameTreeNode()
+    tree.set_names({"a": "A"})
+    assert tree.is_leaf_node() is True
+    assert tree.is_intermediate_node() is False
+
+
+def test_is_intermediate_node_true_when_only_kids() -> None:
+    leaf = PDStringNameTreeNode()
+    leaf.set_names({"x": "X"})
+    root = PDStringNameTreeNode()
+    root.set_kids([leaf])
+
+    assert root.is_intermediate_node() is True
+    assert root.is_leaf_node() is False
+
+
+def test_empty_node_is_neither_leaf_nor_intermediate() -> None:
+    tree = PDStringNameTreeNode()
+    assert tree.is_leaf_node() is False
+    assert tree.is_intermediate_node() is False
+
+
+def test_predicates_track_after_clear() -> None:
+    tree = PDStringNameTreeNode()
+    tree.set_names({"a": "A"})
+    assert tree.is_leaf_node() is True
+    tree.clear()
+    assert tree.is_leaf_node() is False
+    assert tree.is_intermediate_node() is False
+
+
+# ---------- clear ----------
+
+
+def test_clear_drops_names_kids_and_limits() -> None:
+    leaf = PDStringNameTreeNode()
+    leaf.set_names({"a": "A"})
+    root = PDStringNameTreeNode()
+    root.set_kids([leaf])
+
+    # Clear root: should drop /Kids and /Limits.
+    root.clear()
+    assert root.get_cos_object().get_dictionary_object(_NAMES) is None
+    assert root.get_cos_object().get_dictionary_object(_KIDS) is None
+    assert root.get_cos_object().get_dictionary_object(_LIMITS) is None
+
+
+def test_clear_on_empty_node_is_noop() -> None:
+    tree = PDStringNameTreeNode()
+    tree.clear()  # should not raise
+    assert tree.get_cos_object().get_dictionary_object(_NAMES) is None
+    assert tree.get_cos_object().get_dictionary_object(_KIDS) is None
+    assert tree.get_cos_object().get_dictionary_object(_LIMITS) is None
+
+
+def test_clear_drops_only_relevant_keys() -> None:
+    """``clear`` must not touch unrelated dictionary entries —
+    name-tree nodes can carry application-specific keys at the same
+    level (e.g. ``/Type``)."""
+    tree = PDStringNameTreeNode()
+    tree.set_names({"a": "A"})
+    tree.get_cos_object().set_name(COSName.TYPE, "Names")  # type: ignore[attr-defined]
+
+    tree.clear()
+    # /Type survives; /Names + /Limits are gone.
+    assert tree.get_cos_object().get_dictionary_object(_NAMES) is None
+    assert tree.get_cos_object().get_dictionary_object(_LIMITS) is None
+    type_value = tree.get_cos_object().get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+    assert isinstance(type_value, COSName)
+    assert type_value.get_name() == "Names"
