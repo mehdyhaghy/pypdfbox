@@ -101,6 +101,16 @@ class PDFontDescriptor:
     def set_flags(self, flags: int) -> None:
         self._dict.set_int(_FLAGS, int(flags))
 
+    def clear_flags(self) -> None:
+        """Reset /Flags to zero.
+
+        pypdfbox extension — equivalent to ``set_flags(0)`` but communicates
+        intent more clearly when callers want to drop every classification
+        bit before re-applying a known set (e.g. swapping a symbolic font
+        descriptor for a non-symbolic one).
+        """
+        self.set_flags(0)
+
     def _flag(self, mask: int) -> bool:
         return bool(self.get_flags() & mask)
 
@@ -216,6 +226,17 @@ class PDFontDescriptor:
             self._dict.remove_item(_FONT_BBOX)
             return
         self._dict.set_item(_FONT_BBOX, rect.get_cos_array())
+
+    def has_font_bounding_box(self) -> bool:
+        """True if /FontBBox is present (regardless of array shape).
+
+        pypdfbox extension — mirrors the ``has_*`` predicate pattern used
+        by :meth:`has_font_file`. Returns ``True`` even when /FontBBox is
+        a malformed (e.g. short) array, because the entry exists; the
+        typed accessor :meth:`get_font_bounding_box` is what enforces the
+        4-element shape.
+        """
+        return self._dict.contains_key(_FONT_BBOX)
 
     # ---------- numeric metrics ----------
 
@@ -400,6 +421,20 @@ class PDFontDescriptor:
         """True if /FontFile3 (CFF / OpenType program) is present."""
         return self._dict.contains_key(_FONT_FILE3)
 
+    def is_embedded(self) -> bool:
+        """True if *any* font program stream is present.
+
+        pypdfbox extension — collapses the three ``has_font_file*`` checks
+        into a single predicate. Useful for callers that only care whether
+        the font is embedded at all (e.g. for PDF/A conformance) and do
+        not need to distinguish Type 1 / TrueType / CFF.
+        """
+        return (
+            self._dict.contains_key(_FONT_FILE)
+            or self._dict.contains_key(_FONT_FILE2)
+            or self._dict.contains_key(_FONT_FILE3)
+        )
+
     # ---------- /CIDSet ----------
 
     def get_cid_set(self) -> PDStream | None:
@@ -412,6 +447,16 @@ class PDFontDescriptor:
     def set_cid_set(self, stream: PDStream | COSStream | None) -> None:
         """Mirrors upstream ``PDFontDescriptor.setCIDSet(PDStream)``."""
         self._set_font_file(_CID_SET, stream)
+
+    def has_cid_set(self) -> bool:
+        """True if the /CIDSet stream is present.
+
+        pypdfbox extension — counterpart of :meth:`has_font_file` for the
+        /CIDSet entry. Avoids materializing a :class:`PDStream` wrapper
+        when the caller only needs presence (e.g. while validating
+        CID-keyed font conformance).
+        """
+        return self._dict.contains_key(_CID_SET)
 
     # ---------- /Style /Panose ----------
 
@@ -437,6 +482,20 @@ class PDFontDescriptor:
         if len(data) >= PDPanose.LENGTH:
             return PDPanose(data)
         return None
+
+    def has_panose(self) -> bool:
+        """True if a /Style/Panose entry is present (any byte length).
+
+        pypdfbox extension — :meth:`get_panose` is strict about the
+        12-byte length (returns ``None`` for short buffers) which makes
+        it unsuitable as a presence check. ``has_panose`` reports the
+        raw key existence so callers can distinguish "absent" from
+        "present-but-malformed".
+        """
+        v = self._dict.get_dictionary_object(_STYLE)
+        if not isinstance(v, COSDictionary):
+            return False
+        return v.contains_key(_PANOSE)
 
     def set_panose(self, panose: PDPanose | bytes | bytearray | None) -> None:
         """Write the /Style/Panose entry (creating the /Style dict on demand).

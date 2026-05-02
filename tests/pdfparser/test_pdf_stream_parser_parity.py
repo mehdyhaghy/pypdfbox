@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSBase, COSInteger
+from pypdfbox.cos import COSBase, COSDictionary, COSInteger
 from pypdfbox.io import RandomAccessReadBuffer
+from pypdfbox.pdfparser import PDFParseError
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
 
 
@@ -207,6 +208,124 @@ def test_parse_next_token_returns_none_after_close() -> None:
 
 
 # ---------- from_content_stream constructor ----------
+
+
+# ---------- Operator inline-image predicates ----------
+
+
+def test_is_inline_image_operator_name_matches_bi_and_id() -> None:
+    # The two keywords that upstream's getOperator() carves out from the
+    # singleton cache are exactly BI and ID — every other operator is
+    # cacheable.
+    assert Operator.is_inline_image_operator_name("BI") is True
+    assert Operator.is_inline_image_operator_name("ID") is True
+    # Adjacent text-block / marker operators must not match.
+    assert Operator.is_inline_image_operator_name("BT") is False
+    assert Operator.is_inline_image_operator_name("EI") is False
+    assert Operator.is_inline_image_operator_name("BMC") is False
+    assert Operator.is_inline_image_operator_name("Q") is False
+    assert Operator.is_inline_image_operator_name("") is False
+
+
+def test_is_inline_image_predicate_matches_construction_name() -> None:
+    # Bound to the operator instance — answers "should this Op carry an
+    # inline-image payload?". Only true for BI / ID.
+    assert Operator("BI").is_inline_image() is True
+    assert Operator("ID").is_inline_image() is True
+    assert Operator("Tj").is_inline_image() is False
+    assert Operator("Q").is_inline_image() is False
+
+
+def test_has_image_data_is_false_before_assignment() -> None:
+    op = Operator("ID")
+    assert op.has_image_data() is False
+    op.set_image_data(b"\x01\x02\x03")
+    assert op.has_image_data() is True
+    # Even an empty bytes payload counts as "data set" — only None is
+    # treated as "absent" (mirrors upstream's null check).
+    op.set_image_data(b"")
+    assert op.has_image_data() is True
+
+
+def test_has_image_parameters_is_false_before_assignment() -> None:
+    op = Operator("BI")
+    assert op.has_image_parameters() is False
+    op.set_image_parameters(COSDictionary())
+    assert op.has_image_parameters() is True
+
+
+def test_has_image_data_set_via_parser_for_bi_operator() -> None:
+    # End-to-end: BI captured through the parser carries both
+    # image_data and image_parameters once the EI terminator is seen.
+    p = _parser(b"BI /W 5 /H 1 /BPC 8 ID\nABCDE\nEI Q")
+    toks = p.parse()
+    bi = toks[0]
+    assert isinstance(bi, Operator) and bi.name == "BI"
+    assert bi.has_image_data() is True
+    assert bi.has_image_parameters() is True
+
+
+# ---------- Operator __len__ ----------
+
+
+def test_operator_len_matches_name_length() -> None:
+    # Saves a hop through the name accessor when sizing operator
+    # buffers / pretty-printers — len(op) == len(op.get_name()).
+    assert len(Operator("Tj")) == 2
+    assert len(Operator("BMC")) == 3
+    assert len(Operator("'")) == 1
+    assert len(Operator('"')) == 1
+    assert len(Operator("d0")) == 2
+
+
+# ---------- inline-image depth / offset accessors ----------
+
+
+def test_get_inline_image_depth_starts_at_zero() -> None:
+    p = _parser(b"q Q")
+    assert p.get_inline_image_depth() == 0
+    p.parse()
+    assert p.get_inline_image_depth() == 0
+
+
+def test_get_inline_image_depth_is_zero_after_full_inline_image_drained() -> None:
+    # The parser increments-then-decrements inlineImageDepth around the
+    # full BI...EI segment — once parsing finishes we're back to 0.
+    p = _parser(b"BI /W 1 /H 1 /BPC 8 /CS /G ID \x00 EI Q")
+    p.parse()
+    assert p.get_inline_image_depth() == 0
+
+
+def test_get_inline_offset_starts_at_zero() -> None:
+    p = _parser(b"q Q")
+    assert p.get_inline_offset() == 0
+
+
+def test_get_inline_offset_records_position_of_most_recent_bi() -> None:
+    # After a successful BI...EI segment, inlineOffset retains the
+    # source position recorded at BI (upstream never resets it).
+    data = b"q Q BI /W 1 /H 1 /BPC 8 /CS /G ID \x00 EI Q"
+    p = _parser(data)
+    p.parse()
+    # The recorded offset must be inside the original data range and at
+    # or past the location of the "BI" keyword.
+    bi_pos = data.index(b"BI")
+    assert p.get_inline_offset() >= bi_pos
+    assert p.get_inline_offset() <= len(data)
+
+
+def test_get_inline_offset_after_nested_bi_failure_reports_first_bi() -> None:
+    # The nested-BI guard captures the position where the first BI
+    # opened; the depth is reset to 0 before the error propagates so
+    # downstream callers can distinguish the recovered state.
+    p = _parser(b"BI /W 1 BI")
+    with pytest.raises(PDFParseError):
+        p.parse()
+    # Depth was reset by the error path even though the segment never
+    # closed cleanly — matches upstream's reset before throwing.
+    assert p.get_inline_image_depth() == 0
+    # The offset retains the position where the first BI opened.
+    assert p.get_inline_offset() > 0
 
 
 def test_from_content_stream_uses_get_contents_for_stream_parsing() -> None:

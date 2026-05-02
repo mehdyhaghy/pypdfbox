@@ -78,7 +78,7 @@ class Operator:
         ``image_data`` payloads — caching would alias state across
         unrelated parses.
         """
-        if name in (_OP_BEGIN_INLINE_IMAGE_DATA, _OP_BEGIN_INLINE_IMAGE):
+        if cls.is_inline_image_operator_name(name):
             return cls(name)
         cached = cls._operators.get(name)
         if cached is not None:
@@ -89,6 +89,37 @@ class Operator:
                 cached = cls(name)
                 cls._operators[name] = cached
             return cached
+
+    @staticmethod
+    def is_inline_image_operator_name(name: str) -> bool:
+        """Return ``True`` if ``name`` is one of the two inline-image
+        operator keywords (``BI`` or ``ID``) that upstream's
+        ``getOperator`` deliberately bypasses the singleton cache for —
+        each occurrence carries a distinct payload (``image_parameters``
+        / ``image_data``). Useful for callers that need to special-case
+        inline-image dispatch without re-stating the byte literals.
+        """
+        return name in (_OP_BEGIN_INLINE_IMAGE, _OP_BEGIN_INLINE_IMAGE_DATA)
+
+    def is_inline_image(self) -> bool:
+        """Return ``True`` if this operator's name is the inline-image
+        begin (``BI``) or inline-image-data (``ID``) keyword. Convenience
+        predicate paired with :meth:`is_inline_image_operator_name`."""
+        return self.is_inline_image_operator_name(self._name)
+
+    def has_image_data(self) -> bool:
+        """Return ``True`` if this operator carries inline-image bytes.
+        Upstream callers gate ``ID``/``BI`` post-processing on
+        ``getImageData() != null`` — this predicate keeps the same
+        check from leaking the optional-typed accessor."""
+        return self.image_data is not None
+
+    def has_image_parameters(self) -> bool:
+        """Return ``True`` if this operator carries an inline-image
+        parameter dictionary. Companion to :meth:`has_image_data` that
+        mirrors the ``getImageParameters() != null`` pattern in upstream
+        callers."""
+        return self.image_parameters is not None
 
     @property
     def name(self) -> str:
@@ -127,6 +158,12 @@ class Operator:
 
     def __hash__(self) -> int:
         return hash(("Operator", self._name))
+
+    def __len__(self) -> int:
+        # Convenience parity with ``op.getName().length()`` in upstream
+        # callers — saves a hop through the name accessor when sizing
+        # operator buffers / pretty-printers.
+        return len(self._name)
 
 
 class PDFStreamParser(COSParser):
@@ -261,6 +298,24 @@ class PDFStreamParser(COSParser):
         inline-image segment. Tracks the same flag PDFBox surfaces via
         its inline-image bookkeeping."""
         return self._inline_image_depth > 0
+
+    def get_inline_image_depth(self) -> int:
+        """Return the current inline-image nesting depth. Mirrors
+        upstream's private ``inlineImageDepth`` counter — exposed here
+        for diagnostics and tests that need to assert the parser
+        recovered cleanly after a malformed nested ``BI`` (PDFBOX-6038).
+        Always ``0`` outside a ``BI``...``EI`` segment; ``1`` while one
+        is open. A value greater than ``1`` is transient — the parser
+        immediately raises ``PDFParseError`` and resets the counter."""
+        return self._inline_image_depth
+
+    def get_inline_offset(self) -> int:
+        """Return the source byte offset where the most recent ``BI``
+        opened (``0`` before any inline image has been seen). Mirrors
+        upstream's private ``inlineOffset`` field — surfaced here for
+        diagnostics and error reporting that needs to point back at the
+        opening ``BI`` location after a nested-``BI`` failure."""
+        return self._inline_offset
 
     def seek_to(self, offset: int) -> None:
         """Reposition the underlying source. Wraps :meth:`seek` from

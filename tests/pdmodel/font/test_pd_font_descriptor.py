@@ -470,3 +470,171 @@ def test_with_panose_classification_accepts_classification_object() -> None:
     # Family-class bytes (signed) are preserved verbatim.
     assert updated.get_bytes()[:2] == b"\xff\x80"
     assert updated.get_panose() == new_cls
+
+
+# ---------- clear_flags() ----------
+
+
+def test_clear_flags_zeroes_existing_flags() -> None:
+    """``clear_flags`` is a hard reset to /Flags == 0."""
+    fd = PDFontDescriptor()
+    fd.set_flags(FLAG_FIXED_PITCH | FLAG_ITALIC | FLAG_SERIF)
+    assert fd.get_flags() != 0
+
+    fd.clear_flags()
+    assert fd.get_flags() == 0
+    assert fd.is_fixed_pitch() is False
+    assert fd.is_italic() is False
+    assert fd.is_serif() is False
+
+
+def test_clear_flags_writes_zero_even_when_already_unset() -> None:
+    """Calling on a fresh descriptor still writes /Flags=0 (no-op semantically)."""
+    fd = PDFontDescriptor()
+    fd.clear_flags()
+    raw = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Flags"))
+    # Stored as a COSInteger of value 0 (not removed entirely, mirroring set_flags(0)).
+    assert isinstance(raw, COSInteger)
+    assert raw.int_value() == 0
+
+
+# ---------- has_font_bounding_box ----------
+
+
+def test_has_font_bounding_box_default_false() -> None:
+    fd = PDFontDescriptor()
+    assert fd.has_font_bounding_box() is False
+
+
+def test_has_font_bounding_box_true_after_typed_setter() -> None:
+    fd = PDFontDescriptor()
+    fd.set_font_bounding_box(PDRectangle(0.0, 0.0, 100.0, 100.0))
+    assert fd.has_font_bounding_box() is True
+
+
+def test_has_font_bounding_box_true_after_array_setter() -> None:
+    """The lower-level COSArray setter also flips the predicate."""
+    fd = PDFontDescriptor()
+    fd.set_font_b_box(COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(1.0), COSFloat(1.0)]))
+    assert fd.has_font_bounding_box() is True
+
+
+def test_has_font_bounding_box_true_for_malformed_short_array() -> None:
+    """Presence check tolerates bad shape — distinct from get_font_bounding_box()."""
+    fd = PDFontDescriptor()
+    fd.set_font_b_box(COSArray([COSFloat(0.0), COSFloat(0.0)]))  # only 2 entries
+    assert fd.has_font_bounding_box() is True
+    # Typed accessor still rejects the short array.
+    assert fd.get_font_bounding_box() is None
+
+
+def test_has_font_bounding_box_clears_when_set_to_none() -> None:
+    fd = PDFontDescriptor()
+    fd.set_font_bounding_box(PDRectangle(0.0, 0.0, 1.0, 1.0))
+    fd.set_font_bounding_box(None)
+    assert fd.has_font_bounding_box() is False
+
+
+# ---------- has_cid_set ----------
+
+
+def test_has_cid_set_default_false() -> None:
+    fd = PDFontDescriptor()
+    assert fd.has_cid_set() is False
+
+
+def test_has_cid_set_round_trip() -> None:
+    fd = PDFontDescriptor()
+    fd.set_cid_set(COSStream())
+    assert fd.has_cid_set() is True
+
+    fd.set_cid_set(None)
+    assert fd.has_cid_set() is False
+
+
+def test_has_cid_set_independent_of_font_file_predicates() -> None:
+    """Setting /FontFile2 must not flip ``has_cid_set``."""
+    fd = PDFontDescriptor()
+    fd.set_font_file2(COSStream())
+    assert fd.has_font_file2() is True
+    assert fd.has_cid_set() is False
+
+
+# ---------- has_panose ----------
+
+
+def test_has_panose_default_false() -> None:
+    fd = PDFontDescriptor()
+    assert fd.has_panose() is False
+
+
+def test_has_panose_false_when_style_dict_lacks_panose() -> None:
+    """A /Style dict without /Panose must not register as ``has_panose``."""
+    fd = PDFontDescriptor()
+    style = COSDictionary()
+    style.set_name(COSName.get_pdf_name("Custom"), "Value")
+    fd.get_cos_object().set_item(COSName.get_pdf_name("Style"), style)
+    assert fd.has_panose() is False
+
+
+def test_has_panose_true_after_set_panose() -> None:
+    fd = PDFontDescriptor()
+    fd.set_panose(bytes(12))
+    assert fd.has_panose() is True
+
+
+def test_has_panose_true_for_short_buffer_unlike_get_panose() -> None:
+    """``has_panose`` reports presence; ``get_panose`` enforces length."""
+    from pypdfbox.cos import COSString
+
+    fd = PDFontDescriptor()
+    style = COSDictionary()
+    style.set_item(COSName.get_pdf_name("Panose"), COSString(b"\x00" * 5))  # < 12 bytes
+    fd.get_cos_object().set_item(COSName.get_pdf_name("Style"), style)
+
+    # Presence check sees the entry; typed getter rejects the short buffer.
+    assert fd.has_panose() is True
+    assert fd.get_panose() is None
+
+
+def test_has_panose_clears_after_set_panose_none() -> None:
+    fd = PDFontDescriptor()
+    fd.set_panose(bytes(12))
+    fd.set_panose(None)
+    assert fd.has_panose() is False
+
+
+# ---------- is_embedded ----------
+
+
+def test_is_embedded_default_false() -> None:
+    fd = PDFontDescriptor()
+    assert fd.is_embedded() is False
+
+
+@pytest.mark.parametrize("setter", ["set_font_file", "set_font_file2", "set_font_file3"])
+def test_is_embedded_true_for_any_font_file_slot(setter: str) -> None:
+    """Any of /FontFile, /FontFile2, /FontFile3 flips ``is_embedded``."""
+    fd = PDFontDescriptor()
+    getattr(fd, setter)(COSStream())
+    assert fd.is_embedded() is True
+
+
+def test_is_embedded_clears_when_all_streams_removed() -> None:
+    fd = PDFontDescriptor()
+    fd.set_font_file(COSStream())
+    fd.set_font_file2(COSStream())
+    assert fd.is_embedded() is True
+
+    fd.set_font_file(None)
+    assert fd.is_embedded() is True  # FontFile2 still there
+    fd.set_font_file2(None)
+    assert fd.is_embedded() is False
+
+
+def test_is_embedded_ignores_cid_set() -> None:
+    """``/CIDSet`` is not a font program — it must not register as embedded."""
+    fd = PDFontDescriptor()
+    fd.set_cid_set(COSStream())
+    assert fd.has_cid_set() is True
+    assert fd.is_embedded() is False
