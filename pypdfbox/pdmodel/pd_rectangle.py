@@ -13,10 +13,11 @@ class PDRectangle:
 
     Cluster #1 ships a deliberately-thin port: just the four floats, the
     derived width / height accessors, and ``COSArray`` round-trip helpers.
-    The upstream class additionally exposes ``contains``, ``transform``,
-    ``toGeneralPath``, ``createRetranslatedRectangle`` — those land
-    alongside the rendering cluster (PRD §6.12) where they are actually
-    consumed. See ``CHANGES.md``.
+    Subsequent waves backfilled ``contains``, ``createRetranslatedRectangle``,
+    and ``to_general_path`` (corner sequence — see method docstring for
+    why we don't return a Java ``GeneralPath``). The matrix-aware
+    ``transform`` lands alongside the rendering cluster (PRD §6.12) where
+    a Python ``Matrix`` port is actually consumed. See ``CHANGES.md``.
     """
 
     # ---------- common paper-size constants ----------
@@ -65,6 +66,12 @@ class PDRectangle:
         """Match upstream's ``PDRectangle(float x, float y, float w, float h)``."""
         return cls(float(x), float(y), float(x) + float(width), float(y) + float(height))
 
+    #: Clamp threshold for malformed COS values — matches upstream's
+    #: ``Integer.MAX_VALUE`` (Java ``int`` ceiling). Values whose absolute
+    #: magnitude exceeds this are deemed malformed (PDFBOX-2818) and clipped
+    #: in :meth:`from_cos_array`.
+    _INT32_MAX: float = float(2**31 - 1)
+
     @classmethod
     def from_cos_array(cls, array: COSArray) -> PDRectangle:
         """Build from the 4-entry array form found in PDF dictionaries.
@@ -72,6 +79,11 @@ class PDRectangle:
         Mirrors upstream's ``PDRectangle(COSArray)``: any combination of
         ``COSInteger`` / ``COSFloat`` is accepted, and lower-left/upper-right
         ordering is normalized so ``width`` / ``height`` are non-negative.
+
+        Huge magnitudes (``abs(value) > 2**31 - 1``) are clamped to
+        ``±(2**31 - 1)``, matching upstream's defensive guard against
+        malformed PDFs whose rectangles overflow Java ``int`` range
+        (PDFBOX-2818).
         """
         if array.size() < 4:
             raise ValueError(
@@ -81,7 +93,13 @@ class PDRectangle:
         for i in range(4):
             entry = array.get_object(i)
             if isinstance(entry, (COSInteger, COSFloat)):
-                nums.append(float(entry.value))
+                value = float(entry.value)
+                # PDFBOX-2818: malformed PDFs sometimes encode rectangles
+                # with absurdly large numbers; upstream clamps at the Java
+                # ``Integer.MAX_VALUE`` boundary. Mirror that here.
+                if abs(value) > cls._INT32_MAX:
+                    value = cls._INT32_MAX if value > 0 else -cls._INT32_MAX
+                nums.append(value)
             else:
                 raise TypeError(
                     f"PDRectangle entry {i} is not numeric: {type(entry).__name__}"
@@ -165,6 +183,24 @@ class PDRectangle:
         Example: ``[100, 100, 400, 400]`` → ``[0, 0, 300, 300]``.
         """
         return PDRectangle(0.0, 0.0, self.width, self.height)
+
+    def to_general_path(self) -> list[tuple[float, float]]:
+        """Return the four corners of this rectangle as a counter-clockwise
+        closed polygon. Mirrors upstream ``toGeneralPath()``.
+
+        Returned in upstream order: ``(llx, lly) → (urx, lly) → (urx, ury)
+        → (llx, ury)``. The polygon is implicitly closed; callers that
+        need an explicit closing edge should treat the first point as the
+        terminator. Java's ``GeneralPath`` doesn't have a direct Python
+        equivalent in the standard library, so we expose the corners as a
+        ``list[tuple[float, float]]`` rather than tying the API to a
+        specific drawing toolkit.
+        """
+        x1 = self._lower_left_x
+        y1 = self._lower_left_y
+        x2 = self._upper_right_x
+        y2 = self._upper_right_y
+        return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
 
     # ---------- COS round-trip ----------
 

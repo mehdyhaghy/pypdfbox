@@ -198,3 +198,91 @@ def test_a_series_constants() -> None:
     for _name, (rect, mm_w, mm_h) in a_sizes.items():
         assert rect.width == pytest.approx(mm_w * ppmm)
         assert rect.height == pytest.approx(mm_h * ppmm)
+
+
+# ---------- to_general_path ----------
+
+
+def test_to_general_path_returns_four_corners() -> None:
+    r = PDRectangle(10.0, 20.0, 110.0, 220.0)
+    corners = r.to_general_path()
+    # Counter-clockwise from lower-left, mirrors upstream ``toGeneralPath`` order.
+    assert corners == [(10.0, 20.0), (110.0, 20.0), (110.0, 220.0), (10.0, 220.0)]
+
+
+def test_to_general_path_is_closed_polygon() -> None:
+    # Path should contain exactly 4 distinct corners (closing edge implicit).
+    r = PDRectangle(0.0, 0.0, 100.0, 50.0)
+    corners = r.to_general_path()
+    assert len(corners) == 4
+    # First and last edge connect implicitly.
+    assert corners[0] != corners[-1]
+
+
+def test_to_general_path_zero_size_rectangle() -> None:
+    # Degenerate rectangle (point) should still emit four corners, all equal.
+    r = PDRectangle(50.0, 50.0, 50.0, 50.0)
+    corners = r.to_general_path()
+    assert corners == [(50.0, 50.0), (50.0, 50.0), (50.0, 50.0), (50.0, 50.0)]
+
+
+def test_to_general_path_negative_coordinates() -> None:
+    # Origin in negative space — corner ordering still preserved.
+    r = PDRectangle(-50.0, -100.0, 50.0, 100.0)
+    corners = r.to_general_path()
+    assert corners == [
+        (-50.0, -100.0),
+        (50.0, -100.0),
+        (50.0, 100.0),
+        (-50.0, 100.0),
+    ]
+
+
+# ---------- huge-value clamping (PDFBOX-2818) ----------
+
+
+def test_from_cos_array_clamps_huge_positive_values() -> None:
+    # Upstream PDFBOX-2818: values > Integer.MAX_VALUE are clipped.
+    huge = 1e20  # well past 2**31 - 1
+    arr = COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(huge), COSFloat(huge)])
+    r = PDRectangle.from_cos_array(arr)
+    int32_max = float(2**31 - 1)
+    assert r.upper_right_x == int32_max
+    assert r.upper_right_y == int32_max
+
+
+def test_from_cos_array_clamps_huge_negative_values() -> None:
+    huge_neg = -1e20
+    arr = COSArray(
+        [COSFloat(huge_neg), COSFloat(huge_neg), COSFloat(0.0), COSFloat(0.0)]
+    )
+    r = PDRectangle.from_cos_array(arr)
+    int32_max = float(2**31 - 1)
+    assert r.lower_left_x == -int32_max
+    assert r.lower_left_y == -int32_max
+
+
+def test_from_cos_array_does_not_clamp_normal_values() -> None:
+    # Sanity guard — normal-range values pass through unchanged.
+    arr = COSArray(
+        [COSFloat(10.0), COSFloat(20.0), COSFloat(610.0), COSFloat(790.0)]
+    )
+    r = PDRectangle.from_cos_array(arr)
+    assert r.lower_left_x == 10.0
+    assert r.upper_right_y == 790.0
+
+
+def test_from_cos_array_clamps_at_int32_boundary() -> None:
+    # Value exactly at ``2**31 - 1`` is *not* clamped (boundary is exclusive).
+    int32_max = float(2**31 - 1)
+    arr = COSArray(
+        [
+            COSFloat(0.0),
+            COSFloat(0.0),
+            COSFloat(int32_max),
+            COSFloat(int32_max),
+        ]
+    )
+    r = PDRectangle.from_cos_array(arr)
+    assert r.upper_right_x == int32_max
+    assert r.upper_right_y == int32_max

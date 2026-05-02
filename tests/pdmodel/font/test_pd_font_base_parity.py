@@ -285,3 +285,92 @@ def test_repr_includes_class_name_and_base_font() -> None:
 
 def test_repr_falls_back_to_class_name_when_base_font_missing() -> None:
     assert repr(_BarePDFont()) == "_BarePDFont"
+
+
+# ---------- get_font_matrix / DEFAULT_FONT_MATRIX ----------
+
+
+def test_get_font_matrix_defaults_to_simple_font_transform() -> None:
+    # The base default mirrors PDF 32000-1 §9.2.4 — 1/1000-em scaling.
+    assert _BarePDFont().get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+
+
+def test_get_font_matrix_returns_a_fresh_list_each_call() -> None:
+    # Mutating the returned list must not corrupt the class default.
+    font = _BarePDFont()
+    first = font.get_font_matrix()
+    first[0] = 99.0
+    assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+
+
+def test_default_font_matrix_class_constant_exposed() -> None:
+    # Upstream callers reach for the class attribute by name; mirror that.
+    assert PDFont.DEFAULT_FONT_MATRIX == (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
+
+
+# ---------- has_to_unicode / get_to_unicode_cmap ----------
+
+
+def test_has_to_unicode_false_when_absent() -> None:
+    assert _BarePDFont().has_to_unicode() is False
+
+
+def test_has_to_unicode_true_when_stream_present() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_item(COSName.get_pdf_name("ToUnicode"), COSStream())
+    assert font.has_to_unicode() is True
+
+
+def test_has_to_unicode_true_when_predefined_name_present() -> None:
+    # ``/ToUnicode /Identity-H`` is a legal PDF 32000-1 §9.10.3 shortcut.
+    font = _BarePDFont()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
+    )
+    assert font.has_to_unicode() is True
+
+
+def test_get_to_unicode_cmap_returns_none_when_absent() -> None:
+    assert _BarePDFont().get_to_unicode_cmap() is None
+
+
+def test_get_to_unicode_cmap_parses_predefined_name() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
+    )
+    cmap = font.get_to_unicode_cmap()
+    assert isinstance(cmap, CMap)
+
+
+def test_get_to_unicode_cmap_caches_result() -> None:
+    # Second call must return the *same* object — we must not reparse.
+    font = _BarePDFont()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
+    )
+    cmap = font.get_to_unicode_cmap()
+    assert font.get_to_unicode_cmap() is cmap
+
+
+def test_get_to_unicode_cmap_returns_none_for_non_name_non_stream_entry() -> None:
+    # /ToUnicode must be a stream or a predefined name — anything else
+    # (bool/int/array/dict) yields a None result instead of raising.
+    font = _BarePDFont()
+    font.get_cos_object().set_item(COSName.get_pdf_name("ToUnicode"), COSArray())
+    assert font.get_to_unicode_cmap() is None
+
+
+def test_get_to_unicode_cmap_caches_negative_result() -> None:
+    # Even when parsing fails we must not retry — the loaded flag
+    # latches to True after the first attempt.
+    font = _BarePDFont()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("NoSuchPredefinedCMap")
+    )
+    assert font.get_to_unicode_cmap() is None
+    # Mutate the dict to a now-valid value; the cache must keep returning None.
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
+    )
+    assert font.get_to_unicode_cmap() is None

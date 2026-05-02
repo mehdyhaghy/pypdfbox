@@ -97,6 +97,43 @@ class PDShadingType7(PDShading):
         array.set_float_array(values)
         self._dict.set_item(_DECODE, array)
 
+    def get_decode_for_parameter(self, param_num: int) -> tuple[float, float] | None:
+        """Return the decode ``(min, max)`` pair at index ``param_num`` from
+        ``/Decode``, or ``None`` when ``/Decode`` is missing or too short.
+
+        Mirrors upstream ``PDTriangleBasedShadingType.getDecodeForParameter``
+        — index 0 is the x-coordinate range, 1 is the y-coordinate range,
+        and ``2 + i`` is the i-th color component range."""
+        v = self._dict.get_dictionary_object(_DECODE)
+        if not isinstance(v, COSArray):
+            return None
+        needed = param_num * 2 + 2
+        if v.size() < needed:
+            return None
+        lo = v.get_object(param_num * 2)
+        hi = v.get_object(param_num * 2 + 1)
+        try:
+            return (float(lo.value), float(hi.value))  # type: ignore[union-attr]
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    def get_number_of_color_components(self) -> int:
+        """Return the number of color components for this shading.
+
+        Mirrors upstream ``PDTriangleBasedShadingType.getNumberOfColorComponents``
+        — when ``/Function`` is present the count is fixed at ``1``;
+        otherwise it falls back to the color space's component count.
+        Returns ``-1`` when neither is available."""
+        if self._dict.get_dictionary_object(_FUNCTION) is not None:
+            return 1
+        cs = self.get_color_space()
+        if cs is None:
+            return -1
+        get_components = getattr(cs, "get_number_of_components", None)
+        if callable(get_components):
+            return int(get_components())
+        return -1
+
     # ---------- /Function ----------
 
     def get_function(self):
