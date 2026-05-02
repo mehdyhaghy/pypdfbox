@@ -264,6 +264,57 @@ def test_is_standard_14_false_when_base_font_absent() -> None:
     assert PDType1Font().is_standard_14() is False
 
 
+def test_is_standard_14_no_underscore_alias_matches() -> None:
+    # Upstream's canonical name is ``isStandard14`` (no underscore between
+    # ``Standard`` and ``14``). We expose both spellings — the alias must
+    # delegate to the underscored version.
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert font.is_standard14() is True
+    assert font.is_standard14() == font.is_standard_14()
+
+
+def test_is_standard_14_false_when_dictionary_encoding_has_real_differences() -> None:
+    # Standard 14 status is forfeited when /Encoding is a /Differences
+    # overlay that *actually* changes the base mapping (PDFBOX-2372).
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    enc = COSDictionary()
+    enc.set_name(COSName.get_pdf_name("BaseEncoding"), "WinAnsiEncoding")
+    # Differences: code 65 ('A' in WinAnsi) -> 'beta' instead of 'A'.
+    diffs = COSArray([COSInteger.get(65), COSName.get_pdf_name("beta")])
+    enc.set_item(COSName.get_pdf_name("Differences"), diffs)
+    font.get_cos_object().set_item(COSName.get_pdf_name("Encoding"), enc)
+    assert font.is_standard_14() is False
+
+
+def test_is_standard_14_true_when_differences_only_restate_base_mapping() -> None:
+    # /Differences entries that simply restate the base encoding's own
+    # mapping for that code do not disqualify a Standard 14 font
+    # (PDFBOX-1900 with the file from PDFBOX-2192).
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    enc = COSDictionary()
+    enc.set_name(COSName.get_pdf_name("BaseEncoding"), "WinAnsiEncoding")
+    # Code 65 in WinAnsiEncoding *is* 'A' — re-stating that is a no-op.
+    diffs = COSArray([COSInteger.get(65), COSName.get_pdf_name("A")])
+    enc.set_item(COSName.get_pdf_name("Differences"), diffs)
+    font.get_cos_object().set_item(COSName.get_pdf_name("Encoding"), enc)
+    assert font.is_standard_14() is True
+
+
+def test_is_standard_14_false_when_font_program_embedded() -> None:
+    # Embedded fonts are never Standard 14 — inherits base-class rule.
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    fd = PDFontDescriptor()
+    from pypdfbox.cos import COSStream
+
+    fd.get_cos_object().set_item(COSName.get_pdf_name("FontFile"), COSStream())
+    font.set_font_descriptor(fd)
+    assert font.is_standard_14() is False
+
+
 # ---------- TrueType inherits the same accessors ----------
 
 

@@ -351,3 +351,150 @@ def test_upstream_metric_setters_round_trip() -> None:
     assert table.get_win_descent() == 250
     assert table.get_code_page_range1() == 0x0000019F
     assert table.get_code_page_range2() == 0x80000000
+
+
+def test_fs_selection_bit_constants() -> None:
+    assert OS2WindowsMetricsTable.FS_SELECTION_ITALIC == 0x0001
+    assert OS2WindowsMetricsTable.FS_SELECTION_UNDERSCORE == 0x0002
+    assert OS2WindowsMetricsTable.FS_SELECTION_NEGATIVE == 0x0004
+    assert OS2WindowsMetricsTable.FS_SELECTION_OUTLINED == 0x0008
+    assert OS2WindowsMetricsTable.FS_SELECTION_STRIKEOUT == 0x0010
+    assert OS2WindowsMetricsTable.FS_SELECTION_BOLD == 0x0020
+    assert OS2WindowsMetricsTable.FS_SELECTION_REGULAR == 0x0040
+    assert OS2WindowsMetricsTable.FS_SELECTION_USE_TYPO_METRICS == 0x0080
+    assert OS2WindowsMetricsTable.FS_SELECTION_WWS == 0x0100
+    assert OS2WindowsMetricsTable.FS_SELECTION_OBLIQUE == 0x0200
+
+
+def test_fs_selection_predicates_default() -> None:
+    table = OS2WindowsMetricsTable()
+    assert table.is_italic() is False
+    assert table.is_bold() is False
+    assert table.is_regular() is False
+    assert table.is_oblique() is False
+    assert table.is_strikeout() is False
+    assert table.is_underscore() is False
+    assert table.use_typo_metrics() is False
+
+
+def test_is_italic_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_ITALIC)
+    assert table.is_italic() is True
+    assert table.is_bold() is False
+    assert table.is_regular() is False
+
+
+def test_is_bold_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_BOLD)
+    assert table.is_bold() is True
+    assert table.is_italic() is False
+
+
+def test_is_regular_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_REGULAR)
+    assert table.is_regular() is True
+    assert table.is_bold() is False
+    assert table.is_italic() is False
+
+
+def test_is_oblique_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_OBLIQUE)
+    assert table.is_oblique() is True
+    # Italic and Oblique are independent bits.
+    assert table.is_italic() is False
+
+
+def test_is_strikeout_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_STRIKEOUT)
+    assert table.is_strikeout() is True
+
+
+def test_is_underscore_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_UNDERSCORE)
+    assert table.is_underscore() is True
+
+
+def test_use_typo_metrics_predicate() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(OS2WindowsMetricsTable.FS_SELECTION_USE_TYPO_METRICS)
+    assert table.use_typo_metrics() is True
+
+
+def test_fs_selection_combined_bits() -> None:
+    # A real Bold-Italic record has both flags set; predicates report each.
+    table = OS2WindowsMetricsTable()
+    table.set_fs_selection(
+        OS2WindowsMetricsTable.FS_SELECTION_BOLD
+        | OS2WindowsMetricsTable.FS_SELECTION_ITALIC
+        | OS2WindowsMetricsTable.FS_SELECTION_USE_TYPO_METRICS
+    )
+    assert table.is_bold() is True
+    assert table.is_italic() is True
+    assert table.use_typo_metrics() is True
+    assert table.is_regular() is False
+    assert table.is_oblique() is False
+
+
+def test_fs_selection_predicates_via_read() -> None:
+    # Ensure predicates work after a full read() round trip.
+    raw = _build_v0(
+        fs_selection=OS2WindowsMetricsTable.FS_SELECTION_BOLD
+        | OS2WindowsMetricsTable.FS_SELECTION_ITALIC
+    )
+    table = OS2WindowsMetricsTable()
+    table.read(None, MemoryTTFDataStream(raw))  # type: ignore[arg-type]
+    assert table.is_bold() is True
+    assert table.is_italic() is True
+
+
+def test_is_restricted_license_embedding_default() -> None:
+    table = OS2WindowsMetricsTable()
+    assert table.is_restricted_license_embedding() is False
+
+
+def test_is_restricted_license_embedding_when_set() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_type(OS2WindowsMetricsTable.FSTYPE_RESTRICTED)
+    assert table.is_restricted_license_embedding() is True
+
+
+def test_allows_subsetting_default() -> None:
+    # Default fs_type is 0 → the no-subsetting bit is clear → subsetting allowed.
+    table = OS2WindowsMetricsTable()
+    assert table.allows_subsetting() is True
+
+
+def test_allows_subsetting_when_disallowed() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_type(OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING)
+    assert table.allows_subsetting() is False
+
+
+def test_allows_subsetting_with_other_flags() -> None:
+    # Preview-and-print is set but no-subsetting is not → still allowed.
+    table = OS2WindowsMetricsTable()
+    table.set_fs_type(OS2WindowsMetricsTable.FSTYPE_PREVIEW_AND_PRINT)
+    assert table.allows_subsetting() is True
+    # Combine with no-subsetting → no longer allowed.
+    table.set_fs_type(
+        OS2WindowsMetricsTable.FSTYPE_PREVIEW_AND_PRINT
+        | OS2WindowsMetricsTable.FSTYPE_NO_SUBSETTING
+    )
+    assert table.allows_subsetting() is False
+
+
+def test_is_bitmap_embedding_only_default() -> None:
+    table = OS2WindowsMetricsTable()
+    assert table.is_bitmap_embedding_only() is False
+
+
+def test_is_bitmap_embedding_only_when_set() -> None:
+    table = OS2WindowsMetricsTable()
+    table.set_fs_type(OS2WindowsMetricsTable.FSTYPE_BITMAP_ONLY)
+    assert table.is_bitmap_embedding_only() is True

@@ -144,3 +144,23 @@ class MaximumProfileTable(TTFTable):
 
     def set_max_component_depth(self, value: int) -> None:
         self._max_component_depth = value
+
+    # ---- predicate helpers (no upstream equivalent — additions) ----
+
+    def is_post_script_outlines(self) -> bool:
+        """``True`` if the table version is below 1.0 (PostScript / CFF).
+
+        Per the OpenType ``maxp`` spec the version is the only signal:
+        a sub-1.0 version marks a CFF-based font (post-glyph fields are
+        absent), version 1.0+ marks a TrueType-outlined font. Mirrors the
+        ``version < 1.0`` check the parser itself performs in :meth:`read`
+        before reading the TrueType-only post-glyph fields.
+        """
+        return self._version < 1.0
+
+    def is_true_type_outlines(self) -> bool:
+        """``True`` if the table version indicates TrueType outlines (>= 1.0).
+
+        Counterpart to :meth:`is_post_script_outlines`.
+        """
+        return self._version >= 1.0

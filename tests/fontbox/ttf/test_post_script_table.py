@@ -292,3 +292,60 @@ def test_format_2_truncated_index_table_raises() -> None:
     blob = _pack_header(2) + body
     with _pytest.raises((OSError, EOFError)):
         _read(blob)
+
+
+def test_has_glyph_names_default_is_false() -> None:
+    t = PostScriptTable()
+    assert t.has_glyph_names() is False
+
+
+def test_has_glyph_names_format_1() -> None:
+    # Format 1 populates the WGL4 standard list.
+    blob = _pack_header(1) + b"\x00"  # any trailing byte to escape EOF guard
+    t = _read(blob)
+    assert t.get_format_type() == 1.0
+    assert t.has_glyph_names() is True
+    assert len(t.get_glyph_names() or []) > 0
+
+
+def test_has_glyph_names_format_3_is_false() -> None:
+    # Format 3 carries no glyph names.
+    blob = _pack_header(3) + b"\x00\x00\x00"
+    t = _read(blob)
+    assert t.has_glyph_names() is False
+
+
+def test_has_glyph_names_empty_format_2() -> None:
+    # An explicit format-2 table with zero glyphs creates [] which is not None
+    # but also has no names — the predicate reports False.
+    body = struct.pack(">H", 0)
+    blob = _pack_header(2) + body
+    t = _read(blob)
+    assert t.get_glyph_names() == []
+    assert t.has_glyph_names() is False
+
+
+def test_is_fixed_pitch_predicate_default() -> None:
+    t = PostScriptTable()
+    assert t.is_fixed_pitch() is False
+
+
+def test_is_fixed_pitch_predicate_when_zero() -> None:
+    blob = _pack_header(3, is_fixed_pitch=0)
+    t = _read(blob)
+    assert t.get_is_fixed_pitch() == 0
+    assert t.is_fixed_pitch() is False
+
+
+def test_is_fixed_pitch_predicate_when_set() -> None:
+    blob = _pack_header(3, is_fixed_pitch=1)
+    t = _read(blob)
+    assert t.get_is_fixed_pitch() == 1
+    assert t.is_fixed_pitch() is True
+
+
+def test_is_fixed_pitch_any_nonzero_value() -> None:
+    # The on-disk field is 32-bit; any non-zero value indicates fixed pitch.
+    blob = _pack_header(3, is_fixed_pitch=0xDEADBEEF)
+    t = _read(blob)
+    assert t.is_fixed_pitch() is True

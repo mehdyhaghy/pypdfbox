@@ -58,6 +58,21 @@ class OS2WindowsMetricsTable(TTFTable):
     FSTYPE_NO_SUBSETTING: int = 0x0100
     FSTYPE_BITMAP_ONLY: int = 0x0200
 
+    # fsSelection bits — Microsoft OS/2 spec.
+    # Not declared upstream, but every OS/2 reader hard-codes these masks
+    # against fsSelection. Centralising them lets callers express
+    # boldness / italicness without knowing the bit positions.
+    FS_SELECTION_ITALIC: int = 0x0001
+    FS_SELECTION_UNDERSCORE: int = 0x0002
+    FS_SELECTION_NEGATIVE: int = 0x0004
+    FS_SELECTION_OUTLINED: int = 0x0008
+    FS_SELECTION_STRIKEOUT: int = 0x0010
+    FS_SELECTION_BOLD: int = 0x0020
+    FS_SELECTION_REGULAR: int = 0x0040
+    FS_SELECTION_USE_TYPO_METRICS: int = 0x0080
+    FS_SELECTION_WWS: int = 0x0100
+    FS_SELECTION_OBLIQUE: int = 0x0200
+
     def __init__(self) -> None:
         super().__init__()
         self._version: int = 0
@@ -368,3 +383,63 @@ class OS2WindowsMetricsTable(TTFTable):
 
     def get_max_context(self) -> int:
         return self._us_max_context
+
+    # ---- predicate helpers (no upstream equivalent — additions) ----
+
+    def is_italic(self) -> bool:
+        """``True`` if the fsSelection Italic bit is set."""
+        return bool(self._fs_selection & self.FS_SELECTION_ITALIC)
+
+    def is_bold(self) -> bool:
+        """``True`` if the fsSelection Bold bit is set."""
+        return bool(self._fs_selection & self.FS_SELECTION_BOLD)
+
+    def is_regular(self) -> bool:
+        """``True`` if the fsSelection Regular bit is set.
+
+        The OpenType spec recommends this bit be set if and only if all
+        of Italic / Bold / Outlined / Negative / Strikeout / Underscore
+        are clear, but the table itself reports the field verbatim.
+        """
+        return bool(self._fs_selection & self.FS_SELECTION_REGULAR)
+
+    def is_oblique(self) -> bool:
+        """``True`` if the fsSelection Oblique bit (v4+, bit 9) is set."""
+        return bool(self._fs_selection & self.FS_SELECTION_OBLIQUE)
+
+    def is_strikeout(self) -> bool:
+        """``True`` if the fsSelection Strikeout bit is set."""
+        return bool(self._fs_selection & self.FS_SELECTION_STRIKEOUT)
+
+    def is_underscore(self) -> bool:
+        """``True`` if the fsSelection Underscore bit is set."""
+        return bool(self._fs_selection & self.FS_SELECTION_UNDERSCORE)
+
+    def use_typo_metrics(self) -> bool:
+        """``True`` if the USE_TYPO_METRICS bit (v4+, bit 7) is set.
+
+        Renderers that honour this bit prefer ``sTypoAscender`` /
+        ``sTypoDescender`` / ``sTypoLineGap`` over the win-metrics for
+        line spacing.
+        """
+        return bool(self._fs_selection & self.FS_SELECTION_USE_TYPO_METRICS)
+
+    def is_restricted_license_embedding(self) -> bool:
+        """``True`` if fsType marks the font as restricted-license.
+
+        Per the spec, restricted-license must be the only embedding bit
+        set; this predicate reports the bit verbatim regardless.
+        """
+        return bool(self._fs_type & self.FSTYPE_RESTRICTED)
+
+    def allows_subsetting(self) -> bool:
+        """``True`` if the font does NOT carry the no-subsetting bit.
+
+        Mirrors the test most callers perform before subsetting:
+        ``(fsType & FSTYPE_NO_SUBSETTING) == 0``.
+        """
+        return not (self._fs_type & self.FSTYPE_NO_SUBSETTING)
+
+    def is_bitmap_embedding_only(self) -> bool:
+        """``True`` if fsType restricts embedding to bitmap data only."""
+        return bool(self._fs_type & self.FSTYPE_BITMAP_ONLY)

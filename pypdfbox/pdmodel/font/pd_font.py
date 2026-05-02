@@ -3,11 +3,13 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
 
 from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
+    from pypdfbox.fontbox.cmap.cmap import CMap
+
     from .pd_font_descriptor import PDFontDescriptor
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -21,6 +23,7 @@ _WIDTHS: COSName = COSName.get_pdf_name("Widths")
 _FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
+_TO_UNICODE: COSName = COSName.get_pdf_name("ToUnicode")
 
 # PDF subset marker: six uppercase letters + '+' prefix on /BaseFont
 # (PDF 32000-1 §9.6.4 — "tagged" subset font names).
@@ -30,6 +33,10 @@ _SUBSET_RE = re.compile(r"^[A-Z]{6}\+")
 # upstream PDFBox ``PDFont.getSpaceWidth`` which falls back to 250 (1/4 em
 # in 1000-unit coordinates).
 _DEFAULT_SPACE_WIDTH: float = 250.0
+
+# Default font matrix per PDF 32000-1 §9.2.4 — maps glyph space (1/1000 em
+# units) to text space. Mirrors upstream ``PDFont.DEFAULT_FONT_MATRIX``.
+_DEFAULT_FONT_MATRIX: tuple[float, ...] = (0.001, 0.0, 0.0, 0.001, 0.0, 0.0)
 
 
 class PDFont:
@@ -41,12 +48,21 @@ class PDFont:
 
     SUB_TYPE: str | None = None
 
+    # Default 6-element font matrix shared by simple-font subtypes (Type 1,
+    # TrueType, etc.). Type 3 fonts override via the ``/FontMatrix`` entry
+    # on the dictionary; CIDFonts inherit through their parent Type 0 font.
+    DEFAULT_FONT_MATRIX: tuple[float, ...] = _DEFAULT_FONT_MATRIX
+
     def __init__(self, font_dict: COSDictionary | None = None) -> None:
         self._dict = font_dict if font_dict is not None else COSDictionary()
         if self._dict.get_dictionary_object(_TYPE) is None:
             self._dict.set_item(_TYPE, _FONT)
         if font_dict is None and self.SUB_TYPE is not None:
             self._dict.set_name(_SUBTYPE, self.SUB_TYPE)
+        # Lazy ``/ToUnicode`` CMap parse cache — populated on first call to
+        # :meth:`get_to_unicode_cmap`.
+        self._to_unicode_cmap: CMap | None = None
+        self._to_unicode_cmap_loaded: bool = False
 
     # ---------- COS surface ----------
 
@@ -171,6 +187,66 @@ class PDFont:
                 if width > 0.0:
                     return width
         return _DEFAULT_SPACE_WIDTH
+
+    # ---------- font matrix ----------
+
+    def get_font_matrix(self) -> list[float]:
+        """Return the 6-element font matrix that maps glyph space to text
+        space. Mirrors PDFBox ``PDFont.getFontMatrix``.
+
+        Defaults to ``[0.001, 0, 0, 0.001, 0, 0]`` per PDF 32000-1 §9.2.4 —
+        the simple-font (Type 1 / TrueType) standard. ``PDType3Font``
+        overrides to read the dictionary's ``/FontMatrix`` entry which
+        carries the per-font glyph-procedure transform.
+        """
+        return list(self.DEFAULT_FONT_MATRIX)
+
+    # ---------- /ToUnicode (CMap) ----------
+
+    def has_to_unicode(self) -> bool:
+        """``True`` iff the font dictionary carries a ``/ToUnicode`` entry.
+
+        Mirrors PDFBox's ``dict.containsKey(COSName.TO_UNICODE)`` predicate
+        used internally before reaching for :meth:`get_to_unicode_cmap`.
+        Cheap probe that does not parse the CMap.
+        """
+        return self._dict.get_dictionary_object(_TO_UNICODE) is not None
+
+    def get_to_unicode_cmap(self) -> CMap | None:
+        """Return the parsed ``/ToUnicode`` CMap, or ``None`` when absent
+        or malformed.
+
+        Mirrors PDFBox ``PDFont.getToUnicodeCMap``. Per PDF 32000-1 §9.10.3
+        the entry is either an embedded CMap stream or a predefined CMap
+        name (e.g. ``/Identity-H``). Cached on first successful parse so
+        repeat calls are O(1).
+        """
+        if self._to_unicode_cmap_loaded:
+            return self._to_unicode_cmap
+        self._to_unicode_cmap_loaded = True
+
+        raw = self._dict.get_dictionary_object(_TO_UNICODE)
+        if raw is None:
+            self._to_unicode_cmap = None
+            return None
+
+        # Defer the CMap import — keeps the font module's import graph
+        # light for callers that never reach for /ToUnicode.
+        from pypdfbox.fontbox.cmap import CMapParser
+
+        if isinstance(raw, COSStream):
+            try:
+                self._to_unicode_cmap = CMapParser().parse(raw.to_byte_array())
+            except (OSError, ValueError):
+                self._to_unicode_cmap = None
+        elif isinstance(raw, COSName):
+            try:
+                self._to_unicode_cmap = CMapParser.parse_predefined(raw.name)
+            except OSError:
+                self._to_unicode_cmap = None
+        else:
+            self._to_unicode_cmap = None
+        return self._to_unicode_cmap
 
     # ---------- Standard 14 ----------
 

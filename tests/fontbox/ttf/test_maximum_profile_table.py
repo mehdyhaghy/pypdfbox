@@ -157,6 +157,37 @@ def test_setters_round_trip_all_max_fields() -> None:
     assert table.get_max_component_depth() == 4
 
 
+def test_is_post_script_outlines_v05() -> None:
+    table = MaximumProfileTable()
+    table.read(None, MemoryTTFDataStream(_build_v05()))  # type: ignore[arg-type]
+    # v0.x (0x5000 frac → 0.3125) → PostScript / CFF outlines.
+    assert table.is_post_script_outlines() is True
+    assert table.is_true_type_outlines() is False
+
+
+def test_is_true_type_outlines_v10() -> None:
+    table = MaximumProfileTable()
+    table.read(None, MemoryTTFDataStream(_build_v10()))  # type: ignore[arg-type]
+    assert table.is_true_type_outlines() is True
+    assert table.is_post_script_outlines() is False
+
+
+def test_outlines_predicate_default() -> None:
+    # Fresh instance (version 0.0) is treated as PostScript-style.
+    table = MaximumProfileTable()
+    assert table.is_post_script_outlines() is True
+    assert table.is_true_type_outlines() is False
+
+
+def test_outlines_predicate_after_set_version() -> None:
+    table = MaximumProfileTable()
+    table.set_version(1.0)
+    assert table.is_true_type_outlines() is True
+    assert table.is_post_script_outlines() is False
+    table.set_version(0.5)
+    assert table.is_post_script_outlines() is True
+
+
 def test_setters_overwrite_values_after_read() -> None:
     table = MaximumProfileTable()
     table.read(None, MemoryTTFDataStream(_build_v10()))  # type: ignore[arg-type]

@@ -103,6 +103,26 @@ class PDCalGray(PDColorSpace):
     def set_gamma(self, gamma: float) -> None:
         self._dict().set_item(_GAMMA, COSFloat(gamma))
 
+    # ---------- predicates ----------
+
+    def is_white_point(self) -> bool:
+        """Return ``True`` iff ``/WhitePoint`` is the unit tristimulus
+        ``(1.0, 1.0, 1.0)``. Mirrors upstream
+        ``PDCIEDictionaryBasedColorSpace.isWhitePoint()`` (``protected`` in
+        Java; promoted to public here so callers can detect the
+        no-calibration shortcut path used by upstream's ``toRGB``).
+
+        Float comparison uses exact equality on the three components —
+        upstream uses ``Float.compare(...) == 0`` which is the same
+        semantics for non-NaN values; pypdfbox stores Python ``float``
+        (double precision) so an embedded literal ``1.0`` round-trips
+        exactly.
+        """
+        wp = self.get_white_point()
+        if len(wp) < 3:
+            return False
+        return wp[0] == 1.0 and wp[1] == 1.0 and wp[2] == 1.0
+
     # ---------- conversion ----------
 
     def to_rgb(self, values: list[float]) -> tuple[float, float, float]:

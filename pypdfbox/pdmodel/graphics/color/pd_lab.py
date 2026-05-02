@@ -163,6 +163,20 @@ class PDLab(PDColorSpace):
             self,
         )
 
+    # ---------- predicates ----------
+
+    def is_white_point(self) -> bool:
+        """Return ``True`` iff ``/WhitePoint`` is the unit tristimulus
+        ``(1.0, 1.0, 1.0)``. Mirrors upstream
+        ``PDCIEDictionaryBasedColorSpace.isWhitePoint()`` (``protected`` in
+        Java; promoted to public here so callers can probe the
+        no-calibration shortcut without poking at internal state).
+        """
+        wp = self.get_white_point()
+        if len(wp) < 3:
+            return False
+        return wp[0] == 1.0 and wp[1] == 1.0 and wp[2] == 1.0
+
     # ---------- decode ----------
 
     def get_default_decode(self, bits_per_component: int) -> list[float]:

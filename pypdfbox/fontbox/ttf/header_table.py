@@ -162,3 +162,25 @@ class HeaderTable(TTFTable):
 
     def set_glyph_data_format(self, value: int) -> None:
         self._glyph_data_format = value
+
+    # ---- predicate helpers (no upstream equivalent — additions) ----
+
+    def is_bold(self) -> bool:
+        """``True`` if the macStyle Bold bit (0x01) is set.
+
+        Mirrors the test upstream callers (e.g. ``PDTrueTypeFont`` / font
+        mapper) perform inline as ``getMacStyle() & MAC_STYLE_BOLD``.
+        """
+        return bool(self._mac_style & self.MAC_STYLE_BOLD)
+
+    def is_italic(self) -> bool:
+        """``True`` if the macStyle Italic bit (0x02) is set."""
+        return bool(self._mac_style & self.MAC_STYLE_ITALIC)
+
+    def get_bbox(self) -> tuple[int, int, int, int]:
+        """Glyph-data bounding box as ``(x_min, y_min, x_max, y_max)``.
+
+        Convenience tuple for callers that want to forward the head-table
+        bbox to a font descriptor without unpacking four accessors.
+        """
+        return (self._x_min, self._y_min, self._x_max, self._y_max)

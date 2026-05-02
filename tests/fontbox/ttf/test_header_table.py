@@ -166,3 +166,43 @@ def test_signed_bbox_handles_negatives() -> None:
     assert table.get_y_min() == -32768
     assert table.get_x_max() == 32767
     assert table.get_y_max() == 32767
+
+
+def test_is_bold_predicate() -> None:
+    table = HeaderTable()
+    assert table.is_bold() is False  # default
+    table.set_mac_style(HeaderTable.MAC_STYLE_BOLD)
+    assert table.is_bold() is True
+    assert table.is_italic() is False
+    # Bold + Italic both set.
+    table.set_mac_style(HeaderTable.MAC_STYLE_BOLD | HeaderTable.MAC_STYLE_ITALIC)
+    assert table.is_bold() is True
+    assert table.is_italic() is True
+
+
+def test_is_italic_predicate() -> None:
+    table = HeaderTable()
+    assert table.is_italic() is False  # default
+    table.set_mac_style(HeaderTable.MAC_STYLE_ITALIC)
+    assert table.is_italic() is True
+    assert table.is_bold() is False
+
+
+def test_mac_style_predicates_ignore_extra_bits() -> None:
+    # Bits beyond Bold/Italic should not perturb the predicates.
+    table = HeaderTable()
+    table.set_mac_style(0xFFFC)  # Bold/Italic both clear, all others set
+    assert table.is_bold() is False
+    assert table.is_italic() is False
+
+
+def test_get_bbox_tuple() -> None:
+    raw = _build_head(x_min=-100, y_min=-200, x_max=1500, y_max=1800)
+    table = HeaderTable()
+    table.read(None, MemoryTTFDataStream(raw))  # type: ignore[arg-type]
+    assert table.get_bbox() == (-100, -200, 1500, 1800)
+
+
+def test_get_bbox_default_zeros() -> None:
+    table = HeaderTable()
+    assert table.get_bbox() == (0, 0, 0, 0)

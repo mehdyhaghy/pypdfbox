@@ -215,3 +215,25 @@ class PostScriptTable(TTFTable):
         if gid < 0 or self._glyph_names is None or gid >= len(self._glyph_names):
             return None
         return self._glyph_names[gid]
+
+    # ---- predicate helpers (no upstream equivalent — additions) ----
+
+    def has_glyph_names(self) -> bool:
+        """``True`` if the table parsed a usable glyph-name list.
+
+        Format 3.0 carries no names and format 2/2.5/4 may legitimately
+        leave the list ``None`` if the post block ran out of bytes early.
+        Wraps the ``getGlyphNames() != null`` check upstream callers
+        perform inline.
+        """
+        return self._glyph_names is not None and len(self._glyph_names) > 0
+
+    def is_fixed_pitch(self) -> bool:
+        """``True`` if the font is monospaced.
+
+        The on-disk ``isFixedPitch`` field is a 32-bit integer where any
+        non-zero value indicates a fixed-pitch font; this provides a
+        boolean view that matches how the field is documented in the
+        OpenType ``post`` spec.
+        """
+        return self._is_fixed_pitch != 0

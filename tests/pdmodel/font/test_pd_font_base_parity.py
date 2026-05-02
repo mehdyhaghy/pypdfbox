@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
+from pypdfbox.fontbox.cmap.cmap import CMap
 from pypdfbox.pdmodel.font import PDFont, PDFontDescriptor
 
 
@@ -173,3 +174,114 @@ def test_wrapping_existing_dict_with_subset_base_font() -> None:
     font = _BarePDFont(raw)
     assert font.is_subset() is True
     assert font.get_name() == "ZZZZZZ+Times-Roman"
+
+
+# ---------- get_type ----------
+
+
+def test_get_type_returns_font_for_fresh_dict() -> None:
+    # Fresh dict — the constructor writes /Type = Font.
+    assert _BarePDFont().get_type() == "Font"
+
+
+def test_get_type_returns_existing_value_when_wrapping() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.TYPE, "Font")  # type: ignore[attr-defined]
+    font = _BarePDFont(raw)
+    assert font.get_type() == "Font"
+
+
+def test_get_type_returns_none_when_type_missing() -> None:
+    # Wrap a dict that already has *some* /Type entry so the constructor
+    # doesn't overwrite it, then drop the entry to exercise the absent
+    # path. (A naked empty dict gets /Type backfilled by __init__.)
+    raw = COSDictionary()
+    raw.set_name(COSName.TYPE, "Placeholder")  # type: ignore[attr-defined]
+    font = _BarePDFont(raw)
+    raw.remove_item(COSName.TYPE)  # type: ignore[attr-defined]
+    assert font.get_type() is None
+
+
+# ---------- is_standard14 (base PDFont) ----------
+
+
+def test_is_standard14_true_for_canonical_base_font() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert font.is_standard14() is True
+
+
+def test_is_standard14_true_for_alias_base_font() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "ArialMT")
+    assert font.is_standard14() is True
+
+
+def test_is_standard14_false_for_non_standard_base_font() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "MyCustomFont")
+    assert font.is_standard14() is False
+
+
+def test_is_standard14_false_when_base_font_absent() -> None:
+    assert _BarePDFont().is_standard14() is False
+
+
+def test_is_standard14_false_when_font_program_embedded() -> None:
+    # Acrobat treats embedded fonts as never being Standard 14, even when
+    # /BaseFont says Helvetica — see PDFBOX-2372.
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    fd = PDFontDescriptor()
+    fd.get_cos_object().set_item(COSName.get_pdf_name("FontFile"), COSStream())
+    font.set_font_descriptor(fd)
+    assert font.is_standard14() is False
+
+
+# ---------- equality / hashing (COS-identity-based) ----------
+
+
+def test_equality_compares_underlying_cos_dict_identity() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    a = _BarePDFont(raw)
+    b = _BarePDFont(raw)
+    # Same underlying dict -> equal.
+    assert a == b
+    # Distinct dicts with identical content -> not equal (mirrors PDFBox).
+    other_raw = COSDictionary()
+    other_raw.set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert _BarePDFont(other_raw) != a
+
+
+def test_equality_against_non_pdfont_returns_false() -> None:
+    assert _BarePDFont() != COSDictionary()
+    assert _BarePDFont() != "not a font"
+    assert _BarePDFont() != None  # noqa: E711 — explicit None compare under test
+
+
+def test_hash_matches_equality_contract() -> None:
+    raw = COSDictionary()
+    a = _BarePDFont(raw)
+    b = _BarePDFont(raw)
+    # equal -> identical hash
+    assert hash(a) == hash(b)
+    # usable as a dict key
+    seen = {a: "first"}
+    seen[b] = "second"
+    assert len(seen) == 1
+
+
+# ---------- repr / str ----------
+
+
+def test_repr_includes_class_name_and_base_font() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Times-Roman")
+    assert repr(font) == "_BarePDFont Times-Roman"
+    # str() shares the same formatter.
+    assert str(font) == "_BarePDFont Times-Roman"
+
+
+def test_repr_falls_back_to_class_name_when_base_font_missing() -> None:
+    assert repr(_BarePDFont()) == "_BarePDFont"
