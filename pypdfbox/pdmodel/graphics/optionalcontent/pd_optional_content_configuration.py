@@ -38,12 +38,15 @@ _VIEW: COSName = COSName.get_pdf_name("View")
 _EVENT: COSName = COSName.get_pdf_name("Event")
 _CATEGORY: COSName = COSName.get_pdf_name("Category")
 _OCGS: COSName = COSName.get_pdf_name("OCGs")
+_LIST_MODE: COSName = COSName.get_pdf_name("ListMode")
 
 _BASE_STATE_NAMES: dict[str, COSName] = {
     "ON": _ON,
     "OFF": _OFF,
     "UNCHANGED": COSName.get_pdf_name("Unchanged"),
 }
+
+_LIST_MODE_VALUES: frozenset[str] = frozenset(("AllPages", "VisiblePages"))
 
 
 def _to_dict(value: COSBase | None) -> COSDictionary | None:
@@ -98,6 +101,30 @@ class PDOptionalContentConfiguration:
                 f"base state must be 'ON', 'OFF', or 'Unchanged', got {state!r}"
             )
         self._dict.set_item(_BASE_STATE, cos_name)
+
+    # ---------- /ListMode (PDF 32000-1 Table 101) ----------
+
+    def get_list_mode(self) -> str:
+        """Return /ListMode. Spec default ``"AllPages"`` when absent.
+
+        Per PDF 32000-1 §8.11.4.3 Table 101, /ListMode controls which OCGs
+        are surfaced in a viewer's layer panel: ``"AllPages"`` (every
+        group) or ``"VisiblePages"`` (only groups referenced by visible
+        pages). pypdfbox enrichment — Apache PDFBox 3.0 does not expose
+        this key on ``PDOptionalContentProperties``."""
+        name = self._dict.get_name(_LIST_MODE, "AllPages")
+        return name if name is not None else "AllPages"
+
+    def set_list_mode(self, mode: str | None) -> None:
+        if mode is None:
+            self._dict.remove_item(_LIST_MODE)
+            return
+        if mode not in _LIST_MODE_VALUES:
+            raise ValueError(
+                "list mode must be 'AllPages' or 'VisiblePages', "
+                f"got {mode!r}"
+            )
+        self._dict.set_item(_LIST_MODE, COSName.get_pdf_name(mode))
 
     # ---------- /Intent (View / Design / array) ----------
 
@@ -162,6 +189,25 @@ class PDOptionalContentConfiguration:
 
     def get_off(self) -> list[PDOptionalContentGroup]:
         return self._wrap_ocg_list(self._dict.get_dictionary_object(_OFF))
+
+    def is_on(self, group: PDOptionalContentGroup) -> bool:
+        """``True`` when ``group`` is explicitly listed in /ON. Membership
+        is matched by *identity* of the wrapped ``COSDictionary`` so OCGs
+        that share a /Name aren't accidentally collapsed."""
+        target = group.get_cos_object()
+        for g in self.get_on():
+            if g.get_cos_object() is target:
+                return True
+        return False
+
+    def is_off(self, group: PDOptionalContentGroup) -> bool:
+        """``True`` when ``group`` is explicitly listed in /OFF. See
+        :meth:`is_on` for the matching contract."""
+        target = group.get_cos_object()
+        for g in self.get_off():
+            if g.get_cos_object() is target:
+                return True
+        return False
 
     @staticmethod
     def _wrap_ocg_list(value: COSBase | None) -> list[PDOptionalContentGroup]:
@@ -240,6 +286,27 @@ class PDOptionalContentConfiguration:
                     return sibling_group
         return None
 
+    def remove_rbgroup(self, group: PDOptionalContentGroup) -> bool:
+        """Drop the radio-button group containing ``group`` from /RBGroups.
+        Returns ``True`` when a sub-array was removed. Symmetric counterpart
+        to :meth:`add_rbgroup`. Pass any member of the target sub-array to
+        identify it; the *whole* sub-array is removed."""
+        arr = self._dict.get_dictionary_object(_RBGROUPS)
+        if not isinstance(arr, COSArray):
+            return False
+        target = group.get_cos_object()
+        for entry in list(arr):
+            sub = entry
+            if isinstance(sub, COSObject):
+                sub = sub.get_object()
+            if not isinstance(sub, COSArray):
+                continue
+            for member in sub:
+                if _to_dict(member) is target:
+                    arr.remove(entry)
+                    return True
+        return False
+
     # ---------- /Locked ----------
 
     def get_locked(self) -> list[PDOptionalContentGroup]:
@@ -273,6 +340,21 @@ class PDOptionalContentConfiguration:
             return
         arr = self._ensure_array(_LOCKED)
         arr.add(group.get_cos_object())
+
+    def remove_locked(self, group: PDOptionalContentGroup) -> bool:
+        """Drop ``group`` from /Locked. Returns ``True`` when an entry
+        was removed. Symmetric counterpart to :meth:`add_locked`. Matches
+        by *identity* of the wrapped ``COSDictionary``."""
+        arr = self._dict.get_dictionary_object(_LOCKED)
+        if not isinstance(arr, COSArray):
+            return False
+        target = group.get_cos_object()
+        removed = False
+        for entry in list(arr):
+            if _to_dict(entry) is target:
+                arr.remove(entry)
+                removed = True
+        return removed
 
     # ---------- /AS auto-state ----------
 

@@ -137,6 +137,105 @@ def test_add_as_entry_creates_usage_application_dict() -> None:
     assert cats.size() == 1
 
 
+def test_list_mode_default_and_round_trip() -> None:
+    """/ListMode defaults to "AllPages" per PDF 32000-1 Table 101 and round-
+    trips ``"VisiblePages"``; ``None`` removes the key (back to default)."""
+    cfg = PDOptionalContentConfiguration()
+    assert cfg.get_list_mode() == "AllPages"
+    cfg.set_list_mode("VisiblePages")
+    assert cfg.get_list_mode() == "VisiblePages"
+    cfg.set_list_mode("AllPages")
+    assert cfg.get_list_mode() == "AllPages"
+    cfg.set_list_mode(None)
+    # Key removed -> spec default again.
+    assert cfg.get_list_mode() == "AllPages"
+    assert cfg.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("ListMode")
+    ) is None
+
+
+def test_list_mode_rejects_unknown_values() -> None:
+    cfg = PDOptionalContentConfiguration()
+    with pytest.raises(ValueError):
+        cfg.set_list_mode("Bogus")
+
+
+def test_is_on_and_is_off_predicates() -> None:
+    """``is_on`` / ``is_off`` should match by identity of the wrapped dict.
+    A second OCG with the same /Name must not register as a match."""
+    cfg = PDOptionalContentConfiguration()
+    a = PDOptionalContentGroup("A")
+    b = PDOptionalContentGroup("B")
+    twin_a = PDOptionalContentGroup("A")  # same name, different dict.
+
+    on_arr = COSArray()
+    on_arr.add(a.get_cos_object())
+    cfg.get_cos_object().set_item(COSName.get_pdf_name("ON"), on_arr)
+    off_arr = COSArray()
+    off_arr.add(b.get_cos_object())
+    cfg.get_cos_object().set_item(COSName.get_pdf_name("OFF"), off_arr)
+
+    assert cfg.is_on(a) is True
+    assert cfg.is_on(b) is False
+    assert cfg.is_on(twin_a) is False
+    assert cfg.is_off(b) is True
+    assert cfg.is_off(a) is False
+
+
+def test_is_on_is_off_when_arrays_absent() -> None:
+    cfg = PDOptionalContentConfiguration()
+    a = PDOptionalContentGroup("A")
+    assert cfg.is_on(a) is False
+    assert cfg.is_off(a) is False
+
+
+def test_remove_rbgroup_drops_containing_subarray() -> None:
+    cfg = PDOptionalContentConfiguration()
+    a = PDOptionalContentGroup("A")
+    b = PDOptionalContentGroup("B")
+    c = PDOptionalContentGroup("C")
+    cfg.add_rbgroup([a, b])
+    cfg.add_rbgroup([c])
+
+    # Removing via any member drops the whole sub-array.
+    assert cfg.remove_rbgroup(b) is True
+    rb = cfg.get_rbgroups()
+    assert len(rb) == 1
+    assert [g.get_name() for g in rb[0]] == ["C"]
+
+    # Group not present -> False, no mutation.
+    assert cfg.remove_rbgroup(PDOptionalContentGroup("X")) is False
+    assert len(cfg.get_rbgroups()) == 1
+
+    # Drain the last group.
+    assert cfg.remove_rbgroup(c) is True
+    assert cfg.get_rbgroups() == []
+
+    # Empty /RBGroups -> still False (no sub-arrays).
+    assert cfg.remove_rbgroup(a) is False
+
+
+def test_remove_rbgroup_when_key_absent() -> None:
+    cfg = PDOptionalContentConfiguration()
+    assert cfg.remove_rbgroup(PDOptionalContentGroup("A")) is False
+
+
+def test_remove_locked_round_trip() -> None:
+    cfg = PDOptionalContentConfiguration()
+    a = PDOptionalContentGroup("A")
+    b = PDOptionalContentGroup("B")
+    cfg.set_locked([a, b])
+    assert cfg.remove_locked(a) is True
+    assert [g.get_name() for g in cfg.get_locked()] == ["B"]
+    # Idempotent: removing again returns False.
+    assert cfg.remove_locked(a) is False
+    # Group not in /Locked -> False.
+    assert cfg.remove_locked(PDOptionalContentGroup("Z")) is False
+    # /Locked absent -> False.
+    cfg.set_locked(None)
+    assert cfg.remove_locked(b) is False
+
+
 def test_properties_default_configuration_wrapper_shares_dict() -> None:
     props = PDOptionalContentProperties()
     cfg = props.get_default_configuration()

@@ -85,6 +85,7 @@ PDF-specific serialization — port territory.
 | `pypdfbox/pdfwriter/cos_writer_xref_entry.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriterXRefEntry.java` |
 | `pypdfbox/pdfwriter/cos_writer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/COSWriter.java` (full-save + incremental-save paths — xref-stream output, object-stream packing, encryption, signature digest computation stubbed for later clusters) |
 | `pypdfbox/pdfwriter/content_stream_writer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/ContentStreamWriter.java` |
+| `pypdfbox/pdfwriter/compress/compress_parameters.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/compress/CompressParameters.java` |
 
 ### `pypdfbox/filter/`
 
