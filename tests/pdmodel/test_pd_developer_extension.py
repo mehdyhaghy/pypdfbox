@@ -91,6 +91,42 @@ def test_adbe_class_constant_value() -> None:
     assert PDDeveloperExtension.ADBE == "ADBE"
 
 
+def test_base_version_class_constants() -> None:
+    assert PDDeveloperExtension.BASE_VERSION_1_3 == "1.3"
+    assert PDDeveloperExtension.BASE_VERSION_1_4 == "1.4"
+    assert PDDeveloperExtension.BASE_VERSION_1_5 == "1.5"
+    assert PDDeveloperExtension.BASE_VERSION_1_6 == "1.6"
+    assert PDDeveloperExtension.BASE_VERSION_1_7 == "1.7"
+    assert PDDeveloperExtension.BASE_VERSION_2_0 == "2.0"
+
+
+def test_eq_uses_backing_dict_identity() -> None:
+    raw = COSDictionary()
+    a = PDDeveloperExtension(raw)
+    b = PDDeveloperExtension(raw)
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_distinguishes_separate_dicts() -> None:
+    a = PDDeveloperExtension()
+    b = PDDeveloperExtension()
+    assert a != b
+
+
+def test_eq_returns_notimplemented_for_other_types() -> None:
+    a = PDDeveloperExtension()
+    assert (a == "not an extension") is False
+    assert (a == 42) is False
+
+
+def test_hash_allows_use_in_sets() -> None:
+    a = PDDeveloperExtension()
+    b = PDDeveloperExtension()
+    members = {a, b, a}
+    assert len(members) == 2
+
+
 # ---------- catalog wiring ----------
 
 

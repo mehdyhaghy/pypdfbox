@@ -43,6 +43,17 @@ class PDDeveloperExtension:
     # dictionary. Spelled out as constants for parity with how callers
     # routinely identify the extension publisher.
     ADBE: str = "ADBE"
+    # ISO 32000-2 §7.12.3 lists ADBE as the only currently-registered
+    # vendor prefix; ``GTS`` is reserved for output-intent dictionaries
+    # only, never for /Extensions, so don't expose it here.
+
+    # PDF version names commonly used as ``/BaseVersion`` values.
+    BASE_VERSION_1_3: str = "1.3"
+    BASE_VERSION_1_4: str = "1.4"
+    BASE_VERSION_1_5: str = "1.5"
+    BASE_VERSION_1_6: str = "1.6"
+    BASE_VERSION_1_7: str = "1.7"
+    BASE_VERSION_2_0: str = "2.0"
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
@@ -113,6 +124,14 @@ class PDDeveloperExtension:
             f"PDDeveloperExtension(base_version={self.get_base_version()!r}, "
             f"extension_level={self.get_extension_level()!r})"
         )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PDDeveloperExtension):
+            return NotImplemented
+        return self._dictionary is other._dictionary
+
+    def __hash__(self) -> int:
+        return id(self._dictionary)
 
 
 __all__ = ["PDDeveloperExtension"]
