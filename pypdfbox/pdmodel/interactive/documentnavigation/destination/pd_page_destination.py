@@ -60,6 +60,16 @@ class PDPageDestination(PDDestination):
     def set_page_number(self, page_number: int) -> None:
         self._array.set(0, COSInteger.get(page_number))
 
+    # ---------- predicate helpers ----------
+
+    def has_page(self) -> bool:
+        """``True`` when ``/D[0]`` is a page ``COSDictionary`` (local destination)."""
+        return isinstance(self._array.get_object(0), COSDictionary)
+
+    def has_page_number(self) -> bool:
+        """``True`` when ``/D[0]`` is a page-index ``COSInteger`` (remote destination)."""
+        return isinstance(self._array.get_object(0), COSInteger)
+
     def find_page_number(self, document=None) -> int:
         """Return the 0-based destination page index.
 
@@ -79,7 +89,52 @@ class PDPageDestination(PDDestination):
         return -1
 
     def retrieve_page_number(self, document=None) -> int:
-        return self.find_page_number(document)
+        """Return the 0-based page index regardless of whether ``/D[0]`` is a
+        page integer or a page dictionary.
+
+        Mirrors upstream ``PDPageDestination#retrievePageNumber()``: when
+        ``document`` is ``None`` and ``/D[0]`` is a page dictionary, walks
+        the page's ``/Parent`` (or ``/P``) chain up to the page-tree root
+        and uses :class:`PDPageTree` to compute the index. When no chain
+        is found or the resolved root isn't a ``/Type /Pages`` node,
+        returns ``-1``. When ``document`` is supplied, delegates to
+        :meth:`find_page_number` for the document-rooted lookup.
+        """
+        if document is not None:
+            return self.find_page_number(document)
+        page = self._array.get_object(0)
+        if isinstance(page, COSInteger):
+            return page.value
+        if not isinstance(page, COSDictionary):
+            return -1
+        # Walk /Parent (or /P) until we find a /Type /Pages root.
+        parent_key = COSName.PARENT  # type: ignore[attr-defined]
+        p_key = COSName.get_pdf_name("P")
+        type_key = COSName.TYPE  # type: ignore[attr-defined]
+        kids_key = COSName.KIDS  # type: ignore[attr-defined]
+        pages_name = COSName.PAGES  # type: ignore[attr-defined]
+        seen: set[int] = set()
+        current = page
+        while True:
+            if id(current) in seen:
+                # Cycle guard — bail safely.
+                return -1
+            seen.add(id(current))
+            nxt = current.get_dictionary_object(parent_key)
+            if not isinstance(nxt, COSDictionary):
+                nxt = current.get_dictionary_object(p_key)
+            if not isinstance(nxt, COSDictionary):
+                break
+            current = nxt
+        # ``current`` is now the highest ancestor.
+        if not isinstance(current.get_dictionary_object(kids_key), COSArray):
+            return -1
+        type_value = current.get_dictionary_object(type_key)
+        if not (isinstance(type_value, COSName) and type_value == pages_name):
+            return -1
+        from pypdfbox.pdmodel.pd_page_tree import PDPageTree
+
+        return PDPageTree(current).index_of(page)
 
     @staticmethod
     def _resolve_page_tree(context: Any) -> Any:

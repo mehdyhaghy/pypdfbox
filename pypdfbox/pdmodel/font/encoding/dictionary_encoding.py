@@ -124,6 +124,51 @@ class DictionaryEncoding(Encoding):
     def get_base_encoding(self) -> Encoding | None:
         return self._base_encoding
 
+    def has_base_encoding(self) -> bool:
+        """``True`` if a base encoding is resolved (writer-side construction
+        with ``base_encoding=`` or reader-side with ``/BaseEncoding`` resolved
+        to a known predefined encoding, or a non-symbolic font that fell back
+        to :class:`StandardEncoding`, or a symbolic font that fell back to its
+        ``built_in``).
+
+        ``False`` for Type 3 fonts where the ``/Differences`` array is the
+        complete encoding (mirrors upstream ``baseEncoding == null`` check at
+        ``getEncodingName()``).
+        """
+        return self._base_encoding is not None
+
+    def is_type3(self) -> bool:
+        """``True`` when this encoding was constructed in Type 3 mode — no
+        implicit base encoding, ``/Differences`` is the complete mapping.
+
+        Equivalent to ``not has_base_encoding()``; provided as a self-
+        documenting alias matching the spec language.
+        """
+        return self._base_encoding is None
+
+    def get_base_encoding_name(self) -> str | None:
+        """Return the resolved base encoding's identifier, or ``None`` for
+        Type 3 fonts. Convenience accessor — equivalent to
+        ``self.get_base_encoding().get_encoding_name()`` with the ``None``
+        guard inlined.
+        """
+        if self._base_encoding is None:
+            return None
+        return self._base_encoding.get_encoding_name()
+
+    def get_differences_array(self) -> COSArray | None:
+        """Return the underlying ``/Differences`` :class:`COSArray`, or
+        ``None`` if the encoding dictionary has no ``/Differences`` entry.
+
+        Differs from :meth:`get_differences` (which returns a ``{code: name}``
+        snapshot) by exposing the raw wire-form array — useful for callers
+        that need to inspect or mutate the on-disk representation directly.
+        """
+        diffs = self._encoding.get_dictionary_object(_DIFFERENCES)
+        if isinstance(diffs, COSArray):
+            return diffs
+        return None
+
     def set_base_encoding(self, value: Encoding | COSName | str | None) -> None:
         """Replace the ``/BaseEncoding`` entry on the underlying dictionary
         and refresh the cached resolved encoding.
