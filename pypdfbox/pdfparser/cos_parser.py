@@ -59,6 +59,38 @@ class COSParser(BaseParser):
     EOF_MARKER: ClassVar[bytes] = b"%%EOF"
     OBJ_MARKER: ClassVar[bytes] = b"obj"
 
+    # Header markers + default versions. Mirrors upstream
+    # ``COSParser.PDF_HEADER`` / ``FDF_HEADER`` / ``PDF_DEFAULT_VERSION`` /
+    # ``FDF_DEFAULT_VERSION``. The defaults apply when a PDF document
+    # advertises a header marker but no version digits — upstream falls
+    # back to ``1.4`` for PDFs and ``1.0`` for FDFs.
+    PDF_HEADER: ClassVar[str] = "%PDF-"
+    FDF_HEADER: ClassVar[str] = "%FDF-"
+    PDF_DEFAULT_VERSION: ClassVar[str] = "1.4"
+    FDF_DEFAULT_VERSION: ClassVar[str] = "1.0"
+
+    # Keyword markers used by xref-locator helpers. Mirrors upstream
+    # ``COSParser.XREF_TABLE`` / ``COSParser.STARTXREF`` (which are
+    # ``char[]`` upstream — bytes here for parity with our byte sources).
+    XREF_TABLE_MARKER: ClassVar[bytes] = b"xref"
+    STARTXREF_MARKER: ClassVar[bytes] = b"startxref"
+
+    # End-of-object markers. Mirrors upstream
+    # ``COSParser.ENDSTREAM`` / ``COSParser.ENDOBJ`` byte arrays used by
+    # the stream-body terminator scan.
+    ENDSTREAM_MARKER: ClassVar[bytes] = b"endstream"
+    ENDOBJ_MARKER: ClassVar[bytes] = b"endobj"
+
+    # Lower bound for the byte offset at which a brute-force xref scan
+    # may legitimately find a match. Mirrors upstream
+    # ``COSParser.MINIMUM_SEARCH_OFFSET`` (= 6 — i.e. shorter than
+    # ``%PDF-x.y`` so the scan never drifts into the header).
+    MINIMUM_SEARCH_OFFSET: ClassVar[int] = 6
+
+    # Buffer length used by the stream-body / endstream-scan helpers.
+    # Mirrors upstream ``COSParser.STRMBUFLEN`` (= 2048 bytes).
+    STRMBUFLEN: ClassVar[int] = 2048
+
     def __init__(
         self, source: RandomAccessRead, document: COSDocument | None = None
     ) -> None:
@@ -937,6 +969,26 @@ class COSParser(BaseParser):
         float. Tolerates up to 1024 bytes of leading garbage (some
         producers prepend MIME envelopes / shebangs / etc.). Mirrors
         upstream ``COSParser.parsePDFHeader``."""
+        return self._parse_header_marker(
+            self.PDF_HEADER.encode("ascii"), self.PDF_DEFAULT_VERSION
+        )
+
+    def parse_fdf_header(self) -> float:
+        """Validate the ``%FDF-x.y`` magic and return the version as a
+        float. FDF (Forms Data Format) shares the PDF header layout but
+        uses a different magic and a default of ``1.0``. Tolerates up to
+        1024 bytes of leading garbage (matches the PDF parser). Mirrors
+        upstream ``COSParser.parseFDFHeader``."""
+        return self._parse_header_marker(
+            self.FDF_HEADER.encode("ascii"), self.FDF_DEFAULT_VERSION
+        )
+
+    def _parse_header_marker(self, marker: bytes, default_version: str) -> float:
+        """Shared implementation for :meth:`parse_pdf_header` and
+        :meth:`parse_fdf_header`. Scans the leading 1024 bytes for
+        ``marker``, then reads the version digits up to EOL/whitespace.
+        Falls back to ``default_version`` when no digits follow the
+        marker (mirrors upstream's ``parseHeader`` fallback)."""
         scan_window = 1024
         self._src.seek(0)
         head = bytearray()
@@ -945,23 +997,52 @@ class COSParser(BaseParser):
             if b == RandomAccessRead.EOF:
                 break
             head.append(b)
-        idx = bytes(head).find(b"%PDF-")
+        idx = bytes(head).find(marker)
         if idx < 0:
-            raise PDFParseError("missing %PDF- header (not a PDF file)")
-        # Position the cursor just past "%PDF-" for version parsing.
-        self._src.seek(idx + len(b"%PDF-"))
+            raise PDFParseError(f"missing {marker.decode('ascii')} header")
+        # Position the cursor just past the marker for version parsing.
+        self._src.seek(idx + len(marker))
         version_bytes = bytearray()
         while True:
             b = self._src.read()
             if b == RandomAccessRead.EOF or b in (0x0A, 0x0D, 0x20):
                 break
             version_bytes.append(b)
+        if not version_bytes:
+            return float(default_version)
         try:
             return float(version_bytes.decode("ascii"))
         except ValueError as exc:
             raise PDFParseError(
-                f"malformed %PDF version {version_bytes!r}"
+                f"malformed {marker.decode('ascii')} version {version_bytes!r}"
             ) from exc
+
+    def has_pdf_header(self) -> bool:
+        """``True`` when :meth:`parse_pdf_header` would succeed. Useful
+        for callers wanting a non-throwing predicate before dispatching
+        between PDF / FDF entry points. Mirrors the boolean return shape
+        of upstream ``COSParser.parsePDFHeader`` (which returns ``true``
+        when a header is found)."""
+        saved = self._src.get_position()
+        try:
+            self.parse_pdf_header()
+            return True
+        except PDFParseError:
+            return False
+        finally:
+            self._src.seek(saved)
+
+    def has_fdf_header(self) -> bool:
+        """``True`` when :meth:`parse_fdf_header` would succeed. Mirrors
+        the boolean return shape of upstream ``COSParser.parseFDFHeader``."""
+        saved = self._src.get_position()
+        try:
+            self.parse_fdf_header()
+            return True
+        except PDFParseError:
+            return False
+        finally:
+            self._src.seek(saved)
 
     # Brute-force scan helpers — used by upstream's malformed-recovery
     # path. Mirrors `org.apache.pdfbox.pdfparser.COSParser` recovery

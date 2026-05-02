@@ -44,6 +44,13 @@ class AdobePDFSchema(XMPSchema):
     PDF_VERSION = "PDFVersion"
     PRODUCER = "Producer"
 
+    # pypdfbox enrichment — frozenset of the local names this schema models.
+    # Useful for callers that want to iterate the full property surface (e.g.
+    # diagnostics / round-trip snapshotting via :meth:`get_known_properties`)
+    # without hard-coding the three names. Upstream PDFBox has no equivalent
+    # collection — this is a small Pythonic convenience.
+    KNOWN_PROPERTIES: frozenset[str] = frozenset({KEYWORDS, PDF_VERSION, PRODUCER})
+
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
         # Typed property cache. The string-form path stores plain ``str`` values
@@ -148,3 +155,63 @@ class AdobePDFSchema(XMPSchema):
 
     def get_producer_property(self) -> TextType | None:
         return self._get_text_property(self.PRODUCER)
+
+    # --- predicate helpers -------------------------------------------
+    #
+    # pypdfbox enrichments — upstream PDFBox callers tend to read with
+    # ``getXxx() != null``; these short predicates make pypdfbox call sites
+    # read more naturally and keep the "absent vs. empty-string" distinction
+    # explicit. ``has_xxx`` returns ``True`` only when the local name is
+    # actually present in the property store; an empty-string value still
+    # counts as "set" since upstream's ``getProperty`` would also surface it.
+
+    def has_keywords(self) -> bool:
+        """Return ``True`` when ``pdf:Keywords`` is set on this schema."""
+        return self.KEYWORDS in self._properties
+
+    def has_pdf_version(self) -> bool:
+        """Return ``True`` when ``pdf:PDFVersion`` is set on this schema."""
+        return self.PDF_VERSION in self._properties
+
+    def has_producer(self) -> bool:
+        """Return ``True`` when ``pdf:Producer`` is set on this schema."""
+        return self.PRODUCER in self._properties
+
+    # --- bulk operations ---------------------------------------------
+
+    def clear(self) -> None:
+        """
+        Remove every property modelled by this schema (``Keywords``,
+        ``PDFVersion``, ``Producer``). pypdfbox enrichment — upstream callers
+        normally call each ``setXxx(null)`` individually; this short cut
+        matches the way real-world rewriters (sanitisers / PDF/A
+        conditioners) clear the entire ``pdf:`` block before re-emitting.
+        Properties not modelled by this schema (e.g. parser-deposited ones)
+        are left untouched.
+        """
+        for local_name in self.KNOWN_PROPERTIES:
+            self._properties.pop(local_name, None)
+            self._typed_properties.pop(local_name, None)
+
+    def get_known_properties(self) -> dict[str, str]:
+        """
+        Return a dict snapshot of every modelled property currently set on
+        this schema, keyed by upstream local name (``"Keywords"`` /
+        ``"PDFVersion"`` / ``"Producer"``). Absent properties are omitted —
+        the dict reflects only what's actually populated. pypdfbox
+        enrichment, mainly useful for diagnostics, round-trip assertions,
+        and quick equality comparisons across two ``AdobePDFSchema``
+        instances. Values are coerced to ``str`` so the dict is JSON-safe;
+        callers needing the typed wrappers should fall back to the
+        ``get_xxx_property`` accessors.
+        """
+        snapshot: dict[str, str] = {}
+        for local_name in self.KNOWN_PROPERTIES:
+            value = self._properties.get(local_name)
+            if value is None:
+                continue
+            if isinstance(value, TextType):
+                snapshot[local_name] = value.get_string_value()
+            else:
+                snapshot[local_name] = str(value)
+        return snapshot

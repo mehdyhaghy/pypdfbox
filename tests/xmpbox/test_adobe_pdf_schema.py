@@ -242,3 +242,171 @@ def test_set_text_property_value_as_simple_round_trip_for_pdf_fields() -> None:
     assert schema.get_keywords() == "alpha beta"
     assert schema.get_pdf_version() == "1.7"
     assert schema.get_producer() == "P"
+
+
+# ---------------------------------------------------------------------------
+# Wave 172 — predicate helpers, clear, get_known_properties, KNOWN_PROPERTIES
+# ---------------------------------------------------------------------------
+
+
+def test_known_properties_constant_lists_all_three_local_names() -> None:
+    assert AdobePDFSchema.KNOWN_PROPERTIES == frozenset(
+        {"Keywords", "PDFVersion", "Producer"}
+    )
+    # frozenset so callers can rely on hashability / no accidental mutation.
+    assert isinstance(AdobePDFSchema.KNOWN_PROPERTIES, frozenset)
+
+
+def test_predicates_default_false_when_unset() -> None:
+    schema = _adobe()
+    assert not schema.has_keywords()
+    assert not schema.has_pdf_version()
+    assert not schema.has_producer()
+
+
+def test_predicates_true_after_simple_setter() -> None:
+    schema = _adobe()
+    schema.set_keywords("kw")
+    schema.set_pdf_version("1.7")
+    schema.set_producer("Producer/1.0")
+    assert schema.has_keywords()
+    assert schema.has_pdf_version()
+    assert schema.has_producer()
+
+
+def test_predicates_true_after_typed_setter() -> None:
+    """The typed-setter path must be reflected by the ``has_*`` predicate
+    too — ``_set_text_property`` writes the string-form into
+    ``self._properties`` so the predicate sees it."""
+    schema = _adobe()
+    schema.set_keywords_property(
+        TextType(
+            schema._metadata,
+            AdobePDFSchema.NAMESPACE,
+            AdobePDFSchema.PREFERRED_PREFIX,
+            AdobePDFSchema.KEYWORDS,
+            "kw",
+        )
+    )
+    assert schema.has_keywords()
+
+
+def test_predicates_false_after_set_none() -> None:
+    schema = _adobe()
+    schema.set_pdf_version("1.4")
+    assert schema.has_pdf_version()
+    schema.set_pdf_version(None)
+    assert not schema.has_pdf_version()
+
+
+def test_predicate_true_for_empty_string_values() -> None:
+    """Edge case — an empty-string value is still "present", matching upstream
+    where ``getProperty`` would surface a zero-length ``TextType``."""
+    schema = _adobe()
+    schema.set_keywords("")
+    assert schema.has_keywords()
+    assert schema.get_keywords() == ""
+
+
+def test_clear_removes_all_modelled_properties() -> None:
+    schema = _adobe()
+    schema.set_keywords("kw")
+    schema.set_pdf_version("1.7")
+    schema.set_producer("P")
+    schema.clear()
+    assert not schema.has_keywords()
+    assert not schema.has_pdf_version()
+    assert not schema.has_producer()
+    assert schema.get_keywords() is None
+    assert schema.get_pdf_version() is None
+    assert schema.get_producer() is None
+
+
+def test_clear_invalidates_typed_property_cache() -> None:
+    """After ``clear()`` the typed-setter cache must also be wiped — otherwise
+    a follow-up ``get_xxx_property`` could hand back a stale ``TextType``."""
+    schema = _adobe()
+    schema.set_keywords_property(
+        TextType(
+            schema._metadata,
+            AdobePDFSchema.NAMESPACE,
+            AdobePDFSchema.PREFERRED_PREFIX,
+            AdobePDFSchema.KEYWORDS,
+            "kw",
+        )
+    )
+    schema.clear()
+    # Cache wiped; nothing to rehydrate from either.
+    assert schema.get_keywords_property() is None
+
+
+def test_clear_leaves_unrelated_properties_intact() -> None:
+    """Properties not modelled by ``AdobePDFSchema.KNOWN_PROPERTIES`` must
+    survive a ``clear()`` — e.g. a parser-deposited extension property under
+    the same namespace."""
+    schema = _adobe()
+    schema.set_keywords("kw")
+    schema._properties["CustomTag"] = "extra"
+    schema.clear()
+    assert not schema.has_keywords()
+    assert schema._properties.get("CustomTag") == "extra"
+
+
+def test_clear_on_empty_schema_is_noop() -> None:
+    schema = _adobe()
+    schema.clear()  # Must not raise even when nothing is set.
+    assert schema.get_known_properties() == {}
+
+
+def test_get_known_properties_returns_only_set_fields() -> None:
+    schema = _adobe()
+    schema.set_keywords("kw1 kw2")
+    schema.set_producer("P")
+    snapshot = schema.get_known_properties()
+    assert snapshot == {"Keywords": "kw1 kw2", "Producer": "P"}
+    # ``PDFVersion`` is absent — not surfaced as ``None`` in the snapshot.
+    assert "PDFVersion" not in snapshot
+
+
+def test_get_known_properties_full_snapshot() -> None:
+    schema = _adobe()
+    schema.set_keywords("kw")
+    schema.set_pdf_version("1.7")
+    schema.set_producer("Producer/1.0")
+    assert schema.get_known_properties() == {
+        "Keywords": "kw",
+        "PDFVersion": "1.7",
+        "Producer": "Producer/1.0",
+    }
+
+
+def test_get_known_properties_unwraps_typed_property() -> None:
+    """A ``TextType`` instance stored via the typed setter must be flattened
+    to its string value in the snapshot (so the dict stays JSON-safe)."""
+    schema = _adobe()
+    typed = TextType(
+        schema._metadata,
+        AdobePDFSchema.NAMESPACE,
+        AdobePDFSchema.PREFERRED_PREFIX,
+        AdobePDFSchema.PRODUCER,
+        "ProducerTyped",
+    )
+    schema.set_producer_property(typed)
+    snapshot = schema.get_known_properties()
+    # The string-form path stores the unwrapped string in ``_properties``,
+    # so the snapshot is just the plain string.
+    assert snapshot == {"Producer": "ProducerTyped"}
+    assert isinstance(snapshot["Producer"], str)
+
+
+def test_get_known_properties_returns_independent_dict() -> None:
+    """Caller-side mutation of the snapshot must not leak back into the
+    schema state."""
+    schema = _adobe()
+    schema.set_keywords("kw")
+    snapshot = schema.get_known_properties()
+    snapshot["Keywords"] = "mutated"
+    snapshot["Injected"] = "x"
+    # Underlying schema is untouched.
+    assert schema.get_keywords() == "kw"
+    assert "Injected" not in schema._properties

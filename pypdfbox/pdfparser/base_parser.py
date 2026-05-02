@@ -41,6 +41,21 @@ class BaseParser:
     OBJECT_NUMBER_THRESHOLD: ClassVar[int] = 10_000_000_000
     GENERATION_NUMBER_THRESHOLD: ClassVar[int] = 65535
 
+    # Maximum recursion depth allowed when nesting parsed objects (arrays /
+    # dictionaries) per upstream ``BaseParser.MAX_RECURSION_DEPTH``. The
+    # pypdfbox tokenizer does not enforce this guard yet (see
+    # ``PROVENANCE.md`` — recursive-depth tracking lives at the structural
+    # layer in ``COSParser.parse_direct_object``); the constant is exposed
+    # here for parity-test access and future enforcement work.
+    MAX_RECURSION_DEPTH: ClassVar[int] = 500
+
+    # Maximum number of digits accepted by ``read_string_number`` before
+    # the parser bails out — mirrors upstream
+    # ``BaseParser.MAX_LENGTH_LONG`` (length of ``Long.MAX_VALUE`` decimal,
+    # i.e. 19). Python ints are unbounded so the runtime never trips on
+    # this in practice — exposed for API parity.
+    MAX_LENGTH_LONG: ClassVar[int] = 19
+
     def __init__(self, source: RandomAccessRead) -> None:
         self._src = source
 
@@ -316,6 +331,32 @@ class BaseParser:
         """Alias for ``read_int`` — Python ints are unbounded; the
         method exists for PDFBox API parity."""
         return self.read_int()
+
+    def read_string_number(self) -> str:
+        """Read an unsigned digit-only token and return it as a string.
+        Mirrors upstream ``BaseParser.readStringNumber()`` — the protected
+        helper used by ``readInt`` / ``readLong`` to gather the textual
+        representation before parsing.
+
+        Stops at the first non-digit byte (which is left unread) or EOF.
+        Raises ``PDFParseError`` if the token would exceed
+        :data:`MAX_LENGTH_LONG` characters."""
+        out = bytearray()
+        while True:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                break
+            if not (0x30 <= b <= 0x39):
+                self._src.rewind(1)
+                break
+            out.append(b)
+            if len(out) > self.MAX_LENGTH_LONG:
+                raise PDFParseError(
+                    f"Number {bytes(out)!r} is getting too long, "
+                    f"stop reading at offset {self.position}",
+                    position=self.position,
+                )
+        return out.decode("ascii")
 
     def read_number(self) -> int | float:
         """Parse an integer or real number per ISO 32000-1 §7.3.3.
