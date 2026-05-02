@@ -154,3 +154,46 @@ def test_factory_dispatch_returns_typed_instance() -> None:
     result = PDAction.create(raw)
     assert isinstance(result, PDActionRichMediaExecute)
     assert result.get_cos_object() is raw
+
+
+def test_ta_alias_round_trip() -> None:
+    """``get_ta``/``set_ta`` are raw key-name aliases of the
+    target-annotation accessors."""
+    action = PDActionRichMediaExecute()
+    ta = COSDictionary()
+    action.set_ta(ta)
+    assert action.get_ta() is ta
+    assert action.get_target_annotation() is ta
+
+    action.set_ta(None)
+    assert action.get_ta() is None
+    assert action.get_target_annotation() is None
+
+
+def test_ti_alias_round_trip() -> None:
+    """``get_ti``/``set_ti`` are raw key-name aliases of the
+    target-instance accessors."""
+    action = PDActionRichMediaExecute()
+    ti = COSDictionary()
+    action.set_ti(ti)
+    assert action.get_ti() is ti
+    assert action.get_target_instance() is ti
+
+    action.set_ti(None)
+    assert action.get_ti() is None
+
+
+def test_cmd_alias_round_trip() -> None:
+    """``get_cmd``/``set_cmd`` are raw key-name aliases of the
+    command-dictionary accessors."""
+    action = PDActionRichMediaExecute()
+    cmd = COSDictionary()
+    cmd.set_string(_N, "stop")
+    action.set_cmd(cmd)
+    assert action.get_cmd() is cmd
+    assert action.get_command() is cmd
+    assert action.get_command_name() == "stop"
+
+    action.set_cmd(None)
+    assert action.get_cmd() is None
+    assert action.get_command() is None

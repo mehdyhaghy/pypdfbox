@@ -699,3 +699,94 @@ def test_resource_cache_propagates_to_typed_soft_mask() -> None:
     assert isinstance(sm, PDSoftMask)
     # Resource cache plumbed through PDSoftMask.create.
     assert sm.get_resource_cache() is cache
+
+
+# ---------- RenderingIntent (typed enum) ----------
+
+
+def test_rendering_intent_enum_string_value_round_trip() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingIntent
+
+    assert RenderingIntent.PERCEPTUAL.string_value() == "Perceptual"
+    assert (
+        RenderingIntent.ABSOLUTE_COLORIMETRIC.string_value()
+        == "AbsoluteColorimetric"
+    )
+    assert (
+        RenderingIntent.RELATIVE_COLORIMETRIC.string_value()
+        == "RelativeColorimetric"
+    )
+    assert RenderingIntent.SATURATION.string_value() == "Saturation"
+
+
+def test_rendering_intent_from_string_known_values() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingIntent
+
+    assert RenderingIntent.from_string("Perceptual") is RenderingIntent.PERCEPTUAL
+    assert (
+        RenderingIntent.from_string("Saturation") is RenderingIntent.SATURATION
+    )
+    assert (
+        RenderingIntent.from_string("AbsoluteColorimetric")
+        is RenderingIntent.ABSOLUTE_COLORIMETRIC
+    )
+    assert (
+        RenderingIntent.from_string("RelativeColorimetric")
+        is RenderingIntent.RELATIVE_COLORIMETRIC
+    )
+
+
+def test_rendering_intent_from_string_unknown_falls_back() -> None:
+    """Per PDF 32000-1 §8.6.5.8 — an unrecognised name maps to
+    RelativeColorimetric. Mirrors upstream ``RenderingIntent.fromString``.
+    """
+    from pypdfbox.pdmodel.graphics.state import RenderingIntent
+
+    assert (
+        RenderingIntent.from_string("Bogus")
+        is RenderingIntent.RELATIVE_COLORIMETRIC
+    )
+    assert (
+        RenderingIntent.from_string("")
+        is RenderingIntent.RELATIVE_COLORIMETRIC
+    )
+    assert (
+        RenderingIntent.from_string(None)
+        is RenderingIntent.RELATIVE_COLORIMETRIC
+    )
+
+
+def test_get_rendering_intent_typed_round_trip() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingIntent
+
+    gs = PDExtendedGraphicsState()
+    assert gs.get_rendering_intent_typed() is None
+    gs.set_rendering_intent("Saturation")
+    assert gs.get_rendering_intent_typed() is RenderingIntent.SATURATION
+
+
+def test_get_rendering_intent_typed_unknown_uses_default() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingIntent
+
+    gs = PDExtendedGraphicsState()
+    # Force an unrecognised /RI value through the dict layer.
+    gs.get_cos_object().set_name("RI", "Bogus")
+    assert (
+        gs.get_rendering_intent_typed() is RenderingIntent.RELATIVE_COLORIMETRIC
+    )
+
+
+def test_set_rendering_intent_accepts_enum() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingIntent
+
+    gs = PDExtendedGraphicsState()
+    gs.set_rendering_intent(RenderingIntent.PERCEPTUAL)
+    # Stored as the spec name string.
+    assert gs.get_rendering_intent() == "Perceptual"
+    assert gs.get_rendering_intent_typed() is RenderingIntent.PERCEPTUAL
+    gs.set_rendering_intent(RenderingIntent.ABSOLUTE_COLORIMETRIC)
+    assert gs.get_rendering_intent() == "AbsoluteColorimetric"
+    gs.set_rendering_intent(None)
+    assert gs.get_rendering_intent() is None
+    assert gs.get_rendering_intent_typed() is None
+    assert gs.get_cos_object().get_item("RI") is None

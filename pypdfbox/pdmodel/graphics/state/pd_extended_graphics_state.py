@@ -17,6 +17,7 @@ from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
     from pypdfbox.pdmodel.graphics.state.pd_font_setting import PDFontSetting
+    from pypdfbox.pdmodel.graphics.state.rendering_intent import RenderingIntent
 
 # Single-letter / short name keys defined by PDF spec for the ExtGState
 # dictionary. Local aliases keep the wrappers terse without polluting
@@ -356,11 +357,37 @@ class PDExtendedGraphicsState:
     def get_rendering_intent(self) -> str | None:
         return self._dict.get_name(_RI)
 
-    def set_rendering_intent(self, ri: str | None) -> None:
+    def set_rendering_intent(self, ri: RenderingIntent | str | None) -> None:
+        from pypdfbox.pdmodel.graphics.state.rendering_intent import (  # noqa: PLC0415
+            RenderingIntent,
+        )
+
         if ri is None:
             self._dict.remove_item(_RI)
-        else:
-            self._dict.set_name(_RI, ri)
+            return
+        if isinstance(ri, RenderingIntent):
+            self._dict.set_name(_RI, ri.string_value())
+            return
+        self._dict.set_name(_RI, ri)
+
+    def get_rendering_intent_typed(self) -> RenderingIntent | None:
+        """Return ``/RI`` resolved to the typed :class:`RenderingIntent`
+        enum, or ``None`` when ``/RI`` is absent.
+
+        Mirrors upstream ``getRenderingIntent()`` which returns the enum
+        directly. Companion to :meth:`get_rendering_intent` (which keeps
+        the raw string for back-compat with earlier waves). Per PDF
+        32000-1 §8.6.5.8, an unrecognised name is mapped to
+        :attr:`RenderingIntent.RELATIVE_COLORIMETRIC`.
+        """
+        from pypdfbox.pdmodel.graphics.state.rendering_intent import (  # noqa: PLC0415
+            RenderingIntent,
+        )
+
+        ri = self._dict.get_name(_RI)
+        if ri is None:
+            return None
+        return RenderingIntent.from_string(ri)
 
     # ---------- CA (stroking alpha) ----------
 

@@ -106,6 +106,43 @@ def test_preserve_rb_round_trip() -> None:
     assert action.is_preserve_rb() is True
 
 
+def test_state_preamble_constants() -> None:
+    """The PDF 32000-1 Table 207 preamble names are exposed as
+    class-level constants for caller convenience."""
+    assert PDActionSetOCGState.STATE_ON == "ON"
+    assert PDActionSetOCGState.STATE_OFF == "OFF"
+    assert PDActionSetOCGState.STATE_TOGGLE == "Toggle"
+
+
+def test_state_preamble_constants_round_trip_via_set_state() -> None:
+    """The exposed preamble constants drop straight into ``set_state``
+    via the string-coercion path."""
+    action = PDActionSetOCGState()
+    ocg = _ocg_dict("L1")
+    action.set_state(
+        [
+            PDActionSetOCGState.STATE_ON,
+            ocg,
+            PDActionSetOCGState.STATE_TOGGLE,
+            ocg,
+        ]
+    )
+    items = action.get_state()
+    assert items[0] == COSName.get_pdf_name("ON")
+    assert items[2] == COSName.get_pdf_name("Toggle")
+
+
+def test_get_preserve_rb_alias_matches_is_preserve_rb() -> None:
+    """``get_preserve_rb`` is a bean-style alias of ``is_preserve_rb``."""
+    action = PDActionSetOCGState()
+    assert action.get_preserve_rb() is True
+    assert action.get_preserve_rb() == action.is_preserve_rb()
+
+    action.set_preserve_rb(False)
+    assert action.get_preserve_rb() is False
+    assert action.get_preserve_rb() == action.is_preserve_rb()
+
+
 def test_wrap_existing_dictionary_preserves_state() -> None:
     raw = COSDictionary()
     raw.set_name(COSName.get_pdf_name("S"), "SetOCGState")

@@ -51,6 +51,15 @@ class PDActionRichMediaExecute(PDAction):
             return
         self._action.set_item(_TA, annotation)
 
+    # Raw aliases mirroring the entry key.
+    def get_ta(self) -> COSBase | None:
+        """Raw alias of :meth:`get_target_annotation`."""
+        return self.get_target_annotation()
+
+    def set_ta(self, annotation: COSBase | None) -> None:
+        """Raw alias of :meth:`set_target_annotation`."""
+        self.set_target_annotation(annotation)
+
     # ---------- /TI — target instance ----------
 
     def get_target_instance(self) -> COSDictionary | None:
@@ -67,6 +76,15 @@ class PDActionRichMediaExecute(PDAction):
             return
         self._action.set_item(_TI, instance)
 
+    # Raw aliases mirroring the entry key.
+    def get_ti(self) -> COSDictionary | None:
+        """Raw alias of :meth:`get_target_instance`."""
+        return self.get_target_instance()
+
+    def set_ti(self, instance: COSDictionary | None) -> None:
+        """Raw alias of :meth:`set_target_instance`."""
+        self.set_target_instance(instance)
+
     # ---------- /CMD — command dictionary ----------
 
     def get_command(self) -> COSDictionary | None:
@@ -82,6 +100,15 @@ class PDActionRichMediaExecute(PDAction):
             self._action.remove_item(_CMD)
             return
         self._action.set_item(_CMD, command)
+
+    # Raw aliases mirroring the entry key.
+    def get_cmd(self) -> COSDictionary | None:
+        """Raw alias of :meth:`get_command`."""
+        return self.get_command()
+
+    def set_cmd(self, command: COSDictionary | None) -> None:
+        """Raw alias of :meth:`set_command`."""
+        self.set_command(command)
 
     # ---------- /CMD/N + /CMD/A convenience accessors ----------
 

@@ -36,6 +36,11 @@ class PDActionSetOCGState(PDAction):
 
     SUB_TYPE = "SetOCGState"
 
+    # Preamble names for /State entries per PDF 32000-1 §12.6.4.12 Table 207.
+    STATE_ON = "ON"
+    STATE_OFF = "OFF"
+    STATE_TOGGLE = "Toggle"
+
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
@@ -90,6 +95,11 @@ class PDActionSetOCGState(PDAction):
         """Return /PreserveRB; defaults to ``True`` per PDF 32000-1
         Table 207."""
         return self._action.get_boolean(_PRESERVE_RB, True)
+
+    def get_preserve_rb(self) -> bool:
+        """Bean-style alias of :meth:`is_preserve_rb`. Returns the
+        /PreserveRB flag (default ``True`` when absent)."""
+        return self.is_preserve_rb()
 
     def set_preserve_rb(self, preserve: bool) -> None:
         self._action.set_boolean(_PRESERVE_RB, preserve)
