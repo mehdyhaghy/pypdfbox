@@ -106,3 +106,75 @@ def test_create_and_add_dublin_core_schema_alias() -> None:
     # Alias and primary share storage.
     assert meta.add_dublin_core_schema() is schema
     assert meta.get_dublin_core_schema() is schema
+
+
+def test_clear_schemas_drops_every_schema() -> None:
+    """Mirror of upstream ``XMPMetadata.clearSchemas``: removes every schema
+    and leaves xpacket attributes intact."""
+    meta = XMPMetadata.create_xmp_metadata()
+    meta.add_dublin_core_schema()
+    meta.add_xmp_basic_schema()
+    assert len(meta.get_all_schemas()) == 2
+
+    meta.clear_schemas()
+    assert meta.get_all_schemas() == []
+    # xpacket attributes survive the clear.
+    assert meta.get_xpacket_id() == "W5M0MpCehiHzreSzNTczkc9d"
+    assert meta.get_xpacket_encoding() == "UTF-8"
+    # Idempotent — second clear stays empty.
+    meta.clear_schemas()
+    assert meta.get_all_schemas() == []
+
+
+def test_create_and_add_default_schema_returns_plain_schema() -> None:
+    """Mirror of upstream ``XMPMetadata.createAndAddDefaultSchema``: produces
+    a bare :class:`XMPSchema` for the supplied prefix + namespace."""
+    meta = XMPMetadata.create_xmp_metadata()
+    schema = meta.create_and_add_default_schema("ex", "http://example.com/ns#")
+    assert isinstance(schema, XMPSchema)
+    assert schema.get_prefix() == "ex"
+    assert schema.get_namespace() == "http://example.com/ns#"
+    assert schema.get_about() == ""
+    assert meta.get_schema("http://example.com/ns#") is schema
+
+
+def test_create_and_add_default_schema_returns_distinct_instances() -> None:
+    """Upstream creates unconditionally — repeat calls produce distinct
+    instances (unlike the idempotent ``add_*`` helpers)."""
+    meta = XMPMetadata.create_xmp_metadata()
+    a = meta.create_and_add_default_schema("ex", "http://example.com/ns#")
+    b = meta.create_and_add_default_schema("ex", "http://example.com/ns#")
+    assert a is not b
+    assert len(meta.get_all_schemas()) == 2
+
+
+def test_create_and_add_xmp_basic_schema_returns_distinct_instances() -> None:
+    """Mirror of upstream ``XMPMetadata.createAndAddXMPBasicSchema``: each
+    call installs a fresh schema with ``rdf:about=""``."""
+    meta = XMPMetadata.create_xmp_metadata()
+    a = meta.create_and_add_xmp_basic_schema()
+    b = meta.create_and_add_xmp_basic_schema()
+    assert isinstance(a, XMPBasicSchema)
+    assert isinstance(b, XMPBasicSchema)
+    assert a is not b
+    assert a.get_about() == ""
+    assert b.get_about() == ""
+    # ``get_xmp_basic_schema`` returns the first installed one (upstream
+    # ``getSchema(Class)`` semantics).
+    assert meta.get_xmp_basic_schema() is a
+
+
+def test_create_and_add_xmp_media_management_schema_returns_distinct_instances() -> None:
+    """Mirror of upstream
+    ``XMPMetadata.createAndAddXMPMediaManagementSchema``."""
+    from pypdfbox.xmpbox import XMPMediaManagementSchema
+
+    meta = XMPMetadata.create_xmp_metadata()
+    a = meta.create_and_add_xmp_media_management_schema()
+    b = meta.create_and_add_xmp_media_management_schema()
+    assert isinstance(a, XMPMediaManagementSchema)
+    assert isinstance(b, XMPMediaManagementSchema)
+    assert a is not b
+    assert a.get_about() == ""
+    assert b.get_about() == ""
+    assert meta.get_xmp_media_management_schema() is a

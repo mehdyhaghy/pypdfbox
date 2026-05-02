@@ -176,6 +176,31 @@ class XMPMetadata:
         # Upstream returns a defensive copy; mirror that.
         return list(self._schemas)
 
+    def clear_schemas(self) -> None:
+        """
+        Mirror of upstream ``XMPMetadata.clearSchemas``: drop every registered
+        schema, leaving the packet-level xpacket attributes intact. Subsequent
+        :meth:`get_all_schemas` returns an empty list.
+        """
+        self._schemas.clear()
+
+    def create_and_add_default_schema(
+        self, ns_prefix: str, ns_uri: str
+    ) -> XMPSchema:
+        """
+        Mirror of upstream ``XMPMetadata.createAndAddDefaultSchema``: build a
+        plain :class:`XMPSchema` with the supplied prefix + namespace URI, set
+        its ``rdf:about`` to the empty string, attach it via :meth:`add_schema`,
+        and return it. Upstream creates unconditionally — repeat calls return
+        distinct instances.
+        """
+        from .xmp_schema import XMPSchema
+
+        schema = XMPSchema(self, namespace_uri=ns_uri, prefix=ns_prefix)
+        schema.set_about_as_simple("")
+        self.add_schema(schema)
+        return schema
+
     def get_schema(self, namespace_or_class: str | type) -> XMPSchema | None:
         """
         Return the first schema matching either a namespace URI string or a
@@ -251,6 +276,21 @@ class XMPMetadata:
         if existing is not None:
             return existing
         schema = XMPBasicSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_xmp_basic_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``XMPMetadata.createAndAddXMPBasicSchema``: always
+        create a fresh :class:`XMPBasicSchema`, set its ``rdf:about`` to the
+        empty string, attach it via :meth:`add_schema`, and return it. Unlike
+        :meth:`add_xmp_basic_schema`, repeated calls return distinct
+        instances — upstream behaviour.
+        """
+        from .xmp_basic_schema import XMPBasicSchema
+
+        schema = XMPBasicSchema(self)
+        schema.set_about_as_simple("")
         self.add_schema(schema)
         return schema
 
@@ -379,6 +419,21 @@ class XMPMetadata:
         if existing is not None:
             return existing
         schema = XMPMediaManagementSchema(self)
+        self.add_schema(schema)
+        return schema
+
+    def create_and_add_xmp_media_management_schema(self) -> XMPSchema:
+        """
+        Mirror of upstream ``XMPMetadata.createAndAddXMPMediaManagementSchema``:
+        always create a fresh :class:`XMPMediaManagementSchema`, set its
+        ``rdf:about`` to the empty string, attach it via :meth:`add_schema`,
+        and return it. Unlike :meth:`add_xmp_media_management_schema`,
+        repeated calls return distinct instances — upstream behaviour.
+        """
+        from .xmp_media_management_schema import XMPMediaManagementSchema
+
+        schema = XMPMediaManagementSchema(self)
+        schema.set_about_as_simple("")
         self.add_schema(schema)
         return schema
 

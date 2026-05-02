@@ -102,6 +102,88 @@ def test_ink_list_default_empty() -> None:
     assert ink.get_paths() == []
 
 
+def test_ink_list_is_empty_and_len() -> None:
+    ink = PDInkList()
+    assert ink.is_empty() is True
+    assert len(ink) == 0
+
+    p = PDPathInfo()
+    p.set_points([(1.0, 2.0)])
+    ink.add_path(p)
+    assert ink.is_empty() is False
+    assert len(ink) == 1
+
+
+def test_ink_list_clear() -> None:
+    ink = PDInkList()
+    p1 = PDPathInfo()
+    p1.set_points([(0.0, 0.0), (1.0, 1.0)])
+    p2 = PDPathInfo()
+    p2.set_points([(2.0, 2.0), (3.0, 3.0)])
+    ink.add_path(p1)
+    ink.add_path(p2)
+    assert len(ink) == 2
+
+    underlying = ink.get_cos_array()
+    ink.clear()
+    assert len(ink) == 0
+    assert ink.is_empty() is True
+    assert ink.get_paths() == []
+    # clear mutates the wrapped COSArray in place — same identity preserved.
+    assert ink.get_cos_array() is underlying
+
+
+def test_ink_list_get_path_returns_wrapper() -> None:
+    ink = PDInkList()
+    p1 = PDPathInfo()
+    p1.set_points([(10.0, 20.0)])
+    p2 = PDPathInfo()
+    p2.set_points([(30.0, 40.0), (50.0, 60.0)])
+    ink.add_path(p1)
+    ink.add_path(p2)
+
+    fetched = ink.get_path(1)
+    assert isinstance(fetched, PDPathInfo)
+    assert fetched.get_points() == [(30.0, 40.0), (50.0, 60.0)]
+    # The wrapper aliases the underlying COSArray, not a defensive copy.
+    assert fetched.get_cos_array() is p2.get_cos_array()
+
+
+def test_ink_list_get_path_out_of_range_raises() -> None:
+    ink = PDInkList()
+    import pytest
+
+    with pytest.raises(IndexError):
+        ink.get_path(0)
+
+    p = PDPathInfo()
+    p.set_points([(0.0, 0.0)])
+    ink.add_path(p)
+    with pytest.raises(IndexError):
+        ink.get_path(5)
+
+
+def test_ink_list_iteration_yields_paths() -> None:
+    ink = PDInkList()
+    p1 = PDPathInfo()
+    p1.set_points([(0.0, 0.0)])
+    p2 = PDPathInfo()
+    p2.set_points([(1.0, 1.0), (2.0, 2.0)])
+    ink.add_path(p1)
+    ink.add_path(p2)
+
+    collected = list(ink)
+    assert len(collected) == 2
+    assert all(isinstance(p, PDPathInfo) for p in collected)
+    assert collected[0].get_points() == [(0.0, 0.0)]
+    assert collected[1].get_points() == [(1.0, 1.0), (2.0, 2.0)]
+
+
+def test_ink_list_get_cos_object_alias() -> None:
+    ink = PDInkList()
+    assert ink.get_cos_object() is ink.get_cos_array()
+
+
 # ---------- PDVertices ----------
 
 
