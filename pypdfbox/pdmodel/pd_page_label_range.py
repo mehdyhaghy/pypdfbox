@@ -36,6 +36,18 @@ class PDPageLabelRange:
         }
     )
 
+    @classmethod
+    def is_valid_style(cls, style: str | None) -> bool:
+        """Predicate: is ``style`` one of the five PDF 32000-1 §12.4.2 Table
+        159 numbering-style codes?
+
+        ``None`` returns ``False`` (the absence of /S is legal but is not a
+        "valid style", it's "no style"). Useful for callers that want to
+        validate user input before calling :meth:`set_style`, which raises
+        on unknown codes.
+        """
+        return style in cls._VALID_STYLES
+
     def __init__(
         self,
         dictionary: COSDictionary | None = None,

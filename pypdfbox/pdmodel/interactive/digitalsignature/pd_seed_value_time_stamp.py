@@ -85,5 +85,26 @@ class PDSeedValueTimeStamp:
         ``0`` (false). Mirrors upstream ``setTimestampRequired(boolean)``."""
         self._dict.set_int(_FF, 1 if flag else 0)
 
+    # ---------- predicates ----------
+
+    def has_url(self) -> bool:
+        """Return ``True`` when a ``/URL`` entry is present.
+
+        Distinct from :meth:`get_url` returning ``None`` — both empty-string
+        and absent URLs surface as ``None`` from :meth:`get_url`, but only an
+        absent ``/URL`` returns ``False`` here.
+        """
+        return self._dict.contains_key(_URL)
+
+    def clear_ff(self) -> None:
+        """Remove the ``/Ff`` entry entirely.
+
+        After this call both :meth:`is_url_required` and
+        :meth:`is_timestamp_required` return ``False``. Distinct from
+        ``set_url_required(False)`` which writes ``0`` instead of removing
+        the key.
+        """
+        self._dict.remove_item(_FF)
+
 
 __all__ = ["PDSeedValueTimeStamp"]

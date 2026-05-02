@@ -154,5 +154,23 @@ class PDPropBuildDataDict:
     def set_trusted_mode(self, trusted_mode: bool) -> None:
         self._dict.set_boolean(_TRUSTED_MODE, trusted_mode)
 
+    # ---------- presence predicates ----------
+
+    def has_revision(self) -> bool:
+        """Return ``True`` when ``/R`` is present.
+
+        Disambiguates :meth:`get_revision`'s ``-1`` default — a stored value
+        of ``-1`` is indistinguishable from "absent" via the typed accessor.
+        """
+        return self._dict.contains_key(_R)
+
+    def has_minimum_revision(self) -> bool:
+        """Return ``True`` when ``/V`` (minimum revision) is present.
+
+        Disambiguates :meth:`get_minimum_revision`'s ``-1`` default. ``/V``
+        is deprecated since PDF v1.7 but still accepted on read.
+        """
+        return self._dict.contains_key(_V)
+
 
 __all__ = ["PDPropBuildDataDict"]

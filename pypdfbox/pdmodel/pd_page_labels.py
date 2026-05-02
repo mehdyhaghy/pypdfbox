@@ -198,6 +198,51 @@ class PDPageLabels:
         """``True`` if a range is defined at ``start_page``."""
         return start_page in self._labels
 
+    def is_default_only(self) -> bool:
+        """``True`` if this dictionary contains exactly the implicit default
+        range at index 0 (decimal style, no prefix, /St absent → start=1) and
+        nothing else.
+
+        A "default-only" instance is the no-op identity case: serializing
+        and deserializing it produces a label list equivalent to "1, 2, 3,
+        ..." with no overrides. Useful for callers deciding whether to
+        actually persist /PageLabels into the catalog (an empty/default
+        instance can be skipped without changing the rendered labels).
+        """
+        if len(self._labels) != 1 or 0 not in self._labels:
+            return False
+        only = self._labels[0]
+        return (
+            only.get_style() == PDPageLabelRange.STYLE_DECIMAL
+            and only.get_prefix() is None
+            # /St absent → get_start() returns the spec default of 1.
+            and not only.get_cos_object().contains_key(
+                COSName.get_pdf_name("St")
+            )
+        )
+
+    def clear_label_ranges(self) -> None:
+        """Remove every range entry. After this call the dictionary contains
+        no ranges and :meth:`get_page_range_count` returns 0; PDF 32000-1
+        §12.4.2 expects at least the default range, so callers should
+        repopulate before serialising."""
+        self._labels.clear()
+
+    def __len__(self) -> int:
+        """Number of defined ranges. Equivalent to
+        :meth:`get_page_range_count` so ``len(labels)`` works."""
+        return len(self._labels)
+
+    def __contains__(self, start_page: object) -> bool:
+        """``start_page in labels`` — alias for :meth:`has_label_range`.
+
+        Returns ``False`` for non-int keys instead of raising, matching
+        Python's tolerant container conventions (``"x" in {1: 2}`` is
+        ``False``, not a ``TypeError``)."""
+        if not isinstance(start_page, int) or isinstance(start_page, bool):
+            return False
+        return start_page in self._labels
+
     def remove_label_range(self, start_page: int) -> bool:
         """Remove the range entry at ``start_page``. Returns ``True`` if
         the entry existed and was removed, ``False`` otherwise. Removing
