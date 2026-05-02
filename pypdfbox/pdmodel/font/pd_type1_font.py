@@ -56,6 +56,36 @@ class PDType1Font(PDSimpleFont):
     ALT_NAMES = _ALT_NAMES
     PFB_START_MARKER = _PFB_START_MARKER
 
+    # PostScript names of the 14 Standard fonts (PDF 32000-1:2008 §9.6.2.2).
+    # Mirror upstream ``Standard14Fonts.FontName`` enum values exactly so
+    # callers can spell the canonical name with ``PDType1Font.HELVETICA``
+    # rather than the verbose ``Standard14Fonts.HELVETICA``. The string
+    # values match those of the upstream Java enum's ``getName()``.
+    HELVETICA = "Helvetica"
+    HELVETICA_BOLD = "Helvetica-Bold"
+    HELVETICA_OBLIQUE = "Helvetica-Oblique"
+    HELVETICA_BOLD_OBLIQUE = "Helvetica-BoldOblique"
+
+    TIMES_ROMAN = "Times-Roman"
+    TIMES_BOLD = "Times-Bold"
+    TIMES_ITALIC = "Times-Italic"
+    TIMES_BOLD_ITALIC = "Times-BoldItalic"
+
+    COURIER = "Courier"
+    COURIER_BOLD = "Courier-Bold"
+    COURIER_OBLIQUE = "Courier-Oblique"
+    COURIER_BOLD_OBLIQUE = "Courier-BoldOblique"
+
+    SYMBOL = "Symbol"
+    ZAPF_DINGBATS = "ZapfDingbats"
+
+    # Default advance returned by :meth:`get_width_from_font` for the
+    # ``.notdef`` glyph of a substituted (non-embedded) font. Mirrors the
+    # ``return 250`` literal in upstream ``PDType1Font.getWidthFromFont``
+    # and PDFBOX-1900 — picked to match the Adobe AFM ``.notdef`` advance
+    # for Helvetica.
+    SUBSTITUTE_NOTDEF_WIDTH: float = 250.0
+
     def __init__(self, font_dict: COSDictionary | None = None) -> None:
         super().__init__(font_dict)
         # Lazily-loaded embedded Type 1 program. ``None`` means
@@ -168,6 +198,36 @@ class PDType1Font(PDSimpleFont):
 
         return 0.0
 
+    def get_width_from_font(self, code: int) -> float:
+        """Return the glyph advance for ``code`` *as reported by the
+        underlying font program* in 1/1000 em — bypassing the
+        ``/Widths`` array. Mirrors upstream
+        ``PDType1Font.getWidthFromFont``.
+
+        Behaviour:
+
+        * If the font is **not** embedded and ``code`` resolves to
+          ``.notdef``, return :data:`SUBSTITUTE_NOTDEF_WIDTH` (250) —
+          PDFBOX-1900: the substitute's ``.notdef`` advance is meaningless
+          for the original font, so a fixed sentinel is used instead.
+        * Otherwise return the embedded program's advance for the
+          (encoding-resolved, ``ALT_NAMES``-remapped) glyph name. If no
+          program is loaded or the glyph is absent, fall through to the
+          Standard 14 AFM mean for the matching Standard 14 base font.
+        * Returns ``0.0`` when nothing is resolvable.
+        """
+        name = self.code_to_name(code)
+        if not self.is_embedded() and name == ".notdef":
+            return self.SUBSTITUTE_NOTDEF_WIDTH
+        program_width = self._program_width(code)
+        if program_width is not None:
+            return program_width
+        # Standard 14 AFM fallback (matches the third tier of get_glyph_width).
+        afm = self.get_standard_14_font_metrics()
+        if afm is not None and name != ".notdef":
+            return Standard14Fonts.get_glyph_width(self.get_name() or "", name)
+        return 0.0
+
     def _program_width(self, code: int) -> float | None:
         """Look up an advance width in the embedded font program.
 
@@ -260,14 +320,53 @@ class PDType1Font(PDSimpleFont):
 
         Mirrors upstream ``PDType1Font.getPath(String name)`` — operates
         on a glyph *name* (not a character code; see
-        :meth:`get_glyph_path` for the code-keyed variant). Returns
-        ``[]`` when the font has no embedded program or the glyph is
-        missing.
+        :meth:`get_glyph_path` for the code-keyed variant).
+
+        Edge-case handling parallels upstream:
+
+        * ``.notdef`` for a non-embedded font returns ``[]`` — Acrobat
+          does not draw ``.notdef`` for substituted Type 1 fonts (PDFBOX-2421).
+        * For embedded programs (and when a substitute carries the glyph),
+          the lookup goes through :meth:`get_name_in_font` so ligature
+          fallbacks (``ff`` -> ``f_f``) and the ArialMT ``ellipsis``
+          spelling are honoured.
+        * Returns ``[]`` when no program is loaded or the resolved glyph
+          name is absent from the program.
         """
+        if name == ".notdef" and not self.is_embedded():
+            return []
         program = self._get_type1_font()
         if program is None:
             return []
-        return program.get_path(name)
+        resolved = self.get_name_in_font(name)
+        return program.get_path(resolved)
+
+    def get_path_for_code(self, code: int) -> list[tuple]:
+        """Glyph outline for character ``code``, looked up via the font's
+        ``/Encoding``. Mirrors upstream ``PDType1Font.getPath(int code)``.
+
+        Returns ``[]`` when the font has no ``/Encoding`` or the code does
+        not resolve to a known glyph.
+        """
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return []
+        return self.get_path(encoding.get_name(code))
+
+    def get_normalized_path_for_code(self, code: int) -> list[tuple]:
+        """Glyph outline for ``code``, falling back to ``.notdef`` when
+        the primary lookup yields an empty path. Mirrors upstream
+        ``PDType1Font.getNormalizedPath(int code)``.
+
+        For non-embedded fonts the ``.notdef`` short-circuit in
+        :meth:`get_path` still applies — falling back will itself yield
+        ``[]``, matching upstream's "no path drawn" behaviour for
+        substituted Type 1 fonts.
+        """
+        path = self.get_path_for_code(code)
+        if path:
+            return path
+        return self.get_path(".notdef")
 
     def is_embedded(self) -> bool:
         """``True`` iff the font dictionary carries an embedded font

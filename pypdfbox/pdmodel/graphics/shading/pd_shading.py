@@ -8,6 +8,7 @@ _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SHADING: COSName = COSName.get_pdf_name("Shading")
 _SHADING_TYPE: COSName = COSName.get_pdf_name("ShadingType")
 _COLOR_SPACE: COSName = COSName.get_pdf_name("ColorSpace")
+_CS: COSName = COSName.get_pdf_name("CS")
 _BACKGROUND: COSName = COSName.get_pdf_name("Background")
 _BBOX: COSName = COSName.get_pdf_name("BBox")
 _ANTI_ALIAS: COSName = COSName.get_pdf_name("AntiAlias")
@@ -110,6 +111,41 @@ class PDShading:
     def set_shading_type(self, shading_type: int) -> None:
         self._dict.set_int(_SHADING_TYPE, shading_type)
 
+    @staticmethod
+    def is_valid_shading_type(value: int) -> bool:
+        """``True`` iff ``value`` is a defined shading-type identifier
+        (``1`` through ``7``). Useful for validating ``/ShadingType``
+        entries before dispatch — matches the range upstream's
+        ``PDShading.create`` recognises in its switch."""
+        return isinstance(value, int) and 1 <= value <= 7
+
+    # ---------- shading-type predicates ----------
+
+    def is_function_based(self) -> bool:
+        """``True`` for Type 1 (function-based) shadings."""
+        return self.get_shading_type() == PDShading.SHADING_TYPE1
+
+    def is_axial(self) -> bool:
+        """``True`` for Type 2 (axial / linear-gradient) shadings."""
+        return self.get_shading_type() == PDShading.SHADING_TYPE2
+
+    def is_radial(self) -> bool:
+        """``True`` for Type 3 (radial-gradient) shadings."""
+        return self.get_shading_type() == PDShading.SHADING_TYPE3
+
+    def is_mesh_based(self) -> bool:
+        """``True`` for the mesh-based shading types (4–7): Free-Form
+        Gouraud, Lattice-Form Gouraud, Coons Patch, and Tensor-Product
+        Patch meshes. Mirrors the dispatch families upstream's
+        ``PDShading.create`` switch groups together with
+        ``PDMeshBasedShadingType`` parentage."""
+        return self.get_shading_type() in (
+            PDShading.SHADING_TYPE4,
+            PDShading.SHADING_TYPE5,
+            PDShading.SHADING_TYPE6,
+            PDShading.SHADING_TYPE7,
+        )
+
     # ---------- /ColorSpace ----------
 
     def get_color_space(self) -> COSBase | None:
@@ -120,6 +156,57 @@ class PDShading:
             self._dict.remove_item(_COLOR_SPACE)
             return
         self._dict.set_item(_COLOR_SPACE, color_space)
+
+    def get_color_space_object(self, resources=None):  # type: ignore[no-untyped-def]
+        """Return the ``/ColorSpace`` (or ``/CS`` short-form) entry wrapped
+        as a typed ``PDColorSpace``, or ``None`` when absent. Mirrors
+        upstream ``PDShading.getColorSpace()`` which dispatches via
+        ``PDColorSpace.create(...)`` and accepts the abbreviated ``/CS``
+        key as a fallback (see ``COSDictionary.getDictionaryObject(CS,
+        COLORSPACE)`` in upstream).
+
+        ``resources`` is forwarded to ``PDColorSpace.create`` so named
+        color-space references (e.g. ``/CS0`` looked up via the page's
+        ``/Resources/ColorSpace`` table) can be resolved.
+        """
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+            PDColorSpace,
+        )
+
+        # Match upstream's two-key lookup: prefer /ColorSpace, fall back
+        # to the abbreviated /CS form (used in inline-image-style shading
+        # dictionaries).
+        cs_obj = self._dict.get_dictionary_object(_COLOR_SPACE, _CS)
+        if cs_obj is None:
+            return None
+        return PDColorSpace.create(cs_obj, resources)
+
+    def set_color_space_object(self, color_space) -> None:  # type: ignore[no-untyped-def]
+        """Set ``/ColorSpace`` from a typed ``PDColorSpace`` (its backing
+        COS object is stored), a raw ``COSBase``, or ``None`` (clears the
+        entry). Mirrors upstream
+        ``PDShading.setColorSpace(PDColorSpace)``."""
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+            PDColorSpace,
+        )
+
+        if color_space is None:
+            self._dict.remove_item(_COLOR_SPACE)
+            return
+        if isinstance(color_space, PDColorSpace):
+            cs_cos = color_space.get_cos_object()
+            if cs_cos is None:
+                self._dict.remove_item(_COLOR_SPACE)
+                return
+            self._dict.set_item(_COLOR_SPACE, cs_cos)
+            return
+        if isinstance(color_space, COSBase):
+            self._dict.set_item(_COLOR_SPACE, color_space)
+            return
+        raise TypeError(
+            "set_color_space_object expects PDColorSpace, COSBase, or "
+            f"None; got {type(color_space).__name__}"
+        )
 
     # ---------- /Background ----------
 
@@ -145,6 +232,40 @@ class PDShading:
             return
         self._dict.set_item(_BBOX, bbox)
 
+    def get_b_box_rect(self):  # type: ignore[no-untyped-def]
+        """Return ``/BBox`` as a typed ``PDRectangle``, or ``None`` when the
+        entry is absent or not a valid 4-entry numeric array. Mirrors
+        upstream ``PDShading.getBBox()`` which returns ``PDRectangle``."""
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+
+        value = self._dict.get_dictionary_object(_BBOX)
+        if isinstance(value, COSArray) and value.size() >= 4:
+            try:
+                return PDRectangle.from_cos_array(value)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def set_b_box_rect(self, bbox) -> None:  # type: ignore[no-untyped-def]
+        """Set ``/BBox`` from a typed ``PDRectangle``, raw ``COSArray``, or
+        ``None`` (clears the entry). Mirrors upstream
+        ``PDShading.setBBox(PDRectangle)``."""
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+
+        if bbox is None:
+            self._dict.remove_item(_BBOX)
+            return
+        if isinstance(bbox, PDRectangle):
+            self._dict.set_item(_BBOX, bbox.to_cos_array())
+            return
+        if isinstance(bbox, COSArray):
+            self._dict.set_item(_BBOX, bbox)
+            return
+        raise TypeError(
+            "set_b_box_rect expects PDRectangle, COSArray, or None; got "
+            f"{type(bbox).__name__}"
+        )
+
     # ---------- /AntiAlias ----------
 
     def get_anti_alias(self) -> bool:
@@ -152,6 +273,13 @@ class PDShading:
 
     def set_anti_alias(self, anti_alias: bool) -> None:
         self._dict.set_boolean(_ANTI_ALIAS, anti_alias)
+
+    def is_anti_alias(self) -> bool:
+        """Predicate alias for :meth:`get_anti_alias`. Returns ``True``
+        when ``/AntiAlias`` is present and truthy. Convenience companion
+        to upstream's ``getAntiAlias()`` for callers that read the entry
+        as a boolean test."""
+        return self.get_anti_alias()
 
     # ---------- /Function (base-level fallback) ----------
 

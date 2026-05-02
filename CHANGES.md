@@ -807,6 +807,16 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/xmpbox/type/resource_ref_type.py`: added XMPBox camelCase aliases for resource-reference fields, including document/instance IDs, file path, management fields, part/rendition fields, last-modify date, and alternate-path helpers.
 
+## Wave 199 — PDType1Font path / width / Standard 14 constants round-out
+
+- `pypdfbox/pdmodel/font/pd_type1_font.py`:
+  - Added 14 PostScript ``BaseFont`` string constants directly on ``PDType1Font`` (``HELVETICA``, ``HELVETICA_BOLD``, ``HELVETICA_OBLIQUE``, ``HELVETICA_BOLD_OBLIQUE``, ``TIMES_ROMAN``, ``TIMES_BOLD``, ``TIMES_ITALIC``, ``TIMES_BOLD_ITALIC``, ``COURIER``, ``COURIER_BOLD``, ``COURIER_OBLIQUE``, ``COURIER_BOLD_OBLIQUE``, ``SYMBOL``, ``ZAPF_DINGBATS``) — values match upstream ``Standard14Fonts.FontName`` ``getName()`` exactly so callers can spell ``PDType1Font.HELVETICA`` ergonomically without reaching for the upstream enum.
+  - Added ``SUBSTITUTE_NOTDEF_WIDTH = 250.0`` named constant for the PDFBOX-1900 sentinel previously hardcoded inline by upstream's ``getWidthFromFont``.
+  - ``get_path(name)`` now mirrors upstream ``PDType1Font.getPath(String)`` — short-circuits to ``[]`` for ``.notdef`` on non-embedded fonts (PDFBOX-2421) and routes the program lookup through ``get_name_in_font`` so ``ALT_NAMES`` ligature fallbacks (``ff`` → ``f_f``, ArialMT ``ellipsis`` → ``elipsis``) reach the program.
+  - Added ``get_path_for_code(code)`` mirroring upstream ``PDType1Font.getPath(int)`` — encoding-keyed path lookup.
+  - Added ``get_normalized_path_for_code(code)`` mirroring upstream ``PDType1Font.getNormalizedPath(int)`` — falls back to the ``.notdef`` glyph path when the primary lookup yields ``[]``.
+  - Added ``get_width_from_font(code)`` mirroring upstream ``PDType1Font.getWidthFromFont`` — returns ``SUBSTITUTE_NOTDEF_WIDTH`` for substituted ``.notdef`` (PDFBOX-1900), otherwise the program advance, otherwise the Standard 14 AFM advance, otherwise ``0.0``.
+
 ## Wave 71 — Filter parity (ASCII85 alias, deflate-level configuration)
 
 - `pypdfbox/filter/ascii85_filter.py`: new upstream-named alias module mirroring `org.apache.pdfbox.filter.ASCII85Filter`, registered alongside the existing `ASCII85Decode` codec.
