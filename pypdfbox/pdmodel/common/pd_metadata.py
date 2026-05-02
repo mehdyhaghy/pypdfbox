@@ -13,6 +13,13 @@ if TYPE_CHECKING:
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 
+# Canonical /Type and /Subtype tag values for a document-level XMP metadata
+# stream. Mirrors the literal strings stamped by upstream's
+# ``PDMetadata(PDDocument)`` and ``PDMetadata(PDDocument, InputStream)``
+# constructors.
+TYPE_METADATA: str = "Metadata"
+SUBTYPE_XML: str = "XML"
+
 
 class PDMetadata(PDStream):
     """
@@ -108,8 +115,38 @@ class PDMetadata(PDStream):
         """Stamp ``/Type /Metadata`` and ``/Subtype /XML`` on the wrapped
         COSStream — required for document-level XMP metadata streams."""
         cos = self.get_cos_object()
-        cos.set_name(_TYPE, "Metadata")
-        cos.set_name(_SUBTYPE, "XML")
+        cos.set_name(_TYPE, TYPE_METADATA)
+        cos.set_name(_SUBTYPE, SUBTYPE_XML)
+
+    # ---------- /Type and /Subtype accessors ----------
+
+    def get_type(self) -> str | None:
+        """Return ``/Type`` as a plain string (typically ``"Metadata"``),
+        or ``None`` when the entry is missing. Mirrors upstream's
+        unwritten-but-implied accessor for the dictionary tag."""
+        cos = self.get_cos_object()
+        value = cos.get_dictionary_object(_TYPE)
+        if isinstance(value, COSName):
+            return value.get_name()
+        return None
+
+    def get_subtype(self) -> str | None:
+        """Return ``/Subtype`` as a plain string (typically ``"XML"``), or
+        ``None`` when the entry is missing."""
+        cos = self.get_cos_object()
+        value = cos.get_dictionary_object(_SUBTYPE)
+        if isinstance(value, COSName):
+            return value.get_name()
+        return None
+
+    def is_metadata_stream(self) -> bool:
+        """``True`` when the wrapped stream is tagged as a document-level
+        XMP metadata stream (``/Type /Metadata`` and ``/Subtype /XML``).
+
+        Useful for detecting whether a ``PDMetadata`` constructed from an
+        existing ``COSStream`` actually has the required tags — upstream's
+        third constructor deliberately skips tagging."""
+        return self.get_type() == TYPE_METADATA and self.get_subtype() == SUBTYPE_XML
 
     # ---------- XMP I/O ----------
 
@@ -159,10 +196,33 @@ class PDMetadata(PDStream):
         with self.create_input_stream() as src:
             return src.read()
 
+    def export_xmp_metadata_as_input_stream(self) -> BinaryIO:
+        """Return the XMP packet body as a file-like object.
+
+        Closer in shape to upstream's ``exportXMPMetadata() : InputStream``
+        than :meth:`export_xmp_metadata`, which materialises ``bytes``.
+        Provided for callers that want to stream the packet through an
+        XML parser without holding the full body in memory at the API
+        boundary. An empty stream yields an empty ``BytesIO``."""
+        return self.create_input_stream()
+
     def get_metadata_as_string(self) -> str:
         """Return the XMP packet body decoded as UTF-8. Mirrors upstream
         ``getMetadataAsString()``. Empty stream → empty string."""
         return self.export_xmp_metadata().decode("utf-8")
+
+    def set_metadata_from_string(self, xmp: str) -> None:
+        """Replace the stream body with ``xmp`` encoded as UTF-8.
+
+        Direct counterpart of :meth:`get_metadata_as_string`. Equivalent
+        to ``import_xmp_metadata(xmp)`` when ``xmp`` is a ``str`` but
+        spelled out explicitly so the symmetry with the getter is
+        obvious at call sites."""
+        if not isinstance(xmp, str):
+            raise TypeError(
+                f"set_metadata_from_string expected str; got {type(xmp).__name__}"
+            )
+        self.import_xmp_metadata(xmp.encode("utf-8"))
 
     # ---------- convenience ----------
 

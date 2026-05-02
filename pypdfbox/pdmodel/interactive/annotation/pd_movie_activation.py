@@ -13,6 +13,13 @@ _MODE: COSName = COSName.get_pdf_name("Mode")
 class PDMovieActivation:
     """Movie activation dictionary wrapper for annotation ``/A`` entries."""
 
+    # ---------- /Mode value constants (ISO 32000-1 Table 273) ----------
+
+    MODE_ONCE: str = "Once"
+    MODE_OPEN: str = "Open"
+    MODE_REPEAT: str = "Repeat"
+    MODE_PALINDROME: str = "Palindrome"
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
 

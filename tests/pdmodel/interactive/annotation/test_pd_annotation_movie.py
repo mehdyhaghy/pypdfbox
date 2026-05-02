@@ -142,6 +142,40 @@ def test_movie_typed_payload_accessors_round_trip() -> None:
     assert movie.get_rotation() == 0
 
 
+def test_movie_activation_mode_constants() -> None:
+    assert PDMovieActivation.MODE_ONCE == "Once"
+    assert PDMovieActivation.MODE_OPEN == "Open"
+    assert PDMovieActivation.MODE_REPEAT == "Repeat"
+    assert PDMovieActivation.MODE_PALINDROME == "Palindrome"
+
+
+def test_movie_activation_mode_constants_round_trip() -> None:
+    activation = PDMovieActivation()
+    activation.set_mode(PDMovieActivation.MODE_PALINDROME)
+    assert activation.get_mode() == "Palindrome"
+    activation.set_mode(PDMovieActivation.MODE_ONCE)
+    assert activation.get_mode() == "Once"
+
+
+def test_movie_set_aspect_accepts_tuple_single_arg() -> None:
+    movie = PDMovie()
+    movie.set_aspect((1280, 720))
+    assert movie.get_aspect() == (1280, 720)
+
+
+def test_movie_set_aspect_accepts_list_single_arg() -> None:
+    movie = PDMovie()
+    movie.set_aspect([800, 600])
+    assert movie.get_aspect() == (800, 600)
+
+
+def test_movie_set_aspect_short_sequence_clears() -> None:
+    movie = PDMovie()
+    movie.set_aspect(640, 480)
+    movie.set_aspect([])
+    assert movie.get_aspect() is None
+
+
 def test_movie_activation_typed_accessors_round_trip() -> None:
     activation = PDMovieActivation()
     start = COSFloat(1.25)

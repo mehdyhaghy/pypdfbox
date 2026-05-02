@@ -174,6 +174,49 @@ def test_get_raw_sample_data_returns_unfiltered_payload():
     assert payload == b"\x01\x02\x03\x04"
 
 
+# ---------- /E encoding constants ----------
+
+
+def test_encoding_constants_match_iso_32000_table_174():
+    assert PDSoundStream.ENCODING_RAW == "Raw"
+    assert PDSoundStream.ENCODING_SIGNED == "Signed"
+    assert PDSoundStream.ENCODING_MULAW == "muLaw"
+    assert PDSoundStream.ENCODING_ALAW == "ALaw"
+
+
+def test_encoding_constants_round_trip_through_setter():
+    sound = PDSoundStream()
+    sound.set_encoding_format(PDSoundStream.ENCODING_MULAW)
+    assert sound.get_encoding_format() == "muLaw"
+    sound.set_encoding_format(PDSoundStream.ENCODING_SIGNED)
+    assert sound.get_encoding_format() == "Signed"
+
+
+# ---------- /Type optional ----------
+
+
+def test_type_constant_is_sound():
+    assert PDSoundStream.TYPE_SOUND == "Sound"
+
+
+def test_get_type_absent_by_default():
+    assert PDSoundStream().get_type() is None
+
+
+def test_type_round_trip_and_clear():
+    sound = PDSoundStream()
+    sound.set_type(PDSoundStream.TYPE_SOUND)
+    assert sound.get_type() == "Sound"
+    assert (
+        sound.get_cos_object().get_name(COSName.get_pdf_name("Type")) == "Sound"
+    )
+    sound.set_type(None)
+    assert sound.get_type() is None
+    assert not sound.get_cos_object().contains_key(
+        COSName.get_pdf_name("Type")
+    )
+
+
 # ---------- COS surface ----------
 
 

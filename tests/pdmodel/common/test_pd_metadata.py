@@ -5,7 +5,11 @@ import io
 import pytest
 
 from pypdfbox.cos import COSName, COSStream
-from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+from pypdfbox.pdmodel.common.pd_metadata import (
+    SUBTYPE_XML,
+    TYPE_METADATA,
+    PDMetadata,
+)
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 
@@ -170,3 +174,88 @@ def test_set_filters_clears_when_none() -> None:
     meta.set_filters(None)
     assert meta.get_filters() == []
     assert meta.is_filter_undefined()
+
+
+# ---------- /Type and /Subtype accessors ----------
+
+
+def test_module_constants_match_pdf_spec_values() -> None:
+    # Constants should match the literal strings upstream stamps onto
+    # /Type and /Subtype for document-level XMP metadata streams.
+    assert TYPE_METADATA == "Metadata"
+    assert SUBTYPE_XML == "XML"
+
+
+def test_get_type_returns_metadata_string_after_default_construction() -> None:
+    meta = PDMetadata()
+    assert meta.get_type() == TYPE_METADATA
+
+
+def test_get_subtype_returns_xml_string_after_default_construction() -> None:
+    meta = PDMetadata()
+    assert meta.get_subtype() == SUBTYPE_XML
+
+
+def test_get_type_and_subtype_are_none_for_untagged_cos_stream() -> None:
+    meta = PDMetadata(COSStream())
+    assert meta.get_type() is None
+    assert meta.get_subtype() is None
+
+
+def test_is_metadata_stream_true_for_tagged_default() -> None:
+    assert PDMetadata().is_metadata_stream() is True
+
+
+def test_is_metadata_stream_false_for_untagged_cos_stream() -> None:
+    assert PDMetadata(COSStream()).is_metadata_stream() is False
+
+
+def test_is_metadata_stream_false_when_only_type_present() -> None:
+    cos = COSStream()
+    cos.set_name(_TYPE, "Metadata")
+    assert PDMetadata(cos).is_metadata_stream() is False
+
+
+def test_is_metadata_stream_false_when_subtype_is_unexpected() -> None:
+    cos = COSStream()
+    cos.set_name(_TYPE, "Metadata")
+    cos.set_name(_SUBTYPE, "Other")
+    assert PDMetadata(cos).is_metadata_stream() is False
+
+
+# ---------- export_xmp_metadata_as_input_stream ----------
+
+
+def test_export_as_input_stream_returns_file_like_with_packet() -> None:
+    meta = PDMetadata(b"<rdf:RDF/>")
+    with meta.export_xmp_metadata_as_input_stream() as src:
+        assert src.read() == b"<rdf:RDF/>"
+
+
+def test_export_as_input_stream_on_empty_returns_empty() -> None:
+    meta = PDMetadata()
+    with meta.export_xmp_metadata_as_input_stream() as src:
+        assert src.read() == b""
+
+
+# ---------- set_metadata_from_string ----------
+
+
+def test_set_metadata_from_string_round_trips_via_get() -> None:
+    meta = PDMetadata()
+    packet = "<x:xmpmeta>héllo</x:xmpmeta>"
+    meta.set_metadata_from_string(packet)
+    assert meta.get_metadata_as_string() == packet
+    assert meta.export_xmp_metadata() == packet.encode("utf-8")
+
+
+def test_set_metadata_from_string_replaces_existing_body() -> None:
+    meta = PDMetadata(b"old")
+    meta.set_metadata_from_string("new")
+    assert meta.export_xmp_metadata() == b"new"
+
+
+def test_set_metadata_from_string_rejects_non_string() -> None:
+    meta = PDMetadata()
+    with pytest.raises(TypeError):
+        meta.set_metadata_from_string(b"bytes-not-allowed")  # type: ignore[arg-type]

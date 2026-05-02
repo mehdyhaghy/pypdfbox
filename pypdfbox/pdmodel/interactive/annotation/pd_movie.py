@@ -45,7 +45,19 @@ class PDMovie:
             return (value.get_int(0), value.get_int(1))
         return None
 
-    def set_aspect(self, width: int | None, height: int | None = None) -> None:
+    def set_aspect(
+        self,
+        width: int | tuple[int, int] | list[int] | None,
+        height: int | None = None,
+    ) -> None:
+        # Single-arg tuple/list form mirrors common ``Aspect`` array shape.
+        if isinstance(width, (tuple, list)):
+            if len(width) < 2:
+                self._dict.remove_item(_ASPECT)
+                return
+            w, h = int(width[0]), int(width[1])
+            self._dict.set_item(_ASPECT, COSArray.of_cos_integers((w, h)))
+            return
         if width is None or height is None:
             self._dict.remove_item(_ASPECT)
             return

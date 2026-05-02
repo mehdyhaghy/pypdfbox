@@ -11,6 +11,8 @@ _B: COSName = COSName.get_pdf_name("B")
 _E: COSName = COSName.get_pdf_name("E")
 _CO: COSName = COSName.get_pdf_name("CO")
 _CP: COSName = COSName.get_pdf_name("CP")
+_TYPE: COSName = COSName.get_pdf_name("Type")
+_TYPE_SOUND: str = "Sound"
 
 
 class PDSoundStream(PDStream):
@@ -36,6 +38,17 @@ class PDSoundStream(PDStream):
     the spec defaults ``/B 8``, ``/E /Raw``, ``/C 1``), an existing
     ``COSStream`` (wrap as-is, no defaults), or another ``PDStream``
     (steal its underlying COSStream)."""
+
+    # ---------- /E encoding name constants (ISO 32000-1 Table 174) ----------
+
+    ENCODING_RAW: str = "Raw"
+    ENCODING_SIGNED: str = "Signed"
+    ENCODING_MULAW: str = "muLaw"
+    ENCODING_ALAW: str = "ALaw"
+
+    # ---------- /Type optional value ----------
+
+    TYPE_SOUND: str = _TYPE_SOUND
 
     def __init__(self, stream: COSStream | PDStream | None = None) -> None:
         if isinstance(stream, PDStream):
@@ -112,6 +125,23 @@ class PDSoundStream(PDStream):
             cos.remove_item(_CP)
             return
         cos.set_item(_CP, value)
+
+    # ---------- /Type (optional, must be /Sound when present) ----------
+
+    def get_type(self) -> str | None:
+        """Return the optional ``/Type`` name. Per spec the only valid
+        value is ``Sound``; ``None`` is returned when absent."""
+        return self.get_cos_object().get_name(_TYPE)
+
+    def set_type(self, value: str | None) -> None:
+        """Stamp or clear the optional ``/Type`` entry. Pass ``None`` to
+        remove the entry; pass ``"Sound"`` (or :attr:`TYPE_SOUND`) to
+        stamp the spec-mandated value."""
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_TYPE)
+            return
+        cos.set_name(_TYPE, value)
 
     # ---------- raw sample data ----------
 
