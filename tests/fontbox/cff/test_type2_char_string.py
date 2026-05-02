@@ -107,6 +107,49 @@ def test_repr_carries_font_and_gid() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Sequence accessors (parity with upstream Type1CharString protected API)
+# ---------------------------------------------------------------------------
+
+
+def test_sequence_accessors_empty_by_default() -> None:
+    """A freshly-constructed Type2CharString has an empty Type 1 sequence
+    buffer. Mirrors upstream ``isSequenceEmpty()`` /
+    ``getLastSequenceEntry()`` (inherited from ``Type1CharString``)."""
+    cs = Type2CharString(None, "F", "A", 0, None)
+    assert cs.is_sequence_empty() is True
+    assert cs.get_last_sequence_entry() is None
+
+
+def test_add_command_populates_sequence() -> None:
+    """``add_command`` appends operands then the command token — matches
+    upstream ``Type1CharString.addCommand(numbers, command)``, used by
+    upstream's ``Type2CharString.convertType1ToType2``."""
+    cs = Type2CharString(None, "F", "A", 0, None)
+    cs.add_command([0, 500], "hsbw")
+    assert cs.is_sequence_empty() is False
+    assert cs.get_last_sequence_entry() == "hsbw"
+    cs.add_command([100, 0], "rlineto")
+    assert cs.get_last_sequence_entry() == "rlineto"
+
+
+def test_str_renders_after_add_command() -> None:
+    """``__str__`` mirrors upstream ``toString()`` once the conversion
+    buffer has been populated."""
+    cs = Type2CharString(None, "F", "A", 0, None)
+    cs.add_command([0, 500], "hsbw")
+    text = str(cs)
+    assert text.startswith("[")
+    assert text.endswith("]")
+    assert "," not in text
+    assert "hsbw" in text
+
+
+def test_str_on_empty_sequence_returns_empty_brackets() -> None:
+    cs = Type2CharString(None, "F", "A", 0, None)
+    assert str(cs) == "[]"
+
+
+# ---------------------------------------------------------------------------
 # Real-font integration — needs a host OTF
 # ---------------------------------------------------------------------------
 

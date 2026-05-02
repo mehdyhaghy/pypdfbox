@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -49,6 +50,25 @@ class PDFTextStripper:
     # glyph-width metrics, but tight enough that two ``Tj`` calls on the
     # same line emit a single space when they're visibly apart.
     _WORD_GAP_FACTOR: float = 1.5
+
+    # Regex source list mirroring upstream's private
+    # ``LIST_ITEM_EXPRESSIONS`` array — common bullet/number/letter list
+    # markers (e.g. ``1.``, ``[2]``, ``A)``, ``iv.``). Consulted by
+    # ``get_list_item_patterns`` when no caller-supplied list has been
+    # set via ``set_list_item_patterns``. Order matters: most specific
+    # patterns come first so ``match_pattern`` finds the tightest fit.
+    LIST_ITEM_EXPRESSIONS: tuple[str, ...] = (
+        r"\.",
+        r"\d+\.",
+        r"\[\d+\]",
+        r"\d+\)",
+        r"[A-Z]\.",
+        r"[a-z]\.",
+        r"[A-Z]\)",
+        r"[a-z]\)",
+        r"[IVXL]+\.",
+        r"[ivxl]+\.",
+    )
 
     def __init__(self) -> None:
         # Upstream defaults end_page to ``Integer.MAX_VALUE`` (2**31 - 1);
@@ -140,6 +160,24 @@ class PDFTextStripper:
         # ``None`` we fall back to the legacy 0.5-em estimate so unknown
         # fonts still produce monotonic text-x advances.
         self._active_avg_advance: float | None = None
+        # Output writer captured by ``write_text`` (the lite stripper
+        # otherwise routes everything through ``get_text``'s in-memory
+        # sink). Mirrors upstream's protected ``output`` field; exposed
+        # via ``get_output`` so subclasses that override hooks like
+        # ``write_string`` can write directly to the active stream when
+        # the caller drives extraction through ``write_text``.
+        self._output: object | None = None
+        # Per-page list of articles (each article is a list of
+        # ``TextPosition``). Mirrors upstream's protected
+        # ``charactersByArticle`` field. Lite mode treats every page as
+        # a single article so the outer list is always length 1 after
+        # ``process_page`` runs (cleared on entry to ``get_text``).
+        self._characters_by_article: list[list[TextPosition]] = []
+        # Lazily-populated list of compiled regex patterns matching
+        # common list-item prefixes. Mirrors upstream's private
+        # ``listOfPatterns`` field; exposed via
+        # ``get_list_item_patterns`` / ``set_list_item_patterns``.
+        self._list_of_patterns: list[re.Pattern[str]] | None = None
 
     # ---------- configuration accessors ----------
 
@@ -331,6 +369,77 @@ class PDFTextStripper:
         """
         return self._current_page_no
 
+    def get_output(self) -> object | None:
+        """Return the active output writer, or ``None`` when no walk is
+        in progress / when extraction is being driven through
+        ``get_text`` (which collects into an in-memory list rather than
+        a stream).
+
+        Mirrors upstream's protected ``getOutput`` accessor — exposed
+        publicly here since Python has no package-private visibility.
+        Subclasses overriding write hooks may consult this when a caller
+        drives extraction via ``write_text(doc, writer)``.
+        """
+        return self._output
+
+    def get_characters_by_article(self) -> list[list[TextPosition]]:
+        """Return the per-article list of :class:`TextPosition` objects
+        for the page most recently walked. The outer list groups by
+        article (one entry per ``/Beads`` chain in upstream PDFBox); the
+        inner lists hold the glyph-positions in extraction order.
+
+        Mirrors upstream's protected ``getCharactersByArticle``
+        accessor. Lite mode emits a single article per page so the
+        outer list is length 1 after every successful ``process_page``.
+        Returns an empty list when called outside a walk.
+        """
+        return self._characters_by_article
+
+    def set_list_item_patterns(
+        self, patterns: list[re.Pattern[str]] | None
+    ) -> None:
+        """Override the list-item regex patterns used by
+        ``match_pattern``. Pass ``None`` to revert to the defaults
+        derived from :attr:`LIST_ITEM_EXPRESSIONS` on the next call to
+        ``get_list_item_patterns``.
+
+        Mirrors upstream's protected ``setListItemPatterns`` — exposed
+        publicly here since Python lacks Java's protected visibility.
+        """
+        self._list_of_patterns = patterns
+
+    def get_list_item_patterns(self) -> list[re.Pattern[str]]:
+        """Return the list of compiled regex patterns matching common
+        list-item starts (``"1."``, ``"[2]"``, ``"A)"``, ``"iv."`` ...).
+
+        Lazily compiles :attr:`LIST_ITEM_EXPRESSIONS` on first access if
+        no caller-supplied list has been installed via
+        :meth:`set_list_item_patterns`. Mirrors upstream's protected
+        ``getListItemPatterns`` accessor.
+        """
+        if self._list_of_patterns is None:
+            self._list_of_patterns = [
+                re.compile(expr) for expr in self.LIST_ITEM_EXPRESSIONS
+            ]
+        return self._list_of_patterns
+
+    @staticmethod
+    def match_pattern(
+        string: str, patterns: list[re.Pattern[str]]
+    ) -> re.Pattern[str] | None:
+        """Return the first pattern in ``patterns`` whose
+        :py:meth:`~re.Pattern.fullmatch` matches ``string``, or
+        ``None`` when none match.
+
+        Mirrors upstream's protected static ``matchPattern`` helper.
+        Upstream's ``Matcher.matches()`` is anchored at both ends, so we
+        use ``fullmatch`` (not ``search`` / ``match``) for parity.
+        """
+        for pattern in patterns:
+            if pattern.fullmatch(string) is not None:
+                return pattern
+        return None
+
     # ---------- public API ----------
 
     def get_text(self, document: PDDocument) -> str:
@@ -350,6 +459,11 @@ class PDFTextStripper:
         total = len(pages)
         first = max(1, self._start_page)
         last = min(self._end_page, total)
+        # Mirror upstream's ``resetEngine`` — clear the per-walk
+        # ``charactersByArticle`` accumulator so a fresh walk doesn't
+        # leak state from the previous one (subclasses introspecting via
+        # ``get_characters_by_article`` rely on this).
+        self._characters_by_article = []
         # Bookmark clamping. Upstream takes the bookmark range as
         # authoritative when set, but only narrows (never widens) the
         # explicit page range.
@@ -426,6 +540,13 @@ class PDFTextStripper:
         self._active_avg_advance = None
         try:
             positions = self._extract_positions(body)
+            # Stash the per-article TextPositions so subclasses /
+            # ``get_characters_by_article`` can introspect the same
+            # data the formatter consumed. Lite mode treats the whole
+            # page body as a single article (PDFTextStripper-compatible
+            # behaviour when ``setShouldSeparateByBeads(false)`` or no
+            # beads are present).
+            self._characters_by_article = [list(positions)]
             return self._format_positions(positions)
         finally:
             self._active_page = None

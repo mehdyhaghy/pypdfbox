@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
@@ -506,3 +507,134 @@ def test_start_and_end_article_hooks_default_no_op() -> None:
     assert s.start_article(is_ltr=True) is None
     assert s.start_article(is_ltr=False) is None
     assert s.end_article() is None
+
+
+# ---------------------------------------------------------------------------
+# Output / characters-by-article / list-item-pattern accessors
+# ---------------------------------------------------------------------------
+
+
+def test_get_output_default_is_none() -> None:
+    """``get_output`` mirrors upstream's protected ``getOutput``. Lite
+    mode never sets it (extraction is sink-driven through ``get_text``)
+    so the accessor reports ``None`` outside of any future
+    ``write_text(doc, writer)`` flow."""
+    s = PDFTextStripper()
+    assert s.get_output() is None
+
+
+def test_get_characters_by_article_empty_before_walk() -> None:
+    """Before any ``get_text`` invocation the per-page article list is
+    empty — mirrors upstream's initial state of the ``charactersByArticle``
+    field (cleared by ``resetEngine`` on every walk start)."""
+    s = PDFTextStripper()
+    assert s.get_characters_by_article() == []
+
+
+def test_get_characters_by_article_populated_after_process_page() -> None:
+    """After ``process_page`` runs, ``get_characters_by_article`` should
+    expose a single article (lite mode treats every page as one
+    article) whose inner list mirrors the formatter's input
+    ``TextPosition`` stream."""
+    doc = PDDocument()
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (hi) Tj ET")
+    s = PDFTextStripper()
+    out = s.get_text(doc)
+    assert "hi" in out
+    articles = s.get_characters_by_article()
+    assert len(articles) == 1
+    assert all(isinstance(p, TextPosition) for p in articles[0])
+    # At least one extracted glyph should carry the literal text.
+    assert any("h" in p.text or "i" in p.text for p in articles[0])
+
+
+def test_get_characters_by_article_resets_between_walks() -> None:
+    """Two consecutive ``get_text`` calls must not leak state through
+    ``charactersByArticle`` — upstream's ``resetEngine`` clears it on
+    every walk start."""
+    doc1 = PDDocument()
+    _make_page_with_stream(doc1, b"BT /F0 12 Tf 100 700 Td (one) Tj ET")
+    s = PDFTextStripper()
+    s.get_text(doc1)
+    first = s.get_characters_by_article()
+    assert len(first) == 1
+
+    doc2 = PDDocument()
+    # No pages -> nothing to walk -> articles cleared but never refilled.
+    s.get_text(doc2)
+    assert s.get_characters_by_article() == []
+
+
+def test_list_item_expressions_constant_matches_upstream() -> None:
+    """``LIST_ITEM_EXPRESSIONS`` mirrors upstream's private array of
+    list-marker regexes verbatim — order matters because
+    ``match_pattern`` returns the first match."""
+    assert PDFTextStripper.LIST_ITEM_EXPRESSIONS == (
+        r"\.",
+        r"\d+\.",
+        r"\[\d+\]",
+        r"\d+\)",
+        r"[A-Z]\.",
+        r"[a-z]\.",
+        r"[A-Z]\)",
+        r"[a-z]\)",
+        r"[IVXL]+\.",
+        r"[ivxl]+\.",
+    )
+
+
+def test_get_list_item_patterns_lazy_compiles_default() -> None:
+    """``get_list_item_patterns`` lazily compiles the default expressions
+    on first access and caches the result for subsequent calls."""
+    s = PDFTextStripper()
+    patterns = s.get_list_item_patterns()
+    assert len(patterns) == len(PDFTextStripper.LIST_ITEM_EXPRESSIONS)
+    assert all(isinstance(p, re.Pattern) for p in patterns)
+    # Cached: identical instance on the second call.
+    assert s.get_list_item_patterns() is patterns
+
+
+def test_set_list_item_patterns_overrides_defaults() -> None:
+    """Caller-supplied list of patterns replaces the default; passing
+    ``None`` reverts to the lazy default on the next access."""
+    s = PDFTextStripper()
+    custom = [re.compile(r"#\d+")]
+    s.set_list_item_patterns(custom)
+    assert s.get_list_item_patterns() is custom
+
+    s.set_list_item_patterns(None)
+    reverted = s.get_list_item_patterns()
+    assert reverted is not custom
+    assert len(reverted) == len(PDFTextStripper.LIST_ITEM_EXPRESSIONS)
+
+
+def test_match_pattern_returns_first_match() -> None:
+    """``match_pattern`` mirrors upstream's anchored-match helper: it
+    returns the first pattern in ``patterns`` whose full match accepts
+    ``string``, or ``None`` when nothing matches."""
+    patterns = PDFTextStripper().get_list_item_patterns()
+    # ``"1."`` matches ``\d+\.`` (the second pattern; the first ``\.``
+    # does not full-match because ``1.`` is two characters).
+    matched = PDFTextStripper.match_pattern("1.", patterns)
+    assert matched is not None
+    assert matched.pattern == r"\d+\."
+
+    # ``"[42]"`` matches ``\[\d+\]``.
+    matched = PDFTextStripper.match_pattern("[42]", patterns)
+    assert matched is not None
+    assert matched.pattern == r"\[\d+\]"
+
+    # ``"hello"`` matches none of the list-marker patterns.
+    assert PDFTextStripper.match_pattern("hello", patterns) is None
+
+
+def test_match_pattern_uses_fullmatch_not_search() -> None:
+    """Upstream uses ``Matcher.matches()`` which is anchored at both
+    ends. ``match_pattern`` must mirror that — a partial match should
+    not count."""
+    patterns = [re.compile(r"\d+")]
+    # A full match returns the pattern.
+    assert PDFTextStripper.match_pattern("42", patterns) is patterns[0]
+    # A partial / mid-string match does NOT.
+    assert PDFTextStripper.match_pattern("a42", patterns) is None
+    assert PDFTextStripper.match_pattern("42a", patterns) is None

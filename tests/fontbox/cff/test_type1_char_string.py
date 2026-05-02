@@ -419,6 +419,53 @@ def test_op_pop_silently_consumes() -> None:
     assert cs.get_width() == 500.0
 
 
+def test_sequence_accessors_empty_by_default() -> None:
+    """A bare or non-list-constructed Type1CharString reports an empty
+    sequence buffer. Mirrors upstream ``isSequenceEmpty()`` /
+    ``getLastSequenceEntry()`` on a freshly-constructed instance."""
+    cs = Type1CharString(None, "F", "A", None)
+    assert cs.is_sequence_empty() is True
+    assert cs.get_last_sequence_entry() is None
+
+
+def test_add_command_populates_sequence() -> None:
+    """``add_command`` appends operands followed by the command token —
+    matches upstream ``Type1CharString.addCommand(numbers, command)``."""
+    cs = Type1CharString(None, "F", "A", None)
+    cs.add_command([0, 500], "hsbw")
+    assert cs.is_sequence_empty() is False
+    assert cs.get_last_sequence_entry() == "hsbw"
+    cs.add_command([100, 0], "rlineto")
+    assert cs.get_last_sequence_entry() == "rlineto"
+
+
+def test_constructor_with_list_seeds_sequence() -> None:
+    """A list-form sequence preserved at construction time is reflected
+    in ``is_sequence_empty`` / ``get_last_sequence_entry``."""
+    program = [0, 500, "hsbw", "endchar"]
+    cs = Type1CharString(None, "F", "A", program)
+    assert cs.is_sequence_empty() is False
+    assert cs.get_last_sequence_entry() == "endchar"
+
+
+def test_str_renders_sequence_like_upstream() -> None:
+    """``__str__`` mirrors upstream ``toString()``: stringified Java-list
+    form with ``|`` → newline and ``,`` → space."""
+    cs = Type1CharString(None, "F", "A", [0, 500, "hsbw"])
+    text = str(cs)
+    assert text.startswith("[")
+    assert text.endswith("]")
+    # Comma → space substitution: no commas remain.
+    assert "," not in text
+    # Operator token must surface.
+    assert "hsbw" in text
+
+
+def test_str_on_empty_sequence_returns_empty_brackets() -> None:
+    cs = Type1CharString(None, "F", "A", None)
+    assert str(cs) == "[]"
+
+
 def test_flex_setcurrentpoint_runs() -> None:
     """Adobe Type 1 flex sequence:
 

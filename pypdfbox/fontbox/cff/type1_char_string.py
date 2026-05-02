@@ -151,6 +151,13 @@ class Type1CharString:
         self._t1: Any = None
         self._cached_path: list[tuple] | None = None
         self._cached_width: float | None = None
+        # Mirror upstream's ``type1Sequence`` — the raw list of operands +
+        # ``CharStringCommand``-shaped tokens. Subclasses (notably
+        # ``Type2CharString``) and parity callers use ``add_command`` /
+        # ``is_sequence_empty`` / ``get_last_sequence_entry`` against this
+        # buffer. We also keep a copy of the originally-supplied list when
+        # the caller passes one, for ``__str__``-style introspection.
+        self._type1_sequence: list[Any] = []
 
         from fontTools.misc.psCharStrings import T1CharString  # noqa: PLC0415
 
@@ -165,6 +172,8 @@ class Type1CharString:
             # ``List<Object>`` carries (numbers + CharStringCommand).
             program = [_coerce_program_token(tok) for tok in sequence]
             self._t1 = T1CharString(program=program)
+            # Preserve the original tokens for sequence accessors.
+            self._type1_sequence = list(sequence)
         elif sequence is None:
             self._t1 = T1CharString()
         else:
@@ -271,6 +280,34 @@ class Type1CharString:
             return None
         return (min(xs), min(ys), max(xs), max(ys))
 
+    # ---------- sequence accessors (parity with upstream protected API) ----
+
+    def add_command(self, numbers: list[Any], command: Any) -> None:
+        """Append a list of operands followed by a single command token to
+        the underlying Type 1 sequence buffer.
+
+        Mirrors upstream ``Type1CharString.addCommand(List<Number>,
+        CharStringCommand)`` (package-protected). ``Type2CharString`` uses
+        this to materialize converted Type 1 commands during the Type 2 →
+        Type 1 conversion pass.
+        """
+        self._type1_sequence.extend(numbers)
+        self._type1_sequence.append(command)
+
+    def is_sequence_empty(self) -> bool:
+        """Return ``True`` when the underlying Type 1 sequence buffer has
+        no entries. Mirrors upstream ``Type1CharString.isSequenceEmpty()``
+        (package-protected)."""
+        return not self._type1_sequence
+
+    def get_last_sequence_entry(self) -> Any:
+        """Return the last entry of the underlying Type 1 sequence buffer,
+        or ``None`` when empty. Mirrors upstream
+        ``Type1CharString.getLastSequenceEntry()`` (package-protected)."""
+        if not self._type1_sequence:
+            return None
+        return self._type1_sequence[-1]
+
     # ---------- low-level access -------------------------------------------
 
     @property
@@ -287,6 +324,41 @@ class Type1CharString:
             f"Type1CharString(font={self._font_name!r}, "
             f"glyph={self._glyph_name!r}, gid={self._gid})"
         )
+
+    def __str__(self) -> str:
+        """Stringified Type 1 sequence — mirrors upstream
+        ``Type1CharString.toString()`` which returns
+        ``type1Sequence.toString().replace("|","\\n").replace(",", " ")``.
+
+        Operates on the preserved list-form sequence when available;
+        falls back to the fontTools ``T1CharString`` program list
+        otherwise. Returns ``"[]"`` when neither is populated.
+        """
+        seq = self._type1_sequence
+        if not seq:
+            program = getattr(self._t1, "program", None)
+            seq = list(program) if program else []
+        if not seq:
+            return "[]"
+        # Java's ``List.toString()`` is "[a, b, c]"; upstream then swaps
+        # ',' → ' ' and '|' → '\n'. Numbers / strings stringify directly.
+        body = ", ".join(_stringify_token(tok) for tok in seq)
+        return ("[" + body + "]").replace("|", "\n").replace(",", " ")
+
+
+def _stringify_token(tok: Any) -> str:
+    """Render a sequence token the way Java ``List.toString()`` would.
+
+    Numbers stringify via ``str()``; ``CharStringCommand``-shaped tokens
+    expose a ``.name`` attribute we prefer; everything else falls back to
+    ``str()``.
+    """
+    if isinstance(tok, (int, float)):
+        return str(tok)
+    name = getattr(tok, "name", None)
+    if isinstance(name, str):
+        return name
+    return str(tok)
 
 
 def _coerce_program_token(tok: Any) -> Any:
