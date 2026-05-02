@@ -262,6 +262,12 @@ class PDChoice(PDVariableText):
             self.set_selected_options_indices(None)
             return
         values = self._normalize_value_for_set(value)
+        # Mirrors upstream PDChoice.setValue(List): an empty list clears both
+        # /V and /I rather than writing an empty COSArray.
+        if not values:
+            self._field.remove_item(_V)
+            self.set_selected_options_indices(None)
+            return
         cos = self._write_string_or_array(values)
         self._field.set_item(_V, cos)
 

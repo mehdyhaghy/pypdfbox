@@ -59,6 +59,14 @@ class CFFFont:
     it as the ``primary`` font transparently.
     """
 
+    # ---------- spec constants ----------
+    # Adobe Technote #5176 §10: SIDs 0..390 index into the Standard
+    # Strings table (immutable, font-independent); SIDs >= 391 index
+    # into the per-font STRING INDEX.
+    NUM_STANDARD_STRINGS: int = 391
+    # CFF Top DICT default /CIDCount per Adobe Technote #5176 §9, Table 9.
+    DEFAULT_CID_COUNT: int = 8720
+
     def __init__(self) -> None:
         self._fontset: Any | None = None  # fontTools CFFFontSet
         self._top: Any | None = None  # primary top-level font dict
@@ -386,7 +394,7 @@ class CFFFont:
             return cffStandardStrings.index(name)
         except ValueError:
             pass
-        # Then this font's private STRING INDEX (SIDs ≥ 391).
+        # Then this font's private STRING INDEX (SIDs ≥ NUM_STANDARD_STRINGS).
         if self._fontset is not None:
             strings = getattr(self._fontset, "strings", None)
             if strings is not None:
@@ -396,8 +404,16 @@ class CFFFont:
                     table = []
                 for i, candidate in enumerate(table):
                     if candidate == name:
-                        return len(cffStandardStrings) + i
+                        return self.NUM_STANDARD_STRINGS + i
         return 0
+
+    @classmethod
+    def is_standard_sid(cls, sid: int) -> bool:
+        """Predicate: whether ``sid`` is a Standard Strings SID
+        (CFF spec §10: SIDs 0..390 are font-independent; higher SIDs
+        index into the per-font STRING INDEX). Useful for callers
+        deciding whether a SID needs the font set to resolve."""
+        return 0 <= sid < cls.NUM_STANDARD_STRINGS
 
     def get_string(self, sid: int) -> str:
         """Resolve a CFF SID to a glyph name string. SIDs 0..390 are
@@ -408,9 +424,9 @@ class CFFFont:
 
         if sid < 0:
             return ""
-        if sid < len(cffStandardStrings):
+        if self.is_standard_sid(sid):
             return cffStandardStrings[sid]
-        idx = sid - len(cffStandardStrings)
+        idx = sid - self.NUM_STANDARD_STRINGS
         if self._fontset is None:
             return ""
         strings = getattr(self._fontset, "strings", None)

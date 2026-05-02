@@ -112,6 +112,53 @@ class CFFType1Font(CFFFont):
         enc = self.get_encoding()
         return enc is not None and not isinstance(enc, str)
 
+    def has_encoding(self) -> bool:
+        """Predicate: whether the font has any /Encoding (predefined
+        or custom). False when no /Encoding entry is present (the CFF
+        default is StandardEncoding, but a missing entry is reported as
+        ``None`` by :meth:`get_encoding`)."""
+        return self.get_encoding() is not None
+
+    # ---------- local subroutines ----------
+
+    def has_local_subrs(self) -> bool:
+        """Predicate: whether the font's Private DICT carries a
+        non-empty /Subrs INDEX. Mirrors the conventional CFF-shape
+        check upstream callers do before reading the subroutine
+        bytecodes."""
+        return self.get_local_subrs() > 0
+
+    def get_local_subr_index(self) -> list[bytes]:
+        """PDFBox: ``CFFType1Font.getLocalSubrIndex()`` — local subroutine
+        bytecodes as a list of ``bytes``. Empty list when the font has
+        no Private DICT or no /Subrs INDEX.
+
+        Parallel to :py:meth:`CFFFont.get_global_subr_index`. T2
+        charstring decoders need both global and local subr bytecodes
+        to resolve ``callsubr`` / ``callgsubr`` operators.
+        """
+        if self._top is None:
+            return []
+        try:
+            priv = self._top.Private
+        except AttributeError:
+            return []
+        if priv is None:
+            return []
+        subrs = getattr(priv, "Subrs", None)
+        if subrs is None:
+            return []
+        out: list[bytes] = []
+        for entry in subrs:
+            bc = getattr(entry, "bytecode", None)
+            if bc is not None:
+                out.append(bytes(bc))
+            elif isinstance(entry, (bytes, bytearray)):
+                out.append(bytes(entry))
+            else:
+                out.append(b"")
+        return out
+
     # ---------- name → GID ----------
 
     def name_to_gid(self, name: str) -> int:

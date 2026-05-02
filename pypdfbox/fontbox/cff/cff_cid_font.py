@@ -123,10 +123,11 @@ class CFFCIDFont(CFFFont):
         return getattr(self._top, "ROS", None) or self._top.rawDict.get("ROS")
 
     def get_cid_count(self) -> int:
-        """CFF Top DICT /CIDCount (default 8720 per CFF spec §10)."""
+        """CFF Top DICT /CIDCount (default :data:`CFFFont.DEFAULT_CID_COUNT`
+        per CFF spec §10)."""
         if self._top is None:
             return 0
-        return int(getattr(self._top, "CIDCount", 8720))
+        return int(getattr(self._top, "CIDCount", self.DEFAULT_CID_COUNT))
 
     def get_fd_select(self) -> FDSelect:
         """The /FDSelect mapping GID → Font DICT index."""
@@ -151,6 +152,23 @@ class CFFCIDFont(CFFFont):
             self._fd_array = FDArray.from_fonttools(raw)
         return self._fd_array
 
+    def has_fd_select(self) -> bool:
+        """Predicate: whether the font carries a non-empty /FDSelect.
+
+        A well-formed CIDKeyed CFF always has /FDSelect; this helper is
+        for callers parsing partially-decoded payloads (e.g. synthesis
+        in tests, or fonts loaded from /FontFile3 with the Top DICT
+        only)."""
+        return self.get_fd_select().get_num_glyphs() > 0
+
+    def has_fd_array(self) -> bool:
+        """Predicate: whether the font carries a non-empty /FDArray.
+
+        Parallel to :py:meth:`has_fd_select`. False for synthetic
+        :class:`CFFCIDFont` instances constructed without a backing
+        font set."""
+        return not self.get_fd_array().is_empty()
+
     # ---------- CID → glyph helpers ----------
 
     def get_fd_index_for_gid(self, gid: int) -> int:
@@ -173,6 +191,21 @@ class CFFCIDFont(CFFFont):
 
     def get_nominal_width_x_for_gid(self, gid: int) -> float:
         return self.get_fd_array().get_nominal_width_x(self.get_fd_index_for_gid(gid))
+
+    def get_local_subr_index_for_gid(self, gid: int) -> list[bytes]:
+        """Per-GID local subroutine bytecodes as a list of ``bytes``.
+
+        Mirrors upstream package-private ``CFFCIDFont.getLocalSubrIndex(int gid)``:
+        resolves the GID through /FDSelect to its FD index and returns
+        the matching FD's /Subrs INDEX. T2 charstring decoders need this
+        to resolve ``callsubr`` operators inside CIDKeyed CFF charstrings
+        (each FD has its own local subrs).
+
+        Empty list when the resolved FD has no Private DICT, no /Subrs,
+        or when ``gid`` is out of range."""
+        return self.get_fd_array().get_local_subr_index(
+            self.get_fd_index_for_gid(gid)
+        )
 
     # PDFBox-named per-FD width overrides (upstream override)
 
