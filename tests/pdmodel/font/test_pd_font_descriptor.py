@@ -377,3 +377,96 @@ def test_panose_classification_str_formatting_matches_upstream() -> None:
         "Midline = 8, XHeight = 9}"
     )
     assert str(cls) == expected
+
+
+# ---------- Class-level FLAG_* constants ----------
+
+
+def test_class_level_flag_constants_match_module_constants() -> None:
+    """``PDFontDescriptor.FLAG_*`` mirrors the module-level masks.
+
+    Mirrors upstream's ``private static final int FLAG_*`` declarations on
+    the Java class — we expose them as public class attributes so callers
+    can write ``PDFontDescriptor.FLAG_FORCE_BOLD`` after porting.
+    """
+    assert PDFontDescriptor.FLAG_FIXED_PITCH == 1
+    assert PDFontDescriptor.FLAG_SERIF == 2
+    assert PDFontDescriptor.FLAG_SYMBOLIC == 4
+    assert PDFontDescriptor.FLAG_SCRIPT == 8
+    assert PDFontDescriptor.FLAG_NON_SYMBOLIC == 32
+    assert PDFontDescriptor.FLAG_ITALIC == 64
+    assert PDFontDescriptor.FLAG_ALL_CAP == 65536
+    assert PDFontDescriptor.FLAG_SMALL_CAP == 131072
+    assert PDFontDescriptor.FLAG_FORCE_BOLD == 262144
+
+
+def test_class_level_flag_constants_round_trip_through_set_flags() -> None:
+    """The class-level constants are usable in ``set_flags`` / ``is_*`` calls."""
+    fd = PDFontDescriptor()
+    fd.set_flags(PDFontDescriptor.FLAG_FORCE_BOLD | PDFontDescriptor.FLAG_ITALIC)
+    assert fd.is_force_bold() is True
+    assert fd.is_italic() is True
+    assert fd.is_serif() is False
+
+
+# ---------- has_font_file / has_font_file2 / has_font_file3 ----------
+
+
+def test_has_font_file_predicates_default_false() -> None:
+    fd = PDFontDescriptor()
+    assert fd.has_font_file() is False
+    assert fd.has_font_file2() is False
+    assert fd.has_font_file3() is False
+
+
+def test_has_font_file_predicates_track_each_key_independently() -> None:
+    fd = PDFontDescriptor()
+    fd.set_font_file2(COSStream())
+    assert fd.has_font_file() is False
+    assert fd.has_font_file2() is True
+    assert fd.has_font_file3() is False
+
+    fd.set_font_file(COSStream())
+    fd.set_font_file3(COSStream())
+    assert fd.has_font_file() is True
+    assert fd.has_font_file2() is True
+    assert fd.has_font_file3() is True
+
+
+def test_has_font_file_predicates_clear_on_none() -> None:
+    fd = PDFontDescriptor()
+    fd.set_font_file3(COSStream())
+    assert fd.has_font_file3() is True
+    fd.set_font_file3(None)
+    assert fd.has_font_file3() is False
+
+
+# ---------- PDPanose.with_panose_classification ----------
+
+
+def test_with_panose_classification_preserves_family_class() -> None:
+    """Replacing the 10-byte PANOSE block keeps bytes 0-1 untouched."""
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDPanose
+
+    original = PDPanose(b"\x01\x02" + bytes(range(2, 12)))
+    updated = original.with_panose_classification(bytes(range(20, 30)))
+
+    assert updated.get_family_class() == original.get_family_class()
+    assert updated.get_panose().get_bytes() == bytes(range(20, 30))
+    # Original is not mutated (immutable value semantics).
+    assert original.get_panose().get_bytes() == bytes(range(2, 12))
+
+
+def test_with_panose_classification_accepts_classification_object() -> None:
+    from pypdfbox.pdmodel.font.pd_font_descriptor import (
+        PDPanose,
+        PDPanoseClassification,
+    )
+
+    original = PDPanose(b"\xff\x80" + b"\x00" * 10)
+    new_cls = PDPanoseClassification(bytes(range(100, 110)))
+    updated = original.with_panose_classification(new_cls)
+
+    # Family-class bytes (signed) are preserved verbatim.
+    assert updated.get_bytes()[:2] == b"\xff\x80"
+    assert updated.get_panose() == new_cls

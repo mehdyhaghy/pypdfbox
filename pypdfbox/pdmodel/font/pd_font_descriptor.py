@@ -55,6 +55,21 @@ class PDFontDescriptor:
     ``/CharSet``).
     """
 
+    # Class-level mirrors of the module-level FLAG_* masks. Upstream
+    # PDFontDescriptor.java declares them as ``private static final int``;
+    # exposing them on the class lets callers write
+    # ``PDFontDescriptor.FLAG_FORCE_BOLD`` to mirror the Java
+    # ``PDFontDescriptor.FLAG_FORCE_BOLD`` reference shape after porting.
+    FLAG_FIXED_PITCH: int = FLAG_FIXED_PITCH
+    FLAG_SERIF: int = FLAG_SERIF
+    FLAG_SYMBOLIC: int = FLAG_SYMBOLIC
+    FLAG_SCRIPT: int = FLAG_SCRIPT
+    FLAG_NON_SYMBOLIC: int = FLAG_NON_SYMBOLIC
+    FLAG_ITALIC: int = FLAG_ITALIC
+    FLAG_ALL_CAP: int = FLAG_ALL_CAP
+    FLAG_SMALL_CAP: int = FLAG_SMALL_CAP
+    FLAG_FORCE_BOLD: int = FLAG_FORCE_BOLD
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
         if dictionary is None and self._dict.get_dictionary_object(_TYPE) is None:
@@ -368,6 +383,23 @@ class PDFontDescriptor:
     def set_font_file3(self, stream: PDStream | COSStream | None) -> None:
         self._set_font_file(_FONT_FILE3, stream)
 
+    def has_font_file(self) -> bool:
+        """True if /FontFile (Type 1 program) is present.
+
+        pypdfbox extension — upstream callers read ``getFontFile()`` and
+        null-check. The predicate avoids materializing a :class:`PDStream`
+        wrapper when the caller only needs presence.
+        """
+        return self._dict.contains_key(_FONT_FILE)
+
+    def has_font_file2(self) -> bool:
+        """True if /FontFile2 (TrueType program) is present."""
+        return self._dict.contains_key(_FONT_FILE2)
+
+    def has_font_file3(self) -> bool:
+        """True if /FontFile3 (CFF / OpenType program) is present."""
+        return self._dict.contains_key(_FONT_FILE3)
+
     # ---------- /CIDSet ----------
 
     def get_cid_set(self) -> PDStream | None:
@@ -610,6 +642,25 @@ class PDPanose:
     def get_panose(self) -> PDPanoseClassification:
         """The 10-byte PANOSE classification (bytes 2-11)."""
         return PDPanoseClassification(self._bytes[2:12])
+
+    def with_panose_classification(
+        self, classification: PDPanoseClassification | bytes | bytearray
+    ) -> PDPanose:
+        """Return a new :class:`PDPanose` with bytes 2-11 replaced.
+
+        pypdfbox extension — upstream PDPanose is read-only. Returns a
+        fresh wrapper so callers can update only the PANOSE-10 portion
+        while preserving the leading 2-byte sFamilyClass. The original
+        wrapper is left untouched (immutable value semantics).
+        """
+        if isinstance(classification, PDPanoseClassification):
+            payload = classification.get_bytes()
+        else:
+            payload = bytes(classification)
+        # Preserve the leading 2 bytes (sFamilyClass) verbatim; pad if the
+        # source buffer was shorter than expected.
+        head = self._bytes[:2] if len(self._bytes) >= 2 else self._bytes + b"\x00" * (2 - len(self._bytes))
+        return PDPanose(head + bytes(payload))
 
     def __bytes__(self) -> bytes:
         """Pythonic alias for :meth:`get_bytes` — enables ``bytes(panose)``."""

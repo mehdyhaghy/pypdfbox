@@ -1411,3 +1411,36 @@ def test_append_raw_commands_rejects_bool_and_other_types() -> None:
     with pytest.raises(TypeError):
         cs.append_raw_commands(object())  # type: ignore[arg-type]
     cs.close()
+
+
+def test_set_line_dash_pattern_alias_emits_d() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_line_dash_pattern([3, 2], 0)
+    assert _stream_bytes(page) == b"[3 2] 0 d\n"
+
+
+def test_close_and_fill_and_stroke_aliases_emit_b_and_b_star() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.close_and_fill_and_stroke()
+        cs.close_and_fill_and_stroke_even_odd()
+    assert _stream_bytes(page) == b"b\nb*\n"
+
+
+def test_set_marked_content_point_alias_emits_mp() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_marked_content_point("Span")
+    assert _stream_bytes(page) == b"/Span MP\n"
+
+
+def test_set_marked_content_point_with_properties_alias_emits_dp() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_marked_content_point_with_properties("Span", "MC0")
+    assert _stream_bytes(page) == b"/Span /MC0 DP\n"

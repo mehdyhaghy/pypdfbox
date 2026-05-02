@@ -333,6 +333,16 @@ class PDPageContentStream:
         upstream's ``closeFillEvenOddAndStroke`` ordering."""
         self.close_fill_and_stroke_even_odd()
 
+    def close_and_fill_and_stroke(self) -> None:
+        """Alias for :meth:`close_fill_and_stroke` matching upstream's
+        ``closeAndFillAndStroke`` Java method name."""
+        self.close_fill_and_stroke()
+
+    def close_and_fill_and_stroke_even_odd(self) -> None:
+        """Alias for :meth:`close_fill_and_stroke_even_odd` matching
+        upstream's ``closeAndFillAndStrokeEvenOdd`` Java method name."""
+        self.close_fill_and_stroke_even_odd()
+
     def add_rect(self, x: float, y: float, width: float, height: float) -> None:
         self._write_operands(x, y, width, height)
         self._write_operator(b"re")
@@ -522,6 +532,13 @@ class PDPageContentStream:
         self._buffer.append(0x20)
         self._write_operands(phase)
         self._write_operator(b"d")
+
+    def set_line_dash_pattern(
+        self, pattern: list[float], phase: float
+    ) -> None:
+        """Alias for :meth:`set_dash_pattern` matching upstream's
+        ``setLineDashPattern`` Java method name."""
+        self.set_dash_pattern(pattern, phase)
 
     def set_rendering_intent(self, intent: str) -> None:
         """Emit ``/<intent> ri`` — set the colour rendering intent."""
@@ -1334,6 +1351,11 @@ class PDPageContentStream:
         self._buffer.append(0x20)
         self._write_operator(b"MP")
 
+    def set_marked_content_point(self, tag: COSName | str) -> None:
+        """Alias for :meth:`add_marked_content_point` matching upstream's
+        ``setMarkedContentPoint`` Java method name."""
+        self.add_marked_content_point(tag)
+
     def add_marked_content_point_with_dict(
         self,
         tag: COSName | str,
@@ -1349,6 +1371,16 @@ class PDPageContentStream:
         self._write_name(key)
         self._buffer.append(0x20)
         self._write_operator(b"DP")
+
+    def set_marked_content_point_with_properties(
+        self,
+        tag: COSName | str,
+        property_list: PDPropertyList | COSName | str,
+    ) -> None:
+        """Alias for :meth:`add_marked_content_point_with_dict` matching
+        upstream's ``setMarkedContentPointWithProperties`` Java method
+        name."""
+        self.add_marked_content_point_with_dict(tag, property_list)
 
     # ------------------------------------------------------------------
     # raw byte / comment writers
