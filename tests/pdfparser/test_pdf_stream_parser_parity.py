@@ -8,6 +8,8 @@ names.
 
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSBase, COSInteger
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
@@ -130,3 +132,112 @@ def test_is_in_inline_image_false_after_full_inline_image_drained() -> None:
     assert p.is_in_inline_image() is False
     # And we did get a BI operator back.
     assert any(isinstance(t, Operator) and t.get_name() == "BI" for t in toks)
+
+
+# ---------- Operator factory + str / repr parity ----------
+
+
+def test_operator_str_matches_upstream_pdfoperator_form() -> None:
+    # Upstream ``Operator.toString()`` returns ``"PDFOperator{<name>}"``.
+    op = Operator("Tj")
+    assert str(op) == "PDFOperator{Tj}"
+    assert repr(op) == "PDFOperator{Tj}"
+
+
+def test_operator_get_operator_caches_non_inline_operators() -> None:
+    # Mirrors upstream's ConcurrentHashMap-backed cache: the same
+    # operator name returns the *same* instance across calls.
+    a = Operator.get_operator("Tj")
+    b = Operator.get_operator("Tj")
+    assert a is b
+    assert a.get_name() == "Tj"
+
+
+def test_operator_get_operator_skips_cache_for_inline_image_ops() -> None:
+    # Upstream forces a fresh instance for BI/ID because each occurrence
+    # carries distinct image_data / image_parameters payloads.
+    bi1 = Operator.get_operator("BI")
+    bi2 = Operator.get_operator("BI")
+    id1 = Operator.get_operator("ID")
+    id2 = Operator.get_operator("ID")
+    assert bi1 is not bi2
+    assert id1 is not id2
+
+
+def test_operator_constructor_rejects_name_with_leading_slash() -> None:
+    # Upstream throws IllegalArgumentException — Python equivalent is
+    # ValueError. Both surface the same misuse: a "/Foo" name is a name
+    # object, not an operator keyword.
+    with pytest.raises(ValueError, match="not allowed to start with /"):
+        Operator("/Foo")
+
+
+# ---------- is_space_or_return / has_next_space_or_return ----------
+
+
+def test_is_space_or_return_recognises_lf_cr_sp() -> None:
+    assert PDFStreamParser.is_space_or_return(0x0A) is True  # LF
+    assert PDFStreamParser.is_space_or_return(0x0D) is True  # CR
+    assert PDFStreamParser.is_space_or_return(0x20) is True  # SP
+    # Tab and form-feed are NOT in the EI separator set.
+    assert PDFStreamParser.is_space_or_return(0x09) is False
+    assert PDFStreamParser.is_space_or_return(0x0C) is False
+    # Any random non-whitespace byte is False.
+    assert PDFStreamParser.is_space_or_return(ord("Q")) is False
+
+
+def test_has_next_space_or_return_reflects_cursor() -> None:
+    p = _parser(b" Q")
+    # Cursor sits at the leading space.
+    assert p.has_next_space_or_return() is True
+    p.parse_next_token()  # consumes "Q" (skip_whitespace eats the space).
+    # After draining, peek returns -1 (EOF), which is not a separator.
+    assert p.has_next_space_or_return() is False
+
+
+# ---------- parse_next_token guard against closed source ----------
+
+
+def test_parse_next_token_returns_none_after_close() -> None:
+    p = _parser(b"100 200 m")
+    p.close()
+    assert p.is_closed() is True
+    # Upstream returns null when source.isClosed(); we return None.
+    assert p.parse_next_token() is None
+
+
+# ---------- from_content_stream constructor ----------
+
+
+def test_from_content_stream_uses_get_contents_for_stream_parsing() -> None:
+    # Mirrors upstream's PDFStreamParser(PDContentStream) constructor,
+    # which calls pd.getContentsForStreamParsing() to obtain the source.
+    from pypdfbox.contentstream.pd_content_stream import PDContentStream
+
+    raw_seen: dict[str, bool] = {"called": False}
+
+    class _StubContentStream(PDContentStream):
+        def get_contents(self):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+        def get_contents_for_random_access(self):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+        def get_contents_for_stream_parsing(self):  # type: ignore[no-untyped-def]
+            raw_seen["called"] = True
+            return RandomAccessReadBuffer(b"100 200 m")
+
+        def get_resources(self):  # type: ignore[no-untyped-def]
+            return None
+
+        def get_bbox(self):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+        def get_matrix(self):  # type: ignore[no-untyped-def]
+            raise NotImplementedError
+
+    p = PDFStreamParser.from_content_stream(_StubContentStream())
+    assert raw_seen["called"] is True
+    toks = p.parse()
+    assert len(toks) == 3
+    assert isinstance(toks[2], Operator) and toks[2].get_name() == "m"

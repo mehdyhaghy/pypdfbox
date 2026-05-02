@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import ClassVar
+from threading import Lock
+from typing import TYPE_CHECKING, ClassVar
 
 from pypdfbox.cos import (
     COSBase,
@@ -15,6 +16,15 @@ from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .cos_parser import COSParser
 from .parse_error import PDFParseError
+
+if TYPE_CHECKING:
+    from pypdfbox.contentstream.pd_content_stream import PDContentStream
+
+
+# Operator name constants (subset).
+_OP_BEGIN_INLINE_IMAGE = "BI"
+_OP_BEGIN_INLINE_IMAGE_DATA = "ID"
+_OP_END_INLINE_IMAGE = "EI"
 
 
 class Operator:
@@ -34,15 +44,51 @@ class Operator:
 
     __slots__ = ("_name", "image_data", "image_parameters")
 
+    # Singleton cache mirroring upstream's ``ConcurrentHashMap`` of
+    # cached operator instances. Inline-image operators bypass this
+    # cache because they carry per-occurrence ``image_data`` /
+    # ``image_parameters`` payloads.
+    _operators: ClassVar[dict[str, Operator]] = {}
+    _operators_lock: ClassVar[Lock] = Lock()
+
     def __init__(
         self,
         name: str,
         image_data: bytes | None = None,
         image_parameters: COSDictionary | None = None,
     ) -> None:
+        # Upstream's private constructor rejects operator names that
+        # start with ``/`` (those are name-object operands, not
+        # operators).
+        if name.startswith("/"):
+            raise ValueError(
+                f"Operators are not allowed to start with / '{name}'"
+            )
         self._name = name
         self.image_data = image_data
         self.image_parameters = image_parameters
+
+    @classmethod
+    def get_operator(cls, name: str) -> Operator:
+        """Return a (possibly cached) ``Operator`` for ``name``. Mirrors
+        upstream's ``Operator.getOperator(String)`` static factory.
+
+        Inline-image operators (``BI`` / ``ID``) bypass the cache
+        because each occurrence carries distinct ``image_parameters`` /
+        ``image_data`` payloads — caching would alias state across
+        unrelated parses.
+        """
+        if name in (_OP_BEGIN_INLINE_IMAGE_DATA, _OP_BEGIN_INLINE_IMAGE):
+            return cls(name)
+        cached = cls._operators.get(name)
+        if cached is not None:
+            return cached
+        with cls._operators_lock:
+            cached = cls._operators.get(name)
+            if cached is None:
+                cached = cls(name)
+                cls._operators[name] = cached
+            return cached
 
     @property
     def name(self) -> str:
@@ -64,7 +110,12 @@ class Operator:
         self.image_parameters = params
 
     def __repr__(self) -> str:
-        return f"Operator({self._name!r})"
+        # Mirror upstream's ``toString()`` — ``"PDFOperator{<name>}"`` —
+        # so ``str(op)`` and ``repr(op)`` round-trip with PDFBox output.
+        return f"PDFOperator{{{self._name}}}"
+
+    def __str__(self) -> str:
+        return self.__repr__()
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Operator):
@@ -76,12 +127,6 @@ class Operator:
 
     def __hash__(self) -> int:
         return hash(("Operator", self._name))
-
-
-# Operator name constants (subset).
-_OP_BEGIN_INLINE_IMAGE = "BI"
-_OP_BEGIN_INLINE_IMAGE_DATA = "ID"
-_OP_END_INLINE_IMAGE = "EI"
 
 
 class PDFStreamParser(COSParser):
@@ -129,10 +174,27 @@ class PDFStreamParser(COSParser):
         before delegating to the primary constructor."""
         return cls(RandomAccessReadBuffer(data))
 
+    @classmethod
+    def from_content_stream(
+        cls, pd_content_stream: PDContentStream
+    ) -> PDFStreamParser:
+        """Construct a parser over the bytes of a ``PDContentStream``.
+        Mirrors the upstream
+        ``PDFStreamParser(PDContentStream pdContentstream)`` constructor,
+        which calls ``pdContentstream.getContentsForStreamParsing()`` to
+        get the underlying ``RandomAccessRead``."""
+        return cls(pd_content_stream.get_contents_for_stream_parsing())
+
     # ---------- public API ----------
 
     def parse_next_token(self) -> COSBase | Operator | None:
         """Return the next operand or operator. ``None`` at EOF."""
+        # Upstream guards every call with a ``source.isClosed()`` check;
+        # if the parser has already been closed (e.g. mid-parse on an
+        # unrecoverable malformed dictionary) further token requests
+        # return ``None`` rather than raising.
+        if self.is_closed():
+            return None
         self.skip_whitespace()
         if self.is_eof():
             return None
@@ -395,6 +457,20 @@ class PDFStreamParser(COSParser):
     def _next_is_ei_separator(self) -> bool:
         b = self.peek_byte()
         return b in self._EI_SEP
+
+    @classmethod
+    def is_space_or_return(cls, b: int) -> bool:
+        """Return ``True`` if ``b`` is the LF (10), CR (13), or SP (32)
+        byte. Mirrors upstream's private ``isSpaceOrReturn(int c)``
+        helper used to gate inline-image ``EI`` recognition; exposed
+        here for parser introspection in ports of upstream callers."""
+        return b in cls._EI_SEP
+
+    def has_next_space_or_return(self) -> bool:
+        """``True`` if the next byte at the read cursor is one of the
+        three ``EI``-separator bytes (LF, CR, SP). Mirrors upstream's
+        ``hasNextSpaceOrReturn()``."""
+        return self.is_space_or_return(self.peek_byte())
 
     def _has_no_following_bin_data(self) -> bool:
         """Probe up to ``MAX_BIN_CHAR_TEST_LENGTH`` bytes ahead for binary

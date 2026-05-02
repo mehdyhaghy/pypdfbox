@@ -63,6 +63,18 @@ class PDImageXObject(PDXObject):
     def __init__(self, stream: PDStream | COSStream) -> None:
         super().__init__(stream, _IMAGE)
 
+    # ---------- factory helpers ----------
+
+    @staticmethod
+    def create_thumbnail(cos_stream: COSStream) -> PDImageXObject:
+        """Create a thumbnail Image XObject from ``cos_stream``. Mirrors
+        upstream ``PDImageXObject.createThumbnail(COSStream)``: thumbnails
+        are special — any non-null ``/Subtype`` is treated as ``/Image``,
+        so this wraps the stream in a :class:`PDStream` and constructs the
+        XObject directly. The construction stamps ``/Type /XObject`` and
+        ``/Subtype /Image`` on the underlying dictionary."""
+        return PDImageXObject(PDStream(cos_stream))
+
     # ---------- /Width, /Height ----------
 
     def get_width(self) -> int:
@@ -213,6 +225,18 @@ class PDImageXObject(PDXObject):
                 return None
         return out
 
+    def get_color_key_mask_array(self) -> COSArray | None:
+        """Return the raw ``/Mask`` ``COSArray`` when the entry is the
+        color-key form (``[min1 max1 ...]``), or ``None`` otherwise.
+
+        Mirrors upstream ``PDImageXObject.getColorKeyMask()`` which returns
+        the underlying ``COSArray`` directly. Use :meth:`get_color_key_mask`
+        for the decoded ``list[int]`` form."""
+        value = self.get_cos_object().get_dictionary_object(_MASK)
+        if isinstance(value, COSArray):
+            return value
+        return None
+
     def set_color_key_mask(self, values: Iterable[int] | None) -> None:
         """Replace ``/Mask`` with a color-key mask COSArray of integers.
         Pass ``None`` to remove the entry."""
@@ -266,6 +290,17 @@ class PDImageXObject(PDXObject):
         if not isinstance(value, COSArray):
             return None
         return value.to_float_array()
+
+    def get_decode_array(self) -> COSArray | None:
+        """Return the raw ``/Decode`` ``COSArray`` (or ``None`` when
+        absent or not an array). Mirrors upstream
+        ``PDImageXObject.getDecode()`` which returns the underlying
+        ``COSArray`` directly. Use :meth:`get_decode` for the decoded
+        ``list[float]`` form."""
+        value = self.get_cos_object().get_dictionary_object(_DECODE)
+        if isinstance(value, COSArray):
+            return value
+        return None
 
     def set_decode(self, values: Iterable[float] | None) -> None:
         cos = self.get_cos_object()

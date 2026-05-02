@@ -151,6 +151,36 @@ def test_explicit_mask_replaces_color_key_array() -> None:
     assert image.get_mask().get_cos_object() is explicit.get_cos_object()
 
 
+def test_get_color_key_mask_array_returns_underlying_cos_array() -> None:
+    """Mirrors upstream ``getColorKeyMask()`` returning the COSArray
+    directly rather than a decoded ``list[int]``."""
+    image = _make_image()
+    image.set_color_key_mask([0, 16, 240, 255])
+
+    array = image.get_color_key_mask_array()
+    assert isinstance(array, COSArray)
+    # The array is the same one written into the dictionary.
+    assert array is image.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Mask")
+    )
+    assert [int(item.value) for item in array] == [0, 16, 240, 255]
+
+
+def test_get_color_key_mask_array_is_none_when_absent() -> None:
+    image = _make_image()
+    assert image.get_color_key_mask_array() is None
+
+
+def test_get_color_key_mask_array_is_none_when_explicit_mask_stream() -> None:
+    """When /Mask is a stream (explicit-mask form) the COSArray accessor
+    returns None — mirrors upstream's ``getCOSObject().getCOSArray(MASK)``
+    which yields null in that case."""
+    image = _make_image()
+    explicit = _make_image()
+    image.set_mask(explicit)
+    assert image.get_color_key_mask_array() is None
+
+
 # ---------- stencil aliases ----------
 
 

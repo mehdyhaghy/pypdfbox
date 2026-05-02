@@ -365,3 +365,54 @@ def test_is_interpolate_alias_matches_get_interpolate() -> None:
     img.set_interpolate(True)
     assert img.get_interpolate() is True
     assert img.is_interpolate() is True
+
+
+# ---------- /Mask color-key array (raw COSArray accessor) ----------
+
+
+def test_get_color_key_mask_array_returns_underlying_array() -> None:
+    """Mirrors the upstream ``getColorKeyMask()`` shape: returns the raw
+    ``COSArray`` rather than a decoded list."""
+    d = _basic_dict(width=1, height=1, bpc=1)
+    d.set_boolean(COSName.get_pdf_name("IM"), True)
+    array = COSArray()
+    for value in (4, 17, 200, 255):
+        array.add(COSInteger.get(value))
+    d.set_item(COSName.get_pdf_name("Mask"), array)
+    img = PDInlineImage(d, b"\x00", None)
+
+    fetched = img.get_color_key_mask_array()
+    assert isinstance(fetched, COSArray)
+    assert fetched is array
+    # The decoded list helper continues to work in parallel.
+    assert img.get_color_key_mask() == [4, 17, 200, 255]
+
+
+def test_get_color_key_mask_array_is_none_when_absent() -> None:
+    img = PDInlineImage(_basic_dict(), b"\x00", None)
+    assert img.get_color_key_mask_array() is None
+
+
+# ---------- /D /Decode (decoded float helper) ----------
+
+
+def test_get_decode_as_floats_returns_list_of_floats() -> None:
+    """Mirrors :meth:`PDImageXObject.get_decode` shape — convenience
+    parallel that returns a ``list[float]`` rather than the raw
+    ``COSArray`` exposed by ``get_decode``."""
+    d = _basic_dict(width=1, height=1, bpc=1)
+    d.set_boolean(COSName.get_pdf_name("IM"), True)
+    arr = COSArray()
+    arr.add(COSInteger.ONE)
+    arr.add(COSInteger.ZERO)
+    d.set_item(COSName.get_pdf_name("D"), arr)
+    img = PDInlineImage(d, b"\x00", None)
+
+    decoded = img.get_decode_as_floats()
+    assert decoded == [1.0, 0.0]
+    assert all(isinstance(v, float) for v in decoded)
+
+
+def test_get_decode_as_floats_returns_none_when_absent() -> None:
+    img = PDInlineImage(_basic_dict(), b"\x00", None)
+    assert img.get_decode_as_floats() is None

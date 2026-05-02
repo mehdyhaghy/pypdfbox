@@ -215,6 +215,62 @@ def test_set_decode_none_removes_entry() -> None:
     assert image.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Decode")) is None
 
 
+def test_get_decode_array_returns_underlying_cos_array() -> None:
+    """Mirrors upstream ``getDecode()`` which returns the underlying
+    ``COSArray`` directly rather than a decoded ``list[float]``."""
+    image = _make_image()
+    image.set_decode([0.0, 1.0, 1.0, 0.0])
+
+    array = image.get_decode_array()
+    assert isinstance(array, COSArray)
+    assert array is image.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Decode")
+    )
+    assert array.to_float_array() == [0.0, 1.0, 1.0, 0.0]
+
+
+def test_get_decode_array_is_none_when_absent() -> None:
+    image = _make_image()
+    assert image.get_decode_array() is None
+
+
+# ---------- create_thumbnail factory ----------
+
+
+def test_create_thumbnail_wraps_existing_stream() -> None:
+    """Mirrors upstream ``PDImageXObject.createThumbnail(COSStream)``:
+    constructs an Image XObject around any existing stream — the factory
+    must stamp ``/Type /XObject`` and ``/Subtype /Image`` on the dict."""
+    cos_stream = COSStream()
+    cos_stream.set_int(COSName.get_pdf_name("Width"), 64)
+    cos_stream.set_int(COSName.get_pdf_name("Height"), 48)
+    cos_stream.set_int(COSName.get_pdf_name("BitsPerComponent"), 8)
+
+    thumb = PDImageXObject.create_thumbnail(cos_stream)
+    assert isinstance(thumb, PDImageXObject)
+    assert thumb.get_cos_object() is cos_stream
+    assert thumb.get_width() == 64
+    assert thumb.get_height() == 48
+    assert thumb.get_bits_per_component() == 8
+    # Thumbnail factory still goes through the XObject ctor, so the
+    # /Type and /Subtype keys are stamped.
+    assert cos_stream.get_name(COSName.TYPE) == "XObject"  # type: ignore[attr-defined]
+    assert cos_stream.get_name(COSName.get_pdf_name("Subtype")) == "Image"
+
+
+def test_create_thumbnail_overrides_non_image_subtype() -> None:
+    """Upstream notes that thumbnails are special: any non-null subtype
+    is treated as ``/Image``. The factory ctor stamps ``/Subtype /Image``
+    so an existing odd subtype is overwritten."""
+    cos_stream = COSStream()
+    cos_stream.set_name(COSName.get_pdf_name("Subtype"), "Form")
+
+    thumb = PDImageXObject.create_thumbnail(cos_stream)
+    assert thumb.get_cos_object().get_name(
+        COSName.get_pdf_name("Subtype")
+    ) == "Image"
+
+
 # ---------- /Interpolate ----------
 
 

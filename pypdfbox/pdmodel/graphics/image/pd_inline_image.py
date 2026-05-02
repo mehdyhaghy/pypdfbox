@@ -380,6 +380,31 @@ class PDInlineImage:
                 return None
         return out
 
+    def get_color_key_mask_array(self) -> COSArray | None:
+        """Return the raw ``/Mask`` ``COSArray`` (color-key form) or
+        ``None`` when absent or not an array. Mirrors the upstream
+        ``PDImageXObject.getColorKeyMask()`` shape — useful when callers
+        need to inspect or mutate the underlying COS objects directly.
+        Use :meth:`get_color_key_mask` for the decoded ``list[int]``
+        form."""
+        value = self._parameters.get_dictionary_object("Mask")
+        if isinstance(value, COSArray):
+            return value
+        return None
+
+    # ---------- /D /Decode helpers ----------
+
+    def get_decode_as_floats(self) -> list[float] | None:
+        """Decoded ``/Decode`` array as a list of floats, or ``None`` when
+        absent or not an array. Convenience parallel to
+        :meth:`PDImageXObject.get_decode` so callers can read decode pairs
+        without hand-walking the ``COSArray`` returned by
+        :meth:`get_decode`."""
+        decode = self.get_decode()
+        if decode is None:
+            return None
+        return decode.to_float_array()
+
     # ---------- decoded bytes / stream surface ----------
 
     def get_data(self) -> bytes:
