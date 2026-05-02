@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import math
 import struct
-from typing import Any
+from decimal import Decimal
+from typing import IO, Any, ClassVar
 
 from .cos_number import COSNumber
 from .i_cos_visitor import ICOSVisitor
@@ -74,6 +75,12 @@ class COSFloat(COSNumber):
     fidelity (PRD §3.5).
     """
 
+    # Canonical ``0.0`` / ``1.0`` instances — mirrors PDFBox's
+    # ``COSFloat.ZERO`` and ``COSFloat.ONE`` class constants. Bound at module
+    # load below.
+    ZERO: ClassVar[COSFloat]
+    ONE: ClassVar[COSFloat]
+
     def __init__(self, value: float | str) -> None:
         super().__init__()
         self._original: str | None
@@ -131,6 +138,27 @@ class COSFloat(COSNumber):
     def setValue(self, value: float) -> None:  # noqa: N802 - upstream Java name
         self.set_value(value)
 
+    def format_string(self) -> str:
+        """Textual form used by ``write_pdf`` — mirrors PDFBox's private
+        ``formatString``. If the original parsed text is available, that
+        wins (preserves round-trip). Otherwise we use Python's ``str(float)``,
+        falling back to ``Decimal.normalize``-style plain notation when the
+        result contains an exponent (PDFBox uses ``BigDecimal.toPlainString``).
+        """
+        if self._original is not None:
+            return self._original
+        s = repr(self._value) if isinstance(self._value, float) else str(self._value)
+        if "e" not in s and "E" not in s:
+            return s
+        return format(Decimal(s).normalize(), "f")
+
+    def write_pdf(self, output: IO[bytes]) -> None:
+        """Write the formatted real-number literal to *output* as ISO-8859-1.
+
+        Mirrors PDFBox's ``COSFloat.writePDF(OutputStream)``.
+        """
+        output.write(self.format_string().encode("iso-8859-1"))
+
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_float(self)
 
@@ -146,3 +174,10 @@ class COSFloat(COSNumber):
         if self._original is not None:
             return f"COSFloat({self._original!r})"
         return f"COSFloat({self._value})"
+
+
+# Canonical singletons — built after the class is fully defined so
+# constructor-time references resolve. The string forms ("0.0" / "1.0")
+# match PDFBox's ``COSFloat.ZERO`` / ``COSFloat.ONE`` constants.
+COSFloat.ZERO = COSFloat("0.0")
+COSFloat.ONE = COSFloat("1.0")

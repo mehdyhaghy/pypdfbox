@@ -278,6 +278,18 @@ class TiffSchema(XMPSchema):
     def get_image_description_languages(self) -> list[str] | None:
         return self.get_unqualified_language_property_languages_value(self.IMAGE_DESCRIPTION)
 
+    def remove_image_description(self, lang: str | None = None) -> None:
+        """
+        Drop the per-language ``ImageDescription`` value identified by
+        ``lang`` (defaulting to the ``x-default`` slot). No-op when the
+        property or the requested language slot is absent. Convenience
+        wrapper over :meth:`remove_unqualified_language_property_value` --
+        upstream has no direct equivalent, but the underlying
+        ``XMPSchema.removeUnqualifiedLanguagePropertyValue`` is public so
+        callers reach the same effect through it.
+        """
+        self.remove_unqualified_language_property_value(self.IMAGE_DESCRIPTION, lang)
+
     def get_image_description_property(self) -> LangAlt | None:
         """
         Mirror of upstream ``getImageDescriptionProperty()`` — returns the
@@ -301,6 +313,15 @@ class TiffSchema(XMPSchema):
 
     def get_copyright_languages(self) -> list[str] | None:
         return self.get_unqualified_language_property_languages_value(self.COPYRIGHT)
+
+    def remove_copyright(self, lang: str | None = None) -> None:
+        """
+        Drop the per-language ``Copyright`` value identified by ``lang``
+        (defaulting to the ``x-default`` slot). No-op when the property or
+        the requested language slot is absent. Convenience wrapper over
+        :meth:`remove_unqualified_language_property_value`.
+        """
+        self.remove_unqualified_language_property_value(self.COPYRIGHT, lang)
 
     def get_copyright_property(self) -> LangAlt | None:
         """

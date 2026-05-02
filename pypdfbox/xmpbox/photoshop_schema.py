@@ -370,6 +370,22 @@ class PhotoshopSchema(XMPSchema):
             return
         self._properties[self.DOCUMENT_ANCESTORS] = list(values)
 
+    def remove_document_ancestor(self, value: str) -> None:
+        """
+        Drop the first ``DocumentAncestors`` bag entry matching ``value``.
+        No-op when the property is absent or no entry matches. Convenience
+        helper -- upstream has no direct equivalent (only
+        ``addDocumentAncestors`` and the bulk ``setDocumentAncestors``
+        analogue), but the underlying bag is a plain list so a targeted
+        drop is well-defined.
+        """
+        existing = self._properties.get(self.DOCUMENT_ANCESTORS)
+        if isinstance(existing, list):
+            try:
+                existing.remove(value)
+            except ValueError:
+                return
+
     def get_document_ancestors_property(self) -> ArrayProperty | None:
         """
         Mirror of upstream ``getDocumentAncestorsProperty()`` — returns the
@@ -654,6 +670,23 @@ class PhotoshopSchema(XMPSchema):
             if isinstance(child, LayerType) and child.get_layer_name() == layer_name:
                 existing.remove_property(child)
                 return
+
+    def clear_text_layers(self) -> None:
+        """
+        Drop every :class:`LayerType` child from the ``TextLayers`` Seq
+        without removing the property itself. No-op when the property is
+        absent or the slot does not hold an :class:`ArrayProperty`.
+        Differs from :meth:`set_text_layers` with ``None`` (which removes
+        the property entirely) and from :meth:`set_text_layers` with ``[]``
+        (which allocates a fresh empty container, dropping any attributes
+        attached to the existing one). Pythonic convenience -- upstream
+        has no direct equivalent.
+        """
+        existing = self._properties.get(self.TEXT_LAYERS)
+        if not isinstance(existing, ArrayProperty):
+            return
+        for child in list(existing.get_all_properties()):
+            existing.remove_property(child)
 
     def get_text_layers_property(self) -> ArrayProperty | None:
         """

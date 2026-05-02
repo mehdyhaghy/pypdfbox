@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import IO, Any, ClassVar
 
 from .cos_number import COSNumber
 from .i_cos_visitor import ICOSVisitor
@@ -10,6 +10,10 @@ from .i_cos_visitor import ICOSVisitor
 # (zero, small page indices, byte counts) are shared instances.
 _CACHE_LOW = -100
 _CACHE_HIGH = 256
+
+# Java ``Long`` range — used for ``OUT_OF_RANGE_MIN`` / ``OUT_OF_RANGE_MAX``.
+_LONG_MIN = -(2**63)
+_LONG_MAX = 2**63 - 1
 
 
 class COSInteger(COSNumber):
@@ -82,6 +86,13 @@ class COSInteger(COSNumber):
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_integer(self)
 
+    def write_pdf(self, output: IO[bytes]) -> None:
+        """Write the integer's decimal form to *output* using ISO-8859-1.
+
+        Mirrors PDFBox's ``COSInteger.writePDF(OutputStream)``.
+        """
+        output.write(str(self._value).encode("iso-8859-1"))
+
     def equals(self, other: object) -> bool:
         """Java-style value-equality predicate. Mirrors ``COSInteger.equals``."""
         return isinstance(other, COSInteger) and self._value == other._value
@@ -114,3 +125,14 @@ COSInteger.ZERO = COSInteger.get(0)  # type: ignore[attr-defined]
 COSInteger.ONE = COSInteger.get(1)  # type: ignore[attr-defined]
 COSInteger.TWO = COSInteger.get(2)  # type: ignore[attr-defined]
 COSInteger.THREE = COSInteger.get(3)  # type: ignore[attr-defined]
+
+# Sentinel singletons returned by ``COSNumber.get`` when the textual literal
+# parses to a value outside Java's ``Long`` range — mirrors PDFBox's
+# ``COSInteger.OUT_OF_RANGE_MAX`` / ``OUT_OF_RANGE_MIN`` (PDFBOX-5176).
+# Both carry ``is_valid()`` == ``False`` so writers / consumers can react.
+_OUT_OF_RANGE_MAX = COSInteger(_LONG_MAX)
+_OUT_OF_RANGE_MAX.set_valid(False)
+_OUT_OF_RANGE_MIN = COSInteger(_LONG_MIN)
+_OUT_OF_RANGE_MIN.set_valid(False)
+COSInteger.OUT_OF_RANGE_MAX = _OUT_OF_RANGE_MAX  # type: ignore[attr-defined]
+COSInteger.OUT_OF_RANGE_MIN = _OUT_OF_RANGE_MIN  # type: ignore[attr-defined]

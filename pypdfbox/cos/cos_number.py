@@ -55,6 +55,8 @@ class COSNumber(COSBase):
             raise OSError(f"not a number: {value!r}") from exc
         if _LONG_MIN <= n <= _LONG_MAX:
             return COSInteger.get(n)
-        cosint = COSInteger(n)
-        cosint.set_valid(False)
-        return cosint
+        # Out-of-range — return the canonical OUT_OF_RANGE_* sentinel so
+        # callers see object identity (``is``) parity with PDFBox.
+        if n > _LONG_MAX:
+            return COSInteger.OUT_OF_RANGE_MAX  # type: ignore[attr-defined,no-any-return]
+        return COSInteger.OUT_OF_RANGE_MIN  # type: ignore[attr-defined,no-any-return]

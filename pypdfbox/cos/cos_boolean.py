@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import IO, Any, ClassVar
 
 from .cos_base import COSBase
 from .i_cos_visitor import ICOSVisitor
+
+# Literal byte tokens emitted by ``write_pdf`` — mirrors PDFBox's
+# ``TRUE_BYTES`` / ``FALSE_BYTES`` ISO-8859-1 byte arrays.
+_TRUE_BYTES: bytes = b"true"
+_FALSE_BYTES: bytes = b"false"
 
 
 class COSBoolean(COSBase):
@@ -38,6 +43,15 @@ class COSBoolean(COSBase):
     def get_value(self) -> bool:
         return self._value
 
+    def get_value_as_object(self) -> bool:
+        """Mirror PDFBox's ``getValueAsObject()``.
+
+        Java distinguishes ``boolean`` from boxed ``Boolean``; in Python the
+        two are the same type, so this is a thin alias of ``get_value`` kept
+        for API parity.
+        """
+        return self._value
+
     def is_true(self) -> bool:
         return self._value is True
 
@@ -46,6 +60,13 @@ class COSBoolean(COSBase):
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_boolean(self)
+
+    def write_pdf(self, output: IO[bytes]) -> None:
+        """Write the literal ``true`` / ``false`` token to *output*.
+
+        Mirrors PDFBox's ``COSBoolean.writePDF(OutputStream)``.
+        """
+        output.write(_TRUE_BYTES if self._value else _FALSE_BYTES)
 
     def __bool__(self) -> bool:
         return self._value

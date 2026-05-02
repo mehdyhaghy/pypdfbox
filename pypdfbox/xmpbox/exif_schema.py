@@ -289,6 +289,18 @@ class ExifSchema(XMPSchema):
     def get_user_comment_languages(self) -> list[str] | None:
         return self.get_unqualified_language_property_languages_value(self.USER_COMMENT)
 
+    def remove_user_comment(self, lang: str | None = None) -> None:
+        """
+        Drop the per-language ``UserComment`` value identified by ``lang``
+        (defaulting to the ``x-default`` slot). No-op when the property or
+        the requested language slot is absent. Convenience wrapper over
+        :meth:`remove_unqualified_language_property_value` -- upstream
+        ExifSchema only exposes getters, but the underlying
+        ``XMPSchema.removeUnqualifiedLanguagePropertyValue`` is public so
+        callers reach the same effect through it.
+        """
+        self.remove_unqualified_language_property_value(self.USER_COMMENT, lang)
+
     def get_user_comment_property(self) -> LangAlt | None:
         """
         Mirror of upstream ``getUserCommentProperty()`` — returns the typed

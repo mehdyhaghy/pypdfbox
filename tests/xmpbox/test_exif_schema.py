@@ -739,3 +739,17 @@ def test_user_comment_property_returns_lang_alt() -> None:
 def test_user_comment_property_none_when_empty() -> None:
     schema = _exif()
     assert schema.get_user_comment_property() is None
+
+
+def test_remove_user_comment_drops_language_slot() -> None:
+    """Wave round-out: per-language removal mirror for ``UserComment``."""
+    schema = _exif()
+    schema.set_user_comment("hello")
+    schema.add_user_comment("fr", "bonjour")
+    schema.remove_user_comment("fr")
+    assert schema.get_user_comment("fr") is None
+    assert schema.get_user_comment() == "hello"
+    schema.remove_user_comment()
+    assert schema.get_user_comment() is None
+    # No-op on a fresh schema.
+    _exif().remove_user_comment("en")

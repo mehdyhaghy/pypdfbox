@@ -65,8 +65,24 @@ class COSString(COSBase):
     def is_force_hex_form(self) -> bool:
         return self._force_hex_form
 
+    def get_force_hex_form(self) -> bool:
+        """Mirror PDFBox's ``getForceHexForm()`` accessor — same value as
+        ``is_force_hex_form``; both spellings exist upstream."""
+        return self._force_hex_form
+
     def isForceHexForm(self) -> bool:  # noqa: N802 - upstream Java name
         return self.is_force_hex_form()
+
+    def get_ascii(self) -> str:
+        """Decode the raw bytes as ASCII — mirrors PDFBox's ``getASCII()``.
+
+        PDF byte strings sometimes hold ASCII content (e.g. signature
+        fields, dates encoded as ``D:YYYYMMDD...``); this returns the
+        bytes as a ``str`` without the BOM-aware logic of ``get_string``.
+        Bytes outside 0x00..0x7F are replaced with ``?``, matching Java's
+        ``new String(bytes, StandardCharsets.US_ASCII)`` substitution.
+        """
+        return self._bytes.decode("ascii", errors="replace").replace("�", "?")
 
     def set_force_hex_form(self, force_hex: bool) -> None:
         self._force_hex_form = force_hex

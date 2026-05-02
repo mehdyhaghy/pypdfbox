@@ -534,3 +534,33 @@ def test_lang_alt_property_accessors_none_when_empty() -> None:
     schema = _tiff()
     assert schema.get_image_description_property() is None
     assert schema.get_copyright_property() is None
+
+
+def test_remove_image_description_drops_language_slot() -> None:
+    """Wave round-out: per-language removal mirror for ``ImageDescription``."""
+    schema = _tiff()
+    schema.set_image_description("Sunset")
+    schema.add_image_description("fr", "Coucher de soleil")
+    schema.remove_image_description("fr")
+    assert schema.get_image_description("fr") is None
+    assert schema.get_image_description() == "Sunset"
+    # Removing the default slot leaves an empty per-language dict.
+    schema.remove_image_description()
+    assert schema.get_image_description() is None
+    # No-op when called on an absent / fresh schema.
+    fresh = _tiff()
+    fresh.remove_image_description("en")  # must not raise
+
+
+def test_remove_copyright_drops_language_slot() -> None:
+    """Wave round-out: per-language removal mirror for ``Copyright``."""
+    schema = _tiff()
+    schema.set_copyright("(c) 2026 Acme")
+    schema.add_copyright("ja", "(c) 2026 Acme (ja)")
+    schema.remove_copyright("ja")
+    assert schema.get_copyright("ja") is None
+    assert schema.get_copyright() == "(c) 2026 Acme"
+    schema.remove_copyright()
+    assert schema.get_copyright() is None
+    # No-op on a fresh schema.
+    _tiff().remove_copyright()

@@ -554,3 +554,43 @@ def test_add_text_layers_upstream_method_appends_layer() -> None:
     assert layers[0].get_layer_text() == "Hello"
     assert layers[1].get_layer_name() == "Layer2"
     assert layers[1].get_layer_text() == "World"
+
+
+def test_remove_document_ancestor_drops_matching_entry() -> None:
+    """Wave round-out: targeted bag-entry removal for ``DocumentAncestors``."""
+    schema = _photoshop()
+    schema.add_document_ancestors("uuid:a")
+    schema.add_document_ancestors("uuid:b")
+    schema.add_document_ancestors("uuid:c")
+    schema.remove_document_ancestor("uuid:b")
+    assert schema.get_document_ancestors() == ["uuid:a", "uuid:c"]
+    # Removing a missing entry is a no-op.
+    schema.remove_document_ancestor("uuid:zzz")
+    assert schema.get_document_ancestors() == ["uuid:a", "uuid:c"]
+    # No-op on a fresh schema (property absent).
+    _photoshop().remove_document_ancestor("uuid:x")
+
+
+def test_clear_text_layers_empties_seq_without_removing_property() -> None:
+    """Wave round-out: ``clear_text_layers`` keeps the Seq, drops children."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    layer1 = LayerType(metadata)
+    layer1.set_layer_name("L1")
+    layer1.set_layer_text("Hello")
+    layer2 = LayerType(metadata)
+    layer2.set_layer_name("L2")
+    layer2.set_layer_text("World")
+    schema.add_text_layer(layer1)
+    schema.add_text_layer(layer2)
+    seq_before = schema.get_text_layers_property()
+    assert seq_before is not None
+    schema.clear_text_layers()
+    # Seq container persists; children dropped.
+    seq_after = schema.get_text_layers_property()
+    assert seq_after is seq_before
+    assert schema.get_text_layers() == []
+    # No-op when called again on the empty Seq, and on a fresh schema.
+    schema.clear_text_layers()
+    assert schema.get_text_layers() == []
+    _photoshop().clear_text_layers()
