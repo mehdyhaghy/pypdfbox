@@ -102,6 +102,85 @@ def test_get_b_box_returns_none_when_not_an_array() -> None:
     assert artifact.get_b_box() is None
 
 
+def test_get_bbox_alias_matches_get_b_box() -> None:
+    """``get_bbox`` is the spelling used by sibling pypdfbox wrappers
+    (e.g. :meth:`PDPage.get_bbox`); it must return the same object as
+    the mechanical-translation form ``get_b_box``."""
+    props = COSDictionary()
+    bbox = COSArray()
+    bbox.set_int(0, 1)
+    bbox.set_int(1, 2)
+    bbox.set_int(2, 3)
+    bbox.set_int(3, 4)
+    props.set_item(COSName.get_pdf_name("BBox"), bbox)
+    artifact = PDArtifactMarkedContent(props)
+
+    rect_a = artifact.get_b_box()
+    rect_b = artifact.get_bbox()
+
+    assert isinstance(rect_b, PDRectangle)
+    # PDRectangle wraps the same backing array — the four corners must
+    # match across both spellings.
+    assert (
+        rect_a.get_lower_left_x(),
+        rect_a.get_lower_left_y(),
+        rect_a.get_upper_right_x(),
+        rect_a.get_upper_right_y(),
+    ) == (
+        rect_b.get_lower_left_x(),
+        rect_b.get_lower_left_y(),
+        rect_b.get_upper_right_x(),
+        rect_b.get_upper_right_y(),
+    )
+
+
+def test_get_bbox_alias_returns_none_when_absent() -> None:
+    artifact = PDArtifactMarkedContent(COSDictionary())
+    assert artifact.get_bbox() is None
+
+
+def test_get_bbox_alias_returns_none_when_properties_none() -> None:
+    artifact = PDArtifactMarkedContent(None)
+    assert artifact.get_bbox() is None
+
+
+# ---------- /Type and /Subtype as COSString (upstream getNameAsString parity) ----------
+
+
+def test_get_type_accepts_cos_string_value() -> None:
+    """Upstream ``COSDictionary.getNameAsString`` accepts both ``COSName``
+    and ``COSString`` operands. PDFs in the wild encode ``/Type`` as a
+    string literal in some authoring tools; pypdfbox must read those
+    correctly rather than silently returning ``None``.
+    """
+    props = COSDictionary()
+    # Stored as a COSString rather than a COSName.
+    props.set_string(COSName.TYPE, "Pagination")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_type() == "Pagination"
+
+
+def test_get_subtype_accepts_cos_string_value() -> None:
+    """Mirror of ``test_get_type_accepts_cos_string_value`` for
+    ``/Subtype``."""
+    props = COSDictionary()
+    props.set_string(COSName.SUBTYPE, "Header")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_subtype() == "Header"
+
+
+def test_get_type_returns_none_for_unrelated_value_type() -> None:
+    """``getNameAsString`` only resolves ``COSName``/``COSString`` —
+    other operand types (integers, arrays, etc.) yield ``None``.
+    """
+    from pypdfbox.cos import COSArray as _COSArray
+
+    props = COSDictionary()
+    props.set_item(COSName.TYPE, _COSArray())
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_type() is None
+
+
 # ---------- /Attached ----------
 
 

@@ -930,3 +930,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Overlay — `_load_pdfs` filename precedence parity
 
 - `pypdfbox/multipdf/overlay.py`: `_load_pdfs` now mirrors upstream's load-order: when **both** a filename and a `PDDocument` are configured for the same overlay slot, the filename wins — the document is reloaded from disk and any previously-staged `PDDocument` is replaced. Previously the pypdfbox port short-circuited (`if filename is not None and document is None`) so a setter-supplied PDF blocked the file reload. Affects `set_input_file` / `set_input_pdf`, plus the parallel default / first / last / odd / even / all-pages overlay slots. Mirrors `Overlay.loadPDFs` in PDFBox 3.0.x.
+
+## PDArtifactMarkedContent — `getNameAsString` parity for `/Type` and `/Subtype`
+
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_artifact_marked_content.py`: `get_type()` and `get_subtype()` now resolve both `COSName` and `COSString` operands, mirroring upstream `COSDictionary.getNameAsString(COSName)`. The previous lookup went through pypdfbox's stricter `COSDictionary.get_name`, which only resolves `COSName` operands and silently returned `None` for `COSString`-encoded artifact types. Authoring tools occasionally store `/Type` and `/Subtype` as strings; the artifact accessors now match upstream's tolerant read. Added `get_bbox()` alias for `get_b_box()` matching the spelling already used by sibling pypdfbox wrappers (e.g. `PDPage.get_bbox`).

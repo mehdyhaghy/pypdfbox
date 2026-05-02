@@ -96,3 +96,21 @@ def test_null_properties_is_safe() -> None:
     assert artifact.get_subtype() is None
     assert artifact.get_b_box() is None
     assert artifact.is_top_attached() is False
+
+
+def test_get_type_resolves_string_operand_like_get_name_as_string() -> None:
+    """Upstream ``getNameAsString`` (called by ``getType``) accepts both
+    ``COSName`` and ``COSString``. Mirror that contract: a ``COSString``
+    operand on ``/Type`` resolves to its decoded value."""
+    props = COSDictionary()
+    props.set_string(COSName.TYPE, "Pagination")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_type() == "Pagination"
+
+
+def test_get_subtype_resolves_string_operand_like_get_name_as_string() -> None:
+    """Mirror of the ``/Type`` parity test above for ``/Subtype``."""
+    props = COSDictionary()
+    props.set_string(COSName.SUBTYPE, "Header")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_subtype() == "Header"
