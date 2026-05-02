@@ -198,6 +198,13 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
         """Upstream-parity alias for :meth:`set_border_color`."""
         self._set_four_colours("BorderColor", four)
 
+    def set_all_border_colors(self, rgb: tuple[float, ...] | None) -> None:
+        """
+        Set ``/BorderColor`` to a single RGB triple applied to all four
+        sides. Mirrors upstream ``setAllBorderColors(PDGamma)``.
+        """
+        self._set_color_value("BorderColor", rgb)
+
     # ---------- /BorderStyle ----------
 
     def get_border_style(self) -> str | list[str] | None:
@@ -631,6 +638,101 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
 
     def set_glyph_orientation_vertical(self, value: str) -> None:
         self._set_name("GlyphOrientationVertical", value)
+
+    def __str__(self) -> str:
+        """Mirror upstream ``PDLayoutAttributeObject.toString()`` which
+        appends ``", <FieldName>=<value>"`` for every entry that is
+        specified, in the dictionary-key order defined in the upstream
+        class. Per upstream, list-shaped values (``BorderStyle``,
+        ``BorderThickness``, ``Padding``, ``TBorderStyle``, ``TPadding``,
+        ``ColumnGap``, ``ColumnWidths``) are formatted via
+        :meth:`PDAttributeObject.array_to_string` when they are arrays
+        and inlined as-is when they are scalars / single names."""
+        sb = super().__str__()
+
+        def append_scalar(key: str, value: object) -> str:
+            return f", {key}={value}"
+
+        def append_polymorphic(key: str, value: object) -> str:
+            if isinstance(value, list):
+                return f", {key}={self.array_to_string(value)}"
+            return f", {key}={value}"
+
+        if self.is_specified(self.PLACEMENT):
+            sb += append_scalar("Placement", self.get_placement())
+        if self.is_specified(self.WRITING_MODE):
+            sb += append_scalar("WritingMode", self.get_writing_mode())
+        if self.is_specified(self.BACKGROUND_COLOR):
+            sb += append_scalar("BackgroundColor", self.get_background_color())
+        if self.is_specified(self.BORDER_COLOR):
+            sb += append_scalar("BorderColor", self.get_border_colors())
+        if self.is_specified(self.BORDER_STYLE):
+            sb += append_polymorphic("BorderStyle", self.get_border_style())
+        if self.is_specified(self.BORDER_THICKNESS):
+            sb += append_polymorphic(
+                "BorderThickness", self.get_border_thickness()
+            )
+        if self.is_specified(self.PADDING):
+            sb += append_polymorphic("Padding", self.get_padding())
+        if self.is_specified(self.COLOR):
+            sb += append_scalar("Color", self.get_color())
+        if self.is_specified(self.SPACE_BEFORE):
+            sb += append_scalar("SpaceBefore", self.get_space_before())
+        if self.is_specified(self.SPACE_AFTER):
+            sb += append_scalar("SpaceAfter", self.get_space_after())
+        if self.is_specified(self.START_INDENT):
+            sb += append_scalar("StartIndent", self.get_start_indent())
+        if self.is_specified(self.END_INDENT):
+            sb += append_scalar("EndIndent", self.get_end_indent())
+        if self.is_specified(self.TEXT_INDENT):
+            sb += append_scalar("TextIndent", self.get_text_indent())
+        if self.is_specified(self.TEXT_ALIGN):
+            sb += append_scalar("TextAlign", self.get_text_align())
+        if self.is_specified(self.BBOX):
+            sb += append_scalar("BBox", self.get_b_box())
+        if self.is_specified(self.WIDTH):
+            sb += append_scalar("Width", self.get_width())
+        if self.is_specified(self.HEIGHT):
+            sb += append_scalar("Height", self.get_height())
+        if self.is_specified(self.BLOCK_ALIGN):
+            sb += append_scalar("BlockAlign", self.get_block_align())
+        if self.is_specified(self.INLINE_ALIGN):
+            sb += append_scalar("InlineAlign", self.get_inline_align())
+        if self.is_specified(self.T_BORDER_STYLE):
+            sb += append_polymorphic("TBorderStyle", self.get_t_border_style())
+        if self.is_specified(self.T_PADDING):
+            sb += append_polymorphic("TPadding", self.get_t_padding())
+        if self.is_specified(self.BASELINE_SHIFT):
+            sb += append_scalar("BaselineShift", self.get_baseline_shift())
+        if self.is_specified(self.LINE_HEIGHT):
+            sb += append_scalar("LineHeight", self.get_line_height())
+        if self.is_specified(self.TEXT_DECORATION_COLOR):
+            sb += append_scalar(
+                "TextDecorationColor", self.get_text_decoration_color()
+            )
+        if self.is_specified(self.TEXT_DECORATION_THICKNESS):
+            sb += append_scalar(
+                "TextDecorationThickness", self.get_text_decoration_thickness()
+            )
+        if self.is_specified(self.TEXT_DECORATION_TYPE):
+            sb += append_scalar(
+                "TextDecorationType", self.get_text_decoration_type()
+            )
+        if self.is_specified(self.RUBY_ALIGN):
+            sb += append_scalar("RubyAlign", self.get_ruby_align())
+        if self.is_specified(self.RUBY_POSITION):
+            sb += append_scalar("RubyPosition", self.get_ruby_position())
+        if self.is_specified(self.GLYPH_ORIENTATION_VERTICAL):
+            sb += append_scalar(
+                "GlyphOrientationVertical", self.get_glyph_orientation_vertical()
+            )
+        if self.is_specified(self.COLUMN_COUNT):
+            sb += append_scalar("ColumnCount", self.get_column_count())
+        if self.is_specified(self.COLUMN_GAP):
+            sb += append_polymorphic("ColumnGap", self.get_column_gap())
+        if self.is_specified(self.COLUMN_WIDTHS):
+            sb += append_polymorphic("ColumnWidths", self.get_column_widths())
+        return sb
 
     def __repr__(self) -> str:
         return (

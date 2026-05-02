@@ -557,3 +557,104 @@ def test_set_all_column_widths_and_set_column_gaps() -> None:
     assert obj.get_column_gap() == [6.0, 6.0]
     obj.set_column_gaps(None)
     assert obj.get_cos_object().get_dictionary_object("ColumnGap") is None
+
+
+# ---------- /BorderColor — set_all_border_colors (single-RGB) ----------
+
+
+def test_set_all_border_colors_writes_three_component_array() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_border_colors((0.1, 0.2, 0.3))
+    # Polymorphic getter returns a tuple for 3-component, PDFourColours for 4.
+    assert obj.get_border_colors() == pytest.approx((0.1, 0.2, 0.3))
+    raw = obj.get_cos_object().get_dictionary_object("BorderColor")
+    assert isinstance(raw, COSArray)
+    assert raw.size() == 3
+
+
+def test_set_all_border_colors_none_removes_entry() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_all_border_colors((0.5, 0.5, 0.5))
+    obj.set_all_border_colors(None)
+    assert obj.get_cos_object().get_dictionary_object("BorderColor") is None
+    assert obj.get_border_colors() is None
+
+
+def test_set_all_border_colors_overwrites_four_colours() -> None:
+    obj = PDLayoutAttributeObject()
+    four = PDFourColours()
+    four.set_top((1.0, 0.0, 0.0))
+    four.set_right((0.0, 1.0, 0.0))
+    four.set_bottom((0.0, 0.0, 1.0))
+    four.set_left((0.5, 0.5, 0.5))
+    obj.set_border_colors(four)
+    obj.set_all_border_colors((0.7, 0.7, 0.7))
+    raw = obj.get_cos_object().get_dictionary_object("BorderColor")
+    assert isinstance(raw, COSArray)
+    assert raw.size() == 3
+    assert obj.get_border_colors() == pytest.approx((0.7, 0.7, 0.7))
+
+
+# ---------- __str__ (toString parity) ----------
+
+
+def test_str_owner_only_when_no_attributes_specified() -> None:
+    obj = PDLayoutAttributeObject()
+    assert str(obj) == "O=Layout"
+
+
+def test_str_appends_scalar_attributes_in_upstream_order() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_placement(PDLayoutAttributeObject.PLACEMENT_BLOCK)
+    obj.set_writing_mode(PDLayoutAttributeObject.WRITING_MODE_RLTB)
+    obj.set_space_before(5.0)
+    out = str(obj)
+    # Owner first, then specified entries in upstream key order.
+    assert out.startswith("O=Layout")
+    placement_idx = out.index("Placement=Block")
+    writing_idx = out.index("WritingMode=RlTb")
+    space_idx = out.index("SpaceBefore=5.0")
+    assert placement_idx < writing_idx < space_idx
+
+
+def test_str_skips_unspecified_default_returns() -> None:
+    # get_placement() returns "Inline" by default but the entry isn't set,
+    # so toString must not include it.
+    obj = PDLayoutAttributeObject()
+    assert obj.get_placement() == "Inline"
+    assert "Placement=" not in str(obj)
+
+
+def test_str_formats_array_values_with_brackets() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_padding([1.0, 2.0, 3.0, 4.0])
+    obj.set_border_style(["Solid", "Dotted", "Dashed", "Double"])
+    out = str(obj)
+    assert "Padding=[1.0, 2.0, 3.0, 4.0]" in out
+    assert "BorderStyle=[Solid, Dotted, Dashed, Double]" in out
+
+
+def test_str_formats_scalar_polymorphic_values_inline() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_padding(7.5)
+    obj.set_border_style(PDLayoutAttributeObject.BORDER_STYLE_SOLID)
+    out = str(obj)
+    assert "Padding=7.5" in out
+    assert "BorderStyle=Solid" in out
+
+
+def test_str_includes_column_and_decoration_fields() -> None:
+    obj = PDLayoutAttributeObject()
+    obj.set_column_count(3)
+    obj.set_column_gap([6.0, 6.0])
+    obj.set_text_decoration_type(
+        PDLayoutAttributeObject.TEXT_DECORATION_TYPE_UNDERLINE
+    )
+    obj.set_glyph_orientation_vertical(
+        PDLayoutAttributeObject.GLYPH_ORIENTATION_VERTICAL_90_DEGREES
+    )
+    out = str(obj)
+    assert "ColumnCount=3" in out
+    assert "ColumnGap=[6.0, 6.0]" in out
+    assert "TextDecorationType=Underline" in out
+    assert "GlyphOrientationVertical=90" in out
