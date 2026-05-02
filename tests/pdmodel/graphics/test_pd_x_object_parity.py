@@ -86,3 +86,29 @@ def test_set_metadata_none_removes_key() -> None:
     xobject.set_metadata(None)
     assert xobject.get_metadata() is None
     assert xobject.get_cos_object().get_item(COSName.METADATA) is None  # type: ignore[attr-defined]
+
+
+def test_eq_uses_backing_stream_identity() -> None:
+    stream = COSStream()
+    a = PDXObject(stream, COSName.get_pdf_name("Image"))
+    b = PDXObject(stream, COSName.get_pdf_name("Image"))
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_distinguishes_separate_streams() -> None:
+    a = PDXObject(COSStream(), COSName.get_pdf_name("Image"))
+    b = PDXObject(COSStream(), COSName.get_pdf_name("Image"))
+    assert a != b
+
+
+def test_eq_returns_notimplemented_for_other_types() -> None:
+    a = PDXObject(COSStream(), COSName.get_pdf_name("Image"))
+    assert (a == "not an x-object") is False
+
+
+def test_repr_includes_subtype() -> None:
+    a = PDXObject(COSStream(), COSName.get_pdf_name("Form"))
+    text = repr(a)
+    assert "Form" in text
+    assert "PDXObject" in text

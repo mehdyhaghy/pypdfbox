@@ -142,3 +142,14 @@ class PDXObject:
             cos.remove_item(_METADATA)
             return
         cos.set_item(_METADATA, value.get_cos_object())
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PDXObject):
+            return NotImplemented
+        return self._stream.get_cos_object() is other._stream.get_cos_object()
+
+    def __hash__(self) -> int:
+        return id(self._stream.get_cos_object())
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(subtype={self.get_subtype()!r})"
