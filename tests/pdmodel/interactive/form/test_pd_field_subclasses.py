@@ -63,6 +63,154 @@ def test_text_field_max_len_and_value_round_trip() -> None:
     assert tf.get_default_value() == "default"
 
 
+def test_text_field_has_max_len_predicate() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    # Fresh field — /MaxLen unset, predicate False, getter returns -1 sentinel.
+    assert tf.has_max_len() is False
+    assert tf.get_max_len() == -1
+
+    tf.set_max_len(0)
+    # 0 is a valid set value distinct from "unset".
+    assert tf.has_max_len() is True
+    assert tf.get_max_len() == 0
+
+    # Even an explicit -1 is a "set" value.
+    tf.set_max_len(-1)
+    assert tf.has_max_len() is True
+
+
+def test_text_field_has_value_and_has_default_value_predicates() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    assert tf.has_value() is False
+    assert tf.has_default_value() is False
+
+    tf.set_value("v")
+    tf.set_default_value("dv")
+    assert tf.has_value() is True
+    assert tf.has_default_value() is True
+
+    tf.set_value(None)
+    tf.set_default_value(None)
+    assert tf.has_value() is False
+    assert tf.has_default_value() is False
+
+
+def test_text_field_has_value_does_not_walk_inheritance() -> None:
+    """has_value is a local-dictionary check — even when /V is inherited from
+    a parent, has_value must return False if the child's own dict has no /V."""
+    from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+        PDNonTerminalField,
+    )
+
+    form = PDAcroForm()
+    parent = PDNonTerminalField(form)
+    parent.get_cos_object().set_string(COSName.get_pdf_name("V"), "from-parent")
+    parent.get_cos_object().set_string(COSName.get_pdf_name("DV"), "from-parent-dv")
+
+    child = PDTextField(form, COSDictionary(), parent=parent)
+    # Effective value walks the chain...
+    assert child.get_value() == "from-parent"
+    assert child.get_default_value() == "from-parent-dv"
+    # ...but the predicate only inspects the local dictionary.
+    assert child.has_value() is False
+    assert child.has_default_value() is False
+
+
+def test_text_field_set_default_value_clears_with_none() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.set_default_value("x")
+    assert tf.get_default_value() == "x"
+    tf.set_default_value(None)
+    assert tf.get_default_value() == ""
+    assert (
+        tf.get_cos_object().get_dictionary_object(COSName.get_pdf_name("DV")) is None
+    )
+
+
+def test_text_field_remaining_flags_round_trip_independently() -> None:
+    """FILE_SELECT / DO_NOT_SPELL_CHECK / DO_NOT_SCROLL / COMB / RICH_TEXT
+    map to bits 21/23/24/25/26 — verify each flips independently and the
+    bitmask matches the upstream constant."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+
+    # All defaults are False on a fresh field.
+    assert tf.is_file_select() is False
+    assert tf.is_do_not_spell_check() is False
+    assert tf.is_do_not_scroll() is False
+    assert tf.is_comb() is False
+    assert tf.is_rich_text() is False
+
+    tf.set_file_select(True)
+    tf.set_do_not_spell_check(True)
+    tf.set_do_not_scroll(True)
+    tf.set_comb(True)
+    tf.set_rich_text(True)
+
+    assert tf.is_file_select() is True
+    assert tf.is_do_not_spell_check() is True
+    assert tf.is_do_not_scroll() is True
+    assert tf.is_comb() is True
+    assert tf.is_rich_text() is True
+
+    # All five bits set, plus none of the bottom three (read_only/required/no_export).
+    expected = (
+        PDTextField.FLAG_FILE_SELECT
+        | PDTextField.FLAG_DO_NOT_SPELL_CHECK
+        | PDTextField.FLAG_DO_NOT_SCROLL
+        | PDTextField.FLAG_COMB
+        | PDTextField.FLAG_RICH_TEXT
+    )
+    assert tf.get_field_flags() == expected
+    assert tf.is_read_only() is False
+
+    # Clear one — verify the rest are unaffected.
+    tf.set_comb(False)
+    assert tf.is_comb() is False
+    assert tf.is_file_select() is True
+    assert tf.is_do_not_spell_check() is True
+    assert tf.is_do_not_scroll() is True
+    assert tf.is_rich_text() is True
+
+
+def test_text_field_do_not_spell_check_alias_matches_predicate() -> None:
+    """``do_not_spell_check`` is the upstream Java spelling; verify it
+    returns the same value as ``is_do_not_spell_check``."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    assert tf.do_not_spell_check() == tf.is_do_not_spell_check()
+
+    tf.set_do_not_spell_check(True)
+    assert tf.do_not_spell_check() is True
+    assert tf.do_not_spell_check() == tf.is_do_not_spell_check()
+
+
+def test_text_field_do_not_scroll_alias_matches_predicate() -> None:
+    """``do_not_scroll`` mirrors the upstream Java name."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    assert tf.do_not_scroll() == tf.is_do_not_scroll()
+
+    tf.set_do_not_scroll(True)
+    assert tf.do_not_scroll() is True
+    assert tf.do_not_scroll() == tf.is_do_not_scroll()
+
+
+def test_text_field_flag_constants_match_pdf_spec() -> None:
+    """Concrete bit-values per PDF 32000-1 §12.7.4.3, Table 228 — guard
+    against accidental bit drift on the FLAG_* constants."""
+    assert PDTextField.FLAG_MULTILINE == 1 << 12
+    assert PDTextField.FLAG_PASSWORD == 1 << 13
+    assert PDTextField.FLAG_FILE_SELECT == 1 << 20
+    assert PDTextField.FLAG_DO_NOT_SPELL_CHECK == 1 << 22
+    assert PDTextField.FLAG_DO_NOT_SCROLL == 1 << 23
+    assert PDTextField.FLAG_COMB == 1 << 24
+    assert PDTextField.FLAG_RICH_TEXT == 1 << 25
+
+
 # ---------- PDPushButton / PDRadioButton / PDCheckBox ----------
 
 

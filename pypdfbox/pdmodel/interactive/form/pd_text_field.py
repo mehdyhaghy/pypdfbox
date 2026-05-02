@@ -105,6 +105,15 @@ class PDTextField(PDVariableText):
     def set_max_len(self, max_len: int) -> None:
         self._field.set_int(_MAX_LEN, max_len)
 
+    def has_max_len(self) -> bool:
+        """Predicate — return ``True`` when ``/MaxLen`` is set on this field.
+
+        Pypdfbox-only convenience: distinguishes "no ``/MaxLen`` entry" from
+        "``/MaxLen`` explicitly set to ``-1``", which :meth:`get_max_len` cannot
+        on its own. Useful for callers serializing only populated keys.
+        """
+        return self._field.contains_key(_MAX_LEN)
+
     # ---------- /V, /DV ----------
 
     def get_value(self) -> str:
@@ -144,6 +153,26 @@ class PDTextField(PDVariableText):
             self._field.remove_item(_DV)
         else:
             self._field.set_string(_DV, value)
+
+    def has_value(self) -> bool:
+        """Predicate — return ``True`` when ``/V`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: does **not** walk the inheritable chain.
+        Use :meth:`get_value` (which falls back to parent + AcroForm) to read
+        the effective value. This predicate is useful for callers that need
+        to distinguish "field has its own /V" from "field inherits /V".
+        """
+        return self._field.contains_key(_V)
+
+    def has_default_value(self) -> bool:
+        """Predicate — return ``True`` when ``/DV`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: like :meth:`has_value`, this checks the
+        local dictionary only and does not walk the inheritable chain.
+        """
+        return self._field.contains_key(_DV)
 
     def get_value_as_string(self) -> str:
         return self.get_value()

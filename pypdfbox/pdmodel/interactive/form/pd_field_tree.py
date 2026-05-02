@@ -39,6 +39,18 @@ class PDFieldTree(Sequence["PDField"]):
     def __getitem__(self, index: int | slice) -> PDField | list[PDField]:
         return self._as_list()[index]
 
+    def is_empty(self) -> bool:
+        """Predicate — ``True`` when the underlying AcroForm has no fields.
+
+        Pypdfbox-only convenience: equivalent to ``len(tree) == 0`` but cheaper
+        because it short-circuits on the first field encountered instead of
+        walking the entire tree.
+        """
+        return next(iter(self), None) is None
+
+    def __bool__(self) -> bool:
+        return not self.is_empty()
+
     def _as_list(self) -> list[PDField]:
         return list(iter(self))
 

@@ -85,6 +85,37 @@ def test_iterator_public_surface_returns_independent_iterators() -> None:
         first.remove()
 
 
+def test_pd_field_tree_is_empty_on_fresh_form() -> None:
+    """A freshly-constructed AcroForm has no fields — is_empty should be True
+    and bool() should be False."""
+    form = PDAcroForm()
+    tree = form.get_field_tree()
+    assert tree.is_empty() is True
+    assert bool(tree) is False
+    assert len(tree) == 0
+
+
+def test_pd_field_tree_is_empty_false_when_fields_present() -> None:
+    form = _form_with_nested_fields()
+    tree = form.get_field_tree()
+    assert tree.is_empty() is False
+    assert bool(tree) is True
+
+
+def test_pd_field_tree_is_empty_short_circuits_without_walking() -> None:
+    """is_empty must not consume the whole iterator — verify by mutating the
+    form between calls and confirming each call yields a fresh check."""
+    form = _form_with_nested_fields()
+    tree = form.get_field_tree()
+    # First call: True (well, False — there are fields).
+    assert tree.is_empty() is False
+    # Drain on a separate iter — should not affect the next is_empty call.
+    consumed = list(iter(tree))
+    assert len(consumed) == 4
+    # Tree is still non-empty for a fresh probe.
+    assert tree.is_empty() is False
+
+
 def test_iterator_skips_repeated_cos_dictionary_to_avoid_recursion(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

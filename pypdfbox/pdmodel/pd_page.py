@@ -463,26 +463,32 @@ class PDPage:
     # ---------- rotation / user unit ----------
 
     def get_rotation(self) -> int:
-        """Inheritable; default 0. Normalised to 0/90/180/270 (mirrors
-        upstream's modulo-360 semantics)."""
+        """Inheritable; default 0. Normalised to 0/90/180/270.
+
+        Mirrors upstream ``PDPage.getRotation()`` exactly: a ``COSNumber``
+        whose integer value is a multiple of 90 is reduced via
+        ``(angle % 360 + 360) % 360`` so negatives wrap correctly. Any other
+        value (non-numeric, or not a multiple of 90) returns 0 — upstream
+        treats off-axis rotations as "not set at this level"."""
         value = self._get_inheritable(_ROTATE)
         if value is None:
             return 0
-        # Both COSInteger and COSFloat are accepted upstream.
+        # Both COSInteger and COSFloat are accepted upstream (COSNumber).
         from pypdfbox.cos import COSFloat, COSInteger
 
         raw: int
         if isinstance(value, COSInteger):
             raw = value.value
         elif isinstance(value, COSFloat):
+            # Upstream COSNumber.intValue() truncates toward zero.
             raw = int(value.value)
         else:
             return 0
-        # Normalise — upstream rounds to nearest 90 and wraps.
-        normalised = ((raw % 360) + 360) % 360
-        # Snap to 0/90/180/270 (treat 45 → 0, 89 → 90, etc.)
-        snapped = round(normalised / 90.0) * 90
-        return snapped % 360
+        # Upstream gates on ``rotationAngle % 90 == 0`` — anything else is
+        # treated as unset and returns 0 rather than being snapped.
+        if raw % 90 != 0:
+            return 0
+        return ((raw % 360) + 360) % 360
 
     def set_rotation(self, rotation: int) -> None:
         from pypdfbox.cos import COSInteger
@@ -511,13 +517,22 @@ class PDPage:
 
     # ---------- annotations ----------
 
-    def get_annotations(self) -> list[Any]:
+    def get_annotations(
+        self,
+        annotation_filter: Any = None,
+    ) -> list[Any]:
         """Resolve ``/Annots`` into a list of :class:`PDAnnotation`.
 
         Returns an empty list when ``/Annots`` is absent. Each entry is
         dispatched to the appropriate subclass via
         :meth:`PDAnnotation.create`. Non-dictionary entries (rare but
         legal under defensive parsing) are skipped.
+
+        ``annotation_filter`` mirrors upstream's
+        ``getAnnotations(AnnotationFilter)``: a ``Callable[[PDAnnotation],
+        bool]`` invoked on every dispatched annotation; only annotations
+        for which the callable returns truthy are kept. ``None`` means
+        accept-all (matches the no-arg upstream overload).
         """
         # Local import — annotation module imports PDRectangle from this
         # package, and a top-level import would create a cycle.
@@ -531,8 +546,13 @@ class PDPage:
         result: list[Any] = []
         for i in range(annots.size()):
             entry = annots.get_object(i)
+            if entry is None:
+                # Match upstream's ``if (item == null) continue;`` defensive skip.
+                continue
             if isinstance(entry, COSDictionary):
-                result.append(PDAnnotation.create(entry))
+                created = PDAnnotation.create(entry)
+                if annotation_filter is None or annotation_filter(created):
+                    result.append(created)
         return result
 
     def set_annotations(self, annotations: list[Any] | None) -> None:

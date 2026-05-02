@@ -180,7 +180,16 @@ class PDPageTree:
         return sum(1 for _ in self)
 
     def get_count(self) -> int:
-        return len(self)
+        """Return the ``/Count`` entry of the root ``/Pages`` dict.
+
+        Mirrors upstream ``PDPageTree.getCount()`` literally —
+        ``root.getInt(COSName.COUNT, 0)`` — so this is O(1) and reports the
+        stored count even when it disagrees with a tree walk. Use
+        ``len(self)`` (the Python protocol) for a walk-validated count."""
+        count = self._root.get_dictionary_object(_COUNT)
+        if isinstance(count, COSInteger):
+            return count.value
+        return 0
 
     def __getitem__(self, index: int) -> PDPage:
         if not isinstance(index, int):

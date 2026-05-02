@@ -783,7 +783,7 @@ class Splitter:
             src_numbers = {}
         dst_numbers: dict[int, COSBase] = {}
 
-        for page_index in range(page_tree.get_count()):
+        for page_index in range(len(page_tree)):
             page = page_tree.get(page_index)
             try:
                 sp1 = page.get_struct_parents()
