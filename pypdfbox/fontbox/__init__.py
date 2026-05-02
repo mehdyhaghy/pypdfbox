@@ -11,6 +11,7 @@ from .encoding import (
     ZapfDingbatsEncoding,
 )
 from .cid_font_mapping import CIDFontMapping
+from .encoded_font import EncodedFont
 from .font_box_font import FontBoxFont
 from .font_format import FontFormat
 from .font_info import FontInfo
@@ -22,6 +23,7 @@ from .font_provider import FontProvider
 __all__ = [
     "CIDFontMapping",
     "DefaultFontMapper",
+    "EncodedFont",
     "Encoding",
     "FontBoxFont",
     "FontFormat",

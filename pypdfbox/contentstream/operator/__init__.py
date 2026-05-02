@@ -88,6 +88,41 @@ class Operator:
                 Operator._operators[operator] = cached
             return cached
 
+    @staticmethod
+    def with_operands(operator: str, operands: list[COSBase]) -> Operator:
+        """Return a fresh, *uncached* ``Operator`` with ``operands``
+        already attached.
+
+        This is the safe alternative to
+        ``op = Operator.get_operator(name); op.set_operands(operands)``
+        for ordinary (non-inline-image) operators — the latter would
+        mutate the singleton returned from the cache and leak the
+        operand list across all callers (see the class docstring).
+        Inline-image operators (``BI`` / ``ID``) are never cached, so
+        :meth:`get_operator` is also safe for those — but ``with_operands``
+        works uniformly across both kinds.
+        """
+        op = Operator(operator)
+        op.set_operands(operands)
+        return op
+
+    @staticmethod
+    def is_cached(operator: str) -> bool:
+        """Return ``True`` if :meth:`get_operator` would return a
+        cached singleton for ``operator``.
+
+        Inline-image operators (``BI`` / ``ID``) intentionally bypass
+        the cache because they carry per-occurrence image data and
+        parameters; everything else is cached. Mirrors the implicit
+        contract of upstream's ``getOperator`` — exposed here as a
+        predicate so callers can decide whether mutating the result is
+        safe.
+        """
+        return (
+            operator != OperatorName.BEGIN_INLINE_IMAGE
+            and operator != OperatorName.BEGIN_INLINE_IMAGE_DATA
+        )
+
     # ---------- name ----------
 
     def get_name(self) -> str:
@@ -96,6 +131,32 @@ class Operator:
     @property
     def name(self) -> str:
         return self._name
+
+    # ---------- predicates ----------
+
+    def is_inline_image_operator(self) -> bool:
+        """Return ``True`` if this operator is one of the two
+        inline-image markers (``BI`` or ``ID``).
+
+        These two operators are special-cased throughout PDFBox — they
+        carry per-occurrence image parameters / image bytes and are
+        deliberately never cached. Exposed here as a predicate so
+        callers do not have to compare ``get_name()`` against the two
+        :class:`OperatorName` constants by hand.
+        """
+        return (
+            self._name == OperatorName.BEGIN_INLINE_IMAGE
+            or self._name == OperatorName.BEGIN_INLINE_IMAGE_DATA
+        )
+
+    def has_operands(self) -> bool:
+        """Return ``True`` iff at least one operand has been attached.
+
+        Convenience predicate used by tooling code that walks the token
+        stream and wants to skip operators with no operand window
+        (most painting operators: ``S``, ``f``, ``n``, ``q``, ``Q`` …).
+        """
+        return bool(self._operands)
 
     # ---------- operands ----------
 
@@ -132,6 +193,25 @@ class Operator:
     @property
     def image_parameters(self) -> COSDictionary | None:
         return self._image_parameters
+
+    # ---------- copy ----------
+
+    def __copy__(self) -> Operator:
+        """Return a fresh, *uncached* ``Operator`` carrying the same
+        name, a shallow copy of the operands list, and the same image
+        parameters / image data references.
+
+        ``copy.copy(op)`` is the recommended way to obtain a mutable
+        clone of a cached operator instance — assigning new operands to
+        the clone leaves the cache singleton untouched. The image
+        parameters dict and image bytes are intentionally shared (not
+        deep-copied) — same shape as Java's field-by-field copy.
+        """
+        clone = Operator(self._name)
+        clone._operands = list(self._operands)
+        clone._image_data = self._image_data
+        clone._image_parameters = self._image_parameters
+        return clone
 
     # ---------- repr / str ----------
 

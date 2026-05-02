@@ -138,11 +138,26 @@ class BoundingBox:
 
     def __init__(
         self,
-        min_x: float = 0.0,
+        min_x: float | list[float] | tuple[float, ...] = 0.0,
         min_y: float = 0.0,
         max_x: float = 0.0,
         max_y: float = 0.0,
     ) -> None:
+        # Upstream offers an overloaded constructor
+        # ``BoundingBox(List<Number>)``; mirror that by accepting a
+        # 4-element sequence as the first positional argument.
+        if isinstance(min_x, (list, tuple)):
+            numbers = min_x
+            if len(numbers) != 4:
+                raise ValueError(
+                    "BoundingBox sequence constructor requires 4 values, "
+                    f"got {len(numbers)}"
+                )
+            self._lower_left_x = float(numbers[0])
+            self._lower_left_y = float(numbers[1])
+            self._upper_right_x = float(numbers[2])
+            self._upper_right_y = float(numbers[3])
+            return
         self._lower_left_x = float(min_x)
         self._lower_left_y = float(min_y)
         self._upper_right_x = float(max_x)
@@ -159,6 +174,18 @@ class BoundingBox:
                 f"BoundingBox.from_numbers requires 4 values, got {len(numbers)}"
             )
         return cls(numbers[0], numbers[1], numbers[2], numbers[3])
+
+    def is_empty(self) -> bool:
+        """Return True iff this bounding box has zero area.
+
+        Convenience predicate over upstream's getters: useful to detect
+        the default-constructed ``BoundingBox()`` and degenerate boxes
+        produced by glyphs with no outline (``.notdef`` empty slots).
+        Returns True when ``getWidth()`` and ``getHeight()`` are both
+        zero — matches the natural Java check ``bbox.getWidth() == 0
+        && bbox.getHeight() == 0``.
+        """
+        return self.get_width() == 0.0 and self.get_height() == 0.0
 
     def get_lower_left_x(self) -> float:
         return self._lower_left_x
@@ -222,6 +249,30 @@ class BoundingBox:
         return (
             f"BoundingBox({self._lower_left_x}, {self._lower_left_y}, "
             f"{self._upper_right_x}, {self._upper_right_y})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        # Upstream Java doesn't define equals/hashCode, but Python value
+        # equality is the conventional behavior for plain data carriers
+        # like this one and is required for tests/sets. Two instances
+        # with the same four floats compare equal.
+        if not isinstance(other, BoundingBox):
+            return NotImplemented
+        return (
+            self._lower_left_x == other._lower_left_x
+            and self._lower_left_y == other._lower_left_y
+            and self._upper_right_x == other._upper_right_x
+            and self._upper_right_y == other._upper_right_y
+        )
+
+    def __hash__(self) -> int:
+        return hash(
+            (
+                self._lower_left_x,
+                self._lower_left_y,
+                self._upper_right_x,
+                self._upper_right_y,
+            )
         )
 
 

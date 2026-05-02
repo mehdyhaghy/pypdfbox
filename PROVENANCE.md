@@ -749,6 +749,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/common/pdfdoc_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/PDFDocEncoding.java` (relocated to `pdmodel/common` per task brief; upstream is in `cos`) |
 | `pypdfbox/pdmodel/font/encoding/built_in_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/BuiltInEncoding.java` |
 | `pypdfbox/fontbox/font_box_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/FontBoxFont.java` |
+| `pypdfbox/fontbox/encoded_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/EncodedFont.java` |
 | `pypdfbox/fontbox/font_mapping.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMapping.java` (relocated to `fontbox` package per task brief; upstream is in `pdfbox.pdmodel.font`) |
 | `pypdfbox/fontbox/font_mappers.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMappers.java` (relocated to `fontbox` package) |
 | `pypdfbox/fontbox/font_mapper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/{FontMapper.java,FontMapperImpl.java}` (default impl trimmed to Standard 14 — system-font scanner deferred since matplotlib/font_manager / fontconfig would be a new dep) |

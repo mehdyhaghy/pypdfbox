@@ -108,6 +108,70 @@ def test_bounding_box_from_numbers_wrong_arity() -> None:
         BoundingBox.from_numbers([1, 2, 3, 4, 5])
 
 
+def test_bounding_box_constructor_accepts_sequence() -> None:
+    # Mirrors upstream ``BoundingBox(List<Number>)`` overload — passing
+    # a list (or tuple) as the single positional arg dispatches to the
+    # 4-element sequence form.
+    b = BoundingBox([1, 2, 5, 9])
+    assert b.as_tuple() == (1.0, 2.0, 5.0, 9.0)
+    t = BoundingBox((10.0, 20.0, 30.0, 40.0))
+    assert t.as_tuple() == (10.0, 20.0, 30.0, 40.0)
+
+
+def test_bounding_box_constructor_sequence_wrong_arity() -> None:
+    with pytest.raises(ValueError):
+        BoundingBox([1, 2, 3])
+    with pytest.raises(ValueError):
+        BoundingBox([1, 2, 3, 4, 5])
+
+
+def test_bounding_box_is_empty_default() -> None:
+    assert BoundingBox().is_empty()
+
+
+def test_bounding_box_is_empty_zero_area_at_origin() -> None:
+    # Degenerate (single-point) box at origin still counts as empty —
+    # both width and height are zero.
+    b = BoundingBox(0, 0, 0, 0)
+    assert b.is_empty()
+
+
+def test_bounding_box_is_empty_zero_area_off_origin() -> None:
+    # A degenerate box off the origin (width and height both zero) is
+    # still empty by the natural width-and-height-zero check.
+    b = BoundingBox(5, 5, 5, 5)
+    assert b.is_empty()
+
+
+def test_bounding_box_is_empty_non_zero() -> None:
+    assert not BoundingBox(0, 0, 1, 1).is_empty()
+    # Zero width but nonzero height is still non-empty for our purposes
+    # only when both dimensions are zero — matches the upstream
+    # ``getWidth() == 0 && getHeight() == 0`` idiom.
+    assert not BoundingBox(0, 0, 0, 1).is_empty()
+    assert not BoundingBox(0, 0, 1, 0).is_empty()
+
+
+def test_bounding_box_equality() -> None:
+    a = BoundingBox(1, 2, 3, 4)
+    b = BoundingBox(1, 2, 3, 4)
+    c = BoundingBox(1, 2, 3, 5)
+    assert a == b
+    assert a != c
+    # Cross-type comparison must not raise.
+    assert a != (1, 2, 3, 4)
+    assert a != "BoundingBox(1,2,3,4)"
+
+
+def test_bounding_box_hashable() -> None:
+    a = BoundingBox(1, 2, 3, 4)
+    b = BoundingBox(1, 2, 3, 4)
+    c = BoundingBox(0, 0, 1, 1)
+    # Equal objects must hash equal.
+    assert hash(a) == hash(b)
+    assert {a, b, c} == {a, c}
+
+
 # ---------- empty GlyphData ------------------------------------------------
 
 
