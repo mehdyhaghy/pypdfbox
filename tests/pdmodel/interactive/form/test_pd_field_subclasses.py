@@ -98,6 +98,39 @@ def test_radio_button_fresh_is_radio_button() -> None:
     assert rb.is_radios_in_unison() is True
 
 
+def test_radio_button_no_toggle_to_off_round_trip() -> None:
+    """``NoToggleToOff`` is /Ff bit 14 — upstream declares but does not
+    expose the accessor. Verify the predicate / setter round-trip and do
+    not collide with the in-unison bit (25) or the radio bit (15)."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    assert rb.is_no_toggle_to_off() is False
+    rb.set_no_toggle_to_off(True)
+    assert rb.is_no_toggle_to_off() is True
+
+    # Adjacent bits are unaffected.
+    assert rb.is_radio_button() is True
+    assert rb.is_radios_in_unison() is False
+
+    rb.set_no_toggle_to_off(False)
+    assert rb.is_no_toggle_to_off() is False
+    assert rb.is_radio_button() is True
+
+
+def test_radio_button_no_toggle_to_off_independent_of_radios_in_unison() -> None:
+    """Bit 14 (NoToggleToOff) and bit 25 (RadiosInUnison) are independent."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_radios_in_unison(True)
+    rb.set_no_toggle_to_off(True)
+    assert rb.is_radios_in_unison() is True
+    assert rb.is_no_toggle_to_off() is True
+
+    rb.set_radios_in_unison(False)
+    assert rb.is_no_toggle_to_off() is True
+    assert rb.is_radios_in_unison() is False
+
+
 def test_check_box_check_un_check_toggles_value() -> None:
     form = PDAcroForm()
     cb = PDCheckBox(form)

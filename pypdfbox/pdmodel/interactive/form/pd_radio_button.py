@@ -36,6 +36,21 @@ class PDRadioButton(PDButton):
     def set_radios_in_unison(self, value: bool) -> None:
         self._set_flag(self.FLAG_RADIOS_IN_UNISON, value)
 
+    def is_no_toggle_to_off(self) -> bool:
+        """Whether the ``NoToggleToOff`` ``/Ff`` bit is set.
+
+        Per PDF 32000-1 §12.7.4.2.1, when this bit is set exactly one radio
+        button shall be selected at all times — selecting the currently
+        selected button has no effect (cannot toggle the group "off").
+        Mirrors the upstream ``FLAG_NO_TOGGLE_TO_OFF`` bit (1 << 14) which
+        upstream ``PDRadioButton`` declares but does not currently expose.
+        """
+        return bool(self.get_field_flags() & self.FLAG_NO_TOGGLE_TO_OFF)
+
+    def set_no_toggle_to_off(self, value: bool) -> None:
+        """Toggle the ``NoToggleToOff`` ``/Ff`` bit. See :meth:`is_no_toggle_to_off`."""
+        self._set_flag(self.FLAG_NO_TOGGLE_TO_OFF, value)
+
     # ---------- selection accessors ----------
 
     def get_selected_index(self) -> int:

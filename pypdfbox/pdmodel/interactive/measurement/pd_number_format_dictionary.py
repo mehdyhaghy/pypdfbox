@@ -39,6 +39,20 @@ class PDNumberFormatDictionary:
     #: Constant for showing a fractional value truncated to whole units.
     FRACTIONAL_DISPLAY_TRUNCATE: str = "T"
 
+    #: Tuple of all valid ``/F`` (fractional display) values, in spec order.
+    FRACTIONAL_DISPLAYS: tuple[str, ...] = (
+        FRACTIONAL_DISPLAY_DECIMAL,
+        FRACTIONAL_DISPLAY_FRACTION,
+        FRACTIONAL_DISPLAY_ROUND,
+        FRACTIONAL_DISPLAY_TRUNCATE,
+    )
+
+    #: Tuple of all valid ``/O`` (label position) values, in spec order.
+    LABEL_POSITIONS: tuple[str, ...] = (
+        LABEL_SUFFIX_TO_VALUE,
+        LABEL_PREFIX_TO_VALUE,
+    )
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dict = COSDictionary()
@@ -87,15 +101,26 @@ class PDNumberFormatDictionary:
 
         Allowed values are ``"D"``, ``"F"``, ``"R"``, ``"T"`` and ``None``.
         """
-        if fractional_display is None or fractional_display in (
-            self.FRACTIONAL_DISPLAY_DECIMAL,
-            self.FRACTIONAL_DISPLAY_FRACTION,
-            self.FRACTIONAL_DISPLAY_ROUND,
-            self.FRACTIONAL_DISPLAY_TRUNCATE,
-        ):
+        if fractional_display is None or fractional_display in self.FRACTIONAL_DISPLAYS:
             self._dict.set_string(_F, fractional_display)
         else:
             raise ValueError('Value must be "D", "F", "R", or "T", (or None).')
+
+    def is_fractional_display_decimal(self) -> bool:
+        """Return ``True`` if the fractional display mode is ``"D"`` (decimal)."""
+        return self.get_fractional_display() == self.FRACTIONAL_DISPLAY_DECIMAL
+
+    def is_fractional_display_fraction(self) -> bool:
+        """Return ``True`` if the fractional display mode is ``"F"`` (fraction)."""
+        return self.get_fractional_display() == self.FRACTIONAL_DISPLAY_FRACTION
+
+    def is_fractional_display_round(self) -> bool:
+        """Return ``True`` if the fractional display mode is ``"R"`` (round)."""
+        return self.get_fractional_display() == self.FRACTIONAL_DISPLAY_ROUND
+
+    def is_fractional_display_truncate(self) -> bool:
+        """Return ``True`` if the fractional display mode is ``"T"`` (truncate)."""
+        return self.get_fractional_display() == self.FRACTIONAL_DISPLAY_TRUNCATE
 
     # ------------------------------------------------------------------ /D
     def get_denominator(self) -> int:
@@ -176,13 +201,18 @@ class PDNumberFormatDictionary:
 
         Allowed values are ``"S"``, ``"P"`` and ``None``.
         """
-        if label_position_to_value is None or label_position_to_value in (
-            self.LABEL_PREFIX_TO_VALUE,
-            self.LABEL_SUFFIX_TO_VALUE,
-        ):
+        if label_position_to_value is None or label_position_to_value in self.LABEL_POSITIONS:
             self._dict.set_string(_O, label_position_to_value)
         else:
             raise ValueError('Value must be "S", or "P" (or None).')
+
+    def is_label_prefix_to_value(self) -> bool:
+        """Return ``True`` if the label position is ``"P"`` (prefix to value)."""
+        return self.get_label_position_to_value() == self.LABEL_PREFIX_TO_VALUE
+
+    def is_label_suffix_to_value(self) -> bool:
+        """Return ``True`` if the label position is ``"S"`` (suffix to value)."""
+        return self.get_label_position_to_value() == self.LABEL_SUFFIX_TO_VALUE
 
 
 __all__ = ["PDNumberFormatDictionary"]

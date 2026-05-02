@@ -1,0 +1,297 @@
+"""PDChoice round-out — set_value edge cases and option/index round-trips.
+
+Hand-written tests covering remaining gaps on the choice base class:
+``set_value([])`` clears /V and /I (mirrors upstream's empty-list branch),
+the value/options inheritance walk, /TI getter default, and assorted flag
+predicates.
+"""
+from __future__ import annotations
+
+import pytest
+
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+from pypdfbox.pdmodel.interactive.form import PDAcroForm
+from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
+from pypdfbox.pdmodel.interactive.form.pd_list_box import PDListBox
+
+_V: COSName = COSName.get_pdf_name("V")
+_DV: COSName = COSName.get_pdf_name("DV")
+_I: COSName = COSName.get_pdf_name("I")
+_OPT: COSName = COSName.get_pdf_name("Opt")
+_TI: COSName = COSName.get_pdf_name("TI")
+
+
+# ---------- set_value([]) — empty-list branch ----------
+
+
+def test_set_value_empty_list_clears_v_and_i() -> None:
+    """Mirrors upstream ``PDChoice.setValue(List)`` empty-list branch which
+    removes ``/V`` and ``/I`` rather than writing an empty COSArray.
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b", "c"])
+    lb.set_multi_select(True)
+    lb.set_value(["a", "c"])
+
+    cos = lb.get_cos_object()
+    assert cos.contains_key(_V)
+    assert cos.contains_key(_I)
+
+    lb.set_value([])
+
+    assert not cos.contains_key(_V)
+    assert not cos.contains_key(_I)
+    assert lb.get_value() == []
+    assert lb.get_selected_options_indices() == []
+
+
+def test_set_value_none_clears_v_and_i() -> None:
+    """``set_value(None)`` is symmetric with the empty-list branch."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b"])
+    lb.set_multi_select(True)
+    lb.set_value(["a"])
+
+    cos = lb.get_cos_object()
+    assert cos.contains_key(_V)
+
+    lb.set_value(None)
+    assert not cos.contains_key(_V)
+    assert not cos.contains_key(_I)
+
+
+# ---------- _selected_option_indices_for_values via set_value ----------
+
+
+def test_set_value_string_writes_cos_string_and_updates_indices() -> None:
+    """A single-string ``set_value`` writes a COSString and records the
+    matching ``/I`` entry."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["alpha", "beta", "gamma"])
+
+    lb.set_value("beta")
+    assert lb.get_value() == ["beta"]
+    assert lb.get_selected_options_indices() == [1]
+    v = lb.get_cos_object().get_dictionary_object(_V)
+    assert isinstance(v, COSString)
+
+
+def test_set_value_list_rejects_value_not_in_options() -> None:
+    """The list overload validates membership in ``/Opt`` (mirrors upstream
+    ``PDChoice.setValue(List)`` ``containsAll`` check)."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b"])
+    lb.set_multi_select(True)
+
+    with pytest.raises(ValueError):
+        lb.set_value(["a", "missing"])
+
+
+def test_set_value_multi_value_requires_multi_select() -> None:
+    """A list with more than one entry on a non-multi-select choice raises."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b"])
+
+    with pytest.raises(ValueError):
+        lb.set_value(["a", "b"])
+
+
+def test_set_value_combo_box_with_edit_skips_validation() -> None:
+    """Combo + edit lets free-text values bypass the option-membership check
+    (mirrors the editable combo-box behavior)."""
+    form = PDAcroForm()
+    cb = PDComboBox(form)
+    cb.set_options(["a", "b"])
+    cb.set_edit(True)
+
+    cb.set_value("free-text")
+    assert cb.get_value() == ["free-text"]
+    # No /I gets written when the value is not in /Opt.
+    assert cb.get_selected_options_indices() == []
+
+
+# ---------- /I round-trip ----------
+
+
+def test_get_selected_options_indices_ignores_non_integer_entries() -> None:
+    """Defensive: malformed ``/I`` entries (non-integers) are silently
+    skipped — mirrors upstream's ``toCOSNumberIntegerList`` filtering.
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    arr = COSArray()
+    arr.add(COSInteger(0))
+    arr.add(COSString("garbage"))
+    arr.add(COSInteger(2))
+    lb.get_cos_object().set_item(_I, arr)
+
+    assert lb.get_selected_options_indices() == [0, 2]
+
+
+def test_set_selected_options_indices_none_and_empty_remove_i() -> None:
+    """Both ``None`` and ``[]`` clear ``/I`` (port intentional permissive form
+    — does not enforce the multi-select flag, see CHANGES.md wave 40)."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_multi_select(True)
+    lb.set_selected_options_indices([0, 1])
+    assert lb.get_cos_object().contains_key(_I)
+
+    lb.set_selected_options_indices(None)
+    assert not lb.get_cos_object().contains_key(_I)
+
+    lb.set_selected_options_indices([0])
+    assert lb.get_cos_object().contains_key(_I)
+    lb.set_selected_options_indices([])
+    assert not lb.get_cos_object().contains_key(_I)
+
+
+# ---------- /Opt removal via set_options(None / []) ----------
+
+
+def test_set_options_none_removes_opt() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["x", "y"])
+    assert lb.get_cos_object().contains_key(_OPT)
+
+    lb.set_options(None)
+    assert not lb.get_cos_object().contains_key(_OPT)
+
+
+def test_set_options_empty_list_removes_opt() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["x", "y"])
+    lb.set_options([])
+    assert not lb.get_cos_object().contains_key(_OPT)
+
+
+def test_set_options_two_arg_partial_empty_clears_opt() -> None:
+    """Either side empty in the two-arg overload removes /Opt (matches
+    upstream branch where any empty list short-circuits to removal).
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b"], ["A", "B"])
+
+    lb.set_options([], ["A", "B"])
+    assert not lb.get_cos_object().contains_key(_OPT)
+
+    lb.set_options(["a", "b"], ["A", "B"])
+    lb.set_options(["a", "b"], [])
+    assert not lb.get_cos_object().contains_key(_OPT)
+
+
+# ---------- inheritable /V walk ----------
+
+
+def test_get_value_walks_parent_chain_via_inheritable_attribute() -> None:
+    """A choice's ``/V`` is an inheritable attribute — when the local field
+    has none, the parent's ``/V`` shows through."""
+    from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+        PDNonTerminalField,
+    )
+
+    form = PDAcroForm()
+    parent_dict = COSDictionary()
+    parent_dict.set_item(_V, COSString("inherited"))
+    parent = PDNonTerminalField(form, parent_dict)
+
+    leaf_dict = COSDictionary()
+    leaf_dict.set_name(COSName.get_pdf_name("FT"), "Ch")
+    lb = PDListBox(form, leaf_dict, parent)
+
+    assert lb.get_value() == ["inherited"]
+
+
+# ---------- /TI default ----------
+
+
+def test_top_index_defaults_to_zero_when_absent() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    assert not lb.get_cos_object().contains_key(_TI)
+    assert lb.get_top_index() == 0
+
+
+# ---------- flag predicates ----------
+
+
+def test_choice_flag_round_trips() -> None:
+    """All choice flag setters/getters round-trip through /Ff."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+
+    assert lb.is_sort() is False
+    lb.set_sort(True)
+    assert lb.is_sort() is True
+
+    assert lb.is_multi_select() is False
+    lb.set_multi_select(True)
+    assert lb.is_multi_select() is True
+
+    assert lb.is_do_not_spell_check() is False
+    lb.set_do_not_spell_check(True)
+    assert lb.is_do_not_spell_check() is True
+
+    assert lb.is_commit_on_sel_change() is False
+    lb.set_commit_on_sel_change(True)
+    assert lb.is_commit_on_sel_change() is True
+
+    # Clearing leaves the dict in a defined state.
+    lb.set_sort(False)
+    lb.set_multi_select(False)
+    lb.set_do_not_spell_check(False)
+    lb.set_commit_on_sel_change(False)
+    assert lb.is_sort() is False
+    assert lb.is_multi_select() is False
+    assert lb.is_do_not_spell_check() is False
+    assert lb.is_commit_on_sel_change() is False
+
+
+# ---------- /DV inheritance + None removal ----------
+
+
+def test_default_value_array_round_trip() -> None:
+    """``/DV`` may be a COSArray of strings on multi-select fields."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    arr = COSArray()
+    arr.add(COSString("x"))
+    arr.add(COSString("y"))
+    lb.get_cos_object().set_item(_DV, arr)
+    assert lb.get_default_value() == ["x", "y"]
+
+
+def test_set_default_value_none_removes_dv() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_default_value("seed")
+    assert lb.get_cos_object().contains_key(_DV)
+
+    lb.set_default_value(None)
+    assert not lb.get_cos_object().contains_key(_DV)
+
+
+# ---------- get_value_as_string ----------
+
+
+def test_get_value_as_string_joins_multi_select() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b", "c"])
+    lb.set_multi_select(True)
+    lb.set_value(["a", "c"])
+    assert lb.get_value_as_string() == "a,c"
+
+
+def test_get_value_as_string_empty_when_no_value() -> None:
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    assert lb.get_value_as_string() == ""
