@@ -9,8 +9,10 @@ import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.font.encoding import WinAnsiEncoding
+from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.font.pd_type3_char_proc import PDType3CharProc
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 # ---------- get_char_proc(int code) -- typed wrapper ----------
@@ -109,12 +111,15 @@ def test_get_width_returns_zero_when_no_widths_array() -> None:
     assert font.get_width(0x41) == 0.0
 
 
-def test_get_width_treats_missing_first_char_as_zero() -> None:
-    # No /FirstChar (defaults to -1) -> upstream falls back to 0 base.
+def test_get_width_zero_when_first_and_last_char_both_missing() -> None:
+    # No /FirstChar / /LastChar (both default to -1) -> the
+    # "code >= firstChar && code <= lastChar" gate fails for code 0
+    # (0 <= -1 is false), so upstream falls through to /MissingWidth /
+    # getWidthFromFont. With no descriptor and no /CharProcs we end at
+    # 0.0. Mirrors upstream PDType3Font.getWidth.
     font = PDType3Font()
     font.set_widths([100.0, 200.0, 300.0])
-    assert font.get_width(0) == pytest.approx(100.0)
-    assert font.get_width(2) == pytest.approx(300.0)
+    assert font.get_width(0) == 0.0
 
 
 # ---------- has_glyph ----------
@@ -197,3 +202,191 @@ def test_get_encoding_typed_resolves_to_winansi() -> None:
     font, _ = _make_font_with_glyph(0x41, "A")
     typed = font.get_encoding_typed()
     assert isinstance(typed, WinAnsiEncoding)
+
+
+# ---------- get_width fallback to /MissingWidth ----------
+
+
+def test_get_width_falls_back_to_missing_width_when_descriptor_present() -> None:
+    # /Widths covers 65..66 only; code 70 is outside the range, so
+    # upstream falls through to the descriptor's /MissingWidth.
+    font = PDType3Font()
+    font.set_first_char(65)
+    font.set_last_char(66)
+    font.set_widths([500.0, 600.0])
+    descriptor = PDFontDescriptor()
+    descriptor.set_missing_width(250.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_width(70) == pytest.approx(250.0)
+
+
+def test_get_width_uses_missing_width_when_widths_empty() -> None:
+    # No /Widths at all — the gate fails, and we land on /MissingWidth.
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    descriptor.set_missing_width(333.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_width(0x41) == pytest.approx(333.0)
+
+
+def test_get_width_in_range_wins_over_missing_width() -> None:
+    # When the code IS in the FirstChar..LastChar window, /Widths wins
+    # — /MissingWidth is only consulted on out-of-range codes.
+    font = PDType3Font()
+    font.set_first_char(65)
+    font.set_last_char(66)
+    font.set_widths([500.0, 600.0])
+    descriptor = PDFontDescriptor()
+    descriptor.set_missing_width(999.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_width(65) == pytest.approx(500.0)
+    assert font.get_width(66) == pytest.approx(600.0)
+
+
+def test_get_width_zero_when_in_range_but_widths_array_short() -> None:
+    # /FirstChar=65 /LastChar=70 but only two width entries — codes
+    # 67..70 fall in-range yet past the array end -> upstream returns 0.
+    font = PDType3Font()
+    font.set_first_char(65)
+    font.set_last_char(70)
+    font.set_widths([500.0, 600.0])
+    assert font.get_width(67) == 0.0
+
+
+# ---------- get_width_from_font ----------
+
+
+def test_get_width_from_font_zero_for_unmapped_code() -> None:
+    font, _ = _make_font_with_glyph(0x41, "A")
+    # 0x42 -> 'B' but no /CharProcs entry for it.
+    assert font.get_width_from_font(0x42) == 0.0
+
+
+def test_get_width_from_font_zero_for_empty_charproc_stream() -> None:
+    # Empty content stream -> upstream short-circuits to 0 without
+    # parsing the (non-existent) glyph metric op.
+    font, glyph = _make_font_with_glyph(0x41, "A")
+    # The default COSStream has zero length already, but verify.
+    assert glyph.get_length() == 0
+    assert font.get_width_from_font(0x41) == 0.0
+
+
+def test_get_width_from_font_reads_metric_op_from_charproc() -> None:
+    # Construct a CharProc with a "500 0 d0" header — the d0 / d1
+    # operators are the only carriers of glyph width info.
+    font = PDType3Font()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    char_procs = COSDictionary()
+    glyph = COSStream()
+    glyph.set_raw_data(b"500 0 d0\n")
+    char_procs.set_item(COSName.get_pdf_name("A"), glyph)
+    font.set_char_procs(char_procs)
+    assert font.get_width_from_font(0x41) == pytest.approx(500.0)
+
+
+# ---------- get_height ----------
+
+
+def test_get_height_zero_when_no_descriptor() -> None:
+    font = PDType3Font()
+    assert font.get_height(0x41) == 0.0
+
+
+def test_get_height_uses_half_of_font_bbox() -> None:
+    # /FontBBox is the first source — upstream uses height/2 as the
+    # representative glyph height (an empirical approximation; see
+    # the comment block above PDType3Font.getHeight in upstream).
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    # bbox height = 800; expect 400.
+    descriptor.set_font_bounding_box(PDRectangle(0.0, -200.0, 1000.0, 600.0))
+    font.set_font_descriptor(descriptor)
+    assert font.get_height(0x41) == pytest.approx(400.0)
+
+
+def test_get_height_falls_back_to_cap_height() -> None:
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    # No bbox -> next try /CapHeight.
+    descriptor.set_cap_height(700.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_height(0x41) == pytest.approx(700.0)
+
+
+def test_get_height_falls_back_to_ascent() -> None:
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    # No bbox, cap_height defaults to 0 -> next /Ascent.
+    descriptor.set_ascent(750.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_height(0x41) == pytest.approx(750.0)
+
+
+def test_get_height_falls_back_to_x_height_minus_descent() -> None:
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    descriptor.set_x_height(500.0)
+    descriptor.set_descent(-200.0)  # descents are conventionally negative
+    font.set_font_descriptor(descriptor)
+    # 500 - (-200) = 700.
+    assert font.get_height(0x41) == pytest.approx(700.0)
+
+
+def test_get_height_zero_when_x_height_zero() -> None:
+    # /XHeight = 0 must NOT trigger the x_height-descent branch
+    # (otherwise we'd return -descent, which is wrong).
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    descriptor.set_descent(-200.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_height(0x41) == 0.0
+
+
+def test_get_height_skips_zero_bbox() -> None:
+    # A degenerate bbox (height 0) must not short-circuit — upstream
+    # checks ``Float.compare(retval, 0) == 0`` after each step.
+    font = PDType3Font()
+    descriptor = PDFontDescriptor()
+    descriptor.set_font_bounding_box(PDRectangle(0.0, 0.0, 100.0, 0.0))
+    descriptor.set_cap_height(600.0)
+    font.set_font_descriptor(descriptor)
+    assert font.get_height(0x41) == pytest.approx(600.0)
+
+
+# ---------- get_displacement ----------
+
+
+def test_get_displacement_default_matrix_scales_by_thousandth() -> None:
+    # Default /FontMatrix is [0.001, 0, 0, 0.001, 0, 0]; displacement
+    # of (width, 0) -> (width / 1000, 0).
+    font = PDType3Font()
+    font.set_first_char(65)
+    font.set_last_char(65)
+    font.set_widths([500.0])
+    tx, ty = font.get_displacement(65)
+    assert tx == pytest.approx(0.5)
+    assert ty == pytest.approx(0.0)
+
+
+def test_get_displacement_custom_matrix_applies_horizontal_scale() -> None:
+    # Per PDFBOX-2298, some Type 3 fonts ship a custom /FontMatrix.
+    # With [0.002, 0, 0, 0.002, 0, 0] the displacement of (width, 0)
+    # becomes (width * 0.002, 0).
+    font = PDType3Font()
+    font.set_first_char(65)
+    font.set_last_char(65)
+    font.set_widths([500.0])
+    font.set_font_matrix([0.002, 0.0, 0.0, 0.002, 0.0, 0.0])
+    tx, ty = font.get_displacement(65)
+    assert tx == pytest.approx(1.0)
+    assert ty == pytest.approx(0.0)
+
+
+def test_get_displacement_zero_for_unmapped_code() -> None:
+    # No /Widths and no /FontDescriptor and no /CharProcs ->
+    # get_width(code) is 0 -> displacement is (0, 0).
+    font = PDType3Font()
+    assert font.get_displacement(0x41) == (0.0, 0.0)

@@ -172,5 +172,71 @@ class PDPropBuildDataDict:
         """
         return self._dict.contains_key(_V)
 
+    def has_pre_release(self) -> bool:
+        """Return ``True`` when ``/PreRelease`` is present.
+
+        Disambiguates :meth:`get_pre_release`'s ``False`` default — a stored
+        value of ``False`` is indistinguishable from "absent" via the typed
+        accessor.
+        """
+        return self._dict.contains_key(_PRE_RELEASE)
+
+    def has_non_e_font_no_warn(self) -> bool:
+        """Return ``True`` when ``/NonEFontNoWarn`` is present.
+
+        Disambiguates :meth:`get_non_e_font_no_warn`'s ``True`` default —
+        without this predicate a stored ``True`` is indistinguishable from
+        an absent entry.
+        """
+        return self._dict.contains_key(_NON_EFONT_NO_WARN)
+
+    def has_trusted_mode(self) -> bool:
+        """Return ``True`` when ``/TrustedMode`` is present.
+
+        Disambiguates :meth:`get_trusted_mode`'s ``False`` default.
+        """
+        return self._dict.contains_key(_TRUSTED_MODE)
+
+    def has_os(self) -> bool:
+        """Return ``True`` when ``/OS`` is present (in either the PDF v1.5
+        string form or the v1.7 array-of-names form).
+        """
+        return self._dict.contains_key(_OS)
+
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Compact key=value summary of populated identity fields.
+
+        Java's default ``Object.toString()`` is ``ClassName@hashcode`` which
+        is not useful for debugging signature build dictionaries; this lite
+        port returns the populated subset of ``/Name``, ``/REx``, ``/Date``,
+        ``/R``, ``/OS``, ``/PreRelease``, ``/TrustedMode``.
+        """
+        parts: list[str] = []
+        name = self.get_name()
+        if name:
+            parts.append(f"name={name}")
+        version = self.get_version()
+        if version:
+            parts.append(f"version={version}")
+        date = self.get_date()
+        if date:
+            parts.append(f"date={date}")
+        if self.has_revision():
+            parts.append(f"revision={self.get_revision()}")
+        os_ = self.get_os()
+        if os_:
+            parts.append(f"os={os_}")
+        if self.has_pre_release() and self.get_pre_release():
+            parts.append("pre_release=True")
+        if self.has_trusted_mode() and self.get_trusted_mode():
+            parts.append("trusted_mode=True")
+        body = ", ".join(parts) if parts else "<empty>"
+        return f"PDPropBuildDataDict({body})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 __all__ = ["PDPropBuildDataDict"]

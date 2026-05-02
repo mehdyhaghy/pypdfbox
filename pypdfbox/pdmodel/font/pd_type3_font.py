@@ -217,24 +217,96 @@ class PDType3Font(PDSimpleFont):
     # ---------- per-glyph width / embedding state ----------
 
     def get_width(self, code: int) -> float:
-        """Return the advance width for ``code`` from the font's
-        ``/Widths`` array. Mirrors upstream
+        """Return the advance width for ``code``. Mirrors upstream
         ``PDType3Font.getWidth(int code)``.
 
-        ``/Widths`` is indexed by ``(code - /FirstChar)``; out-of-range
-        codes (below ``/FirstChar``, beyond the array) return ``0.0`` —
-        upstream returns 0 in the same case (Type 3 fonts have no font
-        descriptor /MissingWidth fallback)."""
+        Resolution order (PDF 32000-1 §9.6.6):
+
+        1. ``/Widths[code - /FirstChar]`` when ``code`` falls inside the
+           ``/FirstChar``..``/LastChar`` window and the entry exists.
+        2. ``/MissingWidth`` from the ``/FontDescriptor`` when the code
+           is out of range and a descriptor is present.
+        3. :meth:`get_width_from_font` otherwise — reads the per-glyph
+           width op from the ``/CharProcs`` content stream.
+        """
         widths = self.get_widths()
-        if not widths:
-            return 0.0
         first = self.get_first_char()
-        if first < 0:
-            first = 0
-        index = int(code) - first
-        if 0 <= index < len(widths):
-            return widths[index]
-        return 0.0
+        last = self.get_last_char()
+        if widths and first <= code <= last:
+            base = first if first >= 0 else 0
+            index = int(code) - base
+            if 0 <= index < len(widths):
+                return widths[index]
+            # In-range but past the array end mirrors upstream's explicit
+            # ``return 0`` branch.
+            return 0.0
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            return descriptor.get_missing_width()
+        return self.get_width_from_font(int(code))
+
+    def get_width_from_font(self, code: int) -> float:
+        """Read the advance width op from the per-glyph ``/CharProcs``
+        content stream. Mirrors upstream
+        ``PDType3Font.getWidthFromFont(int code)``.
+
+        Returns ``0.0`` when the code does not resolve to a glyph
+        procedure or the procedure stream is empty (matches upstream's
+        ``charProc.getCOSObject().getLength() == 0`` short-circuit).
+        """
+        char_proc = self._get_char_proc_by_code(int(code))
+        if char_proc is None:
+            return 0.0
+        cos_stream = char_proc.get_cos_object()
+        if cos_stream.get_length() == 0:
+            return 0.0
+        return char_proc.get_width()
+
+    def get_height(self, code: int) -> float:
+        """Return a representative glyph height in font units.
+
+        Mirrors upstream ``PDType3Font.getHeight(int code)`` —
+        Type 3 fonts have no per-glyph height, so we approximate from
+        the font descriptor:
+
+        1. ``/FontBBox`` height / 2 when present and non-zero.
+        2. ``/CapHeight`` when set.
+        3. ``/Ascent`` when set.
+        4. ``/XHeight - /Descent`` when ``/XHeight > 0``.
+        5. ``0.0`` (no descriptor or every metric is zero).
+        """
+        descriptor = self.get_font_descriptor()
+        if descriptor is None:
+            return 0.0
+        retval = 0.0
+        bbox = descriptor.get_font_bounding_box()
+        if bbox is not None:
+            retval = bbox.get_height() / 2.0
+        if retval == 0.0:
+            retval = descriptor.get_cap_height()
+        if retval == 0.0:
+            retval = descriptor.get_ascent()
+        if retval == 0.0:
+            x_height = descriptor.get_x_height()
+            if x_height > 0.0:
+                retval = x_height - descriptor.get_descent()
+        return float(retval)
+
+    def get_displacement(self, code: int) -> tuple[float, float]:
+        """Glyph displacement vector ``(tx, ty)`` for ``code``, in text
+        space units.
+
+        Mirrors upstream ``PDType3Font.getDisplacement(int code)``,
+        which transforms ``(getWidth(code), 0)`` through the font
+        matrix. For the spec-default ``[0.001, 0, 0, 0.001, 0, 0]`` this
+        is just ``(width / 1000, 0)``; we apply the matrix's
+        ``a`` / ``b`` scale (entries 0 and 1) to honour custom
+        Type 3 matrices (see PDFBOX-2298).
+        """
+        width = self.get_width(int(code))
+        matrix = self.get_font_matrix()
+        # 6-element matrix [a b c d e f]; transform of (x, 0) = (a*x, b*x).
+        return matrix[0] * width, matrix[1] * width
 
     @overload
     def has_glyph(self, key: int) -> bool: ...

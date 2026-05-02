@@ -124,9 +124,11 @@ def test_get_char_proc_returns_none_for_missing_glyph():
 
 def test_get_width_uses_widths_array():
     # Upstream PDType3Font.getWidth(int) looks up the Widths array offset
-    # by /FirstChar.
+    # by /FirstChar; the gate requires both /FirstChar and /LastChar to
+    # be set (``code >= firstChar && code <= lastChar``).
     font = PDType3Font()
     font.set_first_char(65)
+    font.set_last_char(67)
     font.set_widths([500.0, 600.0, 700.0])
     assert font.get_width(65) == pytest.approx(500.0)
     assert font.get_width(66) == pytest.approx(600.0)
@@ -136,8 +138,10 @@ def test_get_width_uses_widths_array():
 def test_get_width_zero_for_unknown_code():
     font = PDType3Font()
     font.set_first_char(65)
+    font.set_last_char(65)
     font.set_widths([500.0])
-    # Out of range -> 0 (no /MissingWidth fallback for Type 3).
+    # Out of range and no /FontDescriptor -> upstream falls through to
+    # getWidthFromFont (no /CharProcs entry -> 0).
     assert font.get_width(100) == 0.0
 
 

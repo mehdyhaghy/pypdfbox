@@ -89,5 +89,42 @@ class PDPropBuild:
             return
         self._dict.set_item(_APP, app.get_cos_object())
 
+    # ---------- presence predicates ----------
+
+    def has_filter(self) -> bool:
+        """Return ``True`` when the ``/Filter`` sub-dictionary is present.
+
+        Cheap key-only check that skips constructing a
+        :class:`PDPropBuildDataDict` wrapper.
+        """
+        return self._dict.contains_key(_FILTER)
+
+    def has_pub_sec(self) -> bool:
+        """Return ``True`` when the ``/PubSec`` sub-dictionary is present."""
+        return self._dict.contains_key(_PUB_SEC)
+
+    def has_app(self) -> bool:
+        """Return ``True`` when the ``/App`` sub-dictionary is present."""
+        return self._dict.contains_key(_APP)
+
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Compact summary listing which sub-dictionaries are populated."""
+        present = [
+            label
+            for label, has in (
+                ("Filter", self.has_filter()),
+                ("PubSec", self.has_pub_sec()),
+                ("App", self.has_app()),
+            )
+            if has
+        ]
+        body = ",".join(present) if present else "<empty>"
+        return f"PDPropBuild({body})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 __all__ = ["PDPropBuild"]
