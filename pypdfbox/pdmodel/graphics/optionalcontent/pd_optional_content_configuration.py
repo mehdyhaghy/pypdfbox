@@ -93,7 +93,40 @@ class PDOptionalContentConfiguration:
             return "Unchanged"
         return upper
 
-    def set_base_state(self, state: str) -> None:
+    def set_base_state(self, state: object) -> None:
+        """Write /BaseState. Accepts:
+
+        - a spec-name string ``"ON"`` / ``"OFF"`` / ``"Unchanged"``
+          (case-insensitive),
+        - a :class:`pypdfbox.pdmodel.graphics.optionalcontent.BaseState`
+          enum member,
+        - a raw ``COSName`` whose name matches one of the spec values.
+
+        ``None`` is rejected; use ``set_base_state("ON")`` to restore the
+        spec default explicitly. The string overload mirrors the existing
+        :meth:`PDOptionalContentProperties.set_base_state` which also
+        accepts the typed enum and ``COSName`` forms — kept here for
+        parity so callers writing alternate /Configs entries reach for
+        the same shape."""
+        # Deferred import: pd_optional_content_properties imports this
+        # module, so importing BaseState at module load would loop.
+        from .pd_optional_content_properties import BaseState
+
+        if isinstance(state, BaseState):
+            self._dict.set_item(_BASE_STATE, state.get_pdf_name())
+            return
+        if isinstance(state, COSName):
+            # Round-trip through value_of so unknown spellings are rejected
+            # with the same ValueError the str path uses.
+            self._dict.set_item(
+                _BASE_STATE, BaseState.value_of(state).get_pdf_name()
+            )
+            return
+        if not isinstance(state, str):
+            raise TypeError(
+                "base state must be str, BaseState, or COSName, "
+                f"got {type(state).__name__}"
+            )
         key = state.upper()
         cos_name = _BASE_STATE_NAMES.get(key)
         if cos_name is None:
@@ -101,6 +134,17 @@ class PDOptionalContentConfiguration:
                 f"base state must be 'ON', 'OFF', or 'Unchanged', got {state!r}"
             )
         self._dict.set_item(_BASE_STATE, cos_name)
+
+    def get_base_state_enum(self) -> object:
+        """Typed-enum variant of :meth:`get_base_state`.
+
+        Returns the matching :class:`BaseState` member. Mirrors the
+        :meth:`PDOptionalContentProperties.get_base_state_enum` accessor
+        for callers that prefer the typed enum over the spec-name string.
+        """
+        from .pd_optional_content_properties import BaseState
+
+        return BaseState.value_of(self.get_base_state())
 
     # ---------- /ListMode (PDF 32000-1 Table 101) ----------
 
@@ -153,6 +197,29 @@ class PDOptionalContentConfiguration:
         if isinstance(item, COSArray):
             return [v.name for v in item if isinstance(v, COSName)]
         return "View"
+
+    def is_intent(self, name: str) -> bool:
+        """Return ``True`` when /Intent declares ``name``.
+
+        Mirrors PDF 32000-1 §8.11.4.3 Table 101: /Intent may be a single
+        name or an array of names. The spec default when /Intent is
+        absent is ``"View"`` — this method matches that default so
+        ``is_intent("View")`` returns ``True`` for an unset /Intent.
+
+        pypdfbox enrichment — Apache PDFBox 3.0 makes callers walk the
+        list themselves; this is the common predicate they end up
+        writing."""
+        item = self._dict.get_dictionary_object(_INTENT)
+        if item is None:
+            return name == "View"
+        if isinstance(item, COSName):
+            return item.name == name
+        if isinstance(item, COSArray):
+            for entry in item:
+                if isinstance(entry, COSName) and entry.name == name:
+                    return True
+            return False
+        return False
 
     def set_intent(self, value: str | list[str] | None) -> None:
         if value is None:
@@ -208,6 +275,80 @@ class PDOptionalContentConfiguration:
             if g.get_cos_object() is target:
                 return True
         return False
+
+    def set_on(
+        self, groups: Iterable[PDOptionalContentGroup] | None
+    ) -> None:
+        """Bulk-write /ON.
+
+        ``None`` removes the key entirely; an iterable replaces the array
+        with one entry per group. Symmetric counterpart to
+        :meth:`set_locked`. pypdfbox enrichment — Apache PDFBox 3.0
+        manipulates /ON only through ``setGroupEnabled``."""
+        self._set_ocg_array(_ON, groups)
+
+    def set_off(
+        self, groups: Iterable[PDOptionalContentGroup] | None
+    ) -> None:
+        """Bulk-write /OFF. Symmetric companion to :meth:`set_on`."""
+        self._set_ocg_array(_OFF, groups)
+
+    def add_on(self, group: PDOptionalContentGroup) -> None:
+        """Append ``group`` to /ON (creates the array if absent).
+        Idempotent — no-op when ``group`` is already listed (matched by
+        identity of the wrapped ``COSDictionary``)."""
+        if self.is_on(group):
+            return
+        self._ensure_array(_ON).add(group.get_cos_object())
+
+    def add_off(self, group: PDOptionalContentGroup) -> None:
+        """Append ``group`` to /OFF (creates the array if absent).
+        Idempotent — no-op when ``group`` is already listed."""
+        if self.is_off(group):
+            return
+        self._ensure_array(_OFF).add(group.get_cos_object())
+
+    def remove_on(self, group: PDOptionalContentGroup) -> bool:
+        """Drop ``group`` from /ON. Returns ``True`` when an entry was
+        removed. Matches by identity of the wrapped ``COSDictionary``."""
+        return self._remove_from_ocg_array(_ON, group)
+
+    def remove_off(self, group: PDOptionalContentGroup) -> bool:
+        """Drop ``group`` from /OFF. Returns ``True`` when an entry was
+        removed."""
+        return self._remove_from_ocg_array(_OFF, group)
+
+    def _set_ocg_array(
+        self,
+        key: COSName,
+        groups: Iterable[PDOptionalContentGroup] | None,
+    ) -> None:
+        if groups is None:
+            self._dict.remove_item(key)
+            return
+        arr = COSArray()
+        for g in groups:
+            if not isinstance(g, PDOptionalContentGroup):
+                raise TypeError(
+                    f"/{key.name} entries must be PDOptionalContentGroup, "
+                    f"got {type(g).__name__}"
+                )
+            arr.add(g.get_cos_object())
+        self._dict.set_item(key, arr)
+
+    def _remove_from_ocg_array(
+        self, key: COSName, group: PDOptionalContentGroup
+    ) -> bool:
+        arr = self._dict.get_dictionary_object(key)
+        if not isinstance(arr, COSArray):
+            return False
+        target = group.get_cos_object()
+        removed = False
+        for entry in list(arr):
+            if _to_dict(entry) is target:
+                arr.remove(entry)
+                removed = True
+        return removed
 
     @staticmethod
     def _wrap_ocg_list(value: COSBase | None) -> list[PDOptionalContentGroup]:

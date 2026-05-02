@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary, COSName
@@ -10,6 +11,8 @@ from .pd_terminal_field import PDTerminalField
 if TYPE_CHECKING:
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
+
+_LOG = logging.getLogger(__name__)
 
 _FT_KEY: COSName = COSName.get_pdf_name("FT")
 _V: COSName = COSName.get_pdf_name("V")
@@ -68,6 +71,17 @@ class PDSignatureField(PDTerminalField):
     def get_value(self) -> PDSignature | None:
         return self.get_signature()
 
+    def has_signature(self) -> bool:
+        """Predicate — return ``True`` when ``/V`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: distinguishes "field carries a signed
+        ``/V`` dictionary" from "no ``/V`` entry". Cheaper than calling
+        :meth:`get_signature` and comparing against ``None`` since it skips
+        the wrapper construction.
+        """
+        return self._field.contains_key(_V)
+
     def set_value(
         self,
         value: PDSignature | COSDictionary | str | None,
@@ -125,6 +139,15 @@ class PDSignatureField(PDTerminalField):
                 value.get_cos_object() if hasattr(value, "get_cos_object") else value,
             )
 
+    def has_default_value(self) -> bool:
+        """Predicate — return ``True`` when ``/DV`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience mirroring :meth:`PDTextField.has_default_value`:
+        does not walk the inheritable chain.
+        """
+        return self._field.contains_key(_DV)
+
     # ---------- appearance regeneration ----------
 
     def regenerate_appearance(self) -> None:
@@ -142,9 +165,32 @@ class PDSignatureField(PDTerminalField):
         """No-op for visible signature appearance generation.
 
         Mirrors upstream ``PDSignatureField.constructAppearances``: PDFBox
-        intentionally does not synthesize visible signature appearances here
-        (PDFBOX-3524); callers must provide/update those manually.
+        intentionally does not synthesize visible signature appearances
+        (PDFBOX-3524); callers must provide/update those manually. When the
+        first widget *is* visible (non-zero rectangle and neither hidden
+        nor no-view), upstream emits a warning so the caller knows the
+        appearance has not been refreshed — this lite port mirrors the
+        same warning via :mod:`logging`.
         """
+        widgets = self.get_widgets()
+        if not widgets:
+            return None
+        widget = widgets[0]
+        if widget is None:
+            return None
+        rectangle = widget.get_rectangle()
+        if rectangle is None:
+            return None
+        if rectangle.get_height() == 0 and rectangle.get_width() == 0:
+            return None
+        if widget.is_no_view() or widget.is_hidden():
+            return None
+        _LOG.warning(
+            "Appearance generation for signature fields not implemented "
+            "here. You need to generate/update that manually, see the "
+            "CreateVisibleSignature*.java files in the examples subproject "
+            "of the PDFBox source code download (PDFBOX-3524)."
+        )
         return None
 
     def get_value_as_string(self) -> str:
@@ -175,6 +221,15 @@ class PDSignatureField(PDTerminalField):
                 seed.get_cos_object() if hasattr(seed, "get_cos_object") else seed,
             )
 
+    def has_seed_value(self) -> bool:
+        """Predicate — return ``True`` when ``/SV`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: cheaper than ``get_seed_value() is not
+        None`` since it skips the :class:`PDSeedValue` wrapper construction.
+        """
+        return self._field.contains_key(_SV)
+
     # ---------- /Lock ----------
 
     def get_lock(self) -> PDSignatureLock | None:
@@ -191,6 +246,15 @@ class PDSignatureField(PDTerminalField):
                 _LOCK,
                 lock.get_cos_object() if hasattr(lock, "get_cos_object") else lock,
             )
+
+    def has_lock(self) -> bool:
+        """Predicate — return ``True`` when ``/Lock`` is set on this field's
+        own dictionary.
+
+        Pypdfbox-only convenience: cheaper than ``get_lock() is not None``
+        since it skips the :class:`PDSignatureLock` wrapper construction.
+        """
+        return self._field.contains_key(_LOCK)
 
 
 __all__ = ["PDSignatureField"]

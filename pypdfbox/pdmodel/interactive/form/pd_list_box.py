@@ -53,6 +53,16 @@ class PDListBox(PDChoice):
         else:
             self._field.set_int(_TI, top_index)
 
+    def has_top_index(self) -> bool:
+        """Predicate — return ``True`` when ``/TI`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: lets callers distinguish "explicit
+        ``/TI = 0``" from "no ``/TI`` entry" without rereading the dict
+        directly. :meth:`get_top_index` returns ``0`` for both cases.
+        """
+        return self._field.contains_key(_TI)
+
     # ---------- /V + appearance ----------
 
     def set_value(
