@@ -266,3 +266,66 @@ class TestIsDecompressionInputSizeKnown:
 
     def test_default_true_on_lzw(self):
         assert FilterFactory.get_filter("LZWDecode").is_decompression_input_size_known() is True
+
+
+class TestDecodeResultParity:
+    """Upstream-named accessor parity for ``DecodeResult`` — mirrors
+    ``org.apache.pdfbox.filter.DecodeResult`` (``createDefault``,
+    ``getParameters``, ``getJPXColorSpace``/``setColorSpace``,
+    ``getJPXSMask``/``setJPXSMask``)."""
+
+    def test_create_default_returns_decode_result(self):
+        r = DecodeResult.create_default()
+        assert isinstance(r, DecodeResult)
+
+    def test_create_default_has_empty_parameters(self):
+        r = DecodeResult.create_default()
+        assert isinstance(r.parameters, COSDictionary)
+        assert r.parameters.size() == 0
+
+    def test_create_default_no_color_space(self):
+        r = DecodeResult.create_default()
+        assert r.get_jpx_color_space() is None
+        assert r.get_jpx_smask() is None
+
+    def test_create_default_zero_bytes_written(self):
+        r = DecodeResult.create_default()
+        assert r.bytes_written == 0
+
+    def test_get_parameters_returns_field(self):
+        params = COSDictionary()
+        params.set_int("Predictor", 12)
+        r = DecodeResult(parameters=params)
+        assert r.get_parameters() is params
+
+    def test_set_and_get_color_space(self):
+        sentinel = object()
+        r = DecodeResult.create_default()
+        r.set_color_space(sentinel)
+        assert r.get_jpx_color_space() is sentinel
+
+    def test_set_and_get_jpx_smask(self):
+        sentinel = object()
+        r = DecodeResult.create_default()
+        r.set_jpx_smask(sentinel)
+        assert r.get_jpx_smask() is sentinel
+
+    def test_color_space_independent_of_smask(self):
+        # Setting one must not perturb the other.
+        cs = object()
+        sm = object()
+        r = DecodeResult.create_default()
+        r.set_color_space(cs)
+        r.set_jpx_smask(sm)
+        assert r.get_jpx_color_space() is cs
+        assert r.get_jpx_smask() is sm
+
+    def test_constructor_accepts_color_space_kwarg(self):
+        cs = object()
+        r = DecodeResult(parameters=COSDictionary(), color_space=cs)
+        assert r.get_jpx_color_space() is cs
+
+    def test_constructor_accepts_jpx_smask_kwarg(self):
+        sm = object()
+        r = DecodeResult(parameters=COSDictionary(), jpx_smask=sm)
+        assert r.get_jpx_smask() is sm

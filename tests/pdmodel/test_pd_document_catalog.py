@@ -754,3 +754,151 @@ def test_get_threads_auto_creates_threads_array() -> None:
     arr = cat.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Threads"))
     assert isinstance(arr, COSArray)
     assert arr.size() == 0
+
+
+# ---------- defensive parsing ----------
+
+
+def test_get_threads_skips_non_dict_array_entries() -> None:
+    """``/Threads`` array entries that aren't ``COSDictionary`` are
+    skipped (defensive parsing for malformed PDFs)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    arr = COSArray()
+    arr.add(COSString("not a thread"))
+    valid = COSDictionary()
+    arr.add(valid)
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Threads"), arr)
+    threads = cat.get_threads()
+    assert len(threads) == 1
+    assert threads[0].get_cos_object() is valid
+
+
+def test_get_threads_replaces_non_array_with_fresh_array() -> None:
+    """If ``/Threads`` exists but isn't an array (malformed), the auto-
+    create path overwrites it with a fresh empty array — matches upstream
+    ``getCOSArray`` returning null for non-array values."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Threads"), COSString("not an array")
+    )
+    threads = cat.get_threads()
+    assert threads == []
+    arr = cat.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Threads"))
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 0
+
+
+def test_get_metadata_returns_none_when_entry_is_not_a_stream() -> None:
+    """``/Metadata`` must be a stream — a stray dictionary should not
+    materialise a wrapper. Mirrors upstream's ``getCOSStream`` returning
+    null for non-stream values."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Metadata"), COSDictionary()
+    )
+    assert cat.get_metadata() is None
+
+
+def test_get_oc_properties_returns_none_when_entry_is_not_a_dict() -> None:
+    """``/OCProperties`` must be a dictionary — non-dict values map to
+    ``None`` (mirrors upstream's typed ``getCOSDictionary`` accessor)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("OCProperties"), COSString("bogus")
+    )
+    assert cat.get_oc_properties() is None
+
+
+def test_get_open_action_returns_none_when_entry_is_unrecognised() -> None:
+    """Truly unrecognised ``/OpenAction`` value types (not a dictionary,
+    array, name, or string) resolve to ``None`` via
+    :class:`PDDestinationOrAction.create`. Defensive parsing parity with
+    upstream."""
+    from pypdfbox.cos import COSInteger
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("OpenAction"), COSInteger.get(42)
+    )
+    assert cat.get_open_action() is None
+
+
+# ---------- raw COS setters back-compat ----------
+
+
+def test_set_metadata_accepts_raw_cos_stream() -> None:
+    """Raw :class:`COSStream` values are stored directly without going
+    through a :class:`PDMetadata` wrapper — useful for low-level
+    re-wiring flows that already have the stream in hand."""
+    from pypdfbox.cos import COSStream
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    stream = COSStream()
+    cat.set_metadata(stream)
+    stored = cat.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Metadata"))
+    assert stored is stream
+    # And the typed getter still wraps it.
+    assert cat.get_metadata() is not None
+
+
+def test_set_actions_accepts_raw_cos_dictionary() -> None:
+    """Raw :class:`COSDictionary` values are stored directly under ``/AA``
+    without requiring a :class:`PDDocumentCatalogAdditionalActions`
+    wrapper. Mirrors upstream's polymorphic ``setItem`` resolving
+    ``COSObjectable`` and ``COSBase`` alike."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    aa_dict = COSDictionary()
+    aa_dict.set_item(
+        COSName.get_pdf_name("WP"),
+        COSDictionary(),
+    )
+    cat.set_actions(aa_dict)
+    stored = cat.get_cos_object().get_dictionary_object(COSName.get_pdf_name("AA"))
+    assert stored is aa_dict
+
+
+def test_set_open_action_accepts_raw_cos_dictionary_and_array() -> None:
+    """Raw :class:`COSDictionary` (action) and :class:`COSArray`
+    (destination) values are stored directly without requiring a
+    :class:`PDDestinationOrAction` wrapper."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    raw_action = COSDictionary()
+    raw_action.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("URI"))
+    raw_action.set_item(COSName.get_pdf_name("URI"), COSString("https://x.test"))
+    cat.set_open_action(raw_action)
+    assert cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("OpenAction")
+    ) is raw_action
+
+    raw_dest = COSArray()
+    cat.set_open_action(raw_dest)
+    assert cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("OpenAction")
+    ) is raw_dest
+
+
+def test_set_oc_properties_accepts_raw_cos_dictionary() -> None:
+    """Raw :class:`COSDictionary` values are stored directly under
+    ``/OCProperties`` without going through
+    :class:`PDOptionalContentProperties`. Version bump still fires since
+    optional content groups require PDF 1.5."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    doc.set_version(1.4)
+
+    raw_oc = COSDictionary()
+    cat.set_oc_properties(raw_oc)
+    stored = cat.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("OCProperties")
+    )
+    assert stored is raw_oc
+    assert doc.get_version() == 1.5

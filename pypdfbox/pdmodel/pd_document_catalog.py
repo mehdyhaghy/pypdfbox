@@ -410,8 +410,19 @@ class PDDocumentCatalog:
         return None
 
     def set_metadata(self, metadata: Any) -> None:
+        """Set the catalog's ``/Metadata`` stream. Pass ``None`` to remove
+        the entry. Accepts a :class:`PDMetadata` wrapper (preferred,
+        mirrors upstream) or a raw :class:`COSStream` for back-compat with
+        low-level callers — upstream Java's ``setItem`` resolves
+        ``COSObjectable``/``COSBase`` polymorphically; we surface both
+        forms explicitly."""
+        from pypdfbox.cos import COSStream
+
         if metadata is None:
             self._catalog.remove_item(_METADATA)
+            return
+        if isinstance(metadata, COSStream):
+            self._catalog.set_item(_METADATA, metadata)
             return
         self._catalog.set_item(_METADATA, metadata.get_cos_object())
 
@@ -432,8 +443,16 @@ class PDDocumentCatalog:
         return PDDocumentCatalogAdditionalActions(v)
 
     def set_actions(self, aa: Any) -> None:
+        """Set the catalog's ``/AA`` additional-actions dictionary. Pass
+        ``None`` to remove the entry. Accepts a
+        :class:`PDDocumentCatalogAdditionalActions` wrapper (preferred,
+        mirrors upstream) or a raw :class:`COSDictionary` for back-compat
+        with low-level callers."""
         if aa is None:
             self._catalog.remove_item(_AA)
+            return
+        if isinstance(aa, COSDictionary):
+            self._catalog.set_item(_AA, aa)
             return
         self._catalog.set_item(_AA, aa.get_cos_object())
 
@@ -450,11 +469,20 @@ class PDDocumentCatalog:
         upstream's side effect: optional content groups require PDF 1.5,
         so when a non-``None`` value is set the document version is
         bumped to 1.5 if it is currently lower (matches upstream
-        ``setOCProperties``)."""
+        ``setOCProperties``).
+
+        Accepts a :class:`PDOptionalContentProperties` wrapper (preferred,
+        mirrors upstream) or a raw :class:`COSDictionary` for back-compat
+        with low-level callers."""
         if oc_properties is None:
             self._catalog.remove_item(_OC_PROPERTIES)
             return
-        self._catalog.set_item(_OC_PROPERTIES, oc_properties.get_cos_object())
+        if isinstance(oc_properties, COSDictionary):
+            self._catalog.set_item(_OC_PROPERTIES, oc_properties)
+        else:
+            self._catalog.set_item(
+                _OC_PROPERTIES, oc_properties.get_cos_object()
+            )
         # Upstream: if (ocProperties != null && document.getVersion() < 1.5)
         #              document.setVersion(1.5f);
         try:
@@ -563,8 +591,18 @@ class PDDocumentCatalog:
         return PDDestinationOrAction.create(value)
 
     def set_open_action(self, action: Any) -> None:
+        """Set the catalog's ``/OpenAction`` (an action dictionary or a
+        destination array). Pass ``None`` to remove the entry. Accepts a
+        :class:`PDDestinationOrAction` wrapper (preferred, mirrors
+        upstream) or a raw :class:`COSDictionary` / :class:`COSArray` for
+        back-compat with low-level callers — upstream Java's
+        ``setItem(COSName, COSObjectable)`` overload resolves both
+        polymorphically; we surface the raw COS forms explicitly."""
         if action is None:
             self._catalog.remove_item(_OPEN_ACTION)
+            return
+        if isinstance(action, COSDictionary | COSArray):
+            self._catalog.set_item(_OPEN_ACTION, action)
             return
         self._catalog.set_item(_OPEN_ACTION, action.get_cos_object())
 
