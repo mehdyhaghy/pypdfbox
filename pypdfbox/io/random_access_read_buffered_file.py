@@ -77,3 +77,21 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
 
     def is_closed(self) -> bool:
         return self._closed
+
+    def create_view(self, start_position: int, length: int) -> RandomAccessRead:
+        """
+        Return a read-only slice view onto this file.
+
+        Mirrors upstream ``RandomAccessReadBufferedFile.createView``: a fresh
+        underlying file handle is opened so the view can be read without
+        contending with the parent's seek cursor (thread-safety guarantee
+        from upstream). The view owns its underlying handle and closes it
+        when the view is closed.
+        """
+        from .random_access_read_view import RandomAccessReadView
+
+        self._check_open()
+        sibling = RandomAccessReadBufferedFile(self._path)
+        return RandomAccessReadView(
+            sibling, start_position, length, close_parent=True
+        )

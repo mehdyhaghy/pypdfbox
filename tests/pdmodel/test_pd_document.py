@@ -552,3 +552,101 @@ def test_set_document_information_updates_cache() -> None:
     trailer = doc.get_document().get_trailer()
     assert trailer is not None
     assert trailer.get_dictionary_object(COSName.INFO) is fresh.get_cos_object()  # type: ignore[attr-defined]
+
+
+# ---------- save_incremental(objects_to_write=...) ----------
+
+
+def test_save_incremental_objects_to_write_marks_dirty() -> None:
+    """The second-overload set of ``COSDictionary`` instances must be
+    marked ``needs_to_be_updated`` so the writer emits them in the
+    appended xref. Mirrors upstream
+    ``saveIncremental(OutputStream, Set<COSDictionary>)``."""
+    src = PDDocument()
+    src.add_page(PDPage())
+    src_bytes = _save_to_bytes(src)
+    src.close()
+
+    with PDDocument.load(src_bytes) as loaded:
+        # Reach down into a dict that is NOT already flagged dirty — the
+        # /Info dict on a fresh load has no needs_to_be_updated bit.
+        info_dict = loaded.get_document_information().get_cos_object()
+        assert info_dict.is_needs_to_be_updated() is False
+        loaded.save_incremental(io.BytesIO(), {info_dict})
+        # After the call, the supplied dict is flagged dirty (the writer
+        # consumed it via the same flag).
+        assert info_dict.is_needs_to_be_updated() is True
+
+
+def test_save_incremental_objects_to_write_rejects_non_dict() -> None:
+    """The set must contain ``COSDictionary`` instances only — anything
+    else surfaces a TypeError before the writer engages."""
+    from pypdfbox.cos import COSArray
+
+    src = PDDocument()
+    src.add_page(PDPage())
+    src_bytes = _save_to_bytes(src)
+    src.close()
+
+    with PDDocument.load(src_bytes) as loaded:
+        with pytest.raises(TypeError, match="COSDictionary"):
+            # COSArray is not a COSDictionary — must reject.
+            loaded.save_incremental(io.BytesIO(), {COSArray()})  # type: ignore[arg-type]
+
+
+def test_save_incremental_objects_to_write_none_is_default() -> None:
+    """Passing ``None`` (the default) preserves the original
+    single-argument behaviour."""
+    src = PDDocument()
+    src.add_page(PDPage())
+    src_bytes = _save_to_bytes(src)
+    src.close()
+
+    with PDDocument.load(src_bytes) as loaded:
+        sink = io.BytesIO()
+        loaded.save_incremental(sink, None)
+        # Same byte-for-byte round-trip as the no-arg form.
+        assert sink.getvalue() == src_bytes
+
+
+# ---------- set_version no-op on equal ----------
+
+
+def test_set_version_no_op_on_equal() -> None:
+    """Setting the version to the value already in effect is a no-op —
+    no catalog mutation, no header mutation. Mirrors upstream's
+    ``Float.compare(newVersion, currentVersion) == 0`` early exit."""
+    doc = PDDocument()
+    # Default version is 1.4 — but the catalog gets a /Version entry from
+    # the minimal skeleton. Confirm baseline first.
+    assert doc.get_version() == 1.4
+    catalog_dict = doc.get_document_catalog().get_cos_object()
+    version_before = catalog_dict.get_dictionary_object(
+        COSName.get_pdf_name("Version")
+    )
+    # Bump from 1.4 to 1.4 — exit-on-equal must not even touch the catalog.
+    doc.set_version(1.4)
+    version_after = catalog_dict.get_dictionary_object(
+        COSName.get_pdf_name("Version")
+    )
+    # Identity-stable: no replacement happened.
+    assert version_after is version_before
+
+
+# ---------- add_signature one-shot guard ----------
+
+
+def test_add_signature_rejects_second_call() -> None:
+    """A second ``add_signature`` on the same document raises — mirrors
+    upstream ``IllegalStateException("Only one signature may be added in
+    a document")``. Surfaced as ``ValueError`` for symmetry with other
+    PDDocument guards."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    doc.add_signature(PDSignature())
+    with pytest.raises(ValueError, match="Only one signature"):
+        doc.add_signature(PDSignature())

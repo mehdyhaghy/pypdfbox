@@ -90,3 +90,20 @@ class RandomAccessReadMemoryMapped(RandomAccessRead):
 
     def is_closed(self) -> bool:
         return self._closed
+
+    def create_view(self, start_position: int, length: int) -> RandomAccessRead:
+        """
+        Return a read-only slice view onto this memory-mapped file.
+
+        Mirrors upstream ``RandomAccessReadMemoryMappedFile.createView``: a
+        fresh underlying mapping is created so the view can be read without
+        contending with the parent's position cursor. The view owns the
+        sibling and closes it on view close.
+        """
+        from .random_access_read_view import RandomAccessReadView
+
+        self._check_open()
+        sibling = RandomAccessReadMemoryMapped(self._path)
+        return RandomAccessReadView(
+            sibling, start_position, length, close_parent=True
+        )

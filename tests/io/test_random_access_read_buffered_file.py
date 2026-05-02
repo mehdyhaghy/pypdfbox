@@ -112,3 +112,39 @@ def test_large_file_round_trip(tmp_path: Path) -> None:
         n = rab.read_into(out)
         assert n == len(payload)
         assert bytes(out) == payload
+
+
+def test_create_view_uses_independent_handle(sample_file: Path) -> None:
+    # Upstream RandomAccessReadBufferedFile.createView opens a sibling
+    # handle so the view's reads don't disturb the parent's position.
+    rab = RandomAccessReadBufferedFile(sample_file)
+    try:
+        rab.seek(2)
+        view = rab.create_view(10, 5)  # bytes "klmno"
+        try:
+            assert view.read() == ord("k")
+            assert view.read() == ord("l")
+            # parent position must be unaffected by view reads
+            assert rab.get_position() == 2
+            assert rab.read() == ord("c")
+        finally:
+            view.close()
+    finally:
+        rab.close()
+
+
+def test_create_view_close_parent_releases_sibling(sample_file: Path) -> None:
+    # Closing the view must not close the user-facing parent, but it must
+    # release the sibling handle the view owns (close_parent=True upstream).
+    with RandomAccessReadBufferedFile(sample_file) as rab:
+        view = rab.create_view(0, 5)
+        view.close()
+        assert view.is_closed()
+        assert not rab.is_closed()
+
+
+def test_create_view_on_closed_parent_raises(sample_file: Path) -> None:
+    rab = RandomAccessReadBufferedFile(sample_file)
+    rab.close()
+    with pytest.raises(ValueError):
+        rab.create_view(0, 5)

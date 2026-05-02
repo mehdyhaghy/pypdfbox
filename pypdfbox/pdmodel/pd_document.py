@@ -147,6 +147,12 @@ class PDDocument:
         self._pending_signature: PDSignature | None = None
         self._pending_signature_interface: SignatureInterface | None = None
         self._pending_signature_options: Any = None
+        # Mirrors upstream's ``signatureAdded`` field — set to True the first
+        # time ``add_signature`` is called and never reset for the lifetime
+        # of the document. A second ``add_signature`` raises so callers
+        # follow the "load → add → save → close → reload" cycle prescribed
+        # by ISO 32000 §12.8 for sequential signing.
+        self._signature_added: bool = False
 
         self._closed: bool = False
 
@@ -370,6 +376,7 @@ class PDDocument:
     def save_incremental(
         self,
         target: str | os.PathLike[str] | BinaryIO | RandomAccessWrite,
+        objects_to_write: set[COSDictionary] | None = None,
     ) -> None:
         """Append-only save via ``COSWriter(incremental=True)``.
 
@@ -377,6 +384,15 @@ class PDDocument:
         — incremental mode preserves the original bytes and appends only
         objects flagged ``needs_to_be_updated``. Synthesised documents
         with no source raise ``ValueError`` (matches upstream).
+
+        ``objects_to_write`` mirrors the upstream
+        ``saveIncremental(OutputStream, Set<COSDictionary>)`` overload —
+        every dictionary in the set is force-flagged
+        ``needs_to_be_updated`` so it appears in the appended xref even
+        when no path of dirty objects reaches it. Useful when an editor
+        knows it touched a dict whose containing array / parent didn't
+        get re-flagged. Only ``COSDictionary`` instances are supported (the
+        upstream signature constraint).
 
         When :meth:`add_signature` has staged a pending signature, the save
         runs the full signing pipeline: writes a placeholder ``/Contents``
@@ -391,6 +407,17 @@ class PDDocument:
                 "save_incremental requires a loaded document with a source "
                 "(use Loader.load_pdf or PDDocument.load)"
             )
+
+        # Mirror upstream's second saveIncremental overload: stamp every
+        # dict in ``objects_to_write`` as dirty so the writer emits it.
+        if objects_to_write is not None:
+            for entry in objects_to_write:
+                if not isinstance(entry, COSDictionary):
+                    raise TypeError(
+                        f"save_incremental: objects_to_write must contain only "
+                        f"COSDictionary instances, got {type(entry).__name__}"
+                    )
+                entry.set_needs_to_be_updated(True)
 
         # Pending-signature path → full sign pipeline.
         if self._pending_signature is not None:
@@ -647,8 +674,15 @@ class PDDocument:
 
         For PDF >= 1.4 documents the bump lives in the catalog only —
         the header stays at the original version (matches upstream
-        ``PDDocument.setVersion``)."""
-        if version < self.get_version():
+        ``PDDocument.setVersion``).
+
+        Equal-version calls are a no-op (matches upstream's ``Float.compare``
+        early exit) so we don't gratuitously stamp a catalog version on a
+        pre-1.4 document that already reports the requested float."""
+        current = self.get_version()
+        if version == current:
+            return
+        if version < current:
             return
         if self._document.get_version() >= 1.4:
             self.get_document_catalog().set_version(f"{version:.1f}")
@@ -862,6 +896,12 @@ class PDDocument:
             raise TypeError(
                 f"add_signature expected a PDSignature, got {type(sig).__name__}"
             )
+        if self._signature_added:
+            # Mirrors upstream ``IllegalStateException`` — Java's nearest
+            # equivalent is ``RuntimeError`` here, but we surface it as
+            # ``ValueError`` for symmetry with the rest of the PDDocument
+            # surface (closed-doc / no-source guards both raise ValueError).
+            raise ValueError("Only one signature may be added in a document")
 
         sig_dict = sig.get_cos_object()
 
@@ -959,6 +999,7 @@ class PDDocument:
         self._pending_signature = sig
         self._pending_signature_interface = signature_interface
         self._pending_signature_options = options
+        self._signature_added = True
 
     def import_page(self, page: PDPage) -> PDPage:
         """Deep-copy ``page`` into this document and return the new
