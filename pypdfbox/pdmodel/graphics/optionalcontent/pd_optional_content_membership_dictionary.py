@@ -216,6 +216,85 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
             f"got {type(ocgs).__name__}"
         )
 
+    # ---------- /OCGs membership helpers ----------
+
+    def contains_ocg(self, group: PDOptionalContentGroup | COSDictionary) -> bool:
+        """Return ``True`` when ``group`` is referenced by /OCGs.
+
+        Membership is matched by *identity* of the wrapped
+        ``COSDictionary`` (mirrors :meth:`PDOptionalContentConfiguration.is_on`)
+        so OCGs sharing a /Name aren't accidentally collapsed. Accepts
+        either a :class:`PDOptionalContentGroup` wrapper or the raw
+        ``COSDictionary``.
+
+        Not present in upstream PDFBox (``getOCGs`` returns the list and
+        callers walk it themselves); pypdfbox enrichment for the common
+        "is this OCG part of the membership?" predicate.
+        """
+        if isinstance(group, PDOptionalContentGroup):
+            target = group.get_cos_object()
+        elif isinstance(group, COSDictionary):
+            target = group
+        else:
+            raise TypeError(
+                "group must be PDOptionalContentGroup or COSDictionary, "
+                f"got {type(group).__name__}"
+            )
+        base = self._dict.get_dictionary_object(_OCGS)
+        if base is None:
+            return False
+        if isinstance(base, COSDictionary):
+            return base is target
+        if isinstance(base, COSArray):
+            for i in range(base.size()):
+                if base.get_object(i) is target:
+                    return True
+            return False
+        return False
+
+    def add_ocg(self, group: PDOptionalContentGroup | COSDictionary) -> None:
+        """Append a single OCG to /OCGs.
+
+        Promotes a single-dictionary /OCGs entry to a ``COSArray`` on
+        first append. No-ops when ``group`` is already referenced (matched
+        by identity of the wrapped ``COSDictionary``). Symmetric
+        single-element counterpart to :meth:`set_ocgs` for the common
+        "build OCMD incrementally" pattern. pypdfbox enrichment.
+        """
+        if isinstance(group, PDOptionalContentGroup):
+            target = group.get_cos_object()
+        elif isinstance(group, COSDictionary):
+            target = group
+        else:
+            raise TypeError(
+                "group must be PDOptionalContentGroup or COSDictionary, "
+                f"got {type(group).__name__}"
+            )
+        base = self._dict.get_dictionary_object(_OCGS)
+        if base is None:
+            arr = COSArray()
+            arr.add(target)
+            self._dict.set_item(_OCGS, arr)
+            return
+        if isinstance(base, COSDictionary):
+            if base is target:
+                return
+            promoted = COSArray()
+            promoted.add(base)
+            promoted.add(target)
+            self._dict.set_item(_OCGS, promoted)
+            return
+        if isinstance(base, COSArray):
+            for i in range(base.size()):
+                if base.get_object(i) is target:
+                    return
+            base.add(target)
+            return
+        # /OCGs holds something exotic — replace with a fresh single-item array.
+        arr = COSArray()
+        arr.add(target)
+        self._dict.set_item(_OCGS, arr)
+
     # ---------- /P (visibility policy) ----------
 
     def get_visibility_policy(self) -> str:

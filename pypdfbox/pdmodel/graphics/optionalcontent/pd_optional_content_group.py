@@ -146,19 +146,28 @@ class PDOptionalContentGroup(PDPropertyList):
             f"intent must be str or list[str], got {type(value).__name__}"
         )
 
-    def get_render_state(self, destination: str | None = None) -> str | None:
+    def get_render_state(self, destination: object = None) -> str | None:
         """Return /Usage state name ("ON"/"OFF") for ``destination`` ("Print",
         "View", "Export"). Falls back to /Export if the targeted entry is
-        missing. Returns ``None`` when no usage information is present."""
+        missing. Returns ``None`` when no usage information is present.
+
+        ``destination`` accepts either the spec-name string or a
+        :class:`pypdfbox.rendering.RenderDestination` enum value (mirrors
+        upstream ``getRenderState(RenderDestination)``). Unknown strings are
+        treated as "no targeted entry" and fall through to the /Export
+        fallback, matching upstream behaviour where any non-PRINT / non-VIEW
+        destination leaves ``state`` null prior to the Export fallback.
+        """
+        dest_name = _normalize_render_destination(destination)
         usage = self._dict.get_dictionary_object(_USAGE)
         if not isinstance(usage, COSDictionary):
             return None
         state: COSName | None = None
-        if destination == "Print":
+        if dest_name == "Print":
             sub = usage.get_dictionary_object(_PRINT)
             if isinstance(sub, COSDictionary):
                 state = _coerce_name(sub.get_dictionary_object(_PRINT_STATE))
-        elif destination == "View":
+        elif dest_name == "View":
             sub = usage.get_dictionary_object(_VIEW)
             if isinstance(sub, COSDictionary):
                 state = _coerce_name(sub.get_dictionary_object(_VIEW_STATE))
@@ -170,18 +179,25 @@ class PDOptionalContentGroup(PDPropertyList):
             return None
         return state.name.upper()
 
-    def set_render_state(self, state: str, destination: str = "Export") -> None:
-        """Write the /Usage entry for ``destination`` with state name."""
+    def set_render_state(self, state: str, destination: object = "Export") -> None:
+        """Write the /Usage entry for ``destination`` with state name.
+
+        ``destination`` accepts either the spec-name string or a
+        :class:`pypdfbox.rendering.RenderDestination` enum value (mirrors
+        the upstream typed parameter). Unknown destinations route to
+        /Usage/Export (the upstream fallback target).
+        """
         upper = state.upper()
         if upper not in ("ON", "OFF"):
             raise ValueError(f"render state must be 'ON' or 'OFF', got {state!r}")
+        dest_name = _normalize_render_destination(destination) or "Export"
         usage = self._dict.get_dictionary_object(_USAGE)
         if not isinstance(usage, COSDictionary):
             usage = COSDictionary()
             self._dict.set_item(_USAGE, usage)
-        if destination == "Print":
+        if dest_name == "Print":
             sub_key, state_key = _PRINT, _PRINT_STATE
-        elif destination == "View":
+        elif dest_name == "View":
             sub_key, state_key = _VIEW, _VIEW_STATE
         else:
             sub_key, state_key = _EXPORT, _EXPORT_STATE
@@ -344,12 +360,13 @@ class PDOptionalContentGroup(PDPropertyList):
     RenderState = RenderState
 
     def get_render_state_enum(
-        self, destination: str | None = None
+        self, destination: object = None
     ) -> "RenderState | None":
         """Typed-enum variant of :meth:`get_render_state`.
 
         Returns the parsed :class:`RenderState` member or ``None`` when no
-        usage information is present.
+        usage information is present. ``destination`` accepts either a
+        string or a :class:`RenderDestination` enum value.
         """
         name = self.get_render_state(destination)
         if name is None:
@@ -357,10 +374,11 @@ class PDOptionalContentGroup(PDPropertyList):
         return RenderState.value_of(name)
 
     def set_render_state_enum(
-        self, state: "RenderState", destination: str = "Export"
+        self, state: "RenderState", destination: object = "Export"
     ) -> None:
         """Typed-enum variant of :meth:`set_render_state` — accepts a
-        :class:`RenderState` member instead of a raw string."""
+        :class:`RenderState` member instead of a raw string. ``destination``
+        accepts either a string or a :class:`RenderDestination` enum value."""
         if not isinstance(state, RenderState):
             raise TypeError(
                 "state must be RenderState, got "
@@ -381,9 +399,49 @@ class PDOptionalContentGroup(PDPropertyList):
         assert sub is not None
         return PDOptionalContentGroupUsage(sub)
 
+    # ---- Object identity / string representation -----------------------------
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDOptionalContentGroup.toString`` — returns
+        ``<PDPropertyList repr> (<name>)``. Used by Acrobat-style debug
+        output where layer panels list "ColorLayer (Color)"-style entries.
+        """
+        return f"{super().__repr__()} ({self.get_name()})"
+
 
 def _coerce_name(value: object) -> COSName | None:
     return value if isinstance(value, COSName) else None
+
+
+def _normalize_render_destination(destination: object) -> str | None:
+    """Coerce a render destination to its spec-name string.
+
+    Accepts:
+
+    - ``None``                              → ``None``
+    - a :class:`pypdfbox.rendering.RenderDestination` enum value → its
+      string ``value`` ("Print" / "View" / "Export")
+    - a plain ``str``                        → returned unchanged
+
+    Mirrors the upstream typed-parameter contract where
+    ``getRenderState(RenderDestination)`` accepts the enum directly. We
+    keep the string overload for Pythonic ergonomics and pre-existing
+    callers.
+    """
+    if destination is None:
+        return None
+    if isinstance(destination, str):
+        return destination
+    # Defer the import so render_destination doesn't pull rendering at
+    # optionalcontent import time.
+    from pypdfbox.rendering.render_destination import RenderDestination
+
+    if isinstance(destination, RenderDestination):
+        return destination.value
+    raise TypeError(
+        "destination must be str, RenderDestination, or None, got "
+        f"{type(destination).__name__}"
+    )
 
 
 __all__ = [
