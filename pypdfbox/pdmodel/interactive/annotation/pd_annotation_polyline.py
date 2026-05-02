@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_annotation_markup import PDAnnotationMarkup
+from .pd_border_effect_dictionary import PDBorderEffectDictionary
 from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 if TYPE_CHECKING:
@@ -102,19 +103,31 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
 
     # ---------- /BE (border effect) ----------
 
-    def get_border_effect(self) -> COSDictionary | None:
-        """Raw border-effect dict — typed ``PDBorderEffectDictionary`` is
-        deferred."""
+    def get_border_effect(self) -> PDBorderEffectDictionary | None:
+        """Return the ``/BE`` border-effect dictionary wrapped in
+        :class:`PDBorderEffectDictionary`. Upstream
+        :class:`org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationPolyline`
+        does not expose ``/BE``; we surface the typed accessor here for
+        parity with :class:`PDAnnotationPolygon` and the polyline
+        appearance handlers that consume ``/BE`` when present.
+        Returns ``None`` when ``/BE`` is absent."""
         value = self._dict.get_dictionary_object(_BE)
         if isinstance(value, COSDictionary):
-            return value
+            return PDBorderEffectDictionary(value)
         return None
 
-    def set_border_effect(self, be: COSDictionary | None) -> None:
+    def set_border_effect(
+        self, be: PDBorderEffectDictionary | COSDictionary | None
+    ) -> None:
+        """Set ``/BE`` from a :class:`PDBorderEffectDictionary` or a raw
+        ``COSDictionary``."""
         if be is None:
             self._dict.remove_item(_BE)
             return
-        self._dict.set_item(_BE, be)
+        self._dict.set_item(
+            _BE,
+            be.get_cos_object() if hasattr(be, "get_cos_object") else be,
+        )
 
     # ---------- /LE (line-ending styles) ----------
 
@@ -136,6 +149,57 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
             [COSName.get_pdf_name(start), COSName.get_pdf_name(end)]
         )
         self._dict.set_item(_LE, arr)
+
+    # ---------- /LE individual endpoint accessors (upstream parity) ----------
+
+    def _set_le_entry(self, index: int, style: str | None) -> None:
+        actual = _LE_NONE if style is None else style
+        value = self._dict.get_dictionary_object(_LE)
+        if not isinstance(value, COSArray) or value.size() < 2:
+            arr = COSArray(
+                [
+                    COSName.get_pdf_name(_LE_NONE),
+                    COSName.get_pdf_name(_LE_NONE),
+                ]
+            )
+            arr.set(index, COSName.get_pdf_name(actual))
+            self._dict.set_item(_LE, arr)
+            return
+        value.set(index, COSName.get_pdf_name(actual))
+
+    def get_start_point_ending_style(self) -> str:
+        """Return the line-ending style for the start point. Mirrors
+        upstream ``getStartPointEndingStyle()`` — ``LE_NONE`` (``"None"``)
+        when ``/LE`` is missing or short. See :class:`PDAnnotationLine`
+        for the legal style constants (Table 176)."""
+        value = self._dict.get_dictionary_object(_LE)
+        if isinstance(value, COSArray) and value.size() >= 2:
+            entry = value.get(0)
+            if isinstance(entry, COSName):
+                return entry.name
+        return _LE_NONE
+
+    def set_start_point_ending_style(self, style: str | None) -> None:
+        """Set the line-ending style for the start point. Mirrors upstream
+        ``setStartPointEndingStyle(String)`` — ``None`` is normalised to
+        ``LE_NONE`` like upstream."""
+        self._set_le_entry(0, style)
+
+    def get_end_point_ending_style(self) -> str:
+        """Return the line-ending style for the end point. Mirrors
+        upstream ``getEndPointEndingStyle()`` — ``LE_NONE`` when ``/LE``
+        is missing or short."""
+        value = self._dict.get_dictionary_object(_LE)
+        if isinstance(value, COSArray) and value.size() >= 2:
+            entry = value.get(1)
+            if isinstance(entry, COSName):
+                return entry.name
+        return _LE_NONE
+
+    def set_end_point_ending_style(self, style: str | None) -> None:
+        """Set the line-ending style for the end point. Mirrors upstream
+        ``setEndPointEndingStyle(String)``."""
+        self._set_le_entry(1, style)
 
     # ---------- /Measure ----------
 

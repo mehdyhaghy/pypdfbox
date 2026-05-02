@@ -89,7 +89,10 @@ def test_border_effect_round_trip() -> None:
     be.set_name(COSName.get_pdf_name("S"), "C")
     ann.set_border_effect(be)
     got = ann.get_border_effect()
-    assert got is be
+    assert got is not None
+    # Typed wrapper around the same underlying COSDictionary.
+    assert got.get_cos_object() is be
+    assert got.get_style() == "C"
 
 
 def test_factory_routes_to_polygon() -> None:

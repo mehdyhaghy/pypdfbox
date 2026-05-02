@@ -82,12 +82,6 @@ class PDAnnotationStamp(PDAnnotationMarkup):
             return
         self._dict.set_name(_NAME, name)
 
-    def getName(self) -> str:  # noqa: N802 - upstream Java name
-        return self.get_name()
-
-    def setName(self, name: str | None) -> None:  # noqa: N802 - upstream Java name
-        self.set_name(name)
-
     def is_standard_name(self) -> bool:
         """Return ``True`` if ``/Name`` is one of the 14 spec-defined icons.
 

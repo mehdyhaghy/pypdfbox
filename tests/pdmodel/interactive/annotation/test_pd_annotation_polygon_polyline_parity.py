@@ -116,7 +116,11 @@ def test_border_effect_round_trip(cls) -> None:
     be.set_float(COSName.get_pdf_name("I"), 1.5)
     ann.set_border_effect(be)
     fetched = ann.get_border_effect()
-    assert fetched is be
+    assert fetched is not None
+    # Typed wrapper around the same underlying COSDictionary.
+    assert fetched.get_cos_object() is be
+    assert fetched.get_style() == "C"
+    assert fetched.get_intensity() == 1.5
 
 
 @pytest.mark.parametrize("cls", [PDAnnotationPolygon, PDAnnotationPolyline])

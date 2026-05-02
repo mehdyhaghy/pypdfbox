@@ -226,10 +226,12 @@ def test_get_height_returns_w1y_from_w2() -> None:
 
 def test_get_position_vector_falls_back_to_default_dw2() -> None:
     font = PDCIDFontType2()
-    # No /W2, no /DW2 -> spec default (880, -1000) returned as (v_y, v_x);
-    # accessor flips to (v_x, v_y) form.
+    # No /W2, no /DW2 -> upstream default position vector formula
+    # ``(widthForCID(cid)/2, dw2[0])`` (PDCIDFont.getDefaultPositionVector).
+    # With /DW unset (defaults to 1000) and dw2[0] defaulting to 880,
+    # the result is (500, 880).
     v_x, v_y = font.get_position_vector(0)
-    assert v_x == -1000.0
+    assert v_x == 500.0
     assert v_y == 880.0
 
 

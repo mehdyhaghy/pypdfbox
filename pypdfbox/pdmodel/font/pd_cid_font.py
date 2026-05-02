@@ -434,15 +434,21 @@ class PDCIDFont(PDFont):
         """Position vector ``(v_x, v_y)`` for ``cid`` in 1/1000 em.
 
         Looks up ``/W2`` triples ``(w1y, v_x, v_y)``; CIDs outside the
-        table fall back to ``/DW2``'s ``(v_y, v_x)`` per spec default
-        ``(880, -1000)``. Mirrors upstream ``PDCIDFont.getPositionVector``.
+        table fall back to upstream's default-position-vector formula
+        ``(width(cid)/2, dw2[0])`` — half the horizontal advance for
+        ``v_x`` and ``/DW2``'s position-vector-y (defaulting to ``880``)
+        for ``v_y``. Mirrors upstream
+        ``PDCIDFont.getDefaultPositionVector`` /
+        ``PDCIDFont.getPositionVector``.
         """
         triple = self.get_widths2().get(cid)
         if triple is not None:
             _, v_x, v_y = triple
             return (v_x, v_y)
-        v_y_default, v_x_default = self.get_default_position_vector()
-        return (v_x_default, v_y_default)
+        # /DW2 is [position_vector_y displacement_vector_y]; the upstream
+        # default position vector is (widthForCID(cid)/2, dw2[0]).
+        v_y_default, _ = self.get_default_position_vector()
+        return (self.get_glyph_width(cid) / 2.0, v_y_default)
 
     def get_height(self, cid: int) -> float:
         """Vertical advance for ``cid`` (the ``w1y`` component of ``/W2``).

@@ -45,6 +45,21 @@ _UCS2_CMAP_BY_REGISTRY_ORDERING: dict[tuple[str, str], str] = {
     ("Adobe", "KR"): "Adobe-KR-UCS2",
 }
 
+# Predefined CMap names from PDF 32000-1 §9.7.5.2 Table 118 (the two
+# Identity collections plus the broader CJK predefined set). Surfaced as
+# module-level constants so callers building Type 0 dictionaries don't
+# stringly-type the names. Mirrors upstream's ``COSName.IDENTITY_H`` /
+# ``COSName.IDENTITY_V`` and the predefined CMap registry the
+# ``CMapManager`` consults.
+IDENTITY_H: str = "Identity-H"
+IDENTITY_V: str = "Identity-V"
+
+# CIDSystemInfo orderings considered "CJK" by upstream's
+# ``PDType0Font.readEncoding``. The combination of these orderings under
+# the ``Adobe`` registry is what triggers the UCS2 ``*-UCS2`` fallback in
+# :meth:`PDType0Font.is_descendant_cjk` / :meth:`get_cmap_ucs2`.
+_CJK_ORDERINGS: frozenset[str] = frozenset({"GB1", "CNS1", "Japan1", "Korea1"})
+
 
 class PDType0Font(PDFont):
     """PDF Type 0 (composite) font. Mirrors PDFBox ``PDType0Font``.
@@ -773,6 +788,58 @@ class PDType0Font(PDFont):
         """
         return False
 
+    # ---------- /Encoding predicates ----------
+
+    def is_cmap_predefined(self) -> bool:
+        """``True`` when ``/Encoding`` is one of the predefined CMap names
+        (a ``COSName`` rather than an embedded ``COSStream``).
+
+        Mirrors upstream ``PDType0Font.isCMapPredefined`` (the private
+        boolean field set by ``readEncoding`` when the encoding entry is
+        a ``COSName``). Surfaced publicly so callers reasoning about the
+        ``/ToUnicode`` fallback chain (PDFBOX-6022) can branch on the
+        same condition upstream branches on.
+        """
+        raw = self._dict.get_dictionary_object(_ENCODING)
+        return isinstance(raw, COSName)
+
+    def is_descendant_cjk(self) -> bool:
+        """``True`` when the descendant CIDFont uses one of the four
+        Adobe CJK character collections (``Adobe-GB1`` / ``Adobe-CNS1`` /
+        ``Adobe-Japan1`` / ``Adobe-Korea1``).
+
+        Mirrors upstream ``PDType0Font.isDescendantCJK`` (the private
+        boolean field set by ``readEncoding``). Combined with
+        :meth:`is_cmap_predefined` this is the condition under which
+        ``toUnicode`` falls back to the ``*-UCS2`` CMap rather than to
+        an Identity codepoint (PDFBOX-6022 / §9.10.2).
+        """
+        info = self.get_cid_system_info()
+        if info is None:
+            return False
+        registry = info.get_registry()
+        ordering = info.get_ordering()
+        if registry != "Adobe" or ordering is None:
+            return False
+        return ordering in _CJK_ORDERINGS
+
+    # ---------- diagnostics ----------
+
+    def __repr__(self) -> str:
+        """Mirror upstream ``PDType0Font.toString`` formatting:
+
+            ``PDType0Font/<DescendantClass>, PostScript name: <BaseFont>``
+
+        Surfaces enough identity for log lines and debugger inspection
+        without dragging in the full dictionary state.
+        """
+        descendant = self.get_descendant_font()
+        descendant_name = type(descendant).__name__ if descendant is not None else None
+        return (
+            f"{type(self).__name__}/{descendant_name},"
+            f" PostScript name: {self.get_base_font()}"
+        )
+
     # ---------- glyph / metric delegators ----------
 
     def has_glyph(self, code: int) -> bool:
@@ -1497,4 +1564,4 @@ def _build_w_array(ttf: Any) -> COSArray:
     return out
 
 
-__all__ = ["PDType0Font"]
+__all__ = ["IDENTITY_H", "IDENTITY_V", "PDType0Font"]

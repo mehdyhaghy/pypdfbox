@@ -12,6 +12,7 @@ _LL: COSName = COSName.get_pdf_name("LL")
 _LLE: COSName = COSName.get_pdf_name("LLE")
 _LLO: COSName = COSName.get_pdf_name("LLO")
 _CP: COSName = COSName.get_pdf_name("CP")
+_IC: COSName = COSName.get_pdf_name("IC")
 
 
 class PDAnnotationLine(PDAnnotation):
@@ -212,6 +213,31 @@ class PDAnnotationLine(PDAnnotation):
             self._dict.remove_item(_CP)
             return
         self._dict.set_name(_CP, caption_positioning)
+
+    # ---------- /IC (interior color of line endings) ----------
+
+    def get_interior_color(self) -> list[float] | None:
+        """Return the ``/IC`` interior-color components for the line endings
+        defined by ``/LE``. Mirrors upstream ``getInteriorColor()`` —
+        upstream returns a typed ``PDColor`` (rendering cluster). This lite
+        accessor returns plain floats; component count implies the colour
+        space (1 = DeviceGray, 3 = DeviceRGB, 4 = DeviceCMYK).
+        Returns ``None`` when ``/IC`` is absent."""
+        value = self._dict.get_dictionary_object(_IC)
+        if isinstance(value, COSArray):
+            return value.to_float_array()
+        return None
+
+    def set_interior_color(
+        self, ic: list[float] | tuple[float, ...] | None
+    ) -> None:
+        """Set the ``/IC`` interior-color array. Mirrors upstream
+        ``setInteriorColor(PDColor)``. Pass ``None`` to clear the entry."""
+        if ic is None:
+            self._dict.remove_item(_IC)
+            return
+        arr = COSArray([COSFloat(float(c)) for c in ic])
+        self._dict.set_item(_IC, arr)
 
 
 __all__ = ["PDAnnotationLine"]

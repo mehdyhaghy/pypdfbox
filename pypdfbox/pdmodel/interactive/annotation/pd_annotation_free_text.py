@@ -5,6 +5,7 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_annotation_line import PDAnnotationLine
 from .pd_annotation_markup import PDAnnotationMarkup
+from .pd_border_effect_dictionary import PDBorderEffectDictionary
 from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 _DA: COSName = COSName.get_pdf_name("DA")
@@ -164,17 +165,27 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
 
     # ---------- /BE (border effect dictionary) ----------
 
-    def get_border_effect(self) -> COSDictionary | None:
+    def get_border_effect(self) -> PDBorderEffectDictionary | None:
+        """Return the ``/BE`` border-effect dictionary wrapped in
+        :class:`PDBorderEffectDictionary`. Mirrors upstream
+        ``getBorderEffect()``. Returns ``None`` when ``/BE`` is absent."""
         value = self._dict.get_dictionary_object(_BE)
         if isinstance(value, COSDictionary):
-            return value
+            return PDBorderEffectDictionary(value)
         return None
 
-    def set_border_effect(self, be: COSDictionary | None) -> None:
+    def set_border_effect(
+        self, be: PDBorderEffectDictionary | COSDictionary | None
+    ) -> None:
+        """Set ``/BE`` from a :class:`PDBorderEffectDictionary` or a raw
+        ``COSDictionary``. Mirrors upstream ``setBorderEffect(PDBorderEffectDictionary)``."""
         if be is None:
             self._dict.remove_item(_BE)
             return
-        self._dict.set_item(_BE, be)
+        self._dict.set_item(
+            _BE,
+            be.get_cos_object() if hasattr(be, "get_cos_object") else be,
+        )
 
     # ---------- /RD (rectangle differences) ----------
 

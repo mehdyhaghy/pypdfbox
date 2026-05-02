@@ -573,13 +573,16 @@ def test_get_position_vector_returns_zero_without_descendant() -> None:
 def test_get_position_vector_negates_and_scales_by_1000() -> None:
     """Upstream's ``getPositionVector`` calls ``descendant.getPositionVector(code).scale(-1/1000f)``.
 
-    PDCIDFont's default ``/DW2`` (when missing) yields ``(v_x, v_y)`` =
-    ``(-1000, 880)`` — see :meth:`PDCIDFont.get_position_vector`. After
-    ``scale(-1/1000)`` the vector becomes ``(1.0, -0.88)``.
+    PDCIDFont's default position vector (when ``/W2`` has no entry) is
+    ``(width(cid)/2, dw2[0])`` per upstream
+    ``PDCIDFont.getDefaultPositionVector``. With ``/DW = 1000`` (the
+    default) and the spec's ``dw2[0] = 880`` the descendant vector is
+    ``(500, 880)``; after ``scale(-1/1000)`` the result is
+    ``(-0.5, -0.88)``.
     """
     font = _build_type0(_build_descendant(), encoding_name="Identity-H")
     v_x, v_y = font.get_position_vector(0x41)
-    assert v_x == 1.0
+    assert v_x == -0.5
     assert v_y == -0.88
 
 
@@ -605,3 +608,174 @@ def test_encode_glyph_id_with_descendant() -> None:
     # PDCIDFont has no overridden encode_glyph_id, so we still hit the
     # 2-byte BE fallback path.
     assert font.encode_glyph_id(7) == b"\x00\x07"
+
+
+# ---------- is_cmap_predefined ----------
+
+
+def test_is_cmap_predefined_true_for_identity_h() -> None:
+    font = _build_type0(_build_descendant(), encoding_name="Identity-H")
+    assert font.is_cmap_predefined() is True
+
+
+def test_is_cmap_predefined_true_for_identity_v() -> None:
+    font = _build_type0(_build_descendant(), encoding_name="Identity-V")
+    assert font.is_cmap_predefined() is True
+
+
+def test_is_cmap_predefined_true_for_predefined_cjk_name() -> None:
+    font = _build_type0(_build_descendant(), encoding_name="GBK-EUC-H")
+    assert font.is_cmap_predefined() is True
+
+
+def test_is_cmap_predefined_false_when_encoding_absent() -> None:
+    font = _build_type0(_build_descendant(), encoding_name=None)
+    assert font.is_cmap_predefined() is False
+
+
+def test_is_cmap_predefined_false_for_embedded_cmap_stream() -> None:
+    font = _build_type0(_build_descendant(), encoding_name=None)
+    cmap_stream = COSStream()
+    cmap_stream.set_data(b"%!PS-Adobe-3.0 Resource-CMap\n")
+    font.get_cos_object().set_item(_ENCODING, cmap_stream)
+    assert font.is_cmap_predefined() is False
+
+
+# ---------- is_descendant_cjk ----------
+
+
+def test_is_descendant_cjk_true_for_adobe_japan1() -> None:
+    font = _build_type0(_build_descendant(registry="Adobe", ordering="Japan1"))
+    assert font.is_descendant_cjk() is True
+
+
+def test_is_descendant_cjk_true_for_adobe_gb1() -> None:
+    font = _build_type0(_build_descendant(registry="Adobe", ordering="GB1"))
+    assert font.is_descendant_cjk() is True
+
+
+def test_is_descendant_cjk_true_for_adobe_cns1() -> None:
+    font = _build_type0(_build_descendant(registry="Adobe", ordering="CNS1"))
+    assert font.is_descendant_cjk() is True
+
+
+def test_is_descendant_cjk_true_for_adobe_korea1() -> None:
+    font = _build_type0(_build_descendant(registry="Adobe", ordering="Korea1"))
+    assert font.is_descendant_cjk() is True
+
+
+def test_is_descendant_cjk_false_for_identity_collection() -> None:
+    font = _build_type0(_build_descendant(registry="Adobe", ordering="Identity"))
+    assert font.is_descendant_cjk() is False
+
+
+def test_is_descendant_cjk_false_for_adobe_kr() -> None:
+    # Adobe-KR is NOT in the upstream CJK trigger set despite being an
+    # Adobe character collection — only GB1/CNS1/Japan1/Korea1 set
+    # ``isDescendantCJK`` in PDFBox.
+    font = _build_type0(_build_descendant(registry="Adobe", ordering="KR"))
+    assert font.is_descendant_cjk() is False
+
+
+def test_is_descendant_cjk_false_for_non_adobe_registry() -> None:
+    font = _build_type0(_build_descendant(registry="Custom", ordering="Japan1"))
+    assert font.is_descendant_cjk() is False
+
+
+def test_is_descendant_cjk_false_without_descendant() -> None:
+    font = _build_type0(None)
+    assert font.is_descendant_cjk() is False
+
+
+# ---------- __repr__ (upstream toString format) ----------
+
+
+def test_repr_includes_descendant_class_and_postscript_name() -> None:
+    font = _build_type0(_build_descendant())
+    text = repr(font)
+    assert text.startswith("PDType0Font/PDCIDFontType2,")
+    assert "PostScript name: TestType0" in text
+
+
+def test_repr_descendant_none_when_descendant_absent() -> None:
+    font = _build_type0(None)
+    text = repr(font)
+    assert "PDType0Font/None," in text
+
+
+# ---------- Identity-H / Identity-V module constants ----------
+
+
+def test_identity_h_constant_value() -> None:
+    from pypdfbox.pdmodel.font.pd_type0_font import IDENTITY_H, IDENTITY_V
+
+    assert IDENTITY_H == "Identity-H"
+    assert IDENTITY_V == "Identity-V"
+
+
+def test_identity_h_constant_round_trips_through_get_encoding() -> None:
+    from pypdfbox.pdmodel.font.pd_type0_font import IDENTITY_H
+
+    font = _build_type0(_build_descendant(), encoding_name=IDENTITY_H)
+    enc = font.get_encoding()
+    assert isinstance(enc, COSName)
+    assert enc.name == IDENTITY_H
+
+
+def test_identity_v_constant_drives_vertical_writing() -> None:
+    from pypdfbox.pdmodel.font.pd_type0_font import IDENTITY_V
+
+    font = _build_type0(_build_descendant(), encoding_name=IDENTITY_V)
+    assert font.is_vertical() is True
+    assert font.is_vertical_writing() is True
+    assert font.is_cmap_predefined() is True
+
+
+# ---------- PDCIDFont default position vector formula ----------
+
+
+def test_position_vector_default_uses_width_over_two() -> None:
+    """Upstream's ``PDCIDFont.getDefaultPositionVector`` is
+    ``Vector(widthForCID(cid)/2, dw2[0])``. With ``/DW = 600`` and the
+    spec's default ``dw2[0] = 880`` this yields ``(300, 880)``; the
+    Type0 wrapper then negates+scales to ``(-0.3, -0.88)``.
+    """
+    font = _build_type0(_build_descendant(dw=600), encoding_name="Identity-H")
+    v_x, v_y = font.get_position_vector(0x41)
+    assert v_x == pytest.approx(-0.3)
+    assert v_y == pytest.approx(-0.88)
+
+
+def test_position_vector_default_honors_explicit_dw2_array() -> None:
+    """When ``/DW2`` is set on the descendant, ``dw2[0]`` is the
+    *position-vector-y* default — we should consume the first entry,
+    not the second. Build a descendant with ``/DW2 [500 -800]`` and
+    expect the y-component to be ``500`` before the Type0 scaling.
+    """
+    desc = _build_descendant(dw=400)
+    dw2_arr = COSArray()
+    dw2_arr.add(_make_number(500))
+    dw2_arr.add(_make_number(-800))
+    desc.set_item(COSName.get_pdf_name("DW2"), dw2_arr)
+    font = _build_type0(desc, encoding_name="Identity-H")
+    # Descendant default: (width/2, dw2[0]) = (200, 500); Type0 scales by -1/1000.
+    v_x, v_y = font.get_position_vector(0x41)
+    assert v_x == pytest.approx(-0.2)
+    assert v_y == pytest.approx(-0.5)
+
+
+def test_position_vector_w2_entry_overrides_default() -> None:
+    """When ``/W2`` carries a triple for the CID, the explicit entry
+    wins over the default formula entirely.
+    """
+    desc = _build_descendant(dw=1000)
+    # Form 2: c1 c2 w1y v_x v_y => CID 0..0 gets (w1y=900, v_x=-50, v_y=-700)
+    w2 = COSArray()
+    for v in (0, 0, 900, -50, -700):
+        w2.add(_make_number(v))
+    desc.set_item(COSName.get_pdf_name("W2"), w2)
+    font = _build_type0(desc, encoding_name="Identity-H")
+    # Type0 scales by -1/1000 -> (0.05, 0.7).
+    v_x, v_y = font.get_position_vector(0x00)
+    assert v_x == pytest.approx(0.05)
+    assert v_y == pytest.approx(0.7)
