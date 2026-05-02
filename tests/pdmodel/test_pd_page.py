@@ -388,3 +388,69 @@ def test_remove_page_resource_from_cache_skips_inherited_resources() -> None:
     page.remove_page_resource_from_cache()
     # Parent resources are inherited; the purge must not reach them.
     assert cache.calls == 0
+
+
+# ---------- get_matrix / random-access content ----------
+
+
+def test_get_matrix_returns_identity() -> None:
+    """Upstream ``PDPage.getMatrix()`` returns ``new Matrix()`` — identity."""
+    page = PDPage()
+    assert page.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_get_matrix_independent_of_rotation_and_user_unit() -> None:
+    """Upstream's ``getMatrix`` ignores ``/Rotate`` and ``/UserUnit`` (the
+    upstream ``// todo:`` comment flags this as a known limitation). Verify
+    we mirror that exact behaviour rather than helpfully composing them in."""
+    page = PDPage()
+    page.set_rotation(90)
+    page.set_user_unit(2.0)
+    assert page.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_get_contents_for_random_access_empty_when_absent() -> None:
+    page = PDPage()
+    rar = page.get_contents_for_random_access()
+    assert rar.length() == 0
+
+
+def test_get_contents_for_random_access_single_stream() -> None:
+    page = PDPage()
+    stream = COSStream()
+    stream.set_raw_data(b"q 1 0 0 1 0 0 cm Q")
+    page.set_contents(stream)
+    rar = page.get_contents_for_random_access()
+    buf = bytearray(rar.length())
+    assert rar.read_into(buf) == len(buf)
+    assert bytes(buf) == b"q 1 0 0 1 0 0 cm Q"
+
+
+def test_get_contents_for_random_access_array_uses_newline_delimiter() -> None:
+    """Mirrors upstream's ``DELIMITER = new byte[] { '\\n' }`` between array
+    entries — adjacent content streams must not merge their token runs."""
+    page = PDPage()
+    s1 = COSStream()
+    s1.set_raw_data(b"q")
+    s2 = COSStream()
+    s2.set_raw_data(b"Q")
+    arr = COSArray([s1, s2])
+    page.get_cos_object().set_item(COSName.CONTENTS, arr)  # type: ignore[attr-defined]
+    rar = page.get_contents_for_random_access()
+    buf = bytearray(rar.length())
+    rar.read_into(buf)
+    assert bytes(buf) == b"q\nQ"
+
+
+def test_get_contents_for_stream_parsing_delegates_to_random_access() -> None:
+    """Default ``getContentsForStreamParsing`` shares bytes with
+    ``getContentsForRandomAccess``; only upstream's flate-fast-path differs,
+    and we don't bypass the filter chain."""
+    page = PDPage()
+    stream = COSStream()
+    stream.set_raw_data(b"BT ET")
+    page.set_contents(stream)
+    rar = page.get_contents_for_stream_parsing()
+    buf = bytearray(rar.length())
+    rar.read_into(buf)
+    assert bytes(buf) == b"BT ET"

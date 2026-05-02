@@ -306,6 +306,52 @@ class PDPage:
                     result.append(PDStream(entry))
         return result
 
+    def get_contents_for_random_access(self) -> Any:
+        """Return a :class:`RandomAccessRead` over this page's content
+        stream bytes. Mirrors upstream
+        ``PDPage.getContentsForRandomAccess()`` — used by token parsers
+        that need seekable/peek-capable input.
+
+        For single-stream ``/Contents`` we wrap the decoded bytes; for the
+        array form we concatenate decoded bodies separated by a single
+        newline (matching upstream's ``DELIMITER``). Empty buffer when
+        ``/Contents`` is absent or holds no streams.
+        """
+        from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
+
+        return RandomAccessReadBuffer(self.get_contents())
+
+    def get_contents_for_stream_parsing(self) -> Any:
+        """Return a :class:`RandomAccessRead` for the page's content streams,
+        suitable for the PDF stream parser. Mirrors upstream
+        ``PDPage.getContentsForStreamParsing()``.
+
+        Upstream short-circuits single-stream ``/FlateDecode`` content by
+        feeding a ``FlateFilterDecoderStream`` directly. We do not bypass
+        the filter chain — :meth:`get_contents` already runs the security
+        handler + filters — so we delegate to
+        :meth:`get_contents_for_random_access` exactly like the
+        ``PDContentStream`` default method.
+        """
+        return self.get_contents_for_random_access()
+
+    # ---------- matrix ----------
+
+    def get_matrix(self) -> list[float]:
+        """Transformation matrix applied to the page's content stream.
+
+        Mirrors upstream ``PDPage.getMatrix()`` which returns
+        ``new Matrix()`` (the identity transform). The pypdfbox ``Matrix``
+        class lands with the rendering cluster (PRD §6.7); until then we
+        surface the same six numbers as a list — same shape used by
+        :class:`PDFormXObject.get_matrix` and :class:`PDAbstractPattern.get_matrix`.
+
+        Note: the upstream comment on this method (``// todo: take into
+        account user-space unit redefinition as scale?``) is a known
+        upstream gap, not something we attempt to fix here.
+        """
+        return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
     # ---------- boxes ----------
 
     def _get_box(self, key: COSName, fallback: PDRectangle | None = None) -> PDRectangle:
