@@ -613,6 +613,71 @@ class CMap:
     def get_space_mapping(self) -> int:
         return self._space_mapping
 
+    # ---------- writing-mode predicates ----------
+
+    def is_horizontal(self) -> bool:
+        """``True`` when the CMap declares horizontal writing mode (WMode 0).
+
+        pypdfbox enrichment — upstream exposes only ``getWMode()`` and
+        leaves callers to compare against ``0``/``1`` themselves. The
+        predicate makes call sites read more naturally (``if cmap.is_vertical()``).
+        Per ISO 32000-1 §9.7.5.4 a CMap's ``WMode`` is either ``0`` (horizontal)
+        or ``1`` (vertical); any other value (e.g. uninitialized custom CMaps)
+        is treated as horizontal here, which mirrors the upstream default.
+        """
+        return self._wmode != 1
+
+    def is_vertical(self) -> bool:
+        """``True`` when the CMap declares vertical writing mode (WMode 1).
+
+        Inverse of :meth:`is_horizontal`. pypdfbox enrichment — see that
+        method for the rationale.
+        """
+        return self._wmode == 1
+
+    # ---------- code / cid length accessors ----------
+
+    def get_min_code_length(self) -> int:
+        """Smallest code byte length covered by any registered codespace
+        range. Defaults to ``4`` on an empty CMap (matches upstream's
+        ``minCodeLength`` initial value, used as the lower bound of the
+        ``readCode`` walk in ISO 32000-1 §9.7.6.2).
+        """
+        return self._min_code_length
+
+    def get_max_code_length(self) -> int:
+        """Largest code byte length covered by any registered codespace
+        range. Defaults to ``0`` on an empty CMap (matches upstream's
+        ``maxCodeLength`` initial value).
+        """
+        return self._max_code_length
+
+    def get_min_cid_length(self) -> int:
+        """Smallest input byte length seen in any CID mapping. Defaults to
+        ``4`` on an empty CMap (matches upstream's ``minCidLength`` initial
+        value).
+        """
+        return self._min_cid_length
+
+    def get_max_cid_length(self) -> int:
+        """Largest input byte length seen in any CID mapping. Defaults to
+        ``0`` on an empty CMap (matches upstream's ``maxCidLength`` initial
+        value).
+        """
+        return self._max_cid_length
+
+    def get_codespace_ranges(self) -> list[CodespaceRange]:
+        """Snapshot copy of the registered codespace ranges.
+
+        pypdfbox enrichment — upstream keeps ``codespaceRanges`` package-private
+        and only exposes it via ``readCode``. Returning a fresh list keeps
+        callers from mutating the internal state while letting tests / tools
+        inspect the codespace structure directly. Order matches insertion
+        order (which is the order the parser saw ``begincodespacerange``
+        entries).
+        """
+        return list(self._codespace_ranges)
+
     # ---------- CIDSystemInfo registry / typed accessors ----------
 
     def get_cid_system_info(self) -> dict[str, object] | None:

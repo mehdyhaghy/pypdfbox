@@ -360,3 +360,158 @@ def test_to_unicode_delegates_to_to_unicode_with_length() -> None:
     assert cmap.to_unicode(0x41) == "TwoByte"
     # And the explicit 2-byte form returns the same value.
     assert cmap.to_unicode_with_length(0x41, 2) == "TwoByte"
+
+
+# ---------- is_horizontal / is_vertical writing-mode predicates ----------
+
+
+def test_is_horizontal_default_true() -> None:
+    cmap = CMap()
+    # WMode initialises to 0 (horizontal).
+    assert cmap.get_wmode() == 0
+    assert cmap.is_horizontal() is True
+    assert cmap.is_vertical() is False
+
+
+def test_is_vertical_after_set_wmode() -> None:
+    cmap = CMap()
+    cmap.set_wmode(1)
+    assert cmap.is_vertical() is True
+    assert cmap.is_horizontal() is False
+
+
+def test_horizontal_and_vertical_are_mutually_exclusive() -> None:
+    cmap = CMap()
+    for wmode in (0, 1):
+        cmap.set_wmode(wmode)
+        assert cmap.is_horizontal() != cmap.is_vertical()
+
+
+def test_unusual_wmode_values_treated_as_horizontal() -> None:
+    """WMode is documented as 0 or 1; any other value falls back to
+    horizontal (matching upstream's lenient handling)."""
+    cmap = CMap()
+    cmap.set_wmode(2)
+    assert cmap.is_horizontal() is True
+    assert cmap.is_vertical() is False
+    cmap.set_wmode(-1)
+    assert cmap.is_horizontal() is True
+    assert cmap.is_vertical() is False
+
+
+# ---------- code / cid length accessors ----------
+
+
+def test_min_max_code_length_defaults_on_empty_cmap() -> None:
+    cmap = CMap()
+    # Defaults match upstream's pre-add initial values.
+    assert cmap.get_min_code_length() == 4
+    assert cmap.get_max_code_length() == 0
+
+
+def test_min_max_cid_length_defaults_on_empty_cmap() -> None:
+    cmap = CMap()
+    assert cmap.get_min_cid_length() == 4
+    assert cmap.get_max_cid_length() == 0
+
+
+def test_code_length_tracks_added_codespace_ranges() -> None:
+    cmap = CMap()
+    cmap.add_codespace_range(b"\x00\x00", b"\xff\xff")
+    assert cmap.get_min_code_length() == 2
+    assert cmap.get_max_code_length() == 2
+
+    # Adding a 1-byte range lowers the minimum but the maximum stays at 2.
+    cmap.add_codespace_range(b"\x00", b"\x7f")
+    assert cmap.get_min_code_length() == 1
+    assert cmap.get_max_code_length() == 2
+
+    # And a 4-byte range raises the maximum.
+    cmap.add_codespace_range(b"\x00\x00\x00\x00", b"\xff\xff\xff\xff")
+    assert cmap.get_min_code_length() == 1
+    assert cmap.get_max_code_length() == 4
+
+
+def test_cid_length_tracks_added_cid_mappings() -> None:
+    cmap = CMap()
+    cmap.add_cid_mapping(b"\x00\x20", 32)
+    assert cmap.get_min_cid_length() == 2
+    assert cmap.get_max_cid_length() == 2
+
+    # 3-byte CID raises the maximum.
+    cmap.add_cid_mapping(b"\x00\x00\x20", 64)
+    assert cmap.get_min_cid_length() == 2
+    assert cmap.get_max_cid_length() == 3
+
+    # 1-byte CID lowers the minimum.
+    cmap.add_cid_mapping(b"\x20", 96)
+    assert cmap.get_min_cid_length() == 1
+
+
+def test_cid_length_tracks_added_cid_ranges() -> None:
+    cmap = CMap()
+    cmap.add_cid_range(b"\x00\x00", b"\x00\x10", cid=100)
+    assert cmap.get_min_cid_length() == 2
+    assert cmap.get_max_cid_length() == 2
+
+
+def test_lengths_track_use_cmap() -> None:
+    base = CMap("Base")
+    base.add_codespace_range(b"\x00", b"\x7f")
+    base.add_codespace_range(b"\x81\x40", b"\x9f\xfc")
+    base.add_cid_mapping(b"\x00\x20", 32)
+
+    child = CMap("Child")
+    child.use_cmap(base)
+    assert child.get_min_code_length() == 1
+    assert child.get_max_code_length() == 2
+    assert child.get_min_cid_length() == 2
+    assert child.get_max_cid_length() == 2
+
+
+# ---------- get_codespace_ranges ----------
+
+
+def test_get_codespace_ranges_empty_cmap() -> None:
+    cmap = CMap()
+    assert cmap.get_codespace_ranges() == []
+
+
+def test_get_codespace_ranges_returns_fresh_list() -> None:
+    cmap = CMap()
+    cmap.add_codespace_range(b"\x00", b"\x7f")
+    a = cmap.get_codespace_ranges()
+    b = cmap.get_codespace_ranges()
+    assert a == b
+    assert a is not b
+    # Mutating the returned list doesn't affect the CMap.
+    a.append(CodespaceRange(b"\xff", b"\xff"))
+    assert len(cmap.get_codespace_ranges()) == 1
+
+
+def test_get_codespace_ranges_preserves_insertion_order() -> None:
+    cmap = CMap()
+    cmap.add_codespace_range(b"\x00", b"\x7f")
+    cmap.add_codespace_range(b"\x81\x40", b"\x9f\xfc")
+    cmap.add_codespace_range(b"\xe0\x40", b"\xfc\xfc")
+
+    ranges = cmap.get_codespace_ranges()
+    assert len(ranges) == 3
+    assert ranges[0] == CodespaceRange(b"\x00", b"\x7f")
+    assert ranges[1] == CodespaceRange(b"\x81\x40", b"\x9f\xfc")
+    assert ranges[2] == CodespaceRange(b"\xe0\x40", b"\xfc\xfc")
+
+
+def test_get_codespace_ranges_after_use_cmap() -> None:
+    base = CMap("Base")
+    base.add_codespace_range(b"\x00", b"\x7f")
+
+    child = CMap("Child")
+    child.add_codespace_range(b"\xa0", b"\xff")
+    child.use_cmap(base)
+
+    ranges = child.get_codespace_ranges()
+    assert len(ranges) == 2
+    # Original (child) range first, then the inherited one.
+    assert ranges[0] == CodespaceRange(b"\xa0", b"\xff")
+    assert ranges[1] == CodespaceRange(b"\x00", b"\x7f")
