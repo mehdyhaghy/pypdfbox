@@ -211,8 +211,8 @@ def test_listbox_renders_all_options(acro_form: PDAcroForm) -> None:
     assert b"alpha" in body
     assert b"beta" in body
     assert b"gamma" in body
-    # selection highlight
-    assert b"0.6 0.75 0.85" in body
+    # selection highlight — upstream HIGHLIGHT_COLOR is {153/255, 193/255, 215/255}
+    assert b"0.6 0.7569 0.8431" in body
 
 
 # ---------- combo box ----------

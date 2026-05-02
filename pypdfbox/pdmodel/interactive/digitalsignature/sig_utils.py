@@ -20,6 +20,10 @@ _DOC_MDP: COSName = COSName.get_pdf_name("DocMDP")
 _P: COSName = COSName.get_pdf_name("P")
 _PERMS: COSName = COSName.get_pdf_name("Perms")
 _BYTE_RANGE: COSName = COSName.get_pdf_name("ByteRange")
+_CONTENTS: COSName = COSName.get_pdf_name("Contents")
+_TYPE: COSName = COSName.get_pdf_name("Type")
+_SIG: COSName = COSName.get_pdf_name("Sig")
+_DOC_TIME_STAMP: COSName = COSName.get_pdf_name("DocTimeStamp")
 
 
 # --------------------------------------------------------------------- MDP API
@@ -83,13 +87,31 @@ def set_mdp_permission(
     * ``2`` — form fill-in / signing allowed.
     * ``3`` — also annotation create/delete/modify allowed.
 
-    Raises :class:`ValueError` for any other value, and :class:`ValueError`
+    Raises :class:`ValueError` for any other value, :class:`ValueError`
     if a DocMDP transform is already present (only one MDP signature per
-    document is permitted by the spec)."""
+    document is permitted by the spec), and :class:`ValueError` if any
+    non-timestamp approval signature with ``/Contents`` already exists
+    on the document — the spec mandates that the certification (DocMDP)
+    signature precedes any approval signatures.
+    """
     if access_permissions not in (1, 2, 3):
         raise ValueError(
             f"Access permissions must be 1, 2 or 3; got {access_permissions}"
         )
+
+    # Mirror upstream SigUtils.setMDPPermission: reject if a previous
+    # non-timestamp approval signature with /Contents already exists.
+    for existing in document.get_signature_dictionaries():
+        existing_cos = existing.get_cos_object()
+        existing_type = existing_cos.get_item(_TYPE)
+        # Skip timestamp signatures — only approval signatures conflict.
+        if isinstance(existing_type, COSName) and existing_type.get_name() == "DocTimeStamp":
+            continue
+        if existing_cos.contains_key(_CONTENTS):
+            raise ValueError(
+                "DocMDP transform method not allowed if an approval signature exists"
+            )
+
     sig_dict = signature.get_cos_object()
     catalog = document.get_document_catalog()
 
@@ -160,8 +182,13 @@ def check_certificate_usage(certificate: Certificate) -> list[str]:
     * KeyUsage extension missing or marked non-critical.
     * ``digitalSignature`` and ``nonRepudiation`` both clear (need at least
       one for PDF signing).
-    * ExtendedKeyUsage present but lacks ``id-kp-emailProtection`` /
-      ``id-kp-codeSigning`` / Adobe-Authentic-Documents-Trust OID.
+    * ExtendedKeyUsage present but lacks any of: ``id-kp-emailProtection``
+      (1.3.6.1.5.5.7.3.4), ``id-kp-codeSigning`` (1.3.6.1.5.5.7.3.3),
+      ``anyExtendedKeyUsage`` (2.5.29.37.0),
+      Adobe-Authentic-Documents-Trust (1.2.840.113583.1.1.5),
+      or Microsoft document-signing (1.3.6.1.4.1.311.10.3.12 — not in
+      Adobe's docs but tolerated in practice). Matches upstream
+      ``SigUtils.checkCertificateUsage``.
     """
     warnings: list[str] = []
     try:
@@ -196,18 +223,59 @@ def check_certificate_usage(certificate: Certificate) -> list[str]:
         return warnings  # EKU is optional.
 
     eku_oids = {usage.dotted_string for usage in eku_ext.value}
-    # 1.3.6.1.5.5.7.3.4 = id-kp-emailProtection
-    # 1.3.6.1.5.5.7.3.3 = id-kp-codeSigning
+    # 1.3.6.1.5.5.7.3.4   = id-kp-emailProtection
+    # 1.3.6.1.5.5.7.3.3   = id-kp-codeSigning
+    # 2.5.29.37.0         = anyExtendedKeyUsage
     # 1.2.840.113583.1.1.5 = Adobe Authentic Documents Trust
+    # 1.3.6.1.4.1.311.10.3.12 = Microsoft Document Signing (not in Adobe
+    #                           docs, tolerated by upstream and Adobe Reader)
     expected = {
         "1.3.6.1.5.5.7.3.4",
         "1.3.6.1.5.5.7.3.3",
+        "2.5.29.37.0",
         "1.2.840.113583.1.1.5",
+        "1.3.6.1.4.1.311.10.3.12",
     }
     if eku_oids.isdisjoint(expected):
         warnings.append(
             "Certificate ExtendedKeyUsage lacks emailProtection / "
-            "codeSigning / Adobe Authentic Documents Trust"
+            "codeSigning / anyExtendedKeyUsage / Adobe Authentic "
+            "Documents Trust / Microsoft Document Signing"
+        )
+    return warnings
+
+
+def check_time_stamp_certificate_usage(certificate: Certificate) -> list[str]:
+    """Walk ``certificate`` for the ExtendedKeyUsage a TSA (RFC 3161
+    timestamp authority) certificate must carry — namely
+    ``id-kp-timeStamping`` (1.3.6.1.5.5.7.3.8).
+
+    Mirrors PDFBox examples ``SigUtils.checkTimeStampCertificateUsage``.
+    Returns a list of warnings; empty list means the TSA cert is properly
+    marked. If the certificate has no ExtendedKeyUsage extension at all
+    no warning is issued, matching upstream's permissive behavior (it
+    only logs when EKU is present-but-wrong).
+    """
+    warnings: list[str] = []
+    try:
+        from cryptography.x509 import ExtensionNotFound
+        from cryptography.x509.oid import ExtensionOID
+    except ImportError as exc:  # pragma: no cover — install-time
+        raise RuntimeError("cryptography is required for SigUtils") from exc
+
+    try:
+        eku_ext = certificate.extensions.get_extension_for_oid(
+            ExtensionOID.EXTENDED_KEY_USAGE
+        )
+    except ExtensionNotFound:
+        # Upstream only warns when EKU is present-but-wrong; absence is silent.
+        return warnings
+
+    eku_oids = {usage.dotted_string for usage in eku_ext.value}
+    if "1.3.6.1.5.5.7.3.8" not in eku_oids:
+        warnings.append(
+            "TSA certificate ExtendedKeyUsage lacks timeStamping "
+            "(1.3.6.1.5.5.7.3.8)"
         )
     return warnings
 
@@ -259,6 +327,10 @@ def get_last_relevant_signature(document: PDDocument) -> PDSignature | None:
     one whose update covers the most bytes. That is the signature applied
     by the most-recent incremental save, and so the one whose lock /
     permission bits are the active ones for the document's current state.
+
+    The picked signature's ``/Type`` must be absent, ``/Sig``, or
+    ``/DocTimeStamp``; any other ``/Type`` (e.g. ``/Catalog`` from a bogus
+    entry) yields ``None`` to match upstream's filter.
     """
     sigs = document.get_signature_dictionaries()
     if not sigs:
@@ -274,12 +346,21 @@ def get_last_relevant_signature(document: PDDocument) -> PDSignature | None:
         if end > best_end:
             best_end = end
             best = sig
-    if best is not None:
+    if best is None:
+        # Fallback: no /ByteRange anywhere — pick the final signature in
+        # document order so callers still get a usable handle.
+        best = sigs[-1]
+
+    # Upstream filters: only return if /Type is absent, /Sig, or /DocTimeStamp.
+    type_obj = best.get_cos_object().get_item(_TYPE)
+    if type_obj is None:
         return best
-    # Fallback: no /ByteRange anywhere — return the last in order, matching
-    # upstream's behavior of returning the final signature when ranges are
-    # missing.
-    return sigs[-1]
+    if isinstance(type_obj, COSName) and type_obj.get_name() in (
+        "Sig",
+        "DocTimeStamp",
+    ):
+        return best
+    return None
 
 
 # ------------------------------------------------------------- /ByteRange helpers
@@ -423,6 +504,7 @@ def extract_pkcs7_message_digest(pkcs7_der: bytes) -> bytes | None:
 __all__ = [
     "check_certificate_usage",
     "check_responder_certificate_usage",
+    "check_time_stamp_certificate_usage",
     "compute_byte_range",
     "compute_signed_digest",
     "extract_pkcs7_message_digest",

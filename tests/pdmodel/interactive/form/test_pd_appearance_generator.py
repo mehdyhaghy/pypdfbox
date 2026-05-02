@@ -430,7 +430,9 @@ def test_list_box_selected_row_emits_highlight_rect() -> None:
     # All three options rendered (one Tj per row).
     assert body.count(b"Tj") == 3
     # Selection highlight color (Acrobat default blue) emitted.
-    assert b"0.6 0.75 0.85" in body
+    # Upstream HIGHLIGHT_COLOR is exactly {153/255, 193/255, 215/255}
+    # — emitted to four decimal places by the float operand writer.
+    assert b"0.6 0.7569 0.8431" in body
     # f operator (fill) emitted for the highlight rect.
     assert b"f\n" in body
 
@@ -476,7 +478,9 @@ def test_list_box_selected_indices_drive_highlight() -> None:
     body = n.create_input_stream().read()
     # Two highlight rects = two `f` fill operators (plus background, none).
     # Just check the highlight color was emitted.
-    assert b"0.6 0.75 0.85" in body
+    # Upstream HIGHLIGHT_COLOR is exactly {153/255, 193/255, 215/255}
+    # — emitted to four decimal places by the float operand writer.
+    assert b"0.6 0.7569 0.8431" in body
 
 
 # ---------- signature unsigned-state placeholder ----------
@@ -538,3 +542,106 @@ def test_signature_field_construct_appearances_does_not_generate_placeholder() -
 
     widget_cos = sig.get_widgets()[0].get_cos_object()
     assert widget_cos.get_dictionary_object(_AP) is None
+
+
+# ---------- upstream-parity constants ----------
+
+
+def test_constants_match_upstream() -> None:
+    """Mirrors AppearanceGeneratorHelper static constants verbatim."""
+    assert PDAppearanceGenerator.FONTSCALE == 1000
+    assert PDAppearanceGenerator.MINIMUM_FONT_SIZE == 4.0
+    assert PDAppearanceGenerator.DEFAULT_FONT_SIZE == 12.0
+    assert PDAppearanceGenerator.DEFAULT_PADDING == 0.5
+    # HIGHLIGHT_COLOR — upstream is {153/255f, 193/255f, 215/255f}.
+    r, g, b = PDAppearanceGenerator.HIGHLIGHT_COLOR
+    assert abs(r - 153.0 / 255.0) < 1e-9
+    assert abs(g - 193.0 / 255.0) < 1e-9
+    assert abs(b - 215.0 / 255.0) < 1e-9
+
+
+# ---------- set_appearance_value ----------
+
+
+def test_set_appearance_value_sets_value_and_regenerates() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.get_cos_object().set_item(_RECT, _rect(0, 0, 100, 20))
+    tf.get_cos_object().set_string(_DA, "/Helv 10 Tf 0 g")
+
+    PDAppearanceGenerator().set_appearance_value(tf, "fresh")
+
+    assert tf.get_value() == "fresh"
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    assert isinstance(n, COSStream)
+    body = n.create_input_stream().read()
+    assert b"fresh" in body
+
+
+def test_set_appearance_value_collapses_newlines_for_single_line_text() -> None:
+    """PDFBOX-3911: single-line /Tx widgets collapse newlines to spaces."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 20))
+    tf.get_cos_object().set_string(_DA, "/Helv 10 Tf 0 g")
+
+    PDAppearanceGenerator().set_appearance_value(tf, "line1\nline2\rline3")
+
+    # Field /V also normalized.
+    assert "\n" not in (tf.get_value() or "")
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    # Newlines flattened — all three tokens on one line, joined by spaces.
+    assert b"line1 line2 line3" in body
+
+
+def test_generate_collapses_newlines_for_single_line_text_field() -> None:
+    """``generate()`` directly also normalizes — covers callers that
+    set /V outside ``set_appearance_value``."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 20))
+    tf.get_cos_object().set_string(_DA, "/Helv 10 Tf 0 g")
+    # Stuff /V directly with control characters — multiline = False.
+    tf.set_value("abc def ghi")
+
+    PDAppearanceGenerator().generate(tf)
+
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    assert b"abc def ghi" in body
+
+
+def test_set_appearance_value_preserves_newlines_for_multiline() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 60))
+    tf.get_cos_object().set_string(_DA, "/Helv 10 Tf 0 g")
+    tf.set_multiline(True)
+
+    PDAppearanceGenerator().set_appearance_value(tf, "first\nsecond")
+
+    # Multi-line keeps the embedded newline in /V.
+    assert tf.get_value() == "first\nsecond"
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    # Both lines emitted as separate Tj operators.
+    assert b"first" in body
+    assert b"second" in body
+
+
+def test_set_appearance_value_handles_none_value() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.get_cos_object().set_item(_RECT, _rect(0, 0, 100, 20))
+    tf.get_cos_object().set_string(_DA, "/Helv 10 Tf 0 g")
+    tf.set_value("seed")
+
+    PDAppearanceGenerator().set_appearance_value(tf, None)
+
+    # None -> empty string (single-line normalization treats it as "").
+    assert (tf.get_value() or "") == ""

@@ -13,6 +13,7 @@ from .pkcs7_signature import Pkcs7Signature
 from .sig_utils import (
     check_certificate_usage,
     check_responder_certificate_usage,
+    check_time_stamp_certificate_usage,
     compute_byte_range,
     compute_signed_digest,
     extract_pkcs7_message_digest,
@@ -38,6 +39,7 @@ __all__ = [
     "SignatureValidationResult",
     "check_certificate_usage",
     "check_responder_certificate_usage",
+    "check_time_stamp_certificate_usage",
     "compute_byte_range",
     "compute_signed_digest",
     "extract_pkcs7_message_digest",

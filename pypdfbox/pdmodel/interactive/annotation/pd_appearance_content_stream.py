@@ -122,6 +122,20 @@ class PDAppearanceContentStream(PDPageContentStream):
         """Return the appearance stream this writer targets."""
         return self._appearance
 
+    def get_resources(self) -> PDResources:
+        """Return the ``/Resources`` dictionary the writer is binding font
+        + xobject names against. Mirrors upstream's
+        ``PDAbstractContentStream.getResources`` accessor — we override
+        here because the lite-port appearance writer bypasses the parent
+        constructor."""
+        return self._resources
+
+    def is_compress(self) -> bool:
+        """Return whether the writer will Flate-encode the content stream
+        on close. Returns ``False`` when an external output stream was
+        supplied (the caller owns the filter chain in that case)."""
+        return self._compress
+
     # ------------------------------------------------------------------
     # color — "on demand" helpers
     # ------------------------------------------------------------------

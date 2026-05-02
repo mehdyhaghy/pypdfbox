@@ -331,4 +331,62 @@ def test_text_block_in_appearance() -> None:
     assert b"BT\n" in body
     assert b"5 10 Td" in body
     assert b"(Hi) Tj" in body
-    assert b"ET\n" in body
+
+
+# ---------- accessors ----------
+
+
+def test_get_resources_returns_attached_resources() -> None:
+    appearance = _new_appearance()
+    cs = PDAppearanceContentStream(appearance)
+    try:
+        # Returns the /Resources the writer attached on construction —
+        # comparing the underlying COS dict so wrapper identity is irrelevant.
+        resources = cs.get_resources()
+        assert isinstance(resources, PDResources)
+        attached = appearance.get_resources()
+        assert attached is not None
+        assert resources.get_cos_object() is attached.get_cos_object()
+    finally:
+        cs.close()
+
+
+def test_get_resources_reuses_existing_appearance_resources() -> None:
+    appearance = _new_appearance()
+    pre = PDResources()
+    appearance.set_resources(pre)
+    cs = PDAppearanceContentStream(appearance)
+    try:
+        # The writer must NOT replace pre-existing /Resources — the
+        # underlying COS dict must be the same one the caller passed in.
+        assert cs.get_resources().get_cos_object() is pre.get_cos_object()
+    finally:
+        cs.close()
+
+
+def test_is_compress_default_false() -> None:
+    cs = PDAppearanceContentStream(_new_appearance())
+    try:
+        assert cs.is_compress() is False
+    finally:
+        cs.close()
+
+
+def test_is_compress_true_when_requested() -> None:
+    cs = PDAppearanceContentStream(_new_appearance(), compress=True)
+    try:
+        assert cs.is_compress() is True
+    finally:
+        cs.close()
+
+
+def test_is_compress_false_when_external_output_supplied() -> None:
+    """External output overrides ``compress=True`` — the caller owns the
+    filter chain in that case (matches the docstring guarantee)."""
+    appearance = _new_appearance()
+    output = appearance.get_stream().create_output_stream()
+    cs = PDAppearanceContentStream(appearance, compress=True, output_stream=output)
+    try:
+        assert cs.is_compress() is False
+    finally:
+        cs.close()

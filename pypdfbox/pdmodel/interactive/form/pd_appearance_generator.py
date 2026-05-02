@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import (
@@ -199,6 +200,33 @@ class PDAppearanceGenerator:
     AUTO_FONT_SIZE_MIN: float = 4.0
     AUTO_FONT_SIZE_MAX: float = 12.0
 
+    # Upstream parity constants (mirror AppearanceGeneratorHelper static fields).
+    # FONTSCALE — font units are 1/1000 em; multiply a unit value by
+    # ``size / FONTSCALE`` to get user-space pixels.
+    FONTSCALE: int = 1000
+    # MINIMUM_FONT_SIZE — used by upstream's iterative auto-size to avoid
+    # picking a size below 4pt; the lite-port auto-size also clamps here.
+    MINIMUM_FONT_SIZE: float = 4.0
+    # DEFAULT_PADDING — Acrobat's default 0.5pt padding around the field
+    # bbox. The lite port uses a 1pt margin (interior_w = width - 2.0)
+    # for the clip rect, but the upstream constant is preserved here so
+    # callers porting from upstream code can reference it.
+    DEFAULT_PADDING: float = 0.5
+    # HIGHLIGHT_COLOR — Acrobat's listbox-selection highlight (sRGB).
+    # Upstream value is {153/255, 193/255, 215/255} — preserved exactly.
+    HIGHLIGHT_COLOR: tuple[float, float, float] = (
+        153.0 / 255.0,
+        193.0 / 255.0,
+        215.0 / 255.0,
+    )
+
+    # Newline characters upstream's PATTERN regex matches (PDFBOX-3911):
+    # CRLF, LF, VT, FF, CR, NEL (U+0085), LS (U+2028), PS (U+2029).
+    # Single-line text fields collapse any of these to a single space.
+    _NEWLINE_PATTERN: re.Pattern[str] = re.compile(
+        "\r\n|[\n\u000B\u000C\r\u0085\u2028\u2029]"
+    )
+
     # ZapfDingbats character code for the heavy check mark glyph (a4).
     # PDF 32000-1:2008 Annex D uses code 0x34 ('4') for "a20" check.
     ZAPFDINGBATS_CHECK = b"4"
@@ -212,6 +240,30 @@ class PDAppearanceGenerator:
     # ------------------------------------------------------------------
     # public surface
     # ------------------------------------------------------------------
+
+    def set_appearance_value(self, field: PDField, ap_value: str | None) -> None:
+        """Set ``field``'s ``/V`` to ``ap_value`` and regenerate every widget's
+        normal appearance.
+
+        Mirrors upstream ``AppearanceGeneratorHelper.setAppearanceValue``
+        (the only public method on the upstream helper). Upstream
+        constructs the helper with the field, then accepts only the new
+        value here; the lite port collapses both into one call.
+
+        Per PDFBOX-3911, single-line ``PDTextField`` values collapse
+        every newline-class character (``\\n``, ``\\r``, VT, FF, NEL,
+        LS, PS, and the CRLF pair) to a single space before
+        regeneration — matches Adobe Reader's interactive-entry
+        behavior.
+        """
+        from .pd_text_field import PDTextField
+
+        if isinstance(field, PDTextField) and not field.is_multiline():
+            normalized = self._NEWLINE_PATTERN.sub(" ", ap_value or "")
+            field.set_value(normalized)
+        else:
+            field.set_value(ap_value)  # type: ignore[attr-defined]
+        self.generate(field)
 
     def generate(self, field: PDField) -> None:
         """Regenerate the ``/AP /N`` normal appearance of every widget on
@@ -281,6 +333,13 @@ class PDAppearanceGenerator:
             is_password = field.is_password()
             max_len = field.get_max_len()
             quadding = field.get_q()
+
+        # PDFBOX-3911: single-line text fields collapse newline-class
+        # characters to a single space before rendering. Multi-line and
+        # comb fields keep newlines so the wrap / cell logic can split on
+        # them.
+        if not is_multiline and not is_comb and value:
+            value = self._NEWLINE_PATTERN.sub(" ", value)
 
         # Password fields render every char as an asterisk per PDF 32000-1
         # §12.7.4.3 — the underlying ``/V`` value is unchanged. We mask once
@@ -650,7 +709,7 @@ class PDAppearanceGenerator:
                     continue
                 row_y = top_y - visible_idx * line_height
                 # Highlight rect spans the full interior width and one line.
-                cs.set_non_stroking_color((0.6, 0.75, 0.85))
+                cs.set_non_stroking_color(self.HIGHLIGHT_COLOR)
                 cs.add_rect(
                     1.0,
                     max(0.0, row_y - resolved_size * 0.15),

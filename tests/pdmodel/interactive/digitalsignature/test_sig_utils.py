@@ -9,6 +9,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
     check_certificate_usage,
     check_responder_certificate_usage,
+    check_time_stamp_certificate_usage,
     compute_byte_range,
     compute_signed_digest,
     extract_pkcs7_message_digest,
@@ -401,3 +402,124 @@ def test_extract_pkcs7_message_digest_rejects_truncated_blob() -> None:
     oid_der = bytes.fromhex("06092A864886F70D010904")
     blob = oid_der + b"\x31\xff"  # claims 255 bytes follow but they don't
     assert extract_pkcs7_message_digest(blob) is None
+
+
+# ----------------------------------------------- check_time_stamp_certificate_usage
+
+
+def test_time_stamp_cert_with_time_stamping_passes():
+    """TSA cert carrying id-kp-timeStamping (1.3.6.1.5.5.7.3.8) is OK."""
+    cert = _make_cert(extended_key_usage=["1.3.6.1.5.5.7.3.8"])
+    assert check_time_stamp_certificate_usage(cert) == []
+
+
+def test_time_stamp_cert_without_time_stamping_warns():
+    """TSA cert with EKU but missing id-kp-timeStamping warns."""
+    cert = _make_cert(extended_key_usage=["1.3.6.1.5.5.7.3.4"])
+    warnings = check_time_stamp_certificate_usage(cert)
+    assert any("timeStamping" in w for w in warnings)
+    assert any("1.3.6.1.5.5.7.3.8" in w for w in warnings)
+
+
+def test_time_stamp_cert_without_eku_is_silent():
+    """Matches upstream: no EKU at all is silent (only present-but-wrong warns)."""
+    cert = _make_cert()
+    assert check_time_stamp_certificate_usage(cert) == []
+
+
+# --------------------------------- check_certificate_usage extended OID acceptance
+
+
+def test_check_certificate_usage_accepts_any_extended_key_usage():
+    """anyExtendedKeyUsage (2.5.29.37.0) is accepted by upstream."""
+    cert = _make_cert(
+        key_usage={"digital_signature": True},
+        extended_key_usage=["2.5.29.37.0"],
+    )
+    assert check_certificate_usage(cert) == []
+
+
+def test_check_certificate_usage_accepts_microsoft_document_signing():
+    """Microsoft Document Signing (1.3.6.1.4.1.311.10.3.12) is tolerated."""
+    cert = _make_cert(
+        key_usage={"digital_signature": True},
+        extended_key_usage=["1.3.6.1.4.1.311.10.3.12"],
+    )
+    assert check_certificate_usage(cert) == []
+
+
+# -------------------------------- set_mdp_permission approval-signature gating
+
+
+def test_set_mdp_permission_rejects_when_approval_signature_present():
+    """Upstream raises if any non-timestamp /Contents-bearing signature
+    already exists — the certification (DocMDP) signature must precede
+    approval signatures."""
+    doc = PDDocument()
+
+    # Attach an approval signature first (with /Contents).
+    approval = _attach_signature(doc, [0, 100, 200, 50])
+    approval.get_cos_object().set_item(
+        COSName.get_pdf_name("Contents"), COSName.get_pdf_name("placeholder")
+    )
+
+    new_sig = PDSignature()
+    with pytest.raises(ValueError, match="approval signature exists"):
+        set_mdp_permission(doc, new_sig, 2)
+
+
+def test_set_mdp_permission_skips_doc_time_stamp_signatures():
+    """A timestamp-only signature must not block a DocMDP install."""
+    doc = PDDocument()
+    timestamp = _attach_signature(doc, [0, 100, 200, 50])
+    ts_cos = timestamp.get_cos_object()
+    ts_cos.set_item(
+        COSName.get_pdf_name("Type"),
+        COSName.get_pdf_name("DocTimeStamp"),
+    )
+    ts_cos.set_item(
+        COSName.get_pdf_name("Contents"), COSName.get_pdf_name("placeholder")
+    )
+
+    cert_sig = PDSignature()
+    set_mdp_permission(doc, cert_sig, 2)
+    assert get_mdp_permission(doc) == 2
+
+
+# ---------------------------- get_last_relevant_signature /Type filter
+
+
+def test_get_last_relevant_signature_filters_unknown_type():
+    """If the candidate's /Type is something other than /Sig or
+    /DocTimeStamp, upstream returns None."""
+    doc = PDDocument()
+    sig = _attach_signature(doc, [0, 100, 200, 50])
+    sig.get_cos_object().set_item(
+        COSName.get_pdf_name("Type"),
+        COSName.get_pdf_name("SomethingElse"),
+    )
+    assert get_last_relevant_signature(doc) is None
+
+
+def test_get_last_relevant_signature_accepts_doc_time_stamp_type():
+    doc = PDDocument()
+    sig = _attach_signature(doc, [0, 100, 200, 50])
+    sig.get_cos_object().set_item(
+        COSName.get_pdf_name("Type"),
+        COSName.get_pdf_name("DocTimeStamp"),
+    )
+    chosen = get_last_relevant_signature(doc)
+    assert chosen is not None
+    assert chosen.get_cos_object() is sig.get_cos_object()
+
+
+def test_get_last_relevant_signature_accepts_explicit_sig_type():
+    doc = PDDocument()
+    sig = _attach_signature(doc, [0, 100, 200, 50])
+    sig.get_cos_object().set_item(
+        COSName.get_pdf_name("Type"),
+        COSName.get_pdf_name("Sig"),
+    )
+    chosen = get_last_relevant_signature(doc)
+    assert chosen is not None
+    assert chosen.get_cos_object() is sig.get_cos_object()
