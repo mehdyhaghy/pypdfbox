@@ -116,6 +116,13 @@ class PDXObject:
         ``getSubType()``."""
         return self.get_cos_object().get_name(_SUBTYPE)
 
+    def get_sub_type(self) -> str | None:
+        """Mechanical snake_case translation of upstream ``getSubType()``
+        (camelCase → snake_case treats the second capital ``T`` as a word
+        boundary). Identical to :meth:`get_subtype`; both spellings are
+        kept live so call sites that follow either convention compile."""
+        return self.get_subtype()
+
     def get_metadata(self) -> PDMetadata | None:
         """Typed ``/Metadata`` XMP wrapper; ``None`` when absent. Mirrors
         upstream ``getMetadata()``."""

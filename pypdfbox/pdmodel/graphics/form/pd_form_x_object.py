@@ -25,6 +25,8 @@ from pypdfbox.pdmodel.pd_resources import PDResources
 if TYPE_CHECKING:
     from pypdfbox.io.random_access_read import RandomAccessRead
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
 _FORM: COSName = COSName.get_pdf_name("Form")
 _FORMTYPE: COSName = COSName.get_pdf_name("FormType")
@@ -55,10 +57,26 @@ class PDFormXObject(PDXObject):
       page's resources at use-time).
     """
 
-    def __init__(self, stream: PDStream | COSStream) -> None:
+    def __init__(
+        self,
+        stream: PDStream | COSStream | PDDocument,
+        cache: PDResourceCache | None = None,
+    ) -> None:
+        # Local import — PDDocument pulls in PDPage / PDResources which
+        # themselves depend on this module at construction time.
+        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+
+        if isinstance(stream, PDDocument):
+            # Mirrors upstream ``PDFormXObject(PDDocument)`` — create a
+            # blank form-XObject stream owned by the document for writing.
+            stream = PDStream(stream)
         super().__init__(stream, _FORM)
         # Mirror upstream: lazily-resolved cached typed group attributes.
         self._group_attributes: PDTransparencyGroupAttributes | None = None
+        # Mirrors upstream's ``private final ResourceCache cache`` — when
+        # set, ``get_resources()`` threads it through to the new
+        # ``PDResources`` so font/X-object look-ups hit the cache.
+        self._cache: PDResourceCache | None = cache
 
     # ---------- /FormType ----------
 
@@ -138,11 +156,15 @@ class PDFormXObject(PDXObject):
         """``/Resources`` if present, else ``None``. Note: when the key is
         present but the value isn't a dictionary, upstream returns an empty
         ``PDResources`` (PDFBOX-4372 — guards against a self-reference where
-        the form refers to itself). We mirror that."""
+        the form refers to itself). We mirror that.
+
+        When this form was constructed with a :class:`PDResourceCache`,
+        the cache is threaded through to the returned :class:`PDResources`
+        — matching upstream ``new PDResources(resources, cache)``."""
         cos = self.get_cos_object()
         value = cos.get_dictionary_object(_RESOURCES)
         if isinstance(value, COSDictionary):
-            return PDResources(value)
+            return PDResources(value, resource_cache=self._cache)
         if cos.contains_key(_RESOURCES):
             return PDResources()
         return None

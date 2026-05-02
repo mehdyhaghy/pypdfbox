@@ -23,6 +23,24 @@ def test_get_subtype_returns_custom_subtype_name() -> None:
     assert xobject.get_subtype() == "PS"
 
 
+def test_get_sub_type_alias_matches_get_subtype() -> None:
+    # Mechanical snake_case translation of upstream ``getSubType()``.
+    # Both spellings must remain live and agree.
+    stream = COSStream()
+    xobject = PDXObject(stream, COSName.get_pdf_name("Image"))
+    assert xobject.get_sub_type() == xobject.get_subtype() == "Image"
+
+
+def test_get_sub_type_returns_none_when_subtype_missing() -> None:
+    # ``PDXObject`` without a stamped /Subtype (constructed indirectly).
+    stream = COSStream()
+    # Drop the /Subtype entry to simulate a malformed stream.
+    xobject = PDXObject(stream, COSName.get_pdf_name("Form"))
+    stream.remove_item(COSName.SUBTYPE)  # type: ignore[attr-defined]
+    assert xobject.get_sub_type() is None
+    assert xobject.get_subtype() is None
+
+
 def test_get_metadata_returns_none_when_absent() -> None:
     stream = COSStream()
     xobject = PDXObject(stream, COSName.get_pdf_name("Form"))

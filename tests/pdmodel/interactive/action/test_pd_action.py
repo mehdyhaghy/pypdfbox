@@ -165,3 +165,91 @@ def test_submit_reset_import_hide_and_thread_accessors_round_trip_cos() -> None:
     assert import_data.get_file() is None
     assert hide.get_t() is None
     assert thread.get_b() is None
+
+
+def test_pd_action_type_constant_and_default_type_entry() -> None:
+    # Class-level TYPE constant mirrors upstream public static final
+    # PDAction.TYPE = "Action".
+    assert PDAction.TYPE == "Action"
+
+    action = PDActionGoTo()
+    # The default constructor stamps /Type Action on the dictionary.
+    assert action.get_type() == "Action"
+    assert action.get_cos_object().get_name(COSName.TYPE) == "Action"
+
+
+def test_pd_action_set_type_round_trip_and_preserves_existing() -> None:
+    # set_type stores into /Type as a name. Behavior mirrors the protected
+    # upstream setType (exposed as public here since Python lacks Java
+    # visibility modifiers).
+    action = PDActionGoTo()
+    action.set_type("CustomType")
+    assert action.get_type() == "CustomType"
+
+    # An action wrapped around an existing dictionary that already
+    # carries /Type retains that value (constructor only stamps when
+    # missing).
+    raw = COSDictionary()
+    raw.set_name(COSName.TYPE, "Preset")
+    raw.set_name(COSName.get_pdf_name("S"), "URI")
+    wrapped = PDActionURI(raw)
+    assert wrapped.get_type() == "Preset"
+
+
+def test_pd_action_get_next_returns_none_when_absent() -> None:
+    action = PDActionGoTo()
+    assert action.get_next() is None
+
+
+def test_pd_action_set_next_with_list_round_trip() -> None:
+    action = PDActionGoTo()
+    follow_up_a = PDActionURI()
+    follow_up_a.set_uri("https://a.example")
+    follow_up_b = PDActionNamed()
+    follow_up_b.set_n("NextPage")
+
+    action.set_next([follow_up_a, follow_up_b])
+
+    # Stored as a COSArray of action dictionaries.
+    raw_next = action.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Next")
+    )
+    assert isinstance(raw_next, COSArray)
+    assert raw_next.size() == 2
+
+    next_actions = action.get_next()
+    assert next_actions is not None
+    assert len(next_actions) == 2
+    assert isinstance(next_actions[0], PDActionURI)
+    assert next_actions[0].get_uri() == "https://a.example"
+    assert isinstance(next_actions[1], PDActionNamed)
+    assert next_actions[1].get_n() == "NextPage"
+
+
+def test_pd_action_get_next_handles_single_dictionary_form() -> None:
+    # PDF 32000-1 §12.6.2: /Next may be either a single action dictionary
+    # or an array. The single-dictionary form must be handled.
+    parent = PDActionGoTo()
+    nested = COSDictionary()
+    nested.set_name(COSName.get_pdf_name("S"), "URI")
+    nested.set_string(COSName.get_pdf_name("URI"), "https://single.example")
+    parent.get_cos_object().set_item(COSName.get_pdf_name("Next"), nested)
+
+    next_actions = parent.get_next()
+    assert next_actions is not None
+    assert len(next_actions) == 1
+    assert isinstance(next_actions[0], PDActionURI)
+    assert next_actions[0].get_uri() == "https://single.example"
+
+
+def test_pd_action_set_next_with_none_clears_entry() -> None:
+    action = PDActionGoTo()
+    action.set_next([PDActionURI()])
+    assert action.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Next")
+    ) is not None
+    action.set_next(None)
+    assert action.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Next")
+    ) is None
+    assert action.get_next() is None

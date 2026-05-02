@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _ACTION: COSName = COSName.get_pdf_name("Action")
 _S: COSName = COSName.get_pdf_name("S")
+_NEXT: COSName = COSName.get_pdf_name("Next")
 
 
 class PDAction:
     """Base action wrapper. Mirrors PDFBox ``PDAction``."""
+
+    #: Type entry value for an action dictionary (PDF 32000-1 §12.6.2).
+    TYPE: str = "Action"
 
     def __init__(
         self,
@@ -95,11 +99,67 @@ class PDAction:
     def get_cos_object(self) -> COSDictionary:
         return self._action
 
+    def get_type(self) -> str | None:
+        """Return the ``/Type`` entry of the action dictionary.
+
+        If present in a conforming document this is always ``"Action"``
+        (PDF 32000-1 §12.6.2 Table 192). Mirrors upstream
+        ``PDAction.getType()``.
+        """
+        return self._action.get_name(_TYPE)
+
+    def set_type(self, type_value: str) -> None:
+        """Set the ``/Type`` entry of the action dictionary.
+
+        Protected in upstream Java; exposed here as a public method since
+        Python has no equivalent visibility modifier. Conforming documents
+        should always pass ``"Action"``.
+        """
+        self._action.set_name(_TYPE, type_value)
+
     def get_sub_type(self) -> str | None:
         return self._action.get_name(_S)
 
     def set_sub_type(self, sub_type: str) -> None:
         self._action.set_name(_S, sub_type)
+
+    def get_next(self) -> list[PDAction] | None:
+        """Return the ``/Next`` action(s) to be performed after this one.
+
+        ``/Next`` may be a single action dictionary or an array of action
+        dictionaries (PDF 32000-1 §12.6.2 Table 192). Returns ``None`` if
+        no ``/Next`` entry exists. Mirrors upstream ``PDAction.getNext()``.
+        """
+        nxt = self._action.get_dictionary_object(_NEXT)
+        if nxt is None:
+            return None
+        if isinstance(nxt, COSDictionary):
+            single = PDAction.create(nxt)
+            return [single] if single is not None else []
+        if isinstance(nxt, COSArray):
+            actions: list[PDAction] = []
+            for i in range(nxt.size()):
+                entry = nxt.get_object(i)
+                if isinstance(entry, COSDictionary):
+                    pd = PDAction.create(entry)
+                    if pd is not None:
+                        actions.append(pd)
+            return actions
+        return None
+
+    def set_next(self, next_actions: list[PDAction] | None) -> None:
+        """Set the ``/Next`` action(s) to be performed after this one.
+
+        Stored as a ``COSArray`` of action dictionaries. ``None`` removes
+        the entry. Mirrors upstream ``PDAction.setNext(List<PDAction>)``.
+        """
+        if next_actions is None:
+            self._action.remove_item(_NEXT)
+            return
+        array = COSArray()
+        for entry in next_actions:
+            array.add(entry.get_cos_object())
+        self._action.set_item(_NEXT, array)
 
 
 __all__ = ["PDAction"]

@@ -379,3 +379,48 @@ def test_last_modified_round_trip() -> None:
     form.set_last_modified(None)
     assert form.get_last_modified() is None
     assert not form.get_cos_object().contains_key(_LAST_MODIFIED)
+
+
+# ---------- PDDocument constructor (mirrors upstream PDFormXObject(PDDocument)) ----------
+
+
+def test_constructor_accepts_pd_document_for_writing() -> None:
+    # Upstream provides ``PDFormXObject(PDDocument)`` to allocate a blank
+    # form-XObject stream owned by the document. Verify we mirror that.
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    document = PDDocument()
+    form = PDFormXObject(document)
+    cos = form.get_cos_object()
+    # /Type /XObject /Subtype /Form must still be stamped on the new stream.
+    assert cos.get_name(_TYPE) == "XObject"
+    assert cos.get_name(_SUBTYPE) == "Form"
+    # The stream is empty / freshly allocated.
+    assert form.get_form_type() == 1
+
+
+# ---------- ResourceCache constructor parameter ----------
+
+
+def test_constructor_threads_resource_cache_into_resources() -> None:
+    # Upstream's PDFormXObject(stream, ResourceCache) wires the cache into
+    # any PDResources returned by getResources(). We mirror that.
+    from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
+
+    cache = DefaultResourceCache()
+    form = PDFormXObject(COSStream(), cache=cache)
+    res = PDResources()
+    form.set_resources(res)
+
+    got = form.get_resources()
+    assert got is not None
+    assert got.get_resource_cache() is cache
+
+
+def test_constructor_defaults_resource_cache_to_none() -> None:
+    form = PDFormXObject(COSStream())
+    form.set_resources(PDResources())
+    got = form.get_resources()
+    assert got is not None
+    # No cache was supplied — upstream wires None.
+    assert got.get_resource_cache() is None
