@@ -515,3 +515,116 @@ def test_get_crop_box_unaffected_when_inside_media_box() -> None:
         576.0,
         756.0,
     )
+
+
+# ---------- Wave 200: rotation gate + annotation_filter ----------
+
+
+def test_get_rotation_non_multiple_of_90_returns_zero() -> None:
+    """Upstream gate: ``rotationAngle % 90 == 0`` — anything else
+    (45, 89, 271) is treated as not-set and returns 0."""
+    page = PDPage()
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 45)
+    assert page.get_rotation() == 0
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 89)
+    assert page.get_rotation() == 0
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 271)
+    assert page.get_rotation() == 0
+
+
+def test_get_rotation_negative_multiple_of_90_wraps_to_positive() -> None:
+    """Upstream wraps via ``(angle % 360 + 360) % 360`` so negatives stay
+    on the 0/90/180/270 axis."""
+    page = PDPage()
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), -90)
+    assert page.get_rotation() == 270
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), -360)
+    assert page.get_rotation() == 0
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), -450)
+    assert page.get_rotation() == 270
+
+
+def test_get_rotation_large_multiple_of_90() -> None:
+    """Multiples of 90 above 360 still reduce mod 360."""
+    page = PDPage()
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 720)
+    assert page.get_rotation() == 0
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 810)
+    assert page.get_rotation() == 90
+
+
+def test_get_rotation_non_numeric_returns_zero() -> None:
+    """A non-COSNumber ``/Rotate`` (e.g. accidental name) → 0."""
+    page = PDPage()
+    page.get_cos_object().set_item(
+        COSName.get_pdf_name("Rotate"),
+        COSName.get_pdf_name("Foo"),
+    )
+    assert page.get_rotation() == 0
+
+
+def test_get_annotations_with_filter_keeps_only_accepted() -> None:
+    """``annotation_filter`` mirrors upstream's ``AnnotationFilter`` —
+    only annotations the callable returns truthy for are kept."""
+    page = PDPage()
+    arr = COSArray()
+    for subtype in ("Link", "Text", "Link"):
+        ann = COSDictionary()
+        ann.set_item(
+            COSName.get_pdf_name("Subtype"),
+            COSName.get_pdf_name(subtype),
+        )
+        arr.add(ann)
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
+
+    def keep_links(annotation: object) -> bool:
+        subtype = annotation.get_cos_object().get_name(  # type: ignore[attr-defined]
+            COSName.get_pdf_name("Subtype")
+        )
+        return subtype == "Link"
+
+    filtered = page.get_annotations(keep_links)
+    assert len(filtered) == 2
+    for ann in filtered:
+        assert ann.get_cos_object().get_name(
+            COSName.get_pdf_name("Subtype")
+        ) == "Link"
+
+
+def test_get_annotations_with_filter_none_is_accept_all() -> None:
+    """Passing ``None`` (or omitting) matches the upstream no-arg overload."""
+    page = PDPage()
+    arr = COSArray()
+    for subtype in ("Link", "Text", "FreeText"):
+        ann = COSDictionary()
+        ann.set_item(
+            COSName.get_pdf_name("Subtype"),
+            COSName.get_pdf_name(subtype),
+        )
+        arr.add(ann)
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
+    assert len(page.get_annotations()) == 3
+    assert len(page.get_annotations(None)) == 3
+    # Accept-all callable is equivalent.
+    assert len(page.get_annotations(lambda _a: True)) == 3
+    # Reject-all leaves an empty list.
+    assert page.get_annotations(lambda _a: False) == []
+
+
+def test_get_annotations_skips_null_entries() -> None:
+    """Upstream's ``if (item == null) continue;`` defensive skip — we must
+    not crash when a /Annots entry resolves to null."""
+    from pypdfbox.cos import COSNull
+
+    page = PDPage()
+    arr = COSArray()
+    arr.add(COSNull.NULL)  # type: ignore[attr-defined]
+    legit = COSDictionary()
+    legit.set_item(
+        COSName.get_pdf_name("Subtype"),
+        COSName.get_pdf_name("Link"),
+    )
+    arr.add(legit)
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
+    result = page.get_annotations()
+    assert len(result) == 1

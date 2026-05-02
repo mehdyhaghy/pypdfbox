@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
@@ -431,6 +431,85 @@ class PDCIDFontType0(PDCIDFont):
         if not program.has_glyph(name):
             return []
         return program.get_path(name)
+
+    def get_normalized_path(self, cid: int) -> list[tuple]:
+        """Normalized glyph outline for ``cid`` in 1/1000 em.
+
+        Mirrors upstream ``PDCIDFontType0.getNormalizedPath`` which on
+        the CFF-backed CIDFontType0 path is a thin alias of
+        :meth:`get_glyph_path`: the embedded CFF program already
+        expresses outlines in its own font units (1000 upem by default
+        for a CFF font matrix of ``[0.001 0 0 0.001 0 0]``), so no
+        coordinate transform is applied here. Distinct from the
+        :class:`PDCIDFontType2` override, which has to scale TTF
+        outlines from a non-1000 upem.
+        """
+        return self.get_glyph_path(cid)
+
+    # ---------- font-box accessors ----------
+
+    def get_font_box_font(self) -> CFFFont | None:
+        """Return the underlying embedded CFF font program, or ``None``
+        when the font is not embedded / cannot be parsed.
+
+        Mirrors upstream ``PDCIDFontType0.getFontBoxFont``. Upstream
+        keeps two private slots — ``cidFont`` (a :class:`CFFCIDFont`)
+        and ``t1Font`` (a name-keyed :class:`CFFType1Font` or a
+        substitute :class:`TrueTypeFont`) — and surfaces whichever is
+        non-null. For our CFF-only embedding path the two slots collapse
+        into one return value, which matches the Java getter when the
+        font *is* embedded. Substitute / fallback fonts are out of scope
+        — the renderer never reaches this path without a real
+        ``/FontFile3`` stream.
+        """
+        return self.get_cff_font()
+
+    def get_type2_char_string(self, cid: int) -> object | None:
+        """Return the Type 2 charstring wrapper for ``cid``, or ``None``
+        when the font has no embedded CFF program.
+
+        Mirrors upstream ``PDCIDFontType0.getType2CharString(int cid)``.
+        For a CID-keyed CFF the charset maps CIDs into the CharStrings
+        INDEX directly, so the wrapper indexes by GID == charset index
+        of ``cidNNNNN``. For a name-keyed (Type 1 -flavoured) CFF
+        embedded under a CIDFontType0 wrapper the CID is treated as
+        the GID, which mirrors upstream's
+        ``CFFType1Font.getType2CharString`` fall-through.
+        """
+        program = self.get_cff_font()
+        if program is None:
+            return None
+        if isinstance(program, CFFCIDFont):
+            target = self._cff_glyph_name(cid)
+            charset = program.get_charset()
+            if not charset:
+                gid = 0
+            else:
+                try:
+                    gid = charset.index(target)
+                except ValueError:
+                    gid = 0
+            return program.get_type2_char_string(gid)
+        # Name-keyed CFF: CID is GID.
+        return program.get_type2_char_string(int(cid))
+
+    # ---------- glyph-ID encoding ----------
+
+    def encode_glyph_id(self, glyph_id: int) -> bytes:
+        """Encoding by glyph index is unsupported for a CFF CIDFont.
+
+        Mirrors upstream ``PDCIDFontType0.encodeGlyphId(int)`` which
+        throws ``UnsupportedOperationException``: CFF-backed CIDFonts
+        encode by CID (a separate identity from GID for CID-keyed
+        programs), so a glyph-ID-only encoder cannot generate
+        round-trippable bytes. Callers that need encoding should go
+        through the parent :class:`PDType0Font.encode` / ``encodeGlyphId``
+        which routes via ``/Encoding`` and the descendant's CMap.
+        """
+        raise NotImplementedError(
+            "PDCIDFontType0.encode_glyph_id is unsupported — encode through "
+            "the parent PDType0Font's CMap-driven encoder instead."
+        )
 
 
 __all__ = ["PDCIDFontType0"]

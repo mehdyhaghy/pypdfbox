@@ -395,3 +395,39 @@ def test_get_kids_empty_when_no_kids_array() -> None:
     ``Collections.emptyList()``)."""
     node = COSDictionary()
     assert PDPageTree.get_kids(node) == []
+
+
+# ---------- Wave 200: get_count direct /Count read ----------
+
+
+def test_get_count_reads_count_entry_directly() -> None:
+    """``get_count()`` must mirror upstream's ``root.getInt(COUNT, 0)`` —
+    it returns whatever is stored, NOT a walk-validated count."""
+    tree = PDPageTree()
+    tree.add(_make_page())
+    tree.add(_make_page())
+    # Stomp on /Count to lie about the size — get_count() must report the lie.
+    tree.get_cos_object().set_int(COSName.COUNT, 42)  # type: ignore[attr-defined]
+    assert tree.get_count() == 42
+    # len() still walks the tree and reports the true count of 2.
+    assert len(tree) == 2
+
+
+def test_get_count_default_zero_when_count_absent() -> None:
+    """Upstream's ``getInt(COUNT, 0)`` defaults to 0 when /Count is missing."""
+    root = COSDictionary()
+    root.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    root.set_item(COSName.KIDS, COSArray())  # type: ignore[attr-defined]
+    # Note: deliberately do NOT set /Count.
+    tree = PDPageTree(root)
+    assert tree.get_count() == 0
+
+
+def test_get_count_handles_non_integer_entry_as_zero() -> None:
+    """A malformed non-integer /Count (e.g. accidental name) must default
+    to 0, mirroring upstream's ``getInt`` coercion semantics."""
+    tree = PDPageTree()
+    tree.get_cos_object().set_item(  # type: ignore[attr-defined]
+        COSName.COUNT, COSName.get_pdf_name("Bogus")
+    )
+    assert tree.get_count() == 0

@@ -422,5 +422,88 @@ class PDCIDFontType2(PDCIDFont):
             return []
         return list(pen.commands)  # type: ignore[attr-defined]
 
+    def get_normalized_path(self, cid: int) -> list[tuple]:
+        """Glyph outline for ``cid`` normalized to 1/1000 em.
+
+        Mirrors upstream ``PDCIDFontType2.getNormalizedPath`` which
+        scales the embedded TTF's outline by ``1000 / unitsPerEm`` so
+        downstream consumers (text extraction, structure tagging) get a
+        single unit system regardless of the font program's native upem.
+        Returns ``[]`` when no embedded program is available, the glyph
+        cannot be drawn, or the path is empty (matches upstream's
+        ``new GeneralPath()`` empty fallback).
+
+        Honours the upstream Acrobat-quirk: when the font is *not*
+        embedded and the resolved GID is 0 (notdef), no path is drawn
+        — Acrobat suppresses notdef boxes for substitute fonts (see
+        upstream comment referencing PDFBOX-2372).
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return []
+        try:
+            gid = self.cid_to_gid(cid)
+        except Exception:  # noqa: BLE001
+            return []
+        # Acrobat draws no notdef for substitute (non-embedded) fonts.
+        if gid == 0 and not self.is_embedded():
+            return []
+        path = self.get_glyph_path(cid)
+        if not path:
+            return []
+        units_per_em = ttf.get_units_per_em()
+        if units_per_em <= 0 or units_per_em == 1000:
+            return path
+        scale = 1000.0 / float(units_per_em)
+        scaled: list[tuple] = []
+        for cmd in path:
+            if len(cmd) <= 1:
+                # ("closepath",) — no coordinates to scale.
+                scaled.append(cmd)
+                continue
+            head = cmd[0]
+            coords = tuple(float(v) * scale for v in cmd[1:])
+            scaled.append((head, *coords))
+        return scaled
+
+    # ---------- glyph-ID encoding ----------
+
+    def encode_glyph_id(self, glyph_id: int) -> bytes:
+        """Encode a glyph index as the two-byte big-endian sequence
+        used in Identity-H / Identity-V content streams.
+
+        Mirrors upstream ``PDCIDFontType2.encodeGlyphId(int glyphId)``:
+        CIDs in a TrueType-backed Type0 font are always 2-byte (16-bit)
+        on the wire. Wider GIDs are masked to 16 bits — matching the
+        Java cast ``(byte)(glyphId >> 8 & 0xff)`` / ``(byte)(glyphId &
+        0xff)``.
+        """
+        gid = int(glyph_id) & 0xFFFF
+        return bytes((gid >> 8 & 0xFF, gid & 0xFF))
+
+    # ---------- OpenType wrapper predicates ----------
+
+    def is_open_type_post_script(self) -> bool:
+        """``True`` when the embedded font program is an OpenType file
+        with PostScript (CFF/CFF2) outlines.
+
+        Mirrors upstream's ``otf != null && otf.isPostScript()`` guard
+        used to decide between the TrueType ``glyf`` outline path and
+        the CFF Type 2 charstring outline path inside ``getPath`` /
+        ``getNormalizedPath``. Exposed as a predicate so callers that
+        reproduce the upstream branching can ask the question directly
+        instead of duck-typing the parsed program.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return False
+        is_post_script = getattr(ttf, "is_post_script", None)
+        if not callable(is_post_script):
+            return False
+        try:
+            return bool(is_post_script())
+        except Exception:  # noqa: BLE001
+            return False
+
 
 __all__ = ["PDCIDFontType2"]
