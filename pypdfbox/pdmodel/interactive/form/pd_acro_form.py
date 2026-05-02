@@ -114,6 +114,32 @@ class PDAcroForm:
         self._dictionary.set_item(_FIELDS, arr)
         self._invalidate_field_cache()
 
+    def has_fields(self) -> bool:
+        """Return ``True`` when this form has at least one root field.
+
+        Pypdfbox-only predicate (mirrors the ``hasXFA`` pattern). Equivalent
+        to ``len(form.get_fields()) > 0`` but avoids the per-call list
+        allocation. Useful when guarding flatten/refresh calls or when
+        deciding whether to drop the AcroForm dictionary entirely.
+        """
+        raw = self._dictionary.get_dictionary_object(_FIELDS)
+        if not isinstance(raw, COSArray):
+            return False
+        for i in range(raw.size()):
+            if isinstance(raw.get_object(i), COSDictionary):
+                return True
+        return False
+
+    def is_empty(self) -> bool:
+        """Return ``True`` when the form has no fields and no XFA payload.
+
+        Pypdfbox-only convenience: an "empty" AcroForm is one whose
+        catalog entry could be safely dropped without losing user data —
+        no widget references and no XFA datasets. Combines
+        :meth:`has_fields` and :meth:`has_xfa`.
+        """
+        return not self.has_fields() and not self.has_xfa()
+
     def get_field_tree(self) -> PDFieldTree:
         """Return an iterable view over every field in the AcroForm tree.
 
@@ -252,6 +278,14 @@ class PDAcroForm:
     # re-derive the bit positions.
     FLAG_SIGNATURES_EXIST: int = _FLAG_SIGNATURES_EXIST
     FLAG_APPEND_ONLY: int = _FLAG_APPEND_ONLY
+
+    # /Q quadding constants (PDF 32000-1 §12.7.3.3, Table 222 — same
+    # values as ``PDVariableText.QUADDING_*``). Re-exposed at class scope
+    # so callers driving ``set_q`` directly don't have to import
+    # PDVariableText.
+    QUADDING_LEFT: int = 0
+    QUADDING_CENTERED: int = 1
+    QUADDING_RIGHT: int = 2
 
     def _get_sig_flags(self) -> int:
         return self._dictionary.get_int(_SIG_FLAGS, 0)
@@ -404,6 +438,21 @@ class PDAcroForm:
             if field is not None:
                 out.append(field)
         return out
+
+    def has_calc_order(self) -> bool:
+        """Return ``True`` when this form has a non-empty ``/CO`` array.
+
+        Pypdfbox-only predicate — mirrors the ``hasXFA`` pattern. Lets
+        callers branch on calculation-order presence without paying the
+        cost of materialising the full :meth:`get_calc_order` list (which
+        resolves every entry through :class:`PDFieldFactory`)."""
+        raw = self._dictionary.get_dictionary_object(_CO)
+        if not isinstance(raw, COSArray):
+            return False
+        for i in range(raw.size()):
+            if isinstance(raw.get_object(i), COSDictionary):
+                return True
+        return False
 
     def set_calc_order(self, fields: list[PDField] | None) -> None:
         """Replace the ``/CO`` array. ``None`` or an empty list removes

@@ -54,6 +54,19 @@ def _is_page_dict(node: COSDictionary) -> bool:
     return not node.contains_key(_KIDS)
 
 
+def _is_page_tree_node(node: COSDictionary | None) -> bool:
+    """Return True when ``node`` is a page-tree intermediate (``/Type
+    /Pages`` *or* a node carrying a ``/Kids`` array). Mirrors upstream's
+    private ``isPageTreeNode`` helper — some files (PDFBOX-2250-229205.pdf)
+    omit ``/Type /Pages`` and rely on the ``/Kids`` presence heuristic."""
+    if node is None:
+        return False
+    type_name = node.get_dictionary_object(_TYPE)
+    if isinstance(type_name, COSName) and type_name == _PAGES:
+        return True
+    return node.contains_key(_KIDS)
+
+
 def _kids_array(node: COSDictionary) -> COSArray | None:
     kids = node.get_dictionary_object(_KIDS)
     return kids if isinstance(kids, COSArray) else None
@@ -296,6 +309,48 @@ class PDPageTree:
         kids.add_at(index + 1, new_dict)
         new_dict.set_item(_PARENT, parent)
         self._increment_count(parent, +1)
+
+    # ---------- node classification ----------
+
+    @staticmethod
+    def is_page_tree_node(node: COSDictionary | None) -> bool:
+        """Return ``True`` when ``node`` is a page-tree intermediate
+        (``/Type /Pages``) **or** a dict carrying a ``/Kids`` array.
+
+        Mirrors upstream's private ``isPageTreeNode`` heuristic — some
+        non-conformant PDFs omit ``/Type /Pages`` on intermediate nodes
+        but still keep ``/Kids``, so the predicate is deliberately lenient
+        on the second clause (see PDFBOX-2250-229205.pdf).
+        """
+        return _is_page_tree_node(node)
+
+    @staticmethod
+    def get_kids(node: COSDictionary) -> list[COSDictionary]:
+        """Return the ``/Kids`` of ``node`` as a list of ``COSDictionary``.
+
+        Mirrors upstream's ``getKids`` helper: missing/non-array ``/Kids``
+        yields the empty list, non-dictionary entries are skipped, and
+        ``null`` entries are repaired in place by injecting a fresh empty
+        ``/Type /Page`` dictionary so iteration stays well-formed (matches
+        upstream's ``"replaced null entry with an empty page"`` warning
+        path in PDPageTree.java).
+        """
+        kids = _kids_array(node)
+        if kids is None:
+            return []
+        result: list[COSDictionary] = []
+        for i in range(kids.size()):
+            entry = kids.get_object(i)
+            if isinstance(entry, COSDictionary):
+                result.append(entry)
+                continue
+            if entry is None:
+                # Repair-in-place: empty /Type /Page placeholder.
+                empty_page = COSDictionary()
+                empty_page.set_item(_TYPE, _PAGE)
+                kids.set(i, empty_page)
+                result.append(empty_page)
+        return result
 
     # ---------- inheritable attribute lookup ----------
 

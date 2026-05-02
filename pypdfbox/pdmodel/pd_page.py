@@ -365,6 +365,23 @@ class PDPage:
         # MediaBox absent everywhere — upstream defaults to Letter.
         return PDRectangle(0.0, 0.0, 612.0, 792.0)
 
+    def _clip_to_media_box(self, box: PDRectangle) -> PDRectangle:
+        """Clip ``box`` to the resolved media-box bounds.
+
+        Mirrors upstream ``PDPage.clipToMediaBox(PDRectangle)``: any portion
+        of the supplied rectangle that extends past the media box is trimmed
+        in place (lower-left snaps up, upper-right snaps down). Used by the
+        crop/bleed/trim/art accessors so an oversized box never reports
+        coordinates outside the page's printable surface.
+        """
+        media = self.get_media_box()
+        return PDRectangle(
+            max(media.lower_left_x, box.lower_left_x),
+            max(media.lower_left_y, box.lower_left_y),
+            min(media.upper_right_x, box.upper_right_x),
+            min(media.upper_right_y, box.upper_right_y),
+        )
+
     def get_media_box(self) -> PDRectangle:
         """Resolved ``/MediaBox``. Walks ``/Parent`` chain. Defaults to
         US Letter when absent (matches upstream)."""
@@ -378,11 +395,16 @@ class PDPage:
         self._page.set_item(_MEDIA_BOX, cos)
 
     def get_crop_box(self) -> PDRectangle:
-        """``/CropBox`` if present (inheritable), else ``/MediaBox``."""
+        """``/CropBox`` if present (inheritable), else ``/MediaBox``.
+
+        The returned rectangle is clipped to the media-box bounds when an
+        explicit ``/CropBox`` is in effect (mirrors upstream
+        ``clipToMediaBox`` — see PDPage.java line 472).
+        """
         # CropBox is inheritable per spec (PDF 1.7 §14.11.2).
         value = self._get_inheritable(_CROP_BOX)
         if isinstance(value, COSArray):
-            return PDRectangle.from_cos_array(value)
+            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
         return self.get_media_box()
 
     def set_crop_box(self, rect: PDRectangle | COSArray | None) -> None:
@@ -393,8 +415,15 @@ class PDPage:
         self._page.set_item(_CROP_BOX, cos)
 
     def get_bleed_box(self) -> PDRectangle:
-        """``/BleedBox`` if present, else ``/CropBox``."""
-        return self._get_box(_BLEED_BOX, fallback=self.get_crop_box())
+        """``/BleedBox`` if present, else ``/CropBox``.
+
+        Like the crop box, an explicit bleed box is clipped to the media-box
+        bounds (matches upstream's ``clipToMediaBox`` call).
+        """
+        value = self._page.get_dictionary_object(_BLEED_BOX)
+        if isinstance(value, COSArray):
+            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+        return self.get_crop_box()
 
     def set_bleed_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:
@@ -404,7 +433,11 @@ class PDPage:
         self._page.set_item(_BLEED_BOX, cos)
 
     def get_trim_box(self) -> PDRectangle:
-        return self._get_box(_TRIM_BOX, fallback=self.get_crop_box())
+        """``/TrimBox`` if present, else ``/CropBox`` (clipped to media)."""
+        value = self._page.get_dictionary_object(_TRIM_BOX)
+        if isinstance(value, COSArray):
+            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+        return self.get_crop_box()
 
     def set_trim_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:
@@ -414,7 +447,11 @@ class PDPage:
         self._page.set_item(_TRIM_BOX, cos)
 
     def get_art_box(self) -> PDRectangle:
-        return self._get_box(_ART_BOX, fallback=self.get_crop_box())
+        """``/ArtBox`` if present, else ``/CropBox`` (clipped to media)."""
+        value = self._page.get_dictionary_object(_ART_BOX)
+        if isinstance(value, COSArray):
+            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+        return self.get_crop_box()
 
     def set_art_box(self, rect: PDRectangle | COSArray | None) -> None:
         if rect is None:

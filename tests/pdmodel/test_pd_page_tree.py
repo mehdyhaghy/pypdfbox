@@ -304,3 +304,94 @@ def test_inheritable_attribute_walks_via_p_alias() -> None:
     value = PDPageTree.get_inheritable_attribute(leaf, COSName.get_pdf_name("Rotate"))
     assert isinstance(value, COSInteger)
     assert value.value == 270
+
+
+# ---------- is_page_tree_node ----------
+
+
+def test_is_page_tree_node_true_for_pages_type() -> None:
+    """``/Type /Pages`` always counts as an intermediate page-tree node."""
+    node = COSDictionary()
+    node.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    assert PDPageTree.is_page_tree_node(node) is True
+
+
+def test_is_page_tree_node_true_for_kids_without_type() -> None:
+    """Some malformed PDFs (PDFBOX-2250-229205.pdf) omit ``/Type /Pages``
+    but still carry ``/Kids``; upstream's heuristic treats those as
+    intermediates so we don't drop entire subtrees on read."""
+    node = COSDictionary()
+    node.set_item(COSName.KIDS, COSArray())  # type: ignore[attr-defined]
+    assert PDPageTree.is_page_tree_node(node) is True
+
+
+def test_is_page_tree_node_false_for_leaf_page() -> None:
+    """A leaf ``/Type /Page`` (with no ``/Kids``) is *not* an intermediate."""
+    page = COSDictionary()
+    page.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    assert PDPageTree.is_page_tree_node(page) is False
+
+
+def test_is_page_tree_node_false_for_none() -> None:
+    """``None`` mirrors upstream's null-check fall-through (``node != null``)."""
+    assert PDPageTree.is_page_tree_node(None) is False
+
+
+# ---------- get_kids ----------
+
+
+def test_get_kids_returns_dictionary_entries() -> None:
+    """Direct-dict kids are surfaced verbatim, in array order."""
+    a = COSDictionary()
+    a.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    b = COSDictionary()
+    b.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    node = COSDictionary()
+    node.set_item(COSName.KIDS, COSArray([a, b]))  # type: ignore[attr-defined]
+
+    kids = PDPageTree.get_kids(node)
+    assert kids == [a, b]
+
+
+def test_get_kids_repairs_null_entry_in_place() -> None:
+    """Mirrors upstream's ``"replaced null entry with an empty page"`` repair
+    — a ``null`` slot in /Kids becomes a fresh ``/Type /Page`` placeholder
+    *and* the slot in the underlying COSArray is mutated to match (so a
+    second call sees the same dict, not another fresh one)."""
+    real_page = COSDictionary()
+    real_page.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    kids_array = COSArray([real_page, None])  # type: ignore[list-item]
+    node = COSDictionary()
+    node.set_item(COSName.KIDS, kids_array)  # type: ignore[attr-defined]
+
+    kids = PDPageTree.get_kids(node)
+    assert len(kids) == 2
+    assert kids[0] is real_page
+    assert isinstance(kids[1], COSDictionary)
+    assert kids[1].get_name(COSName.TYPE) == "Page"  # type: ignore[attr-defined]
+    # The repair is in-place — a second call re-uses the same placeholder.
+    repaired = kids[1]
+    assert PDPageTree.get_kids(node)[1] is repaired
+
+
+def test_get_kids_skips_non_dictionary_entries() -> None:
+    """Non-null, non-dictionary entries (e.g. a stray COSName from a
+    corrupted /Kids) are skipped silently."""
+    page = COSDictionary()
+    page.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    kids_array = COSArray()
+    kids_array.add(page)
+    kids_array.add(COSName.get_pdf_name("Bogus"))
+
+    node = COSDictionary()
+    node.set_item(COSName.KIDS, kids_array)  # type: ignore[attr-defined]
+
+    kids = PDPageTree.get_kids(node)
+    assert kids == [page]
+
+
+def test_get_kids_empty_when_no_kids_array() -> None:
+    """Missing /Kids yields the empty list (upstream short-circuits to
+    ``Collections.emptyList()``)."""
+    node = COSDictionary()
+    assert PDPageTree.get_kids(node) == []

@@ -533,3 +533,133 @@ def test_set_signature_flags_preserves_unrelated_bits_when_toggling() -> None:
     # Clearing only one flag preserves the other two.
     form.set_signatures_exist(False)
     assert form.get_signature_flags() == (0x80 | PDAcroForm.FLAG_APPEND_ONLY)
+
+
+# ---------- Wave 169 — predicate helpers + QUADDING constants.
+
+
+def test_quadding_constants_match_pd_variable_text() -> None:
+    """``QUADDING_*`` are exposed at class scope so callers driving
+    ``set_q`` directly don't need to import :class:`PDVariableText`.
+    Values mirror PDF 32000-1 §12.7.3.3 Table 222 (0/1/2)."""
+    assert PDAcroForm.QUADDING_LEFT == 0
+    assert PDAcroForm.QUADDING_CENTERED == 1
+    assert PDAcroForm.QUADDING_RIGHT == 2
+
+    # Sanity check: the constants line up with what set_q / get_q
+    # round-trip.
+    form = PDAcroForm()
+    form.set_q(PDAcroForm.QUADDING_CENTERED)
+    assert form.get_q() == 1
+    form.set_q(PDAcroForm.QUADDING_RIGHT)
+    assert form.get_q() == 2
+
+
+def test_quadding_constants_match_pd_variable_text_module() -> None:
+    """Cross-check the values against :class:`PDVariableText`
+    constants — re-exposing them on PDAcroForm is for ergonomics, not
+    a different value."""
+    from pypdfbox.pdmodel.interactive.form.pd_variable_text import PDVariableText
+
+    assert PDAcroForm.QUADDING_LEFT == PDVariableText.QUADDING_LEFT
+    assert PDAcroForm.QUADDING_CENTERED == PDVariableText.QUADDING_CENTERED
+    assert PDAcroForm.QUADDING_RIGHT == PDVariableText.QUADDING_RIGHT
+
+
+def test_has_fields_returns_false_when_empty() -> None:
+    """``has_fields`` is ``False`` for a freshly-built form (constructor
+    seeds an empty ``/Fields`` array) and after ``set_fields(None)``."""
+    form = PDAcroForm()
+    assert form.has_fields() is False
+
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    assert form.has_fields() is True
+
+    form.set_fields(None)
+    assert form.has_fields() is False
+
+
+def test_has_fields_returns_false_when_fields_entry_missing() -> None:
+    """``has_fields`` survives a missing ``/Fields`` entry (PDFBOX-2965
+    parity — some PDFs drop the required entry entirely)."""
+    from pypdfbox.cos import COSName
+
+    form = PDAcroForm()
+    form.get_cos_object().remove_item(COSName.get_pdf_name("Fields"))
+    assert form.has_fields() is False
+
+
+def test_has_fields_skips_non_dictionary_entries() -> None:
+    """``has_fields`` only counts dictionary entries — non-dict entries
+    in ``/Fields`` (e.g. nulls or stray names) don't count as fields,
+    matching the dictionary-only filter in ``get_fields``."""
+    from pypdfbox.cos import COSArray, COSName, COSNull
+
+    form = PDAcroForm()
+    arr = COSArray()
+    arr.add(COSNull.NULL)
+    form.get_cos_object().set_item(COSName.get_pdf_name("Fields"), arr)
+    assert form.has_fields() is False
+
+    # Add a real dict entry — now the array reports as having fields.
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    arr.add(field.get_cos_object())
+    assert form.has_fields() is True
+
+
+def test_is_empty_combines_has_fields_and_has_xfa() -> None:
+    """``is_empty`` is true when both ``/Fields`` is empty AND ``/XFA``
+    is absent — the form's catalog entry could safely be dropped."""
+    from pypdfbox.cos import COSDictionary, COSName
+
+    form = PDAcroForm()
+    assert form.is_empty() is True
+
+    # Adding a field flips it.
+    field = PDFieldStub(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+    assert form.is_empty() is False
+
+    form.set_fields(None)
+    assert form.is_empty() is True
+
+    # Adding only an XFA payload still counts as non-empty.
+    form.get_cos_object().set_item(COSName.get_pdf_name("XFA"), COSDictionary())
+    assert form.is_empty() is False
+
+
+def test_has_calc_order_returns_false_when_absent() -> None:
+    """``has_calc_order`` is ``False`` for a fresh form (no ``/CO``)
+    and ``True`` after ``set_calc_order`` is given a non-empty list."""
+    form = PDAcroForm()
+    assert form.has_calc_order() is False
+
+    field = PDFieldStub(form)
+    field.set_partial_name("total")
+    form.set_calc_order([field])
+    assert form.has_calc_order() is True
+
+    # Empty list / None drops the entry — predicate flips back.
+    form.set_calc_order(None)
+    assert form.has_calc_order() is False
+    form.set_calc_order([])
+    assert form.has_calc_order() is False
+
+
+def test_has_calc_order_skips_non_dictionary_entries() -> None:
+    """``has_calc_order`` mirrors the dictionary-only filter in
+    ``get_calc_order`` — a ``/CO`` array containing only non-dict
+    entries reports as empty."""
+    from pypdfbox.cos import COSArray, COSName, COSNull
+
+    form = PDAcroForm()
+    arr = COSArray()
+    arr.add(COSNull.NULL)
+    form.get_cos_object().set_item(COSName.get_pdf_name("CO"), arr)
+    assert form.has_calc_order() is False
+    # And get_calc_order agrees.
+    assert form.get_calc_order() == []

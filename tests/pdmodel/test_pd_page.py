@@ -454,3 +454,64 @@ def test_get_contents_for_stream_parsing_delegates_to_random_access() -> None:
     buf = bytearray(rar.length())
     rar.read_into(buf)
     assert bytes(buf) == b"BT ET"
+
+
+# ---------- clip-to-media-box ----------
+
+
+def test_get_crop_box_clipped_to_media_box() -> None:
+    """Upstream ``PDPage.getCropBox`` runs the ``clipToMediaBox`` step —
+    a /CropBox that overhangs the /MediaBox is trimmed to the media bounds
+    on read (the stored array is left untouched)."""
+    page = PDPage(PDRectangle(0.0, 0.0, 100.0, 200.0))
+    # CropBox extends past the media box on every side.
+    page.set_crop_box(PDRectangle(-50.0, -25.0, 150.0, 250.0))
+    cb = page.get_crop_box()
+    assert (cb.lower_left_x, cb.lower_left_y, cb.upper_right_x, cb.upper_right_y) == (
+        0.0,
+        0.0,
+        100.0,
+        200.0,
+    )
+    # Stored COS entry is unmodified — clipping is a read-time projection.
+    raw = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("CropBox"))
+    assert isinstance(raw, COSArray)
+    stored = PDRectangle.from_cos_array(raw)
+    assert (stored.lower_left_x, stored.upper_right_x) == (-50.0, 150.0)
+
+
+def test_get_bleed_trim_art_clipped_to_media_box() -> None:
+    """All four supplemental boxes (bleed/trim/art) honour ``clipToMediaBox``
+    just like the crop box — boxes that overhang the media box are trimmed
+    on read."""
+    page = PDPage(PDRectangle(0.0, 0.0, 200.0, 300.0))
+    # Each box overhangs on a different side so we can spot incorrect snapping.
+    page.set_bleed_box(PDRectangle(-10.0, 0.0, 50.0, 50.0))
+    page.set_trim_box(PDRectangle(0.0, -20.0, 50.0, 50.0))
+    page.set_art_box(PDRectangle(150.0, 250.0, 250.0, 350.0))
+
+    bb = page.get_bleed_box()
+    assert bb.lower_left_x == 0.0  # snapped from -10
+    assert bb.upper_right_x == 50.0
+
+    tb = page.get_trim_box()
+    assert tb.lower_left_y == 0.0  # snapped from -20
+    assert tb.upper_right_y == 50.0
+
+    ab = page.get_art_box()
+    assert ab.upper_right_x == 200.0  # snapped from 250
+    assert ab.upper_right_y == 300.0  # snapped from 350
+
+
+def test_get_crop_box_unaffected_when_inside_media_box() -> None:
+    """When the crop box lies entirely within the media box, clipping is
+    a no-op — the returned rectangle matches the stored one byte-for-byte."""
+    page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+    page.set_crop_box(PDRectangle(36.0, 36.0, 576.0, 756.0))
+    cb = page.get_crop_box()
+    assert (cb.lower_left_x, cb.lower_left_y, cb.upper_right_x, cb.upper_right_y) == (
+        36.0,
+        36.0,
+        576.0,
+        756.0,
+    )
