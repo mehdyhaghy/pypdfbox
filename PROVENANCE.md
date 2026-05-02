@@ -350,6 +350,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_table_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDTableAttributeObject.java` (lite) |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_export_format_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDExportFormatAttributeObject.java` (lite) |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_user_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDUserAttributeObject.java` (lite — /P entries as plain dicts) |
+| `pypdfbox/pdmodel/documentinterchange/prepress/pd_box_style.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/prepress/PDBoxStyle.java` |
 | `pypdfbox/pdmodel/pd_page_content_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageContentStream.java` (lite — text encoding, AppendMode, compression, BMC/BDC/EMC deferred) |
 | `pypdfbox/contentstream/operator/operator_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/OperatorProcessor.java` (lite — handlers are no-op stubs) |
 | `pypdfbox/contentstream/operator/operator_registry.py` | 3.0.x | original (Python-side dispatch registry) |

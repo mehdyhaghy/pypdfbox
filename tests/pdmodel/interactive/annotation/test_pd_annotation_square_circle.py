@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotationCircle,
     PDAnnotationSquare,
     PDAnnotationSquareCircle,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 def test_square_default_constructor_sets_subtype() -> None:
@@ -122,3 +125,100 @@ def test_border_effect_clear() -> None:
     ann.set_border_effect(COSDictionary())
     ann.set_border_effect(None)
     assert ann.get_border_effect() is None
+
+
+# ---------- /RD (rectangle difference) ----------
+
+
+def test_rect_difference_default_is_none() -> None:
+    ann = PDAnnotationSquare()
+    assert ann.get_rect_difference() is None
+
+
+def test_rect_differences_default_is_empty_list() -> None:
+    """Mirror upstream's ``new float[]{}`` default for ``getRectDifferences``."""
+    ann = PDAnnotationCircle()
+    assert ann.get_rect_differences() == []
+
+
+def test_set_rect_difference_round_trip_square() -> None:
+    ann = PDAnnotationSquare()
+    rect = PDRectangle(1.0, 2.0, 3.0, 4.0)
+    ann.set_rect_difference(rect)
+    resolved = ann.get_rect_difference()
+    assert resolved is not None
+    assert resolved == rect
+
+
+def test_set_rect_difference_round_trip_circle() -> None:
+    ann = PDAnnotationCircle()
+    rect = PDRectangle(0.5, 1.5, 2.5, 3.5)
+    ann.set_rect_difference(rect)
+    resolved = ann.get_rect_difference()
+    assert resolved is not None
+    assert resolved == rect
+
+
+def test_set_rect_difference_none_clears() -> None:
+    ann = PDAnnotationSquare()
+    ann.set_rect_difference(PDRectangle(0, 0, 1, 1))
+    ann.set_rect_difference(None)
+    assert ann.get_rect_difference() is None
+    assert ann.get_rect_differences() == []
+
+
+def test_get_rect_difference_short_array_returns_none() -> None:
+    """Fewer than 4 entries → ``None`` per upstream guard."""
+    ann = PDAnnotationCircle()
+    short = COSArray([COSFloat(1.0), COSFloat(2.0)])
+    ann.get_cos_object().set_item(COSName.get_pdf_name("RD"), short)
+    assert ann.get_rect_difference() is None
+
+
+def test_set_rect_differences_uniform_single_float() -> None:
+    """``set_rect_differences(d)`` → all four sides equal ``d``."""
+    ann = PDAnnotationSquare()
+    ann.set_rect_differences(2.5)
+    assert ann.get_rect_differences() == [2.5, 2.5, 2.5, 2.5]
+
+
+def test_set_rect_differences_four_values() -> None:
+    ann = PDAnnotationCircle()
+    ann.set_rect_differences(1.0, 2.0, 3.0, 4.0)
+    assert ann.get_rect_differences() == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_set_rect_differences_list_form() -> None:
+    ann = PDAnnotationSquare()
+    ann.set_rect_differences([5.0, 6.0, 7.0, 8.0])
+    assert ann.get_rect_differences() == [5.0, 6.0, 7.0, 8.0]
+
+
+def test_set_rect_differences_none_clears() -> None:
+    ann = PDAnnotationCircle()
+    ann.set_rect_differences(3.0)
+    ann.set_rect_differences(None)
+    assert ann.get_rect_differences() == []
+    assert ann.get_rect_difference() is None
+
+
+def test_set_rect_differences_list_wrong_length_raises() -> None:
+    ann = PDAnnotationSquare()
+    with pytest.raises(ValueError):
+        ann.set_rect_differences([1.0, 2.0])
+
+
+def test_set_rect_differences_invalid_arity_raises() -> None:
+    ann = PDAnnotationCircle()
+    with pytest.raises(TypeError):
+        ann.set_rect_differences(1.0, 2.0, 3.0)  # type: ignore[arg-type]
+
+
+def test_get_rect_differences_after_set_rect_difference() -> None:
+    """Singular ``set_rect_difference`` round-trips through plural getter."""
+    ann = PDAnnotationSquare()
+    ann.set_rect_difference(PDRectangle(0.0, 0.0, 4.0, 8.0))
+    diffs = ann.get_rect_differences()
+    assert len(diffs) == 4
+    # PDRectangle.to_cos_array emits [llx, lly, urx, ury]
+    assert diffs == [0.0, 0.0, 4.0, 8.0]
