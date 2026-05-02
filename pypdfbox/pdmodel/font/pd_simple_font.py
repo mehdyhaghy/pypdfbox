@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 
@@ -16,6 +18,9 @@ from .pd_font_descriptor import (
     FLAG_SYMBOLIC,
 )
 from .standard14_fonts import Standard14Fonts
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
 _LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
@@ -226,6 +231,81 @@ class PDSimpleFont(PDFont):
             else:
                 out.append(code & 0xFF)
         return bytes(out)
+
+    # ---------- writing-mode / widths / subsetting (PDFontLike) ----------
+
+    def is_vertical(self) -> bool:
+        """Simple fonts never write vertically.
+
+        Mirrors upstream ``PDSimpleFont.isVertical`` which is hard-coded
+        to ``false`` — vertical writing in PDF is only available via
+        Type0 / CIDFont (``PDType0Font``).
+        """
+        return False
+
+    def has_explicit_width(self, code: int) -> bool:
+        """``True`` when ``/Widths`` carries an explicit advance for ``code``.
+
+        Mirrors upstream ``PDSimpleFont.hasExplicitWidth(int)``: the
+        font dictionary must contain a ``/Widths`` key, and ``code`` must
+        fall within ``[FirstChar, FirstChar + len(Widths))``. Default
+        widths (the descriptor's ``/MissingWidth``) do not count.
+        """
+        if self._dict.get_dictionary_object(_WIDTHS) is None:
+            return False
+        first_char = self._dict.get_int(_FIRST_CHAR, -1)
+        if code < first_char:
+            return False
+        return code - first_char < len(self.get_widths())
+
+    def will_be_subset(self) -> bool:
+        """``False`` for simple fonts.
+
+        Mirrors upstream ``PDSimpleFont.willBeSubset``: only TrueType
+        subsetting via ``PDType0Font`` is supported. ``PDTrueTypeFont``
+        overrides this when subsetting has been requested.
+        """
+        return False
+
+    def add_to_subset(self, code_point: int) -> None:
+        """Register a codepoint for subsetting.
+
+        Mirrors upstream ``PDSimpleFont.addToSubset(int)`` which raises
+        ``UnsupportedOperationException``. Concrete subclasses that
+        actually support subsetting (``PDTrueTypeFont``) override this.
+        """
+        raise NotImplementedError(
+            "subsetting is not supported for this simple-font subtype"
+        )
+
+    def subset(self) -> None:
+        """Run subsetting on this font.
+
+        Mirrors upstream ``PDSimpleFont.subset()`` which raises
+        ``UnsupportedOperationException``. Concrete subclasses that
+        actually support subsetting (``PDTrueTypeFont``) override this.
+        """
+        raise NotImplementedError(
+            "subsetting is not supported for this simple-font subtype"
+        )
+
+    @staticmethod
+    def is_non_zero_bounding_box(bbox: PDRectangle | None) -> bool:
+        """``True`` when ``bbox`` has at least one non-zero corner.
+
+        Mirrors upstream ``PDSimpleFont.isNonZeroBoundingBox(PDRectangle)``
+        — used by font-descriptor sanity checks: an all-zero bbox is the
+        defaulted / unset case, any non-zero corner means a real bbox is
+        present. Returns ``False`` for ``None``.
+        """
+        if bbox is None:
+            return False
+        return (
+            bbox.get_lower_left_x() != 0.0
+            or bbox.get_lower_left_y() != 0.0
+            or bbox.get_upper_right_x() != 0.0
+            or bbox.get_upper_right_y() != 0.0
+        )
 
     def decode(self, data: bytes) -> str:
         """Decode the font's raw byte representation back to a Python string.

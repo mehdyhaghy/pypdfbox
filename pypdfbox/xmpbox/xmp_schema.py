@@ -114,6 +114,16 @@ class XMPSchema:
         """
         return self.get_property(local_name)
 
+    def get_abstract_property(self, qualified_name: str) -> object | None:
+        """
+        Mirror of upstream ``getAbstractProperty(String)`` — returns the
+        property registered under ``qualified_name`` (or ``None`` if absent).
+        Upstream returns the ``AbstractField`` child whose property name
+        matches; cluster #1 stores values directly so we return the raw
+        value, matching :meth:`get_property` until the field hierarchy lands.
+        """
+        return self.get_property(qualified_name)
+
     def set_property(self, local_name: str, value: object) -> None:
         """Generic setter used by the parser and by subclass helpers."""
         self._properties[local_name] = value
@@ -169,10 +179,21 @@ class XMPSchema:
                     return item
         return None
 
-    def set_text_property_value(self, local_name: str, value: str) -> None:
+    def set_text_property_value(self, local_name: str, value: str | None) -> None:
+        """
+        Store a TextType value at ``local_name``. Mirrors upstream
+        ``setTextPropertyValue``: passing ``None`` clears the property
+        (upstream's ``setSpecifiedSimpleTypeProperty`` removes any existing
+        child whose property name matches when the value is ``null``).
+        """
+        if value is None:
+            self._properties.pop(local_name, None)
+            return
         self._properties[local_name] = value
 
-    def set_text_property_value_as_simple(self, simple_name: str, value: str) -> None:
+    def set_text_property_value_as_simple(
+        self, simple_name: str, value: str | None
+    ) -> None:
         """
         Mirror of upstream ``XMPSchema.setTextPropertyValueAsSimple`` —
         identical to :meth:`set_text_property_value` for properties whose name
@@ -258,6 +279,15 @@ class XMPSchema:
         """
         self.add_qualified_bag_value(local_name, value)
 
+    def add_bag_value_as_simple(self, simple_name: str, value: str) -> None:
+        """
+        Mirror of upstream ``addBagValueAsSimple`` — append ``value`` to the
+        bag at ``simple_name`` (a local name in the schema's prefix). Cluster
+        #1 stores names unqualified, so this is an alias for
+        :meth:`add_qualified_bag_value`.
+        """
+        self.add_qualified_bag_value(simple_name, value)
+
     def remove_unqualified_bag_value(self, local_name: str, value: str) -> None:
         existing = self._properties.get(local_name)
         if isinstance(existing, list):
@@ -341,3 +371,87 @@ class XMPSchema:
         if not isinstance(v, dict):
             return None
         return list(v.keys())
+
+    # --- Boolean ------------------------------------------------------
+    #
+    # Upstream stores booleans as ``BooleanType`` instances; cluster #1 stores
+    # the Python ``bool`` directly. Passing ``None`` to either setter mirrors
+    # upstream's null-clear semantics (see ``setSpecifiedSimpleTypeProperty``).
+
+    def set_boolean_property_value(
+        self, qualified_name: str, value: bool | None
+    ) -> None:
+        """
+        Mirror of upstream ``setBooleanPropertyValue`` — store ``value`` at
+        ``qualified_name``. Passing ``None`` removes the property.
+        """
+        if value is None:
+            self._properties.pop(qualified_name, None)
+            return
+        self._properties[qualified_name] = bool(value)
+
+    def set_boolean_property_value_as_simple(
+        self, simple_name: str, value: bool | None
+    ) -> None:
+        """Mirror of upstream ``setBooleanPropertyValueAsSimple``."""
+        self.set_boolean_property_value(simple_name, value)
+
+    def get_boolean_property_value(self, qualified_name: str) -> bool | None:
+        """
+        Mirror of upstream ``getBooleanPropertyValue`` — returns the stored
+        boolean or ``None`` when absent.
+        """
+        v = self._properties.get(qualified_name)
+        if v is None:
+            return None
+        if isinstance(v, bool):
+            return v
+        return None
+
+    def get_boolean_property_value_as_simple(self, simple_name: str) -> bool | None:
+        """Mirror of upstream ``getBooleanPropertyValueAsSimple``."""
+        return self.get_boolean_property_value(simple_name)
+
+    # --- Integer ------------------------------------------------------
+
+    def set_integer_property_value(
+        self, qualified_name: str, value: int | None
+    ) -> None:
+        """
+        Mirror of upstream ``setIntegerPropertyValue`` — store ``value`` at
+        ``qualified_name``. Passing ``None`` removes the property.
+        """
+        if value is None:
+            self._properties.pop(qualified_name, None)
+            return
+        # Reject Python booleans here: ``bool`` is a subclass of ``int`` but
+        # upstream treats integers and booleans as distinct types.
+        if isinstance(value, bool):
+            raise TypeError("set_integer_property_value expects int, got bool")
+        self._properties[qualified_name] = int(value)
+
+    def set_integer_property_value_as_simple(
+        self, simple_name: str, value: int | None
+    ) -> None:
+        """Mirror of upstream ``setIntegerPropertyValueAsSimple``."""
+        self.set_integer_property_value(simple_name, value)
+
+    def get_integer_property_value(self, qualified_name: str) -> int | None:
+        """
+        Mirror of upstream ``getIntegerPropertyValue`` — returns the stored
+        integer or ``None`` when absent.
+        """
+        v = self._properties.get(qualified_name)
+        if v is None:
+            return None
+        # Booleans are an int subclass in Python; exclude them so the typed
+        # accessor doesn't shadow ``get_boolean_property_value``.
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, int):
+            return v
+        return None
+
+    def get_integer_property_value_as_simple(self, simple_name: str) -> int | None:
+        """Mirror of upstream ``getIntegerPropertyValueAsSimple``."""
+        return self.get_integer_property_value(simple_name)

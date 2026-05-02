@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.font import PDFontDescriptor, PDTrueTypeFont, PDType1Font
 from pypdfbox.pdmodel.font.pd_font_descriptor import (
@@ -12,6 +14,8 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_SMALL_CAP,
     FLAG_SYMBOLIC,
 )
+from pypdfbox.pdmodel.font.pd_simple_font import PDSimpleFont
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 def _font_with_flags(flags: int) -> PDType1Font:
@@ -298,3 +302,126 @@ def test_is_symbolic_via_raw_dict_with_flags_4() -> None:
     font = PDType1Font(raw)
     assert font.is_symbolic() is True
     assert font.is_italic() is False
+
+
+# ---------- is_vertical (PDFontLike contract) ----------
+
+
+def test_is_vertical_always_false_for_simple_font() -> None:
+    """Mirrors upstream ``PDSimpleFont.isVertical`` — always False."""
+    assert PDType1Font().is_vertical() is False
+    assert PDTrueTypeFont().is_vertical() is False
+
+
+def test_is_vertical_does_not_depend_on_descriptor_or_widths() -> None:
+    """Even with a fully-populated dict, simple fonts never flip to vertical."""
+    font = PDType1Font()
+    cos = font.get_cos_object()
+    cos.set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_int(COSName.get_pdf_name("LastChar"), 126)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(500) for _ in range(95)]),
+    )
+    fd = PDFontDescriptor()
+    fd.set_flags(FLAG_SYMBOLIC)
+    font.set_font_descriptor(fd)
+    assert font.is_vertical() is False
+
+
+# ---------- has_explicit_width ----------
+
+
+def test_has_explicit_width_true_for_code_inside_widths_window() -> None:
+    font = PDType1Font()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(250 + i) for i in range(95)]),  # 32..126
+    )
+    # 'A' = 65 → in window
+    assert font.has_explicit_width(65) is True
+    # FirstChar boundary (inclusive)
+    assert font.has_explicit_width(32) is True
+    # FirstChar + len(Widths) - 1 (inclusive)
+    assert font.has_explicit_width(126) is True
+
+
+def test_has_explicit_width_false_when_widths_absent() -> None:
+    font = PDType1Font()
+    # No /Widths in the dict at all.
+    assert font.has_explicit_width(65) is False
+
+
+def test_has_explicit_width_false_below_first_char() -> None:
+    font = PDType1Font()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(500) for _ in range(95)]),
+    )
+    assert font.has_explicit_width(31) is False
+    assert font.has_explicit_width(0) is False
+
+
+def test_has_explicit_width_false_above_widths_window() -> None:
+    font = PDType1Font()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(500) for _ in range(95)]),  # 32..126
+    )
+    assert font.has_explicit_width(127) is False
+    assert font.has_explicit_width(255) is False
+
+
+# ---------- subset / will_be_subset / add_to_subset ----------
+
+
+def test_will_be_subset_default_false_for_simple_font() -> None:
+    """Mirrors upstream ``PDSimpleFont.willBeSubset`` — always False."""
+    assert PDType1Font().will_be_subset() is False
+
+
+def test_add_to_subset_raises_for_unsupported_simple_font() -> None:
+    """Type1 has no subsetter — upstream raises UnsupportedOperationException
+    which we mirror as NotImplementedError."""
+    with pytest.raises(NotImplementedError):
+        PDType1Font().add_to_subset(ord("A"))
+
+
+def test_subset_raises_for_unsupported_simple_font() -> None:
+    """Type1 has no subsetter — upstream raises UnsupportedOperationException."""
+    with pytest.raises(NotImplementedError):
+        PDType1Font().subset()
+
+
+# ---------- is_non_zero_bounding_box (static helper) ----------
+
+
+def test_is_non_zero_bounding_box_true_for_real_bbox() -> None:
+    bbox = PDRectangle(-100.0, -200.0, 1000.0, 800.0)
+    assert PDSimpleFont.is_non_zero_bounding_box(bbox) is True
+
+
+def test_is_non_zero_bounding_box_false_for_all_zero_bbox() -> None:
+    """An all-zero bbox is the defaulted / unset case."""
+    assert PDSimpleFont.is_non_zero_bounding_box(PDRectangle()) is False
+    assert PDSimpleFont.is_non_zero_bounding_box(PDRectangle(0.0, 0.0, 0.0, 0.0)) is False
+
+
+def test_is_non_zero_bounding_box_false_for_none() -> None:
+    """Mirrors upstream's ``bbox != null`` short-circuit."""
+    assert PDSimpleFont.is_non_zero_bounding_box(None) is False
+
+
+def test_is_non_zero_bounding_box_true_when_only_one_corner_nonzero() -> None:
+    """Any single non-zero corner is enough — upstream tests each via Float.compare."""
+    assert PDSimpleFont.is_non_zero_bounding_box(PDRectangle(0.0, 0.0, 0.0, 1.0)) is True
+    assert PDSimpleFont.is_non_zero_bounding_box(PDRectangle(0.0, 0.0, 1.0, 0.0)) is True
+    assert PDSimpleFont.is_non_zero_bounding_box(PDRectangle(0.0, 1.0, 0.0, 0.0)) is True
+    assert PDSimpleFont.is_non_zero_bounding_box(PDRectangle(-1.0, 0.0, 0.0, 0.0)) is True

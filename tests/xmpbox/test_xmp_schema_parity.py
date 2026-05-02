@@ -202,3 +202,121 @@ def test_lang_alt_default_update_keeps_existing_language_order() -> None:
         "de-DE",
     ]
     assert s.get_unqualified_language_property_value("title") == "Updated"
+
+
+# --- get_abstract_property --------------------------------------------------
+
+
+def test_get_abstract_property_returns_value_or_none() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "hello")
+    assert s.get_abstract_property("Title") == "hello"
+    assert s.get_abstract_property("Missing") is None
+
+
+# --- set_text_property_value null-clear semantics ---------------------------
+
+
+def test_set_text_property_value_none_clears_property() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "hello")
+    assert s.get_unqualified_text_property("Title") == "hello"
+    s.set_text_property_value("Title", None)
+    assert s.get_unqualified_text_property("Title") is None
+    # Clearing a missing property is a no-op.
+    s.set_text_property_value("Missing", None)
+    assert s.get_unqualified_text_property("Missing") is None
+
+
+def test_set_text_property_value_as_simple_none_clears_property() -> None:
+    s = _schema()
+    s.set_text_property_value_as_simple("Title", "hello")
+    s.set_text_property_value_as_simple("Title", None)
+    assert s.get_unqualified_text_property("Title") is None
+
+
+# --- add_bag_value_as_simple ------------------------------------------------
+
+
+def test_add_bag_value_as_simple_appends() -> None:
+    s = _schema()
+    s.add_bag_value_as_simple("subject", "alpha")
+    s.add_bag_value_as_simple("subject", "beta")
+    assert s.get_unqualified_bag_value_list("subject") == ["alpha", "beta"]
+
+
+# --- Boolean property accessors ---------------------------------------------
+
+
+def test_set_and_get_boolean_property_value_round_trip() -> None:
+    s = _schema()
+    s.set_boolean_property_value("Marked", True)
+    assert s.get_boolean_property_value("Marked") is True
+    s.set_boolean_property_value("Marked", False)
+    assert s.get_boolean_property_value("Marked") is False
+    assert s.get_boolean_property_value("Missing") is None
+
+
+def test_set_boolean_property_value_none_clears() -> None:
+    s = _schema()
+    s.set_boolean_property_value("Marked", True)
+    s.set_boolean_property_value("Marked", None)
+    assert s.get_boolean_property_value("Marked") is None
+
+
+def test_boolean_property_value_as_simple_aliases() -> None:
+    s = _schema()
+    s.set_boolean_property_value_as_simple("Marked", True)
+    assert s.get_boolean_property_value_as_simple("Marked") is True
+
+
+def test_get_boolean_property_value_returns_none_for_non_bool_storage() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "hello")
+    # Stored value is a str — boolean accessor must not coerce it.
+    assert s.get_boolean_property_value("Title") is None
+
+
+# --- Integer property accessors ---------------------------------------------
+
+
+def test_set_and_get_integer_property_value_round_trip() -> None:
+    s = _schema()
+    s.set_integer_property_value("Count", 42)
+    assert s.get_integer_property_value("Count") == 42
+    s.set_integer_property_value("Count", 0)
+    assert s.get_integer_property_value("Count") == 0
+    assert s.get_integer_property_value("Missing") is None
+
+
+def test_set_integer_property_value_none_clears() -> None:
+    s = _schema()
+    s.set_integer_property_value("Count", 7)
+    s.set_integer_property_value("Count", None)
+    assert s.get_integer_property_value("Count") is None
+
+
+def test_integer_property_value_as_simple_aliases() -> None:
+    s = _schema()
+    s.set_integer_property_value_as_simple("Count", 5)
+    assert s.get_integer_property_value_as_simple("Count") == 5
+
+
+def test_set_integer_property_value_rejects_bool() -> None:
+    s = _schema()
+    with pytest.raises(TypeError):
+        s.set_integer_property_value("Count", True)
+
+
+def test_get_integer_property_value_excludes_bool_storage() -> None:
+    s = _schema()
+    # Booleans are int-subclass in Python; the integer accessor must not
+    # surface a stored bool.
+    s.set_boolean_property_value("Marked", True)
+    assert s.get_integer_property_value("Marked") is None
+
+
+def test_get_integer_property_value_returns_none_for_non_int_storage() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "hello")
+    assert s.get_integer_property_value("Title") is None
