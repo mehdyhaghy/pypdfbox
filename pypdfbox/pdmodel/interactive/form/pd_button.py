@@ -69,16 +69,64 @@ class PDButton(PDTerminalField):
     def get_value(self) -> str:
         item = self.get_inheritable_attribute(_V)
         if isinstance(item, COSName):
-            return item.name
+            string_value = item.name
+            export_values = self.get_export_values()
+            if export_values:
+                # Mirror upstream: if /V parses as a non-negative integer
+                # within the export-values range, return the matching export.
+                # Otherwise fall through to returning the raw name string.
+                try:
+                    idx = int(string_value, 10)
+                except ValueError:
+                    return string_value
+                if 0 <= idx < len(export_values):
+                    return export_values[idx]
+            return string_value
         if isinstance(item, COSString):
             return item.get_string()
-        return ""
+        # Off is the default value when /V is not set. Per PDF spec.
+        return "Off" if item is None else ""
 
     def set_value(self, value: str | None) -> None:
         if value is None:
             self._field.remove_item(_V)
         else:
             self._field.set_name(_V, value)
+
+    def set_value_by_index(self, index: int) -> None:
+        """Set the selected option by its index into ``/Opt``.
+
+        Mirrors upstream ``PDButton.setValue(int)``: only usable when export
+        values are present. Writes ``str(index)`` as the field's ``/V`` name
+        — readers (including :meth:`get_value`) translate the integer-string
+        back through the export-values list.
+
+        :raises ValueError: if there are no export values, or ``index`` is
+            outside ``0..len(export_values) - 1``.
+        """
+        export_values = self.get_export_values()
+        if not export_values or index < 0 or index >= len(export_values):
+            valid_upper = len(export_values) - 1
+            raise ValueError(
+                f"index '{index}' is not a valid index for the field "
+                f"{self.get_fully_qualified_name()}, valid indices are from 0 "
+                f"to {valid_upper}"
+            )
+        self.set_value(str(index))
+
+    def check_value(self, value: str) -> None:
+        """Validate that ``value`` is a permitted on-state name or ``Off``.
+
+        Mirrors upstream ``PDButton.checkValue``. Raises ``ValueError`` if
+        the value is neither ``"Off"`` nor an entry in :meth:`get_on_values`.
+        """
+        on_values = self.get_on_values()
+        if value != "Off" and value not in on_values:
+            raise ValueError(
+                f"value '{value}' is not a valid option for the field "
+                f"{self.get_fully_qualified_name()}, valid values are: "
+                f"{on_values} and Off"
+            )
 
     def get_default_value(self) -> str:
         dv_key = COSName.get_pdf_name("DV")
@@ -102,7 +150,10 @@ class PDButton(PDTerminalField):
     # ---------- /Opt ----------
 
     def get_export_values(self) -> list[str]:
-        item = self._field.get_dictionary_object(_OPT)
+        item = self.get_inheritable_attribute(_OPT)
+        if isinstance(item, COSString):
+            # Upstream: ``Collections.singletonList(((COSString) value).getString())``.
+            return [item.get_string()]
         if not isinstance(item, COSArray):
             return []
         out: list[str] = []

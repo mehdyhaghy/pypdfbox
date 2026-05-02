@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
@@ -10,6 +10,9 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
 )
 from pypdfbox.pdmodel.pd_alternate_presentations_name_tree_node import (
     PDAlternatePresentationsNameTreeNode,
+)
+from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+    PDDocumentNameDestinationDictionary,
 )
 from pypdfbox.pdmodel.pd_document_name_dictionary import PDDocumentNameDictionary
 from pypdfbox.pdmodel.pd_embedded_files_name_tree_node import (
@@ -336,3 +339,135 @@ def test_pd_document_name_destination_dictionary_exported_from_pdmodel() -> None
         PDDocumentNameDestinationDictionary
     )
     assert "PDDocumentNameDestinationDictionary" in pdmodel.__all__
+
+
+# ---------- is_empty / __bool__ on PDDocumentNameDictionary ----------
+
+
+def test_name_dictionary_is_empty_true_when_no_subdicts() -> None:
+    nd = PDDocumentNameDictionary()
+    assert nd.is_empty() is True
+    assert not nd
+
+
+def test_name_dictionary_is_empty_false_when_any_subdict_present() -> None:
+    nd = PDDocumentNameDictionary()
+    nd.set_javascript(PDJavascriptNameTreeNode())
+    assert nd.is_empty() is False
+    assert bool(nd) is True
+
+
+# ---------- get_java_script alias on PDDocumentNameDictionary ----------
+
+
+def test_get_java_script_strict_snake_case_alias_returns_same_value() -> None:
+    """``get_java_script`` is the strict mechanical translation of upstream
+    ``getJavaScript()`` and must round-trip with ``get_javascript``."""
+    nd = PDDocumentNameDictionary()
+    js = PDJavascriptNameTreeNode()
+    js.set_names({"hi": "app.alert('hi')"})
+    nd.set_javascript(js)
+
+    via_alias = nd.get_java_script()
+    assert via_alias is not None
+    assert isinstance(via_alias, PDJavascriptNameTreeNode)
+    assert via_alias.get_cos_object() is js.get_cos_object()
+    via_legacy = nd.get_javascript()
+    assert via_legacy is not None
+    assert via_alias.get_cos_object() is via_legacy.get_cos_object()
+
+
+def test_get_java_script_returns_none_when_absent() -> None:
+    nd = PDDocumentNameDictionary()
+    assert nd.get_java_script() is None
+
+
+# ---------- PDDocumentNameDestinationDictionary enumeration / membership ----------
+
+
+def _make_xyz_dest_array() -> COSArray:
+    arr = COSArray()
+    arr.add(COSInteger.get(0))
+    arr.add(COSName.get_pdf_name("XYZ"))
+    arr.add(COSFloat(0.0))
+    arr.add(COSFloat(0.0))
+    arr.add(COSFloat(1.0))
+    return arr
+
+
+def test_dest_dict_is_empty_true_for_empty_dict() -> None:
+    dd = PDDocumentNameDestinationDictionary(COSDictionary())
+    assert dd.is_empty() is True
+
+
+def test_dest_dict_is_empty_false_when_destinations_present() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _make_xyz_dest_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+    assert dd.is_empty() is False
+
+
+def test_dest_dict_get_names_returns_string_keys_in_order() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _make_xyz_dest_array())
+    dests_cos.set_item("intro", _make_xyz_dest_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+
+    names = dd.get_names()
+    assert isinstance(names, list)
+    assert all(isinstance(name, str) for name in names)
+    assert sorted(names) == ["home", "intro"]
+
+
+def test_dest_dict_get_names_empty_for_empty_dict() -> None:
+    dd = PDDocumentNameDestinationDictionary(COSDictionary())
+    assert dd.get_names() == []
+
+
+def test_dest_dict_contains_for_present_string_key() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _make_xyz_dest_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+    assert "home" in dd
+    assert "missing" not in dd
+
+
+def test_dest_dict_contains_accepts_cos_name() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _make_xyz_dest_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+    assert COSName.get_pdf_name("home") in dd
+
+
+def test_dest_dict_contains_rejects_non_string_keys() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _make_xyz_dest_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+    assert (123 in dd) is False
+    assert (None in dd) is False
+
+
+def test_dest_dict_contains_distinguishes_missing_from_unparseable() -> None:
+    """``__contains__`` returns True even when the value cannot be coerced
+    into a destination, but ``get_destination`` still returns None — letting
+    callers tell ``key missing`` apart from ``key present, value malformed``."""
+    dests_cos = COSDictionary()
+    # Put a value that is neither a COSArray nor a COSDictionary with /D.
+    dests_cos.set_item("borked", COSDictionary())  # empty dict, no /D
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+    assert "borked" in dd
+    assert dd.get_destination("borked") is None
+
+
+def test_dest_dict_len_reports_entry_count() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("a", _make_xyz_dest_array())
+    dests_cos.set_item("b", _make_xyz_dest_array())
+    dests_cos.set_item("c", _make_xyz_dest_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+    assert len(dd) == 3
+
+
+def test_dest_dict_len_zero_for_empty() -> None:
+    dd = PDDocumentNameDestinationDictionary(COSDictionary())
+    assert len(dd) == 0

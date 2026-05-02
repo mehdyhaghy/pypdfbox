@@ -323,3 +323,107 @@ def test_button_set_push_clears_radio_and_vice_versa() -> None:
     btn.set_radio_button(True)
     assert btn.is_radio_button() is True
     assert btn.is_push_button() is False
+
+
+def test_button_get_export_values_accepts_single_cos_string() -> None:
+    """Upstream ``PDButton.getExportValues`` returns a one-element list when
+    ``/Opt`` is a lone ``COSString`` (not wrapped in a ``COSArray``)."""
+    from pypdfbox.cos import COSString
+
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.get_cos_object().set_item(COSName.get_pdf_name("Opt"), COSString("solo"))
+    assert rb.get_export_values() == ["solo"]
+
+
+def test_button_get_export_values_inherits_from_parent() -> None:
+    """``getExportValues`` walks the inheritable chain — a child with no /Opt
+    surfaces the parent's ``/Opt`` array."""
+    from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+        PDNonTerminalField,
+    )
+
+    form = PDAcroForm()
+    parent = PDNonTerminalField(form)
+    parent.get_cos_object().set_item(
+        COSName.get_pdf_name("Opt"), COSArray.of_cos_strings(["a", "b"])
+    )
+    child = PDRadioButton(form, COSDictionary(), parent=parent)
+    assert child.get_export_values() == ["a", "b"]
+
+
+def test_button_set_value_by_index_writes_string_index() -> None:
+    """``setValue(int)`` writes the index as a ``/V`` name; ``get_value``
+    decodes the integer-string back through the export values."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_export_values(["alpha", "beta", "gamma"])
+
+    rb.set_value_by_index(1)
+
+    assert rb.get_cos_object().get_name(COSName.get_pdf_name("V")) == "1"
+    # get_value decodes the numeric /V back through /Opt.
+    assert rb.get_value() == "beta"
+
+
+def test_button_set_value_by_index_rejects_out_of_range() -> None:
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_export_values(["alpha", "beta"])
+    with pytest.raises(ValueError, match="not a valid index"):
+        rb.set_value_by_index(5)
+    with pytest.raises(ValueError, match="not a valid index"):
+        rb.set_value_by_index(-1)
+
+
+def test_button_set_value_by_index_rejects_when_no_export_values() -> None:
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    with pytest.raises(ValueError, match="not a valid index"):
+        rb.set_value_by_index(0)
+
+
+def test_button_check_value_accepts_off() -> None:
+    """``checkValue`` always allows ``"Off"``."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_export_values(["yes", "no"])
+    # No raise:
+    rb.check_value("Off")
+    rb.check_value("yes")
+    rb.check_value("no")
+
+
+def test_button_check_value_rejects_unknown() -> None:
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_export_values(["yes", "no"])
+    with pytest.raises(ValueError, match="not a valid option"):
+        rb.check_value("maybe")
+
+
+def test_button_get_value_decodes_numeric_v_via_export_values() -> None:
+    """When ``/V`` parses as an integer in range, return the export value."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_export_values(["alpha", "beta", "gamma"])
+    rb.get_cos_object().set_name(COSName.get_pdf_name("V"), "2")
+    assert rb.get_value() == "gamma"
+
+
+def test_button_get_value_returns_raw_v_when_index_out_of_range() -> None:
+    """If ``/V`` is numeric but outside the export-values range, the raw name
+    is returned (mirrors upstream's fall-through)."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    rb.set_export_values(["alpha"])
+    rb.get_cos_object().set_name(COSName.get_pdf_name("V"), "9")
+    assert rb.get_value() == "9"
+
+
+def test_button_get_value_default_is_off_when_unset() -> None:
+    """Per PDF spec, an unset ``/V`` on a button reports ``"Off"``."""
+    form = PDAcroForm()
+    rb = PDRadioButton(form)
+    # Fresh radio button has no /V.
+    assert rb.get_value() == "Off"

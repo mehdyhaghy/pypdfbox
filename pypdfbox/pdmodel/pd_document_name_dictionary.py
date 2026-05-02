@@ -69,6 +69,17 @@ class PDDocumentNameDictionary:
     def get_cos_dictionary(self) -> COSDictionary:
         return self._name_dictionary
 
+    def is_empty(self) -> bool:
+        """``True`` when the underlying ``/Names`` sub-dictionary has no entries.
+
+        Python-friendly convenience; upstream PDFBox does not expose an
+        equivalent. Mirrors ``COSDictionary.isEmpty()`` semantics.
+        """
+        return self._name_dictionary.is_empty()
+
+    def __bool__(self) -> bool:  # pragma: no cover - thin wrapper
+        return not self.is_empty()
+
     # ---------- /Dests ----------
 
     def get_dests(
@@ -121,6 +132,16 @@ class PDDocumentNameDictionary:
         if isinstance(dic, COSDictionary):
             return PDJavascriptNameTreeNode(dic)
         return None
+
+    def get_java_script(self) -> PDJavascriptNameTreeNode | None:
+        """Strict snake_case translation of upstream ``getJavaScript()``.
+
+        Upstream is inconsistent — ``getJavaScript`` (camelCase) but
+        ``setJavascript`` (lowercase 's'). pypdfbox originally surfaced
+        only the lowercase ``get_javascript`` form; this alias matches the
+        mechanical camelCase → snake_case translation.
+        """
+        return self.get_javascript()
 
     def set_javascript(self, javascript: PDJavascriptNameTreeNode | None) -> None:
         if javascript is None:
