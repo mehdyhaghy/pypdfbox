@@ -220,6 +220,26 @@ def test_top_index_defaults_to_zero_when_absent() -> None:
     assert lb.get_top_index() == 0
 
 
+def test_has_top_index_predicate_round_trip() -> None:
+    """Pypdfbox-only ``has_top_index`` predicate distinguishes
+    "explicit ``/TI = 0``" from "no ``/TI`` entry"."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    assert lb.has_top_index() is False
+
+    lb.set_top_index(0)
+    assert lb.has_top_index() is True
+    assert lb.get_top_index() == 0
+
+    lb.set_top_index(7)
+    assert lb.has_top_index() is True
+    assert lb.get_top_index() == 7
+
+    lb.set_top_index(None)
+    assert lb.has_top_index() is False
+    assert lb.get_top_index() == 0
+
+
 # ---------- flag predicates ----------
 
 

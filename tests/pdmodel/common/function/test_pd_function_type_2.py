@@ -312,3 +312,109 @@ def test_str_includes_default_c0_c1_n_when_keys_absent() -> None:
     assert "C1:" in rendered
     # N defaults to 1.0 — accept either "1.0" or "1" in rendering.
     assert "N: 1" in rendered
+
+
+# --------------------------------------------------------------------------
+# Presence predicates: has_c0 / has_c1 / has_n
+# --------------------------------------------------------------------------
+
+
+def test_has_c0_false_when_key_absent() -> None:
+    """An empty Type 2 dictionary advertises no explicit /C0 — the default
+    materialised by ``get_c0`` is invisible to the predicate."""
+    fn = PDFunctionType2()
+    assert fn.has_c0() is False
+    # Sanity: get_c0 still materialises the spec default.
+    assert fn.get_c0() == [0.0]
+
+
+def test_has_c0_true_after_set_c0() -> None:
+    fn = PDFunctionType2()
+    fn.set_c0([0.1, 0.2])
+    assert fn.has_c0() is True
+
+
+def test_has_c0_true_when_dictionary_has_c0_already() -> None:
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    arr = COSArray()
+    arr.set_float_array([0.5])
+    raw.set_item("C0", arr)
+    fn = PDFunctionType2(raw)
+    assert fn.has_c0() is True
+
+
+def test_has_c1_false_when_key_absent() -> None:
+    fn = PDFunctionType2()
+    assert fn.has_c1() is False
+    assert fn.get_c1() == [1.0]
+
+
+def test_has_c1_true_after_set_c1() -> None:
+    fn = PDFunctionType2()
+    fn.set_c1([0.6, 0.7])
+    assert fn.has_c1() is True
+
+
+def test_has_n_false_when_key_absent() -> None:
+    fn = PDFunctionType2()
+    assert fn.has_n() is False
+    # Default is documented at 1.0 in this port.
+    assert fn.get_n() == pytest.approx(1.0)
+
+
+def test_has_n_true_after_set_n() -> None:
+    fn = PDFunctionType2()
+    fn.set_n(2.0)
+    assert fn.has_n() is True
+
+
+def test_predicates_independent() -> None:
+    """Setting one key does not mark the others as present — predicates
+    must reflect each key's physical presence independently."""
+    fn = PDFunctionType2()
+    fn.set_n(2.5)
+    assert fn.has_n() is True
+    assert fn.has_c0() is False
+    assert fn.has_c1() is False
+
+
+# --------------------------------------------------------------------------
+# get_output_dimensions
+# --------------------------------------------------------------------------
+
+
+def test_get_output_dimensions_uses_range_when_present() -> None:
+    """When /Range is set, output dimension count comes from /Range pairs."""
+    fn = _make([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], 1.0,
+               domain=[0.0, 1.0], rng=[0.0, 1.0, 0.0, 1.0])
+    # /Range has 2 pairs even though C0/C1 have 3 entries — /Range wins.
+    assert fn.get_output_dimensions() == 2
+
+
+def test_get_output_dimensions_falls_back_to_min_of_c0_c1() -> None:
+    """Without /Range, output dimension follows ``min(len(C0), len(C1))``,
+    matching what eval actually allocates."""
+    fn = _make([0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0, 1.0], 1.0,
+               domain=[0.0, 1.0])
+    assert fn.get_output_dimensions() == 3
+
+
+def test_get_output_dimensions_with_shorter_c1() -> None:
+    fn = _make([0.5, 0.5, 0.5], [1.0], 1.0, domain=[0.0, 1.0])
+    assert fn.get_output_dimensions() == 1
+
+
+def test_get_output_dimensions_with_defaults_is_one() -> None:
+    """With no C0/C1 keys, both default to length-1 arrays per spec."""
+    fn = PDFunctionType2()
+    assert fn.get_output_dimensions() == 1
+
+
+def test_get_output_dimensions_matches_eval_length() -> None:
+    """The count returned must equal the actual eval output length —
+    that's the contract documented in the docstring."""
+    fn = _make([0.0, 0.0], [1.0, 1.0, 1.0, 1.0], 1.0, domain=[0.0, 1.0])
+    expected = fn.get_output_dimensions()
+    actual = len(fn.eval([0.5]))
+    assert actual == expected

@@ -102,6 +102,56 @@ class PDFunctionType2(PDFunction):
         """Set ``/N`` (the interpolation exponent)."""
         self.get_cos_object().set_item(_N, COSFloat(n))
 
+    # ---------- presence predicates ----------
+    #
+    # PDF 32000-1 §7.10.3 requires ``/N``; ``/C0`` and ``/C1`` are optional
+    # (defaulting to ``[0]`` and ``[1]``). The ``has_*`` predicates let
+    # callers introspect the *physical* presence of each key in the COS
+    # dictionary so that round-trip writers can emit only the keys that
+    # were originally present, and lint tooling can flag dictionaries that
+    # rely on the defaults. There is no direct upstream equivalent — Java
+    # PDFBox calls ``getCOSObject().containsKey(...)`` inline at the call
+    # site; we expose the predicate explicitly to match the project's
+    # consistent ``has_*`` accessor surface (see e.g. PDActionLaunch,
+    # PDDocumentInformation).
+
+    def has_c0(self) -> bool:
+        """``True`` iff ``/C0`` is explicitly present in the underlying
+        dictionary (regardless of array contents). ``False`` when the key
+        is absent and :meth:`get_c0` is materialising the spec default."""
+        return self.get_cos_object().contains_key(_C0)
+
+    def has_c1(self) -> bool:
+        """``True`` iff ``/C1`` is explicitly present in the underlying
+        dictionary. ``False`` when the key is absent and :meth:`get_c1` is
+        materialising the spec default."""
+        return self.get_cos_object().contains_key(_C1)
+
+    def has_n(self) -> bool:
+        """``True`` iff ``/N`` is explicitly present in the underlying
+        dictionary. ``False`` when :meth:`get_n` is falling back to the
+        documented ``1.0`` default (see :meth:`get_n` for the divergence
+        from upstream's ``-1.0``)."""
+        return self.get_cos_object().contains_key(_N)
+
+    # ---------- output dimensionality ----------
+
+    def get_output_dimensions(self) -> int:
+        """Return the implicit output dimensionality of this Type 2 function.
+
+        For Type 2, ``/Range`` is optional (PDF 32000-1 §7.10.3) — when
+        present it defines output dimensions, but when absent the output
+        dimension is inferred from ``min(len(/C0), len(/C1))`` to match
+        upstream eval allocation (``new float[Math.min(c0.size(),
+        c1.size())]``). This helper returns whichever count eval will
+        actually produce, so callers building shading dictionaries can
+        size downstream buffers without re-deriving the rule.
+        """
+        rng_pairs = self.get_ranges_for_outputs()
+        if rng_pairs:
+            return len(rng_pairs)
+        return min(len(self.get_c0()), len(self.get_c1()))
+
     # ---------- evaluation ----------
 
     def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
