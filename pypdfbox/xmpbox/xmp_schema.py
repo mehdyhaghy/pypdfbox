@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -497,6 +498,113 @@ class XMPSchema:
     def get_integer_property_value_as_simple(self, simple_name: str) -> int | None:
         """Mirror of upstream ``getIntegerPropertyValueAsSimple``."""
         return self.get_integer_property_value(simple_name)
+
+    # --- Date ---------------------------------------------------------
+    #
+    # Upstream stores dates as ``DateType`` instances wrapping a
+    # ``java.util.Calendar``; the Python port stores a timezone-aware
+    # :class:`datetime.datetime` directly (matching ``DateType.set_value``'s
+    # internal storage). Passing ``None`` to either setter mirrors upstream's
+    # null-clear semantics (see ``setSpecifiedSimpleTypeProperty``).
+
+    def set_date_property_value(
+        self, qualified_name: str, value: datetime | None
+    ) -> None:
+        """
+        Mirror of upstream ``setDatePropertyValue`` — store ``value`` at
+        ``qualified_name``. Passing ``None`` removes the property.
+        """
+        if value is None:
+            self._properties.pop(qualified_name, None)
+            return
+        if not isinstance(value, datetime):
+            raise TypeError(
+                "set_date_property_value expects a datetime, got "
+                f"{type(value).__name__}"
+            )
+        self._properties[qualified_name] = value
+
+    def set_date_property_value_as_simple(
+        self, simple_name: str, value: datetime | None
+    ) -> None:
+        """Mirror of upstream ``setDatePropertyValueAsSimple``."""
+        self.set_date_property_value(simple_name, value)
+
+    def get_date_property_value(self, qualified_name: str) -> datetime | None:
+        """
+        Mirror of upstream ``getDatePropertyValue`` — returns the stored
+        :class:`datetime` or ``None`` when absent or when the stored value is
+        not a datetime (upstream raises ``BadFieldValueException`` in the
+        type-mismatch case; cluster #1 returns ``None`` to keep the call site
+        type-safe — see ``get_property_as`` for the strict typed accessor).
+        """
+        v = self._properties.get(qualified_name)
+        if v is None:
+            return None
+        if isinstance(v, datetime):
+            return v
+        return None
+
+    def get_date_property_value_as_simple(self, simple_name: str) -> datetime | None:
+        """Mirror of upstream ``getDatePropertyValueAsSimple``."""
+        return self.get_date_property_value(simple_name)
+
+    def add_unqualified_sequence_date_value(
+        self, seq_name: str, value: datetime
+    ) -> None:
+        """
+        Mirror of upstream ``addUnqualifiedSequenceDateValue`` — append a
+        :class:`datetime` to the Seq array stored at ``seq_name``. Cluster #1
+        stores Seq arrays as plain lists, so this lifts the datetime directly
+        into the existing list (creating it when absent).
+        """
+        if not isinstance(value, datetime):
+            raise TypeError(
+                "add_unqualified_sequence_date_value expects a datetime, got "
+                f"{type(value).__name__}"
+            )
+        existing = self._properties.get(seq_name)
+        if not isinstance(existing, list):
+            existing = []
+            self._properties[seq_name] = existing
+        existing.append(value)
+
+    def add_sequence_date_value_as_simple(
+        self, simple_name: str, value: datetime
+    ) -> None:
+        """Mirror of upstream ``addSequenceDateValueAsSimple``."""
+        self.add_unqualified_sequence_date_value(simple_name, value)
+
+    def get_unqualified_sequence_date_value_list(
+        self, seq_name: str
+    ) -> list[datetime] | None:
+        """
+        Mirror of upstream ``getUnqualifiedSequenceDateValueList`` — return the
+        :class:`datetime` entries of the Seq array at ``seq_name``, or ``None``
+        when the property is absent / not an array. Non-datetime entries are
+        silently skipped, matching upstream's ``instanceof DateType`` filter.
+        """
+        v = self._properties.get(seq_name)
+        if not isinstance(v, list):
+            return None
+        return [item for item in v if isinstance(item, datetime)]
+
+    def remove_unqualified_sequence_date_value(
+        self, seq_name: str, value: datetime
+    ) -> None:
+        """
+        Mirror of upstream ``removeUnqualifiedSequenceDateValue`` — drop every
+        :class:`datetime` entry equal to ``value`` from the Seq array at
+        ``seq_name``. No-op when the property is absent or not an array.
+        """
+        existing = self._properties.get(seq_name)
+        if not isinstance(existing, list):
+            return
+        existing[:] = [
+            item
+            for item in existing
+            if not (isinstance(item, datetime) and item == value)
+        ]
 
     # --- merge --------------------------------------------------------
 

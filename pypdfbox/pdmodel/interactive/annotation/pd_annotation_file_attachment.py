@@ -10,6 +10,9 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
         PDFileSpecification,
     )
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
 
 _FS: COSName = COSName.get_pdf_name("FS")
 _NAME: COSName = COSName.get_pdf_name("Name")
@@ -37,8 +40,35 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``. Pass ``None`` to
+        clear the custom handler and restore the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate file-attachment annotation appearances.
+
+        A custom handler, when configured, is invoked exactly as upstream does.
+        The built-in ``PDFileAttachmentAppearanceHandler`` is not ported yet,
+        so the default path remains a no-op like the base annotation
+        implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
     # ---------- /FS (file specification) ----------
 

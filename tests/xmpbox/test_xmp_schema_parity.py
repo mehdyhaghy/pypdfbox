@@ -8,6 +8,8 @@ Compatibility preservation).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta, timezone
+
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata, XMPSchema
@@ -483,3 +485,117 @@ def test_merge_rejects_different_schema_class() -> None:
     )
     with pytest.raises(OSError):
         s.merge(other)
+
+
+# --- Date property accessors ------------------------------------------------
+
+
+def test_set_and_get_date_property_value_round_trip() -> None:
+    s = _schema()
+    when = datetime(2024, 6, 1, 12, 30, tzinfo=UTC)
+    s.set_date_property_value("CreateDate", when)
+    assert s.get_date_property_value("CreateDate") == when
+    assert s.get_date_property_value("Missing") is None
+
+
+def test_set_date_property_value_none_clears() -> None:
+    s = _schema()
+    when = datetime(2024, 1, 1, tzinfo=UTC)
+    s.set_date_property_value("CreateDate", when)
+    s.set_date_property_value("CreateDate", None)
+    assert s.get_date_property_value("CreateDate") is None
+
+
+def test_date_property_value_as_simple_aliases() -> None:
+    s = _schema()
+    when = datetime(2025, 5, 1, 9, 0, tzinfo=UTC)
+    s.set_date_property_value_as_simple("CreateDate", when)
+    assert s.get_date_property_value_as_simple("CreateDate") == when
+
+
+def test_set_date_property_value_rejects_non_datetime() -> None:
+    s = _schema()
+    with pytest.raises(TypeError):
+        s.set_date_property_value("CreateDate", "2024-01-01")
+
+
+def test_get_date_property_value_returns_none_for_non_datetime_storage() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "hello")
+    assert s.get_date_property_value("Title") is None
+
+
+# --- Sequence-of-Date helpers -----------------------------------------------
+
+
+def test_add_unqualified_sequence_date_value_appends() -> None:
+    s = _schema()
+    d1 = datetime(2024, 1, 1, tzinfo=UTC)
+    d2 = datetime(2024, 6, 1, tzinfo=UTC)
+    s.add_unqualified_sequence_date_value("History", d1)
+    s.add_unqualified_sequence_date_value("History", d2)
+    assert s.get_unqualified_sequence_date_value_list("History") == [d1, d2]
+
+
+def test_add_sequence_date_value_as_simple_aliases() -> None:
+    s = _schema()
+    d = datetime(2024, 1, 1, tzinfo=UTC)
+    s.add_sequence_date_value_as_simple("History", d)
+    assert s.get_unqualified_sequence_date_value_list("History") == [d]
+
+
+def test_get_unqualified_sequence_date_value_list_missing_returns_none() -> None:
+    s = _schema()
+    assert s.get_unqualified_sequence_date_value_list("Missing") is None
+
+
+def test_get_unqualified_sequence_date_value_list_skips_non_datetime() -> None:
+    s = _schema()
+    # Mix a date with non-date entries via the generic seq helper.
+    d = datetime(2024, 1, 1, tzinfo=UTC)
+    s.add_unqualified_sequence_value("History", "not-a-date")
+    s.add_unqualified_sequence_date_value("History", d)
+    assert s.get_unqualified_sequence_date_value_list("History") == [d]
+
+
+def test_remove_unqualified_sequence_date_value_drops_matches() -> None:
+    s = _schema()
+    d1 = datetime(2024, 1, 1, tzinfo=UTC)
+    d2 = datetime(2024, 6, 1, tzinfo=UTC)
+    s.add_unqualified_sequence_date_value("History", d1)
+    s.add_unqualified_sequence_date_value("History", d2)
+    s.add_unqualified_sequence_date_value("History", d1)
+
+    s.remove_unqualified_sequence_date_value("History", d1)
+
+    assert s.get_unqualified_sequence_date_value_list("History") == [d2]
+
+
+def test_remove_unqualified_sequence_date_value_no_op_when_missing() -> None:
+    s = _schema()
+    # No-op when absent.
+    s.remove_unqualified_sequence_date_value("Missing", datetime(2024, 1, 1, tzinfo=UTC))
+    # No-op when stored property is not an array.
+    s.set_text_property_value("Title", "t")
+    s.remove_unqualified_sequence_date_value(
+        "Title", datetime(2024, 1, 1, tzinfo=UTC)
+    )
+    assert s.get_unqualified_text_property("Title") == "t"
+
+
+def test_add_unqualified_sequence_date_value_rejects_non_datetime() -> None:
+    s = _schema()
+    with pytest.raises(TypeError):
+        s.add_unqualified_sequence_date_value("History", "2024-01-01")
+
+
+def test_date_property_round_trip_preserves_timezone() -> None:
+    s = _schema()
+    tz = timezone(timedelta(hours=5, minutes=30))  # IST
+    when = datetime(2024, 6, 1, 12, 30, tzinfo=tz)
+    s.set_date_property_value("CreateDate", when)
+    out = s.get_date_property_value("CreateDate")
+    assert out == when
+    assert out is not None
+    assert out.tzinfo is not None
+    assert out.utcoffset() == timedelta(hours=5, minutes=30)
