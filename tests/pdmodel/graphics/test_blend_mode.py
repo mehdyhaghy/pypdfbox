@@ -89,6 +89,126 @@ def test_repr_and_equality_and_hash():
 
 
 # ---------------------------------------------------------------------------
+# Wave 183: STANDARD_NAMES / is_standard / iter_standard / __str__
+# ---------------------------------------------------------------------------
+
+
+def test_standard_names_is_union_of_separable_and_non_separable():
+    assert (
+        BlendMode.STANDARD_NAMES
+        == BlendMode.SEPARABLE_NAMES | BlendMode.NON_SEPARABLE_NAMES
+    )
+
+
+def test_standard_names_has_all_16_modes():
+    assert len(BlendMode.STANDARD_NAMES) == 16
+    expected = {
+        "Normal",
+        "Multiply",
+        "Screen",
+        "Overlay",
+        "Darken",
+        "Lighten",
+        "ColorDodge",
+        "ColorBurn",
+        "HardLight",
+        "SoftLight",
+        "Difference",
+        "Exclusion",
+        "Hue",
+        "Saturation",
+        "Color",
+        "Luminosity",
+    }
+    assert BlendMode.STANDARD_NAMES == expected
+
+
+def test_standard_names_is_frozenset():
+    assert isinstance(BlendMode.STANDARD_NAMES, frozenset)
+
+
+def test_standard_names_separable_and_non_separable_disjoint():
+    # PDF 32000-1 §11.3.5.1 vs §11.3.5.3 — modes belong to exactly one family.
+    assert BlendMode.SEPARABLE_NAMES.isdisjoint(BlendMode.NON_SEPARABLE_NAMES)
+
+
+def test_is_standard_true_for_each_standard_mode():
+    for name in BlendMode.STANDARD_NAMES:
+        assert BlendMode.get(name).is_standard(), f"{name} should be standard"
+
+
+def test_is_standard_false_for_unknown_name():
+    bm = BlendMode.get("BogusMode")
+    assert bm.is_standard() is False
+    # The instance still round-trips its original name on write.
+    assert bm.get_name() == "BogusMode"
+
+
+def test_is_standard_compatible_resolves_to_standard_normal():
+    # Compatible interns to the same instance as Normal, which IS standard.
+    bm = BlendMode.get("Compatible")
+    assert bm is BlendMode.NORMAL
+    assert bm.is_standard() is True
+
+
+def test_iter_standard_yields_all_sixteen_singletons():
+    standards = BlendMode.iter_standard()
+    assert len(standards) == 16
+    # Every entry should be the interned singleton (identity, not equality).
+    for bm in standards:
+        assert bm is BlendMode.get(bm.get_name())
+    # Names should match STANDARD_NAMES exactly.
+    assert {bm.get_name() for bm in standards} == BlendMode.STANDARD_NAMES
+
+
+def test_iter_standard_spec_order_separable_first():
+    standards = BlendMode.iter_standard()
+    # First 12 are separable (PDF 32000-1 §11.3.5.1).
+    for bm in standards[:12]:
+        assert bm.is_separable(), f"{bm.get_name()} should be separable"
+    # Last 4 are non-separable HSL (§11.3.5.3) in spec order.
+    last_four = [bm.get_name() for bm in standards[12:]]
+    assert last_four == ["Hue", "Saturation", "Color", "Luminosity"]
+
+
+def test_iter_standard_first_entry_is_normal():
+    assert BlendMode.iter_standard()[0] is BlendMode.NORMAL
+
+
+def test_str_matches_upstream_to_string_separable():
+    # Mirrors upstream BlendMode.toString():
+    #   "BlendMode{name=Multiply, isSeparable=true}"
+    assert (
+        str(BlendMode.MULTIPLY)
+        == "BlendMode{name=Multiply, isSeparable=true}"
+    )
+    assert (
+        str(BlendMode.NORMAL) == "BlendMode{name=Normal, isSeparable=true}"
+    )
+
+
+def test_str_matches_upstream_to_string_non_separable():
+    assert str(BlendMode.HUE) == "BlendMode{name=Hue, isSeparable=false}"
+    assert (
+        str(BlendMode.LUMINOSITY)
+        == "BlendMode{name=Luminosity, isSeparable=false}"
+    )
+
+
+def test_str_for_unknown_mode_uses_lowercase_false_flag():
+    # Unknown modes are non-separable (no per-channel formula registered),
+    # so the flag is "false" and the name round-trips verbatim.
+    bm = BlendMode.get("BogusMode")
+    assert str(bm) == "BlendMode{name=BogusMode, isSeparable=false}"
+
+
+def test_str_and_repr_are_distinct():
+    bm = BlendMode.MULTIPLY
+    assert str(bm) != repr(bm)
+    assert repr(bm) == "BlendMode('Multiply')"
+
+
+# ---------------------------------------------------------------------------
 # get_instance — the canonical PDFBox API
 # ---------------------------------------------------------------------------
 

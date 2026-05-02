@@ -255,6 +255,12 @@ class BlendMode:
     NON_SEPARABLE_NAMES: ClassVar[frozenset[str]] = frozenset(
         {"Hue", "Saturation", "Color", "Luminosity"}
     )
+    # Union of every standard PDF 32000-1 §11.3.5 blend-mode name. Useful as
+    # a single membership test when dispatching ``/BM`` strings — the spec
+    # treats anything outside this set as ``Normal`` for rendering.
+    STANDARD_NAMES: ClassVar[frozenset[str]] = (
+        SEPARABLE_NAMES | NON_SEPARABLE_NAMES
+    )
 
     def __init__(self, name: str) -> None:
         self._name = name
@@ -274,6 +280,12 @@ class BlendMode:
 
     def is_non_separable(self) -> bool:
         return self._name in BlendMode.NON_SEPARABLE_NAMES
+
+    def is_standard(self) -> bool:
+        """True when this mode is one of the 16 standard PDF 32000-1 §11.3.5
+        blend modes. Unknown / non-standard names (which still round-trip but
+        render as ``Normal``) return ``False``."""
+        return self._name in BlendMode.STANDARD_NAMES
 
     def blend(self, source_channel: float, backdrop_channel: float) -> float:
         """Per-channel blend for separable modes.
@@ -327,6 +339,14 @@ class BlendMode:
     def __repr__(self) -> str:
         return f"BlendMode({self._name!r})"
 
+    def __str__(self) -> str:
+        # Mirrors upstream ``BlendMode.toString()`` so debug output diffs
+        # cleanly against Java logs:
+        # ``BlendMode{name=Multiply, isSeparable=true}``. Java booleans
+        # serialise lowercase, so we match that.
+        flag = "true" if self.is_separable() else "false"
+        return f"BlendMode{{name={self._name}, isSeparable={flag}}}"
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, BlendMode):
             return self._name == other._name
@@ -334,6 +354,32 @@ class BlendMode:
 
     def __hash__(self) -> int:
         return hash(self._name)
+
+    @classmethod
+    def iter_standard(cls) -> tuple[BlendMode, ...]:
+        """Return the 16 standard PDF 32000-1 §11.3.5 blend-mode singletons
+        in spec order (separable modes first, then non-separable HSL modes).
+        Useful for iterating without hard-coding the ``BlendMode.NORMAL``
+        ... ``BlendMode.LUMINOSITY`` attribute names at the call site.
+        """
+        return (
+            cls.NORMAL,
+            cls.MULTIPLY,
+            cls.SCREEN,
+            cls.OVERLAY,
+            cls.DARKEN,
+            cls.LIGHTEN,
+            cls.COLOR_DODGE,
+            cls.COLOR_BURN,
+            cls.HARD_LIGHT,
+            cls.SOFT_LIGHT,
+            cls.DIFFERENCE,
+            cls.EXCLUSION,
+            cls.HUE,
+            cls.SATURATION,
+            cls.COLOR,
+            cls.LUMINOSITY,
+        )
 
     @classmethod
     def get(cls, name: str) -> BlendMode:

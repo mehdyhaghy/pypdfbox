@@ -16,6 +16,12 @@ _FT_KEY: COSName = COSName.get_pdf_name("FT")
 class PDComboBox(PDChoice):
     """``/FT /Ch`` with ``FLAG_COMBO`` set. Mirrors PDFBox ``PDComboBox``."""
 
+    # Upstream PDComboBox.java declares ``FLAG_EDIT`` as a private constant
+    # on this class. PDChoice carries the same value in the lite port for
+    # subclass dispatch convenience, but expose it here too for parity with
+    # upstream callers that reference ``PDComboBox.FLAG_EDIT``.
+    FLAG_EDIT = PDChoice.FLAG_EDIT
+
     def __init__(
         self,
         form: PDAcroForm,
