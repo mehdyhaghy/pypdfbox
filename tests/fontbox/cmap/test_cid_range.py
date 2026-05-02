@@ -110,3 +110,33 @@ def test_cid_range_various_lengths(
     assert rng.get_code_length() == length
     assert rng.map_int(frm, length) == unicode_
     assert rng.map_int(to, length) == unicode_ + (to - frm)
+
+
+# ---------- dunder helpers ----------
+
+
+def test_cid_range_repr_includes_field_values() -> None:
+    text = repr(CIDRange(0, 20, 65, 1))
+    assert "from=0" in text
+    assert "to=20" in text
+    assert "unicode=65" in text
+    assert "code_length=1" in text
+
+
+def test_cid_range_equality_and_hash() -> None:
+    a = CIDRange(0, 20, 65, 1)
+    b = CIDRange(0, 20, 65, 1)
+    c = CIDRange(0, 21, 65, 1)
+    assert a == b
+    assert a != c
+    assert hash(a) == hash(b)
+    # Usable as a set element.
+    assert {a, b, c} == {a, c}
+
+
+def test_cid_range_equality_against_other_types() -> None:
+    rng = CIDRange(0, 20, 65, 1)
+    assert rng != "not a range"
+    assert rng != 42
+    assert rng != None  # noqa: E711 — explicit equality, not identity
+

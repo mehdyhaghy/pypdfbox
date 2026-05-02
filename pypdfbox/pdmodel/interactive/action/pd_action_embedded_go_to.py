@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSBoolean, COSDictionary, COSName
+from pypdfbox.cos import COSBoolean, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
@@ -73,6 +73,35 @@ class PDActionEmbeddedGoTo(PDAction):
         if destination is None:
             self._action.remove_item(_D)
             return
+        # Per upstream PDActionEmbeddedGoTo.setDestination: when a page
+        # destination is supplied, its first array entry must be an integer
+        # page index — page-object form is invalid for /GoToE since the
+        # destination resolves into a *different* document (page references
+        # cannot cross documents). Mirrors upstream's IllegalArgumentException
+        # ("Destination of a GoToE action must be an integer").
+        #
+        # Note: pypdfbox's ``PDPageDestination`` pre-grows its backing array
+        # to size 2 with ``COSNull`` (upstream uses an empty COSArray on a
+        # fresh instance). To preserve upstream's "fresh empty destination is
+        # accepted" behaviour, only flag a non-null page entry as invalid —
+        # the COSNull placeholder is treated as "no page set yet".
+        from pypdfbox.cos import COSNull  # noqa: PLC0415
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: PLC0415
+            PDPageDestination,
+        )
+
+        if isinstance(destination, PDPageDestination):
+            dest_array = destination.get_cos_object()
+            if len(dest_array) >= 1:
+                page_entry = dest_array.get_object(0)
+                if (
+                    page_entry is not None
+                    and page_entry is not COSNull.NULL
+                    and not isinstance(page_entry, COSInteger)
+                ):
+                    raise ValueError(
+                        "Destination of a GoToE action must be an integer"
+                    )
         self._action.set_item(_D, destination.get_cos_object())
 
     # PDFBox spec-named accessors for /D — alias of get_d / set_d.

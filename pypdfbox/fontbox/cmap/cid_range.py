@@ -95,3 +95,24 @@ class CIDRange:
             self._to = new_to
             return True
         return False
+
+    # ---------- dunder helpers ----------
+
+    def __repr__(self) -> str:
+        return (
+            f"CIDRange(from={self._from}, to={self._to}, "
+            f"unicode={self._unicode}, code_length={self._code_length})"
+        )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CIDRange):
+            return NotImplemented
+        return (
+            self._from == other._from
+            and self._to == other._to
+            and self._unicode == other._unicode
+            and self._code_length == other._code_length
+        )
+
+    def __hash__(self) -> int:
+        return hash((self._from, self._to, self._unicode, self._code_length))

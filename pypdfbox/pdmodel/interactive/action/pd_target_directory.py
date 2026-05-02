@@ -110,6 +110,57 @@ class PDTargetDirectory:
             return
         self._dict.set_int(_A, annotation_number)
 
+    # ---------- /A annotation name (string form) ----------
+
+    def get_annotation_name(self) -> str | None:
+        """Annotation ``/NM`` value from ``/A`` (string form). Per PDF
+        32000-1 Table 202 the ``/A`` entry may be either an integer index
+        into the page's ``/Annots`` array (use :meth:`get_annotation_number`
+        / :meth:`get_annotation_index`) or a string identifying the target
+        annotation by its ``/NM`` value. Mirrors upstream PDFBox
+        ``getAnnotationName()``."""
+        v = self._dict.get_dictionary_object(_A)
+        if isinstance(v, COSString):
+            return v.get_string()
+        return None
+
+    def set_annotation_name(self, name: str | None) -> None:
+        """Set the annotation ``/NM`` value (string form of ``/A``).
+        ``None`` removes the entry. Mirrors upstream PDFBox
+        ``setAnnotationName(String)``."""
+        if name is None:
+            self._dict.remove_item(_A)
+            return
+        self._dict.set_string(_A, name)
+
+    # ---------- /A annotation index — PDFBox spec-named aliases ----------
+
+    def get_annotation_index(self) -> int | None:
+        """Spec-named accessor for the integer form of ``/A``. Alias of
+        :meth:`get_annotation_number`. Mirrors upstream PDFBox
+        ``getAnnotationIndex()``."""
+        return self.get_annotation_number()
+
+    def set_annotation_index(self, index: int | None) -> None:
+        """Spec-named setter for the integer form of ``/A``. Alias of
+        :meth:`set_annotation_number`. Mirrors upstream PDFBox
+        ``setAnnotationIndex(int)``."""
+        self.set_annotation_number(index)
+
+    # ---------- /N filename — PDFBox spec-named aliases ----------
+
+    def get_filename(self) -> str | None:
+        """Spec-named accessor for the embedded-file name (``/N``). Alias
+        of :meth:`get_target_filename`. Mirrors upstream PDFBox
+        ``getFilename()``."""
+        return self.get_target_filename()
+
+    def set_filename(self, name: str | None) -> None:
+        """Spec-named setter for the embedded-file name (``/N``). Alias of
+        :meth:`set_target_filename`. Mirrors upstream PDFBox
+        ``setFilename(String)``."""
+        self.set_target_filename(name)
+
     # ---------- /T chained target ----------
 
     def get_target(self) -> PDTargetDirectory | None:
@@ -123,6 +174,20 @@ class PDTargetDirectory:
             self._dict.remove_item(_T)
             return
         self._dict.set_item(_T, target.get_cos_object())
+
+    # ---------- /T chained target — PDFBox spec-named aliases ----------
+
+    def get_target_directory(self) -> PDTargetDirectory | None:
+        """Spec-named accessor for the chained ``/T`` target. Alias of
+        :meth:`get_target`. Mirrors upstream PDFBox
+        ``getTargetDirectory()``."""
+        return self.get_target()
+
+    def set_target_directory(self, target: PDTargetDirectory | None) -> None:
+        """Spec-named setter for the chained ``/T`` target. Alias of
+        :meth:`set_target`. Mirrors upstream PDFBox
+        ``setTargetDirectory(PDTargetDirectory)``."""
+        self.set_target(target)
 
 
 __all__ = ["PDTargetDirectory"]

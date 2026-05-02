@@ -54,3 +54,18 @@ class CodespaceRange:
             if b < self._start[i] or b > self._end[i]:
                 return False
         return True
+
+    # ---------- dunder helpers ----------
+
+    def __repr__(self) -> str:
+        start_hex = "".join(f"{b:02X}" for b in self._start)
+        end_hex = "".join(f"{b:02X}" for b in self._end)
+        return f"CodespaceRange(<{start_hex}> <{end_hex}>)"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CodespaceRange):
+            return NotImplemented
+        return self._start == other._start and self._end == other._end
+
+    def __hash__(self) -> int:
+        return hash((self._start, self._end))

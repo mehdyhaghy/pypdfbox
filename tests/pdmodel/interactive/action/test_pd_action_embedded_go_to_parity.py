@@ -156,3 +156,87 @@ def test_set_target_directory_none_clears_t() -> None:
     action.set_target_directory(None)
     assert not action.get_cos_object().contains_key(_T)
     assert action.get_target_directory() is None
+
+
+# ---------- set_destination validation ----------
+
+
+def test_set_destination_rejects_page_object_form() -> None:
+    """Per upstream ``PDActionEmbeddedGoTo.setDestination``, a page
+    destination whose first array entry is a page object dictionary (not an
+    integer page index) must be rejected — page references cannot cross
+    documents in a /GoToE chain. Mirrors upstream's
+    ``IllegalArgumentException``."""
+    import pytest
+
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
+        PDPageFitDestination,
+    )
+
+    action = PDActionEmbeddedGoTo()
+    dest = PDPageFitDestination()
+    # Direct page-object form — invalid for /GoToE.
+    dest.set_page(COSDictionary())
+    with pytest.raises(ValueError, match="must be an integer"):
+        action.set_destination(dest)
+
+
+def test_set_d_rejects_page_object_form_too() -> None:
+    """``set_d`` is an alias of ``set_destination``; the same validation
+    applies."""
+    import pytest
+
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
+        PDPageFitDestination,
+    )
+
+    action = PDActionEmbeddedGoTo()
+    dest = PDPageFitDestination()
+    dest.set_page(COSDictionary())
+    with pytest.raises(ValueError, match="must be an integer"):
+        action.set_d(dest)
+
+
+def test_set_destination_accepts_integer_page_index() -> None:
+    """A page destination with an integer page index is valid for /GoToE."""
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
+        PDPageFitDestination,
+    )
+
+    action = PDActionEmbeddedGoTo()
+    dest = PDPageFitDestination()
+    dest.set_page_number(3)
+    # Should not raise.
+    action.set_destination(dest)
+    got = action.get_destination()
+    assert got is not None
+    assert isinstance(got, PDPageFitDestination)
+    assert got.get_page_number() == 3
+
+
+def test_set_destination_accepts_fresh_page_destination() -> None:
+    """A fresh PDPageDestination (whose first array slot is COSNull) is
+    treated as 'no page set yet' and accepted — matches upstream's behaviour
+    on an empty destination array (where ``size() < 1`` skips validation)."""
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
+        PDPageFitDestination,
+    )
+
+    action = PDActionEmbeddedGoTo()
+    # Fresh destination — no page assigned.
+    action.set_destination(PDPageFitDestination())
+    # Now clearable.
+    action.set_destination(None)
+    assert action.get_destination() is None
+
+
+def test_set_destination_accepts_named_destination() -> None:
+    """Named destinations (non-page-destination forms) bypass the integer
+    check entirely."""
+    action = PDActionEmbeddedGoTo()
+    action.set_destination(PDNamedDestination("Chapter1"))
+    got = action.get_destination()
+    assert isinstance(got, PDNamedDestination)
+    assert got.get_named_destination() == "Chapter1"
