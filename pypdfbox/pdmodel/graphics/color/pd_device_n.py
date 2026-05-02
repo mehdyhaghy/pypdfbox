@@ -107,6 +107,21 @@ class PDDeviceNAttributes:
                 out[key.get_name()] = cs
         return out
 
+    def set_colorants(self, colorants: dict[str, PDColorSpace] | None) -> None:
+        """Replace the ``/Colorants`` map. Mirrors upstream
+        ``PDDeviceNAttributes.setColorants(Map<String, PDColorSpace>)``.
+
+        ``None`` removes the entry entirely — matches upstream's behaviour
+        of writing a ``null`` value, which the writer drops.
+        """
+        if colorants is None:
+            self._dictionary.remove_item("Colorants")
+            return
+        out = COSDictionary()
+        for name, cs in colorants.items():
+            out.set_item(name, cs.get_cos_object())
+        self._dictionary.set_item("Colorants", out)
+
     def get_mixing_hints(self) -> COSDictionary | None:
         """Return the raw ``/MixingHints`` dictionary, or ``None``.
 

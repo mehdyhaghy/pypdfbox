@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
@@ -93,6 +93,75 @@ class PDLab(PDColorSpace):
 
     def set_range(self, rng: list[float]) -> None:
         self._dict().set_item(_RANGE, COSArray.of_cos_floats(rng))
+
+    # Component-level range accessors mirror upstream
+    # ``PDLab.getARange()`` / ``getBRange()`` / ``setARange(PDRange)`` /
+    # ``setBRange(PDRange)``. Pypdfbox returns ``(min, max)`` tuples
+    # directly because there is no ``PDRange`` class in the lite surface
+    # — same shape as :meth:`PDICCBased.get_range_for_component`.
+
+    def get_a_range(self) -> tuple[float, float]:
+        """Return the ``a*`` component range as ``(min, max)``. Defaults
+        to ``(-100, 100)`` when ``/Range`` is absent."""
+        rng = self.get_range()
+        a_min = float(rng[0]) if len(rng) >= 1 else -100.0
+        a_max = float(rng[1]) if len(rng) >= 2 else 100.0
+        return a_min, a_max
+
+    def get_b_range(self) -> tuple[float, float]:
+        """Return the ``b*`` component range as ``(min, max)``. Defaults
+        to ``(-100, 100)`` when ``/Range`` is absent."""
+        rng = self.get_range()
+        b_min = float(rng[2]) if len(rng) >= 3 else -100.0
+        b_max = float(rng[3]) if len(rng) >= 4 else 100.0
+        return b_min, b_max
+
+    def set_a_range(self, low_high: tuple[float, float] | None) -> None:
+        """Set the ``a*`` component range. ``None`` resets to the
+        ``(-100, 100)`` default. Mirrors upstream
+        ``PDLab.setARange(PDRange)`` (null resets to defaults).
+        """
+        self._set_component_range(low_high, 0)
+
+    def set_b_range(self, low_high: tuple[float, float] | None) -> None:
+        """Set the ``b*`` component range. ``None`` resets to the
+        ``(-100, 100)`` default. Mirrors upstream
+        ``PDLab.setBRange(PDRange)`` (null resets to defaults).
+        """
+        self._set_component_range(low_high, 2)
+
+    def _set_component_range(
+        self,
+        low_high: tuple[float, float] | None,
+        index: int,
+    ) -> None:
+        d = self._dict()
+        existing = d.get_dictionary_object(_RANGE)
+        if isinstance(existing, COSArray):
+            range_array = existing
+        else:
+            range_array = COSArray()
+            range_array.add(COSFloat(-100.0))
+            range_array.add(COSFloat(100.0))
+            range_array.add(COSFloat(-100.0))
+            range_array.add(COSFloat(100.0))
+        if low_high is None:
+            range_array.set(index, COSFloat(-100.0))
+            range_array.set(index + 1, COSFloat(100.0))
+        else:
+            lo, hi = low_high
+            range_array.set(index, COSFloat(float(lo)))
+            range_array.set(index + 1, COSFloat(float(hi)))
+        d.set_item(_RANGE, range_array)
+        # Upstream invalidates the cached initial color when the range
+        # changes; keep parity by recomputing on next access.
+        rng = self.get_range()
+        a_min = rng[0] if len(rng) >= 1 else -100.0
+        b_min = rng[2] if len(rng) >= 3 else -100.0
+        self._initial_color = PDColor(
+            [0.0, max(0.0, a_min), max(0.0, b_min)],
+            self,
+        )
 
     # ---------- decode ----------
 

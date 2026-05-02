@@ -25,6 +25,7 @@ from pypdfbox.text import (
     TextPosition,
     get_angle,
 )
+from pypdfbox.text.filtered_text_stripper import get_angle_from_matrix
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -226,6 +227,98 @@ def test_filtered_text_stripper_emits_only_matching_rotation(
                 assert other_label not in text
     finally:
         doc.close()
+
+
+# ---------------------------------------------------------------------------
+# get_angle_from_matrix
+# ---------------------------------------------------------------------------
+
+
+def test_get_angle_from_matrix_handles_each_cardinal_rotation() -> None:
+    for angle in (0, 90, 180, 270):
+        a, b, c, d = _rotation_matrix(angle)
+        assert get_angle_from_matrix([a, b, c, d, 0.0, 0.0]) == angle
+
+
+def test_get_angle_from_matrix_returns_zero_for_none_or_short() -> None:
+    assert get_angle_from_matrix(None) == 0
+    assert get_angle_from_matrix([1.0, 0.0]) == 0
+
+
+def test_get_angle_from_matrix_accepts_tuple_and_normalises_negative() -> None:
+    a, b, c, d = _rotation_matrix(-90)
+    assert get_angle_from_matrix((a, b, c, d, 0.0, 0.0)) == 270
+
+
+def test_get_angle_delegates_to_get_angle_from_matrix() -> None:
+    a, b, c, d = _rotation_matrix(180)
+    pos = TextPosition(
+        text="x", x=0.0, y=0.0, font_size=12.0,
+        text_matrix=[a, b, c, d, 0.0, 0.0],
+    )
+    assert get_angle(pos) == get_angle_from_matrix(pos.get_text_matrix())
+
+
+# ---------------------------------------------------------------------------
+# AngleCollector — Pythonic Set helpers
+# ---------------------------------------------------------------------------
+
+
+def test_angle_collector_clear_angles_resets_state() -> None:
+    collector = AngleCollector()
+    collector._angles.update({0, 90, 180})
+    collector.clear_angles()
+    assert collector.get_angles() == set()
+    assert collector.get_sorted_angles() == []
+
+
+def test_angle_collector_get_sorted_angles_returns_ascending_list() -> None:
+    collector = AngleCollector()
+    collector._angles.update({270, 0, 180, 90})
+    assert collector.get_sorted_angles() == [0, 90, 180, 270]
+
+
+def test_angle_collector_has_angle_normalises_input() -> None:
+    collector = AngleCollector()
+    collector._angles.add(270)
+    assert collector.has_angle(270) is True
+    # ``-90`` → ``270`` after normalisation, so should match.
+    assert collector.has_angle(-90) is True
+    assert collector.has_angle(90) is False
+
+
+def test_angle_collector_contains_supports_in_operator() -> None:
+    collector = AngleCollector()
+    collector._angles.update({0, 180})
+    assert 0 in collector
+    assert 180 in collector
+    assert 90 not in collector
+    # ``-180`` normalises to ``180``.
+    assert -180 in collector
+    # Non-numeric input falls back to ``False`` rather than raising.
+    assert "bogus" not in collector
+
+
+def test_angle_collector_len_and_iter_match_sorted_view() -> None:
+    collector = AngleCollector()
+    collector._angles.update({90, 0, 270})
+    assert len(collector) == 3
+    assert list(iter(collector)) == [0, 90, 270]
+
+
+# ---------------------------------------------------------------------------
+# FilteredTextStripper.is_target_angle
+# ---------------------------------------------------------------------------
+
+
+def test_filtered_text_stripper_is_target_angle_matches_after_normalisation() -> None:
+    stripper = FilteredTextStripper(target_angle=270)
+    assert stripper.is_target_angle(270) is True
+    assert stripper.is_target_angle(-90) is True  # -90 → 270
+    assert stripper.is_target_angle(0) is False
+    stripper.set_target_angle(0)
+    assert stripper.is_target_angle(360) is True  # 360 → 0
+    assert stripper.is_target_angle(90) is False
 
 
 def test_unfiltered_stripper_still_sees_everything(tmp_path: Path) -> None:

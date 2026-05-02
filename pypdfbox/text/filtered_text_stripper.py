@@ -43,7 +43,29 @@ import math
 from .pdf_text_stripper import PDFTextStripper, _TextState
 from .text_position import TextPosition
 
-__all__ = ["AngleCollector", "FilteredTextStripper", "get_angle"]
+__all__ = [
+    "AngleCollector",
+    "FilteredTextStripper",
+    "get_angle",
+    "get_angle_from_matrix",
+]
+
+
+def get_angle_from_matrix(matrix: list[float] | tuple[float, ...] | None) -> int:
+    """Return the rotation, in integer degrees, encoded by ``matrix``.
+
+    Companion to :func:`get_angle` for callers that already hold the raw
+    ``[a, b, c, d, e, f]`` text-matrix list (e.g. inside dispatch loops
+    where materialising a :class:`TextPosition` is wasteful). Behaves
+    identically to :func:`get_angle` — result is normalised to
+    ``[0, 360)`` and ``None`` / short matrices return ``0``.
+    """
+    if matrix is None or len(matrix) < 4:
+        return 0
+    b = float(matrix[1])
+    d = float(matrix[3])
+    angle = int(round(math.degrees(math.atan2(b, d))))
+    return (angle + 360) % 360
 
 
 def get_angle(text: TextPosition) -> int:
@@ -53,13 +75,7 @@ def get_angle(text: TextPosition) -> int:
     Result is normalised to ``[0, 360)`` so callers can use plain ``==``
     comparisons against ``0`` / ``90`` / ``180`` / ``270``.
     """
-    matrix = text.get_text_matrix()
-    if matrix is None or len(matrix) < 4:
-        return 0
-    b = float(matrix[1])
-    d = float(matrix[3])
-    angle = int(round(math.degrees(math.atan2(b, d))))
-    return (angle + 360) % 360
+    return get_angle_from_matrix(text.get_text_matrix())
 
 
 def _state_angle(state: _TextState) -> int:
@@ -88,8 +104,54 @@ class AngleCollector(PDFTextStripper):
 
     def get_angles(self) -> set[int]:
         """Return the set of integer-degree rotations seen so far. Sorted
-        iteration is the caller's responsibility (use ``sorted(...)``)."""
+        iteration is the caller's responsibility (use ``sorted(...)`` or
+        :meth:`get_sorted_angles`)."""
         return self._angles
+
+    def get_sorted_angles(self) -> list[int]:
+        """Return the collected angles as an ascending-sorted ``list``.
+
+        Mirrors the iteration order of upstream's ``TreeSet<Integer>``
+        backing store — useful when the caller needs deterministic
+        per-page ordering (e.g. for the ``-rotationMagic`` extractor's
+        un-rotate loop, which always processes ``0``, then ``90``, ``180``,
+        ``270``).
+        """
+        return sorted(self._angles)
+
+    def clear_angles(self) -> None:
+        """Drop every angle recorded so far.
+
+        Upstream AngleCollector's docstring requires constructing a fresh
+        instance per page so the angle set starts empty. ``clear_angles``
+        is a Pythonic alternative — it lets a long-lived collector be
+        reused page-to-page without allocating, while still satisfying the
+        per-page-empty contract.
+        """
+        self._angles.clear()
+
+    def has_angle(self, angle: int) -> bool:
+        """Return ``True`` iff ``angle`` (normalised to ``[0, 360)``) was
+        recorded by this collector. Mirrors ``Set.contains`` semantics on
+        the upstream ``TreeSet<Integer>``.
+        """
+        return ((int(angle) + 360) % 360) in self._angles
+
+    def __contains__(self, angle: object) -> bool:
+        try:
+            return ((int(angle) + 360) % 360) in self._angles  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return False
+
+    def __len__(self) -> int:
+        return len(self._angles)
+
+    def __iter__(self):
+        # Iterate in ascending order to match upstream ``TreeSet``
+        # iteration semantics — callers that just need a deterministic
+        # walk can do ``for a in collector`` instead of
+        # ``for a in collector.get_sorted_angles()``.
+        return iter(sorted(self._angles))
 
     def process_text_position(self, text: TextPosition) -> None:
         self._angles.add(get_angle(text))
@@ -130,6 +192,14 @@ class FilteredTextStripper(PDFTextStripper):
 
     def set_target_angle(self, angle: int) -> None:
         self._target_angle = (int(angle) + 360) % 360
+
+    def is_target_angle(self, angle: int) -> bool:
+        """Return ``True`` iff ``angle`` (normalised to ``[0, 360)``)
+        equals the configured target. Convenience predicate for callers
+        that want to short-circuit a glyph dispatch loop without
+        re-implementing the modulo dance.
+        """
+        return ((int(angle) + 360) % 360) == self._target_angle
 
     def process_text_position(self, text: TextPosition) -> None:
         if get_angle(text) == self._target_angle:

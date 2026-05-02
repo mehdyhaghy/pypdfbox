@@ -120,6 +120,24 @@ class PDSeparation(PDColorSpace):
                 f"got {type(transform).__name__}"
             )
 
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDSeparation.toString``:
+        ``Separation{"<colorant>" <alternate name> <tint>}``.
+
+        ``<colorant>`` is the empty string for a default-ctor placeholder
+        slot; ``<alternate name>`` falls back to ``None`` when the
+        alternate slot can't be resolved (matches the lenient lite-path
+        behaviour of :meth:`get_alternate_color_space`).
+        """
+        colorant = self.get_colorant_name() or ""
+        alternate = self.get_alternate_color_space()
+        alt_name = alternate.get_name() if alternate is not None else "None"
+        tint = self.get_tint_transform()
+        tint_repr = "None" if tint is None else str(tint)
+        return f'{self.get_name()}{{"{colorant}" {alt_name} {tint_repr}}}'
+
     # ---------- conversion ----------
 
     def to_rgb(

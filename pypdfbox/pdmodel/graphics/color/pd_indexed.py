@@ -122,5 +122,27 @@ class PDIndexed(PDColorSpace):
         upper = float((1 << int(bits_per_component)) - 1)
         return [0.0, upper]
 
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDIndexed.toString``:
+        ``Indexed{base:<base> hival:<n> lookup:(<n> entries)}``.
+
+        ``lookup`` reports the count of palette entries (``hival + 1``,
+        clamped by the actual lookup-table length when malformed). Falls
+        back to ``0 entries`` when the lookup data is missing entirely
+        (still useful for diagnostics).
+        """
+        base = self.get_base_color_space()
+        base_repr = base.get_name() if base is not None else "None"
+        hival = self.get_hival()
+        data = self.get_lookup_data()
+        if data is None or base is None:
+            entries = 0
+        else:
+            n = base.get_number_of_components()
+            entries = (len(data) // n) if n > 0 else 0
+        return f"Indexed{{base:{base_repr} hival:{hival} lookup:({entries} entries)}}"
+
 
 __all__ = ["PDIndexed"]
