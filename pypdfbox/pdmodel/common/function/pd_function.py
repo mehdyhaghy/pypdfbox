@@ -381,7 +381,11 @@ class PDFunctionTypeIdentity(PDFunction):
     upstream (it raises) — callers should branch on ``isinstance`` instead.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, function: COSBase | None = None) -> None:
+        # Mirrors upstream signature ``PDFunctionTypeIdentity(COSBase function)``
+        # which discards the argument and passes ``null`` to ``super``. The
+        # parameter exists purely to keep call sites translated from Java
+        # (``new PDFunctionTypeIdentity(base)``) compiling without edits.
         super().__init__(None)
 
     def get_function_type(self) -> int:  # pragma: no cover - upstream behaviour
@@ -394,6 +398,12 @@ class PDFunctionTypeIdentity(PDFunction):
 
     def get_range(self) -> COSArray | None:
         # Upstream returns null so the base ``clipToRange`` is a no-op.
+        return None
+
+    def get_range_values(self) -> COSArray | None:
+        """Upstream-named alias for :meth:`get_range`. Mirrors the protected
+        override ``PDFunctionTypeIdentity.getRangeValues()`` which returns
+        ``null`` so that the base ``clipToRange`` short-circuits."""
         return None
 
     def __str__(self) -> str:

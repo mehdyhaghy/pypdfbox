@@ -35,9 +35,12 @@ class NextLine(OperatorProcessor):
                 leading = float(leading_accessor())
             except (TypeError, ValueError):
                 leading = 0.0
+        # Upstream uses ``COSFloat.ZERO`` (interned) for the tx operand;
+        # we re-use the same shared constant for byte-identity parity
+        # rather than constructing a fresh ``COSFloat(0.0)``.
         ctx.process_operator(
             OperatorName.MOVE_TEXT,
-            [COSFloat(0.0), COSFloat(-leading)],
+            [COSFloat.ZERO, COSFloat(-leading)],
         )
 
     def get_name(self) -> str:

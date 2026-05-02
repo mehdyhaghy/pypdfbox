@@ -330,3 +330,68 @@ def test_get_encode_for_parameter_returns_none_when_encode_absent() -> None:
     raw.set_int("FunctionType", 3)
     fn = PDFunctionType3(raw)
     assert fn.get_encode_for_parameter(0) is None
+
+
+# ---------- get_bounds_values (flat float accessor) ----------
+
+
+def test_get_bounds_values_returns_flat_floats() -> None:
+    """Mirrors upstream ``boundsValues`` cache — exposed publicly here."""
+    fn = _stitch(
+        functions=[
+            _type2([0.0], [1.0], 1.0),
+            _type2([1.0], [0.0], 1.0),
+            _type2([0.5], [0.5], 1.0),
+        ],
+        domain=[0.0, 9.0],
+        bounds=[3.0, 6.0],
+        encode=[0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+    )
+    assert fn.get_bounds_values() == pytest.approx([3.0, 6.0])
+
+
+def test_get_bounds_values_empty_list_when_bounds_absent() -> None:
+    fn = PDFunctionType3()
+    assert fn.get_bounds_values() == []
+
+
+def test_get_bounds_values_empty_list_when_bounds_empty_array() -> None:
+    fn = _stitch(
+        functions=[_type2([0.0], [1.0], 1.0)],
+        domain=[0.0, 1.0],
+        bounds=[],
+        encode=[0.0, 1.0],
+    )
+    assert fn.get_bounds_values() == []
+
+
+# ---------- get_number_of_functions ----------
+
+
+def test_get_number_of_functions_counts_subfunctions() -> None:
+    fn = _stitch(
+        functions=[
+            _type2([0.0], [1.0], 1.0),
+            _type2([1.0], [0.0], 1.0),
+            _type2([0.5], [0.5], 1.0),
+        ],
+        domain=[0.0, 9.0],
+        bounds=[3.0, 6.0],
+        encode=[0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+    )
+    assert fn.get_number_of_functions() == 3
+
+
+def test_get_number_of_functions_zero_when_functions_absent() -> None:
+    fn = PDFunctionType3()
+    assert fn.get_number_of_functions() == 0
+
+
+def test_get_number_of_functions_zero_when_functions_malformed() -> None:
+    """Defensive: non-array /Functions entry → 0 (matches the get_functions_array
+    None-on-malformed contract)."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 3)
+    raw.set_int("Functions", 7)  # malformed — not a COSArray
+    fn = PDFunctionType3(raw)
+    assert fn.get_number_of_functions() == 0

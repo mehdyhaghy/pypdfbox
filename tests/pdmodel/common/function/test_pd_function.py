@@ -670,6 +670,29 @@ def test_identity_get_function_type_raises() -> None:
         fn.get_function_type()
 
 
+def test_identity_constructor_accepts_optional_cos_base() -> None:
+    """Mirrors upstream ``PDFunctionTypeIdentity(COSBase function)`` — the
+    argument is discarded but exists so Java call sites translate cleanly."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 99)  # arbitrary — must be ignored
+    fn = PDFunctionTypeIdentity(raw)
+    # Discarded: the wrapper still behaves like the no-arg form.
+    assert fn.eval([0.5, 0.7]) == [0.5, 0.7]
+    assert fn.get_range() is None
+
+
+def test_identity_constructor_accepts_none_for_java_null_calls() -> None:
+    """Java port pattern: ``new PDFunctionTypeIdentity(null)`` — must work."""
+    fn = PDFunctionTypeIdentity(None)
+    assert fn.eval([1.0]) == [1.0]
+
+
+def test_identity_get_range_values_returns_none() -> None:
+    """Mirrors the protected ``PDFunctionTypeIdentity.getRangeValues()``
+    override which returns ``null`` so base ``clipToRange`` is a no-op."""
+    assert PDFunctionTypeIdentity().get_range_values() is None
+
+
 # ---------- *_values upstream-named aliases ----------
 
 

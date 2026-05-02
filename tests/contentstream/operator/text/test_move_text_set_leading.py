@@ -7,9 +7,11 @@ from pypdfbox.contentstream import (
     Operator,
     PDFStreamEngine,
 )
+from pypdfbox.contentstream import OperatorName
 from pypdfbox.contentstream.operator.text import (
     MoveText,
     MoveTextSetLeading,
+    SetTextLeading,
 )
 from pypdfbox.cos import COSFloat, COSInteger, COSString
 
@@ -99,3 +101,80 @@ def test_re_export_canonical() -> None:
     )
 
     assert Reexport is MoveTextSetLeading
+
+
+def test_get_name_matches_operator_name_constant() -> None:
+    """``get_name()`` must return :data:`OperatorName.MOVE_TEXT_SET_LEADING`
+    (not a magic string literal) — guards against drift between the
+    constant table and the operator handler."""
+    assert (
+        MoveTextSetLeading().get_name()
+        == OperatorName.MOVE_TEXT_SET_LEADING
+        == "TD"
+    )
+
+
+def test_leading_fires_only_once_when_tl_handler_registered() -> None:
+    """When a ``TL`` handler is registered, ``TD`` must dispatch via the
+    synthetic ``TL`` op only — no double notification via direct engine
+    call. Mirrors upstream which solely uses ``processOperator``."""
+    p = MoveTextSetLeading()
+    engine = _Spy()
+    engine.add_operator(p)
+    engine.add_operator(SetTextLeading())
+    engine.add_operator(MoveText())
+    p.process(
+        Operator.get_operator("TD"), [COSFloat(0.0), COSFloat(-9.0)]
+    )
+    assert engine.leading_calls == [9.0]  # exactly one notification
+
+
+def test_leading_falls_back_to_direct_when_no_tl_handler() -> None:
+    """No ``TL`` handler registered → fall back to direct engine
+    notification so subclasses still observe the leading change."""
+    p = MoveTextSetLeading()
+    engine = _Spy()
+    engine.add_operator(p)
+    engine.add_operator(MoveText())  # no SetTextLeading registered
+    p.process(
+        Operator.get_operator("TD"), [COSFloat(0.0), COSFloat(-4.0)]
+    )
+    assert engine.leading_calls == [4.0]
+
+
+def test_negative_zero_ty() -> None:
+    """``-(-0.0) == 0.0`` — the leading must be the IEEE-754 ``+0.0``."""
+    p, engine = _bind()
+    p.process(
+        Operator.get_operator("TD"), [COSFloat(0.0), COSFloat(-0.0)]
+    )
+    assert engine.leading_calls == [0.0]
+    # No surprises for the move either.
+    assert engine.move_calls == [(0.0, -0.0)]
+
+
+def test_non_number_first_operand_still_sets_leading() -> None:
+    """Upstream only validates ``arguments.get(1)`` — the first operand
+    being non-number doesn't short-circuit. The leading is set, then
+    ``MoveText`` silently drops the non-number.
+    """
+    p, engine = _bind()
+    p.process(
+        Operator.get_operator("TD"),
+        [COSString(b"oops"), COSFloat(-6.0)],
+    )
+    assert engine.leading_calls == [6.0]
+    assert engine.move_calls == []  # MoveText silently dropped
+
+
+def test_extra_operands_ignored() -> None:
+    """Extra operands beyond the second are passed through verbatim to
+    the inner ``Td`` (which only consumes its first two). The leading
+    is still set from operand[1]."""
+    p, engine = _bind()
+    p.process(
+        Operator.get_operator("TD"),
+        [COSFloat(1.0), COSFloat(-2.0), COSFloat(99.0)],
+    )
+    assert engine.leading_calls == [2.0]
+    assert engine.move_calls == [(1.0, -2.0)]

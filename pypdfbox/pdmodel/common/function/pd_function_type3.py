@@ -89,6 +89,32 @@ class PDFunctionType3(PDFunction):
             return item
         return None
 
+    def get_bounds_values(self) -> list[float]:
+        """Return ``/Bounds`` as a flat ``list[float]`` (empty when absent /
+        malformed). Mirrors upstream ``PDFunctionType3.boundsValues`` — a
+        cached float array materialised on first ``eval`` from
+        ``getBounds().toFloatArray()``. Exposed as a public accessor here so
+        callers building stitching dictionaries can introspect partition
+        boundaries without depending on eval side-effects."""
+        bounds = self.get_bounds()
+        if bounds is None:
+            return []
+        return bounds.to_float_array()
+
+    def get_number_of_functions(self) -> int:
+        """Return the count of subfunctions in ``/Functions`` — i.e. the
+        number of partitions the stitching function dispatches across.
+        Returns ``0`` when ``/Functions`` is absent or not a ``COSArray``.
+
+        No exact upstream equivalent (PDFBox callers read
+        ``getFunctions().size()``); added for symmetry with
+        :meth:`PDFunction.get_number_of_input_parameters` /
+        :meth:`PDFunction.get_number_of_output_parameters`."""
+        arr = self.get_functions_array()
+        if arr is None:
+            return 0
+        return arr.size()
+
     def set_bounds(self, bounds: COSArray | None) -> None:
         """Replace ``/Bounds`` with the supplied COSArray, or remove the key
         when ``None``. Mirrors PDFBox ``setBounds(COSArray)``."""

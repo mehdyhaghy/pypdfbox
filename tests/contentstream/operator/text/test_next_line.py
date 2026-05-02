@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream import Operator, PDFStreamEngine
+from pypdfbox.contentstream import Operator, OperatorName, PDFStreamEngine
 from pypdfbox.contentstream.operator.text import MoveText, NextLine
-from pypdfbox.cos import COSBase, COSNumber
+from pypdfbox.cos import COSBase, COSFloat, COSNumber
 
 
 class _Spy(PDFStreamEngine):
@@ -108,3 +108,49 @@ def test_process_swallows_bogus_leading_accessor() -> None:
     engine.add_operator(MoveText())
     p.process(Operator.get_operator("T*"), [])
     assert engine.calls == [(0.0, 0.0)]
+
+
+def test_get_name_matches_operator_name_constant() -> None:
+    """``get_name()`` returns :data:`OperatorName.NEXT_LINE` — guards
+    against drift between the constants table and the handler."""
+    assert NextLine().get_name() == OperatorName.NEXT_LINE == "T*"
+
+
+def test_tx_operand_is_cos_float_zero_constant() -> None:
+    """Upstream uses the interned ``COSFloat.ZERO`` constant for the
+    synthesized ``Td`` ``tx`` operand — not a freshly constructed
+    ``COSFloat(0.0)``. We mirror the byte-identity for parity."""
+    captured: list[list[COSBase]] = []
+
+    class _Capture(MoveText):
+        def process(self, operator, operands):  # type: ignore[no-untyped-def]
+            captured.append(list(operands))
+
+    engine = _Spy(leading=3.0)
+    engine.add_operator(NextLine())
+    engine.add_operator(_Capture())
+    engine.get_operators()["T*"].process(Operator.get_operator("T*"), [])
+    assert captured[0][0] is COSFloat.ZERO
+
+
+def test_extra_operands_silently_ignored() -> None:
+    """``T*`` takes zero operands per ISO 32000-1 §9.4.2; upstream just
+    ignores any leftover stack and decomposes regardless. We do the
+    same — operand list is unused."""
+    p, engine = _bind()
+    p.process(Operator.get_operator("T*"), [COSFloat(99.0)])
+    assert engine.move_calls == [(0.0, -14.0)]
+
+
+def test_infinite_leading_clamped_to_flt_max() -> None:
+    """A pathological subclass returning ``inf`` for the leading must
+    not crash. ``COSFloat`` clamps to single-precision FLT_MAX
+    (mirroring Java float-conversion semantics), so the synthesized
+    ``Td`` ty operand is ``-FLT_MAX`` rather than raw ``-inf``."""
+    _flt_max = 3.4028234663852886e38
+    engine = _Spy(leading=float("inf"))
+    p = NextLine()
+    engine.add_operator(p)
+    engine.add_operator(MoveText())
+    p.process(Operator.get_operator("T*"), [])
+    assert engine.move_calls == [(0.0, -_flt_max)]
