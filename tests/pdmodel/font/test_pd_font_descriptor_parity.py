@@ -565,3 +565,103 @@ def test_pd_panose_classification_dunder_len_matches_buffer_length() -> None:
     # Verbatim storage — non-spec lengths are reflected exactly.
     short = PDPanoseClassification(bytes(3))
     assert len(short) == 3
+
+
+# ---------- get_font_name / get_font_stretch lenience (PDFBOX getNameAsString) -----
+
+
+def test_get_font_name_falls_back_to_cos_string() -> None:
+    """Mirrors upstream ``getNameAsString``: tolerates /FontName stored as a
+    COSString in addition to the spec-mandated COSName form."""
+    fd = PDFontDescriptor()
+    fd.get_cos_object().set_item(
+        COSName.get_pdf_name("FontName"), COSString("Times-Roman")
+    )
+    assert fd.get_font_name() == "Times-Roman"
+
+
+def test_get_font_stretch_falls_back_to_cos_string() -> None:
+    """Mirrors upstream ``getNameAsString`` for /FontStretch."""
+    fd = PDFontDescriptor()
+    fd.get_cos_object().set_item(
+        COSName.get_pdf_name("FontStretch"), COSString("Condensed")
+    )
+    assert fd.get_font_stretch() == "Condensed"
+
+
+# ---------- __repr__ / __eq__ / __hash__ (pypdfbox extensions) ----------
+
+
+def test_pd_font_descriptor_repr_includes_font_name_and_flags() -> None:
+    fd = PDFontDescriptor()
+    fd.set_font_name("Helvetica")
+    fd.set_flags(FLAG_FIXED_PITCH | FLAG_ITALIC)
+    text = repr(fd)
+    assert "PDFontDescriptor" in text
+    assert "'Helvetica'" in text
+    assert str(FLAG_FIXED_PITCH | FLAG_ITALIC) in text
+
+
+def test_pd_font_descriptor_repr_when_unset() -> None:
+    fd = PDFontDescriptor()
+    text = repr(fd)
+    assert "PDFontDescriptor" in text
+    assert "None" in text
+    assert "flags=0" in text
+
+
+def test_pd_panose_value_equality_and_hash() -> None:
+    a = PDPanose(bytes([0x00, 0x08, 2, 11, 6, 3, 5, 4, 5, 2, 2, 4]))
+    b = PDPanose(bytes([0x00, 0x08, 2, 11, 6, 3, 5, 4, 5, 2, 2, 4]))
+    c = PDPanose(bytes([0xFF, 0x80] + list(range(10, 20))))
+
+    assert a == b
+    assert a != c
+    assert hash(a) == hash(b)
+    assert hash(a) != hash(c)
+    # Hashable -> usable as dict keys.
+    assert {a: "x", c: "y"}[b] == "x"
+
+
+def test_pd_panose_equality_rejects_non_panose() -> None:
+    p = PDPanose(bytes(12))
+    assert p != bytes(12)  # type: ignore[comparison-overlap]
+    assert p != "not a panose"
+    assert p != 42
+
+
+def test_pd_panose_repr_round_trips_bytes() -> None:
+    payload = bytes([0x00, 0x08, 2, 11, 6, 3, 5, 4, 5, 2, 2, 4])
+    p = PDPanose(payload)
+    text = repr(p)
+    assert text.startswith("PDPanose(")
+    # The repr embeds the raw byte literal so callers can paste-reconstruct.
+    assert repr(payload) in text
+
+
+def test_pd_panose_classification_value_equality_and_hash() -> None:
+    a = PDPanoseClassification(bytes([2, 11, 6, 3, 5, 4, 5, 2, 2, 4]))
+    b = PDPanoseClassification(bytes([2, 11, 6, 3, 5, 4, 5, 2, 2, 4]))
+    c = PDPanoseClassification(bytes(range(10)))
+
+    assert a == b
+    assert a != c
+    assert hash(a) == hash(b)
+    # Different bytes -> different (likely) hash; at minimum, `a` and `c`
+    # don't compare equal.
+    assert a is not c
+
+
+def test_pd_panose_classification_equality_rejects_non_classification() -> None:
+    pc = PDPanoseClassification(bytes(10))
+    assert pc != bytes(10)  # type: ignore[comparison-overlap]
+    # Cross-class comparison: PDPanose != PDPanoseClassification.
+    assert pc != PDPanose(bytes(12))
+
+
+def test_pd_panose_classification_repr_round_trips_bytes() -> None:
+    payload = bytes([2, 11, 6, 3, 5, 4, 5, 2, 2, 4])
+    pc = PDPanoseClassification(payload)
+    text = repr(pc)
+    assert text.startswith("PDPanoseClassification(")
+    assert repr(payload) in text

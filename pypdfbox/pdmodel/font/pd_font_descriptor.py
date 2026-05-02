@@ -66,7 +66,11 @@ class PDFontDescriptor:
     # ---------- /FontName ----------
 
     def get_font_name(self) -> str | None:
-        return self._dict.get_name(_FONT_NAME)
+        # Upstream uses ``dic.getNameAsString(FONT_NAME)`` which tolerates a
+        # /FontName stored as a COSString (some non-conformant writers do
+        # this) in addition to the spec-mandated COSName form. ``get_string``
+        # implements the same fallback.
+        return self._dict.get_string(_FONT_NAME)
 
     def set_font_name(self, name: str | None) -> None:
         if name is None:
@@ -297,7 +301,10 @@ class PDFontDescriptor:
         self._dict.set_string(_FONT_FAMILY, value)
 
     def get_font_stretch(self) -> str | None:
-        return self._dict.get_name(_FONT_STRETCH)
+        # Upstream uses ``dic.getNameAsString(FONT_STRETCH)`` — tolerate a
+        # /FontStretch stored as a COSString as well as the spec-mandated
+        # COSName form.
+        return self._dict.get_string(_FONT_STRETCH)
 
     def set_font_stretch(self, value: str | None) -> None:
         if value is None:
@@ -445,6 +452,18 @@ class PDFontDescriptor:
             return
         self._dict.set_name(_LANG, value)
 
+    # ---------- debug ----------
+
+    def __repr__(self) -> str:
+        """Human-readable summary surfacing the font name and flags.
+
+        pypdfbox extension — upstream PDFontDescriptor inherits Java's
+        default ``toString``. The summary is purely diagnostic and is not
+        intended to round-trip through the parser.
+        """
+        name = self.get_font_name()
+        return f"PDFontDescriptor(font_name={name!r}, flags={self.get_flags()})"
+
 
 class PDPanoseClassification:
     """10-byte PANOSE classification block.
@@ -532,6 +551,23 @@ class PDPanoseClassification:
             + "}"
         )
 
+    def __repr__(self) -> str:
+        return f"PDPanoseClassification({self._bytes!r})"
+
+    def __eq__(self, other: object) -> bool:
+        """Value equality based on the underlying byte buffer.
+
+        pypdfbox extension — upstream relies on Java's default identity
+        ``equals``. Treating these wrappers as value types lets callers
+        compare PANOSE classifications cheaply (e.g. in test assertions).
+        """
+        if not isinstance(other, PDPanoseClassification):
+            return NotImplemented
+        return self._bytes == other._bytes
+
+    def __hash__(self) -> int:
+        return hash(self._bytes)
+
 
 class PDPanose:
     """The 12-byte Panose entry of a FontDescriptor's /Style dictionary.
@@ -582,6 +618,21 @@ class PDPanose:
     def __len__(self) -> int:
         """Number of bytes actually stored (typically :attr:`LENGTH` == 12)."""
         return len(self._bytes)
+
+    def __repr__(self) -> str:
+        return f"PDPanose({self._bytes!r})"
+
+    def __eq__(self, other: object) -> bool:
+        """Value equality based on the underlying 12-byte buffer.
+
+        pypdfbox extension — see :meth:`PDPanoseClassification.__eq__`.
+        """
+        if not isinstance(other, PDPanose):
+            return NotImplemented
+        return self._bytes == other._bytes
+
+    def __hash__(self) -> int:
+        return hash(self._bytes)
 
 
 __all__ = [

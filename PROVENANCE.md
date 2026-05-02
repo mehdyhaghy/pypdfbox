@@ -1215,3 +1215,9 @@ Existing upstream-derived modules extended in Wave 71: `Filter` (`SYSPROP_DEFLAT
 | `tests/xmpbox/type/test_locale_type.py` | 3.0.x | hand-written coverage for the `LocaleType` simple property + registry wiring |
 | `tests/xmpbox/type/test_xpath_type.py` | 3.0.x | hand-written coverage for the `XPathType` simple property + registry wiring |
 | `tests/xmpbox/type/test_part_type.py` | 3.0.x | hand-written coverage for the `PartType` simple property + registry wiring |
+
+### XMPMetadata upstream test port (testInitMetaDataWithInfo / testAddingSchem)
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `tests/xmpbox/upstream/test_xmp_metadata.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/XMPMetaDataTest.java` (`testInitMetaDataWithInfo` + `testAddingSchem` ported; `XmpSerializationException` smoke tests skipped — pypdfbox raises plain `RuntimeError`; `testPDFBOX3257` already lives in `test_dom_xmp_parser.py`) |

@@ -176,6 +176,36 @@ class XMPMetadata:
         # Upstream returns a defensive copy; mirror that.
         return list(self._schemas)
 
+    # --- Pythonic container protocols ---------------------------------
+    # Upstream relies on ``getAllSchemas().size()`` / ``.iterator()`` /
+    # ``.contains(...)`` because Java's ``List`` exposes them. We surface
+    # the equivalent Python dunders so call-sites can write ``len(meta)``,
+    # ``for schema in meta:``, and ``namespace_uri in meta`` / ``schema in
+    # meta`` without rebuilding the list each time. Semantics are
+    # deliberately kept minimal — the dunders read straight off
+    # ``self._schemas`` and never mutate it.
+
+    def __len__(self) -> int:
+        """Return the number of registered schemas (mirrors
+        ``getAllSchemas().size()`` on upstream's ``List``)."""
+        return len(self._schemas)
+
+    def __iter__(self):
+        """Iterate over registered schemas in insertion order (mirrors
+        ``getAllSchemas().iterator()``). Iteration uses a snapshot so
+        callers can safely mutate the schema list during iteration."""
+        return iter(list(self._schemas))
+
+    def __contains__(self, item: object) -> bool:
+        """Return ``True`` when ``item`` is either a registered schema
+        instance or a namespace URI string matching one of the
+        registered schemas. Mirrors the two ways upstream callers ask
+        the question (``getAllSchemas().contains(schema)`` for the
+        instance case, ``getSchema(nsURI) != null`` for the URI case)."""
+        if isinstance(item, str):
+            return self.get_schema(item) is not None
+        return item in self._schemas
+
     def clear_schemas(self) -> None:
         """
         Mirror of upstream ``XMPMetadata.clearSchemas``: drop every registered

@@ -164,6 +164,51 @@ def test_create_and_add_xmp_basic_schema_returns_distinct_instances() -> None:
     assert meta.get_xmp_basic_schema() is a
 
 
+def test_len_iter_contains_schema_dunders() -> None:
+    """``len(meta)``, ``for schema in meta:`` and ``schema in meta`` /
+    ``namespace_uri in meta`` mirror upstream's ``getAllSchemas()`` size,
+    iteration, and contains semantics without re-walking the list."""
+    meta = XMPMetadata.create_xmp_metadata()
+    assert len(meta) == 0
+    assert list(iter(meta)) == []
+
+    dc = DublinCoreSchema(meta)
+    basic = XMPBasicSchema(meta)
+    meta.add_schema(dc)
+    meta.add_schema(basic)
+
+    assert len(meta) == 2
+    assert list(iter(meta)) == [dc, basic]
+    # Schema-instance membership.
+    assert dc in meta
+    assert basic in meta
+    # Namespace-URI string membership.
+    assert DublinCoreSchema.NAMESPACE in meta
+    assert XMPBasicSchema.NAMESPACE in meta
+    assert "http://example.invalid/missing#" not in meta
+    # Non-string, non-registered objects are simply absent — never raise.
+    assert object() not in meta
+
+
+def test_iter_uses_snapshot_to_allow_mutation() -> None:
+    """Iteration must not crash when callers mutate the schema list —
+    ``__iter__`` walks a snapshot, mirroring how ``getAllSchemas()``
+    returns a defensive copy upstream."""
+    meta = XMPMetadata.create_xmp_metadata()
+    dc = DublinCoreSchema(meta)
+    basic = XMPBasicSchema(meta)
+    meta.add_schema(dc)
+    meta.add_schema(basic)
+
+    seen = []
+    for schema in meta:
+        seen.append(schema)
+        # Mutate during iteration.
+        meta.remove_schema(schema)
+    assert seen == [dc, basic]
+    assert len(meta) == 0
+
+
 def test_create_and_add_xmp_media_management_schema_returns_distinct_instances() -> None:
     """Mirror of upstream
     ``XMPMetadata.createAndAddXMPMediaManagementSchema``."""
