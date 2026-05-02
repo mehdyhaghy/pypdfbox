@@ -21,6 +21,23 @@ _TRAPPED: COSName = COSName.get_pdf_name("Trapped")
 _VALID_TRAPPED = frozenset({"True", "False", "Unknown"})
 
 
+# Standard /Info dictionary keys per PDF 32000-1:2008 §14.3.3, Table 317.
+# Anything else found in the dictionary is considered "custom metadata".
+_STANDARD_KEYS: frozenset[str] = frozenset(
+    {
+        "Title",
+        "Author",
+        "Subject",
+        "Keywords",
+        "Creator",
+        "Producer",
+        "CreationDate",
+        "ModDate",
+        "Trapped",
+    }
+)
+
+
 # Matches PDF 32000-1:2008 §7.9.4 date strings: ``D:YYYYMMDDHHmmSSOHH'mm'``.
 # Every component after the year is optional (per spec, missing components
 # default to zero / GMT). The trailing apostrophes are also optional in
@@ -115,6 +132,11 @@ class PDDocumentInformation:
     Each ``get_*`` accessor returns ``None`` if the entry is absent;
     each ``set_*`` accessor with a ``None`` argument clears the entry.
     """
+
+    #: Names defined for the standard /Info dictionary keys per PDF 32000-1:2008
+    #: §14.3.3, Table 317. Anything else stored on the dictionary is treated as
+    #: custom metadata.
+    STANDARD_KEYS: frozenset[str] = _STANDARD_KEYS
 
     def __init__(self, info: COSDictionary | None = None) -> None:
         self._info = info if info is not None else COSDictionary()
@@ -246,7 +268,34 @@ class PDDocumentInformation:
     ) -> None:
         self._info.set_string(field_name, field_value)
 
+    def get_custom_metadata_keys(self) -> list[str]:
+        """Return only the *non-standard* metadata keys present in the info
+        dictionary, in sorted order. Filters out keys defined by PDF
+        32000-1:2008 §14.3.3 (``Title``, ``Author``, ..., ``Trapped``).
+
+        Pypdfbox addition — upstream PDFBox returns *all* keys via
+        ``getMetadataKeys()``; this convenience layers on top of the same
+        underlying state for callers iterating only custom fields.
+        """
+        return sorted(
+            key.get_name()
+            for key in self._info.key_set()
+            if key.get_name() not in _STANDARD_KEYS
+        )
+
     # ---------- introspection ----------
+
+    def is_empty(self) -> bool:
+        """Return ``True`` if the underlying info dictionary holds no entries."""
+        return self._info.is_empty()
+
+    def __len__(self) -> int:
+        return self._info.size()
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, (str, COSName)):
+            return False
+        return self._info.contains_key(key)
 
     def __repr__(self) -> str:
         return (

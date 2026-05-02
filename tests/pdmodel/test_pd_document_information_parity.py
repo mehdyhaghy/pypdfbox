@@ -222,3 +222,103 @@ def test_contains_property_works_for_custom_keys() -> None:
     assert info.contains_property("Company") is True
     info.set_custom_metadata_value("Company", None)
     assert info.contains_property("Company") is False
+
+
+# ---------- STANDARD_KEYS / get_custom_metadata_keys ----------
+
+
+def test_standard_keys_contains_all_spec_keys() -> None:
+    """The class-level constant must mirror PDF 32000-1:2008 §14.3.3."""
+    assert PDDocumentInformation.STANDARD_KEYS == frozenset(
+        {
+            "Title",
+            "Author",
+            "Subject",
+            "Keywords",
+            "Creator",
+            "Producer",
+            "CreationDate",
+            "ModDate",
+            "Trapped",
+        }
+    )
+
+
+def test_standard_keys_is_immutable() -> None:
+    assert isinstance(PDDocumentInformation.STANDARD_KEYS, frozenset)
+
+
+def test_get_custom_metadata_keys_default_empty() -> None:
+    info = PDDocumentInformation()
+    assert info.get_custom_metadata_keys() == []
+
+
+def test_get_custom_metadata_keys_excludes_standard_entries() -> None:
+    """Setting only standard fields yields no custom keys."""
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_author("A")
+    info.set_creator("C")
+    info.set_producer("P")
+    assert info.get_custom_metadata_keys() == []
+
+
+def test_get_custom_metadata_keys_returns_only_non_standard_sorted() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_custom_metadata_value("Department", "Eng")
+    info.set_custom_metadata_value("Company", "ACME")
+    info.set_custom_metadata_value("BatchId", "42")
+    # Sorted ASCII order, standard keys filtered out.
+    assert info.get_custom_metadata_keys() == [
+        "BatchId",
+        "Company",
+        "Department",
+    ]
+
+
+# ---------- is_empty / __len__ / __contains__ ----------
+
+
+def test_is_empty_default_true() -> None:
+    info = PDDocumentInformation()
+    assert info.is_empty() is True
+
+
+def test_is_empty_false_after_set() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    assert info.is_empty() is False
+    info.set_title(None)
+    assert info.is_empty() is True
+
+
+def test_len_reports_entry_count() -> None:
+    info = PDDocumentInformation()
+    assert len(info) == 0
+    info.set_title("T")
+    assert len(info) == 1
+    info.set_author("A")
+    info.set_custom_metadata_value("Company", "ACME")
+    assert len(info) == 3
+
+
+def test_dunder_contains_with_string() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    assert "Title" in info
+    assert "Author" not in info
+
+
+def test_dunder_contains_with_cos_name() -> None:
+    info = PDDocumentInformation()
+    info.set_creator("C")
+    assert COSName.get_pdf_name("Creator") in info
+    assert COSName.get_pdf_name("Producer") not in info
+
+
+def test_dunder_contains_with_non_string_returns_false() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    assert (123 in info) is False
+    assert (None in info) is False
