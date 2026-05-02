@@ -638,6 +638,186 @@ class Type1Font:
             logger.debug("Type1Font: /Private/Subrs %r has no length, returning 0", subrs)
             return 0
 
+    # ---------- top-level numeric / id accessors ----------
+
+    def get_unique_id(self) -> int:
+        """Top-level ``/UniqueID``. ``0`` when absent (Java default).
+
+        Mirrors upstream ``Type1Font.getUniqueID()``."""
+        value = self._font_dict().get("UniqueID")
+        if value is None:
+            logger.debug("Type1Font: /UniqueID missing, returning 0")
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /UniqueID %r not int, returning 0", value)
+            return 0
+
+    def get_stroke_width(self) -> float:
+        """Top-level ``/StrokeWidth`` (used by ``PaintType=2`` outline fonts).
+
+        ``0.0`` when absent. Mirrors upstream ``Type1Font.getStrokeWidth()``.
+        """
+        value = self._font_dict().get("StrokeWidth")
+        if value is None:
+            logger.debug("Type1Font: /StrokeWidth missing, returning 0.0")
+            return 0.0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /StrokeWidth %r not numeric, returning 0.0", value)
+            return 0.0
+
+    def get_font_id(self) -> str:
+        """Top-level ``/FID`` (font ID string). Empty when absent.
+
+        Mirrors upstream ``Type1Font.getFontID()`` (field ``fontID``).
+        """
+        value = self._font_dict().get("FID")
+        if value is None:
+            logger.debug("Type1Font: /FID missing, returning ''")
+            return ""
+        return str(value)
+
+    # ---------- Private dictionary accessors ----------
+    #
+    # These mirror the upstream ``Type1Font`` Private-dict getters. Each
+    # one is a thin lookup over ``font_dict["Private"]`` populated by the
+    # eexec-decrypted second-stage parse. Numeric arrays default to an
+    # empty list (matching ``Collections.emptyList()`` upstream) and
+    # scalars to their typed zero / false defaults.
+
+    def get_blue_values(self) -> list[float]:
+        """``Private /BlueValues`` — alignment zones for upper bounds of
+        rounded uppercase characters and similar features. Empty list
+        when absent. Mirrors upstream ``Type1Font.getBlueValues()``."""
+        return self._private_numeric_array("BlueValues")
+
+    def get_other_blues(self) -> list[float]:
+        """``Private /OtherBlues`` — alignment zones for lowercase
+        descenders. Empty list when absent."""
+        return self._private_numeric_array("OtherBlues")
+
+    def get_family_blues(self) -> list[float]:
+        """``Private /FamilyBlues`` — family-shared alignment zones for
+        ``/BlueValues``. Empty list when absent."""
+        return self._private_numeric_array("FamilyBlues")
+
+    def get_family_other_blues(self) -> list[float]:
+        """``Private /FamilyOtherBlues`` — family-shared alignment zones
+        for ``/OtherBlues``. Empty list when absent."""
+        return self._private_numeric_array("FamilyOtherBlues")
+
+    def get_blue_scale(self) -> float:
+        """``Private /BlueScale`` — point size below which overshoot
+        suppression is enabled. ``0.0`` when absent (Java default)."""
+        return self._private_numeric_scalar("BlueScale", 0.0)
+
+    def get_blue_shift(self) -> int:
+        """``Private /BlueShift`` — overshoot enforcement size in font
+        units. ``0`` when absent (Java default)."""
+        return self._private_int_scalar("BlueShift")
+
+    def get_blue_fuzz(self) -> int:
+        """``Private /BlueFuzz`` — alignment-zone tolerance in font
+        units. ``0`` when absent (Java default; spec default is 1, but
+        upstream zero-initialises the field)."""
+        return self._private_int_scalar("BlueFuzz")
+
+    def get_std_hw(self) -> list[float]:
+        """``Private /StdHW`` — standard horizontal stem width. Empty
+        list when absent."""
+        return self._private_numeric_array("StdHW")
+
+    def get_std_vw(self) -> list[float]:
+        """``Private /StdVW`` — standard vertical stem width. Empty list
+        when absent."""
+        return self._private_numeric_array("StdVW")
+
+    def get_stem_snap_h(self) -> list[float]:
+        """``Private /StemSnapH`` — array of dominant horizontal stem
+        widths. Empty list when absent."""
+        return self._private_numeric_array("StemSnapH")
+
+    def get_stem_snap_v(self) -> list[float]:
+        """``Private /StemSnapV`` — array of dominant vertical stem
+        widths. Empty list when absent."""
+        return self._private_numeric_array("StemSnapV")
+
+    def is_force_bold(self) -> bool:
+        """``Private /ForceBold`` — whether to force bold rendering at
+        small sizes. ``False`` when absent."""
+        value = self._private_dict().get("ForceBold")
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() == "true"
+        return bool(value)
+
+    def get_language_group(self) -> int:
+        """``Private /LanguageGroup`` — ``0`` for Latin, ``1`` for CJK
+        (different stem-snapping rules). ``0`` when absent."""
+        return self._private_int_scalar("LanguageGroup")
+
+    def get_len_iv(self) -> int:
+        """``Private /lenIV`` — number of random bytes prepended to each
+        encrypted charstring. ``4`` when absent (the spec default; the
+        parser also uses ``4`` as its working warm-up trim)."""
+        value = self._private_dict().get("lenIV")
+        if value is None:
+            return 4
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /Private/lenIV %r not int, returning 4", value)
+            return 4
+
+    # ---------- Private-dict typed-coercion helpers ----------
+
+    def _private_numeric_array(self, key: str) -> list[float]:
+        """Read ``key`` from the Private dict as a list of floats.
+
+        Returns ``[]`` when the entry is absent, not iterable, or
+        contains values that cannot be coerced to ``float`` — matching
+        upstream's ``Collections.emptyList()`` default."""
+        raw = self._private_dict().get(key)
+        if raw is None:
+            return []
+        try:
+            return [float(v) for v in raw]
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /Private/%s %r not coercible, returning []", key, raw)
+            return []
+
+    def _private_int_scalar(self, key: str) -> int:
+        """Read ``key`` from the Private dict as an int. ``0`` when
+        absent or non-numeric."""
+        value = self._private_dict().get(key)
+        if value is None:
+            return 0
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            logger.debug("Type1Font: /Private/%s %r not int, returning 0", key, value)
+            return 0
+
+    def _private_numeric_scalar(self, key: str, default: float) -> float:
+        """Read ``key`` from the Private dict as a float. ``default``
+        when absent or non-numeric."""
+        value = self._private_dict().get(key)
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            logger.debug(
+                "Type1Font: /Private/%s %r not numeric, returning %r", key, value, default
+            )
+            return default
+
     # ---------- glyph access ----------
 
     def has_glyph(self, name: str) -> bool:
