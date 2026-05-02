@@ -191,6 +191,24 @@ class PDFormXObject(PDXObject):
     def set_struct_parents(self, value: int) -> None:
         self.get_cos_object().set_int(_STRUCT_PARENTS, int(value))
 
+    # Backward-compatibility singular aliases. PDFBox's PDFormXObject uses
+    # the plural ``/StructParents`` key (forms reference a *list* of
+    # marked-content sequences via the structure-parent tree), but call
+    # sites that share code paths with PDImageXObject / PDAnnotation
+    # — which use the singular ``getStructParent()`` form — sometimes
+    # reach for the singular spelling. Mirror it through to the plural
+    # accessor so either form compiles.
+    def get_struct_parent(self) -> int:
+        """Singular alias of :meth:`get_struct_parents`. The underlying
+        PDF key is still ``/StructParents`` (plural) — this exists only
+        to match the spelling used by PDImageXObject / PDAnnotation
+        sibling APIs."""
+        return self.get_struct_parents()
+
+    def set_struct_parent(self, value: int) -> None:
+        """Singular alias of :meth:`set_struct_parents`."""
+        self.set_struct_parents(value)
+
     # ---------- /OC (optional content) ----------
 
     def get_oc(self) -> PDPropertyList | None:
@@ -377,6 +395,15 @@ class PDFormXObject(PDXObject):
         with self.get_stream().create_input_stream() as src:
             data = src.read()
         return RandomAccessReadBuffer.from_bytes(data)
+
+    def get_contents_for_stream_parsing(self) -> RandomAccessRead:
+        """Random-access view of the decoded content-stream bytes for the
+        PDF stream parser. Mirrors upstream
+        ``PDContentStream.getContentsForStreamParsing()`` (the interface
+        default delegates to ``getContentsForRandomAccess()``). Forms have
+        a single content stream so we do the same delegation that
+        :class:`PDPage` does."""
+        return self.get_contents_for_random_access()
 
     # ---------- /OC aliases ----------
     #

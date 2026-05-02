@@ -298,6 +298,22 @@ def test_struct_parents_round_trip() -> None:
     assert form.get_cos_object().get_int(_STRUCT_PARENTS) == 42
 
 
+def test_struct_parent_singular_alias_matches_plural_default() -> None:
+    form = _new_form()
+    # Default identical to the plural getter (mirrors -1 when absent).
+    assert form.get_struct_parent() == form.get_struct_parents() == -1
+
+
+def test_struct_parent_singular_alias_round_trip() -> None:
+    form = _new_form()
+    form.set_struct_parent(7)
+    # Singular setter writes the same /StructParents (plural) key — the
+    # singular spelling is purely a call-site alias.
+    assert form.get_struct_parent() == 7
+    assert form.get_struct_parents() == 7
+    assert form.get_cos_object().get_int(_STRUCT_PARENTS) == 7
+
+
 # ---------- /Metadata (inherited from PDXObject) ----------
 
 
@@ -424,3 +440,27 @@ def test_constructor_defaults_resource_cache_to_none() -> None:
     assert got is not None
     # No cache was supplied — upstream wires None.
     assert got.get_resource_cache() is None
+
+
+# ---------- PDContentStream interface — stream parsing ----------
+
+
+def test_get_contents_for_stream_parsing_delegates_to_random_access() -> None:
+    # Mirrors upstream PDContentStream's default getContentsForStreamParsing()
+    # which delegates to getContentsForRandomAccess(). Forms have a single
+    # content stream so the two should yield equivalent bytes.
+    stream = COSStream()
+    payload = b"q 1 0 0 1 0 0 cm Q"
+    with stream.create_output_stream() as out:
+        out.write(payload)
+
+    form = PDFormXObject(stream)
+
+    parser_view = form.get_contents_for_stream_parsing()
+    random_view = form.get_contents_for_random_access()
+    try:
+        assert parser_view.length() == random_view.length()
+        assert parser_view.length() == len(payload)
+    finally:
+        parser_view.close()
+        random_view.close()

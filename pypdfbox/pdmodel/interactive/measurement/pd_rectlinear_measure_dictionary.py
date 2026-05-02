@@ -157,6 +157,22 @@ class PDRectlinearMeasureDictionary(PDMeasureDictionary):
         """
         self._dict.set_item(_S, self._number_formats_to_array(line_sloaps))
 
+    # The upstream spelling ``Sloaps`` is a typo for "Slopes" preserved
+    # verbatim above for parity. Expose correctly-spelled aliases that
+    # delegate to the same ``/S`` slot — pypdfbox callers writing fresh
+    # code should reach for these. Both pairs round-trip through one
+    # underlying COS entry; mixing them is safe.
+    def get_line_slopes(self) -> list[PDNumberFormatDictionary] | None:
+        """Alias for :meth:`get_line_sloaps` using the correct English spelling."""
+        return self.get_line_sloaps()
+
+    def set_line_slopes(
+        self,
+        line_slopes: list[PDNumberFormatDictionary] | tuple[PDNumberFormatDictionary, ...],
+    ) -> None:
+        """Alias for :meth:`set_line_sloaps` using the correct English spelling."""
+        self.set_line_sloaps(line_slopes)
+
     # ------------------------------------------------------------------ /O (coord-system origin)
     def get_coord_system_origin(self) -> list[float] | None:
         """Return the origin of the coordinate system (``/O``).
