@@ -94,6 +94,71 @@ class FDArray:
         subrs = getattr(priv, "Subrs", None)
         return len(subrs) if subrs is not None else 0
 
+    def get_local_subr_index(self, fd_index: int) -> list[bytes]:
+        """Per-FD local subroutine bytecodes as a list of ``bytes``.
+
+        Mirrors upstream ``CFFCIDFont.getLocalSubrIndex(int gid)`` — but
+        keyed by FD index rather than GID, so callers reuse the same
+        byte arrays across all GIDs that share an FD. Empty list when
+        the FD has no Private DICT or no /Subrs INDEX.
+
+        Parallel to :py:meth:`CFFFont.get_global_subr_index`; T2
+        charstring decoders need both the global and FD-local subr
+        bytecodes to resolve ``callsubr`` / ``callgsubr`` operators.
+        """
+        font = self._raw_font_dict(fd_index)
+        if font is None:
+            return []
+        priv = getattr(font, "Private", None)
+        if priv is None:
+            return []
+        subrs = getattr(priv, "Subrs", None)
+        if subrs is None:
+            return []
+        out: list[bytes] = []
+        for entry in subrs:
+            bc = getattr(entry, "bytecode", None)
+            if bc is not None:
+                out.append(bytes(bc))
+            elif isinstance(entry, (bytes, bytearray)):
+                out.append(bytes(entry))
+            else:
+                out.append(b"")
+        return out
+
+    def has_private_dict(self, fd_index: int) -> bool:
+        """Predicate: whether the FD at ``fd_index`` carries a Private
+        DICT. Returns ``False`` for out-of-range indices.
+
+        Mirrors the conventional CFF-shape check upstream callers do
+        before reading ``defaultWidthX`` / ``nominalWidthX`` /
+        ``Subrs``."""
+        font = self._raw_font_dict(fd_index)
+        if font is None:
+            return False
+        return getattr(font, "Private", None) is not None
+
+    def has_local_subrs(self, fd_index: int) -> bool:
+        """Predicate: whether the FD's Private DICT carries a non-empty
+        /Subrs INDEX. Returns ``False`` for out-of-range indices, FDs
+        without a Private DICT, or FDs whose /Subrs is empty."""
+        return self.get_local_subrs(fd_index) > 0
+
+    def index_for_font_name(self, name: str) -> int:
+        """Return the first FD index whose Font DICT carries the given
+        ``FontName``, or ``-1`` when no FD matches.
+
+        Useful for callers that want to look up a sub-font by its
+        PostScript name (e.g. inspecting per-FD widths / subrs in a
+        diagnostic tool). Empty / ``None`` ``name`` returns ``-1``.
+        """
+        if not name:
+            return -1
+        for i in range(self.size()):
+            if self.get_font_name(i) == name:
+                return i
+        return -1
+
     def get_font_name(self, fd_index: int) -> str:
         """Return the ``FontName`` (PostScript name) of the Font DICT at
         ``fd_index``, or ``""`` when missing / out of range.

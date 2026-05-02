@@ -483,6 +483,85 @@ class PDViewerPreferences:
         except ValueError:
             return None
 
+    # ---------- predicate helpers (``has_*``) ----------
+    # Distinguish "entry absent (getter falls back to spec default)" from
+    # "entry explicitly written to the spec-default value". Useful when a
+    # writer wants to round-trip a producer's exact dictionary without
+    # introducing redundant entries, or when validation needs to reason
+    # over what was *stated* vs what was *defaulted*.
+
+    def has_non_full_screen_page_mode(self) -> bool:
+        return self._prefs.contains_key(_NON_FULL_SCREEN_PAGE_MODE)
+
+    def has_direction(self) -> bool:
+        return self._prefs.contains_key(_DIRECTION)
+
+    def has_view_area(self) -> bool:
+        return self._prefs.contains_key(_VIEW_AREA)
+
+    def has_view_clip(self) -> bool:
+        return self._prefs.contains_key(_VIEW_CLIP)
+
+    def has_print_area(self) -> bool:
+        return self._prefs.contains_key(_PRINT_AREA)
+
+    def has_print_clip(self) -> bool:
+        return self._prefs.contains_key(_PRINT_CLIP)
+
+    def has_duplex(self) -> bool:
+        return self._prefs.contains_key(_DUPLEX)
+
+    def has_print_scaling(self) -> bool:
+        return self._prefs.contains_key(_PRINT_SCALING)
+
+    def has_num_copies(self) -> bool:
+        return self._prefs.contains_key(_NUM_COPIES)
+
+    def has_print_page_range(self) -> bool:
+        return self._prefs.contains_key(_PRINT_PAGE_RANGE)
+
+    def has_enforce(self) -> bool:
+        return self._prefs.contains_key(_ENFORCE)
+
+    # ---------- /Enforce element-level helpers (PDF 32000-2 §12.4.4) ----------
+
+    def is_enforced(self, name: str) -> bool:
+        """Return ``True`` if ``name`` appears as a name token in
+        ``/Enforce``. Mirrors PDF 32000-2 §12.4.4: a viewer-preference key
+        listed here shall be enforced by conforming readers."""
+        return name in self.get_enforce_names()
+
+    def add_enforce_name(self, name: str) -> None:
+        """Append ``name`` to ``/Enforce``. Idempotent: if ``name`` is
+        already present, the array is unchanged. Creates ``/Enforce`` when
+        absent."""
+        names = self.get_enforce_names()
+        if name in names:
+            return
+        names.append(name)
+        self.set_enforce_names(names)
+
+    def remove_enforce_name(self, name: str) -> bool:
+        """Remove the first occurrence of ``name`` from ``/Enforce``.
+        Returns ``True`` if removed, ``False`` if not present. When the
+        last entry is removed, ``/Enforce`` itself is dropped — keeping
+        the dictionary minimal."""
+        names = self.get_enforce_names()
+        if name not in names:
+            return False
+        names.remove(name)
+        self.set_enforce_names(names if names else None)
+        return True
+
+    # ---------- /PrintPageRange element-level helper ----------
+
+    def add_print_page_range_pair(self, start: int, end: int) -> None:
+        """Append a single ``(start, end)`` 1-based page-number pair to
+        ``/PrintPageRange``. Creates the entry when absent."""
+        pairs = self.get_print_page_range_pairs()
+        pairs.append((int(start), int(end)))
+        self.set_print_page_range_pairs(pairs)
+
     def __repr__(self) -> str:
         return "PDViewerPreferences(...)"
 

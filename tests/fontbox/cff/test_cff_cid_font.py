@@ -535,3 +535,207 @@ class TestCFFCIDFontSetters:
         synthetic = FDSelect.from_fonttools(None)
         cf.set_fd_select(synthetic)
         assert cf.get_fd_select() is synthetic
+
+
+# ---------- FDArray Wave-181 helpers ----------
+
+
+class TestFDArrayHasPrivateDict:
+    """``FDArray.has_private_dict(fd_index)`` — predicate-shaped check
+    callers run before reading per-FD width / Subrs accessors."""
+
+    def test_true_when_private_present(self) -> None:
+        class _Priv:
+            rawDict = {"defaultWidthX": 500}  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.has_private_dict(0) is True
+
+    def test_false_when_private_absent(self) -> None:
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.has_private_dict(0) is False
+
+    def test_false_for_out_of_range(self) -> None:
+        arr = FDArray(None)
+        assert arr.has_private_dict(0) is False
+        assert arr.has_private_dict(-1) is False
+
+
+class TestFDArrayHasLocalSubrs:
+    """``FDArray.has_local_subrs(fd_index)`` — true only when the FD's
+    Private DICT carries a non-empty /Subrs INDEX."""
+
+    def test_true_when_nonempty_subrs(self) -> None:
+        class _Priv:
+            Subrs = [b"\x0e", b"\x0e"]  # noqa: N815
+            rawDict = {}  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.has_local_subrs(0) is True
+
+    def test_false_when_empty_subrs(self) -> None:
+        class _Priv:
+            Subrs: list[bytes] = []  # noqa: N815
+            rawDict = {}  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.has_local_subrs(0) is False
+
+    def test_false_when_no_private_dict(self) -> None:
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.has_local_subrs(0) is False
+
+    def test_false_for_out_of_range(self) -> None:
+        arr = FDArray(None)
+        assert arr.has_local_subrs(0) is False
+        assert arr.has_local_subrs(7) is False
+
+
+class TestFDArrayGetLocalSubrIndex:
+    """``FDArray.get_local_subr_index(fd_index)`` — list-of-bytes view
+    parallel to :meth:`CFFFont.get_global_subr_index`. Used by Type 2
+    charstring decoders to resolve ``callsubr`` operations."""
+
+    def test_returns_bytecode_from_objects(self) -> None:
+        class _Cs:
+            bytecode = b"\x0a\x0e"  # noqa: N815
+
+        class _Priv:
+            Subrs = [_Cs(), _Cs()]  # noqa: N815
+            rawDict = {}  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        out = arr.get_local_subr_index(0)
+        assert out == [b"\x0a\x0e", b"\x0a\x0e"]
+
+    def test_returns_raw_bytes_when_already_bytes(self) -> None:
+        class _Priv:
+            Subrs = [b"\x0e", bytearray(b"\x0a")]  # noqa: N815
+            rawDict = {}  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        out = arr.get_local_subr_index(0)
+        assert out == [b"\x0e", b"\x0a"]
+        # bytearray entries get coerced to bytes for hashability / parity.
+        assert all(isinstance(b, bytes) for b in out)
+
+    def test_empty_when_no_subrs(self) -> None:
+        class _Priv:
+            rawDict = {}  # noqa: N815
+            Subrs = None  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.get_local_subr_index(0) == []
+
+    def test_empty_when_no_private(self) -> None:
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.get_local_subr_index(0) == []
+
+    def test_empty_when_out_of_range(self) -> None:
+        arr = FDArray(None)
+        assert arr.get_local_subr_index(0) == []
+        assert arr.get_local_subr_index(-1) == []
+
+    def test_unknown_entry_shape_yields_empty_bytes(self) -> None:
+        # Defensive path: a Subrs entry that is neither a bytes-like
+        # nor a fontTools T2CharString (no ``bytecode``) shouldn't crash
+        # — emit ``b""`` instead so the indices stay aligned.
+        class _Priv:
+            Subrs = [object(), b"\x0e"]  # noqa: N815
+            rawDict = {}  # noqa: N815
+
+        class _Font:
+            rawDict = {}  # noqa: N815
+            Private = _Priv()
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.get_local_subr_index(0) == [b"", b"\x0e"]
+
+
+class TestFDArrayIndexForFontName:
+    """``FDArray.index_for_font_name(name)`` — reverse lookup by FontName.
+    Returns ``-1`` when no FD matches (mirrors common Java sentinel for
+    "not found" in PDFBox wrappers)."""
+
+    def test_finds_first_match(self) -> None:
+        class _Font0:
+            FontName = "FD-Latin"  # noqa: N815
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        class _Font1:
+            FontName = "FD-Greek"  # noqa: N815
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font0(), _Font1()])
+        assert arr.index_for_font_name("FD-Greek") == 1
+        assert arr.index_for_font_name("FD-Latin") == 0
+
+    def test_unknown_name_returns_minus_one(self) -> None:
+        class _Font:
+            FontName = "FD-Latin"  # noqa: N815
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.index_for_font_name("FD-Cyrillic") == -1
+
+    def test_empty_or_none_name_returns_minus_one(self) -> None:
+        class _Font:
+            FontName = "FD0"  # noqa: N815
+            rawDict = {}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.index_for_font_name("") == -1
+
+    def test_empty_array_returns_minus_one(self) -> None:
+        arr = FDArray(None)
+        assert arr.index_for_font_name("Anything") == -1
+
+    def test_finds_via_rawdict_fallback(self) -> None:
+        # When fontTools surfaces FontName only via rawDict (no attr),
+        # the lookup should still resolve.
+        class _Font:
+            rawDict = {"FontName": "FromRawDict"}  # noqa: N815
+            Private = None
+
+        arr = FDArray.from_fonttools([_Font()])
+        assert arr.index_for_font_name("FromRawDict") == 0
