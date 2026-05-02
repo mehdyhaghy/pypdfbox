@@ -51,6 +51,29 @@ def _set_bytes(d: COSDictionary, key: COSName, value: bytes | None) -> None:
     d.set_item(key, COSString(bytes(value)))
 
 
+def _pad_or_truncate(buffer: bytes, length: int) -> bytes:
+    """Replicate Java ``Arrays.copyOf(byte[], int)`` — zero-pad or truncate."""
+    if len(buffer) >= length:
+        return bytes(buffer[:length])
+    return bytes(buffer) + b"\x00" * (length - len(buffer))
+
+
+def _pad_or_truncate_for_revision(buffer: bytes, revision: int) -> bytes:
+    """Apply the revision-aware /O & /U buffer rules.
+
+    Mirrors upstream ``getOwnerKey``/``getUserKey``: revisions ≤ 4 use a
+    32-byte buffer; revisions 5 or 6 use 48 bytes. Other revisions (e.g. 0
+    when unset) are returned unmodified to preserve the original bytes
+    rather than silently zero-padding to a length the caller did not
+    request.
+    """
+    if revision <= 4:
+        return _pad_or_truncate(buffer, 32)
+    if revision in (5, 6):
+        return _pad_or_truncate(buffer, 48)
+    return bytes(buffer)
+
+
 class PDEncryption:
     """
     Wraps the trailer's ``/Encrypt`` dictionary. Mirrors the PDFBox
@@ -88,6 +111,18 @@ class PDEncryption:
     def set_v(self, v: int) -> None:
         self._dict.set_int(_V, v)
 
+    def get_version(self) -> int:
+        """Return ``/V`` (encryption-algorithm version).
+
+        Long-name alias mirroring upstream ``getVersion()``. Equivalent to
+        :py:meth:`get_v`.
+        """
+        return self.get_v()
+
+    def set_version(self, version: int) -> None:
+        """Set ``/V``. Long-name alias mirroring upstream ``setVersion``."""
+        self.set_v(version)
+
     # ---------- /Length (key length in bits) ----------
 
     def get_length(self) -> int:
@@ -112,6 +147,25 @@ class PDEncryption:
     def set_o(self, b: bytes | None) -> None:
         _set_bytes(self._dict, _O, b)
 
+    def get_owner_key(self) -> bytes | None:
+        """Return ``/O`` padded/truncated to the revision-mandated length.
+
+        Mirrors upstream ``getOwnerKey()`` — for revisions ≤ 4 the result is
+        a 32-byte buffer; for revisions 5/6 a 48-byte buffer. Truncation
+        and zero-padding both happen via :py:meth:`bytes.ljust`/slice so the
+        Java ``Arrays.copyOf`` semantics are preserved (shorter buffers are
+        zero-extended; longer ones are truncated). Returns ``None`` when
+        ``/O`` is absent.
+        """
+        raw = _get_bytes(self._dict, _O)
+        if raw is None:
+            return None
+        return _pad_or_truncate_for_revision(raw, self.get_revision())
+
+    def set_owner_key(self, o: bytes | None) -> None:
+        """Set ``/O``. Mirrors upstream ``setOwnerKey``."""
+        _set_bytes(self._dict, _O, o)
+
     # ---------- /U — user password hash ----------
 
     def get_u(self) -> bytes | None:
@@ -119,6 +173,21 @@ class PDEncryption:
 
     def set_u(self, b: bytes | None) -> None:
         _set_bytes(self._dict, _U, b)
+
+    def get_user_key(self) -> bytes | None:
+        """Return ``/U`` padded/truncated to the revision-mandated length.
+
+        See :py:meth:`get_owner_key` for the 32/48-byte revision rule.
+        Mirrors upstream ``getUserKey()``.
+        """
+        raw = _get_bytes(self._dict, _U)
+        if raw is None:
+            return None
+        return _pad_or_truncate_for_revision(raw, self.get_revision())
+
+    def set_user_key(self, u: bytes | None) -> None:
+        """Set ``/U``. Mirrors upstream ``setUserKey``."""
+        _set_bytes(self._dict, _U, u)
 
     # ---------- /OE — owner encryption key (R6) ----------
 
@@ -128,6 +197,23 @@ class PDEncryption:
     def set_oe(self, b: bytes | None) -> None:
         _set_bytes(self._dict, _OE, b)
 
+    def get_owner_encryption_key(self) -> bytes | None:
+        """Return ``/OE`` padded/truncated to 32 bytes.
+
+        Mirrors upstream ``getOwnerEncryptionKey()`` — short buffers are
+        zero-extended, long ones truncated, matching Java's
+        ``Arrays.copyOf(bytes, 32)``. Returns ``None`` when ``/OE`` is
+        absent.
+        """
+        raw = _get_bytes(self._dict, _OE)
+        if raw is None:
+            return None
+        return _pad_or_truncate(raw, 32)
+
+    def set_owner_encryption_key(self, oe: bytes | None) -> None:
+        """Set ``/OE``. Mirrors upstream ``setOwnerEncryptionKey``."""
+        _set_bytes(self._dict, _OE, oe)
+
     # ---------- /UE — user encryption key (R6) ----------
 
     def get_ue(self) -> bytes | None:
@@ -135,6 +221,21 @@ class PDEncryption:
 
     def set_ue(self, b: bytes | None) -> None:
         _set_bytes(self._dict, _UE, b)
+
+    def get_user_encryption_key(self) -> bytes | None:
+        """Return ``/UE`` padded/truncated to 32 bytes.
+
+        Mirrors upstream ``getUserEncryptionKey()`` — see
+        :py:meth:`get_owner_encryption_key` for the padding rule.
+        """
+        raw = _get_bytes(self._dict, _UE)
+        if raw is None:
+            return None
+        return _pad_or_truncate(raw, 32)
+
+    def set_user_encryption_key(self, ue: bytes | None) -> None:
+        """Set ``/UE``. Mirrors upstream ``setUserEncryptionKey``."""
+        _set_bytes(self._dict, _UE, ue)
 
     # ---------- /Perms (R6) ----------
 
@@ -151,6 +252,18 @@ class PDEncryption:
 
     def set_p(self, p: int) -> None:
         self._dict.set_int(_P, p)
+
+    def get_permissions(self) -> int:
+        """Return ``/P`` (permission bit mask).
+
+        Long-name alias mirroring upstream ``getPermissions()``. Equivalent
+        to :py:meth:`get_p`.
+        """
+        return self.get_p()
+
+    def set_permissions(self, permissions: int) -> None:
+        """Set ``/P``. Long-name alias mirroring upstream ``setPermissions``."""
+        self.set_p(permissions)
 
     # ---------- /EncryptMetadata ----------
 

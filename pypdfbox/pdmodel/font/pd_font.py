@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 
+from .standard14_fonts import Standard14Fonts
+
 if TYPE_CHECKING:
     from .pd_font_descriptor import PDFontDescriptor
 
@@ -60,6 +62,15 @@ class PDFont:
     def get_subtype(self) -> str | None:
         """``/Subtype`` — e.g. ``Type1``, ``TrueType``, ``Type0``."""
         return self._dict.get_name(_SUBTYPE)
+
+    def get_type(self) -> str | None:
+        """``/Type`` — always ``"Font"`` for a well-formed font dictionary.
+
+        Mirrors PDFBox ``PDFont.getType``. Returns whatever name is present
+        on the underlying dictionary (``None`` if the entry is missing or
+        not a name); the constructor writes ``"Font"`` on a fresh dict.
+        """
+        return self._dict.get_name(_TYPE)
 
     # ---------- font descriptor ----------
 
@@ -161,6 +172,26 @@ class PDFont:
                     return width
         return _DEFAULT_SPACE_WIDTH
 
+    # ---------- Standard 14 ----------
+
+    def is_standard14(self) -> bool:
+        """``True`` iff this font is one of the 14 PDF Standard fonts.
+
+        Mirrors PDFBox ``PDFont.isStandard14``: an embedded font is *never*
+        treated as Standard 14 (the embedded program wins regardless of
+        the name), otherwise the ``/BaseFont`` name (or a known alias) is
+        looked up via :meth:`Standard14Fonts.contains_name`. Acrobat
+        applies this rule per PDFBOX-2372.
+
+        Concrete subclasses (``PDType0Font``, ``PDType3Font``) that can
+        never be Standard 14 override this to return ``False`` directly.
+        ``PDSimpleFont`` overrides to additionally exclude fonts whose
+        ``/Encoding`` carries a non-trivial ``/Differences`` overlay.
+        """
+        if self.is_embedded():
+            return False
+        return Standard14Fonts.contains_name(self.get_name())
+
     # ---------- subset detection ----------
 
     def is_subset(self) -> bool:
@@ -174,6 +205,36 @@ class PDFont:
         if not name:
             return False
         return _SUBSET_RE.match(name) is not None
+
+    # ---------- identity / repr ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Two ``PDFont`` wrappers compare equal iff they wrap the *same*
+        underlying ``COSDictionary`` instance.
+
+        Mirrors PDFBox ``PDFont.equals`` which uses ``getCOSObject() ==``
+        (Java reference identity). This is intentionally narrower than a
+        deep-equality check — two distinct dicts with identical contents
+        are *not* equal because they may diverge under later mutation.
+        """
+        return isinstance(other, PDFont) and other.get_cos_object() is self._dict
+
+    def __hash__(self) -> int:
+        """Hash by the underlying ``COSDictionary``'s identity. Matches
+        the equality rule above so ``PDFont`` is usable as a dict key."""
+        return id(self._dict)
+
+    def __repr__(self) -> str:
+        """``<ClassName> <BaseFont>`` — mirrors PDFBox ``PDFont.toString``.
+
+        Falls back to the bare class name when ``/BaseFont`` is absent.
+        """
+        name = self.get_name()
+        if name is None:
+            return type(self).__name__
+        return f"{type(self).__name__} {name}"
+
+    __str__ = __repr__
 
 
 __all__ = ["PDFont"]

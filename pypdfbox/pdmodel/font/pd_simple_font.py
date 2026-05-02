@@ -17,7 +17,6 @@ from .pd_font_descriptor import (
     FLAG_SMALL_CAP,
     FLAG_SYMBOLIC,
 )
-from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
@@ -154,10 +153,34 @@ class PDSimpleFont(PDFont):
     # ---------- Standard 14 ----------
 
     def is_standard_14(self) -> bool:
-        """True iff this font's ``/BaseFont`` is one of the 14 PDF Standard
-        fonts (or a known alias). Mirrors PDFBox ``PDFont.isStandard14``.
+        """``True`` iff this font is one of the 14 PDF Standard fonts.
+
+        Mirrors PDFBox ``PDSimpleFont.isStandard14``: in addition to the
+        base ``PDFont`` check (not embedded + ``/BaseFont`` matches a
+        canonical / alias name), an ``/Encoding`` carrying a non-trivial
+        ``/Differences`` overlay disqualifies the font — see PDFBOX-2372,
+        PDFBOX-1900, and the PDFBOX-2192 file. ``/Differences`` entries
+        that simply restate the base encoding's mapping are ignored.
         """
-        return Standard14Fonts.containsName(self.get_name())
+        if not super().is_standard14():
+            return False
+        encoding = self.get_encoding_typed()
+        if isinstance(encoding, DictionaryEncoding):
+            differences = encoding.get_differences()
+            if differences:
+                base = encoding.get_base_encoding()
+                if base is None:
+                    return False
+                for code, name in differences.items():
+                    if name != base.get_name(code):
+                        return False
+        return True
+
+    # Upstream's canonical name is ``isStandard14`` (no underscore between
+    # 14 and the rest); expose both spellings so callers porting from
+    # PDFBox find what they expect. Snake-cased per house style.
+    def is_standard14(self) -> bool:
+        return self.is_standard_14()
 
     def get_average_font_width(self) -> float:
         """Return the average glyph advance for this font in *thousandths

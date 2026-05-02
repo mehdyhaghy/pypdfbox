@@ -11,7 +11,6 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
 
-
 # ---------- PDEncryption ----------
 
 
@@ -352,3 +351,186 @@ def test_recipients_array_after_get_recipients_for_existing_array() -> None:
     enc.set_recipients([b"a"])
     arr = enc.get_recipients()
     assert isinstance(arr, COSArray)
+
+
+# ---------- get_owner_key / get_user_key (revision-aware padding) ----------
+
+
+def test_get_owner_key_returns_none_when_absent() -> None:
+    enc = PDEncryption()
+    assert enc.get_owner_key() is None
+    assert enc.get_user_key() is None
+
+
+def test_get_owner_key_pads_to_32_for_revision_4() -> None:
+    """For R ≤ 4, ``getOwnerKey`` returns a 32-byte buffer (zero-padded)."""
+    enc = PDEncryption()
+    enc.set_revision(4)
+    enc.set_o(b"\x01\x02\x03")
+    o = enc.get_owner_key()
+    assert o is not None
+    assert len(o) == 32
+    assert o[:3] == b"\x01\x02\x03"
+    assert o[3:] == b"\x00" * 29
+
+
+def test_get_user_key_pads_to_32_for_revision_2() -> None:
+    enc = PDEncryption()
+    enc.set_revision(2)
+    enc.set_u(b"\xAA")
+    u = enc.get_user_key()
+    assert u is not None
+    assert len(u) == 32
+    assert u[0] == 0xAA
+    assert u[1:] == b"\x00" * 31
+
+
+def test_get_owner_key_pads_to_48_for_revision_5() -> None:
+    enc = PDEncryption()
+    enc.set_revision(5)
+    enc.set_o(b"\xFF" * 32)
+    o = enc.get_owner_key()
+    assert o is not None
+    assert len(o) == 48
+    assert o[:32] == b"\xFF" * 32
+    assert o[32:] == b"\x00" * 16
+
+
+def test_get_user_key_pads_to_48_for_revision_6() -> None:
+    enc = PDEncryption()
+    enc.set_revision(6)
+    enc.set_u(b"\xAB" * 16)
+    u = enc.get_user_key()
+    assert u is not None
+    assert len(u) == 48
+    assert u[:16] == b"\xAB" * 16
+    assert u[16:] == b"\x00" * 32
+
+
+def test_get_owner_key_truncates_overlong_buffer() -> None:
+    enc = PDEncryption()
+    enc.set_revision(4)
+    # 64 bytes — twice the R≤4 length; expect truncation to 32.
+    enc.set_o(bytes(range(64)))
+    o = enc.get_owner_key()
+    assert o is not None
+    assert len(o) == 32
+    assert o == bytes(range(32))
+
+
+def test_set_owner_key_round_trip() -> None:
+    enc = PDEncryption()
+    enc.set_owner_key(b"\x10" * 32)
+    assert enc.get_o() == b"\x10" * 32
+
+
+def test_set_user_key_none_removes_entry() -> None:
+    enc = PDEncryption()
+    enc.set_user_key(b"\x42" * 32)
+    assert enc.get_u() == b"\x42" * 32
+    enc.set_user_key(None)
+    assert enc.get_u() is None
+
+
+# ---------- get_owner_encryption_key / get_user_encryption_key ----------
+
+
+def test_get_owner_encryption_key_returns_none_when_absent() -> None:
+    enc = PDEncryption()
+    assert enc.get_owner_encryption_key() is None
+    assert enc.get_user_encryption_key() is None
+
+
+def test_get_owner_encryption_key_pads_to_32() -> None:
+    enc = PDEncryption()
+    enc.set_oe(b"\xCD")
+    oe = enc.get_owner_encryption_key()
+    assert oe is not None
+    assert len(oe) == 32
+    assert oe[0] == 0xCD
+    assert oe[1:] == b"\x00" * 31
+
+
+def test_get_user_encryption_key_pads_to_32() -> None:
+    enc = PDEncryption()
+    enc.set_ue(b"\x01\x02")
+    ue = enc.get_user_encryption_key()
+    assert ue is not None
+    assert len(ue) == 32
+    assert ue[:2] == b"\x01\x02"
+    assert ue[2:] == b"\x00" * 30
+
+
+def test_get_user_encryption_key_truncates_overlong_buffer() -> None:
+    enc = PDEncryption()
+    # 40 bytes — longer than the 32-byte target; expect truncation.
+    enc.set_ue(bytes(range(40)))
+    ue = enc.get_user_encryption_key()
+    assert ue is not None
+    assert len(ue) == 32
+    assert ue == bytes(range(32))
+
+
+def test_get_owner_encryption_key_does_not_depend_on_revision() -> None:
+    """Unlike ``getOwnerKey``, /OE is always 32 bytes regardless of /R.
+    Mirrors upstream ``getOwnerEncryptionKey`` which is unconditional 32.
+    """
+    enc = PDEncryption()
+    enc.set_revision(6)
+    enc.set_oe(b"\x77" * 8)
+    oe = enc.get_owner_encryption_key()
+    assert oe is not None
+    assert len(oe) == 32
+
+
+def test_set_owner_encryption_key_round_trip() -> None:
+    enc = PDEncryption()
+    enc.set_owner_encryption_key(b"\x33" * 32)
+    assert enc.get_oe() == b"\x33" * 32
+    enc.set_owner_encryption_key(None)
+    assert enc.get_oe() is None
+
+
+def test_set_user_encryption_key_round_trip() -> None:
+    enc = PDEncryption()
+    enc.set_user_encryption_key(b"\x44" * 32)
+    assert enc.get_ue() == b"\x44" * 32
+
+
+# ---------- get_version / set_version / get_permissions / set_permissions ----------
+
+
+def test_get_version_alias_matches_get_v() -> None:
+    enc = PDEncryption()
+    enc.set_v(4)
+    assert enc.get_version() == 4
+    assert enc.get_version() == enc.get_v()
+
+
+def test_set_version_alias_matches_set_v() -> None:
+    enc = PDEncryption()
+    enc.set_version(5)
+    assert enc.get_v() == 5
+    assert enc.get_version() == 5
+
+
+def test_get_permissions_alias_matches_get_p() -> None:
+    enc = PDEncryption()
+    enc.set_p(-3904)
+    assert enc.get_permissions() == -3904
+    assert enc.get_permissions() == enc.get_p()
+
+
+def test_set_permissions_alias_matches_set_p() -> None:
+    enc = PDEncryption()
+    enc.set_permissions(-44)
+    assert enc.get_p() == -44
+    assert enc.get_permissions() == -44
+
+
+def test_version_and_permissions_default_to_zero() -> None:
+    """Both get_version (alias of get_v) and get_permissions (alias of get_p)
+    fall back to 0 on a fresh dictionary, matching upstream defaults."""
+    enc = PDEncryption()
+    assert enc.get_version() == 0
+    assert enc.get_permissions() == 0
