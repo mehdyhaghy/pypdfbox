@@ -85,8 +85,16 @@ class XMPSchema:
     def set_about(self, about: str) -> None:
         self._about = about
 
-    def set_about_as_simple(self, about: str) -> None:
-        # Upstream method name is setAboutAsSimple; mirrored verbatim.
+    def set_about_as_simple(self, about: str | None) -> None:
+        """
+        Mirror of upstream ``setAboutAsSimple(String)``: passing ``None``
+        clears the ``rdf:about`` attribute (upstream removes the attribute
+        outright, which surfaces as ``getAboutValue()`` returning ``""`` and
+        ``getAboutAttribute()`` returning ``null``).
+        """
+        if about is None:
+            self._about = ""
+            return
         self._about = about
 
     def add_namespace(self, prefix: str, uri: str) -> None:
@@ -156,6 +164,28 @@ class XMPSchema:
 
     def get_all_properties(self) -> dict[str, object]:
         return dict(self._properties)
+
+    def get_property_as(self, local_name: str, type_cls: type) -> object | None:
+        """
+        Mirror of upstream ``XMPSchema.getPropertyAs(name, type)`` — return
+        the property at ``local_name`` only if it is an instance of
+        ``type_cls``, otherwise ``None``. Cluster #1 stores values as plain
+        Python primitives, so the type check matches the stored value's type
+        (e.g. ``str`` for TextType, ``list`` for Bag/Seq, ``dict`` for LangAlt,
+        ``bool`` for BooleanType, ``int`` for IntegerType). Booleans are
+        deliberately distinguished from integers, mirroring the upstream
+        ``BooleanType`` vs ``IntegerType`` separation (Python's ``bool`` is a
+        subclass of ``int`` but is not returned by ``get_property_as(name,
+        int)``).
+        """
+        value = self._properties.get(local_name)
+        if value is None:
+            return None
+        if type_cls is int and isinstance(value, bool):
+            return None
+        if isinstance(value, type_cls):
+            return value
+        return None
 
     # --- simple (TextType) -------------------------------------------
 
@@ -292,6 +322,18 @@ class XMPSchema:
         existing = self._properties.get(local_name)
         if isinstance(existing, list):
             existing[:] = [item for item in existing if item != value]
+
+    def remove_unqualified_array_value(self, array_name: str, value: str) -> None:
+        """
+        Mirror of upstream ``removeUnqualifiedArrayValue`` (the public
+        string-valued overload) — generic array entry removal that removes
+        every matching ``value`` from the Bag / Seq / Alt array stored at
+        ``array_name``. No-op when the property is absent or not an array.
+        Cluster #1 stores Bag, Seq and Alt arrays uniformly as ``list``, so
+        this delegates to :meth:`remove_unqualified_bag_value` (which already
+        scrubs all matches).
+        """
+        self.remove_unqualified_bag_value(array_name, value)
 
     def get_unqualified_bag_value_list(self, local_name: str) -> list[str] | None:
         v = self._properties.get(local_name)
@@ -455,3 +497,46 @@ class XMPSchema:
     def get_integer_property_value_as_simple(self, simple_name: str) -> int | None:
         """Mirror of upstream ``getIntegerPropertyValueAsSimple``."""
         return self.get_integer_property_value(simple_name)
+
+    # --- merge --------------------------------------------------------
+
+    def merge(self, other: XMPSchema) -> None:
+        """
+        Mirror of upstream ``XMPSchema.merge`` — basic schema merge:
+
+          * Bag / Seq / Alt array properties union their contents (existing
+            entries are preserved; entries already present in this schema are
+            not duplicated, matching upstream's ``mergeComplexProperty`` short
+            -circuit on the first match).
+          * LangAlt (dict-backed) properties merge entry-by-entry; entries
+            already present in this schema's value win, matching the upstream
+            "first match wins" semantics.
+          * All other properties (simple text, boolean, integer, ...) replace
+            the existing value (upstream's ``addProperty`` overwrites by local
+            name).
+          * Extra namespace declarations from ``other`` are copied over.
+
+        Schemas of differing concrete types raise :class:`OSError`, mirroring
+        upstream's ``IOException`` ("Can only merge schemas of the same
+        type.").
+        """
+        if type(other) is not type(self):
+            raise OSError("Can only merge schemas of the same type.")
+        # Copy across extra namespace declarations.
+        for prefix, uri in other.get_namespaces().items():
+            self._namespaces.setdefault(prefix, uri)
+        for name, new_value in other.get_all_properties().items():
+            existing = self._properties.get(name)
+            if isinstance(new_value, list) and isinstance(existing, list):
+                # Array merge: append entries that aren't already present.
+                for item in new_value:
+                    if item not in existing:
+                        existing.append(item)
+            elif isinstance(new_value, dict) and isinstance(existing, dict):
+                # LangAlt merge: keep existing entries, fill in missing ones.
+                for lang, val in new_value.items():
+                    existing.setdefault(lang, val)
+                self._reorganize_alt_order(existing)
+            else:
+                # Simple / mismatched-shape: replace.
+                self._properties[name] = new_value

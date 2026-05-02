@@ -153,3 +153,77 @@ def test_explicit_cos_construction_does_not_override_sub_type() -> None:
     cos.set_name(_S, "GoTo3DView")
     action = PDActionGoTo3DView(cos)
     assert action.get_sub_type() == "GoTo3DView"
+
+
+# ---------- typed-accessor coverage ----------
+
+
+def test_get_target_annotation_dictionary_returns_typed_dict() -> None:
+    action = PDActionGoTo3DView()
+    annotation = COSDictionary()
+    action.set_target_annotation(annotation)
+    assert action.get_target_annotation_dictionary() is annotation
+
+
+def test_get_target_annotation_dictionary_returns_none_when_absent() -> None:
+    action = PDActionGoTo3DView()
+    assert action.get_target_annotation_dictionary() is None
+
+
+def test_get_target_annotation_dictionary_returns_none_for_non_dict() -> None:
+    """When ``/TA`` is set to a non-dictionary COS object the typed
+    accessor returns ``None`` rather than coercing or raising."""
+    action = PDActionGoTo3DView()
+    action.get_cos_object().set_name(_TA, "NotADict")
+    assert action.get_target_annotation_dictionary() is None
+    # Raw accessor still surfaces the underlying entry.
+    assert action.get_target_annotation() is not None
+
+
+def test_get_v_named_returns_letter_for_named_view() -> None:
+    action = PDActionGoTo3DView()
+    action.set_v(PDActionGoTo3DView.VIEW_NEXT)
+    assert action.get_v_named() == "N"
+    assert action.get_v_index() is None
+    assert action.get_v_internal_name() is None
+
+
+def test_get_v_named_returns_none_for_unknown_name() -> None:
+    """A ``COSName`` that is not one of the four spec named-view selectors
+    must NOT be returned by :meth:`get_v_named`."""
+    action = PDActionGoTo3DView()
+    action.get_cos_object().set_name(_V, "Z")
+    assert action.get_v_named() is None
+
+
+def test_get_v_index_returns_integer_when_v_is_int() -> None:
+    action = PDActionGoTo3DView()
+    action.set_v(5)
+    assert action.get_v_index() == 5
+    assert action.get_v_named() is None
+    assert action.get_v_internal_name() is None
+
+
+def test_get_v_internal_name_returns_string_when_v_is_string() -> None:
+    action = PDActionGoTo3DView()
+    action.set_v("Top")
+    assert action.get_v_internal_name() == "Top"
+    assert action.get_v_named() is None
+    assert action.get_v_index() is None
+
+
+def test_get_v_typed_accessors_return_none_when_v_absent() -> None:
+    action = PDActionGoTo3DView()
+    assert action.get_v_named() is None
+    assert action.get_v_index() is None
+    assert action.get_v_internal_name() is None
+
+
+def test_is_named_view_classmethod_true_for_each_named_value() -> None:
+    for value in ("F", "L", "N", "P"):
+        assert PDActionGoTo3DView.is_named_view(value) is True
+
+
+def test_is_named_view_classmethod_false_for_other_strings() -> None:
+    for value in ("", "f", "n", "First", "FF", "Q"):
+        assert PDActionGoTo3DView.is_named_view(value) is False

@@ -78,3 +78,30 @@ def test_factory_dispatch_returns_typed_instance() -> None:
     result = PDAction.create(raw)
     assert isinstance(result, PDActionGoToDp)
     assert result.get_cos_object() is raw
+
+
+# ---------- typed-accessor coverage ----------
+
+
+def test_get_document_part_dictionary_returns_typed_dict() -> None:
+    """When ``/Dp`` is a dictionary, the typed accessor returns it."""
+    action = PDActionGoToDp()
+    dp_dict = COSDictionary()
+    action.set_document_part(dp_dict)
+    assert action.get_document_part_dictionary() is dp_dict
+
+
+def test_get_document_part_dictionary_returns_none_when_absent() -> None:
+    action = PDActionGoToDp()
+    assert action.get_document_part_dictionary() is None
+
+
+def test_get_document_part_dictionary_returns_none_for_non_dict() -> None:
+    """When ``/Dp`` is not a dictionary, the typed accessor returns ``None``
+    even though the raw accessor surfaces the entry."""
+    action = PDActionGoToDp()
+    # Write a name into /Dp directly — not a dictionary.
+    action.get_cos_object().set_name(_DP, "Bogus")
+    assert action.get_document_part_dictionary() is None
+    # Raw accessor still sees the entry.
+    assert action.get_document_part() is not None

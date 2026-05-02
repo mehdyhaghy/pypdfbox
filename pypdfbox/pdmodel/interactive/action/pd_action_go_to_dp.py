@@ -52,5 +52,15 @@ class PDActionGoToDp(PDAction):
         """Raw alias of :meth:`set_document_part`. Mirrors the entry key."""
         self.set_document_part(document_part)
 
+    def get_document_part_dictionary(self) -> COSDictionary | None:
+        """Typed accessor for the ``/Dp`` document-part dictionary. Returns
+        the entry as a :class:`COSDictionary` when present and of that
+        type, otherwise ``None`` (including when the entry is absent or is
+        another COS object that did not resolve to a dictionary)."""
+        entry = self._action.get_dictionary_object(_DP)
+        if isinstance(entry, COSDictionary):
+            return entry
+        return None
+
 
 __all__ = ["PDActionGoToDp"]

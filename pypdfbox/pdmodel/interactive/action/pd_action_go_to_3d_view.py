@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSInteger, COSName, COSString
 
 from .pd_action import PDAction
 
@@ -60,6 +60,17 @@ class PDActionGoTo3DView(PDAction):
     def set_ta(self, annotation: COSBase | None) -> None:
         self.set_target_annotation(annotation)
 
+    def get_target_annotation_dictionary(self) -> COSDictionary | None:
+        """Typed accessor for the ``/TA`` 3D annotation dictionary. Returns
+        the entry as a :class:`COSDictionary` when present and of that
+        type, otherwise ``None`` (including when the entry is absent or is
+        another COS object such as a name or reference that did not
+        resolve to a dictionary)."""
+        entry = self._action.get_dictionary_object(_TA)
+        if isinstance(entry, COSDictionary):
+            return entry
+        return None
+
     # ---------- /V — view selector ----------
 
     def get_v(self) -> COSBase | None:
@@ -77,12 +88,7 @@ class PDActionGoTo3DView(PDAction):
             self._action.remove_item(_V)
             return
         if isinstance(view, str):
-            if view in (
-                self.VIEW_FIRST,
-                self.VIEW_LAST,
-                self.VIEW_NEXT,
-                self.VIEW_PREVIOUS,
-            ):
+            if self.is_named_view(view):
                 self._action.set_name(_V, view)
             else:
                 self._action.set_string(_V, view)
@@ -95,6 +101,47 @@ class PDActionGoTo3DView(PDAction):
             self._action.set_int(_V, view)
             return
         self._action.set_item(_V, view)
+
+    # ---------- /V typed convenience getters ----------
+
+    def get_v_named(self) -> str | None:
+        """Return ``/V`` as a named-view selector string when the entry is
+        a ``COSName`` matching one of the four spec named views
+        (``F``/``L``/``N``/``P`` per Table 211). Returns ``None`` for any
+        other ``/V`` shape, including unrecognized name values."""
+        entry = self._action.get_dictionary_object(_V)
+        if isinstance(entry, COSName) and self.is_named_view(entry.get_name()):
+            return entry.get_name()
+        return None
+
+    def get_v_index(self) -> int | None:
+        """Return ``/V`` as a zero-based index into the 3D stream's ``/VA``
+        array when the entry is a ``COSInteger``. Returns ``None`` for any
+        other ``/V`` shape."""
+        entry = self._action.get_dictionary_object(_V)
+        if isinstance(entry, COSInteger):
+            return entry.int_value()
+        return None
+
+    def get_v_internal_name(self) -> str | None:
+        """Return ``/V`` as an ``/IN`` internal-name lookup string when the
+        entry is a ``COSString``. Returns ``None`` for any other ``/V``
+        shape."""
+        entry = self._action.get_dictionary_object(_V)
+        if isinstance(entry, COSString):
+            return entry.get_string()
+        return None
+
+    @classmethod
+    def is_named_view(cls, value: str) -> bool:
+        """Return ``True`` when ``value`` is one of the four spec named-view
+        single-letter selectors per Table 211 (``F``/``L``/``N``/``P``)."""
+        return value in (
+            cls.VIEW_FIRST,
+            cls.VIEW_LAST,
+            cls.VIEW_NEXT,
+            cls.VIEW_PREVIOUS,
+        )
 
 
 __all__ = ["PDActionGoTo3DView"]

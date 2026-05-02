@@ -320,3 +320,166 @@ def test_get_integer_property_value_returns_none_for_non_int_storage() -> None:
     s = _schema()
     s.set_text_property_value("Title", "hello")
     assert s.get_integer_property_value("Title") is None
+
+
+# --- set_about_as_simple null-clear ----------------------------------------
+
+
+def test_set_about_as_simple_none_clears() -> None:
+    s = _schema()
+    s.set_about_as_simple("urn:foo")
+    assert s.get_about_attribute() == "urn:foo"
+    assert s.get_about_value() == "urn:foo"
+
+    # Upstream removes the attribute on null input — getAboutValue() then
+    # returns the empty string while getAboutAttribute() returns null.
+    s.set_about_as_simple(None)
+    assert s.get_about_attribute() is None
+    assert s.get_about_value() is None
+    assert s.get_about() == ""
+
+
+# --- get_property_as ---------------------------------------------------------
+
+
+def test_get_property_as_matches_stored_type() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "hello")
+    assert s.get_property_as("Title", str) == "hello"
+    # Type mismatch returns None instead of the value.
+    assert s.get_property_as("Title", int) is None
+    # Missing property returns None.
+    assert s.get_property_as("Missing", str) is None
+
+
+def test_get_property_as_distinguishes_bool_from_int() -> None:
+    s = _schema()
+    s.set_boolean_property_value("Marked", True)
+    s.set_integer_property_value("Count", 7)
+    # Booleans must surface only when asked for ``bool``, not ``int`` —
+    # mirrors the upstream BooleanType vs IntegerType separation.
+    assert s.get_property_as("Marked", bool) is True
+    assert s.get_property_as("Marked", int) is None
+    assert s.get_property_as("Count", int) == 7
+    assert s.get_property_as("Count", bool) is None
+
+
+def test_get_property_as_for_arrays_and_lang_alt() -> None:
+    s = _schema()
+    s.add_qualified_bag_value("subject", "alpha")
+    s.set_unqualified_language_property_value("title", None, "Hello")
+    bag = s.get_property_as("subject", list)
+    assert bag == ["alpha"]
+    lang = s.get_property_as("title", dict)
+    assert lang == {"x-default": "Hello"}
+
+
+# --- remove_unqualified_array_value ----------------------------------------
+
+
+def test_remove_unqualified_array_value_handles_bag_and_seq() -> None:
+    s = _schema()
+    s.add_qualified_bag_value("subject", "alpha")
+    s.add_qualified_bag_value("subject", "beta")
+    s.add_unqualified_sequence_value("creators", "Alice")
+    s.add_unqualified_sequence_value("creators", "Bob")
+
+    s.remove_unqualified_array_value("subject", "alpha")
+    s.remove_unqualified_array_value("creators", "Alice")
+
+    assert s.get_unqualified_bag_value_list("subject") == ["beta"]
+    assert s.get_unqualified_sequence_value_list("creators") == ["Bob"]
+
+
+def test_remove_unqualified_array_value_no_op_for_missing_or_non_array() -> None:
+    s = _schema()
+    # Missing property: no-op.
+    s.remove_unqualified_array_value("nope", "x")
+    # Non-array property (a TextType-backed string): no-op.
+    s.set_text_property_value("Title", "t")
+    s.remove_unqualified_array_value("Title", "t")
+    assert s.get_unqualified_text_property("Title") == "t"
+
+
+# --- merge ------------------------------------------------------------------
+
+
+def _other_schema() -> XMPSchema:
+    return XMPSchema(
+        XMPMetadata.create_xmp_metadata(),
+        namespace_uri="http://example.com/ns#",
+        prefix="ex",
+    )
+
+
+def test_merge_unions_bag_values_without_duplicates() -> None:
+    s = _schema()
+    s.add_qualified_bag_value("subject", "alpha")
+    s.add_qualified_bag_value("subject", "beta")
+
+    other = _other_schema()
+    other.add_qualified_bag_value("subject", "beta")
+    other.add_qualified_bag_value("subject", "gamma")
+
+    s.merge(other)
+
+    assert s.get_unqualified_bag_value_list("subject") == ["alpha", "beta", "gamma"]
+
+
+def test_merge_replaces_simple_text_property() -> None:
+    s = _schema()
+    s.set_text_property_value("Title", "old")
+
+    other = _other_schema()
+    other.set_text_property_value("Title", "new")
+
+    s.merge(other)
+
+    assert s.get_unqualified_text_property("Title") == "new"
+
+
+def test_merge_lang_alt_keeps_existing_languages_first() -> None:
+    s = _schema()
+    s.set_unqualified_language_property_value("title", None, "Hello")
+    s.set_unqualified_language_property_value("title", "fr-FR", "Bonjour")
+
+    other = _other_schema()
+    other.set_unqualified_language_property_value("title", "fr-FR", "Salut")
+    other.set_unqualified_language_property_value("title", "de-DE", "Hallo")
+
+    s.merge(other)
+
+    # x-default stays first; existing fr-FR value wins; new de-DE entry filled.
+    assert s.get_unqualified_language_property_languages_value("title") == [
+        "x-default",
+        "fr-FR",
+        "de-DE",
+    ]
+    assert s.get_unqualified_language_property_value("title") == "Hello"
+    assert s.get_unqualified_language_property_value("title", "fr-FR") == "Bonjour"
+    assert s.get_unqualified_language_property_value("title", "de-DE") == "Hallo"
+
+
+def test_merge_copies_extra_namespaces() -> None:
+    s = _schema()
+    other = _other_schema()
+    other.add_namespace("foo", "http://foo/")
+
+    s.merge(other)
+
+    assert s.get_namespaces()["foo"] == "http://foo/"
+
+
+def test_merge_rejects_different_schema_class() -> None:
+    s = _schema()
+
+    class _OtherSchema(XMPSchema):
+        pass
+
+    other = _OtherSchema(
+        XMPMetadata.create_xmp_metadata(),
+        namespace_uri="http://example.com/ns#",
+        prefix="ex",
+    )
+    with pytest.raises(OSError):
+        s.merge(other)
