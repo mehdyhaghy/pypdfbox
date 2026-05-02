@@ -83,9 +83,13 @@ class PDAnnotation:
                     f"{type(annotation_dict).__name__}"
                 )
             self._dict = annotation_dict
-            # Upstream's no-arg constructor sets /Type Annot; the
-            # COSDictionary constructor leaves the dict untouched. We
-            # follow that — caller is responsible for a well-formed dict.
+            # Mirror upstream PDAnnotation(COSDictionary): if the dict
+            # has no /Type entry, default it to /Annot. Existing /Type
+            # values that aren't /Annot are left alone (upstream just
+            # logs a warning and proceeds).
+            existing_type = self._dict.get_dictionary_object(_TYPE)
+            if existing_type is None:
+                self._dict.set_item(_TYPE, _ANNOT)
 
     # ---------- COS surface ----------
 
@@ -374,9 +378,21 @@ class PDAnnotation:
 
     def get_border(self) -> COSArray:
         """Default /Border is ``[0 0 1]`` per spec — match upstream which
-        synthesises the default rather than returning ``null``."""
+        synthesises the default rather than returning ``null``.
+
+        When the stored array has fewer than three elements, mirror
+        upstream behaviour (Adobe Reader treats missing entries as 0):
+        copy the array (so we don't mutate the persisted PDF) and pad
+        with ``COSInteger.ZERO`` until it has three elements."""
         value = self._dict.get_dictionary_object(_BORDER)
         if isinstance(value, COSArray):
+            if value.size() < 3:
+                padded = COSArray()
+                for i in range(value.size()):
+                    padded.add(value.get(i))
+                while padded.size() < 3:
+                    padded.add(COSInteger.get(0))
+                return padded
             return value
         default = COSArray(
             [COSInteger.get(0), COSInteger.get(0), COSInteger.get(1)]
@@ -450,6 +466,32 @@ class PDAnnotation:
             ap.get_cos_object() if hasattr(ap, "get_cos_object") else ap,
         )
 
+    def get_normal_appearance_stream(self):  # type: ignore[no-untyped-def]
+        """Return the active normal appearance stream, if any.
+
+        Mirrors upstream :code:`PDAnnotation.getNormalAppearanceStream()`:
+        looks up the ``/AP /N`` entry, then either returns the direct
+        appearance stream or — when ``/N`` is a state-mapped
+        subdictionary — looks up the entry keyed by the current
+        ``/AS`` state name. Returns ``None`` when ``/AP`` is absent,
+        ``/N`` is missing, or the resolved entry is not a stream.
+
+        Return type is :class:`PDAppearanceStream | None` but the
+        annotation un-stringified to keep the import graph local."""
+        appearance_dict = self.get_appearance_dictionary()
+        if appearance_dict is None:
+            return None
+        normal = appearance_dict.get_normal_appearance()
+        if normal is None:
+            return None
+        if normal.is_sub_dictionary():
+            state = self.get_appearance_state()
+            sub = normal.get_sub_dictionary()
+            if state is None:
+                return None
+            return sub.get(state)
+        return normal.get_appearance_stream()
+
     # ---------- /AS (appearance state) ----------
 
     def get_appearance_state(self) -> str | None:
@@ -502,6 +544,22 @@ class PDAnnotation:
             "set_p expects None, COSDictionary, or an object with "
             f"get_cos_object(); got {type(page).__name__}"
         )
+
+    def get_page(self) -> COSDictionary | None:
+        """Upstream-named accessor for the parent page back-pointer.
+
+        Java's :code:`PDAnnotation.getPage()` returns a ``PDPage``; we
+        return the raw ``COSDictionary`` to keep ``PDPage`` out of every
+        annotation's import graph. Callers that want a typed wrapper can
+        construct ``PDPage(get_page())`` themselves."""
+        return self.get_p()
+
+    def set_page(self, page: object) -> None:
+        """Upstream-named setter for the parent page back-pointer.
+
+        Mirrors :code:`PDAnnotation.setPage(PDPage)` upstream. Delegates
+        to :meth:`set_p` for the actual write."""
+        self.set_p(page)
 
     # ---------- /StructParent ----------
 

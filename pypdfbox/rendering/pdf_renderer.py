@@ -22,6 +22,8 @@ from pypdfbox.cos import (
     COSString,
 )
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
+from pypdfbox.rendering.image_type import ImageType
+from pypdfbox.rendering.render_destination import RenderDestination
 
 if TYPE_CHECKING:
     from pypdfbox.contentstream.operator import Operator
@@ -292,21 +294,61 @@ class PDFRenderer(PDFStreamEngine):
         self._knockout_active: bool = False
         self._knockout_snapshot: Image.Image | None = None
         self._knockout_form_depth: int = 0
+        # ---- annotation filter (mirrors upstream ``AnnotationFilter``) ----
+        # Upstream's default filter accepts every annotation
+        # (``annotation -> true``); we model the filter as a plain
+        # ``Callable[[PDAnnotation], bool]``. Stored only — the lite
+        # renderer's annotation pipeline (when wired) will consult it.
+        self._annotation_filter: Any = lambda _annotation: True
+        # ---- last rendered page image (mirrors package-private
+        # upstream ``getPageImage()``). Captured at the end of
+        # ``render_image_with_dpi`` so callers (e.g. tests, custom
+        # post-processors) can read it back without re-rendering.
+        self._page_image: Image.Image | None = None
+        # ---- rendering hints (mirrors upstream Java2D ``RenderingHints``).
+        # The lite renderer doesn't consult Java2D hints, but downstream
+        # tooling that mirrors PDFBox call sites passes a hint dict
+        # through unconditionally; storing it keeps that path
+        # AttributeError-free.
+        self._rendering_hints: Any | None = None
 
     # ------------------------------------------------------------------
     # public API (mirrors PDFRenderer.java)
     # ------------------------------------------------------------------
 
-    def render_image(self, page_index: int, scale: float = 1.0) -> Image.Image:
+    def render_image(
+        self,
+        page_index: int,
+        scale: float = 1.0,
+        image_type: ImageType | None = None,
+    ) -> Image.Image:
         """Render at 72 DPI base * ``scale``. Mirrors upstream
-        ``PDFRenderer.renderImage(int, float)``."""
-        return self.render_image_with_dpi(page_index, dpi=72.0 * scale)
+        ``PDFRenderer.renderImage(int, float, ImageType)`` (and its
+        one-/two-arg overloads).
+
+        ``image_type`` selects the Pillow mode of the returned image
+        (RGB, RGBA, L, "1"). When ``None`` the lite renderer keeps its
+        historical white-RGB canvas behaviour.
+        """
+        return self.render_image_with_dpi(
+            page_index, dpi=72.0 * scale, image_type=image_type
+        )
 
     def render_image_with_dpi(
-        self, page_index: int, dpi: float = 72.0
+        self,
+        page_index: int,
+        dpi: float = 72.0,
+        image_type: ImageType | None = None,
     ) -> Image.Image:
         """Render the page at the given DPI. Mirrors upstream
-        ``PDFRenderer.renderImageWithDPI``."""
+        ``PDFRenderer.renderImageWithDPI``.
+
+        ``image_type`` mirrors the upstream three-arg overload
+        ``renderImageWithDPI(int, float, ImageType)``. It selects the
+        Pillow mode of the returned image (RGB, RGBA, L, "1"). When
+        ``None`` (the default), the lite renderer keeps its historical
+        white-RGB canvas behaviour.
+        """
         page = self._document.get_pages()[page_index]
         media_box = page.get_media_box()
         # PDF user-space units are 1/72 inch. Pixel dims = pts * dpi / 72.
@@ -316,6 +358,12 @@ class PDFRenderer(PDFStreamEngine):
         width_px = max(1, int(round(width_pt * scale)))
         height_px = max(1, int(round(height_pt * scale)))
 
+        # aggdraw can only rasterise onto an RGB canvas, so we always
+        # render into RGB and convert at teardown when the caller asked
+        # for a different image type. ARGB/RGBA is the one mode where
+        # we want a transparent-canvas start to match upstream's
+        # ``new Color(0, 0, 0, 0)`` clearRect; the conversion at the
+        # end preserves alpha by paint-checking the white background.
         image = Image.new("RGB", (width_px, height_px), (255, 255, 255))
 
         # Reset per-render state. ``self._draw`` is the *current* aggdraw
@@ -373,6 +421,32 @@ class PDFRenderer(PDFStreamEngine):
             self._draw = None
             self._image = None
 
+        # Convert to the caller-requested image type if needed.
+        # Pillow handles every direction (RGB → L / "1" / RGBA / etc.)
+        # via ``Image.convert``; for ARGB we tag the formerly-white
+        # background as fully transparent so it composes correctly,
+        # mirroring upstream's transparent-canvas + final blit
+        # behaviour.
+        if image_type is not None and image_type is not ImageType.RGB:
+            target_mode = image_type.pil_mode
+            if target_mode == "RGBA":
+                rgba = image.convert("RGBA")
+                # Make any pixel that's still pure white fully
+                # transparent so the alpha channel matches what
+                # upstream's transparent-canvas render produced.
+                pixels = rgba.load()
+                w, h = rgba.size
+                for y in range(h):
+                    for x in range(w):
+                        r, g, b, _a = pixels[x, y]
+                        if r == 255 and g == 255 and b == 255:
+                            pixels[x, y] = (r, g, b, 0)
+                image = rgba
+            else:
+                image = image.convert(target_mode)
+        # Cache the freshly-rendered page so callers can recover it via
+        # ``get_page_image()`` (mirrors upstream package-private accessor).
+        self._page_image = image
         return image
 
     # ------------------------------------------------------------------
@@ -404,14 +478,19 @@ class PDFRenderer(PDFStreamEngine):
         """Mirror of upstream ``PDFRenderer.isSubsamplingAllowed()``."""
         return self._subsampling_allowed
 
-    def set_default_destination(self, destination: str) -> None:
+    def set_default_destination(
+        self, destination: str | RenderDestination
+    ) -> None:
         """Set the default render destination used for OCG visibility and
         annotation appearance selection. Upstream uses an enum
         (``RenderDestination.VIEW`` / ``PRINT`` / ``EXPORT``); we accept
-        the bare string equivalent ``"View"`` / ``"Print"`` / ``"Export"``
-        to stay dependency-free. Mirrors
-        ``PDFRenderer.setDefaultDestination(RenderDestination)``."""
-        self._default_destination = destination
+        either the :class:`RenderDestination` enum value or the bare
+        string equivalent ``"View"`` / ``"Print"`` / ``"Export"``.
+        Mirrors ``PDFRenderer.setDefaultDestination(RenderDestination)``."""
+        if isinstance(destination, RenderDestination):
+            self._default_destination = destination.value
+        else:
+            self._default_destination = destination
 
     def get_default_destination(self) -> str:
         """Mirror of upstream ``PDFRenderer.getDefaultDestination()``."""
@@ -431,6 +510,71 @@ class PDFRenderer(PDFStreamEngine):
         """Mirror of upstream
         ``PDFRenderer.getImageDownscalingOptimizationThreshold()``."""
         return self._image_downscaling_optimization_threshold
+
+    def get_annotations_filter(self) -> Any:
+        """Return the active annotation filter callable. Mirrors upstream
+        ``PDFRenderer.getAnnotationsFilter()``.
+
+        The default (set in ``__init__``) accepts every annotation —
+        i.e. ``annotation -> True``."""
+        return self._annotation_filter
+
+    def set_annotations_filter(self, annotations_filter: Any) -> None:
+        """Replace the annotation filter. Mirrors upstream
+        ``PDFRenderer.setAnnotationsFilter(AnnotationFilter)``.
+
+        ``annotations_filter`` is a callable
+        ``(PDAnnotation) -> bool`` that returns True for annotations
+        that should be rendered. Stored only — the lite renderer's
+        annotation pipeline (when wired) will consult it."""
+        self._annotation_filter = annotations_filter
+
+    def get_rendering_hints(self) -> Any | None:
+        """Return the rendering hints, or ``None`` if none are set.
+        Mirrors upstream ``PDFRenderer.getRenderingHints()``.
+
+        The lite renderer doesn't consult Java2D ``RenderingHints``;
+        the value is stored only so downstream tooling that mirrors
+        PDFBox call sites can round-trip it."""
+        return self._rendering_hints
+
+    def set_rendering_hints(self, rendering_hints: Any | None) -> None:
+        """Set the rendering hints. Mirrors upstream
+        ``PDFRenderer.setRenderingHints(RenderingHints)``.
+
+        Pass ``None`` to defer the choice to the renderer (upstream
+        picks bicubic/quality at render time based on the destination).
+        Stored only in the lite renderer."""
+        self._rendering_hints = rendering_hints
+
+    def get_page_image(self) -> Image.Image | None:
+        """Return the most recently rendered page image, or ``None`` if
+        no page has been rendered yet. Mirrors upstream package-private
+        ``PDFRenderer.getPageImage()`` — exposed publicly here so tests
+        and custom post-processors can read back the last frame without
+        re-rendering."""
+        return self._page_image
+
+    def get_document(self) -> PDDocument:
+        """Return the document being rendered. Mirrors upstream's
+        protected ``document`` field (accessed by ``PageDrawer`` via
+        ``getRenderer().document``).
+
+        Exposed as a regular accessor so subclasses overriding the
+        rendering pipeline don't have to reach into ``_document``."""
+        return self._document
+
+    def is_group_enabled(self, group: Any) -> bool:
+        """Indicate whether an optional content group is enabled.
+        Mirrors upstream ``PDFRenderer.isGroupEnabled(PDOptionalContentGroup)``.
+
+        Returns True when the document has no ``/OCProperties`` (i.e.
+        no OCG configuration) or when the OCProperties config marks the
+        group as enabled. ``group`` is a ``PDOptionalContentGroup``."""
+        oc_properties = self._document.get_document_catalog().get_oc_properties()
+        if oc_properties is None:
+            return True
+        return bool(oc_properties.is_group_enabled(group))
 
     # ------------------------------------------------------------------
     # graphics-state helpers

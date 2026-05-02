@@ -10,6 +10,7 @@ from pypdfbox.cos import (
     COSFloat,
     COSInteger,
     COSName,
+    COSStream,
     COSString,
 )
 from pypdfbox.pdmodel import PDRectangle
@@ -25,6 +26,8 @@ from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotationTrapNet,
     PDAnnotationUnknown,
     PDAnnotationWatermark,
+    PDAppearanceDictionary,
+    PDAppearanceStream,
 )
 
 # ---------- construction ----------
@@ -357,6 +360,207 @@ def test_unequal_when_backing_dict_differs() -> None:
     a = PDAnnotationText()
     b = PDAnnotationText()
     assert a != b
+
+
+# ---------- constructor /Type defaulting ----------
+
+
+def test_constructor_defaults_type_when_missing_on_existing_dict() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Square")  # type: ignore[attr-defined]
+    # No /Type is set on the raw dict.
+    ann = PDAnnotationSquare(raw)
+    assert ann.get_cos_object().get_name(COSName.TYPE) == "Annot"  # type: ignore[attr-defined]
+
+
+def test_constructor_leaves_existing_non_annot_type_alone() -> None:
+    """Upstream only logs a warning when /Type is non-/Annot — it does
+    not overwrite. We follow that."""
+    raw = COSDictionary()
+    raw.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject")
+    )
+    raw.set_name(COSName.SUBTYPE, "Square")  # type: ignore[attr-defined]
+    ann = PDAnnotationSquare(raw)
+    assert ann.get_cos_object().get_name(COSName.TYPE) == "XObject"  # type: ignore[attr-defined]
+
+
+# ---------- /Border zero-padding ----------
+
+
+def test_border_pads_short_array_with_zero() -> None:
+    """Adobe Reader behaviour (PDFBOX-…) — missing border entries default
+    to 0; a stored two-element /Border [5 6] returns [5 6 0]."""
+    ann = PDAnnotationText()
+    ann.set_border(COSArray([COSInteger.get(5), COSInteger.get(6)]))
+    rt = ann.get_border()
+    assert rt.size() == 3
+    assert rt.get_int(0) == 5
+    assert rt.get_int(1) == 6
+    assert rt.get_int(2) == 0
+
+
+def test_border_pads_empty_array_with_zero() -> None:
+    ann = PDAnnotationText()
+    ann.set_border(COSArray())
+    rt = ann.get_border()
+    assert rt.size() == 3
+    assert rt.get_int(0) == 0
+    assert rt.get_int(1) == 0
+    assert rt.get_int(2) == 0
+
+
+def test_border_pad_does_not_mutate_persisted_array() -> None:
+    """Padding must copy — the stored COSArray must remain its original
+    size so we don't silently rewrite the PDF on read."""
+    ann = PDAnnotationText()
+    stored = COSArray([COSInteger.get(7)])
+    ann.set_border(stored)
+    # Pull the padded view; original must remain untouched.
+    _ = ann.get_border()
+    assert stored.size() == 1
+
+
+def test_border_full_array_returned_as_is() -> None:
+    ann = PDAnnotationText()
+    arr = COSArray(
+        [COSInteger.get(1), COSInteger.get(2), COSInteger.get(3)]
+    )
+    ann.set_border(arr)
+    # No padding required → exact same instance.
+    assert ann.get_border() is arr
+
+
+# ---------- get_page / set_page upstream-named accessors ----------
+
+
+def test_get_page_returns_p_dictionary() -> None:
+    ann = PDAnnotationText()
+    page_dict = COSDictionary()
+    page_dict.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("Page")
+    )
+    ann.set_p(page_dict)
+    assert ann.get_page() is page_dict
+
+
+def test_set_page_writes_p_entry() -> None:
+    ann = PDAnnotationText()
+    page_dict = COSDictionary()
+    page_dict.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("Page")
+    )
+    ann.set_page(page_dict)
+    assert ann.get_p() is page_dict
+    assert ann.get_page() is page_dict
+
+
+def test_set_page_none_clears() -> None:
+    ann = PDAnnotationText()
+    ann.set_page(COSDictionary())
+    ann.set_page(None)
+    assert ann.get_page() is None
+
+
+def test_get_page_none_when_absent() -> None:
+    ann = PDAnnotationText()
+    assert ann.get_page() is None
+
+
+# ---------- get_normal_appearance_stream ----------
+
+
+def test_normal_appearance_stream_none_when_no_ap() -> None:
+    ann = PDAnnotationText()
+    assert ann.get_normal_appearance_stream() is None
+
+
+def test_normal_appearance_stream_none_when_ap_lacks_n() -> None:
+    ann = PDAnnotationText()
+    ann.set_appearance_dictionary(PDAppearanceDictionary())
+    # /AP exists but has no /N entry.
+    assert ann.get_normal_appearance_stream() is None
+
+
+def test_normal_appearance_stream_direct_stream() -> None:
+    """When /AP /N is a direct appearance stream, return it wrapped."""
+    ann = PDAnnotationText()
+    ap = COSDictionary()
+    stream = COSStream()
+    stream.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject")
+    )
+    stream.set_item(
+        COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Form")
+    )
+    ap.set_item(COSName.get_pdf_name("N"), stream)
+    ann.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
+    result = ann.get_normal_appearance_stream()
+    assert isinstance(result, PDAppearanceStream)
+    assert result.get_cos_object() is stream
+
+
+def test_normal_appearance_stream_state_keyed() -> None:
+    """When /AP /N is a state-keyed subdict, return the entry that
+    matches the current /AS."""
+    ann = PDAnnotationText()
+    ap = COSDictionary()
+    n_subdict = COSDictionary()
+    on_stream = COSStream()
+    on_stream.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject")
+    )
+    on_stream.set_item(
+        COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Form")
+    )
+    off_stream = COSStream()
+    off_stream.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject")
+    )
+    off_stream.set_item(
+        COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Form")
+    )
+    n_subdict.set_item(COSName.get_pdf_name("On"), on_stream)
+    n_subdict.set_item(COSName.get_pdf_name("Off"), off_stream)
+    ap.set_item(COSName.get_pdf_name("N"), n_subdict)
+    ann.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
+    ann.set_appearance_state("On")
+    result = ann.get_normal_appearance_stream()
+    assert isinstance(result, PDAppearanceStream)
+    assert result.get_cos_object() is on_stream
+    ann.set_appearance_state("Off")
+    result = ann.get_normal_appearance_stream()
+    assert isinstance(result, PDAppearanceStream)
+    assert result.get_cos_object() is off_stream
+
+
+def test_normal_appearance_stream_state_keyed_unknown_state() -> None:
+    """A state name that isn't in the subdict yields None — we don't
+    invent a stream."""
+    ann = PDAnnotationText()
+    ap = COSDictionary()
+    n_subdict = COSDictionary()
+    on_stream = COSStream()
+    n_subdict.set_item(COSName.get_pdf_name("On"), on_stream)
+    ap.set_item(COSName.get_pdf_name("N"), n_subdict)
+    ann.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
+    ann.set_appearance_state("Missing")
+    assert ann.get_normal_appearance_stream() is None
+
+
+def test_normal_appearance_stream_state_keyed_no_state_set() -> None:
+    """Subdict /N with no /AS entry on the annotation: we return None
+    rather than guessing a state."""
+    ann = PDAnnotationText()
+    ap = COSDictionary()
+    n_subdict = COSDictionary()
+    on_stream = COSStream()
+    n_subdict.set_item(COSName.get_pdf_name("On"), on_stream)
+    ap.set_item(COSName.get_pdf_name("N"), n_subdict)
+    ann.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
+    # No /AS on the annotation.
+    assert ann.get_appearance_state() is None
+    assert ann.get_normal_appearance_stream() is None
 
 
 # Ensure unused imports stay referenced (suppresses linter chatter).

@@ -152,9 +152,11 @@ Clusters #1 + #2 ship **original Python work** built on Pillow + aggdraw + fontT
 | pypdfbox path | upstream PDFBox version | upstream Java path | derivation scope |
 |---|---|---|---|
 | `pypdfbox/rendering/pdf_renderer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/PDFRenderer.java` + `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java` | API surface only (`renderImage` / `renderImageWithDPI` entry points + per-operator semantics from `PageDrawer`). Implementation is original Python over Pillow + aggdraw + fontTools — Java2D `Graphics2D` has no Python equivalent. |
+| `pypdfbox/rendering/image_type.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/ImageType.java` | enum + `to_buffered_image_type()` (returns the AWT `BufferedImage.TYPE_*` int constants); `pil_mode` is a Python-side helper for the renderer's ``Image.new`` mode. |
+| `pypdfbox/rendering/render_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/RenderDestination.java` | enum (`EXPORT`/`VIEW`/`PRINT`); values are the title-case strings already consumed by `PDOptionalContentProperties.get_render_state`. |
 
 Original work (no PROVENANCE entry needed; listed for clarity):
-- `pypdfbox/rendering/__init__.py` — re-exports `PDFRenderer`
+- `pypdfbox/rendering/__init__.py` — re-exports `PDFRenderer` + `ImageType` + `RenderDestination`
 
 ### `pypdfbox/pdmodel/`
 
