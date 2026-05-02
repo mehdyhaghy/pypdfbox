@@ -108,3 +108,26 @@ def test_pdfbox_camelcase_event_aliases(metadata: XMPMetadata) -> None:
     assert version.getEvent() is event
     assert event.get_property_name() == VersionType.EVENT
     assert event.getAction() == "saved"
+
+
+def test_get_event_property_returns_carrier(metadata: XMPMetadata) -> None:
+    version = VersionType(metadata)
+    assert version.get_event_property() is None
+
+    event = ResourceEventType(metadata)
+    event.set_action("saved")
+    version.set_event(event)
+
+    assert version.get_event_property() is event
+
+
+def test_get_modify_date_property_returns_carrier(metadata: XMPMetadata) -> None:
+    version = VersionType(metadata)
+    assert version.get_modify_date_property() is None
+
+    when = datetime(2025, 7, 8, 9, 10, 11, tzinfo=UTC)
+    version.set_modify_date(when)
+
+    carrier = version.get_modify_date_property()
+    assert isinstance(carrier, DateType)
+    assert carrier.get_value() == when

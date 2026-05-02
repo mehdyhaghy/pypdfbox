@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from .abstract_structured_type import AbstractStructuredType
 from .real_type import RealType
+from .text_type import TextType
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
@@ -74,5 +75,26 @@ class DimensionsType(AbstractStructuredType):
     def setUnit(self, value: str) -> None:  # noqa: N802 - upstream Java name
         self.set_unit(value)
 
+    # --- typed property accessors -------------------------------------
+
+    def get_h_property(self) -> RealType | None:
+        """Return the underlying ``RealType`` carrier for ``h`` or ``None``."""
+        prop = self.get_property(self.H)
+        return prop if isinstance(prop, RealType) else None
+
+    def get_w_property(self) -> RealType | None:
+        """Return the underlying ``RealType`` carrier for ``w`` or ``None``."""
+        prop = self.get_property(self.W)
+        return prop if isinstance(prop, RealType) else None
+
+    def get_unit_property(self) -> TextType | None:
+        """Return the underlying ``TextType`` carrier for ``unit`` or ``None``."""
+        prop = self.get_property(self.UNIT)
+        return prop if isinstance(prop, TextType) else None
+
     def __repr__(self) -> str:
+        return f"DimensionsType{{{self.get_w()} x {self.get_h()} {self.get_unit()}}}"
+
+    def __str__(self) -> str:
+        # Mirrors upstream ``DimensionsType.toString()``.
         return f"DimensionsType{{{self.get_w()} x {self.get_h()} {self.get_unit()}}}"

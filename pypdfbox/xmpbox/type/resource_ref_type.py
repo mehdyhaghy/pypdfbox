@@ -51,9 +51,12 @@ class ResourceRefType(AbstractStructuredType):
         RENDITION_PARAMS: "Text",
         VERSION_ID: "Text",
         MASK_MARKERS: "Choice",
-        RENDITION_CLASS: "Text",
-        FROM_PART: "Text",
-        TO_PART: "Text",
+        # Mirror upstream @PropertyType annotations: renditionClass uses
+        # RenditionClassType, fromPart/toPart use PartType (all subclass
+        # TextType so existing string accessors keep working).
+        RENDITION_CLASS: "RenditionClass",
+        FROM_PART: "Part",
+        TO_PART: "Part",
     }
 
     def __init__(self, metadata: XMPMetadata) -> None:

@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .abstract_structured_type import AbstractStructuredType
+from .date_type import DateType
 from .resource_event_type import ResourceEventType
 
 if TYPE_CHECKING:
@@ -78,10 +79,20 @@ class VersionType(AbstractStructuredType):
     def setEvent(self, value: ResourceEventType) -> None:  # noqa: N802 - upstream Java name
         self.set_event(value)
 
+    def get_event_property(self) -> ResourceEventType | None:
+        """Return the nested ``ResourceEventType`` carrier or ``None``."""
+        prop = self.get_first_equivalent_property(self.EVENT, ResourceEventType)
+        return prop if isinstance(prop, ResourceEventType) else None
+
     # --- modifyDate --------------------------------------------------
 
     def get_modify_date(self) -> datetime | None:
         return self.get_date_property_as_calendar(self.MODIFY_DATE)
+
+    def get_modify_date_property(self) -> DateType | None:
+        """Return the underlying ``DateType`` carrier for ``modifyDate``."""
+        prop = self.get_first_equivalent_property(self.MODIFY_DATE, DateType)
+        return prop if isinstance(prop, DateType) else None
 
     def getModifyDate(self) -> datetime | None:  # noqa: N802 - upstream Java name
         return self.get_modify_date()

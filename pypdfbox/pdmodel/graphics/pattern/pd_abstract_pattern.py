@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -118,7 +116,12 @@ class PDAbstractPattern:
         """``/Matrix`` as a 6-tuple ``[a, b, c, d, e, f]``. Defaults to the
         identity matrix per PDF §8.7. Mirrors upstream's
         ``Matrix.createMatrix(...)`` semantics on the array form (a typed
-        ``Matrix`` class lands with the rendering cluster)."""
+        ``Matrix`` class lands with the rendering cluster).
+
+        Permissive on malformed inputs — matches upstream
+        ``Matrix.createMatrix`` which returns identity when the entry is
+        missing, not a ``COSArray``, has fewer than 6 elements, or any
+        element is not numeric."""
         value = self._dict.get_dictionary_object(_MATRIX)
         if isinstance(value, COSArray) and value.size() >= 6:
             out: list[float] = []
@@ -127,18 +130,54 @@ class PDAbstractPattern:
                 if isinstance(entry, (COSInteger, COSFloat)):
                     out.append(float(entry.value))
                 else:
-                    raise TypeError(
-                        f"/Matrix entry {i} is not numeric: {type(entry).__name__}"
-                    )
+                    # Upstream returns identity if any entry is non-numeric.
+                    return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
             return out
         return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
 
-    def set_matrix(self, values: Sequence[float] | COSArray | None) -> None:
+    def set_matrix(self, values) -> None:  # type: ignore[no-untyped-def]
+        """Write ``/Matrix``. Accepts:
+
+        - ``None`` — clears the entry.
+        - ``COSArray`` — stored directly.
+        - ``Sequence[float]`` of length 6 — wrapped as a ``COSArray`` of
+          ``COSFloat``.
+        - Any object with a callable ``get_matrix()`` that returns a
+          6-element sequence (an ``AffineTransform``-like duck type) —
+          mirrors upstream's ``setMatrix(AffineTransform)`` overload, which
+          internally calls ``transform.getMatrix(double[])`` to extract the
+          6 affine entries ``[a, b, c, d, e, f]``."""
         if values is None:
             self._dict.remove_item(_MATRIX)
             return
         if isinstance(values, COSArray):
             self._dict.set_item(_MATRIX, values)
+            return
+        # Duck-typed AffineTransform-like adapter: any object exposing a
+        # callable ``get_matrix`` that yields a 6-element sequence.
+        if not isinstance(values, (list, tuple)) and hasattr(values, "get_matrix"):
+            extracted = values.get_matrix()
+            if callable(extracted):
+                # Defensive: some adapters expose ``get_matrix`` as a
+                # bound method that requires no args — we already called
+                # it once. If the result itself is callable, the adapter
+                # is broken; fall through to the length check below to
+                # raise a useful error.
+                pass
+            try:
+                length = len(extracted)
+            except TypeError as exc:
+                raise TypeError(
+                    "set_matrix received an object whose get_matrix() "
+                    "returned a non-sequence value"
+                ) from exc
+            if length != 6:
+                raise ValueError(
+                    "/Matrix expects exactly 6 numbers (a b c d e f); "
+                    f"AffineTransform-like adapter yielded {length}"
+                )
+            arr = COSArray([COSFloat(float(v)) for v in extracted])
+            self._dict.set_item(_MATRIX, arr)
             return
         if len(values) != 6:
             raise ValueError(

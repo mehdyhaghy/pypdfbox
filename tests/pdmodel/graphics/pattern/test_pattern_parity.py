@@ -497,3 +497,83 @@ def test_shading_set_extended_graphics_state_rejects_garbage() -> None:
     pattern = PDShadingPattern()
     with pytest.raises(TypeError):
         pattern.set_extended_graphics_state(42)  # type: ignore[arg-type]
+
+
+# ---------- /Matrix permissive parsing (upstream Matrix.createMatrix parity) ----------
+
+
+def test_get_matrix_returns_identity_when_entry_not_array() -> None:
+    """Upstream ``Matrix.createMatrix`` returns identity when ``/Matrix`` is
+    not a COSArray. Our port now mirrors that instead of relying on the
+    base default-only path."""
+    from pypdfbox.cos import COSInteger
+
+    pattern = PDTilingPattern()
+    pattern.get_cos_object().set_item(_MATRIX, COSInteger.get(7))
+    assert pattern.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_get_matrix_returns_identity_when_array_too_short() -> None:
+    """Array shorter than 6 entries → identity (upstream parity)."""
+    pattern = PDTilingPattern()
+    arr = COSArray([COSFloat(1.0), COSFloat(2.0), COSFloat(3.0)])
+    pattern.get_cos_object().set_item(_MATRIX, arr)
+    assert pattern.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_get_matrix_returns_identity_when_entry_non_numeric() -> None:
+    """Any non-numeric entry → identity (mirrors upstream
+    ``Matrix.createMatrix``'s ``COSNumber`` instanceof loop)."""
+    from pypdfbox.cos import COSName as _CN
+
+    pattern = PDTilingPattern()
+    arr = COSArray(
+        [
+            COSFloat(1.0),
+            COSFloat(0.0),
+            COSFloat(0.0),
+            COSFloat(1.0),
+            _CN.get_pdf_name("Bogus"),  # not numeric
+            COSFloat(0.0),
+        ]
+    )
+    pattern.get_cos_object().set_item(_MATRIX, arr)
+    assert pattern.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+# ---------- /Matrix AffineTransform-like adapter (upstream setMatrix parity) ----------
+
+
+def test_set_matrix_accepts_affine_transform_like_adapter() -> None:
+    """Upstream ``setMatrix(AffineTransform)`` extracts 6 floats via
+    ``transform.getMatrix(double[])``. Our port duck-types: any object with
+    a callable ``get_matrix()`` returning a 6-sequence is accepted."""
+
+    class FakeAffineTransform:
+        def get_matrix(self) -> list[float]:
+            return [2.0, 0.0, 0.0, 3.0, 10.0, 20.0]
+
+    pattern = PDTilingPattern()
+    pattern.set_matrix(FakeAffineTransform())
+    assert pattern.get_matrix() == [2.0, 0.0, 0.0, 3.0, 10.0, 20.0]
+    arr = pattern.get_cos_object().get_dictionary_object(_MATRIX)
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 6
+
+
+def test_set_matrix_affine_transform_adapter_wrong_length_raises() -> None:
+    class BadTransform:
+        def get_matrix(self) -> list[float]:
+            return [1.0, 2.0, 3.0]
+
+    pattern = PDTilingPattern()
+    with pytest.raises(ValueError):
+        pattern.set_matrix(BadTransform())
+
+
+def test_set_matrix_still_accepts_plain_sequence() -> None:
+    """Plain 6-element sequence path still works — the duck-typed branch
+    only fires for non-list/tuple objects exposing ``get_matrix``."""
+    pattern = PDTilingPattern()
+    pattern.set_matrix([1.5, 0.0, 0.0, 2.5, 5.0, 7.0])
+    assert pattern.get_matrix() == [1.5, 0.0, 0.0, 2.5, 5.0, 7.0]

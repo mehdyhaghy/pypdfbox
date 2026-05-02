@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from pypdfbox.xmpbox import XMPMetadata
-from pypdfbox.xmpbox.type import ArrayProperty, ResourceRefType
+from pypdfbox.xmpbox.type import ArrayProperty, PartType, RenditionClassType, ResourceRefType
 
 
 @pytest.fixture
@@ -134,3 +134,31 @@ def test_initial_fields_none(metadata: XMPMetadata) -> None:
     assert r.get_instance_id() is None
     assert r.get_file_path() is None
     assert r.get_last_modify_date() is None
+
+
+def test_rendition_class_uses_rendition_class_type(metadata: XMPMetadata) -> None:
+    """renditionClass field instantiates RenditionClassType per upstream @PropertyType."""
+    r = ResourceRefType(metadata)
+    r.set_rendition_class("default")
+    prop = r.get_property(ResourceRefType.RENDITION_CLASS)
+    assert isinstance(prop, RenditionClassType)
+    # String accessor still works (RenditionClassType extends TextType).
+    assert r.get_rendition_class() == "default"
+
+
+def test_from_part_uses_part_type(metadata: XMPMetadata) -> None:
+    """fromPart field instantiates PartType per upstream @PropertyType."""
+    r = ResourceRefType(metadata)
+    r.set_from_part("/from")
+    prop = r.get_property(ResourceRefType.FROM_PART)
+    assert isinstance(prop, PartType)
+    assert r.get_from_part() == "/from"
+
+
+def test_to_part_uses_part_type(metadata: XMPMetadata) -> None:
+    """toPart field instantiates PartType per upstream @PropertyType."""
+    r = ResourceRefType(metadata)
+    r.set_to_part("/to")
+    prop = r.get_property(ResourceRefType.TO_PART)
+    assert isinstance(prop, PartType)
+    assert r.get_to_part() == "/to"
