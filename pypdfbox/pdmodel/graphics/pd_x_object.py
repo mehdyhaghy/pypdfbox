@@ -74,10 +74,16 @@ class PDXObject:
             return PDImageXObject(base)
         if subtype == "Form":
             # When the form carries /Group /S /Transparency, upstream
-            # returns a PDTransparencyGroup. Until that subclass is
-            # ported, return a plain PDFormXObject — the transparency
-            # group attributes are still discoverable via
-            # ``get_group_attributes()``.
+            # returns a PDTransparencyGroup; otherwise a plain
+            # PDFormXObject. Mirror that dispatch (PDF 32000-1 §11.6.6).
+            group = base.get_dictionary_object(_GROUP)
+            if isinstance(group, COSDictionary):
+                if group.get_name(_S) == "Transparency":
+                    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+                        PDTransparencyGroup,
+                    )
+
+                    return PDTransparencyGroup(base)
             return PDFormXObject(base)
         if subtype == "PS":
             # PDPostScriptXObject is not yet ported; surface this as the
