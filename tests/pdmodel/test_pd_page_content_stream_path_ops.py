@@ -37,6 +37,24 @@ def test_curve_to_2_emits_y() -> None:
     assert _stream_bytes(page) == b"5 6 7 8 y\n"
 
 
+def test_curve_to2_alias_emits_v() -> None:
+    """``curve_to2`` mirrors upstream's ``curveTo2`` Java method (``v``)."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.curve_to2(1, 2, 3, 4)
+    assert _stream_bytes(page) == b"1 2 3 4 v\n"
+
+
+def test_curve_to1_alias_emits_y() -> None:
+    """``curve_to1`` mirrors upstream's ``curveTo1`` Java method (``y``)."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.curve_to1(5, 6, 7, 8)
+    assert _stream_bytes(page) == b"5 6 7 8 y\n"
+
+
 # ------------------------------------------------------------------
 # clipping
 # ------------------------------------------------------------------
@@ -56,6 +74,26 @@ def test_clip_path_even_odd_emits_W_star() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.clip_path_even_odd()
     assert _stream_bytes(page) == b"W*\n"
+
+
+def test_clip_non_zero_rule_alias_emits_W_n() -> None:
+    """``clip_non_zero_rule`` mirrors PDFBox's ``clipPath(WIND_NON_ZERO)``
+    legacy spelling — same byte output as :meth:`clip`."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.clip_non_zero_rule()
+    assert _stream_bytes(page) == b"W\nn\n"
+
+
+def test_clip_even_odd_rule_alias_emits_W_star_n() -> None:
+    """``clip_even_odd_rule`` mirrors PDFBox's ``clipPath(WIND_EVEN_ODD)``
+    legacy spelling — same byte output as :meth:`clip_even_odd`."""
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.clip_even_odd_rule()
+    assert _stream_bytes(page) == b"W*\nn\n"
 
 
 # ------------------------------------------------------------------

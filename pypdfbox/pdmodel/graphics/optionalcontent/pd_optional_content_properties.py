@@ -23,6 +23,13 @@ class BaseState(Enum):
     def get_pdf_name(self) -> COSName:
         return COSName.get_pdf_name(self.value)
 
+    def get_name(self) -> COSName:
+        """Mirrors upstream ``BaseState.getName()`` — returns the COSName
+        spelling of the state ("ON" / "OFF" / "Unchanged"). Identical to
+        :meth:`get_pdf_name`; this is the upstream-spelled alias so callers
+        porting Java code find it on first lookup."""
+        return self.get_pdf_name()
+
     @classmethod
     def value_of(cls, name: str | COSName | None) -> "BaseState":
         """Mirrors upstream ``BaseState.valueOf(String|COSName)`` — looks up
@@ -202,7 +209,9 @@ class PDOptionalContentProperties:
 
     # ---------- visibility ----------
 
-    def is_group_enabled(self, name_or_group: str | PDOptionalContentGroup) -> bool:
+    def is_group_enabled(
+        self, name_or_group: str | PDOptionalContentGroup | None
+    ) -> bool:
         if isinstance(name_or_group, str):
             for entry in self._get_ocgs():
                 ocg = self._to_dictionary(entry)
@@ -216,6 +225,11 @@ class PDOptionalContentProperties:
         group = name_or_group
         base_state = self.get_base_state()
         enabled = base_state != "OFF"
+        if group is None:
+            # Mirrors upstream null-safety: isGroupEnabled((PDOCG) null)
+            # returns the BaseState-derived flag without consulting
+            # /D /ON or /D /OFF.
+            return enabled
         d = self._get_d()
         target = group.get_cos_object()
 
@@ -395,9 +409,16 @@ class PDOptionalContentProperties:
             return "Unchanged"
         return upper
 
-    def set_base_state(self, state: str | BaseState) -> None:
+    def set_base_state(self, state: str | BaseState | COSName) -> None:
         if isinstance(state, BaseState):
             self._get_d().set_item(_BASE_STATE, state.get_pdf_name())
+            return
+        if isinstance(state, COSName):
+            # Round-trip through value_of so unknown spellings are rejected
+            # with the same ValueError the str path uses.
+            self._get_d().set_item(
+                _BASE_STATE, BaseState.value_of(state).get_pdf_name()
+            )
             return
         key = state.upper()
         cos_name = _BASE_STATE_NAMES.get(key)

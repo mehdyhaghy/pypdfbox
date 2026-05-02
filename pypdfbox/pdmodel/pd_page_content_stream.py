@@ -262,6 +262,18 @@ class PDPageContentStream:
         self._write_operands(x1, y1, x3, y3)
         self._write_operator(b"y")
 
+    def curve_to2(self, x2: float, y2: float, x3: float, y3: float) -> None:
+        """Alias for :meth:`curve_to_1` matching upstream's ``curveTo2``
+        Java method name (emits the ``v`` operator — current point is the
+        first Bezier control point)."""
+        self.curve_to_1(x2, y2, x3, y3)
+
+    def curve_to1(self, x1: float, y1: float, x3: float, y3: float) -> None:
+        """Alias for :meth:`curve_to_2` matching upstream's ``curveTo1``
+        Java method name (emits the ``y`` operator — final point is the
+        second Bezier control point)."""
+        self.curve_to_2(x1, y1, x3, y3)
+
     def close_path(self) -> None:
         self._write_operator(b"h")
 
@@ -315,6 +327,18 @@ class PDPageContentStream:
         path. Mirrors upstream's ``clipEvenOdd()``."""
         self._write_operator(b"W*")
         self._write_operator(b"n")
+
+    def clip_non_zero_rule(self) -> None:
+        """Alias for :meth:`clip` — PDFBox legacy spelling (the
+        ``clipPath(int rule)`` overload accepted ``PathIterator.WIND_NON_ZERO``).
+        Use this when porting code that disambiguated by rule name."""
+        self.clip()
+
+    def clip_even_odd_rule(self) -> None:
+        """Alias for :meth:`clip_even_odd` — PDFBox legacy spelling (the
+        ``clipPath(int rule)`` overload accepted ``PathIterator.WIND_EVEN_ODD``).
+        Use this when porting code that disambiguated by rule name."""
+        self.clip_even_odd()
 
     def end_path(self) -> None:
         """Emit ``n`` — end the path without filling or stroking. Used
