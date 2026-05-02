@@ -652,3 +652,290 @@ def test_process_child_stream_without_page_preserves_outer_context() -> None:
     # The outer state was preserved across the child run.
     assert engine.get_current_page() is None
     assert engine.is_processing_page() is False
+
+
+# ---------- save_graphics_stack / restore_graphics_stack ----------
+
+
+def test_save_graphics_stack_returns_previous_and_seeds_one_frame() -> None:
+    """``save_graphics_stack`` returns the prior list and replaces the
+    live stack with a single-frame stack carrying a copy of the prior
+    top — mirrors upstream's snapshot/seed contract."""
+    engine = PDFStreamEngine()
+    frame_a = {"depth": 1}
+    frame_b = {"depth": 2}
+    engine._graphics_stack.append(frame_a)
+    engine._graphics_stack.append(frame_b)
+
+    snapshot = engine.save_graphics_stack()
+
+    # The returned snapshot is the original list reference.
+    assert snapshot is not engine._graphics_stack
+    assert snapshot == [frame_a, frame_b]
+    # The new live stack has exactly one frame, equal to the prior top
+    # but a copy (so the inner stream's mutations don't bleed back).
+    assert engine.get_graphics_stack_size() == 1
+    assert engine.get_graphics_state() == frame_b
+    assert engine.get_graphics_state() is not frame_b
+
+
+def test_save_graphics_stack_when_empty_yields_empty_seed() -> None:
+    """Saving an empty stack returns an empty snapshot and leaves the
+    live stack empty (no top frame to seed from)."""
+    engine = PDFStreamEngine()
+    snapshot = engine.save_graphics_stack()
+    assert snapshot == []
+    assert engine.get_graphics_stack_size() == 0
+
+
+def test_save_graphics_stack_uncopyable_top_falls_back_to_reference() -> None:
+    """Frames that aren't ``copy.copy``-able still seed the new stack —
+    we fall back to the original reference rather than dropping the
+    frame entirely."""
+
+    class _Uncopyable:
+        def __copy__(self) -> "_Uncopyable":
+            raise TypeError("intentionally uncopyable")
+
+    engine = PDFStreamEngine()
+    frame = _Uncopyable()
+    engine._graphics_stack.append(frame)
+
+    snapshot = engine.save_graphics_stack()
+
+    assert snapshot == [frame]
+    assert engine.get_graphics_stack_size() == 1
+    # Falling back keeps the same reference — verifies we don't lose
+    # the frame when ``copy.copy`` can't clone it.
+    assert engine.get_graphics_state() is frame
+
+
+def test_restore_graphics_stack_replaces_live_stack_wholesale() -> None:
+    """``restore_graphics_stack`` swaps the live stack for the supplied
+    snapshot — verifying the snapshot/restore round-trip works end-to-
+    end."""
+    engine = PDFStreamEngine()
+    engine._graphics_stack.append({"depth": 1})
+    engine._graphics_stack.append({"depth": 2})
+
+    snapshot = engine.save_graphics_stack()
+
+    # Mutate the inner stack; the snapshot is unaffected.
+    engine._graphics_stack.append({"inner": True})
+    assert engine.get_graphics_stack_size() == 2
+
+    engine.restore_graphics_stack(snapshot)
+
+    assert engine._graphics_stack is snapshot
+    assert engine.get_graphics_stack_size() == 2
+    assert engine.get_graphics_state() == {"depth": 2}
+
+
+# ---------- transform_width ----------
+
+
+def test_transform_width_default_is_identity() -> None:
+    """Base engine has no concrete CTM and returns the width as-is —
+    cluster #2 contract; the rendering subclass overrides."""
+    engine = PDFStreamEngine()
+    assert engine.transform_width(1.5) == 1.5
+    assert engine.transform_width(0.0) == 0.0
+
+
+def test_transform_width_returns_float_for_int_input() -> None:
+    """Even with an integer input we return a float — matches upstream's
+    ``protected float transformWidth(float)`` return type."""
+    engine = PDFStreamEngine()
+    out = engine.transform_width(3)
+    assert isinstance(out, float)
+    assert out == 3.0
+
+
+def test_transform_width_override_routed_through() -> None:
+    """A subclass that overrides ``transform_width`` controls the
+    returned scalar — verifies the hook is overridable."""
+
+    class _Scaled(PDFStreamEngine):
+        def transform_width(self, width: float) -> float:
+            return width * 2.0
+
+    engine = _Scaled()
+    assert engine.transform_width(2.5) == 5.0
+
+
+# ---------- set_line_dash_pattern ----------
+
+
+def test_set_line_dash_pattern_base_is_noop() -> None:
+    """Base ``set_line_dash_pattern`` accepts the ``d`` operator's
+    operands and silently swallows them — cluster #2 has no
+    ``PDLineDashPattern`` to materialise."""
+    engine = PDFStreamEngine()
+    arr = COSArray()
+    arr.add(COSInteger.get(3))
+    arr.add(COSInteger.get(2))
+    # Should not raise; assertion is just that we get there.
+    engine.set_line_dash_pattern(arr, 0)
+    engine.set_line_dash_pattern(COSArray(), 5)
+
+
+def test_set_line_dash_pattern_override_observes_operands() -> None:
+    """A subclass that overrides ``set_line_dash_pattern`` receives the
+    raw ``COSArray`` + phase exactly as upstream's ``setLineDashPattern``
+    handler passes them."""
+    captured: list[tuple[COSArray, int]] = []
+
+    class _Probe(PDFStreamEngine):
+        def set_line_dash_pattern(self, array: COSArray, phase: int) -> None:
+            captured.append((array, phase))
+
+    engine = _Probe()
+    arr = COSArray()
+    arr.add(COSInteger.get(4))
+    engine.set_line_dash_pattern(arr, 7)
+
+    assert captured == [(arr, 7)]
+
+
+# ---------- show_form / show_transparency_group ----------
+
+
+def _make_form_xobject(body: bytes) -> Any:
+    """Construct a minimal ``PDFormXObject`` whose underlying COSStream
+    carries the supplied raw bytes — used by the show_form tests below."""
+    from pypdfbox.cos import COSStream  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
+        PDFormXObject,
+    )
+
+    cos = COSStream()
+    if body:
+        cos.set_raw_data(body)
+    return PDFormXObject(cos)
+
+
+def test_show_form_raises_without_current_page() -> None:
+    """No current page ⇒ raise ``RuntimeError`` (upstream:
+    ``IllegalStateException``) pointing at ``process_child_stream``."""
+    engine = PDFStreamEngine()
+    form = _make_form_xobject(b"")
+    with pytest.raises(RuntimeError, match="process_child_stream"):
+        engine.show_form(form)
+
+
+def test_show_form_skips_empty_stream() -> None:
+    """Empty form ⇒ silent skip; the engine never enters the parser
+    loop. Probe by registering an operator that would crash if called."""
+
+    class _Boom(OperatorProcessor):
+        def process(self, operator: Operator, operands: list[COSBase]) -> None:
+            raise AssertionError("operator dispatch must not happen")
+
+        def get_name(self) -> str:
+            return "Tj"
+
+    engine = PDFStreamEngine()
+    engine.add_operator(_Boom())
+    engine._current_page = PDPage()
+    engine._is_processing_page = True
+    try:
+        # Empty body — show_form must early-return.
+        form = _make_form_xobject(b"")
+        engine.show_form(form)  # would AssertionError if the parser ran
+    finally:
+        engine._current_page = None
+        engine._is_processing_page = False
+
+
+def test_show_form_dispatches_non_empty_body_through_engine() -> None:
+    """A non-empty form body drives the operator dispatch loop just like
+    ``process_stream`` would."""
+
+    class _Probe(OperatorProcessor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls: list[list[COSBase]] = []
+
+        def process(self, operator: Operator, operands: list[COSBase]) -> None:
+            self.calls.append(list(operands))
+
+        def get_name(self) -> str:
+            return "Tj"
+
+    engine = PDFStreamEngine()
+    probe = _Probe()
+    engine.add_operator(probe)
+    engine._current_page = PDPage()
+    engine._is_processing_page = True
+    try:
+        form = _make_form_xobject(b"(InForm) Tj")
+        engine.show_form(form)
+    finally:
+        engine._current_page = None
+        engine._is_processing_page = False
+
+    assert len(probe.calls) == 1
+
+
+def test_show_form_increments_level_through_process_stream() -> None:
+    """``show_form`` routes through ``process_stream`` — the level
+    helpers should reflect the nesting just like ``process_form`` /
+    ``process_child_stream`` do."""
+
+    class _Probe(OperatorProcessor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.levels: list[int] = []
+
+        def process(self, operator: Operator, operands: list[COSBase]) -> None:
+            self.levels.append(self.get_context().get_level())
+
+        def get_name(self) -> str:
+            return "Tj"
+
+    engine = PDFStreamEngine()
+    probe = _Probe()
+    engine.add_operator(probe)
+    engine._current_page = PDPage()
+    engine._is_processing_page = True
+    try:
+        form = _make_form_xobject(b"(X) Tj")
+        engine.show_form(form)
+    finally:
+        engine._current_page = None
+        engine._is_processing_page = False
+
+    assert probe.levels == [1]
+    assert engine.get_level() == 0
+
+
+def test_show_transparency_group_routes_through_process_stream() -> None:
+    """Cluster #2 alias for transparency-group dispatch — runs the
+    operators just like ``process_stream`` does."""
+
+    class _Probe(OperatorProcessor):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls: int = 0
+
+        def process(self, operator: Operator, operands: list[COSBase]) -> None:
+            self.calls += 1
+
+        def get_name(self) -> str:
+            return "Tj"
+
+    from pypdfbox.cos import COSStream  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+        PDTransparencyGroup,
+    )
+
+    engine = PDFStreamEngine()
+    probe = _Probe()
+    engine.add_operator(probe)
+
+    cos = COSStream()
+    cos.set_raw_data(b"(Tx) Tj")
+    group = PDTransparencyGroup(cos)
+    engine.show_transparency_group(group)
+
+    assert probe.calls == 1

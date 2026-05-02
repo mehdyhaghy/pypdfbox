@@ -359,3 +359,168 @@ def test_typed_add_optional_content_group_uses_oc_prefix() -> None:
         "Prop0",
         "oc0",
     ]
+
+
+def test_class_constants_match_resource_dictionary_keys() -> None:
+    """``PDResources.XOBJECT`` etc. should be the canonical interned
+    ``COSName`` instances. Storing a value under those constants must be
+    findable via the listing accessors and via the same constant on lookup."""
+    assert PDResources.XOBJECT is COSName.get_pdf_name("XObject")
+    assert PDResources.FONT is COSName.get_pdf_name("Font")
+    assert PDResources.COLOR_SPACE is COSName.get_pdf_name("ColorSpace")
+    assert PDResources.EXT_G_STATE is COSName.get_pdf_name("ExtGState")
+    assert PDResources.SHADING is COSName.get_pdf_name("Shading")
+    assert PDResources.PATTERN is COSName.get_pdf_name("Pattern")
+    assert PDResources.PROPERTIES is COSName.get_pdf_name("Properties")
+    assert PDResources.PROC_SET is COSName.get_pdf_name("ProcSet")
+
+
+def test_put_accepts_class_constant_categories() -> None:
+    """Round-trip via the new class-level COSName constants — they should be
+    interchangeable with ``COSName.get_pdf_name(...)`` calls in user code."""
+    res = PDResources()
+    font = COSDictionary()
+    res.put(PDResources.FONT, COSName.get_pdf_name("F0"), font)
+    assert res.get_font(COSName.get_pdf_name("F0")) is font
+    assert [n.get_name() for n in res.get_font_names()] == ["F0"]
+
+
+def test_has_font_true_after_put() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("F0")
+    assert not res.has_font(name)
+    res.put(PDResources.FONT, name, COSDictionary())
+    assert res.has_font(name)
+
+
+def test_has_x_object_true_after_put() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("Im0")
+    assert not res.has_x_object(name)
+    res.put(PDResources.XOBJECT, name, COSStream())
+    assert res.has_x_object(name)
+
+
+def test_has_pattern_true_after_put() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("P0")
+    assert not res.has_pattern(name)
+    res.put(PDResources.PATTERN, name, COSDictionary())
+    assert res.has_pattern(name)
+
+
+def test_has_shading_true_after_put() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("Sh0")
+    assert not res.has_shading(name)
+    res.put(PDResources.SHADING, name, COSDictionary())
+    assert res.has_shading(name)
+
+
+def test_has_ext_g_state_true_after_put() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("GS0")
+    assert not res.has_ext_g_state(name)
+    assert not res.has_ext_gstate(name)
+    res.put(PDResources.EXT_G_STATE, name, COSDictionary())
+    assert res.has_ext_g_state(name)
+    assert res.has_ext_gstate(name)
+
+
+def test_has_property_list_true_after_put() -> None:
+    res = PDResources()
+    name = COSName.get_pdf_name("MC0")
+    assert not res.has_property_list(name)
+    assert not res.has_properties(name)
+    res.put(PDResources.PROPERTIES, name, COSDictionary())
+    assert res.has_property_list(name)
+    assert res.has_properties(name)
+
+
+def test_has_predicates_with_missing_category_subdict_return_false() -> None:
+    """When the category sub-dictionary itself is absent (the default for an
+    empty ``PDResources``), every ``has_*`` predicate must return ``False``
+    rather than raising."""
+    res = PDResources()
+    name = COSName.get_pdf_name("Anything")
+    assert not res.has_color_space(name)
+    assert not res.has_font(name)
+    assert not res.has_x_object(name)
+    assert not res.has_pattern(name)
+    assert not res.has_shading(name)
+    assert not res.has_ext_g_state(name)
+    assert not res.has_property_list(name)
+
+
+def test_has_predicates_ignore_unrelated_categories() -> None:
+    """Storing a font under ``/Font`` must not register as a hit under any
+    other category — the predicates are scoped to their sub-dictionary."""
+    res = PDResources()
+    name = COSName.get_pdf_name("F0")
+    res.put(PDResources.FONT, name, COSDictionary())
+    assert res.has_font(name)
+    assert not res.has_color_space(name)
+    assert not res.has_x_object(name)
+    assert not res.has_pattern(name)
+    assert not res.has_shading(name)
+    assert not res.has_ext_g_state(name)
+    assert not res.has_property_list(name)
+
+
+def test_is_form_x_object_true_for_form_entry() -> None:
+    res = PDResources()
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    image = COSStream()
+    image.set_name(COSName.SUBTYPE, "Image")  # type: ignore[attr-defined]
+
+    form_name = res.add(PDResources.XOBJECT, form)
+    image_name = res.add(PDResources.XOBJECT, image)
+
+    assert res.is_form_x_object(form_name)
+    assert not res.is_form_x_object(image_name)
+    assert not res.is_form_x_object(COSName.get_pdf_name("Missing"))
+
+
+def test_is_form_x_object_resolves_indirect_reference() -> None:
+    """Indirect /XObject entries should still report Form/Image correctly."""
+    res = PDResources()
+    form = COSStream()
+    form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("Form0")
+    xobjects = COSDictionary()
+    xobjects.set_item(name, COSObject(11, 0, resolved=form))
+    res.get_cos_object().set_item(PDResources.XOBJECT, xobjects)
+
+    assert res.is_form_x_object(name)
+    assert not res.is_image_x_object(name)
+
+
+def test_is_image_x_object_resolves_indirect_reference() -> None:
+    """Symmetric to ``test_is_form_x_object_resolves_indirect_reference`` —
+    the existing helper must also see through ``COSObject`` indirection."""
+    res = PDResources()
+    image = COSStream()
+    image.set_name(COSName.SUBTYPE, "Image")  # type: ignore[attr-defined]
+    name = COSName.get_pdf_name("Im0")
+    xobjects = COSDictionary()
+    xobjects.set_item(name, COSObject(12, 0, resolved=image))
+    res.get_cos_object().set_item(PDResources.XOBJECT, xobjects)
+
+    assert res.is_image_x_object(name)
+    assert not res.is_form_x_object(name)
+
+
+def test_class_constants_drive_listing_accessors() -> None:
+    """The class constants and the listing accessors must agree on which
+    sub-dictionary they refer to — a regression here would mean ``add`` and
+    ``get_*_names`` could disagree on the storage location."""
+    res = PDResources()
+    res.put(PDResources.SHADING, COSName.get_pdf_name("Sh0"), COSDictionary())
+    res.put(PDResources.PATTERN, COSName.get_pdf_name("P0"), COSDictionary())
+
+    assert [n.get_name() for n in res.get_shading_names()] == ["Sh0"]
+    assert [n.get_name() for n in res.get_pattern_names()] == ["P0"]
+    # Sanity: the sub-dictionaries live where the constants point.
+    assert res.get_cos_object().contains_key(PDResources.SHADING)
+    assert res.get_cos_object().contains_key(PDResources.PATTERN)

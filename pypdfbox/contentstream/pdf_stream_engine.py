@@ -19,6 +19,9 @@ from .pd_content_stream import PDContentStream
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.color import PDColor
     from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
+        PDTransparencyGroup,
+    )
     from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
     from pypdfbox.pdmodel.pd_page import PDPage
     from pypdfbox.pdmodel.pd_resources import PDResources
@@ -462,11 +465,80 @@ class PDFStreamEngine:
         upstream's ``getGraphicsStackSize``."""
         return len(self._graphics_stack)
 
+    def save_graphics_stack(self) -> list[Any]:
+        """Snapshot and reset the entire graphics-state stack.
+
+        Mirrors upstream's ``protected final saveGraphicsStack``: returns
+        the current stack so the caller can hand it to
+        :meth:`restore_graphics_stack` later, and replaces the engine's
+        live stack with a one-frame stack whose sole entry is a copy of
+        the previously top frame (so the inner stream sees a fresh
+        graphics state seeded by the outer top-of-stack).
+
+        Used by upstream's ``processSoftMask`` /
+        ``processTransparencyGroup`` / ``processType3Stream`` /
+        ``processAnnotation`` paths to fence a nested stream's stack
+        from the parent stream's. Cluster #2 carries the stack as opaque
+        ``Any`` entries (no concrete ``PDGraphicsState`` yet); the copy
+        uses ``copy.copy`` if the frame supports it, falling back to the
+        same reference when it doesn't — matching the cluster-#2
+        contract that the base never inspects frame contents.
+        """
+        import copy as _copy  # noqa: PLC0415
+
+        saved = self._graphics_stack
+        if saved:
+            top = saved[-1]
+            try:
+                top_copy = _copy.copy(top)
+            except (TypeError, ValueError):
+                top_copy = top
+            self._graphics_stack = [top_copy]
+        else:
+            self._graphics_stack = []
+        return saved
+
+    def restore_graphics_stack(self, snapshot: list[Any]) -> None:
+        """Restore the entire graphics-state stack from a snapshot.
+
+        Companion to :meth:`save_graphics_stack`; mirrors upstream's
+        ``protected final restoreGraphicsStack(Deque<PDGraphicsState>)``
+        verbatim — the live stack is wholesale replaced by the snapshot
+        the caller previously saved.
+        """
+        self._graphics_stack = snapshot
+
     def transform(self, matrix: Any) -> None:
         """Concatenate ``matrix`` onto the current CTM. Base no-op; the
         rendering subclass overrides to multiply ``matrix`` into the
         active graphics-state CTM. Mirrors upstream's ``transform``
         (the ``cm`` operator handler delegates here)."""
+
+    def transform_width(self, width: float) -> float:
+        """Transform ``width`` through the current CTM, returning the
+        scalar width in user space.
+
+        Mirrors upstream's ``protected float transformWidth(float)``.
+        Upstream computes
+        ``width * sqrt((scaleX+shearX)^2 + (scaleY+shearY)^2) / sqrt(2)``
+        from the active graphics-state CTM. Cluster #2 has no concrete
+        CTM to consult and returns ``width`` unchanged; the rendering
+        subclass overrides with the geometric form once the
+        :class:`Matrix` class is in tree.
+        """
+        return float(width)
+
+    def set_line_dash_pattern(self, array: COSArray, phase: int) -> None:
+        """``d`` notification — base no-op.
+
+        Mirrors upstream's ``setLineDashPattern(COSArray, int)`` which
+        builds a ``PDLineDashPattern`` and stores it on the active
+        graphics-state. Cluster #2 has no ``PDLineDashPattern`` /
+        graphics state yet, so the base swallows the call; the rendering
+        subclass overrides to materialise + store the pattern. Kept as a
+        public method so the ``d`` operator handler can call back
+        without reaching into private state.
+        """
 
     # ---------- nested-stream entry points (upstream parity surface) ----------
 
@@ -476,6 +548,50 @@ class PDFStreamEngine:
         wraps the same dispatch with a graphics-state save/restore that
         the rendering subclass overlays."""
         self.process_stream(form_xobject)
+
+    def show_form(self, form: PDFormXObject) -> None:
+        """Public ``Do``-XObject form entry point.
+
+        Mirrors upstream's ``public void showForm(PDFormXObject)``:
+
+        - raises ``RuntimeError`` (upstream: ``IllegalStateException``)
+          when no current page is set, pointing the caller at
+          :meth:`process_child_stream` instead;
+        - skips empty (zero-length) streams silently — upstream wraps
+          the dispatch in ``form.getCOSObject().getLength() > 0``;
+        - otherwise delegates to :meth:`process_stream`.
+        """
+        if self._current_page is None:
+            raise RuntimeError(
+                "No current page, call "
+                "process_child_stream(content_stream, page) instead"
+            )
+        cos = form.get_cos_object()
+        # Empty form streams are valid but produce nothing — skip the
+        # parser invocation entirely so an unfiltered ``b""`` payload
+        # doesn't fall into ``_dispatch_tokens`` for no benefit.
+        getter = getattr(cos, "get_length", None)
+        if getter is not None:
+            try:
+                length = int(getter())
+            except (TypeError, ValueError):
+                length = 0
+            if length <= 0:
+                return
+        self.process_stream(form)
+
+    def show_transparency_group(self, form: PDTransparencyGroup) -> None:
+        """Public transparency-group entry point.
+
+        Mirrors upstream's ``public void showTransparencyGroup`` which
+        is a thin wrapper over ``processTransparencyGroup``. Cluster #2
+        has no soft-mask / blend-mode handling yet, so this delegates to
+        :meth:`process_stream` (the lite analogue of
+        ``processTransparencyGroup``); the rendering subclass overrides
+        with the full graphics-state save/restore + CTM concatenation
+        that upstream performs.
+        """
+        self.process_stream(form)
 
     def process_tiling_pattern(
         self,

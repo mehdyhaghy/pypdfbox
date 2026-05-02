@@ -62,7 +62,25 @@ class PDResources:
     - ``get_proc_set`` / ``set_proc_set`` for the legacy ``/ProcSet`` array;
     - ``add(category, value)`` and ``put(category, name, value)`` for
       registering newly-minted resources across all standard categories.
+
+    Class attributes ``XOBJECT``, ``FONT``, ``COLOR_SPACE``, ``EXT_G_STATE``,
+    ``SHADING``, ``PATTERN``, ``PROPERTIES``, and ``PROC_SET`` expose the
+    standard ``/Resources`` sub-dictionary keys as ``COSName`` constants so
+    callers can pass them straight to ``put`` / ``add`` without re-interning
+    the string each time.
     """
+
+    # Class-level COSName constants for the standard /Resources sub-dictionary
+    # keys. Forward references to the module-level constants defined at the
+    # bottom of this module — see ``_X_OBJECT`` etc.
+    XOBJECT: COSName
+    FONT: COSName
+    COLOR_SPACE: COSName
+    EXT_G_STATE: COSName
+    SHADING: COSName
+    PATTERN: COSName
+    PROPERTIES: COSName
+    PROC_SET: COSName
 
     def __init__(
         self,
@@ -399,7 +417,42 @@ class PDResources:
 
     def has_color_space(self, name: COSName) -> bool:
         """Return ``True`` if a ``/ColorSpace`` entry exists for ``name``."""
-        sub = self._get_subdict(_COLOR_SPACE)
+        return self._has(_COLOR_SPACE, name)
+
+    def has_font(self, name: COSName) -> bool:
+        """Return ``True`` if a ``/Font`` entry exists for ``name``."""
+        return self._has(_FONT, name)
+
+    def has_x_object(self, name: COSName) -> bool:
+        """Return ``True`` if an ``/XObject`` entry exists for ``name``."""
+        return self._has(_X_OBJECT, name)
+
+    def has_pattern(self, name: COSName) -> bool:
+        """Return ``True`` if a ``/Pattern`` entry exists for ``name``."""
+        return self._has(_PATTERN, name)
+
+    def has_shading(self, name: COSName) -> bool:
+        """Return ``True`` if a ``/Shading`` entry exists for ``name``."""
+        return self._has(_SHADING, name)
+
+    def has_ext_g_state(self, name: COSName) -> bool:
+        """Return ``True`` if an ``/ExtGState`` entry exists for ``name``."""
+        return self._has(_EXT_GSTATE, name)
+
+    def has_ext_gstate(self, name: COSName) -> bool:
+        """Compact-spelled alias for ``has_ext_g_state``."""
+        return self.has_ext_g_state(name)
+
+    def has_property_list(self, name: COSName) -> bool:
+        """Return ``True`` if a ``/Properties`` entry exists for ``name``."""
+        return self._has(_PROPERTIES, name)
+
+    def has_properties(self, name: COSName) -> bool:
+        """Upstream-spelled alias for ``has_property_list``."""
+        return self.has_property_list(name)
+
+    def _has(self, category: COSName, name: COSName) -> bool:
+        sub = self._get_subdict(category)
         return sub is not None and sub.contains_key(name)
 
     def get_pattern(self, name: COSName) -> PDAbstractPattern | None:
@@ -502,6 +555,16 @@ class PDResources:
         return (
             isinstance(entry, COSStream)
             and entry.get_name(COSName.SUBTYPE) == "Image"  # type: ignore[attr-defined]
+        )
+
+    def is_form_x_object(self, name: COSName) -> bool:
+        """Return whether the named ``/XObject`` is a form XObject. Mirrors
+        ``is_image_x_object`` for the ``/Subtype /Form`` case — useful when
+        callers need to dispatch without instantiating the wrapper."""
+        _raw, entry = self._lookup_raw_and_resolved(_X_OBJECT, name)
+        return (
+            isinstance(entry, COSStream)
+            and entry.get_name(COSName.SUBTYPE) == "Form"  # type: ignore[attr-defined]
         )
 
     # ---------- put / add ----------
@@ -701,3 +764,16 @@ _EXT_GSTATE: COSName = COSName.get_pdf_name("ExtGState")
 _SHADING: COSName = COSName.get_pdf_name("Shading")
 _PATTERN: COSName = COSName.get_pdf_name("Pattern")
 _PROPERTIES: COSName = COSName.get_pdf_name("Properties")
+
+# Bind the class-level aliases — these live on PDResources so callers can write
+# ``res.put(PDResources.FONT, name, value)`` instead of carrying around an
+# extra ``COSName.get_pdf_name("Font")`` import. Mirrors how upstream surfaces
+# the same concept via ``COSName.FONT``, ``COSName.XOBJECT``, etc.
+PDResources.XOBJECT = _X_OBJECT
+PDResources.FONT = _FONT
+PDResources.COLOR_SPACE = _COLOR_SPACE
+PDResources.EXT_G_STATE = _EXT_GSTATE
+PDResources.SHADING = _SHADING
+PDResources.PATTERN = _PATTERN
+PDResources.PROPERTIES = _PROPERTIES
+PDResources.PROC_SET = _PROC_SET
