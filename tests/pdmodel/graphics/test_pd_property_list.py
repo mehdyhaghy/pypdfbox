@@ -93,3 +93,37 @@ def test_upstream_named_alias_re_exports_same_class() -> None:
 
     assert MarkedContentPDPropertyList is PDPropertyList
     assert DirectAlias is PDPropertyList
+
+
+def test_eq_uses_backing_dict_identity() -> None:
+    raw = COSDictionary()
+    a = PDPropertyList(raw)
+    b = PDPropertyList(raw)
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_eq_distinguishes_separate_dicts() -> None:
+    a = PDPropertyList()
+    b = PDPropertyList()
+    assert a != b
+
+
+def test_eq_returns_notimplemented_for_other_types() -> None:
+    a = PDPropertyList()
+    assert (a == "not a property list") is False
+
+
+def test_repr_includes_type_name() -> None:
+    raw = COSDictionary()
+    raw.set_item(COSName.TYPE, COSName.get_pdf_name("OCG"))  # type: ignore[attr-defined]
+    pl = PDPropertyList(raw)
+    text = repr(pl)
+    assert "OCG" in text
+    assert "PDPropertyList" in text
+
+
+def test_repr_with_no_type() -> None:
+    pl = PDPropertyList()
+    text = repr(pl)
+    assert "None" in text

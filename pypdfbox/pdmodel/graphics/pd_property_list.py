@@ -71,5 +71,18 @@ class PDPropertyList:
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, PDPropertyList):
+            return NotImplemented
+        return self._dict is other._dict
+
+    def __hash__(self) -> int:
+        return id(self._dict)
+
+    def __repr__(self) -> str:
+        type_obj = self._dict.get_item(_TYPE)
+        type_name = type_obj.get_name() if isinstance(type_obj, COSName) else None
+        return f"{type(self).__name__}(type={type_name!r})"
+
 
 __all__ = ["PDPropertyList"]
