@@ -20,6 +20,22 @@ class PDMeasureDictionary:
     #: The ``/Type`` value of the dictionary.
     TYPE: str = "Measure"
 
+    #: The ``/Subtype`` value for rectlinear measure dictionaries.
+    #:
+    #: Mirrors :attr:`PDRectlinearMeasureDictionary.SUBTYPE`. Exposed on the
+    #: base class so callers can dispatch on the subtype string without
+    #: importing the rectlinear subclass (which would create an import cycle
+    #: in some collaborator modules). PDF 32000-1 §12.7.5.5.
+    SUBTYPE_RECTLINEAR: str = "RL"
+
+    #: The ``/Subtype`` value for geospatial measure dictionaries.
+    #:
+    #: PDF 32000-1 §12.7.5.6 defines this subtype but upstream PDFBox 3.0.x
+    #: does not provide a wrapper class for it; the constant is exposed for
+    #: callers that need to recognize geospatial measures in third-party
+    #: PDFs.
+    SUBTYPE_GEOSPATIAL: str = "GEO"
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dict = COSDictionary()
@@ -70,6 +86,29 @@ class PDMeasureDictionary:
         subtype constant via this hook.
         """
         self._dict.set_name(_SUBTYPE, subtype)
+
+    # ------------------------------------------------------------------ subtype predicates
+    def is_rectlinear(self) -> bool:
+        """Return ``True`` if this is a rectlinear measure dictionary.
+
+        A measure dictionary is treated as rectlinear when its ``/Subtype``
+        resolves to ``"RL"`` — including the upstream-default behavior of
+        treating an *absent* ``/Subtype`` as ``"RL"`` (see
+        :meth:`get_subtype`). This mirrors the contract upstream PDFBox
+        relies on when constructing :class:`PDRectlinearMeasureDictionary`
+        from a generic measure dictionary.
+        """
+        return self.get_subtype() == self.SUBTYPE_RECTLINEAR
+
+    def is_geospatial(self) -> bool:
+        """Return ``True`` if this is a geospatial measure dictionary.
+
+        Per PDF 32000-1 §12.7.5.6 the ``/Subtype`` value for geospatial
+        measures is ``"GEO"``. Upstream PDFBox 3.0.x has no wrapper class
+        for this subtype; the predicate lets callers detect such
+        dictionaries without re-deriving the magic string.
+        """
+        return self.get_subtype() == self.SUBTYPE_GEOSPATIAL
 
 
 __all__ = ["PDMeasureDictionary"]

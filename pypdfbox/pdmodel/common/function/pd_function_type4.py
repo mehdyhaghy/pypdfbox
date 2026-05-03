@@ -58,13 +58,15 @@ class PDFunctionType4(PDFunction):
         ``input`` is clipped to ``/Domain`` first, pushed onto an initially
         empty stack (first input on bottom), the program is executed, and
         the remaining stack is returned (bottom-up) clipped to ``/Range``.
+
+        When ``/Range`` is present and the program leaves fewer values on
+        the stack than ``getNumberOfOutputParameters()`` declares, this
+        raises ``OSError`` — mirrors upstream PDFBox which raises
+        ``IllegalStateException`` for under-supply.
         """
         clipped = self.clip_input(input)
 
-        sequence = self._instruction_cache
-        if sequence is None:
-            sequence = _parse(self._read_body())
-            self._instruction_cache = sequence
+        sequence = self.get_instructions()
 
         stack: list[float | bool] = list(clipped)
         _execute(sequence, stack)
@@ -72,7 +74,37 @@ class PDFunctionType4(PDFunction):
         # Booleans surviving in the output are coerced to floats (1.0 / 0.0)
         # before /Range clipping; /Range is defined over numeric outputs.
         result = [float(v) for v in stack]
+
+        # Upstream parity: when /Range declares N output dimensions, the
+        # program must leave at least N values on the stack. Under-supply
+        # is a malformed function and bubbles up as OSError (mirrors
+        # IllegalStateException in PDFunctionType4.eval). When /Range is
+        # absent (e.g. inline shading helpers) we skip the check and
+        # return the raw stack — clip_output is a no-op in that case.
+        declared = self.get_number_of_output_parameters()
+        if declared > 0 and len(result) < declared:
+            raise OSError(
+                f"type 4 function returned {len(result)} values "
+                f"but /Range declares {declared}"
+            )
+
         return self.clip_output(result)
+
+    def get_instructions(self) -> list:
+        """Return the cached parsed instruction sequence, parsing the
+        underlying stream body on first access.
+
+        The returned list is the same list cached internally — callers must
+        not mutate it. Provided as a typed accessor mirroring the upstream
+        ``InstructionSequence`` surface (PDFBox holds the parsed program in
+        a final field on the wrapper). Useful for tools that want to
+        inspect / dump a Type 4 program without driving ``eval``.
+        """
+        sequence = self._instruction_cache
+        if sequence is None:
+            sequence = _parse(self._read_body())
+            self._instruction_cache = sequence
+        return sequence
 
     def clear_instruction_cache(self) -> None:
         """Drop the cached parsed instruction sequence so the next ``eval``
@@ -572,6 +604,29 @@ def _op_ifelse(s: list) -> None:
     _execute(proc_true if cond else proc_false, s)
 
 
+# Operator-name groupings mirror the source organisation in upstream
+# ``Operators.java``: ARITHMETIC pulls from ArithmeticOperators, STACK
+# from StackOperators, BOOLEAN merges Bitwise + Relational (the upstream
+# splits those into two files but registers them in one map; we keep the
+# combined view because the executor doesn't distinguish them), and
+# CONDITIONAL holds ``if`` / ``ifelse``. Tuples (not lists) so callers
+# can safely treat them as immutable.
+ARITHMETIC_OPERATORS: tuple[str, ...] = (
+    "add", "sub", "mul", "div", "idiv", "mod", "neg", "abs",
+    "ceiling", "floor", "round", "truncate", "sqrt", "sin", "cos",
+    "atan", "exp", "ln", "log", "cvi", "cvr",
+)
+STACK_OPERATORS: tuple[str, ...] = (
+    "dup", "exch", "pop", "copy", "index", "roll",
+)
+BOOLEAN_OPERATORS: tuple[str, ...] = (
+    "eq", "ne", "lt", "le", "gt", "ge",
+    "and", "or", "xor", "not", "bitshift",
+    "true", "false",
+)
+CONDITIONAL_OPERATORS: tuple[str, ...] = ("if", "ifelse")
+
+
 _OPERATORS = {
     # arithmetic
     "add": _op_add,
@@ -621,5 +676,37 @@ _OPERATORS = {
     "ifelse": _op_ifelse,
 }
 
+# Built after _OPERATORS so the union below covers every registered name.
+ALL_OPERATORS: tuple[str, ...] = tuple(_OPERATORS.keys())
 
-__all__ = ["PDFunctionType4"]
+
+def get_operator(name: str):
+    """Return the executor callable registered for PostScript operator
+    ``name``, or ``None`` when no such operator exists.
+
+    Mirrors upstream ``Operators.getOperator(String)``. Useful for tools
+    that want to introspect the supported operator set without
+    instantiating a function. The returned callable takes a single
+    ``stack`` argument and mutates it in place; callers should not rely
+    on its identity (it is a private implementation detail and may be
+    swapped for an equivalent callable in future releases).
+    """
+    return _OPERATORS.get(name)
+
+
+def is_supported_operator(name: str) -> bool:
+    """Return ``True`` when ``name`` is a recognised Type 4 PostScript
+    operator. Pythonic predicate form alongside :func:`get_operator`."""
+    return name in _OPERATORS
+
+
+__all__ = [
+    "ALL_OPERATORS",
+    "ARITHMETIC_OPERATORS",
+    "BOOLEAN_OPERATORS",
+    "CONDITIONAL_OPERATORS",
+    "PDFunctionType4",
+    "STACK_OPERATORS",
+    "get_operator",
+    "is_supported_operator",
+]
