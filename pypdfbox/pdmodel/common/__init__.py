@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .pd_destination_or_action import PDDestinationOrAction, is_destination_or_action
+from .pd_matrix import PDMatrix
 from .pd_metadata import PDMetadata
 from .pd_name_tree_node import PDNameTreeNode
 from .pd_number_tree_node import PDNumberTreeNode
@@ -18,6 +19,7 @@ from .pdfdoc_encoding import (
 __all__ = [
     "PDDestinationOrAction",
     "PDFDocEncoding",
+    "PDMatrix",
     "PDMetadata",
     "PDNameTreeNode",
     "PDNumberTreeNode",
