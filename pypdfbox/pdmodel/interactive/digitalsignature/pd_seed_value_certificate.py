@@ -29,6 +29,30 @@ class PDSeedValueCertificate:
     FLAG_KEY_USAGE = 1 << 5
     FLAG_URL = 1 << 6
 
+    # /URLType standard values (PDF 32000-1 §12.7.4.5, Table 235).
+    # ``Browser`` — URL points to enrollment content displayed by a browser.
+    # The ``/Ff`` URL bit is *ignored* for this usage (per spec).
+    # ``ASSP`` — Adobe Server Signing Protocol; URL points to a server-side
+    # signing service. When the URL bit is set, signing must use that server.
+    URL_TYPE_BROWSER = "Browser"
+    URL_TYPE_ASSP = "ASSP"
+
+    # /KeyUsage character index meanings (PDF 32000-1 §12.7.4.5, Table 235).
+    # Each /KeyUsage string is exactly nine characters; the character at index
+    # N constrains the X.509v3 KeyUsage bit listed below. A value of '0' means
+    # the bit must be clear, '1' means it must be set, 'X' means don't care.
+    KEY_USAGE_LENGTH = 9
+    KEY_USAGE_INDEX_DIGITAL_SIGNATURE = 0
+    KEY_USAGE_INDEX_NON_REPUDIATION = 1
+    KEY_USAGE_INDEX_KEY_ENCIPHERMENT = 2
+    KEY_USAGE_INDEX_DATA_ENCIPHERMENT = 3
+    KEY_USAGE_INDEX_KEY_AGREEMENT = 4
+    KEY_USAGE_INDEX_KEY_CERT_SIGN = 5
+    KEY_USAGE_INDEX_CRL_SIGN = 6
+    KEY_USAGE_INDEX_ENCIPHER_ONLY = 7
+    KEY_USAGE_INDEX_DECIPHER_ONLY = 8
+    KEY_USAGE_ALLOWED_CHARS = frozenset("01X")
+
     def __init__(self, dict_: COSDictionary | None = None) -> None:
         if dict_ is None:
             self._dict = COSDictionary()
@@ -319,6 +343,116 @@ class PDSeedValueCertificate:
 
     def has_url_type(self) -> bool:
         return self._dict.contains_key(_URL_TYPE)
+
+    # ---------- /URLType predicates and default handling ----------
+
+    def get_url_type_or_default(self) -> str:
+        """Return ``/URLType``, falling back to ``"Browser"`` when absent.
+
+        Mirrors the spec note (PDF 32000-1 §12.7.4.5, Table 235) that "if
+        urlType is not set the default is Browser for URL". Use this when
+        consuming the URL — :meth:`get_url_type` exposes the raw stored value
+        (``None`` when absent) for round-trip / serialisation work.
+        """
+        existing = self.get_url_type()
+        return existing if existing is not None else self.URL_TYPE_BROWSER
+
+    def is_url_type_browser(self) -> bool:
+        """Return ``True`` when ``/URLType`` is ``"Browser"`` *or absent*.
+
+        Per the spec the default ``/URLType`` is ``Browser`` when the entry
+        is not set, so the predicate matches either case to give callers a
+        single test that reflects the *effective* URL type.
+        """
+        return self.get_url_type_or_default() == self.URL_TYPE_BROWSER
+
+    def is_url_type_assp(self) -> bool:
+        """Return ``True`` when ``/URLType`` is ``"ASSP"`` (server-side
+        signing service). Strict equality — an absent entry returns
+        ``False`` regardless of the spec's ``Browser`` default.
+        """
+        return self.get_url_type() == self.URL_TYPE_ASSP
+
+    # ---------- /KeyUsage parsing helpers ----------
+
+    @classmethod
+    def validate_key_usage_string(cls, key_usage_extension: str) -> None:
+        """Raise :class:`ValueError` when ``key_usage_extension`` is not a
+        well-formed KeyUsage string.
+
+        Mirrors the validation upstream performs inside ``addKeyUsage`` but
+        also enforces the spec-mandated length (exactly 9 characters).
+        Allowed characters are ``0``, ``1``, ``X``.
+        """
+        if len(key_usage_extension) != cls.KEY_USAGE_LENGTH:
+            raise ValueError(
+                f"KeyUsage extension must be exactly {cls.KEY_USAGE_LENGTH} "
+                f"characters, got {len(key_usage_extension)}"
+            )
+        for ch in key_usage_extension:
+            if ch not in cls.KEY_USAGE_ALLOWED_CHARS:
+                raise ValueError("characters can only be 0, 1, X")
+
+    @classmethod
+    def parse_key_usage(cls, key_usage_extension: str) -> dict[str, str]:
+        """Return a ``{name: char}`` map for a 9-char KeyUsage string.
+
+        Convenience helper: turns the positional encoding into an
+        addressable map keyed by the X.509 KeyUsage bit names from
+        PDF 32000-1 §12.7.4.5, Table 235. Useful when comparing two
+        KeyUsage strings or rendering them for diagnostics.
+
+        Raises :class:`ValueError` for malformed inputs (length or charset).
+        """
+        cls.validate_key_usage_string(key_usage_extension)
+        return {
+            "digital_signature": key_usage_extension[cls.KEY_USAGE_INDEX_DIGITAL_SIGNATURE],
+            "non_repudiation": key_usage_extension[cls.KEY_USAGE_INDEX_NON_REPUDIATION],
+            "key_encipherment": key_usage_extension[cls.KEY_USAGE_INDEX_KEY_ENCIPHERMENT],
+            "data_encipherment": key_usage_extension[cls.KEY_USAGE_INDEX_DATA_ENCIPHERMENT],
+            "key_agreement": key_usage_extension[cls.KEY_USAGE_INDEX_KEY_AGREEMENT],
+            "key_cert_sign": key_usage_extension[cls.KEY_USAGE_INDEX_KEY_CERT_SIGN],
+            "crl_sign": key_usage_extension[cls.KEY_USAGE_INDEX_CRL_SIGN],
+            "encipher_only": key_usage_extension[cls.KEY_USAGE_INDEX_ENCIPHER_ONLY],
+            "decipher_only": key_usage_extension[cls.KEY_USAGE_INDEX_DECIPHER_ONLY],
+        }
+
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Compact summary of the certificate seed value.
+
+        Java's ``Object.toString()`` is ``ClassName@hashcode``; this lite
+        port emits populated subset of ``/Ff`` (as a hex bitmask), and
+        counts of the array-valued entries (``/Subject``, ``/SubjectDN``,
+        ``/KeyUsage``, ``/Issuer``, ``/OID``), plus ``/URL`` and
+        ``/URLType`` when present. An empty dict is summarized as
+        ``<empty>``.
+        """
+        parts: list[str] = []
+        if self.has_ff():
+            parts.append(f"ff=0x{self.get_ff():x}")
+        for label, fetcher in (
+            ("subject", self.get_subject),
+            ("subject_dn", self.get_subject_dn),
+            ("key_usage", self.get_key_usage),
+            ("issuer", self.get_issuer),
+            ("oid", self.get_oid),
+        ):
+            v = fetcher()
+            if v is not None:
+                parts.append(f"{label}={len(v)}")
+        url = self.get_url()
+        if url:
+            parts.append(f"url={url}")
+        url_type = self.get_url_type()
+        if url_type:
+            parts.append(f"url_type={url_type}")
+        body = ", ".join(parts) if parts else "<empty>"
+        return f"PDSeedValueCertificate({body})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
 
 def _byte_arrays_from_cos_array(array: COSArray) -> list[bytes]:

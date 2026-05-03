@@ -410,3 +410,159 @@ def test_set_ff_writes_cos_integer() -> None:
     item = cert.get_cos_object().get_item(_FF)
     assert isinstance(item, COSInteger)
     assert int(item.value) == 42
+
+
+# ---------- /URLType constants and predicates ----------
+
+
+def test_url_type_constants() -> None:
+    assert PDSeedValueCertificate.URL_TYPE_BROWSER == "Browser"
+    assert PDSeedValueCertificate.URL_TYPE_ASSP == "ASSP"
+
+
+def test_get_url_type_or_default_returns_browser_when_absent() -> None:
+    """Spec: default is Browser when /URLType is absent."""
+    cert = PDSeedValueCertificate()
+    assert cert.get_url_type() is None
+    assert cert.get_url_type_or_default() == "Browser"
+
+
+def test_get_url_type_or_default_returns_set_value() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_url_type("ASSP")
+    assert cert.get_url_type_or_default() == "ASSP"
+
+
+def test_is_url_type_browser_true_when_absent() -> None:
+    """The spec default makes ``Browser`` the effective type even when
+    /URLType is not stored."""
+    cert = PDSeedValueCertificate()
+    assert cert.is_url_type_browser() is True
+
+
+def test_is_url_type_browser_true_when_explicitly_set() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_url_type("Browser")
+    assert cert.is_url_type_browser() is True
+
+
+def test_is_url_type_browser_false_for_assp() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_url_type("ASSP")
+    assert cert.is_url_type_browser() is False
+
+
+def test_is_url_type_browser_false_for_third_party_extension() -> None:
+    """Third-party URLType extensions (per Adobe spec) aren't Browser."""
+    cert = PDSeedValueCertificate()
+    cert.set_url_type("CompanyXYZ.Custom")
+    assert cert.is_url_type_browser() is False
+
+
+def test_is_url_type_assp_only_true_when_explicit() -> None:
+    cert = PDSeedValueCertificate()
+    assert cert.is_url_type_assp() is False  # absent does NOT default to ASSP
+    cert.set_url_type("ASSP")
+    assert cert.is_url_type_assp() is True
+    cert.set_url_type("Browser")
+    assert cert.is_url_type_assp() is False
+
+
+# ---------- /KeyUsage validation + parsing ----------
+
+
+def test_key_usage_constants() -> None:
+    assert PDSeedValueCertificate.KEY_USAGE_LENGTH == 9
+    # Indices 0..8 cover the nine X.509 KeyUsage bits, in spec order.
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_DIGITAL_SIGNATURE == 0
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_NON_REPUDIATION == 1
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_KEY_ENCIPHERMENT == 2
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_DATA_ENCIPHERMENT == 3
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_KEY_AGREEMENT == 4
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_KEY_CERT_SIGN == 5
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_CRL_SIGN == 6
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_ENCIPHER_ONLY == 7
+    assert PDSeedValueCertificate.KEY_USAGE_INDEX_DECIPHER_ONLY == 8
+    assert PDSeedValueCertificate.KEY_USAGE_ALLOWED_CHARS == frozenset("01X")
+
+
+def test_validate_key_usage_string_accepts_well_formed() -> None:
+    PDSeedValueCertificate.validate_key_usage_string("1XX0X1XXX")
+    PDSeedValueCertificate.validate_key_usage_string("000000000")
+    PDSeedValueCertificate.validate_key_usage_string("111111111")
+    PDSeedValueCertificate.validate_key_usage_string("XXXXXXXXX")
+
+
+def test_validate_key_usage_string_rejects_wrong_length() -> None:
+    with pytest.raises(ValueError, match="9 characters"):
+        PDSeedValueCertificate.validate_key_usage_string("1XX")
+    with pytest.raises(ValueError, match="9 characters"):
+        PDSeedValueCertificate.validate_key_usage_string("1XX0X1XXXX")  # 10 chars
+    with pytest.raises(ValueError, match="9 characters"):
+        PDSeedValueCertificate.validate_key_usage_string("")
+
+
+def test_validate_key_usage_string_rejects_bad_chars() -> None:
+    with pytest.raises(ValueError, match="0, 1, X"):
+        PDSeedValueCertificate.validate_key_usage_string("1XX2X1XXX")
+    with pytest.raises(ValueError, match="0, 1, X"):
+        PDSeedValueCertificate.validate_key_usage_string("1xx0x1xxx")  # lowercase x
+
+
+def test_parse_key_usage_returns_indexed_map() -> None:
+    parsed = PDSeedValueCertificate.parse_key_usage("10X11X0X1")
+    assert parsed == {
+        "digital_signature": "1",
+        "non_repudiation": "0",
+        "key_encipherment": "X",
+        "data_encipherment": "1",
+        "key_agreement": "1",
+        "key_cert_sign": "X",
+        "crl_sign": "0",
+        "encipher_only": "X",
+        "decipher_only": "1",
+    }
+
+
+def test_parse_key_usage_propagates_validation_failure() -> None:
+    with pytest.raises(ValueError):
+        PDSeedValueCertificate.parse_key_usage("bogus")
+
+
+# ---------- __str__ / __repr__ ----------
+
+
+def test_str_empty_dictionary() -> None:
+    cert = PDSeedValueCertificate()
+    # Default ctor sets /Type but no other entries, so summary is <empty>.
+    s = str(cert)
+    assert s == "PDSeedValueCertificate(<empty>)"
+    assert repr(cert) == s
+
+
+def test_str_summary_includes_populated_fields() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_subject_required(True)
+    cert.set_url_required(True)
+    cert.add_subject(b"AAA")
+    cert.add_subject(b"BBB")
+    cert.add_key_usage("1XX0X1XXX")
+    cert.set_url("https://ca.example/")
+    cert.set_url_type("Browser")
+    s = str(cert)
+    # /Ff: bit 0 (subject) | bit 6 (url) = 0x41
+    assert "ff=0x41" in s
+    assert "subject=2" in s
+    assert "key_usage=1" in s
+    assert "url=https://ca.example/" in s
+    assert "url_type=Browser" in s
+
+
+def test_str_omits_absent_fields() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_url("https://ca.example/")
+    s = str(cert)
+    assert "url=https://ca.example/" in s
+    assert "subject=" not in s
+    assert "ff=" not in s
+    assert "url_type=" not in s

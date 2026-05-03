@@ -23,6 +23,8 @@ class Revisions(Generic[T]):
         self._array: COSArray = array if array is not None else COSArray()
 
     def add_object(self, value: T, revision_number: int = 0) -> None:
+        if revision_number < 0:
+            raise ValueError("Revision number must be > -1")
         self._array.add(_to_cos(value))
         self._array.add(COSInteger.get(revision_number))
 
@@ -35,6 +37,22 @@ class Revisions(Generic[T]):
             return entry.int_value()
         return 0
 
+    def get_revision_number(self, value: Any) -> int:
+        """Return the revision number paired with ``value``, or ``-1`` when
+        ``value`` is not present.
+
+        pypdfbox addition: companion to upstream's
+        ``Revisions.setRevisionNumber(T, int)`` object-based locator.
+        Upstream exposes only the index-based ``getRevisionNumber(int)``
+        but consumers (``PDStructureElement.attribute_changed``) need to
+        find a revision number by object identity. Equality follows
+        :meth:`index_of` (identity first, then ``__eq__``).
+        """
+        idx = self.index_of(value)
+        if idx == -1:
+            return -1
+        return self.get_revision_number_at(idx)
+
     def set_object_at(self, index: int, value: T) -> None:
         if index < 0 or index >= self.size():
             raise IndexError(index)
@@ -46,6 +64,22 @@ class Revisions(Generic[T]):
         if revision_number < 0:
             raise ValueError("Revision number must be > -1")
         self._array.set(index * 2 + 1, COSInteger.get(revision_number))
+
+    def set_revision_number(self, value: T, revision_number: int) -> None:
+        """Update the revision number paired with ``value``.
+
+        Mirrors upstream ``Revisions.setRevisionNumber(T object, int
+        revisionNumber)``: when ``value`` is found via :meth:`index_of`
+        the paired revision is updated; when it isn't, the call is a
+        silent no-op (matching upstream's ``index > -1`` guard). Negative
+        revisions are rejected (matches :meth:`set_revision_number_at`).
+        """
+        if revision_number < 0:
+            raise ValueError("Revision number must be > -1")
+        idx = self.index_of(value)
+        if idx == -1:
+            return
+        self._array.set(idx * 2 + 1, COSInteger.get(revision_number))
 
     def size(self) -> int:
         return self._array.size() // 2
