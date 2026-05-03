@@ -663,3 +663,134 @@ def test_has_calc_order_skips_non_dictionary_entries() -> None:
     assert form.has_calc_order() is False
     # And get_calc_order agrees.
     assert form.get_calc_order() == []
+
+
+def test_set_need_appearances_with_none_removes_entry() -> None:
+    """``set_need_appearances(None)`` mirrors upstream's boxed-Boolean
+    null semantic by dropping ``/NeedAppearances`` from the dict."""
+    from pypdfbox.cos import COSName
+
+    form = PDAcroForm()
+    form.set_need_appearances(True)
+    assert form.get_cos_object().contains_key(COSName.get_pdf_name("NeedAppearances"))
+    assert form.is_need_appearances() is True
+
+    # None clears the entry — tri-state flips back to "absent".
+    form.set_need_appearances(None)
+    assert not form.get_cos_object().contains_key(COSName.get_pdf_name("NeedAppearances"))
+    assert form.get_need_appearances_if_exists() is None
+    # Falls back to default (False).
+    assert form.is_need_appearances() is False
+
+
+def test_set_need_appearances_with_none_on_fresh_form_is_no_op() -> None:
+    """Removing an absent ``/NeedAppearances`` is a clean no-op — no
+    exception, no entry created."""
+    from pypdfbox.cos import COSName
+
+    form = PDAcroForm()
+    assert not form.get_cos_object().contains_key(COSName.get_pdf_name("NeedAppearances"))
+    form.set_need_appearances(None)
+    assert not form.get_cos_object().contains_key(COSName.get_pdf_name("NeedAppearances"))
+
+
+def test_set_need_appearances_round_trips_false() -> None:
+    """``False`` writes the entry as ``false`` (not "remove") — only
+    ``None`` is special-cased to remove the entry."""
+    from pypdfbox.cos import COSName
+
+    form = PDAcroForm()
+    form.set_need_appearances(False)
+    assert form.get_cos_object().contains_key(COSName.get_pdf_name("NeedAppearances"))
+    assert form.get_need_appearances_if_exists() is False
+    assert form.is_need_appearances() is False
+
+
+def test_has_default_resources_returns_false_when_absent() -> None:
+    """Fresh form has no ``/DR`` — predicate is ``False`` and
+    ``get_default_resources`` agrees with ``None``."""
+    form = PDAcroForm()
+    assert form.has_default_resources() is False
+    assert form.get_default_resources() is None
+
+
+def test_has_default_resources_round_trips_with_set_default_resources() -> None:
+    """``set_default_resources`` toggles the predicate; passing ``None``
+    drops the entry and flips it back."""
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    form = PDAcroForm()
+    resources = PDResources()
+    form.set_default_resources(resources)
+    assert form.has_default_resources() is True
+    assert form.get_default_resources() is not None
+
+    form.set_default_resources(None)
+    assert form.has_default_resources() is False
+    assert form.get_default_resources() is None
+
+
+def test_has_default_resources_returns_false_for_non_dict_entry() -> None:
+    """A malformed ``/DR`` whose value is not a dictionary is treated
+    as absent — same guard as ``get_default_resources``."""
+    from pypdfbox.cos import COSArray, COSName
+
+    form = PDAcroForm()
+    # Stuff a non-dict value under /DR (synthetic — shouldn't happen in
+    # well-formed PDFs but the guard exists upstream too).
+    form.get_cos_object().set_item(COSName.get_pdf_name("DR"), COSArray())
+    assert form.has_default_resources() is False
+    assert form.get_default_resources() is None
+
+
+def test_has_default_appearance_returns_false_when_absent() -> None:
+    """Fresh form has no ``/DA`` — predicate is ``False``;
+    ``get_default_appearance`` returns ``""`` (upstream parity)."""
+    form = PDAcroForm()
+    assert form.has_default_appearance() is False
+    assert form.get_default_appearance() == ""
+    assert form.get_default_appearance_if_exists() is None
+
+
+def test_has_default_appearance_distinguishes_empty_from_absent() -> None:
+    """An explicit empty ``/DA`` is "present" — distinguishes from
+    "absent", which both yield ``""`` from ``get_default_appearance``."""
+    form = PDAcroForm()
+    form.set_default_appearance("")
+    assert form.has_default_appearance() is True
+    assert form.get_default_appearance() == ""
+    assert form.get_default_appearance_if_exists() == ""
+
+
+def test_has_default_appearance_round_trip_with_value() -> None:
+    """``set_default_appearance`` toggles the predicate to ``True``."""
+    form = PDAcroForm()
+    form.set_default_appearance("/Helv 12 Tf 0 g")
+    assert form.has_default_appearance() is True
+    assert form.get_default_appearance() == "/Helv 12 Tf 0 g"
+
+
+def test_get_q_if_exists_returns_none_when_absent() -> None:
+    """Fresh form has no ``/Q`` — ``get_q_if_exists`` returns ``None``
+    while ``get_q`` falls back to ``QUADDING_LEFT`` (0)."""
+    form = PDAcroForm()
+    assert form.get_q_if_exists() is None
+    assert form.get_q() == PDAcroForm.QUADDING_LEFT
+
+
+def test_get_q_if_exists_distinguishes_explicit_zero_from_absent() -> None:
+    """An explicit ``/Q = 0`` is "present" with value ``0`` — distinguishes
+    from "absent", which both return ``0`` via ``get_q``."""
+    form = PDAcroForm()
+    form.set_q(PDAcroForm.QUADDING_LEFT)  # 0
+    assert form.get_q_if_exists() == 0
+    assert form.get_q() == 0
+
+
+def test_get_q_if_exists_returns_explicit_value() -> None:
+    """``get_q_if_exists`` round-trips each documented quadding value."""
+    form = PDAcroForm()
+    for q in (PDAcroForm.QUADDING_LEFT, PDAcroForm.QUADDING_CENTERED, PDAcroForm.QUADDING_RIGHT):
+        form.set_q(q)
+        assert form.get_q_if_exists() == q
+        assert form.get_q() == q

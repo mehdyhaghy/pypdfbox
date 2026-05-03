@@ -342,7 +342,17 @@ class PDAcroForm:
     def is_need_appearances(self) -> bool:
         return self._dictionary.get_boolean(_NEED_APPEARANCES, False)
 
-    def set_need_appearances(self, value: bool) -> None:
+    def set_need_appearances(self, value: bool | None) -> None:
+        """Set ``/NeedAppearances``.
+
+        Upstream's signature is ``setNeedAppearances(Boolean value)`` —
+        the boxed ``Boolean`` type allows ``null``. We mirror that by
+        treating ``None`` as "remove the entry" so callers can drop
+        ``/NeedAppearances`` without reaching into the underlying
+        dictionary."""
+        if value is None:
+            self._dictionary.remove_item(_NEED_APPEARANCES)
+            return
         self._dictionary.set_boolean(_NEED_APPEARANCES, value)
 
     # Upstream-named alias (PDFBox ``getNeedAppearances`` /
@@ -383,6 +393,19 @@ class PDAcroForm:
             return
         self._dictionary.set_item(_DR, resources.get_cos_object())
 
+    def has_default_resources(self) -> bool:
+        """Return ``True`` when this form has a ``/DR`` entry that resolves
+        to a dictionary.
+
+        Pypdfbox-only predicate (mirrors the ``has_xfa`` pattern). Lets
+        callers branch on default-resources presence without paying the
+        cost of materialising the full :meth:`get_default_resources`
+        wrapper. A ``/DR`` entry whose value is not a dictionary (e.g.
+        ``null`` or a stray non-dict) returns ``False`` — matching the
+        guard in :meth:`get_default_resources`."""
+        raw = self._dictionary.get_dictionary_object(_DR)
+        return isinstance(raw, COSDictionary)
+
     # ---------- /DA (default appearance) ----------
 
     def get_default_appearance(self) -> str:
@@ -407,11 +430,33 @@ class PDAcroForm:
     def set_default_appearance(self, da: str) -> None:
         self._dictionary.set_string(_DA, da)
 
+    def has_default_appearance(self) -> bool:
+        """Return ``True`` when this form has a ``/DA`` entry.
+
+        Pypdfbox-only predicate — distinguishes "entry absent" from "entry
+        present but empty string", which :meth:`get_default_appearance`
+        collapses (both return ``""``). Useful when a writer wants to
+        round-trip ``/DA`` only when the source PDF actually carries
+        one."""
+        return self._dictionary.contains_key(_DA)
+
     # ---------- /Q (quadding / form-wide alignment) ----------
 
     def get_q(self) -> int:
         """Return the form-wide quadding value (``0``=left, ``1``=center,
         ``2``=right). Defaults to ``0`` when ``/Q`` is absent."""
+        return self._dictionary.get_int(_Q, 0)
+
+    def get_q_if_exists(self) -> int | None:
+        """Return ``/Q`` as a tri-state — ``None`` when the entry is
+        absent, otherwise the integer value.
+
+        Used by writers that want to round-trip ``/Q`` without inventing
+        a default of ``0`` (left-justified). Mirrors the convention of
+        :meth:`get_default_appearance_if_exists` and
+        :meth:`get_need_appearances_if_exists`."""
+        if not self._dictionary.contains_key(_Q):
+            return None
         return self._dictionary.get_int(_Q, 0)
 
     def set_q(self, value: int) -> None:

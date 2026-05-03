@@ -154,7 +154,10 @@ def test_stub_methods_raise() -> None:
     assert page.get_annotations() == []
     assert page.get_thumb() is None
     assert page.get_transition() is None
-    assert page.get_actions() is None
+    # ``get_actions`` auto-creates an empty /AA dict on first read (matches
+    # upstream PDPage.getActions on line 723); verify the wrapper type
+    # rather than a None return.
+    assert page.get_actions() is not None
 
 
 def test_set_thumb_round_trip() -> None:
@@ -628,3 +631,187 @@ def test_get_annotations_skips_null_entries() -> None:
     page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
     result = page.get_annotations()
     assert len(result) == 1
+
+
+# ---------- Wave 230: get_actions auto-create + has_* + duration ----------
+
+
+def test_get_actions_auto_creates_empty_aa() -> None:
+    """Upstream ``PDPage.getActions`` (line 723) materialises an empty
+    ``/AA`` dictionary in place when the entry is absent, so subsequent
+    callers can attach trigger actions without having to wire the
+    sub-dictionary themselves."""
+    page = PDPage()
+    # Sanity: /AA absent before first call.
+    assert page.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("AA")
+    ) is None
+
+    actions = page.get_actions()
+    assert actions is not None
+    # /AA was materialised in place — and the wrapper points at it.
+    aa = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("AA"))
+    assert isinstance(aa, COSDictionary)
+    assert actions.get_cos_object() is aa
+
+    # Calling again returns the same underlying dict (idempotent).
+    again = page.get_actions()
+    assert again.get_cos_object() is aa
+
+
+def test_get_actions_does_not_overwrite_existing_aa() -> None:
+    """If ``/AA`` already exists the auto-create path is skipped — the
+    existing dict is wrapped verbatim."""
+    page = PDPage()
+    existing_aa = COSDictionary()
+    existing_aa.set_item(
+        COSName.get_pdf_name("O"),
+        COSDictionary(),
+    )
+    page.get_cos_object().set_item(COSName.get_pdf_name("AA"), existing_aa)
+
+    resolved = page.get_actions()
+    assert resolved.get_cos_object() is existing_aa
+
+
+def test_get_duration_default_none() -> None:
+    page = PDPage()
+    assert page.get_duration() is None
+
+
+def test_set_duration_round_trip() -> None:
+    page = PDPage()
+    page.set_duration(3.0)
+    assert page.get_duration() == pytest.approx(3.0)
+    # ``None`` removes the entry.
+    page.set_duration(None)
+    assert page.get_duration() is None
+    assert page.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Dur")
+    ) is None
+
+
+def test_get_duration_reads_integer_dur() -> None:
+    """``/Dur`` may be stored as an integer too (PDF spec: number) — the
+    getter must coerce to float rather than crash."""
+    page = PDPage()
+    page.get_cos_object().set_item(
+        COSName.get_pdf_name("Dur"),
+        COSInteger.get(5),
+    )
+    assert page.get_duration() == 5.0
+
+
+def test_set_transition_with_duration_then_read_back() -> None:
+    """``set_transition(transition, duration)`` writes /Dur — the new
+    ``get_duration`` getter reads it back."""
+    page = PDPage()
+    page.set_transition(PDTransition(style="Fade"), 2.25)
+    assert page.get_duration() == pytest.approx(2.25)
+
+
+def test_has_metadata() -> None:
+    page = PDPage()
+    assert page.has_metadata() is False
+    metadata_stream = COSStream()
+    page.get_cos_object().set_item(COSName.get_pdf_name("Metadata"), metadata_stream)
+    assert page.has_metadata() is True
+
+
+def test_has_thumb() -> None:
+    page = PDPage()
+    assert page.has_thumb() is False
+    page.set_thumb(PDImageXObject(COSStream()))
+    assert page.has_thumb() is True
+
+
+def test_has_transition() -> None:
+    page = PDPage()
+    assert page.has_transition() is False
+    page.set_transition(PDTransition(style="Box"))
+    assert page.has_transition() is True
+    page.set_transition(None)
+    assert page.has_transition() is False
+
+
+def test_has_actions_does_not_auto_materialise() -> None:
+    """``has_actions`` is a read-only probe — calling it on a page
+    without /AA must not write an empty /AA dict (would mutate the
+    page on every probe and break differential round-trips)."""
+    page = PDPage()
+    assert page.has_actions() is False
+    # Verify no accidental write.
+    assert page.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("AA")
+    ) is None
+
+    # Empty /AA also reports False.
+    page.get_cos_object().set_item(
+        COSName.get_pdf_name("AA"), COSDictionary()
+    )
+    assert page.has_actions() is False
+
+    # Populated /AA reports True.
+    aa = COSDictionary()
+    aa.set_item(COSName.get_pdf_name("O"), COSDictionary())
+    page.get_cos_object().set_item(COSName.get_pdf_name("AA"), aa)
+    assert page.has_actions() is True
+
+
+def test_has_annotations() -> None:
+    page = PDPage()
+    assert page.has_annotations() is False
+    # Empty array — still False.
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), COSArray())
+    assert page.has_annotations() is False
+    # Populated array — True.
+    arr = COSArray()
+    ann = COSDictionary()
+    ann.set_item(
+        COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Link")
+    )
+    arr.add(ann)
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
+    assert page.has_annotations() is True
+
+
+def test_has_thread_beads() -> None:
+    from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
+
+    page = PDPage()
+    assert page.has_thread_beads() is False
+    page.set_thread_beads([PDThreadBead(COSDictionary())])
+    assert page.has_thread_beads() is True
+    page.set_thread_beads(None)
+    assert page.has_thread_beads() is False
+
+
+def test_has_viewports() -> None:
+    from pypdfbox.pdmodel.interactive.measurement.pd_viewport_dictionary import (
+        PDViewportDictionary,
+    )
+
+    page = PDPage()
+    assert page.has_viewports() is False
+    page.set_viewports([PDViewportDictionary()])
+    assert page.has_viewports() is True
+    page.set_viewports(None)
+    assert page.has_viewports() is False
+
+
+def test_has_group() -> None:
+    page = PDPage()
+    assert page.has_group() is False
+    page.set_group(COSDictionary())
+    assert page.has_group() is True
+    page.set_group(None)
+    assert page.has_group() is False
+
+
+def test_has_tab_order() -> None:
+    page = PDPage()
+    assert page.has_tab_order() is False
+    page.set_tab_order("R")
+    assert page.has_tab_order() is True
+    page.set_tab_order(None)
+    assert page.has_tab_order() is False

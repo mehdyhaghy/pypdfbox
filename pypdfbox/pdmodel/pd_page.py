@@ -665,12 +665,21 @@ class PDPage:
             self._page.set_item(_DUR, COSFloat(float(duration)))
 
     def get_actions(self) -> Any:
+        """Return the page's additional-actions ``/AA`` wrapper.
+
+        Mirrors upstream's auto-create behaviour (see
+        ``PDPage.getActions`` line 723) — if ``/AA`` is absent the entry
+        is materialised in place as an empty dictionary so the caller
+        can attach trigger actions without having to wire the
+        sub-dictionary first. Always returns a non-``None``
+        :class:`PDPageAdditionalActions`."""
         from pypdfbox.pdmodel.interactive.action import PDPageAdditionalActions
 
         actions = self._page.get_dictionary_object(_AA)
-        if isinstance(actions, COSDictionary):
-            return PDPageAdditionalActions(actions)
-        return None
+        if not isinstance(actions, COSDictionary):
+            actions = COSDictionary()
+            self._page.set_item(_AA, actions)
+        return PDPageAdditionalActions(actions)
 
     def set_actions(self, actions: Any) -> None:
         if actions is None:
@@ -890,6 +899,85 @@ class PDPage:
             self._page.remove_item(_TABS)
             return
         self._page.set_name(_TABS, order)
+
+    # ---------- /Dur (page display duration) ----------
+
+    def get_duration(self) -> float | None:
+        """Return ``/Dur`` — the maximum length of time, in seconds, that
+        this page shall be displayed during presentations before the
+        viewer automatically advances. Returns ``None`` when the entry is
+        absent (no auto-advance configured).
+
+        ``set_transition(transition, duration)`` writes this entry; the
+        getter is provided so callers can read the duration back without
+        going through raw COS access. There's no upstream ``getDuration``
+        method, so this is a pypdfbox convenience accessor."""
+        from pypdfbox.cos import COSFloat, COSInteger
+
+        value = self._page.get_dictionary_object(_DUR)
+        if isinstance(value, (COSInteger, COSFloat)):
+            return float(value.value)
+        return None
+
+    def set_duration(self, duration: float | None) -> None:
+        """Set ``/Dur`` directly without touching ``/Trans``. ``None``
+        removes the entry. Companion to :meth:`get_duration`."""
+        if duration is None:
+            self._page.remove_item(_DUR)
+            return
+        from pypdfbox.cos import COSFloat
+
+        self._page.set_item(_DUR, COSFloat(float(duration)))
+
+    # ---------- presence predicates ----------
+    #
+    # Pythonic ``has_*`` helpers — upstream PDFBox has only ``hasContents``
+    # but our codebase consistently exposes presence checks for callers who
+    # want to avoid materialising the wrapper objects.
+
+    def has_metadata(self) -> bool:
+        """Return whether this page has a ``/Metadata`` XMP stream."""
+        return isinstance(self._page.get_dictionary_object(_METADATA), COSStream)
+
+    def has_thumb(self) -> bool:
+        """Return whether this page has a ``/Thumb`` thumbnail stream."""
+        return isinstance(self._page.get_dictionary_object(_THUMB), COSStream)
+
+    def has_transition(self) -> bool:
+        """Return whether this page has a ``/Trans`` transition dict."""
+        return isinstance(self._page.get_dictionary_object(_TRANS), COSDictionary)
+
+    def has_actions(self) -> bool:
+        """Return whether this page has a non-empty ``/AA`` dict.
+
+        This is a *read-only* probe — unlike :meth:`get_actions` it does
+        **not** auto-materialise an empty ``/AA`` sub-dictionary, so it's
+        safe to call on read-only inspection paths that mustn't mutate
+        the page dict."""
+        actions = self._page.get_dictionary_object(_AA)
+        return isinstance(actions, COSDictionary) and len(actions) > 0
+
+    def has_annotations(self) -> bool:
+        """Return whether this page has a non-empty ``/Annots`` array."""
+        annots = self._page.get_dictionary_object(_ANNOTS)
+        return isinstance(annots, COSArray) and not annots.is_empty()
+
+    def has_thread_beads(self) -> bool:
+        """Return whether this page has a non-empty ``/B`` thread-bead array."""
+        beads = self._page.get_dictionary_object(_BEADS)
+        return isinstance(beads, COSArray) and not beads.is_empty()
+
+    def has_viewports(self) -> bool:
+        """Return whether this page has a ``/VP`` viewports array."""
+        return isinstance(self._page.get_dictionary_object(_VP), COSArray)
+
+    def has_group(self) -> bool:
+        """Return whether this page has a ``/Group`` transparency-group dict."""
+        return isinstance(self._page.get_dictionary_object(_GROUP), COSDictionary)
+
+    def has_tab_order(self) -> bool:
+        """Return whether this page has a ``/Tabs`` annotation tab-order entry."""
+        return self._page.get_name(_TABS) is not None
 
     # ---------- equality / repr ----------
 
