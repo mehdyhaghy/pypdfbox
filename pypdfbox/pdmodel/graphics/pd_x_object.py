@@ -71,6 +71,15 @@ class PDXObject:
             PDImageXObject,
         )
 
+        # Mirror upstream: when ``resources`` is supplied, thread its
+        # ``ResourceCache`` to the new PDFormXObject / PDTransparencyGroup
+        # so font/X-object look-ups inside the form share the page's
+        # cache. Upstream:
+        #     ResourceCache cache = resources != null
+        #         ? resources.getResourceCache() : null;
+        cache = (
+            resources.get_resource_cache() if resources is not None else None
+        )
         subtype = base.get_name(_SUBTYPE)
         if subtype == "Image":
             return PDImageXObject(base)
@@ -85,8 +94,8 @@ class PDXObject:
                         PDTransparencyGroup,
                     )
 
-                    return PDTransparencyGroup(base)
-            return PDFormXObject(base)
+                    return PDTransparencyGroup(base, cache=cache)
+            return PDFormXObject(base, cache=cache)
         if subtype == "PS":
             from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (  # noqa: PLC0415
                 PDPostScriptXObject,

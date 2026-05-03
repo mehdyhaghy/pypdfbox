@@ -244,3 +244,118 @@ def test_create_x_object_missing_subtype_raises_oserror() -> None:
     stream = COSStream()
     with pytest.raises(OSError, match="Invalid XObject Subtype"):
         PDXObject.create_x_object(stream)
+
+
+# ---------- create_x_object: ResourceCache propagation ----------
+#
+# Mirrors upstream:
+#     ResourceCache cache = resources != null
+#         ? resources.getResourceCache() : null;
+#     ...
+#     return new PDFormXObject(stream, cache);
+#     return new PDTransparencyGroup(stream, cache);
+#
+# The resources argument is NOT cosmetic — its cache must be threaded
+# through to the new form-xobject so font / X-object look-ups inside
+# the form share the page's cache. A bug in this branch silently
+# blows the cache in every nested form, so it earns dedicated tests.
+
+
+def test_create_x_object_form_threads_resource_cache_from_resources() -> None:
+    """A plain ``/Subtype /Form`` stream constructed via the factory
+    must receive ``resources.get_resource_cache()`` as its cache —
+    upstream parity for the ``cache`` parameter passed to the
+    ``PDFormXObject(stream, cache)`` constructor."""
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+    from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+
+    cache = DefaultResourceCache()
+    resources = PDResources(resource_cache=cache)
+
+    obj = PDXObject.create_x_object(stream, resources)
+    assert isinstance(obj, PDFormXObject)
+    # The form must have captured the *same* cache instance, not None
+    # and not a fresh cache.
+    assert obj._cache is cache  # noqa: SLF001 — invariant we want to lock down
+
+
+def test_create_x_object_transparency_group_threads_resource_cache() -> None:
+    """A transparency-group form (``/Group /S /Transparency``) must
+    also receive the resources' cache — upstream's branch:
+    ``return new PDTransparencyGroup(stream, cache);``"""
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
+        PDTransparencyGroup,
+    )
+    from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    group = COSDictionary()
+    group.set_name(COSName.get_pdf_name("S"), "Transparency")
+    stream.set_item(COSName.get_pdf_name("Group"), group)
+
+    cache = DefaultResourceCache()
+    resources = PDResources(resource_cache=cache)
+
+    obj = PDXObject.create_x_object(stream, resources)
+    assert isinstance(obj, PDTransparencyGroup)
+    assert obj._cache is cache  # noqa: SLF001
+
+
+def test_create_x_object_form_has_no_cache_when_resources_none() -> None:
+    """When ``resources`` is ``None`` (factory called without context),
+    the cache passed to ``PDFormXObject`` must be ``None`` — upstream's
+    ternary collapses to null."""
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    obj = PDXObject.create_x_object(stream, None)
+    assert isinstance(obj, PDFormXObject)
+    assert obj._cache is None  # noqa: SLF001
+
+
+def test_create_x_object_form_has_no_cache_when_resources_lack_cache() -> None:
+    """When ``resources`` is given but lacks a configured
+    ``ResourceCache`` (the default), the threaded cache value is
+    ``None`` — i.e. ``getResourceCache()`` returns null and that null
+    flows through to the form constructor unchanged."""
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+
+    resources = PDResources()  # no cache configured
+    obj = PDXObject.create_x_object(stream, resources)
+    assert isinstance(obj, PDFormXObject)
+    assert obj._cache is None  # noqa: SLF001
+
+
+def test_create_x_object_image_ignores_resource_cache() -> None:
+    """Sanity: the image branch in upstream does NOT take a cache
+    parameter (``new PDImageXObject(new PDStream(stream), resources)``
+    — it takes the resources directly, not the cache). The dispatch
+    should not error when resources are supplied; we only check it
+    still returns the expected typed wrapper."""
+    from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
+        PDImageXObject,
+    )
+    from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Image")  # type: ignore[attr-defined]
+
+    cache = DefaultResourceCache()
+    resources = PDResources(resource_cache=cache)
+
+    obj = PDXObject.create_x_object(stream, resources)
+    assert isinstance(obj, PDImageXObject)
+    assert obj.get_cos_object() is stream

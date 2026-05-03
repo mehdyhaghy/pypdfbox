@@ -240,6 +240,22 @@ class PDAnnotation:
         ``getRectangle``."""
         return self.get_rectangle()
 
+    def has_rectangle(self) -> bool:
+        """Predicate: is a parsable ``/Rect`` entry present?
+
+        No upstream equivalent — useful for callers that want to test
+        for a rectangle without forcing a :class:`PDRectangle`
+        construction. Mirrors the ``getRectangle() != null`` idiom."""
+        return self.get_rectangle() is not None
+
+    def has_contents(self) -> bool:
+        """Predicate: is a non-empty ``/Contents`` string present?
+
+        No upstream equivalent — saves callers an extra null/empty
+        check."""
+        contents = self.get_contents()
+        return contents is not None and contents != ""
+
     # ---------- /Contents ----------
 
     def get_contents(self) -> str | None:
@@ -417,11 +433,16 @@ class PDAnnotation:
         return None
 
     def set_color(
-        self, color: COSArray | list[float] | tuple[float, ...] | None
+        self,
+        color: COSArray | list[float] | tuple[float, ...] | object | None,
     ) -> None:
-        """Set ``/C``. Accepts ``None`` to clear, a raw ``COSArray``, or a
-        sequence of floats (the typed ``PDColor`` wrapper lands with the
-        rendering cluster — see ``CHANGES.md``)."""
+        """Set ``/C``. Accepts ``None`` to clear, a raw ``COSArray``, a
+        sequence of floats, or a typed :class:`PDColor` (any object
+        exposing :meth:`to_cos_array`).
+
+        Mirrors upstream :code:`setColor(PDColor)` while keeping the
+        looser pypdfbox surface that predates the rendering cluster — see
+        ``CHANGES.md``."""
         if color is None:
             self._dict.remove_item(_C)
             return
@@ -433,10 +454,27 @@ class PDAnnotation:
                 _C, COSArray([COSFloat(float(c)) for c in color])
             )
             return
+        # Duck-typed PDColor support — any object exposing
+        # ``to_cos_array()`` (the canonical PDColor serializer) is
+        # accepted to avoid pulling the rendering cluster into the
+        # annotation import graph.
+        to_cos_array = getattr(color, "to_cos_array", None)
+        if callable(to_cos_array):
+            value = to_cos_array()
+            if isinstance(value, COSArray):
+                self._dict.set_item(_C, value)
+                return
         raise TypeError(
-            "set_color expects None, COSArray, list, or tuple; got "
-            f"{type(color).__name__}"
+            "set_color expects None, COSArray, list, tuple, or PDColor; "
+            f"got {type(color).__name__}"
         )
+
+    def has_color(self) -> bool:
+        """Predicate: is a ``/C`` color array present?
+
+        No upstream equivalent — saves callers from writing the
+        ``get_color() is not None`` boilerplate."""
+        return self.get_color() is not None
 
     def set_color_components(self, components: list[float] | tuple[float, ...]) -> None:
         """Convenience alternative to ``set_color`` taking raw floats — no
@@ -465,6 +503,32 @@ class PDAnnotation:
             _AP,
             ap.get_cos_object() if hasattr(ap, "get_cos_object") else ap,
         )
+
+    def get_appearance(self) -> PDAppearanceDictionary | None:
+        """Upstream-canonical alias for :meth:`get_appearance_dictionary`.
+
+        Java :code:`PDAnnotation.getAppearance()` is the canonical name
+        upstream; ``get_appearance_dictionary`` is the historical pypdfbox
+        spelling. Both are supported."""
+        return self.get_appearance_dictionary()
+
+    def set_appearance(
+        self, ap: PDAppearanceDictionary | COSDictionary | None
+    ) -> None:
+        """Upstream-canonical alias for :meth:`set_appearance_dictionary`.
+
+        Mirrors :code:`PDAnnotation.setAppearance(PDAppearanceDictionary)`
+        upstream."""
+        self.set_appearance_dictionary(ap)
+
+    def has_appearance(self) -> bool:
+        """Predicate: is an ``/AP`` entry present and a dictionary?
+
+        No upstream equivalent — useful for callers that want to check
+        the presence of an appearance without forcing a typed wrapper
+        construction."""
+        value = self._dict.get_dictionary_object(_AP)
+        return isinstance(value, COSDictionary)
 
     def get_normal_appearance_stream(self):  # type: ignore[no-untyped-def]
         """Return the active normal appearance stream, if any.
@@ -500,9 +564,17 @@ class PDAnnotation:
         radio button selected, …). ``None`` when absent."""
         return self._dict.get_name(_AS)
 
-    def set_appearance_state(self, value: str | None) -> None:
+    def set_appearance_state(self, value: str | COSName | None) -> None:
+        """Set the active appearance state name (``/AS``).
+
+        Mirrors upstream's two overloads — ``setAppearanceState(String)``
+        and ``setAppearanceState(COSName)`` — by accepting either a
+        string or a pre-built :class:`COSName`. Pass ``None`` to clear."""
         if value is None:
             self._dict.remove_item(_AS)
+            return
+        if isinstance(value, COSName):
+            self._dict.set_item(_AS, value)
             return
         self._dict.set_item(_AS, COSName.get_pdf_name(value))
 
