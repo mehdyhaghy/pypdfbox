@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import IO, TYPE_CHECKING, Any
 
-from pypdfbox.cos import COSStream
+from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.io.random_access_read import RandomAccessRead
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+from pypdfbox.pdmodel.pd_resources import PDResources
 
 if TYPE_CHECKING:
-    from pypdfbox.pdmodel.pd_resources import PDResources
-
     from .pd_type3_font import PDType3Font
 
 
@@ -80,28 +79,43 @@ class PDType3CharProc(PDStream):
         return RandomAccessReadBuffer(self.to_byte_array())
 
     def get_resources(self) -> PDResources | None:
-        """Char-procs do not carry their own ``/Resources`` — fall back to
-        the parent font's ``/Resources``. Mirrors upstream
-        ``getResources()``."""
+        """Return the resources dictionary used by this char-proc.
+
+        PDFBOX-5294: a malformed PDF may stash a ``/Resources`` dictionary
+        on the char-proc stream itself, even though PDF 32000-1 §9.6.5
+        says resources belong on the parent font (or page). Upstream
+        tolerates that misplacement and prefers the local entry when
+        present; we mirror that. The well-formed path falls back to the
+        parent font's ``/Resources``.
+
+        Mirrors upstream ``getResources()``.
+        """
+        local = self._stream.get_dictionary_object(COSName.RESOURCES)
+        if isinstance(local, COSDictionary):
+            return PDResources(local)
         return self._font.get_resources()
 
-    def get_bbox(self) -> PDRectangle:
-        """Return the glyph's bounding box.
+    def has_resources(self) -> bool:
+        """Return ``True`` when this char-proc stream carries its own
+        ``/Resources`` entry (PDFBOX-5294 misplacement). When ``False``,
+        :meth:`get_resources` falls back to the parent font's
+        ``/Resources``. No upstream method — convenience predicate."""
+        return self._stream.contains_key(COSName.RESOURCES)
 
-        A Type 3 glyph with a leading ``d1`` operator declares its own
-        bounding box on that operator (operands 3-6: ``llx lly urx ury``).
-        With a leading ``d0`` operator (or no recognisable leading metric
-        op) the glyph has no declared bounds and we fall back to the
-        font's ``/FontBBox``. Mirrors upstream ``getBBox()`` /
-        ``getGlyphBBox()`` minus the antialiasing-padding adjustments
-        (those land with the rendering cluster).
+    def get_bbox(self) -> PDRectangle:
+        """Return the parent font's ``/FontBBox`` — the
+        ``PDContentStream`` contract bounding box for this char-proc.
+
+        Mirrors upstream ``getBBox()`` exactly, which simply returns
+        ``font.getFontBBox()``. Per-glyph bounds declared by a leading
+        ``d1`` operator are exposed separately via :meth:`get_glyph_bbox`.
+
+        When the parent font has no ``/FontBBox`` we return an empty rect
+        at the origin so callers always have a non-``None`` ``PDRectangle``
+        to work with — upstream returns ``null`` in that case but
+        ``PDContentStream.getBBox()`` is annotated non-null in 3.0.x and
+        the only fonts without a ``/FontBBox`` are malformed.
         """
-        bbox = self.get_glyph_bbox()
-        if bbox is not None:
-            return bbox
-        # Fall back to the font's /FontBBox; if that's also missing,
-        # return an empty rect at the origin so callers always have a
-        # PDRectangle to work with.
         font_bbox = self._font.get_font_bbox()
         if font_bbox is not None:
             return font_bbox
@@ -141,6 +155,20 @@ class PDType3CharProc(PDStream):
         # PDRectangle takes the four corners directly:
         # (lower_left_x, lower_left_y, upper_right_x, upper_right_y).
         return PDRectangle(llx, lly, urx, ury)
+
+    def has_d1(self) -> bool:
+        """Return ``True`` when the char-proc's leading metric operator
+        is ``d1`` (declares both width and bounding box). No upstream
+        method — convenience predicate over :meth:`get_glyph_bbox`."""
+        op_name, _ = self._first_metric_operator()
+        return op_name == _D1
+
+    def has_d0(self) -> bool:
+        """Return ``True`` when the char-proc's leading metric operator
+        is ``d0`` (declares width only, no bounding box → uncoloured
+        glyph). No upstream method — convenience predicate."""
+        op_name, _ = self._first_metric_operator()
+        return op_name == _D0
 
     def get_width(self) -> float:
         """Return the glyph advance ``wx`` declared by the leading ``d0``

@@ -69,16 +69,6 @@ class FontMapping(Generic[T]):
         """
         return self._is_fallback
 
-    # ---------- camelCase aliases for porting parity ----------
-
-    # Existing pdmodel callers still use the upstream camelCase names in
-    # places. Keep both spellings live so neither side breaks.
-    def getFont(self) -> T:  # noqa: N802 - upstream Java name
-        return self.get_font()
-
-    def isFallback(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.is_fallback()
-
     # ---------- repr ----------
 
     def __repr__(self) -> str:

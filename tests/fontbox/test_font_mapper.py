@@ -64,14 +64,6 @@ def test_font_mapping_round_trips_font_and_flag() -> None:
     assert fm.is_fallback() is False
 
 
-def test_font_mapping_camelcase_aliases_match_snake_case() -> None:
-    wrapper = DefaultFontMapper().get_font_box_font("Courier", None)
-    assert wrapper is not None
-    fm = FontMapping(wrapper.get_font(), is_fallback=True)
-    assert fm.getFont() is fm.get_font()
-    assert fm.isFallback() is fm.is_fallback() is True
-
-
 def test_font_mapping_repr_includes_font_name() -> None:
     wrapper = DefaultFontMapper().get_font_box_font("Symbol", None)
     assert wrapper is not None

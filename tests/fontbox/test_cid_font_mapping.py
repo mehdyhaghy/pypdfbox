@@ -61,12 +61,12 @@ def test_is_subclass_of_font_mapping() -> None:
     assert issubclass(CIDFontMapping, FontMapping)
 
 
-def test_inherits_camelcase_alias() -> None:
-    """Inherited :meth:`FontMapping.getFont` keeps working."""
+def test_inherits_font_mapping_accessors() -> None:
+    """Inherited :meth:`FontMapping.get_font` / :meth:`is_fallback` keep working."""
     otf = _wrapper("Courier")
     cm = CIDFontMapping(otf, None, is_fallback=False)
-    assert cm.getFont() is otf
-    assert cm.isFallback() is False
+    assert cm.get_font() is otf
+    assert cm.is_fallback() is False
 
 
 # ---------------------------------------------------------------------------

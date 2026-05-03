@@ -183,12 +183,17 @@ def test_get_width_zero_when_no_metric_op() -> None:
 # ---------- get_bbox (PDContentStream contract) ----------
 
 
-def test_get_bbox_uses_d1_when_present() -> None:
-    body = b"600 0 50 -10 550 700 d1\n"
-    _, proc = _font_and_proc(body)
+def test_get_bbox_returns_font_font_bbox_when_present() -> None:
+    # Upstream contract: getBBox() returns font.getFontBBox() unconditionally.
+    # The d1 leading-operator bbox is exposed via get_glyph_bbox(), not get_bbox().
+    font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 1000.0, 1000.0))
+    glyph = _glyph_with_body(b"600 0 50 -10 550 700 d1\n")
+    proc = PDType3CharProc(font, glyph)
     bbox = proc.get_bbox()
-    assert bbox.get_lower_left_x() == pytest.approx(50.0)
-    assert bbox.get_upper_right_x() == pytest.approx(550.0)
+    # Reflects /FontBBox, NOT the d1 operands.
+    assert bbox.get_upper_right_x() == pytest.approx(1000.0)
+    assert bbox.get_upper_right_y() == pytest.approx(1000.0)
 
 
 def test_get_bbox_falls_back_to_font_font_bbox() -> None:
@@ -201,12 +206,79 @@ def test_get_bbox_falls_back_to_font_font_bbox() -> None:
     assert bbox.get_upper_right_y() == pytest.approx(1000.0)
 
 
-def test_get_bbox_falls_back_to_origin_rect_when_no_font_bbox() -> None:
+def test_get_bbox_returns_origin_rect_when_no_font_bbox() -> None:
     _, proc = _font_and_proc(b"600 0 d0\n")
     bbox = proc.get_bbox()
     # PDRectangle's default-constructed shape.
     assert bbox.get_lower_left_x() == pytest.approx(0.0)
     assert bbox.get_lower_left_y() == pytest.approx(0.0)
+    assert bbox.get_upper_right_x() == pytest.approx(0.0)
+    assert bbox.get_upper_right_y() == pytest.approx(0.0)
+
+
+# ---------- has_d0 / has_d1 predicates ----------
+
+
+def test_has_d1_true_when_leading_d1() -> None:
+    _, proc = _font_and_proc(b"600 0 50 -10 550 700 d1\n")
+    assert proc.has_d1() is True
+    assert proc.has_d0() is False
+
+
+def test_has_d0_true_when_leading_d0() -> None:
+    _, proc = _font_and_proc(b"600 0 d0\nq Q\n")
+    assert proc.has_d0() is True
+    assert proc.has_d1() is False
+
+
+def test_has_d0_and_has_d1_both_false_for_empty_stream() -> None:
+    _, proc = _font_and_proc(b"")
+    assert proc.has_d0() is False
+    assert proc.has_d1() is False
+
+
+def test_has_d0_and_has_d1_both_false_when_no_metric_op() -> None:
+    _, proc = _font_and_proc(b"q 1 0 0 1 0 0 cm Q\n")
+    assert proc.has_d0() is False
+    assert proc.has_d1() is False
+
+
+# ---------- charproc-local /Resources (PDFBOX-5294) ----------
+
+
+def test_get_resources_prefers_charproc_local_resources_dict() -> None:
+    # PDFBOX-5294: malformed PDFs sometimes stash /Resources on the
+    # char-proc itself instead of the parent font. Upstream tolerates
+    # this and prefers the local entry; mirror that.
+    font = PDType3Font()
+    font_resources = PDResources()
+    font.set_resources(font_resources)
+
+    glyph = _glyph_with_body(b"600 0 d0\n")
+    local_res_dict = COSDictionary()
+    glyph.set_item(COSName.get_pdf_name("Resources"), local_res_dict)
+
+    proc = PDType3CharProc(font, glyph)
+    out = proc.get_resources()
+    assert isinstance(out, PDResources)
+    # Preferred: local /Resources, NOT the font's.
+    assert out.get_cos_object() is local_res_dict
+    assert out.get_cos_object() is not font_resources.get_cos_object()
+
+
+def test_has_resources_false_for_well_formed_charproc() -> None:
+    font = PDType3Font()
+    glyph = _glyph_with_body(b"600 0 d0\n")
+    proc = PDType3CharProc(font, glyph)
+    assert proc.has_resources() is False
+
+
+def test_has_resources_true_when_local_resources_dict_present() -> None:
+    font = PDType3Font()
+    glyph = _glyph_with_body(b"600 0 d0\n")
+    glyph.set_item(COSName.get_pdf_name("Resources"), COSDictionary())
+    proc = PDType3CharProc(font, glyph)
+    assert proc.has_resources() is True
 
 
 # ---------- integration with PDType3Font.get_char_proc(int) ----------
@@ -214,6 +286,7 @@ def test_get_bbox_falls_back_to_origin_rect_when_no_font_bbox() -> None:
 
 def test_round_trip_via_pd_type3_font_get_char_proc() -> None:
     font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 1000.0, 1000.0))
     font.get_cos_object().set_item(
         COSName.get_pdf_name("Encoding"),
         COSName.get_pdf_name("WinAnsiEncoding"),
@@ -226,5 +299,11 @@ def test_round_trip_via_pd_type3_font_get_char_proc() -> None:
     proc = font.get_char_proc(0x41)
     assert isinstance(proc, PDType3CharProc)
     assert proc.get_width() == pytest.approx(500.0)
+    # get_bbox() returns /FontBBox per upstream contract.
     bbox = proc.get_bbox()
-    assert bbox.get_lower_left_x() == pytest.approx(50.0)
+    assert bbox.get_upper_right_x() == pytest.approx(1000.0)
+    # The per-glyph bbox is exposed via get_glyph_bbox().
+    glyph_bbox = proc.get_glyph_bbox()
+    assert glyph_bbox is not None
+    assert glyph_bbox.get_lower_left_x() == pytest.approx(50.0)
+    assert glyph_bbox.get_upper_right_x() == pytest.approx(450.0)
