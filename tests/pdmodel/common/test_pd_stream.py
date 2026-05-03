@@ -470,3 +470,118 @@ def test_is_empty_after_create_output_stream_with_no_writes() -> None:
     with stream.create_output_stream():
         pass
     assert stream.is_empty() is True
+
+
+# ---------- get_filters_as_strings ----------
+
+
+def test_get_filters_as_strings_empty_when_filter_absent() -> None:
+    stream = PDStream()
+    assert stream.get_filters_as_strings() == []
+
+
+def test_get_filters_as_strings_returns_single_name() -> None:
+    stream = PDStream()
+    stream.set_filters(COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    assert stream.get_filters_as_strings() == ["FlateDecode"]
+
+
+def test_get_filters_as_strings_returns_chain_in_order() -> None:
+    stream = PDStream()
+    stream.set_filters(["ASCII85Decode", "FlateDecode"])
+    assert stream.get_filters_as_strings() == ["ASCII85Decode", "FlateDecode"]
+
+
+def test_get_filters_as_strings_matches_get_filters_names() -> None:
+    """``get_filters_as_strings()`` is exactly ``[f.name for f in
+    get_filters()]`` — round-trip parity check."""
+    stream = PDStream()
+    stream.set_filters(["LZWDecode", "ASCIIHexDecode"])
+    expected = [f.name for f in stream.get_filters()]
+    assert stream.get_filters_as_strings() == expected
+
+
+# ---------- get_file_filters_as_strings ----------
+
+
+def test_get_file_filters_as_strings_empty_when_ffilter_absent() -> None:
+    stream = PDStream()
+    assert stream.get_file_filters_as_strings() == []
+
+
+def test_get_file_filters_as_strings_single_name() -> None:
+    stream = PDStream()
+    stream.set_file_filters(COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    assert stream.get_file_filters_as_strings() == ["FlateDecode"]
+
+
+def test_get_file_filters_as_strings_chain_in_order() -> None:
+    stream = PDStream()
+    stream.set_file_filters(["ASCII85Decode", "FlateDecode"])
+    assert stream.get_file_filters_as_strings() == [
+        "ASCII85Decode",
+        "FlateDecode",
+    ]
+
+
+def test_get_file_filters_as_strings_matches_upstream_return_shape() -> None:
+    """``get_file_filters_as_strings()`` returns ``list[str]`` — exactly
+    the upstream Java return shape ``List<String>`` from
+    ``getFileFilters()``."""
+    stream = PDStream()
+    stream.set_file_filters(["LZWDecode"])
+    out = stream.get_file_filters_as_strings()
+    assert isinstance(out, list)
+    assert all(isinstance(n, str) for n in out)
+
+
+# ---------- is_external predicate ----------
+
+
+def test_is_external_false_for_fresh_stream() -> None:
+    stream = PDStream()
+    assert stream.is_external() is False
+
+
+def test_is_external_true_after_setting_file_spec() -> None:
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+
+    stream = PDStream()
+    fs = PDSimpleFileSpecification()
+    fs.set_file("external.dat")
+    stream.set_file(fs)
+    assert stream.is_external() is True
+
+
+def test_is_external_false_after_clearing_file_spec() -> None:
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+
+    stream = PDStream()
+    fs = PDSimpleFileSpecification()
+    fs.set_file("external.dat")
+    stream.set_file(fs)
+    assert stream.is_external() is True
+    stream.set_file(None)
+    assert stream.is_external() is False
+
+
+def test_is_external_independent_of_inline_body() -> None:
+    """An external stream may still carry an inline body (the inline body
+    is the cached version) — ``is_external`` reports purely on ``/F``
+    presence."""
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+
+    stream = PDStream(input_data=b"cached body")
+    assert stream.is_external() is False
+    fs = PDSimpleFileSpecification()
+    fs.set_file("external.dat")
+    stream.set_file(fs)
+    assert stream.is_external() is True
+    # Inline body is still present.
+    assert stream.create_raw_input_stream().read() == b"cached body"

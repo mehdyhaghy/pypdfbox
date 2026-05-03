@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_caret import (
     PDAnnotationCaret,
+)
+from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
+    PDBorderStyleDictionary,
 )
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_highlight import (
     PDAnnotationHighlight,
@@ -296,3 +299,138 @@ def test_polyline_vertices_round_trip() -> None:
     v = [0.0, 0.0, 5.0, 5.0]
     ann.set_vertices(v)
     assert ann.get_vertices() == v
+
+
+# ---------- Wave 237: PDAnnotationMarkup gap fills ----------
+
+
+# /RT default is RT_REPLY ("R"), not None — upstream uses
+# getNameAsString(COSName.RT, RT_REPLY).
+def test_markup_reply_type_default_is_reply() -> None:
+    ann = PDAnnotationCaret()
+    assert ann.get_reply_type() == PDAnnotationMarkup.RT_REPLY
+    assert ann.get_reply_type() == "R"
+
+
+def test_markup_reply_type_clear_resets_to_default() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_reply_type(PDAnnotationMarkup.RT_GROUP)
+    assert ann.get_reply_type() == "Group"
+
+    ann.set_reply_type(None)
+    # /RT removed → default "R" comes back, not None.
+    assert ann.get_reply_type() == "R"
+    assert "RT" not in ann.get_cos_object()
+
+
+# /RC supports COSStream bodies upstream — toTextString-style decode.
+def test_markup_rich_contents_round_trip_with_cos_string() -> None:
+    ann = PDAnnotationCaret()
+    ann.get_cos_object().set_item(
+        COSName.get_pdf_name("RC"), COSString("<body><p>via cos string</p></body>")
+    )
+    assert ann.get_rich_contents() == "<body><p>via cos string</p></body>"
+
+
+def test_markup_rich_contents_round_trip_with_cos_stream() -> None:
+    ann = PDAnnotationCaret()
+    stream = COSStream()
+    payload = "<body><p>via cos stream</p></body>"
+    with stream.create_raw_output_stream() as out:
+        # PDFDocEncoded body → COSString.get_string decodes round-trip.
+        out.write(payload.encode("ascii"))
+    ann.get_cos_object().set_item(COSName.get_pdf_name("RC"), stream)
+
+    assert ann.get_rich_contents() == payload
+
+
+def test_markup_rich_contents_returns_none_for_unexpected_type() -> None:
+    ann = PDAnnotationCaret()
+    # Stash a name where /RC is expected — neither COSString nor COSStream.
+    ann.get_cos_object().set_item(
+        COSName.get_pdf_name("RC"), COSName.get_pdf_name("Bogus")
+    )
+    assert ann.get_rich_contents() is None
+
+
+def test_markup_set_rich_contents_clear_removes_entry() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_rich_contents("<p>x</p>")
+    assert ann.get_rich_contents() == "<p>x</p>"
+
+    ann.set_rich_contents(None)
+    assert ann.get_rich_contents() is None
+    assert "RC" not in ann.get_cos_object()
+
+
+# /BS round trips on markup-rooted annotations (upstream defines accessors
+# directly on PDAnnotationMarkup).
+def test_markup_border_style_default_none() -> None:
+    ann = PDAnnotationCaret()
+    assert ann.get_border_style() is None
+
+
+def test_markup_border_style_round_trip_with_typed_wrapper() -> None:
+    ann = PDAnnotationCaret()
+    bs = PDBorderStyleDictionary()
+    bs.set_width(2.5)
+    bs.set_style(PDBorderStyleDictionary.STYLE_DASHED)
+
+    ann.set_border_style(bs)
+
+    got = ann.get_border_style()
+    assert isinstance(got, PDBorderStyleDictionary)
+    assert got.get_cos_object() is bs.get_cos_object()
+    assert got.get_width() == 2.5
+    assert got.get_style() == PDBorderStyleDictionary.STYLE_DASHED
+
+
+def test_markup_border_style_accepts_raw_dictionary() -> None:
+    ann = PDAnnotationCaret()
+    raw = COSDictionary()
+    raw.set_float(COSName.get_pdf_name("W"), 1.25)
+    ann.set_border_style(raw)
+
+    got = ann.get_border_style()
+    assert isinstance(got, PDBorderStyleDictionary)
+    assert got.get_cos_object() is raw
+
+
+def test_markup_border_style_clear_removes_entry() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_border_style(PDBorderStyleDictionary())
+    ann.set_border_style(None)
+
+    assert ann.get_border_style() is None
+    assert "BS" not in ann.get_cos_object()
+
+
+def test_markup_border_style_ignores_non_dictionary_value() -> None:
+    ann = PDAnnotationCaret()
+    ann.get_cos_object().set_string("BS", "not a dict")
+    assert ann.get_border_style() is None
+
+
+# Predicate helper — has_popup
+def test_markup_has_popup_default_false() -> None:
+    ann = PDAnnotationCaret()
+    assert ann.has_popup() is False
+
+
+def test_markup_has_popup_true_when_set() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_popup(COSDictionary())
+    assert ann.has_popup() is True
+
+
+def test_markup_has_popup_false_when_cleared() -> None:
+    ann = PDAnnotationCaret()
+    ann.set_popup(COSDictionary())
+    ann.set_popup(None)
+    assert ann.has_popup() is False
+
+
+def test_markup_has_popup_false_for_non_dictionary_value() -> None:
+    ann = PDAnnotationCaret()
+    ann.get_cos_object().set_string("Popup", "not a dict")
+    assert ann.has_popup() is False

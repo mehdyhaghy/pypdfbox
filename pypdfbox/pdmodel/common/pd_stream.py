@@ -275,6 +275,17 @@ class PDStream:
         filters = self.get_filters()
         return filters[0] if filters else None
 
+    def get_filters_as_strings(self) -> list[str]:
+        """``/Filter`` chain as a list of plain filter-name strings (no
+        leading slash). Empty when absent.
+
+        Mirrors the spelled-out upstream pattern ``getFilters().stream().map(
+        COSName::getName).collect(...)`` and complements
+        :meth:`get_file_filters_as_strings`. Useful for callers that compare
+        filter identifiers as strings (e.g. matching against the keys of a
+        ``Filter`` registry)."""
+        return [f.name for f in self.get_filters()]
+
     # ---------- decode parameters ----------
 
     def get_decode_parms(self) -> list[COSDictionary] | None:
@@ -399,6 +410,17 @@ class PDStream:
             return
         self._stream.set_item(_F, file.get_cos_object())
 
+    def is_external(self) -> bool:
+        """``True`` when this stream references its body via the ``/F``
+        external file specification rather than carrying an inline body.
+
+        Convenience predicate complementing :meth:`get_file`; matches the
+        natural "is this an external stream" check that callers otherwise
+        write as ``stream.get_file() is not None``. Note this only checks
+        for the *presence* of ``/F`` — it does not validate that the
+        referenced file actually exists on disk."""
+        return self._stream.contains_key(_F)
+
     def get_file_filters(self) -> list[COSName]:
         """``/FFilter`` chain — filter chain to apply when the body is
         sourced from the external file referenced by ``/F``. Same shape
@@ -420,6 +442,17 @@ class PDStream:
                     )
             return out
         raise TypeError(f"unexpected /FFilter type: {type(f).__name__}")
+
+    def get_file_filters_as_strings(self) -> list[str]:
+        """``/FFilter`` chain as a list of plain filter-name strings (no
+        leading slash). Empty when absent.
+
+        Matches the *exact* upstream return shape of ``getFileFilters()
+        : List<String>``, which we deliberately diverge from in
+        :meth:`get_file_filters` (where we return ``list[COSName]`` for
+        symmetry with :meth:`get_filters`). Use this accessor when you
+        need byte-for-byte parity with upstream's string-form output."""
+        return [f.name for f in self.get_file_filters()]
 
     def set_file_filters(
         self,

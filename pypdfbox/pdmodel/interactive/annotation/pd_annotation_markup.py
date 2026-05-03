@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream, COSString
 
 from .pd_annotation import PDAnnotation
 
 if TYPE_CHECKING:
     from .pd_annotation_popup import PDAnnotationPopup
+    from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 _CREATION_DATE: COSName = COSName.get_pdf_name("CreationDate")
 _IRT: COSName = COSName.get_pdf_name("IRT")
@@ -18,6 +19,7 @@ _CA: COSName = COSName.get_pdf_name("CA")
 _POPUP: COSName = COSName.get_pdf_name("Popup")
 _RC: COSName = COSName.get_pdf_name("RC")
 _EX_DATA: COSName = COSName.get_pdf_name("ExData")
+_BS: COSName = COSName.get_pdf_name("BS")
 
 
 class PDAnnotationMarkup(PDAnnotation):
@@ -115,8 +117,15 @@ class PDAnnotationMarkup(PDAnnotation):
 
     # ---------- /RT (reply type) ----------
 
-    def get_reply_type(self) -> str | None:
-        return self._dict.get_name(_RT)
+    def get_reply_type(self) -> str:
+        """Default per spec is :data:`RT_REPLY` (``R``).
+
+        Mirrors upstream ``getReplyType()`` which uses
+        ``getNameAsString(COSName.RT, RT_REPLY)`` — a missing ``/RT`` is
+        equivalent to a reply (the more common case), not a group.
+        """
+        value = self._dict.get_name(_RT)
+        return value if value is not None else self.RT_REPLY
 
     def set_reply_type(self, rt: str | None) -> None:
         if rt is None:
@@ -147,11 +156,67 @@ class PDAnnotationMarkup(PDAnnotation):
     # ---------- /RC (rich contents) ----------
 
     def get_rich_contents(self) -> str | None:
-        """Return the raw rich text stream displayed in the popup window."""
-        return self._dict.get_string(_RC)
+        """Return the raw rich text contents displayed in the popup window.
+
+        Mirrors upstream ``getRichContents()``: ``/RC`` may be either a
+        ``COSString`` (inline rich-text XML) or a ``COSStream`` whose body
+        decodes to the same XML. ``None`` is returned for any other / absent
+        value.
+        """
+        value = self._dict.get_dictionary_object(_RC)
+        if isinstance(value, COSString):
+            return value.get_string()
+        if isinstance(value, COSStream):
+            return value.to_text_string()
+        return None
 
     def set_rich_contents(self, rc: str | None) -> None:
-        self._dict.set_string(_RC, rc)
+        if rc is None:
+            self._dict.remove_item(_RC)
+            return
+        self._dict.set_item(_RC, COSString(rc))
+
+    # ---------- /BS (border style) ----------
+
+    def get_border_style(self) -> PDBorderStyleDictionary | None:
+        """Return the border style dictionary (line width and dash pattern).
+
+        Mirrors upstream ``PDAnnotationMarkup.getBorderStyle()`` which
+        exposes ``/BS`` on every markup-rooted annotation (PDF 32000-1:2008
+        §12.5.4).
+        """
+        from .pd_border_style_dictionary import PDBorderStyleDictionary
+
+        value = self._dict.get_dictionary_object(_BS)
+        if isinstance(value, COSDictionary):
+            return PDBorderStyleDictionary(value)
+        return None
+
+    def set_border_style(
+        self, bs: PDBorderStyleDictionary | COSDictionary | None
+    ) -> None:
+        """Set the border style dictionary, or clear ``/BS`` when ``bs`` is ``None``.
+
+        Mirrors upstream ``PDAnnotationMarkup.setBorderStyle(PDBorderStyleDictionary)``.
+        """
+        if bs is None:
+            self._dict.remove_item(_BS)
+            return
+        self._dict.set_item(
+            _BS,
+            bs.get_cos_object() if hasattr(bs, "get_cos_object") else bs,
+        )
+
+    # ---------- predicate helper ----------
+
+    def has_popup(self) -> bool:
+        """Return ``True`` when ``/Popup`` is present and resolves to a dictionary.
+
+        Convenience predicate that avoids constructing a
+        :class:`PDAnnotationPopup` wrapper just to test presence — useful
+        for migration paths that strip popups before re-export.
+        """
+        return isinstance(self._dict.get_dictionary_object(_POPUP), COSDictionary)
 
     # ---------- /ExData (external data) ----------
 
