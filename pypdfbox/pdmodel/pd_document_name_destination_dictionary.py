@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
@@ -90,6 +91,37 @@ class PDDocumentNameDestinationDictionary:
     def __len__(self) -> int:
         """Number of name → destination entries in the dictionary."""
         return self._dict.size()
+
+    def __iter__(self) -> Iterator[tuple[str, PDDestination | None]]:
+        """Yield ``(name, destination)`` pairs for every entry.
+
+        Equivalent to iterating ``items()`` — provided so
+        ``for name, dest in dd:`` works directly without needing the
+        explicit ``items()`` call. The destination is the same object
+        :meth:`get_destination` would return; entries whose value is
+        not coercible into a ``PDDestination`` (e.g. a dict missing
+        ``/D``) yield ``None`` so callers can distinguish "key present
+        but malformed" from "key missing".
+
+        Order matches the underlying ``COSDictionary`` insertion order.
+        Upstream PDFBox does not expose iteration on this wrapper —
+        callers reach through ``getCOSObject().keySet()`` and call
+        ``getDestination`` per key. pypdfbox surfaces the convenience
+        directly.
+        """
+        return self.items()
+
+    def items(self) -> Iterator[tuple[str, PDDestination | None]]:
+        """Iterate ``(name, destination)`` pairs in insertion order.
+
+        Yields each name string paired with the resolved
+        :class:`PDDestination` (or ``None`` when the value cannot be
+        coerced). Mirrors :class:`dict.items` shape so callers can write
+        ``dict(dd.items())`` to materialize the mapping eagerly.
+        """
+        for key in self._dict.key_set():
+            name = key.get_name()
+            yield name, self.get_destination(name)
 
 
 __all__ = ["PDDocumentNameDestinationDictionary"]

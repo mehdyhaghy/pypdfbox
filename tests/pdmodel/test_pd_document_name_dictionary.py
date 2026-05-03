@@ -232,3 +232,265 @@ def test_dest_dict_get_destination_for_dict_with_d() -> None:
 def test_dest_dict_missing_returns_none() -> None:
     dd = PDDocumentNameDestinationDictionary(COSDictionary())
     assert dd.get_destination("nope") is None
+
+
+# ---------- Wave 211: presence predicates on PDDocumentNameDictionary ----------
+
+
+def _xyz_array() -> COSArray:
+    arr = COSArray()
+    arr.add(COSInteger.get(0))
+    arr.add(COSName.get_pdf_name("XYZ"))
+    arr.add(COSFloat(0.0))
+    arr.add(COSFloat(0.0))
+    arr.add(COSFloat(1.0))
+    return arr
+
+
+def test_has_predicates_all_false_on_empty_names() -> None:
+    nd = PDDocumentNameDictionary()
+    assert nd.has_dests() is False
+    assert nd.has_ap() is False
+    assert nd.has_embedded_files() is False
+    assert nd.has_javascript() is False
+    assert nd.has_pages() is False
+    assert nd.has_templates() is False
+    assert nd.has_ids() is False
+    assert nd.has_urls() is False
+    assert nd.has_alternate_presentations() is False
+    assert nd.has_renditions() is False
+
+
+def test_has_dests_true_for_names_entry() -> None:
+    nd = PDDocumentNameDictionary()
+    nd.get_cos_object().set_item(
+        COSName.get_pdf_name("Dests"), COSDictionary()
+    )
+    assert nd.has_dests() is True
+
+
+def test_has_dests_true_for_catalog_legacy_fallback() -> None:
+    cat = _FakeCatalog()
+    legacy = COSDictionary()
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Dests"), legacy)
+    nd = PDDocumentNameDictionary(catalog=cat)
+    # /Names doesn't carry /Dests, but the catalog does → still present.
+    assert nd.has_dests() is True
+
+
+def test_has_dests_false_when_value_is_not_a_dict() -> None:
+    """Stray non-dict /Dests value → predicate reports False (defensive)."""
+    nd = PDDocumentNameDictionary()
+    nd.get_cos_object().set_item(
+        COSName.get_pdf_name("Dests"), COSName.get_pdf_name("oops")
+    )
+    assert nd.has_dests() is False
+
+
+def test_has_ap_round_trip() -> None:
+    nd = PDDocumentNameDictionary()
+    assert nd.has_ap() is False
+    nd.set_ap(COSDictionary())
+    assert nd.has_ap() is True
+    nd.set_ap(None)
+    assert nd.has_ap() is False
+
+
+def test_has_embedded_files_round_trip() -> None:
+    nd = PDDocumentNameDictionary()
+    nd.set_embedded_files(PDEmbeddedFilesNameTreeNode())
+    assert nd.has_embedded_files() is True
+    nd.set_embedded_files(None)
+    assert nd.has_embedded_files() is False
+
+
+def test_has_javascript_round_trip() -> None:
+    nd = PDDocumentNameDictionary()
+    nd.set_javascript(PDJavascriptNameTreeNode())
+    assert nd.has_javascript() is True
+    nd.set_javascript(None)
+    assert nd.has_javascript() is False
+
+
+def test_has_pages_templates_ids_urls_alternate_renditions_round_trip() -> None:
+    """Cover the predicate set that maps to the typed-wrapper categories."""
+    from pypdfbox.pdmodel.pd_alternate_presentations_name_tree_node import (
+        PDAlternatePresentationsNameTreeNode,
+    )
+    from pypdfbox.pdmodel.pd_ids_name_tree_node import PDIDSNameTreeNode
+    from pypdfbox.pdmodel.pd_pages_name_tree_node import PDPagesNameTreeNode
+    from pypdfbox.pdmodel.pd_renditions_name_tree_node import (
+        PDRenditionsNameTreeNode,
+    )
+    from pypdfbox.pdmodel.pd_templates_name_tree_node import (
+        PDTemplatesNameTreeNode,
+    )
+    from pypdfbox.pdmodel.pd_urls_name_tree_node import PDURLSNameTreeNode
+
+    nd = PDDocumentNameDictionary()
+
+    nd.set_pages(PDPagesNameTreeNode())
+    nd.set_templates(PDTemplatesNameTreeNode())
+    nd.set_ids(PDIDSNameTreeNode())
+    nd.set_urls(PDURLSNameTreeNode())
+    nd.set_alternate_presentations(PDAlternatePresentationsNameTreeNode())
+    nd.set_renditions(PDRenditionsNameTreeNode())
+
+    assert nd.has_pages() is True
+    assert nd.has_templates() is True
+    assert nd.has_ids() is True
+    assert nd.has_urls() is True
+    assert nd.has_alternate_presentations() is True
+    assert nd.has_renditions() is True
+
+    nd.set_pages(None)
+    nd.set_templates(None)
+    nd.set_ids(None)
+    nd.set_urls(None)
+    nd.set_alternate_presentations(None)
+    nd.set_renditions(None)
+
+    assert nd.has_pages() is False
+    assert nd.has_templates() is False
+    assert nd.has_ids() is False
+    assert nd.has_urls() is False
+    assert nd.has_alternate_presentations() is False
+    assert nd.has_renditions() is False
+
+
+# ---------- Wave 211: KEY_* class constants and NAME_KEYS tuple ----------
+
+
+def test_key_constants_are_cos_names_with_expected_spelling() -> None:
+    assert COSName.get_pdf_name("Dests") == PDDocumentNameDictionary.KEY_DESTS
+    assert COSName.get_pdf_name("AP") == PDDocumentNameDictionary.KEY_AP
+    assert (
+        COSName.get_pdf_name("EmbeddedFiles")
+        == PDDocumentNameDictionary.KEY_EMBEDDED_FILES
+    )
+    assert (
+        COSName.get_pdf_name("JavaScript")
+        == PDDocumentNameDictionary.KEY_JAVA_SCRIPT
+    )
+    assert COSName.get_pdf_name("Pages") == PDDocumentNameDictionary.KEY_PAGES
+    assert (
+        COSName.get_pdf_name("Templates")
+        == PDDocumentNameDictionary.KEY_TEMPLATES
+    )
+    assert COSName.get_pdf_name("IDS") == PDDocumentNameDictionary.KEY_IDS
+    assert COSName.get_pdf_name("URLS") == PDDocumentNameDictionary.KEY_URLS
+    assert (
+        COSName.get_pdf_name("AlternatePresentations")
+        == PDDocumentNameDictionary.KEY_ALTERNATE_PRESENTATIONS
+    )
+    assert (
+        COSName.get_pdf_name("Renditions")
+        == PDDocumentNameDictionary.KEY_RENDITIONS
+    )
+
+
+def test_name_keys_tuple_covers_table_31_in_order() -> None:
+    """``NAME_KEYS`` enumerates the 10 spec name-tree subkeys exactly once."""
+    keys = PDDocumentNameDictionary.NAME_KEYS
+    assert isinstance(keys, tuple)
+    assert len(keys) == 10
+    # Spec order: Dests, AP, EmbeddedFiles, JavaScript, Pages, Templates,
+    # IDS, URLS, AlternatePresentations, Renditions (PDF 32000-1 Table 31).
+    assert keys == (
+        PDDocumentNameDictionary.KEY_DESTS,
+        PDDocumentNameDictionary.KEY_AP,
+        PDDocumentNameDictionary.KEY_EMBEDDED_FILES,
+        PDDocumentNameDictionary.KEY_JAVA_SCRIPT,
+        PDDocumentNameDictionary.KEY_PAGES,
+        PDDocumentNameDictionary.KEY_TEMPLATES,
+        PDDocumentNameDictionary.KEY_IDS,
+        PDDocumentNameDictionary.KEY_URLS,
+        PDDocumentNameDictionary.KEY_ALTERNATE_PRESENTATIONS,
+        PDDocumentNameDictionary.KEY_RENDITIONS,
+    )
+    # And no duplicates.
+    assert len(set(keys)) == 10
+
+
+# ---------- Wave 211: __iter__ / items() on PDDocumentNameDestinationDictionary
+
+
+def test_dest_dict_iter_yields_name_destination_pairs() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _xyz_array())
+    dests_cos.set_item("intro", _xyz_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+
+    pairs = list(iter(dd))
+    assert len(pairs) == 2
+    names = [name for name, _ in pairs]
+    assert sorted(names) == ["home", "intro"]
+    for name, dest in pairs:
+        assert isinstance(name, str)
+        assert isinstance(dest, PDPageXYZDestination)
+
+
+def test_dest_dict_items_iterator_matches_iter() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _xyz_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+
+    via_iter = list(iter(dd))
+    via_items = list(dd.items())
+    # Same names + same destination wrapper class.
+    assert [n for n, _ in via_iter] == [n for n, _ in via_items]
+    assert all(
+        type(d_iter) is type(d_items)
+        for (_, d_iter), (_, d_items) in zip(via_iter, via_items, strict=True)
+    )
+
+
+def test_dest_dict_items_yields_none_for_unparseable_value() -> None:
+    """Empty inner dict (no /D, no array) → destination resolves to None,
+    matching :meth:`get_destination` semantics."""
+    dests_cos = COSDictionary()
+    dests_cos.set_item("borked", COSDictionary())  # no /D
+    dests_cos.set_item("home", _xyz_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+
+    by_name = dict(dd.items())
+    assert by_name["borked"] is None
+    assert isinstance(by_name["home"], PDPageXYZDestination)
+
+
+def test_dest_dict_items_empty_for_empty_dict() -> None:
+    dd = PDDocumentNameDestinationDictionary(COSDictionary())
+    assert list(dd.items()) == []
+    assert list(iter(dd)) == []
+
+
+def test_dest_dict_iter_supports_for_loop_unpacking() -> None:
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _xyz_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+
+    seen: list[str] = []
+    for name, _dest in dd:
+        seen.append(name)
+    assert seen == ["home"]
+
+
+def test_dest_dict_items_returns_fresh_iterator_each_call() -> None:
+    """Each ``items()`` call yields a fresh iterator, so callers can iterate
+    multiple times. (``__iter__`` returning the iterator from ``items()``
+    means we get the same guarantee.)"""
+    dests_cos = COSDictionary()
+    dests_cos.set_item("home", _xyz_array())
+    dd = PDDocumentNameDestinationDictionary(dests_cos)
+
+    first = list(dd.items())
+    second = list(dd.items())
+    assert first[0][0] == "home"
+    assert second[0][0] == "home"
+    # Independent iterators — exhausting one mustn't drain the other.
+    it1 = dd.items()
+    it2 = dd.items()
+    next(it1)
+    # it2 should still have the first entry available.
+    name, _ = next(it2)
+    assert name == "home"

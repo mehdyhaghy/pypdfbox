@@ -30,6 +30,20 @@ _ALTERNATE_PRESENTATIONS: COSName = COSName.get_pdf_name("AlternatePresentations
 _RENDITIONS: COSName = COSName.get_pdf_name("Renditions")
 
 
+_NAME_KEYS: tuple[COSName, ...] = (
+    _DESTS,
+    _AP,
+    _EMBEDDED_FILES,
+    _JAVA_SCRIPT,
+    _PAGES,
+    _TEMPLATES,
+    _IDS,
+    _URLS,
+    _ALTERNATE_PRESENTATIONS,
+    _RENDITIONS,
+)
+
+
 class PDDocumentNameDictionary:
     """
     Catalog ``/Names`` typed wrapper. Mirrors PDFBox
@@ -41,6 +55,25 @@ class PDDocumentNameDictionary:
     ``/AlternatePresentations`` and ``/Renditions``. The ``/AP`` entry
     is exposed as a raw ``COSDictionary`` (no typed wrapper yet).
     """
+
+    # ``/Names`` sub-dictionary key constants (PDF 32000-1 §7.7.4, Table 31).
+    # Upstream PDFBox reads these directly from ``COSName`` shared instances;
+    # pypdfbox surfaces them on the wrapper class so callers can iterate over
+    # the full set of name-tree keys without re-deriving the spelling.
+    KEY_DESTS: COSName = _DESTS
+    KEY_AP: COSName = _AP
+    KEY_EMBEDDED_FILES: COSName = _EMBEDDED_FILES
+    KEY_JAVA_SCRIPT: COSName = _JAVA_SCRIPT
+    KEY_PAGES: COSName = _PAGES
+    KEY_TEMPLATES: COSName = _TEMPLATES
+    KEY_IDS: COSName = _IDS
+    KEY_URLS: COSName = _URLS
+    KEY_ALTERNATE_PRESENTATIONS: COSName = _ALTERNATE_PRESENTATIONS
+    KEY_RENDITIONS: COSName = _RENDITIONS
+
+    #: Tuple of every ``/Names`` sub-dictionary key in PDF 32000-1 Table 31
+    #: order. Useful for iteration, validation, and round-trip enumeration.
+    NAME_KEYS: tuple[COSName, ...] = _NAME_KEYS
 
     def __init__(
         self,
@@ -79,6 +112,71 @@ class PDDocumentNameDictionary:
 
     def __bool__(self) -> bool:  # pragma: no cover - thin wrapper
         return not self.is_empty()
+
+    # ---------- presence predicates ----------
+    #
+    # Cheap "is this sub-dictionary present?" checks that don't allocate
+    # a typed wrapper. Useful when callers only need to know whether a
+    # category exists (e.g. preflight-style enumeration). Upstream PDFBox
+    # has no equivalent; callers there reach through
+    # ``getCOSObject().getCOSDictionary(KEY) != null``.
+    #
+    # Each predicate considers the entry "present" iff the underlying
+    # ``/Names`` sub-dictionary contains the key AND the resolved value is
+    # a ``COSDictionary``. A key with a non-dict value (e.g. a stray name
+    # or array) reports ``False`` so callers don't trip over malformed
+    # inputs when they expect a typed wrapper to follow.
+
+    def _has_dict_entry(self, key: COSName) -> bool:
+        return isinstance(self._name_dictionary.get_dictionary_object(key), COSDictionary)
+
+    def has_dests(self) -> bool:
+        """``True`` when ``/Names /Dests`` is a dictionary, or — matching
+        :meth:`get_dests` fallback — when the catalog carries a legacy
+        ``/Dests`` dict. This mirrors the lookup order in ``get_dests``."""
+        if self._has_dict_entry(_DESTS):
+            return True
+        if self._catalog is not None:
+            cat_dests = self._catalog.get_cos_object().get_dictionary_object(_DESTS)
+            if isinstance(cat_dests, COSDictionary):
+                return True
+        return False
+
+    def has_ap(self) -> bool:
+        """``True`` when ``/Names /AP`` is a dictionary."""
+        return self._has_dict_entry(_AP)
+
+    def has_embedded_files(self) -> bool:
+        """``True`` when ``/Names /EmbeddedFiles`` is a dictionary."""
+        return self._has_dict_entry(_EMBEDDED_FILES)
+
+    def has_javascript(self) -> bool:
+        """``True`` when ``/Names /JavaScript`` is a dictionary."""
+        return self._has_dict_entry(_JAVA_SCRIPT)
+
+    def has_pages(self) -> bool:
+        """``True`` when ``/Names /Pages`` is a dictionary."""
+        return self._has_dict_entry(_PAGES)
+
+    def has_templates(self) -> bool:
+        """``True`` when ``/Names /Templates`` is a dictionary."""
+        return self._has_dict_entry(_TEMPLATES)
+
+    def has_ids(self) -> bool:
+        """``True`` when ``/Names /IDS`` is a dictionary."""
+        return self._has_dict_entry(_IDS)
+
+    def has_urls(self) -> bool:
+        """``True`` when ``/Names /URLS`` is a dictionary."""
+        return self._has_dict_entry(_URLS)
+
+    def has_alternate_presentations(self) -> bool:
+        """``True`` when ``/Names /AlternatePresentations`` is a dictionary."""
+        return self._has_dict_entry(_ALTERNATE_PRESENTATIONS)
+
+    def has_renditions(self) -> bool:
+        """``True`` when ``/Names /Renditions`` is a dictionary."""
+        return self._has_dict_entry(_RENDITIONS)
 
     # ---------- /Dests ----------
 

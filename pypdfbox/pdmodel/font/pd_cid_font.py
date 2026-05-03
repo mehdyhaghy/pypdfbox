@@ -85,8 +85,20 @@ class PDCIDFont(PDFont):
     def get_dw(self) -> int:
         return self._dict.get_int(_DW, 1000)
 
-    def set_dw(self, width: int) -> None:
+    def set_dw(self, width: int | None) -> None:
+        """Set ``/DW`` (default glyph width). Passing ``None`` removes the
+        entry, restoring the spec-default of ``1000``.
+        """
+        if width is None:
+            self._dict.remove_item(_DW)
+            return
         self._dict.set_int(_DW, int(width))
+
+    def has_dw(self) -> bool:
+        """``True`` when ``/DW`` is present on the dictionary. Useful to
+        distinguish an explicit ``1000`` from the spec-default fallback.
+        """
+        return self._dict.contains_key(_DW)
 
     # ---------- /DW2 (default vertical metrics) ----------
 
@@ -229,6 +241,33 @@ class PDCIDFont(PDFont):
         v_x = b.float_value() if isinstance(b, COSNumber) else -1000.0
         return (v_y, v_x)
 
+    def get_dw2_position_vector_y(self) -> float:
+        """Return the position-vector-y component of ``/DW2`` (its first
+        entry per PDF 32000-1 §9.7.4.3); defaults to ``880`` when ``/DW2``
+        is absent or malformed.
+        """
+        v_y, _ = self.get_default_position_vector()
+        return v_y
+
+    def get_dw2_displacement_vector_y(self) -> float:
+        """Return the displacement-vector-y component of ``/DW2`` (its
+        second entry per PDF 32000-1 §9.7.4.3); defaults to ``-1000`` when
+        ``/DW2`` is absent or malformed.
+        """
+        _, displacement_y = self.get_default_position_vector()
+        return displacement_y
+
+    def get_default_position_vector_for_cid(self, cid: int) -> tuple[float, float]:
+        """Return the per-CID default position vector ``(v_x, v_y)``.
+
+        Mirrors upstream ``PDCIDFont.getDefaultPositionVector(int cid)``:
+        ``v_x = widthForCID(cid) / 2`` and ``v_y = dw2[0]`` (the
+        position-vector-y from ``/DW2``, defaulting to ``880``). Used as
+        the fallback in :meth:`get_position_vector` when ``/W2`` doesn't
+        cover ``cid``.
+        """
+        return (self.get_glyph_width(cid) / 2.0, self.get_dw2_position_vector_y())
+
     def get_widths2(self) -> dict[int, tuple[float, float, float]]:
         """Parse ``/W2`` into ``CID -> (w1y, v_x, v_y)`` (1/1000 em).
 
@@ -328,6 +367,26 @@ class PDCIDFont(PDFont):
         if isinstance(v, COSName):
             return v.name
         return None
+
+    def has_cid_to_gid_map_stream(self) -> bool:
+        """``True`` when ``/CIDToGIDMap`` is a stream (i.e. an explicit
+        CID-to-GID lookup table is present). Mirrors the upstream check
+        used by ``PDCIDFontType2.codeToGID``.
+        """
+        v = self._dict.get_dictionary_object(_CID_TO_GID_MAP)
+        return isinstance(v, COSStream)
+
+    def is_identity_cid_to_gid_map(self) -> bool:
+        """``True`` when ``/CIDToGIDMap`` is the name ``/Identity`` *or*
+        absent. Per PDF 32000-1 §9.7.4.2 a missing entry is treated as
+        ``Identity``, so this predicate covers both cases.
+        """
+        v = self._dict.get_dictionary_object(_CID_TO_GID_MAP)
+        if v is None:
+            return True
+        if isinstance(v, COSName) and v.name == "Identity":
+            return True
+        return False
 
     def set_cid_to_gid_map(self, value: COSStream | str | None) -> None:
         if value is None:
@@ -447,8 +506,7 @@ class PDCIDFont(PDFont):
             return (v_x, v_y)
         # /DW2 is [position_vector_y displacement_vector_y]; the upstream
         # default position vector is (widthForCID(cid)/2, dw2[0]).
-        v_y_default, _ = self.get_default_position_vector()
-        return (self.get_glyph_width(cid) / 2.0, v_y_default)
+        return self.get_default_position_vector_for_cid(cid)
 
     def get_height(self, cid: int) -> float:
         """Vertical advance for ``cid`` (the ``w1y`` component of ``/W2``).
