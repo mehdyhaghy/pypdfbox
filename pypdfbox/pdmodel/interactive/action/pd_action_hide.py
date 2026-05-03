@@ -199,5 +199,54 @@ class PDActionHide(PDAction):
         :meth:`is_hide` / :meth:`should_hide`."""
         self.set_h(hide)
 
+    # ---------- predicates / clear / validation ----------
+
+    def has_target(self) -> bool:
+        """``True`` when ``/T`` is present on the underlying dictionary,
+        regardless of whether it is a string, an annotation dictionary, or
+        an array of either. Lets callers branch on target presence without
+        paying the cost of dispatching through :meth:`get_target_names` /
+        :meth:`get_annotation` / :meth:`get_annotations`."""
+        return self._action.get_dictionary_object(_T) is not None
+
+    def has_hide_flag(self) -> bool:
+        """``True`` when ``/H`` is explicitly present on the dictionary
+        (independent of its boolean value). Distinct from :meth:`is_hide`
+        which always returns the effective value (defaulting to ``True``
+        when absent) — useful for round-tripping callers that want to
+        preserve the upstream "no /H written" shape vs. "/H true written"
+        shape."""
+        return self._action.get_dictionary_object(_H) is not None
+
+    def clear_target(self) -> None:
+        """Remove the ``/T`` entry. Equivalent to ``set_target(None)``;
+        provided as a verb-named convenience that mirrors the ``clear_*``
+        helpers on other action wrappers."""
+        self._action.remove_item(_T)
+
+    def clear_hide_flag(self) -> None:
+        """Remove the ``/H`` entry so :meth:`is_hide` falls back to its
+        Table 200 default of ``True``. Equivalent to ``set_hide(True)``
+        in effective-value terms but distinct on the wire — leaves the
+        dictionary in the canonical "default omitted" shape that upstream
+        readers/writers prefer for new actions."""
+        self._action.remove_item(_H)
+
+    def is_empty(self) -> bool:
+        """``True`` when neither ``/T`` nor ``/H`` is present. A freshly
+        constructed :class:`PDActionHide` is "empty" in this sense — it
+        carries only the ``/Type /Action`` and ``/S /Hide`` boilerplate
+        and has no payload yet. Useful for callers building actions
+        incrementally and validating before serialisation."""
+        return not self.has_target() and not self.has_hide_flag()
+
+    def is_valid(self) -> bool:
+        """``True`` when ``/S`` equals :attr:`SUB_TYPE` (``"Hide"``).
+        Sanity check after round-tripping through :meth:`PDAction.create`
+        or when wrapping a hand-built :class:`COSDictionary`. Mirrors the
+        ``is_valid`` predicate exposed on other action wrappers (e.g.
+        :class:`PDActionEmbeddedGoTo`)."""
+        return self.get_sub_type() == self.SUB_TYPE
+
 
 __all__ = ["PDActionHide"]

@@ -169,5 +169,67 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
             measure.get_cos_object() if hasattr(measure, "get_cos_object") else measure,
         )
 
+    # ---------- predicates / vertex helpers ----------
+
+    def has_vertices(self) -> bool:
+        """``True`` when ``/Vertices`` is present (regardless of contents).
+
+        Predicate companion to :meth:`get_vertices`; useful for callers
+        that need to distinguish "polygon never authored" from "polygon
+        authored with an empty/malformed vertices array".
+        """
+        return self._dict.get_dictionary_object(_VERTICES) is not None
+
+    def vertex_count(self) -> int:
+        """Return the number of ``(x, y)`` vertex points in ``/Vertices``.
+
+        ``/Vertices`` stores alternating x/y floats, so this is
+        ``len(/Vertices) // 2``. Returns ``0`` when ``/Vertices`` is
+        absent or not a ``COSArray``. Trailing odd entries are dropped to
+        match the spec which mandates an even number of coordinates.
+        """
+        value = self._dict.get_dictionary_object(_VERTICES)
+        if isinstance(value, COSArray):
+            return value.size() // 2
+        return 0
+
+    def iter_vertex_points(self) -> "list[tuple[float, float]]":
+        """Return ``/Vertices`` as a list of ``(x, y)`` tuples.
+
+        Convenience helper — upstream callers manipulate the flat
+        ``float[]`` directly, but Python callers usually want point
+        pairs. Returns an empty list when ``/Vertices`` is absent or
+        malformed. Trailing odd entries are dropped.
+        """
+        value = self._dict.get_dictionary_object(_VERTICES)
+        if not isinstance(value, COSArray):
+            return []
+        coords = value.to_float_array()
+        pairs: list[tuple[float, float]] = []
+        for i in range(0, len(coords) - 1, 2):
+            pairs.append((coords[i], coords[i + 1]))
+        return pairs
+
+    def has_path(self) -> bool:
+        """``True`` when the PDF 2.0 ``/Path`` entry is present.
+
+        Predicate companion to :meth:`get_path`. ``/Path`` is mutually
+        exclusive with ``/Vertices`` per PDF 2.0 — if both are present
+        readers should use ``/Path``.
+        """
+        return self._dict.get_dictionary_object(_PATH) is not None
+
+    def has_border_effect(self) -> bool:
+        """``True`` when the ``/BE`` border-effect dictionary is present."""
+        return self._dict.get_dictionary_object(_BE) is not None
+
+    def has_interior_color(self) -> bool:
+        """``True`` when the ``/IC`` interior-color array is present."""
+        return self._dict.get_dictionary_object(_IC) is not None
+
+    def has_measure(self) -> bool:
+        """``True`` when the ``/Measure`` dictionary is present."""
+        return self._dict.get_dictionary_object(_MEASURE) is not None
+
 
 __all__ = ["PDAnnotationPolygon"]

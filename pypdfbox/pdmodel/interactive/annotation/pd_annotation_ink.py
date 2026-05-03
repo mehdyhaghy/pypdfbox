@@ -94,5 +94,45 @@ class PDAnnotationInk(PDAnnotationMarkup):
             return value.size()
         return 0
 
+    # ---------- predicates / convenience helpers ----------
+
+    def has_ink_list(self) -> bool:
+        """``True`` when ``/InkList`` is present (regardless of whether the
+        entry is a well-formed ``COSArray`` or has any inner paths).
+
+        Predicate companion to :meth:`get_ink_list`; useful for callers
+        that need to distinguish "annotation has never been drawn" from
+        "annotation was drawn then cleared to an empty array".
+        """
+        return self._dict.get_dictionary_object(_INK_LIST) is not None
+
+    def is_empty(self) -> bool:
+        """``True`` when ``/InkList`` is missing, malformed, or contains
+        zero stroked paths.
+
+        Mirrors the upstream convention where ``getInkList()`` returns an
+        empty ``float[0][0]`` for an absent ``/InkList`` — both states
+        report empty here.
+        """
+        value = self._dict.get_dictionary_object(_INK_LIST)
+        if not isinstance(value, COSArray):
+            return True
+        return value.size() == 0
+
+    def clear_ink_list(self) -> None:
+        """Empty the ``/InkList`` array in place when present, leaving an
+        empty ``COSArray`` so existing references stay valid; if ``/InkList``
+        is absent or not a ``COSArray``, install an empty ``COSArray``.
+
+        Distinct from ``set_ink_list(None)`` which removes the entry
+        entirely. Use this when the caller wants to keep an empty
+        ``/InkList`` to signal "annotation exists but has no strokes".
+        """
+        value = self._dict.get_dictionary_object(_INK_LIST)
+        if isinstance(value, COSArray):
+            value.clear()
+            return
+        self._dict.set_item(_INK_LIST, COSArray())
+
 
 __all__ = ["PDAnnotationInk"]

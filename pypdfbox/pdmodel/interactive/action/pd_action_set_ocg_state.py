@@ -104,6 +104,71 @@ class PDActionSetOCGState(PDAction):
     def set_preserve_rb(self, preserve: bool) -> None:
         self._action.set_boolean(_PRESERVE_RB, preserve)
 
+    # ---- predicates / clear / typed views ---------------------------------
+
+    def has_state(self) -> bool:
+        """``True`` when ``/State`` is present on the underlying dictionary
+        as a :class:`COSArray`. Spec-invalid non-array ``/State`` values
+        report as absent — matches the shape :meth:`get_cos_state` filters
+        on. Lets callers branch on state-presence without realising the
+        full :meth:`get_state` list."""
+        return self.get_cos_state() is not None
+
+    def has_preserve_rb(self) -> bool:
+        """``True`` when ``/PreserveRB`` is explicitly present (independent
+        of its boolean value). Distinct from :meth:`is_preserve_rb` which
+        always returns the effective value (defaulting to ``True`` when
+        absent) — useful for round-tripping callers that want to preserve
+        the canonical "default omitted" wire shape."""
+        return self._action.get_dictionary_object(_PRESERVE_RB) is not None
+
+    def clear_state(self) -> None:
+        """Remove the ``/State`` entry. Equivalent to
+        ``set_state(None)``; provided as a verb-named convenience matching
+        the ``clear_*`` helpers on other action wrappers."""
+        self._action.remove_item(_STATE)
+
+    def clear_preserve_rb(self) -> None:
+        """Remove the ``/PreserveRB`` entry so :meth:`is_preserve_rb` falls
+        back to its Table 207 default of ``True``."""
+        self._action.remove_item(_PRESERVE_RB)
+
+    def is_empty(self) -> bool:
+        """``True`` when ``/State`` is absent or carries no entries.
+        A freshly constructed :class:`PDActionSetOCGState` is "empty" in
+        this sense. Note that ``/PreserveRB`` is *not* considered for
+        emptiness — it is purely a tuning flag and an action with no
+        ``/State`` array but a non-default ``/PreserveRB`` is still a
+        no-op at viewer level."""
+        arr = self.get_cos_state()
+        return arr is None or arr.size() == 0
+
+    def is_valid(self) -> bool:
+        """``True`` when ``/S`` equals :attr:`SUB_TYPE` (``"SetOCGState"``).
+        Sanity check after round-tripping through :meth:`PDAction.create`
+        or when wrapping a hand-built :class:`COSDictionary`. Mirrors the
+        ``is_valid`` predicate exposed on other action wrappers."""
+        return self.get_sub_type() == self.SUB_TYPE
+
+    def get_groups(self) -> list[PDOptionalContentGroup]:
+        """Return the OCG entries from ``/State`` as typed
+        :class:`PDOptionalContentGroup` wrappers, dropping the preamble
+        names. Returns an empty list when ``/State`` is missing.
+
+        Note: each OCG appears once in the result for every dict entry in
+        ``/State`` — if the same OCG is referenced twice (e.g. once after
+        ``/ON`` and once after ``/OFF``) it appears twice. Callers that
+        care about uniqueness should de-duplicate by COS identity."""
+        groups: list[PDOptionalContentGroup] = []
+        arr = self.get_cos_state()
+        if arr is None:
+            return groups
+        for i in range(arr.size()):
+            entry = arr.get_object(i)
+            if isinstance(entry, COSDictionary):
+                groups.append(PDOptionalContentGroup(entry))
+        return groups
+
 
 def _coerce_state_entry(
     entry: COSBase | PDOptionalContentGroup | str,
