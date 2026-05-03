@@ -54,6 +54,23 @@ class PDDefaultAttributeObject(PDAttributeObject):
             return default_value
         return value
 
+    def is_specified(self, name: str) -> bool:
+        """Return ``True`` when ``name`` is explicitly written into the
+        dictionary (resolved value is not ``None``).
+
+        pypdfbox addition for parity with
+        ``PDStandardAttributeObject.isSpecified(String)`` upstream — the
+        typed taggedpdf subclasses already rely on this predicate, but the
+        owner-agnostic default attribute object inherits the same storage
+        and benefits from the same predicate when callers iterate
+        :meth:`get_attribute_names`. Skips ``/O`` so probing the owner key
+        through ``is_specified`` doesn't conflate the owner marker with a
+        real attribute (mirrors :meth:`get_attribute_names` exclusion).
+        """
+        if name == "O":
+            return False
+        return self._dictionary.get_dictionary_object(name) is not None
+
     # ---------- attribute mutation ----------
 
     def set_attribute(self, attr_name: str, attr_value: COSBase) -> None:
@@ -68,6 +85,29 @@ class PDDefaultAttributeObject(PDAttributeObject):
         old = self.get_attribute_value(attr_name)
         self._dictionary.set_item(COSName.get_pdf_name(attr_name), attr_value)
         self._potentially_notify_changed(old, attr_value)
+
+    def remove_attribute(self, attr_name: str) -> None:
+        """Remove ``attr_name`` from the dictionary and notify the owning
+        structure element when the entry was actually present.
+
+        pypdfbox addition: upstream PDFBox doesn't expose a removal helper
+        on ``PDDefaultAttributeObject`` (callers reach for the underlying
+        ``COSDictionary``), but we surface one for symmetry with
+        :meth:`set_attribute`. ``/O`` (the owner marker) is rejected — the
+        owner is mandatory on a non-empty attribute dictionary and clearing
+        it would corrupt :meth:`PDAttributeObject.create` dispatch. Removing
+        a missing key is a silent no-op (no notification fired).
+        """
+        if attr_name == "O":
+            raise ValueError(
+                "remove_attribute cannot remove the /O owner key; use "
+                "set_owner instead"
+            )
+        old = self.get_attribute_value(attr_name)
+        if old is None:
+            return
+        self._dictionary.remove_item(COSName.get_pdf_name(attr_name))
+        self._potentially_notify_changed(old, None)
 
     # ---------- internal ----------
 
@@ -85,6 +125,22 @@ class PDDefaultAttributeObject(PDAttributeObject):
         if old is not None and new is not None and old == new:
             return
         self.notify_change()
+
+    def __str__(self) -> str:
+        """Mirror upstream ``PDDefaultAttributeObject.toString()`` exactly.
+
+        Format: ``"O=<owner>, attributes={<name>=<value>, ...}"``.
+        Iterates :meth:`get_attribute_names` (which excludes the ``/O``
+        owner key) in dictionary order and joins each entry with ``", "``.
+        Values are stringified via ``str(...)`` — matching upstream's
+        Java string concatenation which calls ``toString()`` on the
+        underlying ``COSBase``.
+        """
+        attrs = ", ".join(
+            f"{name}={self.get_attribute_value(name)}"
+            for name in self.get_attribute_names()
+        )
+        return f"{super().__str__()}, attributes={{{attrs}}}"
 
     def __repr__(self) -> str:
         attrs = ", ".join(
