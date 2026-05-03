@@ -20,7 +20,8 @@ class PDViewportDictionary:
     Mirrors PDFBox ``org.apache.pdfbox.pdmodel.interactive.measurement.PDViewportDictionary``.
     """
 
-    TYPE = "Viewport"
+    #: The ``/Type`` value for a viewport dictionary, per PDF 32000-1 §12.7.5.
+    TYPE: str = "Viewport"
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
@@ -71,8 +72,17 @@ class PDViewportDictionary:
         self.set_b_box(rectangle)
 
     def get_name(self) -> str | None:
-        """Retrieve the name of the viewport."""
-        return self._dict.get_name(_NAME)
+        """Retrieve the name of the viewport.
+
+        Mirrors upstream ``getNameAsString(COSName.NAME)`` which accepts
+        either a ``COSName`` or a ``COSString`` value at the ``/Name`` slot
+        — some producers emit the entry as a string. ``None`` is returned
+        when the entry is absent or has any other type.
+        """
+        # ``COSDictionary.get_string`` mirrors upstream ``getNameAsString``
+        # exactly: it returns the underlying value of either a ``COSName``
+        # or a ``COSString``, falling back to the (here unused) default.
+        return self._dict.get_string(_NAME)
 
     def set_name(self, name: str | None) -> None:
         """Set the name of the viewport."""
@@ -96,6 +106,49 @@ class PDViewportDictionary:
             self._dict.remove_item(_MEASURE)
             return
         self._dict.set_item(_MEASURE, measure.get_cos_object())
+
+    # ------------------------------------------------------------------ predicates
+    # Upstream PDFBox lacks these — they are convenience helpers for
+    # callers who only want to know whether a slot is populated, without
+    # paying the cost of materializing a ``PDRectangle`` /
+    # ``PDMeasureDictionary`` wrapper. ``contains_key`` is the
+    # ``COSDictionary``-level operation that mirrors upstream's
+    # ``COSDictionary.containsKey``.
+    def has_b_box(self) -> bool:
+        """Return ``True`` when the ``/BBox`` entry is present."""
+        return self._dict.contains_key(_BBOX)
+
+    def has_bbox(self) -> bool:
+        """Alias for :meth:`has_b_box` matching the upstream "BBox" acronym."""
+        return self.has_b_box()
+
+    def has_name(self) -> bool:
+        """Return ``True`` when the ``/Name`` entry is present."""
+        return self._dict.contains_key(_NAME)
+
+    def has_measure(self) -> bool:
+        """Return ``True`` when the ``/Measure`` entry is present."""
+        return self._dict.contains_key(_MEASURE)
+
+    def is_named(self, name: str) -> bool:
+        """Return ``True`` when ``/Name`` resolves to ``name``.
+
+        The comparison is exact and case-sensitive, matching upstream
+        ``getNameAsString(COSName.NAME).equals(name)`` semantics. Returns
+        ``False`` when the ``/Name`` entry is absent.
+        """
+        return self.get_name() == name
+
+    def __repr__(self) -> str:
+        # Keep the representation cheap — touch only the COS layer so
+        # ``__repr__`` never triggers wrapper construction. Mirrors the
+        # debug-friendly format used by ``PDRendition`` / similar wrappers.
+        return (
+            f"{type(self).__name__}("
+            f"name={self.get_name()!r}, "
+            f"bbox={'set' if self.has_b_box() else 'unset'}, "
+            f"measure={'set' if self.has_measure() else 'unset'})"
+        )
 
 
 __all__ = ["PDViewportDictionary"]
