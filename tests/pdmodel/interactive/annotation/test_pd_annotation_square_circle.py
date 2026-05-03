@@ -108,11 +108,15 @@ def test_interior_color_clear() -> None:
 
 
 def test_border_effect_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderEffectDictionary
+
     ann = PDAnnotationSquare()
     be = COSDictionary()
     be.set_name(COSName.get_pdf_name("S"), "C")
     ann.set_border_effect(be)
-    assert ann.get_border_effect() is be
+    resolved = ann.get_border_effect()
+    assert isinstance(resolved, PDBorderEffectDictionary)
+    assert resolved.get_cos_object() is be
 
 
 def test_border_effect_default_none() -> None:
@@ -222,3 +226,164 @@ def test_get_rect_differences_after_set_rect_difference() -> None:
     assert len(diffs) == 4
     # PDRectangle.to_cos_array emits [llx, lly, urx, ury]
     assert diffs == [0.0, 0.0, 4.0, 8.0]
+
+
+# ---------- subtype constants and predicates ----------
+
+
+def test_base_subtype_constants() -> None:
+    assert PDAnnotationSquareCircle.SUB_TYPE_SQUARE == "Square"
+    assert PDAnnotationSquareCircle.SUB_TYPE_CIRCLE == "Circle"
+
+
+def test_is_square_predicate() -> None:
+    sq = PDAnnotationSquare()
+    cr = PDAnnotationCircle()
+    assert sq.is_square() is True
+    assert sq.is_circle() is False
+    assert cr.is_square() is False
+    assert cr.is_circle() is True
+
+
+def test_predicates_track_dynamic_subtype() -> None:
+    """Subclass identity follows ``/Subtype``, not Python class."""
+    sq = PDAnnotationSquare()
+    sq._set_subtype("Circle")
+    assert sq.is_circle() is True
+    assert sq.is_square() is False
+
+
+def test_predicates_handle_missing_subtype() -> None:
+    """Predicate returns ``False`` rather than raising when ``/Subtype`` is
+    absent (defensive, since callers often use raw dicts)."""
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Square")  # type: ignore[attr-defined]
+    ann = PDAnnotationSquare(raw)
+    raw.remove_item(COSName.SUBTYPE)  # type: ignore[attr-defined]
+    assert ann.is_square() is False
+    assert ann.is_circle() is False
+
+
+# ---------- typed PDBorderEffectDictionary ----------
+
+
+def test_get_border_effect_returns_typed_wrapper() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderEffectDictionary
+
+    ann = PDAnnotationCircle()
+    be = COSDictionary()
+    be.set_name(COSName.get_pdf_name("S"), "C")
+    ann.set_border_effect(be)
+    resolved = ann.get_border_effect()
+    assert isinstance(resolved, PDBorderEffectDictionary)
+    assert resolved.get_cos_object() is be
+
+
+def test_set_border_effect_accepts_typed_wrapper() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDBorderEffectDictionary
+
+    ann = PDAnnotationSquare()
+    typed = PDBorderEffectDictionary()
+    typed.set_style("C")
+    ann.set_border_effect(typed)
+    resolved = ann.get_border_effect()
+    assert isinstance(resolved, PDBorderEffectDictionary)
+    assert resolved.get_cos_object() is typed.get_cos_object()
+
+
+def test_set_border_effect_clear() -> None:
+    ann = PDAnnotationCircle()
+    ann.set_border_effect(COSDictionary())
+    ann.set_border_effect(None)
+    assert ann.get_border_effect() is None
+
+
+# ---------- per-subclass custom appearance handlers ----------
+
+
+class _RecordingAppearanceHandler:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_appearance_streams(self) -> None:
+        self.calls += 1
+
+
+def test_square_default_no_custom_handler() -> None:
+    ann = PDAnnotationSquare()
+    assert ann._custom_appearance_handler is None
+
+
+def test_circle_default_no_custom_handler() -> None:
+    ann = PDAnnotationCircle()
+    assert ann._custom_appearance_handler is None
+
+
+def test_square_custom_handler_invoked() -> None:
+    ann = PDAnnotationSquare()
+    handler = _RecordingAppearanceHandler()
+    ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
+    ann.construct_appearances()
+    ann.construct_appearances(None)
+    assert handler.calls == 2
+
+
+def test_circle_custom_handler_invoked() -> None:
+    ann = PDAnnotationCircle()
+    handler = _RecordingAppearanceHandler()
+    ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
+    ann.construct_appearances()
+    assert handler.calls == 1
+
+
+def test_square_clear_handler_restores_noop() -> None:
+    ann = PDAnnotationSquare()
+    handler = _RecordingAppearanceHandler()
+    ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
+    ann.set_custom_appearance_handler(None)
+    before_keys = set(ann.get_cos_object().key_set())
+    ann.construct_appearances()
+    assert handler.calls == 0
+    assert set(ann.get_cos_object().key_set()) == before_keys
+
+
+def test_circle_clear_handler_restores_noop() -> None:
+    ann = PDAnnotationCircle()
+    handler = _RecordingAppearanceHandler()
+    ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
+    ann.set_custom_appearance_handler(None)
+    before_keys = set(ann.get_cos_object().key_set())
+    ann.construct_appearances()
+    assert handler.calls == 0
+    assert set(ann.get_cos_object().key_set()) == before_keys
+
+
+def test_square_and_circle_handlers_are_independent() -> None:
+    """Each subclass owns its own ``_custom_appearance_handler`` slot."""
+    sq = PDAnnotationSquare()
+    cr = PDAnnotationCircle()
+    h_sq = _RecordingAppearanceHandler()
+    h_cr = _RecordingAppearanceHandler()
+    sq.set_custom_appearance_handler(h_sq)  # type: ignore[arg-type]
+    cr.set_custom_appearance_handler(h_cr)  # type: ignore[arg-type]
+    sq.construct_appearances()
+    cr.construct_appearances()
+    cr.construct_appearances()
+    assert h_sq.calls == 1
+    assert h_cr.calls == 2
+
+
+def test_construct_appearances_default_path_is_noop_square() -> None:
+    ann = PDAnnotationSquare()
+    before_keys = set(ann.get_cos_object().key_set())
+    ann.construct_appearances()
+    ann.construct_appearances(None)
+    assert set(ann.get_cos_object().key_set()) == before_keys
+
+
+def test_construct_appearances_default_path_is_noop_circle() -> None:
+    ann = PDAnnotationCircle()
+    before_keys = set(ann.get_cos_object().key_set())
+    ann.construct_appearances()
+    ann.construct_appearances(None)
+    assert set(ann.get_cos_object().key_set()) == before_keys

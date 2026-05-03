@@ -115,3 +115,50 @@ class PDArtifactMarkedContent(PDMarkedContent):
             if a.get_name(i) == edge:
                 return True
         return False
+
+    # ---------- additive parity helpers ----------
+
+    def get_attached_edges(self) -> list[str]:
+        """Return the edge names listed in ``/Attached`` as a plain
+        ``list[str]``, in array order.
+
+        Additive view of ``/Attached``: equivalent to iterating
+        ``isAttached(edge)`` for every spec-defined edge but with no
+        enumeration cost. Non-name entries (anything that
+        :meth:`COSArray.get_name` returns ``None`` for) are silently
+        skipped so a malformed array does not contaminate the result.
+        Returns an empty list when properties are absent, the
+        ``/Attached`` entry is missing, or it is not an array.
+        """
+        props = self.get_properties()
+        if props is None:
+            return []
+        a = props.get_dictionary_object(COSName.get_pdf_name("Attached"))
+        if not isinstance(a, COSArray):
+            return []
+        edges: list[str] = []
+        for i in range(a.size()):
+            name = a.get_name(i)
+            if name is not None:
+                edges.append(name)
+        return edges
+
+    def has_b_box(self) -> bool:
+        """Return ``True`` iff ``/BBox`` resolves to a parseable rectangle.
+
+        Convenience over ``get_b_box() is not None``: PDF/UA-aware callers
+        often need to know whether an artifact carries a bounding box
+        without materializing the rectangle itself. Mirrors the absent /
+        non-array short-circuits in :meth:`get_b_box`.
+        """
+        return self.get_b_box() is not None
+
+    def has_attached(self) -> bool:
+        """Return ``True`` iff ``/Attached`` lists at least one edge.
+
+        Convenience predicate sitting next to the four ``is_<edge>_attached``
+        accessors. Returns ``False`` when properties are absent, ``/Attached``
+        is missing, the entry is not an array, or the array has no
+        recognisable name entries.
+        """
+        return len(self.get_attached_edges()) > 0

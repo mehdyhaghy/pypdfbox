@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_annotation import PDAnnotation
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
+    from .pd_border_effect_dictionary import PDBorderEffectDictionary
 
 _BS: COSName = COSName.get_pdf_name("BS")
 _IC: COSName = COSName.get_pdf_name("IC")
@@ -23,6 +31,11 @@ class PDAnnotationSquareCircle(PDAnnotation):
     aren't ported yet. See ``CHANGES.md``.
     """
 
+    # Subtype constants — convenient when matching annotations by name
+    # without instantiating a subclass.
+    SUB_TYPE_SQUARE: str = "Square"
+    SUB_TYPE_CIRCLE: str = "Circle"
+
     def __init__(
         self,
         sub_type: str | COSDictionary | None = None,
@@ -33,6 +46,16 @@ class PDAnnotationSquareCircle(PDAnnotation):
             super().__init__(None)
             if sub_type is not None:
                 self._set_subtype(sub_type)
+
+    # ---------- subtype predicates ----------
+
+    def is_square(self) -> bool:
+        """Return ``True`` when ``/Subtype`` is exactly ``/Square``."""
+        return self.get_subtype() == self.SUB_TYPE_SQUARE
+
+    def is_circle(self) -> bool:
+        """Return ``True`` when ``/Subtype`` is exactly ``/Circle``."""
+        return self.get_subtype() == self.SUB_TYPE_CIRCLE
 
     # ---------- /BS (border style) ----------
 
@@ -73,19 +96,33 @@ class PDAnnotationSquareCircle(PDAnnotation):
 
     # ---------- /BE (border effect) ----------
 
-    def get_border_effect(self) -> COSDictionary | None:
-        """Raw border-effect dict — typed ``PDBorderEffectDictionary`` is
-        deferred."""
+    def get_border_effect(self) -> "PDBorderEffectDictionary | None":
+        """Return ``/BE`` as a typed :class:`PDBorderEffectDictionary`, or
+        ``None`` when absent.
+
+        Mirrors upstream ``getBorderEffect`` which returns
+        ``new PDBorderEffectDictionary(borderEffect)`` when present.
+        """
+        from .pd_border_effect_dictionary import PDBorderEffectDictionary
+
         value = self._dict.get_dictionary_object(_BE)
         if isinstance(value, COSDictionary):
-            return value
+            return PDBorderEffectDictionary(value)
         return None
 
-    def set_border_effect(self, be: COSDictionary | None) -> None:
+    def set_border_effect(
+        self, be: "PDBorderEffectDictionary | COSDictionary | None"
+    ) -> None:
+        """Set ``/BE``. Accepts a :class:`PDBorderEffectDictionary`, a raw
+        :class:`COSDictionary`, or ``None`` to clear (mirrors upstream's
+        ``setBorderEffect(PDBorderEffectDictionary)``)."""
         if be is None:
             self._dict.remove_item(_BE)
             return
-        self._dict.set_item(_BE, be)
+        self._dict.set_item(
+            _BE,
+            be.get_cos_object() if hasattr(be, "get_cos_object") else be,
+        )
 
     # ---------- /RD (rectangle difference) ----------
 
@@ -172,7 +209,14 @@ class PDAnnotationSquareCircle(PDAnnotation):
 
 
 class PDAnnotationSquare(PDAnnotationSquareCircle):
-    """``/Subtype /Square`` annotation."""
+    """``/Subtype /Square`` annotation.
+
+    Mirrors upstream's ``PDAnnotationSquare``, including the per-subclass
+    custom appearance handler hook. The built-in
+    ``PDSquareAppearanceHandler`` is not ported yet, so the default
+    construction path remains a no-op like the base annotation
+    implementation; see ``CHANGES.md``.
+    """
 
     SUB_TYPE: str = "Square"
 
@@ -186,10 +230,46 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
             )
         else:
             super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: "PDAppearanceHandler | None"
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``. ``None`` clears
+        the custom handler and restores the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def construct_appearances(
+        self, document: "PDDocument | None" = None
+    ) -> None:
+        """Generate square annotation appearances.
+
+        A custom handler, when configured, is invoked exactly as upstream
+        does. The built-in ``PDSquareAppearanceHandler`` is not ported
+        yet, so the default path remains a no-op like the base annotation
+        implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 class PDAnnotationCircle(PDAnnotationSquareCircle):
-    """``/Subtype /Circle`` annotation."""
+    """``/Subtype /Circle`` annotation.
+
+    Mirrors upstream's ``PDAnnotationCircle``, including the per-subclass
+    custom appearance handler hook. The built-in
+    ``PDCircleAppearanceHandler`` is not ported yet, so the default
+    construction path remains a no-op like the base annotation
+    implementation; see ``CHANGES.md``.
+    """
 
     SUB_TYPE: str = "Circle"
 
@@ -203,6 +283,35 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
             )
         else:
             super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: "PDAppearanceHandler | None"
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``. ``None`` clears
+        the custom handler and restores the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def construct_appearances(
+        self, document: "PDDocument | None" = None
+    ) -> None:
+        """Generate circle annotation appearances.
+
+        A custom handler, when configured, is invoked exactly as upstream
+        does. The built-in ``PDCircleAppearanceHandler`` is not ported
+        yet, so the default path remains a no-op like the base annotation
+        implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 __all__ = [

@@ -228,3 +228,137 @@ def test_inherits_marked_content_accessors() -> None:
     assert artifact.get_contents() == []
     artifact.add_text("text-position-stub")
     assert artifact.get_contents() == ["text-position-stub"]
+
+
+# ---------- Wave 252: additive parity helpers ----------
+
+
+def test_get_attached_edges_empty_when_properties_none() -> None:
+    artifact = PDArtifactMarkedContent(None)
+    assert artifact.get_attached_edges() == []
+
+
+def test_get_attached_edges_empty_when_attached_absent() -> None:
+    artifact = PDArtifactMarkedContent(COSDictionary())
+    assert artifact.get_attached_edges() == []
+
+
+def test_get_attached_edges_empty_when_attached_not_an_array() -> None:
+    props = COSDictionary()
+    props.set_name(COSName.get_pdf_name("Attached"), "NotAnArray")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_attached_edges() == []
+
+
+def test_get_attached_edges_preserves_array_order() -> None:
+    """Array order is part of the spec-visible state — preserve it
+    rather than canonicalising into a sorted set or fixed Top/Bottom/Left/Right
+    enumeration."""
+    artifact = PDArtifactMarkedContent(_attached("Bottom", "Top", "Right"))
+    assert artifact.get_attached_edges() == ["Bottom", "Top", "Right"]
+
+
+def test_get_attached_edges_returns_unknown_edge_names_verbatim() -> None:
+    """A spec extension may add new edges (or a producer may write a typo).
+    Surface whatever name strings are in the array so callers can inspect
+    them without re-walking the dict."""
+    artifact = PDArtifactMarkedContent(_attached("Diagonal", "Top"))
+    assert artifact.get_attached_edges() == ["Diagonal", "Top"]
+
+
+def test_get_attached_edges_skips_non_name_entries() -> None:
+    """A malformed array containing a non-name entry must not poison the
+    result — skip it silently and surface the recognisable names."""
+    props = COSDictionary()
+    arr = COSArray()
+    arr.set_name(0, "Top")
+    arr.set_int(1, 99)  # garbage int between names
+    arr.set_name(2, "Right")
+    props.set_item(COSName.get_pdf_name("Attached"), arr)
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.get_attached_edges() == ["Top", "Right"]
+
+
+def test_get_attached_edges_all_four() -> None:
+    artifact = PDArtifactMarkedContent(
+        _attached("Top", "Bottom", "Left", "Right")
+    )
+    assert artifact.get_attached_edges() == ["Top", "Bottom", "Left", "Right"]
+
+
+def test_has_attached_false_when_properties_none() -> None:
+    artifact = PDArtifactMarkedContent(None)
+    assert artifact.has_attached() is False
+
+
+def test_has_attached_false_when_attached_absent() -> None:
+    artifact = PDArtifactMarkedContent(COSDictionary())
+    assert artifact.has_attached() is False
+
+
+def test_has_attached_false_when_attached_not_an_array() -> None:
+    props = COSDictionary()
+    props.set_name(COSName.get_pdf_name("Attached"), "NotAnArray")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.has_attached() is False
+
+
+def test_has_attached_false_when_array_only_holds_non_name_entries() -> None:
+    """Pure-int array yields no recognisable edges → ``has_attached`` is
+    ``False`` even though the array exists."""
+    props = COSDictionary()
+    arr = COSArray()
+    arr.set_int(0, 1)
+    arr.set_int(1, 2)
+    props.set_item(COSName.get_pdf_name("Attached"), arr)
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.has_attached() is False
+
+
+def test_has_attached_true_when_one_edge_present() -> None:
+    artifact = PDArtifactMarkedContent(_attached("Top"))
+    assert artifact.has_attached() is True
+
+
+def test_has_attached_true_for_unknown_edge_name() -> None:
+    """Unknown edge names still count as "attached" — the spec allows
+    extension and we should not discriminate the predicate against
+    edges the four built-in accessors don't recognise."""
+    artifact = PDArtifactMarkedContent(_attached("Diagonal"))
+    assert artifact.has_attached() is True
+    assert artifact.is_top_attached() is False
+    assert artifact.is_bottom_attached() is False
+    assert artifact.is_left_attached() is False
+    assert artifact.is_right_attached() is False
+
+
+def test_has_b_box_false_when_properties_none() -> None:
+    artifact = PDArtifactMarkedContent(None)
+    assert artifact.has_b_box() is False
+
+
+def test_has_b_box_false_when_absent() -> None:
+    artifact = PDArtifactMarkedContent(COSDictionary())
+    assert artifact.has_b_box() is False
+
+
+def test_has_b_box_false_when_value_is_not_array() -> None:
+    props = COSDictionary()
+    props.set_name(COSName.get_pdf_name("BBox"), "Bogus")
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.has_b_box() is False
+
+
+def test_has_b_box_true_when_array_present() -> None:
+    props = COSDictionary()
+    bbox = COSArray()
+    bbox.set_int(0, 0)
+    bbox.set_int(1, 0)
+    bbox.set_int(2, 612)
+    bbox.set_int(3, 792)
+    props.set_item(COSName.get_pdf_name("BBox"), bbox)
+    artifact = PDArtifactMarkedContent(props)
+    assert artifact.has_b_box() is True
+    rect = artifact.get_b_box()
+    assert rect is not None
+    assert rect.get_upper_right_x() == 612
