@@ -100,6 +100,15 @@ class PDAnnotationCaret(PDAnnotationMarkup):
             ]
         )
 
+    def has_rectangle_differences(self) -> bool:
+        """``True`` when ``/RD`` is present (regardless of contents).
+
+        Predicate companion to :meth:`get_rectangle_differences`; useful for
+        callers that need to distinguish "no margins set" from "explicit
+        zero margins".
+        """
+        return self._dict.get_dictionary_object(_RD) is not None
+
     # ---------- /Sy (caret symbol) ----------
 
     def get_symbol(self) -> str:
@@ -112,6 +121,24 @@ class PDAnnotationCaret(PDAnnotationMarkup):
             self._dict.remove_item(_SY)
             return
         self._dict.set_name(_SY, symbol)
+
+    def has_symbol(self) -> bool:
+        """``True`` when ``/Sy`` is explicitly set (vs. relying on the
+        ``"None"`` spec default).
+        """
+        return self._dict.get_name(_SY) is not None
+
+    def is_paragraph_symbol(self) -> bool:
+        """``True`` when ``/Sy`` is ``"P"`` (paragraph symbol drawn inside
+        the caret rectangle, per Table 180).
+        """
+        return self.get_symbol() == self.SY_PARAGRAPH
+
+    def is_no_symbol(self) -> bool:
+        """``True`` when no symbol is associated with the caret — either
+        ``/Sy`` is ``"None"`` or the entry is absent (the spec default).
+        """
+        return self.get_symbol() == self.SY_NONE
 
 
 __all__ = ["PDAnnotationCaret"]

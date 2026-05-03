@@ -47,6 +47,21 @@ class PDDeviceNProcess:
                 out.append(item.get_name())
         return out
 
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDDeviceNProcess.toString``:
+        ``Process{<color-space> "<comp0>" "<comp1>" ...}``.
+
+        ``<color-space>`` falls back to ``None`` when ``/ColorSpace`` is
+        absent or unresolvable — keeps the lite-path behaviour of
+        :meth:`get_color_space` visible through the string form."""
+        cs = self.get_color_space()
+        cs_repr = "None" if cs is None else cs.get_name()
+        parts = [f'Process{{{cs_repr}']
+        for component in self.get_components():
+            parts.append(f' "{component}"')
+        parts.append("}")
+        return "".join(parts)
+
 
 class PDDeviceNAttributes:
     """Wrapper around a DeviceN ``/Attributes`` dictionary. Mirrors
@@ -132,6 +147,33 @@ class PDDeviceNAttributes:
         if isinstance(item, COSDictionary):
             return item
         return None
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDDeviceNAttributes.toString``:
+        ``<subtype>{<process>? Colorants{"<name>": <cs>...}}``.
+
+        The leading prefix is the ``/Subtype`` name (``DeviceN`` /
+        ``NChannel``); empty when the entry is absent. ``<process>`` is
+        the :meth:`PDDeviceNProcess.__str__` form when present.
+        Colorants entries whose color space cannot be resolved are
+        silently skipped — matches the leniency of :meth:`get_colorants`.
+        """
+        subtype = self.get_subtype() or ""
+        parts: list[str] = [f"{subtype}{{"]
+        process = self.get_process()
+        if process is not None:
+            parts.append(str(process))
+            parts.append(" ")
+        parts.append("Colorants{")
+        first = True
+        for name, cs in self.get_colorants().items():
+            if not first:
+                parts.append(" ")
+            parts.append(f'"{name}": {cs.get_name()}')
+            first = False
+        parts.append("}")
+        parts.append("}")
+        return "".join(parts)
 
 
 # ---------- PDDeviceN ----------
@@ -294,6 +336,32 @@ class PDDeviceN(PDColorSpace):
             return False
         return attrs.is_n_channel()
 
+    def has_attributes(self) -> bool:
+        """Return ``True`` if the ``/Attributes`` slot is present and
+        carries a real dictionary. Pypdfbox enrichment — upstream
+        callers infer the same by null-checking ``getAttributes()``,
+        but a typed predicate makes intent obvious at call sites
+        branching on attribute-only vs tint-transform color paths
+        (see PDF 32000-1 §8.6.6.5)."""
+        return self.get_attributes() is not None
+
+    def get_colorant_index(self, name: str) -> int:
+        """Return the index of the colorant ``name`` in the colorant
+        names array, or ``-1`` if the name is not present.
+
+        Pypdfbox enrichment over upstream's private
+        ``colorantToComponent`` cache (which maps colorant index →
+        process-component index). This is the inverse direction:
+        callers that want to look up "where does my spot colorant
+        live in the multi-tint vector" can do so without rebuilding
+        the colorant list themselves. Matches the upstream conv
+        of returning ``-1`` for "not present"."""
+        names = self.get_colorant_names()
+        try:
+            return names.index(name)
+        except ValueError:
+            return -1
+
     def get_subtype(self) -> str:
         """Return the DeviceN subtype: ``"NChannel"`` or ``"DeviceN"``.
 
@@ -353,6 +421,33 @@ class PDDeviceN(PDColorSpace):
             return None
         alt_components = function.eval(list(components))
         return PDColor(alt_components, alternate).to_rgb()
+
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDDeviceN.toString``:
+        ``DeviceN{"<col0>" "<col1>" ... <alternate-name> <tint> <attrs>?}``.
+
+        Lenient to placeholder slots — alternate falls back to
+        ``"None"`` when unresolvable, tint to ``"None"`` when the
+        function dispatch fails (default ctor placeholder), and the
+        attributes section is omitted when no ``/Attributes`` slot is
+        present.
+        """
+        parts: list[str] = [f"{self.get_name()}{{"]
+        for colorant in self.get_colorant_names():
+            parts.append(f'"{colorant}" ')
+        alternate = self.get_alternate_color_space()
+        parts.append("None" if alternate is None else alternate.get_name())
+        parts.append(" ")
+        tint = self.get_tint_transform()
+        parts.append("None" if tint is None else str(tint))
+        attrs = self.get_attributes()
+        if attrs is not None:
+            parts.append(" ")
+            parts.append(str(attrs))
+        parts.append("}")
+        return "".join(parts)
 
 
 __all__ = ["PDDeviceN", "PDDeviceNAttributes", "PDDeviceNProcess"]
