@@ -247,3 +247,106 @@ def test_mcr_str_when_mcid_absent_uses_default_minus_one() -> None:
     # No /MCID set — get_mcid() returns -1 (mirrors upstream getInt default).
     mcr = PDMarkedContentReference()
     assert str(mcr) == "mcid=-1"
+
+
+# ---------- PDMarkedContentReference predicate helpers (Wave 232) ----------
+
+
+def test_mcr_mcid_not_set_constant_matches_upstream_default() -> None:
+    # Sentinel constant must match the implicit -1 returned by get_mcid()
+    # when /MCID is absent (mirrors COSDictionary.getInt(COSName) upstream).
+    assert PDMarkedContentReference.MCID_NOT_SET == -1
+    fresh = PDMarkedContentReference()
+    assert fresh.get_mcid() == PDMarkedContentReference.MCID_NOT_SET
+
+
+def test_mcr_has_mcid_false_when_absent() -> None:
+    mcr = PDMarkedContentReference()
+    assert mcr.has_mcid() is False
+
+
+def test_mcr_has_mcid_true_after_set() -> None:
+    mcr = PDMarkedContentReference()
+    mcr.set_mcid(0)  # explicit zero must read as 'present'
+    assert mcr.has_mcid() is True
+    assert mcr.get_mcid() == 0
+
+
+def test_mcr_has_mcid_distinguishes_zero_from_absent() -> None:
+    # MCID=0 is a valid id; the get_mcid() default sentinel of -1 makes it
+    # ambiguous without has_mcid().
+    absent = PDMarkedContentReference()
+    present_zero = PDMarkedContentReference()
+    present_zero.set_mcid(0)
+    assert absent.get_mcid() == PDMarkedContentReference.MCID_NOT_SET
+    assert present_zero.get_mcid() == 0
+    assert absent.has_mcid() is False
+    assert present_zero.has_mcid() is True
+
+
+def test_mcr_has_pg_false_when_absent() -> None:
+    mcr = PDMarkedContentReference()
+    assert mcr.has_pg() is False
+
+
+def test_mcr_has_pg_true_after_set() -> None:
+    mcr = PDMarkedContentReference()
+    page = COSDictionary()
+    page.set_name(_TYPE, "Page")
+    mcr.set_pg(page)
+    assert mcr.has_pg() is True
+
+
+def test_mcr_has_pg_false_for_non_dictionary_value() -> None:
+    # /Pg pointing at a non-dictionary (malformed) → has_pg is False.
+    raw = COSDictionary()
+    raw.set_name(_TYPE, "MCR")
+    raw.set_int(_PG, 42)
+    mcr = PDMarkedContentReference(raw)
+    assert mcr.has_pg() is False
+
+
+def test_mcr_has_pg_false_after_set_none() -> None:
+    mcr = PDMarkedContentReference()
+    page = COSDictionary()
+    mcr.set_pg(page)
+    mcr.set_pg(None)
+    assert mcr.has_pg() is False
+
+
+def test_mcr_has_stm_false_when_absent() -> None:
+    mcr = PDMarkedContentReference()
+    assert mcr.has_stm() is False
+
+
+def test_mcr_has_stm_true_after_set() -> None:
+    mcr = PDMarkedContentReference()
+    mcr.set_stm(COSStream())
+    assert mcr.has_stm() is True
+
+
+def test_mcr_has_stm_false_when_value_is_dictionary_not_stream() -> None:
+    # /Stm should be a content stream; a plain dict is malformed.
+    raw = COSDictionary()
+    raw.set_name(_TYPE, "MCR")
+    raw.set_item(_STM, COSDictionary())
+    mcr = PDMarkedContentReference(raw)
+    assert mcr.has_stm() is False
+
+
+def test_mcr_has_stm_own_false_when_absent() -> None:
+    mcr = PDMarkedContentReference()
+    assert mcr.has_stm_own() is False
+
+
+def test_mcr_has_stm_own_true_after_set() -> None:
+    mcr = PDMarkedContentReference()
+    mcr.set_stm_own(COSDictionary())
+    assert mcr.has_stm_own() is True
+
+
+def test_mcr_has_stm_own_false_after_set_none() -> None:
+    mcr = PDMarkedContentReference()
+    mcr.set_stm_own(COSDictionary())
+    mcr.set_stm_own(None)
+    assert mcr.has_stm_own() is False

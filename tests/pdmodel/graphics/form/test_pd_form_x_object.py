@@ -464,3 +464,170 @@ def test_get_contents_for_stream_parsing_delegates_to_random_access() -> None:
     finally:
         parser_view.close()
         random_view.close()
+
+
+# ---------- /Matrix graceful degradation (parity with Matrix.createMatrix) ----------
+
+
+def test_matrix_returns_identity_when_array_too_short() -> None:
+    # Upstream Matrix.createMatrix returns the identity matrix when the
+    # /Matrix array has fewer than 6 entries — never raises.
+    form = _new_form()
+    short = COSArray([COSFloat(1), COSFloat(0), COSFloat(0)])
+    form.get_cos_object().set_item(_MATRIX, short)
+    assert form.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_matrix_returns_identity_when_entry_non_numeric() -> None:
+    # Upstream Matrix.createMatrix returns the identity matrix when any
+    # of the first six /Matrix entries is not a COSNumber. We must
+    # graceful-degrade rather than raise so partially-broken PDFs read.
+    form = _new_form()
+    bogus = COSArray([
+        COSFloat(1),
+        COSFloat(0),
+        COSFloat(0),
+        COSFloat(1),
+        COSName.get_pdf_name("NotANumber"),  # type: ignore[arg-type]
+        COSFloat(0),
+    ])
+    form.get_cos_object().set_item(_MATRIX, bogus)
+    assert form.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_matrix_uses_first_six_entries_when_array_oversized() -> None:
+    # When /Matrix has more than 6 entries (some encoders are sloppy),
+    # upstream's `array.size() >= 6` check still allows it. We mirror —
+    # take the first 6 numeric entries verbatim.
+    form = _new_form()
+    arr = COSArray([
+        COSFloat(2), COSFloat(0), COSFloat(0), COSFloat(2),
+        COSFloat(10), COSFloat(20), COSFloat(99),  # extra
+    ])
+    form.get_cos_object().set_item(_MATRIX, arr)
+    assert form.get_matrix() == [2.0, 0.0, 0.0, 2.0, 10.0, 20.0]
+
+
+# ---------- predicate helpers ----------
+
+
+def test_has_b_box_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_b_box()
+    assert not form.has_bbox()
+    form.set_b_box(PDRectangle.from_width_height(10, 20))
+    assert form.has_b_box()
+    assert form.has_bbox()
+    form.set_b_box(None)
+    assert not form.has_b_box()
+
+
+def test_has_matrix_only_true_when_array_has_six_entries() -> None:
+    form = _new_form()
+    # Identity is the *default*; the key isn't present so has_matrix is False.
+    assert not form.has_matrix()
+    form.set_matrix([1, 0, 0, 1, 0, 0])
+    assert form.has_matrix()
+
+    # Short or non-array values count as absent for the predicate.
+    short = COSArray([COSFloat(1), COSFloat(0)])
+    form.get_cos_object().set_item(_MATRIX, short)
+    assert not form.has_matrix()
+
+    form.set_matrix(None)
+    assert not form.has_matrix()
+
+
+def test_has_resources_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_resources()
+    form.set_resources(PDResources())
+    assert form.has_resources()
+    # PDFBOX-4372: even when /Resources holds a non-dict (broken
+    # self-reference), the *key* is present, so has_resources is True.
+    form.get_cos_object().set_item(_RESOURCES, COSName.get_pdf_name("Bogus"))
+    assert form.has_resources()
+    form.set_resources(None)
+    assert not form.has_resources()
+
+
+def test_has_group_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_group()
+    form.set_group(COSDictionary())
+    assert form.has_group()
+    form.set_group(None)
+    assert not form.has_group()
+
+
+def test_has_ref_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_ref()
+    form.set_ref(COSDictionary())
+    assert form.has_ref()
+    form.set_ref(None)
+    assert not form.has_ref()
+
+
+def test_has_oc_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_oc()
+    assert not form.has_optional_content()
+    form.set_oc(PDOptionalContentGroup("Layer A"))
+    assert form.has_oc()
+    assert form.has_optional_content()
+    form.set_oc(None)
+    assert not form.has_oc()
+    assert not form.has_optional_content()
+
+
+def test_has_piece_info_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_piece_info()
+    assert not form.has_pieceinfo()
+    form.set_piece_info(COSDictionary())
+    assert form.has_piece_info()
+    assert form.has_pieceinfo()
+    form.set_piece_info(None)
+    assert not form.has_piece_info()
+
+
+def test_has_last_modified_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_last_modified()
+    form.set_last_modified(_dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.timezone.utc))
+    assert form.has_last_modified()
+    form.set_last_modified(None)
+    assert not form.has_last_modified()
+
+
+def test_has_name_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_name()
+    form.set_name("MyForm")
+    assert form.has_name()
+    form.set_name(None)
+    assert not form.has_name()
+
+
+def test_has_struct_parents_round_trip() -> None:
+    form = _new_form()
+    assert not form.has_struct_parents()
+    form.set_struct_parents(0)  # 0 is a valid key — predicate still True
+    assert form.has_struct_parents()
+    # Setting via the singular alias must also flip the predicate.
+    form.get_cos_object().remove_item(_STRUCT_PARENTS)
+    assert not form.has_struct_parents()
+    form.set_struct_parent(3)
+    assert form.has_struct_parents()
+
+
+def test_has_form_type_round_trip() -> None:
+    form = _new_form()
+    # /FormType defaults to 1 when absent — has_form_type tells the implicit
+    # default apart from an explicit write.
+    assert not form.has_form_type()
+    assert form.get_form_type() == 1
+    form.set_form_type(1)
+    assert form.has_form_type()
+    assert form.get_form_type() == 1

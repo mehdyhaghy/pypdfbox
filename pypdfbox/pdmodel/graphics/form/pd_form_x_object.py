@@ -119,7 +119,10 @@ class PDFormXObject(PDXObject):
         """``/Matrix`` as a 6-tuple ``[a, b, c, d, e, f]``. Defaults to the
         identity matrix ``[1, 0, 0, 1, 0, 0]`` per PDF §8.10. Mirrors
         upstream's ``Matrix.createMatrix(...)`` semantics on the array form
-        (a typed ``Matrix`` class lands with the rendering cluster)."""
+        (a typed ``Matrix`` class lands with the rendering cluster):
+        the identity matrix is returned when ``/Matrix`` is absent, when
+        it is not a ``COSArray``, when its size is less than 6, or when
+        any of the first six entries is not a numeric COS object."""
         cos = self.get_cos_object()
         value = cos.get_dictionary_object(_MATRIX)
         if isinstance(value, COSArray) and value.size() >= 6:
@@ -129,9 +132,10 @@ class PDFormXObject(PDXObject):
                 if isinstance(entry, (COSInteger, COSFloat)):
                     out.append(float(entry.value))
                 else:
-                    raise TypeError(
-                        f"/Matrix entry {i} is not numeric: {type(entry).__name__}"
-                    )
+                    # Match upstream Matrix.createMatrix: any non-numeric
+                    # entry collapses to identity (graceful degradation
+                    # rather than a hard error).
+                    return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
             return out
         return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
 
@@ -421,3 +425,100 @@ class PDFormXObject(PDXObject):
         """Set ``/OC`` typed property list. Mirrors upstream
         ``setOptionalContent(PDPropertyList)``. Alias of :meth:`set_oc`."""
         self.set_oc(value)
+
+    # ---------- predicate helpers ----------
+    #
+    # These ``has_*`` helpers don't appear on upstream PDFormXObject (Java
+    # callers use ``getX() != null``), but they are the established
+    # pypdfbox idiom on sibling classes (``PDPage.has_group``,
+    # ``PDViewportDictionary.has_b_box``, ``PDType3CharProc.has_resources``)
+    # and let call-sites avoid an extra Optional-style indirection.
+    #
+    # All of them check the underlying COS dict shape — not just key
+    # presence — so a key that exists but holds the wrong type returns
+    # ``False`` (matching the typed getters which all return ``None`` in
+    # that case).
+
+    def has_b_box(self) -> bool:
+        """Return ``True`` when ``/BBox`` is present and a ``COSArray``."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_BBOX), COSArray
+        )
+
+    def has_bbox(self) -> bool:
+        """Alias of :meth:`has_b_box` matching the two-word ``get_bbox``
+        spelling."""
+        return self.has_b_box()
+
+    def has_matrix(self) -> bool:
+        """Return ``True`` when ``/Matrix`` is present and a ``COSArray``
+        of size 6 or more — i.e. when :meth:`get_matrix` will return the
+        stored value rather than the identity default."""
+        value = self.get_cos_object().get_dictionary_object(_MATRIX)
+        return isinstance(value, COSArray) and value.size() >= 6
+
+    def has_resources(self) -> bool:
+        """Return ``True`` when ``/Resources`` is present (regardless of
+        whether the value is a real dictionary or the broken
+        self-reference shape PDFBOX-4372 covers)."""
+        return self.get_cos_object().contains_key(_RESOURCES)
+
+    def has_group(self) -> bool:
+        """Return ``True`` when ``/Group`` is present and a
+        ``COSDictionary``."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_GROUP), COSDictionary
+        )
+
+    def has_ref(self) -> bool:
+        """Return ``True`` when ``/Ref`` is present and a
+        ``COSDictionary``."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_REF), COSDictionary
+        )
+
+    def has_oc(self) -> bool:
+        """Return ``True`` when ``/OC`` (optional content) is present and
+        a ``COSDictionary``."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_OC), COSDictionary
+        )
+
+    def has_optional_content(self) -> bool:
+        """Alias of :meth:`has_oc` — long-form spelling matching upstream
+        ``getOptionalContent``."""
+        return self.has_oc()
+
+    def has_piece_info(self) -> bool:
+        """Return ``True`` when ``/PieceInfo`` is present and a
+        ``COSDictionary``."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_PIECE_INFO),
+            COSDictionary,
+        )
+
+    def has_pieceinfo(self) -> bool:
+        """Lowercase alias of :meth:`has_piece_info`, mirroring the
+        ``get_pieceinfo``/``set_pieceinfo`` legacy spelling kept live for
+        backward compatibility."""
+        return self.has_piece_info()
+
+    def has_last_modified(self) -> bool:
+        """Return ``True`` when ``/LastModified`` is present (as a
+        string)."""
+        return self.get_cos_object().get_string(_LAST_MODIFIED) is not None
+
+    def has_name(self) -> bool:
+        """Return ``True`` when the legacy ``/Name`` entry is present."""
+        return self.get_cos_object().get_name(_NAME) is not None
+
+    def has_struct_parents(self) -> bool:
+        """Return ``True`` when ``/StructParents`` is present — i.e. this
+        form participates in the structure-parents number tree."""
+        return self.get_cos_object().contains_key(_STRUCT_PARENTS)
+
+    def has_form_type(self) -> bool:
+        """Return ``True`` when ``/FormType`` is explicitly present.
+        :meth:`get_form_type` defaults to ``1`` when absent, so this is
+        the way to tell an explicit ``1`` from the implicit default."""
+        return self.get_cos_object().contains_key(_FORMTYPE)

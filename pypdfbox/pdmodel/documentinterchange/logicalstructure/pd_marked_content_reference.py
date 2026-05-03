@@ -25,6 +25,12 @@ class PDMarkedContentReference:
 
     TYPE: str = "MCR"
 
+    #: Sentinel returned by :meth:`get_mcid` when ``/MCID`` is absent.
+    #: Mirrors the ``-1`` default upstream ``COSDictionary.getInt(COSName)``
+    #: returns when the entry is missing. pypdfbox addition: lets callers
+    #: predicate against the sentinel without re-deriving the constant.
+    MCID_NOT_SET: int = -1
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dictionary: COSDictionary = COSDictionary()
@@ -80,6 +86,16 @@ class PDMarkedContentReference:
         cos = page.get_cos_object() if hasattr(page, "get_cos_object") else page
         self._dictionary.set_item(_PG, cos)
 
+    def has_pg(self) -> bool:
+        """Return ``True`` when ``/Pg`` is present and is a dictionary.
+
+        pypdfbox addition: ``/Pg`` on an MCR is optional (PDF 32000-1
+        §14.7.4.4); this predicate distinguishes "no override" from
+        "override is malformed" without materialising a :class:`PDPage`.
+        Symmetric with :meth:`PDObjectReference.has_pg`.
+        """
+        return isinstance(self._dictionary.get_dictionary_object(_PG), COSDictionary)
+
     # ---------- /Stm content stream ----
 
     def get_stm(self) -> COSStream | None:
@@ -92,6 +108,16 @@ class PDMarkedContentReference:
             return
         cos = stream.get_cos_object() if hasattr(stream, "get_cos_object") else stream
         self._dictionary.set_item(_STM, cos)
+
+    def has_stm(self) -> bool:
+        """Return ``True`` when ``/Stm`` is present and is a content stream.
+
+        pypdfbox addition: ``/Stm`` is required only for marked content in
+        a content stream other than the page's own (PDF 32000-1 §14.7.4.4
+        Table 324). The predicate avoids the cost of resolving the stream
+        when the caller only needs presence.
+        """
+        return isinstance(self._dictionary.get_dictionary_object(_STM), COSStream)
 
     # ---------- /StmOwn stream owner ----
 
@@ -106,6 +132,19 @@ class PDMarkedContentReference:
         cos = d.get_cos_object() if hasattr(d, "get_cos_object") else d
         self._dictionary.set_item(_STM_OWN, cos)
 
+    def has_stm_own(self) -> bool:
+        """Return ``True`` when ``/StmOwn`` is present and is a dictionary.
+
+        pypdfbox addition: ``/StmOwn`` is required only when ``/Stm``
+        refers to a content stream not directly owned by the structure
+        element (PDF 32000-1 §14.7.4.4 Table 324). Useful for callers
+        validating that an MCR with ``/Stm`` also carries the matching
+        ownership entry.
+        """
+        return isinstance(
+            self._dictionary.get_dictionary_object(_STM_OWN), COSDictionary
+        )
+
     # ---------- /MCID marked content identifier ----
 
     def get_mcid(self) -> int:
@@ -115,6 +154,17 @@ class PDMarkedContentReference:
         if mcid < 0:
             raise ValueError("MCID is negative")
         self._dictionary.set_int(_MCID, mcid)
+
+    def has_mcid(self) -> bool:
+        """Return ``True`` when ``/MCID`` is present in the dictionary.
+
+        pypdfbox addition: :meth:`get_mcid` returns ``-1`` (the
+        :data:`MCID_NOT_SET` sentinel) when ``/MCID`` is absent, which is
+        indistinguishable from an MCID of ``0`` only by inspecting the
+        dictionary directly. ``has_mcid`` lets callers gate on presence
+        without re-reading the COS dictionary themselves.
+        """
+        return _MCID in self._dictionary
 
     def __repr__(self) -> str:
         return f"mcid={self.get_mcid()}"
