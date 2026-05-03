@@ -200,9 +200,13 @@ def test_text_markup_quad_points_round_trip() -> None:
     assert rt == qp
 
 
-def test_text_markup_quad_points_default_none() -> None:
+def test_text_markup_quad_points_default_empty() -> None:
+    """Upstream ``PDAnnotationTextMarkup(String subType)`` ctor seeds
+    ``/QuadPoints`` with an empty array; default-constructed Python
+    instances mirror that, so the entry is present and round-trips as
+    an empty list rather than absent (None)."""
     ann = PDAnnotationHighlight()
-    assert ann.get_quad_points() is None
+    assert ann.get_quad_points() == []
 
 
 def test_text_markup_quad_points_clear() -> None:

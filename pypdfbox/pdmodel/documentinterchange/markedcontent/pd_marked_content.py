@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
 from pypdfbox.cos import COSDictionary, COSName
 
@@ -88,6 +88,44 @@ class PDMarkedContent:
 
     def get_contents(self) -> list[Any]:
         return self._contents
+
+    # ---------- predicate helpers ----------
+
+    def is_artifact(self) -> bool:
+        """Return ``True`` iff this is an ``/Artifact`` marked-content sequence.
+
+        Mirrors the dispatch condition in :meth:`create` — artifact
+        marked-content is the only tag PDFBox treats specially. Useful when
+        traversing a heterogeneous content list without performing an
+        ``isinstance`` check against ``PDArtifactMarkedContent``.
+        """
+        return self._tag == "Artifact"
+
+    def has_mcid(self) -> bool:
+        """Return ``True`` iff a non-negative ``/MCID`` is present.
+
+        Convenience over comparing :meth:`get_mcid` against the ``-1``
+        sentinel. PDF/UA-aware callers want to skip marked-content sequences
+        that lack an MCID without remembering the sentinel value.
+        """
+        return self.get_mcid() != -1
+
+    # ---------- container protocol over contents ----------
+
+    def __len__(self) -> int:
+        """Number of items in :meth:`get_contents`.
+
+        Matches the Pythonic ``len(mc)`` shorthand for ``len(mc.get_contents())``.
+        """
+        return len(self._contents)
+
+    def __iter__(self) -> Iterator[Any]:
+        """Iterate items in :meth:`get_contents` in order.
+
+        Lets callers write ``for item in mc:`` instead of
+        ``for item in mc.get_contents():``.
+        """
+        return iter(self._contents)
 
     # ---------- mutators ----------
 

@@ -120,3 +120,93 @@ def test_pd_marked_content_str_alias_matches_repr() -> None:
     mc = PDMarkedContent(COSName.get_pdf_name("Span"), COSDictionary())
     # ``__str__`` mirrors ``toString`` — delegates to ``__repr__``.
     assert str(mc) == repr(mc)
+
+
+# ---------- Wave 225: predicate helpers + container protocol ----------
+
+
+def test_is_artifact_true_for_artifact_tag() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("Artifact"), COSDictionary())
+    assert mc.is_artifact() is True
+
+
+def test_is_artifact_false_for_other_tags() -> None:
+    for tag in ("Span", "P", "H1", "Document", "Figure"):
+        mc = PDMarkedContent(COSName.get_pdf_name(tag), COSDictionary())
+        assert mc.is_artifact() is False, tag
+
+
+def test_is_artifact_false_for_none_tag() -> None:
+    mc = PDMarkedContent(None, COSDictionary())
+    assert mc.is_artifact() is False
+
+
+def test_is_artifact_true_on_pd_artifact_marked_content_subclass() -> None:
+    """The dispatched subclass returned by :meth:`create` must agree with the
+    predicate — the subclass sets its tag to ``"Artifact"`` via super()."""
+    mc = PDMarkedContent.create(COSName.get_pdf_name("Artifact"), COSDictionary())
+    assert mc.is_artifact() is True
+
+
+def test_has_mcid_false_when_properties_none() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), None)
+    assert mc.has_mcid() is False
+
+
+def test_has_mcid_false_when_mcid_absent() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), COSDictionary())
+    assert mc.has_mcid() is False
+
+
+def test_has_mcid_true_when_mcid_zero() -> None:
+    """``/MCID 0`` is a perfectly valid identifier — must not collide with the
+    ``-1`` sentinel from :meth:`get_mcid`."""
+    props = COSDictionary()
+    props.set_int(COSName.get_pdf_name("MCID"), 0)
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), props)
+    assert mc.has_mcid() is True
+    assert mc.get_mcid() == 0
+
+
+def test_has_mcid_true_when_positive() -> None:
+    props = COSDictionary()
+    props.set_int(COSName.get_pdf_name("MCID"), 7)
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), props)
+    assert mc.has_mcid() is True
+
+
+def test_len_empty_contents() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), COSDictionary())
+    assert len(mc) == 0
+
+
+def test_len_tracks_added_items() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), COSDictionary())
+    mc.add_text("a")
+    mc.add_text("b")
+    mc.add_x_object("xo")
+    assert len(mc) == 3
+    assert len(mc) == len(mc.get_contents())
+
+
+def test_iter_yields_contents_in_order() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), COSDictionary())
+    child = PDMarkedContent(COSName.get_pdf_name("Span"), COSDictionary())
+    mc.add_text("t1")
+    mc.add_marked_content(child)
+    mc.add_x_object("xo")
+    assert list(mc) == ["t1", child, "xo"]
+
+
+def test_iter_empty_when_no_contents() -> None:
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), COSDictionary())
+    assert list(mc) == []
+
+
+def test_iter_independent_from_get_contents_mutation_after_iter_start() -> None:
+    """``__iter__`` returns a fresh iterator each call so callers can iterate
+    twice without rewinding."""
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), COSDictionary())
+    mc.add_text("only")
+    assert list(mc) == ["only"]
+    assert list(mc) == ["only"]
