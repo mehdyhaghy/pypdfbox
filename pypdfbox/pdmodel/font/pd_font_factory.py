@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.font_box_font import FontBoxFont
 from pypdfbox.fontbox.font_mapper import FontMapper
 from pypdfbox.fontbox.font_mappers import FontMappers
@@ -28,6 +28,7 @@ _BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
+_DESCENDANT_FONTS: COSName = COSName.get_pdf_name("DescendantFonts")
 _TYPE1C: str = "Type1C"
 _CID_FONT_TYPE0C: str = "CIDFontType0C"
 
@@ -316,6 +317,188 @@ class PDFontFactory:
         if subtype is None:
             return False
         return subtype in _SUPPORTED_SUBTYPES
+
+    # ---------- descendant / descriptor helpers ----------
+
+    # File-program magic-number constants used by upstream when sniffing
+    # the bytes of an embedded font program. The pypdfbox port surfaces
+    # them as named strings (parity with the upstream private constants
+    # ``FONT_TYPE1C`` / ``FONT_OPEN_TYPE`` / ``FONT_TTF_COLLECTION`` /
+    # ``FONT_TRUE_TYPE`` / ``TTF_HEADER``) so callers can hand-roll their
+    # own header detection without re-typing the literals.
+    FONT_TYPE1C: str = _TYPE1C
+    FONT_OPEN_TYPE: str = "OTTO"
+    FONT_TTF_COLLECTION: str = "ttcf"
+    FONT_TRUE_TYPE: str = "true"
+    TTF_HEADER: bytes = b"\x00\x01\x00\x00"
+
+    @staticmethod
+    def get_descendant_font_dict(
+        font_dict: COSDictionary,
+    ) -> COSDictionary | None:
+        """Return the first ``COSDictionary`` in ``font_dict``'s
+        ``/DescendantFonts`` array, or ``None`` when the entry is absent
+        / empty / non-dictionary.
+
+        Mirrors upstream ``PDFontFactory.getDescendantFont`` (private
+        helper). Surfaced publicly here because pypdfbox callers parsing
+        Type 0 chains by hand (e.g. font-fallback heuristics) want a
+        single typed accessor rather than reaching into the array
+        manually. ``font_dict=None`` returns ``None`` rather than raising
+        — keeps the helper composable in lenient parsing paths.
+        """
+        if font_dict is None:
+            return None
+        if not isinstance(font_dict, COSDictionary):
+            raise TypeError(
+                f"PDFontFactory.get_descendant_font_dict expects "
+                f"COSDictionary, got {type(font_dict).__name__}"
+            )
+        descendant_fonts = font_dict.get_dictionary_object(_DESCENDANT_FONTS)
+        if not isinstance(descendant_fonts, COSArray):
+            return None
+        if descendant_fonts.size() == 0:
+            return None
+        first = descendant_fonts.get_object(0)
+        if isinstance(first, COSDictionary):
+            return first
+        return None
+
+    @staticmethod
+    def get_font_descriptor_dict(
+        font_dict: COSDictionary,
+    ) -> COSDictionary | None:
+        """Return ``font_dict /FontDescriptor`` (typed as ``COSDictionary``),
+        falling back to the first descendant font's ``/FontDescriptor``
+        when absent.
+
+        Mirrors upstream ``PDFontFactory.getFontDescriptor`` (private
+        helper). The descendant fallback matches the upstream order: a
+        ``/Type0`` parent dict normally has no descriptor of its own —
+        the descriptor lives on the descendant CIDFont per PDF 32000-1
+        §9.7.3 — so the caller gets the descendant's descriptor without
+        having to plumb the array entry by hand.
+        """
+        if font_dict is None:
+            return None
+        if not isinstance(font_dict, COSDictionary):
+            raise TypeError(
+                f"PDFontFactory.get_font_descriptor_dict expects "
+                f"COSDictionary, got {type(font_dict).__name__}"
+            )
+        descriptor = font_dict.get_dictionary_object(_FONT_DESCRIPTOR)
+        if isinstance(descriptor, COSDictionary):
+            return descriptor
+        descendant = PDFontFactory.get_descendant_font_dict(font_dict)
+        if descendant is None:
+            return None
+        descendant_descriptor = descendant.get_dictionary_object(
+            _FONT_DESCRIPTOR
+        )
+        if isinstance(descendant_descriptor, COSDictionary):
+            return descendant_descriptor
+        return None
+
+    # ---------- font-program header sniffing ----------
+
+    @staticmethod
+    def is_true_type_header(header: bytes | bytearray | memoryview) -> bool:
+        """Return ``True`` when the first 4 bytes of an embedded font
+        program identify a TrueType outline file.
+
+        Mirrors upstream ``PDFontFactory.isTrueTypeFile`` (private). A
+        TrueType outline file begins with the version sfnt tag
+        ``0x00010000`` or the four ASCII bytes ``"true"``.
+        """
+        if header is None or len(header) < 4:
+            return False
+        first_four = bytes(header[:4])
+        if first_four == PDFontFactory.TTF_HEADER:
+            return True
+        try:
+            return first_four.decode("ascii") == PDFontFactory.FONT_TRUE_TYPE
+        except UnicodeDecodeError:
+            return False
+
+    @staticmethod
+    def is_true_type_collection_header(
+        header: bytes | bytearray | memoryview,
+    ) -> bool:
+        """Return ``True`` when the first 4 bytes spell ``"ttcf"`` (the
+        TrueType collection magic number).
+
+        Mirrors upstream ``PDFontFactory.isTrueTypeCollectionFile``.
+        """
+        if header is None or len(header) < 4:
+            return False
+        try:
+            return (
+                bytes(header[:4]).decode("ascii")
+                == PDFontFactory.FONT_TTF_COLLECTION
+            )
+        except UnicodeDecodeError:
+            return False
+
+    @staticmethod
+    def is_open_type_header(header: bytes | bytearray | memoryview) -> bool:
+        """Return ``True`` when the first 4 bytes spell ``"OTTO"`` (the
+        CFF-flavoured OpenType magic number).
+
+        Mirrors upstream ``PDFontFactory.isOpenTypeFile``. Note that
+        TrueType-flavoured OpenType files are detected by
+        :meth:`is_true_type_header` instead (sfnt-tagged TrueType outlines
+        and OpenType wrap each other in PDF 32000-1's classification).
+        """
+        if header is None or len(header) < 4:
+            return False
+        try:
+            return (
+                bytes(header[:4]).decode("ascii")
+                == PDFontFactory.FONT_OPEN_TYPE
+            )
+        except UnicodeDecodeError:
+            return False
+
+    @staticmethod
+    def is_type1_header(header: bytes | bytearray | memoryview) -> bool:
+        """Return ``True`` when the first 2 bytes are ``%!`` — the
+        ASCII Type 1 program prologue.
+
+        Mirrors upstream ``PDFontFactory.isType1File``. All Type 1 font
+        programs begin with the comment ``%!`` (0x25 + 0x21) per the
+        Adobe Type 1 specification.
+        """
+        if header is None or len(header) < 2:
+            return False
+        return header[0] == 0x25 and header[1] == 0x21
+
+    @staticmethod
+    def is_pfb_header(header: bytes | bytearray | memoryview) -> bool:
+        """Return ``True`` when the first 2 bytes mark a PFB-wrapped Type
+        1 font (``0x80`` followed by ``0x01`` or ``0x02``).
+
+        Mirrors upstream ``PDFontFactory.isPfbFile``. PFB segment-record
+        markers always start with ``0x80``; the second byte is the
+        segment type (1 = ASCII, 2 = binary, 3 = EOF).
+        """
+        if header is None or len(header) < 2:
+            return False
+        return header[0] == 0x80 and header[1] in (0x01, 0x02)
+
+    @staticmethod
+    def is_cff_header(header: bytes | bytearray | memoryview) -> bool:
+        """Return ``True`` when the first 4 bytes are a plausible CFF
+        header (major version >= 1 and offset size in [1, 4]).
+
+        Mirrors upstream ``PDFontFactory.isCFFFile``. The CFF header is
+        more permissive than the other checks (no fixed magic), so
+        upstream and pypdfbox both call this last in the sniffing chain
+        to avoid mis-classifying a TrueType or OpenType program with a
+        version-1 sfnt tag as CFF.
+        """
+        if header is None or len(header) < 4:
+            return False
+        return header[0] >= 1 and 1 <= header[3] <= 4
 
 
 __all__ = ["PDFontFactory"]
