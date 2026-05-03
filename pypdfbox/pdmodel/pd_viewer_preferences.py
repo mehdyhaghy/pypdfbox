@@ -79,15 +79,34 @@ class PDViewerPreferences:
     NON_FS_USE_THUMBS: str = "UseThumbs"
     NON_FS_USE_OC: str = "UseOC"
 
+    # Long-form upstream-style aliases for ``/NonFullScreenPageMode`` tokens.
+    # Mirror upstream's verbose constant naming style for callers porting
+    # from Java code that references the long-form names.
+    NON_FULL_SCREEN_PAGE_MODE_USE_NONE: str = "UseNone"
+    NON_FULL_SCREEN_PAGE_MODE_USE_OUTLINES: str = "UseOutlines"
+    NON_FULL_SCREEN_PAGE_MODE_USE_THUMBS: str = "UseThumbs"
+    NON_FULL_SCREEN_PAGE_MODE_USE_OC: str = "UseOC"
+
     DIRECTION_L2R: str = "L2R"
     DIRECTION_R2L: str = "R2L"
 
+    # Long-form upstream-style aliases for ``/Direction`` tokens.
+    READING_DIRECTION_L2R: str = "L2R"
+    READING_DIRECTION_R2L: str = "R2L"
+
     PRINT_SCALING_NONE: str = "None"
     PRINT_SCALING_APPDEFAULT: str = "AppDefault"
+    # Underscored alias mirroring upstream's two-word ``AppDefault``.
+    PRINT_SCALING_APP_DEFAULT: str = "AppDefault"
 
     DUPLEX_SIMPLEX: str = "Simplex"
     DUPLEX_DUPLEX_FLIP_SHORT_EDGE: str = "DuplexFlipShortEdge"
     DUPLEX_DUPLEX_FLIP_LONG_EDGE: str = "DuplexFlipLongEdge"
+    # Short-form aliases (drop the redundant ``DUPLEX_DUPLEX_`` prefix on
+    # the flip variants — easier on the eyes when callers chain enum-style
+    # lookups but still want the plain string token).
+    DUPLEX_FLIP_SHORT_EDGE: str = "DuplexFlipShortEdge"
+    DUPLEX_FLIP_LONG_EDGE: str = "DuplexFlipLongEdge"
 
     BOUNDARY_MEDIA_BOX: str = "MediaBox"
     BOUNDARY_CROP_BOX: str = "CropBox"
@@ -561,6 +580,113 @@ class PDViewerPreferences:
         pairs = self.get_print_page_range_pairs()
         pairs.append((int(start), int(end)))
         self.set_print_page_range_pairs(pairs)
+
+    # ---------- token-equivalence predicates ----------
+    # Convenience boolean accessors that wrap the name-valued getters and
+    # compare against the spec's recognized tokens. Useful when a caller
+    # only needs to branch on a single value rather than pull the full
+    # string back. All predicates honor PDFBox's documented spec defaults
+    # (e.g. ``/Direction`` defaults to ``L2R`` when absent).
+
+    def is_print_scaling_none(self) -> bool:
+        """Return ``True`` iff ``/PrintScaling`` is ``None`` (no scaling)."""
+        return self.get_print_scaling() == self.PRINT_SCALING.None_.value
+
+    def is_print_scaling_app_default(self) -> bool:
+        """Return ``True`` iff ``/PrintScaling`` is ``AppDefault`` (the spec
+        default — also returned when the entry is absent)."""
+        return self.get_print_scaling() == self.PRINT_SCALING.AppDefault.value
+
+    def is_simplex(self) -> bool:
+        """Return ``True`` iff ``/Duplex`` is ``Simplex``. ``False`` when
+        ``/Duplex`` is absent — there is no spec default per PDF 32000-1
+        Table 150."""
+        return self.get_duplex() == self.DUPLEX.Simplex.value
+
+    def is_duplex_flip_short_edge(self) -> bool:
+        """Return ``True`` iff ``/Duplex`` is ``DuplexFlipShortEdge``."""
+        return self.get_duplex() == self.DUPLEX.DuplexFlipShortEdge.value
+
+    def is_duplex_flip_long_edge(self) -> bool:
+        """Return ``True`` iff ``/Duplex`` is ``DuplexFlipLongEdge``."""
+        return self.get_duplex() == self.DUPLEX.DuplexFlipLongEdge.value
+
+    def is_left_to_right(self) -> bool:
+        """Return ``True`` iff ``/Direction`` is ``L2R`` (the spec default
+        — also returned when the entry is absent)."""
+        return self.get_reading_direction() == self.READING_DIRECTION.L2R.value
+
+    def is_right_to_left(self) -> bool:
+        """Return ``True`` iff ``/Direction`` is ``R2L``."""
+        return self.get_reading_direction() == self.READING_DIRECTION.R2L.value
+
+    # ---------- clear-entry helpers ----------
+    # Sugar for callers that want to drop an entry without having to call
+    # the typed setter with ``None``. Behaviorally identical to passing
+    # ``None`` to the corresponding setter.
+
+    def clear_enforce(self) -> None:
+        """Remove ``/Enforce`` entirely (PDF 2.0 Table 150). No-op when
+        already absent."""
+        self._prefs.remove_item(_ENFORCE)
+
+    def clear_print_page_range(self) -> None:
+        """Remove ``/PrintPageRange`` entirely. No-op when already absent."""
+        self._prefs.remove_item(_PRINT_PAGE_RANGE)
+
+    def clear_num_copies(self) -> None:
+        """Remove ``/NumCopies`` entirely (the getter then falls back to
+        the spec default of 1). No-op when already absent."""
+        self._prefs.remove_item(_NUM_COPIES)
+
+    # ---------- count helpers ----------
+
+    def enforce_count(self) -> int:
+        """Return the number of name tokens in ``/Enforce``. Returns ``0``
+        when the entry is absent or empty."""
+        return len(self.get_enforce_names())
+
+    def get_print_page_range_pair_count(self) -> int:
+        """Return the number of ``(start, end)`` pairs encoded in
+        ``/PrintPageRange``. Returns ``0`` when the entry is absent or
+        contains an odd number of elements (per PDF 32000-2 §12.4.4 such
+        ranges are invalid and shall be ignored)."""
+        return len(self.get_print_page_range_pairs())
+
+    def is_valid_print_page_range(self) -> bool:
+        """Return ``True`` iff ``/PrintPageRange`` is structurally valid
+        per PDF 32000-2 §12.4.4: an even-length array of integer pairs,
+        each pair non-decreasing (``start <= end``). Returns ``True`` when
+        the entry is absent (a missing array is trivially valid)."""
+        arr = self.get_print_page_range()
+        if arr is None:
+            return True
+        n = arr.size()
+        if n == 0 or n % 2 != 0:
+            return n == 0
+        for i in range(0, n, 2):
+            start = arr.get_int(i)
+            end = arr.get_int(i + 1)
+            if start <= 0 or end <= 0 or start > end:
+                return False
+        return True
+
+    # ---------- bulk /Enforce mutator ----------
+
+    def add_enforce_names(self, names) -> None:
+        """Append each name in ``names`` to ``/Enforce`` (idempotent per
+        name — duplicates are skipped). Creates ``/Enforce`` when absent.
+        ``names`` may be any iterable of strings."""
+        existing = self.get_enforce_names()
+        seen = set(existing)
+        out = list(existing)
+        for n in names:
+            if n in seen:
+                continue
+            seen.add(n)
+            out.append(n)
+        if out != existing:
+            self.set_enforce_names(out)
 
     def __repr__(self) -> str:
         return "PDViewerPreferences(...)"

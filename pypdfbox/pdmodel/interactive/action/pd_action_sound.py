@@ -108,5 +108,47 @@ class PDActionSound(PDAction):
     def set_mix(self, mix: bool) -> None:
         self._action.set_boolean(_MIX, mix)
 
+    # ---------- predicates / clear / is_empty ----------
+
+    def has_sound(self) -> bool:
+        """``True`` when ``/Sound`` is present *and* is a stream object.
+
+        Lets callers branch on sound-presence without paying the cost of
+        constructing a :class:`PDSoundStream` wrapper. Parallels
+        :class:`PDActionTransition.has_trans` /
+        :class:`PDActionEmbeddedGoTo.has_target`.
+        """
+        return isinstance(self._action.get_dictionary_object(_SOUND), COSStream)
+
+    def clear_sound(self) -> None:
+        """Remove ``/Sound`` from the action dictionary.
+
+        Convenience for ``set_sound(None)`` that mirrors the
+        ``clear_*`` helpers exposed on other action wrappers
+        (:class:`PDActionTransition.clear_trans` etc.).
+        """
+        self._action.remove_item(_SOUND)
+
+    def is_empty(self) -> bool:
+        """``True`` when ``/Sound`` is absent — i.e. the action carries no
+        sound stream to play.
+
+        Volume / Synchronous / Repeat / Mix are all auxiliary modifiers
+        that make no sense without a sound stream, so emptiness is keyed
+        on ``/Sound`` alone. Parallels :class:`PDActionTransition.is_empty`.
+        """
+        return not self.has_sound()
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"Sound"``).
+
+        Useful as a sanity check after round-tripping through
+        :meth:`PDAction.create` or when constructing the wrapper around a
+        hand-built :class:`COSDictionary`. Parallels
+        :class:`PDActionTransition.is_valid`.
+        """
+        return self.get_sub_type() == self.SUB_TYPE
+
 
 __all__ = ["PDActionSound"]
