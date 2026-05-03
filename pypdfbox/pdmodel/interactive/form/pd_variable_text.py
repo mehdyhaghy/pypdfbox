@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream, COSString
 
 from .pd_terminal_field import PDTerminalField
 
@@ -14,14 +14,16 @@ _DA: COSName = COSName.get_pdf_name("DA")
 _DS: COSName = COSName.get_pdf_name("DS")
 _Q: COSName = COSName.get_pdf_name("Q")
 _RV: COSName = COSName.get_pdf_name("RV")
+_KIDS: COSName = COSName.get_pdf_name("Kids")
 
 
 class PDVariableText(PDTerminalField):
     """Abstract intermediate for fields with variable text. Mirrors PDFBox
     ``PDVariableText`` lite surface (``/DA``, ``/Q``, ``/DS``, ``/RV``).
 
-    Deferred upstream surface: ``getStringOrStream`` for rich-text /RV stream
-    values.
+    Deferred upstream surface: ``getDefaultAppearanceString`` returns a typed
+    ``PDDefaultAppearanceString`` (not yet ported) — ``get_default_appearance``
+    returns the raw string instead.
     """
 
     QUADDING_LEFT = 0
@@ -46,13 +48,23 @@ class PDVariableText(PDTerminalField):
 
     def set_default_appearance(self, da_value: str | None) -> None:
         self._field.set_string(_DA, da_value)
-        if self._field.contains_key("Kids"):
+        if self._field.contains_key(_KIDS):
             for widget in self.get_widgets():
                 widget_cos = (
                     widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
                 )
                 if widget_cos.contains_key(_DA):
                     widget_cos.set_string(_DA, da_value)
+
+    def has_default_appearance(self) -> bool:
+        """Predicate — return ``True`` when ``/DA`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: does **not** walk the inheritable chain.
+        Use :meth:`get_default_appearance` (which falls back through the
+        parent + AcroForm chain) to read the effective value.
+        """
+        return self._field.contains_key(_DA)
 
     # ---------- /DS ----------
 
@@ -62,29 +74,80 @@ class PDVariableText(PDTerminalField):
     def set_default_style_string(self, value: str | None) -> None:
         self._field.set_string(_DS, value)
 
+    def has_default_style_string(self) -> bool:
+        """Predicate — return ``True`` when ``/DS`` is set on this field's own
+        dictionary. ``/DS`` is **not** inheritable per the PDF spec, so this
+        is equivalent to "the entry is present".
+        """
+        return self._field.contains_key(_DS)
+
     # ---------- /Q ----------
 
     def get_q(self) -> int:
-        return self._field.get_int(_Q, 0)
+        """Return the effective ``/Q`` (text quadding/justification).
+
+        Mirrors upstream ``PDVariableText.getQ`` — ``/Q`` is inheritable per
+        the PDF spec, so this walks ``self -> parent -> AcroForm``. Defaults
+        to :attr:`QUADDING_LEFT` (0) when no ancestor sets it.
+        """
+        from pypdfbox.cos import COSNumber
+
+        item = self.get_inheritable_attribute(_Q)
+        if isinstance(item, COSNumber):
+            return item.int_value()
+        return 0
 
     def set_q(self, q: int) -> None:
         self._field.set_int(_Q, q)
 
+    def has_q(self) -> bool:
+        """Predicate — return ``True`` when ``/Q`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: does **not** walk the inheritable chain
+        (``/Q`` is inheritable per the PDF spec). Use :meth:`get_q` to read
+        the effective value (which falls back to ``QUADDING_LEFT``/``0``).
+        Useful for callers that need to distinguish "field has its own /Q"
+        from "field inherits /Q (or defaults to left-aligned)".
+        """
+        return self._field.contains_key(_Q)
+
     # ---------- /RV ----------
 
     def get_rich_text_value(self) -> str | None:
-        item = self.get_inheritable_attribute(_RV)
-        if isinstance(item, COSString):
-            return item.get_string()
-        if isinstance(item, COSStream):
-            try:
-                return item.create_input_stream().read().decode("utf-8")
-            except Exception:
-                return None
-        return None
+        return self._get_string_or_stream(self.get_inheritable_attribute(_RV))
 
     def set_rich_text_value(self, value: str | None) -> None:
         self._field.set_string(_RV, value)
+
+    def has_rich_text_value(self) -> bool:
+        """Predicate — return ``True`` when ``/RV`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: does **not** walk the inheritable chain.
+        """
+        return self._field.contains_key(_RV)
+
+    # ---------- /DA + /DS + /RV helper ----------
+
+    def _get_string_or_stream(self, base: COSBase | None) -> str | None:
+        """Return a text-or-stream payload as a Python ``str``.
+
+        Mirrors upstream ``PDVariableText.getStringOrStream``: some
+        dictionary entries (``/V``, ``/DV``, ``/RV``) admit either a
+        ``COSString`` or a ``COSStream`` body. ``COSString`` returns its
+        decoded text, ``COSStream`` decodes through ``to_text_string``
+        (matching upstream ``COSStream.toTextString``). Returns ``None``
+        when the entry is missing or any other COS type — pypdfbox keeps
+        the explicit ``None`` for callers that want to distinguish "no
+        entry" from "empty payload" (upstream returns ``""`` in both
+        cases; see CHANGES.md).
+        """
+        if isinstance(base, COSString):
+            return base.get_string()
+        if isinstance(base, COSStream):
+            return base.to_text_string()
+        return None
 
 
 __all__ = ["PDVariableText"]
