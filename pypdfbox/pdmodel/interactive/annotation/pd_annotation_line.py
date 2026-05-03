@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSFloat, COSName
 
-from .pd_annotation import PDAnnotation
+from .pd_annotation_markup import PDAnnotationMarkup
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
+        PDMeasureDictionary,
+    )
 
 _L: COSName = COSName.get_pdf_name("L")
 _LE: COSName = COSName.get_pdf_name("LE")
@@ -13,9 +20,10 @@ _LLE: COSName = COSName.get_pdf_name("LLE")
 _LLO: COSName = COSName.get_pdf_name("LLO")
 _CP: COSName = COSName.get_pdf_name("CP")
 _IC: COSName = COSName.get_pdf_name("IC")
+_MEASURE: COSName = COSName.get_pdf_name("Measure")
 
 
-class PDAnnotationLine(PDAnnotation):
+class PDAnnotationLine(PDAnnotationMarkup):
     """
     Line annotation — ``/Subtype /Line``. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLine``.
@@ -54,6 +62,10 @@ class PDAnnotationLine(PDAnnotation):
         super().__init__(annotation_dict)
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
+            # Mirror upstream: ``/L`` is mandatory per PDF 32000 — upstream
+            # seeds it with ``[0, 0, 0, 0]`` so the constructed annotation
+            # is spec-valid before callers fill in real coordinates.
+            self.set_line([0.0, 0.0, 0.0, 0.0])
 
     # ---------- /L (line coordinates) ----------
 
@@ -102,8 +114,12 @@ class PDAnnotationLine(PDAnnotation):
                 return entry.name
         return self.LE_NONE
 
-    def set_start_point_ending_style(self, style: str) -> None:
-        self._set_le_entry(0, style)
+    def set_start_point_ending_style(self, style: str | None) -> None:
+        """Set the line-ending style for the start point. Mirrors upstream
+        ``setStartPointEndingStyle(String)`` — passing ``None`` is
+        coerced to :data:`LE_NONE` to match upstream's null-coalescing."""
+        actual_style = self.LE_NONE if style is None else style
+        self._set_le_entry(0, actual_style)
 
     def get_end_point_ending_style(self) -> str:
         """Default per spec is ``None``."""
@@ -114,8 +130,12 @@ class PDAnnotationLine(PDAnnotation):
                 return entry.name
         return self.LE_NONE
 
-    def set_end_point_ending_style(self, style: str) -> None:
-        self._set_le_entry(1, style)
+    def set_end_point_ending_style(self, style: str | None) -> None:
+        """Set the line-ending style for the end point. Mirrors upstream
+        ``setEndPointEndingStyle(String)`` — passing ``None`` is coerced
+        to :data:`LE_NONE` to match upstream's null-coalescing."""
+        actual_style = self.LE_NONE if style is None else style
+        self._set_le_entry(1, actual_style)
 
     # ---------- /Cap (caption flag) ----------
 
@@ -238,6 +258,52 @@ class PDAnnotationLine(PDAnnotation):
             return
         arr = COSArray([COSFloat(float(c)) for c in ic])
         self._dict.set_item(_IC, arr)
+
+    # ---------- /Measure (measurement dictionary) ----------
+
+    def get_measure(self) -> "PDMeasureDictionary | None":
+        """Return the typed ``/Measure`` dictionary (PDF 32000-2 Table 174
+        — line measurement) or ``None`` when the entry is absent.
+
+        Mirrors the typed accessor exposed on
+        :class:`PDAnnotationPolygon`/:class:`PDAnnotationPolyline`.
+        """
+        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
+            PDMeasureDictionary,
+        )
+
+        value = self._dict.get_dictionary_object(_MEASURE)
+        if isinstance(value, COSDictionary):
+            return PDMeasureDictionary(value)
+        return None
+
+    def set_measure(
+        self, measure: "PDMeasureDictionary | COSDictionary | None"
+    ) -> None:
+        """Set or clear the ``/Measure`` dictionary. Pass ``None`` to remove
+        the entry; accepts both a typed :class:`PDMeasureDictionary` (via
+        ``get_cos_object``) and a raw :class:`COSDictionary`."""
+        if measure is None:
+            self._dict.remove_item(_MEASURE)
+            return
+        self._dict.set_item(
+            _MEASURE,
+            measure.get_cos_object() if hasattr(measure, "get_cos_object") else measure,
+        )
+
+    # ---------- /IT (intent) predicates ----------
+
+    def is_line_arrow(self) -> bool:
+        """Predicate for ``/IT == "LineArrow"``. No upstream equivalent —
+        saves callers from comparing :meth:`get_intent` against
+        :data:`IT_LINE_ARROW` by hand."""
+        return self.get_intent() == self.IT_LINE_ARROW
+
+    def is_line_dimension(self) -> bool:
+        """Predicate for ``/IT == "LineDimension"``. No upstream equivalent —
+        saves callers from comparing :meth:`get_intent` against
+        :data:`IT_LINE_DIMENSION` by hand."""
+        return self.get_intent() == self.IT_LINE_DIMENSION
 
 
 __all__ = ["PDAnnotationLine"]

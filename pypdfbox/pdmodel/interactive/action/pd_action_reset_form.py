@@ -137,4 +137,73 @@ class PDActionResetForm(PDAction):
             flags &= ~_FLAG_INCLUDE_EXCLUDE
         self.set_flags(flags)
 
+    def is_exclude(self) -> bool:
+        """Return ``True`` when ``/Fields`` is interpreted as the *exclude*
+        set — i.e. every field is reset *except* those listed.
+
+        Counterpart predicate to :meth:`is_include`. Per PDF 32000-1
+        §12.7.5.3 Table 239 the include/exclude semantic is encoded by
+        bit 1 of ``/Flags``: bit set means exclude. ``is_exclude`` is
+        always the logical inverse of :meth:`is_include`; both are
+        provided so call-sites can read either polarity naturally."""
+        return (self.get_flags() & _FLAG_INCLUDE_EXCLUDE) != 0
+
+    def set_exclude(self, b: bool) -> None:
+        """Set ``/Flags`` bit 1 to the exclude polarity. ``True`` flips
+        the bit on (``/Fields`` is the exclude set); ``False`` clears it
+        (``/Fields`` is the include set — the spec default).
+
+        Counterpart of :meth:`set_include`. ``set_exclude(True)`` and
+        ``set_include(False)`` write the same flag state — exposing both
+        polarities lets callers read either direction at the call site."""
+        self.set_include(b)
+
+    # ---------- predicates ----------
+
+    def has_fields(self) -> bool:
+        """``True`` when ``/Fields`` is present on the underlying dictionary
+        and is a ``COSArray``. Lets callers branch on field-list presence
+        without re-reading the entry. When ``/Fields`` is absent every
+        field in the form is reset (PDF 32000-1 §12.7.5.3 Table 239 —
+        the spec semantic of an absent ``/Fields`` entry)."""
+        return self.get_fields() is not None
+
+    def has_flags(self) -> bool:
+        """``True`` when ``/Flags`` is explicitly present on the underlying
+        dictionary. Returns ``False`` when ``/Flags`` is absent (which
+        defaults to ``0`` per PDF 32000-1 §12.7.5.3 Table 239, i.e. the
+        include semantic with no extra flags set)."""
+        return self._action.get_dictionary_object(_FLAGS) is not None
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"ResetForm"``). Useful as a sanity check
+        after round-tripping through :meth:`PDAction.create` or when
+        constructing the wrapper around a hand-built
+        :class:`COSDictionary`."""
+        return self.get_sub_type() == self.SUB_TYPE
+
+    def is_empty(self) -> bool:
+        """``True`` when the action carries no targeted fields — either
+        ``/Fields`` is absent, or it is present but empty. Combined with
+        the include/exclude semantic this corresponds to: include + empty
+        → "reset nothing"; exclude + empty → "reset everything" (the
+        spec default when ``/Fields`` is absent)."""
+        fields = self.get_fields()
+        return fields is None or fields.size() == 0
+
+    def clear_fields(self) -> None:
+        """Remove ``/Fields`` from the underlying dictionary. After this
+        call :meth:`get_fields` returns ``None`` and :meth:`has_fields`
+        returns ``False``. Per PDF 32000-1 §12.7.5.3 Table 239 an absent
+        ``/Fields`` entry combined with the default include semantic
+        causes every field in the form to be reset."""
+        self._action.remove_item(_FIELDS)
+
+    def clear_flags(self) -> None:
+        """Remove ``/Flags`` from the underlying dictionary. After this
+        call :meth:`get_flags` returns ``0`` (the spec default) and
+        :meth:`has_flags` returns ``False``."""
+        self._action.remove_item(_FLAGS)
+
 __all__ = ["PDActionResetForm"]

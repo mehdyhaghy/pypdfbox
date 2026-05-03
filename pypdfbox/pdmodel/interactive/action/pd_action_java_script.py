@@ -55,5 +55,54 @@ class PDActionJavaScript(PDAction):
     def set_action(self, javascript: str | None) -> None:
         self._action.set_string(_JS, javascript)
 
+    # ---------- predicates ----------
+
+    def has_action(self) -> bool:
+        """``True`` when ``/JS`` is present on the underlying dictionary,
+        regardless of whether it is stored as a ``COSString`` or
+        ``COSStream``. Lets callers branch on payload-presence without
+        paying the cost of decoding a stream body."""
+        return self._action.get_dictionary_object(_JS) is not None
+
+    def is_empty(self) -> bool:
+        """``True`` when the action carries no usable JavaScript payload —
+        either ``/JS`` is absent, or it is present in an unexpected COS
+        form, or its decoded source string is empty. Convenience predicate
+        complementing :meth:`has_action` (``has_action`` only checks for
+        entry presence; ``is_empty`` also rejects empty strings and
+        unreadable stream forms)."""
+        source = self.get_action()
+        return source is None or source == ""
+
+    def is_stream_payload(self) -> bool:
+        """``True`` when ``/JS`` is stored as a ``COSStream`` rather than
+        a ``COSString``. PDF 32000-1 §12.6.4.16 allows both forms; large
+        scripts are typically stored as streams (potentially compressed
+        via the stream's filter chain). Returns ``False`` when ``/JS``
+        is absent or stored as a string / other COS type."""
+        return isinstance(self._action.get_dictionary_object(_JS), COSStream)
+
+    def is_string_payload(self) -> bool:
+        """``True`` when ``/JS`` is stored as a ``COSString``. Returns
+        ``False`` when ``/JS`` is absent, a stream, or another COS type.
+        Counterpart to :meth:`is_stream_payload`."""
+        return isinstance(self._action.get_dictionary_object(_JS), COSString)
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"JavaScript"``). Useful as a sanity check
+        after round-tripping through :meth:`PDAction.create` or when
+        constructing the wrapper around a hand-built
+        :class:`COSDictionary`."""
+        return self.get_sub_type() == self.SUB_TYPE
+
+    def clear_action(self) -> None:
+        """Remove ``/JS`` from the underlying dictionary. After this call
+        :meth:`get_action` returns ``None`` and :meth:`has_action` returns
+        ``False``. Equivalent to ``set_action(None)`` — exposed as a
+        named method for symmetry with the other clear-style helpers in
+        the action cluster (e.g. ``PDActionEmbeddedGoTo`` style)."""
+        self._action.remove_item(_JS)
+
 
 __all__ = ["PDActionJavaScript"]
