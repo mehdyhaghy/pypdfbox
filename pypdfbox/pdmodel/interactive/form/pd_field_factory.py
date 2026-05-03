@@ -10,12 +10,13 @@ if TYPE_CHECKING:
     from .pd_non_terminal_field import PDNonTerminalField
 
 _KIDS: COSName = COSName.get_pdf_name("Kids")
-_SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
 _T: COSName = COSName.get_pdf_name("T")
 _FT: COSName = COSName.get_pdf_name("FT")
 _FF: COSName = COSName.get_pdf_name("Ff")
 _PARENT: COSName = COSName.get_pdf_name("Parent")
 _P: COSName = COSName.get_pdf_name("P")
+
+_KNOWN_FIELD_TYPES: frozenset[str] = frozenset({"Tx", "Btn", "Ch", "Sig"})
 
 
 def _find_field_type(
@@ -100,6 +101,18 @@ class PDFieldFactory:
         return _find_field_type(field)
 
     @staticmethod
+    def is_known_field_type(field_type: str | None) -> bool:
+        """Return ``True`` when ``field_type`` is one of the four PDF
+        field-type names (``Btn``/``Tx``/``Ch``/``Sig``).
+
+        Pypdfbox-only convenience built on the constants exposed by upstream
+        ``PDFieldFactory``. Useful for callers that have already resolved a
+        field's type via :meth:`find_field_type` and want to validate it
+        without listing the constants themselves.
+        """
+        return field_type in _KNOWN_FIELD_TYPES
+
+    @staticmethod
     def create_field(
         form: PDAcroForm,
         field: COSDictionary,
@@ -111,14 +124,15 @@ class PDFieldFactory:
         if field is None:
             return None
         # Non-terminal detection: /Kids exists with at least one child that
-        # is a field (no /Subtype — Subtype indicates a widget annotation).
+        # carries its own /T partial-name. Mirrors upstream — a kid with /T
+        # is a field (whereas a kid without /T is a widget annotation only).
         kids = field.get_dictionary_object(_KIDS)
         if isinstance(kids, COSArray) and kids.size() > 0:
             for i in range(kids.size()):
                 entry = kids.get_object(i)
                 if (
                     isinstance(entry, COSDictionary)
-                    and entry.get_dictionary_object(_SUBTYPE) is None
+                    and entry.get_string(_T) is not None
                 ):
                     return NTField(form, field, parent)
         # Terminal: dispatch on /FT (walks parent chain via inherited lookup).

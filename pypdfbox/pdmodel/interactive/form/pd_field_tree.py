@@ -51,6 +51,36 @@ class PDFieldTree(Sequence["PDField"]):
     def __bool__(self) -> bool:
         return not self.is_empty()
 
+    def __contains__(self, item: object) -> bool:
+        """Short-circuiting membership check.
+
+        Walks the tree comparing each :class:`PDField` against ``item`` and
+        stops on the first match — avoids the full traversal that
+        :class:`Sequence`'s default ``__contains__`` would perform via
+        :meth:`__getitem__`. Two fields wrapping the same underlying
+        ``COSDictionary`` compare as equal even when they are distinct Python
+        instances (consistent with PDFBox's ``COSDictionary`` identity-based
+        ``equals``).
+        """
+        from .pd_field import PDField
+
+        if not isinstance(item, PDField):
+            return False
+        target = id(item.get_cos_object())
+        return any(id(f.get_cos_object()) == target for f in self)
+
+    def to_list(self) -> list[PDField]:
+        """Materialise the tree as a fresh ``list[PDField]``.
+
+        Pypdfbox-only convenience mirroring Java's ``Stream.toList()`` /
+        ``StreamSupport.stream(spliterator, false).collect(...)`` idiom that
+        upstream callers reach for. Equivalent to ``list(tree)`` but reads
+        more idiomatically alongside other typed accessors. Each call
+        materialises a new list — callers that mutate the result do not
+        affect the underlying tree.
+        """
+        return self._as_list()
+
     def _as_list(self) -> list[PDField]:
         return list(iter(self))
 

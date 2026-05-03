@@ -116,6 +116,91 @@ def test_pd_field_tree_is_empty_short_circuits_without_walking() -> None:
     assert tree.is_empty() is False
 
 
+def test_pd_field_tree_to_list_returns_fresh_materialised_list() -> None:
+    tree = _form_with_nested_fields().get_field_tree()
+
+    first = tree.to_list()
+    second = tree.to_list()
+
+    assert isinstance(first, list)
+    assert isinstance(second, list)
+    assert first is not second  # fresh list each call
+    assert [f.get_fully_qualified_name() for f in first] == [
+        "address",
+        "address.street",
+        "address.city",
+        "name",
+    ]
+    # mutating the result must not affect the tree
+    first.clear()
+    assert len(tree) == 4
+
+
+def test_pd_field_tree_to_list_on_empty_form() -> None:
+    tree = PDAcroForm().get_field_tree()
+    assert tree.to_list() == []
+
+
+def test_pd_field_tree_contains_finds_existing_field() -> None:
+    form = _form_with_nested_fields()
+    tree = form.get_field_tree()
+    # Resolve a field through the tree, then probe via __contains__
+    address = next(iter(tree))
+    assert address in tree
+
+
+def test_pd_field_tree_contains_finds_descendant() -> None:
+    form = _form_with_nested_fields()
+    tree = form.get_field_tree()
+    fields = list(tree)
+    street = next(f for f in fields if f.get_fully_qualified_name() == "address.street")
+    assert street in tree
+
+
+def test_pd_field_tree_contains_rejects_non_pd_field() -> None:
+    tree = _form_with_nested_fields().get_field_tree()
+    assert "address" not in tree
+    assert 42 not in tree
+    assert None not in tree
+
+
+def test_pd_field_tree_contains_uses_cos_identity() -> None:
+    """A freshly built PDField wrapping the SAME underlying COSDictionary as
+    a tree member must satisfy __contains__ — wrapper instances are not
+    cached, so identity comparison would falsely reject them.
+    """
+    form = _form_with_nested_fields()
+    tree = form.get_field_tree()
+
+    name_field = next(
+        f for f in tree if f.get_fully_qualified_name() == "name"
+    )
+    # Re-wrap the same underlying COSDictionary in a brand-new PDField object
+    same_cos = name_field.get_cos_object()
+    rewrapped = PDFieldStub(form, same_cos)
+    assert rewrapped is not name_field
+    assert rewrapped.get_cos_object() is same_cos
+    assert rewrapped in tree
+
+
+def test_pd_field_tree_contains_rejects_unrelated_field() -> None:
+    """A PDField pointing at a COSDictionary not present in the tree returns
+    False."""
+    form = _form_with_nested_fields()
+    tree = form.get_field_tree()
+
+    other = PDFieldStub(form)
+    other.set_partial_name("ghost")
+    assert other not in tree
+
+
+def test_pd_field_tree_contains_on_empty_tree() -> None:
+    form = PDAcroForm()
+    tree = form.get_field_tree()
+    stub = PDFieldStub(form)
+    assert stub not in tree
+
+
 def test_iterator_skips_repeated_cos_dictionary_to_avoid_recursion(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
