@@ -152,3 +152,51 @@ def test_str_includes_phase() -> None:
     text = str(pattern)
     assert text.startswith("PDLineDashPattern{array=[1.5]")
     assert text.endswith("phase=0}")
+
+
+# ---------------------------------------------------------------------------
+# get_phase_int (upstream Java returns int)
+# ---------------------------------------------------------------------------
+
+
+def test_get_phase_int_returns_int_for_int_phase() -> None:
+    array = COSArray()
+    array.set_float_array([1.0, 2.0])
+    pattern = PDLineDashPattern(array, 5)
+    phase = pattern.get_phase_int()
+    assert phase == 5
+    assert type(phase) is int
+
+
+def test_get_phase_int_truncates_float_phase() -> None:
+    array = COSArray()
+    array.set_float_array([1.0, 2.0])
+    pattern = PDLineDashPattern(array)
+    pattern.set_phase(3.7)
+    # int(3.7) == 3 — Java ``(int) 3.7f`` also truncates toward zero.
+    assert pattern.get_phase_int() == 3
+    assert type(pattern.get_phase_int()) is int
+
+
+def test_get_phase_int_zero_for_default_pattern() -> None:
+    pattern = PDLineDashPattern()
+    assert pattern.get_phase_int() == 0
+    assert type(pattern.get_phase_int()) is int
+
+
+def test_get_phase_int_handles_negative_normalised_phase() -> None:
+    # PDF 2.0: negative phase is normalised at construction time, so
+    # get_phase_int() always reports the post-normalisation value.
+    array = COSArray()
+    array.set_float_array([3.0, 5.0])  # sum * 2 == 16
+    pattern = PDLineDashPattern(array, -4)
+    assert pattern.get_phase_int() == 12  # -4 + 16
+
+
+def test_get_phase_int_truncates_toward_zero_for_negative_float() -> None:
+    array = COSArray()
+    array.set_float_array([1.0])
+    pattern = PDLineDashPattern(array)
+    pattern.set_phase(-2.9)
+    # int() truncates toward zero, matching Java cast semantics.
+    assert pattern.get_phase_int() == -2

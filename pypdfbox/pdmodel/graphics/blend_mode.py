@@ -278,8 +278,43 @@ class BlendMode:
     def is_separable(self) -> bool:
         return self._name in BlendMode.SEPARABLE_NAMES
 
+    def is_separable_blend_mode(self) -> bool:
+        """Mirror upstream ``isSeparableBlendMode()`` (alias of
+        :meth:`is_separable`). Returns ``True`` when the mode is a
+        separable PDF 32000-1 §11.3.5.1 blend mode and ``False`` for the
+        non-separable HSL modes (or unknown / non-standard names).
+        """
+        return self.is_separable()
+
     def is_non_separable(self) -> bool:
         return self._name in BlendMode.NON_SEPARABLE_NAMES
+
+    def get_blend_channel_function(self) -> _SeparableFn | None:
+        """Return the per-channel separable blend callable, or ``None``
+        for non-separable HSL modes (or unknown names).
+
+        Mirrors upstream ``getBlendChannelFunction()`` — the upstream
+        ``BlendChannelFunction`` is a Java functional interface
+        ``(src, dest) -> float``; the Python equivalent is a plain
+        callable taking ``(source_channel, backdrop_channel)`` floats in
+        ``[0, 1]`` and returning a float in ``[0, 1]``.
+
+        For separable modes this returns the same function used internally
+        by :meth:`blend`; callers can capture it once and reuse without
+        the per-call name lookup.
+        """
+        return _SEPARABLE_BLENDERS.get(self._name)
+
+    def get_blend_function(self) -> _RgbFn | None:
+        """Return the non-separable RGB-triple blend callable, or
+        ``None`` for separable modes (or unknown names).
+
+        Mirrors upstream ``getBlendFunction()``. The Python signature is
+        ``(sr, sg, sb, br, bg, bb) -> (r, g, b)`` — a flat 6-float input
+        rather than upstream's ``float[] src, float[] dest, float[]
+        result`` shape, since Python doesn't pre-allocate result arrays.
+        """
+        return _NON_SEPARABLE_BLENDERS.get(self._name)
 
     def is_standard(self) -> bool:
         """True when this mode is one of the 16 standard PDF 32000-1 §11.3.5

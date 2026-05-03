@@ -457,3 +457,149 @@ def test_blend_separable_rgb_saturation_zero_when_source_grey():
     out = BlendMode.SATURATION.blend_separable_rgb(src, bgd)
     bgd_lum = 0.30 * 0.8 + 0.59 * 0.2 + 0.11 * 0.4
     assert out == pytest.approx((bgd_lum, bgd_lum, bgd_lum))
+
+
+# ---------------------------------------------------------------------------
+# is_separable_blend_mode (upstream-named alias of is_separable)
+# ---------------------------------------------------------------------------
+
+
+def test_is_separable_blend_mode_aliases_is_separable_for_separable_modes():
+    for mode in (
+        BlendMode.NORMAL,
+        BlendMode.MULTIPLY,
+        BlendMode.SCREEN,
+        BlendMode.OVERLAY,
+        BlendMode.DARKEN,
+        BlendMode.LIGHTEN,
+        BlendMode.COLOR_DODGE,
+        BlendMode.COLOR_BURN,
+        BlendMode.HARD_LIGHT,
+        BlendMode.SOFT_LIGHT,
+        BlendMode.DIFFERENCE,
+        BlendMode.EXCLUSION,
+    ):
+        assert mode.is_separable_blend_mode() is True
+        assert mode.is_separable_blend_mode() == mode.is_separable()
+
+
+def test_is_separable_blend_mode_false_for_non_separable_modes():
+    for mode in (
+        BlendMode.HUE,
+        BlendMode.SATURATION,
+        BlendMode.COLOR,
+        BlendMode.LUMINOSITY,
+    ):
+        assert mode.is_separable_blend_mode() is False
+        assert mode.is_separable_blend_mode() == mode.is_separable()
+
+
+def test_is_separable_blend_mode_false_for_unknown_name():
+    assert BlendMode.get("WeirdNonStandard").is_separable_blend_mode() is False
+
+
+# ---------------------------------------------------------------------------
+# get_blend_channel_function (upstream parity helper)
+# ---------------------------------------------------------------------------
+
+
+def test_get_blend_channel_function_returns_callable_for_separable_modes():
+    fn = BlendMode.MULTIPLY.get_blend_channel_function()
+    assert fn is not None
+    # Multiply: src * dest.
+    assert fn(0.5, 0.4) == pytest.approx(0.2)
+    # Equivalent to .blend(src, dest).
+    assert fn(0.3, 0.7) == BlendMode.MULTIPLY.blend(0.3, 0.7)
+
+
+def test_get_blend_channel_function_normal_returns_identity_in_source():
+    fn = BlendMode.NORMAL.get_blend_channel_function()
+    assert fn is not None
+    assert fn(0.42, 0.99) == pytest.approx(0.42)
+
+
+def test_get_blend_channel_function_returns_none_for_non_separable_modes():
+    for mode in (
+        BlendMode.HUE,
+        BlendMode.SATURATION,
+        BlendMode.COLOR,
+        BlendMode.LUMINOSITY,
+    ):
+        assert mode.get_blend_channel_function() is None
+
+
+def test_get_blend_channel_function_returns_none_for_unknown_name():
+    assert BlendMode.get("UnknownMode").get_blend_channel_function() is None
+
+
+def test_get_blend_channel_function_matches_blend_for_each_separable_mode():
+    sample_pairs = [(0.1, 0.9), (0.3, 0.6), (0.7, 0.2), (0.0, 0.5), (1.0, 0.0)]
+    for name in BlendMode.SEPARABLE_NAMES:
+        mode = BlendMode.get(name)
+        fn = mode.get_blend_channel_function()
+        assert fn is not None, name
+        for src, dst in sample_pairs:
+            assert fn(src, dst) == pytest.approx(mode.blend(src, dst)), name
+
+
+# ---------------------------------------------------------------------------
+# get_blend_function (non-separable RGB blend callable)
+# ---------------------------------------------------------------------------
+
+
+def test_get_blend_function_returns_callable_for_non_separable_modes():
+    fn = BlendMode.LUMINOSITY.get_blend_function()
+    assert fn is not None
+    out = fn(0.4, 0.5, 0.6, 0.2, 0.7, 0.3)
+    # Equivalent to .blend_separable_rgb((src), (dest)).
+    assert out == BlendMode.LUMINOSITY.blend_separable_rgb(
+        (0.4, 0.5, 0.6), (0.2, 0.7, 0.3)
+    )
+
+
+def test_get_blend_function_returns_none_for_separable_modes():
+    for mode in (
+        BlendMode.NORMAL,
+        BlendMode.MULTIPLY,
+        BlendMode.OVERLAY,
+        BlendMode.HARD_LIGHT,
+        BlendMode.SOFT_LIGHT,
+    ):
+        assert mode.get_blend_function() is None
+
+
+def test_get_blend_function_returns_none_for_unknown_name():
+    assert BlendMode.get("UnknownNonSep").get_blend_function() is None
+
+
+def test_get_blend_function_one_callable_per_non_separable_mode():
+    for name in BlendMode.NON_SEPARABLE_NAMES:
+        mode = BlendMode.get(name)
+        fn = mode.get_blend_function()
+        assert fn is not None, name
+        # Every non-separable function accepts the 6-float signature
+        # and returns a 3-tuple of floats in [0, 1].
+        out = fn(0.3, 0.4, 0.5, 0.6, 0.7, 0.2)
+        assert isinstance(out, tuple)
+        assert len(out) == 3
+        for v in out:
+            assert 0.0 <= v <= 1.0 + 1e-9, name
+
+
+# ---------------------------------------------------------------------------
+# Mutual exclusivity: separable XOR non-separable callables
+# ---------------------------------------------------------------------------
+
+
+def test_separable_modes_have_only_channel_function():
+    for name in BlendMode.SEPARABLE_NAMES:
+        mode = BlendMode.get(name)
+        assert mode.get_blend_channel_function() is not None
+        assert mode.get_blend_function() is None
+
+
+def test_non_separable_modes_have_only_blend_function():
+    for name in BlendMode.NON_SEPARABLE_NAMES:
+        mode = BlendMode.get(name)
+        assert mode.get_blend_channel_function() is None
+        assert mode.get_blend_function() is not None

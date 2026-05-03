@@ -119,6 +119,17 @@ class PDLineDashPattern:
     def get_phase(self) -> _Number:
         return self._phase
 
+    def get_phase_int(self) -> int:
+        """Return the dash phase as ``int``, matching upstream's
+        ``getPhase()`` (which is typed ``int`` in Java).
+
+        The pythonic :meth:`get_phase` may return a float when the
+        construction phase was a float. Callers porting upstream code
+        verbatim can use this helper to get the strict-int return.
+        Truncates toward zero (matches Java's ``(int) floatValue``).
+        """
+        return int(self._phase)
+
     def set_phase(self, value: _Number) -> None:
         """Replace the dash phase with ``value``."""
         self._phase = value

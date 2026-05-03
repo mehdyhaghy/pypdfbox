@@ -939,3 +939,118 @@ def test_copy_into_graphics_state_tr2_takes_precedence_over_tr() -> None:
     gs.copy_into_graphics_state(target)
     # /TR2 wins — final value must be tr2_value, never tr_value.
     assert target.get("transfer") is tr2_value
+
+
+# ---------------------------------------------------------------------------
+# _default_if_none — spec defaults for /LW, /ML, /CA, /CA_NS during copy
+# ---------------------------------------------------------------------------
+
+
+def test_default_if_none_returns_value_when_present() -> None:
+    assert PDExtendedGraphicsState._default_if_none(2.5, 1.0) == 2.5
+    # 0.0 is a valid value — must not be replaced with the default.
+    assert PDExtendedGraphicsState._default_if_none(0.0, 99.0) == 0.0
+
+
+def test_default_if_none_returns_default_when_none() -> None:
+    assert PDExtendedGraphicsState._default_if_none(None, 1.0) == 1.0
+    assert PDExtendedGraphicsState._default_if_none(None, 10.0) == 10.0
+
+
+def test_copy_into_graphics_state_lw_uses_spec_default_when_value_missing() -> None:
+    """Mirror upstream ``defaultIfNull(getLineWidth(), 1)`` — a /LW key
+    present with a non-numeric value still pushes the spec default 1.0
+    into the target, matching Java's null-safe unboxing."""
+    gs = PDExtendedGraphicsState()
+    # Set /LW key to something non-numeric so get_line_width() returns None.
+    gs.get_cos_object().set_item(COSName.get_pdf_name("LW"), COSName.get_pdf_name("Bogus"))
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert target.get("line_width") == 1.0
+
+
+def test_copy_into_graphics_state_lw_well_formed_passes_through() -> None:
+    gs = PDExtendedGraphicsState()
+    gs.set_line_width(2.5)
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert target.get("line_width") == 2.5
+
+
+def test_copy_into_graphics_state_ml_uses_spec_default_when_value_missing() -> None:
+    """Upstream miter-limit default is 10.0 (PDF 32000-1 §8.4.3.5)."""
+    gs = PDExtendedGraphicsState()
+    gs.get_cos_object().set_item(COSName.get_pdf_name("ML"), COSName.get_pdf_name("Bogus"))
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert target.get("miter_limit") == 10.0
+
+
+def test_copy_into_graphics_state_ml_well_formed_passes_through() -> None:
+    gs = PDExtendedGraphicsState()
+    gs.set_miter_limit(7.5)
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert target.get("miter_limit") == 7.5
+
+
+def test_copy_into_graphics_state_ca_uses_spec_default_when_value_missing() -> None:
+    """Upstream stroking-alpha default is 1.0 (PDF 32000-1 §11.6.4.4)."""
+    gs = PDExtendedGraphicsState()
+    gs.get_cos_object().set_item(COSName.get_pdf_name("CA"), COSName.get_pdf_name("Bogus"))
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    # /CA copies into either alpha_constants or stroking_alpha_constant
+    # (depending on which setter shape the target exposes).
+    assert (
+        target.get("alpha_constants") == 1.0
+        or target.get("stroking_alpha_constant") == 1.0
+    )
+
+
+def test_copy_into_graphics_state_ca_zero_value_is_preserved() -> None:
+    """Alpha 0.0 is a valid (fully transparent) value — the default
+    fallback must not clobber it. Regression guard for the
+    ``defaultIfNull`` semantics: only ``None`` triggers the default."""
+    gs = PDExtendedGraphicsState()
+    gs.set_stroking_alpha_constant(0.0)
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    # 0.0 must round-trip — not be replaced with 1.0.
+    assert (
+        target.get("alpha_constants") == 0.0
+        or target.get("stroking_alpha_constant") == 0.0
+    )
+
+
+def test_copy_into_graphics_state_ca_ns_uses_spec_default_when_value_missing() -> None:
+    """Non-stroking-alpha default 1.0 (PDF 32000-1 §11.6.4.4)."""
+    gs = PDExtendedGraphicsState()
+    gs.get_cos_object().set_item(
+        COSName.get_pdf_name("ca"), COSName.get_pdf_name("Bogus")
+    )
+    target: dict[str, object] = {}
+    gs.copy_into_graphics_state(target)
+    assert (
+        target.get("non_stroke_alpha_constants") == 1.0
+        or target.get("non_stroking_alpha_constant") == 1.0
+    )
+
+
+def test_copy_into_graphics_state_lw_uses_default_with_object_target() -> None:
+    """Same default-fallback path, but routed through a target that
+    exposes a ``set_line_width`` setter (object form, not dict). Verifies
+    the default propagates regardless of which copy-target shape the
+    caller picked."""
+
+    class Target:
+        line_width: float | None = None
+
+        def set_line_width(self, v: float) -> None:
+            self.line_width = v
+
+    gs = PDExtendedGraphicsState()
+    gs.get_cos_object().set_item(COSName.get_pdf_name("LW"), COSName.get_pdf_name("Bogus"))
+    target = Target()
+    gs.copy_into_graphics_state(target)
+    assert target.line_width == 1.0

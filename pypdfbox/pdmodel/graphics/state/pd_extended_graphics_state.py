@@ -120,8 +120,15 @@ class PDExtendedGraphicsState:
 
         for key in self._dict.key_set():
             if key == _LW:
+                # Upstream applies ``defaultIfNull(getLineWidth(), 1)``
+                # so a malformed /LW (key present, value not a number)
+                # still pushes the spec default of 1 into the graphics
+                # state. PDF 32000-1 §8.4.3.2 Table 52: default 1.0.
                 self._copy_value(
-                    graphics_state, "set_line_width", "line_width", self.get_line_width()
+                    graphics_state,
+                    "set_line_width",
+                    "line_width",
+                    self._default_if_none(self.get_line_width(), 1.0),
                 )
             elif key == _LC:
                 self._copy_value(
@@ -132,8 +139,12 @@ class PDExtendedGraphicsState:
                     graphics_state, "set_line_join", "line_join", self.get_line_join_style()
                 )
             elif key == _ML:
+                # PDF 32000-1 §8.4.3.5 Table 52: miter limit default 10.0.
                 self._copy_value(
-                    graphics_state, "set_miter_limit", "miter_limit", self.get_miter_limit()
+                    graphics_state,
+                    "set_miter_limit",
+                    "miter_limit",
+                    self._default_if_none(self.get_miter_limit(), 10.0),
                 )
             elif key == _D:
                 self._copy_value(
@@ -173,12 +184,22 @@ class PDExtendedGraphicsState:
             elif key == _FONT:
                 self._copy_font_setting(graphics_state)
             elif key == _FL:
+                # PDF 32000-1 §10.6.2 Table 52: flatness default 1.0.
+                # Upstream's ``defaultIfNull`` ensures a malformed /FL still
+                # forwards the default rather than skipping the setter.
                 self._copy_value(
-                    graphics_state, "set_flatness", "flatness", self.get_flatness()
+                    graphics_state,
+                    "set_flatness",
+                    "flatness",
+                    self._default_if_none(self.get_flatness(), 1.0),
                 )
             elif key == _SM:
+                # PDF 32000-1 §10.7.2 Table 52: smoothness default 0.
                 self._copy_value(
-                    graphics_state, "set_smoothness", "smoothness", self.get_smoothness()
+                    graphics_state,
+                    "set_smoothness",
+                    "smoothness",
+                    self._default_if_none(self.get_smoothness(), 0.0),
                 )
             elif key == _SA:
                 self._copy_value(
@@ -188,32 +209,40 @@ class PDExtendedGraphicsState:
                     self.get_stroke_adjustment(),
                 )
             elif key == _CA:
+                # PDF 32000-1 §11.6.4.4 Table 52: stroking alpha default 1.0.
+                stroking_alpha = self._default_if_none(
+                    self.get_stroking_alpha_constant(), 1.0
+                )
                 copied = self._copy_value(
                     graphics_state,
                     "set_alpha_constants",
                     "alpha_constants",
-                    self.get_stroking_alpha_constant(),
+                    stroking_alpha,
                 )
                 if not copied:
                     self._copy_value(
                         graphics_state,
                         "set_stroking_alpha_constant",
                         "stroking_alpha_constant",
-                        self.get_stroking_alpha_constant(),
+                        stroking_alpha,
                     )
             elif key == _CA_NS:
+                # PDF 32000-1 §11.6.4.4 Table 52: non-stroking alpha default 1.0.
+                non_stroking_alpha = self._default_if_none(
+                    self.get_non_stroking_alpha_constant(), 1.0
+                )
                 copied = self._copy_value(
                     graphics_state,
                     "set_non_stroke_alpha_constants",
                     "non_stroke_alpha_constants",
-                    self.get_non_stroking_alpha_constant(),
+                    non_stroking_alpha,
                 )
                 if not copied:
                     self._copy_value(
                         graphics_state,
                         "set_non_stroking_alpha_constant",
                         "non_stroking_alpha_constant",
-                        self.get_non_stroking_alpha_constant(),
+                        non_stroking_alpha,
                     )
             elif key == _AIS:
                 copied = self._copy_value(
@@ -261,6 +290,18 @@ class PDExtendedGraphicsState:
                 self._copy_value(
                     graphics_state, "set_transfer", "transfer", self.get_transfer2()
                 )
+
+    @staticmethod
+    def _default_if_none(value: float | None, default: float) -> float:
+        """Mirror upstream private ``defaultIfNull(Float, float)``.
+
+        Returns ``value`` when not ``None``, otherwise ``default``.
+        Used by :meth:`copy_into_graphics_state` to push spec defaults
+        for /LW, /ML, /FL, /SM, /CA, /CA_NS when the dictionary entry is
+        present but the value is missing or malformed (matches the
+        Java unboxing-with-default pattern).
+        """
+        return default if value is None else value
 
     @staticmethod
     def _copy_value(
