@@ -29,6 +29,8 @@ _FLATE_DECODE: COSName = COSName.FLATE_DECODE  # type: ignore[attr-defined]
 # (GTS_PDFX, ISO_PDFE1) are valid per PDF 32000-1 §14.11.5 — callers
 # override via ``set_subtype`` after construction.
 _GTS_PDFA1 = "GTS_PDFA1"
+_GTS_PDFX = "GTS_PDFX"
+_ISO_PDFE1 = "ISO_PDFE1"
 
 # ICC.1:2010 §7.2 table 17 — bytes 36..40 of an ICC profile header carry
 # the magic "acsp" signature. Used for a soft (warn-only) sniff in set_data.
@@ -108,6 +110,17 @@ class PDOutputIntent:
     ICC bytes can be re-embedded via :meth:`set_data`.
     """
 
+    # ---------- subtype constants (PDF 32000-1 §14.11.5) ----------
+    # Class-level subtype constants spelled out for parity with how callers
+    # routinely identify the conformance flavour. Upstream PDFBox 3.0
+    # exposes these only as ``COSName.GTS_PDFA1`` etc. — we surface them
+    # here as plain strings (matching the value written into ``/S``) so
+    # callers comparing :meth:`get_subtype` against a literal pick them up
+    # without round-tripping through ``COSName``.
+    GTS_PDFA1: str = "GTS_PDFA1"
+    GTS_PDFX: str = "GTS_PDFX"
+    ISO_PDFE1: str = "ISO_PDFE1"
+
     def __init__(
         self,
         dictionary: COSDictionary | PDDocument | None = None,
@@ -174,6 +187,17 @@ class PDOutputIntent:
     def get_cos_object(self) -> COSDictionary:
         return self._dictionary
 
+    # ---------- /Type ----------
+
+    def get_type(self) -> str | None:
+        """Return the ``/Type`` name (always ``"OutputIntent"`` for a
+        well-formed dictionary), or ``None`` when absent.
+
+        Note: upstream PDFBox 3.0 has no typed ``getType()`` on
+        ``PDOutputIntent`` — pypdfbox enrichment for symmetry with other
+        typed dictionary wrappers."""
+        return self._dictionary.get_name(_TYPE)
+
     # ---------- /S (subtype) ----------
 
     def get_subtype(self) -> str | None:
@@ -192,6 +216,34 @@ class PDOutputIntent:
             self._dictionary.remove_item(_S)
             return
         self._dictionary.set_name(_S, subtype)
+
+    # ---------- subtype predicates (PDF 32000-1 §14.11.5) ----------
+    # Convenience predicates for the three currently-registered conformance
+    # flavours. Each compares :meth:`get_subtype` against the canonical
+    # subtype name string. PDFBox 3.0 makes callers do this comparison
+    # themselves; pypdfbox enrichment surfaces it as a one-line check.
+
+    def is_pdfa(self) -> bool:
+        """``True`` when ``/S`` is the PDF/A conformance subtype
+        ``GTS_PDFA1`` (PDF 32000-1 §14.11.5 / ISO 19005)."""
+        return self.get_subtype() == _GTS_PDFA1
+
+    def is_pdfx(self) -> bool:
+        """``True`` when ``/S`` is the PDF/X conformance subtype
+        ``GTS_PDFX`` (PDF 32000-1 §14.11.5 / ISO 15930)."""
+        return self.get_subtype() == _GTS_PDFX
+
+    def is_pdfe(self) -> bool:
+        """``True`` when ``/S`` is the PDF/E conformance subtype
+        ``ISO_PDFE1`` (PDF 32000-1 §14.11.5 / ISO 24517)."""
+        return self.get_subtype() == _ISO_PDFE1
+
+    def has_subtype(self) -> bool:
+        """``True`` when ``/S`` is present. Distinguishes "subtype absent"
+        from "subtype set to ``None``-equivalent" — useful for validators
+        that flag missing required entries on output-intent dictionaries
+        per PDF/A / PDF/X conformance rules."""
+        return self._dictionary.contains_key(_S)
 
     # ---------- /Info ----------
 
@@ -416,6 +468,50 @@ class PDOutputIntent:
         pd_stream.get_cos_object().set_int(_N, int(num_components))
         self._dictionary.set_item(
             _DEST_OUTPUT_PROFILE, pd_stream.get_cos_object()
+        )
+
+    # ---------- presence predicates ----------
+    # Distinguish "entry absent" from "entry explicitly set to a falsy
+    # value" without forcing callers to grovel through the underlying
+    # ``COSDictionary``. pypdfbox enrichment — Apache PDFBox 3.0 makes
+    # callers compare the getter result against ``null`` themselves.
+
+    def has_info(self) -> bool:
+        """``True`` when ``/Info`` is present."""
+        return self._dictionary.contains_key(_INFO)
+
+    def has_output_condition(self) -> bool:
+        """``True`` when ``/OutputCondition`` is present."""
+        return self._dictionary.contains_key(_OUTPUT_CONDITION)
+
+    def has_output_condition_identifier(self) -> bool:
+        """``True`` when ``/OutputConditionIdentifier`` is present.
+        PDF/A and PDF/X conformance both require this entry — a ``False``
+        return on a presumed-conforming intent indicates a malformed
+        dictionary."""
+        return self._dictionary.contains_key(_OUTPUT_CONDITION_IDENTIFIER)
+
+    def has_registry_name(self) -> bool:
+        """``True`` when ``/RegistryName`` is present."""
+        return self._dictionary.contains_key(_REGISTRY_NAME)
+
+    def has_dest_output_profile(self) -> bool:
+        """``True`` when ``/DestOutputProfile`` is present (the embedded
+        ICC profile stream)."""
+        return self._dictionary.contains_key(_DEST_OUTPUT_PROFILE)
+
+    def has_dest_output_profile_ref(self) -> bool:
+        """``True`` when ``/DestOutputProfileRef`` is present (PDF 2.0 /
+        ISO 32000-2 §14.11.5 external profile reference)."""
+        return self._dictionary.contains_key(_DEST_OUTPUT_PROFILE_REF)
+
+    # ---------- repr ----------
+
+    def __repr__(self) -> str:
+        return (
+            f"PDOutputIntent(subtype={self.get_subtype()!r}, "
+            f"output_condition_identifier="
+            f"{self.get_output_condition_identifier()!r})"
         )
 
 

@@ -73,3 +73,34 @@ def test_default_registry_dispatch_through_process() -> None:
         Operator.get_operator("ri"),
         [COSName.get_pdf_name("RelativeColorimetric")],
     )
+
+
+def test_get_intent_name_returns_leading_name() -> None:
+    name = COSName.get_pdf_name("Saturation")
+    assert SetRenderingIntent.get_intent_name([name]) is name
+
+
+def test_get_intent_name_returns_none_for_empty_operands() -> None:
+    assert SetRenderingIntent.get_intent_name([]) is None
+
+
+def test_get_intent_name_returns_none_when_first_operand_not_a_name() -> None:
+    # Non-COSName lead operand: silent-skip — accessor reports ``None``.
+    assert (
+        SetRenderingIntent.get_intent_name([COSString("Perceptual")]) is None
+    )
+    assert SetRenderingIntent.get_intent_name([COSInteger.get(0)]) is None
+
+
+def test_get_intent_name_round_trips_each_predefined_intent() -> None:
+    # Per ISO 32000-1 §8.6.5.8 the four predefined intent names must
+    # round-trip cleanly through the typed accessor.
+    for intent in (
+        "AbsoluteColorimetric",
+        "RelativeColorimetric",
+        "Saturation",
+        "Perceptual",
+    ):
+        name = COSName.get_pdf_name(intent)
+        assert SetRenderingIntent.get_intent_name([name]) is name
+        assert SetRenderingIntent.get_intent_name([name]).get_name() == intent

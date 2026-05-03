@@ -66,3 +66,31 @@ def test_default_registry_dispatch_through_process() -> None:
     registry.process(
         Operator.get_operator("gs"), [COSName.get_pdf_name("Default")]
     )
+
+
+def test_get_state_name_returns_leading_name() -> None:
+    name = COSName.get_pdf_name("GS1")
+    assert SetGraphicsStateParameters.get_state_name([name]) is name
+
+
+def test_get_state_name_returns_none_for_empty_operands() -> None:
+    assert SetGraphicsStateParameters.get_state_name([]) is None
+
+
+def test_get_state_name_returns_none_when_first_operand_not_a_name() -> None:
+    # The accessor mirrors the silent-skip guard — a non-COSName produces
+    # ``None`` rather than raising.
+    assert SetGraphicsStateParameters.get_state_name([COSString("GS1")]) is None
+    assert (
+        SetGraphicsStateParameters.get_state_name([COSInteger.get(1)]) is None
+    )
+
+
+def test_get_state_name_ignores_trailing_operands() -> None:
+    # Mirrors upstream's ``arguments.get(0)`` extraction — only the lead
+    # operand is consulted.
+    name = COSName.get_pdf_name("GS2")
+    assert (
+        SetGraphicsStateParameters.get_state_name([name, COSInteger.get(99)])
+        is name
+    )

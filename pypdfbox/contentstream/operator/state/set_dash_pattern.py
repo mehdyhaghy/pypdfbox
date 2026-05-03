@@ -36,3 +36,33 @@ class SetDashPattern(OperatorProcessor):
         if not isinstance(operands[1], COSNumber):
             return
         self._log_invocation(operator, operands)
+
+    @staticmethod
+    def get_dash_array(operands: list[COSBase]) -> COSArray | None:
+        """Typed accessor — return the leading :class:`COSArray` dash
+        array from ``operands``, or ``None`` when ``operands`` is too
+        short or the first operand is not an array. Does *not* raise on
+        a malformed operand list — matches upstream's silent-skip
+        behaviour."""
+        if len(operands) < 2:
+            return None
+        first = operands[0]
+        if not isinstance(first, COSArray):
+            return None
+        return first
+
+    @staticmethod
+    def get_dash_phase(operands: list[COSBase]) -> COSNumber | None:
+        """Typed accessor — return the trailing :class:`COSNumber` dash
+        phase from ``operands``, or ``None`` when ``operands`` is too
+        short or either operand has the wrong type. Mirrors upstream's
+        ``arguments.get(1)`` access guarded by both ``instanceof``
+        checks."""
+        if len(operands) < 2:
+            return None
+        if not isinstance(operands[0], COSArray):
+            return None
+        second = operands[1]
+        if not isinstance(second, COSNumber):
+            return None
+        return second

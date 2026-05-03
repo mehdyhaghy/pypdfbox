@@ -94,3 +94,59 @@ def test_default_registry_dispatch_through_process() -> None:
     registry.process(
         Operator.get_operator("d"), [COSArray(), COSInteger.get(0)]
     )
+
+
+def test_get_dash_array_returns_leading_array() -> None:
+    array = COSArray()
+    array.add(COSFloat(3.0))
+    array.add(COSFloat(2.0))
+    phase = COSInteger.get(0)
+    assert SetDashPattern.get_dash_array([array, phase]) is array
+
+
+def test_get_dash_array_returns_none_for_short_operands() -> None:
+    # Both empty and one-operand operand lists return ``None`` — mirrors
+    # the size-2 guard in ``process``.
+    assert SetDashPattern.get_dash_array([]) is None
+    assert SetDashPattern.get_dash_array([COSArray()]) is None
+
+
+def test_get_dash_array_returns_none_when_first_operand_not_an_array() -> None:
+    assert (
+        SetDashPattern.get_dash_array(
+            [COSName.get_pdf_name("Bogus"), COSInteger.get(0)]
+        )
+        is None
+    )
+
+
+def test_get_dash_phase_returns_trailing_number() -> None:
+    array = COSArray()
+    phase = COSInteger.get(5)
+    assert SetDashPattern.get_dash_phase([array, phase]) is phase
+
+
+def test_get_dash_phase_returns_none_for_short_operands() -> None:
+    assert SetDashPattern.get_dash_phase([]) is None
+    assert SetDashPattern.get_dash_phase([COSArray()]) is None
+
+
+def test_get_dash_phase_returns_none_when_phase_not_a_number() -> None:
+    # Type-guard mirrors the second ``instanceof`` short-circuit.
+    assert (
+        SetDashPattern.get_dash_phase(
+            [COSArray(), COSName.get_pdf_name("Bogus")]
+        )
+        is None
+    )
+
+
+def test_get_dash_phase_returns_none_when_array_not_an_array() -> None:
+    # A bogus first operand poisons the second-operand extraction too —
+    # accessor mirrors the leading guard.
+    assert (
+        SetDashPattern.get_dash_phase(
+            [COSName.get_pdf_name("Bogus"), COSInteger.get(0)]
+        )
+        is None
+    )

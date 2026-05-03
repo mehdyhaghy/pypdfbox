@@ -33,3 +33,19 @@ class SetGraphicsStateParameters(OperatorProcessor):
         if not isinstance(operands[0], COSName):
             return
         self._log_invocation(operator, operands)
+
+    @staticmethod
+    def get_state_name(operands: list[COSBase]) -> COSName | None:
+        """Typed accessor — return the leading :class:`COSName` ExtGState
+        key from ``operands``, or ``None`` when the operand list is
+        empty or the first operand is not a name. Mirrors upstream's
+        leading-``instanceof COSName`` extraction pattern in a single
+        helper so callers (e.g. inspection tooling) don't have to
+        re-implement the guard. Does *not* raise on a malformed operand
+        list — matches the upstream silent-skip behaviour."""
+        if not operands:
+            return None
+        first = operands[0]
+        if not isinstance(first, COSName):
+            return None
+        return first
