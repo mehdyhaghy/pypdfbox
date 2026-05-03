@@ -27,32 +27,41 @@ class PDDocumentOutline(PDOutlineNode):
         # type marker.
         self._dictionary.set_item(_TYPE, _OUTLINES)
 
-    # ---------- open / closed (root defaults to open) ----------
+    # ---------- open / closed: root is always open per upstream ----------
+
+    def is_node_open(self) -> bool:
+        """The outline root is *always* considered open. Mirrors upstream
+        ``PDDocumentOutline#isNodeOpen`` which is a hard-coded ``return
+        true`` — the document outline is not an outline item, so the
+        ``/Count`` sign convention from PDF 32000-1:2008 §12.3.3 doesn't
+        apply to it. This makes the ``add_last`` / ``add_first`` open-count
+        propagation paths feed positive contributions into the root, so
+        upstream's invariant ``outline.get_open_count() >= 0`` holds."""
+        return True
+
+    def open_node(self) -> None:
+        """No-op — the outline root cannot be opened or closed. Mirrors
+        upstream ``PDDocumentOutline#openNode`` which carries the comment
+        *"The root of the outline hierarchy is not an OutlineItem and
+        cannot be opened or closed"*."""
+
+    def close_node(self) -> None:
+        """No-op — the outline root cannot be opened or closed. Mirrors
+        upstream ``PDDocumentOutline#closeNode`` which carries the comment
+        *"The root of the outline hierarchy is not an OutlineItem and
+        cannot be opened or closed"*."""
 
     def is_open(self) -> bool:
-        """Return ``True`` when the outline root is open. Per PDF
-        32000-1:2008 the root is open when ``/Count`` is absent or
-        non-negative; closed only when ``/Count`` is negative.
-
-        Mirrors upstream ``PDDocumentOutline#isOpen``."""
+        """pypdfbox-only Python helper that reports the outline root's
+        open/closed state by inspecting ``/Count`` sign — ``True`` when
+        ``/Count`` is absent or non-negative, ``False`` only when
+        ``/Count`` is negative. Distinct from :meth:`is_node_open` which
+        mirrors upstream's hard-coded ``True``. Retained for callers that
+        want to introspect the legacy sign convention without running the
+        full open-count propagation."""
         if self._dictionary.get_dictionary_object(_COUNT) is None:
             return True
         return self.get_open_count() >= 0
-
-    def open_node(self) -> None:
-        """Open the outline root. No-op when already open."""
-        if self.is_open():
-            return
-        # /Count is negative here — flip its sign.
-        self.set_open_count(-self.get_open_count())
-
-    def close_node(self) -> None:
-        """Close the outline root. No-op when already closed."""
-        if not self.is_open():
-            return
-        # /Count is >= 0 (or absent). Negate; absent / 0 ⇒ store 0
-        # (no descendants). Mirrors upstream behavior of toggling sign.
-        self.set_open_count(-self.get_open_count())
 
 
 __all__ = ["PDDocumentOutline"]

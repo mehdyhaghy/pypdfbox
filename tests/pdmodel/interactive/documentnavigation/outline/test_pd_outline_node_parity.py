@@ -144,21 +144,21 @@ def test_pd_document_outline_is_open_false_for_negative_count() -> None:
 # ---------- open_node / close_node round-trip on populated outline ----------
 
 
-def test_pd_document_outline_open_close_round_trip() -> None:
+def test_pd_document_outline_open_close_are_no_ops() -> None:
     parent = PDDocumentOutline()
     parent.set_open_count(3)
-    assert parent.is_open() is True
+    assert parent.is_node_open() is True
 
     parent.close_node()
-    assert parent.get_open_count() == -3
-    assert parent.is_open() is False
+    assert parent.get_open_count() == 3
+    assert parent.is_node_open() is True
 
     parent.open_node()
     assert parent.get_open_count() == 3
-    assert parent.is_open() is True
+    assert parent.is_node_open() is True
 
 
-def test_pd_document_outline_close_node_idempotent_when_already_closed() -> None:
+def test_pd_document_outline_close_node_does_not_flip_negative_count() -> None:
     parent = PDDocumentOutline()
     parent.set_open_count(-3)
     parent.close_node()
@@ -167,9 +167,9 @@ def test_pd_document_outline_close_node_idempotent_when_already_closed() -> None
     assert parent.get_open_count() == -3
 
 
-def test_pd_document_outline_open_node_idempotent_when_already_open() -> None:
+def test_pd_document_outline_open_node_preserves_count() -> None:
     parent = PDDocumentOutline()
     parent.set_open_count(5)
-    assert parent.is_open() is True
+    assert parent.is_node_open() is True
     parent.open_node()
     assert parent.get_open_count() == 5
