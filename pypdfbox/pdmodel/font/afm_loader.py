@@ -4,6 +4,7 @@ from importlib import resources
 from typing import Any
 
 from pypdfbox.fontbox.afm import AFMParser, CharMetric, FontMetrics, KernPair, Ligature
+from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 
 # Canonical PostScript names of the 14 Standard fonts (PDF 32000-1 §9.6.2.2).
 _STANDARD14: tuple[str, ...] = (
@@ -182,6 +183,102 @@ class AfmMetrics:
     def get_char_metrics(self) -> list[CharMetric]:
         """All :class:`CharMetric` entries in the AFM."""
         return self._fm.get_char_metrics()
+
+    def get_char_metric(self, glyph_name: str | None) -> CharMetric | None:
+        """Look up the typed :class:`CharMetric` for ``glyph_name``.
+
+        Mirrors upstream ``FontMetrics.getCharMetric`` (delegated through
+        the AFM-shaped wrapper). Returns ``None`` when the glyph isn't
+        defined or when ``glyph_name`` is ``None`` — matching upstream's
+        null-tolerant lookup so callers can hand in
+        ``Encoding.getName(...)`` results without pre-checking.
+        """
+        if glyph_name is None:
+            return None
+        return self._fm.get_char_metric(glyph_name)
+
+    def has_char_metric(self, glyph_name: str | None) -> bool:
+        """``True`` when the AFM has a :class:`CharMetric` for ``glyph_name``.
+
+        ``has_glyph`` only knows about *named* entries with a non-empty
+        name; this predicate goes through the underlying char-metric map
+        and is symmetric with :meth:`get_char_metric`. Returns ``False``
+        when ``glyph_name`` is ``None`` (parity with upstream
+        ``FontMetrics.hasCharMetric``).
+        """
+        if glyph_name is None:
+            return False
+        return self._fm.has_char_metric(glyph_name)
+
+    def get_character_width(self, glyph_name: str) -> float:
+        """``WX`` of glyph ``glyph_name``; ``0.0`` if missing.
+
+        Parity alias for upstream ``FontMetrics.getCharacterWidth``.
+        Equivalent to :meth:`get_glyph_width` for normal Standard 14
+        fonts but reaches through :class:`FontMetrics` rather than the
+        cached widths dict, so any AFM with duplicate glyph names returns
+        the *last* metric's width (upstream behaviour) rather than the
+        first.
+        """
+        return self._fm.get_character_width(glyph_name)
+
+    def get_character_height(self, glyph_name: str) -> float:
+        """Glyph height: ``WY`` when non-zero, otherwise the bbox height.
+
+        Parity alias for upstream ``FontMetrics.getCharacterHeight``.
+        Returns ``0.0`` for unknown glyphs and for glyphs that have
+        neither a ``WY`` nor a bounding box (Symbol / ZapfDingbats edge
+        case).
+        """
+        return self._fm.get_character_height(glyph_name)
+
+    def get_font_b_box(self) -> BoundingBox | None:
+        """Typed :class:`BoundingBox` from the AFM ``FontBBox`` header.
+
+        :meth:`get_font_metrics` already exposes the bbox as a 4-tuple in
+        the descriptor dict; this accessor returns the upstream-shaped
+        :class:`BoundingBox` directly so callers that want the typed
+        object (e.g. for ``get_height()`` / ``get_width()``) don't have
+        to round-trip through the dict.
+        """
+        return self._fm.get_font_b_box()
+
+    def has_font_b_box(self) -> bool:
+        """``True`` when the AFM declares a ``FontBBox`` header.
+
+        Parity alias for upstream ``FontMetrics.hasFontBBox``.
+        """
+        return self._fm.has_font_b_box()
+
+    def get_italic_angle(self) -> float:
+        """``ItalicAngle`` AFM header (degrees clockwise from vertical).
+
+        Parity alias — :meth:`get_font_metrics` exposes this through the
+        descriptor dict; this accessor returns it directly so callers
+        that only need the angle (e.g. shaping fallback code) skip the
+        dict allocation.
+        """
+        return float(self._fm.get_italic_angle())
+
+    def is_fixed_pitch(self) -> bool:
+        """``True`` when the AFM marks the font as monospaced.
+
+        Parity alias for upstream ``FontMetrics.getIsFixedPitch`` (the
+        Java getter is named *get* but the value is a boolean — Python
+        idiom prefers ``is_*``). The descriptor dict's ``IsFixedPitch``
+        entry returns the same value.
+        """
+        return bool(self._fm.get_is_fixed_pitch())
+
+    def get_afm_version(self) -> float:
+        """``StartFontMetrics`` version line (e.g. ``4.1``).
+
+        Parity alias for upstream ``FontMetrics.getAFMVersion``. The
+        Standard 14 AFMs all ship as version 4.1 — useful when
+        differentiating between a bundled Adobe AFM and a user-supplied
+        one parsed at runtime.
+        """
+        return float(self._fm.get_afm_version())
 
     def get_kern_pairs(self) -> list[KernPair]:
         """``StartKernPairs`` entries (writing-direction-agnostic)."""
