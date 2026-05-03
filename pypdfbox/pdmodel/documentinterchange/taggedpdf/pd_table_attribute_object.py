@@ -74,6 +74,20 @@ class PDTableAttributeObject(PDStandardAttributeObject):
             array.add(COSString(value.encode("utf-8")))
         self._dictionary.set_item("Headers", array)
 
+    def add_header(self, value: str) -> None:
+        """Append a single ``/Headers`` entry, creating the array if needed.
+
+        pypdfbox convenience — upstream PDFBox only exposes the bulk
+        ``setHeaders`` overload, but pypdfbox callers often build the
+        ``/Headers`` list incrementally as TH structure elements are
+        emitted. Encodes ``value`` as UTF-8 to match :meth:`set_headers`.
+        """
+        existing = self._get_array("Headers")
+        if existing is None:
+            existing = COSArray()
+            self._dictionary.set_item("Headers", existing)
+        existing.add(COSString(value.encode("utf-8")))
+
     # ---------- /Scope ----------
 
     def get_scope(self) -> str | None:
@@ -89,6 +103,53 @@ class PDTableAttributeObject(PDStandardAttributeObject):
 
     def set_summary(self, value: str | None) -> None:
         self._set_string("Summary", value)
+
+    # ---------- per-key presence predicates (pypdfbox ergonomics) ----------
+    #
+    # Upstream relies on ``is_specified(KEY)`` from the abstract base for both
+    # ``toString`` and conditional logic. These named predicates mirror the
+    # idiom used elsewhere in pypdfbox (``PDViewerPreferences.is_*``) so
+    # callers don't have to remember the dictionary-key spelling.
+
+    def is_row_span_specified(self) -> bool:
+        """``True`` iff the ``/RowSpan`` entry is explicitly written."""
+        return self.is_specified(self.ROW_SPAN)
+
+    def is_col_span_specified(self) -> bool:
+        """``True`` iff the ``/ColSpan`` entry is explicitly written."""
+        return self.is_specified(self.COL_SPAN)
+
+    def is_headers_specified(self) -> bool:
+        """``True`` iff the ``/Headers`` entry is explicitly written."""
+        return self.is_specified(self.HEADERS)
+
+    def is_scope_specified(self) -> bool:
+        """``True`` iff the ``/Scope`` entry is explicitly written."""
+        return self.is_specified(self.SCOPE)
+
+    def is_summary_specified(self) -> bool:
+        """``True`` iff the ``/Summary`` entry is explicitly written."""
+        return self.is_specified(self.SUMMARY)
+
+    def __str__(self) -> str:
+        """Mirror upstream ``PDTableAttributeObject.toString()`` which
+        appends ``", <FieldName>=<value>"`` for each entry that is
+        explicitly specified, in the dictionary-key order defined in the
+        upstream class. ``/Headers`` is formatted via
+        :meth:`PDAttributeObject.array_to_string` (the upstream Java
+        ``arrayToString(String[])`` helper)."""
+        sb = super().__str__()
+        if self.is_specified(self.ROW_SPAN):
+            sb = f"{sb}, RowSpan={self.get_row_span()}"
+        if self.is_specified(self.COL_SPAN):
+            sb = f"{sb}, ColSpan={self.get_col_span()}"
+        if self.is_specified(self.HEADERS):
+            sb = f"{sb}, Headers={self.array_to_string(self.get_headers())}"
+        if self.is_specified(self.SCOPE):
+            sb = f"{sb}, Scope={self.get_scope()}"
+        if self.is_specified(self.SUMMARY):
+            sb = f"{sb}, Summary={self.get_summary()}"
+        return sb
 
     def __repr__(self) -> str:
         return (

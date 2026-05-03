@@ -243,6 +243,66 @@ class PDPageLabels:
             return False
         return start_page in self._labels
 
+    def __iter__(self) -> Iterator[int]:
+        """Iterate the start-page indices in sorted order.
+
+        Pythonic equivalent of upstream's ``getPageIndices()`` returning a
+        ``NavigableSet<Integer>`` whose natural iteration is ascending.
+        Allows ``for start in labels: ...`` to walk the defined ranges
+        without materialising the full :meth:`get_page_indices` list.
+        """
+        return iter(sorted(self._labels))
+
+    def has_default_range(self) -> bool:
+        """``True`` when a range entry is defined at index ``0``.
+
+        PDF 32000-1 §12.4.2 requires a range starting at the first page;
+        the constructor adds one but :meth:`remove_label_range` /
+        :meth:`clear_label_ranges` can remove it. This predicate lets
+        callers check before serialising and repopulate when needed."""
+        return 0 in self._labels
+
+    def ensure_default_range(self) -> PDPageLabelRange:
+        """Ensure a range exists at index ``0`` and return it.
+
+        If a range already exists at index 0, returns it unchanged. Otherwise
+        creates a fresh decimal-style range (the implicit default) and
+        installs it. Useful for idempotent setup after
+        :meth:`clear_label_ranges` or :meth:`remove_label_range(0)`."""
+        existing = self._labels.get(0)
+        if existing is not None:
+            return existing
+        default_range = PDPageLabelRange()
+        default_range.set_style(PDPageLabelRange.STYLE_DECIMAL)
+        self._labels[0] = default_range
+        return default_range
+
+    def copy(self) -> PDPageLabels:
+        """Return a shallow clone of this dictionary.
+
+        The new instance is bound to the same document but has its own
+        ``_labels`` mapping populated with freshly-constructed
+        :class:`PDPageLabelRange` instances wrapping copies of each
+        underlying ``COSDictionary``. Mutating ranges on the copy does
+        not affect the original (and vice-versa).
+
+        Useful for "preview" workflows that want to experiment with label
+        changes without disturbing the catalog's live state."""
+        clone = PDPageLabels(self._doc)
+        # Throw away the constructor's default-range insertion so we mirror
+        # the source state exactly (including a missing index-0 entry).
+        clone._labels.clear()
+        for start_page, info in self._labels.items():
+            new_dict = COSDictionary()
+            for key in info.get_cos_object().key_set():
+                new_dict.set_item(key, info.get_cos_object().get_item(key))
+            clone._labels[start_page] = PDPageLabelRange(
+                new_dict, start_index=info.get_start_index()
+            )
+        if self._number_of_pages is not None:
+            clone._number_of_pages = self._number_of_pages
+        return clone
+
     def remove_label_range(self, start_page: int) -> bool:
         """Remove the range entry at ``start_page``. Returns ``True`` if
         the entry existed and was removed, ``False`` otherwise. Removing
