@@ -231,6 +231,29 @@ class PDAppearanceGenerator:
     # PDF 32000-1:2008 Annex D uses code 0x34 ('4') for "a20" check.
     ZAPFDINGBATS_CHECK = b"4"
 
+    # /DA font-name aliases mapped to their resolved Standard 14 names.
+    # Upstream Acrobat / Reader populate the AcroForm /DR /Font dict with
+    # these short keys (``Helv``, ``HeBo``, ``TiRo``, etc.); the lite port
+    # resolves them directly to the matching Standard 14 face so callers
+    # without a /DR walk still pick a sensible font. Exposed publicly so
+    # callers can introspect the mapping (e.g. for /DR fix-ups).
+    DA_FONT_ALIASES: dict[str, str] = {
+        "Helv": Standard14Fonts.HELVETICA,
+        "HeBo": Standard14Fonts.HELVETICA_BOLD,
+        "HeIt": Standard14Fonts.HELVETICA_OBLIQUE,
+        "HeBI": Standard14Fonts.HELVETICA_BOLD_OBLIQUE,
+        "TiRo": "Times-Roman",
+        "TiBo": "Times-Bold",
+        "TiIt": "Times-Italic",
+        "TiBI": "Times-BoldItalic",
+        "CoRo": "Courier",
+        "CoBo": "Courier-Bold",
+        "CoIt": "Courier-Oblique",
+        "CoBI": "Courier-BoldOblique",
+        "Symb": "Symbol",
+        "ZaDb": "ZapfDingbats",
+    }
+
     def __init__(self, default_appearance: str | None = None) -> None:
         """``default_appearance`` is an optional override used when the
         field carries no ``/DA`` of its own and the inheritable walk also
@@ -264,6 +287,26 @@ class PDAppearanceGenerator:
         else:
             field.set_value(ap_value)  # type: ignore[attr-defined]
         self.generate(field)
+
+    @staticmethod
+    def is_supported_field(field: PDField) -> bool:
+        """Predicate — ``True`` when :meth:`generate` will produce a
+        non-trivial appearance for ``field``.
+
+        Returns ``False`` for non-terminal fields and for terminal fields
+        whose ``/FT`` is unrecognised (e.g. a custom subtype). Callers
+        building tooling around the generator can use this to short-circuit
+        before walking widgets — matches the ``instanceof`` cascade in
+        :meth:`generate` so the two never disagree.
+        """
+        from .pd_button import PDButton
+        from .pd_choice import PDChoice
+        from .pd_signature_field import PDSignatureField
+        from .pd_text_field import PDTextField
+
+        return isinstance(
+            field, (PDTextField, PDButton, PDChoice, PDSignatureField)
+        )
 
     def generate(self, field: PDField) -> None:
         """Regenerate the ``/AP /N`` normal appearance of every widget on
@@ -1257,36 +1300,22 @@ class PDAppearanceGenerator:
         appearance_cos.set_item(_BBOX, bbox)
         return appearance_cos
 
-    @staticmethod
-    def _resolve_font(font_name: str | None) -> PDFont:
+    @classmethod
+    def _resolve_font(cls, font_name: str | None) -> PDFont:
         """Return a :class:`PDFont` for ``font_name``.
 
         The /DA font key is a /Resources/Font dict alias (e.g. ``Helv``).
         Resolving it to a fully-qualified font dictionary requires walking
         the AcroForm /DR resource tree, which is wider than the lite scope.
-        Instead we map the alias to a Standard 14 font when we recognise
-        it (``Helv`` -> Helvetica, ``HeBo`` -> Helvetica-Bold, ``TiRo`` ->
-        Times-Roman, ``CoRo`` -> Courier, ``ZaDb`` -> ZapfDingbats) and
-        fall back to Helvetica otherwise. Callers who rely on a custom
-        embedded font in their /DA are deferred — see ``CHANGES.md``.
+        Instead we map the alias to a Standard 14 font via
+        :attr:`DA_FONT_ALIASES` (``Helv`` -> Helvetica, ``HeBo`` ->
+        Helvetica-Bold, ``TiRo`` -> Times-Roman, ``CoRo`` -> Courier,
+        ``ZaDb`` -> ZapfDingbats, etc.) and fall back to Helvetica
+        otherwise. Callers who rely on a custom embedded font in their
+        /DA are deferred — see ``CHANGES.md``.
         """
         if font_name:
-            mapped = {
-                "Helv": Standard14Fonts.HELVETICA,
-                "HeBo": Standard14Fonts.HELVETICA_BOLD,
-                "HeIt": Standard14Fonts.HELVETICA_OBLIQUE,
-                "HeBI": Standard14Fonts.HELVETICA_BOLD_OBLIQUE,
-                "TiRo": "Times-Roman",
-                "TiBo": "Times-Bold",
-                "TiIt": "Times-Italic",
-                "TiBI": "Times-BoldItalic",
-                "CoRo": "Courier",
-                "CoBo": "Courier-Bold",
-                "CoIt": "Courier-Oblique",
-                "CoBI": "Courier-BoldOblique",
-                "Symb": "Symbol",
-                "ZaDb": "ZapfDingbats",
-            }.get(font_name, font_name)
+            mapped = cls.DA_FONT_ALIASES.get(font_name, font_name)
             if Standard14Fonts.get_mapped_font_name(mapped) is not None:
                 return PDFontFactory.create_default_font(mapped)
         return PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)

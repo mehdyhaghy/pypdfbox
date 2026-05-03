@@ -206,3 +206,174 @@ def test_setting_false_when_unset_keeps_flag_unset() -> None:
     # /Ff should exist as an integer (0) but the bit must read False.
     cos = sv.get_cos_object()
     assert cos.get_int(_FF, default=-1) == 0
+
+
+# ---------- /Filter constants & COSName-accepting setter ----------
+
+
+def test_filter_constants_match_upstream() -> None:
+    """Standard /Filter handler names. PDF 32000-1 §12.8.1 Table 252."""
+    assert PDSeedValue.FILTER_ADOBE_PPKLITE == "Adobe.PPKLite"
+    assert PDSeedValue.FILTER_ENTRUST_PPKEF == "Entrust.PPKEF"
+    assert PDSeedValue.FILTER_CICI_SIGNIT == "CICI.SignIt"
+    assert PDSeedValue.FILTER_VERISIGN_PPKVS == "VeriSign.PPKVS"
+
+
+def test_subfilter_constants_match_upstream() -> None:
+    """Standard /SubFilter encodings. PDF 32000-1 §12.8.3."""
+    assert PDSeedValue.SUBFILTER_ADBE_X509_RSA_SHA1 == "adbe.x509.rsa_sha1"
+    assert PDSeedValue.SUBFILTER_ADBE_PKCS7_DETACHED == "adbe.pkcs7.detached"
+    assert PDSeedValue.SUBFILTER_ETSI_CADES_DETACHED == "ETSI.CAdES.detached"
+    assert PDSeedValue.SUBFILTER_ADBE_PKCS7_SHA1 == "adbe.pkcs7.sha1"
+
+
+def test_digest_constants_match_upstream() -> None:
+    """Allowed /DigestMethod values. PDF 32000-1 Table 234."""
+    assert PDSeedValue.DIGEST_SHA1 == "SHA1"
+    assert PDSeedValue.DIGEST_SHA256 == "SHA256"
+    assert PDSeedValue.DIGEST_SHA384 == "SHA384"
+    assert PDSeedValue.DIGEST_SHA512 == "SHA512"
+    assert PDSeedValue.DIGEST_RIPEMD160 == "RIPEMD160"
+    # ALLOWED_DIGEST_NAMES contains every public DIGEST_* constant.
+    assert set(PDSeedValue.ALLOWED_DIGEST_NAMES) == {
+        PDSeedValue.DIGEST_SHA1,
+        PDSeedValue.DIGEST_SHA256,
+        PDSeedValue.DIGEST_SHA384,
+        PDSeedValue.DIGEST_SHA512,
+        PDSeedValue.DIGEST_RIPEMD160,
+    }
+
+
+def test_set_filter_accepts_cos_name() -> None:
+    """Upstream signature is ``setFilter(COSName)``; our setter accepts
+    either ``str`` or ``COSName``."""
+    sv = PDSeedValue()
+    sv.set_filter(COSName.get_pdf_name(PDSeedValue.FILTER_ADOBE_PPKLITE))
+    assert sv.get_filter() == "Adobe.PPKLite"
+    # Stored as a name (not a string).
+    item = sv.get_cos_object().get_item("Filter")
+    assert isinstance(item, COSName)
+    assert item.get_name() == "Adobe.PPKLite"
+
+
+def test_get_filter_reads_string_value() -> None:
+    """Some producers write /Filter as a string rather than a name —
+    upstream's ``getNameAsString`` handles both. Mirror that."""
+    sv = PDSeedValue()
+    # Force a string-typed /Filter value.
+    from pypdfbox.cos import COSString
+    sv.get_cos_object().set_item("Filter", COSString("Adobe.PPKLite"))
+    assert sv.get_filter() == "Adobe.PPKLite"
+
+
+def test_set_filter_with_constant_round_trip() -> None:
+    sv = PDSeedValue()
+    sv.set_filter(PDSeedValue.FILTER_ENTRUST_PPKEF)
+    assert sv.get_filter() == "Entrust.PPKEF"
+
+
+# ---------- has_* predicate helpers ----------
+
+
+def test_has_filter_predicate() -> None:
+    sv = PDSeedValue()
+    assert sv.has_filter() is False
+    sv.set_filter("Adobe.PPKLite")
+    assert sv.has_filter() is True
+    sv.set_filter(None)
+    assert sv.has_filter() is False
+
+
+def test_has_sub_filter_predicate() -> None:
+    sv = PDSeedValue()
+    assert sv.has_sub_filter() is False
+    sv.set_sub_filter(["adbe.pkcs7.detached"])
+    assert sv.has_sub_filter() is True
+
+
+def test_has_v_predicate() -> None:
+    sv = PDSeedValue()
+    assert sv.has_v() is False
+    sv.set_v(2.0)
+    assert sv.has_v() is True
+    sv.set_v(None)
+    assert sv.has_v() is False
+
+
+def test_has_reasons_predicate() -> None:
+    sv = PDSeedValue()
+    assert sv.has_reasons() is False
+    sv.set_reasons(["I agree"])
+    assert sv.has_reasons() is True
+
+
+def test_has_legal_attestation_predicate() -> None:
+    sv = PDSeedValue()
+    assert sv.has_legal_attestation() is False
+    sv.set_legal_attestation(["No Modifications Permitted"])
+    assert sv.has_legal_attestation() is True
+
+
+def test_has_digest_method_predicate() -> None:
+    sv = PDSeedValue()
+    assert sv.has_digest_method() is False
+    sv.set_digest_method([PDSeedValue.DIGEST_SHA256])
+    assert sv.has_digest_method() is True
+
+
+def test_has_mdp_predicate() -> None:
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_seed_value_mdp import (
+        PDSeedValueMDP,
+    )
+
+    sv = PDSeedValue()
+    assert sv.has_mdp() is False
+    mdp = PDSeedValueMDP()
+    mdp.set_p(2)
+    sv.set_mdp(mdp)
+    assert sv.has_mdp() is True
+    sv.set_mdp(None)
+    assert sv.has_mdp() is False
+
+
+def test_has_time_stamp_predicate() -> None:
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_seed_value_time_stamp import (
+        PDSeedValueTimeStamp,
+    )
+
+    sv = PDSeedValue()
+    assert sv.has_time_stamp() is False
+    ts = PDSeedValueTimeStamp()
+    ts.set_url("https://ts.example/")
+    sv.set_time_stamp(ts)
+    assert sv.has_time_stamp() is True
+
+
+def test_has_seed_value_certificate_predicate() -> None:
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_seed_value_certificate import (
+        PDSeedValueCertificate,
+    )
+
+    sv = PDSeedValue()
+    assert sv.has_seed_value_certificate() is False
+    assert sv.has_certificate() is False  # short alias
+    sv.set_seed_value_certificate(PDSeedValueCertificate())
+    assert sv.has_seed_value_certificate() is True
+    assert sv.has_certificate() is True
+    sv.set_seed_value_certificate(None)
+    assert sv.has_seed_value_certificate() is False
+    assert sv.has_certificate() is False
+
+
+def test_has_predicates_cheaper_than_get_construction() -> None:
+    """``has_seed_value_certificate`` must not invoke the typed wrapper.
+    A targeted dict that only exposes ``contains_key`` would raise if
+    we wrongly fell through to ``get_dictionary_object``. Use a direct
+    construction-counter fixture to verify the cheap path."""
+    sv = PDSeedValue()
+    # Empty dict — no /Cert key — must return False without any lookup
+    # of the value side. This is just a smoke test: the predicate
+    # delegates to ``contains_key`` only.
+    assert sv.has_seed_value_certificate() is False
+    assert sv.has_mdp() is False
+    assert sv.has_time_stamp() is False

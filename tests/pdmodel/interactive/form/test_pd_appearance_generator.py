@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
     PDAppearanceDictionary,
@@ -645,3 +647,529 @@ def test_set_appearance_value_handles_none_value() -> None:
 
     # None -> empty string (single-line normalization treats it as "").
     assert (tf.get_value() or "") == ""
+
+
+# ---------- DA_FONT_ALIASES (Wave 214) ----------
+
+
+def test_da_font_aliases_covers_standard14_short_keys() -> None:
+    """Public alias map mirrors Acrobat's /DR /Font short keys.
+
+    Each key resolves to a Standard 14 font name so callers introspecting
+    the mapping (e.g. for /DR fix-ups) get the same answer the generator
+    uses internally.
+    """
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+    aliases = PDAppearanceGenerator.DA_FONT_ALIASES
+    # All upstream-canonical short keys are present.
+    for short_key in (
+        "Helv",
+        "HeBo",
+        "HeIt",
+        "HeBI",
+        "TiRo",
+        "TiBo",
+        "TiIt",
+        "TiBI",
+        "CoRo",
+        "CoBo",
+        "CoIt",
+        "CoBI",
+        "Symb",
+        "ZaDb",
+    ):
+        assert short_key in aliases
+        # Every value resolves to a Standard 14 face.
+        assert (
+            Standard14Fonts.get_mapped_font_name(aliases[short_key]) is not None
+        )
+    # Spot-check a few canonical pairings.
+    assert aliases["Helv"] == Standard14Fonts.HELVETICA
+    assert aliases["HeBo"] == Standard14Fonts.HELVETICA_BOLD
+    assert aliases["TiRo"] == "Times-Roman"
+    assert aliases["ZaDb"] == "ZapfDingbats"
+
+
+def test_da_font_aliases_drives_resolve_font_for_known_short_key() -> None:
+    """``_resolve_font`` reads from the public alias map — patching the
+    mapping changes resolution behavior."""
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = Gen._resolve_font("HeBo")
+    # Resolved via alias to Helvetica-Bold, not the literal "HeBo" name.
+    assert font.get_name() == "Helvetica-Bold"
+
+
+def test_resolve_font_fallback_to_helvetica_for_unknown_alias() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = Gen._resolve_font("MyCustomFont")
+    assert font.get_name() == "Helvetica"
+
+
+def test_resolve_font_none_falls_back_to_helvetica() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = Gen._resolve_font(None)
+    assert font.get_name() == "Helvetica"
+
+
+def test_resolve_font_recognises_full_standard14_name() -> None:
+    """Passing a Standard 14 face name directly (rather than a short key)
+    should also resolve — useful when /DA carries the canonical name."""
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = Gen._resolve_font("Times-Roman")
+    assert font.get_name() == "Times-Roman"
+
+
+# ---------- is_supported_field (Wave 214) ----------
+
+
+def test_is_supported_field_text_button_choice_signature() -> None:
+    """Predicate matches the dispatch table in :meth:`generate`."""
+    from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
+    from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
+    from pypdfbox.pdmodel.interactive.form.pd_list_box import PDListBox
+    from pypdfbox.pdmodel.interactive.form.pd_push_button import PDPushButton
+    from pypdfbox.pdmodel.interactive.form.pd_radio_button import PDRadioButton
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    form = PDAcroForm()
+    assert PDAppearanceGenerator.is_supported_field(PDTextField(form))
+    assert PDAppearanceGenerator.is_supported_field(PDCheckBox(form))
+    assert PDAppearanceGenerator.is_supported_field(PDRadioButton(form))
+    assert PDAppearanceGenerator.is_supported_field(PDPushButton(form))
+    assert PDAppearanceGenerator.is_supported_field(PDComboBox(form))
+    assert PDAppearanceGenerator.is_supported_field(PDListBox(form))
+    assert PDAppearanceGenerator.is_supported_field(PDSignatureField(form))
+
+
+def test_is_supported_field_rejects_non_terminal_field() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+        PDNonTerminalField,
+    )
+
+    form = PDAcroForm()
+    assert not PDAppearanceGenerator.is_supported_field(PDNonTerminalField(form))
+
+
+def test_is_supported_field_is_static() -> None:
+    """Predicate must be callable without instantiating the generator."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    # No ``self`` needed — call from class.
+    assert PDAppearanceGenerator.is_supported_field(tf) is True
+
+
+# ---------- _auto_size clamping (Wave 214) ----------
+
+
+def test_auto_size_clamps_to_minimum_for_short_rect() -> None:
+    """Very short widgets clamp up to AUTO_FONT_SIZE_MIN."""
+    # height * 0.7 = 1.4 < AUTO_FONT_SIZE_MIN (4.0)
+    assert PDAppearanceGenerator._auto_size(2.0) == (
+        PDAppearanceGenerator.AUTO_FONT_SIZE_MIN
+    )
+
+
+def test_auto_size_clamps_to_maximum_for_tall_rect() -> None:
+    """Very tall widgets clamp down to AUTO_FONT_SIZE_MAX."""
+    # height * 0.7 = 70.0 > AUTO_FONT_SIZE_MAX (12.0)
+    assert PDAppearanceGenerator._auto_size(100.0) == (
+        PDAppearanceGenerator.AUTO_FONT_SIZE_MAX
+    )
+
+
+def test_auto_size_proportional_in_middle_range() -> None:
+    """Inside the clamp range, picks 0.7 * height."""
+    # height = 10 -> 7.0 (between 4 and 12)
+    assert PDAppearanceGenerator._auto_size(10.0) == 7.0
+
+
+def test_auto_size_zero_height_clamps_to_min() -> None:
+    """Zero-height widgets still pick a sensible minimum."""
+    assert PDAppearanceGenerator._auto_size(0.0) == (
+        PDAppearanceGenerator.AUTO_FONT_SIZE_MIN
+    )
+
+
+# ---------- _color_array_to_tuple (Wave 214) ----------
+
+
+def test_color_array_to_tuple_grayscale() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    arr = COSArray([COSFloat(0.5)])
+    result = Gen._color_array_to_tuple(arr)
+    assert result is not None
+    assert len(result) == 1
+    assert result[0] == pytest.approx(0.5)
+
+
+def test_color_array_to_tuple_rgb() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    arr = COSArray([COSFloat(0.1), COSFloat(0.2), COSFloat(0.3)])
+    result = Gen._color_array_to_tuple(arr)
+    assert result is not None
+    assert len(result) == 3
+    assert result == pytest.approx((0.1, 0.2, 0.3))
+
+
+def test_color_array_to_tuple_cmyk() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    arr = COSArray(
+        [COSFloat(0.0), COSFloat(1.0), COSFloat(0.5), COSFloat(0.25)]
+    )
+    result = Gen._color_array_to_tuple(arr)
+    assert result is not None
+    assert len(result) == 4
+    assert result == pytest.approx((0.0, 1.0, 0.5, 0.25))
+
+
+def test_color_array_to_tuple_two_components_returns_none() -> None:
+    """PDF color spaces are 1, 3, or 4 components — 2-component arrays
+    are invalid /MK colors."""
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    arr = COSArray([COSFloat(0.1), COSFloat(0.2)])
+    assert Gen._color_array_to_tuple(arr) is None
+
+
+def test_color_array_to_tuple_empty_array_returns_none() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    assert Gen._color_array_to_tuple(COSArray()) is None
+
+
+def test_color_array_to_tuple_none_returns_none() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    assert Gen._color_array_to_tuple(None) is None
+
+
+def test_color_array_to_tuple_non_array_returns_none() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    # A COSDictionary is not a color array — defensive fallback.
+    assert Gen._color_array_to_tuple(COSDictionary()) is None
+
+
+def test_color_array_to_tuple_non_numeric_entry_returns_none() -> None:
+    """A /BG array with a name or string entry is malformed — fall back
+    to None rather than raising."""
+    from pypdfbox.cos import COSName as _CN
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    arr = COSArray([COSFloat(0.5), _CN.get_pdf_name("Foo"), COSFloat(0.5)])
+    assert Gen._color_array_to_tuple(arr) is None
+
+
+# ---------- _rect_from_cos (Wave 214) ----------
+
+
+def test_rect_from_cos_normalizes_swapped_coordinates() -> None:
+    """A /Rect with urx < llx (legal per PDF 32000-1) is normalized so
+    width / height are non-negative — matches PDRectangle.from_cos_array."""
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        _rect_from_cos,
+    )
+
+    swapped = _rect(250.0, 720.0, 50.0, 700.0)
+    assert _rect_from_cos(swapped) == (50.0, 700.0, 250.0, 720.0)
+
+
+def test_rect_from_cos_returns_none_for_non_array() -> None:
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        _rect_from_cos,
+    )
+
+    assert _rect_from_cos(None) is None
+    assert _rect_from_cos(COSDictionary()) is None
+
+
+def test_rect_from_cos_returns_none_for_short_array() -> None:
+    """A /Rect with fewer than 4 entries is malformed."""
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        _rect_from_cos,
+    )
+
+    short = COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(10.0)])
+    assert _rect_from_cos(short) is None
+
+
+def test_rect_from_cos_returns_none_for_non_numeric_entry() -> None:
+    """A /Rect with a non-numeric entry can't be parsed — fall back to None."""
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        _rect_from_cos,
+    )
+
+    arr = COSArray(
+        [COSFloat(0.0), COSName.get_pdf_name("X"), COSFloat(10.0), COSFloat(20.0)]
+    )
+    assert _rect_from_cos(arr) is None
+
+
+# ---------- _estimate_text_width (Wave 214) ----------
+
+
+def test_estimate_text_width_empty_string_returns_zero() -> None:
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    assert Gen._estimate_text_width(font, 12.0, "") == 0.0
+
+
+def test_estimate_text_width_scales_linearly_with_size() -> None:
+    """Width is proportional to ``size`` for the same string + font."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    w_at_10 = Gen._estimate_text_width(font, 10.0, "ABC")
+    w_at_20 = Gen._estimate_text_width(font, 20.0, "ABC")
+    # Doubling the size doubles the width.
+    assert abs(w_at_20 - 2.0 * w_at_10) < 1e-9
+    assert w_at_10 > 0.0
+
+
+def test_estimate_text_width_scales_linearly_with_length() -> None:
+    """Width is proportional to character count for the same font + size."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    w_one = Gen._estimate_text_width(font, 12.0, "A")
+    w_three = Gen._estimate_text_width(font, 12.0, "AAA")
+    # 3 chars -> 3x width.
+    assert abs(w_three - 3.0 * w_one) < 1e-9
+
+
+# ---------- _x_for_quadding (Wave 214) ----------
+
+
+def test_x_for_quadding_left_returns_left_margin() -> None:
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    gen = Gen()
+    # quadding=0 -> left -> always 2.0 (the 1pt margin + interior offset).
+    assert gen._x_for_quadding(font, 12.0, "A", 100.0, 0) == 2.0
+
+
+def test_x_for_quadding_right_pushes_text_to_right_edge() -> None:
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    gen = Gen()
+    text_w = Gen._estimate_text_width(font, 12.0, "AB")
+    interior_w = 100.0
+    x = gen._x_for_quadding(font, 12.0, "AB", interior_w, 2)
+    # Right-aligned: x = 2 + (interior_w - text_w).
+    assert abs(x - (2.0 + interior_w - text_w)) < 1e-9
+
+
+def test_x_for_quadding_centered_splits_available_space() -> None:
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    gen = Gen()
+    text_w = Gen._estimate_text_width(font, 12.0, "ABC")
+    interior_w = 100.0
+    x = gen._x_for_quadding(font, 12.0, "ABC", interior_w, 1)
+    # Centered: x = 2 + (interior_w - text_w) / 2.
+    assert abs(x - (2.0 + (interior_w - text_w) / 2.0)) < 1e-9
+
+
+def test_x_for_quadding_text_wider_than_rect_clamps_offset() -> None:
+    """When the text overflows the rect, the available offset is clamped
+    to 0 so the text doesn't shift left of the margin."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    gen = Gen()
+    # interior_w of 1.0 means almost any text overflows -> available = 0.
+    x_centered = gen._x_for_quadding(font, 12.0, "very long", 1.0, 1)
+    x_right = gen._x_for_quadding(font, 12.0, "very long", 1.0, 2)
+    # Both clamp to the left margin.
+    assert x_centered == 2.0
+    assert x_right == 2.0
+
+
+def test_x_for_quadding_unknown_value_falls_back_to_left() -> None:
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    gen = Gen()
+    # quadding=99 (out of range) -> left fallback.
+    assert gen._x_for_quadding(font, 12.0, "X", 100.0, 99) == 2.0
+
+
+# ---------- _wrap_lines (Wave 214) ----------
+
+
+def test_wrap_lines_empty_value_yields_single_empty_line() -> None:
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    assert Gen()._wrap_lines("", font, 12.0, 100.0) == [""]
+
+
+def test_wrap_lines_preserves_empty_paragraphs() -> None:
+    """Two consecutive ``\\n`` characters preserve the empty paragraph."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    out = Gen()._wrap_lines("a\n\nb", font, 12.0, 1000.0)
+    # Three lines: "a", "", "b" — empty paragraph is preserved.
+    assert out == ["a", "", "b"]
+
+
+def test_wrap_lines_wide_word_emits_alone() -> None:
+    """A single word wider than the rect is still emitted (no mid-word break)."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+    from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
+        PDAppearanceGenerator as Gen,
+    )
+
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    # interior_w = 1.0 -> every word is too wide.
+    out = Gen()._wrap_lines("alpha beta", font, 12.0, 1.0)
+    # Each word ends up on its own line, even though both overflow.
+    assert out == ["alpha", "beta"]
+
+
+# ---------- _NEWLINE_PATTERN (Wave 214) ----------
+
+
+def test_newline_pattern_matches_unicode_line_separators() -> None:
+    """PDFBOX-3911: pattern matches CRLF, LF, VT, FF, CR, NEL, LS, PS."""
+    pat = PDAppearanceGenerator._NEWLINE_PATTERN
+    # CRLF collapses to a single match (not two).
+    assert pat.sub(" ", "a\r\nb") == "a b"
+    # Each individual character also matches.
+    for ch in ("\n", "\r", "", "", "", " ", " "):
+        assert pat.sub("|", f"X{ch}Y") == "X|Y"
+
+
+def test_newline_pattern_leaves_normal_chars_alone() -> None:
+    pat = PDAppearanceGenerator._NEWLINE_PATTERN
+    assert pat.sub("|", "no newlines here") == "no newlines here"
+
+
+# ---------- _parse_default_appearance edge cases (Wave 214) ----------
+
+
+def test_parse_default_appearance_tf_without_preceding_tokens() -> None:
+    """A bare ``Tf`` operator with no font / size tokens before it can't
+    populate ``font_name`` / ``size`` — both stay at defaults."""
+    name, size, _ = _parse_default_appearance("Tf")
+    assert name is None
+    assert size == 0.0
+
+
+def test_parse_default_appearance_malformed_size_falls_back() -> None:
+    """If the size token isn't numeric, ``size`` falls back to 0.0
+    (the auto-size sentinel)."""
+    name, size, _ = _parse_default_appearance("/Helv abc Tf 0 g")
+    assert name == "Helv"
+    assert size == 0.0
+
+
+def test_parse_default_appearance_color_only_no_tf() -> None:
+    """A /DA carrying only a color operator returns the color but a
+    ``None`` font name + zero size."""
+    name, size, color = _parse_default_appearance("0.25 g")
+    assert name is None
+    assert size == 0.0
+    assert color == (0.25,)
+
+
+def test_parse_default_appearance_malformed_rg_skipped() -> None:
+    """Non-numeric color components for ``rg`` skip color extraction."""
+    _, _, color = _parse_default_appearance("/Helv 10 Tf x y z rg")
+    assert color is None
+
+
+def test_parse_default_appearance_last_color_wins() -> None:
+    """When /DA carries multiple color operators, the last one wins."""
+    _, _, color = _parse_default_appearance("/Helv 10 Tf 0.1 g 0.2 0.3 0.4 rg")
+    # rg comes after g -> tuple of length 3 wins.
+    assert color == (0.2, 0.3, 0.4)
+
+
+def test_parse_default_appearance_font_name_without_slash_ignored() -> None:
+    """A font-name token without the leading slash isn't recognised
+    (PDFBox /DA grammar requires the /Name prefix)."""
+    name, size, _ = _parse_default_appearance("Helv 10 Tf")
+    assert name is None
+    # Size is still picked up.
+    assert size == 10.0

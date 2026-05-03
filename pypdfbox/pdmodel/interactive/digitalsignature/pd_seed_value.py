@@ -50,15 +50,36 @@ class PDSeedValue:
     FLAG_ADD_REV_INFO = _FLAG_ADD_REV_INFO
     FLAG_DIGEST_METHOD = _FLAG_DIGEST_METHOD
 
+    # Standard ``/Filter`` signature handler names. Mirrors the
+    # ``FILTER_*`` constants on upstream :class:`PDSignature`. PDF 32000-1
+    # §12.8.1, Table 252.
+    FILTER_ADOBE_PPKLITE = "Adobe.PPKLite"
+    FILTER_ENTRUST_PPKEF = "Entrust.PPKEF"
+    FILTER_CICI_SIGNIT = "CICI.SignIt"
+    FILTER_VERISIGN_PPKVS = "VeriSign.PPKVS"
+
+    # Standard ``/SubFilter`` encodings. Mirrors the ``SUBFILTER_*``
+    # constants on upstream :class:`PDSignature`. PDF 32000-1 §12.8.3.
+    SUBFILTER_ADBE_X509_RSA_SHA1 = "adbe.x509.rsa_sha1"
+    SUBFILTER_ADBE_PKCS7_DETACHED = "adbe.pkcs7.detached"
+    SUBFILTER_ETSI_CADES_DETACHED = "ETSI.CAdES.detached"
+    SUBFILTER_ADBE_PKCS7_SHA1 = "adbe.pkcs7.sha1"
+
     # Allowed /DigestMethod values (PDF 32000-1 Table 234). Upstream stores
     # these as the private static ``allowedDigestNames`` list and validates
     # each entry passed to ``setDigestMethod``.
+    DIGEST_SHA1 = "SHA1"
+    DIGEST_SHA256 = "SHA256"
+    DIGEST_SHA384 = "SHA384"
+    DIGEST_SHA512 = "SHA512"
+    DIGEST_RIPEMD160 = "RIPEMD160"
+
     ALLOWED_DIGEST_NAMES: tuple[str, ...] = (
-        "SHA1",
-        "SHA256",
-        "SHA384",
-        "SHA512",
-        "RIPEMD160",
+        DIGEST_SHA1,
+        DIGEST_SHA256,
+        DIGEST_SHA384,
+        DIGEST_SHA512,
+        DIGEST_RIPEMD160,
     )
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
@@ -76,11 +97,20 @@ class PDSeedValue:
     # ---------- /Filter ----------
 
     def get_filter(self) -> str | None:
-        return self._dict.get_name(_FILTER)
+        """Return the ``/Filter`` value as a string. Mirrors upstream
+        ``getNameAsString(COSName.FILTER)`` — handles both ``COSName`` and
+        ``COSString`` storage shapes (some producers write a string)."""
+        return self._dict.get_string(_FILTER)
 
-    def set_filter(self, name: str | None) -> None:
+    def set_filter(self, name: str | COSName | None) -> None:
+        """Set or remove the ``/Filter`` entry. Upstream signature is
+        ``setFilter(COSName)``; we accept either ``str`` or ``COSName`` and
+        store as a name (``None`` removes the entry)."""
         if name is None:
             self._dict.remove_item(_FILTER)
+            return
+        if isinstance(name, COSName):
+            self._dict.set_item(_FILTER, name)
             return
         self._dict.set_name(_FILTER, name)
 
@@ -316,6 +346,46 @@ class PDSeedValue:
 
     def set_digest_method_required(self, b: bool) -> None:
         self._set_flag(_FLAG_DIGEST_METHOD, b)
+
+    # ---------- pypdfbox-only own-dictionary predicates ----------
+    #
+    # Upstream returns ``null`` / empty list when entries are absent and
+    # callers test that. These ``has_*`` helpers are cheaper than
+    # ``get_*() is not None`` for sub-dicts (skip wrapper construction)
+    # and clearer at call sites. Mirrors the ``has_*`` predicate-pair
+    # pattern already established on :class:`PDSignatureField`.
+
+    def has_filter(self) -> bool:
+        return self._dict.contains_key(_FILTER)
+
+    def has_sub_filter(self) -> bool:
+        return self._dict.contains_key(_SUB_FILTER)
+
+    def has_v(self) -> bool:
+        return self._dict.contains_key(_V)
+
+    def has_reasons(self) -> bool:
+        return self._dict.contains_key(_REASONS)
+
+    def has_legal_attestation(self) -> bool:
+        return self._dict.contains_key(_LEGAL_ATTESTATION)
+
+    def has_digest_method(self) -> bool:
+        return self._dict.contains_key(_DIGEST_METHOD)
+
+    def has_mdp(self) -> bool:
+        return self._dict.contains_key(_MDP)
+
+    def has_time_stamp(self) -> bool:
+        return self._dict.contains_key(_TIME_STAMP)
+
+    def has_seed_value_certificate(self) -> bool:
+        return self._dict.contains_key(_CERT)
+
+    def has_certificate(self) -> bool:
+        """Alias for :meth:`has_seed_value_certificate` — pairs with
+        :meth:`get_certificate` / :meth:`set_certificate`."""
+        return self.has_seed_value_certificate()
 
 
 __all__ = ["PDSeedValue", "PDSeedValueTimeStamp"]
