@@ -205,6 +205,47 @@ class PDPageTree:
                 return page
         raise IndexError(f"page index out of range: {index}")  # pragma: no cover
 
+    def __contains__(self, page: object) -> bool:
+        """Return ``True`` when ``page`` (a :class:`PDPage` or its backing
+        ``COSDictionary``) is reachable from this tree's root.
+
+        Pypdfbox extension — upstream Java's ``PDPageTree`` does not expose a
+        membership predicate, but ``page in tree`` is the natural Pythonic
+        spelling of ``indexOf(page) != -1`` and avoids re-walking the tree
+        twice when the caller only cares whether the page is present.
+        """
+        if not isinstance(page, (PDPage, COSDictionary)):
+            return False
+        return self.index_of(page) >= 0
+
+    def __bool__(self) -> bool:
+        """Truthiness mirrors ``len(self) > 0`` — a tree with zero pages is
+        falsy. Pypdfbox extension; upstream relies on Java's identity-based
+        ``Object`` truthiness which is irrelevant in Python."""
+        return len(self) > 0
+
+    # ---------- predicates ----------
+
+    def is_empty(self) -> bool:
+        """Return ``True`` when this tree contains no pages.
+
+        Pypdfbox extension that mirrors the ``Collection.isEmpty()`` idiom
+        familiar from Java; equivalent to ``len(self) == 0`` but reads
+        nicer at call sites that already treat the tree as a collection.
+        """
+        return len(self) == 0
+
+    def has_page(self, page: PDPage | COSDictionary) -> bool:
+        """Return ``True`` when ``page`` is a member of this page tree.
+
+        Predicate alias for ``index_of(page) >= 0``; complements the
+        ``__contains__`` protocol with a name-based call site for callers
+        porting Java-style ``contains``/``hasPage`` checks. Matches the
+        ``has_*`` predicate pattern already used across pypdfbox
+        (e.g. ``PDTextField.has_value``, ``PDVariableText.has_q``).
+        """
+        return self.index_of(page) >= 0
+
     @staticmethod
     def _sanitize_type(dictionary: COSDictionary) -> None:
         """Normalize the ``/Type`` entry of a leaf page dictionary.
@@ -332,6 +373,35 @@ class PDPageTree:
         on the second clause (see PDFBOX-2250-229205.pdf).
         """
         return _is_page_tree_node(node)
+
+    @staticmethod
+    def is_page_dict(node: COSDictionary | None) -> bool:
+        """Return ``True`` when ``node`` looks like a leaf ``/Type /Page``
+        dictionary (rather than a ``/Pages`` intermediate).
+
+        Mirrors upstream's lenient detection: ``/Type /Page`` wins; ``/Type
+        /Pages`` returns ``False``; otherwise (no ``/Type`` at all) the node
+        is treated as a leaf when it carries no ``/Kids`` array. Pypdfbox
+        publicises this helper so callers porting upstream's free-floating
+        ``COSName.PAGE.equals(node.getCOSName(COSName.TYPE))`` checks have a
+        named entrypoint that matches ``is_page_tree_node``.
+        """
+        if node is None:
+            return False
+        return _is_page_dict(node)
+
+    @staticmethod
+    def get_parent(node: COSDictionary) -> COSDictionary | None:
+        """Return ``node``'s parent dictionary, following the upstream
+        ``/Parent`` → ``/P`` fallback (``getCOSDictionary(PARENT, P)``).
+
+        Returns ``None`` when neither key resolves to a dictionary. Matches
+        the same fallback used by upstream's ``getInheritableAttribute``,
+        ``remove``, ``insertBefore``, and ``insertAfter`` paths so callers
+        traversing the page tree can centralise the lookup instead of
+        repeating the two-key dance.
+        """
+        return _resolve_parent(node)
 
     @staticmethod
     def get_kids(node: COSDictionary) -> list[COSDictionary]:

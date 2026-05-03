@@ -431,3 +431,163 @@ def test_get_count_handles_non_integer_entry_as_zero() -> None:
         COSName.COUNT, COSName.get_pdf_name("Bogus")
     )
     assert tree.get_count() == 0
+
+
+# ---------- Wave 260: __contains__, __bool__, is_empty, has_page ----------
+
+
+def test_contains_protocol_finds_member_page() -> None:
+    """``page in tree`` is the Pythonic spelling of ``index_of(page) >= 0``
+    and must resolve direct ``PDPage`` instances reachable from the root."""
+    tree = PDPageTree()
+    p1 = _make_page("first")
+    p2 = _make_page("second")
+    tree.add(p1)
+    tree.add(p2)
+    assert p1 in tree
+    assert p2 in tree
+
+
+def test_contains_protocol_rejects_non_member_page() -> None:
+    """A page not added to the tree must report False, matching
+    ``index_of`` returning ``-1``."""
+    tree = PDPageTree()
+    tree.add(_make_page("first"))
+    orphan = _make_page("orphan")
+    assert orphan not in tree
+
+
+def test_contains_protocol_accepts_raw_cos_dictionary() -> None:
+    """``__contains__`` must accept a raw ``COSDictionary`` page backing
+    in addition to a ``PDPage`` wrapper, mirroring ``index_of``'s flexible
+    accessor signature."""
+    tree = PDPageTree()
+    p = _make_page("first")
+    tree.add(p)
+    assert p.get_cos_object() in tree
+
+
+def test_contains_protocol_returns_false_for_non_page_object() -> None:
+    """Arbitrary non-page objects must short-circuit to False rather than
+    walking the tree (defensive against callers passing strings or ints)."""
+    tree = PDPageTree()
+    tree.add(_make_page())
+    assert "not a page" not in tree
+    assert 0 not in tree  # would otherwise look like an index lookup
+    assert None not in tree
+
+
+def test_bool_protocol_empty_tree_is_falsy() -> None:
+    """An empty tree must be falsy so callers can write ``if tree:`` to
+    test for any pages without an explicit ``len(tree) > 0``."""
+    tree = PDPageTree()
+    assert bool(tree) is False
+    assert not tree
+
+
+def test_bool_protocol_populated_tree_is_truthy() -> None:
+    """A populated tree is truthy regardless of the stored ``/Count``."""
+    tree = PDPageTree()
+    tree.add(_make_page())
+    assert bool(tree) is True
+
+
+def test_is_empty_predicate_matches_len_zero() -> None:
+    """``is_empty()`` mirrors Java's ``Collection.isEmpty()`` and must
+    agree with ``len(self) == 0``."""
+    tree = PDPageTree()
+    assert tree.is_empty() is True
+    tree.add(_make_page())
+    assert tree.is_empty() is False
+
+
+def test_has_page_predicate_finds_member() -> None:
+    """``has_page`` is the named alias for ``index_of(page) >= 0``."""
+    tree = PDPageTree()
+    p = _make_page("first")
+    tree.add(p)
+    assert tree.has_page(p) is True
+
+
+def test_has_page_predicate_returns_false_for_orphan() -> None:
+    tree = PDPageTree()
+    tree.add(_make_page("first"))
+    orphan = _make_page("orphan")
+    assert tree.has_page(orphan) is False
+
+
+def test_has_page_accepts_raw_cos_dictionary() -> None:
+    """Like ``index_of``, ``has_page`` accepts the raw page dictionary."""
+    tree = PDPageTree()
+    p = _make_page("first")
+    tree.add(p)
+    assert tree.has_page(p.get_cos_object()) is True
+
+
+# ---------- Wave 260: is_page_dict + get_parent static helpers ----------
+
+
+def test_is_page_dict_true_for_typed_page() -> None:
+    """A dict with ``/Type /Page`` is a leaf page."""
+    page = COSDictionary()
+    page.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    assert PDPageTree.is_page_dict(page) is True
+
+
+def test_is_page_dict_false_for_typed_pages_intermediate() -> None:
+    """A dict with ``/Type /Pages`` is an intermediate, not a page leaf."""
+    node = COSDictionary()
+    node.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    assert PDPageTree.is_page_dict(node) is False
+
+
+def test_is_page_dict_true_for_untyped_dict_without_kids() -> None:
+    """No ``/Type`` and no ``/Kids`` falls back to "looks like a page"
+    (matches the lenient upstream detection used in `_walk`)."""
+    node = COSDictionary()
+    assert PDPageTree.is_page_dict(node) is True
+
+
+def test_is_page_dict_false_for_untyped_dict_with_kids() -> None:
+    """A dict with ``/Kids`` but no ``/Type`` is treated as an intermediate
+    rather than a leaf — mirrors upstream's ``isPageTreeNode`` heuristic."""
+    node = COSDictionary()
+    node.set_item(COSName.KIDS, COSArray())  # type: ignore[attr-defined]
+    assert PDPageTree.is_page_dict(node) is False
+
+
+def test_is_page_dict_false_for_none() -> None:
+    """``None`` is rejected up-front — the helper is null-safe."""
+    assert PDPageTree.is_page_dict(None) is False
+
+
+def test_get_parent_resolves_parent_key() -> None:
+    """``get_parent`` must return the ``/Parent`` dict when present."""
+    parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    child = COSDictionary()
+    child.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    assert PDPageTree.get_parent(child) is parent
+
+
+def test_get_parent_falls_back_to_p_alias() -> None:
+    """Mirrors upstream's ``getCOSDictionary(PARENT, P)`` fallback — when
+    ``/Parent`` is absent the helper must consult the legacy ``/P`` key."""
+    parent = COSDictionary()
+    child = COSDictionary()
+    child.set_item(COSName.get_pdf_name("P"), parent)
+    assert PDPageTree.get_parent(child) is parent
+
+
+def test_get_parent_returns_none_when_no_parent_or_p() -> None:
+    """Orphan dictionaries return ``None`` rather than raising."""
+    orphan = COSDictionary()
+    assert PDPageTree.get_parent(orphan) is None
+
+
+def test_get_parent_returns_none_when_parent_is_not_dictionary() -> None:
+    """A non-dictionary ``/Parent`` (malformed PDF) is filtered out."""
+    child = COSDictionary()
+    # Set /Parent to a non-dict value (a name) to simulate malformed input.
+    child.set_item(COSName.PARENT, COSName.PAGE)  # type: ignore[attr-defined]
+    assert PDPageTree.get_parent(child) is None

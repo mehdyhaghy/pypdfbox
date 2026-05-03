@@ -432,6 +432,51 @@ class PDOptionalContentProperties:
         """Typed-enum variant of :meth:`get_base_state`."""
         return BaseState.value_of(self.get_base_state())
 
+    def is_base_state(self, state: str | BaseState | COSName) -> bool:
+        """Return ``True`` when the resolved /BaseState matches ``state``.
+
+        Comparison is performed against the canonical :class:`BaseState`
+        enum so spec-name strings (``"ON"`` / ``"OFF"`` / ``"Unchanged"``,
+        case-insensitive), :class:`BaseState` members, and ``COSName``
+        values are all accepted. Unknown spellings raise ``ValueError``
+        — same contract as :meth:`set_base_state`.
+
+        Not part of upstream PDFBox 3.0 — pypdfbox convenience predicate
+        that mirrors :meth:`PDOptionalContentMembershipDictionary.is_visibility_policy`.
+        """
+        if isinstance(state, BaseState):
+            target = state
+        else:
+            target = BaseState.value_of(state)
+        return self.get_base_state_enum() is target
+
+    # ---------- group counts (Pythonic enrichment) ----------
+
+    def get_group_count(self) -> int:
+        """Number of dictionary-shaped entries in ``/OCProperties /OCGs``.
+
+        Non-dictionary entries (e.g. malformed null slots) are skipped to
+        match :meth:`get_groups`, so the count tracks the iterable result
+        rather than the raw array size. Not part of upstream PDFBox 3.0
+        — pypdfbox enrichment paralleling
+        :meth:`PDOptionalContentMembershipDictionary.get_ocg_count`."""
+        count = 0
+        for entry in self._get_ocgs():
+            if self._to_dictionary(entry) is not None:
+                count += 1
+        return count
+
+    def __len__(self) -> int:
+        """``len(props)`` returns :meth:`get_group_count`."""
+        return self.get_group_count()
+
+    def has_groups(self) -> bool:
+        """Return ``True`` when at least one OCG is registered in
+        ``/OCProperties /OCGs``. False for empty arrays *and* arrays
+        containing only non-dictionary entries — same scoping rule as
+        :meth:`get_group_count`. pypdfbox enrichment."""
+        return self.get_group_count() > 0
+
     # ---------- aggregate visibility ----------
 
     def compute_visible_ocgs(self, destination: str | None = None) -> set[int]:
@@ -579,6 +624,14 @@ class PDOptionalContentProperties:
     def set_intent(self, value: str | list[str] | None) -> None:
         self.get_default_configuration().set_intent(value)
 
+    def is_intent(self, name: str) -> bool:
+        """Return ``True`` when the default configuration's /Intent
+        declares ``name``. Delegates to
+        :meth:`PDOptionalContentConfiguration.is_intent`, which honours the
+        spec default of ``"View"`` when /Intent is absent (PDF 32000-1
+        §8.11.4.3 Table 101). pypdfbox convenience."""
+        return self.get_default_configuration().is_intent(name)
+
     # ---------- /D /RBGroups ----------
 
     def get_rbgroups(self) -> list[list[PDOptionalContentGroup]]:
@@ -640,6 +693,13 @@ class PDOptionalContentProperties:
             if cfg.get_name() == name:
                 return cfg
         return None
+
+    def has_configuration(self, name: str) -> bool:
+        """Return ``True`` when ``/OCProperties /Configs`` contains an entry
+        whose /Name matches ``name``. Mirrors :meth:`has_group` for the
+        alternate-configuration array. pypdfbox enrichment — Apache PDFBox
+        3.0 leaves callers to walk /Configs themselves."""
+        return self.get_configuration(name) is not None
 
     def add_configuration(
         self,
