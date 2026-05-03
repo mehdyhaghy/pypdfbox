@@ -100,14 +100,20 @@ def test_sort_option(
 
 
 def test_set_value_list_syncs_selected_indices(choice: PDListBox) -> None:
-    """Subset of upstream list-box value selection behavior."""
+    """Subset of upstream list-box value selection behavior.
+
+    Per PDF 32000-1 §12.7.4.4 and upstream
+    ``PDChoice.updateSelectedOptionsIndex``, the ``/I`` array shall be
+    sorted in ascending order regardless of the order callers pass the
+    values to ``setValue``.
+    """
     choice.set_options(["export01", "export02", "export03"])
     choice.set_multi_select(True)
 
     choice.set_value(["export03", "export01"])
 
     assert choice.get_value() == ["export03", "export01"]
-    assert choice.get_selected_options_index() == [2, 0]
+    assert choice.get_selected_options_index() == [0, 2]
 
 
 def test_set_value_rejects_missing_option(choice: PDListBox) -> None:

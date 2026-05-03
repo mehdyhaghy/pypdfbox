@@ -301,6 +301,63 @@ class PDActionEmbeddedGoTo(PDAction):
             return None
         return None
 
+    # ---------- predicates ----------
+
+    def has_file(self) -> bool:
+        """``True`` when ``/F`` is present on the underlying dictionary,
+        regardless of whether it is a string or a complex file-spec
+        dictionary. Lets callers branch on file-presence without paying
+        the cost of constructing a :class:`PDFileSpecification` wrapper."""
+        return self._action.get_dictionary_object(_F) is not None
+
+    def has_destination(self) -> bool:
+        """``True`` when ``/D`` is present on the underlying dictionary,
+        regardless of whether it is an explicit page array, a named
+        destination string, or a name. Lets callers branch on
+        destination-presence without paying the cost of constructing a
+        :class:`PDDestination` wrapper."""
+        return self._action.get_dictionary_object(_D) is not None
+
+    def has_target(self) -> bool:
+        """``True`` when ``/T`` is present and is a :class:`COSDictionary`.
+        Mirrors the ``getCOSDictionary`` shape used by
+        :meth:`get_target_directory` — non-dictionary ``/T`` values (which
+        are spec-invalid) report as absent."""
+        return isinstance(
+            self._action.get_dictionary_object(_T), COSDictionary
+        )
+
+    def has_target_directory(self) -> bool:
+        """Spec-named alias of :meth:`has_target`."""
+        return self.has_target()
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"GoToE"``). Useful as a sanity check after
+        round-tripping through :meth:`PDAction.create` or when constructing
+        the wrapper around a hand-built :class:`COSDictionary`."""
+        return self.get_sub_type() == self.SUB_TYPE
+
+    def is_open_in_new_window(self) -> bool:
+        """``True`` iff ``/NewWindow`` resolves to :attr:`OpenMode.NEW_WINDOW`
+        (i.e. the entry is explicitly the boolean ``true``). Convenience
+        predicate over :meth:`get_open_in_new_window_mode` paralleling
+        :class:`PDActionRemoteGoTo.is_new_window`."""
+        return self.get_open_in_new_window_mode() is OpenMode.NEW_WINDOW
+
+    def is_open_in_same_window(self) -> bool:
+        """``True`` iff ``/NewWindow`` resolves to :attr:`OpenMode.SAME_WINDOW`
+        (i.e. the entry is explicitly the boolean ``false``). Distinct from
+        :meth:`is_open_in_user_preference` — absence of the entry is a
+        separate state that defers to viewer preference."""
+        return self.get_open_in_new_window_mode() is OpenMode.SAME_WINDOW
+
+    def is_open_in_user_preference(self) -> bool:
+        """``True`` iff ``/NewWindow`` is absent (or non-boolean) and the
+        viewer should fall back to its user preference. Equivalent to
+        ``get_open_in_new_window_mode() is OpenMode.USER_PREFERENCE``."""
+        return self.get_open_in_new_window_mode() is OpenMode.USER_PREFERENCE
+
     def walk_to_target(self) -> list[TargetStep]:
         """Walk the ``/T`` → ``/T`` → ... chain and return each hop as a
         :class:`TargetStep`.

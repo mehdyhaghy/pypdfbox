@@ -240,3 +240,192 @@ def test_set_destination_accepts_named_destination() -> None:
     got = action.get_destination()
     assert isinstance(got, PDNamedDestination)
     assert got.get_named_destination() == "Chapter1"
+
+
+# ---------- predicates ----------
+
+
+def test_has_file_false_on_fresh_action() -> None:
+    """A fresh action has no ``/F`` entry — :meth:`has_file` reports
+    ``False``."""
+    action = PDActionEmbeddedGoTo()
+    assert action.has_file() is False
+
+
+def test_has_file_true_after_set_file_string() -> None:
+    """After writing ``/F`` via the simple-string path, :meth:`has_file`
+    reports ``True`` without needing to construct a file spec wrapper."""
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+
+    action = PDActionEmbeddedGoTo()
+    spec = PDSimpleFileSpecification()
+    spec.set_file("child.pdf")
+    action.set_file(spec)
+    assert action.has_file() is True
+
+
+def test_has_file_false_after_clear() -> None:
+    """``set_file(None)`` removes the entry — :meth:`has_file` flips back
+    to ``False``."""
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+
+    action = PDActionEmbeddedGoTo()
+    spec = PDSimpleFileSpecification()
+    spec.set_file("child.pdf")
+    action.set_file(spec)
+    action.set_file(None)
+    assert action.has_file() is False
+
+
+def test_has_destination_false_on_fresh_action() -> None:
+    """A fresh action has no ``/D`` — :meth:`has_destination` is
+    ``False``."""
+    action = PDActionEmbeddedGoTo()
+    assert action.has_destination() is False
+
+
+def test_has_destination_true_after_set_d() -> None:
+    """Writing ``/D`` via the legacy or spec accessor flips
+    :meth:`has_destination` to ``True``."""
+    action = PDActionEmbeddedGoTo()
+    dest = PDPageFitDestination()
+    dest.set_page_number(1)
+    action.set_d(dest)
+    assert action.has_destination() is True
+
+
+def test_has_destination_true_for_named_destination() -> None:
+    """Named-destination form also makes :meth:`has_destination` ``True``
+    (the predicate doesn't care about the COS form)."""
+    action = PDActionEmbeddedGoTo()
+    action.set_destination(PDNamedDestination("Chapter1"))
+    assert action.has_destination() is True
+
+
+def test_has_destination_false_after_clear() -> None:
+    """``set_destination(None)`` flips :meth:`has_destination` back."""
+    action = PDActionEmbeddedGoTo()
+    action.set_destination(PDNamedDestination("X"))
+    action.set_destination(None)
+    assert action.has_destination() is False
+
+
+def test_has_target_false_on_fresh_action() -> None:
+    """A fresh action has no ``/T`` — :meth:`has_target` is ``False``."""
+    action = PDActionEmbeddedGoTo()
+    assert action.has_target() is False
+    assert action.has_target_directory() is False
+
+
+def test_has_target_true_after_set_target() -> None:
+    """Writing ``/T`` via either accessor makes :meth:`has_target` /
+    :meth:`has_target_directory` report ``True``."""
+    action = PDActionEmbeddedGoTo()
+    target = PDTargetDirectory()
+    target.set_target_filename("child.pdf")
+    action.set_target_directory(target)
+    assert action.has_target() is True
+    assert action.has_target_directory() is True
+
+
+def test_has_target_false_for_non_dictionary_value() -> None:
+    """Spec-invalid ``/T`` values (anything that isn't a COSDictionary)
+    must report as absent — mirrors the ``getCOSDictionary`` shape used
+    by :meth:`get_target_directory`."""
+    from pypdfbox.cos import COSString
+
+    action = PDActionEmbeddedGoTo()
+    # Force a malformed /T entry (a COSString).
+    action.get_cos_object().set_item(_T, COSString("oops"))
+    assert action.has_target() is False
+    # And :meth:`get_target_directory` agrees.
+    assert action.get_target_directory() is None
+
+
+def test_is_valid_true_on_fresh_action() -> None:
+    """A fresh ``PDActionEmbeddedGoTo`` has ``/S = "GoToE"`` from the
+    constructor — :meth:`is_valid` reports ``True``."""
+    action = PDActionEmbeddedGoTo()
+    assert action.is_valid() is True
+
+
+def test_is_valid_false_when_subtype_mismatched() -> None:
+    """Wrapping a ``COSDictionary`` whose ``/S`` is something other than
+    ``"GoToE"`` makes :meth:`is_valid` report ``False``."""
+    from pypdfbox.cos import COSDictionary
+
+    raw = COSDictionary()
+    raw.set_name(COSName.get_pdf_name("S"), "GoTo")  # wrong subtype
+    action = PDActionEmbeddedGoTo(raw)
+    assert action.is_valid() is False
+
+
+# ---------- OpenMode predicates ----------
+
+
+def test_open_mode_predicates_default_user_preference() -> None:
+    """A fresh action has no ``/NewWindow`` — only
+    :meth:`is_open_in_user_preference` is ``True``."""
+    action = PDActionEmbeddedGoTo()
+    assert action.is_open_in_user_preference() is True
+    assert action.is_open_in_new_window() is False
+    assert action.is_open_in_same_window() is False
+
+
+def test_open_mode_predicates_after_explicit_true() -> None:
+    """Setting ``/NewWindow = true`` activates only
+    :meth:`is_open_in_new_window`."""
+    action = PDActionEmbeddedGoTo()
+    action.set_open_in_new_window(True)
+    assert action.is_open_in_new_window() is True
+    assert action.is_open_in_same_window() is False
+    assert action.is_open_in_user_preference() is False
+
+
+def test_open_mode_predicates_after_explicit_false() -> None:
+    """Setting ``/NewWindow = false`` activates only
+    :meth:`is_open_in_same_window`."""
+    action = PDActionEmbeddedGoTo()
+    action.set_open_in_new_window(False)
+    assert action.is_open_in_same_window() is True
+    assert action.is_open_in_new_window() is False
+    assert action.is_open_in_user_preference() is False
+
+
+def test_open_mode_predicates_after_open_mode_user_preference() -> None:
+    """``set_open_in_new_window(OpenMode.USER_PREFERENCE)`` removes the
+    entry — :meth:`is_open_in_user_preference` flips back to ``True``."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionEmbeddedGoTo()
+    action.set_open_in_new_window(True)
+    action.set_open_in_new_window(OpenMode.USER_PREFERENCE)
+    assert action.is_open_in_user_preference() is True
+    assert action.is_open_in_new_window() is False
+    assert action.is_open_in_same_window() is False
+
+
+def test_open_mode_predicates_after_open_mode_new_window() -> None:
+    """``set_open_in_new_window(OpenMode.NEW_WINDOW)`` writes ``true``
+    — :meth:`is_open_in_new_window` is ``True``."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionEmbeddedGoTo()
+    action.set_open_in_new_window(OpenMode.NEW_WINDOW)
+    assert action.is_open_in_new_window() is True
+    assert action.get_open_in_new_window_mode() is OpenMode.NEW_WINDOW
+
+
+def test_open_mode_predicates_after_open_mode_same_window() -> None:
+    """``set_open_in_new_window(OpenMode.SAME_WINDOW)`` writes ``false``
+    — :meth:`is_open_in_same_window` is ``True``."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionEmbeddedGoTo()
+    action.set_open_in_new_window(OpenMode.SAME_WINDOW)
+    assert action.is_open_in_same_window() is True
+    assert action.get_open_in_new_window_mode() is OpenMode.SAME_WINDOW

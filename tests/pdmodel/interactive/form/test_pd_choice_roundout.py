@@ -315,3 +315,97 @@ def test_get_value_as_string_empty_when_no_value() -> None:
     form = PDAcroForm()
     lb = PDListBox(form)
     assert lb.get_value_as_string() == ""
+
+
+# ---------- Wave 247: /Opt as COSString (FieldUtils.getPairableItems parity) ----------
+
+
+def test_get_options_unwraps_cos_string_opt_singleton() -> None:
+    """Mirrors upstream ``FieldUtils.getPairableItems`` — when /Opt is itself
+    a ``COSString`` (out-of-spec but observed in the wild) the value is
+    returned as a singleton list rather than dropped.
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.get_cos_object().set_item(_OPT, COSString("only"))
+    assert lb.get_options() == ["only"]
+    assert lb.get_options_export_values() == ["only"]
+    assert lb.get_options_display_values() == ["only"]
+
+
+def test_get_options_returns_empty_when_opt_is_unexpected_type() -> None:
+    """A non-array, non-string /Opt yields an empty list — defensive parity
+    with upstream's ``FieldUtils.getPairableItems`` final fall-through.
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.get_cos_object().set_int(_OPT, 5)
+    assert lb.get_options() == []
+    assert lb.get_options_display_values() == []
+
+
+# ---------- Wave 247: has_options predicate ----------
+
+
+def test_has_options_predicate_round_trip() -> None:
+    """Pypdfbox-only ``has_options`` distinguishes "no /Opt entry" from
+    "explicit empty /Opt"."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    assert lb.has_options() is False
+
+    lb.set_options(["a", "b"])
+    assert lb.has_options() is True
+
+    # set_options([]) removes /Opt — predicate flips back to False.
+    lb.set_options([])
+    assert lb.has_options() is False
+
+    # An externally-written empty COSArray /Opt still registers.
+    lb.get_cos_object().set_item(_OPT, COSArray())
+    assert lb.has_options() is True
+    assert lb.get_options() == []
+
+
+# ---------- Wave 247: /I sorting on set_value (PDF 32000-1 §12.7.4.4) ----------
+
+
+def test_set_value_sorts_selected_option_indices_ascending() -> None:
+    """Per PDF 32000-1 §12.7.4.4, /I "shall be sorted in ascending order".
+    Upstream ``PDChoice.updateSelectedOptionsIndex`` calls
+    ``Collections.sort(indices)`` before writing /I — pypdfbox does the same.
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b", "c", "d", "e"])
+    lb.set_multi_select(True)
+
+    lb.set_value(["d", "a", "c"])
+
+    # /V preserves caller-supplied order (text strings).
+    assert lb.get_value() == ["d", "a", "c"]
+    # /I is sorted ascending regardless of /V order.
+    assert lb.get_selected_options_indices() == [0, 2, 3]
+
+
+def test_set_value_single_value_writes_single_index() -> None:
+    """Single-value set_value still produces a one-element /I — sort is a
+    no-op for length-1 lists."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_options(["a", "b", "c"])
+    lb.set_value("c")
+    assert lb.get_selected_options_indices() == [2]
+
+
+# ---------- Wave 247: /TI ----------
+
+
+def test_set_top_index_negative_value_round_trip() -> None:
+    """Upstream ``setTopIndex`` performs no validation — negative values
+    survive the round-trip."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    lb.set_top_index(-1)
+    assert lb.get_top_index() == -1
+    assert lb.has_top_index() is True

@@ -152,7 +152,9 @@ def test_choice_set_value_syncs_selected_option_indices() -> None:
     lb.set_value(["three", "one"])
 
     assert lb.get_value() == ["three", "one"]
-    assert lb.get_selected_options_indices() == [2, 0]
+    # /I shall be sorted ascending per PDF 32000-1 §12.7.4.4 and upstream
+    # PDChoice.updateSelectedOptionsIndex.
+    assert lb.get_selected_options_indices() == [0, 2]
 
 
 def test_choice_clear_value_removes_selected_option_indices() -> None:

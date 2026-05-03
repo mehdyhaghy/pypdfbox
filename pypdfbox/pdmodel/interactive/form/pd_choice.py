@@ -91,11 +91,28 @@ class PDChoice(PDVariableText):
 
     # ---------- /Opt ----------
 
+    def has_options(self) -> bool:
+        """Predicate — return ``True`` when ``/Opt`` is set on this field's own
+        dictionary.
+
+        Pypdfbox-only convenience: lets callers distinguish "explicit empty
+        ``/Opt``" from "no ``/Opt`` entry" without rereading the dict directly.
+        :meth:`get_options` returns ``[]`` for both cases.
+        """
+        return self._field.contains_key(_OPT)
+
     def get_options(self) -> list[str]:
         """Returns the export half of /Opt entries (or the value itself when
         an entry is a single string), matching upstream ``PDChoice.getOptions``.
+
+        Mirrors upstream ``FieldUtils.getPairableItems`` semantics: when
+        ``/Opt`` is itself a ``COSString`` (technically out-of-spec but
+        observed in the wild), the value is wrapped in a singleton list
+        rather than dropped.
         """
         opt = self._field.get_dictionary_object(_OPT)
+        if isinstance(opt, COSString):
+            return [opt.get_string()]
         if not isinstance(opt, COSArray):
             return []
         out: list[str] = []
@@ -170,7 +187,18 @@ class PDChoice(PDVariableText):
         return self.get_options()
 
     def get_options_display_values(self) -> list[str]:
+        """Returns the display half of /Opt entries (or the value itself when
+        an entry is a single string), matching upstream
+        ``PDChoice.getOptionsDisplayValues``.
+
+        Mirrors upstream ``FieldUtils.getPairableItems`` semantics: when
+        ``/Opt`` is itself a ``COSString`` (technically out-of-spec but
+        observed in the wild), the value is wrapped in a singleton list
+        rather than dropped.
+        """
         opt = self._field.get_dictionary_object(_OPT)
+        if isinstance(opt, COSString):
+            return [opt.get_string()]
         if not isinstance(opt, COSArray):
             return []
         out: list[str] = []
@@ -239,6 +267,9 @@ class PDChoice(PDVariableText):
                 if self.is_combo() and bool(getattr(self, "is_edit", lambda: False)()):
                     return []
                 raise ValueError(f"value {value!r} is not one of the field options") from exc
+        # PDF 32000-1 §12.7.4.4: /I "shall be sorted in ascending order".
+        # Upstream PDChoice.updateSelectedOptionsIndex calls Collections.sort.
+        indices.sort()
         return indices
 
     def _normalize_value_for_set(self, value: list[str] | str) -> list[str]:
