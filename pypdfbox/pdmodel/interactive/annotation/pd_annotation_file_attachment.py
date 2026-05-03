@@ -57,6 +57,15 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
         """
         self._custom_appearance_handler = appearance_handler
 
+    def get_custom_appearance_handler(self) -> PDAppearanceHandler | None:
+        """Return the custom appearance handler previously set via
+        :meth:`set_custom_appearance_handler`, or ``None`` when the default
+        construction path is in use. No upstream getter exists (the field is
+        package-private in Java); this is the Pythonic accessor used by tests
+        and downstream code that needs to inspect the wired handler.
+        """
+        return self._custom_appearance_handler
+
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate file-attachment annotation appearances.
 
@@ -86,6 +95,24 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
             return
         self._dict.set_item(_FS, fs.get_cos_object())
 
+    def has_file(self) -> bool:
+        """``True`` when ``/FS`` is present (regardless of contents).
+
+        Predicate companion to :meth:`get_file`; useful for callers that
+        want to distinguish "no file attached" from "attached but spec is
+        malformed" without paying the cost of constructing a typed
+        :class:`PDFileSpecification`.
+        """
+        return self._dict.get_dictionary_object(_FS) is not None
+
+    def clear_file(self) -> None:
+        """Remove ``/FS`` entirely.
+
+        Equivalent to ``set_file(None)`` but reads more clearly at call
+        sites that explicitly intend to clear the attached file.
+        """
+        self._dict.remove_item(_FS)
+
     # ---------- /Name (icon) ----------
 
     def get_attachment_name(self) -> str:
@@ -98,6 +125,44 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
             self._dict.remove_item(_NAME)
             return
         self._dict.set_name(_NAME, name)
+
+    def has_attachment_name(self) -> bool:
+        """``True`` when ``/Name`` is explicitly set (vs. relying on the
+        ``"PushPin"`` spec default).
+        """
+        return self._dict.get_name(_NAME) is not None
+
+    def clear_attachment_name(self) -> None:
+        """Remove the explicit ``/Name`` entry, reverting to the spec
+        default (``"PushPin"``).
+
+        Equivalent to ``set_attachment_name(None)`` but makes intent
+        explicit at the call site.
+        """
+        self._dict.remove_item(_NAME)
+
+    def is_default_attachment_name(self) -> bool:
+        """``True`` when the icon resolves to the spec default ``"PushPin"``,
+        whether because ``/Name`` is absent or explicitly set to it.
+
+        Distinct from :meth:`has_attachment_name` (which reflects raw entry
+        presence) and from :meth:`is_push_pin` (which it shares its return
+        value with — kept separate to make spec-default intent clear at
+        call sites).
+        """
+        return self.get_attachment_name() == self.ATTACHMENT_NAME_PUSH_PIN
+
+    def is_known_attachment_name(self) -> bool:
+        """``True`` when the resolved icon name is one of the four spec
+        constants (``Graph``, ``Paperclip``, ``PushPin``, ``Tag`` —
+        Table 184). ``False`` when ``/Name`` carries a vendor extension.
+        """
+        return self.get_attachment_name() in {
+            self.ATTACHMENT_NAME_GRAPH,
+            self.ATTACHMENT_NAME_PAPERCLIP,
+            self.ATTACHMENT_NAME_PUSH_PIN,
+            self.ATTACHMENT_NAME_TAG,
+        }
 
     # ---------- icon predicates ----------
 

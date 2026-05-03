@@ -109,6 +109,38 @@ class PDAnnotationCaret(PDAnnotationMarkup):
         """
         return self._dict.get_dictionary_object(_RD) is not None
 
+    def clear_rectangle_differences(self) -> None:
+        """Remove ``/RD`` entirely.
+
+        Equivalent to ``set_rectangle_differences(None)`` but reads more
+        clearly at call sites that explicitly intend to clear the entry.
+        """
+        self._dict.remove_item(_RD)
+
+    def get_left_difference(self) -> float | None:
+        """Return the left ``/RD`` margin, or ``None`` when ``/RD`` is unset.
+
+        Convenience accessor for the first ``[lx _ _ _]`` slot — Table 180
+        ordering is ``[left top right bottom]``.
+        """
+        rd = self.get_rectangle_differences()
+        return rd[0] if rd is not None and len(rd) >= 4 else None
+
+    def get_top_difference(self) -> float | None:
+        """Return the top ``/RD`` margin (second slot) or ``None``."""
+        rd = self.get_rectangle_differences()
+        return rd[1] if rd is not None and len(rd) >= 4 else None
+
+    def get_right_difference(self) -> float | None:
+        """Return the right ``/RD`` margin (third slot) or ``None``."""
+        rd = self.get_rectangle_differences()
+        return rd[2] if rd is not None and len(rd) >= 4 else None
+
+    def get_bottom_difference(self) -> float | None:
+        """Return the bottom ``/RD`` margin (fourth slot) or ``None``."""
+        rd = self.get_rectangle_differences()
+        return rd[3] if rd is not None and len(rd) >= 4 else None
+
     # ---------- /Sy (caret symbol) ----------
 
     def get_symbol(self) -> str:
@@ -139,6 +171,27 @@ class PDAnnotationCaret(PDAnnotationMarkup):
         ``/Sy`` is ``"None"`` or the entry is absent (the spec default).
         """
         return self.get_symbol() == self.SY_NONE
+
+    def clear_symbol(self) -> None:
+        """Remove the explicit ``/Sy`` entry, reverting to the spec default
+        (``"None"``).
+
+        Equivalent to ``set_symbol(None)`` but makes intent explicit at the
+        call site.
+        """
+        self._dict.remove_item(_SY)
+
+    # ---------- aggregate predicates ----------
+
+    def is_caret_default(self) -> bool:
+        """``True`` when neither ``/RD`` nor ``/Sy`` is explicitly set, so
+        the annotation relies entirely on PDF spec defaults for the
+        caret-specific entries (margins of zero and ``/Sy = None``).
+
+        Markup metadata (``/Subj``, ``/IRT``, …) is not considered — see
+        :class:`PDAnnotationMarkup` for those entries.
+        """
+        return not self.has_rectangle_differences() and not self.has_symbol()
 
 
 __all__ = ["PDAnnotationCaret"]

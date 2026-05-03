@@ -30,6 +30,45 @@ class PDComplexFileSpecification(PDFileSpecification):
     #: dictionary. Mirrors upstream ``COSName.FILESPEC``.
     FILESPEC: str = "Filespec"
 
+    # ---------- /AFRelationship name values (ISO 32000-2 §14.13) ----------
+    # The seven standard ``/AFRelationship`` values defined by ISO 32000-2
+    # §14.13 (PDF/A-3 / PDF 2.0 associated files). Surfaced as plain
+    # strings (matching the value written into ``/AFRelationship``) so
+    # callers comparing :meth:`get_af_relationship` against a literal
+    # pick them up without round-tripping through ``COSName``. pypdfbox
+    # enrichment — Apache PDFBox 3.0 does not surface these as named
+    # constants, leaving callers to re-spell them at every call site.
+    AF_RELATIONSHIP_SOURCE: str = "Source"
+    AF_RELATIONSHIP_DATA: str = "Data"
+    AF_RELATIONSHIP_ALTERNATIVE: str = "Alternative"
+    AF_RELATIONSHIP_SUPPLEMENT: str = "Supplement"
+    AF_RELATIONSHIP_ENCRYPTED_PAYLOAD: str = "EncryptedPayload"
+    AF_RELATIONSHIP_FORM_DATA: str = "FormData"
+    AF_RELATIONSHIP_UNSPECIFIED: str = "Unspecified"
+
+    _STANDARD_AF_RELATIONSHIPS: frozenset[str] = frozenset(
+        {
+            "Source",
+            "Data",
+            "Alternative",
+            "Supplement",
+            "EncryptedPayload",
+            "FormData",
+            "Unspecified",
+        }
+    )
+
+    @classmethod
+    def is_standard_af_relationship(cls, value: str | None) -> bool:
+        """Predicate: is ``value`` one of the seven ISO 32000-2 §14.13
+        registered ``/AFRelationship`` values?
+
+        ``None`` returns ``False`` (the absence of /AFRelationship is
+        legal but it is not a "standard value"). PDF 2.0 producers may
+        write vendor-specific relationship names, so a ``False`` result
+        only means "outside the registered set" — not "invalid"."""
+        return value in cls._STANDARD_AF_RELATIONSHIPS
+
     def __init__(self, dict_: COSDictionary | None = None) -> None:
         if dict_ is None:
             self._fs: COSDictionary = COSDictionary()
@@ -182,6 +221,120 @@ class PDComplexFileSpecification(PDFileSpecification):
             self._fs.remove_item(_AF_RELATIONSHIP)
             return
         self._fs.set_name(_AF_RELATIONSHIP, relationship)
+
+    # ---------- presence predicates ----------
+    # Distinguish "entry absent" from "entry explicitly set to a falsy
+    # value" without forcing callers to grovel through the underlying
+    # ``COSDictionary``. Useful for round-trip decisions where preserving
+    # an absent entry matters for byte-exact re-serialisation. pypdfbox
+    # enrichment — Apache PDFBox 3.0 makes callers compare the getter
+    # result against ``null`` themselves.
+
+    def has_file(self) -> bool:
+        """``True`` when the required ``/F`` entry is present.
+        A ``False`` return on a presumed-conformant file spec indicates
+        a malformed dictionary — PDF 32000-1 §7.11.3 makes ``/F`` the
+        canonical filename entry."""
+        return self._fs.contains_key(_F)
+
+    def has_file_unicode(self) -> bool:
+        """``True`` when the ``/UF`` (Unicode filename) entry is present.
+        ``/UF`` is preferred over ``/F`` for cross-platform compatibility
+        (PDF 32000-1 §7.11.3)."""
+        return self._fs.contains_key(_UF)
+
+    def has_file_dos(self) -> bool:
+        """``True`` when the deprecated ``/DOS`` entry is present.
+        ISO 32000-2 deprecates this entry in favour of ``/UF``."""
+        return self._fs.contains_key(_DOS)
+
+    def has_file_mac(self) -> bool:
+        """``True`` when the deprecated ``/Mac`` entry is present.
+        ISO 32000-2 deprecates this entry in favour of ``/UF``."""
+        return self._fs.contains_key(_MAC)
+
+    def has_file_unix(self) -> bool:
+        """``True`` when the deprecated ``/Unix`` entry is present.
+        ISO 32000-2 deprecates this entry in favour of ``/UF``."""
+        return self._fs.contains_key(_UNIX)
+
+    def has_volatile(self) -> bool:
+        """``True`` when an explicit ``/V`` entry is present.
+        Distinguishes "spec default of ``false`` was implied" from "the
+        writer recorded ``/V false`` explicitly". :meth:`is_volatile`
+        always returns the effective value (defaulting to ``False``)."""
+        return self._fs.contains_key(_V)
+
+    def has_embedded_files(self) -> bool:
+        """``True`` when the ``/EF`` (embedded-files) sub-dictionary is
+        present. Does not check whether ``/EF`` actually contains any
+        embedded streams — an empty ``/EF`` dictionary still satisfies
+        this predicate."""
+        return self._fs.contains_key(_EF)
+
+    def has_file_description(self) -> bool:
+        """``True`` when the ``/Desc`` entry is present.
+        ``/Desc`` is required by PDF/A-3 conformance (ISO 19005-3)."""
+        return self._fs.contains_key(_DESC)
+
+    def has_af_relationship(self) -> bool:
+        """``True`` when the ``/AFRelationship`` name entry is present.
+        Required for PDF/A-3 associated files (ISO 19005-3 §6.10.2)."""
+        return self._fs.contains_key(_AF_RELATIONSHIP)
+
+    # ---------- clear_* (symmetric to has_*) ----------
+    # Convenience shortcuts that remove an optional entry from the
+    # underlying dictionary. pypdfbox enrichment — Apache PDFBox 3.0
+    # does not surface explicit clearers on ``PDComplexFileSpecification``.
+
+    def clear_volatile(self) -> None:
+        """Remove the ``/V`` entry. After this call :meth:`is_volatile`
+        returns the spec default of ``False``."""
+        self._fs.remove_item(_V)
+
+    def clear_file_description(self) -> None:
+        """Remove the ``/Desc`` entry. No-op if absent. PDF/A-3
+        conformance requires ``/Desc`` on associated files — clearing
+        it on a PDF/A-3 file spec yields a non-conformant dictionary."""
+        self._fs.remove_item(_DESC)
+
+    def clear_af_relationship(self) -> None:
+        """Remove the ``/AFRelationship`` entry. Equivalent to
+        ``set_af_relationship(None)``."""
+        self._fs.remove_item(_AF_RELATIONSHIP)
+
+    def clear_embedded_files(self) -> None:
+        """Remove the ``/EF`` sub-dictionary entirely. Drops every
+        embedded-file slot (``/F``, ``/UF``, ``/DOS``, ``/Mac``, ``/Unix``)
+        in one call. Also clears the cached reference held on this
+        instance so a subsequent :meth:`set_embedded_file` rebuilds the
+        ``/EF`` dictionary from scratch."""
+        self._fs.remove_item(_EF)
+        self._ef_dictionary = None
+
+    # ---------- structural emptiness ----------
+
+    def is_empty(self) -> bool:
+        """``True`` when the dictionary carries no meaningful filename,
+        embedded-file, description, or relationship entry.
+
+        ``/Type`` is ignored — a fresh-but-empty file spec still carries
+        ``/Type /Filespec`` from the constructor. ``/V`` is ignored too
+        — its spec default is ``False`` and an explicit ``/V false`` is
+        equivalent to absence for the purposes of "is this file spec
+        meaningful". Useful for callers deciding whether to persist a
+        draft file spec. pypdfbox enrichment — Apache PDFBox 3.0 does
+        not expose an emptiness check."""
+        return not (
+            self.has_file()
+            or self.has_file_unicode()
+            or self.has_file_dos()
+            or self.has_file_mac()
+            or self.has_file_unix()
+            or self.has_embedded_files()
+            or self.has_file_description()
+            or self.has_af_relationship()
+        )
 
 
 __all__ = ["PDComplexFileSpecification"]

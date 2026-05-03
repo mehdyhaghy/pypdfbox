@@ -505,6 +505,103 @@ class PDOutputIntent:
         ISO 32000-2 §14.11.5 external profile reference)."""
         return self._dictionary.contains_key(_DEST_OUTPUT_PROFILE_REF)
 
+    # ---------- clear_* (symmetric to has_*) ----------
+    # Convenience shortcuts that remove an optional entry from the
+    # underlying dictionary. Equivalent to calling the corresponding
+    # ``set_*(None)`` for setters that accept ``None``, but spelled as
+    # ``clear_*`` for callers whose intent is "drop this entry" rather
+    # than "set to no-value". pypdfbox enrichment — Apache PDFBox 3.0
+    # does not surface explicit clearers on ``PDOutputIntent``.
+
+    def clear_info(self) -> None:
+        """Remove the ``/Info`` entry. No-op if absent."""
+        self._dictionary.remove_item(_INFO)
+
+    def clear_output_condition(self) -> None:
+        """Remove the ``/OutputCondition`` entry. No-op if absent."""
+        self._dictionary.remove_item(_OUTPUT_CONDITION)
+
+    def clear_output_condition_identifier(self) -> None:
+        """Remove the ``/OutputConditionIdentifier`` entry. No-op if absent.
+        PDF/A and PDF/X both *require* this entry on conforming output
+        intents — clearing it on a flavoured intent yields a malformed
+        dictionary."""
+        self._dictionary.remove_item(_OUTPUT_CONDITION_IDENTIFIER)
+
+    def clear_registry_name(self) -> None:
+        """Remove the ``/RegistryName`` entry. No-op if absent."""
+        self._dictionary.remove_item(_REGISTRY_NAME)
+
+    def clear_dest_output_profile(self) -> None:
+        """Remove the ``/DestOutputProfile`` entry (the embedded ICC
+        profile stream). No-op if absent. After this call,
+        :meth:`get_n_for_profile` returns ``None``."""
+        self._dictionary.remove_item(_DEST_OUTPUT_PROFILE)
+
+    def clear_dest_output_profile_ref(self) -> None:
+        """Remove the ``/DestOutputProfileRef`` entry (the PDF 2.0 / ISO
+        32000-2 §14.11.5 external profile reference). No-op if absent."""
+        self._dictionary.remove_item(_DEST_OUTPUT_PROFILE_REF)
+
+    def clear_subtype(self) -> None:
+        """Remove the ``/S`` subtype entry. After this call,
+        :meth:`is_pdfa` / :meth:`is_pdfx` / :meth:`is_pdfe` all return
+        ``False``. Equivalent to ``set_subtype(None)``."""
+        self._dictionary.remove_item(_S)
+
+    # ---------- /N writer (number of ICC components) ----------
+
+    def set_n_for_profile(self, n: int | None) -> None:
+        """Set ``/N`` on the embedded ``/DestOutputProfile`` stream.
+
+        Pass ``None`` to remove the entry; pass a positive integer
+        (1–15 per PDF 32000-1 Table 401) to record the number of colour
+        components encoded in the ICC profile.
+
+        Raises :class:`OSError` when ``/DestOutputProfile`` is absent —
+        ``/N`` lives on the ICC stream's dictionary, not on the
+        ``PDOutputIntent`` itself, so there is nowhere to write it
+        without an embedded profile. pypdfbox enrichment — Apache PDFBox
+        3.0 only writes ``/N`` from the constructor, never updates it
+        after the fact."""
+        cos = self._dictionary.get_dictionary_object(_DEST_OUTPUT_PROFILE)
+        if not isinstance(cos, COSStream):
+            raise OSError(
+                "set_n_for_profile requires an embedded /DestOutputProfile "
+                "stream; embed one via set_data(...) first"
+            )
+        if n is None:
+            cos.remove_item(_N)
+            return
+        if n <= 0:
+            raise ValueError(
+                f"/N (number of ICC components) must be positive; got {n}"
+            )
+        cos.set_int(_N, int(n))
+
+    # ---------- structural emptiness ----------
+
+    def is_empty(self) -> bool:
+        """``True`` when the dictionary carries none of the seven
+        meaningful entries (``/S``, ``/Info``, ``/OutputCondition``,
+        ``/OutputConditionIdentifier``, ``/RegistryName``,
+        ``/DestOutputProfile``, ``/DestOutputProfileRef``).
+
+        ``/Type`` is ignored — a fresh-but-empty intent still carries
+        ``/Type /OutputIntent`` from the constructor and that does not
+        constitute "content". Useful for callers deciding whether to
+        persist a draft intent into the catalog. pypdfbox enrichment —
+        Apache PDFBox 3.0 does not expose an emptiness check."""
+        return not (
+            self.has_subtype()
+            or self.has_info()
+            or self.has_output_condition()
+            or self.has_output_condition_identifier()
+            or self.has_registry_name()
+            or self.has_dest_output_profile()
+            or self.has_dest_output_profile_ref()
+        )
+
     # ---------- repr ----------
 
     def __repr__(self) -> str:
