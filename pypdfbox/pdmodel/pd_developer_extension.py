@@ -75,31 +75,62 @@ class PDDeveloperExtension:
     def get_cos_dictionary(self) -> COSDictionary:
         return self._dictionary
 
+    # ---------- /Type ----------
+
+    def get_type(self) -> str | None:
+        """Return the ``/Type`` name as a plain string (always
+        ``"DeveloperExtensions"`` for a well-formed entry), or
+        ``None`` when the dictionary unexpectedly lacks ``/Type``."""
+        return self._dictionary.get_name(_TYPE)
+
     # ---------- /BaseVersion ----------
 
     def get_base_version(self) -> str | None:
-        """Return the ``/BaseVersion`` name as a plain string (e.g.
-        ``"1.7"``), or ``None`` when absent."""
-        return self._dictionary.get_name(_BASE_VERSION)
+        """Return the ``/BaseVersion`` value as a plain string (e.g.
+        ``"1.7"``), or ``None`` when absent.
 
-    def set_base_version(self, base_version: str | None) -> None:
-        """Set the ``/BaseVersion`` PDF version. Pass ``None`` to remove."""
+        The spec types the value as a ``/Name``; for defensive parity
+        with PDFBox readers we also accept a ``COSString`` payload that
+        some tools have been observed to write in the wild."""
+        name = self._dictionary.get_name(_BASE_VERSION)
+        if name is not None:
+            return name
+        return self._dictionary.get_string(_BASE_VERSION)
+
+    def set_base_version(self, base_version: str | COSName | None) -> None:
+        """Set the ``/BaseVersion`` PDF version. Pass ``None`` to remove.
+
+        Accepts either a plain string (e.g. ``"1.7"``) or a pre-built
+        ``COSName`` for parity with ``COSDictionary.setItem(COSName, COSBase)``-style
+        callers that already hold a name object."""
         if base_version is None:
             self._dictionary.remove_item(_BASE_VERSION)
             return
+        if isinstance(base_version, COSName):
+            self._dictionary.set_item(_BASE_VERSION, base_version)
+            return
         self._dictionary.set_item(_BASE_VERSION, COSName.get_pdf_name(base_version))
+
+    def has_base_version(self) -> bool:
+        """Return whether ``/BaseVersion`` is present on the dictionary."""
+        return self._dictionary.contains_key(_BASE_VERSION)
 
     # ---------- /ExtensionLevel ----------
 
-    def get_extension_level(self) -> int:
-        """Return the ``/ExtensionLevel`` integer, or ``-1`` when absent
-        (mirrors PDFBox's ``COSDictionary.getInt`` default)."""
-        return self._dictionary.get_int(_EXTENSION_LEVEL)
+    def get_extension_level(self, default: int = -1) -> int:
+        """Return the ``/ExtensionLevel`` integer, or ``default`` (``-1``
+        by default) when absent. Mirrors PDFBox's
+        ``COSDictionary.getInt(COSName, int)`` overload."""
+        return self._dictionary.get_int(_EXTENSION_LEVEL, default)
 
     def set_extension_level(self, extension_level: int) -> None:
         """Set ``/ExtensionLevel``. PDFBox's overload takes a primitive
         ``int`` (no ``Integer`` boxing), so we accept ``int`` only."""
         self._dictionary.set_int(_EXTENSION_LEVEL, int(extension_level))
+
+    def has_extension_level(self) -> bool:
+        """Return whether ``/ExtensionLevel`` is present on the dictionary."""
+        return self._dictionary.contains_key(_EXTENSION_LEVEL)
 
     # ---------- /URL (ISO 32000-2 / PDF 2.0) ----------
 
@@ -118,6 +149,10 @@ class PDDeveloperExtension:
             self._dictionary.remove_item(_URL)
             return
         self._dictionary.set_item(_URL, COSString(url))
+
+    def has_url(self) -> bool:
+        """Return whether ``/URL`` is present on the dictionary."""
+        return self._dictionary.contains_key(_URL)
 
     def __repr__(self) -> str:
         return (

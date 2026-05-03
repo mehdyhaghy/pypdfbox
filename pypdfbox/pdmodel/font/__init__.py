@@ -7,6 +7,7 @@ from .pd_cid_system_info import PDCIDSystemInfo
 from .pd_font import PDFont
 from .pd_font_descriptor import PDFontDescriptor
 from .pd_font_factory import PDFontFactory
+from .pd_font_like import PDFontLike
 from .pd_mm_type1_font import PDMMType1Font
 from .pd_simple_font import PDSimpleFont
 from .pd_true_type_font import PDTrueTypeFont
@@ -15,6 +16,7 @@ from .pd_type1_font import PDType1Font
 from .pd_type1c_font import PDType1CFont
 from .pd_type3_char_proc import PDType3CharProc
 from .pd_type3_font import PDType3Font
+from .pd_vector_font import PDVectorFont
 from .standard14_fonts import Standard14Fonts
 
 __all__ = [
@@ -25,6 +27,7 @@ __all__ = [
     "PDFont",
     "PDFontDescriptor",
     "PDFontFactory",
+    "PDFontLike",
     "PDMMType1Font",
     "PDSimpleFont",
     "PDTrueTypeFont",
@@ -33,5 +36,6 @@ __all__ = [
     "PDType1Font",
     "PDType3CharProc",
     "PDType3Font",
+    "PDVectorFont",
     "Standard14Fonts",
 ]

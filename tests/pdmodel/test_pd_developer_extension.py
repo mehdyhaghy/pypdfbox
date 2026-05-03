@@ -236,3 +236,76 @@ def test_catalog_developer_extensions_ignores_non_dict_entries() -> None:
     )
     extensions = cat.get_developer_extensions()
     assert set(extensions.keys()) == {"ADBE"}
+
+
+# ---------- Wave 229: typed accessors / predicates / defensive reads ----------
+
+
+def test_get_type_default_is_developer_extensions() -> None:
+    ext = PDDeveloperExtension()
+    assert ext.get_type() == "DeveloperExtensions"
+
+
+def test_get_type_when_dictionary_lacks_type_returns_none() -> None:
+    raw = COSDictionary()
+    # Skip the wrapper's auto-backfill by removing /Type after construction.
+    ext = PDDeveloperExtension(raw)
+    raw.remove_item(COSName.TYPE)  # type: ignore[attr-defined]
+    assert ext.get_type() is None
+
+
+def test_has_base_version_predicate() -> None:
+    ext = PDDeveloperExtension()
+    assert ext.has_base_version() is False
+    ext.set_base_version("1.7")
+    assert ext.has_base_version() is True
+    ext.set_base_version(None)
+    assert ext.has_base_version() is False
+
+
+def test_has_extension_level_predicate() -> None:
+    ext = PDDeveloperExtension()
+    assert ext.has_extension_level() is False
+    ext.set_extension_level(3)
+    assert ext.has_extension_level() is True
+
+
+def test_has_url_predicate() -> None:
+    ext = PDDeveloperExtension()
+    assert ext.has_url() is False
+    ext.set_url("https://example.org/x")
+    assert ext.has_url() is True
+    ext.set_url(None)
+    assert ext.has_url() is False
+
+
+def test_get_extension_level_with_custom_default() -> None:
+    ext = PDDeveloperExtension()
+    # Absent: caller-supplied default returned, not the -1 sentinel.
+    assert ext.get_extension_level(0) == 0
+    assert ext.get_extension_level(99) == 99
+    # Once present, default is ignored.
+    ext.set_extension_level(7)
+    assert ext.get_extension_level(0) == 7
+    assert ext.get_extension_level(99) == 7
+
+
+def test_set_base_version_accepts_cos_name() -> None:
+    ext = PDDeveloperExtension()
+    name = COSName.get_pdf_name("1.7")
+    ext.set_base_version(name)
+    assert ext.get_base_version() == "1.7"
+    raw = ext.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("BaseVersion")
+    )
+    # The exact COSName instance flows through unchanged.
+    assert raw is name
+
+
+def test_get_base_version_accepts_cos_string_payload() -> None:
+    # Defensive read: some producers store /BaseVersion as a COSString.
+    raw = COSDictionary()
+    raw.set_item(COSName.TYPE, COSName.get_pdf_name("DeveloperExtensions"))  # type: ignore[attr-defined]
+    raw.set_item(COSName.get_pdf_name("BaseVersion"), COSString("1.7"))
+    ext = PDDeveloperExtension(raw)
+    assert ext.get_base_version() == "1.7"
