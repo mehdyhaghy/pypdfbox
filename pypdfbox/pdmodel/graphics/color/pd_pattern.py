@@ -80,6 +80,22 @@ class PDPattern(PDColorSpace):
         # answer; explicit lookups should ask the underlying CS instead.
         return 0
 
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Pattern color spaces have no per-component decode array —
+        components only make sense for the *underlying* color space in
+        the uncolored tiling form. Mirrors upstream
+        ``PDPattern.getDefaultDecode(int)`` which throws
+        ``UnsupportedOperationException``; we surface the same intent as
+        :class:`NotImplementedError` (the base ``PDColorSpace`` would
+        otherwise return an empty list because
+        :meth:`get_number_of_components` is 0, which is misleading).
+        """
+        raise NotImplementedError(
+            "PDPattern has no default decode array — query the underlying "
+            "color space (uncolored tiling) or render the pattern's "
+            "content stream (colored / shading)."
+        )
+
     def get_initial_color(self) -> PDColor:
         """Return the *empty pattern* — a ``PDColor`` with no components
         that paints nothing. Mirrors upstream
@@ -90,6 +106,38 @@ class PDPattern(PDColorSpace):
 
     def get_underlying_color_space(self) -> PDColorSpace | None:
         return self._underlying
+
+    def has_underlying_color_space(self) -> bool:
+        """Return ``True`` when this Pattern color space carries an
+        *underlying* (alternate) color space — i.e. it was constructed
+        in the array form ``[/Pattern <CS>]`` for an uncolored tiling
+        pattern. ``False`` for the bare-name ``/Pattern`` form used by
+        colored tiling and shading patterns. pypdfbox enrichment — a
+        terse way to ask the question without comparing to ``None``.
+        """
+        return self._underlying is not None
+
+    def is_uncolored(self) -> bool:
+        """Return ``True`` for the *uncolored* form ``[/Pattern <CS>]``
+        — the form that supplies tint components against an underlying
+        color space (PaintType=2 tiling per PDF 32000-1 §8.7.3.3).
+        Mirrors the predicate naming on :class:`PDTilingPattern` but
+        operates on the *color space* side of the relationship: a
+        :class:`PDPattern` doesn't know its tiling pattern's PaintType
+        without resource resolution, so we use the structural
+        ``has-underlying-CS?`` test as the proxy (which is exactly how
+        upstream's ``PDColorSpace.create`` distinguishes the two forms).
+        """
+        return self._underlying is not None
+
+    def is_colored(self) -> bool:
+        """Return ``True`` for the *colored* / *name* form ``/Pattern``
+        — the form whose pattern content stream supplies its own paint
+        color (PaintType=1 tiling) and for shading patterns. Inverse
+        of :meth:`is_uncolored`. See :meth:`is_uncolored` for the
+        rationale of the structural test.
+        """
+        return self._underlying is None
 
     def get_resources(self) -> PDResources | None:
         """Return the ``PDResources`` against which patterns are resolved
@@ -129,6 +177,25 @@ class PDPattern(PDColorSpace):
         if pattern is None:
             raise OSError(f"pattern {pattern_name} was not found")
         return pattern
+
+    def get_pattern_or_none(
+        self, color: PDColor
+    ) -> PDAbstractPattern | None:
+        """Soft variant of :meth:`get_pattern` — returns ``None`` instead
+        of raising when the pattern can't be resolved (no resources
+        attached, no pattern name on the color, or the named pattern
+        isn't in ``/Resources/Pattern``). pypdfbox enrichment for
+        best-effort callers (e.g. text-extraction stripping a colored
+        pattern back to a representative color) that prefer to fall
+        through to a default rather than catch ``OSError`` in a hot
+        path. Upstream offers only the throwing variant.
+        """
+        if self._resources is None:
+            return None
+        pattern_name = color.get_pattern_name()
+        if pattern_name is None:
+            return None
+        return self._resources.get_pattern(pattern_name)
 
     # ---------- conversion ----------
 

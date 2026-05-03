@@ -30,6 +30,11 @@ class PDSignatureField(PDTerminalField):
     """
 
     FT = "Sig"
+    #: ``/FT`` value identifying a signature field. Public alias of :attr:`FT`
+    #: mirroring upstream's ``COSName.SIG`` constant — useful for callers
+    #: that compare ``get_field_type()`` against a stable symbol instead of
+    #: a literal ``"Sig"`` string.
+    FT_SIG = "Sig"
 
     def __init__(
         self,
@@ -47,6 +52,19 @@ class PDSignatureField(PDTerminalField):
             widget = self.get_widgets()[0]
             widget.set_printed(True)
             widget.set_locked(True)
+
+    def is_signature_type(self) -> bool:
+        """Predicate — return ``True`` when ``/FT`` resolves to ``"Sig"``.
+
+        Pypdfbox-only convenience: walks the inheritable-attribute chain (so
+        a child whose ``/FT`` is inherited from a non-terminal parent is
+        classified by the effective type), then compares against the
+        :attr:`FT_SIG` constant. Useful when callers reach a
+        :class:`PDSignatureField` instance via raw COS traversal and want
+        to confirm the dictionary really represents a signature field
+        rather than relying on the wrapper class alone.
+        """
+        return self.get_field_type() == self.FT_SIG
 
     def _generate_partial_name(self) -> str:
         field_name = "Signature"
@@ -127,6 +145,17 @@ class PDSignatureField(PDTerminalField):
             return PDSignature(item)
         return None
 
+    def get_default_signature(self) -> PDSignature | None:
+        """Typed alias for :meth:`get_default_value`.
+
+        Mirrors the :meth:`get_signature` / :meth:`get_value` pair on the
+        ``/V`` side: callers that want a self-documenting accessor for
+        ``/DV`` can use this name without unwrapping the abstract value
+        getter. Returns ``None`` when ``/DV`` is absent or not a
+        :class:`COSDictionary`.
+        """
+        return self.get_default_value()
+
     def set_default_value(
         self, value: PDSignature | COSDictionary | None
     ) -> None:
@@ -192,6 +221,36 @@ class PDSignatureField(PDTerminalField):
             "of the PDFBox source code download (PDFBOX-3524)."
         )
         return None
+
+    def has_visible_widget(self) -> bool:
+        """Predicate — return ``True`` when the first widget on this signature
+        field would render as a visible signature.
+
+        A widget is "visible" when:
+
+        - it exists and has a ``/Rect`` rectangle,
+        - the rectangle has non-zero width or height,
+        - and the widget's ``/F`` flags do not mark it as hidden or no-view.
+
+        Pypdfbox-only convenience surfacing the same visibility test
+        :meth:`construct_appearances` uses internally (PDFBOX-3524). Lets
+        callers decide upfront whether an external appearance generator
+        needs to be wired up.
+        """
+        widgets = self.get_widgets()
+        if not widgets:
+            return False
+        widget = widgets[0]
+        if widget is None:
+            return False
+        rectangle = widget.get_rectangle()
+        if rectangle is None:
+            return False
+        if rectangle.get_height() == 0 and rectangle.get_width() == 0:
+            return False
+        if widget.is_no_view() or widget.is_hidden():
+            return False
+        return True
 
     def get_value_as_string(self) -> str:
         """Return ``str(self.get_signature())`` when ``/V`` is present, else ``""``.

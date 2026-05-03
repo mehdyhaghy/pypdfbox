@@ -99,3 +99,247 @@ def test_get_value_as_string_for_populated_signature(acro_form: PDAcroForm) -> N
     s = sig_field.get_value_as_string()
     assert "name=Carol" in s
     assert "reason=Approval" in s
+
+
+# ---------------------------------------------------------------------------
+# Wave 246 round-out — small remaining gaps on the lite surface.
+# ---------------------------------------------------------------------------
+
+
+def test_ft_sig_constant_matches_ft(acro_form: PDAcroForm) -> None:
+    """``FT_SIG`` is a public alias of ``FT`` mirroring upstream
+    ``COSName.SIG``. Both must equal the literal ``"Sig"`` and stay in
+    sync to guard against accidental drift."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    assert PDSignatureField.FT_SIG == "Sig"
+    assert PDSignatureField.FT_SIG == PDSignatureField.FT
+
+    # Class-level constant is also reachable via instance attribute access.
+    sig = PDSignatureField(acro_form)
+    assert sig.FT_SIG == "Sig"
+    assert sig.get_field_type() == sig.FT_SIG
+
+
+def test_is_signature_type_returns_true_for_fresh_field(
+    acro_form: PDAcroForm,
+) -> None:
+    """A freshly constructed signature field has ``/FT == "Sig"`` directly
+    on its dictionary, so the predicate returns ``True``."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    assert sig.is_signature_type() is True
+
+
+def test_is_signature_type_walks_inheritable_attribute_chain(
+    acro_form: PDAcroForm,
+) -> None:
+    """``is_signature_type`` resolves ``/FT`` via the inheritable-attribute
+    walk — a child whose ``/FT`` is inherited from a parent is still
+    classified by the effective type."""
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+        PDNonTerminalField,
+    )
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    parent = PDNonTerminalField(acro_form)
+    parent.get_cos_object().set_name(_FT, "Sig")
+
+    # Build a signature field whose own dict has no /FT — the parent
+    # provides it via the inheritable chain.
+    bare = COSDictionary()
+    child = PDSignatureField(acro_form, bare, parent=parent)
+    # Strip the /FT that the constructor would've set when handed an
+    # already-existing dict — verify inheritance covers the gap.
+    bare.remove_item(_FT)
+    assert child.get_field_type() == "Sig"
+    assert child.is_signature_type() is True
+
+
+def test_is_signature_type_false_when_ft_unrelated(
+    acro_form: PDAcroForm,
+) -> None:
+    """``/FT`` resolving to a non-``"Sig"`` value yields ``False``."""
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    field = COSDictionary()
+    field.set_name(_FT, "Tx")
+    sig = PDSignatureField(acro_form, field)
+    assert sig.is_signature_type() is False
+
+
+def test_is_signature_type_false_when_ft_absent(
+    acro_form: PDAcroForm,
+) -> None:
+    """No ``/FT`` anywhere on the chain → ``get_field_type`` returns
+    ``None`` and the predicate is ``False``."""
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    field = COSDictionary()
+    sig = PDSignatureField(acro_form, field)
+    # No /FT on field, no parent, AcroForm has none either.
+    assert sig.get_field_type() is None
+    assert sig.is_signature_type() is False
+
+
+def test_get_default_signature_alias_round_trip(acro_form: PDAcroForm) -> None:
+    """``get_default_signature`` is a typed alias for ``get_default_value``
+    — both return the same wrapper instance content for a populated
+    ``/DV``, and ``None`` when ``/DV`` is absent."""
+    from pypdfbox.pdmodel.interactive.digitalsignature import PDSignature
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig_field = PDSignatureField(acro_form)
+    assert sig_field.get_default_signature() is None
+    assert sig_field.get_default_value() is None
+
+    dv_sig = PDSignature()
+    dv_sig.set_name("DefaultSigner")
+    sig_field.set_default_value(dv_sig)
+
+    via_default = sig_field.get_default_signature()
+    via_alias = sig_field.get_default_value()
+    assert via_default is not None
+    assert via_alias is not None
+    # Both wrap the same backing COSDictionary.
+    assert via_default.get_cos_object() is via_alias.get_cos_object()
+    assert via_default.get_cos_object() is dv_sig.get_cos_object()
+
+
+def test_get_default_signature_returns_none_for_non_dict_dv(
+    acro_form: PDAcroForm,
+) -> None:
+    """When ``/DV`` is set to a non-dictionary value (e.g. a stray
+    ``COSString``), ``get_default_signature`` returns ``None`` rather
+    than wrapping the wrong type."""
+    from pypdfbox.cos import COSName, COSString
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig_field = PDSignatureField(acro_form)
+    sig_field.get_cos_object().set_item(
+        COSName.get_pdf_name("DV"), COSString("oops")
+    )
+    assert sig_field.get_default_signature() is None
+    assert sig_field.get_default_value() is None
+
+
+def test_has_visible_widget_fresh_field_is_invisible(
+    acro_form: PDAcroForm,
+) -> None:
+    """A fresh signature field has a single widget with no ``/Rect`` —
+    the visibility predicate returns ``False``."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    assert sig.has_visible_widget() is False
+
+
+def test_has_visible_widget_zero_rect_is_invisible(
+    acro_form: PDAcroForm,
+) -> None:
+    """A widget with an explicitly zero-width-and-height rectangle is
+    still considered invisible (PDF 32000-1 convention for invisible
+    signatures)."""
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    widget = sig.get_widgets()[0]
+    widget.set_rectangle(PDRectangle(0, 0, 0, 0))
+    assert sig.has_visible_widget() is False
+
+
+def test_has_visible_widget_non_zero_rect_is_visible(
+    acro_form: PDAcroForm,
+) -> None:
+    """Non-zero rectangle and neither hidden nor no-view → visible."""
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    widget = sig.get_widgets()[0]
+    widget.set_rectangle(PDRectangle(100, 100, 200, 50))
+    assert sig.has_visible_widget() is True
+
+
+def test_has_visible_widget_hidden_flag_overrides_rect(
+    acro_form: PDAcroForm,
+) -> None:
+    """A widget with non-zero rectangle but ``/F`` hidden bit set is
+    still considered invisible."""
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    widget = sig.get_widgets()[0]
+    widget.set_rectangle(PDRectangle(0, 0, 100, 50))
+    widget.set_hidden(True)
+    assert sig.has_visible_widget() is False
+
+
+def test_has_visible_widget_no_view_flag_overrides_rect(
+    acro_form: PDAcroForm,
+) -> None:
+    """``/F`` no-view bit also overrides a non-zero rectangle."""
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    widget = sig.get_widgets()[0]
+    widget.set_rectangle(PDRectangle(0, 0, 100, 50))
+    widget.set_no_view(True)
+    assert sig.has_visible_widget() is False
+
+
+def test_has_visible_widget_matches_construct_appearances_warning(
+    acro_form: PDAcroForm, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``has_visible_widget`` returns ``True`` exactly when
+    ``construct_appearances`` would emit the PDFBOX-3524 warning. Locking
+    these in lockstep guards against accidental drift between the two
+    visibility tests."""
+    import logging
+
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    sig = PDSignatureField(acro_form)
+    widget = sig.get_widgets()[0]
+    widget.set_rectangle(PDRectangle(10, 20, 100, 50))
+
+    assert sig.has_visible_widget() is True
+    with caplog.at_level(logging.WARNING):
+        sig.construct_appearances()
+    assert any(
+        "PDFBOX-3524" in record.getMessage() for record in caplog.records
+    )
