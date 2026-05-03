@@ -30,6 +30,68 @@ _STRUCT_TREE_ROOT_NAME: str = "StructTreeRoot"
 # protection against pathological inputs.
 _MAX_ROLE_MAP_DEPTH: int = 16
 
+# PDF 32000-1 §14.8.4 standard structure types. Mirrors upstream
+# ``StandardStructureTypes`` constants. Kept inline (rather than imported from
+# ``taggedpdf``) to avoid a circular import — the taggedpdf package imports
+# from logicalstructure already.
+_STANDARD_STRUCTURE_TYPES: frozenset[str] = frozenset(
+    {
+        # Grouping elements
+        "Document",
+        "Part",
+        "Art",
+        "Sect",
+        "Div",
+        "BlockQuote",
+        "Caption",
+        "TOC",
+        "TOCI",
+        "Index",
+        "NonStruct",
+        "Private",
+        # Block-level structure elements
+        "P",
+        "H",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "L",
+        "LI",
+        "Lbl",
+        "LBody",
+        "Table",
+        "TR",
+        "TH",
+        "TD",
+        "THead",
+        "TBody",
+        "TFoot",
+        # Inline-level structure elements
+        "Span",
+        "Quote",
+        "Note",
+        "Reference",
+        "BibEntry",
+        "Code",
+        "Link",
+        "Annot",
+        "Ruby",
+        "RB",
+        "RT",
+        "RP",
+        "Warichu",
+        "WT",
+        "WP",
+        # Illustration elements
+        "Figure",
+        "Formula",
+        "Form",
+    }
+)
+
 if TYPE_CHECKING:
     from .pd_attribute_object import PDAttributeObject
     from .revisions import Revisions
@@ -47,6 +109,70 @@ class PDStructureElement(PDStructureNode):
     """
 
     TYPE: str = "StructElem"
+
+    # ---------- /S standard-structure-type constants ----------
+    #
+    # Mirror upstream ``StandardStructureTypes`` constants (PDF 32000-1
+    # §14.8.4). These are exposed as class attributes on
+    # :class:`PDStructureElement` so callers can write
+    # ``elem.set_structure_type(PDStructureElement.H1)`` without a separate
+    # import. The full ``StandardStructureTypes`` shim lives in the
+    # ``taggedpdf`` package; keeping the names here avoids the round-trip
+    # for the most common call-site pattern.
+    #
+    # Grouping elements
+    DOCUMENT: str = "Document"
+    PART: str = "Part"
+    ART: str = "Art"
+    SECT: str = "Sect"
+    DIV: str = "Div"
+    BLOCK_QUOTE: str = "BlockQuote"
+    CAPTION: str = "Caption"
+    TOC: str = "TOC"
+    TOCI: str = "TOCI"
+    INDEX: str = "Index"
+    NON_STRUCT: str = "NonStruct"
+    PRIVATE: str = "Private"
+    # Block-level structure elements
+    P: str = "P"
+    H: str = "H"
+    H1: str = "H1"
+    H2: str = "H2"
+    H3: str = "H3"
+    H4: str = "H4"
+    H5: str = "H5"
+    H6: str = "H6"
+    L: str = "L"
+    LI: str = "LI"
+    LBL: str = "Lbl"
+    L_BODY: str = "LBody"
+    TABLE: str = "Table"
+    TR: str = "TR"
+    TH: str = "TH"
+    TD: str = "TD"
+    T_HEAD: str = "THead"
+    T_BODY: str = "TBody"
+    T_FOOT: str = "TFoot"
+    # Inline-level structure elements
+    SPAN: str = "Span"
+    QUOTE: str = "Quote"
+    NOTE: str = "Note"
+    REFERENCE: str = "Reference"
+    BIB_ENTRY: str = "BibEntry"
+    CODE: str = "Code"
+    LINK: str = "Link"
+    ANNOT: str = "Annot"
+    RUBY: str = "Ruby"
+    RB: str = "RB"
+    RT: str = "RT"
+    RP: str = "RP"
+    WARICHU: str = "Warichu"
+    WT: str = "WT"
+    WP: str = "WP"
+    # Illustration elements
+    FIGURE: str = "Figure"
+    FORMULA: str = "Formula"
+    FORM: str = "Form"
 
     def __init__(
         self,
@@ -259,6 +385,66 @@ class PDStructureElement(PDStructureNode):
 
     def set_actual_text(self, actual_text: str | None) -> None:
         self._dictionary.set_string(_ACTUAL_TEXT, actual_text)
+
+    # ---------- presence predicates (pypdfbox additions) ----------
+    #
+    # Upstream PDFBox callers write ``elem.getElementIdentifier() != null``
+    # at every call site. These short ``has_*`` predicates mirror common
+    # PDF tagging-tooling spelling and avoid the ``is None`` boilerplate.
+
+    def has_id(self) -> bool:
+        """Return ``True`` when ``/ID`` is present and non-empty."""
+        value = self._dictionary.get_string(_ID)
+        return value is not None and value != ""
+
+    def has_page(self) -> bool:
+        """Return ``True`` when ``/Pg`` is present and is a dictionary."""
+        return isinstance(self._dictionary.get_dictionary_object(_PG), COSDictionary)
+
+    def has_title(self) -> bool:
+        """Return ``True`` when ``/T`` is present and non-empty."""
+        value = self._dictionary.get_string(_T)
+        return value is not None and value != ""
+
+    def has_language(self) -> bool:
+        """Return ``True`` when ``/Lang`` is present and non-empty."""
+        value = self._dictionary.get_string(_LANG)
+        return value is not None and value != ""
+
+    def has_alternate_description(self) -> bool:
+        """Return ``True`` when ``/Alt`` is present and non-empty."""
+        value = self._dictionary.get_string(_ALT)
+        return value is not None and value != ""
+
+    def has_expanded_form(self) -> bool:
+        """Return ``True`` when ``/E`` is present and non-empty."""
+        value = self._dictionary.get_string(_E)
+        return value is not None and value != ""
+
+    def has_actual_text(self) -> bool:
+        """Return ``True`` when ``/ActualText`` is present and non-empty."""
+        value = self._dictionary.get_string(_ACTUAL_TEXT)
+        return value is not None and value != ""
+
+    def has_structure_type(self) -> bool:
+        """Return ``True`` when ``/S`` is present (any name)."""
+        return self._dictionary.get_name(_S) is not None
+
+    def has_parent(self) -> bool:
+        """Return ``True`` when ``/P`` is present and is a dictionary."""
+        return isinstance(self._dictionary.get_dictionary_object(_P), COSDictionary)
+
+    def is_root_attached(self) -> bool:
+        """Return ``True`` when this element's ``/P`` chain reaches a
+        :class:`PDStructureTreeRoot`.
+
+        pypdfbox addition: upstream PDFBox exposes the root walk only as
+        the private ``getStructureTreeRoot`` helper. Callers commonly want
+        to know whether the element is *attached* to a tree at all (e.g.
+        before queueing it for tagged-PDF validation); this predicate is
+        ``self.get_structure_tree_root() is not None``.
+        """
+        return self.get_structure_tree_root() is not None
 
     # ---------- /Alt convenience alias ----------
 
@@ -474,6 +660,34 @@ class PDStructureElement(PDStructureNode):
         if structure_type is None:
             raise ValueError("standard structure type shall not be null")
         self.set_structure_type(structure_type)
+
+    @staticmethod
+    def is_standard_structure_type(structure_type: str | None) -> bool:
+        """Return ``True`` when ``structure_type`` is one of the PDF 32000-1
+        §14.8.4 standard structure types.
+
+        pypdfbox addition: upstream PDFBox exposes the type list as a public
+        ``StandardStructureTypes.types`` constant; the membership check is a
+        common predicate at call sites, so we expose it directly. ``None``
+        returns ``False`` (matches upstream's ``Collections.contains(null)``
+        on a non-null-tolerant ``ArrayList``).
+        """
+        if structure_type is None:
+            return False
+        return structure_type in _STANDARD_STRUCTURE_TYPES
+
+    def is_resolved_structure_type_standard(self) -> bool:
+        """Return ``True`` when this element's *resolved* structure type
+        (after walking the parent chain's ``/RoleMap``) is a PDF 32000-1
+        standard structure type.
+
+        pypdfbox addition: the resolved-type check is what callers actually
+        want when validating a tagged PDF, but it requires composing
+        :meth:`get_standard_structure_type` with
+        :meth:`is_standard_structure_type` on every call site. Inlining the
+        composition keeps the predicate one method call away.
+        """
+        return self.is_standard_structure_type(self.get_standard_structure_type())
 
     # ---------- typed /K append overloads ----------
     #

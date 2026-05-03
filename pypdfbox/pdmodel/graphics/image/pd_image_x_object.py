@@ -42,6 +42,12 @@ _FLATE_DECODE: COSName = COSName.get_pdf_name("FlateDecode")
 _LZW_DECODE: COSName = COSName.get_pdf_name("LZWDecode")
 _RUN_LENGTH_DECODE: COSName = COSName.get_pdf_name("RunLengthDecode")
 _JBIG2_DECODE: COSName = COSName.get_pdf_name("JBIG2Decode")
+_MATTE: COSName = COSName.get_pdf_name("Matte")
+
+# Public ``/Subtype /Image`` constant. Mirrors upstream's reliance on
+# ``COSName.IMAGE`` for ``/Subtype`` checks across the image cluster, and
+# lets callers identify Image XObjects without re-deriving the name.
+SUBTYPE_IMAGE: COSName = _IMAGE
 
 
 class PDImageXObject(PDXObject):
@@ -93,7 +99,15 @@ class PDImageXObject(PDXObject):
 
     def get_bits_per_component(self) -> int:
         """``/BitsPerComponent`` (long form first, falling back to ``/BPC``).
-        Returns ``-1`` when absent."""
+
+        Stencil masks always report ``1`` regardless of the dictionary
+        entry — mirrors upstream ``PDImageXObject.getBitsPerComponent``
+        which short-circuits via ``isStencil()`` before reading the
+        dictionary. Returns ``-1`` when neither ``/BitsPerComponent``
+        nor ``/BPC`` is present on a non-stencil image.
+        """
+        if self.is_stencil():
+            return 1
         cos = self.get_cos_object()
         value = cos.get_int(_BITS_PER_COMPONENT, -1)
         if value == -1:
@@ -312,6 +326,54 @@ class PDImageXObject(PDXObject):
             array.add(COSFloat(float(v)))
         cos.set_item(_DECODE, array)
 
+    def set_decode_array(self, decode: COSArray | None) -> None:
+        """Set ``/Decode`` to a pre-built ``COSArray``. Mirrors upstream
+        ``PDImageXObject.setDecode(COSArray)`` exactly — pass ``None`` to
+        remove the entry. Use :meth:`set_decode` for the float-iterable
+        convenience form."""
+        cos = self.get_cos_object()
+        if decode is None:
+            cos.remove_item(_DECODE)
+            return
+        cos.set_item(_DECODE, decode)
+
+    # ---------- /Matte (soft-mask only) ----------
+
+    def get_matte(self) -> list[float] | None:
+        """Return the soft-mask ``/Matte`` array as a ``list[float]``,
+        or ``None`` when absent or not a COSArray.
+
+        ``/Matte`` is only meaningful on soft-mask Image XObjects (see
+        PDF 32000-1 §11.6.5.3); on a regular image it will normally be
+        absent. Mirrors upstream's private ``extractMatte`` reader, which
+        reads ``COSName.MATTE`` from the soft-mask's COS object via
+        ``COSArray.toFloatArray``."""
+        value = self.get_cos_object().get_dictionary_object(_MATTE)
+        if not isinstance(value, COSArray):
+            return None
+        return value.to_float_array()
+
+    def get_matte_array(self) -> COSArray | None:
+        """Return the raw ``/Matte`` ``COSArray`` (or ``None``). Use
+        :meth:`get_matte` for the decoded ``list[float]`` form."""
+        value = self.get_cos_object().get_dictionary_object(_MATTE)
+        if isinstance(value, COSArray):
+            return value
+        return None
+
+    def set_matte(self, values: Iterable[float] | None) -> None:
+        """Set ``/Matte`` to a list of float matte components. Pass
+        ``None`` to remove the entry. ``/Matte`` is only meaningful on
+        soft-mask Image XObjects."""
+        cos = self.get_cos_object()
+        if values is None:
+            cos.remove_item(_MATTE)
+            return
+        array = COSArray()
+        for v in values:
+            array.add(COSFloat(float(v)))
+        cos.set_item(_MATTE, array)
+
     # ---------- /Interpolate ----------
 
     def is_interpolate(self) -> bool:
@@ -411,6 +473,86 @@ class PDImageXObject(PDXObject):
     def set_optional_content(self, value: PDPropertyList | None) -> None:
         """Mirrors upstream ``PDImageXObject.setOptionalContent()``."""
         self.set_oc(value)
+
+    # ---------- presence predicates ----------
+
+    def has_mask(self) -> bool:
+        """Return ``True`` when the dictionary carries any ``/Mask``
+        entry — explicit-mask stream or color-key array."""
+        return self.get_cos_object().get_dictionary_object(_MASK) is not None
+
+    def has_explicit_mask(self) -> bool:
+        """Return ``True`` when ``/Mask`` is an explicit-mask Image
+        XObject (stream form)."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_MASK), COSStream
+        )
+
+    def has_color_key_mask(self) -> bool:
+        """Return ``True`` when ``/Mask`` is a color-key array."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_MASK), COSArray
+        )
+
+    def has_soft_mask(self) -> bool:
+        """Return ``True`` when ``/SMask`` is a stream."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_SMASK), COSStream
+        )
+
+    def has_color_space(self) -> bool:
+        """Return ``True`` when ``/ColorSpace`` (or short ``/CS``) is set."""
+        return self.get_color_space_cos_object() is not None
+
+    def has_metadata(self) -> bool:
+        """Return ``True`` when ``/Metadata`` is a stream."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_METADATA), COSStream
+        )
+
+    def has_optional_content(self) -> bool:
+        """Return ``True`` when ``/OC`` carries an optional-content
+        dictionary."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_OC), COSDictionary
+        )
+
+    def has_decode(self) -> bool:
+        """Return ``True`` when ``/Decode`` is a COSArray."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_DECODE), COSArray
+        )
+
+    def has_matte(self) -> bool:
+        """Return ``True`` when ``/Matte`` is a COSArray. Only
+        meaningful on soft-mask Image XObjects."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_MATTE), COSArray
+        )
+
+    # ---------- filter-type predicates ----------
+
+    def _has_filter(self, filter_name: COSName) -> bool:
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return False
+        return filter_name in cos.get_filter_list()
+
+    def is_jpeg(self) -> bool:
+        """Return ``True`` when the filter chain contains ``/DCTDecode``."""
+        return self._has_filter(_DCT_DECODE)
+
+    def is_jpx(self) -> bool:
+        """Return ``True`` when the filter chain contains ``/JPXDecode``."""
+        return self._has_filter(_JPX_DECODE)
+
+    def is_jbig2(self) -> bool:
+        """Return ``True`` when the filter chain contains ``/JBIG2Decode``."""
+        return self._has_filter(_JBIG2_DECODE)
+
+    def is_ccittfax(self) -> bool:
+        """Return ``True`` when the filter chain contains ``/CCITTFaxDecode``."""
+        return self._has_filter(_CCITTFAX_DECODE)
 
     # ---------- PIL image helper ----------
 

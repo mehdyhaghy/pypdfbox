@@ -984,3 +984,236 @@ def test_get_role_map_returns_role_map_when_root_reachable() -> None:
 def test_get_role_map_empty_when_no_root() -> None:
     elem = PDStructureElement(structure_type="P")
     assert elem.get_role_map() == {}
+
+
+# ---------- standard-structure-type constants ----------
+
+
+def test_standard_structure_type_constants_match_pdf_spec() -> None:
+    # Spot-check a representative subset across the four PDF 32000-1 §14.8.4
+    # categories: grouping, block-level, inline, illustration.
+    assert PDStructureElement.DOCUMENT == "Document"
+    assert PDStructureElement.PART == "Part"
+    assert PDStructureElement.SECT == "Sect"
+    assert PDStructureElement.DIV == "Div"
+    assert PDStructureElement.NON_STRUCT == "NonStruct"
+    assert PDStructureElement.P == "P"
+    assert PDStructureElement.H1 == "H1"
+    assert PDStructureElement.H6 == "H6"
+    assert PDStructureElement.LBL == "Lbl"
+    assert PDStructureElement.L_BODY == "LBody"
+    assert PDStructureElement.T_HEAD == "THead"
+    assert PDStructureElement.T_BODY == "TBody"
+    assert PDStructureElement.T_FOOT == "TFoot"
+    assert PDStructureElement.SPAN == "Span"
+    assert PDStructureElement.BIB_ENTRY == "BibEntry"
+    assert PDStructureElement.LINK == "Link"
+    assert PDStructureElement.RUBY == "Ruby"
+    assert PDStructureElement.WARICHU == "Warichu"
+    assert PDStructureElement.FIGURE == "Figure"
+    assert PDStructureElement.FORMULA == "Formula"
+    assert PDStructureElement.FORM == "Form"
+
+
+def test_constants_usable_with_set_structure_type() -> None:
+    elem = PDStructureElement()
+    elem.set_structure_type(PDStructureElement.H1)
+    assert elem.get_structure_type() == "H1"
+    elem.set_standard_structure_type(PDStructureElement.FIGURE)
+    assert elem.get_structure_type() == "Figure"
+
+
+# ---------- is_standard_structure_type ----------
+
+
+def test_is_standard_structure_type_true_for_known_types() -> None:
+    assert PDStructureElement.is_standard_structure_type("H1") is True
+    assert PDStructureElement.is_standard_structure_type("Document") is True
+    assert PDStructureElement.is_standard_structure_type("Figure") is True
+    assert PDStructureElement.is_standard_structure_type("Span") is True
+    assert PDStructureElement.is_standard_structure_type("Lbl") is True
+    assert PDStructureElement.is_standard_structure_type("LBody") is True
+    assert PDStructureElement.is_standard_structure_type("TBody") is True
+
+
+def test_is_standard_structure_type_false_for_unknown_types() -> None:
+    assert PDStructureElement.is_standard_structure_type("MyHeader") is False
+    assert PDStructureElement.is_standard_structure_type("h1") is False  # case-sensitive
+    assert PDStructureElement.is_standard_structure_type("") is False
+    assert PDStructureElement.is_standard_structure_type(None) is False
+
+
+def test_is_resolved_structure_type_standard_for_direct_standard_s() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.is_resolved_structure_type_standard() is True
+
+
+def test_is_resolved_structure_type_standard_false_when_s_absent() -> None:
+    elem = PDStructureElement()
+    assert elem.is_resolved_structure_type_standard() is False
+
+
+def test_is_resolved_structure_type_standard_false_for_non_standard_no_role_map() -> None:
+    elem = PDStructureElement(structure_type="MyCustomType")
+    # No parent / no role-map — resolved is the raw name, which isn't standard.
+    assert elem.is_resolved_structure_type_standard() is False
+
+
+def test_is_resolved_structure_type_standard_true_after_role_map_remap() -> None:
+    root = _make_root_with_role_map({"MyHeader": "H1"})
+    elem = PDStructureElement(structure_type="MyHeader")
+    elem.get_cos_object().set_item(_P, root)
+    # Resolved type is "H1", which IS standard.
+    assert elem.is_resolved_structure_type_standard() is True
+
+
+def test_is_resolved_structure_type_standard_false_when_role_map_targets_nonstandard() -> None:
+    # Non-standard /S maps to another non-standard name (chain of aliases that
+    # never reaches a standard type).
+    root = _make_root_with_role_map({"A": "B"})
+    elem = PDStructureElement(structure_type="A")
+    elem.get_cos_object().set_item(_P, root)
+    # Resolved is "B" — still not in the standard set.
+    assert elem.is_resolved_structure_type_standard() is False
+
+
+# ---------- has_* predicates ----------
+
+
+def test_has_id_false_when_absent() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.has_id() is False
+
+
+def test_has_id_true_after_set_id() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_id("e-1")
+    assert elem.has_id() is True
+
+
+def test_has_id_false_for_empty_string() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_id("")
+    # Empty /ID is treated as "not set" by the predicate, mirroring upstream
+    # null-or-empty checks at PDF/UA validation call sites.
+    assert elem.has_id() is False
+
+
+def test_has_page_false_when_absent() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.has_page() is False
+
+
+def test_has_page_true_after_set_page() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.set_page(PDPage())
+    assert elem.has_page() is True
+
+
+def test_has_page_false_when_pg_is_not_a_dictionary() -> None:
+    elem = PDStructureElement(structure_type="P")
+    elem.get_cos_object().set_name(_PG, "Bogus")
+    assert elem.has_page() is False
+
+
+def test_has_title_round_trip() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.has_title() is False
+    elem.set_title("Heading")
+    assert elem.has_title() is True
+    elem.set_title("")
+    assert elem.has_title() is False
+
+
+def test_has_language_round_trip() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.has_language() is False
+    elem.set_language("en-US")
+    assert elem.has_language() is True
+
+
+def test_has_alternate_description_round_trip() -> None:
+    elem = PDStructureElement(structure_type="Figure")
+    assert elem.has_alternate_description() is False
+    elem.set_alternate_description("a duck")
+    assert elem.has_alternate_description() is True
+
+
+def test_has_expanded_form_round_trip() -> None:
+    elem = PDStructureElement(structure_type="Span")
+    assert elem.has_expanded_form() is False
+    elem.set_expanded_form("World Health Organization")
+    assert elem.has_expanded_form() is True
+
+
+def test_has_actual_text_round_trip() -> None:
+    elem = PDStructureElement(structure_type="Span")
+    assert elem.has_actual_text() is False
+    elem.set_actual_text("hello")
+    assert elem.has_actual_text() is True
+
+
+def test_has_structure_type_false_when_s_absent() -> None:
+    elem = PDStructureElement()
+    assert elem.has_structure_type() is False
+
+
+def test_has_structure_type_true_after_set_structure_type() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.has_structure_type() is True
+
+
+def test_has_parent_false_when_absent() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.has_parent() is False
+
+
+def test_has_parent_true_after_set_parent() -> None:
+    parent = PDStructureElement(structure_type="Document")
+    child = PDStructureElement(structure_type="P")
+    child.set_parent(parent)
+    assert child.has_parent() is True
+
+
+def test_has_parent_false_when_p_is_not_a_dictionary() -> None:
+    elem = PDStructureElement(structure_type="P")
+    # /P set to a name (malformed input) — predicate must be False.
+    elem.get_cos_object().set_name(_P, "NotADict")
+    assert elem.has_parent() is False
+
+
+# ---------- is_root_attached ----------
+
+
+def test_is_root_attached_false_for_orphan_element() -> None:
+    elem = PDStructureElement(structure_type="P")
+    assert elem.is_root_attached() is False
+
+
+def test_is_root_attached_true_when_p_chain_reaches_root() -> None:
+    root = COSDictionary()
+    root.set_name(_TYPE, "StructTreeRoot")
+    elem = PDStructureElement(structure_type="P")
+    elem.get_cos_object().set_item(_P, root)
+    assert elem.is_root_attached() is True
+
+
+def test_is_root_attached_true_via_intermediate_element() -> None:
+    root = COSDictionary()
+    root.set_name(_TYPE, "StructTreeRoot")
+    parent = COSDictionary()
+    parent.set_name(_TYPE, "StructElem")
+    parent.set_item(_P, root)
+
+    child = PDStructureElement(structure_type="P")
+    child.get_cos_object().set_item(_P, parent)
+    assert child.is_root_attached() is True
+
+
+def test_is_root_attached_false_when_chain_dangles() -> None:
+    parent = COSDictionary()
+    parent.set_name(_TYPE, "StructElem")
+    # parent has no /P — chain ends without hitting StructTreeRoot.
+    elem = PDStructureElement(structure_type="P")
+    elem.get_cos_object().set_item(_P, parent)
+    assert elem.is_root_attached() is False
