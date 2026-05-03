@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 
 if TYPE_CHECKING:
     from .pd_color_space import PDColorSpace
+
+_logger = logging.getLogger(__name__)
 
 
 def _clamp_unit(value: float) -> float:
@@ -128,11 +131,106 @@ class PDColor:
         self._components = [float(c) for c in components]
         self._color_space = cs
         self._pattern_name = pattern_name
+        # PDFBOX-5882 — warn when the component count disagrees with the
+        # color space's expected arity. Two cases:
+        #   - components-only ctor: compare directly against
+        #     ``cs.get_number_of_components()`` (skipping null cs).
+        #   - components + pattern_name: when ``cs`` is a Pattern, compare
+        #     against the *underlying* color space's arity instead, since
+        #     Pattern itself reports 0 components (uncolored tiling form).
+        self._warn_on_arity_mismatch()
+
+    def _warn_on_arity_mismatch(self) -> None:
+        """Log a warning when the component count doesn't match the color
+        space's declared arity. Mirrors upstream's PDFBOX-5882 sanity
+        check: invalid PDFs sometimes write a wrong number of operands
+        before ``sc``/``scn``; logging (not raising) keeps us tolerant.
+        """
+        cs = self._color_space
+        if cs is None:
+            return
+        # Pattern + components form — compare against the *underlying*
+        # color space's arity (uncolored tiling), if any.
+        if self._pattern_name is not None:
+            get_ucs = getattr(cs, "get_underlying_color_space", None)
+            if get_ucs is None:
+                return
+            try:
+                ucs = get_ucs()
+            except (TypeError, ValueError):
+                return
+            if ucs is None:
+                return
+            try:
+                expected = ucs.get_number_of_components()
+            except (TypeError, ValueError):
+                return
+            if expected != len(self._components):
+                _logger.warning(
+                    "Pattern colorspace component count %d doesn't match "
+                    "components length %d",
+                    expected,
+                    len(self._components),
+                )
+            return
+        # Components-only form — compare against ``cs.get_number_of_components()``.
+        get_count = getattr(cs, "get_number_of_components", None)
+        if get_count is None:
+            return
+        try:
+            expected = get_count()
+        except (TypeError, ValueError):
+            return
+        if expected != len(self._components):
+            _logger.warning(
+                "Colorspace component count %d doesn't match components "
+                "length %d",
+                expected,
+                len(self._components),
+            )
 
     # ---------- accessors ----------
 
     def get_components(self) -> list[float]:
-        return list(self._components)
+        """Return a copy of the color components, sized to match the color
+        space's declared arity. Mirrors upstream
+        ``PDColor.getComponents()`` (PDFBOX-4279):
+
+        - For a ``null`` color space or a Pattern color space, return a
+          plain copy of the internal components (size unchanged).
+        - Otherwise, use ``Arrays.copyOf(components, n)`` semantics —
+          truncate or right-pad with ``0.0`` to ``n =
+          color_space.get_number_of_components()``.
+
+        The truncate/pad behaviour matters for malformed PDFs that store
+        a too-short components array (PDFBOX-4279 used a CMYK image with
+        only 3 components in the operand list).
+        """
+        cs = self._color_space
+        if cs is None:
+            return list(self._components)
+        # Pattern color space — clone raw, no resize. Upstream comment:
+        # "colorspace of the pattern color isn't known, so just clone."
+        cs_name = self.get_color_space_name()
+        if cs_name == "Pattern":
+            return list(self._components)
+        get_count = getattr(cs, "get_number_of_components", None)
+        if get_count is None:
+            return list(self._components)
+        try:
+            n = int(get_count())
+        except (TypeError, ValueError):
+            return list(self._components)
+        if n < 0:
+            return list(self._components)
+        # Java ``Arrays.copyOf(components, n)``: truncate or pad with 0.0.
+        if n == len(self._components):
+            return list(self._components)
+        if n < len(self._components):
+            return list(self._components[:n])
+        out = list(self._components)
+        out.extend([0.0] * (n - len(out)))
+        return out
 
     def set_components(self, values: list[float]) -> None:
         """Replace the color components in place. Upstream ``PDColor`` is
@@ -589,16 +687,32 @@ class PDColor:
 
         Numeric entries (``COSFloat``/``COSInteger``) become components in
         order; the trailing ``COSName`` (if present) is the pattern name.
-        Mirrors upstream ``PDColor(COSArray, PDColorSpace)`` parsing.
+        Mirrors upstream ``PDColor(COSArray, PDColorSpace)`` parsing —
+        including the ``LOG.warn("color component i ... isn't a number,
+        ignored")`` for non-numeric entries that aren't the trailing
+        pattern name.
         """
         components: list[float] = []
         pattern: COSName | None = None
-        for index in range(array.size()):
+        size = array.size()
+        # Upstream treats only the *last* entry as the pattern name when
+        # it's a COSName; everything earlier should be a number.
+        last_index = size - 1
+        last_item = array.get_object(last_index) if size > 0 else None
+        has_trailing_pattern = isinstance(last_item, COSName)
+        component_end = last_index if has_trailing_pattern else size
+        for index in range(component_end):
             item = array.get_object(index)
             if isinstance(item, (COSFloat, COSInteger)):
                 components.append(float(item.value))
-            elif isinstance(item, COSName):
-                pattern = item
+            else:
+                _logger.warning(
+                    "color component %d in %r isn't a number, ignored",
+                    index,
+                    array,
+                )
+        if has_trailing_pattern:
+            pattern = last_item  # type: ignore[assignment]
         return components, pattern
 
 

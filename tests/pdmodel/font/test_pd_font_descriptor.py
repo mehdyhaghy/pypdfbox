@@ -638,3 +638,151 @@ def test_is_embedded_ignores_cid_set() -> None:
     fd.set_cid_set(COSStream())
     assert fd.has_cid_set() is True
     assert fd.is_embedded() is False
+
+
+# ---------- get_type / set_type ----------
+
+
+def test_get_type_default_is_font_descriptor() -> None:
+    """Fresh descriptors carry ``/Type = /FontDescriptor`` per spec."""
+    fd = PDFontDescriptor()
+    assert fd.get_type() == "FontDescriptor"
+
+
+def test_get_type_returns_none_when_dict_lacks_type() -> None:
+    """Hand-rolled dicts without /Type surface as None (not silently defaulted)."""
+    fd = PDFontDescriptor(COSDictionary())
+    assert fd.get_type() is None
+
+
+def test_set_type_default_writes_font_descriptor() -> None:
+    """The default argument re-applies the spec-mandated value."""
+    fd = PDFontDescriptor(COSDictionary())
+    assert fd.get_type() is None
+    fd.set_type()
+    assert fd.get_type() == "FontDescriptor"
+    raw = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Type"))
+    assert isinstance(raw, COSName)
+    assert raw.name == "FontDescriptor"
+
+
+def test_set_type_explicit_value_round_trips() -> None:
+    fd = PDFontDescriptor()
+    fd.set_type("CustomType")
+    assert fd.get_type() == "CustomType"
+    raw = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Type"))
+    assert isinstance(raw, COSName)
+    assert raw.name == "CustomType"
+
+
+def test_set_type_none_removes_entry() -> None:
+    fd = PDFontDescriptor()
+    assert fd.get_type() == "FontDescriptor"
+    fd.set_type(None)
+    assert fd.get_type() is None
+    assert (
+        fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Type")) is None
+    )
+
+
+def test_get_type_ignores_non_name_storage() -> None:
+    """A /Type stored as a COSString returns None — only COSName resolves."""
+    from pypdfbox.cos import COSString
+
+    fd = PDFontDescriptor()
+    fd.get_cos_object().set_item(COSName.get_pdf_name("Type"), COSString("FontDescriptor"))
+    assert fd.get_type() is None  # strict — get_name only resolves COSName
+
+
+# ---------- __eq__ / __hash__ (identity) ----------
+
+
+def test_pd_font_descriptor_equality_is_identity_based() -> None:
+    """Two wrappers around the same dict compare equal; distinct dicts don't."""
+    cos = COSDictionary()
+    a = PDFontDescriptor(cos)
+    b = PDFontDescriptor(cos)
+    c = PDFontDescriptor(COSDictionary())
+
+    assert a == b
+    assert a is not b
+    assert a != c
+
+
+def test_pd_font_descriptor_equality_rejects_non_descriptor() -> None:
+    fd = PDFontDescriptor()
+    assert fd != fd.get_cos_object()  # underlying dict is not equivalent
+    assert fd != "FontDescriptor"
+    assert fd != 42
+    assert fd is not None
+
+
+def test_pd_font_descriptor_hash_matches_identity_equality() -> None:
+    """Hash agrees with __eq__: equal wrappers hash to the same int."""
+    cos = COSDictionary()
+    a = PDFontDescriptor(cos)
+    b = PDFontDescriptor(cos)
+    assert hash(a) == hash(b)
+    # Usable as dict key — last-write-wins because a == b.
+    bucket = {a: "first"}
+    bucket[b] = "second"
+    assert bucket[a] == "second"
+    assert len(bucket) == 1
+
+
+def test_pd_font_descriptor_hash_differs_for_distinct_dicts() -> None:
+    a = PDFontDescriptor()
+    b = PDFontDescriptor()
+    # Different underlying dicts — hash should (almost certainly) differ.
+    assert hash(a) != hash(b)
+
+
+def test_pd_font_descriptor_equality_survives_mutation() -> None:
+    """Mutating the wrapped dict does not break wrapper equality (still same id)."""
+    cos = COSDictionary()
+    a = PDFontDescriptor(cos)
+    b = PDFontDescriptor(cos)
+    a.set_font_name("Helvetica")
+    assert a == b
+    assert b.get_font_name() == "Helvetica"
+
+
+# ---------- __contains__ ----------
+
+
+def test_pd_font_descriptor_contains_with_string_key() -> None:
+    """Pythonic ``"Key" in fd`` mirrors COSDictionary's __contains__."""
+    fd = PDFontDescriptor()
+    # Constructor wrote /Type.
+    assert "Type" in fd
+    # Untouched keys are absent.
+    assert "FontFile" not in fd
+    assert "Lang" not in fd
+
+    fd.set_font_file2(COSStream())
+    assert "FontFile2" in fd
+    assert "FontFile" not in fd
+    assert "FontFile3" not in fd
+
+
+def test_pd_font_descriptor_contains_with_cos_name_key() -> None:
+    fd = PDFontDescriptor()
+    fd.set_lang("en-US")
+    assert COSName.get_pdf_name("Lang") in fd
+    assert COSName.get_pdf_name("FontFamily") not in fd
+
+
+def test_pd_font_descriptor_contains_rejects_non_key_types() -> None:
+    """Non-key types (int, list) return False rather than raising."""
+    fd = PDFontDescriptor()
+    assert (42 in fd) is False  # type: ignore[operator]
+    assert (None in fd) is False  # type: ignore[operator]
+
+
+def test_pd_font_descriptor_contains_clears_after_remove() -> None:
+    """``in`` flips back to False once the entry is removed."""
+    fd = PDFontDescriptor()
+    fd.set_font_family("Helvetica")
+    assert "FontFamily" in fd
+    fd.set_font_family(None)
+    assert "FontFamily" not in fd

@@ -335,11 +335,18 @@ def test_constructor_variant_cos_array_round_trip() -> None:
 
 
 def test_constructor_variant_cos_array_keeps_pattern_name() -> None:
+    # Uncolored tiling form: 3 tint components + pattern name, against a
+    # Pattern color space whose underlying is DeviceRGB. Using DeviceRGB
+    # arity (3) avoids the PDFBOX-4279 pad-to-N reshape inside
+    # ``get_components()``.
+    from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+
+    pattern_cs = PDPattern(PDDeviceRGB.INSTANCE)
     name = COSName.get_pdf_name("P1")
-    src = PDColor([0.5, 0.25], PDDeviceRGB.INSTANCE, name)
+    src = PDColor([0.5, 0.25, 0.75], pattern_cs, name)
     array = src.to_cos_array()
-    rebuilt = PDColor(array, PDDeviceRGB.INSTANCE)
-    assert rebuilt.get_components() == [0.5, 0.25]
+    rebuilt = PDColor(array, pattern_cs)
+    assert rebuilt.get_components() == [0.5, 0.25, 0.75]
     assert rebuilt.get_pattern_name() == name
 
 

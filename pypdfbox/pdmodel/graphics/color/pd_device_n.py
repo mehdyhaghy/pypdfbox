@@ -222,8 +222,11 @@ class PDDeviceN(PDColorSpace):
 
     def get_initial_color(self) -> PDColor:
         # Refresh in case colorant names changed after construction.
+        # Compare against the raw internal components (PDColor.get_components
+        # pads/truncates to the CS arity per PDFBOX-4279, so it would
+        # always agree on length here).
         n = self.get_number_of_components()
-        if len(self._initial_color.get_components()) != n:
+        if len(self._initial_color._components) != n:
             self._initial_color = PDColor([1.0] * n, self)
         return self._initial_color
 

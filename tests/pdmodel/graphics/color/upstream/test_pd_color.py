@@ -51,13 +51,21 @@ def test_cos_array_constructor_no_pattern() -> None:
 
 
 def test_cos_array_constructor_with_pattern_name() -> None:
+    # Uncolored tiling form: tint components against an underlying CS
+    # (DeviceRGB → 3 tints) plus a pattern name. Match the underlying
+    # arity so PDFBOX-4279's pad-to-N inside ``get_components()`` is a
+    # no-op.
+    from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+
+    pattern_cs = PDPattern(PDDeviceRGB.INSTANCE)
     array = COSArray()
     array.add(COSFloat(0.5))
-    array.add(COSFloat(0.5))
+    array.add(COSFloat(0.25))
+    array.add(COSFloat(0.75))
     name = COSName.get_pdf_name("P1")
     array.add(name)
-    color = PDColor(array, PDDeviceRGB.INSTANCE)
-    assert color.get_components() == [0.5, 0.5]
+    color = PDColor(array, pattern_cs)
+    assert color.get_components() == [0.5, 0.25, 0.75]
     assert color.get_pattern_name() == name
 
 

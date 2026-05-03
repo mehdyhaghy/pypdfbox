@@ -543,6 +543,63 @@ class PDFontDescriptor:
             return
         self._dict.set_name(_LANG, value)
 
+    # ---------- /Type ----------
+
+    def get_type(self) -> str | None:
+        """Return the ``/Type`` entry as a string (typically "FontDescriptor").
+
+        pypdfbox extension — upstream relies on the package-private
+        constructor to write ``COSName.FONT_DESC`` and never re-reads it.
+        Wrappers built from a hand-rolled :class:`COSDictionary` may omit
+        the ``/Type`` entry entirely; this accessor surfaces that fact
+        (returns ``None``) so callers performing Table 122 conformance
+        checks can distinguish "missing" from "malformed".
+        """
+        return self._dict.get_name(_TYPE)
+
+    def set_type(self, value: str | None = "FontDescriptor") -> None:
+        """Write the ``/Type`` entry (defaults to ``"FontDescriptor"``).
+
+        pypdfbox extension — symmetric with :meth:`get_type`. Passing
+        ``None`` removes the ``/Type`` entry entirely; the default
+        argument writes the spec-mandated value so callers can repair a
+        descriptor that lost its ``/Type`` during a hand-rolled parse.
+        """
+        if value is None:
+            self._dict.remove_item(_TYPE)
+            return
+        self._dict.set_name(_TYPE, value)
+
+    # ---------- identity / containers ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Two ``PDFontDescriptor`` wrappers compare equal iff they wrap
+        the *same* underlying :class:`COSDictionary` instance.
+
+        pypdfbox extension — mirrors :meth:`PDFont.__eq__` (Java-style
+        reference identity). Two distinct dicts with identical contents
+        are *not* equal because subsequent mutation could diverge them.
+        """
+        return (
+            isinstance(other, PDFontDescriptor) and other.get_cos_object() is self._dict
+        )
+
+    def __hash__(self) -> int:
+        """Hash by the underlying ``COSDictionary``'s identity. Matches
+        :meth:`__eq__` so ``PDFontDescriptor`` is usable as a dict key.
+        """
+        return id(self._dict)
+
+    def __contains__(self, key: object) -> bool:
+        """Pythonic key-existence check on the underlying dictionary.
+
+        pypdfbox extension — lets callers write ``"FontFile2" in fd`` or
+        ``COSName.get_pdf_name("CIDSet") in fd`` instead of reaching
+        through ``fd.get_cos_object().contains_key(...)``. Accepts the
+        same key types as :meth:`COSDictionary.__contains__`.
+        """
+        return key in self._dict
+
     # ---------- debug ----------
 
     def __repr__(self) -> str:
