@@ -66,11 +66,15 @@ def test_create_x_object_non_stream_raises_oserror() -> None:
         PDXObject.create_x_object(COSDictionary())
 
 
-def test_create_x_object_postscript_subtype_raises_oserror() -> None:
-    # PDPostScriptXObject is not yet ported; the factory surfaces this as
-    # an OSError with a deterministic message rather than silently
-    # returning None.
+def test_create_x_object_dispatches_postscript_subtype() -> None:
+    # PDPostScriptXObject is now ported; the factory should return a
+    # typed wrapper instead of raising.
+    from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (
+        PDPostScriptXObject,
+    )
+
     stream = COSStream()
     stream.set_name(COSName.SUBTYPE, "PS")  # type: ignore[attr-defined]
-    with pytest.raises(OSError):
-        PDXObject.create_x_object(stream)
+    obj = PDXObject.create_x_object(stream)
+    assert isinstance(obj, PDPostScriptXObject)
+    assert obj.get_cos_object() is stream

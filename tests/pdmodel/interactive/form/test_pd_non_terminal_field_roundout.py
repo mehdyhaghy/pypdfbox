@@ -1,14 +1,25 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSBoolean,
+    COSDictionary,
+    COSInteger,
+    COSName,
+    COSStream,
+    COSString,
+)
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
+from pypdfbox.pdmodel.interactive.form.pd_field import PDField
 from pypdfbox.pdmodel.interactive.form.pd_field_factory import PDFieldFactory
 from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
     PDNonTerminalField,
 )
+from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 
 _FT = COSName.get_pdf_name("FT")
 _FF = COSName.get_pdf_name("Ff")
+_V = COSName.get_pdf_name("V")
 _DV = COSName.get_pdf_name("DV")
 _PARENT = COSName.get_pdf_name("Parent")
 _P = COSName.get_pdf_name("P")
@@ -189,3 +200,195 @@ def test_non_terminal_field_flags_via_cos_integer() -> None:
     d.set_item(_FF, COSInteger.get(99))
     nt = PDNonTerminalField(form, d)
     assert nt.get_field_flags() == 99
+
+
+# ---------- set_value(str) overload ----------
+
+
+def test_non_terminal_set_value_string_writes_cos_string() -> None:
+    """``set_value(str)`` mirrors upstream ``setValue(String)``: stores
+    the value as a ``COSString`` under ``/V``."""
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    nt.set_value("hello")
+    item = nt.get_value()
+    assert isinstance(item, COSString)
+    assert item.get_string() == "hello"
+    # The underlying entry on the dictionary is the same COSString
+    assert nt.get_cos_object().get_dictionary_object(_V) is item
+
+
+def test_non_terminal_set_value_string_round_trips_via_get_value_as_string() -> (
+    None
+):
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    nt.set_value("round-trip")
+    assert nt.get_value_as_string() == "round-trip"
+
+
+def test_non_terminal_set_value_empty_string_stores_empty_cos_string() -> None:
+    """Empty string is stored as a non-null empty ``COSString`` — distinct
+    from passing ``None`` which removes ``/V``."""
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    nt.set_value("")
+    item = nt.get_value()
+    assert isinstance(item, COSString)
+    assert item.get_string() == ""
+    assert _V in nt.get_cos_object()
+
+
+def test_non_terminal_set_value_str_then_none_removes_v() -> None:
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    nt.set_value("present")
+    assert nt.get_value() is not None
+    nt.set_value(None)
+    assert nt.get_value() is None
+    assert _V not in nt.get_cos_object()
+
+
+def test_non_terminal_set_value_cos_base_still_accepted() -> None:
+    """The existing ``COSBase`` overload must keep working unchanged."""
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    name = COSName.get_pdf_name("Yes")
+    nt.set_value(name)
+    assert nt.get_value() is name
+
+
+# ---------- get_value_as_string extended typing ----------
+
+
+def test_get_value_as_string_returns_empty_when_v_absent() -> None:
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    assert nt.get_value_as_string() == ""
+
+
+def test_get_value_as_string_handles_cos_name() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    d.set_item(_V, COSName.get_pdf_name("Yes"))
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == "Yes"
+
+
+def test_get_value_as_string_handles_cos_integer() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    d.set_item(_V, COSInteger.get(42))
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == "42"
+
+
+def test_get_value_as_string_handles_cos_boolean_true() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    d.set_item(_V, COSBoolean.get(True))
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == "True"
+
+
+def test_get_value_as_string_handles_cos_boolean_false() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    d.set_item(_V, COSBoolean.get(False))
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == "False"
+
+
+def test_get_value_as_string_handles_cos_array_of_strings() -> None:
+    """Multi-value choice-style ``/V`` array is comma-joined."""
+    form = PDAcroForm()
+    d = COSDictionary()
+    arr = COSArray()
+    arr.add(COSString("a"))
+    arr.add(COSString("b"))
+    arr.add(COSString("c"))
+    d.set_item(_V, arr)
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == "a,b,c"
+
+
+def test_get_value_as_string_handles_cos_array_of_names() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("X"))
+    arr.add(COSName.get_pdf_name("Y"))
+    d.set_item(_V, arr)
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == "X,Y"
+
+
+def test_get_value_as_string_handles_empty_cos_array() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    d.set_item(_V, COSArray())
+    nt = PDNonTerminalField(form, d)
+    assert nt.get_value_as_string() == ""
+
+
+def test_get_value_as_string_handles_cos_stream() -> None:
+    """COSStream values decode through the filter chain."""
+    form = PDAcroForm()
+    d = COSDictionary()
+    stream = COSStream()
+    with stream.create_output_stream() as out:
+        out.write(b"streamed value")
+    d.set_item(_V, stream)
+    nt = PDNonTerminalField(form, d)
+    # COSStream.to_text_string decodes — for a plain ASCII body this
+    # round-trips through PDFDocEncoding to the original text.
+    assert nt.get_value_as_string() == "streamed value"
+
+
+# ---------- PDField.from_dictionary helper ----------
+
+
+def test_from_dictionary_dispatches_text_field() -> None:
+    """``PDField.from_dictionary`` mirrors upstream's package-private
+    ``PDField.fromDictionary`` and forwards to ``PDFieldFactory.create_field``."""
+    form = PDAcroForm()
+    d = COSDictionary()
+    d.set_name(_FT, "Tx")
+    result = PDField.from_dictionary(form, d)
+    assert isinstance(result, PDTextField)
+
+
+def test_from_dictionary_returns_non_terminal_when_kids_present() -> None:
+    form = PDAcroForm()
+    d = COSDictionary()
+    kids = COSArray()
+    child = COSDictionary()
+    child.set_string(COSName.get_pdf_name("T"), "child")
+    kids.add(child)
+    d.set_item(COSName.get_pdf_name("Kids"), kids)
+    result = PDField.from_dictionary(form, d)
+    assert isinstance(result, PDNonTerminalField)
+
+
+def test_from_dictionary_with_parent_inherits_ft() -> None:
+    """When the kid dict has no /FT of its own, the supplied parent
+    contributes the inherited /FT."""
+    form = PDAcroForm()
+    parent_dict = COSDictionary()
+    parent_dict.set_name(_FT, "Tx")
+    parent = PDNonTerminalField(form, parent_dict)
+    child_dict = COSDictionary()
+    result = PDField.from_dictionary(form, child_dict, parent)
+    assert isinstance(result, PDTextField)
+
+
+def test_from_dictionary_propagates_parent_argument() -> None:
+    """The supplied parent is wired onto the returned PDField."""
+    form = PDAcroForm()
+    parent_dict = COSDictionary()
+    parent_dict.set_name(_FT, "Tx")
+    parent = PDNonTerminalField(form, parent_dict)
+    child_dict = COSDictionary()
+    result = PDField.from_dictionary(form, child_dict, parent)
+    assert result is not None
+    assert result.get_parent() is parent

@@ -38,6 +38,25 @@ class PDField:
 
     # ---------- core ----------
 
+    @staticmethod
+    def from_dictionary(
+        form: PDAcroForm,
+        field: COSDictionary,
+        parent: PDNonTerminalField | None = None,
+    ) -> PDField | None:
+        """Reading-side factory — wrap ``field`` into the right ``PDField``.
+
+        Mirrors upstream's package-private ``PDField.fromDictionary`` which
+        forwards to :meth:`PDFieldFactory.create_field`. Exposed publicly
+        here because pypdfbox does not have Java's package-private
+        visibility — callers outside the form package occasionally need
+        the same dispatch (e.g. when re-wrapping a kid dictionary that
+        was reached via raw COS traversal).
+        """
+        from .pd_field_factory import PDFieldFactory
+
+        return PDFieldFactory.create_field(form, field, parent)
+
     def get_cos_object(self) -> COSDictionary:
         return self._field
 

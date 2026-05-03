@@ -24,8 +24,9 @@ class PDXObject:
     ``org.apache.pdfbox.pdmodel.graphics.PDXObject``.
 
     Concrete subtypes — ``PDFormXObject`` (/Subtype /Form),
-    ``PDImageXObject`` (/Subtype /Image), and (later) ``PDPostScriptXObject``
-    — extend this class. The ``createXObject`` factory dispatch lives in
+    ``PDImageXObject`` (/Subtype /Image), and ``PDPostScriptXObject``
+    (/Subtype /PS) — extend this class. The ``createXObject`` factory
+    dispatch lives in
     ``pypdfbox.pdmodel.pd_resources.PDResources.get_x_object`` (the only
     place dispatch is currently exercised).
     """
@@ -47,6 +48,7 @@ class PDXObject:
           subclass is not yet ported — when absent we fall back to the
           plain :class:`PDFormXObject` which still exposes the group dict
           via :meth:`PDFormXObject.get_group_attributes`.)
+        - ``COSStream`` with ``/Subtype /PS`` → :class:`PDPostScriptXObject`.
         - any other ``COSStream`` /Subtype value → ``OSError`` with the
           subtype reproduced verbatim (matches upstream's
           ``IOException("Invalid XObject Subtype: ...")``).
@@ -86,10 +88,11 @@ class PDXObject:
                     return PDTransparencyGroup(base)
             return PDFormXObject(base)
         if subtype == "PS":
-            # PDPostScriptXObject is not yet ported; surface this as the
-            # same OSError shape upstream uses for the general invalid
-            # subtype branch so callers get a deterministic failure.
-            raise OSError("PDPostScriptXObject is not yet supported")
+            from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (  # noqa: PLC0415
+                PDPostScriptXObject,
+            )
+
+            return PDPostScriptXObject(base)
         raise OSError(f"Invalid XObject Subtype: {subtype}")
 
     def __init__(

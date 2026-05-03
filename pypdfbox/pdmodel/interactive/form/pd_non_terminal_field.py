@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSBoolean,
+    COSDictionary,
+    COSInteger,
+    COSName,
+    COSString,
+)
 
 from .pd_field import PDField
 
@@ -72,25 +80,64 @@ class PDNonTerminalField(PDField):
         """
         return self._field.get_dictionary_object(_V)
 
-    def set_value(self, value: COSBase | None) -> None:
+    def set_value(self, value: COSBase | str | None) -> None:
+        """Set the value of this non-terminal node.
+
+        Mirrors upstream's two ``setValue`` overloads: ``setValue(COSBase)``
+        and ``setValue(String)``. A ``str`` argument is stored as a
+        ``COSString`` under ``/V`` (matching upstream's
+        ``getCOSObject().setString(COSName.V, value)``). A ``COSBase`` is
+        stored as-is. ``None`` removes ``/V``.
+        """
         if value is None:
             self._field.remove_item(_V)
+        elif isinstance(value, str):
+            self._field.set_string(_V, value)
         else:
             self._field.set_item(_V, value)
 
     def get_value_as_string(self) -> str:
-        """String view of own ``/V`` if it carries a single primitive value,
-        else the empty string. Mirrors upstream
-        ``PDNonTerminalField.getValueAsString``.
-        """
-        from pypdfbox.cos import COSString
+        """String view of own ``/V``; ``""`` when ``/V`` is absent.
 
+        Mirrors upstream ``PDNonTerminalField.getValueAsString`` which
+        returns ``fieldValue.toString()`` for any non-null COS value.
+        Concretely:
+
+        * ``COSString`` -> the decoded text (``get_string``)
+        * ``COSName`` -> the name
+        * ``COSStream`` -> ``to_text_string()`` (PDF text-string decode)
+        * ``COSInteger`` / ``COSBoolean`` -> Python ``str(.)``
+        * ``COSArray`` -> comma-joined string view of the contained items
+          (matches PDF 32000-1 multi-value field display)
+        * any other ``COSBase`` -> ``str(item)`` fallback (mirrors
+          upstream's ``toString()``)
+        """
         item = self.get_value()
+        if item is None:
+            return ""
         if isinstance(item, COSString):
             return item.get_string()
         if isinstance(item, COSName):
             return item.name
-        return ""
+        # Local import: COSStream pulls in I/O machinery; keep it lazy.
+        from pypdfbox.cos import COSStream  # noqa: PLC0415
+
+        if isinstance(item, COSStream):
+            return item.to_text_string()
+        if isinstance(item, (COSInteger, COSBoolean)):
+            return str(item.value)
+        if isinstance(item, COSArray):
+            parts: list[str] = []
+            for i in range(item.size()):
+                entry = item.get_object(i)
+                if isinstance(entry, COSString):
+                    parts.append(entry.get_string())
+                elif isinstance(entry, COSName):
+                    parts.append(entry.name)
+                elif entry is not None:
+                    parts.append(str(entry))
+            return ",".join(parts)
+        return str(item)
 
     # ---------- /DV (raw COSBase per upstream) ----------
 
