@@ -44,6 +44,25 @@ class PDAppearanceEntry:
             self._entry, COSStream
         )
 
+    def is_empty(self) -> bool:
+        """True when this entry has no usable appearance content.
+
+        Returns True when the entry is ``None`` or when it is a
+        subdictionary whose state mapping yields no streams (e.g. the
+        ``/N`` placeholder seeded by :class:`PDAppearanceDictionary`'s
+        no-arg constructor, or the PDFBOX-1599 file whose only entries
+        are ``/null``). A direct stream entry is never empty.
+        """
+        if self._entry is None:
+            return True
+        if isinstance(self._entry, COSStream):
+            return False
+        # Subdictionary: check whether any value is a COSStream.
+        for name in self._entry.key_set():
+            if isinstance(self._entry.get_dictionary_object(name), COSStream):
+                return False
+        return True
+
     def get_appearance_stream(self) -> PDAppearanceStream | None:
         """Return the wrapped appearance stream.
 

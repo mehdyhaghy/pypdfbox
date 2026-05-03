@@ -1,12 +1,22 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from collections.abc import Sequence
+
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSStream,
+)
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 _RESOURCES: COSName = COSName.RESOURCES  # type: ignore[attr-defined]
 _FORM_TYPE: COSName = COSName.get_pdf_name("FormType")
 _BBOX: COSName = COSName.get_pdf_name("BBox")
+_MATRIX: COSName = COSName.get_pdf_name("Matrix")
 _STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
 
 
@@ -113,6 +123,53 @@ class PDAppearanceStream:
                 f"{type(bbox).__name__}"
             )
         self._stream.set_item(_BBOX, bbox.get_cos_array())
+
+    # ---------- /Matrix ----------
+
+    def get_matrix(self) -> list[float]:
+        """``/Matrix`` as a 6-element list ``[a, b, c, d, e, f]``.
+
+        Defaults to the identity matrix ``[1, 0, 0, 1, 0, 0]`` when the
+        entry is absent or malformed (PDF 32000-1:2008 §8.10.2). Mirrors
+        upstream ``PDFormXObject.getMatrix()`` semantics — pypdfbox returns
+        a plain ``list[float]`` because the typed ``Matrix`` class lands
+        with the rendering cluster.
+        """
+        value = self._stream.get_dictionary_object(_MATRIX)
+        if isinstance(value, COSArray) and value.size() >= 6:
+            out: list[float] = []
+            for i in range(6):
+                entry = value.get_object(i)
+                if isinstance(entry, (COSInteger, COSFloat)):
+                    out.append(float(entry.value))
+                else:
+                    # Malformed entry — fall back to identity, matching
+                    # upstream Matrix.createMatrix() permissive behaviour.
+                    return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+            return out
+        return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+    def set_matrix(
+        self, values: Sequence[float] | COSArray | None
+    ) -> None:
+        """Set the ``/Matrix`` entry.
+
+        ``None`` clears the entry (callers fall back to identity).
+        Sequences must have exactly 6 numeric elements.
+        Mirrors upstream ``PDFormXObject.setMatrix(AffineTransform)``.
+        """
+        if values is None:
+            self._stream.remove_item(_MATRIX)
+            return
+        if isinstance(values, COSArray):
+            self._stream.set_item(_MATRIX, values)
+            return
+        if len(values) != 6:
+            raise ValueError(
+                f"/Matrix expects exactly 6 numbers (a b c d e f); got {len(values)}"
+            )
+        arr = COSArray([COSFloat(float(v)) for v in values])
+        self._stream.set_item(_MATRIX, arr)
 
     # ---------- /StructParents ----------
 

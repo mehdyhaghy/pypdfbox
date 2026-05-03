@@ -130,6 +130,18 @@ class PDAppearanceCharacteristicsDictionary:
     TEXT_POSITION_CAPTION_LEFT: ClassVar[int] = 5
     TEXT_POSITION_CAPTION_OVERLAID: ClassVar[int] = 6
 
+    # ---------- /R (rotation) constants ----------
+    #
+    # PDF 32000-1 §12.5.6.19 Table 189: ``/R`` is "the number of degrees
+    # by which the widget annotation shall be rotated counter-clockwise
+    # relative to the page. The value shall be a multiple of 90. Default
+    # value: 0." Constants here cover the four canonical orientations.
+
+    ROTATION_NONE: ClassVar[int] = 0
+    ROTATION_LEFT: ClassVar[int] = 90
+    ROTATION_UPSIDE_DOWN: ClassVar[int] = 180
+    ROTATION_RIGHT: ClassVar[int] = 270
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
 
@@ -144,6 +156,23 @@ class PDAppearanceCharacteristicsDictionary:
 
     def set_rotation(self, rotation: int) -> None:
         self._dict.set_int(_R, rotation)
+
+    def get_normalized_rotation(self) -> int:
+        """Return the rotation reduced to ``{0, 90, 180, 270}``.
+
+        Helper that mirrors what widget-appearance code does in upstream
+        ``AppearanceGeneratorHelper.calculateMatrix()``: the ``/R``
+        rotation is taken mod 360 and any non-canonical (non-multiple
+        of 90) value is treated as ``0`` — appearance generators draw
+        only at the four canonical orientations.
+        """
+        raw = self.get_rotation()
+        if raw % 90 != 0:
+            return 0
+        normalized = raw % 360
+        if normalized < 0:
+            normalized += 360
+        return normalized
 
     # ---------- /BC (border colour, typed PDColor) ----------
 

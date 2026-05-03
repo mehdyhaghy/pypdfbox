@@ -255,3 +255,189 @@ def test_appearance_stream_set_struct_parents_round_trip() -> None:
     assert (
         pap.get_cos_object().get_int(COSName.get_pdf_name("StructParents")) == 7
     )
+
+
+# ---------- PDAppearanceStream — /Matrix ----------
+
+
+def test_appearance_stream_matrix_default_identity_when_absent() -> None:
+    """``/Matrix`` defaults to the identity matrix per PDF §8.10.2."""
+    pap = PDAppearanceStream(COSStream())
+    assert pap.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_appearance_stream_matrix_round_trip_via_sequence() -> None:
+    pap = PDAppearanceStream(COSStream())
+    pap.set_matrix([2.0, 0.0, 0.0, 3.0, 10.0, 20.0])
+    assert pap.get_matrix() == [2.0, 0.0, 0.0, 3.0, 10.0, 20.0]
+
+
+def test_appearance_stream_matrix_accepts_tuple() -> None:
+    """Sequence parameter accepts any 6-element numeric iterable."""
+    pap = PDAppearanceStream(COSStream())
+    pap.set_matrix((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))
+    assert pap.get_matrix() == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+
+def test_appearance_stream_matrix_accepts_raw_cos_array() -> None:
+    """Low-level escape hatch: pass a raw ``COSArray`` straight through."""
+    from pypdfbox.cos import COSArray, COSFloat
+
+    pap = PDAppearanceStream(COSStream())
+    raw = COSArray(
+        [
+            COSFloat(1.0),
+            COSFloat(0.0),
+            COSFloat(0.0),
+            COSFloat(1.0),
+            COSFloat(50.0),
+            COSFloat(100.0),
+        ]
+    )
+    pap.set_matrix(raw)
+    assert pap.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("Matrix")
+    ) is raw
+    assert pap.get_matrix() == [1.0, 0.0, 0.0, 1.0, 50.0, 100.0]
+
+
+def test_appearance_stream_matrix_set_none_clears_entry() -> None:
+    pap = PDAppearanceStream(COSStream())
+    pap.set_matrix([1.0, 0.0, 0.0, 1.0, 5.0, 5.0])
+    assert pap.get_cos_object().contains_key(COSName.get_pdf_name("Matrix"))
+    pap.set_matrix(None)
+    assert not pap.get_cos_object().contains_key(COSName.get_pdf_name("Matrix"))
+    # After clearing, the getter must return the identity default again.
+    assert pap.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_appearance_stream_matrix_wrong_length_raises() -> None:
+    pap = PDAppearanceStream(COSStream())
+    with pytest.raises(ValueError):
+        pap.set_matrix([1.0, 0.0, 0.0, 1.0, 0.0])  # only 5
+    with pytest.raises(ValueError):
+        pap.set_matrix([1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])  # 7
+
+
+def test_appearance_stream_matrix_short_array_falls_back_to_identity() -> None:
+    """A truncated ``/Matrix`` with fewer than 6 entries is treated as
+    absent and the getter returns the identity matrix."""
+    from pypdfbox.cos import COSArray, COSFloat
+
+    stream = COSStream()
+    stream.set_item(
+        COSName.get_pdf_name("Matrix"),
+        COSArray([COSFloat(1.0), COSFloat(2.0), COSFloat(3.0)]),
+    )
+    pap = PDAppearanceStream(stream)
+    assert pap.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+
+
+def test_appearance_stream_matrix_integer_entries_round_trip_as_float() -> None:
+    """``COSInteger`` entries are converted to ``float`` — matches the
+    upstream Matrix.createMatrix path which reads numeric COS entries
+    as doubles."""
+    from pypdfbox.cos import COSArray, COSInteger
+
+    stream = COSStream()
+    stream.set_item(
+        COSName.get_pdf_name("Matrix"),
+        COSArray(
+            [
+                COSInteger(1),
+                COSInteger(0),
+                COSInteger(0),
+                COSInteger(1),
+                COSInteger(7),
+                COSInteger(8),
+            ]
+        ),
+    )
+    pap = PDAppearanceStream(stream)
+    matrix = pap.get_matrix()
+    assert matrix == [1.0, 0.0, 0.0, 1.0, 7.0, 8.0]
+    assert all(isinstance(v, float) for v in matrix)
+
+
+# ---------- PDAppearanceEntry — is_empty() ----------
+
+
+def test_appearance_entry_is_empty_for_none() -> None:
+    entry = PDAppearanceEntry()
+    assert entry.is_empty()
+
+
+def test_appearance_entry_is_empty_false_for_stream() -> None:
+    """A direct stream entry is never empty regardless of stream contents."""
+    entry = PDAppearanceEntry(COSStream())
+    assert not entry.is_empty()
+
+
+def test_appearance_entry_is_empty_for_subdict_with_no_streams() -> None:
+    """The placeholder ``/N`` subdictionary seeded by the no-arg
+    PDAppearanceDictionary ctor is a real-world empty entry."""
+    entry = PDAppearanceEntry(COSDictionary())
+    assert entry.is_empty()
+
+
+def test_appearance_entry_is_empty_skips_non_stream_values() -> None:
+    """Subdictionary with only non-stream (e.g. ``/null``) values is
+    considered empty — same PDFBOX-1599 guard as get_sub_dictionary."""
+    sub = COSDictionary()
+    sub.set_name(COSName.get_pdf_name("Off"), "NotAStream")
+    entry = PDAppearanceEntry(sub)
+    assert entry.is_empty()
+
+
+def test_appearance_entry_is_empty_false_with_one_stream() -> None:
+    sub = COSDictionary()
+    sub.set_item(COSName.get_pdf_name("On"), COSStream())
+    entry = PDAppearanceEntry(sub)
+    assert not entry.is_empty()
+
+
+# ---------- PDAppearanceDictionary — has_*_appearance ----------
+
+
+def test_appearance_dict_has_normal_after_default_ctor() -> None:
+    """No-arg ctor seeds /N — has_normal_appearance must be True."""
+    ap = PDAppearanceDictionary()
+    assert ap.has_normal_appearance()
+    assert not ap.has_rollover_appearance()
+    assert not ap.has_down_appearance()
+
+
+def test_appearance_dict_has_predicates_default_false_for_empty_dict() -> None:
+    ap = PDAppearanceDictionary(COSDictionary())
+    assert not ap.has_normal_appearance()
+    assert not ap.has_rollover_appearance()
+    assert not ap.has_down_appearance()
+
+
+def test_appearance_dict_has_rollover_after_set() -> None:
+    ap = PDAppearanceDictionary(COSDictionary())
+    ap.set_rollover_appearance(PDAppearanceEntry(COSStream()))
+    assert ap.has_rollover_appearance()
+    # /N still absent — fallback is just for the typed getter.
+    assert not ap.has_normal_appearance()
+
+
+def test_appearance_dict_has_down_distinguishes_real_from_fallback() -> None:
+    """``get_down_appearance`` falls back to /N, but
+    ``has_down_appearance`` must report only the explicit /D key."""
+    ap = PDAppearanceDictionary(COSDictionary())
+    ap.set_normal_appearance(PDAppearanceEntry(COSStream()))
+    # /D not set — get_down_appearance returns the /N fallback...
+    assert ap.get_down_appearance() is not None
+    # ...but has_down_appearance reports the truth.
+    assert not ap.has_down_appearance()
+    ap.set_down_appearance(PDAppearanceEntry(COSStream()))
+    assert ap.has_down_appearance()
+
+
+def test_appearance_dict_has_predicates_clear_via_none() -> None:
+    ap = PDAppearanceDictionary(COSDictionary())
+    ap.set_rollover_appearance(PDAppearanceEntry(COSStream()))
+    assert ap.has_rollover_appearance()
+    ap.set_rollover_appearance(None)
+    assert not ap.has_rollover_appearance()

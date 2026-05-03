@@ -35,6 +35,65 @@ def test_rotation_negative_round_trip() -> None:
     assert mk.get_rotation() == -90
 
 
+def test_rotation_constants_match_spec() -> None:
+    """``/R`` constants line up with PDF 32000-1 §12.5.6.19 Table 189
+    counter-clockwise multiples of 90."""
+    assert PDAppearanceCharacteristicsDictionary.ROTATION_NONE == 0
+    assert PDAppearanceCharacteristicsDictionary.ROTATION_LEFT == 90
+    assert PDAppearanceCharacteristicsDictionary.ROTATION_UPSIDE_DOWN == 180
+    assert PDAppearanceCharacteristicsDictionary.ROTATION_RIGHT == 270
+
+
+def test_rotation_constants_round_trip_via_setter() -> None:
+    mk = PDAppearanceCharacteristicsDictionary()
+    for c in (
+        PDAppearanceCharacteristicsDictionary.ROTATION_NONE,
+        PDAppearanceCharacteristicsDictionary.ROTATION_LEFT,
+        PDAppearanceCharacteristicsDictionary.ROTATION_UPSIDE_DOWN,
+        PDAppearanceCharacteristicsDictionary.ROTATION_RIGHT,
+    ):
+        mk.set_rotation(c)
+        assert mk.get_rotation() == c
+        assert mk.get_normalized_rotation() == c
+
+
+def test_normalized_rotation_default_zero() -> None:
+    mk = PDAppearanceCharacteristicsDictionary()
+    assert mk.get_normalized_rotation() == 0
+
+
+def test_normalized_rotation_reduces_modulo_360() -> None:
+    """Values >= 360 collapse to their canonical equivalent."""
+    mk = PDAppearanceCharacteristicsDictionary()
+    mk.set_rotation(450)  # 450 % 360 == 90
+    assert mk.get_normalized_rotation() == 90
+    mk.set_rotation(720)  # full revolution(s) → 0
+    assert mk.get_normalized_rotation() == 0
+    mk.set_rotation(900)  # 900 % 360 == 180
+    assert mk.get_normalized_rotation() == 180
+
+
+def test_normalized_rotation_handles_negative() -> None:
+    """Counter-clockwise convention: -90 is equivalent to 270."""
+    mk = PDAppearanceCharacteristicsDictionary()
+    mk.set_rotation(-90)
+    assert mk.get_normalized_rotation() == 270
+    mk.set_rotation(-180)
+    assert mk.get_normalized_rotation() == 180
+    mk.set_rotation(-450)  # -450 mod 360 == 270
+    assert mk.get_normalized_rotation() == 270
+
+
+def test_normalized_rotation_non_multiple_of_90_returns_zero() -> None:
+    """Spec mandates ``/R`` be a multiple of 90; non-canonical values are
+    treated as 0 by appearance generators."""
+    mk = PDAppearanceCharacteristicsDictionary()
+    mk.set_rotation(45)
+    assert mk.get_normalized_rotation() == 0
+    mk.set_rotation(123)
+    assert mk.get_normalized_rotation() == 0
+
+
 # ---------- /BC border colour ----------
 
 

@@ -126,6 +126,16 @@ class PDEmbeddedFile(PDStream):
     #: dictionary. Mirrors upstream ``COSName.EMBEDDED_FILE``.
     EMBEDDED_FILE: str = "EmbeddedFile"
 
+    #: Name of the nested dictionary holding optional file parameters
+    #: (Size, CreationDate, ModDate, CheckSum, Mac sub-dict). PDF 32000-1
+    #: §7.11.3, Table 46.
+    PARAMS: str = "Params"
+
+    #: Name of the nested Mac-platform sub-dictionary inside ``/Params``
+    #: (legacy macOS metadata: Subtype, Creator, ResFork). PDF 32000-1
+    #: §7.11.3, Table 46.
+    MAC: str = "Mac"
+
     def __init__(
         self,
         stream_or_document: COSStream | object | None = None,
@@ -151,6 +161,28 @@ class PDEmbeddedFile(PDStream):
     def _ensure_params_dict(self) -> COSDictionary:
         return _get_or_create_dict(self.get_cos_object(), _PARAMS)
 
+    def has_params(self) -> bool:
+        """Return ``True`` when this embedded-file stream carries a
+        ``/Params`` sub-dictionary. Useful to short-circuit access to
+        Size / CreationDate / ModDate / CheckSum without forcing creation
+        of an empty dictionary.
+
+        Not part of the upstream Java surface — pythonic predicate sugar.
+        """
+        return self._params_dict() is not None
+
+    def has_mac_info(self) -> bool:
+        """Return ``True`` when the embedded file carries a ``/Params/Mac``
+        sub-dictionary (legacy macOS metadata: Subtype/Creator/ResFork).
+
+        Not part of the upstream Java surface — pythonic predicate sugar.
+        """
+        params = self._params_dict()
+        if params is None:
+            return False
+        mac = params.get_dictionary_object(_MAC)
+        return isinstance(mac, COSDictionary)
+
     # ---------- /Subtype (mime type, e.g. "application/pdf") ----------
 
     def get_subtype(self) -> str | None:
@@ -162,6 +194,25 @@ class PDEmbeddedFile(PDStream):
             cos.remove_item(_SUBTYPE)
             return
         cos.set_name(_SUBTYPE, mime_type)
+
+    def is_subtype(self, mime_type: str | None) -> bool:
+        """Return ``True`` when the ``/Subtype`` entry equals ``mime_type``
+        (case-insensitive ASCII comparison). Returns ``False`` when either
+        side is ``None`` or the entry is absent.
+
+        Mime type matching is case-insensitive per RFC 2045 §5.1, so
+        ``application/pdf`` and ``Application/PDF`` are equivalent.
+
+        Not part of the upstream Java surface — pythonic predicate sugar
+        avoiding callers having to ``.lower()`` the result of
+        :meth:`get_subtype` themselves.
+        """
+        if mime_type is None:
+            return False
+        current = self.get_subtype()
+        if current is None:
+            return False
+        return current.casefold() == mime_type.casefold()
 
     # ---------- /Params/Size ----------
 

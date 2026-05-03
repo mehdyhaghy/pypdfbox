@@ -45,6 +45,25 @@ class PDAppearanceDictionary:
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    # ---------- key-presence predicates ----------
+    #
+    # ``get_rollover_appearance()`` and ``get_down_appearance()`` fall
+    # back to ``/N`` per spec, so callers can't tell from the typed
+    # getter whether ``/R`` / ``/D`` is actually present. The predicate
+    # helpers below check the raw dictionary for the explicit key.
+
+    def has_normal_appearance(self) -> bool:
+        """True when the ``/N`` entry is explicitly present."""
+        return self._dict.contains_key(_N)
+
+    def has_rollover_appearance(self) -> bool:
+        """True when the ``/R`` entry is explicitly present (no ``/N`` fallback)."""
+        return self._dict.contains_key(_R)
+
+    def has_down_appearance(self) -> bool:
+        """True when the ``/D`` entry is explicitly present (no ``/N`` fallback)."""
+        return self._dict.contains_key(_D)
+
     # ---------- shared helpers ----------
 
     def _get_entry(self, key: COSName) -> PDAppearanceEntry | None:

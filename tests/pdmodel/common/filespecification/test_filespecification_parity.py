@@ -307,3 +307,130 @@ def test_complex_get_embedded_file_after_clear_round_trip_to_set_again() -> None
     fetched = spec.get_embedded_file()
     assert fetched is not None
     assert fetched.get_cos_object() is second.get_cos_object()
+
+
+# ---------- PDEmbeddedFile new sub-dict name constants ----------
+
+
+def test_embedded_file_params_constant_value() -> None:
+    assert PDEmbeddedFile.PARAMS == "Params"
+
+
+def test_embedded_file_mac_constant_value() -> None:
+    assert PDEmbeddedFile.MAC == "Mac"
+
+
+def test_embedded_file_type_constant_distinct_from_params_constant() -> None:
+    # Defensive check: the three name constants must not collide.
+    assert PDEmbeddedFile.EMBEDDED_FILE != PDEmbeddedFile.PARAMS
+    assert PDEmbeddedFile.PARAMS != PDEmbeddedFile.MAC
+    assert PDEmbeddedFile.EMBEDDED_FILE != PDEmbeddedFile.MAC
+
+
+# ---------- PDEmbeddedFile.has_params ----------
+
+
+def test_embedded_file_has_params_default_false() -> None:
+    embedded = PDEmbeddedFile()
+    # A pristine embedded file has only /Type — no /Params yet.
+    assert embedded.has_params() is False
+
+
+def test_embedded_file_has_params_true_after_size_set() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_size(99)
+    assert embedded.has_params() is True
+
+
+def test_embedded_file_has_params_true_after_check_sum_set() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_check_sum(b"\x00" * 16)
+    assert embedded.has_params() is True
+
+
+def test_embedded_file_has_params_true_after_creator_set() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_creator("pypdfbox-test")
+    assert embedded.has_params() is True
+
+
+# ---------- PDEmbeddedFile.has_mac_info ----------
+
+
+def test_embedded_file_has_mac_info_default_false() -> None:
+    embedded = PDEmbeddedFile()
+    assert embedded.has_mac_info() is False
+
+
+def test_embedded_file_has_mac_info_false_when_only_size_set() -> None:
+    # /Params exists but no /Params/Mac sub-dict yet.
+    embedded = PDEmbeddedFile()
+    embedded.set_size(1)
+    assert embedded.has_params() is True
+    assert embedded.has_mac_info() is False
+
+
+def test_embedded_file_has_mac_info_true_after_mac_subtype_set() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_mac_subtype("PDF ")
+    assert embedded.has_mac_info() is True
+
+
+def test_embedded_file_has_mac_info_true_after_mac_creator_set() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_mac_creator("PRVW")
+    assert embedded.has_mac_info() is True
+
+
+def test_embedded_file_has_mac_info_true_after_mac_resource_fork_set() -> None:
+    embedded = PDEmbeddedFile()
+    rf = COSStream()
+    embedded.set_mac_resource_fork(rf)
+    assert embedded.has_mac_info() is True
+
+
+# ---------- PDEmbeddedFile.is_subtype ----------
+
+
+def test_embedded_file_is_subtype_default_false_for_any_mime() -> None:
+    embedded = PDEmbeddedFile()
+    assert embedded.is_subtype("application/pdf") is False
+    assert embedded.is_subtype("text/plain") is False
+
+
+def test_embedded_file_is_subtype_none_returns_false() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_subtype("application/pdf")
+    assert embedded.is_subtype(None) is False
+
+
+def test_embedded_file_is_subtype_exact_match() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_subtype("application/pdf")
+    assert embedded.is_subtype("application/pdf") is True
+
+
+def test_embedded_file_is_subtype_case_insensitive() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_subtype("application/pdf")
+    assert embedded.is_subtype("Application/PDF") is True
+    assert embedded.is_subtype("APPLICATION/PDF") is True
+    assert embedded.is_subtype("application/PDF") is True
+
+
+def test_embedded_file_is_subtype_mismatch() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_subtype("text/plain")
+    assert embedded.is_subtype("application/pdf") is False
+
+
+def test_embedded_file_is_subtype_after_clear_returns_false() -> None:
+    embedded = PDEmbeddedFile()
+    embedded.set_subtype("text/plain")
+    embedded.set_subtype(None)
+    assert embedded.is_subtype("text/plain") is False
+
+
+def test_embedded_file_is_subtype_when_subtype_unset_with_none_arg() -> None:
+    embedded = PDEmbeddedFile()
+    assert embedded.is_subtype(None) is False
