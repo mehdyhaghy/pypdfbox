@@ -883,3 +883,132 @@ def test_has_signatures_false_when_field_has_no_value() -> None:
 
     assert doc.has_signatures() is False
     doc.close()
+
+
+# ---------- Wave 233: pdf-source + pending-signature accessors ----------
+
+
+def test_get_pdf_source_returns_none_for_synthesised_doc() -> None:
+    """``get_pdf_source`` returns ``None`` when no source backs the
+    document — i.e. for a freshly-instantiated ``PDDocument`` synthesised
+    in memory. Matches ``save_incremental``'s "requires a loaded
+    document" guard."""
+    doc = PDDocument()
+    assert doc.get_pdf_source() is None
+    doc.close()
+
+
+def test_get_pdf_source_returns_loaded_source(tmp_path: Path) -> None:
+    """When the document was loaded from a path (or any
+    ``RandomAccessRead``-shaped source), ``get_pdf_source`` exposes that
+    source — same instance that ``save_incremental`` uses internally."""
+    src = PDDocument()
+    src.add_page(PDPage())
+    file_path = tmp_path / "source.pdf"
+    src.save(file_path)
+    src.close()
+
+    doc = PDDocument.load(file_path)
+    source = doc.get_pdf_source()
+    assert source is not None
+    # Same instance the underlying COSDocument exposes.
+    assert source is doc.get_document().get_source()
+    doc.close()
+
+
+def test_get_pending_signature_returns_none_by_default() -> None:
+    """A fresh document has no pending signature staged."""
+    doc = PDDocument()
+    assert doc.get_pending_signature() is None
+    assert doc.has_pending_signature() is False
+    doc.close()
+
+
+def test_get_pending_signature_returns_staged_signature() -> None:
+    """``add_signature`` stages the supplied :class:`PDSignature` —
+    ``get_pending_signature`` returns the same instance until the next
+    successful save (or external-signing handoff) clears it."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    sig = PDSignature()
+    doc.add_signature(sig)
+    assert doc.get_pending_signature() is sig
+    assert doc.has_pending_signature() is True
+    doc.close()
+
+
+def test_get_signature_interface_returns_staged_interface() -> None:
+    """``get_signature_interface`` returns the callback wired by
+    ``add_signature``. Unset when the caller chose the external-signing
+    path (interface argument left as ``None``)."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    assert doc.get_signature_interface() is None
+
+    captured: list[bytes] = []
+
+    class _Sentinel:
+        def sign(self, content: object) -> bytes:  # pragma: no cover — not exercised here
+            captured.append(b"signed")
+            return b""
+
+    iface = _Sentinel()
+    doc.add_signature(PDSignature(), signature_interface=iface)
+    assert doc.get_signature_interface() is iface
+    doc.close()
+
+
+def test_get_signature_options_returns_staged_options() -> None:
+    """``get_signature_options`` returns the options object passed to
+    ``add_signature``. Stored verbatim — pypdfbox doesn't introspect the
+    options shape itself."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    assert doc.get_signature_options() is None
+
+    sentinel_options = object()
+    doc.add_signature(PDSignature(), options=sentinel_options)
+    assert doc.get_signature_options() is sentinel_options
+    doc.close()
+
+
+def test_pending_signature_cleared_after_external_signing() -> None:
+    """The pending-signature accessors reflect the post-sign state once
+    :meth:`ExternalSigningSupport.set_signature` finalises a signing
+    cycle — both the staged signature and its sidecar fields drop back to
+    ``None`` so a follow-up ``save_incremental`` no-ops."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    src = PDDocument()
+    src.add_page(PDPage())
+    sink = io.BytesIO()
+    src.save(sink)
+    src.close()
+
+    doc = PDDocument.load(io.BytesIO(sink.getvalue()))
+    doc.add_signature(PDSignature(), options=object())
+    assert doc.has_pending_signature() is True
+
+    out = io.BytesIO()
+    handle = doc.save_incremental_for_external_signing(out)
+    handle.set_signature(b"\x00\x01\x02\x03")
+
+    assert doc.has_pending_signature() is False
+    assert doc.get_pending_signature() is None
+    assert doc.get_signature_interface() is None
+    assert doc.get_signature_options() is None
+    doc.close()

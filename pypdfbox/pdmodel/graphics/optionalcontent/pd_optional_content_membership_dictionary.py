@@ -295,6 +295,106 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
         arr.add(target)
         self._dict.set_item(_OCGS, arr)
 
+    def remove_ocg(
+        self, group: PDOptionalContentGroup | COSDictionary
+    ) -> bool:
+        """Drop ``group`` from /OCGs. Returns ``True`` when an entry was
+        removed.
+
+        Membership is matched by *identity* of the wrapped
+        ``COSDictionary`` (mirrors :meth:`contains_ocg` and
+        :meth:`add_ocg`). Handles all three /OCGs storage shapes:
+
+        - missing /OCGs                       → returns ``False``
+        - single-dict form, identity match    → /OCGs key removed entirely
+        - single-dict form, no match          → returns ``False``
+        - array form                          → removes every identity match;
+          if the array becomes empty /OCGs is removed entirely so the dict
+          does not retain an empty husk.
+
+        Symmetric counterpart to :meth:`add_ocg`. pypdfbox enrichment —
+        Apache PDFBox 3.0 leaves callers to manipulate the COSArray in
+        place.
+        """
+        if isinstance(group, PDOptionalContentGroup):
+            target = group.get_cos_object()
+        elif isinstance(group, COSDictionary):
+            target = group
+        else:
+            raise TypeError(
+                "group must be PDOptionalContentGroup or COSDictionary, "
+                f"got {type(group).__name__}"
+            )
+        base = self._dict.get_dictionary_object(_OCGS)
+        if base is None:
+            return False
+        if isinstance(base, COSDictionary):
+            if base is target:
+                self._dict.remove_item(_OCGS)
+                return True
+            return False
+        if isinstance(base, COSArray):
+            removed = False
+            # Walk in reverse so index-based removals don't shift subsequent
+            # entries before we visit them.
+            for i in reversed(range(base.size())):
+                if base.get_object(i) is target:
+                    base.remove_at(i)
+                    removed = True
+            if removed and base.size() == 0:
+                self._dict.remove_item(_OCGS)
+            return removed
+        return False
+
+    def clear_ocgs(self) -> None:
+        """Remove /OCGs entirely.
+
+        No-op when /OCGs is already absent. Symmetric counterpart to the
+        build-up sequence ``set_ocgs`` / ``add_ocg``. pypdfbox enrichment
+        — handy when a caller wants to reuse the OCMD with a fresh set of
+        groups (and matches the prune-empty semantics used elsewhere in
+        this module).
+        """
+        self._dict.remove_item(_OCGS)
+
+    def get_ocg_count(self) -> int:
+        """Return the number of OCG references in /OCGs.
+
+        Counts every entry under /OCGs regardless of storage shape:
+
+        - missing /OCGs       → ``0``
+        - single-dict form    → ``1``
+        - array form          → number of entries (including non-OCG
+          dictionaries — matches the loose read shape of
+          :meth:`get_ocgs_property_list`).
+
+        pypdfbox enrichment. PDFBox callers have to materialize
+        ``getOCGs().size()``; exposing the count avoids the full wrap.
+        """
+        base = self._dict.get_dictionary_object(_OCGS)
+        if base is None:
+            return 0
+        if isinstance(base, COSDictionary):
+            return 1
+        if isinstance(base, COSArray):
+            return base.size()
+        return 0
+
+    def __len__(self) -> int:
+        """Pythonic alias for :meth:`get_ocg_count`. Lets callers write
+        ``len(ocmd)`` or ``if not ocmd: ...`` to inspect membership size.
+        """
+        return self.get_ocg_count()
+
+    def has_ocgs(self) -> bool:
+        """``True`` when /OCGs is present and non-empty.
+
+        pypdfbox enrichment — predicate counterpart to
+        :meth:`get_ocg_count`. Rejects both missing-/OCGs and empty-array
+        states so callers don't have to inspect the count themselves.
+        """
+        return self.get_ocg_count() > 0
+
     # ---------- /P (visibility policy) ----------
 
     def get_visibility_policy(self) -> str:
@@ -324,6 +424,33 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
         return MembershipDictionaryVisibilityPolicy.value_of(
             self.get_visibility_policy()
         )
+
+    def is_visibility_policy(
+        self,
+        policy: str | MembershipDictionaryVisibilityPolicy,
+    ) -> bool:
+        """Return ``True`` when /P matches ``policy``.
+
+        Accepts either a spec-name string (e.g. ``"AnyOff"``) or a
+        :class:`MembershipDictionaryVisibilityPolicy` enum member. The
+        comparison honours the spec default — ``is_visibility_policy("AnyOn")``
+        returns ``True`` when /P is absent because ``"AnyOn"`` is the
+        default per PDF 32000-1 §8.11.2.2.
+
+        pypdfbox enrichment — Apache PDFBox 3.0 makes callers compare
+        ``getVisibilityPolicy().equals(COSName.ALL_ON)`` themselves; this
+        is the common predicate they end up writing.
+        """
+        if isinstance(policy, MembershipDictionaryVisibilityPolicy):
+            target = policy.value
+        elif isinstance(policy, str):
+            target = policy
+        else:
+            raise TypeError(
+                "policy must be str or MembershipDictionaryVisibilityPolicy, "
+                f"got {type(policy).__name__}"
+            )
+        return self.get_visibility_policy() == target
 
     def get_visibility_policy_name(self) -> COSName:
         """Return /P as a ``COSName``, defaulting to ``/AnyOn``.

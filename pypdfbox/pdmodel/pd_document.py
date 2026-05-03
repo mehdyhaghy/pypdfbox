@@ -247,6 +247,20 @@ class PDDocument:
     def get_document(self) -> COSDocument:
         return self._document
 
+    def get_pdf_source(self) -> RandomAccessRead | None:
+        """Return the underlying :class:`RandomAccessRead` the document was
+        loaded from, or ``None`` when the document was synthesised in
+        memory.
+
+        Mirrors upstream's package-private ``pdfSource`` field — pypdfbox
+        promotes it to a public accessor so callers needing to verify
+        whether :meth:`save_incremental` will succeed without raising can
+        check the source presence directly (cheaper than catching the
+        ``ValueError`` raised by the incremental save itself). Equivalent
+        to ``self.get_document().get_source()`` but kept on the PDDocument
+        surface so callers don't have to drop down to the COS layer."""
+        return self._document.get_source()
+
     def get_document_catalog(self) -> PDDocumentCatalog:
         from .pd_document_catalog import PDDocumentCatalog
 
@@ -1083,6 +1097,46 @@ class PDDocument:
         self._pending_signature_interface = signature_interface
         self._pending_signature_options = options
         self._signature_added = True
+
+    def get_pending_signature(self) -> PDSignature | None:
+        """Return the :class:`PDSignature` staged by the most recent
+        :meth:`add_signature` call, or ``None`` when no signature is
+        pending. Cleared by :meth:`save_incremental` (or
+        :meth:`ExternalSigningSupport.set_signature`) once signing
+        completes.
+
+        Pypdfbox-specific accessor — upstream stores the staged signature
+        on the field's ``/V`` and re-discovers it via
+        :meth:`save_incremental_for_external_signing`'s field-tree walk.
+        Exposing it as a typed read-only accessor lets callers introspect
+        the staged dict (e.g. to log signing-time choices, or to confirm
+        the right :class:`SignatureInterface` was wired) without having
+        to walk the ``/AcroForm`` themselves."""
+        return self._pending_signature
+
+    def has_pending_signature(self) -> bool:
+        """Predicate — ``True`` when :meth:`add_signature` has staged a
+        signature that has not yet been finalised by
+        :meth:`save_incremental` or
+        :meth:`ExternalSigningSupport.set_signature`. Convenience wrapper
+        around :meth:`get_pending_signature` that spares callers the
+        ``is None`` comparison."""
+        return self._pending_signature is not None
+
+    def get_signature_interface(self) -> SignatureInterface | None:
+        """Return the :class:`SignatureInterface` callback registered by
+        the most recent :meth:`add_signature` call, or ``None`` when none
+        was supplied (external-signing path) or no signature is pending.
+        Mirrors upstream's package-private ``signInterface`` field."""
+        return self._pending_signature_interface
+
+    def get_signature_options(self) -> Any:
+        """Return the signature-options object staged by the most recent
+        :meth:`add_signature` call, or ``None`` when none was supplied or
+        no signature is pending. Mirrors upstream's per-call
+        ``SignatureOptions`` parameter — pypdfbox stores it for callers
+        that want to introspect the staged state before a save runs."""
+        return self._pending_signature_options
 
     def import_page(self, page: PDPage) -> PDPage:
         """Deep-copy ``page`` into this document and return the new
