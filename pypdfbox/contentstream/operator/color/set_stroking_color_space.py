@@ -24,22 +24,56 @@ class SetStrokingColorSpace(OperatorProcessor):
 
     OPERATOR_NAME = OperatorName.STROKING_COLORSPACE
 
+    @staticmethod
+    def is_color_space_name(operands: list[COSBase]) -> bool:
+        """Return ``True`` iff the operand list is well-formed for ``CS``
+        — i.e. a leading :class:`COSName` is present. Mirrors upstream's
+        guard ``arguments.get(0) instanceof COSName`` without mutating
+        state, so callers (tooling, validators, oracle harnesses) can
+        check operand shape before dispatch."""
+        if not operands:
+            return False
+        return isinstance(operands[0], COSName)
+
+    @staticmethod
+    def get_color_space_name(operands: list[COSBase]) -> COSName | None:
+        """Typed accessor — return the leading :class:`COSName` operand
+        if the operand list is well-formed (matches
+        :meth:`is_color_space_name`), otherwise ``None``. Equivalent to
+        upstream's ``(COSName) arguments.get(0)`` cast guarded by an
+        ``instanceof`` check."""
+        if not operands:
+            return None
+        head = operands[0]
+        if isinstance(head, COSName):
+            return head
+        return None
+
+    def resolve_color_space(self, name: COSName) -> Any | None:
+        """Resolve ``name`` through the bound engine's
+        ``/ColorSpace`` resources, mirroring
+        ``context.getResources().getColorSpace(name)`` from upstream
+        but tolerating missing context / resources by returning
+        ``None`` (so standalone use never raises)."""
+        context = self._context
+        if context is None:
+            return None
+        resources = context.get_resources()
+        if resources is None:
+            return None
+        return resources.get_color_space(name)
+
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         del operator
-        if not operands:
-            return
-        name = operands[0]
-        if not isinstance(name, COSName):
+        name = self.get_color_space_name(operands)
+        if name is None:
             return
         context = self._context
         if context is None:
             return
         if not context.is_should_process_color_operators():
             return
-        resources = context.get_resources()
-        if resources is None:
-            return
-        color_space = resources.get_color_space(name)
+        color_space = self.resolve_color_space(name)
         if color_space is None:
             return
         graphics_state = context.get_graphics_state()

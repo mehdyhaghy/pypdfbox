@@ -216,3 +216,100 @@ def test_process_supports_devicegray_resolution() -> None:
     )
 
     assert engine.graphics_state.stroking_color_space is PDDeviceGray.INSTANCE
+
+
+def test_is_color_space_name_true_for_leading_cos_name() -> None:
+    assert SetStrokingColorSpace.is_color_space_name(
+        [COSName.get_pdf_name("CS1")]
+    )
+
+
+def test_is_color_space_name_true_with_extra_trailing_operands() -> None:
+    """Only the leading operand matters — extra trailing operands are
+    tolerated (real streams may carry whitespace-driven extras)."""
+    assert SetStrokingColorSpace.is_color_space_name(
+        [COSName.get_pdf_name("CS1"), COSInteger.get(2)]
+    )
+
+
+def test_is_color_space_name_false_for_empty_operands() -> None:
+    assert not SetStrokingColorSpace.is_color_space_name([])
+
+
+def test_is_color_space_name_false_for_non_name_leading_operand() -> None:
+    assert not SetStrokingColorSpace.is_color_space_name([COSInteger.get(1)])
+
+
+def test_get_color_space_name_returns_leading_cos_name() -> None:
+    name = COSName.get_pdf_name("CS1")
+    assert SetStrokingColorSpace.get_color_space_name([name]) is name
+
+
+def test_get_color_space_name_returns_none_for_empty_operands() -> None:
+    assert SetStrokingColorSpace.get_color_space_name([]) is None
+
+
+def test_get_color_space_name_returns_none_for_non_name_operand() -> None:
+    assert SetStrokingColorSpace.get_color_space_name([COSInteger.get(1)]) is None
+
+
+def test_get_color_space_name_ignores_trailing_operands() -> None:
+    name = COSName.get_pdf_name("CS1")
+    assert (
+        SetStrokingColorSpace.get_color_space_name([name, COSInteger.get(2)])
+        is name
+    )
+
+
+def test_resolve_color_space_returns_none_without_context() -> None:
+    processor = SetStrokingColorSpace()
+    assert (
+        processor.resolve_color_space(COSName.get_pdf_name("CS1")) is None
+    )
+
+
+def test_resolve_color_space_returns_none_when_resources_missing() -> None:
+    engine = _Engine(resources=None)
+    processor = SetStrokingColorSpace()
+    engine.add_operator(processor)
+
+    assert (
+        processor.resolve_color_space(COSName.get_pdf_name("CS1")) is None
+    )
+
+
+def test_resolve_color_space_returns_resolved_instance() -> None:
+    resources = _FakeResources({"CS1": PDDeviceGray.INSTANCE})
+    engine = _Engine(resources)
+    processor = SetStrokingColorSpace()
+    engine.add_operator(processor)
+
+    resolved = processor.resolve_color_space(COSName.get_pdf_name("CS1"))
+
+    assert resolved is PDDeviceGray.INSTANCE
+
+
+def test_resolve_color_space_returns_none_for_unknown_name() -> None:
+    """Resources are present but the named entry isn't — mirror the
+    upstream behaviour where ``getColorSpace`` returns ``null`` rather
+    than raising."""
+    resources = _FakeResources({})
+    engine = _Engine(resources)
+    processor = SetStrokingColorSpace()
+    engine.add_operator(processor)
+
+    resolved = processor.resolve_color_space(
+        COSName.get_pdf_name("CS-missing")
+    )
+
+    assert resolved is None
+
+
+def test_operator_name_constant_matches_operator_name_module() -> None:
+    """``OPERATOR_NAME`` must be sourced from
+    :class:`OperatorName.STROKING_COLORSPACE` — guards against accidental
+    string drift if either side is renamed."""
+    from pypdfbox.contentstream.operator import OperatorName
+
+    assert SetStrokingColorSpace.OPERATOR_NAME == OperatorName.STROKING_COLORSPACE
+    assert SetStrokingColorSpace.OPERATOR_NAME == "CS"

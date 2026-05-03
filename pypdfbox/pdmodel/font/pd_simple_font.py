@@ -5,7 +5,14 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList
 
-from .encoding import DictionaryEncoding, Encoding, ZapfDingbatsEncoding
+from .encoding import (
+    DictionaryEncoding,
+    Encoding,
+    MacRomanEncoding,
+    StandardEncoding,
+    WinAnsiEncoding,
+    ZapfDingbatsEncoding,
+)
 from .pd_font import PDFont
 from .pd_font_descriptor import (
     FLAG_ALL_CAP,
@@ -17,6 +24,7 @@ from .pd_font_descriptor import (
     FLAG_SMALL_CAP,
     FLAG_SYMBOLIC,
 )
+from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
@@ -222,6 +230,117 @@ class PDSimpleFont(PDFont):
             self._encoding_typed = None
         self._encoding_resolved = True
         return self._encoding_typed
+
+    def get_glyph_list(self) -> GlyphList:
+        """Return the glyph-list flavour the font should use.
+
+        Mirrors upstream ``PDSimpleFont.getGlyphList`` together with
+        ``assignGlyphList(FontName)``: ``ZapfDingbats`` (canonical name or
+        alias) and a ``ZapfDingbatsEncoding`` both select the Zapf list,
+        anything else uses the Adobe Glyph List (AGL). Returning the
+        public AGL singleton when no encoding is resolved keeps callers
+        from having to test for ``None``.
+        """
+        # Standard 14 ZapfDingbats wins regardless of /Encoding (matches
+        # upstream's name-based ``assignGlyphList``).
+        mapped = Standard14Fonts.get_mapped_font_name(self.get_name())
+        if mapped == Standard14Fonts.ZAPF_DINGBATS:
+            return GlyphList.ZAPF_DINGBATS
+        encoding = self.get_encoding_typed()
+        if isinstance(encoding, ZapfDingbatsEncoding):
+            return GlyphList.ZAPF_DINGBATS
+        return GlyphList.DEFAULT
+
+    # ---------- symbolic detection ----------
+
+    def get_symbolic_flag(self) -> bool | None:
+        """Return the ``/Symbolic`` flag from ``/FontDescriptor`` or
+        ``None`` when the font has no descriptor.
+
+        Mirrors upstream ``PDSimpleFont.getSymbolicFlag``: the Java
+        method returns ``Boolean`` (a tri-state) so callers can
+        distinguish "definitely nonsymbolic" from "no descriptor at all"
+        — the latter is a hint to inspect the encoding instead. The
+        upstream comment notes the flag itself defaults to ``false`` when
+        absent so a ``False`` result is not always trustworthy; that is a
+        property of the descriptor, not this method.
+        """
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return None
+        return fd.is_symbolic()
+
+    def is_font_symbolic(self) -> bool | None:
+        """Tri-state symbolic detection.
+
+        Mirrors upstream ``PDSimpleFont.isFontSymbolic``: returns the
+        descriptor's ``/Symbolic`` flag when present; otherwise inspects
+        the font name (Standard 14 ``Symbol`` / ``ZapfDingbats`` are
+        always symbolic) and the encoding (the three Latin encodings —
+        WinAnsi, MacRoman, Standard — guarantee nonsymbolic; a
+        ``DictionaryEncoding`` whose ``/Differences`` only references
+        names from the Latin character sets is also nonsymbolic).
+        Returns ``None`` when no determination can be made — the caller
+        should default conservatively (upstream's ``isSymbolic``
+        defaults to ``True``).
+        """
+        flag = self.get_symbolic_flag()
+        if flag is not None:
+            return flag
+        if self.is_standard14():
+            mapped = Standard14Fonts.get_mapped_font_name(self.get_name())
+            return mapped in (Standard14Fonts.SYMBOL, Standard14Fonts.ZAPF_DINGBATS)
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return None
+        if isinstance(encoding, (WinAnsiEncoding, MacRomanEncoding, StandardEncoding)):
+            return False
+        if isinstance(encoding, DictionaryEncoding):
+            for name in encoding.get_differences().values():
+                if name == ".notdef":
+                    continue
+                if not (
+                    WinAnsiEncoding.INSTANCE.contains_name(name)
+                    and MacRomanEncoding.INSTANCE.contains_name(name)
+                    and StandardEncoding.INSTANCE.contains_name(name)
+                ):
+                    return True
+            return False
+        return None
+
+    # ---------- code -> unicode (per character) ----------
+
+    def to_unicode(
+        self, code: int, custom_glyph_list: GlyphList | None = None
+    ) -> str | None:
+        """Resolve a single character code to its unicode string.
+
+        Mirrors upstream ``PDSimpleFont.toUnicode(int)`` and
+        ``toUnicode(int, GlyphList)``: tries the font's ``/ToUnicode``
+        CMap first (so explicit CMap overrides win), then maps the code
+        to a glyph name via the font's encoding and looks the name up in
+        the glyph list. ``custom_glyph_list`` overrides the AGL but is
+        ignored when this font is bound to the Zapf glyph list (matches
+        upstream's "don't break Zapf Dingbats" guard). Returns ``None``
+        when no mapping can be produced.
+        """
+        # /ToUnicode CMap wins when present.
+        cmap = self.get_to_unicode_cmap()
+        if cmap is not None:
+            mapped = cmap.to_unicode(code)
+            if mapped is not None:
+                return mapped
+        # Don't override Zapf's glyph list — upstream guard.
+        font_glyph_list = self.get_glyph_list()
+        if custom_glyph_list is not None and font_glyph_list is GlyphList.DEFAULT:
+            unicode_glyph_list = custom_glyph_list
+        else:
+            unicode_glyph_list = font_glyph_list
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return None
+        name = encoding.get_name(code)
+        return unicode_glyph_list.to_unicode(name)
 
     # ---------- text <-> bytes ----------
 
