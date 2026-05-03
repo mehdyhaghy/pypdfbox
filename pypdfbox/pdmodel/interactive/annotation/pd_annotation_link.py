@@ -47,6 +47,19 @@ class PDAnnotationLink(PDAnnotation):
     HIGHLIGHT_MODE_OUTLINE: str = "O"
     HIGHLIGHT_MODE_PUSH: str = "P"
 
+    #: All four ``/H`` highlight-mode values defined by PDF 32000-1:2008
+    #: §12.5.6.5 Table 173 — the values a conforming reader recognises.
+    #: Non-standard ``/H`` values are permitted but their effect is
+    #: reader-defined. Useful for validating ``/H`` against the spec set.
+    STANDARD_HIGHLIGHT_MODES: frozenset[str] = frozenset(
+        {
+            HIGHLIGHT_MODE_NONE,
+            HIGHLIGHT_MODE_INVERT,
+            HIGHLIGHT_MODE_OUTLINE,
+            HIGHLIGHT_MODE_PUSH,
+        }
+    )
+
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
         if annotation_dict is None:
@@ -69,6 +82,16 @@ class PDAnnotationLink(PDAnnotation):
         self._dict.set_item(
             _A,
             action.get_cos_object() if hasattr(action, "get_cos_object") else action,
+        )
+
+    def has_action(self) -> bool:
+        """Return ``True`` if ``/A`` is present and resolves to a dictionary.
+
+        Cheaper than ``get_action() is not None`` because it skips the
+        ``PDAction.create`` factory dispatch.
+        """
+        return isinstance(
+            self._dict.get_dictionary_object(_A), COSDictionary
         )
 
     # ---------- /Dest (destination) ----------
@@ -109,6 +132,15 @@ class PDAnnotationLink(PDAnnotation):
             dest.get_cos_object() if hasattr(dest, "get_cos_object") else dest,
         )
 
+    def has_destination(self) -> bool:
+        """Return ``True`` if ``/Dest`` is present (any spec-allowed form:
+        explicit page-target ``COSArray``, ``COSName``, or ``COSString``).
+
+        Cheaper than ``get_destination() is not None`` because it skips the
+        ``PDDestination.create`` factory dispatch.
+        """
+        return self._dict.get_dictionary_object(_DEST) is not None
+
     # ---------- /H (highlight mode) ----------
 
     def get_highlight_mode(self) -> str:
@@ -121,6 +153,25 @@ class PDAnnotationLink(PDAnnotation):
             self._dict.remove_item(_H)
             return
         self._dict.set_name(_H, mode)
+
+    def has_highlight_mode(self) -> bool:
+        """Return ``True`` if an explicit ``/H`` entry is present.
+
+        Lets callers distinguish "explicit ``/H /I``" (the spec default
+        written out) from "no ``/H`` entry" — both return
+        ``HIGHLIGHT_MODE_INVERT`` via :meth:`get_highlight_mode`.
+        """
+        return self._dict.get_name(_H) is not None
+
+    def is_standard_highlight_mode(self) -> bool:
+        """Return ``True`` if the resolved ``/H`` value is one of the four
+        spec-defined modes in :data:`STANDARD_HIGHLIGHT_MODES`.
+
+        The spec default ``HIGHLIGHT_MODE_INVERT`` (returned when ``/H`` is
+        absent) is treated as standard. Non-standard ``/H`` values are
+        permitted by the spec but their behaviour is reader-defined.
+        """
+        return self.get_highlight_mode() in self.STANDARD_HIGHLIGHT_MODES
 
     # ---------- /BS (border style) ----------
 
@@ -141,6 +192,16 @@ class PDAnnotationLink(PDAnnotation):
         self._dict.set_item(
             _BS,
             bs.get_cos_object() if hasattr(bs, "get_cos_object") else bs,
+        )
+
+    def has_border_style(self) -> bool:
+        """Return ``True`` if ``/BS`` is present and resolves to a
+        dictionary. Cheaper than ``get_border_style() is not None``
+        because it skips the ``PDBorderStyleDictionary`` wrapper
+        construction.
+        """
+        return isinstance(
+            self._dict.get_dictionary_object(_BS), COSDictionary
         )
 
     # ---------- /QuadPoints ----------
@@ -169,6 +230,32 @@ class PDAnnotationLink(PDAnnotation):
             return
         arr = COSArray([COSFloat(float(v)) for v in quad_points])
         self._dict.set_item(_QUAD_POINTS, arr)
+
+    def has_quad_points(self) -> bool:
+        """Return ``True`` if a ``/QuadPoints`` array is present (even if
+        empty).
+
+        Useful predicate for callers that want to know whether the link
+        annotation has been wired up with hit-testing geometry without
+        materialising the full float list.
+        """
+        return isinstance(
+            self._dict.get_dictionary_object(_QUAD_POINTS), COSArray
+        )
+
+    def quad_point_count(self) -> int:
+        """Return the number of quadrilaterals encoded in ``/QuadPoints``.
+
+        Each quadrilateral is described by 8 floats (4 corner points), so
+        this is ``len(/QuadPoints) // 8``. Returns 0 when ``/QuadPoints``
+        is absent or not a ``COSArray``. A trailing partial quadrilateral
+        (length not a multiple of 8) is rounded down — same convention
+        used by :class:`PDAnnotationTextMarkup` and upstream readers.
+        """
+        value = self._dict.get_dictionary_object(_QUAD_POINTS)
+        if isinstance(value, COSArray):
+            return value.size() // 8
+        return 0
 
     # ---------- /PA (previewer action) ----------
 
@@ -203,7 +290,32 @@ class PDAnnotationLink(PDAnnotation):
         ``setPreviousURI(PDActionURI)``."""
         self.set_p_a(action)
 
+    def has_p_a(self) -> bool:
+        """Return ``True`` if ``/PA`` is present and resolves to a
+        dictionary. Cheaper than ``get_p_a() is not None`` because it
+        skips the ``PDAction.create`` factory dispatch.
+        """
+        return isinstance(
+            self._dict.get_dictionary_object(_PA), COSDictionary
+        )
+
+    def has_previous_uri(self) -> bool:
+        """Upstream-named alias for :meth:`has_p_a`."""
+        return self.has_p_a()
+
     # ---------- convenience: extract URL from /A when /Subtype /URI ----------
+
+    def is_uri_action(self) -> bool:
+        """Return ``True`` if ``/A`` is present, is a dictionary, and
+        carries ``/S /URI`` (PDF 32000-1 §12.6.4.7). Useful before
+        calling :meth:`get_url_uri` if the caller wants to distinguish
+        "no action", "non-URI action" and "URI action with empty
+        ``/URI`` string".
+        """
+        action = self._dict.get_dictionary_object(_A)
+        if not isinstance(action, COSDictionary):
+            return False
+        return action.get_name(_S) == "URI"
 
     def get_url_uri(self) -> str | None:
         """Return the ``/URI`` string from ``/A`` when the action is a URI

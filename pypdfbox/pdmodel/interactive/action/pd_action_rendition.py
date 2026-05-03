@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
 from pypdfbox.pdmodel.interactive.measurement.pd_rendition import PDRendition
 
@@ -22,6 +22,18 @@ class PDActionRendition(PDAction):
     :meth:`get_r` / :meth:`set_r` remain for back-compat."""
 
     SUB_TYPE = "Rendition"
+
+    # PDF 32000-1 §12.6.4.13 Table 215 — /OP operation values.
+    #: Play (only if rendition is currently stopped, otherwise no-op).
+    OP_PLAY_IF_STOPPED: int = 0
+    #: Stop the rendition.
+    OP_STOP: int = 1
+    #: Pause the rendition.
+    OP_PAUSE: int = 2
+    #: Resume the rendition.
+    OP_RESUME: int = 3
+    #: Play the rendition (resuming if paused; restarting if stopped).
+    OP_PLAY: int = 4
 
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
@@ -68,16 +80,71 @@ class PDActionRendition(PDAction):
     # ---------- /OP, /JS ----------
 
     def get_op(self) -> int:
+        """Return ``/OP`` (Table 215 operation code), or ``-1`` when absent
+        (matches the ``COSDictionary.get_int`` sentinel default). Use
+        :meth:`get_operation` for an ``int | None`` flavour, or one of the
+        ``is_*`` predicates for a single-operation check."""
         return self._action.get_int(_OP)
 
     def set_op(self, op: int) -> None:
         self._action.set_int(_OP, op)
 
+    def get_operation(self) -> int | None:
+        """Return ``/OP`` as an ``int`` when present, ``None`` otherwise.
+
+        PDF 32000-1 §12.6.4.13 Table 214 makes ``/OP`` optional — it is
+        required only when ``/JS`` is absent. Distinguishing "absent" from
+        "explicitly 0 (Play if stopped)" matters to validators, hence this
+        explicit ``None``-on-absent variant alongside :meth:`get_op`."""
+        if self._action.get_dictionary_object(_OP) is None:
+            return None
+        return self._action.get_int(_OP)
+
+    def has_op(self) -> bool:
+        """Return ``True`` when the ``/OP`` entry is present."""
+        return self._action.get_dictionary_object(_OP) is not None
+
+    def is_play_if_stopped(self) -> bool:
+        """Return ``True`` when ``/OP`` equals :attr:`OP_PLAY_IF_STOPPED`."""
+        return self.get_operation() == self.OP_PLAY_IF_STOPPED
+
+    def is_stop(self) -> bool:
+        """Return ``True`` when ``/OP`` equals :attr:`OP_STOP`."""
+        return self.get_operation() == self.OP_STOP
+
+    def is_pause(self) -> bool:
+        """Return ``True`` when ``/OP`` equals :attr:`OP_PAUSE`."""
+        return self.get_operation() == self.OP_PAUSE
+
+    def is_resume(self) -> bool:
+        """Return ``True`` when ``/OP`` equals :attr:`OP_RESUME`."""
+        return self.get_operation() == self.OP_RESUME
+
+    def is_play(self) -> bool:
+        """Return ``True`` when ``/OP`` equals :attr:`OP_PLAY`."""
+        return self.get_operation() == self.OP_PLAY
+
     def get_js(self) -> str | None:
-        return self._action.get_string(_JS)
+        """Return ``/JS`` as a Python string.
+
+        Per PDF 32000-1 §12.6.4.13 Table 214 / §12.6.4.16, ``/JS`` may be
+        either a text string (``COSString``) or a stream (``COSStream``).
+        Mirrors :class:`PDActionJavaScript.get_action`. Returns ``None``
+        when ``/JS`` is absent or not a recognised JS payload type."""
+        base = self._action.get_dictionary_object(_JS)
+        if isinstance(base, COSString):
+            return base.get_string()
+        if isinstance(base, COSStream):
+            return base.to_text_string()
+        return None
 
     def set_js(self, js: str | None) -> None:
         self._action.set_string(_JS, js)
+
+    def has_js(self) -> bool:
+        """Return ``True`` when the ``/JS`` entry is present (in either
+        ``COSString`` or ``COSStream`` form)."""
+        return self._action.get_dictionary_object(_JS) is not None
 
     # ---------- /R (raw, back-compat) ----------
 
