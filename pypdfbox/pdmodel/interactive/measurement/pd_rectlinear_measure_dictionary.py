@@ -208,5 +208,61 @@ class PDRectlinearMeasureDictionary(PDMeasureDictionary):
         """Set the CYX factor (``/CYX``)."""
         self._dict.set_float(_CYX, cyx)
 
+    # ------------------------------------------------------------------ predicates
+    # Upstream PDFBox lacks these — they are convenience helpers that
+    # distinguish *absent* entries from entries that happen to be set to
+    # the upstream-default sentinel (``-1.0`` for ``/CYX``, ``None`` for
+    # the string slots). ``contains_key`` is the ``COSDictionary``-level
+    # operation that mirrors upstream's ``COSDictionary.containsKey``;
+    # behavior is identical to writing ``in dict`` over the COS layer.
+    def has_scale_ratio(self) -> bool:
+        """Return ``True`` when the ``/R`` (scale ratio) entry is present."""
+        return self._dict.contains_key(_R)
+
+    def has_change_xs(self) -> bool:
+        """Return ``True`` when the ``/X`` (changes along x-axis) entry is present."""
+        return self._dict.contains_key(_X)
+
+    def has_change_ys(self) -> bool:
+        """Return ``True`` when the ``/Y`` (changes along y-axis) entry is present."""
+        return self._dict.contains_key(_Y)
+
+    def has_distances(self) -> bool:
+        """Return ``True`` when the ``/D`` (distances) entry is present."""
+        return self._dict.contains_key(_D)
+
+    def has_areas(self) -> bool:
+        """Return ``True`` when the ``/A`` (areas) entry is present."""
+        return self._dict.contains_key(_A)
+
+    def has_angles(self) -> bool:
+        """Return ``True`` when the ``/T`` (angles) entry is present."""
+        return self._dict.contains_key(_T)
+
+    def has_line_slopes(self) -> bool:
+        """Return ``True`` when the ``/S`` (line slopes) entry is present.
+
+        Mirrors the corrected-spelling alias :meth:`get_line_slopes`; the
+        upstream-spelled :meth:`has_line_sloaps` is exposed below.
+        """
+        return self._dict.contains_key(_S)
+
+    def has_line_sloaps(self) -> bool:
+        """Alias for :meth:`has_line_slopes` matching the upstream typo."""
+        return self.has_line_slopes()
+
+    def has_coord_system_origin(self) -> bool:
+        """Return ``True`` when the ``/O`` (coord-system origin) entry is present."""
+        return self._dict.contains_key(_O)
+
+    def has_cyx(self) -> bool:
+        """Return ``True`` when the ``/CYX`` entry is present.
+
+        Distinguishes between an absent ``/CYX`` (``get_cyx()`` returns
+        ``-1.0`` as the upstream-compatible sentinel) and an entry that
+        was explicitly set to ``-1.0``.
+        """
+        return self._dict.contains_key(_CYX)
+
 
 __all__ = ["PDRectlinearMeasureDictionary"]
