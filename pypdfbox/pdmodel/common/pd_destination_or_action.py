@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -9,12 +9,6 @@ from pypdfbox.cos import (
     COSName,
     COSString,
 )
-
-if TYPE_CHECKING:
-    from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
-        PDDestination,
-    )
 
 
 class PDDestinationOrAction:
@@ -103,4 +97,62 @@ def is_destination_or_action(value: Any) -> bool:
     return isinstance(value, (PDDestination, PDAction))
 
 
-__all__ = ["PDDestinationOrAction", "is_destination_or_action"]
+def is_action(value: Any) -> bool:
+    """Return ``True`` if ``value`` is a :class:`PDAction` instance.
+
+    Single-arm counterpart of :func:`is_destination_or_action`. pypdfbox
+    extension — surfaced for callers that branch on the action arm without
+    wanting the broader marker check (e.g. catalog-level dispatch where a
+    destination would be handled separately by the caller)."""
+    from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
+
+    return isinstance(value, PDAction)
+
+
+def is_destination(value: Any) -> bool:
+    """Return ``True`` if ``value`` is a :class:`PDDestination` instance.
+
+    Single-arm counterpart of :func:`is_destination_or_action`. pypdfbox
+    extension — paired with :func:`is_action` for callers that want a
+    typed yes/no on the destination arm without the marker-level union."""
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
+        PDDestination,
+    )
+
+    return isinstance(value, PDDestination)
+
+
+def kind_of(value: Any) -> str | None:
+    """Return ``"action"`` for a :class:`PDAction`, ``"destination"`` for a
+    :class:`PDDestination`, or ``None`` otherwise.
+
+    pypdfbox extension — a string-shaped discriminator paired with the
+    :class:`PDDestinationOrAction` factory for callers that prefer to
+    branch on a tag rather than a chain of ``isinstance`` checks. The
+    return values match the natural English names of the two arms in the
+    PDF Reference (and in :class:`PDDestinationOrAction`'s docstring)."""
+    if is_destination(value):
+        return "destination"
+    if is_action(value):
+        return "action"
+    return None
+
+
+def create_from_open_action_entry(value: COSBase | None) -> Any:
+    """Module-level factory mirroring :meth:`PDDestinationOrAction.create`.
+
+    pypdfbox extension — provides a verbose, function-shaped entry point
+    for callers that want the same dispatch as the static method but
+    spelled out as a free function (handier for ``map`` / list-comprehension
+    use). Delegates directly to :meth:`PDDestinationOrAction.create`."""
+    return PDDestinationOrAction.create(value)
+
+
+__all__ = [
+    "PDDestinationOrAction",
+    "create_from_open_action_entry",
+    "is_action",
+    "is_destination",
+    "is_destination_or_action",
+    "kind_of",
+]

@@ -540,6 +540,68 @@ class PDStream:
             return b""
         return self._stream.to_byte_array()
 
+    def get_byte_array(self) -> bytes:
+        """Snake_case spelling of upstream's ``toByteArray()`` for callers
+        that prefer the ``get_*`` shape. Delegates to :meth:`to_byte_array`.
+
+        pypdfbox extension — the upstream method name is ``toByteArray()``,
+        but Python call sites that hold a typed wrapper around a stream
+        often read more naturally as ``get_byte_array()`` next to siblings
+        like :meth:`get_length` / :meth:`get_filters`. Provided as an alias
+        so both spellings round-trip to the same bytes."""
+        return self.to_byte_array()
+
+    def get_filtered_stream_length(self) -> int:
+        """Return the length of the *encoded* (filtered) body.
+
+        Mirrors upstream ``getLength()`` semantics — the on-disk encoded
+        byte count — but spelled out as ``filtered`` for symmetry with
+        :meth:`get_decoded_stream_length`. When ``/Length`` is recorded in
+        the dictionary that value is returned (parser-populated form);
+        otherwise we fall back to the live raw-buffer length, returning
+        ``-1`` for an entirely empty stream with no recorded length.
+
+        pypdfbox extension — upstream uses ``getLength()`` ambiguously
+        (the dictionary entry, which may or may not match the actual
+        encoded body). Surfacing a name-explicit alias makes the
+        encoded-vs-decoded distinction obvious at call sites."""
+        length = self._stream.get_int(_LENGTH, -1)
+        if length >= 0:
+            return length
+        if self._stream.has_data():
+            return self._stream.get_length()
+        return -1
+
+    def copy_to(self, output: BinaryIO) -> int:
+        """Copy the *decoded* body bytes into ``output`` and return the
+        number of bytes written.
+
+        pypdfbox extension — the natural sibling of :meth:`to_byte_array`
+        for callers that already hold a writable sink (a file, a network
+        socket, another COSStream's output stream) and want to avoid
+        materialising the body in memory at the API boundary. Empty
+        stream writes nothing and returns ``0``."""
+        if not self._stream.has_data():
+            return 0
+        with self.create_input_stream() as src:
+            data = src.read()
+        output.write(data)
+        return len(data)
+
+    def copy_raw_to(self, output: BinaryIO) -> int:
+        """Copy the *raw* (still-encoded) body bytes into ``output`` and
+        return the number of bytes written.
+
+        Counterpart to :meth:`copy_to` for callers that want the bytes
+        verbatim — e.g. round-tripping a stream through a re-write pipeline
+        without re-encoding. Empty stream → ``0`` bytes written."""
+        if not self._stream.has_data():
+            return 0
+        with self.create_raw_input_stream() as src:
+            data = src.read()
+        output.write(data)
+        return len(data)
+
     def is_empty(self) -> bool:
         """``True`` when the wrapped ``COSStream`` carries no body bytes.
 

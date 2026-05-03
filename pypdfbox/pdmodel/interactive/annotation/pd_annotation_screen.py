@@ -44,6 +44,18 @@ class PDAnnotationScreen(PDAnnotation):
     def set_title(self, value: str | None) -> None:
         self._dict.set_string(_T, value)
 
+    def has_title(self) -> bool:
+        """Predicate: is a non-empty ``/T`` title string present?
+
+        No upstream equivalent — saves callers an extra null/empty check.
+        """
+        title = self.get_title()
+        return title is not None and title != ""
+
+    def clear_title(self) -> None:
+        """Remove the ``/T`` title entry, if present."""
+        self._dict.remove_item(_T)
+
     # ---------- /MK (appearance characteristics dictionary) ----------
 
     def get_appearance_characteristics(self) -> "PDAppearanceCharacteristicsDictionary | None":
@@ -68,6 +80,20 @@ class PDAnnotationScreen(PDAnnotation):
             mk.get_cos_object() if hasattr(mk, "get_cos_object") else mk,
         )
 
+    def has_appearance_characteristics(self) -> bool:
+        """Predicate: is a parsable ``/MK`` appearance-characteristics
+        dictionary present?
+
+        No upstream equivalent.
+        """
+        value = self._dict.get_dictionary_object(_MK)
+        return isinstance(value, COSDictionary)
+
+    def clear_appearance_characteristics(self) -> None:
+        """Remove the ``/MK`` appearance-characteristics dictionary, if
+        present."""
+        self._dict.remove_item(_MK)
+
     # ---------- /A (action) ----------
 
     def get_action(self) -> "PDAction | None":
@@ -86,6 +112,18 @@ class PDAnnotationScreen(PDAnnotation):
             _A,
             action.get_cos_object() if hasattr(action, "get_cos_object") else action,
         )
+
+    def has_action(self) -> bool:
+        """Predicate: is a parsable ``/A`` action dictionary present?
+
+        No upstream equivalent.
+        """
+        value = self._dict.get_dictionary_object(_A)
+        return isinstance(value, COSDictionary)
+
+    def clear_action(self) -> None:
+        """Remove the ``/A`` action dictionary, if present."""
+        self._dict.remove_item(_A)
 
     # ---------- /AA (additional actions) ----------
 
@@ -109,6 +147,19 @@ class PDAnnotationScreen(PDAnnotation):
             _AA,
             aa.get_cos_object() if hasattr(aa, "get_cos_object") else aa,
         )
+
+    def has_additional_actions(self) -> bool:
+        """Predicate: is a parsable ``/AA`` additional-actions dictionary
+        present?
+
+        No upstream equivalent.
+        """
+        value = self._dict.get_dictionary_object(_AA)
+        return isinstance(value, COSDictionary)
+
+    def clear_additional_actions(self) -> None:
+        """Remove the ``/AA`` additional-actions dictionary, if present."""
+        self._dict.remove_item(_AA)
 
     # Upstream ``PDAnnotationWidget`` exposes the ``/AA`` field through the
     # shorter ``getActions``/``setActions`` pair. Mirror that naming on

@@ -108,6 +108,24 @@ class PDAnnotationWidget(PDAnnotation):
             action.get_cos_object() if hasattr(action, "get_cos_object") else action,
         )
 
+    def has_action(self) -> bool:
+        """Predicate: is a parsable ``/A`` action dictionary present?
+
+        No upstream equivalent — saves the ``getAction() != null`` round
+        trip when callers only need to know whether an activation action
+        exists.
+        """
+        value = self._dict.get_dictionary_object(_A)
+        return isinstance(value, COSDictionary)
+
+    def clear_action(self) -> None:
+        """Remove the ``/A`` activation action, if present.
+
+        No upstream equivalent — semantic alias for
+        ``set_action(None)`` to make intent explicit at the call site.
+        """
+        self._dict.remove_item(_A)
+
     # ---------- /AA (additional actions) ----------
 
     def get_actions(self) -> PDAnnotationAdditionalActions | None:
@@ -130,6 +148,19 @@ class PDAnnotationWidget(PDAnnotation):
             actions.get_cos_object() if hasattr(actions, "get_cos_object") else actions,
         )
 
+    def has_actions(self) -> bool:
+        """Predicate: is a parsable ``/AA`` additional-actions dictionary
+        present?
+
+        No upstream equivalent.
+        """
+        value = self._dict.get_dictionary_object(_AA)
+        return isinstance(value, COSDictionary)
+
+    def clear_actions(self) -> None:
+        """Remove the ``/AA`` additional-actions dictionary, if present."""
+        self._dict.remove_item(_AA)
+
     # ---------- /BS (border style) ----------
 
     def get_border_style(self) -> PDBorderStyleDictionary | None:
@@ -150,6 +181,18 @@ class PDAnnotationWidget(PDAnnotation):
             _BS,
             bs.get_cos_object() if hasattr(bs, "get_cos_object") else bs,
         )
+
+    def has_border_style(self) -> bool:
+        """Predicate: is a parsable ``/BS`` border-style dictionary present?
+
+        No upstream equivalent.
+        """
+        value = self._dict.get_dictionary_object(_BS)
+        return isinstance(value, COSDictionary)
+
+    def clear_border_style(self) -> None:
+        """Remove the ``/BS`` border-style dictionary, if present."""
+        self._dict.remove_item(_BS)
 
     # ---------- /MK (appearance characteristics) ----------
 
@@ -175,6 +218,20 @@ class PDAnnotationWidget(PDAnnotation):
             _MK,
             ac.get_cos_object() if hasattr(ac, "get_cos_object") else ac,
         )
+
+    def has_appearance_characteristics(self) -> bool:
+        """Predicate: is a parsable ``/MK`` appearance-characteristics
+        dictionary present?
+
+        No upstream equivalent.
+        """
+        value = self._dict.get_dictionary_object(_MK)
+        return isinstance(value, COSDictionary)
+
+    def clear_appearance_characteristics(self) -> None:
+        """Remove the ``/MK`` appearance-characteristics dictionary, if
+        present."""
+        self._dict.remove_item(_MK)
 
     # ---------- /Parent (field) ----------
 
@@ -215,6 +272,23 @@ class PDAnnotationWidget(PDAnnotation):
             _PARENT,
             field.get_cos_object() if hasattr(field, "get_cos_object") else field,
         )
+
+    def has_parent(self) -> bool:
+        """Predicate: is a parsable ``/Parent`` field reference present?
+
+        No upstream equivalent — multi-widget fields point widgets at the
+        owning field via ``/Parent``; single-widget fields share the
+        dictionary and never set this entry.
+        """
+        value = self._dict.get_dictionary_object(_PARENT)
+        return isinstance(value, COSDictionary)
+
+    def clear_parent(self) -> None:
+        """Remove the ``/Parent`` field reference, if present.
+
+        No upstream equivalent — semantic alias for ``set_parent(None)``.
+        """
+        self._dict.remove_item(_PARENT)
 
 
 __all__ = ["PDAnnotationWidget"]
