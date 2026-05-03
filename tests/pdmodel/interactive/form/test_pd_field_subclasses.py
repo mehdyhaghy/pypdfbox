@@ -211,6 +211,126 @@ def test_text_field_flag_constants_match_pdf_spec() -> None:
     assert PDTextField.FLAG_RICH_TEXT == 1 << 25
 
 
+def test_text_field_remove_max_len_clears_entry() -> None:
+    """``remove_max_len`` removes ``/MaxLen`` from the field's own dict;
+    ``has_max_len`` returns ``False`` and ``get_max_len`` returns the
+    sentinel ``-1`` afterwards."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    tf.set_max_len(120)
+    assert tf.has_max_len() is True
+    assert tf.get_max_len() == 120
+
+    tf.remove_max_len()
+    assert tf.has_max_len() is False
+    assert tf.get_max_len() == -1
+    # The /MaxLen key is gone from the underlying dictionary.
+    assert (
+        tf.get_cos_object().get_dictionary_object(COSName.get_pdf_name("MaxLen"))
+        is None
+    )
+
+
+def test_text_field_remove_max_len_is_no_op_when_absent() -> None:
+    """``remove_max_len`` is a no-op when the entry isn't present —
+    callers can call it unconditionally on flush."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    assert tf.has_max_len() is False
+    # Must not raise.
+    tf.remove_max_len()
+    assert tf.has_max_len() is False
+    assert tf.get_max_len() == -1
+
+
+def test_text_field_get_value_decodes_cos_stream_payload() -> None:
+    """``/V`` admits a COSStream payload per PDF 32000-1 §12.7.4.3 (text
+    string OR text stream). ``get_value`` mirrors upstream
+    ``getStringOrStream`` and decodes via ``COSStream.toTextString``."""
+    from pypdfbox.cos import COSStream
+
+    form = PDAcroForm()
+    field = COSDictionary()
+    field.set_name(COSName.get_pdf_name("FT"), "Tx")
+
+    v_stream = COSStream()
+    with v_stream.create_output_stream() as sink:
+        sink.write(b"streamed-value")
+    field.set_item(COSName.get_pdf_name("V"), v_stream)
+
+    tf = PDTextField(form, field)
+    assert tf.get_value() == "streamed-value"
+    # The local predicate sees the entry regardless of underlying COS type.
+    assert tf.has_value() is True
+
+
+def test_text_field_get_default_value_decodes_cos_stream_payload() -> None:
+    """``/DV`` likewise admits a stream payload — verify the same decode
+    path."""
+    from pypdfbox.cos import COSStream
+
+    form = PDAcroForm()
+    field = COSDictionary()
+    field.set_name(COSName.get_pdf_name("FT"), "Tx")
+
+    dv_stream = COSStream()
+    with dv_stream.create_output_stream() as sink:
+        sink.write(b"streamed-default")
+    field.set_item(COSName.get_pdf_name("DV"), dv_stream)
+
+    tf = PDTextField(form, field)
+    assert tf.get_default_value() == "streamed-default"
+    assert tf.has_default_value() is True
+
+
+def test_text_field_get_value_returns_empty_string_for_unsupported_type() -> None:
+    """When ``/V`` is some other COS type (e.g. a ``COSArray``) the upstream
+    ``getStringOrStream`` falls through to ``""``. We must NOT return
+    ``None`` from the public ``get_value`` even though the inner helper
+    can — non-null contract."""
+    form = PDAcroForm()
+    field = COSDictionary()
+    field.set_name(COSName.get_pdf_name("FT"), "Tx")
+    field.set_item(COSName.get_pdf_name("V"), COSArray())
+
+    tf = PDTextField(form, field)
+    assert tf.get_value() == ""
+    assert isinstance(tf.get_value(), str)
+
+
+def test_text_field_get_default_value_returns_empty_string_for_unsupported_type() -> None:
+    """Mirror of the ``get_value`` non-null guarantee for ``/DV``."""
+    form = PDAcroForm()
+    field = COSDictionary()
+    field.set_name(COSName.get_pdf_name("FT"), "Tx")
+    field.set_item(COSName.get_pdf_name("DV"), COSArray())
+
+    tf = PDTextField(form, field)
+    assert tf.get_default_value() == ""
+    assert isinstance(tf.get_default_value(), str)
+
+
+def test_text_field_get_value_walks_inheritance_with_stream_payload() -> None:
+    """``/V`` is inheritable; verify the COSStream branch is reached even
+    when the value lives on a parent field."""
+    from pypdfbox.cos import COSStream
+    from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+        PDNonTerminalField,
+    )
+
+    form = PDAcroForm()
+    parent = PDNonTerminalField(form)
+    v_stream = COSStream()
+    with v_stream.create_output_stream() as sink:
+        sink.write(b"inherited-stream")
+    parent.get_cos_object().set_item(COSName.get_pdf_name("V"), v_stream)
+
+    child = PDTextField(form, COSDictionary(), parent=parent)
+    assert child.get_value() == "inherited-stream"
+    # Local predicate stays False — the entry lives on the parent.
+    assert child.has_value() is False
+
+
 # ---------- PDPushButton / PDRadioButton / PDCheckBox ----------
 
 

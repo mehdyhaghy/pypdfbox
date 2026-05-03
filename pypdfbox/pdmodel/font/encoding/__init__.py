@@ -4,6 +4,7 @@ from .built_in_encoding import BuiltInEncoding
 from .dictionary_encoding import DictionaryEncoding
 from .encoding import Encoding
 from .mac_expert_encoding import MacExpertEncoding
+from .mac_os_roman_encoding import MacOSRomanEncoding
 from .mac_roman_encoding import MacRomanEncoding
 from .standard_encoding import StandardEncoding
 from .symbol_encoding import SymbolEncoding
@@ -15,6 +16,7 @@ __all__ = [
     "DictionaryEncoding",
     "Encoding",
     "MacExpertEncoding",
+    "MacOSRomanEncoding",
     "MacRomanEncoding",
     "StandardEncoding",
     "SymbolEncoding",

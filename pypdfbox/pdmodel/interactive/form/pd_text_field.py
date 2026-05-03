@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName, COSString
+from pypdfbox.cos import COSDictionary, COSName
 
 from .pd_variable_text import PDVariableText
 
@@ -114,13 +114,31 @@ class PDTextField(PDVariableText):
         """
         return self._field.contains_key(_MAX_LEN)
 
+    def remove_max_len(self) -> None:
+        """Remove ``/MaxLen`` from this field's own dictionary.
+
+        Pypdfbox-only convenience: complement of :meth:`set_max_len` for
+        callers who want to clear the constraint without writing a sentinel
+        ``-1``. After this call :meth:`has_max_len` is ``False`` and
+        :meth:`get_max_len` returns ``-1``. No-op when ``/MaxLen`` is absent.
+        """
+        self._field.remove_item(_MAX_LEN)
+
     # ---------- /V, /DV ----------
 
     def get_value(self) -> str:
-        item = self.get_inheritable_attribute(_V)
-        if isinstance(item, COSString):
-            return item.get_string()
-        return ""
+        """Return the field value as text.
+
+        Mirrors upstream ``PDTextField.getValue`` — walks the inheritable
+        ``/V`` chain (self → parent → AcroForm) and decodes via
+        ``getStringOrStream``: ``COSString`` returns its decoded text and
+        ``COSStream`` returns ``toTextString()``. Returns ``""`` (never
+        ``None``) when ``/V`` is missing or any other COS type, matching
+        upstream's non-null contract.
+        """
+        return (
+            self._get_string_or_stream(self.get_inheritable_attribute(_V)) or ""
+        )
 
     def set_value(
         self, value: str | None, regenerate_appearance: bool = False
@@ -143,10 +161,16 @@ class PDTextField(PDVariableText):
             PDAppearanceGenerator().generate(self)
 
     def get_default_value(self) -> str:
-        item = self.get_inheritable_attribute(_DV)
-        if isinstance(item, COSString):
-            return item.get_string()
-        return ""
+        """Return the default value as text.
+
+        Mirrors upstream ``PDTextField.getDefaultValue`` — walks the
+        inheritable ``/DV`` chain and decodes via ``getStringOrStream``,
+        accepting either ``COSString`` or ``COSStream`` payloads. Returns
+        ``""`` when ``/DV`` is missing.
+        """
+        return (
+            self._get_string_or_stream(self.get_inheritable_attribute(_DV)) or ""
+        )
 
     def set_default_value(self, value: str | None) -> None:
         if value is None:
