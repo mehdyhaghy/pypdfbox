@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from types import MappingProxyType
+from typing import Mapping
+
 from pypdfbox.cos import COSBase
 
 from .mac_roman_encoding import MacRomanEncoding
@@ -46,6 +49,16 @@ class MacOSRomanEncoding(MacRomanEncoding):
     """
 
     INSTANCE: "MacOSRomanEncoding"
+
+    #: Read-only ``{code: glyph_name}`` view of the 16 vendor-specific
+    #: differences this encoding layers on top of :class:`MacRomanEncoding`.
+    #: Exposed for downstream introspection (e.g. encoding-difference
+    #: pretty-printers and parity tests) without leaking the private
+    #: tuple-form definition. Wrapped in a :class:`MappingProxyType` so
+    #: callers can read but never mutate.
+    DIFFERENCES: Mapping[int, str] = MappingProxyType(
+        dict(_MAC_OS_ROMAN_DIFFERENCES)
+    )
 
     def __init__(self) -> None:
         # MacRomanEncoding's __init__ populates the base 256-glyph table;

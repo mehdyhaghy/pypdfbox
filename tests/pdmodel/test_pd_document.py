@@ -1012,3 +1012,160 @@ def test_pending_signature_cleared_after_external_signing() -> None:
     assert doc.get_signature_interface() is None
     assert doc.get_signature_options() is None
     doc.close()
+
+
+# ---------- get_number_of_pages → get_count() upstream parity ----------
+
+
+def test_get_number_of_pages_uses_page_tree_count_field() -> None:
+    """``get_number_of_pages`` should delegate to ``PDPageTree.get_count``
+    (the cached ``/Pages /Count`` integer) rather than walking the tree
+    via ``__len__``. The counts must match when the cached field is the
+    truthful source — but the call goes through the cheap path."""
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    doc.add_page(PDPage())
+    doc.add_page(PDPage())
+    # The Count field on the root /Pages dict drives the cheap accessor.
+    pages_root = doc.get_pages().get_cos_object()
+    assert pages_root.get_int(COSName.COUNT) == 3
+    assert doc.get_number_of_pages() == 3
+    doc.close()
+
+
+def test_get_number_of_pages_zero_on_fresh_doc() -> None:
+    doc = PDDocument()
+    assert doc.get_number_of_pages() == 0
+    doc.close()
+
+
+# ---------- get_version: catalog skip when header < 1.4 ----------
+
+
+def test_get_version_ignores_catalog_when_header_below_1_4() -> None:
+    """ISO 32000-1 §7.5.2 forbids catalog ``/Version`` overrides on PDFs
+    whose header is below 1.4. The reader must report the header version
+    verbatim and ignore any catalog override (matching upstream's literal
+    ``if (headerVersionFloat >= 1.4f)`` branch)."""
+    doc = PDDocument()
+    # Force the COSDocument header to 1.3 — older than the override threshold.
+    doc.get_document().set_version(1.3)
+    # Stamp a /Version on the catalog claiming 1.7. A strict-parity reader
+    # must IGNORE this since the header is below 1.4.
+    catalog_dict = doc.get_document_catalog().get_cos_object()
+    catalog_dict.set_item(
+        COSName.get_pdf_name("Version"), COSName.get_pdf_name("1.7")
+    )
+    assert doc.get_version() == pytest.approx(1.3)
+    doc.close()
+
+
+def test_get_version_uses_catalog_when_header_at_1_4() -> None:
+    """When the header is at or above 1.4 the catalog version is honoured —
+    upstream returns ``Math.max(headerVersionFloat, catalogVersionFloat)``."""
+    doc = PDDocument()
+    # Default header is 1.4 already; bump catalog to 1.7.
+    catalog_dict = doc.get_document_catalog().get_cos_object()
+    catalog_dict.set_item(
+        COSName.get_pdf_name("Version"), COSName.get_pdf_name("1.7")
+    )
+    assert doc.get_version() == pytest.approx(1.7)
+    doc.close()
+
+
+def test_get_version_swallows_malformed_catalog_version() -> None:
+    """A non-numeric catalog ``/Version`` should be logged-and-skipped,
+    falling back to the header version. Mirrors upstream's
+    ``NumberFormatException`` swallow."""
+    doc = PDDocument()
+    # Header is 1.4 default.
+    catalog_dict = doc.get_document_catalog().get_cos_object()
+    catalog_dict.set_item(
+        COSName.get_pdf_name("Version"), COSName.get_pdf_name("oops")
+    )
+    # Catalog parse fails → fall back to header (1.4).
+    assert doc.get_version() == pytest.approx(1.4)
+    doc.close()
+
+
+# ---------- get_fonts_to_close accessor ----------
+
+
+def test_get_fonts_to_close_empty_by_default() -> None:
+    """A fresh document has no fonts queued for close-on-exit."""
+    doc = PDDocument()
+    assert doc.get_fonts_to_close() == []
+    doc.close()
+
+
+def test_get_fonts_to_close_returns_live_backing_store() -> None:
+    """:meth:`get_fonts_to_close` returns the document's own list — calls
+    to :meth:`register_true_type_font_for_closing` show up immediately,
+    and direct mutation propagates back to the document state."""
+    doc = PDDocument()
+    fonts = doc.get_fonts_to_close()
+    assert fonts is doc.get_fonts_to_close()  # stable reference
+    sentinel = object()
+    doc.register_true_type_font_for_closing(sentinel)
+    assert sentinel in fonts  # registration visible via accessor
+    fonts.clear()
+    # Mutation through the accessor flows back into the document.
+    assert doc.get_fonts_to_close() == []
+    doc.close()
+
+
+# ---------- is_signature_added predicate ----------
+
+
+def test_is_signature_added_false_on_fresh_document() -> None:
+    doc = PDDocument()
+    assert doc.is_signature_added() is False
+    doc.close()
+
+
+def test_is_signature_added_true_after_add_signature() -> None:
+    """The flag flips true on the first :meth:`add_signature` call and
+    stays sticky for the lifetime of the document — mirrors upstream's
+    one-shot ``signatureAdded`` guard."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    src = PDDocument()
+    src.add_page(PDPage())
+    sink = io.BytesIO()
+    src.save(sink)
+    src.close()
+
+    doc = PDDocument.load(io.BytesIO(sink.getvalue()))
+    assert doc.is_signature_added() is False
+    doc.add_signature(PDSignature())
+    assert doc.is_signature_added() is True
+    # Stays sticky even after the staged signature is consumed.
+    out = io.BytesIO()
+    handle = doc.save_incremental_for_external_signing(out)
+    handle.set_signature(b"\x00")
+    assert doc.is_signature_added() is True
+    doc.close()
+
+
+def test_is_signature_added_blocks_second_add_signature() -> None:
+    """A second :meth:`add_signature` raises while ``is_signature_added``
+    reports ``True`` — callers can pre-check via the predicate to avoid the
+    exception path."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+
+    src = PDDocument()
+    src.add_page(PDPage())
+    sink = io.BytesIO()
+    src.save(sink)
+    src.close()
+
+    doc = PDDocument.load(io.BytesIO(sink.getvalue()))
+    doc.add_signature(PDSignature())
+    assert doc.is_signature_added() is True
+    with pytest.raises(ValueError, match="Only one signature"):
+        doc.add_signature(PDSignature())
+    doc.close()

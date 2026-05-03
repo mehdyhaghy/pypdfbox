@@ -339,7 +339,12 @@ class PDDocument:
         return self._pages
 
     def get_number_of_pages(self) -> int:
-        return len(self.get_pages())
+        """Return the total page count. Mirrors upstream
+        ``PDDocument.getNumberOfPages()`` literally — delegates to
+        :meth:`PDPageTree.get_count` (the cached ``/Pages /Count`` field)
+        so the result is O(1) regardless of tree shape, matching the
+        upstream's ``getDocumentCatalog().getPages().getCount()`` chain."""
+        return self.get_pages().get_count()
 
     def get_page(self, index: int) -> PDPage:
         """Return the page at the given 0-based index. Mirrors upstream
@@ -709,8 +714,16 @@ class PDDocument:
 
     def get_version(self) -> float:
         """Highest version reported by either the header or the catalog
-        (PDF 1.4+ allows the catalog to override the header)."""
+        (PDF 1.4+ allows the catalog to override the header).
+
+        Mirrors upstream literally: catalog ``/Version`` is consulted *only*
+        when the header is already at 1.4 or above (PDF < 1.4 does not
+        permit a catalog version override per ISO 32000-1 §7.5.2). A
+        malformed catalog version string is logged and skipped, matching
+        upstream's ``NumberFormatException`` swallow."""
         header_version = self._document.get_version()
+        if header_version < 1.4:
+            return header_version
         try:
             catalog_str = self.get_document_catalog().get_version()
         except Exception:  # noqa: BLE001 — catalog may be absent on raw docs
@@ -720,7 +733,9 @@ class PDDocument:
                 catalog_version = float(catalog_str)
                 return max(header_version, catalog_version)
             except ValueError:
-                pass
+                _LOG.error(
+                    "Can't extract the version number of the document catalog."
+                )
         return header_version
 
     def set_version(self, version: float) -> None:
@@ -1138,6 +1153,22 @@ class PDDocument:
         that want to introspect the staged state before a save runs."""
         return self._pending_signature_options
 
+    def is_signature_added(self) -> bool:
+        """Predicate — ``True`` when :meth:`add_signature` has been called
+        on this document at least once. Mirrors upstream's package-private
+        ``signatureAdded`` field, which guards the "only one signature per
+        document" rule (a second :meth:`add_signature` call raises).
+
+        Stays ``True`` for the lifetime of the document even after
+        :meth:`save_incremental` consumes the staging — callers must
+        follow the ISO 32000 §12.8 "load → add → save → close → reload"
+        cycle to add another signature. Pypdfbox-specific accessor
+        (upstream keeps the flag private and only exposes its effect via
+        the ``IllegalStateException`` raised on the second call); helps
+        callers branch on whether re-loading is required without forcing a
+        sacrificial :meth:`add_signature` call."""
+        return self._signature_added
+
     def import_page(self, page: PDPage) -> PDPage:
         """Deep-copy ``page`` into this document and return the new
         :class:`PDPage`.
@@ -1298,6 +1329,20 @@ class PDDocument:
         to keep the upstream API surface complete; full lifecycle
         management lands when font subsetting does (see ``CHANGES.md``)."""
         self._fonts_to_close.append(font)
+
+    def get_fonts_to_close(self) -> list[Any]:
+        """Return the live list of fonts registered for close-on-document-
+        close via :meth:`register_true_type_font_for_closing`. Mirrors
+        upstream's package-private ``fontsToClose`` field — exposed here as
+        a public typed accessor for symmetry with :meth:`get_fonts_to_subset`,
+        so callers (notably tests verifying registration semantics) can
+        introspect the staged set without dropping into private state.
+
+        The returned list is the document's own backing store; mutate it in
+        place to deregister a font before close. Pypdfbox uses a list rather
+        than a set because Python ``TrueTypeFont`` wrappers aren't
+        guaranteed hashable across implementations."""
+        return self._fonts_to_close
 
     def get_fonts_to_subset(self) -> set[Any]:
         """Return the live set of fonts queued for subsetting on the next

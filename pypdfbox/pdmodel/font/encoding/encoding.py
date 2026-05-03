@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Union, overload
+from typing import Iterator, Optional, Union, overload
 
 from pypdfbox.cos import COSBase, COSName
 
@@ -36,6 +36,18 @@ class Encoding:
         "WinAnsiEncoding",
         "MacRomanEncoding",
         "MacExpertEncoding",
+    })
+
+    #: Encoding names that come from a font program rather than the PDF
+    #: ``/Encoding`` spec catalogue. ``SymbolEncoding`` and
+    #: ``ZapfDingbatsEncoding`` are font-program built-ins — they cannot
+    #: appear as a PDF ``/Encoding`` name entry but pypdfbox still resolves
+    #: them through :meth:`get_instance` for ergonomic symmetry. Use this
+    #: constant (or :meth:`is_font_specific`) to test "is this encoding
+    #: tied to a specific font program?".
+    FONT_SPECIFIC_NAMES: frozenset[str] = frozenset({
+        "SymbolEncoding",
+        "ZapfDingbatsEncoding",
     })
 
     def __init__(self) -> None:
@@ -174,6 +186,56 @@ class Encoding:
         ``/Encoding`` name entry.
         """
         return self.get_encoding_name() in self.PREDEFINED_NAMES
+
+    def is_font_specific(self) -> bool:
+        """``True`` when this encoding is a font-program built-in
+        (:class:`SymbolEncoding` or :class:`ZapfDingbatsEncoding`).
+
+        Font-specific encodings are tied to a specific font program (the
+        Symbol and Zapf Dingbats Adobe fonts respectively) — they cannot
+        appear as a PDF ``/Encoding`` name entry, although pypdfbox still
+        resolves them through :meth:`get_instance` for ergonomic symmetry.
+
+        Strictly disjoint from :meth:`is_predefined` — every encoding
+        satisfies at most one of the two predicates. ``DictionaryEncoding``,
+        :class:`BuiltInEncoding`, and :class:`MacOSRomanEncoding` return
+        ``False`` for both.
+        """
+        return self.get_encoding_name() in self.FONT_SPECIFIC_NAMES
+
+    def get_max_code(self) -> int | None:
+        """Return the largest mapped character code, or ``None`` for an
+        empty encoding.
+
+        Cheap typed accessor over :meth:`get_code_to_name_map` — useful for
+        sizing buffers, range checks, and parity tests against the upstream
+        256-code-vector convention.
+        """
+        if not self._code_to_name:
+            return None
+        return max(self._code_to_name)
+
+    def get_min_code(self) -> int | None:
+        """Return the smallest mapped character code, or ``None`` for an
+        empty encoding.
+
+        Counterpart to :meth:`get_max_code`; helpful when an encoding's
+        explicit table starts at a non-zero code (e.g. Standard's first
+        printable code is 0x20).
+        """
+        if not self._code_to_name:
+            return None
+        return min(self._code_to_name)
+
+    def iter_codes(self) -> Iterator[int]:
+        """Iterate over mapped character codes in ascending order.
+
+        Streaming alternative to ``sorted(self.get_code_to_name_map())``
+        that avoids materializing the snapshot dict. Useful for large
+        encodings (256 entries each) where the caller only needs to walk
+        the codes once.
+        """
+        return iter(sorted(self._code_to_name))
 
     def size(self) -> int:
         """Number of (code, name) mappings in this encoding.
