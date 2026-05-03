@@ -228,3 +228,133 @@ def test_multi_write_sequence() -> None:
     assert sink.getvalue() == b"%PDF-1.4\n%\xf6\xe4\xfc\xdf\n"
     assert out.get_position() == len(sink.getvalue())
     assert out.is_on_newline() is True
+
+
+# ---------- write_text ----------
+
+
+def test_write_text_default_encoding_is_iso_8859_1() -> None:
+    out, sink = _stream()
+    out.write_text("startxref")
+    assert sink.getvalue() == b"startxref"
+    assert out.get_position() == 9
+    assert out.is_on_newline() is False
+
+
+def test_write_text_iso_8859_1_handles_high_bytes() -> None:
+    # PDFBox uses ISO-8859-1 for its writeReference / startxref byte sequences;
+    # a byte like 0xE4 round-trips one-to-one rather than UTF-8 multi-byte.
+    out, sink = _stream()
+    out.write_text("ä")
+    assert sink.getvalue() == b"\xe4"
+    assert out.get_position() == 1
+
+
+def test_write_text_explicit_encoding_override() -> None:
+    out, sink = _stream()
+    out.write_text("ä", encoding="utf-8")
+    assert sink.getvalue() == b"\xc3\xa4"
+    assert out.get_position() == 2
+
+
+def test_write_text_rejects_non_string() -> None:
+    out, _ = _stream()
+    with pytest.raises(TypeError):
+        out.write_text(b"already-bytes")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        out.write_text(123)  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        out.write_text(None)  # type: ignore[arg-type]
+
+
+def test_write_text_resets_on_newline_flag() -> None:
+    out, _ = _stream()
+    out.write_eol()
+    assert out.is_on_newline() is True
+    out.write_text("abc")
+    assert out.is_on_newline() is False
+
+
+def test_write_text_empty_string_is_noop() -> None:
+    out, sink = _stream()
+    out.set_on_newline(True)
+    out.write_text("")
+    # Zero-length payload short-circuits in ``write`` so on_newline
+    # is preserved and no bytes flow to the sink.
+    assert sink.getvalue() == b""
+    assert out.get_position() == 0
+    assert out.is_on_newline() is True
+
+
+# ---------- closed property ----------
+
+
+def test_closed_property_reflects_lifecycle() -> None:
+    sink = io.BytesIO()
+    out = COSStandardOutputStream(sink)
+    assert out.closed is False
+    out.close()
+    assert out.closed is True
+
+
+def test_close_is_idempotent_on_underlying_sink() -> None:
+    class _Tracker(io.BytesIO):
+        close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            super().close()
+
+    sink = _Tracker()
+    out = COSStandardOutputStream(sink)
+    out.close()
+    out.close()
+    out.close()
+    # Underlying sink is closed exactly once even if the wrapper is
+    # closed multiple times — matches the writer's release / context-
+    # manager call pattern.
+    assert sink.close_calls == 1
+    assert out.closed is True
+
+
+def test_context_manager_marks_closed() -> None:
+    sink = io.BytesIO()
+    with COSStandardOutputStream(sink) as out:
+        assert out.closed is False
+        out.write(b"x")
+    assert out.closed is True
+
+
+# ---------- defensive None handling ----------
+
+
+def test_write_rejects_none_with_typeerror() -> None:
+    out, _ = _stream()
+    with pytest.raises(TypeError):
+        out.write(None)  # type: ignore[arg-type]
+
+
+def test_write_bytes_rejects_none_with_typeerror() -> None:
+    out, _ = _stream()
+    with pytest.raises(TypeError):
+        out.write_bytes(None)  # type: ignore[arg-type]
+
+
+# ---------- repr ----------
+
+
+def test_repr_includes_position_and_state() -> None:
+    out, _ = _stream()
+    out.write(b"abc")
+    out.write_eol()
+    text = repr(out)
+    assert "COSStandardOutputStream" in text
+    assert "position=4" in text
+    assert "on_newline=True" in text
+    assert "closed=False" in text
+
+
+def test_repr_after_close_marks_closed_state() -> None:
+    out, _ = _stream()
+    out.close()
+    assert "closed=True" in repr(out)

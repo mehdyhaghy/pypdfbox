@@ -40,6 +40,7 @@ class COSStandardOutputStream:
         self._out = out
         self._position = position
         self._on_new_line = False
+        self._closed = False
 
     # ---------- byte writers ----------
 
@@ -48,6 +49,8 @@ class COSStandardOutputStream:
         which delegates to ``write(b, 0, b.length)``. Provided as a named
         alias so call sites that read like the Java original keep their
         meaning."""
+        if data is None:  # type: ignore[unreachable]
+            raise TypeError("write_bytes requires a bytes-like argument, not None")
         self.write(data)
 
     def write(
@@ -58,6 +61,8 @@ class COSStandardOutputStream:
     ) -> None:
         """Write a slice of ``data`` to the underlying sink and update
         ``position`` / ``onNewLine`` based on the **last** byte written."""
+        if data is None:  # type: ignore[unreachable]
+            raise TypeError("write requires a bytes-like argument, not None")
         if length is None:
             length = len(data) - offset
         if length < 0:
@@ -72,6 +77,24 @@ class COSStandardOutputStream:
         # Match upstream behavior: any explicit ``write`` resets onNewLine
         # to False, then ``write_eol`` flips it back to True.
         self._on_new_line = False
+
+    def write_text(self, text: str, encoding: str = "iso-8859-1") -> None:
+        """Encode ``text`` and emit the resulting bytes.
+
+        Convenience wrapper around the upstream pattern
+        ``output.write("...".getBytes(StandardCharsets.US_ASCII))`` which
+        appears throughout ``COSWriter`` for headers, ``startxref``, ``%%EOF``,
+        and similar fixed tokens. Defaults to ``iso-8859-1`` because that is
+        the encoding upstream uses when serialising parsed-form numeric
+        literals (see ``COSWriter.doWriteObject`` and
+        ``COSWriter.writeReference``)."""
+        if text is None:  # type: ignore[unreachable]
+            raise TypeError("write_text requires a str argument, not None")
+        if not isinstance(text, str):
+            raise TypeError(
+                f"write_text expects a str; got {type(text).__name__}"
+            )
+        self.write(text.encode(encoding))
 
     def write_byte(self, value: int) -> None:
         """Write a single byte. ``value`` must be in 0..255."""
@@ -148,6 +171,13 @@ class COSStandardOutputStream:
         wrapped stream via that protected field."""
         return self._out
 
+    @property
+    def closed(self) -> bool:
+        """Whether :meth:`close` has been invoked. Mirrors the standard
+        Python ``io.IOBase.closed`` predicate so ``COSStandardOutputStream``
+        behaves like a regular Python output stream when introspected."""
+        return self._closed
+
     # ---------- lifecycle ----------
 
     def flush(self) -> None:
@@ -156,9 +186,28 @@ class COSStandardOutputStream:
             flush()
 
     def close(self) -> None:
+        # Idempotent: existing call sites (``COSWriter.close``,
+        # ``COSWriter.release``) invoke ``close()`` more than once on the
+        # same instance, so we must not propagate a second close to the
+        # underlying sink (which on ``BytesIO`` is harmless but on a real
+        # file would raise ``ValueError: I/O operation on closed file``).
+        if self._closed:
+            return
+        self._closed = True
         close = getattr(self._out, "close", None)
         if callable(close):
             close()
+
+    # ---------- diagnostics ----------
+
+    def __repr__(self) -> str:
+        # Useful when logging signing offsets / xref byte ranges. Includes
+        # position + on-newline state but deliberately omits the underlying
+        # sink (could be a large buffer) to keep log lines bounded.
+        return (
+            f"COSStandardOutputStream(position={self._position}, "
+            f"on_newline={self._on_new_line}, closed={self._closed})"
+        )
 
     # ---------- context manager ----------
 
