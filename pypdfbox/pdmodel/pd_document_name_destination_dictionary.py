@@ -55,6 +55,49 @@ class PDDocumentNameDestinationDictionary:
                 return PDDestination.create(item.get_dictionary_object(_D))
         return None
 
+    def set_destination(
+        self,
+        name: str,
+        destination: PDDestination | COSArray | COSDictionary | None,
+    ) -> None:
+        """Assign or clear the destination mapped to *name*.
+
+        Accepts a :class:`PDDestination` wrapper (its ``COSArray`` payload
+        is stored directly per the PDF 1.1 spec form), a raw ``COSArray``
+        explicit destination, a ``COSDictionary`` already shaped as
+        ``{/D <array>}``, or ``None`` to remove the entry. Mirrors the
+        accepted forms returned by :meth:`get_destination`.
+
+        Upstream PDFBox does not expose a setter on this wrapper — the
+        original Java is read-only and callers mutate ``getCOSObject()``
+        directly. pypdfbox surfaces a setter for symmetry with the other
+        ``/Dests`` writer (``PDDestinationNameTreeNode.set_value``) and
+        to keep the helper round-trippable with :meth:`get_destination`.
+        """
+        if destination is None:
+            self._dict.remove_item(name)
+            return
+        if isinstance(destination, (COSArray, COSDictionary)):
+            self._dict.set_item(name, destination)
+            return
+        # PDDestination wrapper — store its COS payload.
+        cos = destination.get_cos_object()
+        if not isinstance(cos, (COSArray, COSDictionary)):
+            raise TypeError(
+                "destination.get_cos_object() must yield a COSArray or COSDictionary; "
+                f"got {type(cos).__name__}"
+            )
+        self._dict.set_item(name, cos)
+
+    def remove_destination(self, name: str) -> None:
+        """Drop the entry mapped to *name* if present; no-op otherwise.
+
+        Equivalent to ``set_destination(name, None)``. Upstream PDFBox
+        does not expose a removal helper on this wrapper; pypdfbox adds
+        it for symmetry with :meth:`set_destination`.
+        """
+        self._dict.remove_item(name)
+
     # ---------- enumeration / membership (Python-friendly extension) ----------
 
     def is_empty(self) -> bool:
@@ -67,6 +110,15 @@ class PDDocumentNameDestinationDictionary:
         """
         return self._dict.is_empty()
 
+    def __bool__(self) -> bool:
+        """``False`` when the dictionary holds no entries.
+
+        Mirrors :meth:`PDDocumentNameDictionary.__bool__` so the legacy
+        ``/Dests`` wrapper falls into the same truthiness pattern as the
+        ``/Names`` wrapper. ``bool(dd)`` is exactly ``not dd.is_empty()``.
+        """
+        return not self._dict.is_empty()
+
     def get_names(self) -> list[str]:
         """Return the destination name keys as a list of Python strings.
 
@@ -75,6 +127,22 @@ class PDDocumentNameDestinationDictionary:
         underlying dictionary's insertion order.
         """
         return [key.get_name() for key in self._dict.key_set()]
+
+    def keys(self) -> Iterator[str]:
+        """Iterate the destination name keys lazily as Python strings.
+
+        Like :meth:`get_names` but returns a fresh iterator rather than
+        materializing a list — useful when callers only want to scan keys
+        without paying the list-construction cost. Order matches the
+        underlying ``COSDictionary`` insertion order.
+
+        Pairs with :meth:`items` so ``for name in dd.keys()`` and
+        ``for name, _ in dd.items()`` walk the same sequence. Upstream
+        PDFBox does not expose this; callers there iterate
+        ``getCOSObject().keySet()`` directly.
+        """
+        for key in self._dict.key_set():
+            yield key.get_name()
 
     def __contains__(self, name: object) -> bool:
         """``True`` when a name → destination mapping exists for *name*.

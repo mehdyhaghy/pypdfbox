@@ -38,18 +38,20 @@ class PDColor:
 
     def __init__(
         self,
-        components: list[float] | COSArray,
+        components: list[float] | COSArray | COSName,
         arg2: PDColorSpace | COSName,
         arg3: PDColorSpace | COSName | None = None,
         *,
         pattern: COSName | None = None,
     ) -> None:
-        """Construct a PDColor. Mirrors the three upstream PDFBox
+        """Construct a PDColor. Mirrors the four upstream PDFBox
         constructors (with one historical pypdfbox accommodation):
 
         - ``PDColor(components, color_space)`` — components-only.
         - ``PDColor(components, pattern_name, color_space)`` — upstream's
           uncolored-tiling form with tint components plus a pattern name.
+        - ``PDColor(pattern_name, color_space)`` — upstream's
+          colored-pattern form: pattern name only, empty components.
         - ``PDColor(cos_array, color_space)`` — parses components and an
           optional trailing pattern name out of a ``COSArray`` (the
           serialized form produced by :meth:`to_cos_array`).
@@ -59,6 +61,26 @@ class PDColor:
         ``pattern=`` keyword are still accepted; the constructor inspects
         the positional argument types to disambiguate.
         """
+        # Variant: PDColor(COSName, PDColorSpace) — colored pattern,
+        # mirrors upstream's pattern-only constructor (empty components,
+        # only the pattern name).
+        if isinstance(components, COSName):
+            if arg3 is not None or pattern is not None:
+                raise TypeError(
+                    "PDColor(pattern_name, color_space): no third "
+                    "positional or pattern= argument allowed when first "
+                    "argument is a COSName"
+                )
+            if isinstance(arg2, COSName):
+                raise TypeError(
+                    "PDColor(pattern_name, color_space): second argument "
+                    "must be a PDColorSpace, got COSName"
+                )
+            self._components = []
+            self._color_space = arg2  # type: ignore[assignment]
+            self._pattern_name = components
+            return
+
         # Variant 3: PDColor(COSArray, PDColorSpace)
         if isinstance(components, COSArray):
             if arg3 is not None or pattern is not None:
@@ -352,6 +374,33 @@ class PDColor:
             (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
         )
 
+    def to_rgb_int(self) -> int:
+        """Return the packed sRGB value as an ``int`` of the form
+        ``0xRRGGBB``. Mirrors upstream
+        ``PDColor.toRGB() -> int`` (PDFBox 3.0.x).
+
+        The float RGB triple from :meth:`to_rgb` is rounded to ``[0, 255]``
+        per channel using Java's "round half away from zero" semantics
+        (``Math.round(x * 255)``) and packed into the low 24 bits as
+        ``r << 16 | g << 8 | b``. Already-clamped values from
+        :meth:`to_rgb` keep each channel in ``[0, 255]``.
+
+        Note: upstream's ``toRGB`` is declared ``throws IOException`` —
+        the equivalent in Python is :class:`OSError`, raised here only
+        if the underlying :meth:`to_rgb` does (e.g. unsupported color
+        space). It is *not* raised for pattern colors with an underlying
+        CS that resolves; matches upstream behaviour.
+        """
+        r, g, b = self.to_rgb()
+        # Java ``Math.round(float)`` rounds half away from zero for
+        # positive values; Python's built-in ``round`` does banker's
+        # rounding. Inputs from ``to_rgb`` are clamped non-negative, so
+        # ``int(x + 0.5)`` reproduces Java semantics exactly here.
+        r_int = int(_clamp_unit(r) * 255.0 + 0.5)
+        g_int = int(_clamp_unit(g) * 255.0 + 0.5)
+        b_int = int(_clamp_unit(b) * 255.0 + 0.5)
+        return (r_int << 16) | (g_int << 8) | b_int
+
     def to_rgba(
         self, alpha: float = 1.0
     ) -> tuple[float, float, float, float]:
@@ -499,6 +548,30 @@ class PDColor:
                 self._pattern_name,
             )
         )
+
+    def __str__(self) -> str:
+        # Match upstream ``PDColor.toString()`` shape so debug output
+        # diffs cleanly against Java logs:
+        # ``PDColor{components=[...], patternName=..., colorSpace=...}``
+        # Java's ``Arrays.toString(float[])`` formats with a leading
+        # space after commas and always renders integral floats with a
+        # trailing ".0".
+        formatted = ", ".join(
+            self._format_component(v) for v in self._components
+        )
+        return (
+            f"PDColor{{components=[{formatted}], "
+            f"patternName={self._pattern_name}, "
+            f"colorSpace={self._color_space}}}"
+        )
+
+    @staticmethod
+    def _format_component(value: float) -> str:
+        # Upstream uses Java ``Float.toString`` which always includes a
+        # trailing ".0" for integral values (e.g. ``1.0`` not ``1``).
+        if value == int(value):
+            return f"{int(value)}.0"
+        return repr(value)
 
     @classmethod
     def from_cos_array(
