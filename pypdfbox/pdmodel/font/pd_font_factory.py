@@ -23,14 +23,29 @@ from .standard14_fonts import Standard14Fonts
 
 _LOG = logging.getLogger(__name__)
 
+_TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 _BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
+_FONT: COSName = COSName.get_pdf_name("Font")
 _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
+_FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
 _DESCENDANT_FONTS: COSName = COSName.get_pdf_name("DescendantFonts")
 _TYPE1C: str = "Type1C"
 _CID_FONT_TYPE0C: str = "CIDFontType0C"
+
+# Header-kind labels returned by :meth:`PDFontFactory.get_font_program_kind`.
+# These match the upstream private constants used as routing keys in
+# ``PDFontFactory.getFontTypeFromFont``. Surfaced as named module
+# constants so callers can compare against them without re-typing the
+# strings.
+_KIND_TRUE_TYPE: str = "TrueType"
+_KIND_TRUE_TYPE_COLLECTION: str = "TrueTypeCollection"
+_KIND_OPEN_TYPE: str = "OpenType"
+_KIND_TYPE1: str = "Type1"
+_KIND_PFB: str = "PFB"
+_KIND_CFF: str = "CFF"
 
 # Set of /Subtype name strings the factory dispatches on. Mirrors the
 # upstream ``PDFontFactory.createFont`` switch (Type1 / Type1C / MMType1
@@ -106,6 +121,16 @@ class PDFontFactory:
             raise TypeError(
                 f"PDFontFactory.create_font expects COSDictionary, "
                 f"got {type(font_dict).__name__}"
+            )
+        # Mirrors upstream's first defensive check: a font dictionary
+        # ought to carry /Type /Font. PDFBox logs an error and *still*
+        # proceeds with subtype dispatch (the wrapper is permissive); we
+        # match that — the warning helps log scrapers spot malformed
+        # files without breaking text extraction.
+        explicit_type = font_dict.get_name(_TYPE)
+        if explicit_type is not None and explicit_type != _FONT.name:
+            _LOG.error(
+                "Expected 'Font' dictionary but found %r", explicit_type
             )
         sub_type = font_dict.get_name(_SUBTYPE)
         if sub_type == PDType1Font.SUB_TYPE:
@@ -499,6 +524,157 @@ class PDFontFactory:
         if header is None or len(header) < 4:
             return False
         return header[0] >= 1 and 1 <= header[3] <= 4
+
+    # ---------- header-kind labels & font-program inspection ----------
+
+    KIND_TRUE_TYPE: str = _KIND_TRUE_TYPE
+    KIND_TRUE_TYPE_COLLECTION: str = _KIND_TRUE_TYPE_COLLECTION
+    KIND_OPEN_TYPE: str = _KIND_OPEN_TYPE
+    KIND_TYPE1: str = _KIND_TYPE1
+    KIND_PFB: str = _KIND_PFB
+    KIND_CFF: str = _KIND_CFF
+
+    @staticmethod
+    def get_font_program_kind(
+        header: bytes | bytearray | memoryview | None,
+    ) -> str | None:
+        """Classify a 4-byte font-program ``header`` and return the kind
+        as a label string (one of the ``KIND_*`` constants), or ``None``
+        when the header doesn't match any known program format.
+
+        Mirrors the dispatch chain inside upstream
+        ``PDFontFactory.getFontTypeFromFont`` — TTF / TTC first, then
+        OpenType, then Type 1 (raw) / PFB-wrapped Type 1, with CFF last
+        because its header check is permissive enough to match other
+        formats by accident. Surfaced publicly here because pypdfbox
+        callers parsing or repairing embedded font streams want a single
+        entry point that produces the same answer the dispatch arm
+        would.
+        """
+        if header is None or len(header) < 4:
+            return None
+        if PDFontFactory.is_true_type_header(header):
+            return _KIND_TRUE_TYPE
+        if PDFontFactory.is_true_type_collection_header(header):
+            return _KIND_TRUE_TYPE_COLLECTION
+        if PDFontFactory.is_open_type_header(header):
+            return _KIND_OPEN_TYPE
+        if PDFontFactory.is_type1_header(header):
+            return _KIND_TYPE1
+        if PDFontFactory.is_pfb_header(header):
+            return _KIND_PFB
+        if PDFontFactory.is_cff_header(header):
+            return _KIND_CFF
+        return None
+
+    @staticmethod
+    def get_font_program_header(
+        font_descriptor: COSDictionary | None,
+    ) -> bytes | None:
+        """Return the first 4 bytes of the embedded font program reachable
+        from ``font_descriptor`` — checks ``/FontFile`` then ``/FontFile2``
+        then ``/FontFile3`` (matching upstream's preference order).
+
+        Returns ``None`` when:
+
+        * ``font_descriptor`` is ``None``.
+        * No ``/FontFile*`` entry resolves to a ``COSStream``.
+        * The stream resolves but is shorter than 4 bytes.
+
+        Mirrors PDFBox ``PDFontFactory.getFontHeader`` (private). Used
+        together with :meth:`get_font_program_kind` to reproduce the
+        upstream private ``getFontTypeFromFont`` repair routine without
+        forcing callers to reach into ``COSStream`` themselves.
+
+        ``font_descriptor`` is intentionally typed as a raw
+        ``COSDictionary`` (not a ``PDFontDescriptor`` wrapper) — the
+        repair routines that consume this also operate on the underlying
+        dict.
+        """
+        if font_descriptor is None:
+            return None
+        if not isinstance(font_descriptor, COSDictionary):
+            raise TypeError(
+                f"PDFontFactory.get_font_program_header expects "
+                f"COSDictionary, got {type(font_descriptor).__name__}"
+            )
+        for key in (_FONT_FILE, _FONT_FILE2, _FONT_FILE3):
+            stream = font_descriptor.get_dictionary_object(key)
+            if isinstance(stream, COSStream):
+                raw = stream.get_raw_data()
+                if raw is None or len(raw) < 4:
+                    return None
+                return bytes(raw[:4])
+        return None
+
+    @staticmethod
+    def fix_type0_subtype(
+        descendant_font: COSDictionary,
+        font_descriptor: COSDictionary,
+        new_subtype: str | COSName,
+    ) -> None:
+        """Repair a Type 0 descendant font dictionary so its ``/Subtype``
+        and matching font-program key (``/FontFile2`` for CIDFontType2,
+        ``/FontFile3`` for CIDFontType0) line up.
+
+        Mirrors PDFBox ``PDFontFactory.fixType0Subtype``. When the new
+        subtype is ``CIDFontType0`` and the descriptor only has
+        ``/FontFile2`` (TrueType marker) we move the stream to
+        ``/FontFile3``; symmetrically, when the new subtype is
+        ``CIDFontType2`` and the descriptor only has ``/FontFile3`` we
+        move it to ``/FontFile2``. Either way the descendant's
+        ``/Subtype`` is then set to ``new_subtype``.
+
+        ``new_subtype`` may be a ``COSName`` or a plain string — the
+        helper normalises to a name. Other subtypes are accepted
+        (descendant ``/Subtype`` is updated) but no FontFile shuffling is
+        performed; this matches upstream's narrow repair scope.
+        """
+        if not isinstance(descendant_font, COSDictionary):
+            raise TypeError(
+                "PDFontFactory.fix_type0_subtype expects "
+                f"COSDictionary descendant_font, "
+                f"got {type(descendant_font).__name__}"
+            )
+        if not isinstance(font_descriptor, COSDictionary):
+            raise TypeError(
+                "PDFontFactory.fix_type0_subtype expects "
+                f"COSDictionary font_descriptor, "
+                f"got {type(font_descriptor).__name__}"
+            )
+        if isinstance(new_subtype, COSName):
+            new_subtype_str = new_subtype.name
+        elif isinstance(new_subtype, str):
+            new_subtype_str = new_subtype
+        else:
+            raise TypeError(
+                "PDFontFactory.fix_type0_subtype expects "
+                f"str | COSName new_subtype, "
+                f"got {type(new_subtype).__name__}"
+            )
+        _LOG.warning(
+            "Try to fix different descendant font types for font %r",
+            font_descriptor.get_name(COSName.get_pdf_name("FontName")),
+        )
+        if (
+            new_subtype_str == PDCIDFontType0.SUB_TYPE
+            and not font_descriptor.contains_key(_FONT_FILE3)
+            and font_descriptor.contains_key(_FONT_FILE2)
+        ):
+            font_descriptor.set_item(
+                _FONT_FILE3, font_descriptor.get_item(_FONT_FILE2)
+            )
+            font_descriptor.remove_item(_FONT_FILE2)
+        if (
+            new_subtype_str == PDCIDFontType2.SUB_TYPE
+            and font_descriptor.contains_key(_FONT_FILE3)
+            and not font_descriptor.contains_key(_FONT_FILE2)
+        ):
+            font_descriptor.set_item(
+                _FONT_FILE2, font_descriptor.get_item(_FONT_FILE3)
+            )
+            font_descriptor.remove_item(_FONT_FILE3)
+        descendant_font.set_name(_SUBTYPE, new_subtype_str)
 
 
 __all__ = ["PDFontFactory"]

@@ -1575,3 +1575,223 @@ def test_set_associated_files_rejects_non_filespec() -> None:
     cat = doc.get_document_catalog()
     with pytest.raises(TypeError, match="PDFileSpecification"):
         cat.set_associated_files(["not-a-spec"])  # type: ignore[list-item]
+
+
+# ---------- Wave 259: typed name-as-string accessors tolerate COSString ----------
+
+
+def test_get_version_accepts_cos_string() -> None:
+    """Mirrors upstream ``getNameAsString`` — defensively accepts the
+    rare malformed-producer case of ``/Version`` written as a string."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Version"), COSString("1.7")
+    )
+    assert cat.get_version() == "1.7"
+
+
+def test_get_version_returns_none_when_entry_is_unrecognised_type() -> None:
+    """Non-name / non-string entries (integers, arrays, etc.) read as
+    absent — type-tolerant but type-correct."""
+    from pypdfbox.cos import COSInteger
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Version"), COSInteger.get(2)
+    )
+    assert cat.get_version() is None
+
+
+def test_get_page_layout_accepts_cos_string() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PageLayout"), COSString("TwoColumnLeft")
+    )
+    assert cat.get_page_layout() == "TwoColumnLeft"
+
+
+def test_get_page_mode_accepts_cos_string() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PageMode"), COSString("UseOutlines")
+    )
+    assert cat.get_page_mode() == "UseOutlines"
+
+
+def test_get_page_layout_empty_string_returns_none() -> None:
+    """Upstream ``getPageLayout`` treats empty strings as absent; pypdfbox
+    matches that posture — empty COSString reads as ``None`` rather than
+    raising on the unrecognised name."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PageLayout"), COSString("")
+    )
+    assert cat.get_page_layout() is None
+    # ...and the default-applying read still falls back to SinglePage.
+    from pypdfbox.pdmodel.page_layout import PageLayout
+
+    assert cat.get_page_layout_or_default() == PageLayout.SINGLE_PAGE
+
+
+def test_get_page_mode_empty_string_returns_none() -> None:
+    """Empty COSString for ``/PageMode`` reads as absent (parity with
+    upstream's ``getNameAsString`` returning empty, which falls into the
+    ``IllegalArgumentException`` branch and yields ``USE_NONE``)."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("PageMode"), COSString("")
+    )
+    assert cat.get_page_mode() is None
+
+
+# ---------- Wave 259: presence predicates round-out ----------
+
+
+def test_has_collection_and_is_collection_round_trip() -> None:
+    """``/Collection`` flips a regular PDF into a Portfolio (PDF 1.7
+    §7.11.5). ``has_collection()`` and ``is_collection()`` are synonyms."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_collection() is False
+    assert cat.is_collection() is False
+
+    coll = COSDictionary()
+    cat.set_collection(coll)
+    assert cat.has_collection() is True
+    assert cat.is_collection() is True
+
+    cat.set_collection(None)
+    assert cat.has_collection() is False
+    assert cat.is_collection() is False
+
+
+def test_has_collection_rejects_non_dict_entry() -> None:
+    """A stray non-dict ``/Collection`` value reads as absent — mirrors
+    the ``isinstance`` guard used elsewhere in the predicate family."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Collection"), COSArray()
+    )
+    assert cat.has_collection() is False
+
+
+def test_has_perms_round_trip() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_perms() is False
+    cat.set_perms(COSDictionary())
+    assert cat.has_perms() is True
+    cat.set_perms(None)
+    assert cat.has_perms() is False
+
+
+def test_has_legal_round_trip() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_legal() is False
+    cat.set_legal(COSDictionary())
+    assert cat.has_legal() is True
+    cat.set_legal(None)
+    assert cat.has_legal() is False
+
+
+def test_has_piece_info_round_trip() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_piece_info() is False
+    cat.set_piece_info(COSDictionary())
+    assert cat.has_piece_info() is True
+    cat.set_piece_info(None)
+    assert cat.has_piece_info() is False
+
+
+def test_has_language_only_true_for_cos_string() -> None:
+    """``/Lang`` is spec-defined as a text string. A ``COSName`` value
+    (occasionally seen in malformed producers) does NOT count for the
+    predicate — only the spec-correct ``COSString`` shape does. Read
+    accessors stay tolerant; the predicate stays strict."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_language() is False
+
+    cat.set_language("en-US")
+    assert cat.has_language() is True
+
+    cat.set_language(None)
+    assert cat.has_language() is False
+
+    # COSName /Lang — invalid shape, predicate stays False.
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Lang"), COSName.get_pdf_name("en-US")
+    )
+    assert cat.has_language() is False
+
+
+def test_has_version_round_trip_and_accepts_cos_string() -> None:
+    """``has_version`` flips when ``/Version`` is explicitly cleared and
+    flips back regardless of whether the value is a ``COSName`` or a
+    (defensively-tolerated) ``COSString``."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    # PDDocument's constructor pre-populates ``/Version`` (PDFBox keeps
+    # the catalog version in sync with the header). Clear it first so
+    # the predicate has somewhere to flip from.
+    cat.set_version(None)
+    assert cat.has_version() is False
+
+    cat.set_version("1.7")
+    assert cat.has_version() is True
+
+    cat.set_version(None)
+    assert cat.has_version() is False
+
+    # Defensive: COSString /Version still counts as "present".
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Version"), COSString("1.7")
+    )
+    assert cat.has_version() is True
+
+
+def test_has_dests_name_tree_distinguishes_modern_from_legacy() -> None:
+    """``/Names /Dests`` (modern, PDF 1.2+) and ``/Dests`` (legacy,
+    PDF 1.1) live on the catalog independently. The two predicates
+    address them separately so callers can tell which scheme is wired."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+
+    assert cat.has_dests_name_tree() is False
+    assert cat.has_dests() is False
+
+    # Wire only the legacy /Dests dict — modern predicate stays False.
+    cat.set_dests_legacy = None  # noqa: SLF001 — sentinel only
+    legacy = COSDictionary()
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Dests"), legacy)
+    assert cat.has_dests() is True
+    assert cat.has_dests_name_tree() is False
+
+    # Now also wire /Names /Dests — modern predicate flips True.
+    names = COSDictionary()
+    dests_tree = COSDictionary()
+    names.set_item(COSName.get_pdf_name("Dests"), dests_tree)
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Names"), names)
+    assert cat.has_dests_name_tree() is True
+
+
+def test_has_dests_name_tree_false_when_names_is_present_but_dests_absent() -> None:
+    """``/Names`` without a ``/Dests`` sub-entry reads as no name tree."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    names = COSDictionary()
+    # JavaScript name tree only — no /Dests.
+    names.set_item(COSName.get_pdf_name("JavaScript"), COSDictionary())
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Names"), names)
+    assert cat.has_names() is True
+    assert cat.has_dests_name_tree() is False

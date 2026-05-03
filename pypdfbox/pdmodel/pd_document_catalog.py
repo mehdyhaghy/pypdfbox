@@ -129,10 +129,17 @@ class PDDocumentCatalog:
     def get_version(self) -> str | None:
         """``/Version`` override (PDF 1.4+ may upgrade the version inside
         the catalog past whatever the header says). Returns the name's
-        text, or ``None`` if absent."""
+        text, or ``None`` if absent.
+
+        Mirrors upstream ``getVersion`` which delegates to
+        ``COSDictionary.getNameAsString`` — accepts both a ``COSName``
+        (the spec-correct form) and a ``COSString`` (occasionally seen
+        in malformed producer output)."""
         v = self._catalog.get_dictionary_object(_VERSION)
         if isinstance(v, COSName):
             return v.get_name()
+        if isinstance(v, COSString):
+            return v.get_string()
         return None
 
     def set_version(self, version: str | None) -> None:
@@ -165,14 +172,24 @@ class PDDocumentCatalog:
         compares equal to its underlying PDF string (e.g.
         ``cat.get_page_layout() == "OneColumn"``). This keeps callers that
         still expect a plain string working unchanged.
+
+        Mirrors upstream ``getPageLayout`` which delegates to
+        ``COSDictionary.getNameAsString`` — accepts both a ``COSName``
+        (the spec-correct form) and a ``COSString`` (occasionally seen
+        in malformed producer output).
         """
         v = self._catalog.get_dictionary_object(_PAGE_LAYOUT)
+        raw: str | None = None
         if isinstance(v, COSName):
-            try:
-                return PageLayout.from_string(v.get_name())
-            except ValueError:
-                return None
-        return None
+            raw = v.get_name()
+        elif isinstance(v, COSString):
+            raw = v.get_string()
+        if not raw:
+            return None
+        try:
+            return PageLayout.from_string(raw)
+        except ValueError:
+            return None
 
     def set_page_layout(self, layout: PageLayout | str | None) -> None:
         """Set the catalog's ``/PageLayout``.
@@ -196,14 +213,24 @@ class PDDocumentCatalog:
         compares equal to its underlying PDF string (e.g.
         ``cat.get_page_mode() == "UseOutlines"``). This keeps callers that
         still expect a plain string working unchanged.
+
+        Mirrors upstream ``getPageMode`` which delegates to
+        ``COSDictionary.getNameAsString`` — accepts both a ``COSName``
+        (the spec-correct form) and a ``COSString`` (occasionally seen
+        in malformed producer output).
         """
         v = self._catalog.get_dictionary_object(_PAGE_MODE)
+        raw: str | None = None
         if isinstance(v, COSName):
-            try:
-                return PageMode.from_string(v.get_name())
-            except ValueError:
-                return None
-        return None
+            raw = v.get_name()
+        elif isinstance(v, COSString):
+            raw = v.get_string()
+        if not raw:
+            return None
+        try:
+            return PageMode.from_string(raw)
+        except ValueError:
+            return None
 
     def set_page_mode(self, mode: PageMode | str | None) -> None:
         """Set the catalog's ``/PageMode``.
@@ -1244,6 +1271,72 @@ class PDDocumentCatalog:
         dictionary reads as absent."""
         v = self._catalog.get_dictionary_object(_EXTENSIONS)
         return isinstance(v, COSDictionary) and not v.is_empty()
+
+    def has_collection(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Collection``
+        dictionary entry — i.e. the document is a PDF Portfolio
+        (PDF 32000-1 §7.11.5 / §12.3.5)."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_COLLECTION), COSDictionary
+        )
+
+    def is_collection(self) -> bool:
+        """Return ``True`` when the document is a PDF Portfolio collection.
+        Synonym for :meth:`has_collection` — the spec calls a document
+        "a PDF collection" iff its catalog carries a ``/Collection``
+        dictionary (PDF 32000-1 §7.11.5)."""
+        return self.has_collection()
+
+    def has_perms(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Perms``
+        dictionary entry (PDF 32000-1 §12.8.5 — usage-rights / DocMDP
+        permissions)."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_PERMS), COSDictionary
+        )
+
+    def has_legal(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Legal``
+        dictionary entry (PDF 32000-1 §12.8.6 — legal-attestation
+        signature data)."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_LEGAL), COSDictionary
+        )
+
+    def has_piece_info(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/PieceInfo``
+        page-piece dictionary entry (PDF 32000-1 §14.5)."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_PIECE_INFO), COSDictionary
+        )
+
+    def has_language(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Lang``
+        text-string entry (PDF 32000-1 §14.9.2 — RFC 3066 / BCP 47
+        language tag)."""
+        v = self._catalog.get_dictionary_object(_LANG)
+        return isinstance(v, COSString)
+
+    def has_version(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/Version``
+        override (a name or — defensively — a string). When present this
+        upgrades the document's effective version past whatever the file
+        header declares (PDF 32000-1 §7.5.2)."""
+        v = self._catalog.get_dictionary_object(_VERSION)
+        return isinstance(v, COSName | COSString)
+
+    def has_dests_name_tree(self) -> bool:
+        """Return ``True`` when the catalog reaches a ``/Names /Dests``
+        name-tree entry — i.e. modern (PDF 1.2+) named-destination wiring
+        is present. Distinct from :meth:`has_dests` which checks the
+        legacy (PDF 1.1) flat ``/Dests`` dictionary."""
+        names = self._catalog.get_dictionary_object(_NAMES)
+        if not isinstance(names, COSDictionary):
+            return False
+        dests_name = COSName.get_pdf_name("Dests")
+        return isinstance(
+            names.get_dictionary_object(dests_name), COSDictionary
+        )
 
     def is_tagged(self) -> bool:
         """Return ``True`` when the document advertises a tagged-PDF

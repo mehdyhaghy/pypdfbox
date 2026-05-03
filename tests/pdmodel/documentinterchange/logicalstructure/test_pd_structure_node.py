@@ -424,3 +424,155 @@ def test_structure_node_insert_objectable_before_accepts_raw_cos_dictionary() ->
     assert raw_k.get_object(0) is a
     assert raw_k.get_object(1) is new_kid
     assert raw_k.get_object(2) is b
+
+
+# ---------- PDStructureNode public type constants ----------
+
+
+def test_structure_node_public_type_constants_match_dispatch_strings() -> None:
+    assert PDStructureNode.STRUCT_TREE_ROOT_TYPE == "StructTreeRoot"
+    assert PDStructureNode.STRUCT_ELEM_TYPE == "StructElem"
+
+
+def test_structure_node_public_type_constants_drive_create_dispatch() -> None:
+    # Build dictionaries using the public constants and round-trip through
+    # PDStructureNode.create — this guarantees the constants stay in sync
+    # with the dispatch literals.
+    root_dic = COSDictionary()
+    root_dic.set_name(_TYPE, PDStructureNode.STRUCT_TREE_ROOT_TYPE)
+    assert isinstance(PDStructureNode.create(root_dic), PDStructureTreeRoot)
+
+    elem_dic = COSDictionary()
+    elem_dic.set_name(_TYPE, PDStructureNode.STRUCT_ELEM_TYPE)
+    assert isinstance(PDStructureNode.create(elem_dic), PDStructureElement)
+
+
+# ---------- PDStructureNode is_struct_tree_root / is_struct_elem ----------
+
+
+def test_structure_node_is_struct_tree_root_true_for_root_type() -> None:
+    node = PDStructureNode("StructTreeRoot")
+    assert node.is_struct_tree_root() is True
+    assert node.is_struct_elem() is False
+
+
+def test_structure_node_is_struct_elem_true_for_elem_type() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.is_struct_elem() is True
+    assert node.is_struct_tree_root() is False
+
+
+def test_structure_node_is_struct_elem_true_when_type_absent() -> None:
+    # No /Type → upstream treats as StructElem; predicate mirrors that.
+    node = PDStructureNode()
+    assert node.is_struct_elem() is True
+    assert node.is_struct_tree_root() is False
+
+
+def test_structure_node_predicates_false_for_other_type() -> None:
+    node = PDStructureNode("ZZNotARealTypeZZ")
+    assert node.is_struct_elem() is False
+    assert node.is_struct_tree_root() is False
+
+
+# ---------- PDStructureNode has_kids / is_kids_empty / get_kids_count ----------
+
+
+def test_structure_node_has_kids_false_when_k_absent() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.has_kids() is False
+    assert node.is_kids_empty() is True
+    assert node.get_kids_count() == 0
+
+
+def test_structure_node_has_kids_true_for_single_dict_kid() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    assert node.has_kids() is True
+    assert node.is_kids_empty() is False
+    assert node.get_kids_count() == 1
+
+
+def test_structure_node_kids_count_for_array() -> None:
+    node = PDStructureNode("StructElem")
+    node.set_kids([COSDictionary(), COSDictionary(), COSDictionary()])
+    assert node.has_kids() is True
+    assert node.get_kids_count() == 3
+
+
+def test_structure_node_kids_count_empty_array_treated_as_no_kids() -> None:
+    # set_kids([]) removes /K entirely (matches the upstream/empty-list
+    # semantics), so has_kids should be False.
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    node.set_kids([])
+    assert node.has_kids() is False
+    assert node.is_kids_empty() is True
+    assert node.get_kids_count() == 0
+
+
+def test_structure_node_kids_count_for_explicit_empty_cos_array() -> None:
+    # Defensive: a directly-installed empty COSArray under /K should
+    # report zero kids.
+    node = PDStructureNode("StructElem")
+    node.get_cos_object().set_item(_K, COSArray())
+    assert node.has_kids() is False
+    assert node.is_kids_empty() is True
+    assert node.get_kids_count() == 0
+
+
+def test_structure_node_kids_count_for_int_mcid_kid() -> None:
+    # Single integer MCID under /K (no array) — should still count as 1.
+    node = PDStructureNode("StructElem")
+    node.append_kid(7)
+    assert node.has_kids() is True
+    assert node.get_kids_count() == 1
+
+
+# ---------- PDStructureNode contains_kid ----------
+
+
+def test_structure_node_contains_kid_finds_in_array() -> None:
+    node = PDStructureNode("StructElem")
+    a, b = COSDictionary(), COSDictionary()
+    node.set_kids([a, b])
+    assert node.contains_kid(a) is True
+    assert node.contains_kid(b) is True
+
+
+def test_structure_node_contains_kid_false_when_absent() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    assert node.contains_kid(COSDictionary()) is False
+
+
+def test_structure_node_contains_kid_false_when_k_missing() -> None:
+    node = PDStructureNode("StructElem")
+    assert node.contains_kid(COSDictionary()) is False
+
+
+def test_structure_node_contains_kid_finds_single_non_array_kid() -> None:
+    node = PDStructureNode("StructElem")
+    only = COSDictionary()
+    node.append_kid(only)
+    assert node.contains_kid(only) is True
+
+
+def test_structure_node_contains_kid_int_mcid() -> None:
+    node = PDStructureNode("StructElem")
+    node.set_kids([1, 2, 3])
+    assert node.contains_kid(2) is True
+    assert node.contains_kid(99) is False
+
+
+def test_structure_node_contains_kid_typed_wrapper() -> None:
+    node = PDStructureNode("StructElem")
+    elem = PDStructureElement(structure_type="P")
+    node.append_kid(elem)
+    assert node.contains_kid(elem) is True
+
+
+def test_structure_node_contains_kid_none_returns_false() -> None:
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    assert node.contains_kid(None) is False
