@@ -4,6 +4,7 @@ from typing import Iterable
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSStream
 from pypdfbox.cos.cos_name import COSName
+from pypdfbox.pdmodel.common.pd_range import PDRange
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 _FUNCTION_TYPE = "FunctionType"
@@ -30,6 +31,16 @@ class PDFunction:
     introspect or build function dictionaries (e.g. shading dictionaries,
     tint transforms).
     """
+
+    # ---------- /FunctionType code constants ----------
+    # Mirror the literal values listed in PDFBox's ``getFunctionType()``
+    # javadoc (PDF 32000-1 §7.10.2). Surfaced as class-level attributes so
+    # callers can branch on a named constant rather than a magic int —
+    # e.g. ``if fn.get_function_type() == PDFunction.FUNCTION_TYPE_SAMPLED``.
+    FUNCTION_TYPE_SAMPLED: int = 0
+    FUNCTION_TYPE_EXPONENTIAL: int = 2
+    FUNCTION_TYPE_STITCHING: int = 3
+    FUNCTION_TYPE_POSTSCRIPT: int = 4
 
     def __init__(self, function: COSBase | None = None) -> None:
         if function is None:
@@ -101,6 +112,18 @@ class PDFunction:
         (Type 0 and Type 4); ``None`` for dictionary-backed functions."""
         return self._function_stream
 
+    def is_stream_backed(self) -> bool:
+        """``True`` when the function is wrapped around a ``COSStream``
+        (Type 0 sampled, Type 4 PostScript calculator); ``False`` for
+        dictionary-backed functions (Type 2 exponential, Type 3 stitching).
+
+        pypdfbox extension — upstream callers branch on
+        ``getPDStream() != null`` to make the same distinction. Surfacing
+        a named predicate avoids the recurring ``is not None`` idiom and
+        documents the intent at the call site.
+        """
+        return self._function_stream is not None
+
     def get_function_type(self) -> int:
         """Subclasses override with their concrete type number (0, 2, 3, 4)."""
         raise NotImplementedError("PDFunction subclasses must implement get_function_type")
@@ -145,6 +168,22 @@ class PDFunction:
         the ``/Domain`` pair."""
         return self.get_domain_for_input(n)
 
+    def get_pd_range_for_input(self, n: int) -> PDRange:
+        """Return a :class:`PDRange` wrapper over the ``/Domain`` pair for
+        input dimension ``n``.
+
+        Mirrors the upstream return type of PDFBox ``getDomainForInput(int)``
+        which returns a ``PDRange`` — this accessor preserves that surface
+        for callers translated straight from Java (``range.getMin()`` /
+        ``range.getMax()``). The tuple-returning :meth:`get_domain_for_input`
+        remains the Pythonic default. Raises ``ValueError`` when ``/Domain``
+        is absent (upstream NPE on the same path).
+        """
+        domain = self.get_domain()
+        if domain is None:
+            raise ValueError("PDFunction has no /Domain entry")
+        return PDRange(domain, int(n))
+
     # ---------- /Range ----------
 
     def get_range(self) -> COSArray | None:
@@ -180,6 +219,22 @@ class PDFunction:
                 f"output dimension {n} out of range (have {len(ranges)})"
             )
         return ranges[n]
+
+    def get_pd_range_for_output(self, n: int) -> PDRange:
+        """Return a :class:`PDRange` wrapper over the ``/Range`` pair for
+        output dimension ``n``.
+
+        Mirrors the upstream return type of PDFBox ``getRangeForOutput(int)``
+        which returns a ``PDRange`` — this accessor preserves that surface
+        for callers translated straight from Java. The tuple-returning
+        :meth:`get_range_for_output` remains the Pythonic default. Raises
+        ``ValueError`` when ``/Range`` is absent (upstream NPE on the same
+        path).
+        """
+        rng = self.get_range()
+        if rng is None:
+            raise ValueError("PDFunction has no /Range entry")
+        return PDRange(rng, int(n))
 
     # ---------- evaluation ----------
 

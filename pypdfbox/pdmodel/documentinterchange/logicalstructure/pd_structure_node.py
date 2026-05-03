@@ -22,6 +22,16 @@ class PDStructureNode:
     entries are preserved as raw COS objects.
     """
 
+    #: ``/Type`` value identifying a :class:`PDStructureTreeRoot` dictionary.
+    #: Mirrors upstream's literal ``"StructTreeRoot"`` (no upstream constant
+    #: exists; lifted here so callers don't have to repeat the magic string).
+    STRUCT_TREE_ROOT_TYPE: str = _STRUCT_TREE_ROOT_NAME
+
+    #: ``/Type`` value identifying a :class:`PDStructureElement` dictionary.
+    #: Mirrors upstream's ``PDStructureElement.TYPE`` and the literal
+    #: ``"StructElem"`` checked by :meth:`create` / :meth:`create_object`.
+    STRUCT_ELEM_TYPE: str = _STRUCT_ELEM_NAME
+
     def __init__(
         self,
         structure_type_for_create: str | COSDictionary | None = None,
@@ -88,6 +98,26 @@ class PDStructureNode:
     def get_type(self) -> str | None:
         return self._dictionary.get_name(_TYPE)
 
+    def is_struct_tree_root(self) -> bool:
+        """Return ``True`` when ``/Type`` is ``StructTreeRoot``.
+
+        No upstream equivalent — added as a small typed predicate so callers
+        don't have to compare against the magic string. Pairs with
+        :meth:`is_struct_elem` and the public :attr:`STRUCT_TREE_ROOT_TYPE`
+        constant.
+        """
+        return self.get_type() == _STRUCT_TREE_ROOT_NAME
+
+    def is_struct_elem(self) -> bool:
+        """Return ``True`` when ``/Type`` is ``StructElem`` (or absent).
+
+        No upstream equivalent — added as a small typed predicate. Mirrors
+        the dispatch rule used by :meth:`create` and :meth:`create_object`,
+        where a missing ``/Type`` is treated as ``StructElem``.
+        """
+        type_name = self.get_type()
+        return type_name is None or type_name == _STRUCT_ELEM_NAME
+
     # ---------- /K kids ----------
 
     def get_kids(self) -> list[Any]:
@@ -118,6 +148,69 @@ class PDStructureNode:
         for kid in kids:
             arr.add(_to_cos(kid))
         self._dictionary.set_item(_K, arr)
+
+    def has_kids(self) -> bool:
+        """Return ``True`` when ``/K`` is present and non-empty.
+
+        Cheaper than ``len(get_kids()) > 0`` because we don't materialise
+        the typed kid wrappers — we only inspect the raw ``/K`` entry. A
+        single-kid (non-array) ``/K`` counts as having kids; an empty
+        ``COSArray`` counts as no kids (matches :meth:`set_kids`'s
+        behaviour, which removes ``/K`` when given an empty list).
+        """
+        k = self._dictionary.get_dictionary_object(_K)
+        if k is None:
+            return False
+        if isinstance(k, COSArray):
+            return k.size() > 0
+        return True
+
+    def is_kids_empty(self) -> bool:
+        """Return ``True`` when ``/K`` is absent or an empty array.
+
+        Inverse of :meth:`has_kids`. No upstream equivalent — added as a
+        small predicate so callers can avoid building the full typed kid
+        list when they only need an emptiness check.
+        """
+        return not self.has_kids()
+
+    def get_kids_count(self) -> int:
+        """Return the number of ``/K`` entries without materialising
+        typed wrappers.
+
+        Faster than ``len(get_kids())`` for nodes with many or
+        unrecognised kids. A missing ``/K`` returns ``0``; a single-kid
+        (non-array) ``/K`` returns ``1``; a ``COSArray`` returns its
+        size. No upstream equivalent — added as a typed accessor.
+        """
+        k = self._dictionary.get_dictionary_object(_K)
+        if k is None:
+            return 0
+        if isinstance(k, COSArray):
+            return k.size()
+        return 1
+
+    def contains_kid(self, kid: Any) -> bool:
+        """Return ``True`` when ``kid`` is currently present in ``/K``.
+
+        Accepts a typed wrapper (anything exposing ``get_cos_object``), a
+        raw ``COSBase``, or an ``int`` MCID — uses the same equality rules
+        as :meth:`remove_kid`. No upstream equivalent — added as a small
+        membership predicate so callers don't have to scan
+        :meth:`get_kids` themselves. ``None`` returns ``False``.
+        """
+        if kid is None:
+            return False
+        cos_kid = _to_cos(kid)
+        existing = self._dictionary.get_dictionary_object(_K)
+        if existing is None:
+            return False
+        if isinstance(existing, COSArray):
+            for i in range(existing.size()):
+                if _same_kid(existing.get_object(i), cos_kid):
+                    return True
+            return False
+        return _same_kid(existing, cos_kid)
 
     def append_kid(self, kid: Any) -> None:
         if kid is None:
