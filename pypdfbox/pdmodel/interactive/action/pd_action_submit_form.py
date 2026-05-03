@@ -45,6 +45,25 @@ class PDActionSubmitForm(PDAction):
 
     SUB_TYPE = "SubmitForm"
 
+    # Public Table 237 flag-bit constants — mirror the PDFBox idiom of
+    # exposing flag constants on the wrapper class so callers can mask
+    # without importing module-private bit values. Bit positions are
+    # 1-indexed in the spec; the constants here are the corresponding
+    # ``1 << (bit - 1)`` masks.
+    FLAG_INCLUDE_EXCLUDE: int = _FLAG_INCLUDE_EXCLUDE
+    FLAG_INCLUDE_NO_VALUE_FIELDS: int = _FLAG_INCLUDE_NO_VALUE_FIELDS
+    FLAG_EXPORT_FORMAT: int = _FLAG_EXPORT_FORMAT
+    FLAG_GET_METHOD: int = _FLAG_GET_METHOD
+    FLAG_SUBMIT_COORDINATES: int = _FLAG_SUBMIT_COORDINATES
+    FLAG_XFDF: int = _FLAG_XFDF
+    FLAG_INCLUDE_APPEND_SAVES: int = _FLAG_INCLUDE_APPEND_SAVES
+    FLAG_INCLUDE_ANNOTATIONS: int = _FLAG_INCLUDE_ANNOTATIONS
+    FLAG_SUBMIT_PDF: int = _FLAG_SUBMIT_PDF
+    FLAG_CANONICAL_FORMAT: int = _FLAG_CANONICAL_FORMAT
+    FLAG_EXCL_NON_USER_ANNOTS: int = _FLAG_EXCL_NON_USER_ANNOTS
+    FLAG_EXCL_F_KEY: int = _FLAG_EXCL_F_KEY
+    FLAG_EMBED_FORM: int = _FLAG_EMBED_FORM
+
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
@@ -172,6 +191,33 @@ class PDActionSubmitForm(PDAction):
                 )
         self._action.set_item(_FIELDS, array)
 
+    def add_field(self, field: PDField | COSBase) -> None:
+        """Append ``field`` to the ``/Fields`` array, creating the array
+        when it doesn't yet exist. Mirrors the PDFBox ``add*`` idiom on
+        AcroForm-shaped accessors.
+
+        Accepts a :class:`PDField` (its underlying COS dictionary is
+        appended) or a raw :class:`COSBase` (appended verbatim — the
+        spec also permits fully-qualified ``COSString`` field names in
+        the ``/Fields`` array, PDF 32000-1 §12.7.5.2)."""
+        from pypdfbox.pdmodel.interactive.form.pd_field import PDField
+
+        existing = self._action.get_dictionary_object(_FIELDS)
+        if isinstance(existing, COSArray):
+            array = existing
+        else:
+            array = COSArray()
+            self._action.set_item(_FIELDS, array)
+        if isinstance(field, PDField):
+            array.add(field.get_cos_object())
+        elif isinstance(field, COSBase):
+            array.add(field)
+        else:
+            raise TypeError(
+                "add_field expects PDField or COSBase, got "
+                f"{type(field).__name__}"
+            )
+
     # ---------- /Flags ----------
 
     def get_flags(self) -> int:
@@ -181,6 +227,23 @@ class PDActionSubmitForm(PDAction):
     def set_flags(self, value: int) -> None:
         """Set ``/Flags`` (Table 237 bit-field)."""
         self._action.set_int(_FLAGS, value)
+
+    def clear_flags(self) -> None:
+        """Reset ``/Flags`` back to the spec default of ``0`` (Table 236).
+        Equivalent to ``set_flags(0)``; provided as a named shortcut for
+        the common 'restore defaults' use case."""
+        self._action.set_int(_FLAGS, 0)
+
+    def has_flag(self, mask: int) -> bool:
+        """Return whether all bits in ``mask`` are set on ``/Flags``.
+        Public bit-mask predicate complementing the named accessors —
+        use the class-level ``FLAG_*`` constants as masks."""
+        return (self.get_flags() & mask) == mask
+
+    def set_flag(self, mask: int, value: bool) -> None:
+        """Set or clear the bits in ``mask`` on ``/Flags``. Public form
+        of the internal helper, mirroring the named ``set_*`` accessors."""
+        self._set_flag(mask, value)
 
     # ---------- Table 237 per-bit predicates ----------
 

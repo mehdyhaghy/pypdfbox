@@ -129,10 +129,15 @@ class PDActionEmbeddedGoTo(PDAction):
         :class:`OpenMode` surface use :meth:`get_open_in_new_window_mode`."""
         return self._action.get_boolean(_NEW_WINDOW, False)
 
-    def set_open_in_new_window(self, value: bool | OpenMode) -> None:
-        """Spec-named setter for ``/NewWindow``. Accepts a plain ``bool``
-        or an :class:`OpenMode`. :attr:`OpenMode.USER_PREFERENCE` removes
-        the entry."""
+    def set_open_in_new_window(self, value: bool | OpenMode | None) -> None:
+        """Spec-named setter for ``/NewWindow``. Accepts a plain ``bool``,
+        an :class:`OpenMode`, or ``None``. :attr:`OpenMode.USER_PREFERENCE`
+        and ``None`` both remove the entry — matching upstream
+        ``setOpenInNewWindow(null)`` (which also removes the entry to
+        defer to the user preference)."""
+        if value is None:
+            self._action.remove_item(_NEW_WINDOW)
+            return
         if isinstance(value, OpenMode):
             if value is OpenMode.USER_PREFERENCE:
                 self._action.remove_item(_NEW_WINDOW)
