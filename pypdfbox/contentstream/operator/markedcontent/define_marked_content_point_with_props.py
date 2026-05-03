@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary
 
 from .. import Operator, OperatorName, OperatorProcessor
+from ._props import extract_tag, resolve_property_dict
 
 
 class DefineMarkedContentPointWithProps(OperatorProcessor):
@@ -24,9 +25,7 @@ class DefineMarkedContentPointWithProps(OperatorProcessor):
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         del operator  # unused — operator name fixed by registration
-        tag: COSName | None = None
-        if operands and isinstance(operands[0], COSName):
-            tag = operands[0]
+        tag = extract_tag(operands)
         properties = self._resolve_properties(operands)
         context = self._context
         if context is None:
@@ -38,33 +37,7 @@ class DefineMarkedContentPointWithProps(OperatorProcessor):
     def _resolve_properties(
         self, operands: list[COSBase]
     ) -> COSDictionary | None:
-        if len(operands) < 2:
-            return None
-        prop = operands[1]
-        if isinstance(prop, COSDictionary):
-            return prop
-        context = self._context
-        if isinstance(prop, COSName) and context is not None:
-            resources = None
-            getter = getattr(context, "get_resources", None)
-            if getter is not None:
-                try:
-                    resources = getter()
-                except Exception:  # noqa: BLE001 — defensive
-                    resources = None
-            if resources is None:
-                return None
-            try:
-                pl = resources.get_property_list(prop)
-            except Exception:  # noqa: BLE001 — defensive: malformed dict
-                return None
-            if pl is None:
-                return None
-            try:
-                return pl.get_cos_object()
-            except Exception:  # noqa: BLE001 — defensive
-                return None
-        return None
+        return resolve_property_dict(operands, self._context)
 
     def get_name(self) -> str:
         return self.OPERATOR_NAME

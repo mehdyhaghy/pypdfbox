@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSName
+from pypdfbox.cos import COSBase
 
 from .. import Operator, OperatorName, OperatorProcessor
+from ._props import extract_tag
 
 
 class BeginMarkedContent(OperatorProcessor):
@@ -28,9 +29,7 @@ class BeginMarkedContent(OperatorProcessor):
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         del operator  # unused — operator name fixed by registration
-        tag: COSName | None = None
-        if operands and isinstance(operands[0], COSName):
-            tag = operands[0]
+        tag = extract_tag(operands)
         context = self._context
         if context is None:
             return

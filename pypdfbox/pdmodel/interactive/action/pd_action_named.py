@@ -20,6 +20,18 @@ class PDActionNamed(PDAction):
     NAMED_ACTION_FIRST_PAGE = "FirstPage"
     NAMED_ACTION_LAST_PAGE = "LastPage"
 
+    #: The four named actions every conforming reader must support
+    #: (PDF 32000-1 §12.6.4.11 Table 211). Anything else in ``/N`` is an
+    #: extension name and may be unsupported by the viewer.
+    STANDARD_NAMED_ACTIONS: frozenset[str] = frozenset(
+        {
+            NAMED_ACTION_NEXT_PAGE,
+            NAMED_ACTION_PREV_PAGE,
+            NAMED_ACTION_FIRST_PAGE,
+            NAMED_ACTION_LAST_PAGE,
+        }
+    )
+
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
@@ -31,6 +43,34 @@ class PDActionNamed(PDAction):
             self._action.remove_item(_N)
             return
         self._action.set_name(_N, name)
+
+    # ---------- predicate helpers (Table 211) ----------
+
+    def is_next_page(self) -> bool:
+        """Return ``True`` when ``/N`` is exactly ``"NextPage"`` (Table 211).
+
+        Returns ``False`` for any other value, including ``None`` and
+        case-shifted variants — PDF name comparison is case-sensitive."""
+        return self.get_n() == self.NAMED_ACTION_NEXT_PAGE
+
+    def is_prev_page(self) -> bool:
+        """Return ``True`` when ``/N`` is exactly ``"PrevPage"`` (Table 211)."""
+        return self.get_n() == self.NAMED_ACTION_PREV_PAGE
+
+    def is_first_page(self) -> bool:
+        """Return ``True`` when ``/N`` is exactly ``"FirstPage"`` (Table 211)."""
+        return self.get_n() == self.NAMED_ACTION_FIRST_PAGE
+
+    def is_last_page(self) -> bool:
+        """Return ``True`` when ``/N`` is exactly ``"LastPage"`` (Table 211)."""
+        return self.get_n() == self.NAMED_ACTION_LAST_PAGE
+
+    def is_standard_named_action(self) -> bool:
+        """Return ``True`` when ``/N`` is one of the four standard named
+        actions defined in PDF 32000-1 §12.6.4.11 Table 211. Returns
+        ``False`` for extension names (PDF 1.5+) and for missing ``/N``."""
+        n = self.get_n()
+        return n is not None and n in self.STANDARD_NAMED_ACTIONS
 
 
 __all__ = ["PDActionNamed"]
