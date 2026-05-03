@@ -230,11 +230,39 @@ class PDPageContentStream:
     # path drawing
     # ------------------------------------------------------------------
 
+    def _require_outside_text_block(self, op: str) -> None:
+        """Reject ``op`` if currently inside a ``BT``/``ET`` block.
+
+        Mirrors upstream's ``IllegalStateException`` guard ("Error: <op> is
+        not allowed within a text block.") used by every path-construction,
+        path-painting, clipping, transform, save/restore, and shading
+        operator on :class:`PDAbstractContentStream`.
+        """
+        if self._in_text_mode:
+            raise RuntimeError(
+                f"Error: {op} is not allowed within a text block (BT/ET)."
+            )
+
+    def _require_inside_text_block(self, op: str) -> None:
+        """Reject ``op`` if not currently inside a ``BT``/``ET`` block.
+
+        Mirrors upstream's ``IllegalStateException`` guard ("Error: must
+        call beginText() before <op>") used by ``newLine``,
+        ``newLineAtOffset``, and ``setTextMatrix`` on
+        :class:`PDAbstractContentStream`.
+        """
+        if not self._in_text_mode:
+            raise RuntimeError(
+                f"Error: must call begin_text() before {op}."
+            )
+
     def move_to(self, x: float, y: float) -> None:
+        self._require_outside_text_block("move_to")
         self._write_operands(x, y)
         self._write_operator(b"m")
 
     def line_to(self, x: float, y: float) -> None:
+        self._require_outside_text_block("line_to")
         self._write_operands(x, y)
         self._write_operator(b"l")
 
@@ -247,18 +275,21 @@ class PDPageContentStream:
         x3: float,
         y3: float,
     ) -> None:
+        self._require_outside_text_block("curve_to")
         self._write_operands(x1, y1, x2, y2, x3, y3)
         self._write_operator(b"c")
 
     def curve_to_1(self, x2: float, y2: float, x3: float, y3: float) -> None:
         """Emit ``v`` — Bezier curve from current point with control points
         (current, x2,y2) ending at x3,y3."""
+        self._require_outside_text_block("curve_to_1")
         self._write_operands(x2, y2, x3, y3)
         self._write_operator(b"v")
 
     def curve_to_2(self, x1: float, y1: float, x3: float, y3: float) -> None:
         """Emit ``y`` — Bezier curve with control points (x1,y1, x3,y3)
         ending at x3,y3."""
+        self._require_outside_text_block("curve_to_2")
         self._write_operands(x1, y1, x3, y3)
         self._write_operator(b"y")
 
@@ -275,43 +306,54 @@ class PDPageContentStream:
         self.curve_to_2(x1, y1, x3, y3)
 
     def close_path(self) -> None:
+        self._require_outside_text_block("close_path")
         self._write_operator(b"h")
 
     def stroke(self) -> None:
+        self._require_outside_text_block("stroke")
         self._write_operator(b"S")
 
     def close_and_stroke(self) -> None:
+        self._require_outside_text_block("close_and_stroke")
         self._write_operator(b"s")
 
     def fill(self) -> None:
+        self._require_outside_text_block("fill")
         self._write_operator(b"f")
 
     def fill_even_odd(self) -> None:
         """Emit ``f*`` — fill using the even-odd rule."""
+        self._require_outside_text_block("fill_even_odd")
         self._write_operator(b"f*")
 
     def fill_and_stroke(self) -> None:
+        self._require_outside_text_block("fill_and_stroke")
         self._write_operator(b"B")
 
     def fill_and_stroke_even_odd(self) -> None:
         """Emit ``B*`` — fill (even-odd) and stroke."""
+        self._require_outside_text_block("fill_and_stroke_even_odd")
         self._write_operator(b"B*")
 
     def close_fill_and_stroke(self) -> None:
         """Emit ``b`` — close, fill (non-zero), and stroke."""
+        self._require_outside_text_block("close_fill_and_stroke")
         self._write_operator(b"b")
 
     def close_fill_and_stroke_even_odd(self) -> None:
         """Emit ``b*`` — close, fill (even-odd), and stroke."""
+        self._require_outside_text_block("close_fill_and_stroke_even_odd")
         self._write_operator(b"b*")
 
     def clip_path(self) -> None:
         """Emit ``W`` — set the clipping path using the non-zero winding
         rule. Must be followed by a path-painting or ``n`` operator."""
+        self._require_outside_text_block("clip_path")
         self._write_operator(b"W")
 
     def clip_path_even_odd(self) -> None:
         """Emit ``W*`` — set the clipping path using the even-odd rule."""
+        self._require_outside_text_block("clip_path_even_odd")
         self._write_operator(b"W*")
 
     def clip(self) -> None:
@@ -319,12 +361,14 @@ class PDPageContentStream:
         path. Mirrors upstream's ``clip()``, which writes the clip
         operator followed by the no-op path terminator so the path is
         consumed without painting."""
+        self._require_outside_text_block("clip")
         self._write_operator(b"W")
         self._write_operator(b"n")
 
     def clip_even_odd(self) -> None:
         """Emit ``W* n`` — intersect clipping path (even-odd) and end the
         path. Mirrors upstream's ``clipEvenOdd()``."""
+        self._require_outside_text_block("clip_even_odd")
         self._write_operator(b"W*")
         self._write_operator(b"n")
 
@@ -343,6 +387,7 @@ class PDPageContentStream:
     def end_path(self) -> None:
         """Emit ``n`` — end the path without filling or stroking. Used
         after a clipping operator (``W``/``W*``) or to discard a path."""
+        self._require_outside_text_block("end_path")
         self._write_operator(b"n")
 
     # Alias spelling matching upstream's ``fillEvenOddAndStroke`` Java
@@ -368,6 +413,7 @@ class PDPageContentStream:
         self.close_fill_and_stroke_even_odd()
 
     def add_rect(self, x: float, y: float, width: float, height: float) -> None:
+        self._require_outside_text_block("add_rect")
         self._write_operands(x, y, width, height)
         self._write_operator(b"re")
 
@@ -839,6 +885,7 @@ class PDPageContentStream:
             self._buffer.append(0x3E)  # >
 
     def new_line_at_offset(self, tx: float, ty: float) -> None:
+        self._require_inside_text_block("new_line_at_offset")
         self._write_operands(tx, ty)
         self._write_operator(b"Td")
 
@@ -861,6 +908,7 @@ class PDPageContentStream:
         self._write_operator(b"TD")
 
     def new_line(self) -> None:
+        self._require_inside_text_block("new_line")
         self._write_operator(b"T*")
 
     def move_to_next_line(self) -> None:
@@ -975,7 +1023,13 @@ class PDPageContentStream:
         single iterable / object exposing ``get_value(row, col)`` (the
         upstream ``Matrix`` shape). The 6-tuple form mirrors
         ``setTextMatrix(Matrix)`` after Matrix has been decomposed.
+
+        Raises :class:`RuntimeError` when called outside a text block,
+        mirroring upstream's ``IllegalStateException`` ("Error: must call
+        beginText() before setTextMatrix") from
+        ``PDAbstractContentStream.setTextMatrix``.
         """
+        self._require_inside_text_block("set_text_matrix")
         if not isinstance(a, (int, float)):
             # Single non-numeric arg: treat as Matrix-like or 6-element seq.
             matrix_arg = a
@@ -1060,9 +1114,11 @@ class PDPageContentStream:
     # ------------------------------------------------------------------
 
     def save_graphics_state(self) -> None:
+        self._require_outside_text_block("save_graphics_state")
         self._write_operator(b"q")
 
     def restore_graphics_state(self) -> None:
+        self._require_outside_text_block("restore_graphics_state")
         self._write_operator(b"Q")
 
     def transform(
@@ -1074,6 +1130,7 @@ class PDPageContentStream:
         e: float,
         f: float,
     ) -> None:
+        self._require_outside_text_block("transform")
         self._write_operands(a, b, c, d, e, f)
         self._write_operator(b"cm")
 
@@ -1261,7 +1318,12 @@ class PDPageContentStream:
 
     def shading_fill(self, shading: Any) -> None:
         """Emit ``/<key> sh`` — paint the shape and colour shading from a
-        :class:`PDShading`. Mirrors upstream's ``shadingFill``."""
+        :class:`PDShading`. Mirrors upstream's ``shadingFill``.
+
+        Raises :class:`RuntimeError` when called inside a text block,
+        mirroring upstream's ``IllegalStateException``.
+        """
+        self._require_outside_text_block("shading_fill")
         key = self._resource_key_for_shading(shading)
         self._write_name(key)
         self._buffer.append(0x20)

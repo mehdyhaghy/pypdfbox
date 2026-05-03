@@ -4,6 +4,7 @@ from .pd_destination_or_action import PDDestinationOrAction, is_destination_or_a
 from .pd_metadata import PDMetadata
 from .pd_name_tree_node import PDNameTreeNode
 from .pd_number_tree_node import PDNumberTreeNode
+from .pd_range import PDRange
 from .pd_stream import PDStream
 from .pd_string_name_tree_node import PDStringNameTreeNode
 from .pdfdoc_encoding import (
@@ -20,6 +21,7 @@ __all__ = [
     "PDMetadata",
     "PDNameTreeNode",
     "PDNumberTreeNode",
+    "PDRange",
     "PDStream",
     "PDStringNameTreeNode",
     "contains_char",

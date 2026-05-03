@@ -187,6 +187,7 @@ Cluster #3 (PDStream + XObject family).
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/pdmodel/common/pd_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDStream.java` |
+| `pypdfbox/pdmodel/common/pd_range.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDRange.java` (typed wrapper around the 2-entry COSArray pair; pypdfbox extensions: `width`, `contains`, `clamp`, `is_normalized`, `is_well_formed`, `as_tuple`, iteration, value-equality / hashing, `set_starting_index`) |
 | `pypdfbox/pdmodel/graphics/pd_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDXObject.java` |
 | `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObject.java` (metadata + stream access surface only; image decoding deferred) |
 | `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/form/PDFormXObject.java` |

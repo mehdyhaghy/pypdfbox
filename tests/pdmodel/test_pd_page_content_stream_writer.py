@@ -273,24 +273,30 @@ def test_set_text_matrix_with_iterable() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
         cs.set_text_matrix([0.5, 0, 0, 0.5, 50, 60])
-    assert _stream_bytes(page) == b"0.5 0 0 0.5 50 60 Tm\n"
+        cs.end_text()
+    assert b"0.5 0 0 0.5 50 60 Tm\n" in _stream_bytes(page)
 
 
 def test_set_text_matrix_with_tuple() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
         cs.set_text_matrix((1, 0, 0, 1, 0, 0))
-    assert _stream_bytes(page) == b"1 0 0 1 0 0 Tm\n"
+        cs.end_text()
+    assert b"1 0 0 1 0 0 Tm\n" in _stream_bytes(page)
 
 
 def test_set_text_matrix_iterable_wrong_arity_raises() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
         with pytest.raises(ValueError):
             cs.set_text_matrix([1, 0, 0, 1])
+        cs.end_text()
 
 
 def test_set_text_matrix_with_get_value_matrix_like() -> None:
@@ -309,8 +315,10 @@ def test_set_text_matrix_with_get_value_matrix_like() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
         cs.set_text_matrix(_FakeMatrix())
-    assert _stream_bytes(page) == b"2 0 0 3 10 20 Tm\n"
+        cs.end_text()
+    assert b"2 0 0 3 10 20 Tm\n" in _stream_bytes(page)
 
 
 def test_set_text_matrix_with_get_a_to_get_f_accessors() -> None:
@@ -327,16 +335,20 @@ def test_set_text_matrix_with_get_a_to_get_f_accessors() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
         cs.set_text_matrix(_FakeMatrix2())
-    assert _stream_bytes(page) == b"1 0 0 1 7 8 Tm\n"
+        cs.end_text()
+    assert b"1 0 0 1 7 8 Tm\n" in _stream_bytes(page)
 
 
 def test_set_text_matrix_rejects_unknown_shape() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
         with pytest.raises(TypeError):
             cs.set_text_matrix(object())
+        cs.end_text()
 
 
 def test_set_leading_alias_emits_tl() -> None:
