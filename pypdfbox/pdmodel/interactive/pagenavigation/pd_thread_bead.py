@@ -46,6 +46,26 @@ class PDThreadBead:
         """Return the underlying ``COSDictionary``."""
         return self._bead
 
+    # ---------- equality / hashing (PDDictionaryWrapper parity) ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Equality by underlying ``COSDictionary`` identity. Mirrors the
+        upstream ``PDDictionaryWrapper#equals`` contract — two ``PDThreadBead``
+        wrappers compare equal when (and only when) they wrap the same
+        ``COSDictionary`` instance, so fresh wrappers returned by
+        ``get_next_bead`` / ``get_previous_bead`` compare equal across calls.
+        """
+        if self is other:
+            return True
+        if isinstance(other, PDThreadBead):
+            return self._bead is other._bead
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        """Hash by ``id`` of the wrapped dictionary, paired with
+        :meth:`__eq__`. Mirrors upstream ``PDDictionaryWrapper#hashCode``."""
+        return id(self._bead)
+
     # ---------- /T (thread) ----------
 
     def get_thread(self) -> PDThread | None:
@@ -180,6 +200,39 @@ class PDThreadBead:
         """Equivalent to :meth:`iter_beads` — lets callers do ``for b in
         bead:`` to walk the article."""
         return self.iter_beads()
+
+    # ---------- predicate helpers ----------
+
+    def is_first_bead(self) -> bool:
+        """Return ``True`` when this bead carries a ``/T`` thread reference.
+
+        Per the PDF spec the ``/T`` entry is only required on the first bead
+        of an article. Most well-formed PDFs therefore have exactly one bead
+        per thread that satisfies this predicate; subsequent beads in the
+        chain return ``False``.
+        """
+        return self._bead.contains_key(_T)
+
+    def is_singleton(self) -> bool:
+        """Return ``True`` when this bead is its own ``/N`` and ``/V``.
+
+        Freshly-constructed beads start in this state — ``PDThreadBead()`` sets
+        next/previous to point back at the new bead — and only leave it once
+        they are linked into an article via :meth:`append_bead`. Useful for
+        detecting unlinked beads before they're inserted into a thread.
+        """
+        nxt = self._bead.get_dictionary_object(_N)
+        prev = self._bead.get_dictionary_object(_V)
+        return nxt is self._bead and prev is self._bead
+
+    def count_beads(self) -> int:
+        """Return the number of beads reachable forward from this bead.
+
+        Walks the ``/N`` chain via :meth:`iter_beads`, so the count is bounded
+        by the visited-set guard and terminates even on malformed PDFs whose
+        next-pointers do not loop back to the starting bead.
+        """
+        return sum(1 for _ in self.iter_beads())
 
 
 __all__ = ["PDThreadBead"]

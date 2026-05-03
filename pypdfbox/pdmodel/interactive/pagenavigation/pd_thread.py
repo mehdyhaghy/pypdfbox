@@ -38,6 +38,26 @@ class PDThread:
         """Return the underlying ``COSDictionary``."""
         return self._thread
 
+    # ---------- equality / hashing (PDDictionaryWrapper parity) ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Equality by underlying ``COSDictionary`` identity. Mirrors the
+        upstream ``PDDictionaryWrapper#equals`` contract — two ``PDThread``
+        wrappers compare equal when (and only when) they wrap the same
+        ``COSDictionary`` instance, so fresh wrappers returned by
+        ``PDThreadBead.get_thread`` compare equal across calls.
+        """
+        if self is other:
+            return True
+        if isinstance(other, PDThread):
+            return self._thread is other._thread
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        """Hash by ``id`` of the wrapped dictionary, paired with
+        :meth:`__eq__`. Mirrors upstream ``PDDictionaryWrapper#hashCode``."""
+        return id(self._thread)
+
     # ---------- /I (info) ----------
 
     def get_thread_info(self) -> PDDocumentInformation | None:

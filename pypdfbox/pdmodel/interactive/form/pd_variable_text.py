@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream, COSString
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSNumber, COSStream, COSString
 
 from .pd_terminal_field import PDTerminalField
 
@@ -90,8 +90,6 @@ class PDVariableText(PDTerminalField):
         the PDF spec, so this walks ``self -> parent -> AcroForm``. Defaults
         to :attr:`QUADDING_LEFT` (0) when no ancestor sets it.
         """
-        from pypdfbox.cos import COSNumber
-
         item = self.get_inheritable_attribute(_Q)
         if isinstance(item, COSNumber):
             return item.int_value()

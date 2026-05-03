@@ -104,3 +104,63 @@ def test_set_info_none_removes_entry() -> None:
     thread.set_info(None)
     assert thread.get_info() is None
     assert not thread.get_cos_object().contains_key(COSName.get_pdf_name("I"))
+
+
+# ---------- equality / hashing parity with PDDictionaryWrapper ----------
+
+
+def test_eq_uses_underlying_dictionary_identity() -> None:
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Thread"))
+    a = PDThread(raw)
+    b = PDThread(raw)
+    # Different wrapper instances over the same dictionary compare equal.
+    assert a == b
+    assert a is not b
+
+
+def test_eq_distinct_dictionaries_are_not_equal() -> None:
+    a = PDThread()
+    b = PDThread()
+    # Different default-constructed threads each have their own dictionary.
+    assert a != b
+
+
+def test_eq_returns_not_implemented_for_other_types() -> None:
+    thread = PDThread()
+    # Equality with an unrelated object falls back to NotImplemented and
+    # therefore evaluates to False without raising.
+    assert (thread == "not a thread") is False
+    assert (thread == 42) is False
+    assert (thread == None) is False  # noqa: E711 — explicit equality test
+
+
+def test_hash_matches_equality_contract() -> None:
+    raw = COSDictionary()
+    a = PDThread(raw)
+    b = PDThread(raw)
+    assert a == b
+    assert hash(a) == hash(b)
+    # Equal wrappers can be used interchangeably as dict keys.
+    bucket: dict[PDThread, str] = {a: "marker"}
+    assert bucket[b] == "marker"
+
+
+def test_hash_differs_for_distinct_dictionaries() -> None:
+    a = PDThread()
+    b = PDThread()
+    # Hash collisions are allowed in principle, but ``id``-based hashing of
+    # two freshly-allocated COSDictionary objects should not collide in
+    # practice — guard the equality contract via a set of two members.
+    assert len({a, b}) == 2
+
+
+def test_get_thread_round_trip_via_set_first_bead_uses_eq() -> None:
+    # When ``set_first_bead`` writes the back-reference on the bead, the
+    # bead's ``get_thread()`` returns a *fresh* PDThread wrapper. With the
+    # new equality contract that wrapper compares equal to the original.
+    thread = PDThread()
+    bead = PDThreadBead()
+    thread.set_first_bead(bead)
+    fetched = bead.get_thread()
+    assert fetched == thread

@@ -268,3 +268,145 @@ def test_subject_array_contains_cos_strings() -> None:
     inner = arr.get(0)
     assert isinstance(inner, COSString)
     assert inner.get_bytes() == b"\x00\x01"
+
+
+# ---------- has_* predicate helpers ----------
+
+
+def test_has_predicates_default_to_false() -> None:
+    cert = PDSeedValueCertificate()
+    assert cert.has_ff() is False
+    assert cert.has_subject() is False
+    assert cert.has_subject_dn() is False
+    assert cert.has_key_usage() is False
+    assert cert.has_issuer() is False
+    assert cert.has_oid() is False
+    assert cert.has_url() is False
+    assert cert.has_url_type() is False
+
+
+def test_has_subject_flips_after_set() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_subject([b"\x01\x02"])
+    assert cert.has_subject() is True
+
+
+def test_has_subject_flips_after_add() -> None:
+    cert = PDSeedValueCertificate()
+    cert.add_subject(b"AAA")
+    assert cert.has_subject() is True
+
+
+def test_has_subject_dn_flips_after_set() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_subject_dn([{"cn": "John"}])
+    assert cert.has_subject_dn() is True
+
+
+def test_has_key_usage_flips_after_add() -> None:
+    cert = PDSeedValueCertificate()
+    assert cert.has_key_usage() is False
+    cert.add_key_usage("1XX0X1XXX")
+    assert cert.has_key_usage() is True
+
+
+def test_has_issuer_flips_after_set() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_issuer([b"i1"])
+    assert cert.has_issuer() is True
+
+
+def test_has_oid_flips_after_add() -> None:
+    cert = PDSeedValueCertificate()
+    cert.add_oid(b"\x2a\x03\x04")
+    assert cert.has_oid() is True
+
+
+def test_has_url_flips_after_set() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_url("https://example.com/ca")
+    assert cert.has_url() is True
+
+
+def test_has_url_type_flips_after_set() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_url_type("Browser")
+    assert cert.has_url_type() is True
+
+
+def test_has_ff_flips_after_set_subject_required() -> None:
+    cert = PDSeedValueCertificate()
+    assert cert.has_ff() is False
+    cert.set_subject_required(True)
+    assert cert.has_ff() is True
+
+
+def test_has_predicates_independent() -> None:
+    """Setting one entry must not flip predicates for the others."""
+    cert = PDSeedValueCertificate()
+    cert.set_url("https://example.com/")
+    assert cert.has_url() is True
+    assert cert.has_subject() is False
+    assert cert.has_issuer() is False
+    assert cert.has_oid() is False
+    assert cert.has_key_usage() is False
+    assert cert.has_subject_dn() is False
+    assert cert.has_url_type() is False
+    assert cert.has_ff() is False
+
+
+# ---------- /Ff raw accessors ----------
+
+
+def test_get_ff_default_is_zero() -> None:
+    cert = PDSeedValueCertificate()
+    assert cert.get_ff() == 0
+
+
+def test_get_ff_reflects_individual_flag_setters() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_subject_required(True)
+    cert.set_url_required(True)
+    # FLAG_SUBJECT (1) | FLAG_URL (1<<6) = 1 | 64 = 65
+    assert cert.get_ff() == 65
+
+
+def test_set_ff_round_trip_overwrites_existing_flags() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_subject_required(True)  # bit 0
+    # Overwrite all flags to a specific bitmask:
+    # FLAG_ISSUER | FLAG_KEY_USAGE = 2 | 32 = 34
+    cert.set_ff(PDSeedValueCertificate.FLAG_ISSUER | PDSeedValueCertificate.FLAG_KEY_USAGE)
+    assert cert.get_ff() == 34
+    assert cert.is_subject_required() is False
+    assert cert.is_issuer_required() is True
+    assert cert.is_key_usage_required() is True
+
+
+def test_set_ff_zero_clears_all_flags() -> None:
+    cert = PDSeedValueCertificate()
+    cert.set_subject_required(True)
+    cert.set_issuer_required(True)
+    cert.set_url_required(True)
+    cert.set_ff(0)
+    assert cert.get_ff() == 0
+    assert cert.is_subject_required() is False
+    assert cert.is_issuer_required() is False
+    assert cert.is_url_required() is False
+
+
+def test_get_ff_returns_zero_when_entry_is_wrong_type() -> None:
+    """Mirrors upstream ``getInt(FF, 0)`` semantics: non-integer /Ff
+    storage falls back to 0 rather than raising."""
+    cert = PDSeedValueCertificate()
+    cert.get_cos_object().set_item(_FF, COSName.get_pdf_name("not-an-int"))
+    assert cert.get_ff() == 0
+
+
+def test_set_ff_writes_cos_integer() -> None:
+    from pypdfbox.cos import COSInteger
+    cert = PDSeedValueCertificate()
+    cert.set_ff(42)
+    item = cert.get_cos_object().get_item(_FF)
+    assert isinstance(item, COSInteger)
+    assert int(item.value) == 42

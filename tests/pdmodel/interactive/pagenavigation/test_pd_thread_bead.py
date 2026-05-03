@@ -208,3 +208,157 @@ def test_iter_beads_terminates_on_malformed_self_loop() -> None:
     assert len(walked) == 2
     assert walked[0].get_cos_object() is a.get_cos_object()
     assert walked[1].get_cos_object() is b.get_cos_object()
+
+
+# ---------- equality / hashing parity with PDDictionaryWrapper ----------
+
+
+def test_bead_eq_uses_underlying_dictionary_identity() -> None:
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Bead"))
+    a = PDThreadBead(raw)
+    b = PDThreadBead(raw)
+    assert a == b
+    assert a is not b
+
+
+def test_bead_eq_distinct_dictionaries_are_not_equal() -> None:
+    a = PDThreadBead()
+    b = PDThreadBead()
+    assert a != b
+
+
+def test_bead_eq_returns_not_implemented_for_other_types() -> None:
+    bead = PDThreadBead()
+    assert (bead == "not a bead") is False
+    assert (bead == 42) is False
+
+
+def test_bead_hash_matches_equality_contract() -> None:
+    raw = COSDictionary()
+    a = PDThreadBead(raw)
+    b = PDThreadBead(raw)
+    assert a == b
+    assert hash(a) == hash(b)
+    bucket: dict[PDThreadBead, str] = {a: "first"}
+    assert bucket[b] == "first"
+
+
+def test_get_next_bead_uses_eq_across_fresh_wrappers() -> None:
+    # ``get_next_bead`` returns a fresh wrapper each call. With the new
+    # equality contract those wrappers must compare equal.
+    a = PDThreadBead()
+    b = PDThreadBead()
+    a.append_bead(b)
+    first = a.get_next_bead()
+    second = a.get_next_bead()
+    assert first is not second
+    assert first == second
+    assert first == b
+
+
+# ---------- predicate helpers ----------
+
+
+def test_is_first_bead_true_when_thread_set() -> None:
+    bead = PDThreadBead()
+    bead.set_thread(PDThread())
+    assert bead.is_first_bead() is True
+
+
+def test_is_first_bead_false_on_default_bead() -> None:
+    # A freshly-constructed bead has no /T entry yet — only the first bead
+    # of an article is required to carry one.
+    bead = PDThreadBead()
+    assert bead.is_first_bead() is False
+
+
+def test_is_first_bead_false_after_thread_cleared() -> None:
+    bead = PDThreadBead()
+    bead.set_thread(PDThread())
+    bead.set_thread(None)
+    assert bead.is_first_bead() is False
+
+
+def test_set_first_bead_makes_bead_first_bead() -> None:
+    # Side-effect from ``PDThread.set_first_bead`` should propagate so the
+    # ``is_first_bead`` predicate reports True.
+    thread = PDThread()
+    bead = PDThreadBead()
+    assert bead.is_first_bead() is False
+    thread.set_first_bead(bead)
+    assert bead.is_first_bead() is True
+
+
+# ---------- is_singleton ----------
+
+
+def test_is_singleton_true_on_default_bead() -> None:
+    bead = PDThreadBead()
+    assert bead.is_singleton() is True
+
+
+def test_is_singleton_false_after_append() -> None:
+    a = PDThreadBead()
+    b = PDThreadBead()
+    a.append_bead(b)
+    assert a.is_singleton() is False
+    assert b.is_singleton() is False
+
+
+def test_is_singleton_false_when_only_next_points_self() -> None:
+    # Only true singletons (both /N and /V referencing self) qualify; a bead
+    # whose /N is self but /V references another bead is *not* a singleton.
+    a = PDThreadBead()
+    other = PDThreadBead()
+    a.set_previous_bead(other)
+    assert a.is_singleton() is False
+
+
+def test_is_singleton_false_on_bead_without_links() -> None:
+    # A bead built from a bare dictionary has neither /N nor /V — it is not
+    # a singleton in the upstream sense (which requires self-references).
+    bead = PDThreadBead(COSDictionary())
+    assert bead.is_singleton() is False
+
+
+# ---------- count_beads ----------
+
+
+def test_count_beads_singleton_returns_one() -> None:
+    bead = PDThreadBead()
+    assert bead.count_beads() == 1
+
+
+def test_count_beads_two_bead_chain() -> None:
+    a = PDThreadBead()
+    b = PDThreadBead()
+    a.append_bead(b)
+    assert a.count_beads() == 2
+    # Counting from b walks b -> a and stops at the start-id.
+    assert b.count_beads() == 2
+
+
+def test_count_beads_three_bead_chain() -> None:
+    a = PDThreadBead()
+    b = PDThreadBead()
+    c = PDThreadBead()
+    a.append_bead(b)
+    b.append_bead(c)  # a <-> b <-> c <-> a
+    assert a.count_beads() == 3
+
+
+def test_count_beads_terminates_on_malformed_chain() -> None:
+    # The visited-set guard inside iter_beads keeps count_beads finite even
+    # when /N points at an already-visited bead.
+    a = PDThreadBead()
+    b = PDThreadBead()
+    a.set_next_bead(b)
+    b.set_next_bead(b)
+    assert a.count_beads() == 2
+
+
+def test_count_beads_terminates_on_missing_next() -> None:
+    # A bead built from a bare dictionary has no /N; count_beads must yield 1.
+    bead = PDThreadBead(COSDictionary())
+    assert bead.count_beads() == 1

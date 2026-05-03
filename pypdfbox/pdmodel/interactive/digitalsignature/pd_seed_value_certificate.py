@@ -263,6 +263,63 @@ class PDSeedValueCertificate:
     def set_url_type(self, url_type: str) -> None:
         self._dict.set_name(_URL_TYPE, url_type)
 
+    # ---------- /Ff raw accessors ----------
+    #
+    # Upstream uses ``COSDictionary.getFlag`` / ``setFlag`` to read individual
+    # bits. The full integer is occasionally useful for low-level inspection
+    # (e.g. round-tripping through a COSDictionary built externally) — these
+    # raw accessors expose it without re-deriving via per-bit reads.
+
+    def get_ff(self) -> int:
+        """Return the raw ``/Ff`` integer (default ``0`` when absent).
+
+        Mirrors upstream ``COSDictionary.getInt(COSName.FF, 0)``.
+        """
+        from pypdfbox.cos import COSInteger
+        v = self._dict.get_dictionary_object(_FF)
+        if isinstance(v, COSInteger):
+            return int(v.value)
+        return 0
+
+    def set_ff(self, flags: int) -> None:
+        """Write the raw ``/Ff`` integer.
+
+        Mirrors upstream ``COSDictionary.setInt(COSName.FF, flags)``. Values
+        bitwise-OR'd from the ``FLAG_*`` constants on this class.
+        """
+        self._dict.set_int(_FF, int(flags))
+
+    # ---------- has_* predicate helpers ----------
+    #
+    # Predicate-pair siblings of the ``get_*`` accessors above. Cheaper than
+    # ``get_*() is not None`` for the array-valued entries (skips list
+    # construction) and clearer at call sites. Mirrors the ``has_*`` pattern
+    # already established on :class:`PDSeedValue`.
+
+    def has_ff(self) -> bool:
+        return self._dict.contains_key(_FF)
+
+    def has_subject(self) -> bool:
+        return self._dict.contains_key(_SUBJECT)
+
+    def has_subject_dn(self) -> bool:
+        return self._dict.contains_key(_SUBJECT_DN)
+
+    def has_key_usage(self) -> bool:
+        return self._dict.contains_key(_KEY_USAGE)
+
+    def has_issuer(self) -> bool:
+        return self._dict.contains_key(_ISSUER)
+
+    def has_oid(self) -> bool:
+        return self._dict.contains_key(_OID)
+
+    def has_url(self) -> bool:
+        return self._dict.contains_key(_URL)
+
+    def has_url_type(self) -> bool:
+        return self._dict.contains_key(_URL_TYPE)
+
 
 def _byte_arrays_from_cos_array(array: COSArray) -> list[bytes]:
     out: list[bytes] = []
