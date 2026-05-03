@@ -37,6 +37,16 @@ class PDObjectReference:
 
     TYPE: str = "OBJR"
 
+    #: ``/Type`` value identifying an annotation dictionary that ``/Obj``
+    #: references. Mirrors PDFBox's ``COSName.ANNOT`` string. Exposed as a
+    #: class constant so callers can predicate against it without reaching
+    #: into the COS namespace directly.
+    SUBTYPE_ANNOT: str = "Annot"
+    #: ``/Subtype`` value on a Form XObject stream that ``/Obj`` references.
+    SUBTYPE_XOBJECT_FORM: str = "Form"
+    #: ``/Subtype`` value on an Image XObject stream that ``/Obj`` references.
+    SUBTYPE_XOBJECT_IMAGE: str = "Image"
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
             self._dictionary: COSDictionary = COSDictionary()
@@ -182,6 +192,65 @@ class PDObjectReference:
 
         # COSBase that's neither a dict nor a stream — not resolvable.
         return None
+
+    # ---------- /Obj presence + subtype predicates (pypdfbox additions) ----
+
+    def has_obj(self) -> bool:
+        """Return ``True`` when ``/Obj`` is present.
+
+        pypdfbox addition: lets callers gate :meth:`get_referenced_object`
+        without paying the dispatch cost just to check for absence.
+        """
+        return self._dictionary.get_dictionary_object(_OBJ) is not None
+
+    def has_pg(self) -> bool:
+        """Return ``True`` when ``/Pg`` is present and a dictionary.
+
+        pypdfbox addition: ``/Pg`` on an OBJR is optional (PDF 32000-1
+        §14.7.4.3); this predicate distinguishes "no override" from
+        "override is malformed" without materialising a :class:`PDPage`.
+        """
+        return isinstance(
+            self._dictionary.get_dictionary_object(_PG), COSDictionary
+        )
+
+    def is_referenced_form_xobject(self) -> bool:
+        """Return ``True`` when ``/Obj`` is a Form XObject stream.
+
+        pypdfbox addition: probes ``/Obj``'s ``/Subtype`` directly without
+        running the full annotation/XObject dispatch. Returns ``False``
+        when ``/Obj`` is absent, not a stream, or has any other subtype.
+        """
+        obj = self._dictionary.get_dictionary_object(_OBJ)
+        if not isinstance(obj, COSStream):
+            return False
+        return obj.get_name(_SUBTYPE) == self.SUBTYPE_XOBJECT_FORM
+
+    def is_referenced_image_xobject(self) -> bool:
+        """Return ``True`` when ``/Obj`` is an Image XObject stream.
+
+        pypdfbox addition: companion to :meth:`is_referenced_form_xobject`.
+        """
+        obj = self._dictionary.get_dictionary_object(_OBJ)
+        if not isinstance(obj, COSStream):
+            return False
+        return obj.get_name(_SUBTYPE) == self.SUBTYPE_XOBJECT_IMAGE
+
+    def is_referenced_annotation(self) -> bool:
+        """Return ``True`` when ``/Obj`` is a dictionary with ``/Type /Annot``.
+
+        pypdfbox addition: probes the dictionary's ``/Type`` rather than
+        running annotation dispatch. Note that an annotation dictionary
+        without ``/Type /Annot`` is still a valid annotation per PDF
+        32000-1 §12.5.2 (``/Type`` is optional); this predicate is the
+        narrow positive answer — callers wanting the upstream-aligned
+        "is this anything dispatchable as an annotation?" still need to
+        call :meth:`get_referenced_object`.
+        """
+        obj = self._dictionary.get_dictionary_object(_OBJ)
+        if not isinstance(obj, COSDictionary) or isinstance(obj, COSStream):
+            return False
+        return obj.get_name(_TYPE) == self.SUBTYPE_ANNOT
 
     def set_referenced_object(
         self, obj: "PDAnnotation | PDXObject | None"

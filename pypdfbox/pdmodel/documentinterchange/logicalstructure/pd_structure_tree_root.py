@@ -280,6 +280,92 @@ class PDStructureTreeRoot(PDStructureNode):
         ``PDStructureTreeRoot.setParentTreeNextKey(int)``."""
         self._dictionary.set_int(_PARENT_TREE_NEXT_KEY, key)
 
+    def next_parent_tree_key(self) -> int:
+        """Return the current ``/ParentTreeNextKey`` and advance the entry by
+        one.
+
+        pypdfbox addition. Common allocator pattern: a caller wiring a new
+        page's ``/StructParents`` typically wants to read the next free key
+        and bump it atomically. Upstream callers do this inline by reading
+        ``getParentTreeNextKey()`` then writing ``setParentTreeNextKey()``;
+        this helper folds those two calls so the slot stays consistent.
+        """
+        current = self.get_parent_tree_next_key()
+        self.set_parent_tree_next_key(current + 1)
+        return current
+
+    # ---------- presence predicates (pypdfbox additions) ----------
+
+    def has_id_tree(self) -> bool:
+        """Return ``True`` when ``/IDTree`` is present and a dictionary.
+
+        pypdfbox addition: lets callers gate :meth:`get_id_tree` /
+        :meth:`get_struct_element_for_id` without materialising the typed
+        wrapper just to check for absence.
+        """
+        return isinstance(
+            self._dictionary.get_dictionary_object(_ID_TREE), COSDictionary
+        )
+
+    def has_parent_tree(self) -> bool:
+        """Return ``True`` when ``/ParentTree`` is present and a dictionary.
+
+        pypdfbox addition: companion predicate to :meth:`has_id_tree` for
+        callers checking whether parent-tree resolution is even possible.
+        """
+        return isinstance(
+            self._dictionary.get_dictionary_object(_PARENT_TREE), COSDictionary
+        )
+
+    def has_role_map(self) -> bool:
+        """Return ``True`` when ``/RoleMap`` is present and a dictionary
+        (whether or not it has any entries).
+
+        pypdfbox addition: :meth:`get_role_map` returns an empty dict for
+        both "absent" and "present-but-empty"; this predicate distinguishes
+        the two cases when callers need to preserve the entry on round-trip.
+        """
+        return isinstance(
+            self._dictionary.get_dictionary_object(_ROLE_MAP), COSDictionary
+        )
+
+    def has_class_map(self) -> bool:
+        """Return ``True`` when ``/ClassMap`` is present and a dictionary
+        (whether or not it has any entries).
+
+        pypdfbox addition: companion to :meth:`has_role_map`. Distinguishes
+        an absent ``/ClassMap`` from a present-but-empty one — useful for
+        round-trip preservation on documents that ship empty class maps.
+        """
+        return isinstance(
+            self._dictionary.get_dictionary_object(_CLASS_MAP), COSDictionary
+        )
+
+    def has_kids(self) -> bool:
+        """Return ``True`` when the root has at least one ``/K`` kid.
+
+        pypdfbox addition: ``get_k() is not None`` is close but stumbles on
+        ``/K`` set to a ``COSNull`` or an empty ``COSArray``; this helper
+        normalises both edges. Equivalent to ``count_kids() > 0`` but
+        avoids materialising the typed kid list.
+        """
+        k = self._dictionary.get_dictionary_object(_K)
+        if k is None:
+            return False
+        if isinstance(k, COSArray):
+            return k.size() > 0
+        return True
+
+    def count_kids(self) -> int:
+        """Return the number of direct ``/K`` kids reachable from the root.
+
+        pypdfbox addition mirroring :meth:`PDStructureElement.count_kids`.
+        Thin wrapper over ``len(get_kids())`` for callers that want a size
+        accessor without the list-builder overhead being obvious at the
+        call site.
+        """
+        return len(self.get_kids())
+
     # ---------- convenience lookups ----------
 
     def get_struct_element_for_id(self, id_string: str) -> PDStructureElement | None:
