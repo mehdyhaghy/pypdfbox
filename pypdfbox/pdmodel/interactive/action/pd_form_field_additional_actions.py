@@ -18,6 +18,24 @@ class PDFormFieldAdditionalActions:
     32000-1:2008 §12.6.3, Table 196).
     """
 
+    # ------------------------------------------------------------------
+    # Trigger name constants. PDF 32000-1:2008 §12.6.3 Table 196 names
+    # these single-letter keys; expose them so producers can write
+    # ``aa.get_cos_object().contains_key(PDFormFieldAdditionalActions.TRIGGER_K)``
+    # without hard-coding string literals.
+    # ------------------------------------------------------------------
+    TRIGGER_K: COSName = _K
+    TRIGGER_F: COSName = _F
+    TRIGGER_V: COSName = _V
+    TRIGGER_C: COSName = _C
+
+    _ALL_TRIGGERS: tuple[tuple[str, COSName], ...] = (
+        ("K", _K),
+        ("F", _F),
+        ("V", _V),
+        ("C", _C),
+    )
+
     def __init__(self, actions: COSDictionary | None = None) -> None:
         self._actions = actions if actions is not None else COSDictionary()
 
@@ -63,6 +81,34 @@ class PDFormFieldAdditionalActions:
             self._actions.remove_item(_C)
             return
         self._actions.set_item(_C, action.get_cos_object())
+
+    # ------------------------------------------------------------------
+    # Predicate helpers. ``has_*`` checks key presence (cheap) without
+    # resolving the indirect reference or constructing a typed wrapper,
+    # so callers iterating over many fields can short-circuit.
+    # ------------------------------------------------------------------
+
+    def has_k(self) -> bool:
+        return self._actions.contains_key(_K)
+
+    def has_f(self) -> bool:
+        return self._actions.contains_key(_F)
+
+    def has_v(self) -> bool:
+        return self._actions.contains_key(_V)
+
+    def has_c(self) -> bool:
+        return self._actions.contains_key(_C)
+
+    def is_empty(self) -> bool:
+        """Return ``True`` when no field trigger is set. Producers that
+        find an empty additional-actions dictionary can elide the ``/AA``
+        entry from the field entirely."""
+        return not any(self._actions.contains_key(key) for _, key in self._ALL_TRIGGERS)
+
+    def __repr__(self) -> str:
+        flags = [label for label, key in self._ALL_TRIGGERS if self._actions.contains_key(key)]
+        return f"PDFormFieldAdditionalActions({','.join(flags) or 'empty'})"
 
 
 __all__ = ["PDFormFieldAdditionalActions"]

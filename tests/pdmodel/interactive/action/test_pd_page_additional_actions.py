@@ -197,3 +197,73 @@ def test_page_additional_actions_repr_with_both() -> None:
     aa.set_o(action)
     aa.set_c(action)
     assert repr(aa) == "PDPageAdditionalActions(O,C)"
+
+
+# ----------------------------------------------------------------------
+# Wave 227: parity-style helpers (TRIGGER_* constants, has_* predicates)
+# bringing PDPageAdditionalActions in line with the surface already
+# exposed by PDAnnotationAdditionalActions.
+# ----------------------------------------------------------------------
+
+
+_HAS_TRIGGERS_PAGE: list[tuple[str, str]] = [(t[0], t[1]) for t in _TRIGGERS]
+
+
+@pytest.mark.parametrize(("attr", "key_str"), _HAS_TRIGGERS_PAGE)
+def test_page_trigger_constants_match_pdf_keys(attr: str, key_str: str) -> None:
+    constant = getattr(PDPageAdditionalActions, f"TRIGGER_{attr.upper()}")
+    assert isinstance(constant, COSName)
+    assert constant == COSName.get_pdf_name(key_str)
+
+
+def test_page_trigger_constants_are_unique() -> None:
+    keys = {
+        PDPageAdditionalActions.TRIGGER_O,
+        PDPageAdditionalActions.TRIGGER_C,
+    }
+    assert len(keys) == len(_HAS_TRIGGERS_PAGE)
+
+
+@pytest.mark.parametrize(("attr", "_key_str"), _HAS_TRIGGERS_PAGE)
+def test_page_has_returns_false_on_empty_actions(
+    attr: str, _key_str: str
+) -> None:
+    aa = PDPageAdditionalActions()
+    assert getattr(aa, f"has_{attr}")() is False
+
+
+@pytest.mark.parametrize(("attr", "uri"), [(t[0], t[2]) for t in _TRIGGERS])
+def test_page_has_returns_true_after_setter(attr: str, uri: str) -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri(uri)
+    getattr(aa, f"set_{attr}")(action)
+    assert getattr(aa, f"has_{attr}")() is True
+
+
+@pytest.mark.parametrize(("attr", "uri"), [(t[0], t[2]) for t in _TRIGGERS])
+def test_page_has_returns_false_after_clearing(attr: str, uri: str) -> None:
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri(uri)
+    getattr(aa, f"set_{attr}")(action)
+    getattr(aa, f"set_{attr}")(None)
+    assert getattr(aa, f"has_{attr}")() is False
+
+
+def test_page_has_predicates_are_independent() -> None:
+    # Setting /O must not flip /C's predicate.
+    aa = PDPageAdditionalActions()
+    action = PDActionURI()
+    action.set_uri("https://example.test/o-only")
+    aa.set_o(action)
+    assert aa.has_o() is True
+    assert aa.has_c() is False
+
+
+def test_page_has_returns_true_for_non_dictionary_value() -> None:
+    # ``has_*`` is a key-presence check, not a typed-resolution check.
+    aa = PDPageAdditionalActions()
+    aa.get_cos_object().set_name(PDPageAdditionalActions.TRIGGER_O, "Bogus")
+    assert aa.has_o() is True
+    assert aa.get_o() is None

@@ -1444,3 +1444,203 @@ def test_set_marked_content_point_with_properties_alias_emits_dp() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_marked_content_point_with_properties("Span", "MC0")
     assert _stream_bytes(page) == b"/Span /MC0 DP\n"
+
+
+# ------------------------------------------------------------------
+# RenderingMode enum + set_text_rendering_mode acceptance
+# ------------------------------------------------------------------
+
+
+def test_set_text_rendering_mode_accepts_rendering_mode_enum() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingMode
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_text_rendering_mode(RenderingMode.FILL_STROKE)
+    assert _stream_bytes(page) == b"2 Tr\n"
+
+
+def test_set_rendering_mode_accepts_rendering_mode_enum() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingMode
+
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_rendering_mode(RenderingMode.NEITHER)
+    assert _stream_bytes(page) == b"3 Tr\n"
+
+
+def test_set_text_rendering_mode_int_path_still_works() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_text_rendering_mode(7)
+    assert _stream_bytes(page) == b"7 Tr\n"
+
+
+def test_rendering_mode_enum_int_value_round_trip() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingMode
+
+    for member in RenderingMode:
+        assert RenderingMode.from_int(member.int_value()) is member
+
+
+def test_rendering_mode_enum_predicates() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingMode
+
+    assert RenderingMode.FILL.is_fill()
+    assert not RenderingMode.FILL.is_stroke()
+    assert not RenderingMode.FILL.is_clip()
+
+    assert RenderingMode.STROKE.is_stroke()
+    assert not RenderingMode.STROKE.is_fill()
+    assert not RenderingMode.STROKE.is_clip()
+
+    assert RenderingMode.FILL_STROKE.is_fill()
+    assert RenderingMode.FILL_STROKE.is_stroke()
+    assert not RenderingMode.FILL_STROKE.is_clip()
+
+    assert not RenderingMode.NEITHER.is_fill()
+    assert not RenderingMode.NEITHER.is_stroke()
+    assert not RenderingMode.NEITHER.is_clip()
+
+    assert RenderingMode.FILL_CLIP.is_fill()
+    assert RenderingMode.FILL_CLIP.is_clip()
+    assert not RenderingMode.FILL_CLIP.is_stroke()
+
+    assert RenderingMode.STROKE_CLIP.is_stroke()
+    assert RenderingMode.STROKE_CLIP.is_clip()
+    assert not RenderingMode.STROKE_CLIP.is_fill()
+
+    assert RenderingMode.FILL_STROKE_CLIP.is_fill()
+    assert RenderingMode.FILL_STROKE_CLIP.is_stroke()
+    assert RenderingMode.FILL_STROKE_CLIP.is_clip()
+
+    assert RenderingMode.NEITHER_CLIP.is_clip()
+    assert not RenderingMode.NEITHER_CLIP.is_fill()
+    assert not RenderingMode.NEITHER_CLIP.is_stroke()
+
+
+def test_rendering_mode_from_int_unknown_raises() -> None:
+    from pypdfbox.pdmodel.graphics.state import RenderingMode
+
+    with pytest.raises(IndexError):
+        RenderingMode.from_int(8)
+
+
+# ------------------------------------------------------------------
+# 0..1 range validation on RGB / Gray / CMYK setters
+# ------------------------------------------------------------------
+
+
+def test_set_stroking_color_rgb_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_rgb(1.5, 0.0, 0.0)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_rgb(0.0, -0.1, 0.0)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_rgb(0.0, 0.0, 2.0)
+    cs.close()
+
+
+def test_set_non_stroking_color_rgb_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_non_stroking_color_rgb(-0.5, 0.5, 0.5)
+    cs.close()
+
+
+def test_set_stroking_color_rgb_boundary_values_accepted() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.set_stroking_color_rgb(1.0, 1.0, 1.0)
+    assert _stream_bytes(page) == b"0 0 0 RG\n1 1 1 RG\n"
+
+
+def test_set_stroking_color_gray_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_gray(1.01)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_gray(-0.01)
+    cs.close()
+
+
+def test_set_non_stroking_color_gray_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_non_stroking_color_gray(-0.5)
+    cs.close()
+
+
+def test_set_stroking_color_cmyk_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_cmyk(1.5, 0.0, 0.0, 0.0)
+    with pytest.raises(ValueError):
+        cs.set_stroking_color_cmyk(0.0, 0.0, 0.0, -0.5)
+    cs.close()
+
+
+def test_set_non_stroking_color_cmyk_rejects_out_of_range() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    cs = PDPageContentStream(doc, page)
+    with pytest.raises(ValueError):
+        cs.set_non_stroking_color_cmyk(0.0, 1.5, 0.0, 0.0)
+    cs.close()
+
+
+def test_set_color_cmyk_boundary_values_accepted() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_stroking_color_cmyk(0.0, 0.0, 0.0, 0.0)
+        cs.set_non_stroking_color_cmyk(1.0, 1.0, 1.0, 1.0)
+    assert _stream_bytes(page) == b"0 0 0 0 K\n1 1 1 1 k\n"
+
+
+# ------------------------------------------------------------------
+# private interval helpers
+# ------------------------------------------------------------------
+
+
+def test_is_outside_one_interval_helper() -> None:
+    from pypdfbox.pdmodel.pd_page_content_stream import (
+        _is_outside_one_interval,
+    )
+
+    assert not _is_outside_one_interval(0.0)
+    assert not _is_outside_one_interval(0.5)
+    assert not _is_outside_one_interval(1.0)
+    assert _is_outside_one_interval(-0.0001)
+    assert _is_outside_one_interval(1.0001)
+    assert _is_outside_one_interval(-1.0)
+    assert _is_outside_one_interval(2.0)
+
+
+def test_is_outside_255_interval_helper() -> None:
+    from pypdfbox.pdmodel.pd_page_content_stream import (
+        _is_outside_255_interval,
+    )
+
+    assert not _is_outside_255_interval(0)
+    assert not _is_outside_255_interval(128)
+    assert not _is_outside_255_interval(255)
+    assert _is_outside_255_interval(-1)
+    assert _is_outside_255_interval(256)
+    assert _is_outside_255_interval(1000)

@@ -376,30 +376,111 @@ class PDPageContentStream:
     # ------------------------------------------------------------------
 
     def set_stroking_color_rgb(self, r: float, g: float, b: float) -> None:
+        """Emit ``r g b RG`` — set the DeviceRGB stroking color.
+
+        ``r``/``g``/``b`` must be in ``0..1``; out-of-range values raise
+        :class:`ValueError`, matching upstream's
+        ``IllegalArgumentException`` from ``setStrokingColor(float, float,
+        float)``.
+        """
+        if (
+            _is_outside_one_interval(r)
+            or _is_outside_one_interval(g)
+            or _is_outside_one_interval(b)
+        ):
+            raise ValueError(
+                "Parameters must be within 0..1, but are "
+                f"({r:.2f},{g:.2f},{b:.2f})"
+            )
         self._write_operands(r, g, b)
         self._write_operator(b"RG")
 
     def set_non_stroking_color_rgb(self, r: float, g: float, b: float) -> None:
+        """Emit ``r g b rg`` — set the DeviceRGB non-stroking color.
+
+        ``r``/``g``/``b`` must be in ``0..1``; out-of-range values raise
+        :class:`ValueError`, matching upstream's
+        ``IllegalArgumentException``.
+        """
+        if (
+            _is_outside_one_interval(r)
+            or _is_outside_one_interval(g)
+            or _is_outside_one_interval(b)
+        ):
+            raise ValueError(
+                "Parameters must be within 0..1, but are "
+                f"({r:.2f},{g:.2f},{b:.2f})"
+            )
         self._write_operands(r, g, b)
         self._write_operator(b"rg")
 
     def set_stroking_color_gray(self, gray: float) -> None:
+        """Emit ``gray G`` — set the DeviceGray stroking color.
+
+        ``gray`` must be in ``0..1``; out-of-range values raise
+        :class:`ValueError`, matching upstream's
+        ``IllegalArgumentException``.
+        """
+        if _is_outside_one_interval(gray):
+            raise ValueError(
+                f"Parameter must be within 0..1, but is {gray}"
+            )
         self._write_operands(gray)
         self._write_operator(b"G")
 
     def set_non_stroking_color_gray(self, gray: float) -> None:
+        """Emit ``gray g`` — set the DeviceGray non-stroking color.
+
+        ``gray`` must be in ``0..1``; out-of-range values raise
+        :class:`ValueError`.
+        """
+        if _is_outside_one_interval(gray):
+            raise ValueError(
+                f"Parameter must be within 0..1, but is {gray}"
+            )
         self._write_operands(gray)
         self._write_operator(b"g")
 
     def set_stroking_color_cmyk(
         self, c: float, m: float, y: float, k: float
     ) -> None:
+        """Emit ``c m y k K`` — set the DeviceCMYK stroking color.
+
+        Each component must be in ``0..1``; out-of-range values raise
+        :class:`ValueError`, matching upstream's
+        ``IllegalArgumentException``.
+        """
+        if (
+            _is_outside_one_interval(c)
+            or _is_outside_one_interval(m)
+            or _is_outside_one_interval(y)
+            or _is_outside_one_interval(k)
+        ):
+            raise ValueError(
+                "Parameters must be within 0..1, but are "
+                f"({c:.2f},{m:.2f},{y:.2f},{k:.2f})"
+            )
         self._write_operands(c, m, y, k)
         self._write_operator(b"K")
 
     def set_non_stroking_color_cmyk(
         self, c: float, m: float, y: float, k: float
     ) -> None:
+        """Emit ``c m y k k`` — set the DeviceCMYK non-stroking color.
+
+        Each component must be in ``0..1``; out-of-range values raise
+        :class:`ValueError`.
+        """
+        if (
+            _is_outside_one_interval(c)
+            or _is_outside_one_interval(m)
+            or _is_outside_one_interval(y)
+            or _is_outside_one_interval(k)
+        ):
+            raise ValueError(
+                "Parameters must be within 0..1, but are "
+                f"({c:.2f},{m:.2f},{y:.2f},{k:.2f})"
+            )
         self._write_operands(c, m, y, k)
         self._write_operator(b"k")
 
@@ -869,9 +950,23 @@ class PDPageContentStream:
         self._write_operands(scaling)
         self._write_operator(b"Tz")
 
-    def set_text_rendering_mode(self, mode: int) -> None:
-        """Emit ``<mode> Tr`` — set the text rendering mode (0-7)."""
-        m = int(mode)
+    def set_text_rendering_mode(self, mode: int | Any) -> None:
+        """Emit ``<mode> Tr`` — set the text rendering mode (0-7).
+
+        Accepts either an ``int`` (0..7) or a
+        :class:`pypdfbox.pdmodel.graphics.state.RenderingMode` enum
+        member. Mirrors upstream's ``setRenderingMode(RenderingMode)`` —
+        the int form is the legacy spelling. Out-of-range integers raise
+        :class:`ValueError`.
+        """
+        from pypdfbox.pdmodel.graphics.state.rendering_mode import (  # noqa: PLC0415
+            RenderingMode,
+        )
+
+        if isinstance(mode, RenderingMode):
+            m = mode.int_value()
+        else:
+            m = int(mode)
         if not 0 <= m <= 7:
             raise ValueError(
                 f"text rendering mode must be in 0..7; got {mode!r}"
@@ -879,9 +974,10 @@ class PDPageContentStream:
         self._write_operands(m)
         self._write_operator(b"Tr")
 
-    def set_rendering_mode(self, mode: int) -> None:
+    def set_rendering_mode(self, mode: int | Any) -> None:
         """Alias for :meth:`set_text_rendering_mode` matching upstream's
-        ``setRenderingMode`` Java method name."""
+        ``setRenderingMode`` Java method name. Accepts ``int`` or
+        :class:`RenderingMode`."""
         self.set_text_rendering_mode(mode)
 
     # ------------------------------------------------------------------
@@ -1689,6 +1785,26 @@ def _format_number(value: float) -> bytes:
     if not text or text == "-":
         text = "0"
     return text.encode("ascii")
+
+
+def _is_outside_one_interval(val: float) -> bool:
+    """Return ``True`` if ``val`` is outside the closed ``[0, 1]`` range.
+
+    Mirrors upstream's private ``isOutsideOneInterval(double)`` guard
+    used by the DeviceGray/RGB/CMYK setters before they write operands.
+    """
+    return val < 0.0 or val > 1.0
+
+
+def _is_outside_255_interval(val: int) -> bool:
+    """Return ``True`` if ``val`` is outside the closed ``[0, 255]``
+    integer range.
+
+    Mirrors upstream's protected ``isOutside255Interval(int)`` helper —
+    used when converting an AWT-style 8-bit color triple (``0..255``)
+    into the PDF 32000-1 normalized ``0..1`` representation.
+    """
+    return val < 0 or val > 255
 
 
 def _coerce_append_mode(mode: AppendMode | str | bool | None) -> AppendMode:

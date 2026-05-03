@@ -15,6 +15,20 @@ class PDPageAdditionalActions:
     (``/C``) triggers.
     """
 
+    # ------------------------------------------------------------------
+    # Trigger name constants. PDF 32000-1:2008 §12.6.3 Table 194 names
+    # these single-letter keys; expose them so producers can write
+    # ``aa.get_cos_object().contains_key(PDPageAdditionalActions.TRIGGER_O)``
+    # without hard-coding string literals.
+    # ------------------------------------------------------------------
+    TRIGGER_O: COSName = _O
+    TRIGGER_C: COSName = _C
+
+    _ALL_TRIGGERS: tuple[tuple[str, COSName], ...] = (
+        ("O", _O),
+        ("C", _C),
+    )
+
     def __init__(self, actions: COSDictionary | None = None) -> None:
         self._actions = actions if actions is not None else COSDictionary()
 
@@ -58,6 +72,18 @@ class PDPageAdditionalActions:
 
     def set_close_action(self, action: PDAction | None) -> None:
         self.set_c(action)
+
+    # ------------------------------------------------------------------
+    # Predicate helpers. ``has_*`` checks key presence (cheap) without
+    # resolving the indirect reference or constructing a typed wrapper,
+    # so callers iterating over many pages can short-circuit.
+    # ------------------------------------------------------------------
+
+    def has_o(self) -> bool:
+        return self._actions.contains_key(_O)
+
+    def has_c(self) -> bool:
+        return self._actions.contains_key(_C)
 
     # ------------------------------------------------------------------
     # Introspection helpers

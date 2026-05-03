@@ -19,6 +19,27 @@ class PDDocumentCatalogAdditionalActions:
     did-print (``/DP``) triggers (PDF 32000-1:2008 §12.6.3, Table 195).
     """
 
+    # ------------------------------------------------------------------
+    # Trigger name constants. PDF 32000-1:2008 §12.6.3 Table 195 names
+    # these two-letter keys; expose them so producers can write
+    # ``aa.get_cos_object().contains_key(
+    #     PDDocumentCatalogAdditionalActions.TRIGGER_WC)``
+    # without hard-coding string literals.
+    # ------------------------------------------------------------------
+    TRIGGER_WC: COSName = _WC
+    TRIGGER_WS: COSName = _WS
+    TRIGGER_DS: COSName = _DS
+    TRIGGER_WP: COSName = _WP
+    TRIGGER_DP: COSName = _DP
+
+    _ALL_TRIGGERS: tuple[tuple[str, COSName], ...] = (
+        ("WC", _WC),
+        ("WS", _WS),
+        ("DS", _DS),
+        ("WP", _WP),
+        ("DP", _DP),
+    )
+
     def __init__(self, actions: COSDictionary | None = None) -> None:
         self._actions = actions if actions is not None else COSDictionary()
 
@@ -110,6 +131,38 @@ class PDDocumentCatalogAdditionalActions:
 
     def set_did_print(self, action: PDAction | None) -> None:
         self.set_dp(action)
+
+    # ------------------------------------------------------------------
+    # Predicate helpers. ``has_*`` checks key presence (cheap) without
+    # resolving the indirect reference or constructing a typed wrapper.
+    # Useful when iterating across many catalogs (one per merged document
+    # in a bulk operation) to short-circuit before paying the typed cost.
+    # ------------------------------------------------------------------
+
+    def has_wc(self) -> bool:
+        return self._actions.contains_key(_WC)
+
+    def has_ws(self) -> bool:
+        return self._actions.contains_key(_WS)
+
+    def has_ds(self) -> bool:
+        return self._actions.contains_key(_DS)
+
+    def has_wp(self) -> bool:
+        return self._actions.contains_key(_WP)
+
+    def has_dp(self) -> bool:
+        return self._actions.contains_key(_DP)
+
+    def is_empty(self) -> bool:
+        """Return ``True`` when no catalog trigger is set. Producers
+        that find an empty additional-actions dictionary can elide the
+        ``/AA`` entry from the catalog entirely."""
+        return not any(self._actions.contains_key(key) for _, key in self._ALL_TRIGGERS)
+
+    def __repr__(self) -> str:
+        flags = [label for label, key in self._ALL_TRIGGERS if self._actions.contains_key(key)]
+        return f"PDDocumentCatalogAdditionalActions({','.join(flags) or 'empty'})"
 
 
 __all__ = ["PDDocumentCatalogAdditionalActions"]
