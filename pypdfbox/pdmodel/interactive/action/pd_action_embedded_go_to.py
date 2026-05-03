@@ -331,6 +331,53 @@ class PDActionEmbeddedGoTo(PDAction):
         """Spec-named alias of :meth:`has_target`."""
         return self.has_target()
 
+    def has_new_window(self) -> bool:
+        """``True`` when ``/NewWindow`` is present (regardless of value).
+        ``False`` when absent — in which case readers fall back to user
+        preference per PDF 32000-1 §12.6.4.4. Parallels
+        :class:`PDActionRemoteGoTo.has_new_window`."""
+        return self._action.get_dictionary_object(_NEW_WINDOW) is not None
+
+    def clear_file(self) -> None:
+        """Remove ``/F`` from the action dictionary. Parallels
+        :class:`PDActionRemoteGoTo.clear_file`."""
+        self._action.remove_item(_F)
+
+    def clear_destination(self) -> None:
+        """Remove ``/D`` from the action dictionary. Parallels
+        :class:`PDActionRemoteGoTo.clear_destination`."""
+        self._action.remove_item(_D)
+
+    def clear_target(self) -> None:
+        """Remove ``/T`` from the action dictionary. Spec-named alias
+        :meth:`clear_target_directory`."""
+        self._action.remove_item(_T)
+
+    def clear_target_directory(self) -> None:
+        """Spec-named alias of :meth:`clear_target`. Mirrors the
+        ``getTargetDirectory`` / ``setTargetDirectory`` pair upstream."""
+        self.clear_target()
+
+    def clear_new_window(self) -> None:
+        """Remove ``/NewWindow`` so readers fall back to user preference
+        (mirrors :meth:`set_open_in_new_window` with ``None`` /
+        :attr:`OpenMode.USER_PREFERENCE`). Parallels
+        :class:`PDActionRemoteGoTo.clear_new_window`."""
+        self._action.remove_item(_NEW_WINDOW)
+
+    def is_empty(self) -> bool:
+        """``True`` when none of ``/F``, ``/D``, ``/T``, or ``/NewWindow``
+        are set — i.e. the action carries no embedded-go-to state. Useful
+        as a guard before serializing to detect actions that would be
+        effectively no-ops. Parallels
+        :class:`PDActionRemoteGoTo.is_empty`."""
+        return not (
+            self.has_file()
+            or self.has_destination()
+            or self.has_target()
+            or self.has_new_window()
+        )
+
     def is_valid(self) -> bool:
         """``True`` when this action's ``/S`` entry equals
         :attr:`SUB_TYPE` (``"GoToE"``). Useful as a sanity check after
