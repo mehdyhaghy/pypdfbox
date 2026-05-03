@@ -111,6 +111,137 @@ def test_signature_validation_result_errors_independent_per_instance() -> None:
 
 
 # ---------------------------------------------------------------------------
+# SignatureValidationResult — predicate helpers (Wave 256)
+# ---------------------------------------------------------------------------
+
+
+def test_signature_validation_result_has_errors_default_false() -> None:
+    r = SignatureValidationResult()
+    assert r.has_errors() is False
+
+
+def test_signature_validation_result_has_errors_true_after_append() -> None:
+    r = SignatureValidationResult()
+    r.errors.append("PKCS#7 parse failed")
+    assert r.has_errors() is True
+
+
+def test_signature_validation_result_has_signer_default_false() -> None:
+    r = SignatureValidationResult()
+    assert r.has_signer() is False
+
+
+def test_signature_validation_result_has_signer_true_when_cert_set() -> None:
+    r = SignatureValidationResult(signer_certificate=object())
+    assert r.has_signer() is True
+
+
+def test_signature_validation_result_has_signed_digest_default_false() -> None:
+    r = SignatureValidationResult()
+    assert r.has_signed_digest() is False
+
+
+def test_signature_validation_result_has_signed_digest_true_when_set() -> None:
+    r = SignatureValidationResult(signed_digest=b"\xaa" * 32)
+    assert r.has_signed_digest() is True
+
+
+def test_signature_validation_result_has_signed_digest_true_for_empty_bytes() -> None:
+    """An empty-bytes ``signed_digest`` is still "present" — only ``None``
+    means "not recovered". An empty digest is degenerate but distinguishable
+    from a missing OID scan, and the predicate must reflect that."""
+    r = SignatureValidationResult(signed_digest=b"")
+    assert r.has_signed_digest() is True
+
+
+def test_signature_validation_result_has_computed_digest_default_false() -> None:
+    r = SignatureValidationResult()
+    assert r.has_computed_digest() is False
+
+
+def test_signature_validation_result_has_computed_digest_true_when_set() -> None:
+    r = SignatureValidationResult(computed_digest=b"\xbb" * 32)
+    assert r.has_computed_digest() is True
+
+
+def test_signature_validation_result_digest_matches_default_false() -> None:
+    """Both digests absent -> not a match (verify hasn't run far enough)."""
+    r = SignatureValidationResult()
+    assert r.digest_matches() is False
+
+
+def test_signature_validation_result_digest_matches_true_when_equal() -> None:
+    digest = b"\xcc" * 32
+    r = SignatureValidationResult(signed_digest=digest, computed_digest=digest)
+    assert r.digest_matches() is True
+
+
+def test_signature_validation_result_digest_matches_false_when_unequal() -> None:
+    r = SignatureValidationResult(
+        signed_digest=b"\xcc" * 32,
+        computed_digest=b"\xdd" * 32,
+    )
+    assert r.digest_matches() is False
+
+
+def test_signature_validation_result_digest_matches_false_when_one_missing() -> None:
+    """If only one digest was recovered, ``digest_matches`` must not raise
+    nor compare ``None`` to bytes — it returns ``False``."""
+    r1 = SignatureValidationResult(signed_digest=b"\xaa" * 32)
+    assert r1.has_computed_digest() is False
+    assert r1.digest_matches() is False
+
+    r2 = SignatureValidationResult(computed_digest=b"\xaa" * 32)
+    assert r2.has_signed_digest() is False
+    assert r2.digest_matches() is False
+
+
+def test_signature_validation_result_digest_matches_distinguishes_from_missing() -> None:
+    """Two valid byte strings of different length must surface as mismatch
+    — the equality check must not accidentally collapse to ``False`` via
+    truthiness only when one digest is empty."""
+    r = SignatureValidationResult(signed_digest=b"", computed_digest=b"\xaa")
+    assert r.has_signed_digest() is True
+    assert r.has_computed_digest() is True
+    assert r.digest_matches() is False
+
+
+def test_signature_validation_result_add_error_appends_and_clears_valid() -> None:
+    """``add_error`` is the one-line "record-error-and-fail" idiom used by
+    every failure path in :meth:`PDSignature.verify`."""
+    r = SignatureValidationResult(is_valid=True)
+    r.add_error("missing /ByteRange")
+    assert r.is_valid is False
+    assert r.errors == ["missing /ByteRange"]
+    assert r.has_errors() is True
+
+
+def test_signature_validation_result_add_error_accumulates() -> None:
+    """Multiple ``add_error`` calls accumulate. Validity stays ``False``
+    after the first call regardless of subsequent additions."""
+    r = SignatureValidationResult()
+    r.add_error("first")
+    r.add_error("second")
+    r.add_error("third")
+    assert r.errors == ["first", "second", "third"]
+    assert r.is_valid is False
+    assert r.has_errors() is True
+
+
+def test_signature_validation_result_add_error_does_not_revive_valid() -> None:
+    """Once an error is recorded, the result stays invalid even if the
+    caller mutates ``is_valid`` back to ``True`` afterwards. The mutator
+    contract is "clear validity at error time" — long-term enforcement is
+    the caller's responsibility."""
+    r = SignatureValidationResult(is_valid=True)
+    r.add_error("boom")
+    assert r.is_valid is False
+    # Caller-induced revival is not blocked, but the error stays.
+    r.is_valid = True
+    assert r.has_errors() is True
+
+
+# ---------------------------------------------------------------------------
 # End-to-end: real PKCS#7 detached signature → digest-match verify
 # ---------------------------------------------------------------------------
 

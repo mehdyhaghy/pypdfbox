@@ -815,3 +815,174 @@ def test_has_tab_order() -> None:
     assert page.has_tab_order() is True
     page.set_tab_order(None)
     assert page.has_tab_order() is False
+
+
+# ---------- TAB_ORDER_* class constants ----------
+
+
+def test_tab_order_constants_exposed_on_class() -> None:
+    # Class-level access (no instantiation needed).
+    assert PDPage.TAB_ORDER_ROW == "R"
+    assert PDPage.TAB_ORDER_COLUMN == "C"
+    assert PDPage.TAB_ORDER_STRUCTURE == "S"
+    assert PDPage.TAB_ORDER_ANNOTATIONS_ARRAY == "A"
+    assert PDPage.TAB_ORDER_WIDGETS == "W"
+
+
+def test_tab_order_constants_exposed_on_instance() -> None:
+    page = PDPage()
+    # Instance access mirrors class access — Python doesn't need an explicit
+    # static modifier but PDFBox-style ``page.TAB_ORDER_ROW`` should work.
+    assert page.TAB_ORDER_ROW == "R"
+    assert page.TAB_ORDER_COLUMN == "C"
+    assert page.TAB_ORDER_STRUCTURE == "S"
+    assert page.TAB_ORDER_ANNOTATIONS_ARRAY == "A"
+    assert page.TAB_ORDER_WIDGETS == "W"
+
+
+def test_tab_order_constants_round_trip_through_set_get() -> None:
+    page = PDPage()
+    for code in (
+        PDPage.TAB_ORDER_ROW,
+        PDPage.TAB_ORDER_COLUMN,
+        PDPage.TAB_ORDER_STRUCTURE,
+        PDPage.TAB_ORDER_ANNOTATIONS_ARRAY,
+        PDPage.TAB_ORDER_WIDGETS,
+    ):
+        page.set_tab_order(code)
+        assert page.get_tab_order() == code
+
+
+def test_tab_order_constants_are_unique() -> None:
+    codes = {
+        PDPage.TAB_ORDER_ROW,
+        PDPage.TAB_ORDER_COLUMN,
+        PDPage.TAB_ORDER_STRUCTURE,
+        PDPage.TAB_ORDER_ANNOTATIONS_ARRAY,
+        PDPage.TAB_ORDER_WIDGETS,
+    }
+    assert len(codes) == 5
+
+
+# ---------- is_rotated() ----------
+
+
+def test_is_rotated_default_false() -> None:
+    page = PDPage()
+    assert page.is_rotated() is False
+
+
+def test_is_rotated_true_after_set() -> None:
+    page = PDPage()
+    page.set_rotation(90)
+    assert page.is_rotated() is True
+    page.set_rotation(180)
+    assert page.is_rotated() is True
+    page.set_rotation(270)
+    assert page.is_rotated() is True
+
+
+def test_is_rotated_false_after_zero() -> None:
+    page = PDPage()
+    page.set_rotation(0)
+    assert page.is_rotated() is False
+
+
+def test_is_rotated_false_for_full_turn() -> None:
+    # 360 normalises to 0 in get_rotation().
+    page = PDPage()
+    page.set_rotation(360)
+    assert page.get_rotation() == 0
+    assert page.is_rotated() is False
+
+
+def test_is_rotated_handles_negative_rotation() -> None:
+    page = PDPage()
+    page.set_rotation(-90)
+    # -90 normalises to 270, not 0.
+    assert page.get_rotation() == 270
+    assert page.is_rotated() is True
+
+
+def test_is_rotated_inherits_from_parent() -> None:
+    parent = COSDictionary()
+    parent.set_int(COSName.get_pdf_name("Rotate"), 270)
+    child = COSDictionary()
+    child.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    page = PDPage(child)
+    assert page.is_rotated() is True
+
+
+def test_is_rotated_false_for_off_axis_rotation() -> None:
+    # 45 is not a multiple of 90; get_rotation() reports 0, so is_rotated()
+    # must follow suit.
+    page = PDPage()
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 45)
+    assert page.get_rotation() == 0
+    assert page.is_rotated() is False
+
+
+# ---------- get_rotation_in_radians() ----------
+
+
+def test_get_rotation_in_radians_default_zero() -> None:
+    import math
+
+    page = PDPage()
+    assert page.get_rotation_in_radians() == pytest.approx(0.0)
+    assert page.get_rotation_in_radians() == math.radians(0)
+
+
+def test_get_rotation_in_radians_quadrants() -> None:
+    import math
+
+    page = PDPage()
+    page.set_rotation(90)
+    assert page.get_rotation_in_radians() == pytest.approx(math.pi / 2)
+    page.set_rotation(180)
+    assert page.get_rotation_in_radians() == pytest.approx(math.pi)
+    page.set_rotation(270)
+    assert page.get_rotation_in_radians() == pytest.approx(3 * math.pi / 2)
+
+
+def test_get_rotation_in_radians_normalises_through_get_rotation() -> None:
+    import math
+
+    # 450 → normalised to 90 → π/2 rad.
+    page = PDPage()
+    page.set_rotation(450)
+    assert page.get_rotation() == 90
+    assert page.get_rotation_in_radians() == pytest.approx(math.pi / 2)
+
+
+def test_get_rotation_in_radians_full_turn_zero() -> None:
+    page = PDPage()
+    page.set_rotation(360)
+    assert page.get_rotation_in_radians() == pytest.approx(0.0)
+
+
+def test_get_rotation_in_radians_off_axis_returns_zero() -> None:
+    # Same rule as is_rotated — off-axis falls through to 0 rad.
+    page = PDPage()
+    page.get_cos_object().set_int(COSName.get_pdf_name("Rotate"), 33)
+    assert page.get_rotation_in_radians() == pytest.approx(0.0)
+
+
+def test_get_rotation_in_radians_inherits_from_parent() -> None:
+    import math
+
+    parent = COSDictionary()
+    parent.set_int(COSName.get_pdf_name("Rotate"), 180)
+    child = COSDictionary()
+    child.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    page = PDPage(child)
+    assert page.get_rotation_in_radians() == pytest.approx(math.pi)
+
+
+def test_get_rotation_in_radians_returns_float() -> None:
+    page = PDPage()
+    page.set_rotation(90)
+    value = page.get_rotation_in_radians()
+    assert isinstance(value, float)

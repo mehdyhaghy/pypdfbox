@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from pypdfbox.cos import (
@@ -56,6 +57,20 @@ class PDPage:
     ``/MediaBox``, ``/CropBox``, ``/Rotate``). PDPage resolves those
     inheritable attributes by walking the ``/Parent`` chain.
     """
+
+    # ---------- /Tabs values (PDF 1.7 §12.5 / PDF 2.0 §12.5) ----------
+    #
+    # Single-letter codes for the page's annotation tab order. These mirror
+    # the literal name values written into ``/Tabs`` and let callers porting
+    # from PDFBox use named constants instead of hard-coding the letters.
+    # Upstream PDPage.java does not declare these (it threads the raw strings
+    # directly), but providing them here keeps user code self-documenting and
+    # avoids typo-class bugs at the call site.
+    TAB_ORDER_ROW: str = "R"
+    TAB_ORDER_COLUMN: str = "C"
+    TAB_ORDER_STRUCTURE: str = "S"
+    TAB_ORDER_ANNOTATIONS_ARRAY: str = "A"
+    TAB_ORDER_WIDGETS: str = "W"
 
     def __init__(
         self,
@@ -494,6 +509,28 @@ class PDPage:
         from pypdfbox.cos import COSInteger
 
         self._page.set_item(_ROTATE, COSInteger.get(int(rotation)))
+
+    def is_rotated(self) -> bool:
+        """Return whether this page carries any non-zero rotation.
+
+        Equivalent to ``self.get_rotation() != 0`` — convenience predicate so
+        callers can branch on "page needs un-rotation" without doing the
+        comparison themselves. Off-axis ``/Rotate`` values (anything not a
+        multiple of 90, including odd numerics or non-numeric COS objects)
+        are reported by :meth:`get_rotation` as ``0``, so this returns
+        ``False`` for those too — matching the upstream "treat malformed
+        rotation as unset" contract.
+        """
+        return self.get_rotation() != 0
+
+    def get_rotation_in_radians(self) -> float:
+        """Return the resolved page rotation expressed in radians.
+
+        Convenience over :meth:`get_rotation` for callers that need to feed
+        the angle directly into a transform matrix or trig routine. Always
+        non-negative because :meth:`get_rotation` normalises to ``[0, 360)``.
+        """
+        return math.radians(self.get_rotation())
 
     def get_user_unit(self) -> float:
         """``/UserUnit`` (PDF 1.6+). Default 1.0.
