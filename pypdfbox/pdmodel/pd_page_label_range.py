@@ -151,6 +151,89 @@ class PDPageLabelRange:
         # Unknown style — fall back to decimal (matches upstream).
         return prefix + str(n)
 
+    # ---------- predicates ----------
+
+    def is_empty(self) -> bool:
+        """``True`` when the wrapped dictionary carries none of the three
+        defined entries (``/S``, ``/P``, ``/St``).
+
+        An "empty" range still renders labels — :meth:`get_start` returns
+        the spec default of ``1`` and :meth:`get_style` returns ``None`` so
+        :meth:`compute_label_for_offset` emits the empty string. Useful for
+        callers that want to skip serializing trivially-default range
+        entries from a working set (e.g. when constructing a /Nums array
+        and only wanting to emit ranges with non-default content).
+        """
+        return (
+            not self._root.contains_key(_KEY_STYLE)
+            and not self._root.contains_key(_KEY_PREFIX)
+            and not self._root.contains_key(_KEY_START)
+        )
+
+    def has_style(self) -> bool:
+        """``True`` when the ``/S`` numbering style entry is present.
+
+        Convenience for callers that branch on the absence of ``/S`` (which
+        is legal — it produces "prefix-only" labels) without needing to
+        check ``get_style() is not None``."""
+        return self._root.contains_key(_KEY_STYLE)
+
+    def has_prefix(self) -> bool:
+        """``True`` when the ``/P`` page label prefix entry is present.
+
+        Distinguishes "no prefix set" from "explicit empty-string prefix";
+        :meth:`get_prefix` returns ``None`` for the former and ``""`` for
+        the latter, but callers that want a single boolean check (e.g. for
+        deciding whether to render a separator) can use this."""
+        return self._root.contains_key(_KEY_PREFIX)
+
+    def has_start(self) -> bool:
+        """``True`` when an explicit ``/St`` (start number) entry is set.
+
+        Distinguishes "the spec default of 1 was implied" from "the writer
+        recorded /St 1 explicitly". Useful for round-tripping decisions
+        where preserving the absent /St entry matters for byte-exact
+        re-serialisation."""
+        return self._root.contains_key(_KEY_START)
+
+    # ---------- structural equality ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Two ranges compare equal when their style, prefix, start value,
+        and start index all match.
+
+        This is structural equality on the public attributes — it does not
+        require the underlying ``COSDictionary`` instances to be identical
+        (so a parsed range and a freshly-built one with the same content
+        compare equal). Useful for verifying round-trip behaviour and for
+        deduplicating /Nums entries before serialisation."""
+        if not isinstance(other, PDPageLabelRange):
+            return NotImplemented
+        return (
+            self._start_index == other._start_index
+            and self.get_style() == other.get_style()
+            and self.get_prefix() == other.get_prefix()
+            and self.get_start() == other.get_start()
+        )
+
+    def __hash__(self) -> int:
+        """Hash matches :meth:`__eq__` — over (start_index, style, prefix,
+        start). PDPageLabelRange is a thin typed wrapper, hashing on the
+        public attributes (rather than dict identity) keeps it usable as a
+        dict key when callers need that.
+
+        Note: the wrapped dictionary is mutable, so a range used as a dict
+        key after subsequent ``set_*`` calls will not be locatable in the
+        dict — same caveat as any mutable hashable object."""
+        return hash(
+            (
+                self._start_index,
+                self.get_style(),
+                self.get_prefix(),
+                self.get_start(),
+            )
+        )
+
     def __repr__(self) -> str:
         return (
             f"PDPageLabelRange(start_index={self._start_index}, "
