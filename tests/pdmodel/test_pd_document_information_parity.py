@@ -599,3 +599,155 @@ def test_module_exports_trapped_constants() -> None:
     assert "TRAPPED_TRUE" in mod.__all__
     assert "TRAPPED_FALSE" in mod.__all__
     assert "TRAPPED_UNKNOWN" in mod.__all__
+
+
+# ---------- set_trapped_bool() tri-state setter ----------
+
+
+def test_set_trapped_bool_true() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped_bool(True)
+    assert info.get_trapped() == TRAPPED_TRUE
+    assert info.is_trapped() is True
+
+
+def test_set_trapped_bool_false() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped_bool(False)
+    assert info.get_trapped() == TRAPPED_FALSE
+    assert info.is_trapped() is False
+
+
+def test_set_trapped_bool_none_writes_unknown() -> None:
+    """``None`` maps to ``Unknown`` — symmetric with ``is_trapped()`` reading
+    ``Unknown`` back as ``None``."""
+    info = PDDocumentInformation()
+    info.set_trapped_bool(None)
+    assert info.get_trapped() == TRAPPED_UNKNOWN
+    # is_trapped reads Unknown back as None — the round trip closes.
+    assert info.is_trapped() is None
+
+
+def test_set_trapped_bool_overwrites_prior_value() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped("True")
+    info.set_trapped_bool(False)
+    assert info.get_trapped() == TRAPPED_FALSE
+    info.set_trapped_bool(None)
+    assert info.get_trapped() == TRAPPED_UNKNOWN
+
+
+# ---------- set_trapped_true / _false / _unknown convenience setters ----------
+
+
+def test_set_trapped_true_writes_spec_literal() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped_true()
+    assert info.get_trapped() == "True"
+
+
+def test_set_trapped_false_writes_spec_literal() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped_false()
+    assert info.get_trapped() == "False"
+
+
+def test_set_trapped_unknown_writes_spec_literal() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped_unknown()
+    assert info.get_trapped() == "Unknown"
+
+
+def test_set_trapped_convenience_setters_overwrite() -> None:
+    info = PDDocumentInformation()
+    info.set_trapped_true()
+    info.set_trapped_false()
+    assert info.get_trapped() == "False"
+    info.set_trapped_unknown()
+    assert info.get_trapped() == "Unknown"
+
+
+# ---------- __iter__ ----------
+
+
+def test_iter_default_empty() -> None:
+    info = PDDocumentInformation()
+    assert list(iter(info)) == []
+
+
+def test_iter_yields_keys_sorted() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_author("A")
+    info.set_custom_metadata_value("Company", "ACME")
+    # Sorted ASCII order.
+    assert list(iter(info)) == ["Author", "Company", "Title"]
+
+
+def test_iter_matches_get_metadata_keys() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_creator("C")
+    info.set_custom_metadata_value("Department", "Eng")
+    assert list(iter(info)) == info.get_metadata_keys()
+
+
+def test_iter_pairs_with_contains() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_author("A")
+    for key in info:
+        assert key in info
+
+
+# ---------- to_dict() snapshot ----------
+
+
+def test_to_dict_default_empty() -> None:
+    info = PDDocumentInformation()
+    assert info.to_dict() == {}
+
+
+def test_to_dict_returns_string_entries() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_author("A")
+    info.set_custom_metadata_value("Company", "ACME")
+    snapshot = info.to_dict()
+    assert snapshot == {"Title": "T", "Author": "A", "Company": "ACME"}
+
+
+def test_to_dict_returns_plain_dict() -> None:
+    info = PDDocumentInformation()
+    info.set_title("T")
+    snapshot = info.to_dict()
+    assert isinstance(snapshot, dict)
+    # Mutating the snapshot must not affect the underlying state.
+    snapshot["Title"] = "Changed"
+    snapshot["Extra"] = "Side"
+    assert info.get_title() == "T"
+    assert info.get_custom_metadata_value("Extra") is None
+
+
+def test_to_dict_skips_non_string_values() -> None:
+    """Entries whose stored type doesn't coerce via ``get_string`` (e.g. an
+    integer /Trapped) drop out — to_dict only surfaces strings."""
+    raw = COSDictionary()
+    raw.set_int(COSName.get_pdf_name("Trapped"), 1)
+    info = PDDocumentInformation(raw)
+    info.set_title("T")
+    snapshot = info.to_dict()
+    # Title made it; the integer-typed Trapped did not.
+    assert snapshot == {"Title": "T"}
+
+
+def test_to_dict_includes_date_strings() -> None:
+    """Dates are stored as PDF date literal strings — to_dict surfaces those
+    in raw form for log/serialization use cases."""
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc))
+    snapshot = info.to_dict()
+    assert "Title" in snapshot
+    assert "CreationDate" in snapshot
+    assert snapshot["CreationDate"].startswith("D:20240101")

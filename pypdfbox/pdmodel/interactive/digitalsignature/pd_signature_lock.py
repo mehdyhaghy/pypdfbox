@@ -93,5 +93,104 @@ class PDSignatureLock:
             return
         self._dict.set_int(_P, p)
 
+    # ---------- presence predicates ----------
+
+    def has_action(self) -> bool:
+        """Return ``True`` when ``/Action`` is present.
+
+        Disambiguates :meth:`get_action`'s ``None`` return — the typed
+        accessor surfaces both "absent" and "wrong type" as ``None``;
+        ``has_action`` is a key-only check.
+        """
+        return self._dict.contains_key(_ACTION)
+
+    def has_fields(self) -> bool:
+        """Return ``True`` when ``/Fields`` is present (any type).
+
+        Distinct from :meth:`get_fields` which only returns a list when
+        the entry is a well-formed array of strings.
+        """
+        return self._dict.contains_key(_FIELDS)
+
+    def has_p(self) -> bool:
+        """Return ``True`` when ``/P`` is present.
+
+        Disambiguates :meth:`get_p`'s ``None`` return.
+        """
+        return self._dict.contains_key(_P)
+
+    # ---------- /Action predicates ----------
+
+    def is_lock_all(self) -> bool:
+        """Return ``True`` when ``/Action`` is ``/All`` — all form fields
+        are locked. With ``/Action /All`` a ``/Fields`` entry must not be
+        present (PDF 32000-1 §12.7.4.5 Table 233).
+        """
+        return self.get_action() == self.ACTION_ALL
+
+    def is_lock_include(self) -> bool:
+        """Return ``True`` when ``/Action`` is ``/Include`` — only the
+        fields listed in ``/Fields`` are locked.
+        """
+        return self.get_action() == self.ACTION_INCLUDE
+
+    def is_lock_exclude(self) -> bool:
+        """Return ``True`` when ``/Action`` is ``/Exclude`` — every field
+        *not* listed in ``/Fields`` is locked.
+        """
+        return self.get_action() == self.ACTION_EXCLUDE
+
+    # ---------- /P permission predicates ----------
+
+    def is_no_changes(self) -> bool:
+        """Return ``True`` when ``/P`` is ``1`` (no changes permitted)."""
+        return self.has_p() and self.get_p() == self.P_NO_CHANGES
+
+    def is_allow_form_fill(self) -> bool:
+        """Return ``True`` when ``/P`` is ``2`` (form fill + signing)."""
+        return self.has_p() and self.get_p() == self.P_ALLOW_FORM_FILL
+
+    def is_allow_form_fill_and_annotations(self) -> bool:
+        """Return ``True`` when ``/P`` is ``3`` (form fill + annotations
+        + signing).
+        """
+        return (
+            self.has_p()
+            and self.get_p() == self.P_ALLOW_FORM_FILL_AND_ANNOTATIONS
+        )
+
+    # ---------- string form ----------
+
+    _P_LABELS: dict[int, str] = {
+        P_NO_CHANGES: "no_changes",
+        P_ALLOW_FORM_FILL: "allow_form_fill",
+        P_ALLOW_FORM_FILL_AND_ANNOTATIONS: "allow_form_fill_and_annotations",
+    }
+
+    def __str__(self) -> str:
+        """Compact summary of the SigFieldLock dictionary.
+
+        Java's ``Object.toString()`` is ``ClassName@hashcode``; this lite
+        port emits the populated ``/Action``, ``/Fields`` count, and ``/P``
+        permission level (with a label when the value is one of the spec
+        values). An entirely-empty dictionary is summarized as ``<empty>``.
+        """
+        parts: list[str] = []
+        action = self.get_action()
+        if action:
+            parts.append(f"action={action}")
+        fields = self.get_fields()
+        if fields is not None:
+            parts.append(f"fields={len(fields)}")
+        if self.has_p():
+            p = self.get_p()
+            label = self._P_LABELS.get(p, str(p))
+            parts.append(f"p={p} ({label})")
+        body = ", ".join(parts) if parts else "<empty>"
+        return f"PDSignatureLock({body})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 __all__ = ["PDSignatureLock"]

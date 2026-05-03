@@ -175,3 +175,46 @@ def test_signature_field_seed_value_time_stamp_round_trip() -> None:
     assert got_ts is not None
     assert got_ts.get_url() == "https://tsa.example.org/sign"
     assert got_ts.is_url_required() is True
+
+
+# ---------- __str__ / __repr__ ----------
+
+
+def test_str_empty_dict_is_marked_empty() -> None:
+    ts = PDSeedValueTimeStamp()
+    assert str(ts) == "PDSeedValueTimeStamp(<empty>)"
+    assert repr(ts) == str(ts)
+
+
+def test_str_includes_url_when_set() -> None:
+    ts = PDSeedValueTimeStamp()
+    ts.set_url("https://tsa.example.org/sign")
+    assert "url=https://tsa.example.org/sign" in str(ts)
+
+
+def test_str_required_marker_only_when_required() -> None:
+    """The ``required=True`` marker must appear only when the timestamp is
+    required — a default (absent /Ff) dict must not advertise a value the
+    caller never set.
+    """
+    ts = PDSeedValueTimeStamp()
+    ts.set_url("https://tsa.example.org/sign")
+    assert "required" not in str(ts)
+
+    ts.set_url_required(False)
+    # /Ff written as 0 — still not required.
+    assert "required" not in str(ts)
+
+    ts.set_url_required(True)
+    assert "required=True" in str(ts)
+
+
+def test_str_required_marker_for_any_nonzero_ff() -> None:
+    """The ``required`` marker mirrors :meth:`is_timestamp_required`'s
+    ``/Ff != 0`` semantics — any nonzero /Ff (not just bit 1) flags the
+    timestamp as required for display.
+    """
+    cos = COSDictionary()
+    cos.set_int("Ff", 7)  # nonzero, not bit-1-only
+    ts = PDSeedValueTimeStamp(cos)
+    assert "required=True" in str(ts)

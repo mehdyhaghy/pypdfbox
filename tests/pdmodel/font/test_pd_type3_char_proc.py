@@ -284,6 +284,93 @@ def test_has_resources_true_when_local_resources_dict_present() -> None:
 # ---------- integration with PDType3Font.get_char_proc(int) ----------
 
 
+# ---------- _first_metric_operator / _is_numeric_token edges ----------
+
+
+def test_get_glyph_bbox_returns_none_when_stream_begins_with_delimiter() -> None:
+    """A char-proc whose decoded body starts with a PDF delimiter (e.g. a
+    string literal ``(`` or an array ``[``) before any numeric tokens or
+    operator names cannot have a valid leading ``d0`` / ``d1`` and must
+    parse as "no metric operator". The tokenizer bails out on the first
+    delimiter and the bbox accessor returns ``None``."""
+    for body in (b"(string literal)\n", b"[1 2 3]\n", b"<aabbcc>\n", b"/Name d1\n"):
+        _, proc = _font_and_proc(body)
+        assert proc.get_glyph_bbox() is None
+        assert proc.has_d0() is False
+        assert proc.has_d1() is False
+
+
+def test_get_width_zero_when_multi_dot_number_breaks_token_classification() -> None:
+    """A malformed numeric token with two dots (e.g. ``600.5.5``) is NOT
+    a valid PDF number literal — :func:`_is_numeric_token` must reject
+    it. The tokenizer then treats it as an operator name, which makes
+    the stream look like an operator with no operands; :meth:`get_width`
+    must surface ``0.0`` rather than crash on the bad token."""
+    # 600.5.5 -> classified as operator, not a number. No d0/d1 prefix
+    # was seen, so width defaults to 0 and bbox is None.
+    _, proc = _font_and_proc(b"600.5.5 d1\n")
+    assert proc.get_width() == 0.0
+    assert proc.get_glyph_bbox() is None
+    # has_d1 is False because the operator we see is "600.5.5", not "d1".
+    assert proc.has_d1() is False
+
+
+def test_get_width_zero_for_sign_only_token() -> None:
+    """A bare ``+`` or ``-`` (no digits) is not a number — must be
+    classified as an operator. Width defaults to 0 because the leading
+    operator isn't ``d0`` / ``d1``."""
+    _, proc = _font_and_proc(b"- d1\n")
+    assert proc.get_width() == 0.0
+    assert proc.has_d0() is False
+    assert proc.has_d1() is False
+
+
+def test_get_glyph_bbox_returns_none_for_d1_with_too_few_operands() -> None:
+    """``d1`` declares ``wx wy llx lly urx ury`` — six operands. When the
+    stream has fewer than six numeric operands ahead of the ``d1``
+    operator, the bbox accessor must surface ``None`` (and not raise)."""
+    # 4 operands, then d1 — short of the 6 d1 needs.
+    _, proc = _font_and_proc(b"600 0 50 -10 d1\n")
+    assert proc.get_glyph_bbox() is None
+    # has_d1 is still True (the operator is d1 even if its operands are short).
+    assert proc.has_d1() is True
+    # And get_width still picks up the wx from operands[0].
+    assert proc.get_width() == pytest.approx(600.0)
+
+
+def test_get_glyph_bbox_handles_signed_real_with_leading_plus() -> None:
+    """``+50.0`` is a valid PDF real literal — the numeric-token check
+    must accept the optional leading ``+`` sign on the first byte."""
+    body = b"600 0 +50.0 -10 +550 +700 d1\n"
+    _, proc = _font_and_proc(body)
+    bbox = proc.get_glyph_bbox()
+    assert bbox is not None
+    assert bbox.get_lower_left_x() == pytest.approx(50.0)
+    assert bbox.get_upper_right_x() == pytest.approx(550.0)
+    assert bbox.get_upper_right_y() == pytest.approx(700.0)
+
+
+def test_first_metric_operator_skips_carriage_return_and_tab_whitespace() -> None:
+    """PDF whitespace includes \\x00, \\t, \\n, \\f, \\r, and space —
+    all five must be skipped by the tokenizer when scanning for the
+    leading metric operator. Cover the less-common members (CR + TAB +
+    NUL + FF) explicitly."""
+    body = b"\x00\t\r\f600 0 d0\n"
+    _, proc = _font_and_proc(body)
+    assert proc.has_d0() is True
+    assert proc.get_width() == pytest.approx(600.0)
+
+
+def test_first_metric_operator_inline_comment_to_eol_skipped() -> None:
+    """A ``%`` comment runs to end-of-line. A comment between the
+    operands and the operator must be skipped without breaking the
+    metric-operator parse."""
+    body = b"600 0 %inline comment\nd0\n"
+    _, proc = _font_and_proc(body)
+    assert proc.has_d0() is True
+    assert proc.get_width() == pytest.approx(600.0)
+
+
 def test_round_trip_via_pd_type3_font_get_char_proc() -> None:
     font = PDType3Font()
     font.set_font_bbox(PDRectangle(0.0, 0.0, 1000.0, 1000.0))

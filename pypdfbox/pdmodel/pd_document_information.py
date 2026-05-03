@@ -277,6 +277,44 @@ class PDDocumentInformation:
             return False
         return None
 
+    def set_trapped_bool(self, value: bool | None) -> None:
+        """Set /Trapped from a tri-state ``bool | None``.
+
+        Pypdfbox addition — the inverse of :meth:`is_trapped`. Converts a
+        Python tri-state into the spec's name values so callers can pipe a
+        boolean predicate straight back into the info dictionary:
+
+        * ``True``  → /Trapped = ``True``
+        * ``False`` → /Trapped = ``False``
+        * ``None``  → /Trapped = ``Unknown`` (matches the spec's
+          "not known" semantic; symmetric with :meth:`is_trapped` round-trip)
+        """
+        if value is True:
+            self.set_trapped(TRAPPED_TRUE)
+        elif value is False:
+            self.set_trapped(TRAPPED_FALSE)
+        else:
+            self.set_trapped(TRAPPED_UNKNOWN)
+
+    def set_trapped_true(self) -> None:
+        """Convenience setter — equivalent to ``set_trapped("True")``.
+
+        Pypdfbox addition. Lets callers express trap-state without spelling
+        out the spec literal."""
+        self.set_trapped(TRAPPED_TRUE)
+
+    def set_trapped_false(self) -> None:
+        """Convenience setter — equivalent to ``set_trapped("False")``.
+
+        Pypdfbox addition."""
+        self.set_trapped(TRAPPED_FALSE)
+
+    def set_trapped_unknown(self) -> None:
+        """Convenience setter — equivalent to ``set_trapped("Unknown")``.
+
+        Pypdfbox addition."""
+        self.set_trapped(TRAPPED_UNKNOWN)
+
     # ---------- custom metadata ----------
 
     def get_metadata_keys(self) -> list[str]:
@@ -404,10 +442,39 @@ class PDDocumentInformation:
     def __len__(self) -> int:
         return self._info.size()
 
+    def __iter__(self):
+        """Iterate metadata key names in sorted order.
+
+        Pypdfbox addition — pairs with :meth:`__len__` and :meth:`__contains__`
+        so callers can treat the wrapper as a read-only mapping of metadata
+        keys::
+
+            for key in info:
+                print(key, info.get_property_string_value(key))
+        """
+        return iter(self.get_metadata_keys())
+
     def __contains__(self, key: object) -> bool:
         if not isinstance(key, (str, COSName)):
             return False
         return self._info.contains_key(key)
+
+    def to_dict(self) -> dict[str, str]:
+        """Return a snapshot of every string-valued entry as a plain ``dict``.
+
+        Pypdfbox addition — useful for logging / serialization. Only entries
+        whose value coerces to a string via :meth:`COSDictionary.get_string`
+        appear; entries holding non-string types (numbers, arrays, etc.) are
+        skipped rather than stringified. The returned dict is a copy, not a
+        live view — mutating it does not affect the underlying info dict.
+        """
+        out: dict[str, str] = {}
+        for key in self._info.key_set():
+            name = key.get_name()
+            value = self._info.get_string(name)
+            if value is not None:
+                out[name] = value
+        return out
 
     def __repr__(self) -> str:
         return (

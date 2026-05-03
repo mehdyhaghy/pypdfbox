@@ -97,3 +97,99 @@ def test_set_mpd_typo_alias_works() -> None:
     sv.set_mpd(mdp)
     got = sv.get_mdp()
     assert got is not None and got.get_p() == 0
+
+
+# ---------- /P permission-level predicates ----------
+
+
+def test_is_no_changes_only_true_for_p_one() -> None:
+    mdp = PDSeedValueMDP()
+    assert mdp.is_no_changes() is False  # absent
+    mdp.set_p(0)
+    assert mdp.is_no_changes() is False
+    mdp.set_p(1)
+    assert mdp.is_no_changes() is True
+    mdp.set_p(2)
+    assert mdp.is_no_changes() is False
+    mdp.set_p(3)
+    assert mdp.is_no_changes() is False
+
+
+def test_is_form_fill_and_sign_only_true_for_p_two() -> None:
+    mdp = PDSeedValueMDP()
+    assert mdp.is_form_fill_and_sign() is False
+    mdp.set_p(1)
+    assert mdp.is_form_fill_and_sign() is False
+    mdp.set_p(2)
+    assert mdp.is_form_fill_and_sign() is True
+    mdp.set_p(3)
+    assert mdp.is_form_fill_and_sign() is False
+
+
+def test_is_form_fill_annotate_and_sign_only_true_for_p_three() -> None:
+    mdp = PDSeedValueMDP()
+    assert mdp.is_form_fill_annotate_and_sign() is False
+    mdp.set_p(2)
+    assert mdp.is_form_fill_annotate_and_sign() is False
+    mdp.set_p(3)
+    assert mdp.is_form_fill_annotate_and_sign() is True
+
+
+def test_permission_predicates_partition_certification_levels() -> None:
+    """``is_certification_signature`` covers exactly /P in {1,2,3}; each of
+    the three level predicates is mutually exclusive within that range.
+    """
+    mdp = PDSeedValueMDP()
+    for p, expected in (
+        (1, ("is_no_changes",)),
+        (2, ("is_form_fill_and_sign",)),
+        (3, ("is_form_fill_annotate_and_sign",)),
+    ):
+        mdp.set_p(p)
+        assert mdp.is_certification_signature() is True
+        for name in (
+            "is_no_changes",
+            "is_form_fill_and_sign",
+            "is_form_fill_annotate_and_sign",
+        ):
+            actual = getattr(mdp, name)()
+            assert actual is (name in expected), (
+                f"/P={p}: {name} expected {name in expected}, got {actual}"
+            )
+
+
+# ---------- __str__ / __repr__ ----------
+
+
+def test_str_empty_dict_is_marked_empty() -> None:
+    mdp = PDSeedValueMDP()
+    assert str(mdp) == "PDSeedValueMDP(<empty>)"
+    assert repr(mdp) == str(mdp)
+
+
+def test_str_labels_each_spec_p_value() -> None:
+    """Every spec /P value must produce a human-readable label so debug
+    output never collapses to a bare integer for spec-conformant dicts.
+    """
+    mdp = PDSeedValueMDP()
+    mdp.set_p(0)
+    assert "author" in str(mdp)
+    mdp.set_p(1)
+    assert "no_changes" in str(mdp)
+    mdp.set_p(2)
+    assert "form_fill_and_sign" in str(mdp)
+    mdp.set_p(3)
+    assert "form_fill_annotate_and_sign" in str(mdp)
+
+
+def test_str_unknown_p_value_falls_back_to_int() -> None:
+    """Out-of-spec /P values (e.g. read from a malformed PDF) must surface
+    as the raw integer rather than crash or be hidden — useful for
+    diagnostic logs.
+    """
+    cos = COSDictionary()
+    cos.set_int("P", 99)  # not a spec value
+    mdp = PDSeedValueMDP(cos)
+    s = str(mdp)
+    assert "p=99" in s
+    assert "(99)" in s

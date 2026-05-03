@@ -106,5 +106,27 @@ class PDSeedValueTimeStamp:
         """
         self._dict.remove_item(_FF)
 
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Compact summary of the timestamp seed value.
+
+        Java's ``Object.toString()`` is ``ClassName@hashcode``. This lite
+        port emits the URL (when set) and a ``required=True`` marker only
+        when the timestamp is required. An empty dict is summarized as
+        ``<empty>``.
+        """
+        parts: list[str] = []
+        url = self.get_url()
+        if url:
+            parts.append(f"url={url}")
+        if self.is_timestamp_required():
+            parts.append("required=True")
+        body = ", ".join(parts) if parts else "<empty>"
+        return f"PDSeedValueTimeStamp({body})"
+
+    def __repr__(self) -> str:
+        return self.__str__()
+
 
 __all__ = ["PDSeedValueTimeStamp"]

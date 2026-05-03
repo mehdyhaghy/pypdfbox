@@ -112,3 +112,135 @@ def test_repr_includes_subtype() -> None:
     text = repr(a)
     assert "Form" in text
     assert "PDXObject" in text
+
+
+# ---------- constructor type-error guard ----------
+
+
+def test_init_rejects_non_stream_input() -> None:
+    """The protected constructor accepts only ``PDStream`` or ``COSStream`` —
+    anything else (e.g. a raw ``COSDictionary`` or a Python ``str``) must
+    raise ``TypeError`` rather than silently mis-typing the wrapper.
+    Mirrors upstream Java's compile-time overload disambiguation.
+    """
+    import pytest
+
+    from pypdfbox.cos import COSDictionary
+
+    with pytest.raises(TypeError, match="PDXObject expects"):
+        PDXObject(COSDictionary(), COSName.get_pdf_name("Form"))  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="PDXObject expects"):
+        PDXObject("not a stream", COSName.get_pdf_name("Form"))  # type: ignore[arg-type]
+
+
+# ---------- create_x_object: transparency-group dispatch ----------
+#
+# Mirrors upstream:
+#     COSDictionary group = stream.getCOSDictionary(COSName.GROUP);
+#     if (group != null && COSName.TRANSPARENCY.equals(group.getCOSName(COSName.S)))
+#         return new PDTransparencyGroup(stream, cache);
+#     return new PDFormXObject(stream, cache);
+
+
+def test_create_x_object_form_with_transparency_group_returns_transparency_group() -> None:
+    """A ``/Subtype /Form`` stream carrying ``/Group << /S /Transparency >>``
+    must dispatch to :class:`PDTransparencyGroup`, NOT a plain
+    :class:`PDFormXObject`. PDF 32000-1 §11.6.6.
+    """
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
+        PDTransparencyGroup,
+    )
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    group = COSDictionary()
+    group.set_name(COSName.get_pdf_name("S"), "Transparency")
+    stream.set_item(COSName.get_pdf_name("Group"), group)
+
+    obj = PDXObject.create_x_object(stream)
+    assert isinstance(obj, PDTransparencyGroup)
+    # Identity preserved through the factory — same backing stream.
+    assert obj.get_cos_object() is stream
+
+
+def test_create_x_object_form_with_non_transparency_group_returns_plain_form() -> None:
+    """A ``/Subtype /Form`` with a ``/Group`` that is NOT a transparency
+    group (``/S != /Transparency``) must fall back to a plain
+    :class:`PDFormXObject`. Common case: ``/Group << /S /Foo >>`` —
+    well-formed but unrecognized; upstream still returns PDFormXObject
+    rather than promoting to PDTransparencyGroup.
+    """
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
+        PDTransparencyGroup,
+    )
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    group = COSDictionary()
+    group.set_name(COSName.get_pdf_name("S"), "NotTransparency")
+    stream.set_item(COSName.get_pdf_name("Group"), group)
+
+    obj = PDXObject.create_x_object(stream)
+    assert isinstance(obj, PDFormXObject)
+    assert not isinstance(obj, PDTransparencyGroup)
+
+
+def test_create_x_object_form_with_group_missing_s_returns_plain_form() -> None:
+    """A ``/Subtype /Form`` with a ``/Group`` dictionary that lacks ``/S``
+    altogether must NOT promote to :class:`PDTransparencyGroup`. The
+    upstream check is strictly ``group.getCOSName(COSName.S).equals(
+    COSName.TRANSPARENCY)`` — a missing ``/S`` fails the equality.
+    """
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
+        PDTransparencyGroup,
+    )
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    stream.set_item(COSName.get_pdf_name("Group"), COSDictionary())
+
+    obj = PDXObject.create_x_object(stream)
+    assert isinstance(obj, PDFormXObject)
+    assert not isinstance(obj, PDTransparencyGroup)
+
+
+def test_create_x_object_form_with_non_dict_group_returns_plain_form() -> None:
+    """When ``/Group`` is present but isn't a ``COSDictionary`` (malformed
+    PDF), the factory must fall through to the plain
+    :class:`PDFormXObject` path — upstream's ``getCOSDictionary`` returns
+    null and the transparency-group branch is skipped.
+    """
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
+        PDTransparencyGroup,
+    )
+
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    # /Group entry is a COSName, not a dict — malformed.
+    stream.set_item(COSName.get_pdf_name("Group"), COSName.get_pdf_name("Bogus"))
+
+    obj = PDXObject.create_x_object(stream)
+    assert isinstance(obj, PDFormXObject)
+    assert not isinstance(obj, PDTransparencyGroup)
+
+
+# ---------- create_x_object: missing /Subtype ----------
+
+
+def test_create_x_object_missing_subtype_raises_oserror() -> None:
+    """A stream with NO ``/Subtype`` entry at all must raise
+    ``OSError`` with the upstream-shaped "Invalid XObject Subtype: None"
+    message — there's no other branch to fall through to.
+    """
+    import pytest
+
+    stream = COSStream()
+    with pytest.raises(OSError, match="Invalid XObject Subtype"):
+        PDXObject.create_x_object(stream)
