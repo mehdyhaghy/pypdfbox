@@ -93,6 +93,29 @@ class PDNumberTreeNode[T](ABC):
         """``True`` when this node carries a ``/Kids`` entry."""
         return isinstance(self._node.get_dictionary_object(_KIDS), COSArray)
 
+    def has_limits(self) -> bool:
+        """``True`` when this node carries a ``/Limits`` entry.
+
+        A root node never carries ``/Limits`` per PDF Reference 1.7
+        §7.9.7; intermediate and leaf nodes do once they have content.
+        Mirrors :meth:`PDNameTreeNode.has_limits`."""
+        return isinstance(self._node.get_dictionary_object(_LIMITS), COSArray)
+
+    def is_leaf_node(self) -> bool:
+        """``True`` when this node carries ``/Nums`` directly (no
+        ``/Kids`` array). PDF number trees are required to be either a
+        leaf (``/Nums`` is the index mapping) or an intermediate node
+        (``/Kids`` references child nodes), but never both at the same
+        level. Mirrors :meth:`PDNameTreeNode.is_leaf_node`."""
+        return self._node.contains_key(_NUMS) and not self._node.contains_key(_KIDS)
+
+    def is_intermediate_node(self) -> bool:
+        """``True`` when this node carries ``/Kids`` (no ``/Nums``).
+        Complement of :meth:`is_leaf_node` for nodes that have been
+        populated; an empty (freshly-constructed) node is neither.
+        Mirrors :meth:`PDNameTreeNode.is_intermediate_node`."""
+        return self._node.contains_key(_KIDS) and not self._node.contains_key(_NUMS)
+
     # ---------- subclass extension points ----------
 
     @abstractmethod
@@ -254,6 +277,19 @@ class PDNumberTreeNode[T](ABC):
         """Drop the ``/Kids`` and ``/Limits`` entries from this node.
 
         Mirrors :meth:`PDNameTreeNode.remove_kids`."""
+        self._node.remove_item(_KIDS)
+        self._node.remove_item(_LIMITS)
+        self._notify_parent_limits_changed()
+
+    def clear(self) -> None:
+        """Drop ``/Nums``, ``/Kids`` and ``/Limits`` from this node.
+
+        Verb-shaped helper for callers that want to reset a node to its
+        empty state without inspecting which arm (leaf-vs-intermediate)
+        is currently populated. Equivalent to calling :meth:`remove_numbers`
+        and :meth:`remove_kids` back-to-back. Mirrors
+        :meth:`PDNameTreeNode.clear`."""
+        self._node.remove_item(_NUMS)
         self._node.remove_item(_KIDS)
         self._node.remove_item(_LIMITS)
         self._notify_parent_limits_changed()

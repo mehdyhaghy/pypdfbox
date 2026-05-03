@@ -70,6 +70,29 @@ class PDNameTreeNode[T](ABC):
         populated; an empty (freshly-constructed) node is neither."""
         return self._node.contains_key(_KIDS) and not self._node.contains_key(_NAMES)
 
+    def has_names(self) -> bool:
+        """``True`` when this node carries a leaf ``/Names`` entry.
+
+        Unlike :meth:`is_leaf_node`, this predicate does not also require
+        the absence of ``/Kids`` — useful for raw-shape inspection of a
+        partially-built or malformed dictionary. Mirrors
+        :meth:`PDNumberTreeNode.has_numbers`."""
+        return isinstance(self._node.get_dictionary_object(_NAMES), COSArray)
+
+    def has_kids(self) -> bool:
+        """``True`` when this node carries a ``/Kids`` entry.
+
+        Mirrors :meth:`PDNumberTreeNode.has_kids`."""
+        return isinstance(self._node.get_dictionary_object(_KIDS), COSArray)
+
+    def has_limits(self) -> bool:
+        """``True`` when this node carries a ``/Limits`` entry.
+
+        A root node never carries ``/Limits`` per PDF Reference 1.7
+        §7.9.6; intermediate and leaf nodes do once they have content.
+        Mirrors :meth:`PDNumberTreeNode.has_limits`."""
+        return isinstance(self._node.get_dictionary_object(_LIMITS), COSArray)
+
     # ---------- value type plumbing ----------
 
     def get_value_type(self) -> type | None:

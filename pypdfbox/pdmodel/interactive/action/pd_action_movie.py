@@ -122,5 +122,58 @@ class PDActionMovie(PDAction):
         title-based addressing form."""
         return self._action.get_string(_T) is not None
 
+    def has_operation(self) -> bool:
+        """``True`` when ``/Operation`` is present in the action dictionary.
+
+        Distinct from :meth:`is_play` — :meth:`is_play` is also ``True``
+        when ``/Operation`` is *absent* (the spec default). This predicate
+        purely reports presence, letting callers tell "explicit Play" from
+        "implicit Play" when round-tripping malformed PDFs."""
+        return self._action.get_dictionary_object(_OPERATION) is not None
+
+    # ---------- clear_* helpers ----------
+
+    def clear_annotation(self) -> None:
+        """Remove ``/Annotation`` from the action dictionary.
+
+        Convenience for ``set_annotation(None)`` that mirrors the
+        ``clear_*`` helpers on other action wrappers
+        (:class:`PDActionSound.clear_sound` etc.)."""
+        self._action.remove_item(_ANNOTATION)
+
+    def clear_title(self) -> None:
+        """Remove ``/T`` from the action dictionary.
+
+        Convenience for ``set_t(None)`` that aligns the title-clear path
+        with the typed annotation-clear helper."""
+        self._action.remove_item(_T)
+
+    def clear_operation(self) -> None:
+        """Remove ``/Operation``, re-engaging the spec default ``"Play"``.
+
+        Convenience for ``set_operation(None)``; useful when normalising
+        an action back to the implicit-Play form."""
+        self._action.remove_item(_OPERATION)
+
+    # ---------- sanity predicates ----------
+
+    def is_empty(self) -> bool:
+        """``True`` when neither ``/Annotation`` nor ``/T`` is present.
+
+        Per PDF 32000-1 §12.6.4.10 Table 209 a Movie action must target
+        a movie via one of those two entries; without either it has no
+        movie to act on. Parallels :class:`PDActionSound.is_empty`."""
+        return not self.has_annotation() and not self.has_title()
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"Movie"``).
+
+        Useful as a sanity check after round-tripping through
+        :meth:`PDAction.create` or when constructing the wrapper around a
+        hand-built :class:`COSDictionary`. Parallels
+        :class:`PDActionSound.is_valid`."""
+        return self.get_sub_type() == self.SUB_TYPE
+
 
 __all__ = ["PDActionMovie"]

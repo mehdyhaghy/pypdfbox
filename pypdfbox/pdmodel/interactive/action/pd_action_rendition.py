@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
+from pypdfbox.pdmodel.interactive.annotation.pd_annotation_screen import (
+    PDAnnotationScreen,
+)
 from pypdfbox.pdmodel.interactive.measurement.pd_rendition import PDRendition
 
 from .pd_action import PDAction
@@ -77,6 +80,37 @@ class PDActionRendition(PDAction):
             return
         self._action.set_item(_AN, annotation)
 
+    def get_screen_annotation(self) -> PDAnnotationScreen | None:
+        """Return ``/AN`` as a typed :class:`PDAnnotationScreen`.
+
+        PDF 32000-1 §12.6.4.13 Table 214 specifies ``/AN`` as a Screen
+        annotation reference. Returns ``None`` when ``/AN`` is absent,
+        not a dictionary, or not a Screen-subtype annotation. Distinct
+        from :meth:`get_annotation` which dispatches through
+        :meth:`PDAnnotation.create` and may yield any annotation
+        subclass for malformed inputs."""
+        entry = self._action.get_dictionary_object(_AN)
+        if isinstance(entry, COSDictionary):
+            wrapped = PDAnnotation.create(entry)
+            if isinstance(wrapped, PDAnnotationScreen):
+                return wrapped
+        return None
+
+    def has_annotation(self) -> bool:
+        """``True`` when ``/AN`` is present and is a dictionary.
+
+        Lets callers branch on annotation-presence without paying the
+        cost of constructing a typed wrapper. Parallels
+        :class:`PDActionMovie.has_annotation`."""
+        return isinstance(self._action.get_dictionary_object(_AN), COSDictionary)
+
+    def clear_annotation(self) -> None:
+        """Remove ``/AN`` from the action dictionary.
+
+        Convenience for ``set_annotation(None)`` that mirrors the
+        ``clear_*`` helpers on sibling action wrappers."""
+        self._action.remove_item(_AN)
+
     # ---------- /OP, /JS ----------
 
     def get_op(self) -> int:
@@ -103,6 +137,14 @@ class PDActionRendition(PDAction):
     def has_op(self) -> bool:
         """Return ``True`` when the ``/OP`` entry is present."""
         return self._action.get_dictionary_object(_OP) is not None
+
+    def clear_op(self) -> None:
+        """Remove ``/OP`` from the action dictionary.
+
+        PDF 32000-1 §12.6.4.13 Table 214 makes ``/OP`` optional —
+        clearing it leaves the action in the ``/JS``-only form (which is
+        legal *only* when ``/JS`` is present)."""
+        self._action.remove_item(_OP)
 
     def is_play_if_stopped(self) -> bool:
         """Return ``True`` when ``/OP`` equals :attr:`OP_PLAY_IF_STOPPED`."""
@@ -146,6 +188,13 @@ class PDActionRendition(PDAction):
         ``COSString`` or ``COSStream`` form)."""
         return self._action.get_dictionary_object(_JS) is not None
 
+    def clear_js(self) -> None:
+        """Remove ``/JS`` from the action dictionary.
+
+        Convenience for ``set_js(None)`` — symmetrical with the other
+        ``clear_*`` helpers on this wrapper."""
+        self._action.remove_item(_JS)
+
     # ---------- /R (raw, back-compat) ----------
 
     def get_r(self) -> COSBase | None:
@@ -184,6 +233,42 @@ class PDActionRendition(PDAction):
             self._action.set_item(_R, rendition.get_cos_object())
             return
         self._action.set_item(_R, rendition)
+
+    def has_rendition(self) -> bool:
+        """``True`` when ``/R`` is present and is a dictionary.
+
+        Lets callers branch on rendition-presence without constructing a
+        typed wrapper. Parallels :meth:`has_annotation` /
+        :meth:`PDActionMovie.has_annotation`."""
+        return isinstance(self._action.get_dictionary_object(_R), COSDictionary)
+
+    def clear_rendition(self) -> None:
+        """Remove ``/R`` from the action dictionary.
+
+        Convenience for ``set_rendition(None)`` that mirrors the other
+        ``clear_*`` helpers on this wrapper."""
+        self._action.remove_item(_R)
+
+    # ---------- sanity predicates ----------
+
+    def is_empty(self) -> bool:
+        """``True`` when neither ``/R`` nor ``/AN`` is present.
+
+        PDF 32000-1 §12.6.4.13 Table 214 says either a Rendition (``/R``)
+        or a Screen annotation (``/AN``) should be present for the action
+        to identify what to render. Without either, the action has no
+        target to act on. Parallels :class:`PDActionMovie.is_empty`."""
+        return not self.has_rendition() and not self.has_annotation()
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"Rendition"``).
+
+        Useful as a sanity check after round-tripping through
+        :meth:`PDAction.create` or when constructing the wrapper around a
+        hand-built :class:`COSDictionary`. Parallels
+        :class:`PDActionSound.is_valid`."""
+        return self.get_sub_type() == self.SUB_TYPE
 
 
 __all__ = ["PDActionRendition"]
