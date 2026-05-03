@@ -567,6 +567,21 @@ class PDPanoseClassification:
 
     LENGTH: int = 10
 
+    # Family-kind values per Microsoft OS/2 PANOSE specification — the
+    # first byte of the classification picks one of these six broad
+    # script families. Surfaced as named constants so callers can branch
+    # on family kind without having to spell the magic numbers literally.
+    # pypdfbox extension — upstream defines neither the values nor any
+    # named constants on PDPanoseClassification; the same magic numbers
+    # are used in raw form by FontMapperImpl when scoring substitution
+    # candidates (see family-kind comparisons there).
+    FAMILY_KIND_ANY: int = 0
+    FAMILY_KIND_NO_FIT: int = 1
+    FAMILY_KIND_LATIN_TEXT: int = 2
+    FAMILY_KIND_LATIN_HAND_WRITTEN: int = 3
+    FAMILY_KIND_LATIN_DECORATIVE: int = 4
+    FAMILY_KIND_LATIN_SYMBOL: int = 5
+
     __slots__ = ("_bytes",)
 
     def __init__(self, data: bytes | bytearray) -> None:
@@ -608,6 +623,36 @@ class PDPanoseClassification:
 
     def get_x_height(self) -> int:
         return self._bytes[9]
+
+    # ---------- family-kind predicates ----------
+
+    def is_any(self) -> bool:
+        """``True`` when ``family_kind == 0`` ("Any" — unclassified).
+
+        pypdfbox extension — upstream callers compare ``getFamilyKind() == 0``
+        directly (see ``FontMapperImpl`` line 581). Surface the predicate
+        so callers don't have to remember the magic constant.
+        """
+        return self.get_family_kind() == self.FAMILY_KIND_ANY
+
+    def is_no_fit(self) -> bool:
+        """``True`` when ``family_kind == 1`` ("No Fit" — classification
+        attempted but no family applies).
+
+        pypdfbox extension. Symmetric to :meth:`is_any` and :meth:`is_latin_text`.
+        """
+        return self.get_family_kind() == self.FAMILY_KIND_NO_FIT
+
+    def is_latin_text(self) -> bool:
+        """``True`` when ``family_kind == 2`` ("Latin Text" — the family
+        most PDF body text falls under).
+
+        pypdfbox extension. The ``Latin Text`` family is the only one
+        whose serif-style sub-classification is defined by the PANOSE
+        specification; other families list ``Any`` / ``No Fit`` in their
+        sub-classification slots.
+        """
+        return self.get_family_kind() == self.FAMILY_KIND_LATIN_TEXT
 
     def __bytes__(self) -> bytes:
         """Pythonic alias for :meth:`get_bytes` — enables ``bytes(classification)``."""
@@ -671,6 +716,14 @@ class PDPanose:
 
     LENGTH: int = 12
 
+    # Byte offset where the embedded :class:`PDPanoseClassification` slice
+    # begins inside the 12-byte block. pypdfbox extension — upstream
+    # hard-codes the literal ``2`` in :meth:`get_panose` (Java
+    # ``Arrays.copyOfRange(bytes, 2, 12)``); the named constant lets
+    # callers slice the buffer themselves without re-typing the magic
+    # number.
+    CLASSIFICATION_OFFSET: int = 2
+
     __slots__ = ("_bytes",)
 
     def __init__(self, data: bytes | bytearray) -> None:
@@ -678,6 +731,44 @@ class PDPanose:
         # that — accept any length the caller hands in and let the per-byte
         # accessors raise IndexError if the buffer is short.
         self._bytes = bytes(data)
+
+    @classmethod
+    def from_family_class_and_classification(
+        cls,
+        family_class: int,
+        classification: PDPanoseClassification | bytes | bytearray,
+    ) -> PDPanose:
+        """Build a :class:`PDPanose` from a signed 16-bit ``sFamilyClass``
+        plus the 10-byte PANOSE classification.
+
+        pypdfbox extension — upstream PDPanose ships only the raw
+        ``byte[]`` constructor. This convenience factory is symmetric to
+        :meth:`get_family_class` (which decodes the leading 2 bytes as a
+        signed 16-bit big-endian int) and saves callers from having to
+        pack the integer themselves before reaching for the byte
+        constructor.
+
+        Negative ``family_class`` values are accepted — they round-trip
+        through :meth:`get_family_class` exactly. Out-of-range values
+        (outside ``-0x8000..0x7FFF``) are masked into the 16-bit window
+        and a :class:`ValueError` is raised, matching what
+        ``struct.pack(">h", ...)`` would do.
+        """
+        if not -0x8000 <= int(family_class) <= 0x7FFF:
+            raise ValueError(
+                f"family_class {family_class!r} does not fit in a signed "
+                "16-bit big-endian int (range -0x8000 .. 0x7FFF)"
+            )
+        if isinstance(classification, PDPanoseClassification):
+            payload = classification.get_bytes()
+        else:
+            payload = bytes(classification)
+        # Encode as signed 16-bit big-endian — equivalent to
+        # ``struct.pack(">h", family_class)`` but expressed inline so the
+        # negative-int round-trip stays in plain view of the reader.
+        unsigned = int(family_class) & 0xFFFF
+        head = bytes(((unsigned >> 8) & 0xFF, unsigned & 0xFF))
+        return cls(head + bytes(payload))
 
     def get_bytes(self) -> bytes:
         """The raw 12-byte block (sFamilyClass + 10-byte PANOSE)."""
@@ -700,7 +791,12 @@ class PDPanose:
 
     def get_panose(self) -> PDPanoseClassification:
         """The 10-byte PANOSE classification (bytes 2-11)."""
-        return PDPanoseClassification(self._bytes[2:12])
+        return PDPanoseClassification(
+            self._bytes[
+                self.CLASSIFICATION_OFFSET : self.CLASSIFICATION_OFFSET
+                + PDPanoseClassification.LENGTH
+            ]
+        )
 
     def with_panose_classification(
         self, classification: PDPanoseClassification | bytes | bytearray

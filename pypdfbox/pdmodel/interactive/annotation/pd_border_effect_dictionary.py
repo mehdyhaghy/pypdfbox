@@ -26,6 +26,11 @@ class PDBorderEffectDictionary:
     STYLE_SOLID: ClassVar[str] = "S"
     STYLE_CLOUDY: ClassVar[str] = "C"
 
+    #: Tuple of every ``/S`` style code recognised by the spec, in
+    #: declaration order. Useful for validation and iteration without
+    #: having to keep an external list in sync.
+    STYLE_VALUES: ClassVar[tuple[str, ...]] = (STYLE_SOLID, STYLE_CLOUDY)
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
 
@@ -42,6 +47,14 @@ class PDBorderEffectDictionary:
         """Return the intensity of the applied effect; 0 if absent."""
         return self._dict.get_float(_I, 0.0)
 
+    def has_intensity(self) -> bool:
+        """True when ``/I`` is explicitly present on the dictionary.
+
+        :meth:`get_intensity` masks an absent ``/I`` by returning ``0.0``;
+        this predicate distinguishes "explicitly 0" from "missing entry".
+        """
+        return self._dict.contains_key(_I)
+
     # ---------- /S (style) ----------
 
     def set_style(self, s: str) -> None:
@@ -52,6 +65,37 @@ class PDBorderEffectDictionary:
         """Return the border effect style; ``STYLE_SOLID`` if absent."""
         value = self._dict.get_name(_S)
         return value if value is not None else self.STYLE_SOLID
+
+    def has_style(self) -> bool:
+        """True when ``/S`` is explicitly present on the dictionary.
+
+        :meth:`get_style` masks an absent ``/S`` by returning
+        ``STYLE_SOLID`` (the spec default); this predicate distinguishes
+        "explicitly solid" from "missing entry".
+        """
+        return self._dict.contains_key(_S)
+
+    # ---------- /S predicate helpers ----------
+    #
+    # Parallel to the ``is_*`` predicates on ``PDBorderStyleDictionary``
+    # (Wave 202): style equality without requiring callers to import the
+    # ``STYLE_*`` constants.
+
+    def is_solid(self) -> bool:
+        """True when ``/S`` is solid (the default, no effect)."""
+        return self.get_style() == self.STYLE_SOLID
+
+    def is_cloudy(self) -> bool:
+        """True when ``/S`` is cloudy."""
+        return self.get_style() == self.STYLE_CLOUDY
+
+    # ---------- dunder ----------
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return (
+            f"PDBorderEffectDictionary(style={self.get_style()!r}, "
+            f"intensity={self.get_intensity()})"
+        )
 
 
 __all__ = ["PDBorderEffectDictionary"]
