@@ -484,6 +484,49 @@ class PDPageContentStream:
         self._write_operands(c, m, y, k)
         self._write_operator(b"k")
 
+    def set_stroking_color_rgb_int(self, r: int, g: int, b: int) -> None:
+        """Emit ``r g b RG`` — set the DeviceRGB stroking color from
+        8-bit integer components.
+
+        Each of ``r``, ``g``, ``b`` must be in ``0..255``; out-of-range
+        values raise :class:`ValueError`. Mirrors upstream's
+        ``setStrokingColor(java.awt.Color)``, which extracts the AWT
+        color's 0..255 RGB triple, normalizes by 255, and forwards to
+        the float-form ``setStrokingColor(r, g, b)``.
+        """
+        ri, gi, bi = int(r), int(g), int(b)
+        if (
+            _is_outside_255_interval(ri)
+            or _is_outside_255_interval(gi)
+            or _is_outside_255_interval(bi)
+        ):
+            raise ValueError(
+                "Parameters must be within 0..255, but are "
+                f"({r},{g},{b})"
+            )
+        self.set_stroking_color_rgb(ri / 255.0, gi / 255.0, bi / 255.0)
+
+    def set_non_stroking_color_rgb_int(
+        self, r: int, g: int, b: int
+    ) -> None:
+        """Emit ``r g b rg`` — non-stroking variant of
+        :meth:`set_stroking_color_rgb_int`. Components are 8-bit integers
+        in ``0..255``.
+
+        Mirrors upstream's ``setNonStrokingColor(java.awt.Color)``.
+        """
+        ri, gi, bi = int(r), int(g), int(b)
+        if (
+            _is_outside_255_interval(ri)
+            or _is_outside_255_interval(gi)
+            or _is_outside_255_interval(bi)
+        ):
+            raise ValueError(
+                "Parameters must be within 0..255, but are "
+                f"({r},{g},{b})"
+            )
+        self.set_non_stroking_color_rgb(ri / 255.0, gi / 255.0, bi / 255.0)
+
     # ---- polymorphic set_stroking_color / set_non_stroking_color ----
 
     def set_stroking_color(self, *args: Any) -> None:
@@ -698,12 +741,44 @@ class PDPageContentStream:
     # ------------------------------------------------------------------
 
     def begin_text(self) -> None:
+        """Emit ``BT`` — begin a text object.
+
+        Raises :class:`RuntimeError` when already inside a text block,
+        mirroring upstream's ``IllegalStateException`` ("Error: Nested
+        beginText() calls are not allowed.") from
+        ``PDAbstractContentStream.beginText``.
+        """
+        if self._in_text_mode:
+            raise RuntimeError(
+                "Nested begin_text() calls are not allowed."
+            )
         self._write_operator(b"BT")
         self._in_text_mode = True
 
     def end_text(self) -> None:
+        """Emit ``ET`` — end the current text object.
+
+        Raises :class:`RuntimeError` when not currently inside a text
+        block, mirroring upstream's ``IllegalStateException`` ("Error: You
+        must call beginText() before calling endText.") from
+        ``PDAbstractContentStream.endText``.
+        """
+        if not self._in_text_mode:
+            raise RuntimeError(
+                "end_text() requires a matching begin_text() call first."
+            )
         self._write_operator(b"ET")
         self._in_text_mode = False
+
+    def is_in_text_mode(self) -> bool:
+        """Return whether the writer is currently inside a text block
+        (between ``BT`` and ``ET``).
+
+        Exposes the upstream protected ``inTextMode`` field as a public
+        predicate so callers and tests can branch on text-mode state
+        without poking at the private attribute.
+        """
+        return self._in_text_mode
 
     def set_font(self, font: PDFont, size: float) -> None:
         """Emit ``/<key> <size> Tf``. Auto-registers ``font`` under the
