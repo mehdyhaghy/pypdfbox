@@ -411,6 +411,49 @@ class PDDocumentInformation:
         """Return ``True`` when /Trapped is present in the info dictionary."""
         return self._info.contains_key(_TRAPPED)
 
+    # ---------- clear_* helpers ----------
+    # Explicit one-call removers for each standard /Info entry. Equivalent
+    # to ``set_<field>(None)``; provided as named methods so call-sites that
+    # just want to drop an entry read more naturally and don't have to
+    # spell out the ``None`` argument. pypdfbox addition — Apache PDFBox 3.0
+    # leaves callers to spell ``setTitle(null)``.
+
+    def clear_title(self) -> None:
+        """Remove ``/Title`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_TITLE)
+
+    def clear_author(self) -> None:
+        """Remove ``/Author`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_AUTHOR)
+
+    def clear_subject(self) -> None:
+        """Remove ``/Subject`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_SUBJECT)
+
+    def clear_keywords(self) -> None:
+        """Remove ``/Keywords`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_KEYWORDS)
+
+    def clear_creator(self) -> None:
+        """Remove ``/Creator`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_CREATOR)
+
+    def clear_producer(self) -> None:
+        """Remove ``/Producer`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_PRODUCER)
+
+    def clear_creation_date(self) -> None:
+        """Remove ``/CreationDate`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_CREATION_DATE)
+
+    def clear_modification_date(self) -> None:
+        """Remove ``/ModDate`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_MOD_DATE)
+
+    def clear_trapped(self) -> None:
+        """Remove ``/Trapped`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(_TRAPPED)
+
     # ---------- bulk operations ----------
 
     def clear(self) -> None:
@@ -438,6 +481,24 @@ class PDDocumentInformation:
     def is_empty(self) -> bool:
         """Return ``True`` if the underlying info dictionary holds no entries."""
         return self._info.is_empty()
+
+    def is_pristine(self) -> bool:
+        """Return ``True`` when the info dictionary either holds no entries
+        at all or only carries the writer-supplied ``/Producer`` field.
+
+        Pypdfbox addition — many PDF producers (including pypdfbox itself
+        and Apache PDFBox) stamp ``/Producer`` automatically when a fresh
+        document is saved, so the strict :meth:`is_empty` check rejects
+        documents callers would intuitively classify as "no metadata
+        supplied". This predicate reports ``True`` for both the truly
+        empty info dict and the ``/Producer``-only shape, letting callers
+        gate "metadata was supplied" decisions without manual key
+        inspection.
+        """
+        keys = self._info.key_set()
+        if not keys:
+            return True
+        return all(key.get_name() == "Producer" for key in keys)
 
     def __len__(self) -> int:
         return self._info.size()
