@@ -336,3 +336,241 @@ def test_pd_signature_str_omits_absent_fields() -> None:
     sig.set_name("Bob")
     # No reason / location / date / contact set.
     assert str(sig) == "PDSignature(name=Bob)"
+
+
+# ---------------------------------------------------------------------------
+# Wave 219: presence predicates, /Type and /SubFilter predicates,
+# datetime accessors, DocTimeStamp / RFC3161 constants
+# ---------------------------------------------------------------------------
+
+
+def test_pd_signature_doc_time_stamp_constants_match_pdf_spec() -> None:
+    """PDF 32000-2 §12.8.5 — RFC 3161 document timestamp uses
+    ``/Type /DocTimeStamp`` and ``/SubFilter /ETSI.RFC3161``."""
+    assert PDSignature.TYPE_DOC_TIME_STAMP == "DocTimeStamp"
+    assert PDSignature.SUBFILTER_ETSI_RFC3161 == "ETSI.RFC3161"
+
+
+def test_pd_signature_type_constants_round_trip_through_setter() -> None:
+    sig = PDSignature()
+    sig.set_type(PDSignature.TYPE_DOC_TIME_STAMP)
+    assert sig.get_type() == "DocTimeStamp"
+    sig.set_type(PDSignature.TYPE)
+    assert sig.get_type() == "Sig"
+
+
+# --- presence predicates ---
+
+
+def test_pd_signature_presence_predicates_default_false() -> None:
+    """A fresh signature has only ``/Type /Sig`` populated."""
+    sig = PDSignature()
+    assert sig.has_filter() is False
+    assert sig.has_sub_filter() is False
+    assert sig.has_byte_range() is False
+    assert sig.has_contents() is False
+    assert sig.has_cert() is False
+    assert sig.has_prop_build() is False
+    assert sig.has_sign_date() is False
+    assert sig.has_name() is False
+    assert sig.has_reason() is False
+    assert sig.has_location() is False
+    assert sig.has_contact_info() is False
+
+
+def test_pd_signature_presence_predicates_true_after_set() -> None:
+    sig = PDSignature()
+    sig.set_filter(PDSignature.FILTER_ADOBE_PPKLITE)
+    sig.set_sub_filter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED)
+    sig.set_byte_range([0, 10, 18, 12])
+    sig.set_contents(b"\x30\x82\x00\x00")
+    sig.set_cert("cert-bytes")
+    sig.set_sign_date("D:20260501120000Z")
+    sig.set_name("Alice")
+    sig.set_reason("I approve")
+    sig.set_location("Berlin")
+    sig.set_contact_info("alice@example.com")
+
+    assert sig.has_filter() is True
+    assert sig.has_sub_filter() is True
+    assert sig.has_byte_range() is True
+    assert sig.has_contents() is True
+    assert sig.has_cert() is True
+    assert sig.has_sign_date() is True
+    assert sig.has_name() is True
+    assert sig.has_reason() is True
+    assert sig.has_location() is True
+    assert sig.has_contact_info() is True
+
+
+def test_pd_signature_has_prop_build_round_trip() -> None:
+    from pypdfbox.pdmodel.interactive.digitalsignature import PDPropBuild
+
+    sig = PDSignature()
+    assert sig.has_prop_build() is False
+    sig.set_prop_build(PDPropBuild())
+    assert sig.has_prop_build() is True
+    sig.set_prop_build(None)
+    assert sig.has_prop_build() is False
+
+
+def test_pd_signature_presence_predicates_false_after_clear() -> None:
+    """Setting any field to ``None`` removes the entry; predicate flips back."""
+    sig = PDSignature()
+    sig.set_filter("Adobe.PPKLite")
+    assert sig.has_filter() is True
+    sig.set_filter(None)
+    assert sig.has_filter() is False
+
+    sig.set_byte_range([0, 1, 2, 3])
+    assert sig.has_byte_range() is True
+    sig.set_byte_range(None)
+    assert sig.has_byte_range() is False
+
+
+# --- /Type predicates ---
+
+
+def test_pd_signature_is_signature_default_true() -> None:
+    """Fresh signature has ``/Type /Sig``."""
+    sig = PDSignature()
+    assert sig.is_signature() is True
+    assert sig.is_doc_time_stamp() is False
+
+
+def test_pd_signature_is_doc_time_stamp_when_type_is_doc_time_stamp() -> None:
+    sig = PDSignature()
+    sig.set_type(PDSignature.TYPE_DOC_TIME_STAMP)
+    assert sig.is_doc_time_stamp() is True
+    assert sig.is_signature() is False
+
+
+def test_pd_signature_type_predicates_both_false_when_type_absent() -> None:
+    sig = PDSignature()
+    sig.set_type(None)
+    assert sig.is_signature() is False
+    assert sig.is_doc_time_stamp() is False
+
+
+# --- /SubFilter predicates ---
+
+
+def test_pd_signature_subfilter_predicates_default_false() -> None:
+    sig = PDSignature()
+    assert sig.is_pkcs7_detached() is False
+    assert sig.is_pkcs7_sha1() is False
+    assert sig.is_x509_rsa_sha1() is False
+    assert sig.is_etsi_cades_detached() is False
+    assert sig.is_etsi_rfc3161() is False
+
+
+def test_pd_signature_is_pkcs7_detached_only_when_subfilter_matches() -> None:
+    sig = PDSignature()
+    sig.set_sub_filter(PDSignature.SUBFILTER_ADBE_PKCS7_DETACHED)
+    assert sig.is_pkcs7_detached() is True
+    assert sig.is_pkcs7_sha1() is False
+    assert sig.is_x509_rsa_sha1() is False
+    assert sig.is_etsi_cades_detached() is False
+    assert sig.is_etsi_rfc3161() is False
+
+
+def test_pd_signature_is_pkcs7_sha1_only_when_subfilter_matches() -> None:
+    sig = PDSignature()
+    sig.set_sub_filter(PDSignature.SUBFILTER_ADBE_PKCS7_SHA1)
+    assert sig.is_pkcs7_sha1() is True
+    assert sig.is_pkcs7_detached() is False
+
+
+def test_pd_signature_is_x509_rsa_sha1_only_when_subfilter_matches() -> None:
+    sig = PDSignature()
+    sig.set_sub_filter(PDSignature.SUBFILTER_ADBE_X509_RSA_SHA1)
+    assert sig.is_x509_rsa_sha1() is True
+    assert sig.is_pkcs7_detached() is False
+    assert sig.is_etsi_cades_detached() is False
+
+
+def test_pd_signature_is_etsi_cades_detached_only_when_subfilter_matches() -> None:
+    sig = PDSignature()
+    sig.set_sub_filter(PDSignature.SUBFILTER_ETSI_CADES_DETACHED)
+    assert sig.is_etsi_cades_detached() is True
+    assert sig.is_pkcs7_detached() is False
+
+
+def test_pd_signature_is_etsi_rfc3161_only_when_subfilter_matches() -> None:
+    sig = PDSignature()
+    sig.set_sub_filter(PDSignature.SUBFILTER_ETSI_RFC3161)
+    assert sig.is_etsi_rfc3161() is True
+    assert sig.is_pkcs7_detached() is False
+    assert sig.is_etsi_cades_detached() is False
+
+
+def test_pd_signature_subfilter_predicates_case_sensitive() -> None:
+    """Predicate matching is exact; mixed-case ``/SubFilter`` does not
+    match. PDF spec values are case-sensitive."""
+    sig = PDSignature()
+    sig.set_sub_filter("ADBE.PKCS7.DETACHED")  # not the canonical lowercase
+    assert sig.is_pkcs7_detached() is False
+
+
+# --- typed datetime accessors ---
+
+
+def test_pd_signature_get_sign_date_as_datetime_default_none() -> None:
+    sig = PDSignature()
+    assert sig.get_sign_date_as_datetime() is None
+
+
+def test_pd_signature_set_sign_date_as_datetime_round_trip_utc() -> None:
+    import datetime as dt
+
+    sig = PDSignature()
+    when = dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.timezone.utc)
+    sig.set_sign_date_as_datetime(when)
+    # Stored as PDF date string.
+    assert sig.get_sign_date() == "D:20260501123000Z00'00'"
+    # Round-trip through the typed accessor preserves the instant.
+    got = sig.get_sign_date_as_datetime()
+    assert got == when
+
+
+def test_pd_signature_set_sign_date_as_datetime_round_trip_with_offset() -> None:
+    import datetime as dt
+
+    sig = PDSignature()
+    tz = dt.timezone(dt.timedelta(hours=5, minutes=30))
+    when = dt.datetime(2026, 5, 1, 18, 0, 0, tzinfo=tz)
+    sig.set_sign_date_as_datetime(when)
+    assert sig.get_sign_date() == "D:20260501180000+05'30'"
+    got = sig.get_sign_date_as_datetime()
+    assert got is not None
+    # Same instant, possibly different tzinfo representation.
+    assert got == when
+
+
+def test_pd_signature_set_sign_date_as_datetime_none_removes_entry() -> None:
+    import datetime as dt
+
+    sig = PDSignature()
+    sig.set_sign_date_as_datetime(dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc))
+    sig.set_sign_date_as_datetime(None)
+    assert sig.has_sign_date() is False
+    assert sig.get_sign_date_as_datetime() is None
+
+
+def test_pd_signature_get_sign_date_as_datetime_returns_none_for_unparseable() -> None:
+    sig = PDSignature()
+    sig.set_sign_date("not a pdf date")
+    assert sig.get_sign_date_as_datetime() is None
+    # The raw string is still retrievable via the string accessor.
+    assert sig.get_sign_date() == "not a pdf date"
+
+
+def test_pd_signature_get_sign_date_as_datetime_parses_existing_string() -> None:
+    """A signature parsed from a PDF will have ``/M`` as a string already;
+    the typed accessor must parse it without going through the setter."""
+    import datetime as dt
+
+    sig = PDSignature()
+    sig.set_sign_date("D:20260501123000Z")
+    got = sig.get_sign_date_as_datetime()
+    assert got == dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.timezone.utc)

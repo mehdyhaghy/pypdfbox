@@ -403,6 +403,31 @@ class PDDocumentCatalog:
         self._catalog.set_item(_ACRO_FORM, acro_form.get_cos_object())
         self._cached_acro_form = None
 
+    def get_acro_form_or_create(self) -> Any:
+        """Return the document's ``/AcroForm``, materialising an empty one
+        on demand when the catalog has no well-formed AcroForm entry.
+
+        Convenience for code paths that need to mutate fields without
+        having to nil-check every call site (e.g. "I'm about to add a text
+        field, give me a form to add it to"). Mirrors the upstream-style
+        auto-create idiom that :meth:`get_actions` and :meth:`get_threads`
+        already follow on the catalog. The newly-created
+        :class:`PDAcroForm` is cached and wired back into the catalog so
+        subsequent reads see the same instance.
+
+        Unlike :meth:`get_acro_form`, this method always returns a
+        non-``None`` :class:`PDAcroForm`."""
+        existing = self.get_acro_form()
+        if existing is not None:
+            return existing
+        from .interactive.form import PDAcroForm
+
+        acro_form = PDAcroForm(self._document)
+        self.set_acro_form(acro_form)
+        # Re-read so the cache is populated and the wrapper is the same
+        # instance subsequent ``get_acro_form`` calls return.
+        return self.get_acro_form()
+
     # ---------- stubs for later clusters ----------
 
     def get_document_outline(self) -> Any:
@@ -695,12 +720,24 @@ class PDDocumentCatalog:
     def set_output_intents(self, intents: list[Any] | None) -> None:
         """Replace the ``/OutputIntents`` array with ``intents``. Pass
         ``None`` or an empty list to remove the entry entirely. Mirrors
-        upstream ``setOutputIntents(List<PDOutputIntent>)``."""
+        upstream ``setOutputIntents(List<PDOutputIntent>)``.
+
+        Each entry must be a :class:`PDOutputIntent` (or any object with a
+        ``get_cos_object()`` method); a :class:`TypeError` is raised on
+        invalid input — matches the upstream Java generic-list contract
+        where a non-``PDOutputIntent`` would never compile."""
+        from .graphics.color import PDOutputIntent
+
         if not intents:
             self._catalog.remove_item(_OUTPUT_INTENTS)
             return
         arr = COSArray()
         for intent in intents:
+            if not isinstance(intent, PDOutputIntent):
+                raise TypeError(
+                    "PDDocumentCatalog.set_output_intents entries must be "
+                    f"PDOutputIntent; got {type(intent).__name__}"
+                )
             arr.add(intent.get_cos_object())
         self._catalog.set_item(_OUTPUT_INTENTS, arr)
 
@@ -968,12 +1005,20 @@ class PDDocumentCatalog:
     def set_associated_files(self, files: list[Any] | None) -> None:
         """Replace the catalog's ``/AF`` array. Pass ``None`` or an empty
         list to remove the entry entirely. Each entry must be a
-        :class:`PDFileSpecification`."""
+        :class:`PDFileSpecification`; a :class:`TypeError` is raised on
+        invalid input — matches the upstream Java generic-list contract."""
+        from .common.filespecification import PDFileSpecification
+
         if not files:
             self._catalog.remove_item(_AF)
             return
         arr = COSArray()
         for spec in files:
+            if not isinstance(spec, PDFileSpecification):
+                raise TypeError(
+                    "PDDocumentCatalog.set_associated_files entries must be "
+                    f"PDFileSpecification; got {type(spec).__name__}"
+                )
             arr.add(spec.get_cos_object())
         self._catalog.set_item(_AF, arr)
 
@@ -1138,6 +1183,67 @@ class PDDocumentCatalog:
             self._catalog.get_dictionary_object(_OC_PROPERTIES),
             COSDictionary,
         )
+
+    def has_viewer_preferences(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed
+        ``/ViewerPreferences`` dictionary entry."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_VIEWER_PREFERENCES),
+            COSDictionary,
+        )
+
+    def has_mark_info(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/MarkInfo``
+        dictionary entry. Note this does *not* imply ``/MarkInfo /Marked
+        = true`` — see :meth:`is_tagged` / :meth:`is_document_marked` for
+        the spec-tagged check."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_MARK_INFO), COSDictionary
+        )
+
+    def has_threads(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed (non-empty)
+        ``/Threads`` array entry. An empty array reads as absent — matches
+        upstream's "no article threads to navigate" semantics."""
+        arr = self._catalog.get_dictionary_object(_THREADS)
+        return isinstance(arr, COSArray) and arr.size() > 0
+
+    def has_dests(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed legacy
+        ``/Dests`` dictionary entry (PDF 1.1 named destinations). The
+        modern ``/Names /Dests`` name tree is checked via
+        :meth:`has_names`."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_DESTS), COSDictionary
+        )
+
+    def has_uri(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed ``/URI``
+        dictionary entry (PDF 32000-1 §12.6.4.7)."""
+        return isinstance(
+            self._catalog.get_dictionary_object(_URI), COSDictionary
+        )
+
+    def has_associated_files(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed (non-empty)
+        ``/AF`` array entry (PDF 2.0 / ISO 32000-2 §14.13). An empty array
+        reads as absent."""
+        arr = self._catalog.get_dictionary_object(_AF)
+        return isinstance(arr, COSArray) and arr.size() > 0
+
+    def has_requirements(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed (non-empty)
+        ``/Requirements`` array entry (PDF 32000-1 §12.10). An empty array
+        reads as absent."""
+        arr = self._catalog.get_dictionary_object(_REQUIREMENTS)
+        return isinstance(arr, COSArray) and arr.size() > 0
+
+    def has_developer_extensions(self) -> bool:
+        """Return ``True`` when the catalog has a well-formed (non-empty)
+        ``/Extensions`` dictionary entry (PDF 32000-1 §7.12.2). An empty
+        dictionary reads as absent."""
+        v = self._catalog.get_dictionary_object(_EXTENSIONS)
+        return isinstance(v, COSDictionary) and not v.is_empty()
 
     def is_tagged(self) -> bool:
         """Return ``True`` when the document advertises a tagged-PDF

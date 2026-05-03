@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
@@ -33,6 +34,10 @@ class PDSignature:
     """
 
     TYPE = "Sig"
+    #: ``/Type`` value used for an RFC 3161 document-timestamp signature
+    #: (PDF 32000-2 §12.8.5). Distinct from a regular ``/Sig`` signature in
+    #: that no signer is asserted — only a trusted-time anchor.
+    TYPE_DOC_TIME_STAMP = "DocTimeStamp"
 
     # /Filter values (PDF 32000-1 Table 252). Upstream exposes these as
     # ``COSName`` constants; we expose plain strings since the snake_case
@@ -47,6 +52,8 @@ class PDSignature:
     SUBFILTER_ADBE_PKCS7_DETACHED = "adbe.pkcs7.detached"
     SUBFILTER_ETSI_CADES_DETACHED = "ETSI.CAdES.detached"
     SUBFILTER_ADBE_PKCS7_SHA1 = "adbe.pkcs7.sha1"
+    #: ETSI RFC 3161 document timestamp SubFilter (PDF 32000-2 §12.8.5).
+    SUBFILTER_ETSI_RFC3161 = "ETSI.RFC3161"
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         if dictionary is None:
@@ -156,6 +163,34 @@ class PDSignature:
             self._dict.remove_item(_M)
             return
         self._dict.set_string(_M, sign_date)
+
+    def get_sign_date_as_datetime(self) -> _dt.datetime | None:
+        """Return ``/M`` parsed as a timezone-aware :class:`datetime`.
+
+        Mirrors upstream ``getSignDate(): Calendar`` parity. Returns ``None``
+        if ``/M`` is absent or unparseable. The lite port stores ``/M`` as a
+        raw PDF date string (``D:YYYYMMDDHHmmSSOHH'mm'``) — this typed
+        accessor reuses ``PDDocumentInformation``'s parser.
+        """
+        raw = self.get_sign_date()
+        if raw is None:
+            return None
+        from pypdfbox.pdmodel.pd_document_information import _parse_pdf_date
+
+        return _parse_pdf_date(raw)
+
+    def set_sign_date_as_datetime(self, value: _dt.datetime | None) -> None:
+        """Store ``/M`` as a PDF date string from a :class:`datetime`.
+
+        Mirrors upstream ``setSignDate(Calendar)``. Naive datetimes are
+        treated as UTC.
+        """
+        if value is None:
+            self._dict.remove_item(_M)
+            return
+        from pypdfbox.pdmodel.pd_document_information import _format_pdf_date
+
+        self._dict.set_string(_M, _format_pdf_date(value))
 
     # ---------- /ByteRange ----------
 
@@ -409,6 +444,96 @@ class PDSignature:
         # (cryptography's high-level pkcs7 API is signing-only). Tracked
         # in CHANGES.md.
         return result
+
+    # ---------- presence predicates ----------
+
+    def has_filter(self) -> bool:
+        """Return ``True`` if ``/Filter`` is present."""
+        return self._dict.contains_key(_FILTER)
+
+    def has_sub_filter(self) -> bool:
+        """Return ``True`` if ``/SubFilter`` is present."""
+        return self._dict.contains_key(_SUB_FILTER)
+
+    def has_byte_range(self) -> bool:
+        """Return ``True`` if ``/ByteRange`` is present."""
+        return self._dict.contains_key(_BYTE_RANGE)
+
+    def has_contents(self) -> bool:
+        """Return ``True`` if ``/Contents`` is present."""
+        return self._dict.contains_key(_CONTENTS)
+
+    def has_cert(self) -> bool:
+        """Return ``True`` if ``/Cert`` is present."""
+        return self._dict.contains_key(_CERT)
+
+    def has_prop_build(self) -> bool:
+        """Return ``True`` if ``/Prop_Build`` is present."""
+        return self._dict.contains_key(_PROP_BUILD)
+
+    def has_sign_date(self) -> bool:
+        """Return ``True`` if ``/M`` (sign date) is present."""
+        return self._dict.contains_key(_M)
+
+    def has_name(self) -> bool:
+        """Return ``True`` if ``/Name`` is present."""
+        return self._dict.contains_key(_NAME)
+
+    def has_reason(self) -> bool:
+        """Return ``True`` if ``/Reason`` is present."""
+        return self._dict.contains_key(_REASON)
+
+    def has_location(self) -> bool:
+        """Return ``True`` if ``/Location`` is present."""
+        return self._dict.contains_key(_LOCATION)
+
+    def has_contact_info(self) -> bool:
+        """Return ``True`` if ``/ContactInfo`` is present."""
+        return self._dict.contains_key(_CONTACT_INFO)
+
+    # ---------- /Type predicates ----------
+
+    def is_doc_time_stamp(self) -> bool:
+        """Return ``True`` if this is an RFC 3161 document timestamp.
+
+        A document timestamp has ``/Type /DocTimeStamp`` (PDF 32000-2
+        §12.8.5) instead of the usual ``/Type /Sig``. Most callers want
+        to disambiguate signer-attesting signatures from timestamp-only
+        anchors when iterating ``PDDocument.get_signature_dictionaries``.
+        """
+        return self.get_type() == self.TYPE_DOC_TIME_STAMP
+
+    def is_signature(self) -> bool:
+        """Return ``True`` if this is a regular ``/Type /Sig`` signature
+        (i.e. *not* a ``/DocTimeStamp``)."""
+        return self.get_type() == self.TYPE
+
+    # ---------- /SubFilter predicates ----------
+
+    def is_pkcs7_detached(self) -> bool:
+        """Return ``True`` if ``/SubFilter`` is ``adbe.pkcs7.detached``
+        (the default modern signature encoding)."""
+        return self.get_sub_filter() == self.SUBFILTER_ADBE_PKCS7_DETACHED
+
+    def is_pkcs7_sha1(self) -> bool:
+        """Return ``True`` if ``/SubFilter`` is ``adbe.pkcs7.sha1``
+        (legacy SHA-1-only encoding)."""
+        return self.get_sub_filter() == self.SUBFILTER_ADBE_PKCS7_SHA1
+
+    def is_x509_rsa_sha1(self) -> bool:
+        """Return ``True`` if ``/SubFilter`` is ``adbe.x509.rsa_sha1``
+        (uses ``/Cert`` for the certificate chain)."""
+        return self.get_sub_filter() == self.SUBFILTER_ADBE_X509_RSA_SHA1
+
+    def is_etsi_cades_detached(self) -> bool:
+        """Return ``True`` if ``/SubFilter`` is ``ETSI.CAdES.detached``
+        (PAdES, PDF 32000-2 §12.8.3.4)."""
+        return self.get_sub_filter() == self.SUBFILTER_ETSI_CADES_DETACHED
+
+    def is_etsi_rfc3161(self) -> bool:
+        """Return ``True`` if ``/SubFilter`` is ``ETSI.RFC3161``
+        (document-timestamp encoding, PDF 32000-2 §12.8.5)."""
+        return self.get_sub_filter() == self.SUBFILTER_ETSI_RFC3161
 
     # ---------- string form ----------
 

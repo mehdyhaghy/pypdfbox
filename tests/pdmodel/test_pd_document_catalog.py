@@ -1352,3 +1352,226 @@ def test_is_tagged_false_when_mark_info_explicitly_unmarked() -> None:
     cat = doc.get_document_catalog()
     cat.set_document_marked(False)
     assert cat.is_tagged() is False
+
+
+# ---------- Wave 219: more presence predicates + validation + AcroForm helper ----------
+
+
+def test_has_viewer_preferences_reflects_entry_presence() -> None:
+    from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_viewer_preferences() is False
+
+    cat.set_viewer_preferences(PDViewerPreferences(COSDictionary()))
+    assert cat.has_viewer_preferences() is True
+
+    cat.set_viewer_preferences(None)
+    assert cat.has_viewer_preferences() is False
+
+
+def test_has_viewer_preferences_false_for_stray_value() -> None:
+    """A non-dictionary stray value reads as absent."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("ViewerPreferences"), COSString("nope")
+    )
+    assert cat.has_viewer_preferences() is False
+
+
+def test_has_mark_info_independent_of_marked_flag() -> None:
+    """``has_mark_info`` only checks the dictionary's presence, not the
+    ``/Marked`` boolean inside — explicitly ``/Marked=false`` still has
+    a MarkInfo dict."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_mark_info() is False
+
+    cat.set_document_marked(False)
+    assert cat.has_mark_info() is True
+    assert cat.is_tagged() is False  # /Marked is False, but dict exists.
+
+    cat.set_document_marked(True)
+    assert cat.has_mark_info() is True
+
+
+def test_has_threads_false_for_empty_array() -> None:
+    """Empty ``/Threads`` arrays read as absent — matches "no article
+    threads to navigate" semantics."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_threads() is False
+
+    # ``get_threads`` auto-creates an empty array; predicate still says no.
+    cat.get_threads()
+    assert cat.has_threads() is False
+
+
+def test_has_threads_true_when_populated() -> None:
+    from pypdfbox.pdmodel.interactive.pagenavigation import PDThread
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_threads([PDThread()])
+    assert cat.has_threads() is True
+
+    cat.set_threads(None)
+    assert cat.has_threads() is False
+
+
+def test_has_dests_reflects_legacy_entry_presence() -> None:
+    """``has_dests`` checks the catalog-level legacy ``/Dests`` dictionary,
+    distinct from the modern ``/Names /Dests`` name tree."""
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_dests() is False
+
+    cat.get_cos_object().set_item(
+        COSName.get_pdf_name("Dests"), COSDictionary()
+    )
+    assert cat.has_dests() is True
+
+    cat.set_dests(None)
+    assert cat.has_dests() is False
+
+
+def test_has_uri_reflects_entry_presence() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_uri() is False
+
+    cat.set_base_uri("https://example.com/")
+    assert cat.has_uri() is True
+
+    cat.set_uri(None)
+    assert cat.has_uri() is False
+
+
+def test_has_associated_files_false_for_empty_array() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_associated_files() is False
+
+    # An explicit empty array is treated as absent.
+    cat.get_cos_object().set_item(COSName.get_pdf_name("AF"), COSArray())
+    assert cat.has_associated_files() is False
+
+
+def test_has_associated_files_true_when_populated() -> None:
+    from pypdfbox.pdmodel.common.filespecification import (
+        PDComplexFileSpecification,
+    )
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    fs = PDComplexFileSpecification()
+    fs.set_file("attached.txt")
+    cat.set_associated_files([fs])
+    assert cat.has_associated_files() is True
+
+    cat.set_associated_files(None)
+    assert cat.has_associated_files() is False
+
+
+def test_has_requirements_false_for_empty_array() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_requirements() is False
+
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Requirements"), COSArray())
+    assert cat.has_requirements() is False
+
+
+def test_has_requirements_true_when_populated() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    req = COSDictionary()
+    req.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("EnableJavaScripts"))
+    cat.add_requirement(req)
+    assert cat.has_requirements() is True
+
+    cat.set_requirements(None)
+    assert cat.has_requirements() is False
+
+
+def test_has_developer_extensions_false_for_empty_dict() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.has_developer_extensions() is False
+
+    # An empty /Extensions dict counts as absent for the predicate.
+    cat.get_cos_object().set_item(COSName.get_pdf_name("Extensions"), COSDictionary())
+    assert cat.has_developer_extensions() is False
+
+
+def test_has_developer_extensions_true_when_populated() -> None:
+    from pypdfbox.pdmodel.pd_developer_extension import PDDeveloperExtension
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    ext = PDDeveloperExtension()
+    ext.set_base_version("1.7")
+    ext.set_extension_level(3)
+    cat.add_developer_extension("ADBE", ext)
+    assert cat.has_developer_extensions() is True
+
+    cat.remove_developer_extension("ADBE")
+    # The /Extensions dict was removed when last entry left.
+    assert cat.has_developer_extensions() is False
+
+
+# ---------- get_acro_form_or_create ----------
+
+
+def test_get_acro_form_or_create_materialises_when_absent() -> None:
+    """Returns a fresh, non-``None`` :class:`PDAcroForm` and persists it
+    on the catalog."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    assert cat.get_acro_form() is None
+    assert cat.has_acro_form() is False
+
+    form = cat.get_acro_form_or_create()
+    assert isinstance(form, PDAcroForm)
+    assert cat.has_acro_form() is True
+    # Persisted on the catalog dictionary.
+    assert isinstance(
+        cat.get_cos_object().get_dictionary_object(COSName.get_pdf_name("AcroForm")),
+        COSDictionary,
+    )
+
+
+def test_get_acro_form_or_create_returns_existing_when_present() -> None:
+    """Pre-existing AcroForm is returned unchanged — no rewrite of the
+    underlying ``/AcroForm`` dictionary."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    original = PDAcroForm(doc)
+    cat.set_acro_form(original)
+    original_dict = original.get_cos_object()
+
+    fetched = cat.get_acro_form_or_create()
+    assert fetched.get_cos_object() is original_dict
+
+
+# ---------- type validation in set_output_intents / set_associated_files ----------
+
+
+def test_set_output_intents_rejects_non_pd_output_intent() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    with pytest.raises(TypeError, match="PDOutputIntent"):
+        cat.set_output_intents([COSDictionary()])
+
+
+def test_set_associated_files_rejects_non_filespec() -> None:
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    with pytest.raises(TypeError, match="PDFileSpecification"):
+        cat.set_associated_files(["not-a-spec"])  # type: ignore[list-item]
