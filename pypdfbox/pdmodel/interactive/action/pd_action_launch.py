@@ -112,6 +112,31 @@ class PDActionLaunch(PDAction):
         predicate; absence yields ``False``."""
         return self.get_open_in_new_window_mode() is OpenMode.NEW_WINDOW
 
+    def is_open_in_new_window(self) -> bool:
+        """``True`` iff ``/NewWindow`` resolves to :attr:`OpenMode.NEW_WINDOW`.
+
+        Convenience predicate over :meth:`get_open_in_new_window_mode`
+        paralleling :class:`PDActionEmbeddedGoTo.is_open_in_new_window`.
+        Spelling-alias of :meth:`is_new_window`.
+        """
+        return self.get_open_in_new_window_mode() is OpenMode.NEW_WINDOW
+
+    def is_open_in_same_window(self) -> bool:
+        """``True`` iff ``/NewWindow`` resolves to :attr:`OpenMode.SAME_WINDOW`
+        (i.e. the entry is explicitly the boolean ``false``).
+
+        Distinct from :meth:`is_open_in_user_preference` — absence of the
+        entry is a separate state that defers to viewer preference.
+        """
+        return self.get_open_in_new_window_mode() is OpenMode.SAME_WINDOW
+
+    def is_open_in_user_preference(self) -> bool:
+        """``True`` iff ``/NewWindow`` is absent (or non-boolean) and the
+        viewer should fall back to its user preference. Equivalent to
+        ``get_open_in_new_window_mode() is OpenMode.USER_PREFERENCE``.
+        """
+        return self.get_open_in_new_window_mode() is OpenMode.USER_PREFERENCE
+
     def should_open_in_new_window(self) -> bool:
         """Return ``/NewWindow`` defaulting to ``False``. Parity with the
         :class:`PDActionRemoteGoTo` accessor of the same name; semantically

@@ -150,3 +150,69 @@ def test_should_open_in_new_window_alias() -> None:
 
     action.set_open_in_new_window(False)
     assert action.should_open_in_new_window() is False
+
+
+# -------------------------------------------- symmetric /NewWindow predicates
+def test_is_open_in_new_window_alias_for_is_new_window() -> None:
+    """``is_open_in_new_window`` parallels the spelling on
+    :class:`PDActionEmbeddedGoTo` and equals :meth:`is_new_window`."""
+    action = PDActionLaunch()
+    assert action.is_open_in_new_window() is False
+    assert action.is_new_window() is False
+
+    action.set_open_in_new_window(True)
+    assert action.is_open_in_new_window() is True
+    assert action.is_new_window() is True
+
+    action.set_open_in_new_window(False)
+    assert action.is_open_in_new_window() is False
+
+
+def test_is_open_in_same_window_distinguishes_explicit_false() -> None:
+    """``is_open_in_same_window`` is True only for explicit /NewWindow=false,
+    never for absence (which is user_preference)."""
+    action = PDActionLaunch()
+    # Absent → user_preference, not same_window.
+    assert action.is_open_in_same_window() is False
+
+    action.set_open_in_new_window(False)
+    assert action.is_open_in_same_window() is True
+    assert action.is_open_in_new_window() is False
+    assert action.is_open_in_user_preference() is False
+
+    action.set_open_in_new_window(True)
+    assert action.is_open_in_same_window() is False
+
+
+def test_is_open_in_user_preference_when_absent() -> None:
+    """Absence of /NewWindow → user_preference state; setting clears it."""
+    action = PDActionLaunch()
+    assert action.is_open_in_user_preference() is True
+    assert action.is_open_in_new_window() is False
+    assert action.is_open_in_same_window() is False
+
+    action.set_open_in_new_window(False)
+    assert action.is_open_in_user_preference() is False
+
+    action.set_open_in_new_window(None)
+    assert action.is_open_in_user_preference() is True
+
+
+def test_three_predicates_are_mutually_exclusive() -> None:
+    """Exactly one of the three predicates is True at any time."""
+    from pypdfbox.pdmodel.interactive.action.open_mode import OpenMode
+
+    action = PDActionLaunch()
+    for mode, expected in [
+        (OpenMode.USER_PREFERENCE, "user_preference"),
+        (OpenMode.SAME_WINDOW, "same_window"),
+        (OpenMode.NEW_WINDOW, "new_window"),
+    ]:
+        action.set_open_in_new_window(mode)
+        truths = [
+            action.is_open_in_user_preference(),
+            action.is_open_in_same_window(),
+            action.is_open_in_new_window(),
+        ]
+        # Exactly one True.
+        assert sum(truths) == 1, (mode, expected, truths)

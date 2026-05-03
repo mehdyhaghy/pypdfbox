@@ -93,5 +93,41 @@ class PDAnnotationStamp(PDAnnotationMarkup):
         """
         return self.get_name() in self.STANDARD_NAMES
 
+    def has_name(self) -> bool:
+        """Return ``True`` when ``/Name`` is explicitly present in the dict.
+
+        Distinct from :meth:`get_name`, which substitutes the spec default
+        ``Draft`` when the entry is absent. Useful for round-trip tools that
+        want to preserve the producer's choice (or its absence) verbatim.
+        """
+        return self._dict.contains_key(_NAME)
+
+    def is_default_name(self) -> bool:
+        """Predicate matching the spec default icon (``Draft``).
+
+        Returns ``True`` whether ``/Name`` is missing (defaulted) or
+        explicitly set to :data:`NAME_DRAFT`, mirroring the behavior of
+        :meth:`get_name`.
+        """
+        return self.get_name() == self.NAME_DRAFT
+
+    # ---------- per-icon predicates ----------
+
+    def is_approved(self) -> bool:
+        return self.get_name() == self.NAME_APPROVED
+
+    def is_confidential(self) -> bool:
+        return self.get_name() == self.NAME_CONFIDENTIAL
+
+    def is_draft(self) -> bool:
+        """Alias of :meth:`is_default_name` — ``Draft`` is the spec default."""
+        return self.get_name() == self.NAME_DRAFT
+
+    def is_final(self) -> bool:
+        return self.get_name() == self.NAME_FINAL
+
+    def is_top_secret(self) -> bool:
+        return self.get_name() == self.NAME_TOP_SECRET
+
 
 __all__ = ["PDAnnotationStamp"]

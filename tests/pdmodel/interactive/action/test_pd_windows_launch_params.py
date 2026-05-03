@@ -92,6 +92,69 @@ def test_operation_set_none_falls_back_to_default() -> None:
     assert params.get_operation() == PDWindowsLaunchParams.OPERATION_OPEN
 
 
+# ------------------------------------------------------ /O typed predicates
+def test_has_operation_default_false() -> None:
+    """``has_operation`` distinguishes default-fallback from explicit set."""
+    params = PDWindowsLaunchParams()
+    assert params.has_operation() is False
+    # Default getter still resolves to OPERATION_OPEN.
+    assert params.get_operation() == PDWindowsLaunchParams.OPERATION_OPEN
+
+
+def test_has_operation_true_after_explicit_set() -> None:
+    params = PDWindowsLaunchParams()
+    params.set_operation(PDWindowsLaunchParams.OPERATION_OPEN)
+    assert params.has_operation() is True
+
+    params.set_operation(PDWindowsLaunchParams.OPERATION_PRINT)
+    assert params.has_operation() is True
+
+    params.set_operation(None)
+    assert params.has_operation() is False
+
+
+def test_is_open_operation_when_absent() -> None:
+    """``is_open_operation`` honors the spec default — absent /O is open."""
+    params = PDWindowsLaunchParams()
+    assert params.is_open_operation() is True
+    assert params.is_print_operation() is False
+
+
+def test_is_open_operation_when_explicit_open() -> None:
+    params = PDWindowsLaunchParams()
+    params.set_operation(PDWindowsLaunchParams.OPERATION_OPEN)
+    assert params.is_open_operation() is True
+    assert params.is_print_operation() is False
+
+
+def test_is_print_operation_when_explicit_print() -> None:
+    params = PDWindowsLaunchParams()
+    params.set_operation(PDWindowsLaunchParams.OPERATION_PRINT)
+    assert params.is_print_operation() is True
+    assert params.is_open_operation() is False
+
+
+def test_predicates_unrecognized_operation() -> None:
+    """An unrecognized /O value (rare, malformed) is neither open nor print."""
+    params = PDWindowsLaunchParams()
+    params.set_operation("explore")
+    assert params.is_open_operation() is False
+    assert params.is_print_operation() is False
+    assert params.has_operation() is True
+
+
+def test_predicates_round_trip_after_clear() -> None:
+    params = PDWindowsLaunchParams()
+    params.set_operation(PDWindowsLaunchParams.OPERATION_PRINT)
+    assert params.is_print_operation() is True
+
+    params.set_operation(None)
+    # Cleared → falls back to default-open.
+    assert params.is_open_operation() is True
+    assert params.is_print_operation() is False
+    assert params.has_operation() is False
+
+
 # ---------------------------------------------------------------- /P parameter
 def test_execute_param_round_trip() -> None:
     params = PDWindowsLaunchParams()

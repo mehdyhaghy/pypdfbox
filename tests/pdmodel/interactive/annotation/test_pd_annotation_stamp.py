@@ -161,3 +161,134 @@ def test_stamp_is_standard_name_after_clear_returns_true() -> None:
     assert ann.is_standard_name() is False
     ann.set_name(None)  # falls back to NAME_DRAFT
     assert ann.is_standard_name() is True
+
+
+# ---------- has_name (presence check) ----------
+
+
+def test_stamp_has_name_absent_on_default_construction() -> None:
+    # Default construction must not write /Name; spec default is implicit.
+    ann = PDAnnotationStamp()
+    assert ann.has_name() is False
+    # ...but get_name() still resolves to Draft.
+    assert ann.get_name() == "Draft"
+
+
+def test_stamp_has_name_after_set() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_APPROVED)
+    assert ann.has_name() is True
+
+
+def test_stamp_has_name_after_set_then_clear() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_FINAL)
+    assert ann.has_name() is True
+    ann.set_name(None)
+    assert ann.has_name() is False
+
+
+def test_stamp_has_name_explicit_draft_distinguished_from_absent() -> None:
+    # Setting /Name = "Draft" explicitly is distinguishable from absent /Name,
+    # even though get_name() returns "Draft" in both cases.
+    ann_default = PDAnnotationStamp()
+    ann_explicit = PDAnnotationStamp()
+    ann_explicit.set_name(PDAnnotationStamp.NAME_DRAFT)
+    assert ann_default.has_name() is False
+    assert ann_explicit.has_name() is True
+    # But the resolved name is identical.
+    assert ann_default.get_name() == ann_explicit.get_name() == "Draft"
+
+
+# ---------- is_default_name ----------
+
+
+def test_stamp_is_default_name_implicit() -> None:
+    ann = PDAnnotationStamp()
+    assert ann.is_default_name() is True
+
+
+def test_stamp_is_default_name_explicit_draft() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_DRAFT)
+    assert ann.is_default_name() is True
+
+
+def test_stamp_is_default_name_other_icon() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_APPROVED)
+    assert ann.is_default_name() is False
+
+
+def test_stamp_is_default_name_case_sensitive() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name("draft")  # lower-case is not the spec default
+    assert ann.is_default_name() is False
+
+
+# ---------- per-icon predicates ----------
+
+
+def test_stamp_is_draft_aliases_default_name() -> None:
+    ann = PDAnnotationStamp()
+    assert ann.is_draft() is True
+    ann.set_name(PDAnnotationStamp.NAME_APPROVED)
+    assert ann.is_draft() is False
+
+
+def test_stamp_is_approved_predicate() -> None:
+    ann = PDAnnotationStamp()
+    assert ann.is_approved() is False
+    ann.set_name(PDAnnotationStamp.NAME_APPROVED)
+    assert ann.is_approved() is True
+
+
+def test_stamp_is_confidential_predicate() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_CONFIDENTIAL)
+    assert ann.is_confidential() is True
+    ann.set_name(PDAnnotationStamp.NAME_DRAFT)
+    assert ann.is_confidential() is False
+
+
+def test_stamp_is_final_predicate() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_FINAL)
+    assert ann.is_final() is True
+    ann.set_name(PDAnnotationStamp.NAME_APPROVED)
+    assert ann.is_final() is False
+
+
+def test_stamp_is_top_secret_predicate() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_TOP_SECRET)
+    assert ann.is_top_secret() is True
+    ann.set_name(PDAnnotationStamp.NAME_DRAFT)
+    assert ann.is_top_secret() is False
+
+
+def test_stamp_per_icon_predicates_mutually_exclusive() -> None:
+    # At most one of the per-icon predicates may be True at once.
+    ann = PDAnnotationStamp()
+    ann.set_name(PDAnnotationStamp.NAME_CONFIDENTIAL)
+    flags = [
+        ann.is_approved(),
+        ann.is_confidential(),
+        ann.is_draft(),
+        ann.is_final(),
+        ann.is_top_secret(),
+    ]
+    assert sum(flags) == 1
+    assert ann.is_confidential() is True
+
+
+def test_stamp_per_icon_predicates_all_false_for_custom() -> None:
+    ann = PDAnnotationStamp()
+    ann.set_name("CompanyLogo")
+    assert ann.is_approved() is False
+    assert ann.is_confidential() is False
+    assert ann.is_draft() is False
+    assert ann.is_final() is False
+    assert ann.is_top_secret() is False
+    assert ann.is_default_name() is False
+    assert ann.is_standard_name() is False

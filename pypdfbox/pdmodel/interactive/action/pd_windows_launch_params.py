@@ -73,6 +73,27 @@ class PDWindowsLaunchParams:
         """Set the operation to perform (``/O``)."""
         self._params.set_string(_O, op)
 
+    def has_operation(self) -> bool:
+        """``True`` iff ``/O`` is explicitly present in the dict.
+
+        Distinct from :meth:`get_operation` which folds the absence case into
+        the default :pyattr:`OPERATION_OPEN`. Useful when the caller needs to
+        distinguish an explicit ``"open"`` from a fall-through default.
+        """
+        return _O in self._params
+
+    def is_open_operation(self) -> bool:
+        """``True`` iff the effective operation is :pyattr:`OPERATION_OPEN`.
+
+        Honors the upstream ``getOperation`` default, so an absent ``/O`` entry
+        also resolves to ``True`` (open is the default per Table 197).
+        """
+        return self.get_operation() == self.OPERATION_OPEN
+
+    def is_print_operation(self) -> bool:
+        """``True`` iff the effective operation is :pyattr:`OPERATION_PRINT`."""
+        return self.get_operation() == self.OPERATION_PRINT
+
     # ------------------------------------------------------------------ /P
     def get_execute_param(self) -> str | None:
         """Return the parameter passed to the executable (``/P``)."""
