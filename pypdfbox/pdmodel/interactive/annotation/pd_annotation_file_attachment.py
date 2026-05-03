@@ -99,5 +99,20 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
             return
         self._dict.set_name(_NAME, name)
 
+    # ---------- icon predicates ----------
+
+    def is_push_pin(self) -> bool:
+        """Predicate matching the spec default icon (``PushPin``)."""
+        return self.get_attachment_name() == self.ATTACHMENT_NAME_PUSH_PIN
+
+    def is_paperclip(self) -> bool:
+        return self.get_attachment_name() == self.ATTACHMENT_NAME_PAPERCLIP
+
+    def is_graph(self) -> bool:
+        return self.get_attachment_name() == self.ATTACHMENT_NAME_GRAPH
+
+    def is_tag(self) -> bool:
+        return self.get_attachment_name() == self.ATTACHMENT_NAME_TAG
+
 
 __all__ = ["PDAnnotationFileAttachment"]

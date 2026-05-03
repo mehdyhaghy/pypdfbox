@@ -82,5 +82,17 @@ class PDAnnotationInk(PDAnnotationMarkup):
             outer.add(inner)
         self._dict.set_item(_INK_LIST, outer)
 
+    def path_count(self) -> int:
+        """Return the number of disjoint stroked paths in ``/InkList``.
+
+        Returns ``0`` when ``/InkList`` is absent or not a ``COSArray``.
+        Convenience helper — upstream callers iterate ``getInkList().length``;
+        this avoids materialising the float array just to count paths.
+        """
+        value = self._dict.get_dictionary_object(_INK_LIST)
+        if isinstance(value, COSArray):
+            return value.size()
+        return 0
+
 
 __all__ = ["PDAnnotationInk"]

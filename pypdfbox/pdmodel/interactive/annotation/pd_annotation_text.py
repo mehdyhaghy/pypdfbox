@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSBoolean, COSDictionary, COSName
 
-from .pd_annotation import PDAnnotation
+from .pd_annotation_markup import PDAnnotationMarkup
 
 _OPEN: COSName = COSName.get_pdf_name("Open")
 _NAME: COSName = COSName.get_pdf_name("Name")
@@ -10,7 +10,7 @@ _STATE: COSName = COSName.get_pdf_name("State")
 _STATE_MODEL: COSName = COSName.get_pdf_name("StateModel")
 
 
-class PDAnnotationText(PDAnnotation):
+class PDAnnotationText(PDAnnotationMarkup):
     """
     Text (sticky note) annotation — ``/Subtype /Text``. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationText``.
@@ -19,6 +19,10 @@ class PDAnnotationText(PDAnnotation):
     document. The icon (``/Name``) and open state (``/Open``) drive the
     viewer's rendering; ``/State`` and ``/StateModel`` form a per-reviewer
     workflow (PDF 32000-1:2008 §12.5.6.4 + Table 171).
+
+    Extends :class:`PDAnnotationMarkup` so review-workflow fields
+    (``/CreationDate``, ``/Subj``, ``/IRT``, ``/IT``, ``/CA``, ``/RT``)
+    come for free — matching upstream's class hierarchy.
     """
 
     SUB_TYPE: str = "Text"
@@ -41,6 +45,21 @@ class PDAnnotationText(PDAnnotation):
     NAME_UP_LEFT_ARROW: str = "UpLeftArrow"
     NAME_CROSS_HAIRS: str = "CrossHairs"
 
+    # State-model values (PDF 32000-1:2008 §12.5.6.3 Table 172).
+    STATE_MODEL_MARKED: str = "Marked"
+    STATE_MODEL_REVIEW: str = "Review"
+
+    # State values for the ``Marked`` model.
+    STATE_MARKED: str = "Marked"
+    STATE_UNMARKED: str = "Unmarked"
+
+    # State values for the ``Review`` model.
+    STATE_ACCEPTED: str = "Accepted"
+    STATE_REJECTED: str = "Rejected"
+    STATE_CANCELLED: str = "Cancelled"
+    STATE_COMPLETED: str = "Completed"
+    STATE_NONE: str = "None"
+
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
         if annotation_dict is None:
@@ -51,6 +70,10 @@ class PDAnnotationText(PDAnnotation):
     def get_open(self) -> bool:
         """Default is ``False`` per spec ("default closed")."""
         return self._dict.get_boolean(_OPEN, False)
+
+    def is_open(self) -> bool:
+        """Predicate alias for :meth:`get_open`."""
+        return self.get_open()
 
     def set_open(self, value: bool) -> None:
         self._dict.set_item(_OPEN, COSBoolean.get(value))
@@ -67,6 +90,15 @@ class PDAnnotationText(PDAnnotation):
             self._dict.remove_item(_NAME)
             return
         self._dict.set_name(_NAME, name)
+
+    # ---------- icon predicates ----------
+
+    def is_note(self) -> bool:
+        """Predicate matching the spec default icon (``Note``)."""
+        return self.get_name() == self.NAME_NOTE
+
+    def is_comment(self) -> bool:
+        return self.get_name() == self.NAME_COMMENT
 
     # ---------- /State ----------
 

@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSBase, COSBoolean, COSDictionary, COSName
 
 from .pd_annotation import PDAnnotation
 
+if TYPE_CHECKING:
+    from .pd_annotation_markup import PDAnnotationMarkup
+
 _OPEN: COSName = COSName.get_pdf_name("Open")
 _PARENT: COSName = COSName.get_pdf_name("Parent")
+_P: COSName = COSName.get_pdf_name("P")
 
 
 class PDAnnotationPopup(PDAnnotation):
@@ -31,16 +37,47 @@ class PDAnnotationPopup(PDAnnotation):
         """Default is ``False`` per spec (closed by default)."""
         return self._dict.get_boolean(_OPEN, False)
 
+    def is_open(self) -> bool:
+        """Predicate alias for :meth:`get_open` matching the
+        ``isXxx`` style used elsewhere in pypdfbox annotations."""
+        return self.get_open()
+
     def set_open(self, value: bool) -> None:
         self._dict.set_item(_OPEN, COSBoolean.get(value))
 
-    # ---------- /Parent ----------
+    # ---------- /Parent (also accepts /P for parser tolerance) ----------
 
     def get_parent(self) -> COSBase | None:
-        """Cluster #5 lite returns the raw ``/Parent`` COS object. The
-        typed parent annotation (``PDAnnotationMarkup``) is deferred — see
-        ``CHANGES.md``."""
-        return self._dict.get_dictionary_object(_PARENT)
+        """Return the raw parent COS object.
+
+        Mirrors upstream which falls back to ``/P`` when ``/Parent`` is
+        absent (``PDAnnotationPopup.getParent`` calls
+        ``getDictionaryObject(COSName.PARENT, COSName.P)``).
+        """
+        value = self._dict.get_dictionary_object(_PARENT)
+        if value is None:
+            value = self._dict.get_dictionary_object(_P)
+        return value
+
+    def get_parent_markup(self) -> PDAnnotationMarkup | None:
+        """Typed accessor returning the parent annotation as
+        :class:`PDAnnotationMarkup` when the resolved parent is a markup
+        annotation dictionary.
+
+        Returns ``None`` when ``/Parent`` (or fallback ``/P``) is absent,
+        not a dictionary, or resolves to a non-markup annotation subtype —
+        matching upstream's defensive cast (it returns ``null`` when the
+        parent's runtime type is not ``PDAnnotationMarkup``).
+        """
+        from .pd_annotation_markup import PDAnnotationMarkup
+
+        parent = self.get_parent()
+        if not isinstance(parent, COSDictionary):
+            return None
+        ann = PDAnnotation.create(parent)
+        if isinstance(ann, PDAnnotationMarkup):
+            return ann
+        return None
 
     def set_parent(self, parent: COSBase | None) -> None:
         if parent is None:
