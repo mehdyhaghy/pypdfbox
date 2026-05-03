@@ -41,6 +41,21 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
     JUSTIFICATION_CENTER: int = 1
     JUSTIFICATION_RIGHT: int = 2
 
+    #: Upstream-shaped ``Q_*`` aliases (mirroring the ``QUADDING_*`` family
+    #: on ``PDVariableText``). Acrobat docs and the FreeText spec both refer
+    #: to ``Q`` values as "left/center/right justified"; expose them under
+    #: that exact name so call-sites that use the spec language compile.
+    Q_LEFT_JUSTIFIED: int = 0
+    Q_CENTERED: int = 1
+    Q_RIGHT_JUSTIFIED: int = 2
+
+    #: ``QUADDING_*`` aliases mirroring ``PDVariableText`` so the constants
+    #: used by upstream's ``getQ`` documentation resolve from this class
+    #: too. Same numeric values as ``Q_*`` and ``JUSTIFICATION_*``.
+    QUADDING_LEFT: int = 0
+    QUADDING_CENTERED: int = 1
+    QUADDING_RIGHT: int = 2
+
     # ---------- /IT intent constants (Table 174) ----------
 
     IT_FREE_TEXT: str = "FreeText"
@@ -96,6 +111,27 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
             self._dict.remove_item(_IT)
             return
         self._dict.set_name(_IT, intent)
+
+    def is_free_text_plain(self) -> bool:
+        """Return ``True`` when ``/IT`` is ``FreeText`` (the plain text-box
+        comment variant). Mirrors ``IT_FREE_TEXT``.
+        """
+        return self.get_intent() == self.IT_FREE_TEXT
+
+    def is_free_text_callout(self) -> bool:
+        """Return ``True`` when ``/IT`` is ``FreeTextCallout``.
+
+        Per the spec, ``/CL`` (callout line) and ``/LE`` (line ending) are
+        only meaningful when the intent is ``FreeTextCallout``; this
+        predicate is the canonical guard.
+        """
+        return self.get_intent() == self.IT_FREE_TEXT_CALLOUT
+
+    def is_free_text_type_writer(self) -> bool:
+        """Return ``True`` when ``/IT`` is ``FreeTextTypeWriter`` —
+        click-to-type / typewriter behaviour.
+        """
+        return self.get_intent() == self.IT_FREE_TEXT_TYPE_WRITER
 
     # ---------- /CL (callout line) ----------
 

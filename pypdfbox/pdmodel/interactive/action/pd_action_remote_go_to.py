@@ -179,5 +179,60 @@ class PDActionRemoteGoTo(PDAction):
         / :class:`PDActionLaunch.is_new_window`; absence yields ``False``."""
         return self.get_open_in_new_window() is OpenMode.NEW_WINDOW
 
+    # ---------- predicates / clear / is_empty ----------
+
+    def has_file(self) -> bool:
+        """``True`` when ``/F`` is present on the underlying dictionary,
+        regardless of whether it is a string or a complex file-spec
+        dictionary. Lets callers branch on file-presence without paying
+        the cost of constructing a :class:`PDFileSpecification` wrapper.
+        Parallels :class:`PDActionEmbeddedGoTo.has_file`."""
+        return self._action.get_dictionary_object(_F) is not None
+
+    def has_destination(self) -> bool:
+        """``True`` when ``/D`` is present on the underlying dictionary,
+        regardless of whether it is an explicit page array, a named
+        destination string, or a name. Lets callers branch on
+        destination-presence without paying the cost of constructing a
+        :class:`PDDestination` wrapper. Parallels
+        :class:`PDActionEmbeddedGoTo.has_destination`."""
+        return self._action.get_dictionary_object(_D) is not None
+
+    def has_new_window(self) -> bool:
+        """``True`` when ``/NewWindow`` is present (regardless of value).
+        ``False`` when absent — in which case readers fall back to user
+        preference per PDF 32000-1 §12.6.4.3 Table 199."""
+        return self._action.get_dictionary_object(_NEW_WINDOW) is not None
+
+    def clear_file(self) -> None:
+        """Remove ``/F`` from the action dictionary."""
+        self._action.remove_item(_F)
+
+    def clear_destination(self) -> None:
+        """Remove ``/D`` from the action dictionary."""
+        self._action.remove_item(_D)
+
+    def clear_new_window(self) -> None:
+        """Remove ``/NewWindow`` so readers fall back to user preference
+        (mirrors :meth:`set_open_in_new_window` with ``None`` /
+        :attr:`OpenMode.USER_PREFERENCE`)."""
+        self._action.remove_item(_NEW_WINDOW)
+
+    def is_empty(self) -> bool:
+        """``True`` when none of ``/F``, ``/D``, or ``/NewWindow`` are set —
+        i.e. the action carries no remote-go-to state. Useful as a guard
+        before serializing to detect actions that would be effectively
+        no-ops. Parallels :class:`PDActionURI.is_empty` /
+        :class:`PDActionResetForm.is_empty`."""
+        return not (self.has_file() or self.has_destination() or self.has_new_window())
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"GoToR"``). Useful as a sanity check after
+        round-tripping through :meth:`PDAction.create` or when constructing
+        the wrapper around a hand-built :class:`COSDictionary`. Parallels
+        :class:`PDActionEmbeddedGoTo.is_valid`."""
+        return self.get_sub_type() == self.SUB_TYPE
+
 
 __all__ = ["PDActionRemoteGoTo"]
