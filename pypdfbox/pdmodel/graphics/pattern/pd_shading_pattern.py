@@ -61,6 +61,14 @@ class PDShadingPattern(PDAbstractPattern):
             return None
         return _PDShading.create(value)
 
+    def has_shading(self) -> bool:
+        """``True`` when ``/Shading`` is present as a ``COSDictionary`` —
+        i.e. ``get_shading`` would return a typed ``PDShading`` rather than
+        ``None``. The spec requires a shading pattern to carry a ``/Shading``
+        entry; this predicate makes it easy to flag malformed patterns."""
+        value = self._dict.get_dictionary_object(_SHADING)
+        return isinstance(value, COSDictionary)
+
     # ---------- /ExtGState (typed override — upstream parity) ----------
 
     def get_extended_graphics_state(self) -> PDExtendedGraphicsState | None:

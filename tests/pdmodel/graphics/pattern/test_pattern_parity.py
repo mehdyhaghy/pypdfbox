@@ -577,3 +577,163 @@ def test_set_matrix_still_accepts_plain_sequence() -> None:
     pattern = PDTilingPattern()
     pattern.set_matrix([1.5, 0.0, 0.0, 2.5, 5.0, 7.0])
     assert pattern.get_matrix() == [1.5, 0.0, 0.0, 2.5, 5.0, 7.0]
+
+
+# ---------- Wave 234: PDTilingPattern /PaintType predicates ----------
+
+
+def test_tiling_is_colored_default_false_when_paint_type_unset() -> None:
+    """Fresh pattern has no ``/PaintType`` (defaults to 0); both predicates
+    must return ``False`` so callers don't mistake a default-zero value for
+    either spec-defined paint type."""
+    pattern = PDTilingPattern()
+    assert pattern.get_paint_type() == 0
+    assert pattern.is_colored() is False
+    assert pattern.is_uncolored() is False
+
+
+def test_tiling_is_colored_true_when_paint_type_one() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_paint_type(PDTilingPattern.PAINT_TYPE_COLORED)
+    assert pattern.is_colored() is True
+    assert pattern.is_uncolored() is False
+
+
+def test_tiling_is_uncolored_true_when_paint_type_two() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_paint_type(PDTilingPattern.PAINT_TYPE_UNCOLORED)
+    assert pattern.is_uncolored() is True
+    assert pattern.is_colored() is False
+
+
+def test_tiling_paint_type_predicates_false_for_unknown_value() -> None:
+    """Unknown paint-type values (e.g. corrupted PDF with /PaintType 99) →
+    both predicates ``False``, never raise."""
+    pattern = PDTilingPattern()
+    pattern.set_paint_type(99)
+    assert pattern.is_colored() is False
+    assert pattern.is_uncolored() is False
+
+
+# ---------- Wave 234: PDTilingPattern /TilingType predicates ----------
+
+
+def test_tiling_tiling_type_predicates_default_false_when_unset() -> None:
+    """Fresh pattern has no ``/TilingType`` (defaults to 0); all three
+    predicates must return ``False``."""
+    pattern = PDTilingPattern()
+    assert pattern.get_tiling_type() == 0
+    assert pattern.is_constant_spacing() is False
+    assert pattern.is_no_distortion() is False
+    assert pattern.is_constant_spacing_and_faster_tiling() is False
+
+
+def test_tiling_is_constant_spacing_true_when_tiling_type_one() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_tiling_type(PDTilingPattern.TILING_TYPE_CONSTANT_SPACING)
+    assert pattern.is_constant_spacing() is True
+    assert pattern.is_no_distortion() is False
+    assert pattern.is_constant_spacing_and_faster_tiling() is False
+
+
+def test_tiling_is_no_distortion_true_when_tiling_type_two() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_tiling_type(PDTilingPattern.TILING_TYPE_NO_DISTORTION)
+    assert pattern.is_constant_spacing() is False
+    assert pattern.is_no_distortion() is True
+    assert pattern.is_constant_spacing_and_faster_tiling() is False
+
+
+def test_tiling_is_constant_spacing_and_faster_tiling_true_when_three() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_tiling_type(
+        PDTilingPattern.TILING_TYPE_CONSTANT_SPACING_AND_FASTER_TILING
+    )
+    assert pattern.is_constant_spacing() is False
+    assert pattern.is_no_distortion() is False
+    assert pattern.is_constant_spacing_and_faster_tiling() is True
+
+
+def test_tiling_tiling_type_predicates_false_for_unknown_value() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_tiling_type(42)
+    assert pattern.is_constant_spacing() is False
+    assert pattern.is_no_distortion() is False
+    assert pattern.is_constant_spacing_and_faster_tiling() is False
+
+
+# ---------- Wave 234: PDTilingPattern.has_b_box ----------
+
+
+def test_tiling_has_b_box_false_when_missing() -> None:
+    pattern = PDTilingPattern()
+    assert pattern.has_b_box() is False
+
+
+def test_tiling_has_b_box_true_after_set() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_b_box(PDRectangle(0.0, 0.0, 50.0, 50.0))
+    assert pattern.has_b_box() is True
+
+
+def test_tiling_has_b_box_false_after_clear() -> None:
+    pattern = PDTilingPattern()
+    pattern.set_b_box(PDRectangle(0.0, 0.0, 50.0, 50.0))
+    pattern.set_b_box(None)
+    assert pattern.has_b_box() is False
+
+
+def test_tiling_has_b_box_false_when_array_too_short() -> None:
+    """Array shorter than 4 entries is malformed — both ``has_b_box`` and
+    ``get_b_box`` must reject it."""
+    pattern = PDTilingPattern()
+    bad = COSArray([COSFloat(1.0), COSFloat(2.0), COSFloat(3.0)])
+    pattern.get_cos_object().set_item(_BBOX, bad)
+    assert pattern.has_b_box() is False
+    assert pattern.get_b_box() is None
+
+
+def test_tiling_has_b_box_false_when_entry_not_array() -> None:
+    """Non-COSArray entry → ``has_b_box`` returns ``False``."""
+    from pypdfbox.cos import COSInteger
+
+    pattern = PDTilingPattern()
+    pattern.get_cos_object().set_item(_BBOX, COSInteger.get(7))
+    assert pattern.has_b_box() is False
+
+
+# ---------- Wave 234: PDShadingPattern.has_shading ----------
+
+
+def test_shading_has_shading_false_when_missing() -> None:
+    pattern = PDShadingPattern()
+    assert pattern.has_shading() is False
+
+
+def test_shading_has_shading_true_after_set() -> None:
+    pattern = PDShadingPattern()
+    raw = COSDictionary()
+    raw.set_int("ShadingType", PDShading.SHADING_TYPE2)
+    pattern.set_shading(raw)
+    assert pattern.has_shading() is True
+
+
+def test_shading_has_shading_false_after_clear() -> None:
+    pattern = PDShadingPattern()
+    raw = COSDictionary()
+    raw.set_int("ShadingType", PDShading.SHADING_TYPE1)
+    pattern.set_shading(raw)
+    pattern.set_shading(None)
+    assert pattern.has_shading() is False
+
+
+def test_shading_has_shading_false_when_entry_not_dictionary() -> None:
+    """If ``/Shading`` is present but not a dictionary (corrupted PDF),
+    ``has_shading`` must return ``False`` so callers know there's no
+    typed wrapper to retrieve."""
+    from pypdfbox.cos import COSInteger
+
+    pattern = PDShadingPattern()
+    pattern.get_cos_object().set_item(_SHADING, COSInteger.get(3))
+    assert pattern.has_shading() is False
+    assert pattern.get_shading() is None

@@ -88,6 +88,18 @@ class PDTilingPattern(PDAbstractPattern):
     def set_paint_type(self, paint_type: int) -> None:
         self._dict.set_int(_PAINT_TYPE, paint_type)
 
+    def is_colored(self) -> bool:
+        """``True`` when ``/PaintType`` is 1 (colored tiling pattern). The
+        pattern's content stream specifies its own colours, ignoring any
+        colours supplied by the caller."""
+        return self.get_paint_type() == PDTilingPattern.PAINT_TYPE_COLORED
+
+    def is_uncolored(self) -> bool:
+        """``True`` when ``/PaintType`` is 2 (uncolored tiling pattern). The
+        pattern's content stream is colourless and a colour must be supplied
+        by the caller via the ``/Pattern`` colour space."""
+        return self.get_paint_type() == PDTilingPattern.PAINT_TYPE_UNCOLORED
+
     # ---------- /TilingType ----------
 
     def get_tiling_type(self) -> int:
@@ -95,6 +107,31 @@ class PDTilingPattern(PDAbstractPattern):
 
     def set_tiling_type(self, tiling_type: int) -> None:
         self._dict.set_int(_TILING_TYPE, tiling_type)
+
+    def is_constant_spacing(self) -> bool:
+        """``True`` when ``/TilingType`` is 1 (constant spacing — pattern
+        cells may be distorted to fit the tile grid)."""
+        return (
+            self.get_tiling_type()
+            == PDTilingPattern.TILING_TYPE_CONSTANT_SPACING
+        )
+
+    def is_no_distortion(self) -> bool:
+        """``True`` when ``/TilingType`` is 2 (no distortion — spacing may
+        vary slightly to avoid pattern-cell distortion)."""
+        return (
+            self.get_tiling_type()
+            == PDTilingPattern.TILING_TYPE_NO_DISTORTION
+        )
+
+    def is_constant_spacing_and_faster_tiling(self) -> bool:
+        """``True`` when ``/TilingType`` is 3 (constant spacing and faster
+        tiling — pattern cells may be distorted by up to one device pixel
+        to enable faster rendering)."""
+        return (
+            self.get_tiling_type()
+            == PDTilingPattern.TILING_TYPE_CONSTANT_SPACING_AND_FASTER_TILING
+        )
 
     # ---------- /BBox ----------
 
@@ -106,6 +143,14 @@ class PDTilingPattern(PDAbstractPattern):
         if isinstance(value, COSArray) and value.size() >= 4:
             return PDRectangle.from_cos_array(value)
         return None
+
+    def has_b_box(self) -> bool:
+        """``True`` when ``/BBox`` is present as a 4-entry ``COSArray`` —
+        i.e. ``get_b_box`` would return a ``PDRectangle`` rather than
+        ``None``. Useful for tooling that wants to flag tiling-pattern
+        dictionaries missing the spec-required ``/BBox`` entry."""
+        value = self._dict.get_dictionary_object(_BBOX)
+        return isinstance(value, COSArray) and value.size() >= 4
 
     def set_b_box(self, bbox: PDRectangle | COSArray | None) -> None:
         """Accepts a typed ``PDRectangle``, a raw ``COSArray``, or ``None``
