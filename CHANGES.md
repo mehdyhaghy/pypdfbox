@@ -1491,3 +1491,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/fontbox/cff/fd_select.py`: Format 3 FDSelect lookups now return `-1` for glyph IDs at or past a positive sentinel.
 - `pypdfbox/tools/listbookmarks.py`: named bookmark destinations now resolve through the document catalog before page-number output.
 - `pypdfbox/pdmodel/graphics/color/pd_output_intent.py`: dictionary-backed output intents now wrap the supplied dictionary without synthesizing a missing `/Type`.
+
+## Wave 332 — RunLength flushes, GoTo helpers, soft masks, marked-content language, and button defaults
+
+- `pypdfbox/filter/run_length_decode.py`: RunLength encode and decode operations now flush output sinks after completion.
+- `pypdfbox/pdmodel/interactive/action/pd_action_go_to.py`: GoTo actions gained destination presence, clearing, emptiness, and validity helpers.
+- `pypdfbox/pdmodel/graphics/state/pd_extended_graphics_state.py`: copying extended graphics state now activates soft masks, snapshots the current transformation matrix, and clears masks for `/SMask /None`.
+- `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_marked_content.py`: marked-content language reads now accept string-like `/Lang` operands.
+- `pypdfbox/pdmodel/interactive/form/pd_button.py`: button default values now validate known button states before writing `/DV`.

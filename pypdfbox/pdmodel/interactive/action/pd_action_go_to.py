@@ -112,5 +112,32 @@ class PDActionGoTo(PDAction):
             return
         self._action.set_string(_D, name)
 
+    # ---------- predicates / clear / is_empty ----------
+
+    def has_destination(self) -> bool:
+        """``True`` when ``/D`` is present on the underlying dictionary,
+        regardless of whether it is an explicit page array, a named
+        destination string, a name, or a malformed COS shape. Lets callers
+        branch on destination-presence without constructing a typed
+        :class:`PDDestination` wrapper. Parallels
+        :class:`PDActionRemoteGoTo.has_destination`."""
+        return self._action.get_dictionary_object(_D) is not None
+
+    def clear_destination(self) -> None:
+        """Remove ``/D`` from the action dictionary."""
+        self._action.remove_item(_D)
+
+    def is_empty(self) -> bool:
+        """``True`` when ``/D`` is absent — i.e. the action carries no
+        local go-to destination state."""
+        return not self.has_destination()
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"GoTo"``). Useful as a sanity check after
+        round-tripping through :meth:`PDAction.create` or when constructing
+        the wrapper around a hand-built :class:`COSDictionary`."""
+        return self.get_sub_type() == self.SUB_TYPE
+
 
 __all__ = ["PDActionGoTo"]

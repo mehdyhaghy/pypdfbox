@@ -89,6 +89,9 @@ class RunLengthDecode(Filter):
                 repeat_count = 257 - length
                 decoded.write(repeat_byte * repeat_count)
                 bytes_written += repeat_count
+        flush = getattr(decoded, "flush", None)
+        if callable(flush):
+            flush()
         out_params = parameters if parameters is not None else COSDictionary()
         return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
@@ -172,6 +175,9 @@ class RunLengthDecode(Filter):
                 out.extend(buf[:count])
         out.append(_EOD)
         encoded.write(bytes(out))
+        flush = getattr(encoded, "flush", None)
+        if callable(flush):
+            flush()
 
 
 FilterFactory.register("RunLengthDecode", RunLengthDecode())

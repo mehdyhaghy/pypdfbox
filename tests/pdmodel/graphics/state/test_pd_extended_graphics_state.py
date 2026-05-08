@@ -98,7 +98,9 @@ def test_round_trip_blend_mode_string_stored_as_name() -> None:
     bm = gs.get_blend_mode()
     assert isinstance(bm, BlendMode)
     assert bm is BlendMode.SCREEN
-    assert gs.get_cos_object().get_item("BM").get_name() == "Screen"
+    item = gs.get_cos_object().get_item("BM")
+    assert isinstance(item, COSName)
+    assert item.get_name() == "Screen"
 
 
 def test_round_trip_blend_mode_typed_wrapper() -> None:
@@ -366,6 +368,60 @@ def test_copy_into_graphics_state_supports_dict_targets() -> None:
     assert target["stroke_adjustment"] is True
     assert target["font"] is font
     assert target["font_size"] == 7.0
+
+
+def test_copy_into_graphics_state_copies_soft_mask_and_initial_ctm() -> None:
+    from pypdfbox.pdmodel.graphics.state.pd_soft_mask import PDSoftMask
+
+    class Matrix:
+        def __init__(self, label: str) -> None:
+            self.label = label
+            self.clone_calls = 0
+
+        def clone(self) -> Matrix:
+            self.clone_calls += 1
+            return Matrix(f"{self.label}-clone")
+
+    class Target:
+        def __init__(self, matrix: Matrix) -> None:
+            self._matrix = matrix
+            self.soft_masks: list[object] = []
+
+        def get_current_transformation_matrix(self) -> Matrix:
+            return self._matrix
+
+        def set_soft_mask(self, soft_mask: object) -> None:
+            self.soft_masks.append(soft_mask)
+
+    sm_dict = COSDictionary()
+    sm_dict.set_name("S", "Alpha")
+    matrix = Matrix("active")
+    target = Target(matrix)
+    gs = PDExtendedGraphicsState()
+    gs.set_soft_mask(sm_dict)
+
+    gs.copy_into_graphics_state(target)
+
+    assert len(target.soft_masks) == 1
+    soft_mask = target.soft_masks[0]
+    assert isinstance(soft_mask, PDSoftMask)
+    assert soft_mask.get_cos_object() is sm_dict
+    initial = soft_mask.get_initial_transformation_matrix()
+    assert isinstance(initial, Matrix)
+    assert initial is not matrix
+    assert initial.label == "active-clone"
+    assert matrix.clone_calls == 1
+
+
+def test_copy_into_graphics_state_none_soft_mask_clears_mapping_target() -> None:
+    gs = PDExtendedGraphicsState()
+    gs.set_soft_mask(COSName.get_pdf_name("None"))
+
+    existing = object()
+    target: dict[str, object | None] = {"soft_mask": existing}
+    gs.copy_into_graphics_state(target)
+
+    assert target["soft_mask"] is None
 
 
 # ---------- Aliases mirroring upstream PDFBox 3.0.x naming ----------

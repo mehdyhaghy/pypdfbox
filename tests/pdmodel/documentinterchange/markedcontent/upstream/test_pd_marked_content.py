@@ -59,6 +59,13 @@ def test_get_language_returns_lang_value() -> None:
     assert mc.get_language() == "en-GB"
 
 
+def test_get_language_resolves_string_operand_like_get_name_as_string() -> None:
+    props = COSDictionary()
+    props.set_string(COSName.get_pdf_name("Lang"), "en-US")
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), props)
+    assert mc.get_language() == "en-US"
+
+
 def test_get_actual_text_returns_string_value() -> None:
     props = COSDictionary()
     props.set_string(COSName.get_pdf_name("ActualText"), "actual")

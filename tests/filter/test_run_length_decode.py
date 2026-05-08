@@ -14,6 +14,16 @@ class _ShortReadBytesIO(io.BytesIO):
         return super().read(min(size, 2))
 
 
+class _FlushTrackingBytesIO(io.BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_count = 0
+
+    def flush(self) -> None:
+        self.flush_count += 1
+        super().flush()
+
+
 def _encode(data: bytes) -> bytes:
     out = io.BytesIO()
     RunLengthDecode().encode(io.BytesIO(data), out)
@@ -63,6 +73,25 @@ def test_wave318_decode_literal_accepts_short_reads() -> None:
 
     assert out.getvalue() == b"hello"
     assert result.bytes_written == 5
+
+
+def test_decode_flushes_decoded_sink_after_eod() -> None:
+    out = _FlushTrackingBytesIO()
+
+    result = RunLengthDecode().decode(io.BytesIO(b"\x02ABC\x80"), out)
+
+    assert out.getvalue() == b"ABC"
+    assert result.bytes_written == 3
+    assert out.flush_count == 1
+
+
+def test_encode_flushes_encoded_sink_after_eod_marker() -> None:
+    out = _FlushTrackingBytesIO()
+
+    RunLengthDecode().encode(io.BytesIO(b"ABC"), out)
+
+    assert out.getvalue() == b"\x02ABC\x80"
+    assert out.flush_count == 1
 
 
 def test_decode_run_only() -> None:

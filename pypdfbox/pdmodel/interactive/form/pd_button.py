@@ -179,6 +179,7 @@ class PDButton(PDTerminalField):
         if value is None:
             self._field.remove_item(dv_key)
         else:
+            self._check_value_if_known(value)
             self._field.set_name(dv_key, value)
 
     def has_default_value(self) -> bool:

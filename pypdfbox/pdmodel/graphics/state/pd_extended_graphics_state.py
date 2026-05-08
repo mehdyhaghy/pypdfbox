@@ -11,7 +11,6 @@ from pypdfbox.cos import (
     COSName,
     COSNumber,
 )
-
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 
 if TYPE_CHECKING:
@@ -276,6 +275,8 @@ class PDExtendedGraphicsState:
                 self._copy_value(
                     graphics_state, "set_blend_mode", "blend_mode", self.get_blend_mode()
                 )
+            elif key == _SMASK:
+                self._copy_soft_mask(graphics_state)
             elif key == _TR:
                 # Per PDF 32000-1 §11.7.5.3: "If both TR and TR2 are present
                 # in the same graphics state parameter dictionary, TR2 shall
@@ -322,6 +323,22 @@ class PDExtendedGraphicsState:
         return False
 
     @staticmethod
+    def _copy_value_allow_none(
+        target: Any, setter_name: str, attribute_name: str, value: Any
+    ) -> bool:
+        if isinstance(target, MutableMapping):
+            target[attribute_name] = value
+            return True
+        setter = getattr(target, setter_name, None)
+        if callable(setter):
+            setter(value)
+            return True
+        if hasattr(target, attribute_name):
+            setattr(target, attribute_name, value)
+            return True
+        return False
+
+    @staticmethod
     def _get_text_state(target: Any) -> Any | None:
         if isinstance(target, MutableMapping):
             return target.get("text_state")
@@ -348,12 +365,43 @@ class PDExtendedGraphicsState:
         if not self._copy_text_value(target, "set_font_size", "font_size", size):
             self._copy_value(target, "set_text_font_size", "text_font_size", size)
 
+    def _copy_soft_mask(self, target: Any) -> None:
+        soft_mask = self.get_soft_mask_typed()
+        if soft_mask is not None:
+            ctm = self._current_transformation_matrix(target)
+            if ctm is not None:
+                soft_mask.set_initial_transformation_matrix(self._clone_value(ctm))
+        self._copy_value_allow_none(target, "set_soft_mask", "soft_mask", soft_mask)
+
+    @staticmethod
+    def _current_transformation_matrix(target: Any) -> Any | None:
+        if isinstance(target, MutableMapping):
+            return target.get("current_transformation_matrix", target.get("ctm"))
+        for getter_name in (
+            "get_current_transformation_matrix",
+            "getCurrentTransformationMatrix",
+        ):
+            getter = getattr(target, getter_name, None)
+            if callable(getter):
+                return getter()
+        return getattr(target, "current_transformation_matrix", getattr(target, "ctm", None))
+
+    @staticmethod
+    def _clone_value(value: Any) -> Any:
+        clone = getattr(value, "clone", None)
+        if callable(clone):
+            return clone()
+        copy = getattr(value, "copy", None)
+        if callable(copy):
+            return copy()
+        return value
+
     # ---------- private float helpers (mirrors upstream getFloatItem/setFloatItem) ----------
 
     def _get_float_item(self, key: COSName) -> float | None:
         base = self._dict.get_dictionary_object(key)
         if isinstance(base, COSNumber):
-            return float(base.value)
+            return base.float_value()
         return None
 
     def _set_float_item(self, key: COSName, value: float | None) -> None:
@@ -375,7 +423,7 @@ class PDExtendedGraphicsState:
     def get_line_cap_style(self) -> int | None:
         base = self._dict.get_dictionary_object(_LC)
         if isinstance(base, COSNumber):
-            return int(base.value)
+            return base.int_value()
         return None
 
     def set_line_cap_style(self, style: int) -> None:
@@ -386,7 +434,7 @@ class PDExtendedGraphicsState:
     def get_line_join_style(self) -> int | None:
         base = self._dict.get_dictionary_object(_LJ)
         if isinstance(base, COSNumber):
-            return int(base.value)
+            return base.int_value()
         return None
 
     def set_line_join_style(self, style: int) -> None:
@@ -531,7 +579,7 @@ class PDExtendedGraphicsState:
     def get_overprint_mode(self) -> int:
         base = self._dict.get_dictionary_object(_OPM)
         if isinstance(base, COSNumber):
-            return int(base.value)
+            return base.int_value()
         return 0
 
     def set_overprint_mode(self, om: int | None) -> None:
@@ -606,7 +654,7 @@ class PDExtendedGraphicsState:
         if isinstance(base, COSArray) and base.size() >= 2:
             entry = base.get_object(1)
             if isinstance(entry, COSNumber):
-                return float(entry.value)
+                return entry.float_value()
         return None
 
     def set_font_size(self, size: float) -> None:

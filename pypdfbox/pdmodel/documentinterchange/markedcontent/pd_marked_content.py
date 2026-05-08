@@ -68,7 +68,7 @@ class PDMarkedContent:
     def get_language(self) -> str | None:
         if self._properties is None:
             return None
-        return self._properties.get_name(COSName.get_pdf_name("Lang"))
+        return self._properties.get_string(COSName.get_pdf_name("Lang"))
 
     def get_actual_text(self) -> str | None:
         if self._properties is None:

@@ -54,6 +54,13 @@ def test_language_returned_when_present() -> None:
     assert mc.get_language() == "fr-CA"
 
 
+def test_language_returned_from_string_operand() -> None:
+    props = COSDictionary()
+    props.set_string(COSName.get_pdf_name("Lang"), "fr-FR")
+    mc = PDMarkedContent(COSName.get_pdf_name("P"), props)
+    assert mc.get_language() == "fr-FR"
+
+
 def test_actual_text_alt_expanded_returned_when_present() -> None:
     props = COSDictionary()
     props.set_string(COSName.get_pdf_name("ActualText"), "real")
