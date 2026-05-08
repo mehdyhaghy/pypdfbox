@@ -14,6 +14,8 @@ oracle without inventing fixtures.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -106,7 +108,7 @@ def test_get_gpos_returns_none_when_absent(monkeypatch: pytest.MonkeyPatch) -> N
     def fake_contains(self: object, key: str) -> bool:  # noqa: ARG001
         if key == "GPOS":
             return False
-        return original_contains(key)
+        return bool(original_contains(key))
 
     monkeypatch.setattr(type(inner), "__contains__", fake_contains)
     assert ttf.get_gpos() is None
@@ -173,7 +175,7 @@ def test_lookup_types_inventory(gpos: GlyphPositioningTable) -> None:
 
 
 def _gid(ttf: TrueTypeFont, name: str) -> int:
-    order = ttf._tt.getGlyphOrder()
+    order = cast("list[str]", ttf._tt.getGlyphOrder())
     return order.index(name)
 
 
@@ -202,6 +204,44 @@ def test_kerning_known_pair_a_w(
     a = _gid(liberation_sans, "A")
     w = _gid(liberation_sans, "W")
     assert gpos.get_kerning(a, w) == -76
+
+
+def test_pair_format2_wave314_uses_class_zero_second_glyphs() -> None:
+    table = GlyphPositioningTable()
+    table._glyph_order = [".notdef", "A", "B", "C"]
+    table._glyph_name_to_gid = {name: gid for gid, name in enumerate(table._glyph_order)}
+    table._gpos_table = SimpleNamespace(
+        LookupList=SimpleNamespace(
+            Lookup=[
+                SimpleNamespace(
+                    LookupType=GlyphPositioningTable.LOOKUP_TYPE_PAIR_ADJUSTMENT,
+                    SubTable=[
+                        SimpleNamespace(
+                            Format=2,
+                            Coverage=SimpleNamespace(glyphs=["A"]),
+                            ClassDef1=SimpleNamespace(classDefs={}),
+                            ClassDef2=SimpleNamespace(classDefs={"C": 1}),
+                            Class1Record=[
+                                SimpleNamespace(
+                                    Class2Record=[
+                                        SimpleNamespace(
+                                            Value1=SimpleNamespace(XAdvance=-40)
+                                        ),
+                                        SimpleNamespace(
+                                            Value1=SimpleNamespace(XAdvance=-70)
+                                        ),
+                                    ]
+                                )
+                            ],
+                        )
+                    ],
+                )
+            ]
+        )
+    )
+
+    assert table.get_kerning(1, 2) == -40
+    assert table.get_kerning(1, 3) == -70
 
 
 def test_kerning_uncovered_pair_returns_zero(

@@ -36,6 +36,7 @@ from .cos_writer_xref_entry import COSWriterXRefEntry
 # trailer-level handle the handler keys off of — encrypting it would make the
 # document undecryptable.
 _ID_NAME: COSName = COSName.get_pdf_name("ID")
+_FLATE_DECODE_NAME: COSName = COSName.get_pdf_name("FlateDecode")
 
 _logger = logging.getLogger(__name__)
 
@@ -153,12 +154,13 @@ class _RawSinkAdapter:
 
 class COSWriter(ICOSVisitor):
     """
-    Serialize a ``COSDocument`` back to bytes using the traditional xref
-    full-save path.
+    Serialize a ``COSDocument`` or ``PDDocument`` back to PDF bytes.
 
-    Mirrors ``org.apache.pdfbox.pdfwriter.COSWriter``. Cluster #1 stubs
-    out incremental save, xref-stream output, object-stream packing,
-    encryption, and signatures — see ``CHANGES.md`` for the full list.
+    Mirrors ``org.apache.pdfbox.pdfwriter.COSWriter`` for the writer paths
+    ported here: full saves, incremental appends, traditional xref tables,
+    xref streams, hybrid xrefs, object streams, and standard encryption
+    handoff from ``PDDocument``. Writer-level signature plumbing remains a
+    placeholder; high-level signing is coordinated by ``PDDocument``.
 
     Typical usage::
 
@@ -310,7 +312,7 @@ class COSWriter(ICOSVisitor):
         file. Mirrors upstream ``COSWriter.setStartxref(long)`` — used by
         hybrid / xref-stream paths that need to point ``startxref`` at the
         traditional table even though the body emitted a stream first."""
-        if not isinstance(value, int) or value < 0:
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError(
                 f"set_startxref requires a non-negative int; got {value!r}"
             )
@@ -402,13 +404,27 @@ class COSWriter(ICOSVisitor):
         common case since the writer is mostly synchronous."""
         return self._started_streams
 
+    def has_started_streams(self) -> bool:
+        """Return ``True`` when the started-stream tracking set is non-empty."""
+        return bool(self._started_streams)
+
+    def clear_started_streams(self) -> None:
+        """Clear the started-stream tracking set exposed by
+        :py:meth:`get_started_streams`."""
+        self._started_streams.clear()
+
     # ---- pdf version override (upstream COSWriter.setPdfVersion) ----
 
     def set_pdf_version(self, major: int, minor: int) -> None:
         """Pin the ``%PDF-x.y`` header version, overriding the value
         carried on the ``COSDocument``. Mirrors upstream's
         ``setPdfVersion(int, int)``."""
-        if not isinstance(major, int) or not isinstance(minor, int):
+        if (
+            not isinstance(major, int)
+            or isinstance(major, bool)
+            or not isinstance(minor, int)
+            or isinstance(minor, bool)
+        ):
             raise TypeError("set_pdf_version requires int major and minor")
         if major < 0 or minor < 0:
             raise ValueError(
@@ -1281,10 +1297,10 @@ class COSWriter(ICOSVisitor):
         """Return a never-before-used ``(num, 0)`` key, advancing
         ``self._number`` past any declared keys already in flight.
 
-        The plain ``self._number += 1`` pattern works for the cluster #1
+        The plain ``self._number += 1`` pattern works for the classic
         full-save path because every actual is funneled through
-        :py:meth:`_get_object_key` first. For the cluster #3 ObjStm /
-        xref-stream paths we mint keys *outside* that funnel (we know we
+        :py:meth:`_get_object_key` first. For ObjStm and xref-stream
+        paths we mint keys *outside* that funnel (we know we
         want a brand-new number for the synthetic stream), so we must
         check against ``_key_object`` to avoid colliding with any
         explicitly-declared ``COSObject(n, 0)`` numbers."""
@@ -1352,8 +1368,8 @@ class COSWriter(ICOSVisitor):
 
         # Always include a free entry at object 0 (offset 0, gen 65535).
         # The upstream "fillGapsWithFreeEntries" path accounts for cases
-        # where mid-numbers are missing; for cluster #1 we mirror its
-        # simple branch (no normal entries with object 0 → emit NULL_ENTRY).
+        # where mid-numbers are missing; if object 0 is not already covered
+        # by a gap, we emit the standard NULL_ENTRY free-list head.
         self._fill_gaps_with_free_entries()
 
         entries = sorted(self._xref_entries)
@@ -1370,7 +1386,7 @@ class COSWriter(ICOSVisitor):
 
     def _fill_gaps_with_free_entries(self) -> None:
         # Collect normal entries (matches upstream's ``NormalXReference``
-        # filter — for cluster #1 every recorded entry is "normal").
+        # filter — recorded non-free entries describe concrete objects).
         normals = sorted(
             (e for e in self._xref_entries if not e.free),
             key=lambda e: e.key.object_number,
@@ -1612,7 +1628,7 @@ class COSWriter(ICOSVisitor):
         # compresses on commit and sets /Filter; we then add the §7.5.7
         # required keys.
         objstm = COSStream()
-        objstm.set_data(payload, [COSName.FLATE_DECODE])
+        objstm.set_data(payload, [_FLATE_DECODE_NAME])
         objstm.set_item(COSName.TYPE, COSName.get_pdf_name("ObjStm"))  # type: ignore[attr-defined]
         objstm.set_int(COSName.get_pdf_name("N"), len(chunk))
         objstm.set_int(COSName.get_pdf_name("First"), first_offset)
@@ -1742,7 +1758,7 @@ class COSWriter(ICOSVisitor):
 
         # Build the xref-stream COSStream.
         xref_stream = COSStream()
-        xref_stream.set_data(bytes(body), [COSName.FLATE_DECODE])
+        xref_stream.set_data(bytes(body), [_FLATE_DECODE_NAME])
         xref_stream.set_item(COSName.TYPE, COSName.get_pdf_name("XRef"))  # type: ignore[attr-defined]
         # /Size = highest object number + 1.
         size_value = max((r[0] for r in records), default=0) + 1
@@ -1830,7 +1846,7 @@ class COSWriter(ICOSVisitor):
             trailer.set_int(COSName.SIZE, highest + 1)  # type: ignore[attr-defined]
         else:
             trailer.set_int(COSName.SIZE, 1)  # type: ignore[attr-defined]
-        # Cluster #1 is full-save; clear /Prev so we don't claim incremental.
+        # Full saves clear /Prev so we don't claim an incremental chain.
         trailer.remove_item(COSName.PREV)  # type: ignore[attr-defined]
 
         # Hybrid layout (§7.5.8.4): announce the parallel xref stream's

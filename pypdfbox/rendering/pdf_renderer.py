@@ -3,10 +3,12 @@ from __future__ import annotations
 import contextlib
 import io
 import logging
+import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-import aggdraw
+import aggdraw  # type: ignore[import-not-found]
 from PIL import Image, ImageChops, ImageDraw
 
 from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
@@ -38,7 +40,16 @@ _log = logging.getLogger(__name__)
 # defined as "apply m2 first, then m1" (same convention as PDFBox's
 # ``Matrix.multiply``).
 _Matrix = tuple[float, float, float, float, float, float]
+_PathSegment = tuple[Any, ...]
+_RGBFloat = tuple[float, float, float]
 _IDENTITY: _Matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def _require_positive_finite(value: float, name: str) -> float:
+    number = float(value)
+    if not math.isfinite(number) or number <= 0.0:
+        raise ValueError(f"{name} must be a positive finite number")
+    return number
 
 
 def _matmul(m1: _Matrix, m2: _Matrix) -> _Matrix:
@@ -253,8 +264,8 @@ class PDFRenderer(PDFStreamEngine):
         # or ``("C", x1, y1, x2, y2, x, y)``. Paths are built in user space
         # (i.e. NOT yet transformed) — the transform is applied at draw
         # time via aggdraw's ``settransform``.
-        self._subpaths: list[list[tuple]] = []
-        self._current_subpath: list[tuple] | None = None
+        self._subpaths: list[list[_PathSegment]] = []
+        self._current_subpath: list[_PathSegment] | None = None
         self._current_point: tuple[float, float] = (0.0, 0.0)
         # ``"W"`` or ``"W*"`` if a clip is pending; consumed at next
         # path-end (paint or ``n``) and folded into the current GS clip.
@@ -330,9 +341,19 @@ class PDFRenderer(PDFStreamEngine):
         (RGB, RGBA, L, "1"). When ``None`` the lite renderer keeps its
         historical white-RGB canvas behaviour.
         """
+        scale = _require_positive_finite(scale, "scale")
         return self.render_image_with_dpi(
             page_index, dpi=72.0 * scale, image_type=image_type
         )
+
+    def renderImage(  # noqa: N802 - upstream Java alias
+        self,
+        page_index: int,
+        scale: float = 1.0,
+        image_type: ImageType | None = None,
+    ) -> Image.Image:
+        """Java-style alias for ``render_image``."""
+        return self.render_image(page_index, scale=scale, image_type=image_type)
 
     def render_image_with_dpi(
         self,
@@ -349,6 +370,7 @@ class PDFRenderer(PDFStreamEngine):
         ``None`` (the default), the lite renderer keeps its historical
         white-RGB canvas behaviour.
         """
+        dpi = _require_positive_finite(dpi, "dpi")
         page = self._document.get_pages()[page_index]
         media_box = page.get_media_box()
         # PDF user-space units are 1/72 inch. Pixel dims = pts * dpi / 72.
@@ -434,7 +456,7 @@ class PDFRenderer(PDFStreamEngine):
                 # Make any pixel that's still pure white fully
                 # transparent so the alpha channel matches what
                 # upstream's transparent-canvas render produced.
-                pixels = rgba.load()
+                pixels = cast(Any, rgba.load())
                 w, h = rgba.size
                 for y in range(h):
                     for x in range(w):
@@ -448,6 +470,15 @@ class PDFRenderer(PDFStreamEngine):
         # ``get_page_image()`` (mirrors upstream package-private accessor).
         self._page_image = image
         return image
+
+    def renderImageWithDPI(  # noqa: N802 - upstream Java alias
+        self,
+        page_index: int,
+        dpi: float = 72.0,
+        image_type: ImageType | None = None,
+    ) -> Image.Image:
+        """Java-style alias for ``render_image_with_dpi``."""
+        return self.render_image_with_dpi(page_index, dpi=dpi, image_type=image_type)
 
     # ------------------------------------------------------------------
     # public config surface (mirrors upstream PDFRenderer setters/getters)
@@ -492,9 +523,19 @@ class PDFRenderer(PDFStreamEngine):
         else:
             self._default_destination = destination
 
+    def setDefaultDestination(  # noqa: N802 - upstream Java alias
+        self, destination: str | RenderDestination
+    ) -> None:
+        """Java-style alias for ``set_default_destination``."""
+        self.set_default_destination(destination)
+
     def get_default_destination(self) -> str:
         """Mirror of upstream ``PDFRenderer.getDefaultDestination()``."""
         return self._default_destination
+
+    def getDefaultDestination(self) -> str:  # noqa: N802 - upstream Java alias
+        """Java-style alias for ``get_default_destination``."""
+        return self.get_default_destination()
 
     def set_image_downscaling_optimization_threshold(
         self, threshold: float
@@ -655,7 +696,14 @@ class PDFRenderer(PDFStreamEngine):
     def _op_concat_matrix(self, _op: Any, operands: list[COSBase]) -> None:
         if len(operands) < 6:
             return
-        m = tuple(_to_float(operands[i]) for i in range(6))
+        m: _Matrix = (
+            _to_float(operands[0]),
+            _to_float(operands[1]),
+            _to_float(operands[2]),
+            _to_float(operands[3]),
+            _to_float(operands[4]),
+            _to_float(operands[5]),
+        )
         # cm post-multiplies the current CTM. PDF spec §8.4.4: "Modify
         # the current transformation matrix (CTM) by concatenating the
         # specified matrix" — new_ctm = matrix * old_ctm.
@@ -926,6 +974,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         x, y, w, h = (_to_float(operands[i]) for i in range(4))
         self._start_subpath(x, y)
+        assert self._current_subpath is not None
         self._current_subpath.append(("L", x + w, y))
         self._current_subpath.append(("L", x + w, y + h))
         self._current_subpath.append(("L", x, y + h))
@@ -1097,7 +1146,9 @@ class PDFRenderer(PDFStreamEngine):
                 self_draw.flush()
             # NB: ``self._draw`` may have been replaced mid-paint by the
             # even-odd PIL path — refetch the latest layer image.
-            layer = self._image  # type: ignore[assignment]
+            painted_layer = self._image
+            assert painted_layer is not None
+            layer = painted_layer
         finally:
             self._draw = prev_draw
             self._image = prev_image
@@ -1214,7 +1265,7 @@ class PDFRenderer(PDFStreamEngine):
         self._draw.setantialias(True)
 
     def _flatten_subpath_to_device(
-        self, subpath: list[tuple], ctm: _Matrix
+        self, subpath: list[_PathSegment], ctm: _Matrix
     ) -> list[tuple[float, float]]:
         """Flatten a single subpath to a polygon in device pixels. Beziers
         are sampled with 16 steps (good enough for v1 even-odd hole
@@ -1225,11 +1276,7 @@ class PDFRenderer(PDFStreamEngine):
         last = (0.0, 0.0)
         for seg in subpath:
             tag = seg[0]
-            if tag == "M":
-                pt = self._apply((seg[1], seg[2]), (a, b, c, d, e, f))
-                out.append(pt)
-                last = (seg[1], seg[2])
-            elif tag == "L":
+            if tag in {"M", "L"}:
                 pt = self._apply((seg[1], seg[2]), (a, b, c, d, e, f))
                 out.append(pt)
                 last = (seg[1], seg[2])
@@ -1520,7 +1567,6 @@ class PDFRenderer(PDFStreamEngine):
             return
         # Local import to keep cluster boundaries explicit.
         from pypdfbox.pdmodel.graphics.shading import (  # noqa: PLC0415
-            PDShading,
             PDShadingType2,
             PDShadingType3,
         )
@@ -2351,9 +2397,7 @@ class PDFRenderer(PDFStreamEngine):
         if not isinstance(group, COSDictionary):
             return False
         s = group.get_dictionary_object(COSName.get_pdf_name("S"))
-        if isinstance(s, COSName) and s.name == "Transparency":
-            return True
-        return False
+        return isinstance(s, COSName) and s.name == "Transparency"
 
     @staticmethod
     def _blend(
@@ -2388,7 +2432,7 @@ class PDFRenderer(PDFStreamEngine):
         if backdrop.mode != "RGBA":
             backdrop = backdrop.convert("RGBA")
         if source.size != backdrop.size:
-            source = source.resize(backdrop.size, Image.BILINEAR)
+            source = source.resize(backdrop.size, Image.Resampling.BILINEAR)
 
         if mode is None or mode is BlendMode.NORMAL:
             out = backdrop.copy()
@@ -2494,11 +2538,11 @@ class PDFRenderer(PDFStreamEngine):
         ``SoftLight``); unknown names leave the backdrop unchanged."""
         if mode_name is None:
             return backdrop
-        bd = backdrop.load()
-        sd = source.load()
+        bd = cast(Any, backdrop.load())
+        sd = cast(Any, source.load())
         w, h = backdrop.size
         out = Image.new("L", (w, h))
-        od = out.load()
+        od = cast(Any, out.load())
         for y in range(h):
             for x in range(w):
                 b = bd[x, y] / 255.0
@@ -2534,10 +2578,7 @@ class PDFRenderer(PDFStreamEngine):
             # PDF spec form (matches Adobe's): two-piece quadratic.
             if s <= 0.5:
                 return b - (1.0 - 2.0 * s) * b * (1.0 - b)
-            if b <= 0.25:
-                d = ((16.0 * b - 12.0) * b + 4.0) * b
-            else:
-                d = b ** 0.5
+            d = ((16.0 * b - 12.0) * b + 4.0) * b if b <= 0.25 else b ** 0.5
             return b + (2.0 * s - 1.0) * (d - b)
         if mode_name == "Exclusion":
             return b + s - 2.0 * b * s
@@ -2668,7 +2709,7 @@ class PDFRenderer(PDFStreamEngine):
     def _hsl_blend_pixels(
         backdrop: Image.Image,
         source: Image.Image,
-        compose: Any,
+        compose: Callable[[_RGBFloat, _RGBFloat], _RGBFloat],
     ) -> tuple[Image.Image, Image.Image, Image.Image]:
         """Apply ``compose(cb, cs)`` per pixel and return three ``L``
         channel images. ``backdrop`` and ``source`` are RGBA inputs of
@@ -2677,14 +2718,14 @@ class PDFRenderer(PDFStreamEngine):
         w, h = backdrop.size
         # Drop the alpha channel — alpha is reapplied by the caller via
         # ``Image.composite(...)`` against the source alpha.
-        bd = backdrop.convert("RGB").load()
-        sd = source.convert("RGB").load()
+        bd = cast(Any, backdrop.convert("RGB").load())
+        sd = cast(Any, source.convert("RGB").load())
         out_r = Image.new("L", (w, h))
         out_g = Image.new("L", (w, h))
         out_b = Image.new("L", (w, h))
-        rd = out_r.load()
-        gd = out_g.load()
-        bd_out = out_b.load()
+        rd = cast(Any, out_r.load())
+        gd = cast(Any, out_g.load())
+        bd_out = cast(Any, out_b.load())
         for y in range(h):
             for x in range(w):
                 br, bg, bb = bd[x, y]
@@ -2716,7 +2757,7 @@ class PDFRenderer(PDFStreamEngine):
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
-        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+        def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
             r, g, b = PDFRenderer._hsl_set_sat(
                 cs[0], cs[1], cs[2], PDFRenderer._hsl_sat(*cb)
             )
@@ -2740,7 +2781,7 @@ class PDFRenderer(PDFStreamEngine):
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
-        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+        def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
             r, g, b = PDFRenderer._hsl_set_sat(
                 cb[0], cb[1], cb[2], PDFRenderer._hsl_sat(*cs)
             )
@@ -2764,7 +2805,7 @@ class PDFRenderer(PDFStreamEngine):
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
-        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+        def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
             return PDFRenderer._hsl_set_lum(
                 cs[0], cs[1], cs[2], PDFRenderer._hsl_lum(*cb)
             )
@@ -2787,7 +2828,7 @@ class PDFRenderer(PDFStreamEngine):
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
-        def _compose(cb: tuple, cs: tuple) -> tuple[float, float, float]:
+        def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
             return PDFRenderer._hsl_set_lum(
                 cb[0], cb[1], cb[2], PDFRenderer._hsl_lum(*cs)
             )
@@ -2814,7 +2855,7 @@ class PDFRenderer(PDFStreamEngine):
         if mask_image.mode != "L":
             mask_image = mask_image.convert("L")
         if mask_image.size != image.size:
-            mask_image = mask_image.resize(image.size, Image.BILINEAR)
+            mask_image = mask_image.resize(image.size, Image.Resampling.BILINEAR)
         rgba = image.convert("RGBA")
         rgba.putalpha(mask_image)
         return rgba
@@ -2909,11 +2950,8 @@ class PDFRenderer(PDFStreamEngine):
             self._knockout_form_depth = prev_knockout_form_depth
 
         # Extract the mask channel.
-        if is_luminosity:
-            # Luminance of RGB → 8-bit grayscale.
-            alpha_plane = mask_canvas.convert("L")
-        else:
-            alpha_plane = mask_canvas.split()[3]
+        # Luminance of RGB → 8-bit grayscale.
+        alpha_plane = mask_canvas.convert("L") if is_luminosity else mask_canvas.split()[3]
 
         # Apply /TR transfer function if present (and not /Identity).
         tr = soft_mask.get_transfer_function()
@@ -3244,8 +3282,8 @@ class PDFRenderer(PDFStreamEngine):
         # into device CTM already inverts it back, but we still need to
         # vertically mirror the source so the visible result matches
         # PDFBox's renderer.
-        resized = pil_image.resize((target_w, target_h), Image.BILINEAR)
-        flipped = resized.transpose(Image.FLIP_TOP_BOTTOM)
+        resized = pil_image.resize((target_w, target_h), Image.Resampling.BILINEAR)
+        flipped = resized.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
 
         # If the source image carries an alpha channel (e.g. an SMask
         # was applied upstream), split it off and use it as the paste
@@ -3521,6 +3559,9 @@ class PDFRenderer(PDFStreamEngine):
             return None
         if font_dict is None:
             return None
+        if not isinstance(font_dict, COSDictionary):
+            self._font_cache[cache_key] = font_dict
+            return font_dict
         from pypdfbox.pdmodel.font.pd_font_factory import (  # noqa: PLC0415
             PDFontFactory,
         )
@@ -3760,14 +3801,14 @@ class PDFRenderer(PDFStreamEngine):
         )
 
         if isinstance(font, PDType1CFont):
-            program = font._get_cff_font()  # noqa: SLF001
-            if program is not None:
-                return program.units_per_em
+            cff_program = font._get_cff_font()  # noqa: SLF001
+            if cff_program is not None:
+                return cff_program.units_per_em
             return None
         if isinstance(font, PDType1Font):
-            program = font._get_type1_font()  # noqa: SLF001
-            if program is not None:
-                return program.units_per_em
+            type1_program = font._get_type1_font()  # noqa: SLF001
+            if type1_program is not None:
+                return type1_program.units_per_em
             return None
         return None
 
@@ -3817,15 +3858,15 @@ class PDFRenderer(PDFStreamEngine):
             )
 
             if isinstance(font, PDType1CFont):
-                program = font._get_cff_font()  # noqa: SLF001
-                if program is not None:
-                    self._font_program_cache[key] = program
-                    return program
+                cff_program = font._get_cff_font()  # noqa: SLF001
+                if cff_program is not None:
+                    self._font_program_cache[key] = cff_program
+                    return cff_program
             elif isinstance(font, PDType1Font):
-                program = font._get_type1_font()  # noqa: SLF001
-                if program is not None:
-                    self._font_program_cache[key] = program
-                    return program
+                type1_program = font._get_type1_font()  # noqa: SLF001
+                if type1_program is not None:
+                    self._font_program_cache[key] = type1_program
+                    return type1_program
         except Exception as exc:  # noqa: BLE001
             _log.debug("rendering: embedded Type1/CFF probe failed: %s", exc)
 
@@ -3880,7 +3921,7 @@ class PDFRenderer(PDFStreamEngine):
         glyph_to_user = _matmul(text_local, self._gs.text_matrix)
         glyph_to_device = _matmul(glyph_to_user, self._device_ctm)
         # Stack on the page CTM (gs.ctm).
-        glyph_to_device = _matmul(self._gs.ctm, glyph_to_device)  # type: ignore[arg-type]
+        glyph_to_device = _matmul(self._gs.ctm, glyph_to_device)
         # Note: gs.ctm should sit *between* text_matrix and device_ctm,
         # but our matmul convention already folds it via the order above
         # for the typical "no-cm-after-Tm" case used in tests.
@@ -4052,7 +4093,7 @@ class PDFRenderer(PDFStreamEngine):
 
     @staticmethod
     def _build_aggdraw_path_from_commands(
-        commands: list[tuple], scale: float
+        commands: list[_PathSegment], scale: float
     ) -> aggdraw.Path | None:
         """Convert a Type1/CFF ``get_glyph_path`` command sequence into an
         :class:`aggdraw.Path` scaled by ``scale``. Returns ``None`` when no
@@ -4092,22 +4133,22 @@ class PDFRenderer(PDFStreamEngine):
         composite-font code → CID → GID through ``/CIDToGIDMap``); finally
         consults the TTF's own Unicode cmap as a last resort."""
         method = getattr(font, "_code_to_gid", None)
-        if method is not None:
+        if callable(method):
             try:
-                return method(code, ttf)
+                return int(method(code, ttf))
             except TypeError:
                 # Some implementations ignore the ttf arg (signature may
                 # be ``(code)`` only on subclasses).
-                return method(code)
+                return int(method(code))
         public = getattr(font, "code_to_gid", None)
         if callable(public):
             try:
-                return public(code)
+                return int(public(code))
             except Exception as exc:  # noqa: BLE001
                 _log.debug("rendering: code_to_gid failed for %d: %s", code, exc)
         cmap = ttf.get_unicode_cmap_subtable()
         if cmap is not None:
-            return cmap.get_glyph_id(code)
+            return int(cmap.get_glyph_id(code))
         return 0
 
     @staticmethod

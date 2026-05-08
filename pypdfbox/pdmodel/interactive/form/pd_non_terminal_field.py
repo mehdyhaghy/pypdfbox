@@ -27,7 +27,10 @@ _FF: COSName = COSName.get_pdf_name("Ff")
 
 
 class PDNonTerminalField(PDField):
-    """Non-terminal field — a node whose descendants are fields. Mirrors PDFBox ``PDNonTerminalField``."""
+    """Non-terminal field — a node whose descendants are fields.
+
+    Mirrors PDFBox ``PDNonTerminalField``.
+    """
 
     def __init__(
         self,

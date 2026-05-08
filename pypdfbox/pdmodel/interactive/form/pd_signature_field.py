@@ -98,7 +98,11 @@ class PDSignatureField(PDTerminalField):
         :meth:`get_signature` and comparing against ``None`` since it skips
         the wrapper construction.
         """
-        return self._field.contains_key(_V)
+        return isinstance(self._field.get_dictionary_object(_V), COSDictionary)
+
+    def clear_signature(self) -> None:
+        """Remove this signature field's local ``/V`` signature dictionary."""
+        self._field.remove_item(_V)
 
     def set_value(
         self,
@@ -175,7 +179,11 @@ class PDSignatureField(PDTerminalField):
         Pypdfbox-only convenience mirroring :meth:`PDTextField.has_default_value`:
         does not walk the inheritable chain.
         """
-        return self._field.contains_key(_DV)
+        return isinstance(self._field.get_dictionary_object(_DV), COSDictionary)
+
+    def clear_default_value(self) -> None:
+        """Remove this signature field's local ``/DV`` signature dictionary."""
+        self._field.remove_item(_DV)
 
     # ---------- appearance regeneration ----------
 
@@ -248,9 +256,7 @@ class PDSignatureField(PDTerminalField):
             return False
         if rectangle.get_height() == 0 and rectangle.get_width() == 0:
             return False
-        if widget.is_no_view() or widget.is_hidden():
-            return False
-        return True
+        return not (widget.is_no_view() or widget.is_hidden())
 
     def get_value_as_string(self) -> str:
         """Return ``str(self.get_signature())`` when ``/V`` is present, else ``""``.
@@ -287,7 +293,11 @@ class PDSignatureField(PDTerminalField):
         Pypdfbox-only convenience: cheaper than ``get_seed_value() is not
         None`` since it skips the :class:`PDSeedValue` wrapper construction.
         """
-        return self._field.contains_key(_SV)
+        return isinstance(self._field.get_dictionary_object(_SV), COSDictionary)
+
+    def clear_seed_value(self) -> None:
+        """Remove this signature field's local ``/SV`` seed-value dictionary."""
+        self._field.remove_item(_SV)
 
     # ---------- /Lock ----------
 
@@ -313,7 +323,11 @@ class PDSignatureField(PDTerminalField):
         Pypdfbox-only convenience: cheaper than ``get_lock() is not None``
         since it skips the :class:`PDSignatureLock` wrapper construction.
         """
-        return self._field.contains_key(_LOCK)
+        return isinstance(self._field.get_dictionary_object(_LOCK), COSDictionary)
+
+    def clear_lock(self) -> None:
+        """Remove this signature field's local ``/Lock`` dictionary."""
+        self._field.remove_item(_LOCK)
 
 
 __all__ = ["PDSignatureField"]

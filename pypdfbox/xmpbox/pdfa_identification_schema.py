@@ -72,6 +72,7 @@ class PDFAIdentificationSchema(XMPSchema):
             return None
         if isinstance(raw, IntegerType):
             return raw.get_value()
+        text: str | None
         if isinstance(raw, AbstractSimpleProperty):
             text = raw.get_string_value()
         elif isinstance(raw, int) and not isinstance(raw, bool):

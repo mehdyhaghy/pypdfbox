@@ -10,10 +10,8 @@ properties so the value reads naturally in Python (``mapping.code``).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:  # pragma: no cover - typing only
-    from ..cff.type1_char_string import Type1CharString
+from collections.abc import Iterator
+from typing import Any
 
 
 class Type1Mapping:
@@ -31,7 +29,7 @@ class Type1Mapping:
         self,
         code: int,
         name: str,
-        char_string: "Type1CharString | None",
+        char_string: Any | None,
     ) -> None:
         self._code = int(code)
         self._name = str(name)
@@ -47,7 +45,7 @@ class Type1Mapping:
         """PostScript glyph name (e.g. ``A``, ``ampersand``, ``.notdef``)."""
         return self._name
 
-    def get_type1_char_string(self) -> "Type1CharString | None":
+    def get_type1_char_string(self) -> Any | None:
         """Wrapped charstring for this glyph. ``None`` when the encoding
         slot points at a glyph the font does not actually define."""
         return self._char_string
@@ -63,12 +61,12 @@ class Type1Mapping:
         return self._name
 
     @property
-    def char_string(self) -> "Type1CharString | None":
+    def char_string(self) -> Any | None:
         return self._char_string
 
     # ---------- tuple-style unpacking ----------
 
-    def as_tuple(self) -> tuple[int, str, "Type1CharString | None"]:
+    def as_tuple(self) -> tuple[int, str, Any | None]:
         """Return the row as a ``(code, name, char_string)`` tuple.
 
         Convenient for assertions and when serialising encoding vectors
@@ -76,7 +74,7 @@ class Type1Mapping:
         """
         return (self._code, self._name, self._char_string)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         """Iterate ``(code, name, char_string)`` so callers can write
         ``code, name, cs = mapping`` the same way they would for a
         ``namedtuple``."""
@@ -85,8 +83,8 @@ class Type1Mapping:
         yield self._char_string
 
     def with_char_string(
-        self, char_string: "Type1CharString | None"
-    ) -> "Type1Mapping":
+        self, char_string: Any | None
+    ) -> Type1Mapping:
         """Return a copy with ``char_string`` replaced.
 
         Type1Mapping is immutable; this is the canonical way to swap in

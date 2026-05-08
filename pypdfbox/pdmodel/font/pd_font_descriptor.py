@@ -519,10 +519,7 @@ class PDFontDescriptor:
             if len(style) == 0:
                 self._dict.remove_item(_STYLE)
             return
-        if isinstance(panose, PDPanose):
-            data = panose.get_bytes()
-        else:
-            data = bytes(panose)
+        data = panose.get_bytes() if isinstance(panose, PDPanose) else bytes(panose)
         if style is None:
             style = COSDictionary()
             self._dict.set_item(_STYLE, style)
@@ -807,9 +804,8 @@ class PDPanose:
 
         Negative ``family_class`` values are accepted — they round-trip
         through :meth:`get_family_class` exactly. Out-of-range values
-        (outside ``-0x8000..0x7FFF``) are masked into the 16-bit window
-        and a :class:`ValueError` is raised, matching what
-        ``struct.pack(">h", ...)`` would do.
+        (outside ``-0x8000..0x7FFF``) raise :class:`ValueError`, matching
+        what ``struct.pack(">h", ...)`` would do.
         """
         if not -0x8000 <= int(family_class) <= 0x7FFF:
             raise ValueError(
@@ -848,11 +844,12 @@ class PDPanose:
 
     def get_panose(self) -> PDPanoseClassification:
         """The 10-byte PANOSE classification (bytes 2-11)."""
+        payload = self._bytes[
+            self.CLASSIFICATION_OFFSET : self.CLASSIFICATION_OFFSET
+            + PDPanoseClassification.LENGTH
+        ]
         return PDPanoseClassification(
-            self._bytes[
-                self.CLASSIFICATION_OFFSET : self.CLASSIFICATION_OFFSET
-                + PDPanoseClassification.LENGTH
-            ]
+            payload + b"\x00" * (PDPanoseClassification.LENGTH - len(payload))
         )
 
     def with_panose_classification(
@@ -871,7 +868,11 @@ class PDPanose:
             payload = bytes(classification)
         # Preserve the leading 2 bytes (sFamilyClass) verbatim; pad if the
         # source buffer was shorter than expected.
-        head = self._bytes[:2] if len(self._bytes) >= 2 else self._bytes + b"\x00" * (2 - len(self._bytes))
+        head = (
+            self._bytes[:2]
+            if len(self._bytes) >= 2
+            else self._bytes + b"\x00" * (2 - len(self._bytes))
+        )
         return PDPanose(head + bytes(payload))
 
     def __bytes__(self) -> bytes:

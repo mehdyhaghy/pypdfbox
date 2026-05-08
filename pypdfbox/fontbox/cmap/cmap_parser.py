@@ -13,6 +13,8 @@ _RESOURCES_DIR = Path(__file__).parent / "resources"
 _MARK_END_OF_DICTIONARY = ">>"
 _MARK_END_OF_ARRAY = "]"
 
+type CMapSource = RandomAccessRead | BinaryIO | bytes | bytearray | memoryview
+
 
 class _LiteralName:
     __slots__ = ("name",)
@@ -42,7 +44,7 @@ class CMapParser:
 
     # ---------- public API ----------
 
-    def parse(self, source: RandomAccessRead | BinaryIO | bytes | bytearray) -> CMap:
+    def parse(self, source: CMapSource) -> CMap:
         """Parse a CMap from a ``RandomAccessRead`` (PDFBox parity) or
         any bytes-like / file-like source. Returns the resulting
         ``CMap``."""
@@ -160,7 +162,7 @@ class CMapParser:
 
     def parse_chunk(
         self,
-        source: RandomAccessRead | BinaryIO | bytes | bytearray,
+        source: CMapSource,
         cmap: CMap | None = None,
     ) -> CMap:
         """Parse an additional CMap fragment and merge it into ``cmap``.
@@ -678,12 +680,15 @@ def _increment(data: bytearray, position: int, use_strict_mode: bool) -> bool:
 
 
 def _create_string_from_bytes(data: bytes) -> str:
-    """Map a 1-4 byte sequence to its CMap string value. Per PDFBox:
-    ≤2 bytes → 1-byte: latin-1 (one char per byte) / 2-byte: UTF-16BE;
-    >2 bytes → UTF-16BE."""
+    """Map a byte sequence to its CMap string value.
+
+    Per PDFBox: 1 byte maps through latin-1 (one char per byte), while
+    longer values decode as UTF-16BE. Malformed UTF-16BE input is decoded
+    with replacement so corrupt ToUnicode CMaps do not abort parsing.
+    """
     if len(data) == 1:
         return data.decode("latin-1")
-    return data.decode("utf-16-be")
+    return data.decode("utf-16-be", errors="replace")
 
 
 _PREDEFINED_CACHE: dict[str, CMap] = {}

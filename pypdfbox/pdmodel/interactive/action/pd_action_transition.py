@@ -40,6 +40,14 @@ class PDActionTransition(PDAction):
             return
         self._action.set_item(_TRANS, trans)
 
+    def get_transition(self) -> PDTransition | None:
+        """Alias of :meth:`get_trans` matching upstream ``getTransition``."""
+        return self.get_trans()
+
+    def set_transition(self, trans: PDTransition | COSDictionary | None) -> None:
+        """Alias of :meth:`set_trans` matching upstream ``setTransition``."""
+        self.set_trans(trans)
+
     # ---------- predicates / clear / is_empty ----------
 
     def has_trans(self) -> bool:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-from .fdf_annotation import FDFAnnotation
+from .fdf_annotation import FDFAnnotation, _float_values
 
 _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
 _IC: COSName = COSName.get_pdf_name("IC")
+_RD: COSName = COSName.get_pdf_name("RD")
 
 
 class FDFAnnotationSquare(FDFAnnotation):
@@ -26,12 +28,16 @@ class FDFAnnotationSquare(FDFAnnotation):
     def get_interior_color(self) -> tuple[float, float, float] | None:
         v = self._annot.get_dictionary_object(_IC)
         if isinstance(v, COSArray) and len(v) == 3:
-            return (
-                _as_float(v[0]),
-                _as_float(v[1]),
-                _as_float(v[2]),
-            )
+            values = _float_values(v, 3)
+            if values is not None:
+                return (values[0], values[1], values[2])
         return None
+
+    def has_interior_color(self) -> bool:
+        return self.get_interior_color() is not None
+
+    def clear_interior_color(self) -> None:
+        self.set_interior_color(None)
 
     def set_interior_color(self, color: tuple[float, float, float] | None) -> None:
         if color is None:
@@ -42,12 +48,22 @@ class FDFAnnotationSquare(FDFAnnotation):
             arr.add(COSFloat(float(v)))
         self._annot.set_item(_IC, arr)
 
+    # ---------- /RD fringe rectangle ----------
 
-def _as_float(v: object) -> float:
-    val = getattr(v, "value", None)
-    if isinstance(val, (int, float)):
-        return float(val)
-    return 0.0
+    def get_fringe(self) -> PDRectangle | None:
+        v = self._annot.get_dictionary_object(_RD)
+        if isinstance(v, COSArray) and len(v) >= 4:
+            try:
+                return PDRectangle.from_cos_array(v)
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def set_fringe(self, fringe: PDRectangle | None) -> None:
+        if fringe is None:
+            self._annot.remove_item(_RD)
+            return
+        self._annot.set_item(_RD, fringe.to_cos_array())
 
 
 __all__ = ["FDFAnnotationSquare"]

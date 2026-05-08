@@ -56,6 +56,9 @@ class ASCIIHexDecode(Filter):
             raise OSError(f"ASCIIHexDecode: {exc}") from exc
 
         bytes_written = decoded.write(data)
+        flush = getattr(decoded, "flush", None)
+        if callable(flush):
+            flush()
         out_params = parameters if parameters is not None else COSDictionary()
         return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
@@ -67,6 +70,9 @@ class ASCIIHexDecode(Filter):
     ) -> None:
         encoded.write(binascii.hexlify(raw.read()))
         encoded.write(b">")
+        flush = getattr(encoded, "flush", None)
+        if callable(flush):
+            flush()
 
     def is_decompression_input_size_known(self) -> bool:
         return False

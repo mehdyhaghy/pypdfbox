@@ -44,6 +44,22 @@ class PDActionNamed(PDAction):
             return
         self._action.set_name(_N, name)
 
+    def has_n(self) -> bool:
+        """``True`` when ``/N`` is present as a PDF name.
+
+        Malformed COS shapes are intentionally reported as absent, matching
+        :meth:`get_n` and the standard named-action predicates.
+        """
+        return self.get_n() is not None
+
+    def clear_n(self) -> None:
+        """Remove ``/N`` from the underlying dictionary."""
+        self._action.remove_item(_N)
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals ``"Named"``."""
+        return self.get_sub_type() == self.SUB_TYPE
+
     # ---------- predicate helpers (Table 211) ----------
 
     def is_next_page(self) -> bool:

@@ -61,7 +61,7 @@ class TrueTypeFont:
         raw = self._read_all_bytes(data)
         # Lazy import — fontTools is heavy and most pypdfbox use does not
         # touch it.
-        import fontTools.ttLib as ttLib  # noqa: PLC0415
+        import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
 
         self._tt: Any = ttLib.TTFont(io.BytesIO(raw), lazy=True)
         # Populated lazily on first access; cached because each call into

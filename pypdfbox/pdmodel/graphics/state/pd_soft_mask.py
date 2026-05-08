@@ -123,7 +123,7 @@ class PDSoftMask:
         except ImportError:
             return None
         try:
-            return PDFormXObject(g)
+            return PDFormXObject(g, cache=self._resource_cache)
         except Exception:  # noqa: BLE001
             return None
 

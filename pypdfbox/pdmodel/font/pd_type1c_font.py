@@ -11,6 +11,7 @@ _LOG = logging.getLogger(__name__)
 
 # CFF defaults to a 1000-unit em (font matrix [0.001 0 0 0.001 0 0]).
 _CFF_DEFAULT_UNITS_PER_EM: int = 1000
+type GlyphPath = list[tuple[object, ...]]
 
 
 class PDType1CFont(PDType1Font):
@@ -19,10 +20,9 @@ class PDType1CFont(PDType1Font):
     Mirrors PDFBox ``PDType1CFont``. The font dictionary itself still
     declares ``/Subtype /Type1`` — Type1C-ness is signalled by a
     ``/FontFile3`` stream on the ``/FontDescriptor`` whose own
-    ``/Subtype`` is ``Type1C``. Therefore this wrapper is *not* selected
-    by ``PDFontFactory`` from the font dict's ``/Subtype`` alone; it is
-    reachable today only via direct construction. Auto-dispatch from
-    FontDescriptor inspection is deferred.
+    ``/Subtype`` is ``Type1C``. ``PDFontFactory`` therefore selects this
+    wrapper by inspecting both the font dictionary subtype (``Type1`` or
+    ``MMType1``) and the descriptor's ``/FontFile3 /Subtype`` marker.
 
     The embedded CFF program is parsed lazily on first metric access
     via :class:`CFFFont` — itself a thin wrapper around
@@ -99,6 +99,16 @@ class PDType1CFont(PDType1Font):
         # injected program's outlines.
         self._glyph_heights.clear()
 
+    def get_font_program(self) -> CFFFont | None:  # type: ignore[override]
+        """Return the parsed embedded CFF program, or ``None`` when the
+        font is not embedded or the program failed to parse.
+
+        Overrides :class:`PDType1Font`'s ``/FontFile``-backed accessor so
+        the getter is symmetric with :meth:`set_font_program` and reads
+        the Type 1C program from ``/FontDescriptor /FontFile3``.
+        """
+        return self._get_cff_font()
+
     # ---------- glyph widths / paths via CFF program ----------
 
     def _program_width(self, code: int) -> float | None:
@@ -117,7 +127,7 @@ class PDType1CFont(PDType1Font):
             return None
         return advance * 1000.0 / units_per_em
 
-    def get_glyph_path(self, code: int) -> list[tuple]:  # type: ignore[override]
+    def get_glyph_path(self, code: int) -> GlyphPath:
         """CFF-backed glyph outline for ``code``, in font units. Returns
         ``[]`` when the font has no embedded CFF program or the code is
         unmapped."""
@@ -154,7 +164,7 @@ class PDType1CFont(PDType1Font):
         self._get_cff_font()
         return self._cff is False
 
-    def get_path(self, name: str) -> list[tuple]:  # type: ignore[override]
+    def get_path(self, name: str) -> GlyphPath:
         """Return the glyph outline for the named glyph, in font units.
 
         Mirrors upstream ``PDType1CFont.getPath(String name)`` —
@@ -179,7 +189,7 @@ class PDType1CFont(PDType1Font):
 
     # ---------- code → glyph name / GID ----------
 
-    def code_to_name(self, code: int) -> str | None:
+    def code_to_name(self, code: int) -> str | None:  # type: ignore[override]
         """Resolve a 1-byte character code to its PostScript glyph name
         via the font's ``/Encoding`` (with ``/Differences`` overlay).
 
@@ -229,7 +239,7 @@ class PDType1CFont(PDType1Font):
         upem = program.units_per_em
         return upem if upem > 0 else _CFF_DEFAULT_UNITS_PER_EM
 
-    def get_height(self, code: int) -> float:  # type: ignore[override]
+    def get_height(self, code: int) -> float:
         """Height of the glyph at ``code`` in *font units*.
 
         Computed from the glyph outline's bounding box (max-y minus
@@ -264,7 +274,7 @@ class PDType1CFont(PDType1Font):
         self._glyph_heights[name] = height
         return height
 
-    def get_average_font_width(self) -> float:  # type: ignore[override]
+    def get_average_font_width(self) -> float:
         """Mean glyph advance for this font in 1/1000 em.
 
         Lookup order:

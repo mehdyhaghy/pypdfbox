@@ -43,15 +43,19 @@ class COSArray(COSBase):
         """Raw entry at ``index`` — may be a ``COSObject`` indirect ref."""
         return self._items[index]
 
-    def get_object(self, index: int) -> COSBase | None:
-        """Resolved entry — if the entry is a ``COSObject``, returns its
-        target; otherwise returns the entry itself."""
-        item = self._items[index]
+    @staticmethod
+    def _resolve(item: COSBase) -> COSBase | None:
         if isinstance(item, COSObject):
-            item = item.get_object()
+            resolved = item.get_object()
+            item = COSNull.NULL if resolved is None else resolved
         if item is COSNull.NULL:
             return None
         return item
+
+    def get_object(self, index: int) -> COSBase | None:
+        """Resolved entry — if the entry is a ``COSObject``, returns its
+        target; otherwise returns the entry itself."""
+        return self._resolve(self._items[index])
 
     def getObject(self, index: int) -> COSBase | None:  # noqa: N802 - upstream Java name
         return self.get_object(index)
@@ -117,8 +121,12 @@ class COSArray(COSBase):
         return self.index_of_object(item)
 
     def remove_object(self, item: COSBase) -> bool:
-        """Remove the first matching item; alias for ``remove`` returning a bool."""
-        return self.remove(item)
+        """Remove the first matching item, resolving indirect object entries."""
+        index = self.index_of_object(item)
+        if index == -1:
+            return False
+        self.remove_at(index)
+        return True
 
     def removeObject(self, item: COSBase) -> bool:  # noqa: N802 - upstream Java name
         return self.remove_object(item)
@@ -168,7 +176,7 @@ class COSArray(COSBase):
     def get_name(self, index: int, default: str | None = None) -> str | None:
         if index >= len(self._items):
             return default
-        item = self._items[index]
+        item = self.get_object(index)
         if isinstance(item, COSName):
             return item.get_name()
         return default
@@ -186,7 +194,7 @@ class COSArray(COSBase):
     def get_int(self, index: int, default: int = -1) -> int:
         if index >= len(self._items):
             return default
-        item = self._items[index]
+        item = self.get_object(index)
         if isinstance(item, COSInteger):
             return item.value
         if isinstance(item, COSFloat):
@@ -206,7 +214,7 @@ class COSArray(COSBase):
     def get_float(self, index: int, default: float = -1.0) -> float:
         if index >= len(self._items):
             return default
-        item = self._items[index]
+        item = self.get_object(index)
         if isinstance(item, (COSInteger, COSFloat)):
             return float(item.value)
         return default
@@ -224,7 +232,7 @@ class COSArray(COSBase):
     def get_boolean(self, index: int, default: bool = False) -> bool:
         if index >= len(self._items):
             return default
-        item = self._items[index]
+        item = self.get_object(index)
         if isinstance(item, COSBoolean):
             return item.value
         return default
@@ -242,7 +250,7 @@ class COSArray(COSBase):
     def get_string(self, index: int, default: str | None = None) -> str | None:
         if index >= len(self._items):
             return default
-        item = self._items[index]
+        item = self.get_object(index)
         if isinstance(item, COSString):
             return item.get_string()
         return default
@@ -260,7 +268,8 @@ class COSArray(COSBase):
     def to_float_array(self) -> list[float]:
         """Convert numeric entries to floats; ``None`` entries become ``0``."""
         out: list[float] = []
-        for item in self._items:
+        for raw_item in self._items:
+            item = self._resolve(raw_item)
             if isinstance(item, (COSInteger, COSFloat)):
                 out.append(float(item.value))
             else:
@@ -274,7 +283,8 @@ class COSArray(COSBase):
         """Convert ``COSName`` entries to their string form. Non-name entries
         become ``None``."""
         out: list[str | None] = []
-        for item in self._items:
+        for raw_item in self._items:
+            item = self._resolve(raw_item)
             out.append(item.get_name() if isinstance(item, COSName) else None)
         return out
 
@@ -285,7 +295,8 @@ class COSArray(COSBase):
         """Convert ``COSString`` entries to their decoded text. Non-string
         entries become ``None``."""
         out: list[str | None] = []
-        for item in self._items:
+        for raw_item in self._items:
+            item = self._resolve(raw_item)
             out.append(item.get_string() if isinstance(item, COSString) else None)
         return out
 
@@ -295,7 +306,8 @@ class COSArray(COSBase):
     def to_cos_number_integer_list(self) -> list[int | None]:
         """Convert numeric entries to ``int``; non-numeric entries become ``None``."""
         out: list[int | None] = []
-        for item in self._items:
+        for raw_item in self._items:
+            item = self._resolve(raw_item)
             if isinstance(item, (COSInteger, COSFloat)):
                 out.append(int(item.value))
             else:
@@ -308,7 +320,8 @@ class COSArray(COSBase):
     def to_cos_number_float_list(self) -> list[float | None]:
         """Convert numeric entries to ``float``; non-numeric entries become ``None``."""
         out: list[float | None] = []
-        for item in self._items:
+        for raw_item in self._items:
+            item = self._resolve(raw_item)
             if isinstance(item, (COSInteger, COSFloat)):
                 out.append(float(item.value))
             else:

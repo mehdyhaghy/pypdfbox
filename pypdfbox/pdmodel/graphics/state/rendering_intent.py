@@ -32,9 +32,18 @@ class RenderingIntent(Enum):
                     return instance
         return cls.RELATIVE_COLORIMETRIC
 
+    @classmethod
+    def fromString(cls, value: str | None) -> RenderingIntent:  # noqa: N802
+        """Java-style alias for :meth:`from_string`."""
+        return cls.from_string(value)
+
     def string_value(self) -> str:
         """Return the spec string used in the PDF file."""
         return self.value
+
+    def stringValue(self) -> str:  # noqa: N802
+        """Java-style alias for :meth:`string_value`."""
+        return self.string_value()
 
 
 __all__ = ["RenderingIntent"]

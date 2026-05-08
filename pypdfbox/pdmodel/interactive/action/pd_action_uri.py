@@ -98,6 +98,15 @@ class PDActionURI(PDAction):
         return the entry to the implicit-default state."""
         self._action.remove_item(_IS_MAP)
 
+    def clear_track_mouse_position(self) -> None:
+        """Remove ``/IsMap`` using the track-mouse-position naming used by
+        :meth:`should_track_mouse_position` and
+        :meth:`set_track_mouse_position`.
+
+        Synonym of :meth:`clear_is_map`.
+        """
+        self.clear_is_map()
+
     # ---------- URI emptiness / scheme predicates ----------
 
     def is_empty(self) -> bool:

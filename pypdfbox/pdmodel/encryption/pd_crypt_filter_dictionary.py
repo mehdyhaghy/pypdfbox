@@ -10,7 +10,7 @@ filters by name through its /CF entry, and selects a default for streams via
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName, COSNumber
 
 _TYPE: COSName = COSName.get_pdf_name("Type")
 _CRYPT_FILTER: COSName = COSName.get_pdf_name("CryptFilter")
@@ -59,8 +59,14 @@ class PDCryptFilterDictionary:
     def get_cfm(self) -> str | None:
         return self._dict.get_name(_CFM)
 
-    def set_cfm(self, name: str) -> None:
+    def set_cfm(self, name: str | None) -> None:
         self._dict.set_name(_CFM, name)
+
+    def has_cfm(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_CFM), COSName)
+
+    def clear_cfm(self) -> None:
+        self._dict.remove_item(_CFM)
 
     # ---------- /Length (in bytes) ----------
 
@@ -70,6 +76,12 @@ class PDCryptFilterDictionary:
 
     def set_length(self, length: int) -> None:
         self._dict.set_int(_LENGTH, length)
+
+    def has_length(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_LENGTH), COSNumber)
+
+    def clear_length(self) -> None:
+        self._dict.remove_item(_LENGTH)
 
     # ---------- /Recipients (public-key crypt filters) ----------
 
@@ -82,6 +94,12 @@ class PDCryptFilterDictionary:
     def set_recipients(self, recipients: COSArray) -> None:
         self._dict.set_item(_RECIPIENTS, recipients)
 
+    def has_recipients(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_RECIPIENTS), COSArray)
+
+    def clear_recipients(self) -> None:
+        self._dict.remove_item(_RECIPIENTS)
+
     # ---------- /EncryptMetadata ----------
 
     def get_encrypt_metadata(self) -> bool:
@@ -90,6 +108,12 @@ class PDCryptFilterDictionary:
 
     def set_encrypt_metadata(self, encrypt_metadata: bool) -> None:
         self._dict.set_boolean(_ENCRYPT_METADATA, encrypt_metadata)
+
+    def has_encrypt_metadata(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_ENCRYPT_METADATA), COSBoolean)
+
+    def clear_encrypt_metadata(self) -> None:
+        self._dict.remove_item(_ENCRYPT_METADATA)
 
 
 __all__ = ["PDCryptFilterDictionary"]

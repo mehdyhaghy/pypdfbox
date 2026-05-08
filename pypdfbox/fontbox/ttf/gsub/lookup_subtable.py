@@ -354,7 +354,7 @@ class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
     """
 
     coverage_table: tuple[int, ...] = field(default_factory=tuple)
-    ligature_set_tables: tuple["LigatureSetTable", ...] = field(default_factory=tuple)
+    ligature_set_tables: tuple[LigatureSetTable, ...] = field(default_factory=tuple)
     substitute_format: int = 1
 
     def __post_init__(self) -> None:
@@ -367,7 +367,7 @@ class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
     def get_coverage_table(self) -> tuple[int, ...]:
         return self.coverage_table
 
-    def get_ligature_set_tables(self) -> tuple["LigatureSetTable", ...]:
+    def get_ligature_set_tables(self) -> tuple[LigatureSetTable, ...]:
         return self.ligature_set_tables
 
     def do_substitution(self, original_glyph_id: int, coverage_index: int) -> int:
@@ -409,13 +409,16 @@ class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
             best_len = 0
             for lig in self.ligature_set_tables[cov_idx].ligature_tables:
                 comps = lig.component_glyph_ids
+                if not comps:
+                    continue
                 end = i + 1 + len(comps)
                 if end > n:
                     continue
-                if all(glyph_ids[i + 1 + k] == comps[k] for k in range(len(comps))):
-                    if len(comps) >= best_len:
-                        best = lig
-                        best_len = len(comps)
+                if all(
+                    glyph_ids[i + 1 + k] == comps[k] for k in range(len(comps))
+                ) and len(comps) >= best_len:
+                    best = lig
+                    best_len = len(comps)
             if best is None:
                 out.append(gid)
                 i += 1

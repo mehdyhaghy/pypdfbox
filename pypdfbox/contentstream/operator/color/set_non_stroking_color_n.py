@@ -22,6 +22,9 @@ class SetNonStrokingColorN(SetNonStrokingColor):
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         del operator
+        context = self._context
+        if context is not None and not context.is_should_process_color_operators():
+            return
         color_space = self.get_color_space()
         if color_space is None:
             return

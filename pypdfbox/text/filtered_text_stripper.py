@@ -39,6 +39,10 @@ fonts the lite stripper exposes today.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
+from typing import Any, cast
+
+from pypdfbox.cos import COSArray, COSString
 
 from .pdf_text_stripper import PDFTextStripper, _TextState
 from .text_position import TextPosition
@@ -139,14 +143,14 @@ class AngleCollector(PDFTextStripper):
 
     def __contains__(self, angle: object) -> bool:
         try:
-            return ((int(angle) + 360) % 360) in self._angles  # type: ignore[arg-type]
+            return ((int(cast(Any, angle)) + 360) % 360) in self._angles
         except (TypeError, ValueError):
             return False
 
     def __len__(self) -> int:
         return len(self._angles)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[int]:
         # Iterate in ascending order to match upstream ``TreeSet``
         # iteration semantics — callers that just need a deterministic
         # walk can do ``for a in collector`` instead of
@@ -160,7 +164,12 @@ class AngleCollector(PDFTextStripper):
         self.process_text_position(text)
         return True
 
-    def _emit(self, s, state, positions):  # type: ignore[override]
+    def _emit(
+        self,
+        s: COSString,
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> None:
         # Record the angle from parser state before ``should_skip_glyph``
         # suppresses output. This preserves upstream AngleCollector's
         # side-effect-only behaviour while avoiding a second parse pass.
@@ -208,12 +217,22 @@ class FilteredTextStripper(PDFTextStripper):
     def should_skip_glyph(self, text: TextPosition) -> bool:
         return get_angle(text) != self._target_angle
 
-    def _emit(self, s, state, positions):  # type: ignore[override]
+    def _emit(
+        self,
+        s: COSString,
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> None:
         if _state_angle(state) != self._target_angle:
             return
         super()._emit(s, state, positions)
 
-    def _emit_tj_array(self, arr, state, positions):  # type: ignore[override]
+    def _emit_tj_array(
+        self,
+        arr: COSArray,
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> None:
         if _state_angle(state) != self._target_angle:
             return
         super()._emit_tj_array(arr, state, positions)

@@ -19,8 +19,9 @@ class PDMarkedContentReference:
     A marked-content reference (``/Type /MCR`` dictionary). Mirrors PDFBox
     ``PDMarkedContentReference``.
 
-    Lite surface: typed ``PDPage`` for ``/Pg`` is deferred — ``get_pg`` /
-    ``set_pg`` operate on raw ``COSDictionary``.
+    Exposes typed ``PDPage`` accessors for ``/Pg`` via :meth:`get_page` /
+    :meth:`set_page`, plus raw ``COSDictionary`` aliases via :meth:`get_pg` /
+    :meth:`set_pg` for callers that need the underlying COS object.
     """
 
     TYPE: str = "MCR"
@@ -56,7 +57,7 @@ class PDMarkedContentReference:
 
     # ---------- /Pg page (typed PDPage — mirrors upstream getPage) ----
 
-    def get_page(self) -> "PDPage | None":
+    def get_page(self) -> PDPage | None:
         """Resolve ``/Pg`` to a typed :class:`PDPage`.
 
         Mirrors upstream ``PDMarkedContentReference.getPage()`` (PDF 32000-1
@@ -73,18 +74,28 @@ class PDMarkedContentReference:
 
         return PDPage(page_dict)
 
-    def set_page(self, page: "PDPage | COSDictionary | None") -> None:
+    def set_page(self, page: PDPage | COSDictionary | None) -> None:
         """Set ``/Pg`` to a typed :class:`PDPage` wrapper or remove it.
 
         Mirrors upstream ``PDMarkedContentReference.setPage(PDPage)``.
-        ``None`` removes the entry; any wrapper exposing ``get_cos_object``
-        is unwrapped to its underlying dictionary.
+        ``None`` removes the entry; raw ``COSDictionary`` values are accepted
+        as the low-level alias used elsewhere in this port.
         """
         if page is None:
             self._dictionary.remove_item(_PG)
             return
-        cos = page.get_cos_object() if hasattr(page, "get_cos_object") else page
-        self._dictionary.set_item(_PG, cos)
+        from pypdfbox.pdmodel.pd_page import PDPage
+
+        if isinstance(page, PDPage):
+            self._dictionary.set_item(_PG, page.get_cos_object())
+            return
+        if isinstance(page, COSDictionary):
+            self._dictionary.set_item(_PG, page)
+            return
+        raise TypeError(
+            "set_page expects a PDPage, COSDictionary, or None; "
+            f"got {type(page).__name__}"
+        )
 
     def has_pg(self) -> bool:
         """Return ``True`` when ``/Pg`` is present and is a dictionary.

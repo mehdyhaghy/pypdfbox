@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
 
 from pypdfbox import Loader
 from pypdfbox.cos import COSDictionary, COSDocument
+from pypdfbox.pdmodel.fdf import FDFDocument
 
 
 def _build_pdf(objects: list[bytes], trailer: bytes, version: bytes = b"1.4") -> bytes:
@@ -77,10 +79,9 @@ def test_load_alias_matches_load_pdf() -> None:
         _assert_minimal_document(via_canonical)
         # Cross-check: same trailer /Root resolves the same catalog Type
         # under both entry points.
-        assert (
-            via_canonical.get_catalog().get_name("Type")
-            == "Catalog"
-        )
+        catalog = via_canonical.get_catalog()
+        assert catalog is not None
+        assert catalog.get_name("Type") == "Catalog"
     finally:
         via_canonical.close()
 
@@ -139,6 +140,18 @@ def test_load_xfdf_raises_not_implemented() -> None:
         Loader.load_xfdf(b"<?xml version='1.0'?><xfdf/>")
 
 
-def test_load_fdf_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="FDF"):
-        Loader.load_fdf(b"%FDF-1.2\n")
+def test_load_fdf_delegates_to_fdf_document_loader() -> None:
+    source = FDFDocument()
+    source.get_catalog().get_fdf().set_status("OK")
+    source.get_catalog().get_fdf().set_file("source.pdf")
+    buf = io.BytesIO()
+    source.save(buf)
+    source.close()
+
+    loaded = Loader.load_fdf(buf.getvalue())
+    try:
+        assert isinstance(loaded, FDFDocument)
+        assert loaded.get_catalog().get_fdf().get_status() == "OK"
+        assert loaded.get_catalog().get_fdf().get_file() == "source.pdf"
+    finally:
+        loaded.close()

@@ -48,12 +48,16 @@ class PDBorderEffectDictionary:
         return self._dict.get_float(_I, 0.0)
 
     def has_intensity(self) -> bool:
-        """True when ``/I`` is explicitly present on the dictionary.
+        """True when ``/I`` is explicitly present as a numeric value.
 
         :meth:`get_intensity` masks an absent ``/I`` by returning ``0.0``;
         this predicate distinguishes "explicitly 0" from "missing entry".
         """
-        return self._dict.contains_key(_I)
+        return self._dict.has_float(_I)
+
+    def clear_intensity(self) -> None:
+        """Remove the optional ``/I`` intensity entry."""
+        self._dict.remove_item(_I)
 
     # ---------- /S (style) ----------
 
@@ -67,13 +71,17 @@ class PDBorderEffectDictionary:
         return value if value is not None else self.STYLE_SOLID
 
     def has_style(self) -> bool:
-        """True when ``/S`` is explicitly present on the dictionary.
+        """True when ``/S`` is explicitly present as a name.
 
         :meth:`get_style` masks an absent ``/S`` by returning
         ``STYLE_SOLID`` (the spec default); this predicate distinguishes
         "explicitly solid" from "missing entry".
         """
-        return self._dict.contains_key(_S)
+        return self._dict.has_name(_S)
+
+    def clear_style(self) -> None:
+        """Remove the optional ``/S`` style entry."""
+        self._dict.remove_item(_S)
 
     # ---------- /S predicate helpers ----------
     #

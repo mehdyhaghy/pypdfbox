@@ -52,8 +52,9 @@ class ASCII85Decode(Filter):
         # not incremental.
         data = encoded.read()
         decoded_bytes = self._decode_bytes(data)
-        decoded.write(decoded_bytes)
-        return DecodeResult(parameters if parameters is not None else COSDictionary())
+        bytes_written = decoded.write(decoded_bytes)
+        out_params = parameters if parameters is not None else COSDictionary()
+        return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
     def encode(
         self,
@@ -96,6 +97,8 @@ class ASCII85Decode(Filter):
             col = (col + 1) % 5
         if not cleaned:
             return b""
+        if col == 1:
+            raise OSError("ASCII85: final partial group has only one digit")
         try:
             return base64.a85decode(bytes(cleaned), adobe=False)
         except (ValueError, binascii.Error) as exc:

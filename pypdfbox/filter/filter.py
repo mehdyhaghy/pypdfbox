@@ -12,6 +12,10 @@ from .decode_result import DecodeResult
 from .missing_image_reader_exception import MissingImageReaderException
 
 _LOG = logging.getLogger(__name__)
+_F = COSName.get_pdf_name("F")
+_FILTER = COSName.get_pdf_name("Filter")
+_DP = COSName.get_pdf_name("DP")
+_DECODE_PARMS = COSName.get_pdf_name("DecodeParms")
 
 
 class Filter(ABC):
@@ -187,8 +191,8 @@ class Filter(ABC):
         # ``get_dictionary_object(key, default)`` resolves ``key`` first
         # and falls back to ``default`` if absent — same dual-key overload
         # upstream's ``getDictionaryObject(COSName.F, COSName.FILTER)`` uses.
-        filter_obj = dictionary.get_dictionary_object("F", "Filter")
-        params_obj = dictionary.get_dictionary_object("DP", "DecodeParms")
+        filter_obj = dictionary.get_dictionary_object(_F, _FILTER)
+        params_obj = dictionary.get_dictionary_object(_DP, _DECODE_PARMS)
         if isinstance(filter_obj, COSName) and isinstance(params_obj, COSDictionary):
             # PDFBOX-3932: single filter name → params is the parameter dict.
             return params_obj

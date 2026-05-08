@@ -35,7 +35,7 @@ def test_default_array_has_at_least_two_slots() -> None:
     assert isinstance(arr, COSArray)
     assert arr.size() >= 2
     assert arr.get_name(1) == "FitB"
-    assert arr.get_object(0) is COSNull.NULL
+    assert arr.get(0) is COSNull.NULL
 
 
 def test_set_and_get_page_number_round_trip() -> None:

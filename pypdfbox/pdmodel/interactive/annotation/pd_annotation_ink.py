@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
 from .pd_annotation_markup import PDAnnotationMarkup
+
+if TYPE_CHECKING:
+    from .pd_ink_list import PDInkList
 
 _INK_LIST: COSName = COSName.get_pdf_name("InkList")
 
@@ -24,7 +29,7 @@ class PDAnnotationInk(PDAnnotationMarkup):
 
     # ---------- /InkList ----------
 
-    def get_ink_list(self) -> "PDInkList | None":
+    def get_ink_list(self) -> PDInkList | None:
         from .pd_ink_list import PDInkList
 
         value = self._dict.get_dictionary_object(_INK_LIST)
@@ -32,7 +37,7 @@ class PDAnnotationInk(PDAnnotationMarkup):
             return PDInkList(value)
         return None
 
-    def set_ink_list(self, ink: "PDInkList | COSArray | None") -> None:
+    def set_ink_list(self, ink: PDInkList | COSArray | None) -> None:
         from .pd_ink_list import PDInkList
 
         if ink is None:
@@ -66,7 +71,7 @@ class PDAnnotationInk(PDAnnotationMarkup):
 
     def set_ink_paths(
         self,
-        paths: list[list[float]] | list[tuple[float, ...]] | tuple | None,
+        paths: list[list[float]] | list[tuple[float, ...]] | tuple[()] | None,
     ) -> None:
         """Replace ``/InkList`` from a raw list of float lists. ``None``
         removes the entry.

@@ -8,12 +8,12 @@ def _make_path_pen() -> Any:
     the simple list-of-tuples format used elsewhere in pypdfbox
     (mirrors ``cff_font._make_path_pen``).
     """
-    from fontTools.pens.basePen import BasePen  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
 
-    class _PathPen(BasePen):
+    class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
-            self.commands: list[tuple] = []
+            self.commands: list[tuple[Any, ...]] = []
 
         def _moveTo(self, pt: tuple[float, float]) -> None:
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
@@ -93,7 +93,7 @@ class Type2CharString:
         self._default_width_x = float(default_width_x)
         self._nominal_width_x = float(nominal_width_x)
         self._t2: Any = None
-        self._cached_path: list[tuple] | None = None
+        self._cached_path: list[tuple[Any, ...]] | None = None
         self._cached_width: float | None = None
         # Mirror upstream's ``type1Sequence`` (inherited from
         # ``Type1CharString`` in Java). Upstream's
@@ -105,12 +105,12 @@ class Type2CharString:
         # build / inspect a Type 1 sequence buffer.
         self._type1_sequence: list[Any] = []
 
-        from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]  # noqa: PLC0415
 
-        if isinstance(sequence, T2CharString):
+        if isinstance(sequence, psCharStrings.T2CharString):
             self._t2 = sequence
         elif isinstance(sequence, (bytes, bytearray, memoryview)):
-            self._t2 = T2CharString(bytecode=bytes(sequence))
+            self._t2 = psCharStrings.T2CharString(bytecode=bytes(sequence))
         elif isinstance(sequence, list):
             # Caller passed a pre-decompiled program list. fontTools
             # accepts a heterogeneous list of numbers + string operator
@@ -119,9 +119,12 @@ class Type2CharString:
             program = [
                 _coerce_program_token(tok) for tok in sequence
             ]
-            self._t2 = T2CharString(program=program)
+            self._t2 = psCharStrings.T2CharString(program=program)
+            # Preserve the original tokens for sequence accessors and
+            # upstream-shaped stringification, matching Type1CharString.
+            self._type1_sequence = list(sequence)
         elif sequence is None:
-            self._t2 = T2CharString()
+            self._t2 = psCharStrings.T2CharString()
         else:
             msg = (
                 "sequence must be a T2CharString, bytes, list of program "
@@ -166,7 +169,7 @@ class Type2CharString:
         """
         if self._cached_width is not None:
             return self._cached_width
-        from fontTools.misc.psCharStrings import T2WidthExtractor  # noqa: PLC0415
+        from fontTools.misc import psCharStrings  # noqa: PLC0415
 
         # The width extractor needs access to local + global subrs to
         # follow callsubr / callgsubr in the prologue. fontTools
@@ -176,7 +179,7 @@ class Type2CharString:
         priv = getattr(self._t2, "private", None)
         local_subrs = getattr(priv, "Subrs", []) or []
         global_subrs = getattr(self._t2, "globalSubrs", []) or []
-        extractor = T2WidthExtractor(
+        extractor = psCharStrings.T2WidthExtractor(
             local_subrs,
             global_subrs,
             self._nominal_width_x,
@@ -190,7 +193,7 @@ class Type2CharString:
         self._cached_width = float(extractor.width)
         return self._cached_width
 
-    def get_path(self) -> list[tuple]:
+    def get_path(self) -> list[tuple[Any, ...]]:
         """Glyph outline as a list of draw commands in font units.
 
         Mirrors ``Type1CharString.getPath()``. Returns the same
@@ -212,7 +215,7 @@ class Type2CharString:
         except Exception:  # noqa: BLE001
             self._cached_path = []
             return []
-        self._cached_path = list(pen.commands)  # type: ignore[attr-defined]
+        self._cached_path = list(pen.commands)
         return list(self._cached_path)
 
     def get_bounds(self) -> tuple[float, float, float, float] | None:
@@ -277,10 +280,15 @@ class Type2CharString:
 
     def __str__(self) -> str:
         """Stringified Type 1 sequence — mirrors upstream
-        ``Type1CharString.toString()`` (inherited). Returns ``"[]"`` when
-        the conversion buffer has not been populated by ``add_command``.
+        ``Type1CharString.toString()`` (inherited). Operates on the
+        preserved list-form sequence when available; falls back to the
+        fontTools ``T2CharString`` program list otherwise. Returns
+        ``"[]"`` when neither is populated.
         """
         seq = self._type1_sequence
+        if not seq:
+            program = getattr(self._t2, "program", None)
+            seq = list(program) if program else []
         if not seq:
             return "[]"
         body = ", ".join(_stringify_token(tok) for tok in seq)

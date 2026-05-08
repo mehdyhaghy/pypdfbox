@@ -40,8 +40,8 @@ from __future__ import annotations
 
 import argparse
 import zlib
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from PIL import Image
 
@@ -61,12 +61,17 @@ from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 # Aliases (us-legal == legal, ledger == tabloid) are wired below so the
 # CLI accepts both spellings; matches upstream's case-insensitive
 # ``createRectangle`` lookup.
+_LETTER = PDRectangle.from_width_height(PDRectangle.LETTER_WIDTH, PDRectangle.LETTER_HEIGHT)
+_LEGAL = PDRectangle.from_width_height(PDRectangle.LEGAL_WIDTH, PDRectangle.LEGAL_HEIGHT)
+_A4 = PDRectangle.from_width_height(PDRectangle.A4_WIDTH, PDRectangle.A4_HEIGHT)
+
 _PAGE_SIZES: dict[str, PDRectangle] = {
     # North American
-    "letter": PDRectangle.LETTER,  # type: ignore[attr-defined]
-    "legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
-    "us-legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
-    "us_legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
+    "letter": _LETTER,
+    "legal": _LEGAL,
+    "us-legal": _LEGAL,
+    "us_legal": _LEGAL,
+    "uslegal": _LEGAL,
     "executive": PDRectangle(0.0, 0.0, 522.0, 756.0),
     "tabloid": PDRectangle(0.0, 0.0, 792.0, 1224.0),
     "ledger": PDRectangle(0.0, 0.0, 792.0, 1224.0),
@@ -75,7 +80,7 @@ _PAGE_SIZES: dict[str, PDRectangle] = {
     "a1": PDRectangle(0.0, 0.0, 1684.0, 2384.0),
     "a2": PDRectangle(0.0, 0.0, 1191.0, 1684.0),
     "a3": PDRectangle(0.0, 0.0, 842.0, 1191.0),
-    "a4": PDRectangle.A4,  # type: ignore[attr-defined]
+    "a4": _A4,
     "a5": PDRectangle(0.0, 0.0, 420.0, 595.0),
     "a6": PDRectangle(0.0, 0.0, 298.0, 420.0),
     # ISO 216 B-series (commonly requested; subset only)
@@ -84,6 +89,8 @@ _PAGE_SIZES: dict[str, PDRectangle] = {
 }
 
 _DEFAULT_PAGE_SIZE = "Letter"
+_FILTER = COSName.get_pdf_name("Filter")
+_FLATE_DECODE = COSName.get_pdf_name("FlateDecode")
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +132,8 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
     )
     p.add_argument(
         "-orientation", "--orientation", dest="orientation",
-        default="portrait", choices=("portrait", "landscape", "auto"),
+        default="portrait", type=_parse_orientation,
+        choices=("portrait", "landscape", "auto"),
         help="page orientation (default: portrait). 'auto' picks landscape "
         "when the image is wider than it is tall.",
     )
@@ -181,7 +189,7 @@ def _create_jpeg_xobject(path: Path) -> PDImageXObject:
 
     cos = COSStream()
     cos.set_raw_data(raw)
-    cos.set_item(COSName.FILTER, COSName.get_pdf_name("DCTDecode"))  # type: ignore[attr-defined]
+    cos.set_item(_FILTER, COSName.get_pdf_name("DCTDecode"))
     image = PDImageXObject(cos)
     image.set_width(width)
     image.set_height(height)
@@ -224,7 +232,7 @@ def _create_lossless_xobject(path: Path) -> PDImageXObject:
     encoded = zlib.compress(pixel_bytes)
     cos = COSStream()
     cos.set_raw_data(encoded)
-    cos.set_item(COSName.FILTER, COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    cos.set_item(_FILTER, _FLATE_DECODE)
     image = PDImageXObject(cos)
     image.set_width(width)
     image.set_height(height)
@@ -274,7 +282,25 @@ def _resolve_page_size(name: str) -> PDRectangle | None:
         rect = _PAGE_SIZES.get(key.replace("-", "_"))
     if rect is None:
         rect = _PAGE_SIZES.get(key.replace("-", "").replace("_", ""))
-    return rect if rect is not None else PDRectangle.LETTER  # type: ignore[attr-defined]
+    return rect if rect is not None else _LETTER
+
+
+def _normalize_orientation(value: str) -> str:
+    """Return a canonical orientation value or raise ``ValueError``."""
+    orientation = (value or "portrait").strip().lower()
+    if orientation not in {"portrait", "landscape", "auto"}:
+        raise ValueError(
+            "orientation must be one of: portrait, landscape, auto"
+        )
+    return orientation
+
+
+def _parse_orientation(value: str) -> str:
+    """argparse adapter for case-insensitive orientation values."""
+    try:
+        return _normalize_orientation(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _orient(media_box: PDRectangle, orientation: str, image: PDImageXObject) -> PDRectangle:
@@ -283,9 +309,8 @@ def _orient(media_box: PDRectangle, orientation: str, image: PDImageXObject) -> 
     ``auto`` swaps when the image is wider than tall."""
     if orientation == "landscape":
         return PDRectangle(0.0, 0.0, media_box.get_height(), media_box.get_width())
-    if orientation == "auto":
-        if image.get_width() > image.get_height():
-            return PDRectangle(0.0, 0.0, media_box.get_height(), media_box.get_width())
+    if orientation == "auto" and image.get_width() > image.get_height():
+        return PDRectangle(0.0, 0.0, media_box.get_height(), media_box.get_width())
     return media_box
 
 
@@ -336,6 +361,7 @@ def images_to_pdf(
     at the lower-left of the printable area at its intrinsic pixel size.
     """
     media_box_template = _resolve_page_size(page_size)
+    orientation = _normalize_orientation(orientation)
     margin = max(0.0, float(margin_pt))
     doc = PDDocument()
     try:
@@ -405,7 +431,7 @@ def run(args: argparse.Namespace) -> int:
     # pick a deterministic precedence: among the aliases, auto wins,
     # then landscape, then portrait. Aliases override -orientation.
     # This matches upstream where -autoOrientation overrides -landscape.
-    orientation = (args.orientation or "portrait").lower()
+    orientation = args.orientation or "portrait"
     if getattr(args, "_portrait", False):
         orientation = "portrait"
     if getattr(args, "_landscape", False):

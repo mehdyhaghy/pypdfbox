@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO, cast
 
 from .signature_interface import SignatureInterface
 
@@ -75,10 +75,11 @@ class Pkcs7Signature(SignatureInterface):
         # over the bracketed bytes, NOT carried inside the signature blob).
         # ``Binary`` suppresses the SMIME-style CRLF rewriting that would
         # otherwise mangle the digest input.
-        return builder.sign(
+        signed = builder.sign(
             serialization.Encoding.DER,
             [pkcs7.PKCS7Options.DetachedSignature, pkcs7.PKCS7Options.Binary],
         )
+        return cast(bytes, signed)
 
 
 __all__ = ["Pkcs7Signature"]

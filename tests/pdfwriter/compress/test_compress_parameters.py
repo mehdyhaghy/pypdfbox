@@ -97,11 +97,11 @@ def test_eq_against_non_instance_returns_not_implemented() -> None:
 
 
 def test_no_compression_singleton_equals_zero_constructor() -> None:
-    assert CompressParameters.NO_COMPRESSION == CompressParameters(0)
+    assert CompressParameters(0) == CompressParameters.NO_COMPRESSION
 
 
 def test_default_compression_singleton_equals_default_constructor() -> None:
-    assert CompressParameters.DEFAULT_COMPRESSION == CompressParameters()
+    assert CompressParameters() == CompressParameters.DEFAULT_COMPRESSION
 
 
 def test_hash_equal_for_equal_instances() -> None:

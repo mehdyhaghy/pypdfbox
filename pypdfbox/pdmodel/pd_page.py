@@ -144,8 +144,15 @@ class PDPage:
         """Return the immediate ``/Parent`` ``COSDictionary`` (a page-tree
         intermediate node, *not* a :class:`PDPageTree`). Mirrors upstream
         ``PDPage.getCOSParent`` — used by the page-tree walker to splice
-        pages into and out of intermediate nodes."""
+        pages into and out of intermediate nodes.
+
+        Upstream's page-tree code also accepts ``/P`` as a legacy short-form
+        parent key. Keep this accessor aligned with the inheritable walk so
+        malformed/older producer output can still be traversed consistently.
+        """
         parent = self._page.get_dictionary_object(_PARENT)
+        if not isinstance(parent, COSDictionary):
+            parent = self._page.get_dictionary_object(_P)
         if isinstance(parent, COSDictionary):
             return parent
         return None
@@ -249,6 +256,10 @@ class PDPage:
             return not contents.is_empty()
         return False
 
+    def clear_contents(self) -> None:
+        """Remove the ``/Contents`` entry."""
+        self._page.remove_item(_CONTENTS)
+
     def set_contents(
         self,
         stream: COSStream | list[COSStream] | COSArray | None,
@@ -259,12 +270,12 @@ class PDPage:
 
         - ``None`` — remove the entry entirely.
         - a single :class:`COSStream` — written verbatim (single-stream form).
-        - a ``list[COSStream]`` or :class:`COSArray` of streams — written as
-          the array form. Mirrors upstream's ``setContents(List<PDStream>)``
-          overload.
+        - a ``list`` of streams or stream wrappers, or :class:`COSArray` of
+          streams — written as the array form. Mirrors upstream's
+          ``setContents(List<PDStream>)`` overload.
         """
         if stream is None:
-            self._page.remove_item(_CONTENTS)
+            self.clear_contents()
             return
         if isinstance(stream, COSStream):
             self._page.set_item(_CONTENTS, stream)
@@ -599,7 +610,7 @@ class PDPage:
         :class:`PDAnnotation` (we read its underlying ``COSDictionary``).
         """
         if annotations is None:
-            self._page.remove_item(_ANNOTS)
+            self.clear_annotations()
             return
         from .interactive.annotation import PDAnnotation
 
@@ -625,7 +636,7 @@ class PDPage:
 
     def set_thumb(self, thumb: Any) -> None:
         if thumb is None:
-            self._page.remove_item(_THUMB)
+            self.clear_thumb()
             return
         self._page.set_item(_THUMB, thumb.get_cos_object())
 
@@ -667,7 +678,7 @@ class PDPage:
         from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
 
         if beads is None:
-            self._page.remove_item(_BEADS)
+            self.clear_thread_beads()
             return
         arr = COSArray()
         for bead in beads:
@@ -689,7 +700,7 @@ class PDPage:
         before the viewer advances automatically).
         """
         if trans is None:
-            self._page.remove_item(_TRANS)
+            self.clear_transition()
             if duration is not None:
                 from pypdfbox.cos import COSFloat
 
@@ -720,7 +731,7 @@ class PDPage:
 
     def set_actions(self, actions: Any) -> None:
         if actions is None:
-            self._page.remove_item(_AA)
+            self.clear_actions()
             return
         self._page.set_item(_AA, actions.get_cos_object())
 
@@ -762,7 +773,7 @@ class PDPage:
         ``None`` to remove the entry. Mirrors upstream
         ``PDPage.setMetadata``."""
         if metadata is None:
-            self._page.remove_item(_METADATA)
+            self.clear_metadata()
             return
         cos = metadata.get_cos_object() if hasattr(metadata, "get_cos_object") else metadata
         self._page.set_item(_METADATA, cos)
@@ -771,9 +782,12 @@ class PDPage:
 
     def get_group(self) -> COSDictionary | None:
         """Return the ``/Group`` transparency-group dictionary, or ``None``
-        if absent. Upstream returns a ``PDTransparencyGroupAttributes`` —
-        we surface the raw COS dictionary until that wrapper lands with
-        the graphics-state cluster (PRD §6.7)."""
+        if absent or malformed.
+
+        Upstream returns a ``PDTransparencyGroupAttributes``. This accessor
+        preserves the established local raw-COS return type; callers that
+        need the typed graphics wrapper can wrap the returned dictionary.
+        """
         value = self._page.get_dictionary_object(_GROUP)
         if isinstance(value, COSDictionary):
             return value
@@ -784,7 +798,7 @@ class PDPage:
         :class:`COSDictionary` or any object exposing ``get_cos_object()``.
         ``None`` removes the entry."""
         if group is None:
-            self._page.remove_item(_GROUP)
+            self.clear_group()
             return
         cos = group.get_cos_object() if hasattr(group, "get_cos_object") else group
         if not isinstance(cos, COSDictionary):
@@ -827,7 +841,7 @@ class PDPage:
         )
 
         if viewports is None:
-            self._page.remove_item(_VP)
+            self.clear_viewports()
             return
         arr = COSArray()
         for vp in viewports:
@@ -933,7 +947,7 @@ class PDPage:
         PDF 2.0+), ``"W"`` (widget order, PDF 2.0+). We do not validate —
         upstream tolerates unknown values for forward compatibility."""
         if order is None:
-            self._page.remove_item(_TABS)
+            self.clear_tab_order()
             return
         self._page.set_name(_TABS, order)
 
@@ -960,7 +974,7 @@ class PDPage:
         """Set ``/Dur`` directly without touching ``/Trans``. ``None``
         removes the entry. Companion to :meth:`get_duration`."""
         if duration is None:
-            self._page.remove_item(_DUR)
+            self.clear_duration()
             return
         from pypdfbox.cos import COSFloat
 
@@ -969,52 +983,96 @@ class PDPage:
     # ---------- presence predicates ----------
     #
     # Pythonic ``has_*`` helpers — upstream PDFBox has only ``hasContents``
-    # but our codebase consistently exposes presence checks for callers who
-    # want to avoid materialising the wrapper objects.
+    # but our codebase consistently exposes cheap direct key-presence checks
+    # for callers who want to avoid resolving malformed COS objects or
+    # materialising wrapper objects.
 
     def has_metadata(self) -> bool:
-        """Return whether this page has a ``/Metadata`` XMP stream."""
-        return isinstance(self._page.get_dictionary_object(_METADATA), COSStream)
+        """Return whether this page has a direct ``/Metadata`` entry."""
+        return self._page.contains_key(_METADATA)
 
     def has_thumb(self) -> bool:
-        """Return whether this page has a ``/Thumb`` thumbnail stream."""
-        return isinstance(self._page.get_dictionary_object(_THUMB), COSStream)
+        """Return whether this page has a direct ``/Thumb`` entry."""
+        return self._page.contains_key(_THUMB)
 
     def has_transition(self) -> bool:
-        """Return whether this page has a ``/Trans`` transition dict."""
-        return isinstance(self._page.get_dictionary_object(_TRANS), COSDictionary)
+        """Return whether this page has a direct ``/Trans`` entry."""
+        return self._page.contains_key(_TRANS)
 
     def has_actions(self) -> bool:
-        """Return whether this page has a non-empty ``/AA`` dict.
+        """Return whether this page has a direct ``/AA`` entry.
 
         This is a *read-only* probe — unlike :meth:`get_actions` it does
         **not** auto-materialise an empty ``/AA`` sub-dictionary, so it's
-        safe to call on read-only inspection paths that mustn't mutate
+        safe to call on read-only inspection paths that must not mutate
         the page dict."""
-        actions = self._page.get_dictionary_object(_AA)
-        return isinstance(actions, COSDictionary) and len(actions) > 0
+        return self._page.contains_key(_AA)
 
     def has_annotations(self) -> bool:
-        """Return whether this page has a non-empty ``/Annots`` array."""
-        annots = self._page.get_dictionary_object(_ANNOTS)
-        return isinstance(annots, COSArray) and not annots.is_empty()
+        """Return whether this page has a direct ``/Annots`` entry."""
+        return self._page.contains_key(_ANNOTS)
 
     def has_thread_beads(self) -> bool:
-        """Return whether this page has a non-empty ``/B`` thread-bead array."""
-        beads = self._page.get_dictionary_object(_BEADS)
-        return isinstance(beads, COSArray) and not beads.is_empty()
+        """Return whether this page has a direct ``/B`` thread-bead entry."""
+        return self._page.contains_key(_BEADS)
 
     def has_viewports(self) -> bool:
-        """Return whether this page has a ``/VP`` viewports array."""
-        return isinstance(self._page.get_dictionary_object(_VP), COSArray)
+        """Return whether this page has a direct ``/VP`` entry."""
+        return self._page.contains_key(_VP)
 
     def has_group(self) -> bool:
-        """Return whether this page has a ``/Group`` transparency-group dict."""
-        return isinstance(self._page.get_dictionary_object(_GROUP), COSDictionary)
+        """Return whether this page has a direct ``/Group`` entry."""
+        return self._page.contains_key(_GROUP)
 
     def has_tab_order(self) -> bool:
-        """Return whether this page has a ``/Tabs`` annotation tab-order entry."""
-        return self._page.get_name(_TABS) is not None
+        """Return whether this page has a direct ``/Tabs`` entry."""
+        return self._page.contains_key(_TABS)
+
+    def has_duration(self) -> bool:
+        """Return whether this page has a direct ``/Dur`` entry."""
+        return self._page.contains_key(_DUR)
+
+    # ---------- clear helpers ----------
+
+    def clear_metadata(self) -> None:
+        """Remove the ``/Metadata`` entry."""
+        self._page.remove_item(_METADATA)
+
+    def clear_thumb(self) -> None:
+        """Remove the ``/Thumb`` entry."""
+        self._page.remove_item(_THUMB)
+
+    def clear_transition(self) -> None:
+        """Remove the ``/Trans`` entry."""
+        self._page.remove_item(_TRANS)
+
+    def clear_actions(self) -> None:
+        """Remove the ``/AA`` entry."""
+        self._page.remove_item(_AA)
+
+    def clear_annotations(self) -> None:
+        """Remove the ``/Annots`` entry."""
+        self._page.remove_item(_ANNOTS)
+
+    def clear_thread_beads(self) -> None:
+        """Remove the ``/B`` thread-beads entry."""
+        self._page.remove_item(_BEADS)
+
+    def clear_viewports(self) -> None:
+        """Remove the ``/VP`` viewports entry."""
+        self._page.remove_item(_VP)
+
+    def clear_group(self) -> None:
+        """Remove the ``/Group`` entry."""
+        self._page.remove_item(_GROUP)
+
+    def clear_tab_order(self) -> None:
+        """Remove the ``/Tabs`` entry."""
+        self._page.remove_item(_TABS)
+
+    def clear_duration(self) -> None:
+        """Remove the ``/Dur`` entry."""
+        self._page.remove_item(_DUR)
 
     # ---------- equality / repr ----------
 

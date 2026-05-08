@@ -19,8 +19,8 @@ class CompressParameters:
 
     # ``DEFAULT_COMPRESSION`` and ``NO_COMPRESSION`` are populated below
     # the class body — they need ``CompressParameters`` itself to exist.
-    DEFAULT_COMPRESSION: ClassVar["CompressParameters"]
-    NO_COMPRESSION: ClassVar["CompressParameters"]
+    DEFAULT_COMPRESSION: ClassVar[CompressParameters]
+    NO_COMPRESSION: ClassVar[CompressParameters]
 
     def __init__(self, object_stream_size: int | None = None) -> None:
         if object_stream_size is None:
@@ -68,9 +68,10 @@ class CompressParameters:
         Returns ``self`` when the requested size matches the current one
         (no allocation churn).
         """
-        if object_stream_size == self._object_stream_size:
+        updated = CompressParameters(object_stream_size)
+        if updated._object_stream_size == self._object_stream_size:
             return self
-        return CompressParameters(object_stream_size)
+        return updated
 
     # ---------- value-type semantics ----------
     #

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Protocol
 
 from pypdfbox.cos import COSBase
 
@@ -34,7 +34,6 @@ from .markedcontent.define_marked_content_point_with_props import (
     DefineMarkedContentPointWithProps,
 )
 from .markedcontent.end_marked_content import EndMarkedContent
-from .operator_processor import OperatorProcessor
 from .path.append_rectangle import AppendRectangle
 from .path.clip_even_odd import ClipEvenOdd
 from .path.clip_non_zero_winding import ClipNonZeroWinding
@@ -89,6 +88,21 @@ from .text.show_text_with_word_and_char_spacing import (
 )
 
 
+class OperatorHandler(Protocol):
+    """Structural processor type accepted by the standalone registry.
+
+    The operator package currently contains both the engine-bound
+    processor base exported from ``pypdfbox.contentstream`` and the
+    lighter registry-local base in this package. The registry only needs
+    the common dispatch surface, so a protocol keeps both families
+    type-checkable without forcing a broader inheritance migration.
+    """
+
+    def process(self, operator: Operator, operands: list[COSBase]) -> None: ...
+
+    def get_name(self) -> str: ...
+
+
 class OperatorRegistry:
     """
     Operator-name to :class:`OperatorProcessor` dispatcher.
@@ -109,7 +123,7 @@ class OperatorRegistry:
     construction; callers override or extend with :meth:`register`.
     """
 
-    _DEFAULT_HANDLERS: ClassVar[dict[str, type[OperatorProcessor]]] = {
+    _DEFAULT_HANDLERS: ClassVar[dict[str, type[OperatorHandler]]] = {
         # text-showing operators
         ShowText.OPERATOR_NAME: ShowText,
         ShowTextArray.OPERATOR_NAME: ShowTextArray,
@@ -203,21 +217,21 @@ class OperatorRegistry:
     }
 
     def __init__(self) -> None:
-        self._handlers: dict[str, type[OperatorProcessor]] = dict(
+        self._handlers: dict[str, type[OperatorHandler]] = dict(
             self._DEFAULT_HANDLERS
         )
 
     # ---------- registration ----------
 
     def register(
-        self, name: str, processor_class: type[OperatorProcessor]
+        self, name: str, processor_class: type[OperatorHandler]
     ) -> None:
         """Register (or override) the handler class for ``name``."""
         self._handlers[name] = processor_class
 
     # ---------- lookup ----------
 
-    def lookup(self, name: str) -> OperatorProcessor | None:
+    def lookup(self, name: str) -> OperatorHandler | None:
         """Return a fresh handler instance for ``name``, or ``None`` if
         no handler is registered. A new instance per lookup keeps each
         dispatch independent — handlers may carry per-invocation state

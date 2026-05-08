@@ -133,6 +133,9 @@ class CmapSubtable(CmapLookup):
             for j in range(start, end + 1):
                 if range_offset == 0:
                     glyph_id = (j + delta) & 0xFFFF
+                    if glyph_id >= num_glyphs:
+                        _LOG.warning("Format 4 cmap contains an invalid glyph index")
+                        continue
                     if glyph_id > max_glyph_id:
                         max_glyph_id = glyph_id
                     self._character_code_to_glyph_id[j] = glyph_id
@@ -142,6 +145,9 @@ class CmapSubtable(CmapLookup):
                     glyph_index = data.read_unsigned_short()
                     if glyph_index != 0:
                         glyph_index = (glyph_index + delta) & 0xFFFF
+                        if glyph_index >= num_glyphs:
+                            _LOG.warning("Format 4 cmap contains an invalid glyph index")
+                            continue
                         if glyph_index > max_glyph_id:
                             max_glyph_id = glyph_index
                         self._character_code_to_glyph_id[j] = glyph_index

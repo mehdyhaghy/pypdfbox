@@ -4,7 +4,15 @@ import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSBoolean,
+    COSDictionary,
+    COSName,
+    COSNumber,
+    COSStream,
+    COSString,
+)
 
 from .pd_field_factory import PDFieldFactory
 
@@ -13,6 +21,7 @@ if TYPE_CHECKING:
 
     from .pd_field import PDField
     from .pd_field_tree import PDFieldTree
+    from .pd_terminal_field import PDTerminalField
     from .pd_xfa_resource import PDXFAResource
 
 _logger = logging.getLogger(__name__)
@@ -48,10 +57,10 @@ _FLAG_APPEND_ONLY = 1 << 1
 class PDAcroForm:
     """The /AcroForm dictionary. Mirrors PDFBox ``PDAcroForm`` lite surface.
 
-    Deferred: ``refresh_appearances`` (widget appearance construction from
-    ``/V``), ``import_fdf``/``export_fdf`` (FDF document module not yet
-    ported), signature scripting handler. Typed PDXFAResource is also
-    deferred — :meth:`xfa` returns the raw COS entry.
+    Deferred: ``import_fdf``/``export_fdf`` (FDF document module not yet
+    ported) and signature scripting handler. Appearance generation remains
+    intentionally narrow; :meth:`xfa` returns a :class:`PDXFAResource`
+    wrapper around the raw XFA COS entry.
     """
 
     def __init__(
@@ -125,10 +134,7 @@ class PDAcroForm:
         raw = self._dictionary.get_dictionary_object(_FIELDS)
         if not isinstance(raw, COSArray):
             return False
-        for i in range(raw.size()):
-            if isinstance(raw.get_object(i), COSDictionary):
-                return True
-        return False
+        return any(isinstance(raw.get_object(i), COSDictionary) for i in range(raw.size()))
 
     def is_empty(self) -> bool:
         """Return ``True`` when the form has no fields and no XFA payload.
@@ -362,14 +368,25 @@ class PDAcroForm:
 
     def get_need_appearances_if_exists(self) -> bool | None:
         """Return ``/NeedAppearances`` as a tri-state — ``None`` when the
-        entry is absent, otherwise the boolean value.
+        entry is absent or malformed, otherwise the boolean value.
 
         Used by writers that want to round-trip ``/NeedAppearances``
         without inventing a default. Mirrors the convention upstream's
         ``getNeedAppearancesIfExists`` follows in 4.x."""
-        if not self._dictionary.contains_key(_NEED_APPEARANCES):
-            return None
-        return self._dictionary.get_boolean(_NEED_APPEARANCES, False)
+        value = self._dictionary.get_dictionary_object(_NEED_APPEARANCES)
+        if isinstance(value, COSBoolean):
+            return value.value
+        return None
+
+    def has_need_appearances(self) -> bool:
+        """Return ``True`` when ``/NeedAppearances`` is present as a boolean."""
+        return isinstance(
+            self._dictionary.get_dictionary_object(_NEED_APPEARANCES), COSBoolean
+        )
+
+    def clear_need_appearances(self) -> None:
+        """Remove ``/NeedAppearances`` so readers fall back to the default."""
+        self._dictionary.remove_item(_NEED_APPEARANCES)
 
     # ---------- /DR (default resources) ----------
 
@@ -406,6 +423,10 @@ class PDAcroForm:
         raw = self._dictionary.get_dictionary_object(_DR)
         return isinstance(raw, COSDictionary)
 
+    def clear_default_resources(self) -> None:
+        """Remove the form-wide default ``/DR`` resources entry."""
+        self._dictionary.remove_item(_DR)
+
     # ---------- /DA (default appearance) ----------
 
     def get_default_appearance(self) -> str:
@@ -418,14 +439,17 @@ class PDAcroForm:
 
     def get_default_appearance_if_exists(self) -> str | None:
         """Return ``/DA`` as a tri-state — ``None`` when the entry is
-        absent, otherwise the string value (which may be empty).
+        absent or malformed, otherwise the string value (which may be empty).
 
         Used by writers that want to round-trip ``/DA`` without inventing
         an empty default. Mirrors the convention of
         :meth:`get_need_appearances_if_exists`."""
-        if not self._dictionary.contains_key(_DA):
-            return None
-        return self._dictionary.get_string(_DA, "")
+        value = self._dictionary.get_dictionary_object(_DA)
+        if isinstance(value, COSString):
+            return value.get_string()
+        if isinstance(value, COSName):
+            return value.name
+        return None
 
     def set_default_appearance(self, da: str) -> None:
         self._dictionary.set_string(_DA, da)
@@ -433,12 +457,15 @@ class PDAcroForm:
     def has_default_appearance(self) -> bool:
         """Return ``True`` when this form has a ``/DA`` entry.
 
-        Pypdfbox-only predicate — distinguishes "entry absent" from "entry
-        present but empty string", which :meth:`get_default_appearance`
-        collapses (both return ``""``). Useful when a writer wants to
-        round-trip ``/DA`` only when the source PDF actually carries
-        one."""
-        return self._dictionary.contains_key(_DA)
+        Pypdfbox-only predicate — distinguishes missing/malformed entries from
+        a parsable empty string, which :meth:`get_default_appearance` collapses
+        to ``""``. Useful when a writer wants to round-trip ``/DA`` only when
+        the source PDF actually carries one."""
+        return self.get_default_appearance_if_exists() is not None
+
+    def clear_default_appearance(self) -> None:
+        """Remove the form-wide ``/DA`` entry."""
+        self._dictionary.remove_item(_DA)
 
     # ---------- /Q (quadding / form-wide alignment) ----------
 
@@ -449,18 +476,27 @@ class PDAcroForm:
 
     def get_q_if_exists(self) -> int | None:
         """Return ``/Q`` as a tri-state — ``None`` when the entry is
-        absent, otherwise the integer value.
+        absent or malformed, otherwise the integer value.
 
         Used by writers that want to round-trip ``/Q`` without inventing
         a default of ``0`` (left-justified). Mirrors the convention of
         :meth:`get_default_appearance_if_exists` and
         :meth:`get_need_appearances_if_exists`."""
-        if not self._dictionary.contains_key(_Q):
-            return None
-        return self._dictionary.get_int(_Q, 0)
+        value = self._dictionary.get_dictionary_object(_Q)
+        if isinstance(value, COSNumber):
+            return value.int_value()
+        return None
 
     def set_q(self, value: int) -> None:
         self._dictionary.set_int(_Q, value)
+
+    def has_q(self) -> bool:
+        """Return ``True`` when the form has a parsable local ``/Q`` value."""
+        return self.get_q_if_exists() is not None
+
+    def clear_q(self) -> None:
+        """Remove the form-wide ``/Q`` quadding entry."""
+        self._dictionary.remove_item(_Q)
 
     # ---------- /CO (calculation order) ----------
 
@@ -494,10 +530,7 @@ class PDAcroForm:
         raw = self._dictionary.get_dictionary_object(_CO)
         if not isinstance(raw, COSArray):
             return False
-        for i in range(raw.size()):
-            if isinstance(raw.get_object(i), COSDictionary):
-                return True
-        return False
+        return any(isinstance(raw.get_object(i), COSDictionary) for i in range(raw.size()))
 
     def set_calc_order(self, fields: list[PDField] | None) -> None:
         """Replace the ``/CO`` array. ``None`` or an empty list removes
@@ -509,6 +542,10 @@ class PDAcroForm:
         for f in fields:
             arr.add(f.get_cos_object())
         self._dictionary.set_item(_CO, arr)
+
+    def clear_calc_order(self) -> None:
+        """Remove the ``/CO`` calculation-order array."""
+        self._dictionary.remove_item(_CO)
 
     # ---------- scripting handler ----------
 
@@ -601,6 +638,10 @@ class PDAcroForm:
         upstream ``PDAcroForm.hasXFA``."""
         return self._dictionary.contains_key(_XFA)
 
+    def clear_xfa(self) -> None:
+        """Remove the XFA resource entry."""
+        self._dictionary.remove_item(_XFA)
+
     def xfa_is_dynamic(self) -> bool:
         """Return ``True`` for a *dynamic* XFA form — i.e. ``/XFA`` is
         present but ``/Fields`` is empty. Mirrors upstream
@@ -684,6 +725,8 @@ class PDAcroForm:
         # Flatten input is a list of root fields; walk descendants once
         # to collect every terminal exactly once. ``refresh_appearances``
         # operates on the same terminal set.
+        from .pd_terminal_field import PDTerminalField
+
         terminal_fields: list[PDField] = []
         for field in targets:
             terminal_fields.extend(self._collect_terminals(field))
@@ -696,11 +739,10 @@ class PDAcroForm:
         flatten_all = fields is None
 
         for field in terminal_fields:
+            if not isinstance(field, PDTerminalField):
+                continue
             for widget in field.get_widgets():
-                widget_cos = (
-                    widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
-                )
-                self._flatten_widget(widget_cos)
+                self._flatten_widget(widget.get_cos_object())
 
         # Drop the flattened fields from /Fields (or wipe the entry when
         # the caller asked for "everything").
@@ -714,8 +756,10 @@ class PDAcroForm:
             if isinstance(arr, COSArray):
                 victims = {id(f.get_cos_object()) for f in terminal_fields}
                 # Walk a copy so removals don't perturb iteration.
+                from pypdfbox.cos import COSObject
+
                 for entry in list(arr):
-                    resolved = entry.get_object() if hasattr(entry, "get_object") else entry  # type: ignore[union-attr]
+                    resolved = entry.get_object() if isinstance(entry, COSObject) else entry
                     if id(resolved) in victims:
                         arr.remove(entry)
 
@@ -734,18 +778,22 @@ class PDAcroForm:
 
     # ---------- flatten internals ----------
 
-    def _collect_terminals(self, field: PDField) -> list[PDField]:
+    def _collect_terminals(self, field: PDField) -> list[PDTerminalField]:
         """Depth-first walk of a field subtree returning every terminal
         descendant. Mirrors the implicit recursion in PDFBox's
         ``flatten`` which only emits content for terminal fields with
         widgets."""
+        from .pd_terminal_field import PDTerminalField
+
         if field.is_terminal():
+            if not isinstance(field, PDTerminalField):
+                return []
             return [field]
         from .pd_non_terminal_field import PDNonTerminalField
 
         if not isinstance(field, PDNonTerminalField):
             return []
-        out: list[PDField] = []
+        out: list[PDTerminalField] = []
         for child in field.get_children():
             out.extend(self._collect_terminals(child))
         return out
@@ -1011,8 +1059,10 @@ class PDAcroForm:
         if not isinstance(annots, COSArray):
             return
         # Walk a snapshot — remove() shifts the underlying list.
+        from pypdfbox.cos import COSObject
+
         for entry in list(annots):
-            resolved = entry.get_object() if hasattr(entry, "get_object") else entry  # type: ignore[union-attr]
+            resolved = entry.get_object() if isinstance(entry, COSObject) else entry
             if resolved is widget:
                 annots.remove(entry)
 

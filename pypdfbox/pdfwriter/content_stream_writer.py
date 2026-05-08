@@ -15,6 +15,7 @@ from pypdfbox.cos import (
     COSNull,
     COSString,
 )
+from pypdfbox.io import RandomAccessWrite
 
 # The PDFStreamParser ships its own ``Operator`` value type alongside the
 # canonical ``pypdfbox.contentstream.operator.Operator``. Until the parser
@@ -65,7 +66,7 @@ class ContentStreamWriter:
     SPACE: bytes = SPACE
     EOL: bytes = EOL
 
-    def __init__(self, output: BinaryIO) -> None:
+    def __init__(self, output: BinaryIO | RandomAccessWrite) -> None:
         """``output`` must be a writable binary stream (anything exposing
         ``write(bytes) -> int``, e.g. ``io.BytesIO`` or a file opened in
         ``"wb"`` mode).
@@ -154,13 +155,14 @@ class ContentStreamWriter:
                 params = COSDictionary()
             for key in params.key_set():
                 value = params.get_dictionary_object(key)
+                if value is None:
+                    # Defensive: a malformed hand-built dict can contain
+                    # a value-less key. Skip the whole entry rather than
+                    # emitting a dangling inline-image parameter.
+                    continue
                 self._write_name(key)
                 self._write(SPACE)
                 # ``writeObject(value)`` upstream — value is a COSBase.
-                if value is None:
-                    # Defensive: a value-less key shouldn't happen but if
-                    # the dict has been hand-built, skip silently.
-                    continue
                 self._write_cos(value)
                 self._write(EOL)
             self._write(
@@ -252,13 +254,21 @@ class ContentStreamWriter:
         COSWriter.write_string(s, _ByteWriterShim(self._output))
 
     def _write(self, data: bytes) -> None:
-        # The output may be a plain BinaryIO or a RandomAccessWrite (which
-        # exposes ``write_bytes`` instead of ``write``). Sniff lazily.
-        write = getattr(self._output, "write", None)
-        if write is not None:
-            write(data)
-        else:
+        # The output may be a plain BinaryIO or a RandomAccessWrite-like
+        # sink exposing only ``write_bytes``. Sniff lazily to preserve the
+        # duck-typed surface accepted by earlier writer tests.
+        if isinstance(self._output, RandomAccessWrite):
             self._output.write_bytes(data)
+            return
+        write = getattr(self._output, "write", None)
+        if callable(write):
+            write(data)
+            return
+        write_bytes = getattr(self._output, "write_bytes", None)
+        if callable(write_bytes):
+            write_bytes(data)
+            return
+        raise TypeError("ContentStreamWriter output must expose write or write_bytes")
 
 
 class _ByteWriterShim:
@@ -272,11 +282,18 @@ class _ByteWriterShim:
         self._out = out
 
     def write(self, data: bytes) -> None:
-        write = getattr(self._out, "write", None)
-        if write is not None:
-            write(data)
-        else:
+        if isinstance(self._out, RandomAccessWrite):
             self._out.write_bytes(data)
+            return
+        write = getattr(self._out, "write", None)
+        if callable(write):
+            write(data)
+            return
+        write_bytes = getattr(self._out, "write_bytes", None)
+        if callable(write_bytes):
+            write_bytes(data)
+            return
+        raise TypeError("ContentStreamWriter output must expose write or write_bytes")
 
     def write_byte(self, b: int) -> None:
         self.write(bytes((b,)))

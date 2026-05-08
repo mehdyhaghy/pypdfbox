@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pypdfbox.cos import (
     COSArray,
@@ -30,6 +30,9 @@ _LOG = logging.getLogger(__name__)
 # literal ``resources.add(overlayFormXObject, "OL")`` call in
 # ``Overlay.overlayPage``.
 _OVERLAY_KEY_PREFIX: str = "OL"
+_CONTENTS: COSName = COSName.get_pdf_name("Contents")
+_FLATE_DECODE: COSName = COSName.get_pdf_name("FlateDecode")
+_RESOURCES: COSName = COSName.get_pdf_name("Resources")
 
 
 class Position(Enum):
@@ -327,10 +330,12 @@ class Overlay:
     # ---------- internal: layout-page synthesis ----------
 
     def _create_layout_page_from_document(self, doc: PDDocument) -> _LayoutPage:
+        if doc.get_number_of_pages() == 0:
+            raise ValueError("overlay document must contain at least one page")
         return self._create_layout_page(doc.get_page(0))
 
     def _create_layout_page(self, page: PDPage) -> _LayoutPage:
-        contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+        contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
         resources = page.get_resources()
         if resources is None:
             resources = PDResources()
@@ -356,7 +361,7 @@ class Overlay:
         assert self._input_pdf is not None
         scratch = self._input_pdf.get_document().scratch_file
         concat = COSStream(scratch)
-        with concat.create_output_stream(COSName.FLATE_DECODE) as out:
+        with concat.create_output_stream(_FLATE_DECODE) as out:
             for stream in streams:
                 with stream.create_input_stream() as src:
                     _io_utils.copy(src, out)
@@ -389,7 +394,7 @@ class Overlay:
             if layout_page is None:
                 continue
             page_dict = page.get_cos_object()
-            original_content = page_dict.get_dictionary_object(COSName.CONTENTS)
+            original_content = page_dict.get_dictionary_object(_CONTENTS)
             new_content_array = COSArray()
             if self._position is Position.FOREGROUND:
                 new_content_array.add(self._create_stream("q\n"))
@@ -401,7 +406,7 @@ class Overlay:
                 self._add_original_content(original_content, new_content_array)
             else:
                 raise OSError(f"Unknown type of position: {self._position!r}")
-            page_dict.set_item(COSName.CONTENTS, new_content_array)
+            page_dict.set_item(_CONTENTS, new_content_array)
 
     @staticmethod
     def _make_cloner(document: PDDocument) -> Any:
@@ -413,7 +418,7 @@ class Overlay:
         usable while the rest of the multipdf cluster lands.
         """
         try:
-            from .pdf_clone_utility import PDFCloneUtility  # type: ignore[import-not-found]
+            from .pdf_clone_utility import PDFCloneUtility
 
             return PDFCloneUtility(document)
         except Exception:  # noqa: BLE001 — fallback path
@@ -422,7 +427,10 @@ class Overlay:
                     self._dest = dest
 
                 def clone_for_new_document(self, base: COSBase) -> COSBase:
-                    return self._dest._deep_copy_cos(base, set())  # noqa: SLF001
+                    return cast(
+                        COSBase,
+                        self._dest._deep_copy_cos(base, set()),  # noqa: SLF001
+                    )
 
             return _DeepCopyCloner(document)
 
@@ -449,9 +457,7 @@ class Overlay:
         cloner: Any,
     ) -> None:
         resources = page.get_resources()
-        if resources is None or not page.get_cos_object().contains_key(
-            COSName.RESOURCES
-        ):
+        if resources is None or not page.get_cos_object().contains_key(_RESOURCES):
             resources = PDResources()
             page.set_resources(resources)
         overlay_form = self._create_overlay_form_x_object(layout_page, cloner)
@@ -649,7 +655,7 @@ class Overlay:
         # Match upstream's "compress only when worth it" choice — short
         # marker streams stay unencoded to simplify diagnostics.
         filters: COSName | None = (
-            COSName.FLATE_DECODE if len(content) > 20 else None
+            _FLATE_DECODE if len(content) > 20 else None
         )
         with stream.create_output_stream(filters) as out:
             out.write(content.encode("latin-1"))

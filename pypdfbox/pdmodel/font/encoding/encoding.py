@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Iterator, Optional, Union, overload
+from collections.abc import Iterator
+from typing import overload
 
 from pypdfbox.cos import COSBase, COSName
+
+_NO_CODE = object()
 
 
 class Encoding:
@@ -94,7 +97,9 @@ class Encoding:
     def get_name(self) -> str | None: ...
     @overload
     def get_name(self, code: int) -> str: ...
-    def get_name(self, code: Optional[int] = None) -> str | None:
+    @overload
+    def get_name(self, code: object) -> str: ...
+    def get_name(self, code: object = _NO_CODE) -> str | None:
         """Polymorphic ``getName``.
 
         With no argument, returns the encoding name (e.g.
@@ -106,35 +111,45 @@ class Encoding:
         ``code`` or ``".notdef"`` when unmapped (matches upstream
         ``getName(int)``).
         """
-        if code is None:
+        if code is _NO_CODE:
             return self.get_encoding_name()
+        if not isinstance(code, int) or isinstance(code, bool):
+            return ".notdef"
         return self._code_to_name.get(code, ".notdef")
 
-    def get_code(self, name: str) -> int | None:
+    def get_code(self, name: object) -> int | None:
         """Return the character code for ``name``, or ``None`` if unmapped.
 
         Backed by the reverse map populated during construction, so each
         lookup is already O(1); no extra cache layer is needed.
         """
+        if not isinstance(name, str):
+            return None
         return self._name_to_code.get(name)
 
-    def to_glyph_name(self, code: int) -> str:
+    def to_glyph_name(self, code: object) -> str:
         """Return the glyph name for ``code`` with the ``".notdef"`` fallback.
 
         Equivalent to ``get_name(code)``; provided as a self-documenting
         alias for sites that consume glyph names directly.
         """
+        if not isinstance(code, int) or isinstance(code, bool):
+            return ".notdef"
         return self._code_to_name.get(code, ".notdef")
 
-    def contains_name(self, name: str) -> bool:
+    def contains_name(self, name: object) -> bool:
         """``True`` if ``name`` has a mapping. Mirrors ``contains(String)``."""
+        if not isinstance(name, str):
+            return False
         return name in self._name_to_code
 
-    def contains_code(self, code: int) -> bool:
+    def contains_code(self, code: object) -> bool:
         """``True`` if ``code`` has a mapping. Mirrors ``contains(int)``."""
+        if not isinstance(code, int) or isinstance(code, bool):
+            return False
         return code in self._code_to_name
 
-    def contains(self, value: Union[int, str]) -> bool:
+    def contains(self, value: int | str) -> bool:
         """Polymorphic membership — ``True`` if ``value`` is a known code or name."""
         if isinstance(value, bool):
             return False
@@ -248,7 +263,7 @@ class Encoding:
     def __len__(self) -> int:
         return len(self._code_to_name)
 
-    def get_codes_for_name(self, name: str) -> list[int]:
+    def get_codes_for_name(self, name: str | None) -> list[int]:
         """Return all character codes that map to ``name``, sorted ascending.
 
         Differs from :meth:`get_code` which returns only the first
@@ -260,7 +275,7 @@ class Encoding:
 
         Returns an empty list when ``name`` is not in the encoding.
         """
-        if name is None:  # type: ignore[unreachable]
+        if name is None:
             return []
         return sorted(c for c, n in self._code_to_name.items() if n == name)
 
@@ -278,16 +293,13 @@ class Encoding:
     # -- factory -----------------------------------------------------------
 
     @staticmethod
-    def get_instance(name: COSName | str | None) -> "Encoding | None":
+    def get_instance(name: COSName | str | None) -> Encoding | None:
         """Return the predefined ``Encoding`` for the given ``/Encoding`` name,
         or ``None`` if unknown. Mirrors upstream ``Encoding.getInstance``.
         """
         if name is None:
             return None
-        if isinstance(name, COSName):
-            key = name.name
-        else:
-            key = name
+        key = name.name if isinstance(name, COSName) else name
         # Local imports to avoid circular import on package initialization.
         from .mac_expert_encoding import MacExpertEncoding
         from .mac_roman_encoding import MacRomanEncoding

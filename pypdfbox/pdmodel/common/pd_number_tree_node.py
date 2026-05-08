@@ -219,9 +219,11 @@ class PDNumberTreeNode[T](ABC):
     # ---------- value lookup (descent through /Limits) ----------
 
     def get_value(self, index: int) -> T | None:
-        numbers = self.get_numbers()
-        if numbers is not None:
-            return numbers.get(index)
+        numbers_array = self._node.get_dictionary_object(_NUMS)
+        if isinstance(numbers_array, COSArray):
+            numbers = self._read_numbers_array(numbers_array)
+            return None if numbers is None else numbers.get(index)
+
         kids = self.get_kids()
         if kids is not None:
             for child in kids:

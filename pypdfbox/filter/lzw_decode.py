@@ -123,9 +123,9 @@ def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDicti
     """Resolve effective ``/DecodeParms`` for the filter at ``index``.
 
     PDF allows ``/DecodeParms`` to be either a single dictionary (when
-    there is one filter) or an array parallel to ``/Filter``. For now
-    we accept only the single-dict form and the ``/DP``/``/DecodeParms``
-    keys; missing entries return an empty dict.
+    there is one filter) or an array parallel to ``/Filter``. Both long
+    ``/DecodeParms`` and abbreviated ``/DP`` keys are accepted; missing
+    array entries return an empty dict.
     """
     if parameters is None:
         return COSDictionary()
@@ -137,7 +137,7 @@ def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDicti
             return params
         if isinstance(params, COSArray):
             try:
-                entry = params.get(index)
+                entry = params.get_object(index)
             except Exception:
                 entry = None
             if isinstance(entry, COSDictionary):

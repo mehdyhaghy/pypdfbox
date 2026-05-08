@@ -16,7 +16,8 @@ class PDIconFit:
     dictionary) describing how a button widget's icon is scaled and
     positioned within its annotation rectangle.
 
-    Mirrors ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceCharacteristicsDictionary``
+    Mirrors
+    ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceCharacteristicsDictionary``
     (sub-dictionary type — see PDF 32000-1:2008 §12.5.6.19, Table 247).
 
     Entries:

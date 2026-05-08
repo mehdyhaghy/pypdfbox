@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 # fall back to the font's /FontBBox for clipping.
 _D0: bytes = b"d0"
 _D1: bytes = b"d1"
+_RESOURCES: COSName = COSName.get_pdf_name("Resources")
 
 
 class PDType3CharProc(PDStream):
@@ -90,7 +91,7 @@ class PDType3CharProc(PDStream):
 
         Mirrors upstream ``getResources()``.
         """
-        local = self._stream.get_dictionary_object(COSName.RESOURCES)
+        local = self._stream.get_dictionary_object(_RESOURCES)
         if isinstance(local, COSDictionary):
             return PDResources(local)
         return self._font.get_resources()
@@ -100,7 +101,7 @@ class PDType3CharProc(PDStream):
         ``/Resources`` entry (PDFBOX-5294 misplacement). When ``False``,
         :meth:`get_resources` falls back to the parent font's
         ``/Resources``. No upstream method — convenience predicate."""
-        return self._stream.contains_key(COSName.RESOURCES)
+        return self._stream.contains_key(_RESOURCES)
 
     def get_bbox(self) -> PDRectangle:
         """Return the parent font's ``/FontBBox`` — the

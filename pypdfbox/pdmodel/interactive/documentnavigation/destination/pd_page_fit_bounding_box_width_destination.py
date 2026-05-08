@@ -17,6 +17,7 @@ class PDPageFitBoundingBoxWidthDestination(PDPageDestination):
     """
 
     TYPE = "FitBH"
+    _SLOT_TOP: int = 2
 
     def __init__(self, array: COSArray | None = None) -> None:
         super().__init__(array)
@@ -24,10 +25,18 @@ class PDPageFitBoundingBoxWidthDestination(PDPageDestination):
             self._set_type(self.TYPE)
 
     def get_top(self) -> float | None:
-        return self._get_float(2)
+        return self._get_float(self._SLOT_TOP)
 
     def set_top(self, top: float | None) -> None:
-        self._set_float(2, top)
+        self._set_float(self._SLOT_TOP, top)
+
+    def is_top_unset(self) -> bool:
+        """``True`` when the ``top`` y-coordinate is missing or null."""
+        return self.get_top() is None
+
+    def clear_top(self) -> None:
+        """Clear the ``top`` slot to ``COSNull``."""
+        self.set_top(None)
 
 
 __all__ = ["PDPageFitBoundingBoxWidthDestination"]

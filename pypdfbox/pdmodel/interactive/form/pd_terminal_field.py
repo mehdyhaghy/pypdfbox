@@ -36,7 +36,9 @@ class PDTerminalField(PDField):
 
     # ---------- /AA (additional actions) ----------
 
-    def set_actions(self, actions: PDFormFieldAdditionalActions | None) -> None:
+    def set_actions(
+        self, actions: PDFormFieldAdditionalActions | COSDictionary | None
+    ) -> None:
         """Set ``/AA`` form-field additional actions.
 
         Mirrors upstream ``PDTerminalField.setActions(PDFormFieldAdditionalActions)``
@@ -45,7 +47,10 @@ class PDTerminalField(PDField):
         if actions is None:
             self._field.remove_item(_AA)
             return
-        self._field.set_item(_AA, actions.get_cos_object())
+        self._field.set_item(
+            _AA,
+            actions.get_cos_object() if hasattr(actions, "get_cos_object") else actions,
+        )
 
     # ---------- widgets (/Kids) ----------
 
@@ -79,7 +84,7 @@ class PDTerminalField(PDField):
         kids = COSArray()
         for w in widgets:
             cos = w.get_cos_object()
-            cos.set_item(COSName.get_pdf_name("Parent"), self._field)
+            w.set_parent(self)
             kids.add(cos)
         self._field.set_item(_KIDS, kids)
 

@@ -2,10 +2,21 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
-from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSStream, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSDocument,
+    COSInteger,
+    COSName,
+    COSStream,
+    COSString,
+)
 from pypdfbox.pdmodel.common.pd_stream import PDStream
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
@@ -53,7 +64,7 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
     second = int(m.group("second") or 0)
     sign = m.group("offsign")
     if sign is None or sign == "Z":
-        tz: _dt.tzinfo = _dt.timezone.utc
+        tz: _dt.tzinfo = _dt.UTC
     else:
         off_hour = int(m.group("offhour") or 0)
         off_minute = int(m.group("offminute") or 0)
@@ -138,9 +149,9 @@ class PDEmbeddedFile(PDStream):
 
     def __init__(
         self,
-        stream_or_document: COSStream | object | None = None,
+        stream_or_document: COSStream | COSDocument | PDDocument | None = None,
         input_data: bytes | bytearray | memoryview | BinaryIO | None = None,
-        filter_name: COSName | None = None,
+        filter_name: COSName | COSArray | None = None,
     ) -> None:
         if isinstance(stream_or_document, COSStream):
             super().__init__(stream_or_document)
@@ -171,6 +182,10 @@ class PDEmbeddedFile(PDStream):
         """
         return self._params_dict() is not None
 
+    def clear_params(self) -> None:
+        """Remove the ``/Params`` sub-dictionary. No-op if absent."""
+        self.get_cos_object().remove_item(_PARAMS)
+
     def has_mac_info(self) -> bool:
         """Return ``True`` when the embedded file carries a ``/Params/Mac``
         sub-dictionary (legacy macOS metadata: Subtype/Creator/ResFork).
@@ -183,6 +198,12 @@ class PDEmbeddedFile(PDStream):
         mac = params.get_dictionary_object(_MAC)
         return isinstance(mac, COSDictionary)
 
+    def clear_mac_info(self) -> None:
+        """Remove the ``/Params/Mac`` sub-dictionary. No-op if absent."""
+        params = self._params_dict()
+        if params is not None:
+            params.remove_item(_MAC)
+
     # ---------- /Subtype (mime type, e.g. "application/pdf") ----------
 
     def get_subtype(self) -> str | None:
@@ -194,6 +215,14 @@ class PDEmbeddedFile(PDStream):
             cos.remove_item(_SUBTYPE)
             return
         cos.set_name(_SUBTYPE, mime_type)
+
+    def has_subtype(self) -> bool:
+        """Return ``True`` when ``/Subtype`` is present as a PDF name."""
+        return self.get_cos_object().get_name(_SUBTYPE) is not None
+
+    def clear_subtype(self) -> None:
+        """Remove ``/Subtype``. Equivalent to ``set_subtype(None)``."""
+        self.set_subtype(None)
 
     def is_subtype(self, mime_type: str | None) -> bool:
         """Return ``True`` when the ``/Subtype`` entry equals ``mime_type``
@@ -225,6 +254,10 @@ class PDEmbeddedFile(PDStream):
             return v.value
         return None
 
+    def has_size(self) -> bool:
+        """Return ``True`` when ``/Params/Size`` is present as an integer."""
+        return self.get_size() is not None
+
     def set_size(self, size: int | None) -> None:
         if size is None:
             params = self._params_dict()
@@ -232,6 +265,10 @@ class PDEmbeddedFile(PDStream):
                 params.remove_item(_SIZE)
             return
         self._ensure_params_dict().set_item(_SIZE, COSInteger.get(int(size)))
+
+    def clear_size(self) -> None:
+        """Remove ``/Params/Size``. No-op if absent."""
+        self.set_size(None)
 
     # ---------- /Params/CreationDate ----------
 
@@ -242,8 +279,17 @@ class PDEmbeddedFile(PDStream):
         raw = params.get_string(_CREATION_DATE)
         return _parse_pdf_date(raw) if raw is not None else None
 
+    def has_creation_date(self) -> bool:
+        """Return ``True`` when ``/Params/CreationDate`` is present."""
+        params = self._params_dict()
+        return params is not None and params.contains_key(_CREATION_DATE)
+
     def set_creation_date(self, d: _dt.datetime | str | None) -> None:
         self._set_date(_CREATION_DATE, d)
+
+    def clear_creation_date(self) -> None:
+        """Remove ``/Params/CreationDate``. No-op if absent."""
+        self.set_creation_date(None)
 
     # ---------- /Params/ModDate ----------
 
@@ -254,8 +300,17 @@ class PDEmbeddedFile(PDStream):
         raw = params.get_string(_MOD_DATE)
         return _parse_pdf_date(raw) if raw is not None else None
 
+    def has_mod_date(self) -> bool:
+        """Return ``True`` when ``/Params/ModDate`` is present."""
+        params = self._params_dict()
+        return params is not None and params.contains_key(_MOD_DATE)
+
     def set_mod_date(self, d: _dt.datetime | str | None) -> None:
         self._set_date(_MOD_DATE, d)
+
+    def clear_mod_date(self) -> None:
+        """Remove ``/Params/ModDate``. No-op if absent."""
+        self.set_mod_date(None)
 
     def _set_date(self, key: COSName, d: _dt.datetime | str | None) -> None:
         if d is None:
@@ -263,10 +318,7 @@ class PDEmbeddedFile(PDStream):
             if params is not None:
                 params.remove_item(key)
             return
-        if isinstance(d, _dt.datetime):
-            text = _format_pdf_date(d)
-        else:
-            text = d
+        text = _format_pdf_date(d) if isinstance(d, _dt.datetime) else d
         self._ensure_params_dict().set_item(key, COSString(text))
 
     # ---------- /Params/CheckSum (16-byte MD5) ----------
@@ -280,6 +332,10 @@ class PDEmbeddedFile(PDStream):
             return v.get_bytes()
         return None
 
+    def has_check_sum(self) -> bool:
+        """Return ``True`` when ``/Params/CheckSum`` is present as a string."""
+        return self.get_check_sum() is not None
+
     def set_check_sum(self, checksum: bytes | bytearray | memoryview | None) -> None:
         if checksum is None:
             params = self._params_dict()
@@ -291,6 +347,10 @@ class PDEmbeddedFile(PDStream):
         cs = COSString(bytes(checksum))
         cs.set_force_hex_form(True)
         self._ensure_params_dict().set_item(_CHECK_SUM, cs)
+
+    def clear_check_sum(self) -> None:
+        """Remove ``/Params/CheckSum``. No-op if absent."""
+        self.set_check_sum(None)
 
     # Upstream's ``getCheckSum()`` / ``setCheckSum(String)`` are typed as
     # ``String`` not ``byte[]``, so the string-form aliases below preserve
@@ -321,6 +381,11 @@ class PDEmbeddedFile(PDStream):
             return None
         return params.get_string(_CREATOR)
 
+    def has_creator(self) -> bool:
+        """Return ``True`` when ``/Params/Creator`` is present."""
+        params = self._params_dict()
+        return params is not None and params.contains_key(_CREATOR)
+
     def set_creator(self, creator: str | None) -> None:
         if creator is None:
             params = self._params_dict()
@@ -328,6 +393,10 @@ class PDEmbeddedFile(PDStream):
                 params.remove_item(_CREATOR)
             return
         self._ensure_params_dict().set_string(_CREATOR, creator)
+
+    def clear_creator(self) -> None:
+        """Remove ``/Params/Creator``. No-op if absent."""
+        self.set_creator(None)
 
     # ---------- /Params/Mac/{Subtype,Creator,ResFork} ----------
 
@@ -337,10 +406,26 @@ class PDEmbeddedFile(PDStream):
             return None
         return _get_embedded_string(params, _MAC, _SUBTYPE)
 
+    def has_mac_subtype(self) -> bool:
+        """Return ``True`` when ``/Params/Mac/Subtype`` is present."""
+        params = self._params_dict()
+        if params is None:
+            return False
+        mac = params.get_dictionary_object(_MAC)
+        return isinstance(mac, COSDictionary) and mac.contains_key(_SUBTYPE)
+
     def set_mac_subtype(self, mac_subtype: str | None) -> None:
-        params = self._params_dict() if mac_subtype is None else self._ensure_params_dict()
+        params = (
+            self._params_dict()
+            if mac_subtype is None
+            else self._ensure_params_dict()
+        )
         if params is not None:
             _set_embedded_string(params, _MAC, _SUBTYPE, mac_subtype)
+
+    def clear_mac_subtype(self) -> None:
+        """Remove ``/Params/Mac/Subtype``. No-op if absent."""
+        self.set_mac_subtype(None)
 
     def get_mac_creator(self) -> str | None:
         params = self._params_dict()
@@ -348,10 +433,26 @@ class PDEmbeddedFile(PDStream):
             return None
         return _get_embedded_string(params, _MAC, _CREATOR)
 
+    def has_mac_creator(self) -> bool:
+        """Return ``True`` when ``/Params/Mac/Creator`` is present."""
+        params = self._params_dict()
+        if params is None:
+            return False
+        mac = params.get_dictionary_object(_MAC)
+        return isinstance(mac, COSDictionary) and mac.contains_key(_CREATOR)
+
     def set_mac_creator(self, mac_creator: str | None) -> None:
-        params = self._params_dict() if mac_creator is None else self._ensure_params_dict()
+        params = (
+            self._params_dict()
+            if mac_creator is None
+            else self._ensure_params_dict()
+        )
         if params is not None:
             _set_embedded_string(params, _MAC, _CREATOR, mac_creator)
+
+    def clear_mac_creator(self) -> None:
+        """Remove ``/Params/Mac/Creator``. No-op if absent."""
+        self.set_mac_creator(None)
 
     def get_mac_resource_fork(self) -> COSStream | None:
         params = self._params_dict()
@@ -364,6 +465,10 @@ class PDEmbeddedFile(PDStream):
         if isinstance(rf, COSStream):
             return rf
         return None
+
+    def has_mac_resource_fork(self) -> bool:
+        """Return ``True`` when ``/Params/Mac/ResFork`` is a stream."""
+        return self.get_mac_resource_fork() is not None
 
     def set_mac_resource_fork(self, stream: COSStream | None) -> None:
         if stream is None:
@@ -378,6 +483,10 @@ class PDEmbeddedFile(PDStream):
         mac = _get_or_create_dict(params, _MAC)
         mac.set_item(_RES_FORK, stream)
 
+    def clear_mac_resource_fork(self) -> None:
+        """Remove ``/Params/Mac/ResFork``. No-op if absent."""
+        self.set_mac_resource_fork(None)
+
     # Upstream Java method names ``getMacResFork`` / ``setMacResFork`` —
     # mechanical snake_case aliases delegating to the resource-fork accessors.
     # The parameter type stays ``COSStream`` (deviation noted in CHANGES.md);
@@ -388,6 +497,12 @@ class PDEmbeddedFile(PDStream):
 
     def set_mac_res_fork(self, stream: COSStream | None) -> None:
         self.set_mac_resource_fork(stream)
+
+    def has_mac_res_fork(self) -> bool:
+        return self.has_mac_resource_fork()
+
+    def clear_mac_res_fork(self) -> None:
+        self.clear_mac_resource_fork()
 
 
 __all__ = ["PDEmbeddedFile"]

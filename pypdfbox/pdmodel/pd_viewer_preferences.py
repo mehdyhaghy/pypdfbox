@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import StrEnum
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 
 # ---------- viewer-prefs key constants (PDF 32000-1:2008 §12.2, Table 150) ----------
 
@@ -130,6 +131,12 @@ class PDViewerPreferences:
     def set_hide_toolbar(self, value: bool) -> None:
         self._prefs.set_boolean(_HIDE_TOOLBAR, value)
 
+    def has_hide_toolbar(self) -> bool:
+        return self._prefs.contains_key(_HIDE_TOOLBAR)
+
+    def clear_hide_toolbar(self) -> None:
+        self._prefs.remove_item(_HIDE_TOOLBAR)
+
     # Upstream-named accessor (``isHideToolbar`` → ``is_hide_toolbar``).
     def is_hide_toolbar(self) -> bool:
         return self.hide_toolbar()
@@ -144,6 +151,12 @@ class PDViewerPreferences:
     def set_hide_menubar(self, value: bool) -> None:
         self._prefs.set_boolean(_HIDE_MENUBAR, value)
 
+    def has_hide_menubar(self) -> bool:
+        return self._prefs.contains_key(_HIDE_MENUBAR)
+
+    def clear_hide_menubar(self) -> None:
+        self._prefs.remove_item(_HIDE_MENUBAR)
+
     def is_hide_menubar(self) -> bool:
         return self.hide_menubar()
 
@@ -155,6 +168,12 @@ class PDViewerPreferences:
 
     def set_hide_window_ui(self, value: bool) -> None:
         self._prefs.set_boolean(_HIDE_WINDOWUI, value)
+
+    def has_hide_window_ui(self) -> bool:
+        return self._prefs.contains_key(_HIDE_WINDOWUI)
+
+    def clear_hide_window_ui(self) -> None:
+        self._prefs.remove_item(_HIDE_WINDOWUI)
 
     def is_hide_window_ui(self) -> bool:
         return self.hide_window_ui()
@@ -168,6 +187,12 @@ class PDViewerPreferences:
     def set_fit_window(self, value: bool) -> None:
         self._prefs.set_boolean(_FIT_WINDOW, value)
 
+    def has_fit_window(self) -> bool:
+        return self._prefs.contains_key(_FIT_WINDOW)
+
+    def clear_fit_window(self) -> None:
+        self._prefs.remove_item(_FIT_WINDOW)
+
     def is_fit_window(self) -> bool:
         return self.fit_window()
 
@@ -179,6 +204,12 @@ class PDViewerPreferences:
 
     def set_center_window(self, value: bool) -> None:
         self._prefs.set_boolean(_CENTER_WINDOW, value)
+
+    def has_center_window(self) -> bool:
+        return self._prefs.contains_key(_CENTER_WINDOW)
+
+    def clear_center_window(self) -> None:
+        self._prefs.remove_item(_CENTER_WINDOW)
 
     def is_center_window(self) -> bool:
         return self.center_window()
@@ -192,6 +223,12 @@ class PDViewerPreferences:
     def set_display_doc_title(self, value: bool) -> None:
         self._prefs.set_boolean(_DISPLAY_DOC_TITLE, value)
 
+    def has_display_doc_title(self) -> bool:
+        return self._prefs.contains_key(_DISPLAY_DOC_TITLE)
+
+    def clear_display_doc_title(self) -> None:
+        self._prefs.remove_item(_DISPLAY_DOC_TITLE)
+
     def is_display_doc_title(self) -> bool:
         return self.display_doc_title()
 
@@ -203,6 +240,12 @@ class PDViewerPreferences:
 
     def set_pick_tray_by_pdf_size(self, value: bool) -> None:
         self._prefs.set_boolean(_PICK_TRAY_BY_PDF_SIZE, value)
+
+    def has_pick_tray_by_pdf_size(self) -> bool:
+        return self._prefs.contains_key(_PICK_TRAY_BY_PDF_SIZE)
+
+    def clear_pick_tray_by_pdf_size(self) -> None:
+        self._prefs.remove_item(_PICK_TRAY_BY_PDF_SIZE)
 
     def is_pick_tray_by_pdf_size(self) -> bool:
         return self.pick_tray_by_pdf_size()
@@ -226,6 +269,9 @@ class PDViewerPreferences:
         else:
             self._prefs.set_name(_NON_FULL_SCREEN_PAGE_MODE, str(value))
 
+    def clear_non_full_screen_page_mode(self) -> None:
+        self._prefs.remove_item(_NON_FULL_SCREEN_PAGE_MODE)
+
     def get_reading_direction(self) -> str:
         return self._prefs.get_name(
             _DIRECTION, self.READING_DIRECTION.L2R.value
@@ -239,12 +285,18 @@ class PDViewerPreferences:
         else:
             self._prefs.set_name(_DIRECTION, str(value))
 
+    def clear_reading_direction(self) -> None:
+        self._prefs.remove_item(_DIRECTION)
+
     # Upstream-named accessors (``getDirection`` / ``setDirection``).
     def get_direction(self) -> str:
         return self.get_reading_direction()
 
     def set_direction(self, value: READING_DIRECTION | str | None) -> None:
         self.set_reading_direction(value)
+
+    def clear_direction(self) -> None:
+        self.clear_reading_direction()
 
     def get_view_area(self) -> str:
         return self._prefs.get_name(
@@ -257,6 +309,9 @@ class PDViewerPreferences:
         else:
             self._prefs.set_name(_VIEW_AREA, str(value))
 
+    def clear_view_area(self) -> None:
+        self._prefs.remove_item(_VIEW_AREA)
+
     def get_view_clip(self) -> str:
         return self._prefs.get_name(
             _VIEW_CLIP, self.BOUNDARY.CropBox.value
@@ -267,6 +322,9 @@ class PDViewerPreferences:
             self._prefs.remove_item(_VIEW_CLIP)
         else:
             self._prefs.set_name(_VIEW_CLIP, str(value))
+
+    def clear_view_clip(self) -> None:
+        self._prefs.remove_item(_VIEW_CLIP)
 
     def get_print_area(self) -> str:
         return self._prefs.get_name(
@@ -279,6 +337,9 @@ class PDViewerPreferences:
         else:
             self._prefs.set_name(_PRINT_AREA, str(value))
 
+    def clear_print_area(self) -> None:
+        self._prefs.remove_item(_PRINT_AREA)
+
     def get_print_clip(self) -> str:
         return self._prefs.get_name(
             _PRINT_CLIP, self.BOUNDARY.CropBox.value
@@ -290,6 +351,9 @@ class PDViewerPreferences:
         else:
             self._prefs.set_name(_PRINT_CLIP, str(value))
 
+    def clear_print_clip(self) -> None:
+        self._prefs.remove_item(_PRINT_CLIP)
+
     def get_duplex(self) -> str | None:
         # Upstream returns null when /Duplex is absent (no spec default).
         return self._prefs.get_name(_DUPLEX)
@@ -299,6 +363,9 @@ class PDViewerPreferences:
             self._prefs.remove_item(_DUPLEX)
         else:
             self._prefs.set_name(_DUPLEX, str(value))
+
+    def clear_duplex(self) -> None:
+        self._prefs.remove_item(_DUPLEX)
 
     def get_print_scaling(self) -> str:
         return self._prefs.get_name(
@@ -310,6 +377,9 @@ class PDViewerPreferences:
             self._prefs.remove_item(_PRINT_SCALING)
         else:
             self._prefs.set_name(_PRINT_SCALING, str(value))
+
+    def clear_print_scaling(self) -> None:
+        self._prefs.remove_item(_PRINT_SCALING)
 
     # ---------- numeric / array accessors (PDF 32000-1 / 32000-2 enrichment) ----------
 
@@ -358,7 +428,11 @@ class PDViewerPreferences:
             return []
         out: list[tuple[int, int]] = []
         for i in range(0, n, 2):
-            out.append((arr.get_int(i), arr.get_int(i + 1)))
+            start = arr.get_object(i)
+            end = arr.get_object(i + 1)
+            if not isinstance(start, COSInteger) or not isinstance(end, COSInteger):
+                return []
+            out.append((start.value, end.value))
         return out
 
     def set_print_page_range_pairs(
@@ -417,7 +491,7 @@ class PDViewerPreferences:
 
     def get_non_full_screen_page_mode_enum(
         self,
-    ) -> "PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE | None":
+    ) -> PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE | None:
         """Return ``/NonFullScreenPageMode`` decoded as a
         :class:`NON_FULL_SCREEN_PAGE_MODE` enum. Returns the spec default
         ``UseNone`` when absent, and ``None`` when the stored token is not
@@ -431,7 +505,7 @@ class PDViewerPreferences:
 
     def get_reading_direction_enum(
         self,
-    ) -> "PDViewerPreferences.READING_DIRECTION | None":
+    ) -> PDViewerPreferences.READING_DIRECTION | None:
         """Return ``/Direction`` decoded as a :class:`READING_DIRECTION`
         enum. Returns the spec default ``L2R`` when absent, and ``None``
         when the stored token is not a recognized enum member."""
@@ -442,7 +516,7 @@ class PDViewerPreferences:
         except ValueError:
             return None
 
-    def get_view_area_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+    def get_view_area_enum(self) -> PDViewerPreferences.BOUNDARY | None:
         """Return ``/ViewArea`` decoded as a :class:`BOUNDARY` enum. Returns
         the spec default ``CropBox`` when absent, and ``None`` when the
         stored token is not a recognized enum member."""
@@ -451,7 +525,7 @@ class PDViewerPreferences:
         except ValueError:
             return None
 
-    def get_view_clip_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+    def get_view_clip_enum(self) -> PDViewerPreferences.BOUNDARY | None:
         """Return ``/ViewClip`` decoded as a :class:`BOUNDARY` enum. Returns
         the spec default ``CropBox`` when absent, and ``None`` when the
         stored token is not a recognized enum member."""
@@ -460,7 +534,7 @@ class PDViewerPreferences:
         except ValueError:
             return None
 
-    def get_print_area_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+    def get_print_area_enum(self) -> PDViewerPreferences.BOUNDARY | None:
         """Return ``/PrintArea`` decoded as a :class:`BOUNDARY` enum.
         Returns the spec default ``CropBox`` when absent, and ``None``
         when the stored token is not a recognized enum member."""
@@ -469,7 +543,7 @@ class PDViewerPreferences:
         except ValueError:
             return None
 
-    def get_print_clip_enum(self) -> "PDViewerPreferences.BOUNDARY | None":
+    def get_print_clip_enum(self) -> PDViewerPreferences.BOUNDARY | None:
         """Return ``/PrintClip`` decoded as a :class:`BOUNDARY` enum.
         Returns the spec default ``CropBox`` when absent, and ``None``
         when the stored token is not a recognized enum member."""
@@ -478,7 +552,7 @@ class PDViewerPreferences:
         except ValueError:
             return None
 
-    def get_duplex_enum(self) -> "PDViewerPreferences.DUPLEX | None":
+    def get_duplex_enum(self) -> PDViewerPreferences.DUPLEX | None:
         """Return ``/Duplex`` decoded as a :class:`DUPLEX` enum. Returns
         ``None`` when ``/Duplex`` is absent (no spec default per PDF
         32000-1 Table 150) or when the stored token is not a recognized
@@ -493,7 +567,7 @@ class PDViewerPreferences:
 
     def get_print_scaling_enum(
         self,
-    ) -> "PDViewerPreferences.PRINT_SCALING | None":
+    ) -> PDViewerPreferences.PRINT_SCALING | None:
         """Return ``/PrintScaling`` decoded as a :class:`PRINT_SCALING`
         enum. Returns the spec default ``AppDefault`` when absent, and
         ``None`` when the stored token is not a recognized enum member."""
@@ -665,15 +739,19 @@ class PDViewerPreferences:
         if n == 0 or n % 2 != 0:
             return n == 0
         for i in range(0, n, 2):
-            start = arr.get_int(i)
-            end = arr.get_int(i + 1)
+            start_obj = arr.get_object(i)
+            end_obj = arr.get_object(i + 1)
+            if not isinstance(start_obj, COSInteger) or not isinstance(end_obj, COSInteger):
+                return False
+            start = start_obj.value
+            end = end_obj.value
             if start <= 0 or end <= 0 or start > end:
                 return False
         return True
 
     # ---------- bulk /Enforce mutator ----------
 
-    def add_enforce_names(self, names) -> None:
+    def add_enforce_names(self, names: Iterable[str]) -> None:
         """Append each name in ``names`` to ``/Enforce`` (idempotent per
         name — duplicates are skipped). Creates ``/Enforce`` when absent.
         ``names`` may be any iterable of strings."""

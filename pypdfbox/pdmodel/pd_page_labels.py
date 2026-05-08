@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
@@ -79,11 +79,10 @@ class PDPageLabels:
     Page label dictionary (PDF 32000-1:2008 §12.4.2). Mirrors
     ``org.apache.pdfbox.pdmodel.common.PDPageLabels``.
 
-    The underlying number tree is represented here as a simple in-memory
-    ``dict[int, PDPageLabelRange]``. A full ``PDNumberTreeNode`` port that
-    supports balanced /Kids splits and lazy loading is deferred — see
-    ``CHANGES.md``. Reads handle both flat ``/Nums`` arrays and a single
-    level of ``/Kids`` for compatibility with documents in the wild.
+    The underlying number tree is represented here as an in-memory
+    ``dict[int, PDPageLabelRange]``. Reads handle flat ``/Nums`` arrays and
+    nested ``/Kids`` dictionaries for compatibility with documents in the
+    wild.
     """
 
     # Style entry values, mirrored on the wrapper for convenience so callers
@@ -112,16 +111,19 @@ class PDPageLabels:
         if dict_ is not None:
             self._find_labels(dict_)
 
-    # ---------- number-tree traversal (stub) ----------
+    # ---------- number-tree traversal ----------
 
     def _find_labels(self, node: COSDictionary) -> None:
         kids = node.get_dictionary_object(_KIDS)
         if isinstance(kids, COSArray):
+            found_child = False
             for i in range(kids.size()):
                 child = kids.get_object(i)
                 if isinstance(child, COSDictionary):
+                    found_child = True
                     self._find_labels(child)
-            return
+            if found_child:
+                return
         nums = node.get_dictionary_object(_NUMS)
         if not isinstance(nums, COSArray):
             return
@@ -137,7 +139,7 @@ class PDPageLabels:
             key = key_obj.value
             if key < 0:
                 continue
-            self._labels[key] = PDPageLabelRange(value_obj)
+            self._labels[key] = PDPageLabelRange(value_obj, start_index=key)
 
     # ---------- COS surface ----------
 
@@ -164,6 +166,7 @@ class PDPageLabels:
             raise ValueError(
                 "startPage parameter of set_label_item may not be < 0"
             )
+        item.set_start_index(start_page)
         self._labels[start_page] = item
 
     def get_label_range_iterator(self) -> Iterator[tuple[int, PDPageLabelRange]]:
@@ -382,7 +385,7 @@ class PDPageLabels:
 
     def get_labels_by_page_indices(self) -> list[str]:
         """Return a list of labels, one per page in the document, in order."""
-        number_of_pages = self._doc.get_number_of_pages()
+        number_of_pages = self.get_number_of_pages()
         result: list[str | None] = [None] * number_of_pages
         self._compute_labels(
             lambda idx, label: result.__setitem__(idx, label)
@@ -407,6 +410,8 @@ class PDPageLabels:
         if index < 0:
             return str(index + 1)
         sorted_starts = sorted(self._labels)
+        if not sorted_starts or index < sorted_starts[0]:
+            return str(index + 1)
         # Find the range whose start is the greatest <= index.
         range_start = sorted_starts[0]
         for s in sorted_starts:
@@ -463,7 +468,7 @@ class PDPageLabels:
             raise ValueError(
                 "start_index parameter of set_label_range may not be < 0"
             )
-        item = PDPageLabelRange()
+        item = PDPageLabelRange(start_index=start_index)
         if style is not None:
             item.set_style(style)
         if prefix is not None:
@@ -476,7 +481,7 @@ class PDPageLabels:
 
     def get_page_indices_by_labels(self) -> dict[str, int]:
         """Inverse map. Where a label repeats, the highest index wins."""
-        number_of_pages = self._doc.get_number_of_pages()
+        number_of_pages = self.get_number_of_pages()
         out: dict[str, int] = {}
         self._compute_labels(lambda idx, label: out.__setitem__(label, idx), number_of_pages)
         return out
@@ -485,19 +490,19 @@ class PDPageLabels:
 
     def _compute_labels(
         self,
-        handler,
+        handler: Callable[[int, str], object],
         number_of_pages: int,
     ) -> None:
         if not self._labels:
             return
         sorted_starts = sorted(self._labels)
-        page_index = 0
         for i, start in enumerate(sorted_starts):
             label_info = self._labels[start]
             if i + 1 < len(sorted_starts):
                 num_pages = sorted_starts[i + 1] - start
             else:
                 num_pages = number_of_pages - start
+            page_index = start
             for label in _LabelGenerator(label_info, num_pages):
                 handler(page_index, label)
                 page_index += 1

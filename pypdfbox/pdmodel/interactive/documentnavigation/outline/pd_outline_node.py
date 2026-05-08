@@ -197,6 +197,16 @@ class PDOutlineNode:
             delta += new_child.get_open_count()
         new_child._update_parent_open_count(delta)
 
+    def _update_parent_open_count_for_removed_child(self, child: PDOutlineItem) -> None:
+        delta = -1
+        if child.is_node_open():
+            delta -= child.get_open_count()
+        if self.is_node_open():
+            self._set_open_count(self.get_open_count() + delta)
+            self._update_parent_open_count(delta)
+        else:
+            self._set_open_count(self.get_open_count() - delta)
+
     # ---------- public mutation ----------
 
     def add_last(self, new_child: PDOutlineItem) -> None:
@@ -218,6 +228,65 @@ class PDOutlineNode:
         ``PDOutlineNode#appendChild`` from the Java API — appends
         ``new_child`` to the end of the child chain."""
         self.add_last(new_child)
+
+    def remove_child(self, child: PDOutlineItem) -> bool:
+        """Remove ``child`` from this node's immediate child chain.
+
+        This is a pypdfbox convenience API; upstream PDFBox exposes child
+        mutation through append/prepend and sibling insertion only. Returns
+        ``True`` when ``child`` was present and unlinked, otherwise
+        ``False``. Malformed cyclic ``/Next`` chains are treated as
+        not-found once a node is revisited.
+        """
+        target = child.get_cos_object()
+        current = self.get_first_child()
+        seen: set[int] = set()
+        while current is not None:
+            current_dict = current.get_cos_object()
+            current_id = id(current_dict)
+            if current_id in seen:
+                return False
+            seen.add(current_id)
+            if current_dict is target:
+                self._unlink_child(current)
+                return True
+            current = current.get_next_sibling()
+        return False
+
+    def _unlink_child(self, child: PDOutlineItem) -> None:
+        child_dict = child.get_cos_object()
+        previous_sibling = child.get_previous_sibling()
+        next_sibling = child.get_next_sibling()
+
+        first_child = self.get_first_child()
+        if first_child is not None and first_child.get_cos_object() is child_dict:
+            if next_sibling is None:
+                self._dictionary.remove_item(_FIRST)
+            else:
+                self._set_first_child(next_sibling)
+
+        last_child = self.get_last_child()
+        if last_child is not None and last_child.get_cos_object() is child_dict:
+            if previous_sibling is None:
+                self._dictionary.remove_item(_LAST)
+            else:
+                self._set_last_child(previous_sibling)
+
+        if previous_sibling is not None:
+            if next_sibling is None:
+                previous_sibling.get_cos_object().remove_item(_NEXT)
+            else:
+                previous_sibling._set_next_sibling(next_sibling)
+        if next_sibling is not None:
+            if previous_sibling is None:
+                next_sibling.get_cos_object().remove_item(_PREV)
+            else:
+                next_sibling._set_previous_sibling(previous_sibling)
+
+        self._update_parent_open_count_for_removed_child(child)
+        child_dict.remove_item(_PARENT)
+        child_dict.remove_item(_PREV)
+        child_dict.remove_item(_NEXT)
 
     # ---------- iteration ----------
 

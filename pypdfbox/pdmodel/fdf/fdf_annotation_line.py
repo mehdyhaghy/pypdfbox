@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSNumber, COSObject
 
-from .fdf_annotation import FDFAnnotation
+from .fdf_annotation import FDFAnnotation, _float_values
 
 _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
 _L: COSName = COSName.get_pdf_name("L")
@@ -132,12 +132,16 @@ class FDFAnnotationLine(FDFAnnotation):
     def get_interior_color(self) -> tuple[float, float, float] | None:
         v = self._annot.get_dictionary_object(_IC)
         if isinstance(v, COSArray) and len(v) == 3:
-            return (
-                _as_float(v[0]),
-                _as_float(v[1]),
-                _as_float(v[2]),
-            )
+            values = _float_values(v, 3)
+            if values is not None:
+                return (values[0], values[1], values[2])
         return None
+
+    def has_interior_color(self) -> bool:
+        return self.get_interior_color() is not None
+
+    def clear_interior_color(self) -> None:
+        self.set_interior_color(None)
 
     def set_interior_color(self, color: tuple[float, float, float] | None) -> None:
         if color is None:
@@ -245,9 +249,13 @@ class FDFAnnotationLine(FDFAnnotation):
 
 
 def _as_float(v: object) -> float:
-    val = getattr(v, "value", None)
-    if isinstance(val, (int, float)):
-        return float(val)
+    if isinstance(v, COSObject):
+        resolved = v.get_object()
+        if resolved is None:
+            return 0.0
+        v = resolved
+    if isinstance(v, COSNumber):
+        return v.float_value()
     return 0.0
 
 

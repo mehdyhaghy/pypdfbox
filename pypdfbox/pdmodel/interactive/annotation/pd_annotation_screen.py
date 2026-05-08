@@ -12,10 +12,28 @@ if TYPE_CHECKING:
         PDAnnotationAdditionalActions,
     )
 
+    from .pd_appearance_characteristics_dictionary import (
+        PDAppearanceCharacteristicsDictionary,
+    )
+
 _T: COSName = COSName.get_pdf_name("T")
 _MK: COSName = COSName.get_pdf_name("MK")
 _A: COSName = COSName.get_pdf_name("A")
 _AA: COSName = COSName.get_pdf_name("AA")
+
+
+def _as_cos_dictionary(value: object, setter_name: str) -> COSDictionary:
+    if isinstance(value, COSDictionary):
+        return value
+    if hasattr(value, "get_cos_object"):
+        cos = value.get_cos_object()
+        if isinstance(cos, COSDictionary):
+            return cos
+        raise TypeError(f"{setter_name} expects a COSDictionary-backed wrapper")
+    raise TypeError(
+        f"{setter_name} expects None, COSDictionary, or wrapper exposing "
+        f"get_cos_object(); got {type(value).__name__}"
+    )
 
 
 class PDAnnotationScreen(PDAnnotation):
@@ -58,7 +76,9 @@ class PDAnnotationScreen(PDAnnotation):
 
     # ---------- /MK (appearance characteristics dictionary) ----------
 
-    def get_appearance_characteristics(self) -> "PDAppearanceCharacteristicsDictionary | None":
+    def get_appearance_characteristics(
+        self,
+    ) -> PDAppearanceCharacteristicsDictionary | None:
         from .pd_appearance_characteristics_dictionary import (
             PDAppearanceCharacteristicsDictionary,
         )
@@ -70,14 +90,13 @@ class PDAnnotationScreen(PDAnnotation):
 
     def set_appearance_characteristics(
         self,
-        mk: "PDAppearanceCharacteristicsDictionary | COSDictionary | None",
+        mk: PDAppearanceCharacteristicsDictionary | COSDictionary | None,
     ) -> None:
         if mk is None:
             self._dict.remove_item(_MK)
             return
         self._dict.set_item(
-            _MK,
-            mk.get_cos_object() if hasattr(mk, "get_cos_object") else mk,
+            _MK, _as_cos_dictionary(mk, "set_appearance_characteristics")
         )
 
     def has_appearance_characteristics(self) -> bool:
@@ -96,7 +115,7 @@ class PDAnnotationScreen(PDAnnotation):
 
     # ---------- /A (action) ----------
 
-    def get_action(self) -> "PDAction | None":
+    def get_action(self) -> PDAction | None:
         from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
 
         value = self._dict.get_dictionary_object(_A)
@@ -104,14 +123,11 @@ class PDAnnotationScreen(PDAnnotation):
             return PDAction.create(value)
         return None
 
-    def set_action(self, action: "PDAction | COSDictionary | None") -> None:
+    def set_action(self, action: PDAction | COSDictionary | None) -> None:
         if action is None:
             self._dict.remove_item(_A)
             return
-        self._dict.set_item(
-            _A,
-            action.get_cos_object() if hasattr(action, "get_cos_object") else action,
-        )
+        self._dict.set_item(_A, _as_cos_dictionary(action, "set_action"))
 
     def has_action(self) -> bool:
         """Predicate: is a parsable ``/A`` action dictionary present?
@@ -127,7 +143,7 @@ class PDAnnotationScreen(PDAnnotation):
 
     # ---------- /AA (additional actions) ----------
 
-    def get_additional_actions(self) -> "PDAnnotationAdditionalActions | None":
+    def get_additional_actions(self) -> PDAnnotationAdditionalActions | None:
         from pypdfbox.pdmodel.interactive.action.pd_annotation_additional_actions import (
             PDAnnotationAdditionalActions,
         )
@@ -138,14 +154,13 @@ class PDAnnotationScreen(PDAnnotation):
         return None
 
     def set_additional_actions(
-        self, aa: "PDAnnotationAdditionalActions | COSDictionary | None"
+        self, aa: PDAnnotationAdditionalActions | COSDictionary | None
     ) -> None:
         if aa is None:
             self._dict.remove_item(_AA)
             return
         self._dict.set_item(
-            _AA,
-            aa.get_cos_object() if hasattr(aa, "get_cos_object") else aa,
+            _AA, _as_cos_dictionary(aa, "set_additional_actions")
         )
 
     def has_additional_actions(self) -> bool:
@@ -166,12 +181,12 @@ class PDAnnotationScreen(PDAnnotation):
     # ``PDAnnotationScreen`` since both annotations carry the same trigger-
     # event additional-action dictionary.
 
-    def get_actions(self) -> "PDAnnotationAdditionalActions | None":
+    def get_actions(self) -> PDAnnotationAdditionalActions | None:
         """Alias for :meth:`get_additional_actions` matching upstream Widget."""
         return self.get_additional_actions()
 
     def set_actions(
-        self, actions: "PDAnnotationAdditionalActions | COSDictionary | None"
+        self, actions: PDAnnotationAdditionalActions | COSDictionary | None
     ) -> None:
         """Alias for :meth:`set_additional_actions` matching upstream Widget."""
         self.set_additional_actions(actions)

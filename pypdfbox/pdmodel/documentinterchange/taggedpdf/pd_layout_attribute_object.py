@@ -170,11 +170,18 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
 
     # ---------- /Color ----------
 
-    def get_color(self) -> tuple[float, ...] | None:
-        return self._get_color_value("Color")
+    def get_color(self, name: str = "Color") -> tuple[float, ...] | None:
+        return self._get_color_value(name)
 
-    def set_color(self, rgb: tuple[float, ...] | None) -> None:
-        self._set_color_value("Color", rgb)
+    def set_color(
+        self,
+        name: str | tuple[float, ...] | None = None,
+        rgb: tuple[float, ...] | None = None,
+    ) -> None:
+        if isinstance(name, str):
+            self._set_color_value(name, rgb)
+        else:
+            self._set_color_value("Color", name)
 
     # ---------- /BorderColor ----------
 
@@ -239,14 +246,9 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     def set_border_thickness(self, value: float | int | list[float] | None) -> None:
         """
         Set ``/BorderThickness`` either to a single number (all four sides)
-        or to a four-element number array (per-side).
+        or to a number array (per-side).
         """
-        if value is None:
-            self._dictionary.remove_item("BorderThickness")
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            self._set_number("BorderThickness", value)
-        else:
-            self._set_array_of_number("BorderThickness", [float(v) for v in value])
+        self._set_number_or_array("BorderThickness", value)
 
     # ---------- /Padding ----------
 
@@ -260,14 +262,9 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     def set_padding(self, value: float | int | list[float] | None) -> None:
         """
         Set ``/Padding`` either to a single number (all four sides) or to a
-        four-element number array (per-side).
+        number array (per-side).
         """
-        if value is None:
-            self._dictionary.remove_item("Padding")
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            self._set_number("Padding", value)
-        else:
-            self._set_array_of_number("Padding", [float(v) for v in value])
+        self._set_number_or_array("Padding", value)
 
     # ---------- /SpaceBefore ----------
 
@@ -427,17 +424,12 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     # ---------- /ColumnGap ----------
 
     def get_column_gap(self) -> float | list[float] | None:
-        """Return either a single number or a four-element list of numbers."""
+        """Return either a single number or a list of per-gap numbers."""
         return self.get_number_or_array_of_number("ColumnGap", self.UNSPECIFIED)
 
     def set_column_gap(self, value: float | int | list[float] | None) -> None:
-        """Single number (uniform) or four-element array (per-side)."""
-        if value is None:
-            self._dictionary.remove_item("ColumnGap")
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            self._set_number("ColumnGap", value)
-        else:
-            self._set_array_of_number("ColumnGap", [float(v) for v in value])
+        """Set a single uniform number or a per-gap number array."""
+        self._set_number_or_array("ColumnGap", value)
 
     # ---------- /ColumnWidths ----------
 
@@ -447,12 +439,7 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
 
     def set_column_widths(self, value: float | int | list[float] | None) -> None:
         """Single number (uniform) or per-column number array."""
-        if value is None:
-            self._dictionary.remove_item("ColumnWidths")
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            self._set_number("ColumnWidths", value)
-        else:
-            self._set_array_of_number("ColumnWidths", [float(v) for v in value])
+        self._set_number_or_array("ColumnWidths", value)
 
     # ---------- Upstream-parity overload-style aliases ----------
     #
@@ -497,6 +484,10 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     def set_all_column_widths(self, value: float | int | None) -> None:
         """Set ``/ColumnWidths`` to a single number applied to all columns."""
         self.set_column_widths(value)
+
+    def set_all_column_gaps(self, value: float | int | None) -> None:
+        """Set ``/ColumnGap`` to a single number applied to all gaps."""
+        self.set_column_gap(value)
 
     def set_column_gaps(self, values: list[float] | None) -> None:
         """Set ``/ColumnGap`` to a per-gap number array."""
@@ -543,12 +534,7 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
     def set_t_padding(self, value: float | int | list[float] | None) -> None:
         """Set ``/TPadding`` to a single number (uniform) or a four-element
         per-side number array."""
-        if value is None:
-            self._dictionary.remove_item("TPadding")
-        elif isinstance(value, (int, float)) and not isinstance(value, bool):
-            self._set_number("TPadding", value)
-        else:
-            self._set_array_of_number("TPadding", [float(v) for v in value])
+        self._set_number_or_array("TPadding", value)
 
     def set_all_t_paddings(self, value: float | int | None) -> None:
         """Upstream-parity single-number setter for ``/TPadding``."""
@@ -560,6 +546,18 @@ class PDLayoutAttributeObject(PDStandardAttributeObject):
             self._dictionary.remove_item("TPadding")
         else:
             self._set_array_of_number("TPadding", [float(v) for v in values])
+
+    def _set_number_or_array(
+        self, name: str, value: float | int | list[float] | None
+    ) -> None:
+        if value is None:
+            self._dictionary.remove_item(name)
+        elif isinstance(value, bool):
+            raise TypeError(f"{name} must be a number or list of numbers")
+        elif isinstance(value, (int, float)):
+            self._set_number(name, value)
+        else:
+            self._set_array_of_number(name, [float(v) for v in value])
 
     # ---------- /LineHeight ----------
 

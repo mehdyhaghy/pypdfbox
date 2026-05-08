@@ -33,10 +33,10 @@ class PDTilingPattern(PDAbstractPattern):
     ``PDTilingPattern`` lite surface — backed by a ``COSStream`` since
     tiling patterns carry a content stream describing one cell.
 
-    Lite: ``get_b_box`` returns the raw ``COSArray`` (typed
-    ``PDRectangle`` wrapping is offered by callers when needed); the
-    ``PDContentStream`` mixin (``get_contents`` / ``getContentsForRandomAccess``)
-    is deferred to the contentstream parsing cluster."""
+    The wrapper normally carries a ``COSStream`` body plus typed accessors for
+    the pattern dictionary entries. ``PDContentStream``-style helpers are
+    available as ``get_contents`` / ``get_contents_for_random_access`` /
+    ``get_contents_for_stream_parsing``."""
 
     # Upstream PDFBox spelling — keep both ``PAINT_TYPE_*`` (canonical) and
     # the older ``PAINT_*`` aliases for back-compat with earlier callers.
@@ -56,7 +56,7 @@ class PDTilingPattern(PDAbstractPattern):
 
     def __init__(
         self,
-        stream: COSStream | None = None,
+        stream: COSDictionary | COSStream | None = None,
         *,
         resource_cache: PDResourceCache | None = None,
     ) -> None:
@@ -135,22 +135,27 @@ class PDTilingPattern(PDAbstractPattern):
 
     # ---------- /BBox ----------
 
+    def _b_box_or_none(self) -> PDRectangle | None:
+        value = self._dict.get_dictionary_object(_BBOX)
+        if not isinstance(value, COSArray) or value.size() < 4:
+            return None
+        try:
+            return PDRectangle.from_cos_array(value)
+        except (TypeError, ValueError):
+            return None
+
     def get_b_box(self) -> PDRectangle | None:
         """``/BBox`` as a typed ``PDRectangle``, or ``None`` when missing /
         not a 4-entry numeric array. Mirrors upstream
         ``PDTilingPattern.getBBox``."""
-        value = self._dict.get_dictionary_object(_BBOX)
-        if isinstance(value, COSArray) and value.size() >= 4:
-            return PDRectangle.from_cos_array(value)
-        return None
+        return self._b_box_or_none()
 
     def has_b_box(self) -> bool:
         """``True`` when ``/BBox`` is present as a 4-entry ``COSArray`` —
         i.e. ``get_b_box`` would return a ``PDRectangle`` rather than
         ``None``. Useful for tooling that wants to flag tiling-pattern
         dictionaries missing the spec-required ``/BBox`` entry."""
-        value = self._dict.get_dictionary_object(_BBOX)
-        return isinstance(value, COSArray) and value.size() >= 4
+        return self._b_box_or_none() is not None
 
     def set_b_box(self, bbox: PDRectangle | COSArray | None) -> None:
         """Accepts a typed ``PDRectangle``, a raw ``COSArray``, or ``None``
@@ -168,6 +173,10 @@ class PDTilingPattern(PDAbstractPattern):
             "set_b_box expects PDRectangle, COSArray, or None; got "
             f"{type(bbox).__name__}"
         )
+
+    def clear_b_box(self) -> None:
+        """Remove ``/BBox``. No-op if absent."""
+        self._dict.remove_item(_BBOX)
 
     # ---------- /XStep / /YStep ----------
 
@@ -241,6 +250,12 @@ class PDTilingPattern(PDAbstractPattern):
             return PDResources(value, resource_cache=self._resource_cache)
         return None
 
+    def has_resources(self) -> bool:
+        """``True`` when ``/Resources`` is present as a ``COSDictionary``."""
+        return isinstance(
+            self._dict.get_dictionary_object(_RESOURCES), COSDictionary
+        )
+
     def set_resources(
         self, resources: PDResources | COSDictionary | None
     ) -> None:
@@ -252,7 +267,16 @@ class PDTilingPattern(PDAbstractPattern):
             if isinstance(resources, PDResources)
             else resources
         )
+        if not isinstance(target, COSDictionary):
+            raise TypeError(
+                "set_resources expects PDResources, COSDictionary, or None; "
+                f"got {type(resources).__name__}"
+            )
         self._dict.set_item(_RESOURCES, target)
+
+    def clear_resources(self) -> None:
+        """Remove ``/Resources``. No-op if absent."""
+        self._dict.remove_item(_RESOURCES)
 
 
 __all__ = ["PDTilingPattern"]

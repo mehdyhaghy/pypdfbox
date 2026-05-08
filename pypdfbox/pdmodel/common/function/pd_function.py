@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSObject, COSStream
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.common.pd_range import PDRange
 from pypdfbox.pdmodel.common.pd_stream import PDStream
@@ -24,12 +24,11 @@ class PDFunction:
     ``COSStream`` (Type 0, 4). The dictionary/stream provides ``/FunctionType``,
     ``/Domain``, and (for sampled / output-clipped functions) ``/Range``.
 
-    Function evaluation (``eval(input)``) is implemented for Type 2
-    (exponential interpolation) and Type 3 (stitching). Type 0 (sampled-table
-    interpolation) and Type 4 (PostScript calculator) eval are deferred —
-    see ``CHANGES.md``. The structural accessors below cover callers that
-    introspect or build function dictionaries (e.g. shading dictionaries,
-    tint transforms).
+    Function evaluation (``eval(input)``) is implemented by the concrete
+    Type 0 (sampled-table), Type 2 (exponential interpolation), Type 3
+    (stitching), and Type 4 (PostScript calculator) wrappers. The structural
+    accessors below cover callers that introspect or build function
+    dictionaries (e.g. shading dictionaries, tint transforms).
     """
 
     # ---------- /FunctionType code constants ----------
@@ -83,6 +82,10 @@ class PDFunction:
 
         if function is None:
             return None
+        if isinstance(function, COSObject):
+            function = function.get_object()
+            if function is None:
+                return None
         # /Identity sentinel — used by transfer / soft-mask dictionaries.
         if isinstance(function, COSName) and function.get_name() == _IDENTITY:
             return PDFunctionTypeIdentity()
@@ -297,9 +300,8 @@ class PDFunction:
     def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
         """Evaluate the function at ``input``. Subclasses override.
 
-        Default raises ``NotImplementedError``; Type 0 (sampled) and Type 4
-        (PostScript calculator) eval are deferred — callers should rely on
-        the structural accessors instead.
+        The abstract base raises ``NotImplementedError``; concrete function
+        types provide the type-specific evaluation behavior.
         """
         raise NotImplementedError(
             f"eval() is not implemented for {type(self).__name__}"

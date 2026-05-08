@@ -24,6 +24,10 @@ class ProtectionPolicy:
         return self._encryption_key_length
 
     def set_encryption_key_length(self, bits: int) -> None:
+        if not isinstance(bits, int) or isinstance(bits, bool):
+            raise TypeError(
+                f"encryption key length must be an int, got {type(bits).__name__}"
+            )
         if bits not in _VALID_KEY_LENGTHS:
             raise ValueError(
                 f"invalid key length {bits}; expected one of {sorted(_VALID_KEY_LENGTHS)}"
@@ -34,6 +38,8 @@ class ProtectionPolicy:
         return self._prefer_aes
 
     def set_prefer_aes(self, b: bool) -> None:
+        if not isinstance(b, bool):
+            raise TypeError(f"prefer_aes must be a bool, got {type(b).__name__}")
         self._prefer_aes = b
 
 

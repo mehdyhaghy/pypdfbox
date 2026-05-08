@@ -24,6 +24,7 @@ from pathlib import Path
 
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel import PDDocument
+from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
 
 # /DecodeParms must be cleared alongside /Filter — leaving it on a now-
 # unfiltered stream is technically legal (a non-conformant reader may just
@@ -31,6 +32,9 @@ from pypdfbox.pdmodel import PDDocument
 # ``COSStream.createOutputStream()`` semantics on writeback. We track the
 # name explicitly so we don't depend on undocumented side effects.
 _DECODE_PARMS = COSName.get_pdf_name("DecodeParms")
+_FILTER = COSName.get_pdf_name("Filter")
+_TYPE = COSName.get_pdf_name("Type")
+_SUBTYPE = COSName.get_pdf_name("Subtype")
 _XOBJECT = COSName.get_pdf_name("XObject")
 _IMAGE = COSName.get_pdf_name("Image")
 
@@ -79,8 +83,8 @@ def _process_stream(stream: COSStream, *, skip_images: bool) -> None:
     replace the raw body with the decoded bytes. Mirrors upstream's
     ``processObject`` body for a single stream."""
     if skip_images:
-        type_item = stream.get_item(COSName.TYPE)
-        subtype_item = stream.get_item(COSName.SUBTYPE)
+        type_item = stream.get_item(_TYPE)
+        subtype_item = stream.get_item(_SUBTYPE)
         if type_item == _XOBJECT and subtype_item == _IMAGE:
             return
     if not stream.has_data():
@@ -96,7 +100,7 @@ def _process_stream(stream: COSStream, *, skip_images: bool) -> None:
         # mirror the swallow-and-continue behaviour so a single corrupt
         # stream doesn't sink the whole rewrite.
         return
-    stream.remove_item(COSName.FILTER)
+    stream.remove_item(_FILTER)
     stream.remove_item(_DECODE_PARMS)
     # Raw write: bytes go in verbatim, so subsequent reads see the
     # already-decoded payload (no filter chain to undo).
@@ -145,16 +149,16 @@ def run(args: argparse.Namespace) -> int:
         print(f"writedecodedstream: {src}: not a file", flush=True)
         return 4
 
-    if args.output:
-        out = Path(args.output)
-    else:
-        out = Path(calculate_output_filename(src))
+    out = Path(args.output) if args.output else Path(calculate_output_filename(src))
 
     password = args.password if args.password is not None else ""
     skip_images = bool(args.skip_images)
 
     try:
         write_decoded(src, out, password=password, skip_images=skip_images)
+    except PDInvalidPasswordException as exc:
+        print(f"writedecodedstream: {exc}", flush=True)
+        return 1
     except OSError:
         # Re-raise so the dispatcher's standard OSError → exit-4 handler
         # (in cli.run_cli) prints the message and returns the right code.

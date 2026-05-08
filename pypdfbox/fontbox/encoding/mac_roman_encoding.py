@@ -219,7 +219,7 @@ class MacRomanEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.MacRomanEncoding``.
     """
 
-    INSTANCE: "MacRomanEncoding"
+    INSTANCE: MacRomanEncoding
 
     def __init__(self) -> None:
         super().__init__()

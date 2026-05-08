@@ -37,7 +37,7 @@ _ENCODING: COSName = COSName.get_pdf_name("Encoding")
 # Per-encoding (unicode -> code) reverse cache. Keyed by the typed Encoding
 # instance identity so the same singleton is shared across PDSimpleFont
 # instances; DictionaryEncoding instances naturally get their own entry.
-_REVERSE_CACHE: "dict[int, dict[str, int]]" = {}
+_REVERSE_CACHE: dict[int, dict[str, int]] = {}
 
 
 def _glyph_list_for(encoding: Encoding) -> GlyphList:
@@ -101,6 +101,27 @@ class PDSimpleFont(PDFont):
             if isinstance(item, (COSInteger, COSFloat)):
                 widths.append(float(item.value))
         return widths
+
+    def set_first_char(self, value: int | None) -> None:
+        """Set or clear ``/FirstChar`` on the font dictionary."""
+        if value is None:
+            self._dict.remove_item(_FIRST_CHAR)
+            return
+        self._dict.set_int(_FIRST_CHAR, int(value))
+
+    def set_last_char(self, value: int | None) -> None:
+        """Set or clear ``/LastChar`` on the font dictionary."""
+        if value is None:
+            self._dict.remove_item(_LAST_CHAR)
+            return
+        self._dict.set_int(_LAST_CHAR, int(value))
+
+    def set_widths(self, values: list[float] | None) -> None:
+        """Replace or clear the ``/Widths`` array."""
+        if values is None:
+            self._dict.remove_item(_WIDTHS)
+            return
+        self._dict.set_item(_WIDTHS, COSArray([COSFloat(float(v)) for v in values]))
 
     # ---------- /FontDescriptor /Flags accessors ----------
     #

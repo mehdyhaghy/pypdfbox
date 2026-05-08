@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
 
@@ -75,6 +76,8 @@ class PDShadingType5(PDShading):
         Mirrors upstream ``PDTriangleBasedShadingType.getDecodeForParameter``
         — index 0 is the x-coordinate range, 1 is the y-coordinate range,
         and ``2 + i`` is the i-th color component range."""
+        if param_num < 0:
+            return None
         v = self._dict.get_dictionary_object(_DECODE)
         if not isinstance(v, COSArray):
             return None
@@ -106,7 +109,7 @@ class PDShadingType5(PDShading):
             return int(get_components())
         return -1
 
-    def get_function(self):
+    def get_function(self) -> Any:
         from pypdfbox.pdmodel.common.function import PDFunction
 
         item = self._dict.get_dictionary_object(_FUNCTION)
@@ -114,7 +117,7 @@ class PDShadingType5(PDShading):
             return None
         return PDFunction.create(item)
 
-    def set_function(self, value) -> None:
+    def set_function(self, value: Any) -> None:
         from pypdfbox.pdmodel.common.function import PDFunction
 
         if value is None:

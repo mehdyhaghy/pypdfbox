@@ -141,11 +141,7 @@ class PDUserProperty:
             self._user_attribute_object == other._user_attribute_object
         )
 
-    def __hash__(self) -> int:
-        # Identity-based hash mirrors PDFBox's reliance on identity-equal
-        # ``userAttributeObject`` references; the underlying COSDictionary is
-        # mutable so we cannot fold its contents into the hash safely.
-        return hash((id(self._dictionary), id(self._user_attribute_object)))
+    __hash__ = None  # type: ignore[assignment]
 
     def __repr__(self) -> str:
         return (

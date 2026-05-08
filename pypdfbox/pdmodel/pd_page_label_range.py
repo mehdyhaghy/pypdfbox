@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSString
 
 # Page label dictionary keys (PDF 32000-1:2008 §12.4.2, Table 159).
 _KEY_START: COSName = COSName.get_pdf_name("St")
@@ -85,6 +85,10 @@ class PDPageLabelRange:
             )
         self._root.set_name(_KEY_STYLE, style)
 
+    def clear_style(self) -> None:
+        """Remove the ``/S`` numbering style entry."""
+        self._root.remove_item(_KEY_STYLE)
+
     # ---------- start ----------
 
     def get_start(self) -> int:
@@ -99,6 +103,10 @@ class PDPageLabelRange:
             )
         self._root.set_int(_KEY_START, start)
 
+    def clear_start(self) -> None:
+        """Remove the explicit ``/St`` entry so :meth:`get_start` defaults to 1."""
+        self._root.remove_item(_KEY_START)
+
     # ---------- prefix ----------
 
     def get_prefix(self) -> str | None:
@@ -109,6 +117,10 @@ class PDPageLabelRange:
             self._root.remove_item(_KEY_PREFIX)
         else:
             self._root.set_string(_KEY_PREFIX, prefix)
+
+    def clear_prefix(self) -> None:
+        """Remove the ``/P`` page label prefix entry."""
+        self._root.remove_item(_KEY_PREFIX)
 
     # ---------- computed labels ----------
 
@@ -176,7 +188,7 @@ class PDPageLabelRange:
         Convenience for callers that branch on the absence of ``/S`` (which
         is legal — it produces "prefix-only" labels) without needing to
         check ``get_style() is not None``."""
-        return self._root.contains_key(_KEY_STYLE)
+        return isinstance(self._root.get_dictionary_object(_KEY_STYLE), COSName)
 
     def has_prefix(self) -> bool:
         """``True`` when the ``/P`` page label prefix entry is present.
@@ -185,7 +197,9 @@ class PDPageLabelRange:
         :meth:`get_prefix` returns ``None`` for the former and ``""`` for
         the latter, but callers that want a single boolean check (e.g. for
         deciding whether to render a separator) can use this."""
-        return self._root.contains_key(_KEY_PREFIX)
+        return isinstance(
+            self._root.get_dictionary_object(_KEY_PREFIX), COSString
+        )
 
     def has_start(self) -> bool:
         """``True`` when an explicit ``/St`` (start number) entry is set.
@@ -194,7 +208,9 @@ class PDPageLabelRange:
         recorded /St 1 explicitly". Useful for round-tripping decisions
         where preserving the absent /St entry matters for byte-exact
         re-serialisation."""
-        return self._root.contains_key(_KEY_START)
+        return isinstance(
+            self._root.get_dictionary_object(_KEY_START), COSInteger
+        )
 
     # ---------- structural equality ----------
 

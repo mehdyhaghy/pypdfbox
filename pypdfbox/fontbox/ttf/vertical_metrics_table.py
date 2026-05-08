@@ -41,13 +41,15 @@ class VerticalMetricsTable(TTFTable):
             self._top_side_bearing[i] = data.read_signed_short()
             bytes_read += 4
 
-        if bytes_read < self.get_length():
-            number_non_vertical = num_glyphs - self._num_v_metrics
-            # handle bad fonts with too many vmetrics
-            if number_non_vertical < 0:
-                number_non_vertical = num_glyphs
+        number_non_vertical = num_glyphs - self._num_v_metrics
+        # handle bad fonts with too many vmetrics
+        if number_non_vertical < 0:
+            number_non_vertical = num_glyphs
 
-            self._additional_top_side_bearing = [0] * number_non_vertical
+        # Always allocate, so missing/truncated trailing TSB values remain zero.
+        self._additional_top_side_bearing = [0] * number_non_vertical
+
+        if bytes_read < self.get_length():
             for i in range(number_non_vertical):
                 if bytes_read < self.get_length():
                     self._additional_top_side_bearing[i] = data.read_signed_short()

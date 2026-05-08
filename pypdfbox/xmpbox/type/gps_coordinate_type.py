@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING, Any
 
 from .text_type import TextType
@@ -59,6 +60,8 @@ class GPSCoordinateType(TextType):
                 minutes = float(parts[1])
             except ValueError:
                 return None
+            if not self._is_valid_coordinate_part(degrees, minutes):
+                return None
             return (degrees, minutes, 0.0, hemi)
         if len(parts) == 3:
             try:
@@ -67,8 +70,22 @@ class GPSCoordinateType(TextType):
                 seconds = float(parts[2])
             except ValueError:
                 return None
+            if not self._is_valid_coordinate_part(degrees, minutes, seconds):
+                return None
             return (degrees, minutes, seconds, hemi)
         return None
+
+    @staticmethod
+    def _is_valid_coordinate_part(
+        degrees: int, minutes: float, seconds: float = 0.0
+    ) -> bool:
+        return (
+            degrees >= 0
+            and math.isfinite(minutes)
+            and math.isfinite(seconds)
+            and 0.0 <= minutes < 60.0
+            and 0.0 <= seconds < 60.0
+        )
 
     @classmethod
     def format_dms(
@@ -78,6 +95,11 @@ class GPSCoordinateType(TextType):
         if hemisphere not in cls._HEMISPHERES:
             raise ValueError(
                 f"hemisphere must be one of N/S/E/W, got {hemisphere!r}"
+            )
+        if not cls._is_valid_coordinate_part(degrees, minutes, seconds):
+            raise ValueError(
+                "degrees must be non-negative and minutes/seconds must be "
+                "finite values in the range [0, 60)"
             )
         return f"{int(degrees)},{int(minutes)},{int(seconds)}{hemisphere}"
 
@@ -89,5 +111,10 @@ class GPSCoordinateType(TextType):
         if hemisphere not in cls._HEMISPHERES:
             raise ValueError(
                 f"hemisphere must be one of N/S/E/W, got {hemisphere!r}"
+            )
+        if not cls._is_valid_coordinate_part(degrees, minutes):
+            raise ValueError(
+                "degrees must be non-negative and minutes must be a finite "
+                "value in the range [0, 60)"
             )
         return f"{int(degrees)},{minutes}{hemisphere}"

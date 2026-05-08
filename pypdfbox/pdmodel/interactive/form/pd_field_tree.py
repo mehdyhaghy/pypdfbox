@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Iterator, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 if TYPE_CHECKING:
     from .pd_acro_form import PDAcroForm
@@ -35,6 +35,12 @@ class PDFieldTree(Sequence["PDField"]):
 
     def __len__(self) -> int:
         return len(self._as_list())
+
+    @overload
+    def __getitem__(self, index: int) -> PDField: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> list[PDField]: ...
 
     def __getitem__(self, index: int | slice) -> PDField | list[PDField]:
         return self._as_list()[index]

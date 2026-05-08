@@ -26,9 +26,9 @@ class AnnotationBorder:
 
     @staticmethod
     def get_annotation_border(
-        annotation: "PDAnnotation",
-        border_style: "PDBorderStyleDictionary | None",
-    ) -> "AnnotationBorder":
+        annotation: PDAnnotation,
+        border_style: PDBorderStyleDictionary | None,
+    ) -> AnnotationBorder:
         # Local import to avoid circulars at module-load time.
         from ..pd_border_style_dictionary import PDBorderStyleDictionary
 

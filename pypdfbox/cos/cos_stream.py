@@ -12,6 +12,11 @@ from .cos_dictionary import COSDictionary
 from .cos_name import COSName
 from .i_cos_visitor import ICOSVisitor
 
+_FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
+_TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
+_DECODE_PARMS = COSName.get_pdf_name("DecodeParms")
+_DP = COSName.get_pdf_name("DP")
+
 
 class _CommittingOutputStream(io.BytesIO):
     """``BytesIO`` subclass whose ``close()`` commits the buffered bytes
@@ -62,10 +67,7 @@ class _EncodingOutputStream(io.BytesIO):
             self._owner._set_raw_data_internal(data)
             # Record the filter chain on /Filter so future readers can
             # decode the bytes we just wrote.
-            if len(self._filters) == 1:
-                self._owner.set_item(COSName.FILTER, self._filters[0])  # type: ignore[attr-defined]
-            else:
-                self._owner.set_item(COSName.FILTER, COSArray(list(self._filters)))  # type: ignore[attr-defined]
+            self._owner.set_filters(self._filters)
         super().close()
 
 
@@ -80,8 +82,10 @@ class COSStream(COSDictionary):
     decoding is delegated to ``pypdfbox.filter`` via ``FilterFactory``:
     :meth:`create_input_stream` decodes through the ``/Filter`` chain
     and :meth:`create_output_stream` accepts an optional filter chain
-    that is encoded on close. Encryption-aware streams and image-flow
-    predictor handling on encode remain deferred (see ``CHANGES.md``).
+    that is encoded on close. Security-handler decryption is applied
+    lazily before filters when a handler is attached. Image-flow
+    predictor handling on encode remains delegated to the concrete
+    filters.
     """
 
     def __init__(
@@ -188,7 +192,7 @@ class COSStream(COSDictionary):
         walk doesn't garble the body of the second instance."""
         if self._skip_encryption:
             return
-        type_name = self.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+        type_name = self.get_dictionary_object(_TYPE)
         if isinstance(type_name, COSName) and type_name.name == "XRef":
             self._skip_encryption = True
             return
@@ -220,7 +224,7 @@ class COSStream(COSDictionary):
 
     def create_input_stream(
         self,
-        stop_filters: Sequence[str | COSName] | None = None,
+        stop_filters: Sequence[str | COSName] | str | COSName | None = None,
     ) -> BinaryIO:
         """Return a stream over the **decoded** body.
 
@@ -257,10 +261,7 @@ class COSStream(COSDictionary):
         # Local import to keep cos free of a static filter dep.
         from pypdfbox.filter import FilterFactory  # noqa: PLC0415
 
-        stop_set: set[str] = set()
-        if stop_filters is not None:
-            for s in stop_filters:
-                stop_set.add(s.name if isinstance(s, COSName) else s)
+        stop_set = _coerce_stop_filter_names(stop_filters)
 
         data = self.get_raw_data()
         for index, name in enumerate(chain):
@@ -275,13 +276,13 @@ class COSStream(COSDictionary):
 
     def create_output_stream(
         self,
-        filters: COSBase | Sequence[COSName | str] | None = None,
+        filters: COSBase | Sequence[COSName | str] | str | None = None,
     ) -> BinaryIO:
         """Return a writable stream that on ``close()`` becomes the body.
 
         - ``filters=None`` → the bytes you write are stored verbatim
-          (raw / unencoded). The stream's existing ``/Filter`` entry is
-          left untouched.
+          (raw / unencoded). Any existing ``/Filter`` entry is removed
+          so future decoded reads do not apply a stale filter.
         - ``filters`` is a single ``COSName`` → wraps in a one-element
           chain.
         - ``filters`` is a ``COSArray`` of names *or* a Python sequence
@@ -291,6 +292,7 @@ class COSStream(COSDictionary):
         if self._closed:
             raise ValueError("operation on closed COSStream")
         if filters is None:
+            self.clear_filters()
             return self.create_raw_output_stream()
 
         names = _coerce_filter_chain(filters)
@@ -318,7 +320,7 @@ class COSStream(COSDictionary):
     ) -> None:
         """Convenience setter — write ``data`` (raw, unencoded) through
         the supplied filter chain. With ``filters=None`` the bytes are
-        stored verbatim and any existing ``/Filter`` is left untouched.
+        stored verbatim and any existing ``/Filter`` is removed.
         With a filter chain, ``data`` is treated as the decoded payload
         and is encoded on the way in (and ``/Filter`` is set)."""
         with self.create_output_stream(filters) as out:
@@ -336,7 +338,61 @@ class COSStream(COSDictionary):
 
         Mirrors upstream ``COSStream.getFilters()``. Use
         :meth:`get_filter_list` to receive a normalized list of names."""
-        return self.get_dictionary_object(COSName.FILTER)  # type: ignore[attr-defined,no-any-return]
+        return self.get_dictionary_object(_FILTER)
+
+    def set_filters(
+        self,
+        filters: COSBase | Sequence[COSName | str] | str | None,
+    ) -> None:
+        """Replace the ``/Filter`` entry.
+
+        ``None`` removes the entry. A single name is stored in PDF's
+        compact single-name form; multiple names are stored as a
+        ``COSArray``. Empty sequences are preserved as an empty array so
+        malformed or intentionally empty producer data can round-trip.
+        """
+        if filters is None:
+            self.clear_filters()
+            return
+        names = _coerce_filter_chain(filters)
+        if len(names) == 1:
+            self.set_item(_FILTER, names[0])
+        else:
+            self.set_item(_FILTER, COSArray(list(names)))
+
+    def has_filters(self) -> bool:
+        """Return ``True`` when ``/Filter`` contains at least one name."""
+        return bool(self.get_filter_list())
+
+    def has_filter(self, name: COSName | str) -> bool:
+        """Return ``True`` when ``name`` appears in the ``/Filter`` chain."""
+        return _coerce_filter_name(name) in self.get_filter_list()
+
+    def get_first_filter(self) -> COSName | None:
+        """Return the first filter in the chain, or ``None`` when absent."""
+        filters = self.get_filter_list()
+        return filters[0] if filters else None
+
+    def get_filters_as_strings(self) -> list[str]:
+        """Return the ``/Filter`` chain as plain names without leading slash."""
+        return [name.name for name in self.get_filter_list()]
+
+    def clear_filters(self) -> None:
+        """Remove the ``/Filter`` entry."""
+        self.remove_item(_FILTER)
+
+    def get_decode_parms(self) -> COSBase | None:
+        """Return the raw ``/DecodeParms`` value, falling back to ``/DP``."""
+        return self.get_dictionary_object(_DECODE_PARMS, _DP)
+
+    def has_decode_parms(self) -> bool:
+        """Return ``True`` when ``/DecodeParms`` or short-form ``/DP`` is present."""
+        return self.get_decode_parms() is not None
+
+    def clear_decode_parms(self) -> None:
+        """Remove both ``/DecodeParms`` and short-form ``/DP`` entries."""
+        self.remove_item(_DECODE_PARMS)
+        self.remove_item(_DP)
 
     def get_filter_list(self) -> list[COSName]:
         """Return the ``/Filter`` chain as a list of ``COSName``.
@@ -419,26 +475,46 @@ def _coerce_filter_chain(
     if isinstance(filters, COSName):
         return [filters]
     if isinstance(filters, COSArray):
-        out: list[COSName] = []
+        array_names: list[COSName] = []
         for entry in filters:
             if isinstance(entry, COSName):
-                out.append(entry)
+                array_names.append(entry)
             else:
                 raise TypeError(
                     f"non-name entry in /Filter array: {type(entry).__name__}"
                 )
-        return out
+        return array_names
     if isinstance(filters, str):
         return [COSName.get_pdf_name(filters)]
+    if isinstance(filters, COSBase):
+        raise TypeError(f"unexpected /Filter type: {type(filters).__name__}")
     # Treat as a generic sequence of name-or-string.
-    out = []
-    for entry in filters:
-        if isinstance(entry, COSName):
-            out.append(entry)
-        elif isinstance(entry, str):
-            out.append(COSName.get_pdf_name(entry))
+    sequence_names: list[COSName] = []
+    for filter_entry in filters:
+        if isinstance(filter_entry, COSName):
+            sequence_names.append(filter_entry)
+        elif isinstance(filter_entry, str):
+            sequence_names.append(COSName.get_pdf_name(filter_entry))
         else:
             raise TypeError(
-                f"filter entry must be COSName or str, got {type(entry).__name__}"
+                f"filter entry must be COSName or str, got {type(filter_entry).__name__}"
             )
-    return out
+    return sequence_names
+
+
+def _coerce_filter_name(name: COSName | str) -> COSName:
+    if isinstance(name, COSName):
+        return name
+    return COSName.get_pdf_name(name)
+
+
+def _coerce_stop_filter_names(
+    stop_filters: Sequence[str | COSName] | str | COSName | None,
+) -> set[str]:
+    if stop_filters is None:
+        return set()
+    if isinstance(stop_filters, COSName):
+        return {stop_filters.name}
+    if isinstance(stop_filters, str):
+        return {stop_filters}
+    return {entry.name if isinstance(entry, COSName) else entry for entry in stop_filters}

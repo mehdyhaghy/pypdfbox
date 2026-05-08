@@ -1041,3 +1041,381 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_page_tree.py`: `__contains__` so `page in tree` resolves to `index_of(page) >= 0` for `PDPage` and raw `COSDictionary` operands; non-page operands short-circuit to `False`. `__bool__` mirrors `len(self) > 0`. Pypdfbox extensions — upstream Java `PDPageTree` has no membership / truthiness API but both protocols are the natural Pythonic spelling of the existing surface and avoid surprising `bool(tree) is True` for an empty tree under default object truthiness.
 - `pypdfbox/pdmodel/pd_page_tree.py`: pypdfbox-only `is_empty()` (matches Java's `Collection.isEmpty()` idiom — equivalent to `len(self) == 0`) and `has_page(page)` (named alias for `index_of(page) >= 0`, accepts a `PDPage` or its backing `COSDictionary`). Mirrors the `has_*` predicate pattern used across pypdfbox (`PDTextField.has_value`, `PDVariableText.has_q`, `PDAcroForm.has_default_resources`).
 - `pypdfbox/pdmodel/pd_page_tree.py`: publicised the leaf-page detection and parent-resolution helpers as static methods. `is_page_dict(node)` exposes the lenient leaf detection (`/Type /Page` ⇒ True, `/Type /Pages` ⇒ False, untyped ⇒ True iff no `/Kids`) so callers porting upstream's free-floating `COSName.PAGE.equals(node.getCOSName(COSName.TYPE))` checks have a named entrypoint that complements the already-public `is_page_tree_node(node)`. `get_parent(node)` centralises upstream's `getCOSDictionary(PARENT, P)` two-key fallback so callers walking the tree don't repeat the dance; returns `None` when neither key resolves to a dictionary.
+
+## Wave 274 — form XObject helpers, transparency-group predicates, structure categories
+
+- `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py`: added `SUBTYPE = "Form"` plus raw `/OPI` accessors and `has_opi()` / `has_metadata()` predicates so callers can identify form XObjects and inspect optional prepress / metadata entries without reaching into the backing COS dictionary.
+- `pypdfbox/pdmodel/graphics/form/pd_transparency_group_attributes.py`: added mutable `/CS`, `/I`, `/K`, and `/S` helpers (`set_color_space`, `set_isolated`, `set_knockout`, `get_subtype`, `set_subtype`) plus presence predicates and `is_transparency_group()` for cheap explicit-vs-default checks.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_element.py`: added PDF 32000-1 standard-structure category predicates (`is_grouping_level`, `is_block_level`, `is_inline_level`, `is_illustration_level`) resolved through the existing role-map-aware standard type lookup.
+
+## Wave 275 — logical-structure reference helpers and OCG usage predicates
+
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_marked_content_reference.py` / `pd_object_reference.py`: refreshed stale deferred notes now that typed `/Pg` accessors are present, added focused coverage for raw aliases, malformed-shape behavior, and reference predicates. `PDObjectReference.set_referenced_object()` now accepts only typed `PDAnnotation` or `PDXObject` wrappers; raw COS values continue to go through `set_obj()`.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_node.py` / `pd_attribute_object.py`: widened checkpoint coverage for kid insertion/count/membership and attribute add/remove/notify maintenance. Added `PDAttributeObject.has_owner()` and `has_revision_number()` to distinguish explicit entries from default getter values.
+- `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_group_usage.py`: added `has_*` / `clear_*` helpers for each typed `/Usage` subdictionary (CreatorInfo, Language, Export, Zoom, Print, View, User, PageElement), keeping the existing get-or-create accessors intact.
+
+## Wave 276 — graphics-state, outline, thread, and box-style checkpoint
+
+- `pypdfbox/pdmodel/graphics/state/pd_soft_mask.py`: `get_group()` now threads the resource cache into the returned `PDFormXObject`, matching the wrapper's documented cache behavior. `PDFontSetting` coverage was widened and a stale test was corrected to use `COSArray.get()` when asserting the stored `COSNull` object (`get_object()` resolves it to `None`).
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_node.py`: added `remove_child()` convenience unlinking with `/First`/`/Last`, sibling, parent, and count maintenance, plus cycle protection for malformed outline chains.
+- `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread_bead.py` and `pypdfbox/pdmodel/documentinterchange/prepress/pd_box_style.py`: added snake_case next/previous bead aliases and allowed `set_guideline_width(None)` to clear `/W`; checkpoint tests now cover thread/bead linkage and box-style defaults/clearing/malformed-shape behavior.
+
+## Wave 277 — interactive action checkpoint
+
+- `pypdfbox/pdmodel/interactive/action/pd_action_uri.py` / `pd_uri_dictionary.py`: added explicit clearing helpers for URI map/base state (`clear_track_mouse_position`, `clear_base`) and widened tests around URI/base/default/malformed COS shapes.
+- `pypdfbox/pdmodel/interactive/action/pd_action_submit_form.py` / `pd_action_import_data.py`: added form-action presence/clearing helpers (`has_file`, `clear_file`, `has_fields`, `clear_fields`, `has_flags`, `is_valid`, import-data `clear_file`) and made malformed non-file-spec `/F` entries resolve to `None` rather than being handed to file-spec dispatch.
+- Launch, hide, named, JavaScript, and unknown action classes needed no production changes; Wave 277 adds focused coverage for their defaults, clearing behavior, string/stream payloads, COS round-trip, and malformed-entry tolerance.
+
+## Wave 278 — annotation checkpoint
+
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_free_text.py`: malformed `/CL` and `/RD` arrays now return `None` instead of coercing bad COS entries; `set_line_ending(None)` / `set_line_ending_style(None)` explicitly clear `/LE`; border-effect docs now reflect the typed wrapper.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_three_d.py`: added descriptive raw-entry aliases for 3D artwork, default view, and activation dictionaries (`get_artwork`, `get_default_view`, `get_activation_dictionary`, plus setters), keeping the raw `/3DD` / `/3DV` / `/3DA` accessors intact.
+- Watermark, markup, and line annotations received stale-doc cleanup plus focused tests for defaults, clearing, malformed COS shapes, factory/COS round-trip, and inherited markup/border behavior.
+
+## Wave 279 — font checkpoint
+
+- `pypdfbox/pdmodel/font/pd_cid_system_info.py`: malformed single-argument construction now raises `TypeError` instead of silently creating an empty dictionary; valid no-arg, existing-dictionary, and `(registry, ordering, supplement)` forms are unchanged.
+- `pypdfbox/pdmodel/font/pd_type3_font.py`: `set_font_matrix(None)`, `set_first_char(None)`, `set_last_char(None)`, and `set_widths(None)` now clear their COS entries, restoring the existing missing-entry defaults.
+- `pypdfbox/pdmodel/font/pd_type1c_font.py`: `get_font_program()` now reads the embedded CFF `/FontFile3` program, making it symmetric with `set_font_program()`. Descriptor, simple-font, CID-system-info, Type3, and Type1C tests were widened around malformed COS shapes, explicit-vs-default behavior, and not-implemented paths.
+
+## Wave 280 — function and shading checkpoint
+
+- `pypdfbox/pdmodel/common/function/pd_function.py` / `pd_function_type0.py`: refreshed stale deferred-evaluation docs now that Type 0 and Type 4 evaluation exist, and tightened Type 0 `/Size` numeric validation while preserving malformed entries as invalid-size errors.
+- `pypdfbox/pdmodel/common/function/pd_function_type3.py`: added `get_encode_values()`, made `get_encode_for_parameter(-1)` return `None`, and now raises a clear `ValueError` when `/Bounds` declares more partitions than `/Functions`.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading_type6.py` / `pd_shading_type7.py`: clarified that encoded patch streams are preserved while geometry decode remains deferred, added negative-index guards for decode pair access, and typed the optional `/Function` accessors.
+
+## Wave 281 — destinations, patterns, file specs, navigation, labels/preferences
+
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/*`: destination name-tree leaves now tolerate malformed explicit destinations by returning `None`; `/FitBH` and `/FitBV` gained missing clear/unset helpers for their coordinate slots. Existing destination tests now assert raw stored `COSNull` through `COSArray.get()` rather than the resolving `get_object()` helper.
+- `pypdfbox/pdmodel/graphics/pattern/*`: added valid-entry `has_*` and explicit clear helpers for pattern matrix, ExtGState, shading, tiling BBox, and resources, with malformed arrays treated consistently as absent/defaulted.
+- `pypdfbox/pdmodel/common/filespecification/*`: refreshed `/EF` cache behavior when the backing COS entry changes, added embedded-file slot predicates/clearers, and expanded `PDEmbeddedFile` `has_*` / `clear_*` helpers for params, subtype, dates, checksum, creator, and Mac metadata/resource-fork aliases.
+- `pypdfbox/pdmodel/interactive/pagenavigation/*`: transitions, threads, and beads gained optional-entry `has_*` / `clear_*` helpers and alias coverage; malformed bead thread/rectangle values now resolve as absent instead of leaking parser details.
+- `pypdfbox/pdmodel/pd_page_labels.py`, `pd_page_label_range.py`, and `pd_viewer_preferences.py`: removed stale page-label stub wording, added page-label-range clear helpers, made sparse labels respect explicit page-count overrides, added viewer-preference clear/presence helpers, and hardened `/PrintPageRange` validation against non-integer entries.
+
+## Wave 282 — name trees, resources, operators, tagged PDF, and color
+
+- `pypdfbox/pdmodel/common/pd_name_tree_node.py`: name-tree mutations now refresh ancestor `/Limits`, `clear_names()` / `clear_kids()` aliases were added, malformed `/Names` pairs with null-resolving values now raise a clear `OSError`, and `merge()` was cleaned for strict linting.
+- `pypdfbox/pdmodel/pd_resources.py`: added `/ProcSet` presence/clearing plus clear helpers for named font, XObject, color-space, pattern, shading, ExtGState, and properties entries; typed XObject and malformed-category behavior is now documented and covered.
+- `pypdfbox/contentstream/operator/*`: operator values gained inline-image predicates and clear/presence helpers for operands/image payloads; registry typing now accepts the structural processor surface, and selected color/text/graphics operators were tightened for strict type checking without changing rendering semantics.
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/*`: standard/tagged attribute objects gained `clear_attribute` and per-key `has_*` / `clear_*` helpers for list, table, print-field, and export-format entries; malformed mixed arrays for name/number/four-colour helpers now resolve as absent instead of partially coercing.
+- `pypdfbox/pdmodel/graphics/color/*`: calibrated, ICC, indexed, pattern, separation, and DeviceN wrappers gained presence/clear helpers for optional dictionary/array slots; stale deferred notes were refreshed to match implemented best-effort conversion paths, and sparse color-space arrays are now grown defensively before slot writes.
+
+## Wave 283 — catalog, page model, page tree, info dictionary, and forms
+
+- `pypdfbox/pdmodel/pd_document_catalog.py`: refreshed catalog docs, added valid-entry `has_*` probes for output intents, actions, layout/mode, base URI, and needs-rendering state, plus clear helpers for the major optional catalog entries and alias spellings.
+- `pypdfbox/pdmodel/pd_page.py`: optional page entries now have explicit clear helpers and raw key-presence `has_*` probes for metadata, thumbnails, transitions, actions, annotations, beads, viewports, groups, tab order, and duration; setters delegate to the clear helpers.
+- `pypdfbox/pdmodel/pd_page_tree.py`: traversal now uses the public kid-repair path, malformed non-name `/Type` values on pages normalize to `/Page`, and collection helpers `has_pages()` / `clear()` were added.
+- `pypdfbox/pdmodel/pd_document_information.py`: standard/custom metadata getters now accept only real `COSString` values (except `/Trapped`, which remains lenient for names/strings), while new property presence/clear helpers preserve raw-key inspection behavior.
+- `pypdfbox/pdmodel/interactive/form/*`: AcroForm and field wrappers gained stricter malformed-COS handling, new `has_*` / `clear_*` helpers for defaults, values, options, signatures, XFA, resources, actions, and related form slots, plus strict typing cleanup in appearance generation and flattening.
+
+## Wave 284 — document lifecycle, loader, COS streams, parser, and writer
+
+- `pypdfbox/pdmodel/pd_document.py`: refreshed document-surface docs, added trailer-level `has_*` / `clear_*` helpers for `/Root`, `/Info`, and `/Encrypt`, and tightened malformed trailer coverage while preserving `is_encrypted()` as the raw key-presence check.
+- `pypdfbox/loader.py`: `load_fdf()` now delegates to `FDFDocument.load`, binary-stream detection rejects non-callable `read` attributes at the loader boundary, and partially-created parser documents are closed on parse failure.
+- `pypdfbox/cos/cos_stream.py`: added filter and decode-parameter helpers (`set_filters`, `has_filter(s)`, `get_first_filter`, `get_filters_as_strings`, `clear_filters`, `get_decode_parms`, `clear_decode_parms`), fixed single-string `stop_filters`, and reject malformed non-name/non-array `/Filter` values instead of iterating dictionary keys.
+- `pypdfbox/pdfparser/*`: `/Prev` xref-chain walking now follows the current section trailer rather than the merged trailer, and object-stream parsing shares validation for `/N`, `/First`, truncated headers, negative object numbers, and out-of-payload offsets.
+- `pypdfbox/pdfwriter/*`: writer docs were refreshed for implemented xref/object-stream paths, inline-image parameter writing now skips malformed value-less entries before emitting dangling keys, `ContentStreamWriter` preserves `write_bytes` sink support with stricter typing, and `COSWriter` exposes `has_started_streams()` / `clear_started_streams()`.
+
+## Wave 285 — filters, IO, CMap, TTF naming, and tools
+
+- `pypdfbox/filter/*`: predictor geometry now rejects non-positive `/Columns`, `/Colors`, and `/BitsPerComponent` before row math; PNG prior rows are validated before applying Up/Average/Paeth filters; filter modules were tightened for strict typing without changing successful decode semantics.
+- `pypdfbox/io/*`: random-access `available()` clamps at zero after permissive seeks, mmap construction closes the file descriptor on mapping failure, `ScratchFile.create_buffer_from_input()` is typed to random-access sources, and `ScratchFileBuffer.is_empty()` mirrors the write-buffer helper surface.
+- `pypdfbox/fontbox/cmap/*`: CMap parsing now accepts `memoryview` sources and decodes malformed UTF-16BE bfchar/bfrange targets with replacement instead of aborting the parse; manager parse hooks use the shared source type.
+- `pypdfbox/fontbox/ttf/naming_table.py`: name strings are read from the declared string-storage offset, with start/end bounds checked against both the table length and backing stream size before decoding malformed records.
+- `pypdfbox/tools/*`: command modules were cleaned for strict ruff/mypy, `pdfdebugger` rejects negative object/generation ids consistently in CLI and walker paths, and page-size/filter constants now avoid dynamic COSName/PDRectangle attribute assumptions.
+
+## Wave 286 — encryption, FDF, multipdf, text/rendering, and XMPBox
+
+- `pypdfbox/pdmodel/encryption/*`: crypt-filter dictionaries gained typed `has_*` / `clear_*` helpers for `/CFM`, `/Length`, `/Recipients`, and `/EncryptMetadata`; `set_cfm(None)` clears `/CFM`, malformed crypt-filter entry types fall back to defaults, and public-key/security-handler typing was tightened.
+- `pypdfbox/pdmodel/fdf/*`: catalog, dictionary, field, and common annotation wrappers gained optional-entry `has_*` / `clear_*` helpers; annotation rectangle/color parsing now rejects malformed numeric arrays instead of converting bad entries to `0.0`.
+- `pypdfbox/multipdf/*`: merger stream-source handling now rejects non-callable `read` attributes and callable streams that return non-bytes payloads, while existing `memoryview` / `bytearray` source support is documented and covered.
+- `pypdfbox/text/*` and `pypdfbox/rendering/*`: text extraction and rendering now accept already-typed cached `PDFont` resources directly, and `Tm` matrix operand handling rejects malformed/short numeric operands cleanly.
+- `pypdfbox/xmpbox/*`: schemas and structured types gained raw/local property `has_property`, `clear_property`, and `clear` helpers that treat falsy stored values as present; XMPBox modules were cleaned for strict ruff/mypy without public behavior changes.
+
+## Wave 287 — FontBox AFM, CFF, encoding, Type1, and GSUB
+
+- `pypdfbox/fontbox/afm/afm_parser.py`: malformed `CharMetrics` directives now raise `OSError` for truncated fields and invalid numeric payloads instead of leaking `IndexError` / `ValueError`.
+- `pypdfbox/fontbox/cff/*`: degenerate CFF charset parsing treats non-positive glyph counts as an empty charset without consuming the stream, and CFF helper modules were tightened for strict ruff/mypy.
+- `pypdfbox/fontbox/encoding/*`: `GlyphList` now derives recognized `uXXXXX` / `uXXXXXX` Unicode glyph names and returns `None` for out-of-range synthesized code points rather than raising from `chr()`.
+- `pypdfbox/fontbox/type1/*`: malformed negative `RD` charstring lengths now produce an empty charstring token without rewinding lexer state; truncated payload handling remains tolerant.
+- `pypdfbox/fontbox/ttf/gsub/*`: the `GsubData.NO_DATA_FOUND` sentinel is declared as a typed `ClassVar`, stale ignores were removed, and `get_supported_features()` copy behavior is covered.
+
+## Wave 288 — COS arrays, common streams, image wrappers, measurement/sound, and signatures
+
+- `pypdfbox/cos/cos_array.py`: typed convenience accessors and list converters now resolve indirect `COSObject` entries through a shared resolver, treating indirect `COSNull` and unresolved references as absent while preserving raw `get()` behavior.
+- `pypdfbox/pdmodel/common/pd_stream.py`: binary embedding now requires non-bytes sources to expose a callable `read()` returning bytes-like data, and file-like sources are closed even when read-result validation fails.
+- `pypdfbox/pdmodel/graphics/image/*`: image decode/matte readers now reject malformed numeric arrays instead of coercing bad entries to `0.0`; image wrappers gained optional-entry clear helpers, including short/long alias clearing for inline-image color space, filter, and decode entries.
+- `pypdfbox/pdmodel/interactive/measurement/*` and `sound/*`: number-format dictionaries and sound streams gained typed `has_*` / `clear_*` helpers, with malformed COS entries falling through getter defaults while presence helpers report them absent.
+- `pypdfbox/pdmodel/interactive/digitalsignature/*`: `PDSignature.get_signed_data()` now rejects negative `/ByteRange` offsets/lengths and ranges past EOF by returning `None` instead of relying on Python slicing semantics; signature helpers were tightened for strict ruff/mypy.
+
+## Wave 289 — operators, actions, annotations, font encodings, and compression
+
+- `pypdfbox/contentstream/operator/path/*`: rectangle and cubic-curve operators now validate only the consumed operand window, so malformed trailing operands are ignored while malformed consumed operands still fail.
+- `pypdfbox/pdmodel/interactive/action/*`: named actions gained typed `/N` presence, clearing, and validity helpers; malformed `/N` entries are treated as absent consistently with named-action predicates.
+- `pypdfbox/pdmodel/interactive/annotation/*`: sound annotations gained typed sound/name presence and clearing helpers plus speaker/mic icon predicates, and `set_sound()` accepts typed `PDSoundStream` wrappers.
+- `pypdfbox/pdmodel/font/encoding/*`: dictionary encodings now rebuild cached mappings when base encoding or differences change, expose `has_differences()` / `clear_differences()`, and keep strict typing around predefined encoding COS names.
+- `pypdfbox/pdfwriter/compress/compress_parameters.py`: `with_object_stream_size()` validates the requested size before equality comparison, preventing malformed objects with spoofed equality from returning the unchanged instance.
+
+## Wave 290 — destinations, outlines, optional content, document interchange, and exports
+
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/*`: destination factory dispatch now returns bounded wrappers for `/FitB`, `/FitBH`, and `/FitBV`, including name-tree resolution through the same factory path.
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_item.py`: outline items gained typed presence/clear helpers for `/Dest`, `/A`, `/C`, `/F`, and `/SE`; malformed destinations now resolve to `None`, and malformed color arrays report absent instead of coercing bad values.
+- `pypdfbox/pdmodel/graphics/optionalcontent/*`: optional-content configurations gained typed `has_*` / `clear_*` helpers for scalar and array entries, and malformed `/ListMode` names fall back to `"AllPages"` while reporting absent.
+- `pypdfbox/pdmodel/documentinterchange/*`: `PDBoxStyle` gained typed presence/clear helpers for `/C`, `/W`, `/S`, and `/D`; marked-content/logical-structure wrappers received malformed fallback coverage and strict typing cleanup.
+- Package export surfaces now have regression coverage for expected top-level imports; public exports are unchanged, with only import-order cleanup in owned `pdmodel` and `fontbox` package initializers.
+
+## Wave 291 — document/page, forms, color, shading, and parser/writer
+
+- `pypdfbox/pdmodel/pd_page_label_range.py`: page-label presence helpers now require well-typed `/S`, `/P`, and `/St` entries, so malformed COS values no longer report as present.
+- `pypdfbox/pdmodel/interactive/form/pd_choice.py`: choice-field presence helpers now treat malformed `/V`, `/DV`, and `/I` arrays as absent when the corresponding getters parse no usable values.
+- `pypdfbox/pdmodel/graphics/color/*`: DeviceN process dictionaries gained color-space/components set, presence, and clear helpers; malformed recursive process color-space dictionaries are tolerated, and DeviceN attributes now expose `set_process()` / `clear_process()`.
+- `pypdfbox/pdmodel/graphics/shading/*`: base shading wrappers gained typed `has_*` / `clear_*` helpers for color space, background, bbox, anti-alias, and functions; `/ColorSpace` clearing also removes `/CS`, and malformed scalar/array entries report absent.
+- `pypdfbox/pdfwriter/content_stream_writer.py`: `COSString` serialization now falls through to callable `write_bytes()` sinks when `write` is missing or malformed, with parser/writer integration coverage for `PDFStreamParser` token replay.
+
+## Wave 292 — loader, filters, IO, XMPBox types, and tools
+
+- `pypdfbox/loader.py`: stream-like inputs now buffer through `RandomAccessReadBuffer.create_buffer_from_stream()`, so Loader closes them after buffering, including malformed-byte parse failures and text-stream rejection paths.
+- `pypdfbox/filter/*`: ASCII85 and RunLength decoders now populate accurate `DecodeResult.bytes_written` counts while preserving decode parameters.
+- `pypdfbox/io/random_access_read_buffer.py`: stream-source handling now rejects non-callable `read` attributes with a clear `TypeError` and accepts `memoryview` read results alongside `bytes` / `bytearray`.
+- `pypdfbox/xmpbox/type/lang_alt.py`: language alternative helpers ignore malformed non-`TextType` children carrying `xml:lang` during lookup, listing, removal, overwrite, and `x-default` reordering.
+- `pypdfbox/tools/split.py`: CLI page-range validation now rejects `-startPage 0` and invalid negative `-endPage` values with exit code `2` rather than treating them as unset or flowing into split calculations.
+
+## Wave 293 — COS dictionaries, FontBox tables, encryption, FDF, and multipdf
+
+- `pypdfbox/cos/cos_dictionary.py`: dictionaries gained typed `has_*` / `clear_*` helpers for string, name, integer, long, float, boolean, dictionary, and array entries; helpers resolve indirect objects, treat null/unresolved references as absent, and reject malformed COS shapes.
+- `pypdfbox/fontbox/ttf/*`: `loca` table parsing now rejects decreasing glyph offsets with `OSError` before negative glyph lengths can propagate, while equal offsets for empty glyphs remain valid.
+- `pypdfbox/pdmodel/encryption/pd_encryption.py`: V4/V5 crypt-filter selector entries (`/CF`, `/StmF`, `/StrF`, `/EFF`) gained typed presence and clear helpers; malformed COS values report absent while existing getters retain defaults.
+- `pypdfbox/pdmodel/fdf/*`: square, circle, and line annotation `/IC` interior-color parsing now rejects malformed numeric arrays instead of coercing bad entries, with new `has_interior_color()` / `clear_interior_color()` helpers.
+- `pypdfbox/multipdf/overlay.py`: empty overlay documents now fail early with a clear `ValueError` for both default and per-page overlays instead of attempting to fetch page zero.
+
+## Wave 294 — FontBox leaf-package hardening
+
+- `pypdfbox/fontbox/afm/afm_parser.py`: composite `CC` / `PCC` parsing now raises parser-level `OSError` for truncated directives, malformed counts, malformed numeric fields, or wrong composite directives instead of leaking low-level exceptions.
+- `pypdfbox/fontbox/cff/fd_select.py`: malformed FDSelect wrapped values fall back to format/count/index defaults; malformed Format 0 entries default to FD index `0`, and negative Format 3 sentinels behave like an empty select.
+- `pypdfbox/fontbox/encoding/encoding.py`: encoding accessors now treat malformed code/name inputs defensively: invalid codes return `.notdef`, and non-string or unhashable names return `None`.
+- `pypdfbox/fontbox/type1/type1_font.py`: missing, malformed, or short `/FontMatrix` values fall back to the Type 1 default matrix so empty fonts still expose `get_font_matrix()` and `units_per_em`.
+- `pypdfbox/fontbox/ttf/gsub/lookup_subtable.py`: ligature substitution ignores malformed candidates with no trailing components instead of treating them like single-glyph substitutions.
+
+## Wave 295 — interactive wrapper and page-label helpers
+
+- `pypdfbox/pdmodel/interactive/action/pd_action_go_to_3d_view.py`: 3D view actions gained target/view presence, clearing, emptiness, and validity helpers; malformed `/V` shapes report absent while raw `get_v()` remains transparent.
+- `pypdfbox/pdmodel/interactive/annotation/pd_border_effect_dictionary.py`: border-effect style/intensity presence helpers now require typed entries, and clear helpers were added for `/S` and `/I`.
+- `pypdfbox/pdmodel/interactive/form/pd_field.py`: fields gained typed local `has_*` / `clear_*` helpers for `/T`, `/TU`, `/TM`, `/Ff`, and `/AA`, rejecting malformed COS shapes while matching existing getter semantics.
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_item.py`: outline named-destination resolution now handles already-typed `PDDestination` values from `/Names /Dests` and fails closed for malformed legacy catalog `/Dests` entries.
+- `pypdfbox/pdmodel/pd_page_labels.py`: page-label ranges now record `start_index` when parsed from `/Nums`, installed through `set_label_item()`, or created through `set_label_range()`.
+
+## Wave 296 — parser, writer, text, XMP, and page-tree repairs
+
+- `pypdfbox/pdfparser/*`: xref-stream `/Index` parsing now rejects negative first object numbers, negative counts, and negative default `/Size` values with `PDFParseError` in both direct and full-parser paths.
+- `pypdfbox/pdfwriter/cos_standard_output_stream.py`: `write_int()` and `write_byte()` now require plain integers, rejecting bool and non-int values before writing bytes or advancing position.
+- `pypdfbox/text/pdf_text_stripper.py`: grouped text emission now routes through `write_string_with_positions()`, so subclasses overriding the position-aware hook see normal formatted output.
+- `pypdfbox/xmpbox/dom_xmp_parser.py`: parser entry points now accept `memoryview` inputs as byte-like XMP packet data.
+- `pypdfbox/pdmodel/pd_page_tree.py`: synthetic pages created while repairing null `/Kids` entries are parented to their containing page-tree node, preserving inherited attributes and correct removal behavior.
+
+## Wave 297 — image, font, number-tree, rendering, and signature hardening
+
+- `pypdfbox/pdmodel/graphics/image/lossless_factory.py`: `create_from_image()` now rejects non-Pillow inputs with a clear `TypeError` before reaching incidental image attributes.
+- `pypdfbox/pdmodel/font/pd_cid_font.py`: `set_w()` and `set_w2()` now invalidate parsed width caches, so wrapper mutations are reflected immediately in CID width lookups.
+- `pypdfbox/pdmodel/common/pd_number_tree_node.py`: `get_value()` now reads local `/Nums` or descends through `/Kids` by `/Limits` instead of flattening the whole subtree, avoiding malformed unrelated branches during routed lookup.
+- `pypdfbox/pdmodel/graphics/state/rendering_intent.py` and `rendering_mode.py`: rendering enums gained PDFBox-style Java alias methods while preserving existing Pythonic APIs.
+- `pypdfbox/pdmodel/interactive/digitalsignature/pd_signature.py`: malformed numeric `/ByteRange` arrays with the wrong length now return `None` from signed-data extraction instead of raising an unpacking error.
+
+## Wave 298 — operators, XObjects, XMP, writer, and renderer aliases
+
+- `pypdfbox/contentstream/operator/state/set_line_width.py`: the `w` operator now ignores missing or non-numeric operands and applies valid widths to the graphics state when available.
+- `pypdfbox/pdmodel/graphics/pd_x_object.py`: base XObjects gained `/StructParent` get/set helpers, defaulting to `-1` when absent.
+- `pypdfbox/xmpbox/type/type_mapping.py`: XMP type mapping now recognizes `GPSCoordinate` and exposes `create_gps_coordinate()`.
+- `pypdfbox/pdfwriter/content_stream_writer.py`: COS string emission now writes correctly to `RandomAccessWrite` sinks through `write_bytes()`.
+- `pypdfbox/rendering/*`: renderer and image-type classes gained PDFBox-style Java aliases for image rendering, default destination access, and buffered image type conversion.
+
+## Wave 299 — COS, IO, tagged PDF, annotations, and FDF helpers
+
+- `pypdfbox/cos/cos_base.py`: base COS objects gained upstream-style direct/update Java aliases backed by the existing snake_case flags.
+- `pypdfbox/io/scratch_file.py`: `create_buffer_from_input()` now closes partially created buffers when source reads or scratch writes fail, returning allocated pages before re-raising.
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_layout_attribute_object.py`: layout attributes gained `set_all_column_gaps()` and shared number-or-array setter hardening for related layout measurements.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_printer_mark.py`: printer-mark annotations gained `getMarkName()` / `setMarkName()` aliases over `/MN`.
+- `pypdfbox/pdmodel/fdf/fdf_field.py`: FDF fields gained `/RV` rich-text accessors plus presence/clear helpers for common field entries.
+
+## Wave 300 — filters, merger, resources, CMaps, and action aliases
+
+- `pypdfbox/filter/flate_decode.py`: Flate predictor parameters now resolve from `/DecodeParms` or `/DP`, including indexed parameter arrays for chained filters.
+- `pypdfbox/multipdf/pdf_merger_utility.py`: `add_sources()` now rejects a single source-like object instead of accidentally iterating path strings, bytes, buffers, or streams.
+- `pypdfbox/pdmodel/pd_resources.py`: color-space aliases now resolve through owning resources with cycle detection, and resource entries gained clear helpers.
+- `pypdfbox/fontbox/ttf/cmap_subtable.py`: format 4 cmap parsing now ignores glyph ids beyond `num_glyphs` for both direct delta and glyph-array mappings.
+- `pypdfbox/pdmodel/interactive/action/pd_action_transition.py`: transition actions gained `get_transition()` / `set_transition()` aliases over existing `/Trans` accessors.
+
+## Wave 301 — parser depth, CFF sequences, shading arrays, forms, and XMP
+
+- `pypdfbox/pdfparser/cos_parser.py`: nested COS arrays and dictionaries now enforce `MAX_RECURSION_DEPTH` with parser nesting state restored on errors.
+- `pypdfbox/fontbox/cff/type2_char_string.py`: list-backed Type 2 charstrings now preserve their original sequence for emptiness, last-entry, and stringification helpers.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading_type3.py`: Type 3 shading `set_function()` now accepts iterable function entries and stores them as `/Function` arrays.
+- `pypdfbox/pdmodel/interactive/form/pd_button.py`: button values are validated against known `/Opt` or widget appearance on-states while preserving permissive behavior for sparse fields.
+- `pypdfbox/xmpbox/xmp_basic_schema.py`: XMP Basic rating setters now accept `None` to clear the optional `xmp:Rating` property.
+
+## Wave 302 — COS arrays, IO aliases, marked content, catalog probes, and image CLI
+
+- `pypdfbox/cos/cos_array.py`: `remove_object()` now removes the first direct or indirect-resolved matching item, matching `index_of_object()` behavior.
+- `pypdfbox/io/random_access_write.py`: random-access writers gained the upstream-style `writeBytes()` alias over `write_bytes()`.
+- `pypdfbox/text/pdf_marked_content_extractor.py`: per-page marked-content extraction now resets transient stack and overlap state before each page while preserving accumulated top-level results.
+- `pypdfbox/pdmodel/pd_document_catalog.py`: associated-file reads and presence probes now skip malformed entries instead of raising, matching getter behavior.
+- `pypdfbox/tools/imagetopdf.py`: orientation parsing is now case-insensitive for CLI/helper paths and rejects unknown helper values with `ValueError`.
+
+## Wave 303 — fonts, encryption, patterns, functions, and rendering guards
+
+- `pypdfbox/pdmodel/font/pd_font.py`: `has_to_unicode()` now checks raw `/ToUnicode` key presence, matching PDFBox `containsKey` behavior while parsing still returns `None` for malformed entries.
+- `pypdfbox/pdmodel/encryption/standard_security_handler.py`: revision-number calculation now calls the actual revision-3 permission helper so `/V < 2` policies with revision-3 bits promote correctly.
+- `pypdfbox/pdmodel/graphics/pattern/pd_abstract_pattern.py`: pattern matrix setters now accept Java-style affine adapters that fill a six-value buffer.
+- `pypdfbox/pdmodel/common/function/pd_function.py`: `PDFunction.create()` now dereferences indirect `COSObject` inputs before dispatching, returning `None` for unresolved references.
+- `pypdfbox/rendering/pdf_renderer.py`: image rendering now rejects zero, negative, NaN, and infinite scale/DPI values before render state is touched.
+
+## Wave 304 — stream operators, FDF annotations, stamps, XMP integers, and glyph names
+
+- `pypdfbox/pdfparser/pdf_stream_parser.py`: parsed non-inline content-stream operators now use the singleton operator cache while inline-image operators remain per occurrence.
+- `pypdfbox/pdmodel/fdf/fdf_dictionary.py`: FDF annotation arrays now dispatch through `FDFAnnotation.create()`, returning typed wrappers for known subtypes.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_rubber_stamp.py`: rubber-stamp annotations gained explicit `/Name` presence and default-icon predicates.
+- `pypdfbox/xmpbox/type/integer_type.py`: XMP integers now accept only Java-style ASCII decimal strings with optional leading sign.
+- `pypdfbox/fontbox/encoding/glyph_list.py`: reverse Unicode lookups now prefer glyph names present in standard encodings when duplicate AGL mappings exist.
+
+## Wave 305 — navigation, form matrices, IO EOF, XMP integers, and clone cycles
+
+- `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread_bead.py`: thread beads now support the upstream constructor from `PDThread`, preserve singleton self-links, and reject unknown backing objects.
+- `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py`: `has_matrix()` now reports `True` only for valid six-number `/Matrix` arrays that `get_matrix()` will actually use.
+- `pypdfbox/io/random_access_read.py`: EOF detection now peeks the next readable byte, so overlong views report EOF when the backing data is exhausted.
+- `pypdfbox/xmpbox/tiff_schema.py`, `exif_schema.py`, and `photoshop_schema.py`: integer slots no longer accept or read Python booleans as `1`/`0`.
+- `pypdfbox/multipdf/pdf_clone_utility.py`: recursive dictionary clone-merges now track visited source/target pairs, preventing infinite recursion on cyclic graphs.
+
+## Wave 306 — ASCII85, vertical metrics, tagged properties, widgets, and info strings
+
+- `pypdfbox/filter/ascii85_decode.py`: ASCII85 decoding now rejects a final one-digit partial group while preserving valid two-, three-, and four-digit partial groups.
+- `pypdfbox/fontbox/ttf/vertical_metrics_table.py`: truncated `vmtx` trailing top-side bearings are now zero-padded instead of raising during lookup.
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_user_property.py`: mutable user-property wrappers are now unhashable, matching their custom equality over mutable COS-backed state.
+- `pypdfbox/pdmodel/interactive/form/pd_terminal_field.py`: widget parent wiring now delegates through `PDAnnotationWidget.set_parent()`, rejecting invalid single-widget self-parenting.
+- `pypdfbox/pdmodel/pd_document_information.py`: `set_property_string_value()` now writes or removes raw info strings to match the existing raw string getter.
+
+## Wave 307 — COS names, policies, calibrated colors, text scale, and CLI errors
+
+- `pypdfbox/cos/cos_dictionary.py`: dictionaries gained `get_name_as_string()` / `getNameAsString()` helpers that return text from either names or strings.
+- `pypdfbox/pdmodel/encryption/protection_policy.py`: policy setters now reject non-bool AES preferences and non-int or bool key lengths before validating allowed sizes.
+- `pypdfbox/pdmodel/graphics/color/pd_color.py`: `PDColor.to_rgb()` now delegates CalGray and CalRGB values through their calibrated color-space converters.
+- `pypdfbox/text/text_position.py`: text scale now uses basis-vector magnitude, so rotated or sheared text matrices report non-zero scale correctly.
+- `pypdfbox/tools/cli.py`: top-level CLI `OSError` messages now print to stderr while preserving exit code `4`.
+
+## Wave 308 — object streams, CFF rewraps, movie activation, XMP about, and inline images
+
+- `pypdfbox/pdfparser/cos_parser.py`: object-stream offset parsing now requires `/Type /ObjStm`, rejecting arbitrary streams before reading object-stream headers.
+- `pypdfbox/fontbox/cff/*`: CFF Type 1 and CID rewrap factories now preserve base parsed font state, including raw data, overlays, matrices, widths, and name overrides.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_movie.py`: movie annotations gained `/A` presence/clear helpers plus effective activation default handling.
+- `pypdfbox/xmpbox/xmp_metadata.py`: Basic Job Ticket schema creation now initializes empty `rdf:about` like neighboring schema factories.
+- `pypdfbox/pdmodel/graphics/image/pd_inline_image.py`: inline image PIL conversion now stops decoding for abbreviated native filters such as `/DCT` and `/JPX`.
+
+## Wave 309 — ranges, page parents, IO memoryviews, encodings, and stream tools
+
+- `pypdfbox/pdmodel/common/pd_range.py`: negative starting indexes now raise `ValueError` instead of indexing from the end of the backing `COSArray`.
+- `pypdfbox/pdmodel/pd_page.py`: `get_cos_parent()` now falls back from `/Parent` to legacy `/P` while still preferring `/Parent`.
+- `pypdfbox/io/*`: write paths now cast `memoryview` inputs to byte views before slicing, keeping offsets byte-based for non-byte-format memoryviews.
+- `pypdfbox/pdmodel/font/encoding/dictionary_encoding.py`: `set_base_encoding()` now rejects unknown base encoding names and preserves existing state on failure.
+- `pypdfbox/tools/writedecodedstream.py`: wrong PDF passwords now return exit code `1` with the password error instead of bubbling an exception.
+
+## Wave 310 — page labels, link destinations, postscript table aliases, ASCIIHex flush, and GPS coordinates
+
+- `pypdfbox/pdmodel/pd_page_labels.py`: malformed or empty `/Kids` arrays no longer hide valid same-node `/Nums` label trees.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_link.py`: link destination presence now accepts only supported `/Dest` COS shapes.
+- `pypdfbox/fontbox/ttf/post_script_table.py`: PostScriptTable gained Java-style aliases, including upstream typo-compatible min-memory aliases.
+- `pypdfbox/filter/ascii_hex_decode.py`: ASCIIHex encode/decode now flush buffered output sinks after writing.
+- `pypdfbox/xmpbox/type/gps_coordinate_type.py`: GPS coordinate parsing/formatting now rejects invalid negative, non-finite, or out-of-range coordinate parts.
+
+## Wave 311 — COSWriter integers, shading decode indexes, signatures, names, and XMP aliases
+
+- `pypdfbox/pdfwriter/cos_writer.py`: `set_startxref()` and `set_pdf_version()` now reject Python booleans instead of accepting them as integers.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading_type4.py` and `pd_shading_type5.py`: mesh shading decode lookups now treat negative parameter indexes as out of range.
+- `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value_certificate.py`: `/KeyUsage` setters now validate the required nine-character `0`/`1`/`X` form before writing.
+- `pypdfbox/fontbox/ttf/naming_table.py`: malformed name-table text now decodes with replacement characters instead of falling back to latin-1.
+- `pypdfbox/xmpbox/type/abstract_simple_property.py`: simple XMP properties gained PDFBox-style camelCase accessor and mutator aliases.
+
+## Wave 312 — actions, file specs, decode params, Type1 strings, and revisions
+
+- `pypdfbox/pdmodel/interactive/action/pd_action.py`: action dictionaries now read `/Type` and `/S` through name-as-string lookup so string-encoded subtypes dispatch correctly.
+- `pypdfbox/pdmodel/common/filespecification/pd_file_specification.py`: file-specification factories now treat `COSNull` as absent and unwrap nested indirect references with cycle protection.
+- `pypdfbox/filter/lzw_decode.py` and `ccitt_fax_decode.py`: indexed `/DecodeParms` array entries now resolve indirect dictionary objects.
+- `pypdfbox/fontbox/type1/type1_parser.py`: PostScript strings now handle escaped line continuations during Type1 parsing.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/revisions.py`: compact revision arrays that omit zero revision integers now read and mutate without shifting following entries incorrectly.
+
+## Wave 313 — page-tree repair, encodings, JPEG errors, layer PDFs, and stream operators
+
+- `pypdfbox/pdmodel/pd_page_tree.py`: bare `/Type /Page` roots are now repaired into typed `/Pages` wrappers with parent links.
+- `pypdfbox/pdmodel/font/encoding/encoding.py`: encoding lookups now reject bool codes and malformed names/codes before querying internal maps.
+- `pypdfbox/pdmodel/graphics/image/jpeg_factory.py`: unreadable Pillow image payloads are now normalized to `ValueError` at the JPEG factory boundary.
+- `pypdfbox/multipdf/layer_utility.py`: `append_form_as_layer()` now raises the target document version to PDF 1.5 after duplicate-layer validation.
+- `pypdfbox/pdfparser/pdf_stream_parser.py`: non-inline `B...` operators now use the shared operator cache while `BI` remains per-occurrence for inline image state.
+
+## Wave 314 — metadata filters, FDF lines, optional content users, text spaces, and GPOS classes
+
+- `pypdfbox/pdmodel/common/pd_metadata.py`: imported XMP now rewrites through any existing metadata stream filter chain so filtered streams remain decodable.
+- `pypdfbox/pdmodel/fdf/fdf_annotation_line.py`: line annotation point and caption-offset arrays now resolve indirect numeric entries.
+- `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_group_usage.py`: `/Usage/User/Name` arrays now resolve indirect string entries.
+- `pypdfbox/text/pdf_text_stripper.py`: `set_ignore_content_stream_space_glyphs(True)` now suppresses literal space glyph emission while preserving cursor advance.
+- `pypdfbox/fontbox/ttf/glyph_positioning_table.py`: PairPos format 2 now applies class-0 second-glyph records to glyphs omitted from `ClassDef2`.
+
+## Wave 315 — xpacket parsing, debugger depth, polygon paths, crypt filters, and color gates
+
+- `pypdfbox/xmpbox/dom_xmp_parser.py`: xpacket begin processing-instruction attributes are now parsed order-insensitively.
+- `pypdfbox/tools/pdfdebugger.py`: negative `--depth` values now fail with exit code `2` and a validation message.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_polygon.py`: polygon annotations now expose a PDF 2.0 `/Path` setter with clear-on-`None` behavior.
+- `pypdfbox/pdmodel/encryption/pd_encryption.py`: crypt-filter dictionary accessors now accept both string keys and `COSName` keys.
+- `pypdfbox/contentstream/operator/color/*`: color-setting operators now honor `is_should_process_color_operators()` before mutating graphics state.
+
+## Wave 316 — COS stream filters, resource caches, choice indices, DeviceN colorants, and AFM metrics
+
+- `pypdfbox/cos/cos_stream.py`: unfiltered replacement output streams now clear stale `/Filter` metadata.
+- `pypdfbox/pdmodel/pd_document.py`: explicit `set_resource_cache(None)` now disables caching instead of lazily recreating the default cache.
+- `pypdfbox/pdmodel/interactive/form/pd_choice.py`: `/I` selected-option indices now accept any `COSNumber` via `int_value()`.
+- `pypdfbox/pdmodel/graphics/color/pd_device_n.py`: DeviceN colorants now skip malformed or uncreatable color spaces instead of raising from lookup.
+- `pypdfbox/fontbox/afm/afm_parser.py`: AFM char metrics now handle bracketed `CH` hex codes and adjacent semicolon delimiters.
+
+## Wave 317 — JPX metadata, PANOSE padding, embedded-file filters, Dublin Core schemas, and destination sentinels
+
+- `pypdfbox/filter/jpx_decode.py`: 16-bit Pillow image modes now report `BitsPerComponent` as 16 instead of falling back to 8-bit metadata.
+- `pypdfbox/pdmodel/font/pd_font_descriptor.py`: short PANOSE classification slices now zero-pad to 10 bytes, matching Java copy-range behavior.
+- `pypdfbox/pdmodel/common/filespecification/pd_embedded_file.py`: embedded-file construction now accepts `COSArray` filter chains like `PDStream`.
+- `pypdfbox/xmpbox/xmp_metadata.py`: `create_and_add_dublin_core_schema()` now creates and registers a fresh schema with empty `rdf:about`.
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_destination.py`: destination geometry setters now treat `-1` as the unset sentinel and write `COSNull`.
+
+## Wave 318 — Type3 widths, tagged attributes, name trees, RunLength reads, and xref lines
+
+- `pypdfbox/pdmodel/font/pd_type3_font.py`: Type3 width lookup now uses direct `code - /FirstChar` indexing, matching PDFBox behavior for malformed negative first chars.
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_standard_attribute_object.py`: standard attribute numeric setters now reject booleans instead of storing them as `0`/`1`.
+- `pypdfbox/pdmodel/common/pd_name_tree_node.py`: name-tree lookup now continues past malformed-limit fallback children when later siblings may contain the requested name.
+- `pypdfbox/filter/run_length_decode.py`: literal packets now keep reading until the requested byte count is satisfied, tolerating short-reading streams.
+- `pypdfbox/pdfparser/cos_parser.py` and `pdf_parser.py`: traditional xref entries are now parsed line-by-line so compact LF-only rows do not consume bytes from the next row.
+
+## Wave 319 — array aliases, appearance colors, public-key recipients, subset composites, and inherited resources
+
+- `pypdfbox/xmpbox/type/array_property.py`: array properties gained PDFBox-style `getArrayType()` and `getElementsAsString()` aliases.
+- `pypdfbox/pdmodel/interactive/annotation/pd_appearance_content_stream.py`: invalid stroking or non-stroking color component counts no longer leave dangling operands in appearance streams.
+- `pypdfbox/pdmodel/encryption/public_key_security_handler.py`: public-key document preparation now writes recipients through `PDEncryption.set_recipients()` so the array is marked direct.
+- `pypdfbox/fontbox/ttf/ttf_subsetter.py`: subset GID maps now recursively include composite glyph components retained by `fontTools.subset`.
+- `pypdfbox/pdmodel/pd_page_content_stream.py`: page content streams now reuse inherited page-tree resources instead of shadowing them with a direct page resource dictionary.
+
+## Wave 320 — CFF strings, output stream integers, public-key policy aliases, screen setters, and XMP bags
+
+- `pypdfbox/fontbox/cff/cff_font.py`: private CFF string INDEX entries backed by bytes now normalize to text so string and SID lookup agree.
+- `pypdfbox/pdfwriter/cos_standard_output_stream.py`: `position`, `offset`, and `length` constructor values now reject booleans instead of treating them as integers.
+- `pypdfbox/pdmodel/encryption/public_key_protection_policy.py`: public-key policies gained PDFBox-style camelCase recipient and certificate aliases.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_screen.py`: dictionary-backed setters now reject non-dictionary raw values and wrappers.
+- `pypdfbox/xmpbox/xmp_schema.py` and `xmp_basic_schema.py`: bag helpers now interoperate with stored `ArrayProperty` wrappers, and XMP Basic gained typed advisory and identifier bag setters.
+
+## Wave 321 — Lab ranges, WinAnsi bullets, IO memoryviews, thread beads, and FDF fringe rectangles
+
+- `pypdfbox/pdmodel/graphics/color/pd_lab.py`: Lab component range setters now pad short `/Range` arrays with defaults before writing `a*` or `b*` slots.
+- `pypdfbox/fontbox/encoding/win_ansi_encoding.py`: WinAnsi encoding now tracks PDF-spec bullet fill-in codes separately from explicit table entries.
+- `pypdfbox/io/random_access_write_buffer.py` and `scratch_file_buffer.py`: write buffers now fall back to bytes-backed writes for non-contiguous memoryviews.
+- `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread_bead.py`: appending to a bead with a missing `/N` link now repairs it into a consistent circular chain.
+- `pypdfbox/pdmodel/fdf/fdf_annotation_square.py` and `fdf_annotation_circle.py`: square and circle FDF annotations now support `/RD` fringe rectangle accessors with malformed-value tolerance.
+
+## Wave 322 — image page sizes, COSString aliases, page references, stream lengths, and simple-font metrics
+
+- `pypdfbox/tools/imagetopdf.py`: compact `USLEGAL` page-size spelling now resolves to Legal instead of falling back to Letter.
+- `pypdfbox/cos/cos_string.py`: COS strings gained the PDFBox-style `getASCII()` alias for existing ASCII decoding.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_marked_content_reference.py` and `pd_object_reference.py`: `/Pg` setters now reject unsupported wrapper-like values instead of accepting any `get_cos_object()` result.
+- `pypdfbox/pdfparser/pdf_parser.py`: resolved negative stream `/Length` values now raise `PDFParseError` consistently.
+- `pypdfbox/pdmodel/font/pd_simple_font.py`: simple fonts gained metric writers for `/FirstChar`, `/LastChar`, and `/Widths`.

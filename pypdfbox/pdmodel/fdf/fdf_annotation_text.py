@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSDictionary, COSName
 
 from .fdf_annotation import FDFAnnotation
 

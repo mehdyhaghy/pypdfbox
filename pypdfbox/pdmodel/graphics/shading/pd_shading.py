@@ -1,8 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from typing import Any
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSBoolean,
+    COSDictionary,
+    COSName,
+    COSNumber,
+    COSStream,
+)
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SHADING: COSName = COSName.get_pdf_name("Shading")
@@ -13,6 +22,12 @@ _BACKGROUND: COSName = COSName.get_pdf_name("Background")
 _BBOX: COSName = COSName.get_pdf_name("BBox")
 _ANTI_ALIAS: COSName = COSName.get_pdf_name("AntiAlias")
 _FUNCTION: COSName = COSName.get_pdf_name("Function")
+
+
+def _is_number_array(value: COSBase | None, *, min_size: int = 0) -> bool:
+    if not isinstance(value, COSArray) or value.size() < min_size:
+        return False
+    return all(isinstance(value.get_object(i), COSNumber) for i in range(value.size()))
 
 
 class PDShading:
@@ -153,11 +168,20 @@ class PDShading:
 
     def set_color_space(self, color_space: COSBase | None) -> None:
         if color_space is None:
-            self._dict.remove_item(_COLOR_SPACE)
+            self.clear_color_space()
             return
         self._dict.set_item(_COLOR_SPACE, color_space)
 
-    def get_color_space_object(self, resources=None):  # type: ignore[no-untyped-def]
+    def has_color_space(self) -> bool:
+        """``True`` when ``/ColorSpace`` or fallback ``/CS`` is present."""
+        return self._dict.get_dictionary_object(_COLOR_SPACE, _CS) is not None
+
+    def clear_color_space(self) -> None:
+        """Remove both long and abbreviated color-space entries."""
+        self._dict.remove_item(_COLOR_SPACE)
+        self._dict.remove_item(_CS)
+
+    def get_color_space_object(self, resources: Any = None) -> Any:
         """Return the ``/ColorSpace`` (or ``/CS`` short-form) entry wrapped
         as a typed ``PDColorSpace``, or ``None`` when absent. Mirrors
         upstream ``PDShading.getColorSpace()`` which dispatches via
@@ -181,7 +205,7 @@ class PDShading:
             return None
         return PDColorSpace.create(cs_obj, resources)
 
-    def set_color_space_object(self, color_space) -> None:  # type: ignore[no-untyped-def]
+    def set_color_space_object(self, color_space: Any) -> None:
         """Set ``/ColorSpace`` from a typed ``PDColorSpace`` (its backing
         COS object is stored), a raw ``COSBase``, or ``None`` (clears the
         entry). Mirrors upstream
@@ -191,12 +215,12 @@ class PDShading:
         )
 
         if color_space is None:
-            self._dict.remove_item(_COLOR_SPACE)
+            self.clear_color_space()
             return
         if isinstance(color_space, PDColorSpace):
             cs_cos = color_space.get_cos_object()
             if cs_cos is None:
-                self._dict.remove_item(_COLOR_SPACE)
+                self.clear_color_space()
                 return
             self._dict.set_item(_COLOR_SPACE, cs_cos)
             return
@@ -216,9 +240,19 @@ class PDShading:
 
     def set_background(self, background: COSArray | None) -> None:
         if background is None:
-            self._dict.remove_item(_BACKGROUND)
+            self.clear_background()
             return
         self._dict.set_item(_BACKGROUND, background)
+
+    def has_background(self) -> bool:
+        """``True`` when ``/Background`` is a non-empty numeric array."""
+        return _is_number_array(
+            self._dict.get_dictionary_object(_BACKGROUND), min_size=1
+        )
+
+    def clear_background(self) -> None:
+        """Remove ``/Background``. No-op if absent."""
+        self._dict.remove_item(_BACKGROUND)
 
     # ---------- /BBox ----------
 
@@ -228,11 +262,19 @@ class PDShading:
 
     def set_b_box(self, bbox: COSArray | None) -> None:
         if bbox is None:
-            self._dict.remove_item(_BBOX)
+            self.clear_b_box()
             return
         self._dict.set_item(_BBOX, bbox)
 
-    def get_b_box_rect(self):  # type: ignore[no-untyped-def]
+    def has_b_box(self) -> bool:
+        """``True`` when ``/BBox`` is present as a valid numeric 4-array."""
+        return _is_number_array(self._dict.get_dictionary_object(_BBOX), min_size=4)
+
+    def clear_b_box(self) -> None:
+        """Remove ``/BBox``. No-op if absent."""
+        self._dict.remove_item(_BBOX)
+
+    def get_b_box_rect(self) -> Any:
         """Return ``/BBox`` as a typed ``PDRectangle``, or ``None`` when the
         entry is absent or not a valid 4-entry numeric array. Mirrors
         upstream ``PDShading.getBBox()`` which returns ``PDRectangle``."""
@@ -246,14 +288,14 @@ class PDShading:
                 return None
         return None
 
-    def set_b_box_rect(self, bbox) -> None:  # type: ignore[no-untyped-def]
+    def set_b_box_rect(self, bbox: Any) -> None:
         """Set ``/BBox`` from a typed ``PDRectangle``, raw ``COSArray``, or
         ``None`` (clears the entry). Mirrors upstream
         ``PDShading.setBBox(PDRectangle)``."""
         from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
 
         if bbox is None:
-            self._dict.remove_item(_BBOX)
+            self.clear_b_box()
             return
         if isinstance(bbox, PDRectangle):
             self._dict.set_item(_BBOX, bbox.to_cos_array())
@@ -274,6 +316,14 @@ class PDShading:
     def set_anti_alias(self, anti_alias: bool) -> None:
         self._dict.set_boolean(_ANTI_ALIAS, anti_alias)
 
+    def has_anti_alias(self) -> bool:
+        """``True`` when ``/AntiAlias`` is present as a COS boolean."""
+        return isinstance(self._dict.get_dictionary_object(_ANTI_ALIAS), COSBoolean)
+
+    def clear_anti_alias(self) -> None:
+        """Remove ``/AntiAlias``. No-op if absent."""
+        self._dict.remove_item(_ANTI_ALIAS)
+
     def is_anti_alias(self) -> bool:
         """Predicate alias for :meth:`get_anti_alias`. Returns ``True``
         when ``/AntiAlias`` is present and truthy. Convenience companion
@@ -283,7 +333,7 @@ class PDShading:
 
     # ---------- /Function (base-level fallback) ----------
 
-    def get_function(self):
+    def get_function(self) -> Any:
         """Return the ``/Function`` entry wrapped as a ``PDFunction``
         (dispatched on ``/FunctionType``), or ``None`` when absent.
 
@@ -305,7 +355,14 @@ class PDShading:
             return item
         return PDFunction.create(item)
 
-    def get_functions_array(self) -> list:
+    def has_function(self) -> bool:
+        """``True`` when ``/Function`` is a function dictionary/stream or array."""
+        return isinstance(
+            self._dict.get_dictionary_object(_FUNCTION),
+            (COSArray, COSDictionary, COSStream),
+        )
+
+    def get_functions_array(self) -> list[Any]:
         """Return the per-component ``/Function`` entries wrapped as
         ``PDFunction`` instances. When ``/Function`` is a single function,
         returns a one-element list. Returns an empty list when absent.
@@ -319,7 +376,7 @@ class PDShading:
         if item is None:
             return []
         if isinstance(item, COSArray):
-            out: list = []
+            out: list[Any] = []
             for i in range(item.size()):
                 entry = item.get_object(i)
                 if entry is not None:
@@ -327,7 +384,7 @@ class PDShading:
             return out
         return [PDFunction.create(item)]
 
-    def set_function(self, value) -> None:  # type: ignore[no-untyped-def]
+    def set_function(self, value: Any) -> None:
         """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS
         object is stored), a raw ``COSDictionary`` / ``COSStream``, a
         ``COSArray`` of per-component functions, an iterable of
@@ -337,7 +394,7 @@ class PDShading:
         from pypdfbox.pdmodel.common.function import PDFunction  # noqa: PLC0415
 
         if value is None:
-            self._dict.remove_item(_FUNCTION)
+            self.clear_function()
             return
         if isinstance(value, PDFunction):
             self._dict.set_item(_FUNCTION, value.get_cos_object())
@@ -365,6 +422,10 @@ class PDShading:
                     f"COSBase; got {type(entry).__name__}"
                 )
         self._dict.set_item(_FUNCTION, array)
+
+    def clear_function(self) -> None:
+        """Remove ``/Function``. No-op if absent."""
+        self._dict.remove_item(_FUNCTION)
 
     # ---------- function evaluation ----------
 

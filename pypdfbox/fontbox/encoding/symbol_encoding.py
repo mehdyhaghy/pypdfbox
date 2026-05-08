@@ -201,7 +201,7 @@ class SymbolEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.SymbolEncoding``.
     """
 
-    INSTANCE: "SymbolEncoding"
+    INSTANCE: SymbolEncoding
 
     def __init__(self) -> None:
         super().__init__()

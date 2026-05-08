@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any, cast
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
@@ -242,12 +243,7 @@ class PDStructureTreeRoot(PDStructureNode):
         if parent_tree is None:
             self._dictionary.remove_item(_PARENT_TREE)
             return
-        cos = (
-            parent_tree.get_cos_object()
-            if hasattr(parent_tree, "get_cos_object")
-            else parent_tree
-        )
-        self._dictionary.set_item(_PARENT_TREE, cos)
+        self._dictionary.set_item(_PARENT_TREE, _to_cos(parent_tree))
 
     def get_parent_tree_value(self, key: int) -> PDParentTreeValue | None:
         """Look up a ``/ParentTree`` entry by integer key and return it as a
@@ -500,10 +496,7 @@ class PDStructureTreeRoot(PDStructureNode):
         page before invoking this builder.
         """
         existing = self.get_parent_tree()
-        if existing is None:
-            tree = PDStructureElementNumberTreeNode()
-        else:
-            tree = existing
+        tree = PDStructureElementNumberTreeNode() if existing is None else existing
         # Read existing numbers as a dict to make merging deterministic.
         existing_numbers = tree.get_numbers() or {}
         nums: dict[int, COSBase] = dict(existing_numbers)
@@ -579,8 +572,8 @@ class PDStructureElementNumberTreeNode(PDNumberTreeNode[COSBase]):
 
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
-        return value.get_cos_object()
-    return value
+        return cast(COSBase, value.get_cos_object())
+    return cast(COSBase, value)
 
 
 __all__ = [

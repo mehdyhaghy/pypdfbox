@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Union
-
 
 class Encoding:
     """A PostScript Encoding vector — maps a character code (0..255) to a
@@ -56,13 +54,17 @@ class Encoding:
 
     # -- public read API ---------------------------------------------------
 
-    def get_name(self, code: int) -> str:
+    def get_name(self, code: object) -> str:
         """Return the glyph name for ``code``, or ``".notdef"`` if unmapped.
         Never returns ``None`` (matches upstream ``getName(int)``)."""
+        if not isinstance(code, int) or isinstance(code, bool):
+            return ".notdef"
         return self._code_to_name.get(code, ".notdef")
 
-    def get_code(self, name: str) -> int | None:
+    def get_code(self, name: object) -> int | None:
         """Return the character code for ``name``, or ``None`` if unmapped."""
+        if not isinstance(name, str):
+            return None
         return self._name_to_code.get(name)
 
     def get_codes(self) -> dict[int, str]:
@@ -79,7 +81,7 @@ class Encoding:
         to the same code; this map keeps the first one added."""
         return dict(self._name_to_code)
 
-    def contains(self, value: Union[int, str]) -> bool:
+    def contains(self, value: int | str) -> bool:
         """``True`` if ``value`` is a known code (int) or name (str)."""
         if isinstance(value, int) and not isinstance(value, bool):
             return value in self._code_to_name

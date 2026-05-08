@@ -70,7 +70,7 @@ class PDPageDestination(PDDestination):
         """``True`` when ``/D[0]`` is a page-index ``COSInteger`` (remote destination)."""
         return isinstance(self._array.get_object(0), COSInteger)
 
-    def find_page_number(self, document=None) -> int:
+    def find_page_number(self, document: Any | None = None) -> int:
         """Return the 0-based destination page index.
 
         ``/D[0]`` may be an integer page index, a direct page dictionary, or
@@ -85,10 +85,11 @@ class PDPageDestination(PDDestination):
         if isinstance(page, COSDictionary):
             pages = self._resolve_page_tree(document)
             if pages is not None:
-                return pages.index_of(page)
+                page_number = pages.index_of(page)
+                return page_number if isinstance(page_number, int) else -1
         return -1
 
-    def retrieve_page_number(self, document=None) -> int:
+    def retrieve_page_number(self, document: Any | None = None) -> int:
         """Return the 0-based page index regardless of whether ``/D[0]`` is a
         page integer or a page dictionary.
 
@@ -160,6 +161,9 @@ class PDPageDestination(PDDestination):
 
     def _set_float(self, index: int, value: float | None) -> None:
         self._array.grow_to_size(index + 1, COSNull.NULL)
-        self._array.set(index, COSFloat(value) if value is not None else COSNull.NULL)
+        if value is None or float(value) == -1.0:
+            self._array.set(index, COSNull.NULL)
+            return
+        self._array.set(index, COSFloat(value))
 
 __all__ = ["PDPageDestination"]

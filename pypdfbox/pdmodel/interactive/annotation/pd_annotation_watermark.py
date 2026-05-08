@@ -37,7 +37,8 @@ class PDAnnotationWatermark(PDAnnotation):
     def get_fixed_print(self) -> COSDictionary | None:
         """Return the raw ``/FixedPrint`` dictionary or ``None`` when absent.
 
-        A typed ``PDFixedPrint`` wrapper is deferred — see ``CHANGES.md``."""
+        A typed ``PDFixedPrint`` wrapper is deferred until the print
+        dictionary surface is needed elsewhere."""
         value = self._dict.get_dictionary_object(_FIXED_PRINT)
         if isinstance(value, COSDictionary):
             return value

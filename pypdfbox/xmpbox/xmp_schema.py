@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from .type.abstract_simple_property import AbstractSimpleProperty
+from .type.array_property import ArrayProperty
+
 if TYPE_CHECKING:
+    from .type.text_type import TextType
     from .xmp_metadata import XMPMetadata
 
 
@@ -137,6 +141,22 @@ class XMPSchema:
         """Generic setter used by the parser and by subclass helpers."""
         self._properties[local_name] = value
 
+    def has_property(self, local_name: str) -> bool:
+        """
+        Return ``True`` when ``local_name`` is present in this schema's raw
+        property store. This is intentionally a key-presence check, so falsy
+        values such as ``""``, ``[]`` and ``{}`` still count as set.
+        """
+        return local_name in self._properties
+
+    def clear_property(self, local_name: str) -> None:
+        """Remove ``local_name`` from this schema. No-op when it is absent."""
+        self.remove_property(local_name)
+
+    def clear(self) -> None:
+        """Remove every property stored on this schema."""
+        self._properties.clear()
+
     def add_property(self, prop: object) -> None:
         """
         Mirror of upstream ``addProperty(AbstractField)``. Until the field
@@ -203,7 +223,7 @@ class XMPSchema:
             return first if isinstance(first, str) else None
         if isinstance(v, dict) and v:
             default = v.get(X_DEFAULT)
-            if default is not None:
+            if isinstance(default, str):
                 return default
             for item in v.values():
                 if isinstance(item, str):
@@ -233,7 +253,7 @@ class XMPSchema:
         """
         self.set_text_property_value(simple_name, value)
 
-    def create_text_type(self, property_name: str, value: str):
+    def create_text_type(self, property_name: str, value: str) -> TextType:
         """
         Mirror of upstream ``AbstractStructuredType.createTextType`` (inherited
         by every ``XMPSchema``): build a :class:`TextType` configured with this
@@ -296,6 +316,13 @@ class XMPSchema:
 
     def add_qualified_bag_value(self, local_name: str, value: str) -> None:
         existing = self._properties.get(local_name)
+        if isinstance(existing, ArrayProperty):
+            from .type.text_type import TextType
+
+            existing.add_property(
+                TextType(self._metadata, self._namespace, self._prefix, "li", value)
+            )
+            return
         if not isinstance(existing, list):
             existing = []
             self._properties[local_name] = existing
@@ -323,6 +350,14 @@ class XMPSchema:
         existing = self._properties.get(local_name)
         if isinstance(existing, list):
             existing[:] = [item for item in existing if item != value]
+            return
+        if isinstance(existing, ArrayProperty):
+            for child in existing.get_all_properties():
+                if (
+                    isinstance(child, AbstractSimpleProperty)
+                    and child.get_string_value() == value
+                ):
+                    existing.remove_property(child)
 
     def remove_unqualified_array_value(self, array_name: str, value: str) -> None:
         """
@@ -342,6 +377,8 @@ class XMPSchema:
             return None
         if isinstance(v, list):
             return list(v)
+        if isinstance(v, ArrayProperty):
+            return v.get_elements_as_string()
         if isinstance(v, str):
             return [v]
         return None

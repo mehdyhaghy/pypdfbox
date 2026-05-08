@@ -118,6 +118,11 @@ class LosslessFactory:
         :raises OSError: on flate-encoding failure (re-raised from
             :mod:`zlib`).
         """
+        if not isinstance(image, Image.Image):
+            raise TypeError(
+                f"image must be a PIL.Image.Image, got {type(image).__name__}"
+            )
+
         mode = image.mode
 
         # 1-bit fast path → DeviceGray 1 BPC.
@@ -320,10 +325,7 @@ def _create_from_indexed(
     # Pillow may pad the palette to 256*3 even for fewer entries.
     # Index data tells us the actual hival.
     raw_indices = image.tobytes()
-    if raw_indices:
-        hival = max(raw_indices)
-    else:
-        hival = 0
+    hival = max(raw_indices) if raw_indices else 0
     # Palette is RGB triplets. Some Pillow versions return RGBA
     # quadruplets for palette modes that include alpha; normalise.
     raw_mode = image.palette.mode if image.palette is not None else "RGB"

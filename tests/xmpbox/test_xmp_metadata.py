@@ -96,14 +96,21 @@ def test_xmp_constants_existing_constants_unchanged() -> None:
 
 
 def test_create_and_add_dublin_core_schema_alias() -> None:
-    """Mirror of upstream ``XMPMetadata.createAndAddDublinCoreSchema``: the
-    alias delegates to :meth:`add_dublin_core_schema` and is idempotent."""
+    """Mirror of upstream ``XMPMetadata.createAndAddDublinCoreSchema``: each
+    call installs a fresh schema with ``rdf:about=""``."""
     meta = XMPMetadata.create_xmp_metadata()
     schema = meta.create_and_add_dublin_core_schema()
     assert isinstance(schema, DublinCoreSchema)
-    # Repeat call returns the same instance (idempotent like upstream).
-    assert meta.create_and_add_dublin_core_schema() is schema
-    # Alias and primary share storage.
+    again = meta.create_and_add_dublin_core_schema()
+    assert isinstance(again, DublinCoreSchema)
+    assert again is not schema
+    assert schema.get_about() == ""
+    assert again.get_about() == ""
+    assert meta.get_dublin_core_schema() is schema
+
+    meta.clear_schemas()
+    # The idempotent add helper still reuses an already-registered schema.
+    schema = meta.add_dublin_core_schema()
     assert meta.add_dublin_core_schema() is schema
     assert meta.get_dublin_core_schema() is schema
 

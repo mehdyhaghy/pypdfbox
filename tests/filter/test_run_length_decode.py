@@ -7,6 +7,13 @@ import pytest
 from pypdfbox.filter import FilterFactory, RunLengthDecode
 
 
+class _ShortReadBytesIO(io.BytesIO):
+    def read(self, size: int | None = -1, /) -> bytes:
+        if size is None or size < 0:
+            return super().read(size)
+        return super().read(min(size, 2))
+
+
 def _encode(data: bytes) -> bytes:
     out = io.BytesIO()
     RunLengthDecode().encode(io.BytesIO(data), out)
@@ -49,6 +56,15 @@ def test_decode_literal_only() -> None:
     assert _decode(encoded) == b"hello"
 
 
+def test_wave318_decode_literal_accepts_short_reads() -> None:
+    out = io.BytesIO()
+
+    result = RunLengthDecode().decode(_ShortReadBytesIO(b"\x04hello\x80"), out)
+
+    assert out.getvalue() == b"hello"
+    assert result.bytes_written == 5
+
+
 def test_decode_run_only() -> None:
     # Length 252 means the next byte is repeated 5 times (257 - 252 = 5).
     encoded = b"\xfcA\x80"
@@ -89,5 +105,3 @@ def test_factory_resolves_long_and_short_names() -> None:
 def test_factory_is_registered() -> None:
     assert FilterFactory.is_registered("RunLengthDecode")
     assert FilterFactory.is_registered("RL")
-
-

@@ -27,6 +27,8 @@ from pypdfbox.pdmodel.encryption import (
 if TYPE_CHECKING:  # pragma: no cover — annotation only
     from collections.abc import Iterable
 
+    from cryptography.x509 import Certificate
+
 
 # Upstream's default in PDFBox 3.0: ``private int keyLength = 256;``.
 DEFAULT_KEY_LENGTH: int = 256
@@ -124,7 +126,7 @@ def _build_access_permission(args: argparse.Namespace) -> AccessPermission:
     return ap
 
 
-def _load_certificates(cert_files: Iterable[str | Path]):
+def _load_certificates(cert_files: Iterable[str | Path]) -> list[Certificate]:
     """Load X.509 certificates from disk via ``cryptography``.
 
     The ``cryptography`` package is already a transitive dependency of the

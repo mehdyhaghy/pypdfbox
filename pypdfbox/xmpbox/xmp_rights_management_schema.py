@@ -222,6 +222,7 @@ class XMPRightsManagementSchema(XMPSchema):
             return None
         if isinstance(raw, BooleanType):
             return raw.get_value()
+        text: str | None
         if isinstance(raw, bool):
             return raw
         if isinstance(raw, AbstractSimpleProperty):

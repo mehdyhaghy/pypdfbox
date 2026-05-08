@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 
@@ -23,7 +24,7 @@ class FDArray:
         self._fdarray = fdarray
 
     @classmethod
-    def from_fonttools(cls, fdarray: Any) -> "FDArray":
+    def from_fonttools(cls, fdarray: Any) -> FDArray:
         return cls(fdarray)
 
     # ---------- length ----------
@@ -197,7 +198,7 @@ class FDArray:
     def __getitem__(self, fd_index: int) -> dict[str, Any]:
         return self.get_font_dict(fd_index)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[dict[str, Any]]:
         for i in range(self.size()):
             yield self.get_font_dict(i)
 

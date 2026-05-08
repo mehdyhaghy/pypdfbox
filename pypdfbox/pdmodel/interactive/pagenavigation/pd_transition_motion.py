@@ -9,9 +9,9 @@ class PDTransitionMotion:
     """
 
     #: Inward from the edges of the page.
-    I = "I"
+    I = "I"  # noqa: E741 - PDFBox/API name
     #: Outward from the center of the page.
-    O = "O"
+    O = "O"  # noqa: E741 - PDFBox/API name
 
 
 __all__ = ["PDTransitionMotion"]

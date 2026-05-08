@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Iterable
+from importlib import import_module
 from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -144,6 +145,8 @@ class TTFSubsetter:
         # Compose the same set fontTools.subset would compose at flush
         # time: explicitly registered GIDs plus GIDs reachable from the
         # registered Unicode codepoints via the font's Unicode cmap.
+        # Composite glyphs pull in their component glyphs too, so close
+        # over those dependencies before assigning new GIDs.
         old_gids: set[int] = set(self._glyph_ids)
         cmap = self._ttf.get_unicode_cmap_subtable()
         if cmap is not None:
@@ -151,6 +154,7 @@ class TTFSubsetter:
                 gid = cmap.get_glyph_id(int(cp))
                 if gid != 0:
                     old_gids.add(gid)
+        self._add_composite_components(old_gids)
         # New GIDs are assigned in ascending order of the old GID set
         # (matches the sorted iteration order upstream's TreeSet uses).
         return {new_gid: old_gid for new_gid, old_gid in enumerate(sorted(old_gids))}
@@ -191,8 +195,8 @@ class TTFSubsetter:
         """Return the subset font as a ``bytes`` buffer."""
         # Lazy imports — fontTools is a heavy import and this method is
         # only invoked when a caller actually wants subset output.
-        import fontTools.subset as ft_subset  # noqa: PLC0415
-        import fontTools.ttLib as ttLib  # noqa: PLC0415
+        import fontTools.subset as ft_subset  # type: ignore[import-untyped]  # noqa: PLC0415
+        import fontTools.ttLib as ttLib  # type: ignore[import-untyped]  # noqa: PLC0415
 
         # Build a fresh in-memory copy of the source font so subsetting
         # doesn't perturb the cached fontTools instance the parent
@@ -260,14 +264,13 @@ class TTFSubsetter:
         APIs: build an empty ``Glyph`` for the target glyph name and
         write a zero-advance entry into the ``hmtx`` table.
         """
-        from fontTools.ttLib.tables._g_l_y_f import Glyph  # noqa: PLC0415
-
         cmap = tt.getBestCmap() or {}
         if "glyf" not in tt:
             return
         glyf = tt["glyf"]
-        hmtx = tt["hmtx"] if "hmtx" in tt else None
-        empty_glyph = Glyph()
+        hmtx = tt.get("hmtx", None)
+        glyph_module = import_module("fontTools.ttLib.tables._g_l_y_f")
+        empty_glyph = glyph_module.Glyph()
         empty_glyph.numberOfContours = 0
         for cp in codepoints:
             gname = cmap.get(int(cp))
@@ -280,6 +283,33 @@ class TTFSubsetter:
             if hmtx is not None and gname in hmtx.metrics:
                 # (advance_width, lsb) — zero both per upstream
                 hmtx.metrics[gname] = (0, 0)
+
+    def _add_composite_components(self, old_gids: set[int]) -> None:
+        """Expand ``old_gids`` with TrueType composite glyph components."""
+        tt = self._ttf._tt  # noqa: SLF001
+        if "glyf" not in tt:
+            return
+        glyph_order = tt.getGlyphOrder()
+        name_to_gid = {name: gid for gid, name in enumerate(glyph_order)}
+        glyf = tt["glyf"]
+        pending = list(old_gids)
+        while pending:
+            gid = pending.pop()
+            if gid < 0 or gid >= len(glyph_order):
+                continue
+            glyph_name = glyph_order[gid]
+            try:
+                glyph = glyf[glyph_name]
+            except (KeyError, AttributeError):
+                continue
+            if not glyph.isComposite():
+                continue
+            for component in getattr(glyph, "components", ()) or ():
+                component_gid = name_to_gid.get(component.glyphName)
+                if component_gid is None or component_gid in old_gids:
+                    continue
+                old_gids.add(component_gid)
+                pending.append(component_gid)
 
     @staticmethod
     def _apply_prefix(tt: Any, prefix: str) -> None:

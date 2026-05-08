@@ -86,6 +86,18 @@ class PDAnnotationRubberStamp(PDAnnotation):
         """
         return self.get_name() in self.STANDARD_NAMES
 
+    def has_name(self) -> bool:
+        """Return ``True`` when ``/Name`` is explicitly present.
+
+        ``get_name`` substitutes the spec default ``Draft`` when the entry is
+        absent; this predicate preserves the distinction for round-trip tools.
+        """
+        return self._dict.contains_key(_NAME)
+
+    def is_default_name(self) -> bool:
+        """Return ``True`` when the resolved icon is the spec default."""
+        return self.get_name() == self.NAME_DRAFT
+
     def getName(self) -> str:  # noqa: N802 - upstream Java name
         return self.get_name()
 

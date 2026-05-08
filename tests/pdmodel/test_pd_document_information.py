@@ -43,7 +43,7 @@ def test_setting_none_clears_field() -> None:
 
 def test_creation_date_round_trip_utc() -> None:
     info = PDDocumentInformation()
-    when = _dt.datetime(2024, 6, 1, 12, 30, 45, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2024, 6, 1, 12, 30, 45, tzinfo=_dt.UTC)
     info.set_creation_date(when)
     parsed = info.get_creation_date()
     assert parsed == when
@@ -65,7 +65,7 @@ def test_creation_date_round_trip_offset() -> None:
 
 def test_modification_date_round_trip() -> None:
     info = PDDocumentInformation()
-    when = _dt.datetime(2020, 1, 1, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2020, 1, 1, tzinfo=_dt.UTC)
     info.set_modification_date(when)
     assert info.get_modification_date() == when
     info.set_modification_date(None)
@@ -149,45 +149,45 @@ def test_set_document_information_replaces_trailer_entry() -> None:
 def test_parse_date_strict_full_format() -> None:
     """Canonical D:YYYYMMDDHHmmSSOHH'mm' still parses (regression)."""
     assert _parse_pdf_date("D:20230101120000Z00'00'") == _dt.datetime(
-        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC
     )
 
 
 def test_parse_date_missing_d_prefix() -> None:
     """Many writers omit the leading 'D:' marker."""
     assert _parse_pdf_date("20230101120000Z00'00'") == _dt.datetime(
-        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC
     )
 
 
 def test_parse_date_truncated_to_year_month() -> None:
     assert _parse_pdf_date("D:202301") == _dt.datetime(
-        2023, 1, 1, 0, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 0, 0, 0, tzinfo=_dt.UTC
     )
 
 
 def test_parse_date_truncated_to_year_month_day() -> None:
     assert _parse_pdf_date("D:20230101") == _dt.datetime(
-        2023, 1, 1, 0, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 0, 0, 0, tzinfo=_dt.UTC
     )
 
 
 def test_parse_date_truncated_to_hour() -> None:
     assert _parse_pdf_date("D:2023010112") == _dt.datetime(
-        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC
     )
 
 
 def test_parse_date_full_time_without_timezone() -> None:
     """No Z and no offset — assume UTC."""
     assert _parse_pdf_date("D:20230101120000") == _dt.datetime(
-        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC
     )
 
 
 def test_parse_date_bare_z_without_offset() -> None:
     assert _parse_pdf_date("D:20230101120000Z") == _dt.datetime(
-        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC
     )
 
 
@@ -214,7 +214,7 @@ def test_parse_date_negative_offset_compact() -> None:
 
 def test_parse_date_strips_whitespace() -> None:
     assert _parse_pdf_date("  D:20230101120000Z  ") == _dt.datetime(
-        2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC
     )
 
 
@@ -222,7 +222,7 @@ def test_parse_date_clamps_leap_second() -> None:
     """Time HHmm60 — clamp to HHmm59 (Python datetime has no leap-second
     representation; upstream PDFBox silently truncates as well)."""
     assert _parse_pdf_date("D:20230101235960Z") == _dt.datetime(
-        2023, 1, 1, 23, 59, 59, tzinfo=_dt.timezone.utc
+        2023, 1, 1, 23, 59, 59, tzinfo=_dt.UTC
     )
 
 
@@ -249,4 +249,4 @@ def test_round_trip_via_info_dict_with_lenient_string() -> None:
     )
     info = PDDocumentInformation(raw)
     parsed = info.get_creation_date()
-    assert parsed == _dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=_dt.timezone.utc)
+    assert parsed == _dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=_dt.UTC)

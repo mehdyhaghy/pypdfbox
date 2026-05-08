@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO, TypeGuard
 
 from pypdfbox.cos import COSDocument
 from pypdfbox.io import (
@@ -10,6 +10,9 @@ from pypdfbox.io import (
     RandomAccessReadBufferedFile,
 )
 from pypdfbox.pdfparser import PDFParseError, PDFParser
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.fdf import FDFDocument
 
 # Type alias for everything Loader.load_pdf accepts. Mirrors the overloads
 # of org.apache.pdfbox.Loader.loadPDF (file, byte[], RandomAccessRead,
@@ -25,6 +28,11 @@ PDFSource = (
 )
 
 
+def _is_binary_stream_like(source: object) -> TypeGuard[BinaryIO]:
+    """Return True for stream-shaped inputs accepted by ``load_pdf``."""
+    return callable(getattr(source, "read", None))
+
+
 class Loader:
     """
     Top-level entry point for parsing a PDF — mirrors
@@ -32,14 +40,18 @@ class Loader:
 
     The PDFBox class exposes many overloads (paths, bytes, streams,
     ``RandomAccessRead``, plus password / ``MemoryUsageSetting`` knobs).
-    This first port covers the four source forms; encryption and memory
-    tuning will be added once the corresponding subsystems land.
+    This port covers the source forms and password-based auto-decryption;
+    memory-usage tuning and key-store overloads are deferred until their
+    corresponding subsystems land.
 
     Lifecycle: when ``load_pdf`` is given a path, byte buffer, or stream,
     the Loader constructs the underlying ``RandomAccessRead`` itself and
     hands it to the resulting ``COSDocument`` as an owned resource —
-    ``doc.close()`` then closes it. When the caller passes a
-    ``RandomAccessRead`` directly, ownership stays with the caller.
+    ``doc.close()`` then closes it. Stream inputs are copied into memory
+    and closed immediately after buffering, matching the local
+    ``RandomAccessReadBuffer.create_buffer_from_stream`` contract. When
+    the caller passes a ``RandomAccessRead`` directly, ownership stays
+    with the caller.
     """
 
     @staticmethod
@@ -73,12 +85,18 @@ class Loader:
         try:
             document = parser.parse()
         except PDFParseError as e:
+            partial_document = parser.get_document()
+            if partial_document is not None:
+                partial_document.close()
             if owned:
                 access.close()
             # Mirror upstream Loader.loadPDF: malformed input surfaces as
             # an IOException-equivalent (OSError) at the Loader boundary.
             raise OSError(str(e)) from e
         except BaseException:
+            partial_document = parser.get_document()
+            if partial_document is not None:
+                partial_document.close()
             if owned:
                 access.close()
             raise
@@ -114,8 +132,9 @@ class Loader:
             # derivation. This is the only path where ``_security_handler``
             # would otherwise be lost between the transient decrypt-time
             # wrapper and the caller-visible wrapper.
-            document._loader_security_handler = pd._security_handler  # noqa: SLF001
-            document._loader_encryption = pd._encryption  # noqa: SLF001
+            document_any: Any = document
+            document_any._loader_security_handler = pd._security_handler  # noqa: SLF001
+            document_any._loader_encryption = pd._encryption  # noqa: SLF001
         return document
 
     @staticmethod
@@ -191,20 +210,17 @@ class Loader:
         )
 
     @staticmethod
-    def load_fdf(source: PDFSource) -> None:
+    def load_fdf(source: PDFSource) -> FDFDocument:
         """Parse an FDF (Forms Data Format) document — mirrors
         ``org.apache.pdfbox.Loader.loadFDF``.
 
-        Not yet implemented: FDF parsing depends on the ``fdf`` subsystem
-        which lands in a later wave. The method exists today so downstream
-        code can call it and get a clear, actionable
-        ``NotImplementedError`` instead of an ``AttributeError``.
+        FDF shares PDF's object/xref/trailer wire structure, so this
+        delegates to :class:`pypdfbox.pdmodel.fdf.FDFDocument`'s loader and
+        returns the high-level FDF wrapper.
         """
-        raise NotImplementedError(
-            "Loader.load_fdf is not yet implemented — FDF parsing is "
-            "deferred to a later wave (tracked alongside the FDF / XFDF "
-            "interactive-form data exchange port)."
-        )
+        from pypdfbox.pdmodel.fdf import FDFDocument  # noqa: PLC0415
+
+        return FDFDocument.load(source)
 
     @staticmethod
     def _coerce_source(source: PDFSource) -> tuple[RandomAccessRead, bool]:
@@ -218,8 +234,8 @@ class Loader:
             return RandomAccessReadBufferedFile(source), True
         if isinstance(source, (bytes, bytearray, memoryview)):
             return RandomAccessReadBuffer(source), True
-        if hasattr(source, "read"):
-            return RandomAccessReadBuffer(source), True
+        if _is_binary_stream_like(source):
+            return RandomAccessReadBuffer.create_buffer_from_stream(source), True
         raise TypeError(
             "Loader.load_pdf expected a path, bytes-like object, binary "
             f"stream, or RandomAccessRead; got {type(source).__name__}"

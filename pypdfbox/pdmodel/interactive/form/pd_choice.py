@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSInteger,
+    COSName,
+    COSNumber,
+    COSString,
+)
 
 from .pd_variable_text import PDVariableText
 
@@ -18,12 +26,20 @@ _DV: COSName = COSName.get_pdf_name("DV")
 _I: COSName = COSName.get_pdf_name("I")
 
 
-def _entry_to_str(entry) -> str | None:
+def _entry_to_str(entry: object) -> str | None:
     if isinstance(entry, COSString):
         return entry.get_string()
     if isinstance(entry, COSName):
         return entry.name
     return None
+
+
+def _has_string_or_name_entry(value: object) -> bool:
+    if isinstance(value, (COSString, COSName)):
+        return True
+    if not isinstance(value, COSArray):
+        return False
+    return any(_entry_to_str(value.get_object(i)) is not None for i in range(value.size()))
 
 
 class PDChoice(PDVariableText):
@@ -99,7 +115,12 @@ class PDChoice(PDVariableText):
         ``/Opt``" from "no ``/Opt`` entry" without rereading the dict directly.
         :meth:`get_options` returns ``[]`` for both cases.
         """
-        return self._field.contains_key(_OPT)
+        opt = self._field.get_dictionary_object(_OPT)
+        return isinstance(opt, (COSArray, COSString))
+
+    def clear_options(self) -> None:
+        """Remove this field's local ``/Opt`` options array/string."""
+        self._field.remove_item(_OPT)
 
     def get_options(self) -> list[str]:
         """Returns the export half of /Opt entries (or the value itself when
@@ -226,10 +247,18 @@ class PDChoice(PDVariableText):
         else:
             self._field.set_int(_TI, top)
 
+    def has_top_index(self) -> bool:
+        """Return ``True`` when this field has a parsable local ``/TI`` value."""
+        return isinstance(self._field.get_dictionary_object(_TI), COSInteger)
+
+    def clear_top_index(self) -> None:
+        """Remove this field's local ``/TI`` top-index entry."""
+        self._field.remove_item(_TI)
+
     # ---------- /V, /DV ----------
 
     @staticmethod
-    def _read_string_or_array(item) -> list[str]:
+    def _read_string_or_array(item: object) -> list[str]:
         if item is None:
             return []
         if isinstance(item, COSString):
@@ -246,7 +275,7 @@ class PDChoice(PDVariableText):
         return []
 
     @staticmethod
-    def _write_string_or_array(values: list[str] | str | None):
+    def _write_string_or_array(values: list[str] | str | None) -> COSBase | None:
         if values is None:
             return None
         if isinstance(values, str):
@@ -302,6 +331,15 @@ class PDChoice(PDVariableText):
         cos = self._write_string_or_array(values)
         self._field.set_item(_V, cos)
 
+    def has_value(self) -> bool:
+        """Return ``True`` when this field has a parsable local ``/V`` value."""
+        return _has_string_or_name_entry(self._field.get_dictionary_object(_V))
+
+    def clear_value(self) -> None:
+        """Remove this field's local ``/V`` and selected ``/I`` entries."""
+        self._field.remove_item(_V)
+        self.set_selected_options_indices(None)
+
     def get_value_as_string(self) -> str:
         """Comma-joined view of ``get_value`` — mirrors PDFBox
         ``PDChoice.getValueAsString``.
@@ -320,6 +358,14 @@ class PDChoice(PDVariableText):
         cos = self._write_string_or_array(value)
         self._field.set_item(_DV, cos)
 
+    def has_default_value(self) -> bool:
+        """Return ``True`` when this field has a parsable local ``/DV`` value."""
+        return _has_string_or_name_entry(self._field.get_dictionary_object(_DV))
+
+    def clear_default_value(self) -> None:
+        """Remove this field's local ``/DV`` entry."""
+        self._field.remove_item(_DV)
+
     # ---------- /I ----------
 
     def get_selected_options_indices(self) -> list[int]:
@@ -329,8 +375,8 @@ class PDChoice(PDVariableText):
         out: list[int] = []
         for i in range(item.size()):
             entry = item.get_object(i)
-            if isinstance(entry, COSInteger):
-                out.append(entry.value)
+            if isinstance(entry, COSNumber):
+                out.append(entry.int_value())
         return out
 
     def set_selected_options_indices(self, indices: list[int] | None) -> None:
@@ -338,6 +384,17 @@ class PDChoice(PDVariableText):
             self._field.remove_item(_I)
             return
         self._field.set_item(_I, COSArray.of_cos_integers(indices))
+
+    def has_selected_options_indices(self) -> bool:
+        """Return ``True`` when this field has parsable local ``/I`` indices."""
+        item = self._field.get_dictionary_object(_I)
+        if not isinstance(item, COSArray):
+            return False
+        return any(isinstance(item.get_object(i), COSNumber) for i in range(item.size()))
+
+    def clear_selected_options_indices(self) -> None:
+        """Remove this field's local ``/I`` selected-options array."""
+        self._field.remove_item(_I)
 
     # Upstream PDFBox names (singular). Aliases for the plural pythonic forms.
     def get_selected_options_index(self) -> list[int]:

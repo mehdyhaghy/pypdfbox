@@ -13,12 +13,12 @@ def _make_path_pen() -> Any:
     Lazily imports fontTools so this module is cheap to import when no
     glyph paths are ever requested.
     """
-    from fontTools.pens.basePen import BasePen  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped] # noqa: PLC0415
 
-    class _PathPen(BasePen):
+    class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
-            self.commands: list[tuple] = []
+            self.commands: list[tuple[Any, ...]] = []
 
         def _moveTo(self, pt: tuple[float, float]) -> None:
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
@@ -113,7 +113,7 @@ class Type1Font:
     # ---------- factory ----------
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview) -> "Type1Font":
+    def from_bytes(cls, data: bytes | bytearray | memoryview) -> Type1Font:
         """Parse a Type 1 PostScript font from raw ``/FontFile`` bytes.
 
         Bytes must follow the PDF 32000-1 §9.9 layout — cleartext header
@@ -122,14 +122,14 @@ class Type1Font:
         bytes are NOT supported here; call :meth:`from_pfb_bytes` for
         those (PDF /FontFile streams are never PFB-wrapped).
         """
-        from fontTools.t1Lib import (  # noqa: PLC0415
+        from fontTools.misc.py23 import bytesjoin  # type: ignore[import-untyped] # noqa: PLC0415
+        from fontTools.t1Lib import (  # type: ignore[import-untyped] # noqa: PLC0415
             T1Font,
             assertType1,
             deHexString,
             findEncryptedChunks,
             isHex,
         )
-        from fontTools.misc.py23 import bytesjoin  # noqa: PLC0415
 
         raw = bytes(data)
         assertType1(raw)
@@ -170,7 +170,7 @@ class Type1Font:
         cls,
         segment1: bytes | bytearray,
         segment2: bytes | bytearray,
-    ) -> "Type1Font":
+    ) -> Type1Font:
         """Build a ``Type1Font`` from a (cleartext, eexec-binary) pair.
 
         Mirrors upstream ``Type1Font.createWithSegments(byte[], byte[])``.
@@ -221,9 +221,29 @@ class Type1Font:
     def font_matrix(self) -> list[float]:
         """Six-element font matrix (Type 1 default ``[0.001 0 0 0.001 0 0]``)."""
         if self._font_matrix is None:
-            assert self._t1 is not None  # noqa: S101 — guarded by from_bytes
-            matrix = self._t1["FontMatrix"]
-            self._font_matrix = [float(v) for v in matrix]
+            default = [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+            matrix = self._font_dict().get("FontMatrix")
+            if matrix is None:
+                logger.debug("Type1Font: /FontMatrix missing, using Type 1 default")
+                self._font_matrix = default
+            else:
+                try:
+                    values = [float(v) for v in matrix]
+                except (TypeError, ValueError):
+                    logger.debug(
+                        "Type1Font: /FontMatrix %r not coercible, using Type 1 default",
+                        matrix,
+                    )
+                    self._font_matrix = default
+                else:
+                    if len(values) != 6:
+                        logger.debug(
+                            "Type1Font: /FontMatrix length %d != 6, using Type 1 default",
+                            len(values),
+                        )
+                        self._font_matrix = default
+                    else:
+                        self._font_matrix = values
         return self._font_matrix
 
     @property
@@ -859,7 +879,7 @@ class Type1Font:
         self._widths[name] = width
         return width
 
-    def get_path(self, name: str) -> list[tuple]:
+    def get_path(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for ``name`` as a list of draw commands in
         font units. Returns ``[]`` when the glyph is missing.
 
@@ -877,7 +897,7 @@ class Type1Font:
             return []
         # Side-effect: the draw populates cs.width — cache it while we're here.
         self._widths.setdefault(name, float(getattr(cs, "width", 0.0) or 0.0))
-        return list(pen.commands)  # type: ignore[attr-defined]
+        return list(pen.commands)
 
     def get_type1_char_string(self, name: str) -> Any:
         """PDFBox: ``Type1Font.getType1CharString(String name)`` —

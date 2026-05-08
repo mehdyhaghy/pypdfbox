@@ -54,7 +54,7 @@ class PDAppearanceContentStream(PDPageContentStream):
         # PDAppearanceStream isn't a PDFormXObject in the lite port. We
         # populate the same attributes the parent uses so all inherited
         # operator helpers (move_to, set_font, draw_image, ...) work.
-        self._document = None  # upstream passes null too
+        self._document = None  # type: ignore[assignment]  # upstream passes null too
         self._closed = False
         self._buffer = bytearray()
         self._reset_context = False
@@ -171,30 +171,32 @@ class PDAppearanceContentStream(PDPageContentStream):
         component count (``G`` for 1, ``RG`` for 3, ``K`` for 4). Other
         component counts are silently ignored (matches upstream's
         ``default: break``)."""
+        n = len(components)
+        if n not in (1, 3, 4):
+            return
         for value in components:
             self._write_operands(float(value))
-        n = len(components)
         if n == 1:
             self._write_operator(b"G")
         elif n == 3:
             self._write_operator(b"RG")
-        elif n == 4:
+        else:
             self._write_operator(b"K")
-        # else: silently no-op (matches upstream)
 
     def set_non_stroking_color(self, components: Sequence[float]) -> None:
         """Emit the non-stroking equivalent of :meth:`set_stroking_color`
         (``g`` / ``rg`` / ``k``)."""
+        n = len(components)
+        if n not in (1, 3, 4):
+            return
         for value in components:
             self._write_operands(float(value))
-        n = len(components)
         if n == 1:
             self._write_operator(b"g")
         elif n == 3:
             self._write_operator(b"rg")
-        elif n == 4:
+        else:
             self._write_operator(b"k")
-        # else: silently no-op (matches upstream)
 
     # ------------------------------------------------------------------
     # border / line-width helpers

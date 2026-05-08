@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSNumber
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_annotation_line import PDAnnotationLine
@@ -28,9 +28,8 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
     A free-text annotation displays text directly on the page rather than
     in a popup (PDF 32000-1:2008 §12.5.6.6). Exposes ``/DA``, ``/Q``,
     ``/DS``, ``/RC``, ``/IT``, ``/CL``, ``/LE``, ``/BS``, ``/BE`` and
-    ``/RD``. Appearance generation is deferred. ``/BE`` is exposed as a
-    raw :class:`COSDictionary` until ``PDBorderEffectDictionary`` is
-    ported.
+    ``/RD``. Appearance generation is deferred. ``/BE`` is exposed through
+    :class:`PDBorderEffectDictionary`.
     """
 
     SUB_TYPE: str = "FreeText"
@@ -67,6 +66,18 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         super().__init__(annotation_dict)
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
+
+    @staticmethod
+    def _numeric_array_prefix(array: COSArray, count: int) -> list[float] | None:
+        if array.size() < count:
+            return None
+        values: list[float] = []
+        for index in range(count):
+            entry = array.get_object(index)
+            if not isinstance(entry, COSNumber):
+                return None
+            values.append(float(entry.float_value()))
+        return values
 
     # ---------- /DA (default appearance string) ----------
 
@@ -146,9 +157,9 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         if isinstance(value, COSArray):
             size = value.size()
             if size >= 6:
-                return value.to_float_array()[:6]
+                return self._numeric_array_prefix(value, 6)
             if size >= 4:
-                return value.to_float_array()[:4]
+                return self._numeric_array_prefix(value, 4)
         return None
 
     def set_callout_line(self, coords: list[float] | None) -> None:
@@ -174,14 +185,15 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         value = self._dict.get_name(_LE)
         return value if value is not None else PDAnnotationLine.LE_NONE
 
-    def set_line_ending(self, le: str) -> None:
+    def set_line_ending(self, le: str | None) -> None:
+        """Set ``/LE``; ``None`` clears the explicit entry."""
         self._dict.set_name(_LE, le)
 
     def get_line_ending_style(self) -> str:
         """Upstream-named alias for :meth:`get_line_ending`."""
         return self.get_line_ending()
 
-    def set_line_ending_style(self, style: str) -> None:
+    def set_line_ending_style(self, style: str | None) -> None:
         """Upstream-named alias for :meth:`set_line_ending`."""
         self.set_line_ending(style)
 
@@ -193,11 +205,16 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
             return PDBorderStyleDictionary(value)
         return None
 
-    def set_border_style(self, bs: PDBorderStyleDictionary | None) -> None:
+    def set_border_style(
+        self, bs: PDBorderStyleDictionary | COSDictionary | None
+    ) -> None:
         if bs is None:
             self._dict.remove_item(_BS)
             return
-        self._dict.set_item(_BS, bs.get_cos_object())
+        self._dict.set_item(
+            _BS,
+            bs.get_cos_object() if hasattr(bs, "get_cos_object") else bs,
+        )
 
     # ---------- /BE (border effect dictionary) ----------
 
@@ -230,7 +247,7 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         differences, or ``None`` when unset."""
         value = self._dict.get_dictionary_object(_RD)
         if isinstance(value, COSArray) and value.size() >= 4:
-            return value.to_float_array()[:4]
+            return self._numeric_array_prefix(value, 4)
         return None
 
     def set_rectangle_differences(self, diffs: list[float] | None) -> None:
@@ -261,7 +278,10 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         numeric entries.
         """
         value = self._dict.get_dictionary_object(_RD)
-        if isinstance(value, COSArray) and value.size() >= 4:
+        if (
+            isinstance(value, COSArray)
+            and self._numeric_array_prefix(value, 4) is not None
+        ):
             return PDRectangle.from_cos_array(value)
         return None
 
@@ -298,8 +318,16 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
             return
 
         if len(differences) == 4:
-            self.set_rectangle_differences([float(d) for d in differences])
-            return
+            values: list[float] = []
+            for difference in differences:
+                if not isinstance(difference, (int, float)) or isinstance(
+                    difference, bool
+                ):
+                    break
+                values.append(float(difference))
+            else:
+                self.set_rectangle_differences(values)
+                return
 
         raise TypeError("set_rect_differences expects 1 or 4 values")
 

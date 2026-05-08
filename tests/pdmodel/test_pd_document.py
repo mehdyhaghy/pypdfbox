@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
 
@@ -25,6 +26,7 @@ def test_default_constructor_empty_saveable() -> None:
     out = _save_to_bytes(doc)
     assert out.startswith(b"%PDF-1.4\n")
     assert b"%%EOF" in out
+    doc.close()
 
 
 def test_load_round_trips_empty_document() -> None:
@@ -65,6 +67,7 @@ def test_add_page_increments_count() -> None:
     assert doc.get_number_of_pages() == 1
     doc.add_page(PDPage())
     assert doc.get_number_of_pages() == 2
+    doc.close()
 
 
 def test_remove_page_by_reference() -> None:
@@ -75,6 +78,7 @@ def test_remove_page_by_reference() -> None:
     doc.add_page(p2)
     doc.remove_page(p1)
     assert doc.get_number_of_pages() == 1
+    doc.close()
 
 
 def test_remove_page_by_index() -> None:
@@ -83,6 +87,7 @@ def test_remove_page_by_index() -> None:
     doc.add_page(PDPage())
     doc.remove_page(0)
     assert doc.get_number_of_pages() == 1
+    doc.close()
 
 
 def test_save_incremental_requires_source() -> None:
@@ -469,14 +474,14 @@ def test_set_encryption_dictionary_none_clears_trailer_and_cache() -> None:
     ``setEncryptionDictionary(null)``."""
     doc = PDDocument()
     enc = COSDictionary()
-    enc.set_item(COSName.FILTER, COSName.get_pdf_name("Standard"))
+    enc.set_item(COSName.get_pdf_name("Filter"), COSName.get_pdf_name("Standard"))
     doc.set_encryption_dictionary(enc)
     trailer = doc.get_document().get_trailer()
     assert trailer is not None
-    assert trailer.get_item(COSName.ENCRYPT) is enc
+    assert trailer.get_item(COSName.get_pdf_name("Encrypt")) is enc
 
     doc.set_encryption_dictionary(None)
-    assert trailer.get_item(COSName.ENCRYPT) is None
+    assert trailer.get_item(COSName.get_pdf_name("Encrypt")) is None
     assert doc._encryption is None  # noqa: SLF001 — test introspection
 
 
@@ -535,6 +540,7 @@ def test_get_last_signature_dictionary_empty_when_no_acroform() -> None:
     """No ``/AcroForm`` → no signatures → ``None``."""
     doc = PDDocument()
     assert doc.get_last_signature_dictionary() is None
+    doc.close()
 
 
 def test_get_last_signature_dictionary_returns_most_recent() -> None:
@@ -572,6 +578,7 @@ def test_get_last_signature_dictionary_returns_most_recent() -> None:
     # Same backing dictionary as the last signature added.
     assert last_sig is not None
     assert out.get_cos_object() is last_sig.get_cos_object()
+    doc.close()
 
 
 # ---------- document information caching ----------
@@ -584,6 +591,7 @@ def test_get_document_information_returns_cached_wrapper() -> None:
     a = doc.get_document_information()
     b = doc.get_document_information()
     assert a is b
+    doc.close()
 
 
 def test_set_document_information_updates_cache() -> None:
@@ -603,6 +611,7 @@ def test_set_document_information_updates_cache() -> None:
     trailer = doc.get_document().get_trailer()
     assert trailer is not None
     assert trailer.get_dictionary_object(COSName.INFO) is fresh.get_cos_object()  # type: ignore[attr-defined]
+    doc.close()
 
 
 # ---------- save_incremental(objects_to_write=...) ----------
@@ -639,10 +648,12 @@ def test_save_incremental_objects_to_write_rejects_non_dict() -> None:
     src_bytes = _save_to_bytes(src)
     src.close()
 
-    with PDDocument.load(src_bytes) as loaded:
-        with pytest.raises(TypeError, match="COSDictionary"):
-            # COSArray is not a COSDictionary — must reject.
-            loaded.save_incremental(io.BytesIO(), {COSArray()})  # type: ignore[arg-type]
+    with (
+        PDDocument.load(src_bytes) as loaded,
+        pytest.raises(TypeError, match="COSDictionary"),
+    ):
+        # COSArray is not a COSDictionary — must reject.
+        loaded.save_incremental(io.BytesIO(), {COSArray()})  # type: ignore[arg-type]
 
 
 def test_save_incremental_objects_to_write_none_is_default() -> None:
@@ -682,6 +693,7 @@ def test_set_version_no_op_on_equal() -> None:
     )
     # Identity-stable: no replacement happened.
     assert version_after is version_before
+    doc.close()
 
 
 # ---------- add_signature one-shot guard ----------
@@ -701,6 +713,7 @@ def test_add_signature_rejects_second_call() -> None:
     doc.add_signature(PDSignature())
     with pytest.raises(ValueError, match="Only one signature"):
         doc.add_signature(PDSignature())
+    doc.close()
 
 
 # ---------- Wave 194: class constants + protect parity + access cache ----------
@@ -720,6 +733,7 @@ def test_default_version_constant_drives_empty_skeleton() -> None:
     version = catalog_dict.get_dictionary_object(COSName.get_pdf_name("Version"))
     assert version is not None
     expected = f"{PDDocument.DEFAULT_VERSION:.1f}"
+    assert isinstance(version, COSName)
     assert version.get_name() == expected
     doc.close()
 
@@ -797,7 +811,7 @@ def test_get_current_access_permission_uncached_when_encrypted_undecoded() -> No
     enc.set_int(COSName.get_pdf_name("R"), 2)
     trailer = doc.get_document().get_trailer()
     assert trailer is not None
-    trailer.set_item(COSName.ENCRYPT, enc)
+    trailer.set_item(COSName.get_pdf_name("Encrypt"), enc)
 
     assert doc.is_encrypted() is True
     first = doc.get_current_access_permission()
@@ -955,8 +969,12 @@ def test_get_signature_interface_returns_staged_interface() -> None:
 
     captured: list[bytes] = []
 
-    class _Sentinel:
-        def sign(self, content: object) -> bytes:  # pragma: no cover — not exercised here
+    from pypdfbox.pdmodel.interactive.digitalsignature.signature_interface import (
+        SignatureInterface,
+    )
+
+    class _Sentinel(SignatureInterface):
+        def sign(self, content: BinaryIO) -> bytes:  # pragma: no cover — not exercised here
             captured.append(b"signed")
             return b""
 
@@ -1028,7 +1046,7 @@ def test_get_number_of_pages_uses_page_tree_count_field() -> None:
     doc.add_page(PDPage())
     # The Count field on the root /Pages dict drives the cheap accessor.
     pages_root = doc.get_pages().get_cos_object()
-    assert pages_root.get_int(COSName.COUNT) == 3
+    assert pages_root.get_int(COSName.get_pdf_name("Count")) == 3
     assert doc.get_number_of_pages() == 3
     doc.close()
 

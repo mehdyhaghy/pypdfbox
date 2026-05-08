@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import io
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
+from .true_type_font import TrueTypeFont
 from .ttf_data_stream import (
     MemoryTTFDataStream,
     RandomAccessReadDataStream,
     TTFDataStream,
 )
-from .true_type_font import TrueTypeFont
 
 if TYPE_CHECKING:
     from pypdfbox.io.random_access_read import RandomAccessRead

@@ -55,7 +55,11 @@ class PDCIDSystemInfo:
         Passing no arguments yields an empty wrapper around a fresh
         ``COSDictionary`` — the original lite-surface signature.
         """
-        if isinstance(registry_or_dictionary, str) or ordering is not None or supplement is not None:
+        if (
+            isinstance(registry_or_dictionary, str)
+            or ordering is not None
+            or supplement is not None
+        ):
             # Three-argument form. ``ordering`` and ``supplement`` are
             # required when ``registry_or_dictionary`` is a string;
             # surface a clear TypeError rather than silently defaulting.
@@ -76,10 +80,15 @@ class PDCIDSystemInfo:
             return
         # Single-argument (or no-argument) form: wrap an existing dict
         # or build an empty one.
-        self._dict = (
-            registry_or_dictionary
-            if isinstance(registry_or_dictionary, COSDictionary)
-            else COSDictionary()
+        if registry_or_dictionary is None:
+            self._dict = COSDictionary()
+            return
+        if isinstance(registry_or_dictionary, COSDictionary):
+            self._dict = registry_or_dictionary
+            return
+        raise TypeError(
+            "PDCIDSystemInfo() expects no argument, a COSDictionary, "
+            "or (registry, ordering, supplement)"
         )
 
     def get_cos_object(self) -> COSDictionary:

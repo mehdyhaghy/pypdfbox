@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import contextlib
+from typing import TYPE_CHECKING, cast
 
 from .type.job_type import JobType as _TypedJobType
 from .xmp_schema import XMPSchema
@@ -147,7 +148,7 @@ class XMPBasicJobTicketSchema(XMPSchema):
     def _get_job_list(self) -> list[dict[str, str]]:
         existing = self._properties.get(self.JOB_REF)
         if isinstance(existing, list) and all(isinstance(item, dict) for item in existing):
-            return existing  # type: ignore[return-value]
+            return cast(list[dict[str, str]], existing)
         if existing is None:
             new_list: list[dict[str, str]] = []
             self._properties[self.JOB_REF] = new_list
@@ -215,10 +216,8 @@ class XMPBasicJobTicketSchema(XMPSchema):
         if not isinstance(existing, list):
             return
         target = job.as_dict()
-        try:
+        with contextlib.suppress(ValueError):
             existing.remove(target)
-        except ValueError:
-            pass
 
     def clear_jobs(self) -> None:
         self.remove_property(self.JOB_REF)

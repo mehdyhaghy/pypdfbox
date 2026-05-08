@@ -27,7 +27,10 @@ def __getattr__(name: str) -> Any:
         from .pd_artifact_marked_content import PDArtifactMarkedContent
 
         return PDArtifactMarkedContent
-    raise AttributeError(f"module 'pypdfbox.pdmodel.documentinterchange.taggedpdf' has no attribute {name!r}")
+    raise AttributeError(
+        "module 'pypdfbox.pdmodel.documentinterchange.taggedpdf' "
+        f"has no attribute {name!r}"
+    )
 
 
 __all__ = [

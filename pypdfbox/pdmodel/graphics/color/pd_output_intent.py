@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, BinaryIO, Union
+from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
@@ -85,7 +85,7 @@ def _icc_num_components(profile_bytes: bytes) -> int | None:
 # Type alias for the optional InputStream-like argument accepted by the
 # upstream-shaped constructor: raw bytes, a bytearray, or any binary
 # file-like object with ``read()``.
-_ColorProfileLike = Union[bytes, bytearray, memoryview, BinaryIO]
+_ColorProfileLike = bytes | bytearray | memoryview | BinaryIO
 
 
 class PDOutputIntent:
@@ -132,6 +132,9 @@ class PDOutputIntent:
         # Local import to avoid a hard cycle between pdmodel and the
         # graphics.color subpackage.
         from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+
+        self._document: PDDocument | None
+        self._dictionary: COSDictionary
 
         # Disambiguate the two upstream overloads via the type of the first
         # positional argument:

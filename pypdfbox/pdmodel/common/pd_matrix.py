@@ -83,15 +83,21 @@ class PDMatrix:
     def _from_cos_array(array: COSArray) -> PDMatrix:
         """Internal: build a PDMatrix from a validated 6-element
         ``COSArray`` of ``COSNumber``s."""
-        get_num = lambda i: array.get_object(i).float_value()  # noqa: E731
         return PDMatrix(
-            get_num(0),
-            get_num(1),
-            get_num(2),
-            get_num(3),
-            get_num(4),
-            get_num(5),
+            PDMatrix._number_at(array, 0).float_value(),
+            PDMatrix._number_at(array, 1).float_value(),
+            PDMatrix._number_at(array, 2).float_value(),
+            PDMatrix._number_at(array, 3).float_value(),
+            PDMatrix._number_at(array, 4).float_value(),
+            PDMatrix._number_at(array, 5).float_value(),
         )
+
+    @staticmethod
+    def _number_at(array: COSArray, index: int) -> COSNumber:
+        entry = array.get_object(index)
+        if not isinstance(entry, COSNumber):
+            raise TypeError(f"expected COSNumber at matrix index {index}")
+        return entry
 
     @staticmethod
     def get_scale_instance(x: float, y: float) -> PDMatrix:

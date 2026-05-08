@@ -5,7 +5,7 @@ import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSName, COSNumber, COSStream, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream, COSString
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
@@ -651,15 +651,9 @@ class PDFTextStripper:
             # (a, b, c, d) so emitted runs can report their text-matrix
             # rotation (used by ``FilteredTextStripper`` /
             # ``AngleCollector`` for ``-rotationMagic``).
-            if len(operands) >= 6 and all(
-                isinstance(o, COSNumber) for o in operands[:6]
-            ):
-                a = operands[0].float_value()  # type: ignore[union-attr]
-                b = operands[1].float_value()  # type: ignore[union-attr]
-                c = operands[2].float_value()  # type: ignore[union-attr]
-                d = operands[3].float_value()  # type: ignore[union-attr]
-                e = operands[4].float_value()  # type: ignore[union-attr]
-                f = operands[5].float_value()  # type: ignore[union-attr]
+            values = _six_numbers(operands)
+            if values is not None:
+                a, b, c, d, e, f = values
                 state.tm_a = a
                 state.tm_b = b
                 state.tm_c = c
@@ -726,10 +720,22 @@ class PDFTextStripper:
         per_char = self._active_avg_advance
         if per_char is None:
             per_char = state.font_size * 0.5
-        run_width = len(text) * per_char
         width_of_space = self._compute_width_of_space(
             font, state.font_size, fallback=per_char
         )
+        if self._ignore_content_stream_space_glyphs:
+            self._emit_ignoring_space_glyphs(
+                text,
+                state,
+                positions,
+                font,
+                resolved_font_name,
+                per_char,
+                width_of_space,
+            )
+            return
+
+        run_width = len(text) * per_char
         positions.append(
             TextPosition(
                 text=text,
@@ -760,6 +766,63 @@ class PDFTextStripper:
         # 0.5-em-per-char monospace estimate so unknown fonts still
         # produce monotonic advances for the word-gap heuristic.
         state.text_x += run_width
+
+    def _emit_ignoring_space_glyphs(
+        self,
+        text: str,
+        state: _TextState,
+        positions: list[TextPosition],
+        font: PDFont | None,
+        resolved_font_name: str | None,
+        per_char: float,
+        width_of_space: float,
+    ) -> None:
+        """Emit non-space chunks while preserving the original text advance."""
+        cursor_x = state.text_x
+        chunk_start_x = cursor_x
+        chunk: list[str] = []
+
+        def flush_chunk() -> None:
+            nonlocal chunk_start_x
+            if not chunk:
+                return
+            chunk_text = "".join(chunk)
+            positions.append(
+                TextPosition(
+                    text=chunk_text,
+                    x=chunk_start_x,
+                    y=state.text_y,
+                    font_size=state.font_size,
+                    font_name=state.font_name,
+                    font=font,
+                    resolved_font_name=resolved_font_name,
+                    width=len(chunk_text) * per_char,
+                    width_of_space=width_of_space,
+                    char_spacing=state.char_spacing,
+                    word_spacing=state.word_spacing,
+                    text_matrix=[
+                        state.tm_a,
+                        state.tm_b,
+                        state.tm_c,
+                        state.tm_d,
+                        chunk_start_x,
+                        state.text_y,
+                    ],
+                )
+            )
+            chunk.clear()
+            chunk_start_x = cursor_x
+
+        for char in text:
+            if char == " ":
+                flush_chunk()
+            else:
+                if not chunk:
+                    chunk_start_x = cursor_x
+                chunk.append(char)
+            cursor_x += per_char
+        flush_chunk()
+        state.text_x = cursor_x
 
     def _emit_tj_array(
         self,
@@ -802,8 +865,13 @@ class PDFTextStripper:
         cmap: CMap | None = None
         try:
             resources = self._active_page.get_resources()
-            font_dict = resources.get_font(COSName.get_pdf_name(font_resource_name))
-            if font_dict is not None:
+            font_entry = resources.get_font(COSName.get_pdf_name(font_resource_name))
+            if font_entry is not None:
+                font_dict = (
+                    font_entry
+                    if isinstance(font_entry, COSDictionary)
+                    else font_entry.get_cos_object()
+                )
                 to_unicode = font_dict.get_dictionary_object("ToUnicode")
                 if isinstance(to_unicode, COSStream):
                     with to_unicode.create_input_stream() as src:
@@ -864,9 +932,12 @@ class PDFTextStripper:
             from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
 
             resources = self._active_page.get_resources()
-            font_dict = resources.get_font(COSName.get_pdf_name(font_resource_name))
-            if font_dict is not None:
-                font = PDFontFactory.create_font(font_dict)
+            font_entry = resources.get_font(COSName.get_pdf_name(font_resource_name))
+            if font_entry is not None:
+                if isinstance(font_entry, COSDictionary):
+                    font = PDFontFactory.create_font(font_entry)
+                else:
+                    font = font_entry
         except Exception:  # noqa: BLE001 — defensive: malformed font → no decode
             font = None
         self._font_cache[font_resource_name] = font
@@ -1047,7 +1118,7 @@ class PDFTextStripper:
                 else:
                     if self._is_word_break(pos, prev):
                         self.write_word_separator(sink)
-            self.write_string(pos.text, [pos], sink)
+            self.write_string_with_positions(pos.text, [pos], sink)
             prev = pos
 
     def _is_line_break(
@@ -1089,10 +1160,7 @@ class PDFTextStripper:
         """
         # Drop test (vertical gap exceeds drop_threshold × line height).
         line_height = max(prev.font_size, 0.1)
-        if self._flip_axes:
-            drop = abs(pos.x - prev.x)
-        else:
-            drop = abs(pos.y - prev.y)
+        drop = abs(pos.x - prev.x) if self._flip_axes else abs(pos.y - prev.y)
         if drop > line_height * self._drop_threshold:
             return True
         # Indent test — only meaningful when a line-break has been
@@ -1100,13 +1168,8 @@ class PDFTextStripper:
         space_width = prev.width_of_space if prev.width_of_space > 0 else (
             prev.font_size * 0.25
         )
-        if self._flip_axes:
-            indent = pos.y - prev.y
-        else:
-            indent = pos.x - prev.x
-        if indent > space_width * self._indent_threshold:
-            return True
-        return False
+        indent = pos.y - prev.y if self._flip_axes else pos.x - prev.x
+        return indent > space_width * self._indent_threshold
 
     def is_para_break_indented(self, pos: TextPosition, prev: TextPosition) -> bool:
         """Convenience predicate: only the indent prong of
@@ -1116,10 +1179,7 @@ class PDFTextStripper:
         space_width = prev.width_of_space if prev.width_of_space > 0 else (
             prev.font_size * 0.25
         )
-        if self._flip_axes:
-            indent = pos.y - prev.y
-        else:
-            indent = pos.x - prev.x
+        indent = pos.y - prev.y if self._flip_axes else pos.x - prev.x
         return indent > space_width * self._indent_threshold
 
     def start_of_paragraph(
@@ -1432,6 +1492,33 @@ def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:
     if not (isinstance(a, COSNumber) and isinstance(b, COSNumber)):
         return 0.0, 0.0
     return a.float_value(), b.float_value()
+
+
+def _six_numbers(operands: list[COSBase]) -> tuple[float, float, float, float, float, float] | None:
+    """Pull six numeric operands; return ``None`` on malformed input."""
+    if len(operands) < 6:
+        return None
+    a, b, c, d, e, f = operands[:6]
+    if not isinstance(a, COSNumber):
+        return None
+    if not isinstance(b, COSNumber):
+        return None
+    if not isinstance(c, COSNumber):
+        return None
+    if not isinstance(d, COSNumber):
+        return None
+    if not isinstance(e, COSNumber):
+        return None
+    if not isinstance(f, COSNumber):
+        return None
+    return (
+        a.float_value(),
+        b.float_value(),
+        c.float_value(),
+        d.float_value(),
+        e.float_value(),
+        f.float_value(),
+    )
 
 
 __all__ = ["PDFTextStripper"]

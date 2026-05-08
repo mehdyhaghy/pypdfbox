@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from .lookup_table import LookupTable
 from .script_table import ScriptTable
@@ -51,6 +52,7 @@ class GsubData:
         default_factory=dict
     )
     lookup_tables: tuple[LookupTable, ...] = field(default_factory=tuple)
+    NO_DATA_FOUND: ClassVar[GsubData]
 
     # ------------------------------------------------------------------
     # Upstream-shaped getters
@@ -170,26 +172,26 @@ class _NoDataFoundGsubData(GsubData):
     before reading anything.
     """
 
-    def get_language(self) -> str:  # type: ignore[override]
+    def get_language(self) -> str:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
-    def get_active_script_name(self) -> str:  # type: ignore[override]
+    def get_active_script_name(self) -> str:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
-    def is_feature_supported(self, feature_tag: str) -> bool:  # type: ignore[override]
+    def is_feature_supported(self, feature_tag: str) -> bool:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
-    def get_feature(  # type: ignore[override]
+    def get_feature(
         self, feature_name: str
     ) -> dict[tuple[int, ...], tuple[int, ...]] | None:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
-    def get_supported_features(self) -> set[str]:  # type: ignore[override]
+    def get_supported_features(self) -> set[str]:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
 
 # Class-level sentinel matching upstream ``GsubData.NO_DATA_FOUND``.
-GsubData.NO_DATA_FOUND = _NoDataFoundGsubData()  # type: ignore[attr-defined]
+GsubData.NO_DATA_FOUND = _NoDataFoundGsubData()
 
 
 __all__ = ["GsubData"]

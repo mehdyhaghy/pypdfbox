@@ -31,7 +31,7 @@ from pypdfbox.pdmodel import PDDocument
 def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = subparsers.add_parser(
         "split",
-        help="split a PDF into per-N-page output files (naive — see docstring)",
+        help="split a PDF into per-N-page output files",
         description="Split a PDF into multiple output files. Default chunk size "
         "is 1 page; use -split N to bundle N pages per output. -startPage / "
         "-endPage select a 1-based inclusive page range to split (rest of "
@@ -78,6 +78,18 @@ def run(args: argparse.Namespace) -> int:
     # other non-positive value is a user error.
     if args.split != -1 and args.split < 1:
         print(f"split: -split must be >= 1 (got {args.split})", flush=True)
+        return 2
+    if args.start_page != -1 and args.start_page < 1:
+        print(
+            f"split: -startPage must be >= 1 (got {args.start_page})",
+            flush=True,
+        )
+        return 2
+    if args.end_page != -1 and args.end_page < 1:
+        print(
+            f"split: -endPage must be >= 1 (got {args.end_page})",
+            flush=True,
+        )
         return 2
 
     prefix = args.output_prefix or src_path.with_suffix("").name

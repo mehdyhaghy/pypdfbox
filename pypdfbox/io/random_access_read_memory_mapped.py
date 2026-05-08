@@ -23,11 +23,15 @@ class RandomAccessReadMemoryMapped(RandomAccessRead):
         self._path = Path(path)
         self._length = self._path.stat().st_size
         self._fd = os.open(os.fspath(self._path), os.O_RDONLY)
-        if self._length == 0:
-            # mmap rejects zero-length files; behave as an empty source.
-            self._mm: mmap.mmap | None = None
-        else:
-            self._mm = mmap.mmap(self._fd, 0, prot=mmap.PROT_READ)
+        try:
+            if self._length == 0:
+                # mmap rejects zero-length files; behave as an empty source.
+                self._mm: mmap.mmap | None = None
+            else:
+                self._mm = mmap.mmap(self._fd, 0, prot=mmap.PROT_READ)
+        except Exception:
+            os.close(self._fd)
+            raise
         self._position = 0
         self._closed = False
 

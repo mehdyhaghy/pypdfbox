@@ -36,7 +36,6 @@ from typing import Any
 
 from .type1_font_util import Type1FontUtil
 
-
 # ---------- token kinds ----------
 
 # We use a tiny enum-style namespace of plain strings so the token
@@ -208,6 +207,14 @@ class Type1Lexer:
                     break
                 esc = self._buf[self._pos]
                 self._pos += 1
+                if esc in "\r\n":
+                    if (
+                        esc == "\r"
+                        and self._pos < len(self._buf)
+                        and self._buf[self._pos] == "\n"
+                    ):
+                        self._pos += 1
+                    continue
                 mapping = {
                     "n": "\n",
                     "r": "\r",
@@ -223,7 +230,11 @@ class Type1Lexer:
                 elif esc.isdigit():
                     # Up to 3 octal digits.
                     digits = esc
-                    while len(digits) < 3 and self._pos < len(self._buf) and self._buf[self._pos].isdigit():
+                    while (
+                        len(digits) < 3
+                        and self._pos < len(self._buf)
+                        and self._buf[self._pos].isdigit()
+                    ):
                         digits += self._buf[self._pos]
                         self._pos += 1
                     out.append(chr(int(digits, 8) & 0xFF))
@@ -291,6 +302,8 @@ class Type1Lexer:
                 # Consume one delimiter byte (typically space).
                 if self._pos < len(self._buf):
                     self._pos += 1
+                if length < 0:
+                    return (TOKEN_CHARSTRING, b"")
                 # Read ``length`` raw bytes from the underlying byte
                 # buffer (bypass the latin-1 view so high bytes survive).
                 end = self._pos + length
@@ -739,7 +752,7 @@ class Type1Parser:
             if tok is None:
                 return None
             kind, value = tok
-            if kind == TOKEN_START_ARRAY or kind == TOKEN_START_PROC:
+            if kind in (TOKEN_START_ARRAY, TOKEN_START_PROC):
                 break
             if kind == TOKEN_NAME and value == "def":
                 return None

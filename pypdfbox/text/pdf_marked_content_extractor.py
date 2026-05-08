@@ -8,7 +8,7 @@ from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
 from pypdfbox.pdmodel.documentinterchange.markedcontent import PDMarkedContent
 
-from .pdf_text_stripper import PDFTextStripper, _TextState, _two_numbers
+from .pdf_text_stripper import PDFTextStripper, _TextState
 from .text_position import TextPosition
 
 if TYPE_CHECKING:
@@ -144,6 +144,8 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         marked-content grouping, not flat text. Use
         :meth:`get_marked_contents` to inspect the result.
         """
+        self._current_marked_contents.clear()
+        self._character_list_mapping.clear()
         body = page.get_contents()
         if not body:
             return ""

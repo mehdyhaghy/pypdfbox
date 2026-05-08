@@ -49,6 +49,12 @@ class FDFCatalog:
             self._fdf_wrapper = FDFDictionary(new_dict)
         return self._fdf_wrapper
 
+    def has_fdf(self) -> bool:
+        return isinstance(self._catalog.get_dictionary_object(_FDF), COSDictionary)
+
+    def clear_fdf(self) -> None:
+        self.set_fdf(None)
+
     def set_fdf(self, fdf: FDFDictionary | None) -> None:
         if fdf is None:
             self._catalog.remove_item(_FDF)
@@ -64,6 +70,12 @@ class FDFCatalog:
         if isinstance(v, COSName):
             return v.name
         return None
+
+    def has_version(self) -> bool:
+        return self.get_version() is not None
+
+    def clear_version(self) -> None:
+        self.set_version(None)
 
     def set_version(self, version: str | None) -> None:
         if version is None:

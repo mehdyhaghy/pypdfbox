@@ -31,9 +31,13 @@ from __future__ import annotations
 import argparse
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+
+if TYPE_CHECKING:  # pragma: no cover - annotations only
+    from pypdfbox.pdmodel.encryption import PublicKeyDecryptionMaterial
 
 
 def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -96,7 +100,7 @@ def _load_pkcs12_keystore(
     keystore_path: str | Path,
     alias: str | None,
     password: str,
-):
+) -> PublicKeyDecryptionMaterial:
     """Load a PKCS#12 keystore and return a :class:`PublicKeyDecryptionMaterial`.
 
     Mirrors how upstream's ``KeyStore.getInstance("PKCS12")`` loads the
@@ -117,28 +121,18 @@ def _load_pkcs12_keystore(
     pwd_bytes = password.encode("utf-8") if password else None
     bundle = load_pkcs12(data, pwd_bytes)
 
-    # PKCS#12 alias matching: upstream uses ``KeyStore.getCertificate(alias)``
-    # which compares against the friendly name attribute. ``cryptography``
-    # surfaces the same friendly name on each entry.
-    chosen = None
-    if alias is None:
-        chosen = bundle  # first/only entry — bundle.cert/.key already point there
-    else:
+    # PKCS#12 alias matching: upstream uses ``KeyStore.getCertificate(alias)``.
+    # ``cryptography`` exposes one private-key entry plus optional certificate-
+    # only entries; public-key decryption needs the private-key entry.
+    if bundle.cert is None or bundle.key is None:
+        raise OSError("keystore has no private-key certificate entry")
+    if alias is not None:
         target = alias.encode("utf-8")
-        for additional in bundle.additional_certs:
-            if additional.friendly_name == target:
-                chosen = additional
-                break
-        if chosen is None and bundle.cert is not None:
-            if bundle.cert.friendly_name in (target, None):
-                chosen = bundle
-    if chosen is None or getattr(chosen, "cert", None) is None:
-        raise OSError(
-            f"keystore has no entry matching alias {alias!r}"
-        )
+        if bundle.cert.friendly_name not in (target, None):
+            raise OSError(f"keystore has no private-key entry matching alias {alias!r}")
 
     material = PublicKeyDecryptionMaterial(
-        certificate=chosen.cert.certificate,
+        certificate=bundle.cert.certificate,
         private_key=bundle.key,
         password=pwd_bytes,
     )

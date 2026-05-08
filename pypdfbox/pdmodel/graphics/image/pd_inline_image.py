@@ -100,6 +100,22 @@ def _two_key_object(
     return parameters.get_dictionary_object(long)
 
 
+def _remove_two_key(parameters: COSDictionary, short: COSName, long: COSName) -> None:
+    parameters.remove_item(short)
+    parameters.remove_item(long)
+
+
+def _numeric_array_to_floats(value: COSBase | None) -> list[float] | None:
+    if not isinstance(value, COSArray):
+        return None
+    out: list[float] = []
+    for item in value:
+        if not isinstance(item, (COSInteger, COSFloat)):
+            return None
+        out.append(float(item.value))
+    return out
+
+
 class PDInlineImage:
     """An inline image object embedded directly within a content stream
     via the ``BI``/``ID``/``EI`` operator triplet (PDF 32000-1 §8.9.7).
@@ -240,7 +256,7 @@ class PDInlineImage:
 
         if isinstance(cs, COSArray) and cs.size() > 1:
             cs_type = cs.get(0)
-            if cs_type == _I_NAME or cs_type == _INDEXED:
+            if cs_type in (_I_NAME, _INDEXED):
                 # Rebuild the array with long-form ``/Indexed`` head and
                 # long-form base color-space name so PDColorSpace.create
                 # picks up the standard branch.
@@ -282,13 +298,17 @@ class PDInlineImage:
 
     def set_color_space(self, color_space: PDColorSpace | None) -> None:
         if color_space is None:
-            self._parameters.remove_item(_CS)
+            self.clear_color_space()
             return
         base = color_space.get_cos_object()
         if base is None:
             # Device color spaces have no array form — fall back to /CS /Name.
             base = COSName.get_pdf_name(color_space.get_name())
         self._parameters.set_item(_CS, base)
+
+    def clear_color_space(self) -> None:
+        """Remove both ``/CS`` and ``/ColorSpace``. No-op if absent."""
+        _remove_two_key(self._parameters, _CS, _COLORSPACE)
 
     # ---------- /F /Filter ----------
 
@@ -331,12 +351,16 @@ class PDInlineImage:
 
     def set_filters(self, filters: Sequence[str] | None) -> None:
         if filters is None:
-            self._parameters.remove_item(_F)
+            self.clear_filters()
             return
         array = COSArray()
         for name in filters:
             array.add(COSName.get_pdf_name(name))
         self._parameters.set_item(_F, array)
+
+    def clear_filters(self) -> None:
+        """Remove both ``/F`` and ``/Filter``. No-op if absent."""
+        _remove_two_key(self._parameters, _F, _FILTER)
 
     # ---------- /D /Decode ----------
 
@@ -348,7 +372,7 @@ class PDInlineImage:
 
     def set_decode(self, decode: COSArray | Iterable[float] | None) -> None:
         if decode is None:
-            self._parameters.remove_item(_D)
+            self.clear_decode()
             return
         if isinstance(decode, COSArray):
             self._parameters.set_item(_D, decode)
@@ -357,6 +381,10 @@ class PDInlineImage:
         for v in decode:
             array.add(COSFloat(float(v)))
         self._parameters.set_item(_D, array)
+
+    def clear_decode(self) -> None:
+        """Remove both ``/D`` and ``/Decode``. No-op if absent."""
+        _remove_two_key(self._parameters, _D, _DECODE)
 
     # ---------- /IM /ImageMask ----------
 
@@ -431,10 +459,7 @@ class PDInlineImage:
         :meth:`PDImageXObject.get_decode` so callers can read decode pairs
         without hand-walking the ``COSArray`` returned by
         :meth:`get_decode`."""
-        decode = self.get_decode()
-        if decode is None:
-            return None
-        return decode.to_float_array()
+        return _numeric_array_to_floats(self.get_decode())
 
     # ---------- decoded bytes / stream surface ----------
 
@@ -535,10 +560,12 @@ class PDInlineImage:
 
         filters = self.get_filters()
         if _DCT_DECODE in filters or _DCT_DECODE_ABBREVIATION in filters:
-            with self.create_input_stream(stop_filters=[_DCT_DECODE]) as src:
+            with self.create_input_stream(
+                stop_filters=[_DCT_DECODE, _DCT_DECODE_ABBREVIATION]
+            ) as src:
                 return Image.open(io.BytesIO(src.read())).convert("RGB")
         if "JPXDecode" in filters or "JPX" in filters:
-            with self.create_input_stream(stop_filters=["JPXDecode"]) as src:
+            with self.create_input_stream(stop_filters=["JPXDecode", "JPX"]) as src:
                 return Image.open(io.BytesIO(src.read())).convert("RGB")
 
         bpc = self.get_bits_per_component()

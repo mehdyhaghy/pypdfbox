@@ -7,6 +7,8 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from .pd_terminal_field import PDTerminalField
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
+
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
 
@@ -91,7 +93,16 @@ class PDButton(PDTerminalField):
         if value is None:
             self._field.remove_item(_V)
         else:
+            self._check_value_if_known(value)
             self._field.set_name(_V, value)
+
+    def has_value(self) -> bool:
+        """Return ``True`` when this button has a parsable local ``/V`` value."""
+        return isinstance(self._field.get_dictionary_object(_V), (COSName, COSString))
+
+    def clear_value(self) -> None:
+        """Remove this button's local ``/V`` entry."""
+        self._field.remove_item(_V)
 
     def set_value_by_index(self, index: int) -> None:
         """Set the selected option by its index into ``/Opt``.
@@ -128,6 +139,32 @@ class PDButton(PDTerminalField):
                 f"{on_values} and Off"
             )
 
+    def _check_value_if_known(self, value: str) -> None:
+        """Validate button values when this field exposes known on-states.
+
+        Sparse/fresh fields often lack widget appearances, so keep the legacy
+        permissive path when no states are discoverable. If ``/Opt`` is present,
+        also accept an integer-string index because :meth:`set_value_by_index`
+        stores that representation.
+        """
+        on_values = self.get_on_values()
+        if not on_values or value == "Off" or value in on_values:
+            return
+        export_values = self.get_export_values()
+        if export_values:
+            try:
+                idx = int(value, 10)
+            except ValueError:
+                pass
+            else:
+                if 0 <= idx < len(export_values):
+                    return
+        raise ValueError(
+            f"value '{value}' is not a valid option for the field "
+            f"{self.get_fully_qualified_name()}, valid values are: "
+            f"{on_values} and Off"
+        )
+
     def get_default_value(self) -> str:
         dv_key = COSName.get_pdf_name("DV")
         item = self.get_inheritable_attribute(dv_key)
@@ -143,6 +180,15 @@ class PDButton(PDTerminalField):
             self._field.remove_item(dv_key)
         else:
             self._field.set_name(dv_key, value)
+
+    def has_default_value(self) -> bool:
+        """Return ``True`` when this button has a parsable local ``/DV`` value."""
+        dv_key = COSName.get_pdf_name("DV")
+        return isinstance(self._field.get_dictionary_object(dv_key), (COSName, COSString))
+
+    def clear_default_value(self) -> None:
+        """Remove this button's local ``/DV`` entry."""
+        self._field.remove_item(COSName.get_pdf_name("DV"))
 
     def get_value_as_string(self) -> str:
         return self.get_value()
@@ -172,6 +218,14 @@ class PDButton(PDTerminalField):
         arr = COSArray.of_cos_strings(values)
         self._field.set_item(_OPT, arr)
 
+    def has_export_values(self) -> bool:
+        """Return ``True`` when this button has a parsable local ``/Opt`` entry."""
+        return isinstance(self._field.get_dictionary_object(_OPT), (COSArray, COSString))
+
+    def clear_export_values(self) -> None:
+        """Remove this button's local ``/Opt`` export-values entry."""
+        self._field.remove_item(_OPT)
+
     def get_on_values(self) -> set[str]:
         """Returns the union of widget appearance "on" state names.
 
@@ -200,7 +254,7 @@ class PDButton(PDTerminalField):
         return out
 
     @staticmethod
-    def _on_value_for_widget(widget) -> str | None:
+    def _on_value_for_widget(widget: PDAnnotationWidget) -> str | None:
         """Return the first non-``/Off`` key in this widget's ``/AP /N``
         subdictionary, or ``None`` if no normal-appearance subdictionary
         exists. Used by :meth:`get_on_values`."""

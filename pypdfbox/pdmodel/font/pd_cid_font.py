@@ -123,6 +123,7 @@ class PDCIDFont(PDFont):
         return None
 
     def set_w(self, arr: COSArray | None) -> None:
+        self._widths = None
         if arr is None:
             self._dict.remove_item(_W)
             return
@@ -137,6 +138,7 @@ class PDCIDFont(PDFont):
         return None
 
     def set_w2(self, arr: COSArray | None) -> None:
+        self._widths2 = None
         if arr is None:
             self._dict.remove_item(_W2)
             return
@@ -148,7 +150,7 @@ class PDCIDFont(PDFont):
         """Return ``/DW`` as a float, defaulting to 1000 per the spec."""
         return self._dict.get_float(_DW, 1000.0)
 
-    def get_widths(self) -> dict[int, float]:
+    def get_widths(self) -> dict[int, float]:  # type: ignore[override]
         """Parse ``/W`` into a ``CID -> width`` map (1/1000 em).
 
         Per PDF 32000-1 §9.7.4.3 the ``/W`` array uses two interleaved
@@ -384,9 +386,7 @@ class PDCIDFont(PDFont):
         v = self._dict.get_dictionary_object(_CID_TO_GID_MAP)
         if v is None:
             return True
-        if isinstance(v, COSName) and v.name == "Identity":
-            return True
-        return False
+        return isinstance(v, COSName) and v.name == "Identity"
 
     def set_cid_to_gid_map(self, value: COSStream | str | None) -> None:
         if value is None:

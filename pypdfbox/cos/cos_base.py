@@ -28,13 +28,25 @@ class COSBase(ABC):
         reference). Mirrors PDFBox's direct/indirect distinction."""
         return self._direct
 
+    def isDirect(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.is_direct()
+
     def set_direct(self, direct: bool) -> None:
         self._direct = direct
+
+    def setDirect(self, direct: bool) -> None:  # noqa: N802 - upstream Java name
+        self.set_direct(direct)
 
     def is_needs_to_be_updated(self) -> bool:
         """Used by the incremental writer to decide whether this object
         must be re-emitted in the appended xref."""
         return self._needs_to_be_updated
 
+    def isNeedToBeUpdated(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.is_needs_to_be_updated()
+
     def set_needs_to_be_updated(self, value: bool) -> None:
         self._needs_to_be_updated = value
+
+    def setNeedToBeUpdated(self, value: bool) -> None:  # noqa: N802 - upstream Java name
+        self.set_needs_to_be_updated(value)

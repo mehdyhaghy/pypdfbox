@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterator
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
@@ -29,6 +30,82 @@ _STRUCT_TREE_ROOT_NAME: str = "StructTreeRoot"
 # detector. We additionally cap the walk at 16 hops as belt-and-braces
 # protection against pathological inputs.
 _MAX_ROLE_MAP_DEPTH: int = 16
+
+# PDF 32000-1 §14.8.4 categorises standard structure types into four buckets:
+# grouping, block-level, inline-level, illustration. The split below mirrors
+# that section's tables. Used by ``is_block_level`` / ``is_inline_level`` /
+# ``is_grouping_level`` / ``is_illustration_level`` predicates (pypdfbox
+# additions — upstream callers compose these manually). All four buckets
+# resolve against the *standard* (post-RoleMap) name so non-standard
+# elements wired through /RoleMap categorise correctly.
+_GROUPING_TYPES: frozenset[str] = frozenset(
+    {
+        "Document",
+        "Part",
+        "Art",
+        "Sect",
+        "Div",
+        "BlockQuote",
+        "Caption",
+        "TOC",
+        "TOCI",
+        "Index",
+        "NonStruct",
+        "Private",
+    }
+)
+
+_BLOCK_LEVEL_TYPES: frozenset[str] = frozenset(
+    {
+        "P",
+        "H",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "L",
+        "LI",
+        "Lbl",
+        "LBody",
+        "Table",
+        "TR",
+        "TH",
+        "TD",
+        "THead",
+        "TBody",
+        "TFoot",
+    }
+)
+
+_INLINE_LEVEL_TYPES: frozenset[str] = frozenset(
+    {
+        "Span",
+        "Quote",
+        "Note",
+        "Reference",
+        "BibEntry",
+        "Code",
+        "Link",
+        "Annot",
+        "Ruby",
+        "RB",
+        "RT",
+        "RP",
+        "Warichu",
+        "WT",
+        "WP",
+    }
+)
+
+_ILLUSTRATION_TYPES: frozenset[str] = frozenset(
+    {
+        "Figure",
+        "Formula",
+        "Form",
+    }
+)
 
 # PDF 32000-1 §14.8.4 standard structure types. Mirrors upstream
 # ``StandardStructureTypes`` constants. Kept inline (rather than imported from
@@ -481,8 +558,7 @@ class PDStructureElement(PDStructureNode):
         ``PDObjectReference`` / ``int`` MCID, or raw COS fallback for
         unknown entries. This is a streaming view of :meth:`get_kids`.
         """
-        for kid in self.get_kids():
-            yield kid
+        yield from self.get_kids()
 
     def iter_descendants(self) -> Iterator[PDStructureElement]:
         """Depth-first walk of the ``/K`` sub-tree.
@@ -580,10 +656,7 @@ class PDStructureElement(PDStructureNode):
         :meth:`get_attribute_objects`."""
         if owner is None:
             return False
-        for attr in self.get_attribute_objects():
-            if attr.get_owner() == owner:
-                return True
-        return False
+        return any(attr.get_owner() == owner for attr in self.get_attribute_objects())
 
     def set_attributes(self, attributes: Revisions[PDAttributeObject] | None) -> None:
         if attributes is None:
@@ -689,10 +762,30 @@ class PDStructureElement(PDStructureNode):
         """
         return self.is_standard_structure_type(self.get_standard_structure_type())
 
+    def is_grouping_level(self) -> bool:
+        """Return ``True`` when this element resolves to a standard
+        grouping structure type (PDF 32000-1 §14.8.4)."""
+        return self.get_standard_structure_type() in _GROUPING_TYPES
+
+    def is_block_level(self) -> bool:
+        """Return ``True`` when this element resolves to a standard
+        block-level structure type (PDF 32000-1 §14.8.4)."""
+        return self.get_standard_structure_type() in _BLOCK_LEVEL_TYPES
+
+    def is_inline_level(self) -> bool:
+        """Return ``True`` when this element resolves to a standard
+        inline-level structure type (PDF 32000-1 §14.8.4)."""
+        return self.get_standard_structure_type() in _INLINE_LEVEL_TYPES
+
+    def is_illustration_level(self) -> bool:
+        """Return ``True`` when this element resolves to a standard
+        illustration structure type (PDF 32000-1 §14.8.4)."""
+        return self.get_standard_structure_type() in _ILLUSTRATION_TYPES
+
     # ---------- typed /K append overloads ----------
     #
     # Upstream PDFBox exposes overloads for ``appendKid`` keyed on the kid
-    # type: ``PDStructureElement`` (sets the kid's ``/P`` parent pointer),
+    # kind: ``PDStructureElement`` (sets the kid's ``/P`` parent pointer),
     # ``PDMarkedContentReference``, ``PDObjectReference``, and ``int`` (raw
     # MCID). The base ``append_kid`` accepts any kid; these typed wrappers
     # add the parent-pointer plumbing that upstream performs as a side
@@ -840,9 +933,6 @@ class PDStructureElement(PDStructureNode):
         ``/R`` value (defaulting to ``0``); the back-pointer is set so
         :meth:`PDAttributeObject.notify_change` can locate this element.
         """
-        from .pd_attribute_object import PDAttributeObject
-        from .revisions import Revisions
-
         if attribute_object is None:
             return
         revision = self.get_revision_number()
@@ -863,9 +953,6 @@ class PDStructureElement(PDStructureNode):
         Mirrors upstream ``removeAttribute(PDAttributeObject)``. Silently
         returns when the attribute isn't present.
         """
-        from .pd_attribute_object import PDAttributeObject
-        from .revisions import Revisions
-
         if attribute_object is None:
             return
         revs: Revisions[PDAttributeObject] = self.get_attributes()
@@ -890,9 +977,6 @@ class PDStructureElement(PDStructureNode):
         current ``/R``. Silently returns when the attribute isn't present
         in ``/A``.
         """
-        from .pd_attribute_object import PDAttributeObject
-        from .revisions import Revisions
-
         if attribute_object is None:
             return
         revision = self.get_revision_number()
@@ -913,8 +997,6 @@ class PDStructureElement(PDStructureNode):
         Mirrors upstream ``addClassName(String)``. ``None`` is a silent
         no-op (matches upstream's null-guard).
         """
-        from .revisions import Revisions
-
         if class_name is None:
             return
         revision = self.get_revision_number()
@@ -930,8 +1012,6 @@ class PDStructureElement(PDStructureNode):
         Mirrors upstream ``removeClassName(String)``. Silently returns
         when the name isn't present.
         """
-        from .revisions import Revisions
-
         if class_name is None:
             return
         target = COSName.get_pdf_name(class_name)
@@ -952,8 +1032,6 @@ class PDStructureElement(PDStructureNode):
         name's revision to match the structure element's current ``/R``.
         Silently returns when the name isn't present in ``/C``.
         """
-        from .revisions import Revisions
-
         if class_name is None:
             return
         target = COSName.get_pdf_name(class_name)
@@ -1041,9 +1119,11 @@ class PDStructureElement(PDStructureNode):
 
         out: list[Any] = []
         for kid in self.get_kids():
-            if isinstance(kid, int) and not isinstance(kid, bool):
-                out.append(kid)
-            elif isinstance(kid, PDMarkedContentReference):
+            if (
+                isinstance(kid, int)
+                and not isinstance(kid, bool)
+                or isinstance(kid, PDMarkedContentReference)
+            ):
                 out.append(kid)
         return out
 

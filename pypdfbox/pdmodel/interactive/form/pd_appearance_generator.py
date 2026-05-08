@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from contextlib import suppress
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pypdfbox.cos import (
     COSArray,
@@ -12,7 +13,6 @@ from pypdfbox.cos import (
     COSInteger,
     COSName,
     COSStream,
-    COSString,
 )
 from pypdfbox.pdmodel.font.pd_font import PDFont
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
@@ -28,7 +28,20 @@ from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
 )
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
+
+    from .pd_button import PDButton
+    from .pd_choice import PDChoice
     from .pd_field import PDField
+    from .pd_push_button import PDPushButton
+    from .pd_signature_field import PDSignatureField
+    from .pd_text_field import PDTextField
+
+
+@runtime_checkable
+class _ValueField(Protocol):
+    def set_value(self, value: str | None) -> None: ...
+
 
 _LOG = logging.getLogger(__name__)
 
@@ -92,29 +105,23 @@ def _parse_default_appearance(
             except ValueError:
                 size = 0.0
         elif tok == "g" and i >= 1:
-            try:
+            with suppress(ValueError):
                 color = (float(tokens[i - 1]),)
-            except ValueError:
-                pass
         elif tok == "rg" and i >= 3:
-            try:
+            with suppress(ValueError):
                 color = (
                     float(tokens[i - 3]),
                     float(tokens[i - 2]),
                     float(tokens[i - 1]),
                 )
-            except ValueError:
-                pass
         elif tok == "k" and i >= 4:
-            try:
+            with suppress(ValueError):
                 color = (
                     float(tokens[i - 4]),
                     float(tokens[i - 3]),
                     float(tokens[i - 2]),
                     float(tokens[i - 1]),
                 )
-            except ValueError:
-                pass
         i += 1
 
     return (font_name, size, color)
@@ -284,8 +291,8 @@ class PDAppearanceGenerator:
         if isinstance(field, PDTextField) and not field.is_multiline():
             normalized = self._NEWLINE_PATTERN.sub(" ", ap_value or "")
             field.set_value(normalized)
-        else:
-            field.set_value(ap_value)  # type: ignore[attr-defined]
+        elif isinstance(field, _ValueField):
+            field.set_value(ap_value)
         self.generate(field)
 
     @staticmethod
@@ -358,24 +365,16 @@ class PDAppearanceGenerator:
     # text field
     # ------------------------------------------------------------------
 
-    def _generate_text_field(self, field: PDField) -> None:
-        from .pd_text_field import PDTextField
-
-        value = field.get_value() or ""  # type: ignore[attr-defined]
+    def _generate_text_field(self, field: PDTextField) -> None:
+        value = field.get_value() or ""
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
 
-        is_multiline = False
-        is_comb = False
-        is_password = False
-        max_len = -1
-        quadding = 0
-        if isinstance(field, PDTextField):
-            is_multiline = field.is_multiline()
-            is_comb = field.is_comb()
-            is_password = field.is_password()
-            max_len = field.get_max_len()
-            quadding = field.get_q()
+        is_multiline = field.is_multiline()
+        is_comb = field.is_comb()
+        is_password = field.is_password()
+        max_len = field.get_max_len()
+        quadding = field.get_q()
 
         # PDFBOX-3911: single-line text fields collapse newline-class
         # characters to a single space before rendering. Multi-line and
@@ -392,7 +391,7 @@ class PDAppearanceGenerator:
         if is_password and value:
             value = "*" * len(value)
 
-        for widget in field.get_widgets():  # type: ignore[attr-defined]
+        for widget in field.get_widgets():
             self._regenerate_text_widget(
                 widget,
                 value,
@@ -409,7 +408,7 @@ class PDAppearanceGenerator:
     # button (check / radio)
     # ------------------------------------------------------------------
 
-    def _generate_button(self, field: PDField) -> None:
+    def _generate_button(self, field: PDButton) -> None:
         """Build a two-state appearance subdictionary on each widget.
 
         - ``/AP /N /<on-state>`` — drawn glyph (check or filled circle).
@@ -424,9 +423,9 @@ class PDAppearanceGenerator:
         from .pd_radio_button import PDRadioButton
 
         is_radio = isinstance(field, PDRadioButton)
-        current_value = field.get_value()  # type: ignore[attr-defined]
+        current_value = field.get_value()
 
-        for widget in field.get_widgets():  # type: ignore[attr-defined]
+        for widget in field.get_widgets():
             widget_cos = widget.get_cos_object()
             rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
             if rect is None:
@@ -490,7 +489,8 @@ class PDAppearanceGenerator:
     ) -> PDAppearanceStream:
         appearance_cos = self._fresh_form_xobject(width, height)
         appearance_stream = PDAppearanceStream(appearance_cos)
-        with PDAppearanceContentStream(appearance_stream) as cs:
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
             cs.save_graphics_state()
             if is_radio:
                 self._draw_radio_dot(cs, width, height)
@@ -563,7 +563,7 @@ class PDAppearanceGenerator:
     # choice (combo / list)
     # ------------------------------------------------------------------
 
-    def _generate_choice(self, field: PDField) -> None:
+    def _generate_choice(self, field: PDChoice) -> None:
         """Render the field's selected value(s) as flat text.
 
         For combo boxes (single-select) the selected value is rendered
@@ -574,10 +574,9 @@ class PDAppearanceGenerator:
         highlight rectangle drawn behind the row text — mirrors
         upstream's ``insertGeneratedListboxAppearance``.
         """
-        from .pd_choice import PDChoice
         from .pd_list_box import PDListBox
 
-        values = field.get_value()  # type: ignore[attr-defined]
+        values = field.get_value()
         if isinstance(values, str):
             selected_values = [values] if values else []
         elif isinstance(values, list):
@@ -592,15 +591,14 @@ class PDAppearanceGenerator:
         options: list[str] = []
         top_index = 0
         selected_indices: list[int] = []
-        if isinstance(field, PDChoice):
-            try:
-                options = field.get_options_display_values() or field.get_options()
-            except Exception:  # noqa: BLE001 — defensive on lite-port surface
-                options = []
-            top_index = max(0, field.get_top_index())
-            selected_indices = field.get_selected_options_indices()
+        try:
+            options = field.get_options_display_values() or field.get_options()
+        except Exception:  # noqa: BLE001 — defensive on lite-port surface
+            options = []
+        top_index = max(0, field.get_top_index())
+        selected_indices = field.get_selected_options_indices()
 
-        for widget in field.get_widgets():  # type: ignore[attr-defined]
+        for widget in field.get_widgets():
             if is_listbox:
                 # When the field has no /Opt entries (uncommon but legal),
                 # fall back to the selected values themselves so the widget
@@ -624,13 +622,13 @@ class PDAppearanceGenerator:
 
     def _regenerate_choice_widget(
         self,
-        widget: object,
+        widget: PDAnnotationWidget,
         lines: list[str],
         font_name: str | None,
         font_size: float,
         color: tuple[float, ...] | None,
     ) -> None:
-        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        widget_cos = widget.get_cos_object()
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
             return
@@ -645,15 +643,16 @@ class PDAppearanceGenerator:
         font = self._resolve_font(font_name)
         resolved_size = font_size if font_size > 0.0 else self._auto_size(height)
 
-        with PDAppearanceContentStream(appearance_stream) as cs:
-            cs._buffer.extend(b"/Tx BMC\n")  # type: ignore[attr-defined]
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs._buffer.extend(b"/Tx BMC\n")
             cs.save_graphics_state()
             interior_w = max(0.0, width - 2.0)
             interior_h = max(0.0, height - 2.0)
             if interior_w > 0.0 and interior_h > 0.0:
                 cs.add_rect(1.0, 1.0, interior_w, interior_h)
-                cs._write_operator(b"W")  # type: ignore[attr-defined]
-                cs._write_operator(b"n")  # type: ignore[attr-defined]
+                cs._write_operator(b"W")
+                cs._write_operator(b"n")
             cs.begin_text()
             if color is not None:
                 cs.set_non_stroking_color(color)
@@ -672,7 +671,7 @@ class PDAppearanceGenerator:
                 cs.show_text(line)
             cs.end_text()
             cs.restore_graphics_state()
-            cs._buffer.extend(b"EMC\n")  # type: ignore[attr-defined]
+            cs._buffer.extend(b"EMC\n")
 
         ap_value = widget_cos.get_dictionary_object(_AP)
         if isinstance(ap_value, COSDictionary):
@@ -684,7 +683,7 @@ class PDAppearanceGenerator:
 
     def _regenerate_listbox_widget(
         self,
-        widget: object,
+        widget: PDAnnotationWidget,
         options: list[str],
         selected_values: list[str],
         selected_indices: list[int],
@@ -708,7 +707,7 @@ class PDAppearanceGenerator:
           ``line_height`` per option; rows whose baseline falls below the
           rect are clipped by the standard ``/Tx BMC`` clip path.
         """
-        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        widget_cos = widget.get_cos_object()
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
             return
@@ -732,15 +731,16 @@ class PDAppearanceGenerator:
                 if opt == sel:
                     highlighted.add(idx)
 
-        with PDAppearanceContentStream(appearance_stream) as cs:
-            cs._buffer.extend(b"/Tx BMC\n")  # type: ignore[attr-defined]
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
+            cs._buffer.extend(b"/Tx BMC\n")
             cs.save_graphics_state()
             interior_w = max(0.0, width - 2.0)
             interior_h = max(0.0, height - 2.0)
             if interior_w > 0.0 and interior_h > 0.0:
                 cs.add_rect(1.0, 1.0, interior_w, interior_h)
-                cs._write_operator(b"W")  # type: ignore[attr-defined]
-                cs._write_operator(b"n")  # type: ignore[attr-defined]
+                cs._write_operator(b"W")
+                cs._write_operator(b"n")
 
             # Selection highlight rectangles — drawn before the text so
             # the glyphs paint on top.
@@ -778,7 +778,7 @@ class PDAppearanceGenerator:
                 cs.show_text(option)
             cs.end_text()
             cs.restore_graphics_state()
-            cs._buffer.extend(b"EMC\n")  # type: ignore[attr-defined]
+            cs._buffer.extend(b"EMC\n")
 
         ap_value = widget_cos.get_dictionary_object(_AP)
         if isinstance(ap_value, COSDictionary):
@@ -794,7 +794,7 @@ class PDAppearanceGenerator:
 
     def _regenerate_text_widget(
         self,
-        widget: object,
+        widget: PDAnnotationWidget,
         value: str,
         font_name: str | None,
         font_size: float,
@@ -804,7 +804,7 @@ class PDAppearanceGenerator:
         max_len: int = -1,
         quadding: int = 0,
     ) -> None:
-        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        widget_cos = widget.get_cos_object()
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
             _LOG.debug(
@@ -839,17 +839,18 @@ class PDAppearanceGenerator:
         interior_h = max(0.0, height - 2.0)
         line_height = resolved_size * 1.15
 
-        with PDAppearanceContentStream(appearance_stream) as cs:
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
             # /Tx BMC marked-content tag — Acrobat looks for this on form
             # field appearance streams.
-            cs._buffer.extend(b"/Tx BMC\n")  # type: ignore[attr-defined]
+            cs._buffer.extend(b"/Tx BMC\n")
             cs.save_graphics_state()
             # Light interior clip (1pt margin all around) so the value
             # never bleeds over the widget border.
             if interior_w > 0.0 and interior_h > 0.0:
                 cs.add_rect(1.0, 1.0, interior_w, interior_h)
-                cs._write_operator(b"W")  # type: ignore[attr-defined]
-                cs._write_operator(b"n")  # type: ignore[attr-defined]
+                cs._write_operator(b"W")
+                cs._write_operator(b"n")
 
             if is_comb and max_len > 0:
                 self._emit_comb_text(
@@ -868,7 +869,7 @@ class PDAppearanceGenerator:
                 )
 
             cs.restore_graphics_state()
-            cs._buffer.extend(b"EMC\n")  # type: ignore[attr-defined]
+            cs._buffer.extend(b"EMC\n")
 
         # Wire the new appearance into the widget annotation as /AP /N.
         ap_value = widget_cos.get_dictionary_object(_AP)
@@ -1051,7 +1052,7 @@ class PDAppearanceGenerator:
     # push button (caption from /MK /CA)
     # ------------------------------------------------------------------
 
-    def _generate_push_button(self, field: PDField) -> None:
+    def _generate_push_button(self, field: PDPushButton) -> None:
         """Render the widget's ``/MK /CA`` caption flat-centered.
 
         For each widget:
@@ -1066,11 +1067,11 @@ class PDAppearanceGenerator:
         captions stay deferred — viewers fall back to ``/CA`` when those
         entries are absent.
         """
-        for widget in field.get_widgets():  # type: ignore[attr-defined]
+        for widget in field.get_widgets():
             self._regenerate_push_button_widget(widget)
 
-    def _regenerate_push_button_widget(self, widget: object) -> None:
-        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+    def _regenerate_push_button_widget(self, widget: PDAnnotationWidget) -> None:
+        widget_cos = widget.get_cos_object()
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
             return
@@ -1100,7 +1101,8 @@ class PDAppearanceGenerator:
         font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
         size = self._auto_size(height)
 
-        with PDAppearanceContentStream(appearance_stream) as cs:
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
             cs.save_graphics_state()
             # Background fill.
             if bg is not None:
@@ -1156,7 +1158,7 @@ class PDAppearanceGenerator:
     # signature field
     # ------------------------------------------------------------------
 
-    def _generate_signature(self, field: PDField) -> None:
+    def _generate_signature(self, field: PDSignatureField) -> None:
         """Render a flat name + date appearance for a signature field.
 
         Pulls ``/Name`` and ``/M`` (sign date) off the field's
@@ -1167,10 +1169,6 @@ class PDAppearanceGenerator:
         empty stream (matches PDFBox's behavior of leaving an empty
         appearance until the field is signed).
         """
-        from .pd_signature_field import PDSignatureField
-
-        if not isinstance(field, PDSignatureField):
-            return
         signature = field.get_signature()
         signer_name = signature.get_name() if signature is not None else None
         sign_date = signature.get_sign_date() if signature is not None else None
@@ -1184,11 +1182,11 @@ class PDAppearanceGenerator:
 
     def _regenerate_signature_widget(
         self,
-        widget: object,
+        widget: PDAnnotationWidget,
         signer_name: str | None,
         sign_date: str | None,
     ) -> None:
-        widget_cos = widget.get_cos_object()  # type: ignore[attr-defined]
+        widget_cos = widget.get_cos_object()
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
             return
@@ -1204,22 +1202,23 @@ class PDAppearanceGenerator:
         size = 10.0
         is_signed = bool(signer_name or sign_date)
 
-        with PDAppearanceContentStream(appearance_stream) as cs:
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
             cs.save_graphics_state()
             # Frame the signature box with a thin border. Unsigned widgets
             # use a dashed outline so reviewers visually distinguish them
             # from signed-and-rendered widgets.
             cs.set_stroking_color((0.0,))
-            cs._buffer.extend(b"1 w\n")  # type: ignore[attr-defined]
+            cs._buffer.extend(b"1 w\n")
             if not is_signed:
                 # 3-on / 3-off dashed line — Acrobat default for empty sigs.
-                cs._buffer.extend(b"[3 3] 0 d\n")  # type: ignore[attr-defined]
+                cs._buffer.extend(b"[3 3] 0 d\n")
             cs.add_rect(0.5, 0.5, max(0.0, width - 1.0), max(0.0, height - 1.0))
             cs.stroke()
             if not is_signed:
                 # Reset the dash pattern so subsequent drawing inside the
                 # appearance isn't unintentionally dashed.
-                cs._buffer.extend(b"[] 0 d\n")  # type: ignore[attr-defined]
+                cs._buffer.extend(b"[] 0 d\n")
 
             if is_signed:
                 cs.begin_text()

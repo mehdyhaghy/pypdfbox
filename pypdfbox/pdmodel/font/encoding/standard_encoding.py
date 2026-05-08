@@ -15,7 +15,7 @@ class StandardEncoding(Encoding):
     here — fontbox is the canonical home of the PostScript encoding vectors.
     """
 
-    INSTANCE: "StandardEncoding"
+    INSTANCE: StandardEncoding
 
     def __init__(self) -> None:
         super().__init__()
@@ -24,7 +24,7 @@ class StandardEncoding(Encoding):
 
     def get_cos_object(self) -> COSBase:
         # Upstream returns COSName.STANDARD_ENCODING directly.
-        return COSName.STANDARD_ENCODING  # type: ignore[attr-defined]
+        return COSName.get_pdf_name("StandardEncoding")
 
     def get_encoding_name(self) -> str:
         return "StandardEncoding"

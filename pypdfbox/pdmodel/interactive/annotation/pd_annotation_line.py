@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBoolean,
+    COSDictionary,
+    COSFloat,
+    COSName,
+    COSNumber,
+)
 
 from .pd_annotation_markup import PDAnnotationMarkup
 
@@ -32,10 +39,11 @@ class PDAnnotationLine(PDAnnotationMarkup):
     optionally decorated with end-point styles (arrows, circles, …) and a
     caption (PDF 32000-1:2008 §12.5.6.7).
 
-    Cluster #5 lite: only the core line geometry, end-point styles,
-    caption flag/offsets and leader-line length/extension are exposed.
-    Heavier surface (``/LLO``, BS/BE styling, measurement intents,
-    appearance generation) is deferred.
+    Cluster #5 lite: exposes the core line geometry, end-point styles,
+    caption flag/offsets, leader-line lengths, interior colour, measurement
+    dictionary, and intent helpers. Border style (``/BS``) is inherited from
+    :class:`PDAnnotationMarkup`; border effect dictionaries and appearance
+    generation are deferred.
     """
 
     SUB_TYPE: str = "Line"
@@ -173,8 +181,8 @@ class PDAnnotationLine(PDAnnotationMarkup):
         arr = self._get_co_array()
         if arr is not None and arr.size() >= 1:
             entry = arr.get(0)
-            if hasattr(entry, "value"):
-                return float(entry.value)  # type: ignore[union-attr]
+            if isinstance(entry, COSNumber):
+                return entry.float_value()
         return 0.0
 
     def set_caption_horizontal_offset(self, offset: float) -> None:
@@ -184,8 +192,8 @@ class PDAnnotationLine(PDAnnotationMarkup):
         arr = self._get_co_array()
         if arr is not None and arr.size() >= 2:
             entry = arr.get(1)
-            if hasattr(entry, "value"):
-                return float(entry.value)  # type: ignore[union-attr]
+            if isinstance(entry, COSNumber):
+                return entry.float_value()
         return 0.0
 
     def set_caption_vertical_offset(self, offset: float) -> None:
@@ -261,7 +269,7 @@ class PDAnnotationLine(PDAnnotationMarkup):
 
     # ---------- /Measure (measurement dictionary) ----------
 
-    def get_measure(self) -> "PDMeasureDictionary | None":
+    def get_measure(self) -> PDMeasureDictionary | None:
         """Return the typed ``/Measure`` dictionary (PDF 32000-2 Table 174
         — line measurement) or ``None`` when the entry is absent.
 
@@ -278,7 +286,7 @@ class PDAnnotationLine(PDAnnotationMarkup):
         return None
 
     def set_measure(
-        self, measure: "PDMeasureDictionary | COSDictionary | None"
+        self, measure: PDMeasureDictionary | COSDictionary | None
     ) -> None:
         """Set or clear the ``/Measure`` dictionary. Pass ``None`` to remove
         the entry; accepts both a typed :class:`PDMeasureDictionary` (via

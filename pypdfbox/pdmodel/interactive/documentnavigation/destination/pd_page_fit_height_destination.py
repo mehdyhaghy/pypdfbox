@@ -52,7 +52,7 @@ class PDPageFitHeightDestination(PDPageDestination):
         semantics for the ``left`` slot.
         """
         arr = self.get_cos_array()
-        if self._SLOT_LEFT >= arr.size():
+        if arr.size() <= self._SLOT_LEFT:
             return True
         value = arr.get_object(self._SLOT_LEFT)
         return not isinstance(value, (COSInteger, COSFloat))

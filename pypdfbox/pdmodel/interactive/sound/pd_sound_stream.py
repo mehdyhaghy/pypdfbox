@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import BinaryIO
 
-from pypdfbox.cos import COSBase, COSName, COSStream
+from pypdfbox.cos import COSBase, COSName, COSNumber, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 _R: COSName = COSName.get_pdf_name("R")
@@ -77,6 +77,14 @@ class PDSoundStream(PDStream):
     def set_samples_per_second(self, value: float) -> None:
         self.get_cos_object().set_float(_R, float(value))
 
+    def has_samples_per_second(self) -> bool:
+        """Return ``True`` when ``/R`` is present as a number."""
+        return isinstance(self.get_cos_object().get_dictionary_object(_R), COSNumber)
+
+    def clear_samples_per_second(self) -> None:
+        """Clear the sampling rate (``/R``)."""
+        self.get_cos_object().remove_item(_R)
+
     # ---------- /C number of channels ----------
 
     def get_number_of_channels(self) -> int:
@@ -84,6 +92,14 @@ class PDSoundStream(PDStream):
 
     def set_number_of_channels(self, value: int) -> None:
         self.get_cos_object().set_int(_C, int(value))
+
+    def has_number_of_channels(self) -> bool:
+        """Return ``True`` when ``/C`` is present as a number."""
+        return isinstance(self.get_cos_object().get_dictionary_object(_C), COSNumber)
+
+    def clear_number_of_channels(self) -> None:
+        """Clear the number of sound channels (``/C``)."""
+        self.get_cos_object().remove_item(_C)
 
     # ---------- /B bits per sample ----------
 
@@ -93,6 +109,14 @@ class PDSoundStream(PDStream):
     def set_bits_per_sample(self, value: int) -> None:
         self.get_cos_object().set_int(_B, int(value))
 
+    def has_bits_per_sample(self) -> bool:
+        """Return ``True`` when ``/B`` is present as a number."""
+        return isinstance(self.get_cos_object().get_dictionary_object(_B), COSNumber)
+
+    def clear_bits_per_sample(self) -> None:
+        """Clear the bits-per-sample value (``/B``)."""
+        self.get_cos_object().remove_item(_B)
+
     # ---------- /E encoding format ----------
 
     def get_encoding_format(self) -> str:
@@ -101,6 +125,14 @@ class PDSoundStream(PDStream):
 
     def set_encoding_format(self, value: str) -> None:
         self.get_cos_object().set_name(_E, value)
+
+    def has_encoding_format(self) -> bool:
+        """Return ``True`` when ``/E`` is present as a name."""
+        return isinstance(self.get_cos_object().get_dictionary_object(_E), COSName)
+
+    def clear_encoding_format(self) -> None:
+        """Clear the encoding format (``/E``)."""
+        self.get_cos_object().remove_item(_E)
 
     # ---------- /CO compression format ----------
 
@@ -114,6 +146,14 @@ class PDSoundStream(PDStream):
             return
         cos.set_name(_CO, value)
 
+    def has_compression_format(self) -> bool:
+        """Return ``True`` when ``/CO`` is present as a name."""
+        return isinstance(self.get_cos_object().get_dictionary_object(_CO), COSName)
+
+    def clear_compression_format(self) -> None:
+        """Clear the compression format (``/CO``)."""
+        self.get_cos_object().remove_item(_CO)
+
     # ---------- /CP compression parameters ----------
 
     def get_compression_params(self) -> COSBase | None:
@@ -125,6 +165,14 @@ class PDSoundStream(PDStream):
             cos.remove_item(_CP)
             return
         cos.set_item(_CP, value)
+
+    def has_compression_params(self) -> bool:
+        """Return ``True`` when ``/CP`` resolves to a COS value."""
+        return self.get_cos_object().get_dictionary_object(_CP) is not None
+
+    def clear_compression_params(self) -> None:
+        """Clear the compression parameters (``/CP``)."""
+        self.get_cos_object().remove_item(_CP)
 
     # ---------- /Type (optional, must be /Sound when present) ----------
 
@@ -142,6 +190,14 @@ class PDSoundStream(PDStream):
             cos.remove_item(_TYPE)
             return
         cos.set_name(_TYPE, value)
+
+    def has_type(self) -> bool:
+        """Return ``True`` when ``/Type`` is present as a name."""
+        return isinstance(self.get_cos_object().get_dictionary_object(_TYPE), COSName)
+
+    def clear_type(self) -> None:
+        """Clear the optional ``/Type`` entry."""
+        self.get_cos_object().remove_item(_TYPE)
 
     # ---------- raw sample data ----------
 

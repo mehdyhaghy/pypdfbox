@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
     from .handlers.pd_appearance_handler import PDAppearanceHandler
     from .pd_border_effect_dictionary import PDBorderEffectDictionary
+    from .pd_border_style_dictionary import PDBorderStyleDictionary
 
 _BS: COSName = COSName.get_pdf_name("BS")
 _IC: COSName = COSName.get_pdf_name("IC")
@@ -59,7 +60,7 @@ class PDAnnotationSquareCircle(PDAnnotation):
 
     # ---------- /BS (border style) ----------
 
-    def get_border_style(self) -> "PDBorderStyleDictionary | None":
+    def get_border_style(self) -> PDBorderStyleDictionary | None:
         from .pd_border_style_dictionary import PDBorderStyleDictionary
 
         value = self._dict.get_dictionary_object(_BS)
@@ -68,7 +69,7 @@ class PDAnnotationSquareCircle(PDAnnotation):
         return None
 
     def set_border_style(
-        self, bs: "PDBorderStyleDictionary | COSDictionary | None"
+        self, bs: PDBorderStyleDictionary | COSDictionary | None
     ) -> None:
         if bs is None:
             self._dict.remove_item(_BS)
@@ -96,7 +97,7 @@ class PDAnnotationSquareCircle(PDAnnotation):
 
     # ---------- /BE (border effect) ----------
 
-    def get_border_effect(self) -> "PDBorderEffectDictionary | None":
+    def get_border_effect(self) -> PDBorderEffectDictionary | None:
         """Return ``/BE`` as a typed :class:`PDBorderEffectDictionary`, or
         ``None`` when absent.
 
@@ -111,7 +112,7 @@ class PDAnnotationSquareCircle(PDAnnotation):
         return None
 
     def set_border_effect(
-        self, be: "PDBorderEffectDictionary | COSDictionary | None"
+        self, be: PDBorderEffectDictionary | COSDictionary | None
     ) -> None:
         """Set ``/BE``. Accepts a :class:`PDBorderEffectDictionary`, a raw
         :class:`COSDictionary`, or ``None`` to clear (mirrors upstream's
@@ -235,7 +236,7 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
     # ---------- appearance construction ----------
 
     def set_custom_appearance_handler(
-        self, appearance_handler: "PDAppearanceHandler | None"
+        self, appearance_handler: PDAppearanceHandler | None
     ) -> None:
         """Set the custom appearance handler used by
         :meth:`construct_appearances`.
@@ -246,7 +247,7 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
         self._custom_appearance_handler = appearance_handler
 
     def construct_appearances(
-        self, document: "PDDocument | None" = None
+        self, document: PDDocument | None = None
     ) -> None:
         """Generate square annotation appearances.
 
@@ -288,7 +289,7 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
     # ---------- appearance construction ----------
 
     def set_custom_appearance_handler(
-        self, appearance_handler: "PDAppearanceHandler | None"
+        self, appearance_handler: PDAppearanceHandler | None
     ) -> None:
         """Set the custom appearance handler used by
         :meth:`construct_appearances`.
@@ -299,7 +300,7 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
         self._custom_appearance_handler = appearance_handler
 
     def construct_appearances(
-        self, document: "PDDocument | None" = None
+        self, document: PDDocument | None = None
     ) -> None:
         """Generate circle annotation appearances.
 

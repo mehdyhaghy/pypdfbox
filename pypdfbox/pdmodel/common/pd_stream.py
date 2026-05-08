@@ -101,10 +101,25 @@ class PDStream:
         if isinstance(input_data, (bytes, bytearray, memoryview)):
             data = bytes(input_data)
         else:
-            data = input_data.read()
-            if hasattr(input_data, "close"):
-                with suppress(Exception):
-                    input_data.close()
+            read = getattr(input_data, "read", None)
+            if not callable(read):
+                raise TypeError(
+                    "PDStream input_data must be bytes-like or provide a "
+                    "callable read() method"
+                )
+            try:
+                chunk = read()
+                if not isinstance(chunk, (bytes, bytearray, memoryview)):
+                    raise TypeError(
+                        "PDStream input_data.read() must return bytes-like data; "
+                        f"got {type(chunk).__name__}"
+                    )
+                data = bytes(chunk)
+            finally:
+                close = getattr(input_data, "close", None)
+                if callable(close):
+                    with suppress(Exception):
+                        close()
         self._stream.set_raw_data(data)
         if filters is not None:
             self._stream.set_item(_FILTER, filters)

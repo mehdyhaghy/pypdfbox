@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -345,7 +347,7 @@ class Splitter:
                     if src_catalog_dict is src_info_dict:
                         _LOG.warning("/Root and /Info share the same dictionary")
                     continue
-                if _TYPE == key:
+                if key == _TYPE:
                     continue
                 dst_info_dict.set_item(key, value)
             document.set_document_information(
@@ -354,22 +356,14 @@ class Splitter:
 
         dst_catalog = document.get_document_catalog()
         src_catalog = self.get_source_document().get_document_catalog()
-        try:
+        with contextlib.suppress(AttributeError, NotImplementedError):
             dst_catalog.set_viewer_preferences(src_catalog.get_viewer_preferences())
-        except (AttributeError, NotImplementedError):
-            pass
-        try:
+        with contextlib.suppress(AttributeError, NotImplementedError):
             dst_catalog.set_language(src_catalog.get_language())
-        except (AttributeError, NotImplementedError):
-            pass
-        try:
+        with contextlib.suppress(AttributeError, NotImplementedError):
             dst_catalog.set_mark_info(src_catalog.get_mark_info())
-        except (AttributeError, NotImplementedError):
-            pass
-        try:
+        with contextlib.suppress(AttributeError, NotImplementedError):
             dst_catalog.set_metadata(src_catalog.get_metadata())
-        except (AttributeError, NotImplementedError):
-            pass
         return document
 
     def process_page(self, page: PDPage) -> None:
@@ -497,13 +491,8 @@ class Splitter:
                 if cloned_popup is not None:
                     ann_dict.set_item(_POPUP, cloned_popup)
 
-        try:
+        with contextlib.suppress(Exception):
             imported.set_annotations(cloned)
-        except Exception:  # noqa: BLE001
-            # Some PDPage subclasses don't surface set_annotations; the
-            # cloned dicts still live in the imported page's /Annots
-            # (since we mutated in place), so this is a no-op fallback.
-            pass
 
     @staticmethod
     def _is_signature_widget(ann_dict: COSDictionary) -> bool:
@@ -682,15 +671,11 @@ class Splitter:
             cloned_action_dict = COSDictionary(list(action.get_cos_object().entry_set()))
             cloned_action = PDActionGoTo(cloned_action_dict)
             cloned_action.set_destination(cloned_destination)
-            try:
+            with contextlib.suppress(Exception):
                 link.set_action(cloned_action)
-            except Exception:  # noqa: BLE001
-                pass
         else:
-            try:
+            with contextlib.suppress(Exception):
                 link.set_destination(cloned_destination)
-            except Exception:  # noqa: BLE001
-                pass
 
         self._dest_to_fix.append((cloned_array, source_page_dict))
 

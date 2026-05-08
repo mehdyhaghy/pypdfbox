@@ -100,7 +100,7 @@ class PDFTextStripperByArea(PDFTextStripper):
     def add_region(
         self,
         region_name: str,
-        rect: "PDRectangle | tuple[float, float, float, float] | list[float]",
+        rect: PDRectangle | tuple[float, float, float, float] | list[float],
     ) -> None:
         """Register ``region_name`` covering the given rectangle.
 
@@ -152,7 +152,7 @@ class PDFTextStripperByArea(PDFTextStripper):
 
     # ---------- extraction ----------
 
-    def extract_regions(self, page: "PDPage") -> None:
+    def extract_regions(self, page: PDPage) -> None:
         """Walk ``page`` once and bin each text position into the regions
         whose rectangles contain its origin.
 

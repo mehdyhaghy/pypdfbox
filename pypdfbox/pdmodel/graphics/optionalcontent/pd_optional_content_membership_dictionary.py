@@ -31,7 +31,7 @@ class MembershipDictionaryVisibilityPolicy(Enum):
         return COSName.get_pdf_name(self.value)
 
     @classmethod
-    def value_of(cls, name: str) -> "MembershipDictionaryVisibilityPolicy":
+    def value_of(cls, name: str) -> MembershipDictionaryVisibilityPolicy:
         """Look up a member by its spec name. Mirrors upstream
         ``VisibilityPolicy.valueOf(String)``."""
         for member in cls:
@@ -246,10 +246,7 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
         if isinstance(base, COSDictionary):
             return base is target
         if isinstance(base, COSArray):
-            for i in range(base.size()):
-                if base.get_object(i) is target:
-                    return True
-            return False
+            return any(base.get_object(i) is target for i in range(base.size()))
         return False
 
     def add_ocg(self, group: PDOptionalContentGroup | COSDictionary) -> None:

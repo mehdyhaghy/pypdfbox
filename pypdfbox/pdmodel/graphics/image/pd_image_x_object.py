@@ -134,7 +134,7 @@ class PDImageXObject(PDXObject):
     def set_color_space(self, name: PDColorSpace | COSName | str | None) -> None:
         cos = self.get_cos_object()
         if name is None:
-            cos.remove_item(_COLORSPACE)
+            self.clear_color_space()
             return
         if isinstance(name, PDColorSpace):
             value = name.get_cos_object()
@@ -143,13 +143,22 @@ class PDImageXObject(PDXObject):
         if value is not None:
             cos.set_item(_COLORSPACE, value)
 
+    def clear_color_space(self) -> None:
+        """Remove both long and short color-space entries. No-op if absent."""
+        cos = self.get_cos_object()
+        cos.remove_item(_COLORSPACE)
+        cos.remove_item(_CS)
+
     # ---------- /Filter ----------
 
     def get_filter(self) -> COSName | COSArray | None:
         """Raw ``/Filter`` value — single name, array, or ``None``.
         Mirrors upstream's ``getCOSObject().getFilter()`` access pattern.
         For a *normalized list*, use ``get_stream().get_filters()``."""
-        return self.get_cos_object().get_dictionary_object(_FILTER)
+        value = self.get_cos_object().get_dictionary_object(_FILTER)
+        if isinstance(value, (COSName, COSArray)):
+            return value
+        return None
 
     # ---------- decoded bytes ----------
 
@@ -214,9 +223,13 @@ class PDImageXObject(PDXObject):
         ``/Mask`` array as well — only one form may be present at a time."""
         cos = self.get_cos_object()
         if value is None:
-            cos.remove_item(_MASK)
+            self.clear_mask()
             return
         cos.set_item(_MASK, value.get_cos_object())
+
+    def clear_mask(self) -> None:
+        """Remove ``/Mask``. No-op if absent."""
+        self.get_cos_object().remove_item(_MASK)
 
     # ---------- /Mask (color-key mask) ----------
 
@@ -256,7 +269,7 @@ class PDImageXObject(PDXObject):
         Pass ``None`` to remove the entry."""
         cos = self.get_cos_object()
         if values is None:
-            cos.remove_item(_MASK)
+            self.clear_mask()
             return
         array = COSArray()
         for v in values:
@@ -275,9 +288,13 @@ class PDImageXObject(PDXObject):
     def set_soft_mask(self, value: PDImageXObject | None) -> None:
         cos = self.get_cos_object()
         if value is None:
-            cos.remove_item(_SMASK)
+            self.clear_soft_mask()
             return
         cos.set_item(_SMASK, value.get_cos_object())
+
+    def clear_soft_mask(self) -> None:
+        """Remove ``/SMask``. No-op if absent."""
+        self.get_cos_object().remove_item(_SMASK)
 
     # ---------- /SMaskInData (JPEG2000-only optional hint) ----------
 
@@ -301,9 +318,7 @@ class PDImageXObject(PDXObject):
     def get_decode(self) -> list[float] | None:
         """``/Decode`` color-component min/max pairs, or ``None`` when absent."""
         value = self.get_cos_object().get_dictionary_object(_DECODE)
-        if not isinstance(value, COSArray):
-            return None
-        return value.to_float_array()
+        return _numeric_array_to_floats(value)
 
     def get_decode_array(self) -> COSArray | None:
         """Return the raw ``/Decode`` ``COSArray`` (or ``None`` when
@@ -319,7 +334,7 @@ class PDImageXObject(PDXObject):
     def set_decode(self, values: Iterable[float] | None) -> None:
         cos = self.get_cos_object()
         if values is None:
-            cos.remove_item(_DECODE)
+            self.clear_decode()
             return
         array = COSArray()
         for v in values:
@@ -333,9 +348,13 @@ class PDImageXObject(PDXObject):
         convenience form."""
         cos = self.get_cos_object()
         if decode is None:
-            cos.remove_item(_DECODE)
+            self.clear_decode()
             return
         cos.set_item(_DECODE, decode)
+
+    def clear_decode(self) -> None:
+        """Remove ``/Decode``. No-op if absent."""
+        self.get_cos_object().remove_item(_DECODE)
 
     # ---------- /Matte (soft-mask only) ----------
 
@@ -349,9 +368,7 @@ class PDImageXObject(PDXObject):
         reads ``COSName.MATTE`` from the soft-mask's COS object via
         ``COSArray.toFloatArray``."""
         value = self.get_cos_object().get_dictionary_object(_MATTE)
-        if not isinstance(value, COSArray):
-            return None
-        return value.to_float_array()
+        return _numeric_array_to_floats(value)
 
     def get_matte_array(self) -> COSArray | None:
         """Return the raw ``/Matte`` ``COSArray`` (or ``None``). Use
@@ -367,12 +384,16 @@ class PDImageXObject(PDXObject):
         soft-mask Image XObjects."""
         cos = self.get_cos_object()
         if values is None:
-            cos.remove_item(_MATTE)
+            self.clear_matte()
             return
         array = COSArray()
         for v in values:
             array.add(COSFloat(float(v)))
         cos.set_item(_MATTE, array)
+
+    def clear_matte(self) -> None:
+        """Remove ``/Matte``. No-op if absent."""
+        self.get_cos_object().remove_item(_MATTE)
 
     # ---------- /Interpolate ----------
 
@@ -435,9 +456,13 @@ class PDImageXObject(PDXObject):
     def set_metadata(self, value: PDMetadata | None) -> None:
         cos = self.get_cos_object()
         if value is None:
-            cos.remove_item(_METADATA)
+            self.clear_metadata()
             return
         cos.set_item(_METADATA, value.get_cos_object())
+
+    def clear_metadata(self) -> None:
+        """Remove ``/Metadata``. No-op if absent."""
+        self.get_cos_object().remove_item(_METADATA)
 
     # ---------- /OC ----------
 
@@ -456,7 +481,7 @@ class PDImageXObject(PDXObject):
     def set_oc(self, value: PDPropertyList | None) -> None:
         cos = self.get_cos_object()
         if value is None:
-            cos.remove_item(_OC)
+            self.clear_optional_content()
             return
         cos.set_item(_OC, value.get_cos_object())
 
@@ -474,6 +499,14 @@ class PDImageXObject(PDXObject):
         """Mirrors upstream ``PDImageXObject.setOptionalContent()``."""
         self.set_oc(value)
 
+    def clear_oc(self) -> None:
+        """Remove ``/OC``. No-op if absent."""
+        self.clear_optional_content()
+
+    def clear_optional_content(self) -> None:
+        """Remove ``/OC`` optional-content membership. No-op if absent."""
+        self.get_cos_object().remove_item(_OC)
+
     # ---------- presence predicates ----------
 
     def has_mask(self) -> bool:
@@ -489,10 +522,8 @@ class PDImageXObject(PDXObject):
         )
 
     def has_color_key_mask(self) -> bool:
-        """Return ``True`` when ``/Mask`` is a color-key array."""
-        return isinstance(
-            self.get_cos_object().get_dictionary_object(_MASK), COSArray
-        )
+        """Return ``True`` when ``/Mask`` is a valid color-key array."""
+        return self.get_color_key_mask() is not None
 
     def has_soft_mask(self) -> bool:
         """Return ``True`` when ``/SMask`` is a stream."""
@@ -518,17 +549,13 @@ class PDImageXObject(PDXObject):
         )
 
     def has_decode(self) -> bool:
-        """Return ``True`` when ``/Decode`` is a COSArray."""
-        return isinstance(
-            self.get_cos_object().get_dictionary_object(_DECODE), COSArray
-        )
+        """Return ``True`` when ``/Decode`` is a numeric COSArray."""
+        return self.get_decode() is not None
 
     def has_matte(self) -> bool:
-        """Return ``True`` when ``/Matte`` is a COSArray. Only
+        """Return ``True`` when ``/Matte`` is a numeric COSArray. Only
         meaningful on soft-mask Image XObjects."""
-        return isinstance(
-            self.get_cos_object().get_dictionary_object(_MATTE), COSArray
-        )
+        return self.get_matte() is not None
 
     # ---------- filter-type predicates ----------
 
@@ -605,11 +632,22 @@ class PDImageXObject(PDXObject):
             if len(data) < gray_len:
                 return None
             return Image.frombytes("L", (width, height), data[:gray_len]).convert("RGB")
-        if color_space_name in ("Separation", "DeviceN"):
+        if color_space_name in ("Separation", "DeviceN") and color_space is not None:
             return _decode_devicen_to_rgb(
                 color_space, data, width, height
             )
         return None
+
+
+def _numeric_array_to_floats(value: COSBase | None) -> list[float] | None:
+    if not isinstance(value, COSArray):
+        return None
+    out: list[float] = []
+    for item in value:
+        if not isinstance(item, (COSInteger, COSFloat)):
+            return None
+        out.append(float(item.value))
+    return out
 
 
 def _decode_devicen_to_rgb(

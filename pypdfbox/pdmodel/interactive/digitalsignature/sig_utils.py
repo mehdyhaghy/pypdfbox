@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 
 from .pd_signature import PDSignature
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
-    from cryptography.x509 import Certificate
+    from cryptography.x509 import Certificate, ExtendedKeyUsage, KeyUsage
 
     from pypdfbox.pdmodel.pd_document import PDDocument
 
@@ -166,7 +166,8 @@ def _has_extended_key_usage(cert: Certificate, oid_dotted_string: str) -> bool:
         )
     except ExtensionNotFound:
         return False
-    return any(usage.dotted_string == oid_dotted_string for usage in ext.value)
+    eku = cast("ExtendedKeyUsage", ext.value)
+    return any(usage.dotted_string == oid_dotted_string for usage in eku)
 
 
 def check_certificate_usage(certificate: Certificate) -> list[str]:
@@ -207,7 +208,7 @@ def check_certificate_usage(certificate: Certificate) -> list[str]:
     else:
         if not ku_ext.critical:
             warnings.append("KeyUsage extension is not marked critical")
-        ku = ku_ext.value
+        ku = cast("KeyUsage", ku_ext.value)
         if not (ku.digital_signature or ku.content_commitment):
             # ``content_commitment`` is the X.509 v3 name for nonRepudiation.
             warnings.append(
@@ -222,7 +223,8 @@ def check_certificate_usage(certificate: Certificate) -> list[str]:
     except ExtensionNotFound:
         return warnings  # EKU is optional.
 
-    eku_oids = {usage.dotted_string for usage in eku_ext.value}
+    eku = cast("ExtendedKeyUsage", eku_ext.value)
+    eku_oids = {usage.dotted_string for usage in eku}
     # 1.3.6.1.5.5.7.3.4   = id-kp-emailProtection
     # 1.3.6.1.5.5.7.3.3   = id-kp-codeSigning
     # 2.5.29.37.0         = anyExtendedKeyUsage
@@ -271,7 +273,8 @@ def check_time_stamp_certificate_usage(certificate: Certificate) -> list[str]:
         # Upstream only warns when EKU is present-but-wrong; absence is silent.
         return warnings
 
-    eku_oids = {usage.dotted_string for usage in eku_ext.value}
+    eku = cast("ExtendedKeyUsage", eku_ext.value)
+    eku_oids = {usage.dotted_string for usage in eku}
     if "1.3.6.1.5.5.7.3.8" not in eku_oids:
         warnings.append(
             "TSA certificate ExtendedKeyUsage lacks timeStamping "
@@ -305,7 +308,8 @@ def check_responder_certificate_usage(certificate: Certificate) -> list[str]:
         )
         return warnings
 
-    eku_oids = {usage.dotted_string for usage in eku_ext.value}
+    eku = cast("ExtendedKeyUsage", eku_ext.value)
+    eku_oids = {usage.dotted_string for usage in eku}
     if "1.3.6.1.5.5.7.3.9" not in eku_oids:
         warnings.append(
             "Responder certificate ExtendedKeyUsage lacks OCSPSigning "

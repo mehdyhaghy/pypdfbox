@@ -63,6 +63,8 @@ class PDActionImportData(PDAction):
             return None
         if isinstance(raw, COSString):
             return raw.get_string()
+        if not isinstance(raw, COSDictionary):
+            return None
         fs = PDFileSpecification.create_fs(raw)
         if fs is None:
             return None
@@ -92,6 +94,12 @@ class PDActionImportData(PDAction):
         branch on file-presence without paying the cost of constructing
         a :class:`PDFileSpecification` wrapper."""
         return self._action.get_dictionary_object(_F) is not None
+
+    def clear_file(self) -> None:
+        """Remove ``/F`` from the underlying dictionary. After this call
+        :meth:`get_file`, :meth:`get_file_path`, and :meth:`get_url`
+        return ``None``."""
+        self._action.remove_item(_F)
 
     def is_valid(self) -> bool:
         """``True`` when this action's ``/S`` entry equals

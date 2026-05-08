@@ -35,6 +35,10 @@ class IndexToLocationTable(TTFTable):
             else:
                 raise OSError(f"Error:TTF.loca unknown offset format: {fmt}")
 
+        for previous, current in zip(self._offsets, self._offsets[1:], strict=False):
+            if current < previous:
+                raise OSError("The loca table contains decreasing offsets")
+
         if num_glyphs == 1 and self._offsets[0] == 0 and self._offsets[1] == 0:
             # PDFBOX-5794 empty glyph
             raise OSError("The font has no glyphs")

@@ -33,12 +33,12 @@ class IntegerType(AbstractSimpleProperty):
         if isinstance(value, int):
             self._integer_value = value
         elif isinstance(value, str):
-            try:
-                self._integer_value = int(value)
-            except ValueError as exc:
+            digits = value[1:] if value[:1] in {"+", "-"} else value
+            if not digits or not all("0" <= char <= "9" for char in digits):
                 raise ValueError(
                     f"Value given is not allowed for the Integer type: {value!r}"
-                ) from exc
+                )
+            self._integer_value = int(value)
         else:
             raise ValueError(f"Value given is not allowed for the Integer type: {value!r}")
 

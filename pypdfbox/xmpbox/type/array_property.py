@@ -57,6 +57,9 @@ class ArrayProperty(AbstractField):
     def get_array_type(self) -> Cardinality:
         return self._array_type
 
+    def getArrayType(self) -> Cardinality:  # noqa: N802 - upstream Java name
+        return self.get_array_type()
+
     def get_namespace(self) -> str | None:
         return self._namespace
 
@@ -101,10 +104,10 @@ class ArrayProperty(AbstractField):
             return True
         if pn1 is None or pn2 is None or pn1 != pn2:
             return False
-        get1 = getattr(prop1, "get_string_value", None)
-        get2 = getattr(prop2, "get_string_value", None)
-        if get1 is not None and get2 is not None:
-            return get1() == get2()
+        if isinstance(prop1, AbstractSimpleProperty) and isinstance(
+            prop2, AbstractSimpleProperty
+        ):
+            return prop1.get_string_value() == prop2.get_string_value()
         return prop1 is prop2
 
     def contains_property(self, prop: AbstractField) -> bool:
@@ -185,3 +188,6 @@ class ArrayProperty(AbstractField):
             if isinstance(child, AbstractSimpleProperty):
                 result.append(child.get_string_value())
         return result
+
+    def getElementsAsString(self) -> list[str]:  # noqa: N802 - upstream Java name
+        return self.get_elements_as_string()

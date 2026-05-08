@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSName, COSStream
 
 from ..pd_appearance_content_stream import PDAppearanceContentStream
 from ..pd_appearance_dictionary import PDAppearanceDictionary
@@ -10,8 +10,8 @@ from ..pd_appearance_stream import PDAppearanceStream
 from .pd_appearance_handler import PDAppearanceHandler
 
 if TYPE_CHECKING:
-    from ...pd_document import PDDocument
-    from ...pd_rectangle import PDRectangle
+    from ....pd_document import PDDocument
+    from ....pd_rectangle import PDRectangle
     from ..pd_annotation import PDAnnotation
 
 
@@ -44,21 +44,21 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
 
     def __init__(
         self,
-        annotation: "PDAnnotation",
-        document: "PDDocument | None" = None,
+        annotation: PDAnnotation,
+        document: PDDocument | None = None,
     ) -> None:
         self._annotation = annotation
         self._document = document
 
     # ---------- accessors ----------
 
-    def get_annotation(self) -> "PDAnnotation":
+    def get_annotation(self) -> PDAnnotation:
         return self._annotation
 
-    def get_document(self) -> "PDDocument | None":
+    def get_document(self) -> PDDocument | None:
         return self._document
 
-    def get_rectangle(self) -> "PDRectangle | None":
+    def get_rectangle(self) -> PDRectangle | None:
         return self._annotation.get_rectangle()
 
     # ---------- appearance allocation ----------
@@ -72,8 +72,10 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         if self._document is not None:
             cos_doc = self._document.get_document()
             create = getattr(cos_doc, "create_cos_stream", None)
-            if create is not None:
-                return create()
+            if callable(create):
+                stream = create()
+                if isinstance(stream, COSStream):
+                    return stream
         return COSStream()
 
     def get_appearance(self) -> PDAppearanceDictionary:
@@ -127,9 +129,9 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
 
     @staticmethod
     def get_padded_rectangle(
-        rectangle: "PDRectangle", padding: float
-    ) -> "PDRectangle":
-        from ...pd_rectangle import PDRectangle
+        rectangle: PDRectangle, padding: float
+    ) -> PDRectangle:
+        from ....pd_rectangle import PDRectangle
 
         return PDRectangle(
             rectangle.get_lower_left_x() + padding,
@@ -140,11 +142,11 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
 
     @staticmethod
     def add_rect_differences(
-        rectangle: "PDRectangle", differences: list[float] | None
-    ) -> "PDRectangle":
+        rectangle: PDRectangle, differences: list[float] | None
+    ) -> PDRectangle:
         if differences is None or len(differences) != 4:
             return rectangle
-        from ...pd_rectangle import PDRectangle
+        from ....pd_rectangle import PDRectangle
 
         return PDRectangle(
             rectangle.get_lower_left_x() - differences[0],
@@ -155,11 +157,11 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
 
     @staticmethod
     def apply_rect_differences(
-        rectangle: "PDRectangle", differences: list[float] | None
-    ) -> "PDRectangle":
+        rectangle: PDRectangle, differences: list[float] | None
+    ) -> PDRectangle:
         if differences is None or len(differences) != 4:
             return rectangle
-        from ...pd_rectangle import PDRectangle
+        from ....pd_rectangle import PDRectangle
 
         return PDRectangle(
             rectangle.get_lower_left_x() + differences[0],
@@ -172,7 +174,7 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
 
     @staticmethod
     def _color_components_from_annotation(
-        annotation: "PDAnnotation",
+        annotation: PDAnnotation,
     ) -> list[float] | None:
         """Read /C off the annotation as raw float components. Returns
         ``None`` when /C is absent or empty."""

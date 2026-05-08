@@ -61,7 +61,8 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     def get_checked_state(self) -> str:
         """Upstream-parity name. Returns the checked state, default
         :attr:`CHECKED_STATE_OFF` when absent."""
-        return self._get_name(self.CHECKED, self.CHECKED_STATE_OFF)
+        value = self._get_name(self.CHECKED, self.CHECKED_STATE_OFF)
+        return value if value is not None else self.CHECKED_STATE_OFF
 
     def set_checked_state(self, checked_state: str) -> None:
         """Upstream-parity name."""
@@ -99,6 +100,56 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
 
     def set_description(self, description: str | None) -> None:
         self.set_alternate_name(description)
+
+    # ---------- per-key presence / clear helpers ----------
+
+    def is_role_specified(self) -> bool:
+        """``True`` iff ``/Role`` is explicitly written."""
+        return self.is_specified(self.ROLE)
+
+    def has_role(self) -> bool:
+        """Alias for :meth:`is_role_specified`."""
+        return self.is_role_specified()
+
+    def clear_role(self) -> None:
+        """Remove the ``/Role`` entry if present."""
+        self.clear_attribute(self.ROLE)
+
+    def is_checked_state_specified(self) -> bool:
+        """``True`` iff ``/checked`` is explicitly written."""
+        return self.is_specified(self.CHECKED)
+
+    def has_checked_state(self) -> bool:
+        """Alias for :meth:`is_checked_state_specified`."""
+        return self.is_checked_state_specified()
+
+    def clear_checked_state(self) -> None:
+        """Remove the ``/checked`` entry if present."""
+        self.clear_attribute(self.CHECKED)
+
+    def clear_checked(self) -> None:
+        """Pypdfbox-style alias for :meth:`clear_checked_state`."""
+        self.clear_checked_state()
+
+    def is_alternate_name_specified(self) -> bool:
+        """``True`` iff ``/Desc`` is explicitly written."""
+        return self.is_specified(self.DESC)
+
+    def has_alternate_name(self) -> bool:
+        """Alias for :meth:`is_alternate_name_specified`."""
+        return self.is_alternate_name_specified()
+
+    def clear_alternate_name(self) -> None:
+        """Remove the ``/Desc`` entry if present."""
+        self.clear_attribute(self.DESC)
+
+    def clear_desc(self) -> None:
+        """Pypdfbox-style alias for :meth:`clear_alternate_name`."""
+        self.clear_alternate_name()
+
+    def clear_description(self) -> None:
+        """Pypdfbox-style alias for :meth:`clear_alternate_name`."""
+        self.clear_alternate_name()
 
     def __str__(self) -> str:
         """Mirror upstream ``PDPrintFieldAttributeObject.toString()`` which

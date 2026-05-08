@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 PDFDocEncoding — the 256-entry single-byte encoding used inside PDF "text
 strings" (PDF 32000-1 §D.3, table D.2). Note that this is *not* a Type 1
@@ -16,8 +14,9 @@ functions are the primary surface; the ``PDFDocEncoding`` class with
 classmethods is provided for upstream-name parity.
 """
 
-from typing import Final
+from __future__ import annotations
 
+from typing import Final
 
 _REPLACEMENT_CHARACTER: Final[str] = "�"
 
@@ -92,8 +91,8 @@ def _build_tables() -> tuple[list[str], dict[str, int]]:
     return code_to_uni, uni_to_code
 
 
-_CODE_TO_UNI: Final[list[str]]
-_UNI_TO_CODE: Final[dict[str, int]]
+_CODE_TO_UNI: list[str]
+_UNI_TO_CODE: dict[str, int]
 _CODE_TO_UNI, _UNI_TO_CODE = _build_tables()
 
 

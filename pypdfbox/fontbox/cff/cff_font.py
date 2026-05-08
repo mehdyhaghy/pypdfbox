@@ -5,16 +5,24 @@ import struct
 from typing import Any, BinaryIO
 
 
+def _cff_string_to_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value).decode("latin-1")
+    return str(value)
+
+
 def _make_path_pen() -> Any:
     """Build a fontTools BasePen subclass that records draw commands as
     the simple list-of-tuples format used by ``PD…Font.get_glyph_path``.
     """
-    from fontTools.pens.basePen import BasePen  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
 
-    class _PathPen(BasePen):
+    class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
-            self.commands: list[tuple] = []
+            self.commands: list[tuple[Any, ...]] = []
 
         def _moveTo(self, pt: tuple[float, float]) -> None:
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
@@ -94,9 +102,9 @@ class CFFFont:
     # ---------- factory ----------
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview) -> "CFFFont":
+    def from_bytes(cls, data: bytes | bytearray | memoryview) -> CFFFont:
         """Parse a CFF font from raw ``/FontFile3`` bytes (``/Subtype /Type1C``)."""
-        from fontTools.cffLib import CFFFontSet  # noqa: PLC0415
+        from fontTools.cffLib import CFFFontSet  # type: ignore[import-untyped]  # noqa: PLC0415
 
         fontset = CFFFontSet()
         fontset.decompile(io.BytesIO(bytes(data)), otFont=None)
@@ -138,6 +146,21 @@ class CFFFont:
         upstream contract where the field is non-null but may be blank).
         """
         return self.name or ""
+
+    def _copy_base_state_from(self, base: CFFFont) -> None:
+        """Copy parsed base-font state when re-wrapping as a CFF subclass."""
+        self._fontset = base._fontset
+        self._top = base._top
+        self._charstrings = base._charstrings
+        self._private = base._private
+        self._font_matrix = (
+            list(base._font_matrix) if base._font_matrix is not None else None
+        )
+        self._units_per_em = base._units_per_em
+        self._widths = dict(base._widths)
+        self._data = base._data
+        self._top_overlay = dict(base._top_overlay)
+        self._name_override = base._name_override
 
     def set_name(self, name: str | None) -> None:
         """PDFBox: ``CFFFont.setName(String)`` — override the PostScript
@@ -391,7 +414,7 @@ class CFFFont:
         from fontTools.cffLib import cffStandardStrings  # noqa: PLC0415
 
         try:
-            return cffStandardStrings.index(name)
+            return int(cffStandardStrings.index(name))
         except ValueError:
             pass
         # Then this font's private STRING INDEX (SIDs ≥ NUM_STANDARD_STRINGS).
@@ -403,7 +426,7 @@ class CFFFont:
                 except AttributeError:
                     table = []
                 for i, candidate in enumerate(table):
-                    if candidate == name:
+                    if _cff_string_to_str(candidate) == name:
                         return self.NUM_STANDARD_STRINGS + i
         return 0
 
@@ -425,7 +448,7 @@ class CFFFont:
         if sid < 0:
             return ""
         if self.is_standard_sid(sid):
-            return cffStandardStrings[sid]
+            return str(cffStandardStrings[sid])
         idx = sid - self.NUM_STANDARD_STRINGS
         if self._fontset is None:
             return ""
@@ -437,7 +460,7 @@ class CFFFont:
         except AttributeError:
             return ""
         if 0 <= idx < len(table):
-            return str(table[idx])
+            return _cff_string_to_str(table[idx])
         return ""
 
     def get_cid_for_gid(self, gid: int) -> int:
@@ -571,7 +594,7 @@ class CFFFont:
         except KeyError:
             return 0.0
 
-        from fontTools.misc.psCharStrings import T2WidthExtractor  # noqa: PLC0415
+        from fontTools.misc import psCharStrings  # type: ignore[import-untyped]  # noqa: PLC0415
 
         assert self._top is not None  # noqa: S101
         # For name-keyed CFF the Private DICT lives on the Top DICT;
@@ -589,7 +612,7 @@ class CFFFont:
         # charstring uses callsubr / callgsubr in its prologue. Passing
         # an empty list here used to yield 0 for many real-world fonts.
         local_subrs = getattr(priv, "Subrs", []) or [] if priv is not None else []
-        extractor = T2WidthExtractor(
+        extractor = psCharStrings.T2WidthExtractor(
             local_subrs,
             self._top.GlobalSubrs,
             getattr(priv, "nominalWidthX", 0) if priv is not None else 0,
@@ -603,7 +626,7 @@ class CFFFont:
         self._widths[name] = width
         return width
 
-    def get_path(self, name: str) -> list[tuple]:
+    def get_path(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for ``name`` as a list of draw commands in
         font units. Returns ``[]`` when the glyph is missing."""
         cs_map = self._charstrings_dict()
@@ -616,7 +639,7 @@ class CFFFont:
             cs.draw(pen)
         except Exception:  # noqa: BLE001
             return []
-        return list(pen.commands)  # type: ignore[attr-defined]
+        return list(pen.commands)
 
     # ---------- Type 2 charstring accessor ---------------------------------
 
@@ -745,7 +768,7 @@ def _read_card16(stream: BinaryIO) -> int:
     if len(b) != 2:
         msg = "Unexpected end of stream while reading Card16"
         raise EOFError(msg)
-    return struct.unpack(">H", b)[0]
+    return int(struct.unpack(">H", b)[0])
 
 
 def read_charset(
@@ -765,6 +788,8 @@ def read_charset(
 
     Mirrors ``CFFParser.readCharset`` (handles formats 0, 1, 2).
     """
+    if n_glyphs <= 0:
+        return []
     if fmt is None:
         fmt = _read_card8(stream)
     charset: list[int] = [0]  # .notdef

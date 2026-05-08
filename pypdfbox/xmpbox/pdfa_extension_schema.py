@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from .xmp_schema import XMPSchema
 
@@ -64,7 +64,7 @@ class PDFAExtensionSchema(XMPSchema):
         """
         existing = self._properties.get(self.SCHEMAS)
         if isinstance(existing, list) and all(isinstance(item, dict) for item in existing):
-            return existing  # type: ignore[return-value]
+            return cast(list[dict[str, str]], existing)
         if existing is None:
             new_list: list[dict[str, str]] = []
             self._properties[self.SCHEMAS] = new_list

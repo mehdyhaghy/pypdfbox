@@ -7,6 +7,7 @@ from pypdfbox.cos import COSDictionary, COSName, COSStream
 from .pd_annotation_markup import PDAnnotationMarkup
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
     from pypdfbox.pdmodel.pd_document import PDDocument
 
     from .handlers.pd_appearance_handler import PDAppearanceHandler
@@ -83,7 +84,7 @@ class PDAnnotationSound(PDAnnotationMarkup):
             return value
         return None
 
-    def set_sound(self, sound: COSStream | None) -> None:
+    def set_sound(self, sound: COSStream | PDSoundStream | None) -> None:
         """Set the ``/Sound`` stream. Accepts a raw ``COSStream``,
         anything exposing ``get_cos_object()`` (e.g. ``PDSoundStream``),
         or ``None`` to clear."""
@@ -93,18 +94,23 @@ class PDAnnotationSound(PDAnnotationMarkup):
         if isinstance(sound, COSStream):
             self._dict.set_item(_SOUND, sound)
             return
-        if hasattr(sound, "get_cos_object"):
-            cos = sound.get_cos_object()
-            if not isinstance(cos, COSStream):
-                raise TypeError(
-                    "set_sound expects a COSStream-backed sound wrapper"
-                )
-            self._dict.set_item(_SOUND, cos)
-            return
-        raise TypeError(
-            f"set_sound expects None, COSStream, or PDSoundStream; got "
-            f"{type(sound).__name__}"
-        )
+        if not hasattr(sound, "get_cos_object"):
+            raise TypeError(
+                f"set_sound expects None, COSStream, or PDSoundStream; got "
+                f"{type(sound).__name__}"
+            )
+        cos = sound.get_cos_object()
+        if not isinstance(cos, COSStream):
+            raise TypeError("set_sound expects a COSStream-backed sound wrapper")
+        self._dict.set_item(_SOUND, cos)
+
+    def has_sound(self) -> bool:
+        """Return ``True`` when ``/Sound`` resolves to a sound stream."""
+        return isinstance(self._dict.get_dictionary_object(_SOUND), COSStream)
+
+    def clear_sound(self) -> None:
+        """Remove the ``/Sound`` entry."""
+        self._dict.remove_item(_SOUND)
 
     # ---------- /Name (icon) ----------
 
@@ -118,6 +124,22 @@ class PDAnnotationSound(PDAnnotationMarkup):
             self._dict.remove_item(_NAME)
             return
         self._dict.set_name(_NAME, name)
+
+    def has_name(self) -> bool:
+        """Return ``True`` when ``/Name`` is explicitly set as a name."""
+        return self._dict.get_name(_NAME) is not None
+
+    def clear_name(self) -> None:
+        """Remove the explicit icon name, reverting to the ``Speaker`` default."""
+        self._dict.remove_item(_NAME)
+
+    def is_speaker_icon(self) -> bool:
+        """Return ``True`` when the resolved icon name is ``Speaker``."""
+        return self.get_name() == self.NAME_SPEAKER
+
+    def is_mic_icon(self) -> bool:
+        """Return ``True`` when the resolved icon name is ``Mic``."""
+        return self.get_name() == self.NAME_MIC
 
 
 __all__ = ["PDAnnotationSound"]

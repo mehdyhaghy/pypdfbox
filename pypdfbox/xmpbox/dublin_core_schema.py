@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .type import (
+    AbstractSimpleProperty,
     ArrayProperty,
     Attribute,
     Cardinality,
@@ -84,7 +86,7 @@ class DublinCoreSchema(XMPSchema):
         )
 
     def _build_text_property(
-        self, local_name: str, factory
+        self, local_name: str, factory: Callable[[str, str], TextType]
     ) -> TextType | None:
         """Synthesize a typed simple wrapper from the stored string."""
         value = self.get_unqualified_text_property_value(local_name)
@@ -93,7 +95,10 @@ class DublinCoreSchema(XMPSchema):
         return factory(local_name, value)
 
     def _build_array_of_text(
-        self, local_name: str, cardinality: Cardinality, factory
+        self,
+        local_name: str,
+        cardinality: Cardinality,
+        factory: Callable[[str, str], AbstractSimpleProperty],
     ) -> ArrayProperty | None:
         items = self.get_unqualified_array_list(local_name)
         if items is None:
@@ -456,10 +461,7 @@ class DublinCoreSchema(XMPSchema):
 
     def remove_date(self, value: datetime | str) -> None:
         """Mirror of upstream ``removeDate(Calendar)``."""
-        if isinstance(value, datetime):
-            target = value.isoformat()
-        else:
-            target = value
+        target = value.isoformat() if isinstance(value, datetime) else value
         self.remove_unqualified_sequence_value(self.DATE, target)
 
     def get_dates(self) -> list[datetime] | None:
@@ -480,9 +482,7 @@ class DublinCoreSchema(XMPSchema):
     def set_dates_property(self, prop: ArrayProperty) -> None:
         values: list[str] = []
         for child in prop.get_all_properties():
-            if isinstance(child, DateType):
-                values.append(child.get_string_value())
-            elif isinstance(child, TextType):
+            if isinstance(child, DateType | TextType):
                 values.append(child.get_string_value())
         self._properties[self.DATE] = values
 

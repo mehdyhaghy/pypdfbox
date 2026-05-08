@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 from pypdfbox.cos import (
     COSArray,
-    COSBase,
     COSDictionary,
     COSName,
     COSStream,
@@ -233,6 +232,7 @@ class LayerUtility:
             raise ValueError(
                 f"Optional group (layer) already exists: {layer_name}"
             )
+        self._target_doc.set_version(1.5)
 
         # PDFBOX-4044: warn when an identity transform is paired with a
         # negative-cropbox page — the form will paint off-canvas.

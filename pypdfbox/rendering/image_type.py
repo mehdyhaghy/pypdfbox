@@ -48,6 +48,10 @@ class ImageType(Enum):
         """
         return _AWT_TYPE_BY_NAME[self.name]
 
+    def toBufferedImageType(self) -> int:  # noqa: N802 - upstream Java alias
+        """Java-style alias for ``to_buffered_image_type``."""
+        return self.to_buffered_image_type()
+
     @property
     def pil_mode(self) -> str:
         """Pillow ``Image.new(mode=...)`` value for this image type.

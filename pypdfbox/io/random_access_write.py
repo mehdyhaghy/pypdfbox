@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 
 class RandomAccessWrite(ABC):
     """
-    Sink of bytes that supports random-access writes.
+    Sink of bytes that supports the PDFBox random-access write contract.
 
     Mirrors org.apache.pdfbox.io.RandomAccessWrite. Subclasses must
     implement: write, write_bytes, clear, close, is_closed.
@@ -48,3 +48,11 @@ class RandomAccessWrite(ABC):
 
     def isClosed(self) -> bool:  # noqa: N802 — upstream Java alias
         return self.is_closed()
+
+    def writeBytes(  # noqa: N802 — upstream Java alias
+        self,
+        data: bytes | bytearray | memoryview,
+        offset: int = 0,
+        length: int | None = None,
+    ) -> None:
+        self.write_bytes(data, offset, length)

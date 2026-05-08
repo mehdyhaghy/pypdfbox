@@ -50,6 +50,44 @@ def test_jpx_decode_grayscale() -> None:
     assert result.parameters.get_int("BitsPerComponent") == 8
 
 
+def test_wave317_jpx_decode_reports_endian_16_bit_grayscale_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Fake16BitJPXImage:
+        mode = "I;16B"
+        size = (2, 1)
+
+        def __enter__(self) -> Fake16BitJPXImage:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            return None
+
+        def load(self) -> None:
+            return None
+
+        def tobytes(self) -> bytes:
+            return b"\x00\x01\xff\xff"
+
+        def getbands(self) -> tuple[str, ...]:
+            return ("I",)
+
+    def fake_open(_stream: io.BytesIO) -> Fake16BitJPXImage:
+        return Fake16BitJPXImage()
+
+    monkeypatch.setattr("pypdfbox.filter.jpx_decode.Image.open", fake_open)
+
+    out = io.BytesIO()
+    result = JPXDecode().decode(io.BytesIO(b"fake-jp2"), out)
+
+    assert out.getvalue() == b"\x00\x01\xff\xff"
+    assert result.bytes_written == 4
+    assert result.parameters.get_int("Width") == 2
+    assert result.parameters.get_int("Height") == 1
+    assert result.parameters.get_int("ColorComponents") == 1
+    assert result.parameters.get_int("BitsPerComponent") == 16
+
+
 def test_jpx_decode_empty_input_returns_no_bytes() -> None:
     out = io.BytesIO()
     result = JPXDecode().decode(io.BytesIO(b""), out)

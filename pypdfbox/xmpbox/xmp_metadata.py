@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -167,10 +169,8 @@ class XMPMetadata:
         the schema instance is not currently registered, matching upstream
         ``List#remove(Object)`` semantics.
         """
-        try:
+        with contextlib.suppress(ValueError):
             self._schemas.remove(schema)
-        except ValueError:
-            pass
 
     def get_all_schemas(self) -> list[XMPSchema]:
         # Upstream returns a defensive copy; mirror that.
@@ -190,7 +190,7 @@ class XMPMetadata:
         ``getAllSchemas().size()`` on upstream's ``List``)."""
         return len(self._schemas)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[XMPSchema]:
         """Iterate over registered schemas in insertion order (mirrors
         ``getAllSchemas().iterator()``). Iteration uses a snapshot so
         callers can safely mutate the schema list during iteration."""
@@ -244,11 +244,11 @@ class XMPMetadata:
             return None
         # class case
         cls = namespace_or_class
-        ns_uri = getattr(cls, "NAMESPACE", None)
-        if ns_uri is None:
+        class_ns_uri = getattr(cls, "NAMESPACE", None)
+        if not isinstance(class_ns_uri, str):
             return None
         for schema in self._schemas:
-            if isinstance(schema, cls) and schema.get_namespace() == ns_uri:
+            if isinstance(schema, cls) and schema.get_namespace() == class_ns_uri:
                 return schema
         # Fallback: any schema that is an instance of cls.
         for schema in self._schemas:
@@ -286,9 +286,19 @@ class XMPMetadata:
         return schema
 
     def create_and_add_dublin_core_schema(self) -> XMPSchema:
-        """Upstream-named alias of :meth:`add_dublin_core_schema` mirroring
-        ``XMPMetadata.createAndAddDublinCoreSchema``."""
-        return self.add_dublin_core_schema()
+        """
+        Mirror of upstream ``XMPMetadata.createAndAddDublinCoreSchema``: always
+        create a fresh :class:`DublinCoreSchema`, set its ``rdf:about`` to the
+        empty string, attach it via :meth:`add_schema`, and return it. Unlike
+        :meth:`add_dublin_core_schema`, repeated calls return distinct
+        instances — upstream behaviour.
+        """
+        from .dublin_core_schema import DublinCoreSchema
+
+        schema = DublinCoreSchema(self)
+        schema.set_about_as_simple("")
+        self.add_schema(schema)
+        return schema
 
     def get_xmp_basic_schema(self) -> XMPSchema | None:
         from .xmp_basic_schema import XMPBasicSchema
@@ -596,6 +606,7 @@ class XMPMetadata:
         from .xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema
 
         schema = XMPBasicJobTicketSchema(self)
+        schema.set_about_as_simple("")
         self.add_schema(schema)
         return schema
 

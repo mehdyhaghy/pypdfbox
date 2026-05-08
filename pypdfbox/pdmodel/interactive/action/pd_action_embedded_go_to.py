@@ -20,11 +20,11 @@ from .pd_action import PDAction
 from .pd_target_directory import PDTargetDirectory
 
 if TYPE_CHECKING:
-    from pypdfbox.pdmodel.pd_document import PDDocument
-    from pypdfbox.pdmodel.pd_page import PDPage
     from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
         PDPageDestination,
     )
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
 
 _LOG = logging.getLogger(__name__)
 
@@ -86,8 +86,8 @@ class PDActionEmbeddedGoTo(PDAction):
         # accepted" behaviour, only flag a non-null page entry as invalid —
         # the COSNull placeholder is treated as "no page set yet".
         from pypdfbox.cos import COSNull  # noqa: PLC0415
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: PLC0415
-            PDPageDestination,
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+            PDPageDestination,  # noqa: PLC0415
         )
 
         if isinstance(destination, PDPageDestination):
@@ -230,9 +230,9 @@ class PDActionEmbeddedGoTo(PDAction):
 
                 if relationship == "P":
                     # Pop to the supplied parent scope.
-                    if target_document is None:
+                    next_scope = target_document
+                    if next_scope is None:
                         return None
-                    next_scope: PDDocument | None = target_document
                 else:
                     # Descend into the embedded file referenced by /N inside
                     # the current scope's /Names /EmbeddedFiles tree.
@@ -279,10 +279,8 @@ class PDActionEmbeddedGoTo(PDAction):
         * a name / byte string → looked up in ``scope``'s
           ``/Names /Dests`` name tree.
         """
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
             PDNamedDestination,
-        )
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (
             PDPageDestination,
         )
 
@@ -508,7 +506,7 @@ def _resolve_named_destination(
     """Resolve a named destination ``name`` against ``scope``'s
     ``/Names /Dests`` name tree (PDF 1.2+), falling back to the legacy
     catalog ``/Dests`` flat dictionary (PDF 1.1)."""
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
         PDDestinationNameTreeNode,
     )
 
@@ -529,7 +527,7 @@ def _resolve_named_destination(
         flat = names.get_dests()
         if flat is not None:
             value = flat.get_destination(name)
-            if value is not None:
+            if isinstance(value, PDDestination):
                 return value
 
     # Legacy catalog /Dests — wrapped here as PDDestinationNameTreeNode in
@@ -537,7 +535,7 @@ def _resolve_named_destination(
     legacy = catalog.get_dests()
     if legacy is not None:
         value = legacy.get_value(name)
-        if value is not None:
+        if isinstance(value, PDDestination):
             return value
     return None
 

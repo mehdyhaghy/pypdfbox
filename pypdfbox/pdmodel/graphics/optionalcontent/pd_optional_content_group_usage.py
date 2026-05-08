@@ -16,7 +16,14 @@ recorded as such in ``PROVENANCE.md``.
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSFloat, COSName, COSNumber
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSName,
+    COSNumber,
+    COSString,
+)
 
 _CREATOR_INFO: COSName = COSName.get_pdf_name("CreatorInfo")
 _CREATOR: COSName = COSName.get_pdf_name("Creator")
@@ -60,7 +67,7 @@ def _read_float(sub: COSDictionary, key: COSName) -> float | None:
     missing or not a number."""
     value = sub.get_dictionary_object(key)
     if isinstance(value, COSNumber):
-        return float(value.value)
+        return value.float_value()
     return None
 
 
@@ -258,15 +265,12 @@ class PDUsageUser(_UsageSubDict):
     def name(self) -> str | None:
         # /Name is a text string or array of text strings; return the
         # first when an array is present.
-        from pypdfbox.cos import COSArray
-
         value = self._dict.get_dictionary_object(_NAME)
         if isinstance(value, COSArray):
-            for entry in value:
-                if hasattr(entry, "get_string"):
-                    s = entry.get_string()  # type: ignore[no-untyped-call]
-                    if isinstance(s, str):
-                        return s
+            for index in range(value.size()):
+                entry = value.get_object(index)
+                if isinstance(entry, COSString):
+                    return entry.get_string()
             return None
         return self._dict.get_string(_NAME)
 
@@ -327,63 +331,117 @@ class PDOptionalContentGroupUsage:
         self._dict.set_item(key, created)
         return created
 
+    def _has_sub(self, key: COSName) -> bool:
+        return self._sub(key) is not None
+
+    def _clear_sub(self, key: COSName) -> None:
+        self._dict.remove_item(key)
+
     # ---- typed sub-accessors (read returns wrapper or None) ----
 
     def get_creator_info(self) -> PDUsageCreatorInfo | None:
         sub = self._sub(_CREATOR_INFO)
         return PDUsageCreatorInfo(sub) if sub is not None else None
 
+    def has_creator_info(self) -> bool:
+        return self._has_sub(_CREATOR_INFO)
+
     def get_or_create_creator_info(self) -> PDUsageCreatorInfo:
         return PDUsageCreatorInfo(self._sub_or_create(_CREATOR_INFO))
+
+    def clear_creator_info(self) -> None:
+        self._clear_sub(_CREATOR_INFO)
 
     def get_language(self) -> PDUsageLanguage | None:
         sub = self._sub(_LANGUAGE)
         return PDUsageLanguage(sub) if sub is not None else None
 
+    def has_language(self) -> bool:
+        return self._has_sub(_LANGUAGE)
+
     def get_or_create_language(self) -> PDUsageLanguage:
         return PDUsageLanguage(self._sub_or_create(_LANGUAGE))
+
+    def clear_language(self) -> None:
+        self._clear_sub(_LANGUAGE)
 
     def get_export(self) -> PDUsageExport | None:
         sub = self._sub(_EXPORT)
         return PDUsageExport(sub) if sub is not None else None
 
+    def has_export(self) -> bool:
+        return self._has_sub(_EXPORT)
+
     def get_or_create_export(self) -> PDUsageExport:
         return PDUsageExport(self._sub_or_create(_EXPORT))
+
+    def clear_export(self) -> None:
+        self._clear_sub(_EXPORT)
 
     def get_zoom(self) -> PDUsageZoom | None:
         sub = self._sub(_ZOOM)
         return PDUsageZoom(sub) if sub is not None else None
 
+    def has_zoom(self) -> bool:
+        return self._has_sub(_ZOOM)
+
     def get_or_create_zoom(self) -> PDUsageZoom:
         return PDUsageZoom(self._sub_or_create(_ZOOM))
+
+    def clear_zoom(self) -> None:
+        self._clear_sub(_ZOOM)
 
     def get_print(self) -> PDUsagePrint | None:
         sub = self._sub(_PRINT)
         return PDUsagePrint(sub) if sub is not None else None
 
+    def has_print(self) -> bool:
+        return self._has_sub(_PRINT)
+
     def get_or_create_print(self) -> PDUsagePrint:
         return PDUsagePrint(self._sub_or_create(_PRINT))
+
+    def clear_print(self) -> None:
+        self._clear_sub(_PRINT)
 
     def get_view(self) -> PDUsageView | None:
         sub = self._sub(_VIEW)
         return PDUsageView(sub) if sub is not None else None
 
+    def has_view(self) -> bool:
+        return self._has_sub(_VIEW)
+
     def get_or_create_view(self) -> PDUsageView:
         return PDUsageView(self._sub_or_create(_VIEW))
+
+    def clear_view(self) -> None:
+        self._clear_sub(_VIEW)
 
     def get_user(self) -> PDUsageUser | None:
         sub = self._sub(_USER)
         return PDUsageUser(sub) if sub is not None else None
 
+    def has_user(self) -> bool:
+        return self._has_sub(_USER)
+
     def get_or_create_user(self) -> PDUsageUser:
         return PDUsageUser(self._sub_or_create(_USER))
+
+    def clear_user(self) -> None:
+        self._clear_sub(_USER)
 
     def get_page_element(self) -> PDUsagePageElement | None:
         sub = self._sub(_PAGE_ELEMENT)
         return PDUsagePageElement(sub) if sub is not None else None
 
+    def has_page_element(self) -> bool:
+        return self._has_sub(_PAGE_ELEMENT)
+
     def get_or_create_page_element(self) -> PDUsagePageElement:
         return PDUsagePageElement(self._sub_or_create(_PAGE_ELEMENT))
+
+    def clear_page_element(self) -> None:
+        self._clear_sub(_PAGE_ELEMENT)
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"PDOptionalContentGroupUsage({self._dict!r})"

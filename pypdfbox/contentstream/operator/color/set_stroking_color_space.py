@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from pypdfbox.cos import COSBase, COSName
@@ -99,9 +100,5 @@ class SetStrokingColorSpace(OperatorProcessor):
     @staticmethod
     def _set_attr(target: Any | None, attr: str, value: Any) -> None:
         if target is not None:
-            try:
+            with suppress(AttributeError):
                 setattr(target, attr, value)
-            except AttributeError:
-                # Slotted graphics-state implementations without the
-                # attribute; mirror upstream's silent no-op.
-                pass

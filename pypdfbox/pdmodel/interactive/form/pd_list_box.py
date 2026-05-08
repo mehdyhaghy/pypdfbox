@@ -61,7 +61,11 @@ class PDListBox(PDChoice):
         ``/TI = 0``" from "no ``/TI`` entry" without rereading the dict
         directly. :meth:`get_top_index` returns ``0`` for both cases.
         """
-        return self._field.contains_key(_TI)
+        return super().has_top_index()
+
+    def clear_top_index(self) -> None:
+        """Remove this list box's local ``/TI`` top-index entry."""
+        super().clear_top_index()
 
     # ---------- /V + appearance ----------
 

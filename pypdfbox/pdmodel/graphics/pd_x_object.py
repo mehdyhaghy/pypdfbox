@@ -16,6 +16,7 @@ _XOBJECT: COSName = COSName.get_pdf_name("XObject")
 _GROUP: COSName = COSName.get_pdf_name("Group")
 _S: COSName = COSName.get_pdf_name("S")
 _TRANSPARENCY: COSName = COSName.get_pdf_name("Transparency")
+_STRUCT_PARENT: COSName = COSName.get_pdf_name("StructParent")
 
 
 class PDXObject:
@@ -88,13 +89,15 @@ class PDXObject:
             # returns a PDTransparencyGroup; otherwise a plain
             # PDFormXObject. Mirror that dispatch (PDF 32000-1 §11.6.6).
             group = base.get_dictionary_object(_GROUP)
-            if isinstance(group, COSDictionary):
-                if group.get_name(_S) == "Transparency":
-                    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
-                        PDTransparencyGroup,
-                    )
+            if (
+                isinstance(group, COSDictionary)
+                and group.get_name(_S) == "Transparency"
+            ):
+                from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+                    PDTransparencyGroup,
+                )
 
-                    return PDTransparencyGroup(base, cache=cache)
+                return PDTransparencyGroup(base, cache=cache)
             return PDFormXObject(base, cache=cache)
         if subtype == "PS":
             from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (  # noqa: PLC0415
@@ -160,6 +163,17 @@ class PDXObject:
             cos.remove_item(_METADATA)
             return
         cos.set_item(_METADATA, value.get_cos_object())
+
+    # ---------- /StructParent ----------
+
+    def get_struct_parent(self) -> int:
+        """Return the ``/StructParent`` integer key into the structure parent
+        tree, or ``-1`` when absent. Mirrors upstream ``getStructParent()``."""
+        return self.get_cos_object().get_int(_STRUCT_PARENT, -1)
+
+    def set_struct_parent(self, value: int) -> None:
+        """Set ``/StructParent``. Mirrors upstream ``setStructParent(int)``."""
+        self.get_cos_object().set_int(_STRUCT_PARENT, int(value))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, PDXObject):

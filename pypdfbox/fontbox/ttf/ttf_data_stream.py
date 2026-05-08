@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 
 from pypdfbox.io.random_access_read import RandomAccessRead
 
-
 # Epoch for TrueType `LONGDATETIME`: midnight 1904-01-01 UTC. Stored as a
 # signed 64-bit count of seconds. Naïve datetimes break around year-2038, so
 # we use ``datetime`` + ``timedelta(seconds=...)`` to stay safe.

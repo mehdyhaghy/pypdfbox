@@ -6,7 +6,6 @@ from .pd_cal_gray import _xyz_to_srgb
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
-
 _WHITE_POINT: COSName = COSName.get_pdf_name("WhitePoint")
 _BLACK_POINT: COSName = COSName.get_pdf_name("BlackPoint")
 _GAMMA: COSName = COSName.get_pdf_name("Gamma")
@@ -73,6 +72,10 @@ class PDCalRGB(PDColorSpace):
     def set_white_point(self, white: list[float]) -> None:
         self._dict().set_item(_WHITE_POINT, COSArray.of_cos_floats(white))
 
+    def has_white_point(self) -> bool:
+        """Return ``True`` when ``/WhitePoint`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_WHITE_POINT), COSArray)
+
     def get_black_point(self) -> list[float]:
         out = _read_float_array(self._dict(), _BLACK_POINT, [0.0, 0.0, 0.0])
         return out[:3] if len(out) >= 3 else out
@@ -80,11 +83,27 @@ class PDCalRGB(PDColorSpace):
     def set_black_point(self, black: list[float]) -> None:
         self._dict().set_item(_BLACK_POINT, COSArray.of_cos_floats(black))
 
+    def has_black_point(self) -> bool:
+        """Return ``True`` when ``/BlackPoint`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_BLACK_POINT), COSArray)
+
+    def clear_black_point(self) -> None:
+        """Remove ``/BlackPoint`` so reads fall back to ``[0, 0, 0]``."""
+        self._dict().remove_item(_BLACK_POINT)
+
     def get_gamma(self) -> list[float]:
         return _read_float_array(self._dict(), _GAMMA, [1.0, 1.0, 1.0])
 
     def set_gamma(self, gamma: list[float]) -> None:
         self._dict().set_item(_GAMMA, COSArray.of_cos_floats(gamma))
+
+    def has_gamma(self) -> bool:
+        """Return ``True`` when ``/Gamma`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_GAMMA), COSArray)
+
+    def clear_gamma(self) -> None:
+        """Remove ``/Gamma`` so reads fall back to ``[1, 1, 1]``."""
+        self._dict().remove_item(_GAMMA)
 
     def get_matrix(self) -> list[float] | None:
         entry = self._dict().get_dictionary_object(_MATRIX)
@@ -98,6 +117,14 @@ class PDCalRGB(PDColorSpace):
             d.remove_item(_MATRIX)
         else:
             d.set_item(_MATRIX, COSArray.of_cos_floats(matrix))
+
+    def has_matrix(self) -> bool:
+        """Return ``True`` when ``/Matrix`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_MATRIX), COSArray)
+
+    def clear_matrix(self) -> None:
+        """Remove ``/Matrix`` so conversion uses the identity matrix."""
+        self.set_matrix(None)
 
     # ---------- predicates ----------
 

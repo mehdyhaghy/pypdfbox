@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import struct
-from typing import BinaryIO
+from typing import Any, BinaryIO, cast
 
 from PIL import Image
 
@@ -71,7 +71,7 @@ def _resolve_decode_params(parameters: COSDictionary | None, index: int) -> COSD
             return params
         if isinstance(params, COSArray):
             try:
-                entry = params.get(index)
+                entry = params.get_object(index)
             except Exception:
                 entry = None
             if isinstance(entry, COSDictionary):
@@ -231,12 +231,11 @@ class CCITTFaxDecode(Filter):
 
         try:
             with Image.open(io.BytesIO(tiff_bytes)) as image:
-                if image.mode != "1":
-                    image = image.convert("1")
-                image.load()
-                scanlines = image.tobytes()
-                actual_height = image.size[1]
-                actual_width = image.size[0]
+                bilevel = image if image.mode == "1" else image.convert("1")
+                bilevel.load()
+                scanlines = bilevel.tobytes()
+                actual_height = bilevel.size[1]
+                actual_width = bilevel.size[0]
         except Exception as exc:
             raise OSError(f"CCITTFaxDecode: libtiff decode failed: {exc}") from exc
 
@@ -332,8 +331,9 @@ class CCITTFaxDecode(Filter):
         # Extract the single encoded strip from the synthetic TIFF.
         try:
             with Image.open(io.BytesIO(tiff_bytes)) as parsed:
-                offsets = parsed.tag_v2[_TIFF_STRIP_OFFSETS]
-                counts = parsed.tag_v2[_TIFF_STRIP_BYTE_COUNTS]
+                tag_v2 = cast(Any, parsed).tag_v2
+                offsets = tag_v2[_TIFF_STRIP_OFFSETS]
+                counts = tag_v2[_TIFF_STRIP_BYTE_COUNTS]
         except Exception as exc:
             raise OSError(
                 f"CCITTFaxDecode.encode: failed to parse TIFF strip: {exc}"

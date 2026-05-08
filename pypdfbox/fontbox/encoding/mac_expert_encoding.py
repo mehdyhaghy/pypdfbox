@@ -177,7 +177,7 @@ class MacExpertEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.MacExpertEncoding``.
     """
 
-    INSTANCE: "MacExpertEncoding"
+    INSTANCE: MacExpertEncoding
 
     def __init__(self) -> None:
         super().__init__()

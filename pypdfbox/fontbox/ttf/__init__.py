@@ -21,12 +21,12 @@ from .os2_windows_metrics_table import OS2WindowsMetricsTable
 from .otf_parser import OTFParser
 from .post_script_table import PostScriptTable
 from .true_type_font import TrueTypeFont
-from .ttf_parser import TTFParser
 from .ttf_data_stream import (
     MemoryTTFDataStream,
     RandomAccessReadDataStream,
     TTFDataStream,
 )
+from .ttf_parser import TTFParser
 from .ttf_subsetter import TTFSubsetter
 from .ttf_table import TTFTable
 from .vertical_header_table import VerticalHeaderTable

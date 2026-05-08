@@ -11,7 +11,7 @@ matching the spirit of the upstream API while staying idiomatic.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509 import Certificate, load_der_x509_certificate, load_pem_x509_certificate
@@ -19,8 +19,8 @@ from cryptography.x509 import Certificate, load_der_x509_certificate, load_pem_x
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 
-    PrivateKeyLike = Union[PrivateKeyTypes, bytes, bytearray]
-    CertificateLike = Union[Certificate, bytes, bytearray]
+    PrivateKeyLike = PrivateKeyTypes | bytes | bytearray
+    CertificateLike = Certificate | bytes | bytearray
 
 
 class PublicKeyDecryptionMaterial:

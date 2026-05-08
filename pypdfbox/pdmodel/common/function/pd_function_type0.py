@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from pypdfbox.cos import COSArray, COSBase, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSNumber, COSStream
 
 from .pd_function import PDFunction
 
@@ -245,9 +245,9 @@ class PDFunctionType0(PDFunction):
         out: list[int] = []
         for i in range(size.size()):
             item = size.get(i)
-            try:
-                out.append(int(item.float_value()))  # type: ignore[union-attr]
-            except AttributeError:
+            if isinstance(item, COSNumber):
+                out.append(int(item.float_value()))
+            else:
                 out.append(0)
         return out
 
@@ -514,12 +514,9 @@ class PDFunctionType0(PDFunction):
         n = num_in
 
         # Per-axis stencil: 2 samples (linear) or 4 samples (cubic).
-        if order == 3:
-            # Cubic Catmull-Rom: per axis we need samples at floor-1, floor,
-            # floor+1, floor+2 — clamped to [0, size-1].
-            stencil_offsets = (-1, 0, 1, 2)
-        else:
-            stencil_offsets = (0, 1)
+        # Cubic Catmull-Rom: per axis we need samples at floor-1, floor,
+        # floor+1, floor+2 — clamped to [0, size-1].
+        stencil_offsets = (-1, 0, 1, 2) if order == 3 else (0, 1)
         stencil_w = len(stencil_offsets)
 
         output: list[float] = []
@@ -568,10 +565,11 @@ class PDFunctionType0(PDFunction):
             # Step 5: map [0, 2^bits-1] → /Decode (and clamp to it — cubic
             # Catmull-Rom can overshoot the sample envelope).
             d_lo, d_hi = decode_pairs[j]
-            if sample_max == 0:
-                decoded = d_lo
-            else:
-                decoded = sample * (d_hi - d_lo) / sample_max + d_lo
+            decoded = (
+                d_lo
+                if sample_max == 0
+                else sample * (d_hi - d_lo) / sample_max + d_lo
+            )
             output.append(decoded)
 
         # Step 6: clip to /Range.

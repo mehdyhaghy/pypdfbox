@@ -51,7 +51,7 @@ class XmpParsingException(ValueError):
 
     def __init__(
         self,
-        error_or_message: "XmpParsingException.ErrorType | str",
+        error_or_message: XmpParsingException.ErrorType | str,
         message: str | None = None,
         cause: BaseException | None = None,
     ) -> None:
@@ -67,12 +67,12 @@ class XmpParsingException(ValueError):
         if cause is not None:
             self.__cause__ = cause
 
-    def get_error_type(self) -> "XmpParsingException.ErrorType":
+    def get_error_type(self) -> XmpParsingException.ErrorType:
         """Returns the categorical error type (upstream ``getErrorType``)."""
         return self._error_type
 
     @property
-    def error_type(self) -> "XmpParsingException.ErrorType":
+    def error_type(self) -> XmpParsingException.ErrorType:
         """Pythonic accessor for :meth:`get_error_type`."""
         return self._error_type
 
@@ -99,13 +99,14 @@ _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
 
 
 # Match the <?xpacket begin="..." id="..." ?> processing instruction. Whitespace
-# is permitted between attributes.
+# and attribute order are intentionally permissive; real packets are not always
+# emitted in the canonical serializer order.
 _XPACKET_BEGIN_RE = re.compile(
-    rb"<\?xpacket\s+begin\s*=\s*[\"']([^\"']*)[\"']"
-    rb"\s+id\s*=\s*[\"']([^\"']*)[\"']"
-    rb"(?:\s+bytes\s*=\s*[\"']([^\"']*)[\"'])?"
-    rb"(?:\s+encoding\s*=\s*[\"']([^\"']*)[\"'])?"
-    rb"[^?]*\?>",
+    rb"<\?xpacket\b(?=[^?]*\bbegin\s*=)(?=[^?]*\bid\s*=)([^?]*)\?>",
+    re.DOTALL,
+)
+_XPACKET_ATTR_RE = re.compile(
+    rb"\b(begin|id|bytes|encoding)\s*=\s*([\"'])(.*?)\2",
     re.DOTALL,
 )
 _XPACKET_END_RE = re.compile(rb"<\?xpacket\s+end\s*=\s*[\"']([^\"']*)[\"']\s*\?>")
@@ -117,6 +118,13 @@ def _strip_qname(tag: str) -> tuple[str, str]:
         end = tag.find("}")
         return tag[1:end], tag[end + 1 :]
     return "", tag
+
+
+def _parse_xpacket_attributes(raw_attrs: bytes) -> dict[str, str]:
+    return {
+        name.decode("ascii"): value.decode("utf-8", errors="replace")
+        for name, _quote, value in _XPACKET_ATTR_RE.findall(raw_attrs)
+    }
 
 
 class DomXmpParser:
@@ -156,7 +164,9 @@ class DomXmpParser:
     # public API (upstream-named entry points)
     # ------------------------------------------------------------------
 
-    def parse(self, source: bytes | bytearray | str | IO[bytes]) -> XMPMetadata:
+    def parse(
+        self, source: bytes | bytearray | memoryview | str | IO[bytes]
+    ) -> XMPMetadata:
         raw = self._read_bytes(source)
         body, xpacket_begin, xpacket_id, xpacket_bytes, xpacket_encoding, xpacket_end = (
             self._extract_packet(raw)
@@ -198,7 +208,9 @@ class DomXmpParser:
             metadata.add_schema(schema)
         return metadata
 
-    def parse_input(self, source: bytes | bytearray | str | IO[bytes]) -> XMPMetadata:
+    def parse_input(
+        self, source: bytes | bytearray | memoryview | str | IO[bytes]
+    ) -> XMPMetadata:
         """Upstream alias for :meth:`parse`."""
         return self.parse(source)
 
@@ -273,8 +285,8 @@ class DomXmpParser:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _read_bytes(source: bytes | bytearray | str | IO[bytes]) -> bytes:
-        if isinstance(source, (bytes, bytearray)):
+    def _read_bytes(source: bytes | bytearray | memoryview | str | IO[bytes]) -> bytes:
+        if isinstance(source, (bytes, bytearray, memoryview)):
             return bytes(source)
         if isinstance(source, str):
             return source.encode("utf-8")
@@ -303,12 +315,11 @@ class DomXmpParser:
         xpacket_end: str | None = None
 
         if begin_match:
-            xpacket_begin = begin_match.group(1).decode("utf-8", errors="replace")
-            xpacket_id = begin_match.group(2).decode("utf-8", errors="replace")
-            if begin_match.group(3) is not None:
-                xpacket_bytes = begin_match.group(3).decode("utf-8", errors="replace")
-            if begin_match.group(4) is not None:
-                xpacket_encoding = begin_match.group(4).decode("utf-8", errors="replace")
+            attrs = _parse_xpacket_attributes(begin_match.group(1))
+            xpacket_begin = attrs.get("begin")
+            xpacket_id = attrs.get("id")
+            xpacket_bytes = attrs.get("bytes")
+            xpacket_encoding = attrs.get("encoding")
             body = body[begin_match.end() :]
 
         end_match = _XPACKET_END_RE.search(body)
@@ -352,8 +363,8 @@ class DomXmpParser:
             if ns == _RDF_NS:
                 continue
             schema = self._schema_for(ns, local, desc, metadata, per_ns, about)
-            value = self._parse_property_value(child)
-            self._assign(schema, local, value)
+            parsed_value = self._parse_property_value(child)
+            self._assign(schema, local, parsed_value)
 
     @staticmethod
     def _schema_for(
@@ -430,7 +441,7 @@ class DomXmpParser:
 
 
 # Convenience module-level wrapper to mirror upstream usage patterns.
-def parse(source: bytes | bytearray | str | IO[bytes]) -> XMPMetadata:
+def parse(source: bytes | bytearray | memoryview | str | IO[bytes]) -> XMPMetadata:
     return DomXmpParser().parse(source)
 
 

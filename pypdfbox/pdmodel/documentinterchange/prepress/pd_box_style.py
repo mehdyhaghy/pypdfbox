@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
@@ -22,8 +22,7 @@ class PDBoxStyle:
     * ``/W`` — guideline width in default user-space units (default ``1``)
     * ``/S`` — guideline style name (``"S"`` solid, ``"D"`` dashed; default
       :attr:`GUIDELINE_STYLE_SOLID`)
-    * ``/D`` — line dash pattern (1- or 2-element number array; default
-      ``[3]``)
+    * ``/D`` — line dash pattern array (default ``[3]``)
     """
 
     # Style names per upstream PDFBox.
@@ -54,9 +53,9 @@ class PDBoxStyle:
         color_values = self._dictionary.get_cos_array(_C)
         if color_values is None:
             color_values = COSArray()
-            color_values.add(COSInteger.ZERO)
-            color_values.add(COSInteger.ZERO)
-            color_values.add(COSInteger.ZERO)
+            color_values.add(COSInteger.get(0))
+            color_values.add(COSInteger.get(0))
+            color_values.add(COSInteger.get(0))
             self._dictionary.set_item(_C, color_values)
         return PDColor(color_values, PDDeviceRGB.INSTANCE)
 
@@ -75,14 +74,40 @@ class PDBoxStyle:
         """Upstream-parity alias for :meth:`set_guideline_color`."""
         self.set_guideline_color(color)
 
+    def has_guideline_color(self) -> bool:
+        """Return ``True`` when ``/C`` is present as a colour array."""
+        return isinstance(self._dictionary.get_dictionary_object(_C), COSArray)
+
+    def clear_guideline_color(self) -> None:
+        """Remove ``/C`` so reads fall back to the default guideline colour."""
+        self._dictionary.remove_item(_C)
+
     # ---------- /W — guideline width ----------
 
     def get_guideline_width(self) -> float:
         """Return ``/W`` in default user-space units. Default is ``1.0``."""
         return self._dictionary.get_float(_W, 1.0)
 
-    def set_guideline_width(self, width: float) -> None:
-        self._dictionary.set_float(_W, float(width))
+    def set_guideline_width(self, width: float | None) -> None:
+        """Set ``/W`` in default user-space units.
+
+        ``None`` removes the entry so subsequent reads fall back to the
+        default width of ``1.0``.
+        """
+        if width is None:
+            self._dictionary.remove_item(_W)
+        else:
+            self._dictionary.set_float(_W, float(width))
+
+    def has_guideline_width(self) -> bool:
+        """Return ``True`` when ``/W`` is present as a numeric COS value."""
+        return isinstance(
+            self._dictionary.get_dictionary_object(_W), (COSInteger, COSFloat)
+        )
+
+    def clear_guideline_width(self) -> None:
+        """Remove ``/W`` so reads fall back to the default width."""
+        self._dictionary.remove_item(_W)
 
     # ---------- /S — guideline style ----------
 
@@ -101,6 +126,14 @@ class PDBoxStyle:
         else:
             self._dictionary.set_name(_S, style)
 
+    def has_guideline_style(self) -> bool:
+        """Return ``True`` when ``/S`` is present as a style name."""
+        return isinstance(self._dictionary.get_dictionary_object(_S), COSName)
+
+    def clear_guideline_style(self) -> None:
+        """Remove ``/S`` so reads fall back to the solid guideline style."""
+        self._dictionary.remove_item(_S)
+
     # ---------- /D — line dash pattern ----------
 
     def get_line_dash_pattern(self) -> PDLineDashPattern:
@@ -114,11 +147,11 @@ class PDBoxStyle:
         d = self._dictionary.get_cos_array(_D)
         if d is None:
             d = COSArray()
-            d.add(COSInteger.THREE)
+            d.add(COSInteger.get(3))
             self._dictionary.set_item(_D, d)
         line_array = COSArray()
         line_array.add(d)
-        line_array.add(COSInteger.ZERO)
+        line_array.add(COSInteger.get(0))
         return PDLineDashPattern.from_cos_array(line_array)
 
     def set_line_dash_pattern(self, dash_array: COSArray | None) -> None:
@@ -130,6 +163,14 @@ class PDBoxStyle:
             self._dictionary.remove_item(_D)
         else:
             self._dictionary.set_item(_D, dash_array)
+
+    def has_line_dash_pattern(self) -> bool:
+        """Return ``True`` when ``/D`` is present as a dash-pattern array."""
+        return isinstance(self._dictionary.get_dictionary_object(_D), COSArray)
+
+    def clear_line_dash_pattern(self) -> None:
+        """Remove ``/D`` so reads fall back to the default dash pattern."""
+        self._dictionary.remove_item(_D)
 
 
 __all__ = ["PDBoxStyle"]

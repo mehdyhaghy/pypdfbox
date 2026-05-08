@@ -12,6 +12,7 @@ from pypdfbox.cos import (
 from pypdfbox.pdmodel import PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
 from pypdfbox.pdmodel.interactive.action import PDActionURI, PDPageAdditionalActions
+from pypdfbox.pdmodel.interactive.annotation import PDAnnotation
 from pypdfbox.pdmodel.interactive.pagenavigation import PDTransition
 
 
@@ -267,7 +268,7 @@ def test_set_viewports_round_trip() -> None:
 def test_set_viewports_rejects_bad_entry() -> None:
     page = PDPage()
     with pytest.raises(TypeError):
-        page.set_viewports(["not-a-viewport"])  # type: ignore[list-item]
+        page.set_viewports(["not-a-viewport"])
 
 
 def test_get_resource_cache_default_none() -> None:
@@ -580,10 +581,8 @@ def test_get_annotations_with_filter_keeps_only_accepted() -> None:
         arr.add(ann)
     page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), arr)
 
-    def keep_links(annotation: object) -> bool:
-        subtype = annotation.get_cos_object().get_name(  # type: ignore[attr-defined]
-            COSName.get_pdf_name("Subtype")
-        )
+    def keep_links(annotation: PDAnnotation) -> bool:
+        subtype = annotation.get_cos_object().get_name(COSName.get_pdf_name("Subtype"))
         return subtype == "Link"
 
     filtered = page.get_annotations(keep_links)
@@ -621,7 +620,7 @@ def test_get_annotations_skips_null_entries() -> None:
 
     page = PDPage()
     arr = COSArray()
-    arr.add(COSNull.NULL)  # type: ignore[attr-defined]
+    arr.add(COSNull.NULL)
     legit = COSDictionary()
     legit.set_item(
         COSName.get_pdf_name("Subtype"),
@@ -745,11 +744,12 @@ def test_has_actions_does_not_auto_materialise() -> None:
         COSName.get_pdf_name("AA")
     ) is None
 
-    # Empty /AA also reports False.
+    # Empty /AA still reports True: has_* helpers are direct key-presence
+    # checks and do not inspect the action triggers.
     page.get_cos_object().set_item(
         COSName.get_pdf_name("AA"), COSDictionary()
     )
-    assert page.has_actions() is False
+    assert page.has_actions() is True
 
     # Populated /AA reports True.
     aa = COSDictionary()
@@ -761,9 +761,10 @@ def test_has_actions_does_not_auto_materialise() -> None:
 def test_has_annotations() -> None:
     page = PDPage()
     assert page.has_annotations() is False
-    # Empty array — still False.
+    # Empty array still reports True: has_* helpers are direct key-presence
+    # checks and do not inspect typed contents.
     page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), COSArray())
-    assert page.has_annotations() is False
+    assert page.has_annotations() is True
     # Populated array — True.
     arr = COSArray()
     ann = COSDictionary()

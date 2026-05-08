@@ -38,7 +38,7 @@ class CFFCIDFont(CFFFont):
     # ---------- factories ----------
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview) -> "CFFCIDFont":
+    def from_bytes(cls, data: bytes | bytearray | memoryview) -> CFFCIDFont:
         """Parse a CFF byte stream as a CIDKeyed font.
 
         Raises ``OSError`` when the parsed font is name-keyed (i.e. has
@@ -53,13 +53,12 @@ class CFFCIDFont(CFFFont):
         return cls.from_cff_font(base)
 
     @classmethod
-    def from_cff_font(cls, base: CFFFont) -> "CFFCIDFont":
+    def from_cff_font(cls, base: CFFFont) -> CFFCIDFont:
         """Re-wrap an already-parsed :class:`CFFFont` as a
         :class:`CFFCIDFont`. Cheap — shares the underlying fontTools
         font set, no re-decompilation."""
         instance = cls()
-        instance._fontset = base._fontset  # noqa: SLF001
-        instance._top = base._top  # noqa: SLF001
+        instance._copy_base_state_from(base)
         return instance
 
     # ---------- CID-specific accessors ----------
@@ -279,7 +278,7 @@ class CFFCIDFont(CFFFont):
                 return int(selector)
         return -1
 
-    def has_glyph(self, selector: int | str) -> bool:  # type: ignore[override]
+    def has_glyph(self, selector: int | str) -> bool:
         """PDFBox: ``CFFCIDFont.hasGlyph(int|String)`` — whether the
         font carries a glyph for the given CID."""
         cid = self._coerce_to_cid(selector)
@@ -287,7 +286,7 @@ class CFFCIDFont(CFFFont):
             return False
         return f"cid{cid:05d}" in self.get_charset()
 
-    def get_path(self, selector: int | str) -> list[tuple]:  # type: ignore[override]
+    def get_path(self, selector: int | str) -> list[tuple[Any, ...]]:
         """PDFBox: ``CFFCIDFont.getPath(int|String)`` — outline for the
         glyph identified by CID."""
         cid = self._coerce_to_cid(selector)
@@ -299,7 +298,7 @@ class CFFCIDFont(CFFFont):
             return []
         return super().get_path(name)
 
-    def get_width(self, selector: int | str) -> float:  # type: ignore[override]
+    def get_width(self, selector: int | str) -> float:
         """PDFBox: ``CFFCIDFont.getWidth(int|String)`` — advance width
         for the glyph identified by CID."""
         cid = self._coerce_to_cid(selector)

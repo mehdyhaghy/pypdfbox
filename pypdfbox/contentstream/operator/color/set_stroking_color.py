@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pypdfbox.cos import COSArray, COSBase, COSNumber
 from pypdfbox.pdmodel.graphics.color import PDColor
@@ -23,6 +23,9 @@ class SetStrokingColor(OperatorProcessor):
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         del operator
+        context = self._context
+        if context is not None and not context.is_should_process_color_operators():
+            return
         color_space = self.get_color_space()
         if color_space is None:
             return
@@ -44,8 +47,10 @@ class SetStrokingColor(OperatorProcessor):
         graphics_state = self._graphics_state()
         getter = getattr(graphics_state, "get_stroking_color", None)
         if getter is not None:
-            return getter()
-        return getattr(graphics_state, "stroking_color", None)
+            return cast("PDColor | None", getter())
+        return cast(
+            "PDColor | None", getattr(graphics_state, "stroking_color", None)
+        )
 
     def set_color(self, color: PDColor) -> None:
         """Set the current stroking color."""

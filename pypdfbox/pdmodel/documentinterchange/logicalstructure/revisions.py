@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Generic, Iterator, TypeVar
+from collections.abc import Iterator
+from typing import Any, cast
 
 from pypdfbox.cos import COSArray, COSBase, COSInteger
 
-T = TypeVar("T")
 
-
-class Revisions(Generic[T]):
+class Revisions[T]:
     """
     Helper that pairs values with PDF revision numbers. Mirrors PDFBox
     ``Revisions<T>`` (used by ``PDStructureElement`` for ``/A`` attribute
@@ -15,8 +14,8 @@ class Revisions(Generic[T]):
 
     Storage: a flat ``COSArray`` of ``[value, revision_int, value,
     revision_int, ...]``. The trailing ``revision_int`` is omitted on the
-    PDF side when the revision is ``0``, but for in-memory simplicity the
-    helper keeps both slots populated.
+    PDF side when the revision is ``0``; newly-added entries keep both slots
+    populated while existing compact arrays are read in place.
     """
 
     def __init__(self, array: COSArray | None = None) -> None:
@@ -29,10 +28,13 @@ class Revisions(Generic[T]):
         self._array.add(COSInteger.get(revision_number))
 
     def get_object_at(self, index: int) -> Any:
-        return self._array.get_object(index * 2)
+        return self._array.get_object(self._entry_offset(index))
 
     def get_revision_number_at(self, index: int) -> int:
-        entry = self._array.get_object(index * 2 + 1)
+        revision_offset = self._revision_offset(index)
+        if revision_offset is None:
+            return 0
+        entry = self._array.get_object(revision_offset)
         if isinstance(entry, COSInteger):
             return entry.int_value()
         return 0
@@ -56,14 +58,20 @@ class Revisions(Generic[T]):
     def set_object_at(self, index: int, value: T) -> None:
         if index < 0 or index >= self.size():
             raise IndexError(index)
-        self._array.set(index * 2, _to_cos(value))
+        self._array.set(self._entry_offset(index), _to_cos(value))
 
     def set_revision_number_at(self, index: int, revision_number: int) -> None:
         if index < 0 or index >= self.size():
             raise IndexError(index)
         if revision_number < 0:
             raise ValueError("Revision number must be > -1")
-        self._array.set(index * 2 + 1, COSInteger.get(revision_number))
+        revision_offset = self._revision_offset(index)
+        if revision_offset is None:
+            self._array.add_at(
+                self._entry_offset(index) + 1, COSInteger.get(revision_number)
+            )
+            return
+        self._array.set(revision_offset, COSInteger.get(revision_number))
 
     def set_revision_number(self, value: T, revision_number: int) -> None:
         """Update the revision number paired with ``value``.
@@ -79,10 +87,10 @@ class Revisions(Generic[T]):
         idx = self.index_of(value)
         if idx == -1:
             return
-        self._array.set(idx * 2 + 1, COSInteger.get(revision_number))
+        self.set_revision_number_at(idx, revision_number)
 
     def size(self) -> int:
-        return self._array.size() // 2
+        return len(self._entry_offsets())
 
     def is_empty(self) -> bool:
         return self.size() == 0
@@ -96,18 +104,22 @@ class Revisions(Generic[T]):
     def index_of(self, value: Any) -> int:
         target = _to_cos(value)
         for i in range(self.size()):
-            if self._array.get_object(i * 2) is target or self._array.get_object(i * 2) == target:
+            item = self._array.get_object(self._entry_offset(i))
+            if item is target or item == target:
                 return i
         return -1
 
     def remove_at(self, index: int) -> Any:
         if index < 0 or index >= self.size():
             raise IndexError(index)
-        value = self._array.get_object(index * 2)
-        # Remove revision slot first (higher index) so the object slot index
-        # stays valid for the second removal.
-        self._array.remove_at(index * 2 + 1)
-        self._array.remove_at(index * 2)
+        object_offset = self._entry_offset(index)
+        value = self._array.get_object(object_offset)
+        revision_offset = self._revision_offset(index)
+        # Remove revision slot first when present (higher index) so the object
+        # slot index stays valid for the second removal.
+        if revision_offset is not None:
+            self._array.remove_at(revision_offset)
+        self._array.remove_at(object_offset)
         return value
 
     def to_cos_array(self) -> COSArray:
@@ -134,11 +146,41 @@ class Revisions(Generic[T]):
         ]
         return "{" + "; ".join(parts) + "}"
 
+    def _entry_offsets(self) -> list[int]:
+        """Return raw COSArray offsets for objects in compact revision arrays."""
+        offsets: list[int] = []
+        i = 0
+        while i < self._array.size():
+            offsets.append(i)
+            next_i = i + 1
+            if next_i < self._array.size() and isinstance(
+                self._array.get_object(next_i), COSInteger
+            ):
+                i += 2
+            else:
+                i += 1
+        return offsets
+
+    def _entry_offset(self, index: int) -> int:
+        offsets = self._entry_offsets()
+        if index < 0 or index >= len(offsets):
+            raise IndexError(index)
+        return offsets[index]
+
+    def _revision_offset(self, index: int) -> int | None:
+        object_offset = self._entry_offset(index)
+        revision_offset = object_offset + 1
+        if revision_offset >= self._array.size():
+            return None
+        if isinstance(self._array.get_object(revision_offset), COSInteger):
+            return revision_offset
+        return None
+
 
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
-        return value.get_cos_object()
-    return value
+        return cast(COSBase, value.get_cos_object())
+    return cast(COSBase, value)
 
 
 __all__ = ["Revisions"]

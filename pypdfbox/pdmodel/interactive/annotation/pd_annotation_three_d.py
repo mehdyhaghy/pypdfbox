@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSBoolean, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSBoolean, COSDictionary, COSName
 
 from .pd_annotation import PDAnnotation
 
@@ -46,8 +46,7 @@ class PDAnnotation3D(PDAnnotation):
 
     def get_3dd(self) -> COSBase | None:
         """Return the raw ``/3DD`` value (a 3D stream or 3D reference
-        dictionary). Typed ``PD3DStream`` wrapper deferred — see
-        ``CHANGES.md``."""
+        dictionary)."""
         return self._dict.get_dictionary_object(_3DD)
 
     def set_3dd(self, value: COSBase | None) -> None:
@@ -58,6 +57,13 @@ class PDAnnotation3D(PDAnnotation):
             _3DD,
             value.get_cos_object() if hasattr(value, "get_cos_object") else value,
         )
+
+    def get_artwork(self) -> COSBase | None:
+        """Descriptive alias for the raw ``/3DD`` 3D artwork entry."""
+        return self.get_3dd()
+
+    def set_artwork(self, value: COSBase | None) -> None:
+        self.set_3dd(value)
 
     # ---------- /3DV (default view) ----------
 
@@ -73,6 +79,13 @@ class PDAnnotation3D(PDAnnotation):
             _3DV,
             value.get_cos_object() if hasattr(value, "get_cos_object") else value,
         )
+
+    def get_default_view(self) -> COSBase | None:
+        """Descriptive alias for the raw ``/3DV`` default-view entry."""
+        return self.get_3dv()
+
+    def set_default_view(self, value: COSBase | None) -> None:
+        self.set_3dv(value)
 
     # ---------- /3DA (activation dictionary) ----------
 
@@ -91,6 +104,13 @@ class PDAnnotation3D(PDAnnotation):
             _3DA,
             value.get_cos_object() if hasattr(value, "get_cos_object") else value,
         )
+
+    def get_activation_dictionary(self) -> COSDictionary | None:
+        """Descriptive alias for the raw ``/3DA`` activation dictionary."""
+        return self.get_3da()
+
+    def set_activation_dictionary(self, value: COSDictionary | None) -> None:
+        self.set_3da(value)
 
     # ---------- /3DI (interactive flag) ----------
 

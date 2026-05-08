@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
 
@@ -78,6 +79,8 @@ class PDShadingType4(PDShading):
         and ``2 + i`` is the i-th color component range. Each pair occupies
         two consecutive entries, so the array must have at least
         ``param_num * 2 + 2`` elements."""
+        if param_num < 0:
+            return None
         v = self._dict.get_dictionary_object(_DECODE)
         if not isinstance(v, COSArray):
             return None
@@ -114,7 +117,7 @@ class PDShadingType4(PDShading):
             return int(get_components())
         return -1
 
-    def get_function(self):
+    def get_function(self) -> Any:
         from pypdfbox.pdmodel.common.function import PDFunction
 
         item = self._dict.get_dictionary_object(_FUNCTION)
@@ -122,7 +125,7 @@ class PDShadingType4(PDShading):
             return None
         return PDFunction.create(item)
 
-    def set_function(self, value) -> None:
+    def set_function(self, value: Any) -> None:
         from pypdfbox.pdmodel.common.function import PDFunction
 
         if value is None:

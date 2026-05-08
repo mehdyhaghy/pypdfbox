@@ -1574,7 +1574,7 @@ def test_set_associated_files_rejects_non_filespec() -> None:
     doc = PDDocument()
     cat = doc.get_document_catalog()
     with pytest.raises(TypeError, match="PDFileSpecification"):
-        cat.set_associated_files(["not-a-spec"])  # type: ignore[list-item]
+        cat.set_associated_files(["not-a-spec"])
 
 
 # ---------- Wave 259: typed name-as-string accessors tolerate COSString ----------
@@ -1771,7 +1771,6 @@ def test_has_dests_name_tree_distinguishes_modern_from_legacy() -> None:
     assert cat.has_dests() is False
 
     # Wire only the legacy /Dests dict — modern predicate stays False.
-    cat.set_dests_legacy = None  # noqa: SLF001 — sentinel only
     legacy = COSDictionary()
     cat.get_cos_object().set_item(COSName.get_pdf_name("Dests"), legacy)
     assert cat.has_dests() is True

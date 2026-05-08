@@ -53,7 +53,7 @@ class PDAction:
             return None
         if not isinstance(action, COSDictionary):
             raise TypeError(f"PDAction.create expects COSDictionary, got {type(action).__name__}")
-        sub_type = action.get_name(_S)
+        sub_type = action.get_name_as_string(_S)
         if sub_type == PDActionGoTo.SUB_TYPE:
             return PDActionGoTo(action)
         if sub_type == PDActionURI.SUB_TYPE:
@@ -106,7 +106,7 @@ class PDAction:
         (PDF 32000-1 §12.6.2 Table 192). Mirrors upstream
         ``PDAction.getType()``.
         """
-        return self._action.get_name(_TYPE)
+        return self._action.get_name_as_string(_TYPE)
 
     def set_type(self, type_value: str) -> None:
         """Set the ``/Type`` entry of the action dictionary.
@@ -118,7 +118,7 @@ class PDAction:
         self._action.set_name(_TYPE, type_value)
 
     def get_sub_type(self) -> str | None:
-        return self._action.get_name(_S)
+        return self._action.get_name_as_string(_S)
 
     def set_sub_type(self, sub_type: str) -> None:
         self._action.set_name(_S, sub_type)

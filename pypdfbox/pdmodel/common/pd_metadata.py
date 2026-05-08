@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import COSName, COSStream
@@ -169,16 +170,14 @@ class PDMetadata(PDStream):
             data = bytes(xmp)
         elif hasattr(xmp, "read"):
             chunk = xmp.read()
-            if isinstance(chunk, str):
-                data = chunk.encode("utf-8")
-            else:
-                data = bytes(chunk)
+            data = chunk.encode("utf-8") if isinstance(chunk, str) else bytes(chunk)
         else:
             raise TypeError(
                 f"import_xmp_metadata expected bytes, str, or a file-like "
                 f"object; got {type(xmp).__name__}"
             )
-        with self.create_output_stream() as out:
+        filters = self.get_filters()
+        with self.create_output_stream(filters if filters else None) as out:
             out.write(data)
 
     def export_xmp_metadata(self) -> bytes:
@@ -246,7 +245,10 @@ class PDMetadata(PDStream):
 
     # ---------- convenience ----------
 
-    def create_input_stream(self, stop_filters=None) -> BinaryIO:  # type: ignore[override]
+    def create_input_stream(
+        self,
+        stop_filters: Sequence[str | COSName] | None = None,
+    ) -> BinaryIO:
         # Provided for symmetry with upstream's ``createInputStream()``.
         # PDStream already supplies the implementation; this override
         # exists purely so the docstring shows up on PDMetadata.

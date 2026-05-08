@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSNumber
 
 _TYPE: COSName = COSName.get_pdf_name("Type")
 _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
@@ -45,6 +43,12 @@ class FDFAnnotation:
     def get_page(self) -> int:
         return self._annot.get_int(_PAGE)
 
+    def has_page(self) -> bool:
+        return isinstance(self._annot.get_dictionary_object(_PAGE), COSNumber)
+
+    def clear_page(self) -> None:
+        self._annot.remove_item(_PAGE)
+
     def set_page(self, page: int) -> None:
         self._annot.set_int(_PAGE, page)
 
@@ -52,6 +56,12 @@ class FDFAnnotation:
 
     def get_name(self) -> str | None:
         return self._annot.get_string(_NM)
+
+    def has_name(self) -> bool:
+        return self.get_name() is not None
+
+    def clear_name(self) -> None:
+        self.set_name(None)
 
     def set_name(self, name: str | None) -> None:
         self._annot.set_string(_NM, name)
@@ -61,6 +71,12 @@ class FDFAnnotation:
     def get_contents(self) -> str | None:
         return self._annot.get_string(_CONTENTS)
 
+    def has_contents(self) -> bool:
+        return self.get_contents() is not None
+
+    def clear_contents(self) -> None:
+        self.set_contents(None)
+
     def set_contents(self, contents: str | None) -> None:
         self._annot.set_string(_CONTENTS, contents)
 
@@ -68,6 +84,12 @@ class FDFAnnotation:
 
     def get_title(self) -> str | None:
         return self._annot.get_string(_T)
+
+    def has_title(self) -> bool:
+        return self.get_title() is not None
+
+    def clear_title(self) -> None:
+        self.set_title(None)
 
     def set_title(self, title: str | None) -> None:
         self._annot.set_string(_T, title)
@@ -80,6 +102,12 @@ class FDFAnnotation:
             return v.name
         return None
 
+    def has_subtype(self) -> bool:
+        return self.get_subtype() is not None
+
+    def clear_subtype(self) -> None:
+        self.set_subtype(None)
+
     def set_subtype(self, subtype: str | None) -> None:
         if subtype is None:
             self._annot.remove_item(_SUBTYPE)
@@ -91,13 +119,16 @@ class FDFAnnotation:
     def get_rectangle(self) -> tuple[float, float, float, float] | None:
         v = self._annot.get_dictionary_object(_RECT)
         if isinstance(v, COSArray) and len(v) == 4:
-            return (
-                _as_float(v[0]),
-                _as_float(v[1]),
-                _as_float(v[2]),
-                _as_float(v[3]),
-            )
+            values = _float_values(v, 4)
+            if values is not None:
+                return (values[0], values[1], values[2], values[3])
         return None
+
+    def has_rectangle(self) -> bool:
+        return self.get_rectangle() is not None
+
+    def clear_rectangle(self) -> None:
+        self.set_rectangle(None)
 
     def set_rectangle(self, rect: tuple[float, float, float, float] | None) -> None:
         if rect is None:
@@ -113,8 +144,16 @@ class FDFAnnotation:
     def get_color(self) -> tuple[float, float, float] | None:
         v = self._annot.get_dictionary_object(_C)
         if isinstance(v, COSArray) and len(v) == 3:
-            return (_as_float(v[0]), _as_float(v[1]), _as_float(v[2]))
+            values = _float_values(v, 3)
+            if values is not None:
+                return (values[0], values[1], values[2])
         return None
+
+    def has_color(self) -> bool:
+        return self.get_color() is not None
+
+    def clear_color(self) -> None:
+        self.set_color(None)
 
     def set_color(self, color: tuple[float, float, float] | None) -> None:
         if color is None:
@@ -130,6 +169,12 @@ class FDFAnnotation:
     def get_flags(self) -> int:
         return self._annot.get_int(_F, 0)
 
+    def has_flags(self) -> bool:
+        return isinstance(self._annot.get_dictionary_object(_F), COSNumber)
+
+    def clear_flags(self) -> None:
+        self._annot.remove_item(_F)
+
     def set_flags(self, flags: int) -> None:
         self._annot.set_int(_F, flags)
 
@@ -140,6 +185,12 @@ class FDFAnnotation:
         if isinstance(v, COSName):
             return v.name
         return None
+
+    def has_name_attribute(self) -> bool:
+        return self.get_name_attribute() is not None
+
+    def clear_name_attribute(self) -> None:
+        self.set_name_attribute(None)
 
     def set_name_attribute(self, name: str | None) -> None:
         if name is None:
@@ -152,13 +203,19 @@ class FDFAnnotation:
     def get_modified_date(self) -> str | None:
         return self._annot.get_string(_M)
 
+    def has_modified_date(self) -> bool:
+        return self.get_modified_date() is not None
+
+    def clear_modified_date(self) -> None:
+        self.set_modified_date(None)
+
     def set_modified_date(self, date: str | None) -> None:
         self._annot.set_string(_M, date)
 
     # ---------- factory ----------
 
     @classmethod
-    def create(cls, annot: COSDictionary) -> "FDFAnnotation":
+    def create(cls, annot: COSDictionary) -> FDFAnnotation:
         """Dispatch to the concrete ``FDFAnnotation`` subtype based on
         ``/Subtype``. Mirrors ``FDFAnnotation.create(COSDictionary)`` upstream.
 
@@ -166,10 +223,7 @@ class FDFAnnotation:
         unknown or absent so callers always receive a usable wrapper.
         """
         sub = annot.get_dictionary_object(_SUBTYPE)
-        if isinstance(sub, COSName):
-            name = sub.name
-        else:
-            name = None
+        name = sub.name if isinstance(sub, COSName) else None
 
         # Lazy-import to avoid an import cycle: subtypes import this module.
         if name == "Text":
@@ -195,8 +249,11 @@ class FDFAnnotation:
         return cls(annot)
 
 
-def _as_float(v: COSBase | Any) -> float:
-    val = getattr(v, "value", None)
-    if isinstance(val, (int, float)):
-        return float(val)
-    return 0.0
+def _float_values(array: COSArray, size: int) -> tuple[float, ...] | None:
+    values: list[float] = []
+    for index in range(size):
+        value = array.get_object(index)
+        if not isinstance(value, COSNumber):
+            return None
+        values.append(value.float_value())
+    return tuple(values)

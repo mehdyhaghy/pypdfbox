@@ -52,10 +52,10 @@ class PDDocumentCatalog:
     Wrapper around the document's ``/Catalog`` (root) dictionary.
     Mirrors ``org.apache.pdfbox.pdmodel.PDDocumentCatalog``.
 
-    Cluster #1 ships the high-traffic accessors (pages, version,
-    language, page layout, page mode). Everything else (struct tree,
-    AcroForm, outlines, metadata, …) is stubbed with cluster pointers
-    — see the per-method docstrings.
+    The catalog is intentionally a thin typed facade over the root
+    dictionary. Accessors validate the expected COS shape and treat
+    malformed values as absent unless the matching PDFBox method
+    materialises a replacement dictionary/array on read.
     """
 
     def __init__(
@@ -776,9 +776,10 @@ class PDDocumentCatalog:
         ``/Threads`` is an array of indirect references to thread
         dictionaries. Mirrors upstream's auto-create behaviour — if
         ``/Threads`` is absent the entry is materialised in place as an
-        empty array so callers that mutate the returned list-like value
-        write back into the catalog. Non-dictionary entries (rare but
-        legal under defensive parsing) are skipped.
+        empty array. The returned Python list is a snapshot of typed
+        wrappers; use :meth:`set_threads` to persist list-level changes.
+        Non-dictionary entries (rare but legal under defensive parsing)
+        are skipped.
         """
         from pypdfbox.pdmodel.interactive.pagenavigation import PDThread
 
@@ -1024,7 +1025,10 @@ class PDDocumentCatalog:
         result: list[Any] = []
         for i in range(arr.size()):
             entry = arr.get_object(i)
-            spec = PDFileSpecification.create_fs(entry)
+            try:
+                spec = PDFileSpecification.create_fs(entry)
+            except OSError:
+                spec = None
             if spec is not None:
                 result.append(spec)
         return result
@@ -1252,18 +1256,54 @@ class PDDocumentCatalog:
         )
 
     def has_associated_files(self) -> bool:
-        """Return ``True`` when the catalog has a well-formed (non-empty)
-        ``/AF`` array entry (PDF 2.0 / ISO 32000-2 §14.13). An empty array
-        reads as absent."""
+        """Return ``True`` when the catalog has at least one resolvable
+        ``/AF`` file specification (PDF 2.0 / ISO 32000-2 §14.13).
+
+        Malformed arrays containing only non-file-spec entries read as
+        absent, matching :meth:`get_associated_files` which skips them.
+        """
         arr = self._catalog.get_dictionary_object(_AF)
-        return isinstance(arr, COSArray) and arr.size() > 0
+        if not isinstance(arr, COSArray):
+            return False
+        from .common.filespecification import PDFileSpecification
+
+        for i in range(arr.size()):
+            try:
+                if PDFileSpecification.create_fs(arr.get_object(i)) is not None:
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def has_output_intents(self) -> bool:
+        """Return ``True`` when the catalog has at least one well-formed
+        ``/OutputIntents`` dictionary entry.
+
+        Malformed arrays containing only non-dictionaries read as absent,
+        matching :meth:`get_output_intents` which skips those entries.
+        """
+        arr = self._catalog.get_dictionary_object(_OUTPUT_INTENTS)
+        if not isinstance(arr, COSArray):
+            return False
+        return any(
+            isinstance(arr.get_object(i), COSDictionary)
+            for i in range(arr.size())
+        )
 
     def has_requirements(self) -> bool:
-        """Return ``True`` when the catalog has a well-formed (non-empty)
-        ``/Requirements`` array entry (PDF 32000-1 §12.10). An empty array
-        reads as absent."""
+        """Return ``True`` when the catalog has at least one well-formed
+        ``/Requirements`` dictionary entry (PDF 32000-1 §12.10).
+
+        Malformed arrays containing only non-dictionaries read as absent,
+        matching :meth:`get_requirements` which skips those entries.
+        """
         arr = self._catalog.get_dictionary_object(_REQUIREMENTS)
-        return isinstance(arr, COSArray) and arr.size() > 0
+        if not isinstance(arr, COSArray):
+            return False
+        return any(
+            isinstance(arr.get_object(i), COSDictionary)
+            for i in range(arr.size())
+        )
 
     def has_developer_extensions(self) -> bool:
         """Return ``True`` when the catalog has a well-formed (non-empty)
@@ -1310,12 +1350,29 @@ class PDDocumentCatalog:
             self._catalog.get_dictionary_object(_PIECE_INFO), COSDictionary
         )
 
+    def has_actions(self) -> bool:
+        """Return ``True`` when the catalog has a non-empty ``/AA`` dict.
+
+        This is a read-only probe: unlike :meth:`get_actions`, it does not
+        auto-materialise an empty additional-actions dictionary.
+        """
+        actions = self._catalog.get_dictionary_object(_AA)
+        return isinstance(actions, COSDictionary) and len(actions) > 0
+
     def has_language(self) -> bool:
         """Return ``True`` when the catalog has a well-formed ``/Lang``
         text-string entry (PDF 32000-1 §14.9.2 — RFC 3066 / BCP 47
         language tag)."""
         v = self._catalog.get_dictionary_object(_LANG)
         return isinstance(v, COSString)
+
+    def has_page_layout(self) -> bool:
+        """Return ``True`` when ``/PageLayout`` is present and recognised."""
+        return self.get_page_layout() is not None
+
+    def has_page_mode(self) -> bool:
+        """Return ``True`` when ``/PageMode`` is present and recognised."""
+        return self.get_page_mode() is not None
 
     def has_version(self) -> bool:
         """Return ``True`` when the catalog has a well-formed ``/Version``
@@ -1338,6 +1395,20 @@ class PDDocumentCatalog:
             names.get_dictionary_object(dests_name), COSDictionary
         )
 
+    def has_base_uri(self) -> bool:
+        """Return ``True`` when ``/URI /Base`` is present as a text string."""
+        uri = self._catalog.get_dictionary_object(_URI)
+        if not isinstance(uri, COSDictionary):
+            return False
+        return isinstance(
+            uri.get_dictionary_object(COSName.get_pdf_name("Base")),
+            COSString,
+        )
+
+    def has_needs_rendering(self) -> bool:
+        """Return ``True`` when ``/NeedsRendering`` is explicitly present."""
+        return self._catalog.contains_key(_NEEDS_RENDERING)
+
     def is_tagged(self) -> bool:
         """Return ``True`` when the document advertises a tagged-PDF
         accessibility tree.
@@ -1350,6 +1421,141 @@ class PDDocumentCatalog:
         rather than the looser "structure tree exists" heuristic some
         readers use. Defaults to ``False`` when ``/MarkInfo`` is absent."""
         return self.is_document_marked()
+
+    # ---------- clear_* helpers ----------
+    #
+    # One-call removers matching the local pypdfbox style used by info,
+    # viewer-preference, action, and resource wrappers. These are equivalent
+    # to passing ``None`` to the paired setter, but make call sites that only
+    # want to remove catalog entries explicit and cache-safe.
+
+    def clear_version(self) -> None:
+        """Remove ``/Version``. No-op if absent."""
+        self.set_version(None)
+
+    def clear_language(self) -> None:
+        """Remove ``/Lang``. No-op if absent."""
+        self.set_language(None)
+
+    def clear_page_layout(self) -> None:
+        """Remove ``/PageLayout``. No-op if absent."""
+        self.set_page_layout(None)
+
+    def clear_page_mode(self) -> None:
+        """Remove ``/PageMode``. No-op if absent."""
+        self.set_page_mode(None)
+
+    def clear_struct_tree_root(self) -> None:
+        """Remove ``/StructTreeRoot``. No-op if absent."""
+        self.set_struct_tree_root(None)
+
+    def clear_structure_tree_root(self) -> None:
+        """Remove ``/StructTreeRoot`` using the upstream spelling."""
+        self.clear_struct_tree_root()
+
+    def clear_mark_info(self) -> None:
+        """Remove ``/MarkInfo``. No-op if absent."""
+        self.set_mark_info(None)
+
+    def clear_acro_form(self) -> None:
+        """Remove ``/AcroForm`` and invalidate the cached wrapper."""
+        self.set_acro_form(None)
+
+    def clear_document_outline(self) -> None:
+        """Remove ``/Outlines``. No-op if absent."""
+        self.set_document_outline(None)
+
+    def clear_outlines(self) -> None:
+        """Remove ``/Outlines`` using the upstream alias spelling."""
+        self.clear_document_outline()
+
+    def clear_metadata(self) -> None:
+        """Remove ``/Metadata``. No-op if absent."""
+        self.set_metadata(None)
+
+    def clear_actions(self) -> None:
+        """Remove ``/AA`` additional actions. No-op if absent."""
+        self.set_actions(None)
+
+    def clear_oc_properties(self) -> None:
+        """Remove ``/OCProperties``. No-op if absent."""
+        self.set_oc_properties(None)
+
+    def clear_optional_content_properties(self) -> None:
+        """Remove ``/OCProperties`` using the long-form alias spelling."""
+        self.clear_oc_properties()
+
+    def clear_names(self) -> None:
+        """Remove ``/Names``. No-op if absent."""
+        self.set_names(None)
+
+    def clear_dests(self) -> None:
+        """Remove legacy catalog-level ``/Dests``. No-op if absent."""
+        self.set_dests(None)
+
+    def clear_open_action(self) -> None:
+        """Remove ``/OpenAction``. No-op if absent."""
+        self.set_open_action(None)
+
+    def clear_viewer_preferences(self) -> None:
+        """Remove ``/ViewerPreferences``. No-op if absent."""
+        self.set_viewer_preferences(None)
+
+    def clear_view_preferences(self) -> None:
+        """Remove ``/ViewerPreferences`` using the upstream alias spelling."""
+        self.clear_viewer_preferences()
+
+    def clear_page_labels(self) -> None:
+        """Remove ``/PageLabels``. No-op if absent."""
+        self.set_page_labels(None)
+
+    def clear_output_intents(self) -> None:
+        """Remove ``/OutputIntents``. No-op if absent."""
+        self.set_output_intents(None)
+
+    def clear_threads(self) -> None:
+        """Remove ``/Threads``. No-op if absent."""
+        self.set_threads(None)
+
+    def clear_perms(self) -> None:
+        """Remove ``/Perms``. No-op if absent."""
+        self.set_perms(None)
+
+    def clear_legal(self) -> None:
+        """Remove ``/Legal``. No-op if absent."""
+        self.set_legal(None)
+
+    def clear_collection(self) -> None:
+        """Remove ``/Collection``. No-op if absent."""
+        self.set_collection(None)
+
+    def clear_developer_extensions(self) -> None:
+        """Remove ``/Extensions``. No-op if absent."""
+        self.set_developer_extensions(None)
+
+    def clear_uri(self) -> None:
+        """Remove the catalog-level ``/URI`` dictionary. No-op if absent."""
+        self.set_uri(None)
+
+    def clear_base_uri(self) -> None:
+        """Remove only ``/URI /Base`` and drop ``/URI`` if it becomes empty."""
+        self.set_base_uri(None)
+
+    def clear_requirements(self) -> None:
+        """Remove ``/Requirements``. No-op if absent."""
+        self.set_requirements(None)
+
+    def clear_associated_files(self) -> None:
+        """Remove ``/AF`` associated files. No-op if absent."""
+        self.set_associated_files(None)
+
+    def clear_piece_info(self) -> None:
+        """Remove ``/PieceInfo``. No-op if absent."""
+        self.set_piece_info(None)
+
+    def clear_needs_rendering(self) -> None:
+        """Remove ``/NeedsRendering``. No-op if absent."""
+        self.set_needs_rendering(None)
 
     # ---------- raw COS passthrough used by tests ----------
 

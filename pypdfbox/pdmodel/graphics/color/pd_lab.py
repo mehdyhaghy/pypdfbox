@@ -5,7 +5,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
-
 _WHITE_POINT: COSName = COSName.get_pdf_name("WhitePoint")
 _BLACK_POINT: COSName = COSName.get_pdf_name("BlackPoint")
 _RANGE: COSName = COSName.get_pdf_name("Range")
@@ -78,12 +77,24 @@ class PDLab(PDColorSpace):
     def set_white_point(self, white: list[float]) -> None:
         self._dict().set_item(_WHITE_POINT, COSArray.of_cos_floats(white))
 
+    def has_white_point(self) -> bool:
+        """Return ``True`` when ``/WhitePoint`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_WHITE_POINT), COSArray)
+
     def get_black_point(self) -> list[float]:
         out = _read_float_array(self._dict(), _BLACK_POINT, [0.0, 0.0, 0.0])
         return out[:3] if len(out) >= 3 else out
 
     def set_black_point(self, black: list[float]) -> None:
         self._dict().set_item(_BLACK_POINT, COSArray.of_cos_floats(black))
+
+    def has_black_point(self) -> bool:
+        """Return ``True`` when ``/BlackPoint`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_BLACK_POINT), COSArray)
+
+    def clear_black_point(self) -> None:
+        """Remove ``/BlackPoint`` so reads fall back to ``[0, 0, 0]``."""
+        self._dict().remove_item(_BLACK_POINT)
 
     def get_range(self) -> list[float]:
         out = _read_float_array(
@@ -93,6 +104,15 @@ class PDLab(PDColorSpace):
 
     def set_range(self, rng: list[float]) -> None:
         self._dict().set_item(_RANGE, COSArray.of_cos_floats(rng))
+
+    def has_range(self) -> bool:
+        """Return ``True`` when ``/Range`` is present as an array."""
+        return isinstance(self._dict().get_dictionary_object(_RANGE), COSArray)
+
+    def clear_range(self) -> None:
+        """Remove ``/Range`` and restore default a*/b* bounds."""
+        self._dict().remove_item(_RANGE)
+        self._initial_color = PDColor([0.0, 0.0, 0.0], self)
 
     # Component-level range accessors mirror upstream
     # ``PDLab.getARange()`` / ``getBRange()`` / ``setARange(PDRange)`` /
@@ -137,14 +157,10 @@ class PDLab(PDColorSpace):
     ) -> None:
         d = self._dict()
         existing = d.get_dictionary_object(_RANGE)
-        if isinstance(existing, COSArray):
-            range_array = existing
-        else:
-            range_array = COSArray()
-            range_array.add(COSFloat(-100.0))
-            range_array.add(COSFloat(100.0))
-            range_array.add(COSFloat(-100.0))
-            range_array.add(COSFloat(100.0))
+        range_array = existing if isinstance(existing, COSArray) else COSArray()
+        defaults = (-100.0, 100.0, -100.0, 100.0)
+        while range_array.size() < len(defaults):
+            range_array.add(COSFloat(defaults[range_array.size()]))
         if low_high is None:
             range_array.set(index, COSFloat(-100.0))
             range_array.set(index + 1, COSFloat(100.0))

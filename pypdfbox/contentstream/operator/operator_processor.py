@@ -29,10 +29,11 @@ class OperatorProcessor(ABC):
 
     Mirrors the shape of
     ``org.apache.pdfbox.contentstream.operator.OperatorProcessor`` but
-    drops the ``context`` field — concrete subclasses in this scaffold
-    are no-op stubs (just log) until later clusters layer on real
-    semantics. Subclasses set the class attribute :attr:`OPERATOR_NAME`
-    to the operator token they handle (e.g. ``"Tj"``, ``"q"``, ``"m"``).
+    makes the ``context`` optional. Some concrete handlers are still
+    registry-only log stubs, while others now perform lightweight
+    validation or call engine hooks. Subclasses set the class attribute
+    :attr:`OPERATOR_NAME` to the operator token they handle (e.g.
+    ``"Tj"``, ``"q"``, ``"m"``).
     """
 
     OPERATOR_NAME: ClassVar[str] = ""

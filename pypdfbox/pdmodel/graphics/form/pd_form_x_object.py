@@ -24,7 +24,6 @@ from pypdfbox.pdmodel.pd_resources import PDResources
 
 if TYPE_CHECKING:
     from pypdfbox.io.random_access_read import RandomAccessRead
-    from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
     from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
@@ -37,6 +36,8 @@ _STRUCT_PARENTS: COSName = COSName.get_pdf_name("StructParents")
 _GROUP: COSName = COSName.get_pdf_name("Group")
 _REF: COSName = COSName.get_pdf_name("Ref")
 _OC: COSName = COSName.get_pdf_name("OC")
+_OPI: COSName = COSName.get_pdf_name("OPI")
+_METADATA: COSName = COSName.METADATA  # type: ignore[attr-defined]
 _PIECE_INFO: COSName = COSName.get_pdf_name("PieceInfo")
 _LAST_MODIFIED: COSName = COSName.get_pdf_name("LastModified")
 _NAME: COSName = COSName.get_pdf_name("Name")
@@ -56,6 +57,13 @@ class PDFormXObject(PDXObject):
     - ``/Resources`` — local resource dict (optional; falls back to the
       page's resources at use-time).
     """
+
+    # The fixed ``/Subtype`` value for a Form XObject. Mirrors upstream's
+    # use of ``COSName.FORM`` for ``/Subtype`` checks; exposing the value
+    # as a class constant lets call sites identify form X-Objects without
+    # re-deriving the name (parallel to ``SUBTYPE_IMAGE`` on the image
+    # cluster).
+    SUBTYPE: str = "Form"
 
     def __init__(
         self,
@@ -326,6 +334,32 @@ class PDFormXObject(PDXObject):
     def set_pieceinfo(self, value: COSDictionary | None) -> None:
         self.set_piece_info(value)
 
+    # ---------- /OPI ----------
+
+    def get_opi(self) -> COSDictionary | None:
+        """Raw ``/OPI`` Open Prepress Interface dictionary, or ``None``
+        when absent. Mirrors PDF 32000-1 §14.11.7 — ``/OPI`` carries
+        version-keyed sub-dictionaries (``/1.3`` and/or ``/2.0``) used
+        by prepress workflows to substitute high-resolution image data.
+
+        Upstream PDFBox does not expose a typed ``/OPI`` accessor on
+        ``PDFormXObject`` (the entry is rare in modern PDFs), but the
+        key is recognised in PDF 32000-1 Table 95 and we provide a raw
+        accessor so callers can introspect ``/OPI`` without re-deriving
+        the name."""
+        value = self.get_cos_object().get_dictionary_object(_OPI)
+        if isinstance(value, COSDictionary):
+            return value
+        return None
+
+    def set_opi(self, value: COSDictionary | None) -> None:
+        """Set or clear ``/OPI``. ``None`` removes the entry."""
+        cos = self.get_cos_object()
+        if value is None:
+            cos.remove_item(_OPI)
+            return
+        cos.set_item(_OPI, value)
+
     # ---------- /LastModified ----------
 
     def get_last_modified(self) -> _dt.datetime | None:
@@ -455,7 +489,12 @@ class PDFormXObject(PDXObject):
         of size 6 or more — i.e. when :meth:`get_matrix` will return the
         stored value rather than the identity default."""
         value = self.get_cos_object().get_dictionary_object(_MATRIX)
-        return isinstance(value, COSArray) and value.size() >= 6
+        if not isinstance(value, COSArray) or value.size() < 6:
+            return False
+        return all(
+            isinstance(value.get_object(i), (COSInteger, COSFloat))
+            for i in range(6)
+        )
 
     def has_resources(self) -> bool:
         """Return ``True`` when ``/Resources`` is present (regardless of
@@ -522,3 +561,20 @@ class PDFormXObject(PDXObject):
         :meth:`get_form_type` defaults to ``1`` when absent, so this is
         the way to tell an explicit ``1`` from the implicit default."""
         return self.get_cos_object().contains_key(_FORMTYPE)
+
+    def has_opi(self) -> bool:
+        """Return ``True`` when ``/OPI`` is present and a
+        ``COSDictionary`` (the only valid form per PDF 32000-1
+        §14.11.7)."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_OPI), COSDictionary
+        )
+
+    def has_metadata(self) -> bool:
+        """Return ``True`` when ``/Metadata`` is present and a
+        ``COSStream`` — i.e. :meth:`get_metadata` (inherited from
+        :class:`PDXObject`) will return a typed ``PDMetadata`` rather
+        than ``None``."""
+        return isinstance(
+            self.get_cos_object().get_dictionary_object(_METADATA), COSStream
+        )

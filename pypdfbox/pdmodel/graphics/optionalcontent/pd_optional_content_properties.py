@@ -31,7 +31,7 @@ class BaseState(Enum):
         return self.get_pdf_name()
 
     @classmethod
-    def value_of(cls, name: str | COSName | None) -> "BaseState":
+    def value_of(cls, name: str | COSName | None) -> BaseState:
         """Mirrors upstream ``BaseState.valueOf(String|COSName)`` — looks up
         by spec name (case-insensitive). Per upstream
         ``BaseState.valueOf(COSName)``, a ``None`` argument resolves to
@@ -45,6 +45,9 @@ class BaseState(Enum):
             if member.value.upper() == upper:
                 return member
         raise ValueError(f"BaseState has no member named {name!r}")
+
+
+_BaseState = BaseState
 
 _OCGS: COSName = COSName.get_pdf_name("OCGs")
 _D: COSName = COSName.D  # type: ignore[attr-defined]
@@ -217,9 +220,11 @@ class PDOptionalContentProperties:
                 ocg = self._to_dictionary(entry)
                 if ocg is None:
                     continue
-                if ocg.get_string(_NAME) == name_or_group:
-                    if self.is_group_enabled(PDOptionalContentGroup(ocg)):
-                        return True
+                if (
+                    ocg.get_string(_NAME) == name_or_group
+                    and self.is_group_enabled(PDOptionalContentGroup(ocg))
+                ):
+                    return True
             return False
 
         group = name_or_group
@@ -254,9 +259,11 @@ class PDOptionalContentProperties:
                 ocg = self._to_dictionary(entry)
                 if ocg is None:
                     continue
-                if ocg.get_string(_NAME) == name_or_group:
-                    if self.set_group_enabled(PDOptionalContentGroup(ocg), enabled):
-                        result = True
+                if (
+                    ocg.get_string(_NAME) == name_or_group
+                    and self.set_group_enabled(PDOptionalContentGroup(ocg), enabled)
+                ):
+                    result = True
             return result
 
         group = name_or_group
@@ -313,13 +320,16 @@ class PDOptionalContentProperties:
             return
         target = enabled_group.get_cos_object()
         for raw_group in rbgroups:
-            if isinstance(raw_group, COSObject):
-                raw_group = raw_group.get_object()
-            if not isinstance(raw_group, COSArray):
+            group = (
+                raw_group.get_object()
+                if isinstance(raw_group, COSObject)
+                else raw_group
+            )
+            if not isinstance(group, COSArray):
                 continue
             members: list[COSDictionary] = []
             contains_target = False
-            for entry in raw_group:
+            for entry in group:
                 d_entry = self._to_dictionary(entry)
                 if d_entry is None:
                     continue
@@ -409,7 +419,7 @@ class PDOptionalContentProperties:
             return "Unchanged"
         return upper
 
-    def set_base_state(self, state: str | BaseState | COSName) -> None:
+    def set_base_state(self, state: str | _BaseState | COSName) -> None:
         if isinstance(state, BaseState):
             self._get_d().set_item(_BASE_STATE, state.get_pdf_name())
             return
@@ -428,11 +438,11 @@ class PDOptionalContentProperties:
             )
         self._get_d().set_item(_BASE_STATE, cos_name)
 
-    def get_base_state_enum(self) -> BaseState:
+    def get_base_state_enum(self) -> _BaseState:
         """Typed-enum variant of :meth:`get_base_state`."""
         return BaseState.value_of(self.get_base_state())
 
-    def is_base_state(self, state: str | BaseState | COSName) -> bool:
+    def is_base_state(self, state: str | _BaseState | COSName) -> bool:
         """Return ``True`` when the resolved /BaseState matches ``state``.
 
         Comparison is performed against the canonical :class:`BaseState`
@@ -444,10 +454,7 @@ class PDOptionalContentProperties:
         Not part of upstream PDFBox 3.0 — pypdfbox convenience predicate
         that mirrors :meth:`PDOptionalContentMembershipDictionary.is_visibility_policy`.
         """
-        if isinstance(state, BaseState):
-            target = state
-        else:
-            target = BaseState.value_of(state)
+        target = state if isinstance(state, BaseState) else BaseState.value_of(state)
         return self.get_base_state_enum() is target
 
     # ---------- group counts (Pythonic enrichment) ----------

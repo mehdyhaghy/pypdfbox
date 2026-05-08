@@ -102,7 +102,7 @@ class JBIG2Decode(Filter):
         # Lazy import: ``jbig2_parser`` ships with a Rust extension and
         # we don't want every filter import to drag it in until a JBIG2
         # stream is actually decoded.
-        import jbig2_parser
+        import jbig2_parser  # type: ignore[import-untyped]
 
         decode_params = _resolve_decode_params(parameters, index)
         globals_bytes = _read_globals_bytes(decode_params)
@@ -126,11 +126,10 @@ class JBIG2Decode(Filter):
 
         try:
             with Image.open(io.BytesIO(png_bytes)) as image:
-                if image.mode != "1":
-                    image = image.convert("1")
-                image.load()
-                samples = image.tobytes()
-                width, height = image.size
+                bilevel = image if image.mode == "1" else image.convert("1")
+                bilevel.load()
+                samples = bilevel.tobytes()
+                width, height = bilevel.size
         except Exception as exc:
             raise OSError(
                 f"JBIG2Decode: post-decode PNG handoff failed: {exc}"

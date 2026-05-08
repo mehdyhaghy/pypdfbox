@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary, COSName
@@ -19,13 +20,11 @@ class PDAttributeObject:
     A structure-element attribute object (``/A`` entry value). Mirrors
     PDFBox ``PDAttributeObject``.
 
-    Lite surface: typed owner subclasses (``PDLayoutAttributeObject``,
-    ``PDListAttributeObject``, ``PDPrintFieldAttributeObject``,
-    ``PDTableAttributeObject``, ``PDExportFormatAttributeObject``,
-    ``PDUserAttributeObject``, ``PDDefaultAttributeObject``) and the
-    structure-element change-notification plumbing are deferred. The
-    factory currently wraps every dictionary as a generic
-    ``PDAttributeObject``.
+    The factory dispatches known ``/O`` owners to their typed attribute
+    subclasses and falls back to the generic wrapper for unknown owner
+    dictionaries. Structure-element back-pointer helpers mirror the PDFBox
+    add/remove/notify maintenance surface while using quiet no-ops when an
+    attribute object is inspected outside a parent element.
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
@@ -81,6 +80,10 @@ class PDAttributeObject:
     def set_owner(self, owner: str) -> None:
         self._dictionary.set_name(_O, owner)
 
+    def has_owner(self) -> bool:
+        """Return ``True`` when the ``/O`` owner key is explicitly present."""
+        return self._dictionary.contains_key(_O)
+
     def is_empty(self) -> bool:
         return self._dictionary.size() == 1 and self.get_owner() is not None
 
@@ -98,6 +101,15 @@ class PDAttributeObject:
         if revision_number < 0:
             raise ValueError("The revision number shall be > -1")
         self._dictionary.set_int(_R, revision_number)
+
+    def has_revision_number(self) -> bool:
+        """Return ``True`` when ``/R`` is explicitly present.
+
+        ``get_revision_number()`` defaults to ``0`` when ``/R`` is absent;
+        this predicate lets callers distinguish an omitted revision from an
+        explicitly stored ``0``.
+        """
+        return self._dictionary.contains_key(_R)
 
     # ---------- structure-element back-pointer ----------
 
@@ -182,6 +194,11 @@ class PDAttributeObject:
         ``StringJoiner(", ", "[", "]")``."""
         if array is None:
             raise TypeError("array_to_string requires a sequence, got None")
+        if not isinstance(array, Iterable):
+            raise TypeError(
+                "array_to_string requires a sequence, got "
+                f"{type(array).__name__}"
+            )
         return "[" + ", ".join(str(item) for item in array) + "]"
 
     def __str__(self) -> str:

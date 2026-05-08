@@ -93,6 +93,22 @@ class PDAnnotationMovie(PDAnnotation):
     def getActivation(self) -> PDMovieActivation | bool | None:  # noqa: N802
         return self.get_activation()
 
+    def get_effective_activation(self) -> PDMovieActivation | bool | None:
+        """Return ``/A`` with the spec default applied.
+
+        ``/A`` defaults to ``true`` when absent. Malformed non-boolean,
+        non-dictionary entries still return ``None`` so callers can
+        distinguish them from the absent-entry default.
+        """
+        value = self.get_activation_entry()
+        if value is None:
+            return True
+        if isinstance(value, COSDictionary):
+            return PDMovieActivation(value)
+        if isinstance(value, COSBoolean):
+            return value.value
+        return None
+
     def set_activation(
         self, value: PDMovieActivation | COSBase | bool | None
     ) -> None:
@@ -112,6 +128,14 @@ class PDAnnotationMovie(PDAnnotation):
         self, value: PDMovieActivation | COSBase | bool | None
     ) -> None:
         self.set_activation(value)
+
+    def has_activation(self) -> bool:
+        """Return ``True`` when ``/A`` is explicitly present."""
+        return self._dict.get_dictionary_object(_A) is not None
+
+    def clear_activation(self) -> None:
+        """Remove ``/A`` and restore the implicit ``true`` default."""
+        self._dict.remove_item(_A)
 
 
 __all__ = ["PDAnnotationMovie"]

@@ -62,6 +62,9 @@ def _read_color(dictionary: COSDictionary, key: COSName) -> PDColor | None:
         return None
     # Local imports avoid a top-level cycle through the colour module.
     from pypdfbox.pdmodel.graphics.color.pd_color import PDColor  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+        PDColorSpace,
+    )
     from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import (  # noqa: PLC0415
         PDDeviceCMYK,
     )
@@ -73,6 +76,7 @@ def _read_color(dictionary: COSDictionary, key: COSName) -> PDColor | None:
     )
 
     size = value.size()
+    cs: PDColorSpace
     if size == 1:
         cs = PDDeviceGray.INSTANCE
     elif size == 3:

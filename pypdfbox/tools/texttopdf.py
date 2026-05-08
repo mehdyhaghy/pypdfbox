@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import IO, Iterable
+from typing import IO, Protocol, TypeGuard, cast
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.font import PDFontFactory
@@ -65,14 +66,18 @@ _DEFAULT_MARGIN = 40.0
 # Page-size table — mirrors upstream TextToPDF.PageSizes enum. Values match
 # the constants on Apache PDFBox's PDRectangle (which match PDF 32000-1 /
 # ISO 216).
+_LETTER = PDRectangle.from_width_height(PDRectangle.LETTER_WIDTH, PDRectangle.LETTER_HEIGHT)
+_LEGAL = PDRectangle.from_width_height(PDRectangle.LEGAL_WIDTH, PDRectangle.LEGAL_HEIGHT)
+_A4 = PDRectangle.from_width_height(PDRectangle.A4_WIDTH, PDRectangle.A4_HEIGHT)
+
 _PAGE_SIZES: dict[str, PDRectangle] = {
-    "letter": PDRectangle.LETTER,  # type: ignore[attr-defined]
-    "legal": PDRectangle.LEGAL,  # type: ignore[attr-defined]
+    "letter": _LETTER,
+    "legal": _LEGAL,
     "a0": PDRectangle(0.0, 0.0, 2384.0, 3370.0),
     "a1": PDRectangle(0.0, 0.0, 1684.0, 2384.0),
     "a2": PDRectangle(0.0, 0.0, 1191.0, 1684.0),
     "a3": PDRectangle(0.0, 0.0, 842.0, 1191.0),
-    "a4": PDRectangle.A4,  # type: ignore[attr-defined]
+    "a4": _A4,
     "a5": PDRectangle(0.0, 0.0, 420.0, 595.0),
     "a6": PDRectangle(0.0, 0.0, 298.0, 420.0),
 }
@@ -162,7 +167,18 @@ def _resolve_page_size(name: str) -> PDRectangle:
     at parse time, so the fall-back is what upstream uses for a *valid*
     keyword that's not in our table).
     """
-    return _PAGE_SIZES.get((name or "").strip().lower(), PDRectangle.LETTER)  # type: ignore[attr-defined]
+    return _PAGE_SIZES.get((name or "").strip().lower(), _LETTER)
+
+
+class _WidthCapableFont(Protocol):
+    def encode(self, text: str) -> bytes: ...
+
+    def get_glyph_width(self, code: int) -> float: ...
+
+
+def _is_readable_text(value: object) -> TypeGuard[IO[str]]:
+    read = getattr(value, "read", None)
+    return callable(read)
 
 
 def _font_bbox_height(font: PDFont) -> float:
@@ -202,9 +218,10 @@ def _string_width_units(font: PDFont, text: str) -> float:
     if not text:
         return 0.0
     if hasattr(font, "encode") and hasattr(font, "get_glyph_width"):
-        encoded: bytes = font.encode(text)  # type: ignore[attr-defined]
+        width_font = cast(_WidthCapableFont, font)
+        encoded = width_font.encode(text)
         for code in encoded:
-            width_total += float(font.get_glyph_width(code))  # type: ignore[attr-defined]
+            width_total += float(width_font.get_glyph_width(code))
         return width_total
     # Last-ditch fallback for fonts that don't yet expose encode/get_glyph_width:
     # treat every character as a half-em (500 units in 1/1000 em). Better than
@@ -294,7 +311,7 @@ def create_pdf_from_text(
         raise ValueError(f"line spacing must be positive: {line_spacing}")
 
     if media_box is None:
-        media_box = PDRectangle.LETTER  # type: ignore[attr-defined]
+        media_box = _LETTER
 
     actual_media_box = (
         PDRectangle(0.0, 0.0, media_box.get_height(), media_box.get_width())
@@ -312,8 +329,8 @@ def create_pdf_from_text(
     # accept a plain iterable of str (one item per line, no trailing newline)
     # so unit tests can pass ``["foo", "bar"]`` directly; we also accept a
     # readable text file — the TextIO splitlines path strips the newline.
-    if hasattr(text, "read"):
-        raw = text.read()  # type: ignore[union-attr]
+    if _is_readable_text(text):
+        raw = text.read()
         # Mirror Java BufferedReader.readLine: split on \r, \n, \r\n only —
         # *not* on \f (form-feed). Python's str.splitlines splits on \f as
         # well, which would silently swallow upstream's page-break trigger.
@@ -462,21 +479,9 @@ def create_pdf_from_text_file(
 
     font = PDFontFactory.create_default_font(standard_font)
 
-    text_source: IO[str]
-    close_after = False
-    if infile is None or str(infile) == "-":
-        text_source = sys.stdin
-    else:
-        path = Path(infile)
-        # Strip a UTF-8 BOM if present, mirroring upstream's explicit BOM
-        # handling. Python's "utf-8-sig" codec does this transparently.
-        opened_charset = "utf-8-sig" if charset.lower() in ("utf-8", "utf8") else charset
-        text_source = open(path, encoding=opened_charset)
-        close_after = True
-
     doc = PDDocument()
     try:
-        try:
+        def _write_from(text_source: IO[str]) -> None:
             create_pdf_from_text(
                 doc,
                 text_source,
@@ -490,9 +495,16 @@ def create_pdf_from_text_file(
                 top_margin=top_margin,
                 bottom_margin=bottom_margin,
             )
-        finally:
-            if close_after:
-                text_source.close()
+
+        if infile is None or str(infile) == "-":
+            _write_from(sys.stdin)
+        else:
+            path = Path(infile)
+            # Strip a UTF-8 BOM if present, mirroring upstream's explicit BOM
+            # handling. Python's "utf-8-sig" codec does this transparently.
+            opened_charset = "utf-8-sig" if charset.lower() in ("utf-8", "utf8") else charset
+            with open(path, encoding=opened_charset) as text_source:
+                _write_from(text_source)
         doc.save(outfile)
     finally:
         doc.close()

@@ -106,6 +106,7 @@ class PhotoshopSchema(XMPSchema):
             return None
         if isinstance(raw, IntegerType):
             return raw.get_value()
+        text: str | None
         if isinstance(raw, AbstractSimpleProperty):
             text = raw.get_string_value()
             try:
@@ -115,7 +116,7 @@ class PhotoshopSchema(XMPSchema):
         if isinstance(raw, bool):
             # bool is a subclass of int in Python; reject it explicitly so a
             # caller can't accidentally store True/False under an integer slot.
-            return int(raw)
+            return None
         if isinstance(raw, int):
             return raw
         if isinstance(raw, str):
@@ -139,6 +140,8 @@ class PhotoshopSchema(XMPSchema):
         if isinstance(value, str):
             self.set_text_property_value(local_name, value)
         else:
+            if isinstance(value, bool):
+                raise TypeError("_set_integer expects int or str, got bool")
             self.set_text_property_value(local_name, str(int(value)))
 
     # --- internal: typed-instance read helpers -----------------------

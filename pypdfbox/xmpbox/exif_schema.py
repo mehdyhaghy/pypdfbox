@@ -196,6 +196,7 @@ class ExifSchema(XMPSchema):
             return None
         if isinstance(raw, IntegerType):
             return raw.get_value()
+        text: str | None
         if isinstance(raw, AbstractSimpleProperty):
             text = raw.get_string_value()
             try:
@@ -203,7 +204,7 @@ class ExifSchema(XMPSchema):
             except (AttributeError, ValueError):
                 return None
         if isinstance(raw, bool):
-            return int(raw)
+            return None
         if isinstance(raw, int):
             return raw
         if isinstance(raw, str):
@@ -226,6 +227,8 @@ class ExifSchema(XMPSchema):
         if isinstance(value, str):
             self.set_text_property_value(local_name, value)
         else:
+            if isinstance(value, bool):
+                raise TypeError("_set_integer expects int or str, got bool")
             self.set_text_property_value(local_name, str(int(value)))
 
     def _set_text(self, local_name: str, value: str | None) -> None:

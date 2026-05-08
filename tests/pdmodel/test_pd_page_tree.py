@@ -427,8 +427,8 @@ def test_get_count_handles_non_integer_entry_as_zero() -> None:
     """A malformed non-integer /Count (e.g. accidental name) must default
     to 0, mirroring upstream's ``getInt`` coercion semantics."""
     tree = PDPageTree()
-    tree.get_cos_object().set_item(  # type: ignore[attr-defined]
-        COSName.COUNT, COSName.get_pdf_name("Bogus")
+    tree.get_cos_object().set_item(
+        COSName.get_pdf_name("Count"), COSName.get_pdf_name("Bogus")
     )
     assert tree.get_count() == 0
 

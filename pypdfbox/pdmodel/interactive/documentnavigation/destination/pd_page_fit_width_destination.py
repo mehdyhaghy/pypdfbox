@@ -52,7 +52,7 @@ class PDPageFitWidthDestination(PDPageDestination):
         semantics for the ``top`` slot.
         """
         arr = self.get_cos_array()
-        if self._SLOT_TOP >= arr.size():
+        if arr.size() <= self._SLOT_TOP:
             return True
         value = arr.get_object(self._SLOT_TOP)
         return not isinstance(value, (COSInteger, COSFloat))

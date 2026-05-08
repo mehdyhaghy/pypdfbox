@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 from .type.colorant_type import ColorantType
@@ -182,15 +183,11 @@ class XMPageTextSchema(XMPSchema):
             h = raw.get(DimensionsType.H)
             unit = raw.get(DimensionsType.UNIT)
             if w is not None:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     dim.set_w(float(w))
-                except (TypeError, ValueError):
-                    pass
             if h is not None:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     dim.set_h(float(h))
-                except (TypeError, ValueError):
-                    pass
             if unit is not None:
                 dim.set_unit(str(unit))
             return dim

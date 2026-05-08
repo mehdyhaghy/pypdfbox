@@ -21,7 +21,7 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING, BinaryIO
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import (
@@ -89,7 +89,12 @@ def _retrieve_dimensions(jpeg_bytes: bytes) -> tuple[int, int, int]:
     ``Image.open`` reads only the JFIF/EXIF header markers and the SOF
     frame, so this stays O(header) regardless of pixel count.
     """
-    with Image.open(io.BytesIO(jpeg_bytes)) as probe:
+    try:
+        probe = Image.open(io.BytesIO(jpeg_bytes))
+    except UnidentifiedImageError as exc:
+        raise ValueError("expected JPEG image, got unreadable image data") from exc
+
+    with probe:
         # ``Image.open`` is lazy. Touch the format so PIL surfaces a bad
         # header up front rather than later in the pipeline.
         if probe.format != "JPEG":
@@ -242,12 +247,12 @@ class JPEGFactory:
         pil_quality = max(1, min(95, int(round(q * 95.0))))
 
         buffer = io.BytesIO()
-        save_kwargs: dict[str, object] = {
-            "format": "JPEG",
-            "quality": pil_quality,
-            "dpi": (int(dpi), int(dpi)),
-        }
-        image.save(buffer, **save_kwargs)
+        image.save(
+            buffer,
+            format="JPEG",
+            quality=pil_quality,
+            dpi=(int(dpi), int(dpi)),
+        )
         jpeg_bytes = buffer.getvalue()
 
         # Re-sniff dimensions from the encoded bytes rather than the

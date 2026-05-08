@@ -153,6 +153,14 @@ class PDPattern(PDColorSpace):
         resources only at construction time."""
         self._resources = resources
 
+    def has_resources(self) -> bool:
+        """Return ``True`` when pattern-name resolution has resources attached."""
+        return self._resources is not None
+
+    def clear_resources(self) -> None:
+        """Detach the resources used for pattern-name resolution."""
+        self.set_resources(None)
+
     def get_pattern(self, color: PDColor) -> PDAbstractPattern:
         """Resolve the pattern named by ``color``'s pattern-name component
         against the attached ``PDResources``. Mirrors upstream

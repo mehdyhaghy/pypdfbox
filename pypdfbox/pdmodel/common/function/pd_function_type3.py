@@ -67,6 +67,8 @@ class PDFunctionType3(PDFunction):
         ``getEncodeForParameter(int)``; exposed publicly here so callers
         building stitching dictionaries can introspect per-subfunction
         encode ranges without recomputing the offset arithmetic."""
+        if n < 0:
+            return None
         encode = self.get_encode()
         if encode is None:
             return None
@@ -100,6 +102,19 @@ class PDFunctionType3(PDFunction):
         if bounds is None:
             return []
         return bounds.to_float_array()
+
+    def get_encode_values(self) -> list[float]:
+        """Return ``/Encode`` as a flat ``list[float]`` (empty when absent /
+        malformed).
+
+        This mirrors :meth:`get_bounds_values` for callers that need to
+        inspect or validate the stitching dictionary without reaching into
+        the raw COS array or recomputing per-subfunction offsets.
+        """
+        encode = self.get_encode()
+        if encode is None:
+            return []
+        return encode.to_float_array()
 
     def get_number_of_functions(self) -> int:
         """Return the count of subfunctions in ``/Functions`` — i.e. the
@@ -162,6 +177,10 @@ class PDFunctionType3(PDFunction):
 
         bounds_arr = self.get_bounds()
         bounds: list[float] = bounds_arr.to_float_array() if bounds_arr is not None else []
+        if len(bounds) > len(functions) - 1:
+            raise ValueError(
+                "PDFunctionType3 /Bounds has more partitions than /Functions"
+            )
 
         encode_arr = self.get_encode()
         encode: list[float] = encode_arr.to_float_array() if encode_arr is not None else []
@@ -178,7 +197,8 @@ class PDFunctionType3(PDFunction):
         sub_lo = domain_lo if k == 0 else bounds[k - 1]
         sub_hi = domain_hi if k >= len(bounds) else bounds[k]
 
-        # Encoded target interval; default to [0, 1] per spec when /Encode short.
+        # Encoded target interval; use [0, 1] as a defensive default when
+        # malformed /Encode data is missing the pair for the selected child.
         enc_lo = encode[2 * k] if 2 * k < len(encode) else 0.0
         enc_hi = encode[2 * k + 1] if 2 * k + 1 < len(encode) else 1.0
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import (
     COSArray,
+    COSBase,
     COSInteger,
     COSName,
     COSNull,
@@ -20,9 +21,9 @@ class PDIndexed(PDColorSpace):
 
     Array form: ``[/Indexed <base CS> <hival> <lookup>]``.
 
-    Lite surface: ``to_rgb`` color-table conversion is deferred until
-    rendering. PDFBox 4.0 removes the no-arg constructor and several
-    helper methods (CLAUDE.md §PDFBox 4.0); we follow that decision.
+    The lookup table is exposed as decoded bytes and is used by
+    :class:`PDColor` for best-effort sRGB conversion. Full indexed-image
+    rendering remains in the image/raster path.
     """
 
     NAME: str = "Indexed"
@@ -50,23 +51,47 @@ class PDIndexed(PDColorSpace):
 
     # ---------- indexed-specific ----------
 
+    def _get_array_object(self, index: int) -> COSBase | None:
+        assert self._array is not None
+        if self._array.size() <= index:
+            return None
+        return self._array.get_object(index)
+
+    def _ensure_array_size(self, size: int) -> None:
+        assert self._array is not None
+        while self._array.size() < size:
+            self._array.add(COSNull.NULL)
+
     def get_base_color_space(self) -> PDColorSpace | None:
         assert self._array is not None
-        base = self._array.get_object(1)
+        base = self._get_array_object(1)
         if base is None:
             return None
         return PDColorSpace.create(base)
 
     def set_base_color_space(self, base: PDColorSpace) -> None:
         assert self._array is not None
-        self._array.set(1, base.get_cos_object())
+        self._ensure_array_size(2)
+        cos = base.get_cos_object()
+        if cos is None:
+            raise TypeError(
+                "set_base_color_space requires a color space with a COS form"
+            )
+        self._array.set(1, cos)
+
+    def has_base_color_space(self) -> bool:
+        """Return ``True`` when the base color-space slot resolves."""
+        return self.get_base_color_space() is not None
 
     def get_hival(self) -> int:
         assert self._array is not None
+        if self._array.size() <= 2:
+            return 0
         return self._array.get_int(2, 0)
 
     def set_hival(self, hival: int) -> None:
         assert self._array is not None
+        self._ensure_array_size(3)
         self._array.set(2, COSInteger.get(hival))
 
     def get_lookup_data(self) -> bytes | None:
@@ -85,7 +110,7 @@ class PDIndexed(PDColorSpace):
         indexed lookups (better a black palette entry than a crash).
         """
         assert self._array is not None
-        entry = self._array.get_object(3)
+        entry = self._get_array_object(3)
         data: bytes | None = None
         if isinstance(entry, COSString):
             data = entry.get_bytes()
@@ -107,10 +132,21 @@ class PDIndexed(PDColorSpace):
 
     def set_lookup_data(self, data: bytes | None) -> None:
         assert self._array is not None
+        self._ensure_array_size(4)
         if data is None:
             self._array.set(3, COSNull.NULL)
         else:
             self._array.set(3, COSString(data))
+
+    def has_lookup_data(self) -> bool:
+        """Return ``True`` when ``/Lookup`` is present as a string or stream."""
+        assert self._array is not None
+        entry = self._get_array_object(3)
+        return isinstance(entry, (COSString, COSStream))
+
+    def clear_lookup_data(self) -> None:
+        """Clear ``/Lookup`` by writing the Indexed null placeholder."""
+        self.set_lookup_data(None)
 
     # ---------- decode ----------
 

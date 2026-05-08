@@ -74,6 +74,12 @@ def _pad_or_truncate_for_revision(buffer: bytes, revision: int) -> bytes:
     return bytes(buffer)
 
 
+def _as_cos_name(name: str | COSName) -> COSName:
+    if isinstance(name, COSName):
+        return name
+    return COSName.get_pdf_name(name)
+
+
 class PDEncryption:
     """
     Wraps the trailer's ``/Encrypt`` dictionary. Mirrors the PDFBox
@@ -332,13 +338,25 @@ class PDEncryption:
     def set_cf(self, cf: COSDictionary) -> None:
         self._dict.set_item(_CF, cf)
 
+    def has_cf(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_CF), COSDictionary)
+
+    def clear_cf(self) -> None:
+        self._dict.remove_item(_CF)
+
     # ---------- /StmF — default stream filter name ----------
 
     def get_stm_f(self) -> str | None:
         return self._dict.get_name(_STM_F)
 
-    def set_stm_f(self, name: str) -> None:
+    def set_stm_f(self, name: str | None) -> None:
         self._dict.set_name(_STM_F, name)
+
+    def has_stm_f(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_STM_F), COSName)
+
+    def clear_stm_f(self) -> None:
+        self._dict.remove_item(_STM_F)
 
     def get_stream_filter_name(self) -> str:
         """Return ``/StmF`` (defaults to ``Identity``).
@@ -359,8 +377,14 @@ class PDEncryption:
     def get_str_f(self) -> str | None:
         return self._dict.get_name(_STR_F)
 
-    def set_str_f(self, name: str) -> None:
+    def set_str_f(self, name: str | None) -> None:
         self._dict.set_name(_STR_F, name)
+
+    def has_str_f(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_STR_F), COSName)
+
+    def clear_str_f(self) -> None:
+        self._dict.remove_item(_STR_F)
 
     def get_string_filter_name(self) -> str:
         """Return ``/StrF`` (defaults to ``Identity``).
@@ -380,12 +404,20 @@ class PDEncryption:
     def get_eff(self) -> str | None:
         return self._dict.get_name(_EFF)
 
-    def set_eff(self, name: str) -> None:
+    def set_eff(self, name: str | None) -> None:
         self._dict.set_name(_EFF, name)
+
+    def has_eff(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_EFF), COSName)
+
+    def clear_eff(self) -> None:
+        self._dict.remove_item(_EFF)
 
     # ---------- /CF dispatch — typed PDCryptFilterDictionary wrappers ----------
 
-    def get_crypt_filter_dictionary(self, name: str) -> PDCryptFilterDictionary | None:
+    def get_crypt_filter_dictionary(
+        self, name: str | COSName
+    ) -> PDCryptFilterDictionary | None:
         """Return the named entry of /CF wrapped in a typed dictionary.
 
         ``name`` is matched case-sensitively against the keys of the /CF
@@ -397,13 +429,13 @@ class PDEncryption:
         cf = self.get_cf()
         if cf is None:
             return None
-        entry = cf.get_dictionary_object(COSName.get_pdf_name(name))
+        entry = cf.get_dictionary_object(_as_cos_name(name))
         if isinstance(entry, COSDictionary):
             return PDCryptFilterDictionary(entry)
         return None
 
     def set_crypt_filter_dictionary(
-        self, name: str, dictionary: PDCryptFilterDictionary
+        self, name: str | COSName, dictionary: PDCryptFilterDictionary
     ) -> None:
         """Store ``dictionary`` under ``name`` in /CF, creating /CF if absent."""
         cf = self.get_cf()
@@ -414,7 +446,7 @@ class PDEncryption:
         # object so Adobe Reader on Android resolves it correctly.
         cos_obj = dictionary.get_cos_object()
         cos_obj.set_direct(True)
-        cf.set_item(COSName.get_pdf_name(name), cos_obj)
+        cf.set_item(_as_cos_name(name), cos_obj)
 
     def get_std_crypt_filter_dictionary(self) -> PDCryptFilterDictionary | None:
         """Return /CF/StdCF wrapped in a typed dictionary, or ``None``."""

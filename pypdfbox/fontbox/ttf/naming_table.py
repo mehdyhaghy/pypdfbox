@@ -29,9 +29,9 @@ class NamingTable(TTFTable):
         self._trademark: str | None = None
 
     def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
-        format_selector = data.read_unsigned_short()  # noqa: F841
+        data.read_unsigned_short()  # format selector
         number_of_name_records = data.read_unsigned_short()
-        offset_to_start_of_string_storage = data.read_unsigned_short()  # noqa: F841
+        offset_to_start_of_string_storage = data.read_unsigned_short()
 
         self._name_records = []
         for _i in range(number_of_name_records):
@@ -40,22 +40,26 @@ class NamingTable(TTFTable):
             self._name_records.append(nr)
 
         for nr in self._name_records:
-            # don't try to read invalid offsets — see PDFBOX-2608
-            if nr.get_string_offset() > self.get_length():
+            string_start = offset_to_start_of_string_storage + nr.get_string_offset()
+            string_end = string_start + nr.get_string_length()
+            # Don't try to read invalid offsets — see PDFBOX-2608. The
+            # string offset is relative to the declared storage area, and both
+            # start and end must stay inside this table.
+            if string_start > self.get_length() or string_end > self.get_length():
                 nr.set_string(None)
                 continue
 
-            data.seek(
-                self.get_offset()
-                + (2 * 3)
-                + number_of_name_records * 2 * 6
-                + nr.get_string_offset()
-            )
+            absolute_string_start = self.get_offset() + string_start
+            if absolute_string_start + nr.get_string_length() > data.get_original_data_size():
+                nr.set_string(None)
+                continue
+
+            data.seek(absolute_string_start)
             charset = self._charset_for(nr)
             raw = data.read_bytes(nr.get_string_length())
             try:
-                string = raw.decode(charset)
-            except (UnicodeDecodeError, LookupError):
+                string = raw.decode(charset, errors="replace")
+            except LookupError:
                 # best-effort fallback for unknown Macintosh script codes
                 string = raw.decode("latin-1")
             nr.set_string(string)

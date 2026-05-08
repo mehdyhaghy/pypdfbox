@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .cid_font_mapping import CIDFontMapping
+from .encoded_font import EncodedFont
 from .encoding import (
     Encoding,
     GlyphList,
@@ -10,8 +12,6 @@ from .encoding import (
     WinAnsiEncoding,
     ZapfDingbatsEncoding,
 )
-from .cid_font_mapping import CIDFontMapping
-from .encoded_font import EncodedFont
 from .font_box_font import FontBoxFont
 from .font_format import FontFormat
 from .font_info import FontInfo

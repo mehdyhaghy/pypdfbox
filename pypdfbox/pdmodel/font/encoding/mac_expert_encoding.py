@@ -12,7 +12,7 @@ class MacExpertEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.MacExpertEncoding``.
     """
 
-    INSTANCE: "MacExpertEncoding"
+    INSTANCE: MacExpertEncoding
 
     def __init__(self) -> None:
         super().__init__()
@@ -21,7 +21,7 @@ class MacExpertEncoding(Encoding):
 
     def get_cos_object(self) -> COSBase:
         # Upstream returns COSName.MAC_EXPERT_ENCODING directly.
-        return COSName.MAC_EXPERT_ENCODING  # type: ignore[attr-defined]
+        return COSName.get_pdf_name("MacExpertEncoding")
 
     def get_encoding_name(self) -> str:
         return "MacExpertEncoding"

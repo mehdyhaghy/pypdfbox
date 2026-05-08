@@ -18,6 +18,12 @@ LF: bytes = b"\n"
 EOL: bytes = b"\n"
 
 
+def _require_plain_int(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{name} must be an int")
+    return value
+
+
 class COSStandardOutputStream:
     """
     Line-aware byte sink wrapped around any writable binary stream.
@@ -38,7 +44,7 @@ class COSStandardOutputStream:
 
     def __init__(self, out: _Writable, position: int = 0) -> None:
         self._out = out
-        self._position = position
+        self._position = _require_plain_int(position, "position")
         self._on_new_line = False
         self._closed = False
 
@@ -49,7 +55,7 @@ class COSStandardOutputStream:
         which delegates to ``write(b, 0, b.length)``. Provided as a named
         alias so call sites that read like the Java original keep their
         meaning."""
-        if data is None:  # type: ignore[unreachable]
+        if data is None:
             raise TypeError("write_bytes requires a bytes-like argument, not None")
         self.write(data)
 
@@ -61,10 +67,10 @@ class COSStandardOutputStream:
     ) -> None:
         """Write a slice of ``data`` to the underlying sink and update
         ``position`` / ``onNewLine`` based on the **last** byte written."""
-        if data is None:  # type: ignore[unreachable]
+        if data is None:
             raise TypeError("write requires a bytes-like argument, not None")
-        if length is None:
-            length = len(data) - offset
+        offset = _require_plain_int(offset, "offset")
+        length = len(data) - offset if length is None else _require_plain_int(length, "length")
         if length < 0:
             raise ValueError("length must be non-negative")
         if offset < 0 or offset + length > len(data):
@@ -88,7 +94,7 @@ class COSStandardOutputStream:
         the encoding upstream uses when serialising parsed-form numeric
         literals (see ``COSWriter.doWriteObject`` and
         ``COSWriter.writeReference``)."""
-        if text is None:  # type: ignore[unreachable]
+        if text is None:
             raise TypeError("write_text requires a str argument, not None")
         if not isinstance(text, str):
             raise TypeError(
@@ -98,6 +104,7 @@ class COSStandardOutputStream:
 
     def write_byte(self, value: int) -> None:
         """Write a single byte. ``value`` must be in 0..255."""
+        value = _require_plain_int(value, "byte value")
         if not 0 <= value <= 0xFF:
             raise ValueError("byte value must be in 0..255")
         self._out.write(bytes((value,)))
@@ -107,6 +114,7 @@ class COSStandardOutputStream:
     def write_int(self, value: int) -> None:
         """Write the ASCII decimal form of ``value``. Used for object numbers,
         offsets, and similar non-negotiable integer fields."""
+        value = _require_plain_int(value, "integer value")
         self.write(str(value).encode("ascii"))
 
     def write_crlf(self) -> None:

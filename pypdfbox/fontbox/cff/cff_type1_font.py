@@ -34,7 +34,7 @@ class CFFType1Font(CFFFont):
     # ---------- factories ----------
 
     @classmethod
-    def from_bytes(cls, data: bytes | bytearray | memoryview) -> "CFFType1Font":
+    def from_bytes(cls, data: bytes | bytearray | memoryview) -> CFFType1Font:
         """Parse a CFF byte stream as a name-keyed (Type 1) font.
 
         Raises ``OSError`` when the parsed font is CIDKeyed (i.e. has
@@ -48,13 +48,12 @@ class CFFType1Font(CFFFont):
         return cls.from_cff_font(base)
 
     @classmethod
-    def from_cff_font(cls, base: CFFFont) -> "CFFType1Font":
+    def from_cff_font(cls, base: CFFFont) -> CFFType1Font:
         """Re-wrap an already-parsed :class:`CFFFont` as a
         :class:`CFFType1Font`. Cheap — shares the underlying fontTools
         font set, no re-decompilation."""
         instance = cls()
-        instance._fontset = base._fontset  # noqa: SLF001
-        instance._top = base._top  # noqa: SLF001
+        instance._copy_base_state_from(base)
         return instance
 
     # ---------- private DICT overlay ----------
@@ -100,11 +99,11 @@ class CFFType1Font(CFFFont):
 
     def is_standard_encoding(self) -> bool:
         """True when the font uses the predefined StandardEncoding."""
-        return self.get_encoding() == "StandardEncoding"
+        return bool(self.get_encoding() == "StandardEncoding")
 
     def is_expert_encoding(self) -> bool:
         """True when the font uses the predefined ExpertEncoding."""
-        return self.get_encoding() == "ExpertEncoding"
+        return bool(self.get_encoding() == "ExpertEncoding")
 
     def is_custom_encoding(self) -> bool:
         """True when the font carries a custom (non-predefined) encoding
@@ -270,7 +269,7 @@ class CFFType1Font(CFFFont):
             return False
         return name in self.get_charset() or super().has_glyph(name)
 
-    def get_path(self, name: str) -> list[tuple]:  # noqa: D401 — overrides base
+    def get_path(self, name: str) -> list[tuple[Any, ...]]:  # noqa: D401 — overrides base
         """PDFBox: ``CFFType1Font.getPath(String)`` — name-keyed glyph
         path. Mirrors the inherited GID-keyed
         :meth:`CFFFont.get_path` but takes a PostScript name."""

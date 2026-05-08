@@ -471,7 +471,7 @@ class GlyphPositioningTable(TTFTable):
         if coverage is None or pair_sets is None:
             return
         cov_glyphs = getattr(coverage, "glyphs", None) or []
-        for first_name, ps in zip(cov_glyphs, pair_sets):
+        for first_name, ps in zip(cov_glyphs, pair_sets, strict=False):
             left_gid = self._glyph_name_to_gid.get(first_name)
             if left_gid is None:
                 continue
@@ -521,12 +521,15 @@ class GlyphPositioningTable(TTFTable):
 
         # Reverse-index ClassDef2 so we can enumerate every glyph in a
         # given class without scanning the dict per cell. Class-0 glyphs
-        # are everything in the font *not* listed in cd2 — but
-        # PairPosFormat2 only kerns coverage-glyph + cd2-listed-glyph,
-        # so we don't need to materialise class-0's universe.
+        # are everything in the font *not* listed in cd2, plus any
+        # explicitly listed zero-class glyphs.
         class2_to_glyphs: dict[int, list[str]] = {}
         for gname, cidx in cd2.items():
             class2_to_glyphs.setdefault(int(cidx), []).append(gname)
+        listed_second_glyphs = set(cd2)
+        class2_to_glyphs.setdefault(0, []).extend(
+            gname for gname in self._glyph_order if gname not in listed_second_glyphs
+        )
 
         for first_name in cov_glyphs:
             left_gid = self._glyph_name_to_gid.get(first_name)

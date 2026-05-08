@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
 
 from .pd_shading import PDShading
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.function import PDFunction
 
 _SHADING_TYPE: COSName = COSName.get_pdf_name("ShadingType")
 _BITS_PER_COORDINATE: COSName = COSName.get_pdf_name("BitsPerCoordinate")
@@ -20,8 +24,9 @@ class PDShadingType6(PDShading):
 
     Per PDF 32000-1 §8.7.4.5.7 (Table 88), Coons patch mesh streams require
     ``/BitsPerCoordinate``, ``/BitsPerComponent``, ``/BitsPerFlag``, and
-    ``/Decode``; ``/Function`` is optional. Patch decoding (control points
-    + colors → Coons patches) is deferred until the rendering cluster lands.
+    ``/Decode``; ``/Function`` is optional. This wrapper preserves the
+    encoded patch stream and exposes metadata only; decoding control points
+    and colors into Coons patch geometry is deferred to rendering.
     """
 
     def __init__(self, dictionary_or_stream: COSDictionary | None = None) -> None:
@@ -103,6 +108,8 @@ class PDShadingType6(PDShading):
         Mirrors upstream ``PDTriangleBasedShadingType.getDecodeForParameter``
         — index 0 is the x-coordinate range, 1 is the y-coordinate range,
         and ``2 + i`` is the i-th color component range."""
+        if param_num < 0:
+            return None
         v = self._dict.get_dictionary_object(_DECODE)
         if not isinstance(v, COSArray):
             return None
@@ -135,7 +142,7 @@ class PDShadingType6(PDShading):
 
     # ---------- /Function ----------
 
-    def get_function(self):
+    def get_function(self) -> PDFunction | None:
         """Returns the ``/Function`` entry wrapped as a ``PDFunction``
         (dispatched on ``/FunctionType``), or ``None`` when ``/Function``
         is absent. Mirrors upstream ``PDShading.getFunction()`` which
@@ -147,7 +154,7 @@ class PDShadingType6(PDShading):
             return None
         return PDFunction.create(item)
 
-    def set_function(self, value) -> None:
+    def set_function(self, value: PDFunction | COSBase | None) -> None:
         """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS
         object is stored), a raw ``COSDictionary`` / ``COSStream``, or
         ``None`` to remove."""

@@ -72,9 +72,17 @@ class PDThread:
     def set_thread_info(self, info: PDDocumentInformation | None) -> None:
         """Set the thread information dictionary (``/I``); ``None`` removes it."""
         if info is None:
-            self._thread.remove_item(_I)
+            self.clear_thread_info()
             return
         self._thread.set_item(_I, info.get_cos_object())
+
+    def has_thread_info(self) -> bool:
+        """Return ``True`` when ``/I`` contains a parsable information dictionary."""
+        return isinstance(self._thread.get_dictionary_object(_I), COSDictionary)
+
+    def clear_thread_info(self) -> None:
+        """Remove the thread information dictionary (``/I``), if present."""
+        self._thread.remove_item(_I)
 
     # ---------- /F (first bead) ----------
 
@@ -93,10 +101,18 @@ class PDThread:
         is updated to point back at this object — mirrors the upstream
         ``setFirstBead`` side effect."""
         if bead is None:
-            self._thread.remove_item(_F)
+            self.clear_first_bead()
             return
         bead.set_thread(self)
         self._thread.set_item(_F, bead.get_cos_object())
+
+    def has_first_bead(self) -> bool:
+        """Return ``True`` when ``/F`` contains a parsable bead dictionary."""
+        return isinstance(self._thread.get_dictionary_object(_F), COSDictionary)
+
+    def clear_first_bead(self) -> None:
+        """Remove the first bead reference (``/F``), if present."""
+        self._thread.remove_item(_F)
 
     # ---------- upstream-name aliases ----------
     #
@@ -112,6 +128,14 @@ class PDThread:
     def set_info(self, info: PDDocumentInformation | None) -> None:
         """Alias of :meth:`set_thread_info` matching upstream ``setInfo``."""
         self.set_thread_info(info)
+
+    def has_info(self) -> bool:
+        """Alias of :meth:`has_thread_info` matching the ``get_info`` name."""
+        return self.has_thread_info()
+
+    def clear_info(self) -> None:
+        """Alias of :meth:`clear_thread_info` matching the ``get_info`` name."""
+        self.clear_thread_info()
 
 
 __all__ = ["PDThread"]

@@ -124,12 +124,15 @@ def _read_xmp(doc: PDDocument) -> str | None:
     if meta is None:
         return None
     try:
-        return meta.get_metadata_as_string()
+        text = meta.get_metadata_as_string()
+        if text is None:
+            return None
+        return text if isinstance(text, str) else str(text)
     except Exception:  # noqa: BLE001 — fall back to raw bytes
         try:
             with meta.create_input_stream() as stream:
                 raw = stream.read()
-            return raw.decode("utf-8", errors="replace")
+            return bytes(raw).decode("utf-8", errors="replace")
         except Exception:  # noqa: BLE001
             return None
 

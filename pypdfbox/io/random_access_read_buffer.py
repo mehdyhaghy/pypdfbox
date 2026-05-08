@@ -25,13 +25,16 @@ class RandomAccessReadBuffer(RandomAccessRead):
     def __init__(self, source: bytes | bytearray | memoryview | BinaryIO) -> None:
         if isinstance(source, (bytes, bytearray, memoryview)):
             self._buf = io.BytesIO(bytes(source))
-        elif hasattr(source, "read"):
-            data = source.read()
-            if not isinstance(data, (bytes, bytearray)):
+        else:
+            read = getattr(source, "read", None)
+            if read is None:
+                raise TypeError(f"unsupported source type: {type(source).__name__}")
+            if not callable(read):
+                raise TypeError("source read attribute must be callable")
+            data = read()
+            if not isinstance(data, (bytes, bytearray, memoryview)):
                 raise TypeError("source stream must yield bytes")
             self._buf = io.BytesIO(bytes(data))
-        else:
-            raise TypeError(f"unsupported source type: {type(source).__name__}")
         self._length = self._buf.getbuffer().nbytes
         self._closed = False
 

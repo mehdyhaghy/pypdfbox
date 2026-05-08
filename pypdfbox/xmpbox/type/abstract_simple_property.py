@@ -36,14 +36,26 @@ class AbstractSimpleProperty(AbstractField):
     def set_value(self, value: Any) -> None:
         raise NotImplementedError
 
+    def setValue(self, value: Any) -> None:  # noqa: N802 - upstream Java name
+        self.set_value(value)
+
     def get_string_value(self) -> str:
         raise NotImplementedError
+
+    def getStringValue(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_string_value()
 
     def get_value(self) -> Any:
         raise NotImplementedError
 
+    def getValue(self) -> Any:  # noqa: N802 - upstream Java name
+        return self.get_value()
+
     def get_raw_value(self) -> Any:
         return self._raw_value
+
+    def getRawValue(self) -> Any:  # noqa: N802 - upstream Java name
+        return self.get_raw_value()
 
     def __repr__(self) -> str:
         # Mirrors upstream AbstractSimpleProperty#toString:
@@ -56,5 +68,11 @@ class AbstractSimpleProperty(AbstractField):
     def get_namespace(self) -> str | None:
         return self._namespace
 
+    def getNamespace(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_namespace()
+
     def get_prefix(self) -> str | None:
         return self._prefix
+
+    def getPrefix(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_prefix()

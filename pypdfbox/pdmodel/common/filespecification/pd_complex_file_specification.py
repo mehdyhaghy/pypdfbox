@@ -83,17 +83,26 @@ class PDComplexFileSpecification(PDFileSpecification):
     # ---------- /EF nested dictionary helpers ----------
 
     def _get_ef_dictionary(self) -> COSDictionary | None:
-        if self._ef_dictionary is None and self._fs is not None:
-            ef = self._fs.get_dictionary_object(_EF)
-            if isinstance(ef, COSDictionary):
-                self._ef_dictionary = ef
-        return self._ef_dictionary
+        ef = self._fs.get_dictionary_object(_EF)
+        if isinstance(ef, COSDictionary):
+            self._ef_dictionary = ef
+            return ef
+        self._ef_dictionary = None
+        return None
 
     def _get_object_from_ef_dictionary(self, key: COSName) -> COSBase | None:
         ef = self._get_ef_dictionary()
         if ef is not None:
             return ef.get_dictionary_object(key)
         return None
+
+    def _has_embedded(self, key: COSName) -> bool:
+        return isinstance(self._get_object_from_ef_dictionary(key), COSStream)
+
+    def _clear_embedded(self, key: COSName) -> None:
+        ef = self._get_ef_dictionary()
+        if ef is not None:
+            ef.remove_item(key)
 
     # ---------- preferred filename ----------
 
@@ -184,11 +193,20 @@ class PDComplexFileSpecification(PDFileSpecification):
     def get_embedded_file_dos(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_DOS)
 
+    def set_embedded_file_dos(self, file: PDEmbeddedFile | None) -> None:
+        self._set_embedded(_DOS, file)
+
     def get_embedded_file_mac(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_MAC)
 
+    def set_embedded_file_mac(self, file: PDEmbeddedFile | None) -> None:
+        self._set_embedded(_MAC, file)
+
     def get_embedded_file_unix(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_UNIX)
+
+    def set_embedded_file_unix(self, file: PDEmbeddedFile | None) -> None:
+        self._set_embedded(_UNIX, file)
 
     def get_embedded_file_unicode(self) -> PDEmbeddedFile | None:
         return self._get_embedded(_UF)
@@ -267,10 +285,30 @@ class PDComplexFileSpecification(PDFileSpecification):
 
     def has_embedded_files(self) -> bool:
         """``True`` when the ``/EF`` (embedded-files) sub-dictionary is
-        present. Does not check whether ``/EF`` actually contains any
+        present and well-formed. Does not check whether ``/EF`` contains any
         embedded streams — an empty ``/EF`` dictionary still satisfies
         this predicate."""
-        return self._fs.contains_key(_EF)
+        return self._get_ef_dictionary() is not None
+
+    def has_embedded_file(self) -> bool:
+        """``True`` when ``/EF/F`` resolves to an embedded-file stream."""
+        return self._has_embedded(_F)
+
+    def has_embedded_file_unicode(self) -> bool:
+        """``True`` when ``/EF/UF`` resolves to an embedded-file stream."""
+        return self._has_embedded(_UF)
+
+    def has_embedded_file_dos(self) -> bool:
+        """``True`` when ``/EF/DOS`` resolves to an embedded-file stream."""
+        return self._has_embedded(_DOS)
+
+    def has_embedded_file_mac(self) -> bool:
+        """``True`` when ``/EF/Mac`` resolves to an embedded-file stream."""
+        return self._has_embedded(_MAC)
+
+    def has_embedded_file_unix(self) -> bool:
+        """``True`` when ``/EF/Unix`` resolves to an embedded-file stream."""
+        return self._has_embedded(_UNIX)
 
     def has_file_description(self) -> bool:
         """``True`` when the ``/Desc`` entry is present.
@@ -311,6 +349,26 @@ class PDComplexFileSpecification(PDFileSpecification):
         ``/EF`` dictionary from scratch."""
         self._fs.remove_item(_EF)
         self._ef_dictionary = None
+
+    def clear_embedded_file(self) -> None:
+        """Remove the ``/EF/F`` embedded-file slot. No-op if absent."""
+        self._clear_embedded(_F)
+
+    def clear_embedded_file_unicode(self) -> None:
+        """Remove the ``/EF/UF`` embedded-file slot. No-op if absent."""
+        self._clear_embedded(_UF)
+
+    def clear_embedded_file_dos(self) -> None:
+        """Remove the ``/EF/DOS`` embedded-file slot. No-op if absent."""
+        self._clear_embedded(_DOS)
+
+    def clear_embedded_file_mac(self) -> None:
+        """Remove the ``/EF/Mac`` embedded-file slot. No-op if absent."""
+        self._clear_embedded(_MAC)
+
+    def clear_embedded_file_unix(self) -> None:
+        """Remove the ``/EF/Unix`` embedded-file slot. No-op if absent."""
+        self._clear_embedded(_UNIX)
 
     # ---------- structural emptiness ----------
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -83,7 +84,7 @@ class PDShadingType2(PDShading):
 
     # ---------- /Function ----------
 
-    def get_function(self):
+    def get_function(self) -> Any:
         """Returns the ``/Function`` entry wrapped as a ``PDFunction``
         (dispatched on ``/FunctionType``), or ``None`` when ``/Function``
         is absent. Mirrors upstream ``PDShading.getFunction()``.
@@ -100,7 +101,7 @@ class PDShadingType2(PDShading):
             return item
         return PDFunction.create(item)
 
-    def get_functions_array(self) -> list:
+    def get_functions_array(self) -> list[Any]:
         """Returns the per-component ``/Function`` entries wrapped as
         ``PDFunction`` instances. When ``/Function`` is a single function,
         returns a one-element list. Returns an empty list when absent."""
@@ -110,7 +111,7 @@ class PDShadingType2(PDShading):
         if item is None:
             return []
         if isinstance(item, COSArray):
-            out = []
+            out: list[Any] = []
             for i in range(item.size()):
                 entry = item.get_object(i)
                 if entry is not None:
@@ -118,7 +119,7 @@ class PDShadingType2(PDShading):
             return out
         return [PDFunction.create(item)]
 
-    def set_function(self, value) -> None:
+    def set_function(self, value: Any) -> None:
         """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS
         object is stored), a raw ``COSDictionary`` / ``COSStream``, a
         ``COSArray`` of per-component functions, an iterable of
@@ -172,7 +173,7 @@ class PDShadingType2(PDShading):
             isinstance(b, COSBoolean) and b.get_value(),
         )
 
-    def set_extend(self, start, end=None) -> None:
+    def set_extend(self, start: bool | COSArray | None, end: bool | None = None) -> None:
         """Set ``/Extend``. Accepts either ``(start, end)`` as a pair of
         booleans (matching upstream's 2-element ``[start end]`` array form)
         or a single ``COSArray`` argument (legacy form — stored as-is).

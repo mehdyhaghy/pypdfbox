@@ -42,7 +42,7 @@ class PDRange:
                     f"PDRange expected COSArray; got {type(array).__name__}"
                 )
             self._array = array
-            self._starting_index = int(index)
+            self._starting_index = _validate_starting_index(index)
 
     # ---------- COS surface ----------
 
@@ -77,7 +77,7 @@ class PDRange:
         same backing array, e.g. when sliding through a multi-range
         Lab/CalRGB/CalGray gamut without re-allocating the wrapper.
         """
-        self._starting_index = int(index)
+        self._starting_index = _validate_starting_index(index)
 
     # ---------- min ----------
 
@@ -231,6 +231,13 @@ class PDRange:
             f"PDRange(min={self.get_min()!r}, max={self.get_max()!r}, "
             f"starting_index={self._starting_index!r})"
         )
+
+
+def _validate_starting_index(index: int) -> int:
+    starting_index = int(index)
+    if starting_index < 0:
+        raise ValueError("PDRange starting index must be non-negative")
+    return starting_index
 
 
 __all__ = ["PDRange"]

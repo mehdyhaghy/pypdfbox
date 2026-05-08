@@ -149,6 +149,7 @@ class PDNameTreeNode[T](ABC):
             self._node.remove_item(_KIDS)
             self._node.remove_item(_LIMITS)
         self._calculate_limits()
+        self._notify_parent_limits_changed()
 
     # ---------- /Names ----------
 
@@ -170,6 +171,7 @@ class PDNameTreeNode[T](ABC):
         if names is None:
             self._node.remove_item(_NAMES)
             self._node.remove_item(_LIMITS)
+            self._notify_parent_limits_changed()
             return
         if len(names) > _MAX_NAMES_IN_LEAF:
             self.set_kids(self._build_balanced_kids(names))
@@ -181,6 +183,7 @@ class PDNameTreeNode[T](ABC):
         self._node.remove_item(_KIDS)
         self._node.set_item(_NAMES, arr)
         self._calculate_limits()
+        self._notify_parent_limits_changed()
 
     # ---------- value lookup (binary descent through /Limits) ----------
 
@@ -193,12 +196,12 @@ class PDNameTreeNode[T](ABC):
             for child in kids:
                 upper = child.get_upper_limit()
                 lower = child.get_lower_limit()
-                if (
-                    upper is None
-                    or lower is None
-                    or upper < lower
-                    or (lower <= name <= upper)
-                ):
+                if upper is None or lower is None or upper < lower:
+                    value = child.get_value(name)
+                    if value is not None:
+                        return value
+                    continue
+                if lower <= name <= upper:
                     return child.get_value(name)
         else:
             _LOG.warning('NameTreeNode does not have "Names" nor "Kids" objects.')
@@ -250,7 +253,9 @@ class PDNameTreeNode[T](ABC):
                     f"Expected string, found {base!r} in name tree at index {i}"
                 )
             cos_value = names_array.get_object(i + 1)
-            out[base.get_string()] = self.convert_cos_to_value(cos_value)  # type: ignore[arg-type]
+            if cos_value is None:
+                raise OSError(f"Expected COS value in name tree at index {i + 1}")
+            out[base.get_string()] = self.convert_cos_to_value(cos_value)
             i += 2
         return out
 
@@ -262,6 +267,7 @@ class PDNameTreeNode[T](ABC):
         self._node.remove_item(_KIDS)
         self._node.set_item(_NAMES, arr)
         self._calculate_limits()
+        self._notify_parent_limits_changed()
 
     def _build_balanced_kids(self, names: dict[str, T]) -> list[PDNameTreeNode[T]]:
         sorted_keys = sorted(names)
@@ -291,11 +297,29 @@ class PDNameTreeNode[T](ABC):
         """
         self._node.remove_item(_NAMES)
         self._node.remove_item(_LIMITS)
+        self._notify_parent_limits_changed()
+
+    def clear_names(self) -> None:
+        """Clear the ``/Names`` entry.
+
+        Alias for :meth:`remove_names`, matching the local ``clear_*``
+        helper naming used by newer PD model wrappers.
+        """
+        self.remove_names()
 
     def remove_kids(self) -> None:
         """Drop the ``/Kids`` and ``/Limits`` entries from this node."""
         self._node.remove_item(_KIDS)
         self._node.remove_item(_LIMITS)
+        self._notify_parent_limits_changed()
+
+    def clear_kids(self) -> None:
+        """Clear the ``/Kids`` entry.
+
+        Alias for :meth:`remove_kids`, matching the local ``clear_*``
+        helper naming used by newer PD model wrappers.
+        """
+        self.remove_kids()
 
     def clear(self) -> None:
         """Drop ``/Names``, ``/Kids`` and ``/Limits`` from this node.
@@ -307,6 +331,7 @@ class PDNameTreeNode[T](ABC):
         self._node.remove_item(_NAMES)
         self._node.remove_item(_KIDS)
         self._node.remove_item(_LIMITS)
+        self._notify_parent_limits_changed()
 
     def merge(self, other: PDNameTreeNode[T] | dict[str, T] | None) -> None:
         """Merge ``other`` into this node, overwriting on key collisions.
@@ -318,10 +343,11 @@ class PDNameTreeNode[T](ABC):
         """
         if other is None:
             return
-        if isinstance(other, PDNameTreeNode):
-            other_names = other.get_names() or {}
-        else:
-            other_names = dict(other)
+        other_names = (
+            other.get_names() or {}
+            if isinstance(other, PDNameTreeNode)
+            else dict(other)
+        )
         if not other_names:
             return
         existing = self.get_names() or {}
@@ -373,6 +399,12 @@ class PDNameTreeNode[T](ABC):
             self.set_upper_limit(keys[-1])
         else:
             self._node.remove_item(_LIMITS)
+
+    def _notify_parent_limits_changed(self) -> None:
+        parent = self._parent
+        while parent is not None:
+            parent._calculate_limits()
+            parent = parent._parent
 
 
 __all__ = ["PDNameTreeNode"]

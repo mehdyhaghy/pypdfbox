@@ -139,7 +139,9 @@ class PDAnnotationLink(PDAnnotation):
         Cheaper than ``get_destination() is not None`` because it skips the
         ``PDDestination.create`` factory dispatch.
         """
-        return self._dict.get_dictionary_object(_DEST) is not None
+        return isinstance(
+            self._dict.get_dictionary_object(_DEST), (COSArray, COSName, COSString)
+        )
 
     # ---------- /H (highlight mode) ----------
 

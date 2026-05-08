@@ -20,9 +20,9 @@ def _make_extended_extractor(pen: Any, subrs: Any) -> Any:
     charstrings rarely use these on the operand stack — they appear in
     Other-Subroutine machinery — but PDFBox handles them, so we do too.
     """
-    from fontTools.misc.psCharStrings import T1OutlineExtractor  # noqa: PLC0415
+    from fontTools.misc import psCharStrings  # type: ignore[import-untyped]  # noqa: PLC0415
 
-    class _Type1ExtendedExtractor(T1OutlineExtractor):
+    class _Type1ExtendedExtractor(psCharStrings.T1OutlineExtractor):  # type: ignore[misc]
         def op_dup(self, index: int) -> None:
             # PostScript ``dup``: duplicate the top of the operand stack.
             top = self.pop()
@@ -59,12 +59,12 @@ def _make_path_pen() -> Any:
     (mirrors ``cff_font._make_path_pen`` and
     ``type2_char_string._make_path_pen``).
     """
-    from fontTools.pens.basePen import BasePen  # noqa: PLC0415
+    from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
 
-    class _PathPen(BasePen):
+    class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__(glyphSet=None)
-            self.commands: list[tuple] = []
+            self.commands: list[tuple[Any, ...]] = []
 
         def _moveTo(self, pt: tuple[float, float]) -> None:
             self.commands.append(("moveto", float(pt[0]), float(pt[1])))
@@ -149,7 +149,7 @@ class Type1CharString:
         self._glyph_name = glyph_name
         self._gid = int(gid)
         self._t1: Any = None
-        self._cached_path: list[tuple] | None = None
+        self._cached_path: list[tuple[Any, ...]] | None = None
         self._cached_width: float | None = None
         # Mirror upstream's ``type1Sequence`` — the raw list of operands +
         # ``CharStringCommand``-shaped tokens. Subclasses (notably
@@ -159,23 +159,23 @@ class Type1CharString:
         # the caller passes one, for ``__str__``-style introspection.
         self._type1_sequence: list[Any] = []
 
-        from fontTools.misc.psCharStrings import T1CharString  # noqa: PLC0415
+        from fontTools.misc import psCharStrings  # noqa: PLC0415
 
-        if isinstance(sequence, T1CharString):
+        if isinstance(sequence, psCharStrings.T1CharString):
             self._t1 = sequence
         elif isinstance(sequence, (bytes, bytearray, memoryview)):
-            self._t1 = T1CharString(bytecode=bytes(sequence))
+            self._t1 = psCharStrings.T1CharString(bytecode=bytes(sequence))
         elif isinstance(sequence, list):
             # Caller passed a pre-decompiled program list. fontTools
             # accepts a heterogeneous list of numbers + string operator
             # names, which is exactly what upstream PDFBox's
             # ``List<Object>`` carries (numbers + CharStringCommand).
             program = [_coerce_program_token(tok) for tok in sequence]
-            self._t1 = T1CharString(program=program)
+            self._t1 = psCharStrings.T1CharString(program=program)
             # Preserve the original tokens for sequence accessors.
             self._type1_sequence = list(sequence)
         elif sequence is None:
-            self._t1 = T1CharString()
+            self._t1 = psCharStrings.T1CharString()
         else:
             msg = (
                 "sequence must be a T1CharString, bytes, list of program "
@@ -231,7 +231,7 @@ class Type1CharString:
             self._cached_width = 0.0
         return self._cached_width
 
-    def get_path(self) -> list[tuple]:
+    def get_path(self) -> list[tuple[Any, ...]]:
         """Glyph outline as a list of draw commands in font units.
 
         Mirrors ``Type1CharString.getPath()``. Returns the same
@@ -258,7 +258,7 @@ class Type1CharString:
         # now so a follow-up ``get_width()`` avoids a second draw.
         if self._cached_width is None:
             self._cached_width = width
-        self._cached_path = list(pen.commands)  # type: ignore[attr-defined]
+        self._cached_path = list(pen.commands)
         return list(self._cached_path)
 
     def get_bounds(self) -> tuple[float, float, float, float] | None:

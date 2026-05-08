@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from pypdfbox.cos import COSBase, COSName
@@ -24,22 +25,43 @@ class SetNonStrokingColorSpace(OperatorProcessor):
 
     OPERATOR_NAME = OperatorName.NON_STROKING_COLORSPACE
 
+    @staticmethod
+    def is_color_space_name(operands: list[COSBase]) -> bool:
+        """Return ``True`` iff the operand list has a leading
+        :class:`COSName`, matching the well-formed ``cs`` operand shape."""
+        return SetNonStrokingColorSpace.get_color_space_name(operands) is not None
+
+    @staticmethod
+    def get_color_space_name(operands: list[COSBase]) -> COSName | None:
+        """Return the leading color-space name operand, if present."""
+        if not operands:
+            return None
+        head = operands[0]
+        if isinstance(head, COSName):
+            return head
+        return None
+
+    def resolve_color_space(self, name: COSName) -> Any | None:
+        """Resolve ``name`` through the bound engine's resources."""
+        context = self._context
+        if context is None:
+            return None
+        resources = context.get_resources()
+        if resources is None:
+            return None
+        return resources.get_color_space(name)
+
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         del operator
-        if not operands:
-            return
-        name = operands[0]
-        if not isinstance(name, COSName):
+        name = self.get_color_space_name(operands)
+        if name is None:
             return
         context = self._context
         if context is None:
             return
         if not context.is_should_process_color_operators():
             return
-        resources = context.get_resources()
-        if resources is None:
-            return
-        color_space = resources.get_color_space(name)
+        color_space = self.resolve_color_space(name)
         if color_space is None:
             return
         graphics_state = context.get_graphics_state()
@@ -69,9 +91,5 @@ class SetNonStrokingColorSpace(OperatorProcessor):
     @staticmethod
     def _set_attr(target: Any | None, attr: str, value: Any) -> None:
         if target is not None:
-            try:
+            with suppress(AttributeError):
                 setattr(target, attr, value)
-            except AttributeError:
-                # Slotted graphics-state implementations without the
-                # attribute; mirror upstream's silent no-op.
-                pass

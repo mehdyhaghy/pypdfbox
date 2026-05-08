@@ -43,6 +43,18 @@ class PDListAttributeObject(PDStandardAttributeObject):
     def set_list_numbering(self, list_numbering: str) -> None:
         self._set_name("ListNumbering", list_numbering)
 
+    def is_list_numbering_specified(self) -> bool:
+        """``True`` iff ``/ListNumbering`` is explicitly written."""
+        return self.is_specified(self.LIST_NUMBERING)
+
+    def has_list_numbering(self) -> bool:
+        """Alias for :meth:`is_list_numbering_specified`."""
+        return self.is_list_numbering_specified()
+
+    def clear_list_numbering(self) -> None:
+        """Remove the ``/ListNumbering`` entry if present."""
+        self.clear_attribute(self.LIST_NUMBERING)
+
     def __str__(self) -> str:
         """Mirror upstream ``PDListAttributeObject.toString()`` which
         appends ``", ListNumbering=<value>"`` when the entry is specified."""

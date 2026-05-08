@@ -29,9 +29,9 @@ class COSParser(BaseParser):
     ``BaseParser``. Mirrors `org.apache.pdfbox.pdfparser.COSParser` for
     the direct-object / array / dictionary / indirect-reference subset.
 
-    Stream bodies (the ``stream ... endstream`` payload following a
-    stream dictionary) are NOT handled here — that requires resolved
-    ``/Length`` and lives in ``PDFParser`` (cluster #3).
+    Stream bodies with a direct ``/Length`` are handled here; indirect
+    ``/Length`` resolution, full document xref walking, and lazy object
+    loading live in ``PDFParser``.
 
     Usage:
         parser = COSParser(source, document=doc)  # document is optional
@@ -121,6 +121,7 @@ class COSParser(BaseParser):
         # ``isInitialParseDone`` / ``isTrailerWasRebuild`` find them.
         self._initial_parse_done: bool = False
         self._trailer_was_rebuild: bool = False
+        self._recursion_depth: int = 0
 
     @property
     def document(self) -> COSDocument | None:
@@ -164,16 +165,20 @@ class COSParser(BaseParser):
         b = self.read_byte()
         if b != 0x5B:
             raise PDFParseError("expected array '['", position=start)
-        items: list[COSBase] = []
-        while True:
-            self.skip_whitespace()
-            nxt = self.peek_byte()
-            if nxt == RandomAccessRead.EOF:
-                raise PDFParseError("unterminated array", position=start)
-            if nxt == 0x5D:  # ']'
-                self.read_byte()
-                return COSArray(items)
-            items.append(self.parse_direct_object())
+        self._enter_recursion("array", start)
+        try:
+            items: list[COSBase] = []
+            while True:
+                self.skip_whitespace()
+                nxt = self.peek_byte()
+                if nxt == RandomAccessRead.EOF:
+                    raise PDFParseError("unterminated array", position=start)
+                if nxt == 0x5D:  # ']'
+                    self.read_byte()
+                    return COSArray(items)
+                items.append(self.parse_direct_object())
+        finally:
+            self._leave_recursion()
 
     # ---------- dictionaries ----------
 
@@ -181,23 +186,38 @@ class COSParser(BaseParser):
         """Parse a ``<< ... >>`` dictionary."""
         start = self.position
         self.read_expected(b"<<")
-        d = COSDictionary()
-        while True:
-            self.skip_whitespace()
-            nxt = self.peek_byte()
-            if nxt == RandomAccessRead.EOF:
-                raise PDFParseError("unterminated dictionary", position=start)
-            if nxt == 0x3E:  # '>'
-                self.read_expected(b">>")
-                return d
-            if nxt != 0x2F:  # '/'
-                raise PDFParseError(
-                    f"expected name in dictionary at byte {self.position}",
-                    position=self.position,
-                )
-            key = self.read_name()
-            value = self.parse_direct_object()
-            d.set_item(key, value)
+        self._enter_recursion("dictionary", start)
+        try:
+            d = COSDictionary()
+            while True:
+                self.skip_whitespace()
+                nxt = self.peek_byte()
+                if nxt == RandomAccessRead.EOF:
+                    raise PDFParseError("unterminated dictionary", position=start)
+                if nxt == 0x3E:  # '>'
+                    self.read_expected(b">>")
+                    return d
+                if nxt != 0x2F:  # '/'
+                    raise PDFParseError(
+                        f"expected name in dictionary at byte {self.position}",
+                        position=self.position,
+                    )
+                key = self.read_name()
+                value = self.parse_direct_object()
+                d.set_item(key, value)
+        finally:
+            self._leave_recursion()
+
+    def _enter_recursion(self, object_type: str, position: int) -> None:
+        if self._recursion_depth >= self.MAX_RECURSION_DEPTH:
+            raise PDFParseError(
+                f"maximum COS {object_type} nesting depth exceeded",
+                position=position,
+            )
+        self._recursion_depth += 1
+
+    def _leave_recursion(self) -> None:
+        self._recursion_depth -= 1
 
     # ---------- numbers and indirect references ----------
 
@@ -597,33 +617,7 @@ class COSParser(BaseParser):
             raise PDFParseError(
                 f"object stream {obj_num} is not a stream"
             )
-        n_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("N"))
-        first_obj = objstm_body.get_dictionary_object(
-            COSName.get_pdf_name("First")
-        )
-        if not isinstance(n_obj, COSInteger) or not isinstance(first_obj, COSInteger):
-            raise PDFParseError(
-                f"object stream {obj_num} missing /N or /First"
-            )
-        n = n_obj.value
-        first = first_obj.value
-        with objstm_body.create_input_stream() as src:
-            decoded = src.read()
-        # Header: N pairs of "<obj_num> <byte_offset>", whitespace
-        # separated. Parse them via a fresh BaseParser scoped to just
-        # the header window.
-        header_view = RandomAccessReadBuffer(decoded[:first])
-        header_parser = BaseParser(header_view)
-        pairs: list[tuple[int, int]] = []
-        try:
-            for _ in range(n):
-                header_parser.skip_whitespace()
-                stored_obj_num = header_parser.read_int()
-                header_parser.skip_whitespace()
-                byte_offset = header_parser.read_int()
-                pairs.append((stored_obj_num, byte_offset))
-        finally:
-            header_view.close()
+        decoded, pairs, first = _read_object_stream_offsets(objstm_body, obj_num)
         results: list[COSBase] = []
         # Body: each entry starts at decoded[first + offset]. Parse all
         # of them; register into the pool so subsequent indirect
@@ -876,12 +870,13 @@ class COSParser(BaseParser):
                 position=self.position,
             )
         type_obj = body.get_dictionary_object(COSName.get_pdf_name("Type"))
-        if is_standalone:
-            if not (isinstance(type_obj, COSName) and type_obj.name == "XRef"):
-                raise PDFParseError(
-                    "xref-stream dict missing /Type /XRef",
-                    position=self.position,
-                )
+        if is_standalone and not (
+            isinstance(type_obj, COSName) and type_obj.name == "XRef"
+        ):
+            raise PDFParseError(
+                "xref-stream dict missing /Type /XRef",
+                position=self.position,
+            )
         # Promote the dict to a COSStream + read its body so callers
         # that want the on-disk bytes can drive ``create_input_stream``.
         stream = self._build_stream_from_dict(body)
@@ -939,17 +934,11 @@ class COSParser(BaseParser):
             except PDFParseError:
                 return False
             for i in range(count):
-                # 20-byte fixed entry: ``oooooooooo ggggg n\r\n``.
-                raw = bytearray(20)
-                n = self._src.read_into(raw)
-                if n < 20:
-                    return False
-                line = bytes(raw)
                 try:
-                    offset = int(line[0:10].decode("ascii"))
-                    generation = int(line[11:16].decode("ascii"))
-                    flag = chr(line[17])
-                except (ValueError, IndexError):
+                    line = self.read_until_eol()
+                    self.skip_eol()
+                    offset, generation, flag = _parse_xref_entry_line(line)
+                except PDFParseError:
                     return False
                 key = COSObjectKey(first_obj + i, generation)
                 if flag == "n":
@@ -1173,10 +1162,8 @@ class COSParser(BaseParser):
             after_ok = j + 4 == n or data[j + 4] in ws
             # Reject the trailing ``xref`` of ``startxref`` — preceded
             # by ``start`` not whitespace.
-            if before_ok and after_ok:
-                # Reject ``/XRef`` (preceded by ``/``).
-                if not (j > 0 and data[j - 1] == 0x2F):
-                    candidates.append(j)
+            if before_ok and after_ok and not (j > 0 and data[j - 1] == 0x2F):
+                candidates.append(j)
             i = j + 1
         if candidates:
             # Pick the candidate nearest to ``start_xref_offset``; ties
@@ -1317,7 +1304,9 @@ class COSParser(BaseParser):
         return trailer
 
     def parse_xref_stream(
-        self, xref_stream_dict: COSDictionary, xref_table: dict | None = None
+        self,
+        xref_stream_dict: COSDictionary,
+        xref_table: dict[COSObjectKey, int] | None = None,
     ) -> dict[COSObjectKey, int]:
         """Tolerantly parse a PDF 1.5+ xref-stream trailer dictionary's
         ``/W`` and ``/Index`` arrays and return an
@@ -1380,29 +1369,132 @@ class COSParser(BaseParser):
                 )
             i = 0
             while i + 1 < index_obj.size():
-                first = index_obj.get(i)
-                count = index_obj.get(i + 1)
+                first_obj = index_obj.get(i)
+                count_obj = index_obj.get(i + 1)
                 # Upstream rejects non-integer entries with
                 # "Xref stream must have integer in /Index array".
-                if not isinstance(first, COSInteger) or not isinstance(
-                    count, COSInteger
+                if not isinstance(first_obj, COSInteger) or not isinstance(
+                    count_obj, COSInteger
                 ):
                     raise PDFParseError(
                         "xref stream /Index entries must be integers"
                     )
-                index_pairs.append((first.int_value(), count.int_value()))
+                first = first_obj.int_value()
+                count = count_obj.int_value()
+                _validate_xref_index_pair(first, count)
+                index_pairs.append((first, count))
                 i += 2
         if not index_pairs:
             size_obj = xref_stream_dict.get_dictionary_object(
                 COSName.get_pdf_name("Size")
             )
             size = size_obj.int_value() if isinstance(size_obj, COSInteger) else 0
+            _validate_xref_index_pair(0, size)
             index_pairs = [(0, size)]
         body_offset = 0
         for first_obj_num, count in index_pairs:
             if count <= 0:
                 continue
-            for k in range(count):
-                xref_table[COSObjectKey(first_obj_num + k, 0)] = body_offset
+            for object_index in range(count):
+                xref_table[COSObjectKey(first_obj_num + object_index, 0)] = body_offset
                 body_offset += entry_size
         return xref_table
+
+
+def _validate_xref_index_pair(first_obj_num: int, count: int) -> None:
+    """Reject negative xref-stream /Index values before key construction."""
+    if first_obj_num < 0:
+        raise PDFParseError(
+            f"xref stream /Index first object number is negative: {first_obj_num}"
+        )
+    if count < 0:
+        raise PDFParseError(f"xref stream /Index count is negative: {count}")
+
+
+def _parse_xref_entry_line(line: bytes) -> tuple[int, int, str]:
+    """Parse one traditional xref entry line.
+
+    The PDF grammar defines fixed-width 20-byte records, but real files
+    often use compact LF-only lines without the optional trailing space.
+    Splitting keeps both forms aligned without consuming bytes from the
+    following entry.
+    """
+    parts = line.split()
+    if len(parts) != 3:
+        raise PDFParseError(f"malformed xref entry {line!r}")
+    offset_bytes, generation_bytes, flag_bytes = parts
+    if len(flag_bytes) != 1:
+        raise PDFParseError(f"malformed xref entry flag {flag_bytes!r}")
+    try:
+        offset = int(offset_bytes.decode("ascii"))
+        generation = int(generation_bytes.decode("ascii"))
+        flag = flag_bytes.decode("ascii")
+    except ValueError as exc:
+        raise PDFParseError(f"malformed xref entry {line!r}") from exc
+    return offset, generation, flag
+
+
+def _read_object_stream_offsets(
+    objstm_body: COSStream, objstm_obj_num: int
+) -> tuple[bytes, list[tuple[int, int]], int]:
+    """Return decoded ObjStm bytes, header pairs, and the payload start.
+
+    Object streams encode a header of ``/N`` ``(object_number, byte_offset)``
+    pairs before the packed object bodies. This helper centralizes the
+    malformed-metadata checks shared by eager ``COSParser.parse_object_stream``
+    and lazy ``PDFParser`` compressed-object loading.
+    """
+    type_obj = objstm_body.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+    if not (isinstance(type_obj, COSName) and type_obj.name == "ObjStm"):
+        raise PDFParseError(f"object stream {objstm_obj_num} missing /Type /ObjStm")
+
+    n_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("N"))
+    first_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("First"))
+    if not isinstance(n_obj, COSInteger) or not isinstance(first_obj, COSInteger):
+        raise PDFParseError(f"object stream {objstm_obj_num} missing /N or /First")
+
+    object_count = n_obj.value
+    first = first_obj.value
+    if object_count < 0:
+        raise PDFParseError(f"object stream {objstm_obj_num} has negative /N")
+    if first < 0:
+        raise PDFParseError(f"object stream {objstm_obj_num} has negative /First")
+
+    with objstm_body.create_input_stream() as src:
+        decoded = src.read()
+    if first > len(decoded):
+        raise PDFParseError(
+            f"object stream {objstm_obj_num} /First {first} exceeds decoded length "
+            f"{len(decoded)}"
+        )
+
+    payload_length = len(decoded) - first
+    header_view = RandomAccessReadBuffer(decoded[:first])
+    header_parser = BaseParser(header_view)
+    pairs: list[tuple[int, int]] = []
+    try:
+        for pair_index in range(object_count):
+            try:
+                header_parser.skip_whitespace()
+                stored_obj_num = header_parser.read_int()
+                header_parser.skip_whitespace()
+                byte_offset = header_parser.read_int()
+            except PDFParseError as exc:
+                raise PDFParseError(
+                    f"object stream {objstm_obj_num} header truncated at pair "
+                    f"{pair_index}"
+                ) from exc
+            if stored_obj_num < 0:
+                raise PDFParseError(
+                    f"object stream {objstm_obj_num} has negative object number "
+                    f"{stored_obj_num}"
+                )
+            if byte_offset < 0 or byte_offset >= payload_length:
+                raise PDFParseError(
+                    f"object stream {objstm_obj_num} object {stored_obj_num} "
+                    f"offset {byte_offset} outside payload length {payload_length}"
+                )
+            pairs.append((stored_obj_num, byte_offset))
+    finally:
+        header_view.close()
+    return decoded, pairs, first

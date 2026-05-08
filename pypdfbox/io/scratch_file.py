@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-import os
 import tempfile
 import threading
-from typing import IO, Iterable
+from collections.abc import Iterable
+from typing import IO
 
 from .memory_usage_setting import UNLIMITED, MemoryUsageSetting, StorageMode
+from .random_access_read import RandomAccessRead
 
 _log = logging.getLogger(__name__)
 
@@ -153,13 +154,14 @@ class ScratchFile:
         Store ``length`` bytes from ``data[offset:offset+length]`` into
         page ``page_index``. ``length`` defaults to ``page_size``.
         """
+        view = memoryview(data).cast("B")
         if length is None:
             length = self._page_size
-        self._validate_page_io(page_index, data, offset, length)
+        self._validate_page_io(page_index, view, offset, length)
         with self._lock:
             self._check_open()
             self._validate_page_index(page_index)
-            payload = bytes(memoryview(data)[offset : offset + length])
+            payload = bytes(view[offset : offset + length])
             # Pad short writes with zeros so a page is always page_size long
             # in storage (matches upstream's fixed-page behavior).
             if length < self._page_size:
@@ -239,17 +241,27 @@ class ScratchFile:
             self._open_buffers.add(buf)
             return buf
 
-    def create_buffer_from_input(self, source) -> ScratchFileBuffer:  # noqa: ANN001
+    def create_buffer_from_input(self, source: RandomAccessRead) -> ScratchFileBuffer:
         """Convenience: copy ``source`` (current pos -> end) into a new buffer."""
         buf = self.create_buffer()
-        chunk = bytearray(self._page_size)
-        while True:
-            n = source.read_into(chunk)
-            if n <= 0:
-                break
-            buf.write_bytes(chunk, 0, n)
-        buf.seek(0)
-        return buf
+        try:
+            chunk = bytearray(self._page_size)
+            while True:
+                n = source.read_into(chunk)
+                if n <= 0:
+                    break
+                buf.write_bytes(chunk, 0, n)
+            buf.seek(0)
+            return buf
+        except Exception:
+            try:
+                buf.close()
+            except Exception as close_exc:  # pragma: no cover - defensive cleanup
+                _log.debug(
+                    "ScratchFileBuffer close after failed input copy failed: %s",
+                    close_exc,
+                )
+            raise
 
     def create_buffer_with_data(
         self, data: bytes | bytearray | memoryview
@@ -326,8 +338,7 @@ class ScratchFile:
 
     def _ensure_tmp(self) -> IO[bytes]:
         if self._tmp is None:
-            # noqa: SIM115 — closed by ScratchFile.close().
-            self._tmp = tempfile.TemporaryFile(mode="w+b")
+            self._tmp = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115
         return self._tmp
 
     def _allocate_new_page(self) -> int:

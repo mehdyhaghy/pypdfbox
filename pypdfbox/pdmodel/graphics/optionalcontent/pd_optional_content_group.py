@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 
 from ..pd_property_list import PDPropertyList
+
+if TYPE_CHECKING:
+    from .pd_optional_content_group_usage import PDOptionalContentGroupUsage
 
 
 class RenderState(Enum):
@@ -15,7 +19,7 @@ class RenderState(Enum):
     OFF = "OFF"
 
     @classmethod
-    def value_of(cls, name: str | COSName | None) -> "RenderState | None":
+    def value_of(cls, name: str | COSName | None) -> RenderState | None:
         """Mirrors upstream ``RenderState.valueOf(String|COSName)`` — look
         up by spec name (case-insensitive). Per upstream
         ``RenderState.valueOf(COSName)``, a ``None`` argument resolves to
@@ -29,6 +33,9 @@ class RenderState(Enum):
             if member.value == upper:
                 return member
         raise ValueError(f"RenderState has no member named {name!r}")
+
+
+_RenderState = RenderState
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _OCG: COSName = COSName.get_pdf_name("OCG")
@@ -339,7 +346,7 @@ class PDOptionalContentGroup(PDPropertyList):
         value = self._dict.get_dictionary_object(_USAGE)
         return value if isinstance(value, COSDictionary) else None
 
-    def get_usage(self) -> "PDOptionalContentGroupUsage | None":
+    def get_usage(self) -> PDOptionalContentGroupUsage | None:
         """Return a typed :class:`PDOptionalContentGroupUsage` wrapper for
         the OCG ``/Usage`` sub-dictionary, or ``None`` when absent.
 
@@ -361,7 +368,7 @@ class PDOptionalContentGroup(PDPropertyList):
 
     def get_render_state_enum(
         self, destination: object = None
-    ) -> "RenderState | None":
+    ) -> _RenderState | None:
         """Typed-enum variant of :meth:`get_render_state`.
 
         Returns the parsed :class:`RenderState` member or ``None`` when no
@@ -374,7 +381,7 @@ class PDOptionalContentGroup(PDPropertyList):
         return RenderState.value_of(name)
 
     def set_render_state_enum(
-        self, state: "RenderState", destination: object = "Export"
+        self, state: _RenderState, destination: object = "Export"
     ) -> None:
         """Typed-enum variant of :meth:`set_render_state` — accepts a
         :class:`RenderState` member instead of a raw string. ``destination``
@@ -386,7 +393,7 @@ class PDOptionalContentGroup(PDPropertyList):
             )
         self.set_render_state(state.value, destination)
 
-    def get_or_create_usage(self) -> "PDOptionalContentGroupUsage":
+    def get_or_create_usage(self) -> PDOptionalContentGroupUsage:
         """Return a typed wrapper, creating an empty ``/Usage`` dict if
         none exists yet."""
         from .pd_optional_content_group_usage import (

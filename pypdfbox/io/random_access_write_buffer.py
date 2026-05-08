@@ -5,10 +5,17 @@ import io
 from .random_access_write import RandomAccessWrite
 
 
+def _as_byte_view(data: bytes | bytearray | memoryview) -> memoryview:
+    view = memoryview(data)
+    try:
+        return view.cast("B")
+    except TypeError:
+        return memoryview(bytes(view))
+
+
 class RandomAccessWriteBuffer(RandomAccessWrite):
     """
-    In-memory random-access write sink. Thin adapter over ``io.BytesIO``.
-    Per PRD §3.7, generic byte buffering delegates to stdlib.
+    In-memory write sink. Thin adapter over ``io.BytesIO``.
     """
 
     def __init__(self) -> None:
@@ -32,13 +39,14 @@ class RandomAccessWriteBuffer(RandomAccessWrite):
         length: int | None = None,
     ) -> None:
         self._check_open()
+        view = _as_byte_view(data)
         if length is None:
-            length = len(data) - offset
+            length = view.nbytes - offset
         if length < 0:
             raise ValueError("length must be non-negative")
-        if offset < 0 or offset + length > len(data):
+        if offset < 0 or offset + length > view.nbytes:
             raise ValueError("offset/length out of range for data")
-        self._buf.write(memoryview(data)[offset : offset + length])
+        self._buf.write(view[offset : offset + length])
 
     def clear(self) -> None:
         self._check_open()

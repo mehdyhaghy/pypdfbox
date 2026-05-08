@@ -13,8 +13,8 @@ class PDDeviceCMYK(PDDeviceColorSpace):
     ``org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK``. Use the
     singleton ``PDDeviceCMYK.INSTANCE``.
 
-    Lite surface: ICC-profile-based RGB conversion (``to_rgb`` /
-    ``to_rgb_image``) is deferred until rendering lands.
+    Lite surface: ``to_rgb`` uses a simple subtractive approximation.
+    ICC-profile-based CMYK conversion remains part of the rendering path.
     """
 
     INSTANCE: ClassVar[PDDeviceCMYK]

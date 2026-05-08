@@ -27,7 +27,7 @@ class FDSelect:
         self._fdselect = fdselect
 
     @classmethod
-    def from_fonttools(cls, fdselect: Any) -> "FDSelect":
+    def from_fonttools(cls, fdselect: Any) -> FDSelect:
         return cls(fdselect)
 
     # ---------- PDFBox-style accessors ----------
@@ -36,15 +36,18 @@ class FDSelect:
         """PDFBox: ``FDSelect.getFormat()`` — 0 or 3 per CFF spec §19."""
         if self._fdselect is None:
             return 0
-        return int(getattr(self._fdselect, "format", 0))
+        try:
+            return int(getattr(self._fdselect, "format", 0))
+        except (TypeError, ValueError):
+            return 0
 
     def get_num_glyphs(self) -> int:
         """PDFBox: ``FDSelect.getNumGlyphs()`` — number of GIDs covered."""
         if self._fdselect is None:
             return 0
         try:
-            return len(self._fdselect)
-        except TypeError:
+            return max(0, len(self._fdselect))
+        except (TypeError, ValueError):
             return 0
 
     def get_fd_index(self, gid: int) -> int:
@@ -57,7 +60,7 @@ class FDSelect:
             return 0
         try:
             return int(self._fdselect[gid])
-        except (IndexError, KeyError, TypeError):
+        except (IndexError, KeyError, TypeError, ValueError):
             return 0
 
     # ---------- conveniences ----------
@@ -101,7 +104,10 @@ class Format0FDSelect(FDSelect):
 
     def get_fd_index(self, gid: int) -> int:
         if 0 <= gid < len(self._fds):
-            return int(self._fds[gid])
+            try:
+                return int(self._fds[gid])
+            except (TypeError, ValueError):
+                return 0
         return 0
 
     def __len__(self) -> int:
@@ -141,7 +147,7 @@ class Format3FDSelect(FDSelect):
         self._ranges: list[tuple[int, int]] = (
             list(ranges) if ranges is not None else []
         )
-        self._sentinel = int(sentinel)
+        self._sentinel = max(0, int(sentinel))
 
     def get_format(self) -> int:
         return 3

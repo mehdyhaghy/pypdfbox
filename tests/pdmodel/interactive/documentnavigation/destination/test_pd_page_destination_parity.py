@@ -120,6 +120,6 @@ def test_set_page_none_writes_cos_null() -> None:
     dest.set_page_number(2)
     dest.set_page(None)
 
-    assert dest.get_cos_array().get_object(0) is COSNull.NULL
+    assert dest.get_cos_array().get(0) is COSNull.NULL
     assert dest.get_page() is None
     assert dest.get_page_number() == -1

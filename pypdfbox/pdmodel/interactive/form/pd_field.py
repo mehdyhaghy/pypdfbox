@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
@@ -88,17 +88,41 @@ class PDField:
             )
         self._field.set_string(_T, name)
 
+    def has_partial_name(self) -> bool:
+        """Return ``True`` when this field has a local string-like ``/T``."""
+        return self._field.has_string(_T)
+
+    def clear_partial_name(self) -> None:
+        """Remove this field's local ``/T`` partial-name entry."""
+        self._field.remove_item(_T)
+
     def get_alternate_field_name(self) -> str | None:
         return self._field.get_string(_TU)
 
     def set_alternate_field_name(self, name: str | None) -> None:
         self._field.set_string(_TU, name)
 
+    def has_alternate_field_name(self) -> bool:
+        """Return ``True`` when this field has a local string-like ``/TU``."""
+        return self._field.has_string(_TU)
+
+    def clear_alternate_field_name(self) -> None:
+        """Remove this field's local ``/TU`` alternate-name entry."""
+        self._field.remove_item(_TU)
+
     def get_mapping_name(self) -> str | None:
         return self._field.get_string(_TM)
 
     def set_mapping_name(self, name: str | None) -> None:
         self._field.set_string(_TM, name)
+
+    def has_mapping_name(self) -> bool:
+        """Return ``True`` when this field has a local string-like ``/TM``."""
+        return self._field.has_string(_TM)
+
+    def clear_mapping_name(self) -> None:
+        """Remove this field's local ``/TM`` mapping-name entry."""
+        self._field.remove_item(_TM)
 
     # ---------- inheritable attribute walk ----------
 
@@ -127,6 +151,14 @@ class PDField:
 
     def set_field_flags(self, flags: int) -> None:
         self._field.set_int(_FF, flags)
+
+    def has_field_flags(self) -> bool:
+        """Return ``True`` when this field has a local integer ``/Ff`` entry."""
+        return isinstance(self._field.get_dictionary_object(_FF), COSInteger)
+
+    def clear_field_flags(self) -> None:
+        """Remove this field's local ``/Ff`` flag entry."""
+        self._field.remove_item(_FF)
 
     # ---------- fully qualified name ----------
 
@@ -189,6 +221,14 @@ class PDField:
             _AA,
             aa.get_cos_object() if hasattr(aa, "get_cos_object") else aa,
         )
+
+    def has_actions(self) -> bool:
+        """Return ``True`` when this field has a local ``/AA`` dictionary."""
+        return isinstance(self._field.get_dictionary_object(_AA), COSDictionary)
+
+    def clear_actions(self) -> None:
+        """Remove this field's local ``/AA`` additional-actions dictionary."""
+        self._field.remove_item(_AA)
 
     # ---------- abstract ----------
 

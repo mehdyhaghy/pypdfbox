@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from .true_type_font import TrueTypeFont
 
@@ -8,8 +8,9 @@ if TYPE_CHECKING:
     from pypdfbox.fontbox.cff.cff_cid_font import CFFCIDFont
     from pypdfbox.fontbox.cff.cff_font import CFFFont
     from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
+    from pypdfbox.fontbox.ttf.ttf_data_stream import TTFDataStream
 
-    AnyCFF = Union[CFFFont, CFFCIDFont, CFFType1Font]
+    AnyCFF = CFFFont | CFFCIDFont | CFFType1Font
 
 
 class OpenTypeFont(TrueTypeFont):
@@ -27,7 +28,7 @@ class OpenTypeFont(TrueTypeFont):
     routinely write ``otf.getCFF().getFont()`` to reach the CFF data.
     """
 
-    def __init__(self, data) -> None:  # noqa: ANN001 — TTFDataStream, kept untyped for cycle-free import
+    def __init__(self, data: TTFDataStream) -> None:
         super().__init__(data)
         # Cache the CFF projection. ``_cff_resolved`` records the
         # negative case so a repeat call on a font without a CFF table

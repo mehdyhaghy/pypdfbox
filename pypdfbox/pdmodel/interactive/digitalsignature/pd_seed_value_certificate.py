@@ -179,12 +179,12 @@ class PDSeedValueCertificate:
         return out
 
     def set_key_usage(self, key_usage_extensions: list[str]) -> None:
+        for key_usage_extension in key_usage_extensions:
+            self.validate_key_usage_string(key_usage_extension)
         self._dict.set_item(_KEY_USAGE, COSArray.of_cos_strings(key_usage_extensions))
 
     def add_key_usage(self, key_usage_extension: str) -> None:
-        for ch in key_usage_extension:
-            if ch not in "01X":
-                raise ValueError("characters can only be 0, 1, X")
+        self.validate_key_usage_string(key_usage_extension)
         v = self._dict.get_dictionary_object(_KEY_USAGE)
         array = v if isinstance(v, COSArray) else COSArray()
         array.add(COSString(key_usage_extension))

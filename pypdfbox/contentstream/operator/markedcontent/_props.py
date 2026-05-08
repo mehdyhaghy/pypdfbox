@@ -16,13 +16,9 @@ can be reused — and tested — without instantiating a stream engine.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName
-
-if TYPE_CHECKING:  # pragma: no cover — typing only
-    pass
-
 
 # ---- Constants -------------------------------------------------------
 # These mirror upstream ``COSName`` constants used by the marked-content
@@ -110,9 +106,12 @@ def resolve_property_dict(
     if pl is None:
         return None
     try:
-        return pl.get_cos_object()
+        cos_object = pl.get_cos_object()
     except Exception:  # noqa: BLE001 — defensive
         return None
+    if isinstance(cos_object, COSDictionary):
+        return cos_object
+    return None
 
 
 # ---- Typed accessors -------------------------------------------------

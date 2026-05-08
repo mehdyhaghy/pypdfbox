@@ -50,9 +50,7 @@ class PDVariableText(PDTerminalField):
         self._field.set_string(_DA, da_value)
         if self._field.contains_key(_KIDS):
             for widget in self.get_widgets():
-                widget_cos = (
-                    widget.get_cos_object() if hasattr(widget, "get_cos_object") else widget
-                )
+                widget_cos = widget.get_cos_object()
                 if widget_cos.contains_key(_DA):
                     widget_cos.set_string(_DA, da_value)
 
@@ -64,7 +62,11 @@ class PDVariableText(PDTerminalField):
         Use :meth:`get_default_appearance` (which falls back through the
         parent + AcroForm chain) to read the effective value.
         """
-        return self._field.contains_key(_DA)
+        return isinstance(self._field.get_dictionary_object(_DA), COSString)
+
+    def clear_default_appearance(self) -> None:
+        """Remove this field's local ``/DA`` entry."""
+        self._field.remove_item(_DA)
 
     # ---------- /DS ----------
 
@@ -79,7 +81,11 @@ class PDVariableText(PDTerminalField):
         dictionary. ``/DS`` is **not** inheritable per the PDF spec, so this
         is equivalent to "the entry is present".
         """
-        return self._field.contains_key(_DS)
+        return isinstance(self._field.get_dictionary_object(_DS), COSString)
+
+    def clear_default_style_string(self) -> None:
+        """Remove this field's local ``/DS`` entry."""
+        self._field.remove_item(_DS)
 
     # ---------- /Q ----------
 
@@ -108,7 +114,11 @@ class PDVariableText(PDTerminalField):
         Useful for callers that need to distinguish "field has its own /Q"
         from "field inherits /Q (or defaults to left-aligned)".
         """
-        return self._field.contains_key(_Q)
+        return isinstance(self._field.get_dictionary_object(_Q), COSNumber)
+
+    def clear_q(self) -> None:
+        """Remove this field's local ``/Q`` entry."""
+        self._field.remove_item(_Q)
 
     # ---------- /RV ----------
 
@@ -124,7 +134,11 @@ class PDVariableText(PDTerminalField):
 
         Pypdfbox-only convenience: does **not** walk the inheritable chain.
         """
-        return self._field.contains_key(_RV)
+        return isinstance(self._field.get_dictionary_object(_RV), (COSString, COSStream))
+
+    def clear_rich_text_value(self) -> None:
+        """Remove this field's local ``/RV`` rich-text value."""
+        self._field.remove_item(_RV)
 
     # ---------- /DA + /DS + /RV helper ----------
 

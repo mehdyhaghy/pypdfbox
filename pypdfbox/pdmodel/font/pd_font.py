@@ -210,7 +210,7 @@ class PDFont:
         used internally before reaching for :meth:`get_to_unicode_cmap`.
         Cheap probe that does not parse the CMap.
         """
-        return self._dict.get_dictionary_object(_TO_UNICODE) is not None
+        return self._dict.contains_key(_TO_UNICODE)
 
     def get_to_unicode_cmap(self) -> CMap | None:
         """Return the parsed ``/ToUnicode`` CMap, or ``None`` when absent

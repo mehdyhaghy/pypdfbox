@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName
 
@@ -69,9 +69,13 @@ class PDShadingPattern(PDAbstractPattern):
         value = self._dict.get_dictionary_object(_SHADING)
         return isinstance(value, COSDictionary)
 
+    def clear_shading(self) -> None:
+        """Remove ``/Shading``. No-op if absent."""
+        self._dict.remove_item(_SHADING)
+
     # ---------- /ExtGState (typed override — upstream parity) ----------
 
-    def get_extended_graphics_state(self) -> PDExtendedGraphicsState | None:
+    def get_extended_graphics_state(self) -> Any:
         """Typed ``/ExtGState`` accessor — mirrors upstream
         ``PDShadingPattern.getExtendedGraphicsState``. Returns a typed
         ``PDExtendedGraphicsState`` wrapper or ``None``.
@@ -110,6 +114,10 @@ class PDShadingPattern(PDAbstractPattern):
             "set_extended_graphics_state expects PDExtendedGraphicsState, "
             f"COSDictionary, or None; got {type(ext_g_state).__name__}"
         )
+
+    def clear_extended_graphics_state(self) -> None:
+        """Remove ``/ExtGState``. No-op if absent."""
+        self._dict.remove_item(_EXT_G_STATE)
 
     def set_shading(self, shading: PDShading | COSBase | None) -> None:
         """Accepts a typed ``PDShading``, a raw ``COSBase`` (typically

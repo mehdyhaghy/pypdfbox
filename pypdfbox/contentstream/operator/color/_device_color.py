@@ -28,7 +28,11 @@ def set_device_color(
     Malformed streams are tolerated by skipping the operator, matching
     the existing contentstream operator policy in this package.
     """
-    if engine is None or len(operands) < component_count:
+    if (
+        engine is None
+        or not engine.is_should_process_color_operators()
+        or len(operands) < component_count
+    ):
         return
     components: list[float] = []
     for operand in operands[:component_count]:

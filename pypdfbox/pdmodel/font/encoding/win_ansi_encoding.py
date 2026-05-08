@@ -14,7 +14,7 @@ class WinAnsiEncoding(Encoding):
     ``bullet`` glyph — this fill-in is applied after the explicit table.
     """
 
-    INSTANCE: "WinAnsiEncoding"
+    INSTANCE: WinAnsiEncoding
 
     #: First character code (inclusive) eligible for the ``bullet`` fall-back
     #: fill-in. Codes <= ``BULLET_FILL_START - 1`` (octal 040) remain

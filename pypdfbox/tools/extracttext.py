@@ -43,9 +43,10 @@ import argparse
 import html as _htmlmod
 import sys
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO, Iterator, TextIO
+from typing import IO
 
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
@@ -178,7 +179,7 @@ def _wrap_md(body: str) -> str:
 @contextmanager
 def _open_writer(
     *, to_console: bool, outfile: Path | None, encoding: str, append: bool,
-) -> Iterator[TextIO | IO[str]]:
+) -> Iterator[IO[str]]:
     """Yield a writer matching upstream's ``createOutputWriter``.
 
     On ``-console`` we write to ``sys.stdout`` and explicitly do not
@@ -195,7 +196,7 @@ def _open_writer(
 
 def extract_text(
     document: PDDocument,
-    output,
+    output: IO[str],
     *,
     start_page: int = 1,
     end_page: int = sys.maxsize,
@@ -237,7 +238,7 @@ def extract_text(
 
 
 def _extract_text_rotation_magic(
-    document: PDDocument, output, *, first: int, last: int, sort: bool,
+    document: PDDocument, output: IO[str], *, first: int, last: int, sort: bool,
     ignore_beads: bool = False,
 ) -> None:
     """Per-page rotation-aware extraction loop.

@@ -65,7 +65,8 @@ def test_set_font_none_clears_to_cos_null() -> None:
     fs.set_font(font_dict)
     assert fs.get_font() is not None
     fs.set_font(None)
-    assert fs.get_cos_object().get_object(0) is COSNull.NULL
+    assert fs.get_cos_object().get(0) is COSNull.NULL
+    assert fs.get_cos_object().get_object(0) is None
     assert fs.get_font() is None
 
 

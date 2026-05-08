@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextlib import suppress
 from io import BytesIO
-from typing import BinaryIO, Sequence
+from types import TracebackType
+from typing import BinaryIO, cast
 
 
 class COSFilterInputStream:
@@ -43,22 +46,23 @@ class COSFilterInputStream:
         else:
             first = byte_range[0]
             if isinstance(first, (list, tuple)):
-                for entry in byte_range:  # type: ignore[assignment]
-                    if len(entry) != 2:  # type: ignore[arg-type]
+                nested = cast(Sequence[Sequence[int]], byte_range)
+                for entry in nested:
+                    if len(entry) != 2:
                         raise ValueError(
                             "COSFilterInputStream: nested byte_range entries "
                             "must be (start, length) pairs"
                         )
-                    pairs.append((int(entry[0]), int(entry[1])))  # type: ignore[index]
+                    pairs.append((int(entry[0]), int(entry[1])))
             else:
-                flat = list(byte_range)  # type: ignore[arg-type]
+                flat = list(cast(Sequence[int], byte_range))
                 if len(flat) % 2 != 0:
                     raise ValueError(
                         "COSFilterInputStream: flat byte_range must have an "
                         "even number of entries"
                     )
                 for i in range(0, len(flat), 2):
-                    pairs.append((int(flat[i]), int(flat[i + 1])))  # type: ignore[arg-type]
+                    pairs.append((int(flat[i]), int(flat[i + 1])))
 
             for start, length in pairs:
                 if start < 0:
@@ -189,16 +193,19 @@ class COSFilterInputStream:
         if self._closed:
             return
         self._closed = True
-        try:
+        with suppress(Exception):
             self._source.close()
-        except Exception:  # noqa: BLE001 — closing must never propagate
-            pass
 
     # Context-manager support, since callers naturally `with` filter streams.
     def __enter__(self) -> COSFilterInputStream:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:  # noqa: ANN001
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
         self.close()
 
 

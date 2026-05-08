@@ -58,27 +58,49 @@ class PDSeparation(PDColorSpace):
 
     # ---------- separation-specific ----------
 
+    def _get_array_object(self, index: int) -> COSBase | None:
+        assert self._array is not None
+        if self._array.size() <= index:
+            return None
+        return self._array.get_object(index)
+
+    def _ensure_array_size(self, size: int) -> None:
+        assert self._array is not None
+        while self._array.size() < size:
+            self._array.add(COSName.get_pdf_name(""))
+
     def get_colorant_name(self) -> str | None:
         assert self._array is not None
-        entry = self._array.get_object(self._COLORANT_NAMES)
+        entry = self._get_array_object(self._COLORANT_NAMES)
         if isinstance(entry, COSName):
             return entry.get_name()
         return None
 
     def set_colorant_name(self, name: str) -> None:
         assert self._array is not None
+        self._ensure_array_size(self._COLORANT_NAMES + 1)
         self._array.set(self._COLORANT_NAMES, COSName.get_pdf_name(name))
 
     def get_alternate_color_space(self) -> PDColorSpace | None:
         assert self._array is not None
-        entry = self._array.get_object(self._ALTERNATE_CS)
+        entry = self._get_array_object(self._ALTERNATE_CS)
         if entry is None:
             return None
         return PDColorSpace.create(entry)
 
     def set_alternate_color_space(self, alternate: PDColorSpace) -> None:
         assert self._array is not None
-        self._array.set(self._ALTERNATE_CS, alternate.get_cos_object())
+        self._ensure_array_size(self._ALTERNATE_CS + 1)
+        cos = alternate.get_cos_object()
+        if cos is None:
+            raise TypeError(
+                "set_alternate_color_space requires a color space with a COS form"
+            )
+        self._array.set(self._ALTERNATE_CS, cos)
+
+    def has_alternate_color_space(self) -> bool:
+        """Return ``True`` when the alternate-CS slot resolves."""
+        return self.get_alternate_color_space() is not None
 
     def get_tint_transform(self) -> PDFunction | None:
         """Return the tint transform as a :class:`PDFunction`. Mirrors
@@ -103,15 +125,31 @@ class PDSeparation(PDColorSpace):
         or stream). Pypdfbox enrichment — upstream exposes only the
         typed ``PDFunction`` accessor."""
         assert self._array is not None
-        return self._array.get_object(self._TINT_TRANSFORM)
+        return self._get_array_object(self._TINT_TRANSFORM)
+
+    def has_tint_transform(self) -> bool:
+        """Return ``True`` when the tint-transform slot resolves to a function."""
+        return self.get_tint_transform() is not None
+
+    def clear_tint_transform(self) -> None:
+        """Clear the tint-transform slot back to the default placeholder."""
+        assert self._array is not None
+        self._ensure_array_size(self._TINT_TRANSFORM + 1)
+        self._array.set(self._TINT_TRANSFORM, COSName.get_pdf_name(""))
 
     def set_tint_transform(self, transform: object) -> None:
         """Store the tint transform. Accepts either a :class:`PDFunction`
         (upstream signature) or a raw COS object (pypdfbox enrichment).
         """
         assert self._array is not None
+        self._ensure_array_size(self._TINT_TRANSFORM + 1)
         if hasattr(transform, "get_cos_object"):
-            self._array.set(self._TINT_TRANSFORM, transform.get_cos_object())
+            cos = transform.get_cos_object()
+            if cos is None:
+                raise TypeError(
+                    "set_tint_transform requires an object with a COS form"
+                )
+            self._array.set(self._TINT_TRANSFORM, cos)
         elif isinstance(transform, COSBase):
             self._array.set(self._TINT_TRANSFORM, transform)
         else:

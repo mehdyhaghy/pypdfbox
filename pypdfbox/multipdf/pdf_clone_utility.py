@@ -64,9 +64,10 @@ class PDFCloneUtility:
             # Don't clone a clone.
             return base
         retval = self._clone_cos_base_for_new_document(base)
+        if retval is None:
+            return None
         self._cloned_version[id(base)] = retval
-        if retval is not None:
-            self._cloned_values.add(id(retval))
+        self._cloned_values.add(id(retval))
         return retval
 
     def _clone_cos_base_for_new_document(self, base: COSBase) -> COSBase | None:
@@ -107,9 +108,11 @@ class PDFCloneUtility:
         # ``OSError`` on an empty body, which would otherwise abort the
         # clone for a perfectly valid (header-only) stream object.
         if stream.has_data():
-            with stream.create_raw_input_stream() as src:
-                with new_stream.create_raw_output_stream() as dst:
-                    io_copy(src, dst)
+            with (
+                stream.create_raw_input_stream() as src,
+                new_stream.create_raw_output_stream() as dst,
+            ):
+                io_copy(src, dst)
         self._cloned_version[id(stream)] = new_stream
         for key, value in list(stream.entry_set()):
             if self._has_self_reference(stream, value):
@@ -145,15 +148,26 @@ class PDFCloneUtility:
             return
         source_cos = base.get_cos_object()  # type: ignore[attr-defined]
         target_cos = target.get_cos_object()  # type: ignore[attr-defined]
-        self._clone_merge_cos_base(source_cos, target_cos)
+        self._clone_merge_cos_base(source_cos, target_cos, set())
 
-    def _clone_merge_cos_base(self, source: COSBase, target: COSBase) -> None:
+    def _clone_merge_cos_base(
+        self,
+        source: COSBase,
+        target: COSBase,
+        seen_pairs: set[tuple[int, int]],
+    ) -> None:
         source_base: COSBase | None = (
             source.get_object() if isinstance(source, COSObject) else source
         )
         target_base: COSBase | None = (
             target.get_object() if isinstance(target, COSObject) else target
         )
+        if source_base is None or target_base is None:
+            return
+        pair = (id(source_base), id(target_base))
+        if pair in seen_pairs:
+            return
+        seen_pairs.add(pair)
         if isinstance(source_base, COSArray) and isinstance(target_base, COSArray):
             for i in range(source_base.size()):
                 cloned = self.clone_for_new_document(source_base.get(i))
@@ -167,7 +181,7 @@ class PDFCloneUtility:
                 if existing is not None:
                     # Both sides present — recurse into the pair so nested
                     # dictionaries/arrays are merged element-wise.
-                    self._clone_merge_cos_base(value, existing)
+                    self._clone_merge_cos_base(value, existing, seen_pairs)
                 else:
                     cloned = self.clone_for_new_document(value)
                     if cloned is not None:

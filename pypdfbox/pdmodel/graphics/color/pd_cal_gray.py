@@ -5,7 +5,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
-
 _WHITE_POINT: COSName = COSName.get_pdf_name("WhitePoint")
 _BLACK_POINT: COSName = COSName.get_pdf_name("BlackPoint")
 _GAMMA: COSName = COSName.get_pdf_name("Gamma")
@@ -41,7 +40,7 @@ def _xyz_to_srgb(x: float, y: float, z: float) -> tuple[float, float, float]:
             return 1.0
         if u <= 0.0031308:
             return 12.92 * u
-        return 1.055 * (u ** (1.0 / 2.4)) - 0.055
+        return float(1.055 * (u ** (1.0 / 2.4)) - 0.055)
 
     return (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
 
@@ -91,17 +90,37 @@ class PDCalGray(PDColorSpace):
     def set_white_point(self, white: list[float]) -> None:
         self._dict().set_item(_WHITE_POINT, COSArray.of_cos_floats(white))
 
+    def has_white_point(self) -> bool:
+        """Return ``True`` when ``/WhitePoint`` is present as a valid tristimulus."""
+        return isinstance(self._dict().get_dictionary_object(_WHITE_POINT), COSArray)
+
     def get_black_point(self) -> list[float]:
         return _read_tristimulus(self._dict(), _BLACK_POINT, [0.0, 0.0, 0.0])
 
     def set_black_point(self, black: list[float]) -> None:
         self._dict().set_item(_BLACK_POINT, COSArray.of_cos_floats(black))
 
+    def has_black_point(self) -> bool:
+        """Return ``True`` when ``/BlackPoint`` is present as a valid tristimulus."""
+        return isinstance(self._dict().get_dictionary_object(_BLACK_POINT), COSArray)
+
+    def clear_black_point(self) -> None:
+        """Remove ``/BlackPoint`` so reads fall back to ``[0, 0, 0]``."""
+        self._dict().remove_item(_BLACK_POINT)
+
     def get_gamma(self) -> float:
-        return self._dict().get_float(_GAMMA, 1.0)
+        return float(self._dict().get_float(_GAMMA, 1.0))
 
     def set_gamma(self, gamma: float) -> None:
         self._dict().set_item(_GAMMA, COSFloat(gamma))
+
+    def has_gamma(self) -> bool:
+        """Return ``True`` when ``/Gamma`` is explicitly present."""
+        return self._dict().contains_key(_GAMMA)
+
+    def clear_gamma(self) -> None:
+        """Remove ``/Gamma`` so reads fall back to ``1.0``."""
+        self._dict().remove_item(_GAMMA)
 
     # ---------- predicates ----------
 

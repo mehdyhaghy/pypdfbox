@@ -21,10 +21,9 @@ class PDICCBased(PDColorSpace):
     carries ``/N`` (component count), ``/Alternate``, ``/Range``,
     ``/Metadata`` and the stream body holds the raw ICC profile bytes.
 
-    Lite surface: ICC profile parsing, validation and color conversion
-    are deferred (CLAUDE.md library-first note — when implemented they
-    will wrap a permissive ICC library, never reimplement). For now we
-    expose just the COS surface.
+    ICC profile bytes and COS metadata are exposed directly. sRGB
+    conversion uses Pillow's ICC support when available and otherwise
+    falls back to ``/Alternate`` or an alternate inferred from ``/N``.
     """
 
     NAME: str = "ICCBased"
@@ -117,11 +116,25 @@ class PDICCBased(PDColorSpace):
             return None
         return PDColorSpace.create(alt)
 
-    def set_alternate(self, alternate: PDColorSpace) -> None:
+    def set_alternate(self, alternate: PDColorSpace | None) -> None:
         stream = self._get_stream()
         if stream is None:
             return
-        stream.set_item(_ALTERNATE, alternate.get_cos_object())
+        if alternate is None:
+            stream.remove_item(_ALTERNATE)
+            return
+        cos = alternate.get_cos_object()
+        if cos is None:
+            raise TypeError("set_alternate requires a color space with a COS form")
+        stream.set_item(_ALTERNATE, cos)
+
+    def has_alternate(self) -> bool:
+        """Return ``True`` when ``/Alternate`` resolves to a color space."""
+        return self.get_alternate() is not None
+
+    def clear_alternate(self) -> None:
+        """Remove ``/Alternate``. No-op if the ICC stream is malformed."""
+        self.set_alternate(None)
 
     def get_alternate_color_space(self) -> PDColorSpace | None:
         """``/Alternate`` — typed alternate color space, or ``None``.
@@ -129,7 +142,7 @@ class PDICCBased(PDColorSpace):
         ``PDICCBased.getAlternateColorSpace() : PDColorSpace``."""
         return self.get_alternate()
 
-    def set_alternate_color_space(self, alternate: PDColorSpace) -> None:
+    def set_alternate_color_space(self, alternate: PDColorSpace | None) -> None:
         """Upstream-named alias of :meth:`set_alternate`."""
         self.set_alternate(alternate)
 
@@ -147,6 +160,16 @@ class PDICCBased(PDColorSpace):
         if stream is None:
             return
         stream.set_item(_RANGE, range_array)
+
+    def has_range(self) -> bool:
+        """Return ``True`` when ``/Range`` is present as a ``COSArray``."""
+        return self.get_range() is not None
+
+    def clear_range(self) -> None:
+        """Remove ``/Range``. Components then decode as ``(0.0, 1.0)``."""
+        stream = self._get_stream()
+        if stream is not None:
+            stream.remove_item(_RANGE)
 
     def get_range_for_component(self, n: int) -> tuple[float, float]:
         """Return the ``(low, high)`` pair from ``/Range`` for component
@@ -218,6 +241,14 @@ class PDICCBased(PDColorSpace):
             stream.set_item(_METADATA, metadata.get_cos_object())
             return
         stream.set_item(_METADATA, metadata)
+
+    def has_metadata(self) -> bool:
+        """Return ``True`` when ``/Metadata`` is present as a stream."""
+        return self.get_metadata() is not None
+
+    def clear_metadata(self) -> None:
+        """Remove ``/Metadata``. No-op if the ICC stream is malformed."""
+        self.set_metadata(None)
 
     def get_iccprofile_bytes(self) -> bytes:
         """Return the decoded ICC profile body as raw bytes. Mirrors
@@ -310,8 +341,8 @@ class PDICCBased(PDColorSpace):
 
         if n == 1:
             in_mode = "L"
-            sample = (
-                int(round(_clamp_unit(components[0]) * 255.0)),
+            sample: int | tuple[int, int, int] | tuple[int, int, int, int] = int(
+                round(_clamp_unit(components[0]) * 255.0)
             )
         elif n == 3:
             in_mode = "RGB"
@@ -335,9 +366,14 @@ class PDICCBased(PDColorSpace):
             )
             src = Image.new(in_mode, (1, 1), sample)
             dst = ImageCms.applyTransform(src, transform)
-            r, g, b = dst.getpixel((0, 0))
+            if dst is None:
+                return None
+            pixel = dst.getpixel((0, 0))
         except (OSError, ValueError, ImageCms.PyCMSError):
             return None
+        if not isinstance(pixel, tuple) or len(pixel) < 3:
+            return None
+        r, g, b = pixel[:3]
         return (r / 255.0, g / 255.0, b / 255.0)
 
 

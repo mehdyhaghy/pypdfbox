@@ -230,7 +230,9 @@ class WinAnsiEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.WinAnsiEncoding``.
     """
 
-    INSTANCE: "WinAnsiEncoding"
+    INSTANCE: WinAnsiEncoding
+    BULLET_FILL_START: int = 0o41
+    EXPLICIT_BULLET_CODE: int = 0o225
 
     def __init__(self) -> None:
         super().__init__()
@@ -239,12 +241,24 @@ class WinAnsiEncoding(Encoding):
 
         # PDF spec: in WinAnsiEncoding, all unused codes greater than 040
         # (octal) map to the bullet character.
-        for i in range(0o41, 256):
+        bullet_fill_codes: set[int] = set()
+        for i in range(self.BULLET_FILL_START, 256):
             if i not in self._code_to_name:
                 self.add(i, "bullet")
+                bullet_fill_codes.add(i)
+        self._bullet_fill_codes: frozenset[int] = frozenset(bullet_fill_codes)
 
     def get_encoding_name(self) -> str:
         return "WinAnsiEncoding"
+
+    def is_bullet_fill_code(self, code: int) -> bool:
+        return code in self._bullet_fill_codes
+
+    def get_bullet_fill_codes(self) -> frozenset[int]:
+        return self._bullet_fill_codes
+
+    def is_explicit_code(self, code: int) -> bool:
+        return code in self._code_to_name and code not in self._bullet_fill_codes
 
 
 WinAnsiEncoding.INSTANCE = WinAnsiEncoding()

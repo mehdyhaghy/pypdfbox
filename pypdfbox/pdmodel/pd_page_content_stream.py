@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import importlib
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pypdfbox.cos import (
     COSArray,
+    COSDictionary,
     COSName,
     COSStream,
 )
@@ -97,14 +99,15 @@ class PDPageContentStream:
         # we'll attach fonts/XObjects/etc. to.
         if isinstance(source_page, PDPage):
             self._target_stream: COSStream = COSStream()
-            # Resources: reuse the page's existing /Resources if present;
-            # otherwise create a fresh one and attach. Mirrors upstream's
-            # ``sourcePage.getResources() != null ? ... : new PDResources()``.
-            existing = source_page.get_cos_object().get_dictionary_object(
+            # Resources: reuse the resolved /Resources if present, including
+            # inherited page-tree resources. Creating a direct page resources
+            # dictionary when a parent already supplies one would shadow that
+            # parent and can break existing content streams.
+            existing = source_page.get_inherited_cos_object(
                 COSName.RESOURCES  # type: ignore[attr-defined]
             )
-            if existing is not None:
-                self._resources = source_page.get_resources()
+            if isinstance(existing, COSDictionary):
+                self._resources = PDResources(existing)
             else:
                 self._resources = PDResources()
                 source_page.set_resources(self._resources)
@@ -1092,10 +1095,7 @@ class PDPageContentStream:
             RenderingMode,
         )
 
-        if isinstance(mode, RenderingMode):
-            m = mode.int_value()
-        else:
-            m = int(mode)
+        m = mode.int_value() if isinstance(mode, RenderingMode) else int(mode)
         if not 0 <= m <= 7:
             raise ValueError(
                 f"text rendering mode must be in 0..7; got {mode!r}"
@@ -1438,6 +1438,13 @@ class PDPageContentStream:
                 "draw_image requires either (image, x, y[, width, height]) "
                 "or (image, transform_matrix)"
             )
+        if isinstance(x, (tuple, list)):
+            raise TypeError(
+                "draw_image transform_matrix overload does not accept y, "
+                "width, or height"
+            )
+        x_pos = float(x)
+        y_pos = float(y)
 
         if width is None:
             width = float(image.get_width())
@@ -1445,7 +1452,7 @@ class PDPageContentStream:
             height = float(image.get_height())
         key = self._resource_key_for_xobject(image)
         self.save_graphics_state()
-        self.transform(width, 0, 0, height, x, y)
+        self.transform(width, 0, 0, height, x_pos, y_pos)
         self._write_name(key)
         self._buffer.append(0x20)
         self._write_operator(b"Do")
@@ -1472,24 +1479,36 @@ class PDPageContentStream:
         # Probe-import the factories on each call; cheap (sys.modules
         # caches after the first hit) and keeps the public API surface
         # working when the factories are absent at module import.
+        jpeg_factory: Any | None = None
+        lossless_factory: Any | None = None
         try:
-            from pypdfbox.pdmodel.graphics.image.jpeg_factory import (  # type: ignore[import-not-found]
-                JPEGFactory,
+            jpeg_module = importlib.import_module(
+                "pypdfbox.pdmodel.graphics.image.jpeg_factory"
             )
+            jpeg_factory = getattr(jpeg_module, "JPEGFactory", None)
         except ImportError:
-            JPEGFactory = None  # type: ignore[assignment]
+            pass
         try:
-            from pypdfbox.pdmodel.graphics.image.lossless_factory import (  # type: ignore[import-not-found]
-                LosslessFactory,
+            lossless_module = importlib.import_module(
+                "pypdfbox.pdmodel.graphics.image.lossless_factory"
             )
+            lossless_factory = getattr(lossless_module, "LosslessFactory", None)
         except ImportError:
-            LosslessFactory = None  # type: ignore[assignment]
+            pass
 
         # Even if the modules import, the symbols themselves may be
         # missing (test stubs, partial installs). Treat that as the
         # same "not available" condition.
-        jpeg = getattr(JPEGFactory, "create_from_byte_array", None) if JPEGFactory else None
-        lossless = getattr(LosslessFactory, "create_from_image", None) if LosslessFactory else None
+        jpeg = (
+            getattr(jpeg_factory, "create_from_byte_array", None)
+            if jpeg_factory is not None
+            else None
+        )
+        lossless = (
+            getattr(lossless_factory, "create_from_image", None)
+            if lossless_factory is not None
+            else None
+        )
 
         if jpeg is None and lossless is None:
             raise NotImplementedError(
@@ -1497,12 +1516,13 @@ class PDPageContentStream:
             )
 
         from pathlib import Path as _Path
+        pil_image_mod: Any | None = None
+        pil_image_type: Any | None = None
         try:
-            from PIL.Image import Image as _PILImage  # type: ignore[import-not-found]
-            from PIL import Image as _PILImageMod  # type: ignore[import-not-found]
+            pil_image_mod = importlib.import_module("PIL.Image")
+            pil_image_type = getattr(pil_image_mod, "Image", None)
         except ImportError:
-            _PILImage = None  # type: ignore[assignment]
-            _PILImageMod = None  # type: ignore[assignment]
+            pass
 
         # Path / str → dispatch on suffix; JPEG → JPEGFactory, anything
         # else → LosslessFactory. Mirrors upstream's
@@ -1515,14 +1535,14 @@ class PDPageContentStream:
                     raise NotImplementedError(
                         "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
                     )
-                return jpeg(document, path.read_bytes())
-            if lossless is None or _PILImageMod is None:
+                return cast("PDImageXObject", jpeg(document, path.read_bytes()))
+            if lossless is None or pil_image_mod is None:
                 raise NotImplementedError(
                     "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
                 )
-            with _PILImageMod.open(path) as src:
+            with pil_image_mod.open(path) as src:
                 src.load()
-                return lossless(document, src)
+                return cast("PDImageXObject", lossless(document, src))
 
         # bytes → sniff JPEG SOI marker; otherwise hand off to Pillow
         # then the lossless factory.
@@ -1533,23 +1553,23 @@ class PDPageContentStream:
                     raise NotImplementedError(
                         "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
                     )
-                return jpeg(document, data)
-            if lossless is None or _PILImageMod is None:
+                return cast("PDImageXObject", jpeg(document, data))
+            if lossless is None or pil_image_mod is None:
                 raise NotImplementedError(
                     "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
                 )
             import io as _io
-            with _PILImageMod.open(_io.BytesIO(data)) as src:
+            with pil_image_mod.open(_io.BytesIO(data)) as src:
                 src.load()
-                return lossless(document, src)
+                return cast("PDImageXObject", lossless(document, src))
 
         # Pillow Image → always decode via the lossless factory.
-        if _PILImage is not None and isinstance(image, _PILImage):
+        if pil_image_type is not None and isinstance(image, pil_image_type):
             if lossless is None:
                 raise NotImplementedError(
                     "install JPEGFactory/LosslessFactory or pass a PDImageXObject"
                 )
-            return lossless(document, image)
+            return cast("PDImageXObject", lossless(document, image))
 
         raise TypeError(
             "PDPageContentStream.draw_image expects PDImageXObject, str, "
@@ -1740,7 +1760,7 @@ class PDPageContentStream:
         ``F<n>`` slot if necessary."""
         font_cos = font.get_cos_object()
         sub = self._resources.get_cos_object().get_dictionary_object(_FONT)
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is font_cos:
                     return key
@@ -1749,7 +1769,7 @@ class PDPageContentStream:
     def _resource_key_for_xobject(self, xobject: PDXObject) -> COSName:
         x_cos = xobject.get_cos_object()
         sub = self._resources.get_cos_object().get_dictionary_object(_X_OBJECT)
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is x_cos:
                     return key
@@ -1788,7 +1808,7 @@ class PDPageContentStream:
         sub = self._resources.get_cos_object().get_dictionary_object(
             _COLOR_SPACE
         )
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is cos:
                     return key
@@ -1802,7 +1822,7 @@ class PDPageContentStream:
         prop_cos = property_list.get_cos_object()
         res_dict = self._resources.get_cos_object()
         sub = res_dict.get_dictionary_object(_PROPERTIES)
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is prop_cos:
                     return key
@@ -1816,7 +1836,7 @@ class PDPageContentStream:
         sub = self._resources.get_cos_object().get_dictionary_object(
             _EXT_G_STATE
         )
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is ext_cos:
                     return key
@@ -1841,7 +1861,7 @@ class PDPageContentStream:
                 f"or COSDictionary; got {type(pattern).__name__}"
             )
         sub = self._resources.get_cos_object().get_dictionary_object(_PATTERN)
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is pat_cos:
                     return key
@@ -1865,7 +1885,7 @@ class PDPageContentStream:
                 f"got {type(shading).__name__}"
             )
         sub = self._resources.get_cos_object().get_dictionary_object(_SHADING)
-        if sub is not None:
+        if isinstance(sub, COSDictionary):
             for key in sub.key_set():
                 if sub.get_dictionary_object(key) is sh_cos:
                     return key

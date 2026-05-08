@@ -203,7 +203,7 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
 
     # ---------- /Measure ----------
 
-    def get_measure(self) -> "PDMeasureDictionary | None":
+    def get_measure(self) -> PDMeasureDictionary | None:
         """Return the typed measure dictionary or ``None`` when ``/Measure``
         is absent."""
         from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
@@ -216,7 +216,7 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
         return None
 
     def set_measure(
-        self, measure: "PDMeasureDictionary | COSDictionary | None"
+        self, measure: PDMeasureDictionary | COSDictionary | None
     ) -> None:
         if measure is None:
             self._dict.remove_item(_MEASURE)

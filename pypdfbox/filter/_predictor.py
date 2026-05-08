@@ -19,10 +19,19 @@ Predictor values:
 
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------
 # Geometry helpers
 # ---------------------------------------------------------------------
+
+
+def _validate_geometry(columns: int, colors: int, bits_per_component: int) -> None:
+    """Validate predictor image geometry before row math."""
+    if columns <= 0:
+        raise OSError(f"invalid /Columns {columns}")
+    if colors <= 0:
+        raise OSError(f"invalid /Colors {colors}")
+    if bits_per_component <= 0:
+        raise OSError(f"invalid /BitsPerComponent {bits_per_component}")
 
 
 def _row_bytes(columns: int, colors: int, bits_per_component: int) -> int:
@@ -75,6 +84,11 @@ def decode_predictor_row(
     rowlength = len(actline)
     if rowlength == 0:
         return
+    _validate_geometry(columns, colors, bits_per_component)
+    if predictor in (12, 13, 14) and len(lastline) < rowlength:
+        raise OSError(
+            f"previous predictor row too short ({len(lastline)} bytes, need {rowlength})"
+        )
     bpp = _bytes_per_pixel(colors, bits_per_component)
     if predictor == 2:
         # TIFF Predictor 2 — delegate to bulk path on a 1-row buffer.
@@ -129,6 +143,7 @@ def unpredict(
     if predictor == 1:
         return data
 
+    _validate_geometry(columns, colors, bits_per_component)
     bpp = _bytes_per_pixel(colors, bits_per_component)
     rb = _row_bytes(columns, colors, bits_per_component)
 
@@ -292,6 +307,7 @@ def predict(
     if not raw:
         return b""
 
+    _validate_geometry(columns, colors, bits_per_component)
     if predictor == 2:
         return _tiff_encode(raw, columns, colors, bits_per_component)
     if 10 <= predictor <= 15:

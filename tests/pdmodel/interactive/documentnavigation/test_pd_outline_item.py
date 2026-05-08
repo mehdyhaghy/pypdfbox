@@ -149,7 +149,8 @@ def test_outline_item_structure_element_round_trip_with_raw_dict() -> None:
 
     item.set_structure_element(raw)
     resolved = item.get_structure_element()
-    assert resolved is raw
+    assert resolved is not None
+    assert resolved.get_cos_object() is raw
 
     item.set_structure_element(None)
     assert item.get_structure_element() is None

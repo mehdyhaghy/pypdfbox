@@ -35,15 +35,15 @@ class Operator:
     yields a fresh instance, since they carry per-occurrence
     ``image_parameters`` and ``image_data``.
 
-    Operands semantics: upstream's ``Operator`` does not store operands —
+    Operand semantics: upstream's ``Operator`` does not store operands —
     the operand stack lives on ``PDFStreamEngine`` / ``PDFStreamParser``.
     pypdfbox's parser, however, attaches the just-popped operands to the
     returned ``Operator`` for the convenience of stream-token consumers
     (it spares them re-implementing the same window-of-tokens trick).
     Operand storage is a per-instance list; do *not* mutate the operands
     on a cached instance returned by :meth:`get_operator` — instead pop
-    a fresh one via :meth:`get_operator` and assign new operands. The
-    parser already takes care of that.
+    a fresh one via :meth:`with_operands` or ``copy.copy`` and assign new
+    operands.
     """
 
     __slots__ = ("_name", "_operands", "_image_data", "_image_parameters")
@@ -123,6 +123,21 @@ class Operator:
             and operator != OperatorName.BEGIN_INLINE_IMAGE_DATA
         )
 
+    @staticmethod
+    def is_inline_image_operator_name(operator: str) -> bool:
+        """Return ``True`` for the inline-image operator names whose
+        instances carry per-occurrence payload state.
+
+        ``BI`` carries the parameter dictionary and final image bytes in
+        parser-collated streams; ``ID`` carries raw image bytes in lower-
+        level parser token streams. ``EI`` is only a delimiter and is not
+        classified as payload-bearing.
+        """
+        return (
+            operator == OperatorName.BEGIN_INLINE_IMAGE
+            or operator == OperatorName.BEGIN_INLINE_IMAGE_DATA
+        )
+
     # ---------- name ----------
 
     def get_name(self) -> str:
@@ -144,10 +159,12 @@ class Operator:
         callers do not have to compare ``get_name()`` against the two
         :class:`OperatorName` constants by hand.
         """
-        return (
-            self._name == OperatorName.BEGIN_INLINE_IMAGE
-            or self._name == OperatorName.BEGIN_INLINE_IMAGE_DATA
-        )
+        return self.is_inline_image_operator_name(self._name)
+
+    def is_inline_image(self) -> bool:
+        """Alias for :meth:`is_inline_image_operator`, matching the
+        parser-internal operator surface."""
+        return self.is_inline_image_operator()
 
     def has_operands(self) -> bool:
         """Return ``True`` iff at least one operand has been attached.
@@ -166,6 +183,10 @@ class Operator:
     def set_operands(self, operands: list[COSBase]) -> None:
         self._operands = operands
 
+    def clear_operands(self) -> None:
+        """Remove any attached operands from this instance."""
+        self._operands = []
+
     @property
     def operands(self) -> list[COSBase]:
         return self._operands
@@ -178,6 +199,17 @@ class Operator:
     def set_image_data(self, image_data: bytes | None) -> None:
         self._image_data = image_data
 
+    def has_image_data(self) -> bool:
+        """Return ``True`` iff image bytes have been attached.
+
+        Empty bytes count as present; only ``None`` means absent.
+        """
+        return self._image_data is not None
+
+    def clear_image_data(self) -> None:
+        """Remove any attached inline-image bytes."""
+        self._image_data = None
+
     @property
     def image_data(self) -> bytes | None:
         return self._image_data
@@ -189,6 +221,14 @@ class Operator:
 
     def set_image_parameters(self, params: COSDictionary | None) -> None:
         self._image_parameters = params
+
+    def has_image_parameters(self) -> bool:
+        """Return ``True`` iff an inline-image parameter dictionary is attached."""
+        return self._image_parameters is not None
+
+    def clear_image_parameters(self) -> None:
+        """Remove any attached inline-image parameter dictionary."""
+        self._image_parameters = None
 
     @property
     def image_parameters(self) -> COSDictionary | None:
@@ -223,6 +263,9 @@ class Operator:
         # Java's ``toString()`` is the canonical string form; ``__str__``
         # delegates to ``__repr__`` so ``str(op)`` matches upstream output.
         return self.__repr__()
+
+    def __len__(self) -> int:
+        return len(self._name)
 
 
 __all__ = [

@@ -34,7 +34,28 @@ class PDDeviceNProcess:
         cos_cs = self._dictionary.get_dictionary_object("ColorSpace")
         if cos_cs is None:
             return None
-        return PDColorSpace.create(cos_cs)
+        try:
+            return PDColorSpace.create(cos_cs)
+        except (TypeError, ValueError, OSError):
+            return None
+
+    def set_color_space(self, color_space: PDColorSpace | None) -> None:
+        """Set the process ``/ColorSpace``. Pass ``None`` to remove it."""
+        if color_space is None:
+            self._dictionary.remove_item("ColorSpace")
+            return
+        cos = color_space.get_cos_object()
+        if cos is None:
+            raise TypeError("set_color_space requires a color space with a COS form")
+        self._dictionary.set_item("ColorSpace", cos)
+
+    def has_color_space(self) -> bool:
+        """Return ``True`` when ``/ColorSpace`` resolves to a color space."""
+        return self.get_color_space() is not None
+
+    def clear_color_space(self) -> None:
+        """Remove the process ``/ColorSpace`` entry."""
+        self.set_color_space(None)
 
     def get_components(self) -> list[str]:
         """Return the names of the process color components."""
@@ -46,6 +67,23 @@ class PDDeviceNProcess:
             if isinstance(item, COSName):
                 out.append(item.get_name())
         return out
+
+    def set_components(self, components: list[str] | None) -> None:
+        """Set the process ``/Components`` names. Pass ``None`` to remove it."""
+        if components is None:
+            self._dictionary.remove_item("Components")
+            return
+        self._dictionary.set_item("Components", COSArray.of_cos_names(components))
+
+    def has_components(self) -> bool:
+        """Return ``True`` when ``/Components`` is present as an array."""
+        return isinstance(
+            self._dictionary.get_dictionary_object("Components"), COSArray
+        )
+
+    def clear_components(self) -> None:
+        """Remove the process ``/Components`` entry."""
+        self.set_components(None)
 
     def __str__(self) -> str:
         """Mirrors upstream ``PDDeviceNProcess.toString``:
@@ -102,6 +140,25 @@ class PDDeviceNAttributes:
             return None
         return PDDeviceNProcess(cos_process)
 
+    def has_process(self) -> bool:
+        """Return ``True`` when ``/Process`` is present as a dictionary."""
+        return self.get_process() is not None
+
+    def set_process(self, process: PDDeviceNProcess | COSDictionary | None) -> None:
+        """Set ``/Process``. Accepts a typed process wrapper, raw dictionary, or
+        ``None`` to remove the entry."""
+        if process is None:
+            self._dictionary.remove_item("Process")
+            return
+        if isinstance(process, PDDeviceNProcess):
+            self._dictionary.set_item("Process", process.get_cos_dictionary())
+            return
+        self._dictionary.set_item("Process", process)
+
+    def clear_process(self) -> None:
+        """Remove the optional ``/Process`` dictionary."""
+        self.set_process(None)
+
     def get_colorants(self) -> dict[str, PDColorSpace]:
         """Return the ``/Colorants`` map (colorant name → color space).
 
@@ -117,7 +174,10 @@ class PDDeviceNAttributes:
             value = cos_colorants.get_dictionary_object(key)
             if value is None:
                 continue
-            cs = PDColorSpace.create(value)
+            try:
+                cs = PDColorSpace.create(value)
+            except (TypeError, ValueError, OSError):
+                continue
             if cs is not None:
                 out[key.get_name()] = cs
         return out
@@ -134,8 +194,23 @@ class PDDeviceNAttributes:
             return
         out = COSDictionary()
         for name, cs in colorants.items():
-            out.set_item(name, cs.get_cos_object())
+            cos = cs.get_cos_object()
+            if cos is None:
+                raise TypeError(
+                    "set_colorants requires color spaces with COS forms"
+                )
+            out.set_item(name, cos)
         self._dictionary.set_item("Colorants", out)
+
+    def has_colorants(self) -> bool:
+        """Return ``True`` when ``/Colorants`` is present as a dictionary."""
+        return isinstance(
+            self._dictionary.get_dictionary_object("Colorants"), COSDictionary
+        )
+
+    def clear_colorants(self) -> None:
+        """Remove the optional ``/Colorants`` map."""
+        self.set_colorants(None)
 
     def get_mixing_hints(self) -> COSDictionary | None:
         """Return the raw ``/MixingHints`` dictionary, or ``None``.
@@ -147,6 +222,14 @@ class PDDeviceNAttributes:
         if isinstance(item, COSDictionary):
             return item
         return None
+
+    def has_mixing_hints(self) -> bool:
+        """Return ``True`` when ``/MixingHints`` is present as a dictionary."""
+        return self.get_mixing_hints() is not None
+
+    def clear_mixing_hints(self) -> None:
+        """Remove the optional ``/MixingHints`` dictionary."""
+        self._dictionary.remove_item("MixingHints")
 
     def __str__(self) -> str:
         """Mirrors upstream ``PDDeviceNAttributes.toString``:
@@ -186,9 +269,9 @@ class PDDeviceN(PDColorSpace):
     Array form: ``[/DeviceN <colorant names array> <alternate CS>
     <tint transform> <attributes dict>?]``.
 
-    Lite surface: tint transform evaluation and attribute (process
-    colorants, mixing hints) parsing land alongside the function and
-    rendering modules.
+    Tint transforms are exposed through :class:`PDFunction` and the
+    attributes dictionary has typed process/colorant wrappers. Full
+    overprint/rendering behavior remains in the rendering path.
     """
 
     NAME: str = "DeviceN"
@@ -232,9 +315,20 @@ class PDDeviceN(PDColorSpace):
 
     # ---------- DeviceN-specific ----------
 
+    def _get_array_object(self, index: int) -> COSBase | None:
+        assert self._array is not None
+        if self._array.size() <= index:
+            return None
+        return self._array.get_object(index)
+
+    def _ensure_array_size(self, size: int) -> None:
+        assert self._array is not None
+        while self._array.size() < size:
+            self._array.add(COSName.get_pdf_name(""))
+
     def get_colorant_names(self) -> list[str]:
         assert self._array is not None
-        entry = self._array.get_object(self._COLORANT_NAMES)
+        entry = self._get_array_object(self._COLORANT_NAMES)
         if not isinstance(entry, COSArray):
             return []
         out: list[str] = []
@@ -245,18 +339,29 @@ class PDDeviceN(PDColorSpace):
 
     def set_colorant_names(self, names: list[str]) -> None:
         assert self._array is not None
+        self._ensure_array_size(self._COLORANT_NAMES + 1)
         self._array.set(self._COLORANT_NAMES, COSArray.of_cos_names(names))
 
     def get_alternate_color_space(self) -> PDColorSpace | None:
         assert self._array is not None
-        entry = self._array.get_object(self._ALTERNATE_CS)
+        entry = self._get_array_object(self._ALTERNATE_CS)
         if entry is None:
             return None
         return PDColorSpace.create(entry)
 
     def set_alternate_color_space(self, alternate: PDColorSpace) -> None:
         assert self._array is not None
-        self._array.set(self._ALTERNATE_CS, alternate.get_cos_object())
+        self._ensure_array_size(self._ALTERNATE_CS + 1)
+        cos = alternate.get_cos_object()
+        if cos is None:
+            raise TypeError(
+                "set_alternate_color_space requires a color space with a COS form"
+            )
+        self._array.set(self._ALTERNATE_CS, cos)
+
+    def has_alternate_color_space(self) -> bool:
+        """Return ``True`` when the alternate-CS slot resolves."""
+        return self.get_alternate_color_space() is not None
 
     def get_tint_transform(self) -> PDFunction | None:
         """Return the tint transform as a :class:`PDFunction`. Mirrors
@@ -284,15 +389,31 @@ class PDDeviceN(PDColorSpace):
         or stream). Pypdfbox enrichment — upstream exposes only the
         typed ``PDFunction`` accessor."""
         assert self._array is not None
-        return self._array.get_object(self._TINT_TRANSFORM)
+        return self._get_array_object(self._TINT_TRANSFORM)
+
+    def has_tint_transform(self) -> bool:
+        """Return ``True`` when the tint-transform slot resolves to a function."""
+        return self.get_tint_transform() is not None
+
+    def clear_tint_transform(self) -> None:
+        """Clear the tint-transform slot back to the default placeholder."""
+        assert self._array is not None
+        self._ensure_array_size(self._TINT_TRANSFORM + 1)
+        self._array.set(self._TINT_TRANSFORM, COSName.get_pdf_name(""))
 
     def set_tint_transform(self, transform: object) -> None:
         """Store the tint transform. Accepts either a :class:`PDFunction`
         (upstream signature) or a raw COS object (pypdfbox enrichment).
         """
         assert self._array is not None
+        self._ensure_array_size(self._TINT_TRANSFORM + 1)
         if hasattr(transform, "get_cos_object"):
-            self._array.set(self._TINT_TRANSFORM, transform.get_cos_object())
+            cos = transform.get_cos_object()
+            if cos is None:
+                raise TypeError(
+                    "set_tint_transform requires an object with a COS form"
+                )
+            self._array.set(self._TINT_TRANSFORM, cos)
         elif isinstance(transform, COSBase):
             self._array.set(self._TINT_TRANSFORM, transform)
         else:
@@ -307,9 +428,7 @@ class PDDeviceN(PDColorSpace):
         """Return the ``/Attributes`` sub-dictionary as a
         :class:`PDDeviceNAttributes`, or ``None`` when missing."""
         assert self._array is not None
-        if self._array.size() <= self._DEVICEN_ATTRIBUTES:
-            return None
-        entry = self._array.get_object(self._DEVICEN_ATTRIBUTES)
+        entry = self._get_array_object(self._DEVICEN_ATTRIBUTES)
         if not isinstance(entry, COSDictionary):
             return None
         return PDDeviceNAttributes(entry)
@@ -323,12 +442,14 @@ class PDDeviceN(PDColorSpace):
             if self._array.size() > self._DEVICEN_ATTRIBUTES:
                 self._array.remove_at(self._DEVICEN_ATTRIBUTES)
             return
-        # Make sure the array is large enough.
-        while self._array.size() <= self._DEVICEN_ATTRIBUTES:
-            self._array.add(COSName.get_pdf_name(""))
+        self._ensure_array_size(self._DEVICEN_ATTRIBUTES + 1)
         self._array.set(
             self._DEVICEN_ATTRIBUTES, attributes.get_cos_dictionary()
         )
+
+    def clear_attributes(self) -> None:
+        """Remove the optional attributes slot. No-op if absent."""
+        self.set_attributes(None)
 
     def is_n_channel(self) -> bool:
         """Return ``True`` if the attributes dictionary declares

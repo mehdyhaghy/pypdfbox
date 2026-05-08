@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from pypdfbox.cos import COSBase, COSNumber
 
 from .. import (
@@ -37,10 +39,8 @@ class ConcatenateMatrix(OperatorProcessor):
             raise MissingOperandException(operator, operands)
         if not self.check_array_types_class(operands[:6], COSNumber):
             return
-        matrix = tuple(
-            operands[i].float_value()  # type: ignore[union-attr]
-            for i in range(6)
-        )
+        numbers = cast("list[COSNumber]", operands[:6])
+        matrix = tuple(number.float_value() for number in numbers)
         # Tolerate a standalone (registry-only) processor that has no
         # bound engine — the strict ``OperatorProcessor.get_context``
         # raises in that case, so we read ``_context`` directly to stay

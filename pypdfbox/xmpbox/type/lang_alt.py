@@ -42,7 +42,7 @@ class LangAlt(ArrayProperty):
     def set_language_value(self, language: str | None, value: str) -> None:
         lang = language or X_DEFAULT
         for child in list(self.get_all_properties()):
-            attr = child.get_attribute(LANG_ATTR_NAME)
+            attr = self._get_text_language_attribute(child)
             if attr is not None and attr.get_value() == lang:
                 self.remove_property(child)
         text = TextType(
@@ -61,7 +61,7 @@ class LangAlt(ArrayProperty):
         for child in self.get_all_properties():
             if not isinstance(child, TextType):
                 continue
-            attr = child.get_attribute(LANG_ATTR_NAME)
+            attr = self._get_text_language_attribute(child)
             if attr is not None and attr.get_value() == lang:
                 return child.get_string_value()
         return None
@@ -69,7 +69,7 @@ class LangAlt(ArrayProperty):
     def get_languages(self) -> list[str]:
         result: list[str] = []
         for child in self.get_all_properties():
-            attr = child.get_attribute(LANG_ATTR_NAME)
+            attr = self._get_text_language_attribute(child)
             if attr is not None:
                 result.append(attr.get_value())
         return result
@@ -77,10 +77,16 @@ class LangAlt(ArrayProperty):
     def remove_language(self, language: str | None) -> None:
         lang = language or X_DEFAULT
         for child in list(self.get_all_properties()):
-            attr = child.get_attribute(LANG_ATTR_NAME)
+            attr = self._get_text_language_attribute(child)
             if attr is not None and attr.get_value() == lang:
                 self.remove_property(child)
                 return
+
+    @staticmethod
+    def _get_text_language_attribute(child: object) -> Attribute | None:
+        if not isinstance(child, TextType):
+            return None
+        return child.get_attribute(LANG_ATTR_NAME)
 
     def _reorganize_alt_order(self) -> None:
         # Mirror upstream XMPSchema#reorganizeAltOrder: ensure x-default sorts
@@ -88,7 +94,7 @@ class LangAlt(ArrayProperty):
         children = self.get_all_properties()
         x_default_idx = -1
         for i, child in enumerate(children):
-            attr = child.get_attribute(LANG_ATTR_NAME)
+            attr = self._get_text_language_attribute(child)
             if attr is not None and attr.get_value() == X_DEFAULT:
                 x_default_idx = i
                 break

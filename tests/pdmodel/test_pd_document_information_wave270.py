@@ -13,7 +13,6 @@ import datetime as _dt
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel import PDDocumentInformation
 
-
 # ---------- clear_* helpers ----------
 
 
@@ -75,7 +74,7 @@ def test_clear_producer_removes_entry_wave270() -> None:
 
 def test_clear_creation_date_removes_entry_wave270() -> None:
     info = PDDocumentInformation()
-    info.set_creation_date(_dt.datetime(2024, 6, 1, tzinfo=_dt.timezone.utc))
+    info.set_creation_date(_dt.datetime(2024, 6, 1, tzinfo=_dt.UTC))
     assert info.has_creation_date()
     info.clear_creation_date()
     assert info.get_creation_date() is None
@@ -84,7 +83,7 @@ def test_clear_creation_date_removes_entry_wave270() -> None:
 
 def test_clear_modification_date_removes_entry_wave270() -> None:
     info = PDDocumentInformation()
-    info.set_modification_date(_dt.datetime(2024, 6, 1, tzinfo=_dt.timezone.utc))
+    info.set_modification_date(_dt.datetime(2024, 6, 1, tzinfo=_dt.UTC))
     info.clear_modification_date()
     assert info.get_modification_date() is None
     assert not info.has_modification_date()
@@ -105,10 +104,18 @@ def test_clear_helpers_match_set_none_semantics_wave270() -> None:
     purely sugar."""
     a = PDDocumentInformation()
     b = PDDocumentInformation()
-    a.set_title("t"); a.set_author("a"); a.set_subject("s")
-    b.set_title("t"); b.set_author("a"); b.set_subject("s")
-    a.set_title(None); a.set_author(None); a.set_subject(None)
-    b.clear_title(); b.clear_author(); b.clear_subject()
+    a.set_title("t")
+    a.set_author("a")
+    a.set_subject("s")
+    b.set_title("t")
+    b.set_author("a")
+    b.set_subject("s")
+    a.set_title(None)
+    a.set_author(None)
+    a.set_subject(None)
+    b.clear_title()
+    b.clear_author()
+    b.clear_subject()
     assert a.get_metadata_keys() == b.get_metadata_keys()
     assert a.is_empty() and b.is_empty()
 
@@ -151,7 +158,9 @@ def test_is_pristine_false_when_custom_key_present_wave270() -> None:
 
 def test_is_pristine_round_trips_through_clear_wave270() -> None:
     info = PDDocumentInformation()
-    info.set_title("x"); info.set_author("y")
+    info.set_title("x")
+    info.set_author("y")
     assert not info.is_pristine()
-    info.clear_title(); info.clear_author()
+    info.clear_title()
+    info.clear_author()
     assert info.is_pristine()

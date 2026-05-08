@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
@@ -144,9 +145,23 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
                 result.append([])
         return result
 
+    def set_path(self, path: Sequence[Sequence[float]] | None) -> None:
+        """Set the PDF 2.0 ``/Path`` operands array.
+
+        Mirrors upstream ``setPath(float[][])``. Passing ``None`` clears the
+        entry.
+        """
+        if path is None:
+            self._dict.remove_item(_PATH)
+            return
+        outer = COSArray()
+        for operands in path:
+            outer.add(COSArray([COSFloat(float(operand)) for operand in operands]))
+        self._dict.set_item(_PATH, outer)
+
     # ---------- /Measure ----------
 
-    def get_measure(self) -> "PDMeasureDictionary | None":
+    def get_measure(self) -> PDMeasureDictionary | None:
         """Return the typed measure dictionary or ``None`` when ``/Measure``
         is absent."""
         from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
@@ -159,7 +174,7 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
         return None
 
     def set_measure(
-        self, measure: "PDMeasureDictionary | COSDictionary | None"
+        self, measure: PDMeasureDictionary | COSDictionary | None
     ) -> None:
         if measure is None:
             self._dict.remove_item(_MEASURE)
@@ -193,7 +208,7 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
             return value.size() // 2
         return 0
 
-    def iter_vertex_points(self) -> "list[tuple[float, float]]":
+    def iter_vertex_points(self) -> list[tuple[float, float]]:
         """Return ``/Vertices`` as a list of ``(x, y)`` tuples.
 
         Convenience helper — upstream callers manipulate the flat

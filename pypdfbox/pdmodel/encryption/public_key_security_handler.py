@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers import algorithms
@@ -33,8 +33,10 @@ from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
 from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
+    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPrivateKey
+
     from .pd_encryption import PDEncryption
-    from .public_key_decryption_material import PublicKeyDecryptionMaterial
+    from .public_key_recipient import PublicKeyRecipient
 
 
 # Per PDF 32000-1 §7.6.5: the seed prefix length for public-key key derivation.
@@ -117,10 +119,11 @@ class PublicKeySecurityHandler(SecurityHandler):
             recipient_blobs.append(entry.get_bytes())
 
         envelope_plaintext: bytes | None = None
+        rsa_private_key = cast("RSAPrivateKey", private_key)
         for blob in recipient_blobs:
             try:
                 envelope_plaintext = pkcs7.pkcs7_decrypt_der(
-                    blob, cert, private_key, options=[]
+                    blob, cert, rsa_private_key, options=[]
                 )
             except Exception:  # noqa: BLE001 — try every recipient before giving up
                 continue
@@ -161,10 +164,11 @@ class PublicKeySecurityHandler(SecurityHandler):
 
         # Hash composition — see §7.6.5: seed || every recipient blob in order
         # || (when metadata is *not* encrypted) four 0xFF bytes.
-        if version >= 5:
-            digest = hashlib.sha256()
-        else:
-            digest = hashlib.sha1(usedforsecurity=False)
+        digest = (
+            hashlib.sha256()
+            if version >= 5
+            else hashlib.sha1(usedforsecurity=False)
+        )
         digest.update(seed)
         for blob in recipient_blobs:
             digest.update(blob)
@@ -232,6 +236,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         # Pick V/R/CFM by key length. The spec only defines AES-128 (V=4) and
         # AES-256 (V=5) for /Adobe.PubSec; legacy RC4 variants are out of
         # scope for the lite port.
+        content_alg: type[algorithms.AES128] | type[algorithms.AES256]
         if key_length_bits >= 256:
             key_length_bits = 256
             version = 5
@@ -288,13 +293,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         encryption.set_revision(revision)
         encryption.set_length(key_length_bits)
 
-        recipients_array = COSArray()
-        for envelope_der in envelopes:
-            recipients_array.add(COSString(envelope_der))
-        # PDEncryption has no /Recipients setter — write through the COS
-        # dictionary directly. The accessor side already accepts any
-        # COSArray via get_recipients().
-        encryption.get_cos_object().set_item("Recipients", recipients_array)
+        encryption.set_recipients(envelopes)
 
         crypt_filter = PDCryptFilterDictionary()
         crypt_filter.set_cfm(cfm)
@@ -366,7 +365,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         """
         return self._protection_policy is not None
 
-    def get_recipients(self) -> list:
+    def get_recipients(self) -> list[PublicKeyRecipient]:
         """Return the recipient list pulled from the attached policy.
 
         When no policy is attached, returns an empty list — matches the
@@ -425,10 +424,11 @@ class PublicKeySecurityHandler(SecurityHandler):
         SHA-256 for V>=5, SHA-1 (non-security context) otherwise. The
         result is truncated to ``key_length_bits // 8`` bytes.
         """
-        if version >= 5:
-            digest = hashlib.sha256()
-        else:
-            digest = hashlib.sha1(usedforsecurity=False)
+        digest = (
+            hashlib.sha256()
+            if version >= 5
+            else hashlib.sha1(usedforsecurity=False)
+        )
         digest.update(seed)
         for blob in recipient_blobs:
             digest.update(blob)

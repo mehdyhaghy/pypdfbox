@@ -65,12 +65,16 @@ class PDStandardAttributeObject(PDAttributeObject):
         return self._dictionary.get_int(name, default)
 
     def _set_integer(self, name: str, value: int) -> None:
+        if isinstance(value, bool):
+            raise TypeError(f"{name} must be an integer")
         self._dictionary.set_int(name, value)
 
     def _get_number(self, name: str, default: float = -1.0) -> float:
         return self._dictionary.get_float(name, default)
 
     def _set_number(self, name: str, value: float | int) -> None:
+        if isinstance(value, bool):
+            raise TypeError(f"{name} must be a number")
         if isinstance(value, int) and not isinstance(value, bool):
             self._dictionary.set_int(name, value)
         else:
@@ -208,6 +212,10 @@ class PDStandardAttributeObject(PDAttributeObject):
         """Remove ``name`` from the underlying dictionary if present."""
         self._dictionary.remove_item(name)
 
+    def clear_attribute(self, name: str) -> None:
+        """Alias for :meth:`remove_attribute` using pypdfbox clear-* naming."""
+        self.remove_attribute(name)
+
     # ---- string ----
 
     def get_string(self, name: str, default: str | None = None) -> str | None:
@@ -241,6 +249,8 @@ class PDStandardAttributeObject(PDAttributeObject):
         return self._dictionary.get_int(name, default)
 
     def set_integer(self, name: str, value: int, default: int = 0) -> None:
+        if isinstance(value, bool):
+            raise TypeError(f"{name} must be an integer")
         if value == default:
             self._dictionary.remove_item(name)
         else:
@@ -252,6 +262,8 @@ class PDStandardAttributeObject(PDAttributeObject):
     def set_number(
         self, name: str, value: float | int, default: float = 0.0
     ) -> None:
+        if isinstance(value, bool):
+            raise TypeError(f"{name} must be a number")
         if float(value) == float(default):
             self._dictionary.remove_item(name)
         elif isinstance(value, int) and not isinstance(value, bool):
@@ -305,7 +317,10 @@ class PDStandardAttributeObject(PDAttributeObject):
         if v.size() == 3:
             return self._get_color_value(name)
         if v.size() == 4:
-            return PDFourColours(v)
+            four = PDFourColours(v)
+            if any(four.get_colour_by_index(index) is None for index in range(4)):
+                return None
+            return four
         return None
 
     # ---- polymorphic name/number combinators ----
@@ -318,8 +333,9 @@ class PDStandardAttributeObject(PDAttributeObject):
             out: list[str] = []
             for index in range(v.size()):
                 item = v.get_object(index)
-                if isinstance(item, COSName):
-                    out.append(item.name)
+                if not isinstance(item, COSName):
+                    return None
+                out.append(item.name)
             return out
         if isinstance(v, COSName):
             return v.name
@@ -333,8 +349,9 @@ class PDStandardAttributeObject(PDAttributeObject):
             out: list[float] = []
             for index in range(v.size()):
                 item = v.get_object(index)
-                if isinstance(item, (COSInteger, COSFloat)):
-                    out.append(float(item.value))
+                if not isinstance(item, (COSInteger, COSFloat)):
+                    return None
+                out.append(float(item.value))
             return out
         if isinstance(v, (COSInteger, COSFloat)):
             return float(v.value)

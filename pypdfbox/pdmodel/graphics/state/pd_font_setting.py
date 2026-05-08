@@ -79,7 +79,7 @@ class PDFontSetting:
             return 0.0
         entry = self._array.get_object(1)
         if isinstance(entry, COSNumber):
-            return float(entry.value)
+            return entry.float_value()
         return 0.0
 
     def set_font_size(self, size: float) -> None:

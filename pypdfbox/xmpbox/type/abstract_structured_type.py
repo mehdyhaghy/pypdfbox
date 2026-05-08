@@ -128,6 +128,20 @@ class AbstractStructuredType(AbstractField):
                 return prop
         return None
 
+    def has_property(self, field_name: str) -> bool:
+        """Return ``True`` when a child property with ``field_name`` exists."""
+        return self.get_property(field_name) is not None
+
+    def clear_property(self, field_name: str) -> None:
+        """Remove every child property whose local name matches ``field_name``."""
+        self._properties = [
+            prop for prop in self._properties if prop.get_property_name() != field_name
+        ]
+
+    def clear(self) -> None:
+        """Remove every child property from this structured value."""
+        self._properties.clear()
+
     def get_array_property(self, field_name: str) -> ArrayProperty | None:
         prop = self.get_property(field_name)
         if isinstance(prop, ArrayProperty):

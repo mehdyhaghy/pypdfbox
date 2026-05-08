@@ -104,6 +104,8 @@ class PDActionSubmitForm(PDAction):
             return None
         if isinstance(raw, COSString):
             return raw.get_string()
+        if not isinstance(raw, COSDictionary):
+            return None
         fs = PDFileSpecification.create_fs(raw)
         if fs is None:
             return None
@@ -116,6 +118,17 @@ class PDActionSubmitForm(PDAction):
             self._action.remove_item(_F)
             return
         self._action.set_string(_F, value)
+
+    def has_file(self) -> bool:
+        """``True`` when ``/F`` is present on the underlying dictionary,
+        regardless of whether it is a simple string, a complex file
+        specification, or a malformed COS value."""
+        return self._action.get_dictionary_object(_F) is not None
+
+    def clear_file(self) -> None:
+        """Remove ``/F`` from the underlying dictionary. After this call
+        :meth:`get_file` and :meth:`get_url` return ``None``."""
+        self._action.remove_item(_F)
 
     # ---------- /Fields ----------
 
@@ -218,6 +231,14 @@ class PDActionSubmitForm(PDAction):
                 f"{type(field).__name__}"
             )
 
+    def has_fields(self) -> bool:
+        """``True`` when ``/Fields`` is present and is a ``COSArray``."""
+        return self.get_cos_fields() is not None
+
+    def clear_fields(self) -> None:
+        """Remove ``/Fields`` from the underlying dictionary."""
+        self._action.remove_item(_FIELDS)
+
     # ---------- /Flags ----------
 
     def get_flags(self) -> int:
@@ -233,6 +254,12 @@ class PDActionSubmitForm(PDAction):
         Equivalent to ``set_flags(0)``; provided as a named shortcut for
         the common 'restore defaults' use case."""
         self._action.set_int(_FLAGS, 0)
+
+    def has_flags(self) -> bool:
+        """``True`` when ``/Flags`` is explicitly present on the underlying
+        dictionary. ``False`` still means :meth:`get_flags` returns the
+        spec default of ``0``."""
+        return self._action.get_dictionary_object(_FLAGS) is not None
 
     def has_flag(self, mask: int) -> bool:
         """Return whether all bits in ``mask`` are set on ``/Flags``.
@@ -354,6 +381,11 @@ class PDActionSubmitForm(PDAction):
 
     def set_embed_form(self, b: bool) -> None:
         self._set_flag(_FLAG_EMBED_FORM, b)
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry equals
+        :attr:`SUB_TYPE` (``"SubmitForm"``)."""
+        return self.get_sub_type() == self.SUB_TYPE
 
 
 __all__ = ["PDActionSubmitForm"]

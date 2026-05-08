@@ -200,7 +200,7 @@ class ZapfDingbatsEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.ZapfDingbatsEncoding``.
     """
 
-    INSTANCE: "ZapfDingbatsEncoding"
+    INSTANCE: ZapfDingbatsEncoding
 
     def __init__(self) -> None:
         super().__init__()

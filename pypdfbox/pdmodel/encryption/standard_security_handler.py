@@ -30,8 +30,6 @@ import os
 import struct
 from typing import TYPE_CHECKING
 
-_LOG = logging.getLogger(__name__)
-
 from cryptography.hazmat.primitives import padding as _aes_padding
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
@@ -45,6 +43,8 @@ from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
     from .pd_encryption import PDEncryption
+
+_LOG = logging.getLogger(__name__)
 
 
 # /CF /CFM values per PDF 32000-1 §7.6.5 Table 25.
@@ -210,7 +210,7 @@ class StandardSecurityHandler(SecurityHandler):
             permissions = policy.get_permissions()
         any_r3 = bool(
             permissions is not None
-            and getattr(permissions, "has_any_revision_3_permission_set", lambda: False)()
+            and getattr(permissions, "has_any_revision3_permission_set", lambda: False)()
         )
         if version < 2 and not any_r3:
             return 2
@@ -239,7 +239,7 @@ class StandardSecurityHandler(SecurityHandler):
         return 2
 
     @classmethod
-    def compute_user_password(
+    def compute_user_password(  # type: ignore[override]
         cls,
         password: bytes,
         owner_entry: bytes,
@@ -260,7 +260,7 @@ class StandardSecurityHandler(SecurityHandler):
         )
 
     @classmethod
-    def compute_owner_password(
+    def compute_owner_password(  # type: ignore[override]
         cls,
         owner_password: bytes,
         user_password: bytes,
@@ -273,7 +273,7 @@ class StandardSecurityHandler(SecurityHandler):
         )
 
     @classmethod
-    def compute_encrypted_key(
+    def compute_encrypted_key(  # type: ignore[override]
         cls,
         password: bytes,
         o: bytes,
@@ -556,7 +556,7 @@ class StandardSecurityHandler(SecurityHandler):
     def _dispatch_decrypt(
         self, cfm: str, data: bytes, obj_num: int, gen_num: int
     ) -> bytes:
-        if cfm == _CFM_IDENTITY or cfm == _CFM_NONE:
+        if cfm in (_CFM_IDENTITY, _CFM_NONE):
             return data
         if cfm == _CFM_V2:
             return _rc4(self.compute_object_key(obj_num, gen_num), data)
@@ -573,7 +573,7 @@ class StandardSecurityHandler(SecurityHandler):
     def _dispatch_encrypt(
         self, cfm: str, data: bytes, obj_num: int, gen_num: int
     ) -> bytes:
-        if cfm == _CFM_IDENTITY or cfm == _CFM_NONE:
+        if cfm in (_CFM_IDENTITY, _CFM_NONE):
             return data
         if cfm == _CFM_V2:
             return _rc4(self.compute_object_key(obj_num, gen_num), data)
@@ -636,6 +636,8 @@ class StandardSecurityHandler(SecurityHandler):
             oe = encryption.get_oe()
             ue = encryption.get_ue()
             perms = encryption.get_perms()
+            if o is None or u is None or oe is None or ue is None or perms is None:
+                raise PDInvalidPasswordException()
             key = self._compute_encryption_key_r5_r6(
                 password, o, u, oe, ue, perms, revision
             )
@@ -645,14 +647,13 @@ class StandardSecurityHandler(SecurityHandler):
             # Algorithm 13 — verify /Perms. Upstream merely warns on mismatch
             # since some encoders mis-emit the field; we do the same so we
             # stay tolerant of buggy producers (PDFBox parity).
-            if perms is not None and len(perms) == 16:
-                if not self._validate_perms_r5_r6(
-                    key, perms, self._permissions, self._encrypt_metadata
-                ):
-                    _LOG.warning(
-                        "Verification of /Perms failed — using /P from "
-                        "the encryption dictionary"
-                    )
+            if len(perms) == 16 and not self._validate_perms_r5_r6(
+                key, perms, self._permissions, self._encrypt_metadata
+            ):
+                _LOG.warning(
+                    "Verification of /Perms failed — using /P from "
+                    "the encryption dictionary"
+                )
             # R5/R6: differentiating owner vs user path needs separate
             # validation-salt checks (Algorithm 11/12). For now, default to
             # /P-derived permissions; callers needing owner-vs-user distinction
@@ -665,6 +666,8 @@ class StandardSecurityHandler(SecurityHandler):
             return
 
         # Revisions 2-4: try owner password first, then user password.
+        if o is None or u is None:
+            raise PDInvalidPasswordException()
         key_len_bytes = key_length_bits // 8
         owner_key = self._compute_encryption_key_via_owner_password(
             password,

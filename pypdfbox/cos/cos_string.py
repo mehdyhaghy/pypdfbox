@@ -84,6 +84,9 @@ class COSString(COSBase):
         """
         return self._bytes.decode("ascii", errors="replace").replace("�", "?")
 
+    def getASCII(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_ascii()
+
     def set_force_hex_form(self, force_hex: bool) -> None:
         self._force_hex_form = force_hex
 

@@ -71,6 +71,14 @@ class PDActionGoTo3DView(PDAction):
             return entry
         return None
 
+    def has_target_annotation(self) -> bool:
+        """``True`` when ``/TA`` resolves to a 3D annotation dictionary."""
+        return self.get_target_annotation_dictionary() is not None
+
+    def clear_target_annotation(self) -> None:
+        """Remove ``/TA`` from the action dictionary."""
+        self._action.remove_item(_TA)
+
     # ---------- /V — view selector ----------
 
     def get_v(self) -> COSBase | None:
@@ -131,6 +139,25 @@ class PDActionGoTo3DView(PDAction):
         if isinstance(entry, COSString):
             return entry.get_string()
         return None
+
+    def has_v(self) -> bool:
+        """``True`` when ``/V`` is present in one of the supported shapes."""
+        entry = self._action.get_dictionary_object(_V)
+        if isinstance(entry, (COSDictionary, COSInteger, COSString)):
+            return True
+        return isinstance(entry, COSName) and self.is_named_view(entry.get_name())
+
+    def clear_v(self) -> None:
+        """Remove ``/V`` from the action dictionary."""
+        self._action.remove_item(_V)
+
+    def is_empty(self) -> bool:
+        """``True`` when the action carries neither target nor view state."""
+        return not self.has_target_annotation() and not self.has_v()
+
+    def is_valid(self) -> bool:
+        """``True`` when this action's ``/S`` entry is ``"GoTo3DView"``."""
+        return self.get_sub_type() == self.SUB_TYPE
 
     @classmethod
     def is_named_view(cls, value: str) -> bool:

@@ -12,6 +12,21 @@ from .filter import Filter
 from .filter_factory import FilterFactory
 
 
+def _mode_components_and_bpc(mode: str, bands: tuple[str, ...]) -> tuple[int, int]:
+    # Pillow may include byte-order suffixes for 16-bit grayscale images.
+    if mode.startswith("I;16"):
+        return 1, 16
+    if mode == "L":
+        return 1, 8
+    if mode == "RGB":
+        return 3, 8
+    if mode in {"RGBA", "CMYK"}:
+        return 4, 8
+    if mode == "1":
+        return 1, 1
+    return len(bands), 8
+
+
 class JPXDecode(Filter):
     """``/JPXDecode`` filter (ISO 32000-1 §7.4.9).
 
@@ -47,30 +62,18 @@ class JPXDecode(Filter):
                 samples = image.tobytes()
                 width, height = image.size
                 mode = image.mode
+                bands = image.getbands()
         except Exception as exc:
             raise OSError(f"JPXDecode: OpenJPEG decode failed: {exc}") from exc
 
         # Pillow modes → component count + bits-per-component:
         #   "1"     → 1 component, 1 bpc (rare for JPX, but pad to 8)
         #   "L"     → 1 component, 8 bpc (DeviceGray)
-        #   "I;16"  → 1 component, 16 bpc (DeviceGray, high-precision)
+        #   "I;16*" → 1 component, 16 bpc (DeviceGray, high-precision)
         #   "RGB"   → 3 components, 8 bpc (DeviceRGB)
         #   "RGBA"  → 4 components, 8 bpc (DeviceRGB + alpha)
         #   "CMYK"  → 4 components, 8 bpc (DeviceCMYK)
-        if mode == "L":
-            num_components, bpc = 1, 8
-        elif mode == "I;16":
-            num_components, bpc = 1, 16
-        elif mode == "RGB":
-            num_components, bpc = 3, 8
-        elif mode == "RGBA":
-            num_components, bpc = 4, 8
-        elif mode == "CMYK":
-            num_components, bpc = 4, 8
-        elif mode == "1":
-            num_components, bpc = 1, 1
-        else:
-            num_components, bpc = len(image.getbands()), 8
+        num_components, bpc = _mode_components_and_bpc(mode, bands)
 
         bytes_written = decoded.write(samples)
 

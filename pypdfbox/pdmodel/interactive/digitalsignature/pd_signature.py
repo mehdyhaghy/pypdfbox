@@ -299,12 +299,21 @@ class PDSignature:
         ``/ByteRange`` is ``[start1, len1, start2, len2]``: the two ranges
         that bracket the ``/Contents`` placeholder. Hashing this byte string
         is what produces the message digest covered by the PKCS#7 signature.
-        Returns ``None`` if no ``/ByteRange`` is present.
+        Returns ``None`` if no ``/ByteRange`` is present or if the stored
+        ranges are malformed for ``document_bytes``.
         """
         br = self.get_byte_range()
         if br is None:
             return None
+        if len(br) != 4:
+            return None
         start1, len1, start2, len2 = br
+        document_len = len(document_bytes)
+        for start, length in ((start1, len1), (start2, len2)):
+            if start < 0 or length < 0:
+                return None
+            if start > document_len or start + length > document_len:
+                return None
         return document_bytes[start1 : start1 + len1] + document_bytes[start2 : start2 + len2]
 
     def get_signed_content(self, pdf_file: bytes) -> bytes:

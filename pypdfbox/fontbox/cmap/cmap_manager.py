@@ -25,7 +25,7 @@ from __future__ import annotations
 from threading import Lock
 
 from .cmap import CMap
-from .cmap_parser import CMapParser
+from .cmap_parser import CMapParser, CMapSource
 
 
 class CMapManager:
@@ -89,7 +89,7 @@ class CMapManager:
         return cls.get_predefined_cmap(cmap_name)
 
     @classmethod
-    def parse_cmap(cls, source: object) -> CMap | None:
+    def parse_cmap(cls, source: CMapSource | None) -> CMap | None:
         """Parse a CMap from an arbitrary input source (parity hook).
 
         Mirrors upstream ``parseCMap(RandomAccessRead)``: returns the
@@ -102,7 +102,7 @@ class CMapManager:
         return CMapParser().parse(source)
 
     @classmethod
-    def parse_c_map(cls, source: object) -> CMap | None:
+    def parse_c_map(cls, source: CMapSource | None) -> CMap | None:
         """Alias for :meth:`parse_cmap` using strict snake_case form."""
         return cls.parse_cmap(source)
 

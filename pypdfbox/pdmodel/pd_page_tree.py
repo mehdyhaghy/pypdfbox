@@ -77,16 +77,10 @@ class PDPageTree:
     Iterable view of the document's page tree rooted at ``/Pages``.
     Mirrors ``org.apache.pdfbox.pdmodel.PDPageTree``.
 
-    Cluster #1 supports:
-      - iteration in document order;
-      - ``len()`` via ``/Count`` (with a walk-fallback);
-      - 0-based and negative indexing;
-      - ``index_of(page)`` / ``index_of_page(page)`` lookup;
-      - ``add(page)`` / ``remove(page|int)`` / ``insert_before`` /
-        ``insert_after``;
-      - ``get_root()`` — top ``/Pages`` node;
-      - ``iterator()`` — Java-style alias for ``__iter__``;
-      - the ``get_inheritable_attribute`` static helper.
+    Supports document-order iteration, count/index access, membership
+    predicates, page insertion/removal, collection clearing, Java-style
+    aliases, and helpers for the malformed page-tree shapes PDFBox accepts
+    in the wild.
     """
 
     def __init__(
@@ -109,8 +103,10 @@ class PDPageTree:
                 kids = COSArray()
                 kids.add(root)
                 wrapper = COSDictionary()
+                wrapper.set_item(_TYPE, _PAGES)
                 wrapper.set_item(_KIDS, kids)
                 wrapper.set_int(_COUNT, 1)
+                root.set_item(_PARENT, wrapper)
                 root = wrapper
         self._root = root
         self._document = document
@@ -156,13 +152,8 @@ class PDPageTree:
             yield PDPage(node)
             return
 
-        kids = _kids_array(node)
-        if kids is None:
-            return
-        for i in range(kids.size()):
-            entry = kids.get_object(i)
-            if isinstance(entry, COSDictionary):
-                yield from self._walk(entry, seen)
+        for kid in self.get_kids(node):
+            yield from self._walk(kid, seen)
 
     # ---------- Python protocols ----------
 
@@ -235,6 +226,10 @@ class PDPageTree:
         """
         return len(self) == 0
 
+    def has_pages(self) -> bool:
+        """Return ``True`` when this tree contains at least one page."""
+        return not self.is_empty()
+
     def has_page(self, page: PDPage | COSDictionary) -> bool:
         """Return ``True`` when ``page`` is a member of this page tree.
 
@@ -253,13 +248,15 @@ class PDPageTree:
         Mirrors upstream ``PDPageTree.sanitizeType``:
         - missing ``/Type`` is set to ``/Page`` (defensive against
           malformed PDFs that omit the entry on otherwise-valid pages);
+        - malformed non-name ``/Type`` values are also replaced with
+          ``/Page`` because upstream reads the value with ``getCOSName``;
         - any ``/Type`` other than ``/Page`` raises ``ValueError`` (upstream
           throws ``IllegalStateException``)."""
         type_name = dictionary.get_dictionary_object(_TYPE)
-        if type_name is None:
+        if type_name is None or not isinstance(type_name, COSName):
             dictionary.set_item(_TYPE, _PAGE)
             return
-        if isinstance(type_name, COSName) and type_name != _PAGE:
+        if type_name != _PAGE:
             raise ValueError(f"Expected 'Page' but found {type_name}")
 
     def get(self, index: int) -> PDPage:
@@ -325,6 +322,19 @@ class PDPageTree:
         # along the parent chain.
         self.remove(page)
         return page
+
+    def clear(self) -> None:
+        """Remove all pages from the root node and reset its ``/Count``.
+
+        Collection-style pypdfbox helper. If ``/Kids`` is missing or
+        malformed, the root is repaired to carry an empty ``COSArray``.
+        """
+        kids = _kids_array(self._root)
+        if kids is None:
+            self._root.set_item(_KIDS, COSArray())
+        else:
+            kids.clear()
+        self._root.set_int(_COUNT, 0)
 
     def insert_before(
         self, new_page: PDPage | COSDictionary, target: PDPage | COSDictionary
@@ -427,6 +437,7 @@ class PDPageTree:
                 # Repair-in-place: empty /Type /Page placeholder.
                 empty_page = COSDictionary()
                 empty_page.set_item(_TYPE, _PAGE)
+                empty_page.set_item(_PARENT, node)
                 kids.set(i, empty_page)
                 result.append(empty_page)
         return result

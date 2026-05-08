@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Mapping
 
 from pypdfbox.cos import COSBase
 
 from .mac_roman_encoding import MacRomanEncoding
-
 
 # 16 octal-coded ``(code, glyph_name)`` differences layered on top of
 # :class:`MacRomanEncoding`. These are the entries Apple added to the
@@ -48,7 +47,7 @@ class MacOSRomanEncoding(MacRomanEncoding):
     you need a serializable ``/MacRomanEncoding`` entry.
     """
 
-    INSTANCE: "MacOSRomanEncoding"
+    INSTANCE: MacOSRomanEncoding
 
     #: Read-only ``{code: glyph_name}`` view of the 16 vendor-specific
     #: differences this encoding layers on top of :class:`MacRomanEncoding`.

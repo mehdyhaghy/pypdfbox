@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 
@@ -17,9 +17,10 @@ class PDStructureNode:
     ``PDStructureElement``).
 
     Lite surface: typed kid dispatch (PDStructureElement /
-    PDMarkedContentReference / PDObjectReference / int MCID), the typed
-    parent chain, and ``insertBefore`` overloads are deferred. Unknown ``/K``
-    entries are preserved as raw COS objects.
+    PDMarkedContentReference / PDObjectReference / int MCID), kid
+    insertion/removal helpers, and cheap kid-count/emptiness predicates.
+    Typed parent-chain helpers live on ``PDStructureElement``. Unknown
+    ``/K`` entries are preserved as raw COS objects.
     """
 
     #: ``/Type`` value identifying a :class:`PDStructureTreeRoot` dictionary.
@@ -206,10 +207,10 @@ class PDStructureNode:
         if existing is None:
             return False
         if isinstance(existing, COSArray):
-            for i in range(existing.size()):
-                if _same_kid(existing.get_object(i), cos_kid):
-                    return True
-            return False
+            return any(
+                _same_kid(existing.get_object(i), cos_kid)
+                for i in range(existing.size())
+            )
         return _same_kid(existing, cos_kid)
 
     def append_kid(self, kid: Any) -> None:
@@ -358,10 +359,10 @@ class PDStructureNode:
 
 def _to_cos(value: Any) -> COSBase:
     if hasattr(value, "get_cos_object"):
-        return value.get_cos_object()
+        return cast(COSBase, value.get_cos_object())
     if isinstance(value, int) and not isinstance(value, bool):
         return COSInteger.get(value)
-    return value
+    return cast(COSBase, value)
 
 
 def _remove_array_kid(array: COSArray, cos_kid: COSBase) -> bool:
@@ -383,7 +384,7 @@ def _same_kid(left: Any, right: Any) -> bool:
         return left.value == right
     if isinstance(left, int) and not isinstance(left, bool) and isinstance(right, COSInteger):
         return left == right.value
-    return left == right
+    return bool(left == right)
 
 
 __all__ = ["PDStructureNode"]

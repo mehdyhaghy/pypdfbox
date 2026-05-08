@@ -9,6 +9,14 @@ if TYPE_CHECKING:
     from .scratch_file import ScratchFile
 
 
+def _as_byte_view(data: bytes | bytearray | memoryview) -> memoryview:
+    view = memoryview(data)
+    try:
+        return view.cast("B")
+    except TypeError:
+        return memoryview(bytes(view))
+
+
 class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     """
     Random-access read+write buffer backed by a chain of fixed-size pages
@@ -23,7 +31,7 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     instantiate directly.
     """
 
-    def __init__(self, owner: "ScratchFile") -> None:
+    def __init__(self, owner: ScratchFile) -> None:
         self._owner = owner
         self._page_size = owner.page_size
         # Pages reserved by this buffer, in logical order.
@@ -35,7 +43,7 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         self._closed = False
 
     # Resolve the diamond between RandomAccessRead and RandomAccessWrite.
-    def __enter__(self) -> "ScratchFileBuffer":
+    def __enter__(self) -> ScratchFileBuffer:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
@@ -135,6 +143,11 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         self._check_open()
         return self._length
 
+    def is_empty(self) -> bool:
+        """True when no bytes are stored (or after :meth:`clear`)."""
+        self._check_open()
+        return self._length == 0
+
     def is_closed(self) -> bool:
         return self._closed
 
@@ -157,13 +170,14 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         length: int | None = None,
     ) -> None:
         self._check_open()
+        view = _as_byte_view(data)
         if length is None:
-            length = len(data) - offset
+            length = view.nbytes - offset
         if length < 0:
             raise ValueError("length must be non-negative")
-        if offset < 0 or offset + length > len(data):
+        if offset < 0 or offset + length > view.nbytes:
             raise ValueError("offset/length out of range for data")
-        self._write_from_view(memoryview(data)[offset : offset + length], length)
+        self._write_from_view(view[offset : offset + length], length)
 
     def clear(self) -> None:
         self._check_open()

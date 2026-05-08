@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Iterator
+from collections.abc import Iterator
+from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName
 
@@ -45,9 +46,7 @@ class PDMarkedContent:
         # cycle at module-load time. Mirrors upstream
         # ``PDMarkedContent.create``.
         if tag is not None and tag.get_name() == "Artifact":
-            from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_artifact_marked_content import (
-                PDArtifactMarkedContent,
-            )
+            from .pd_artifact_marked_content import PDArtifactMarkedContent
 
             return PDArtifactMarkedContent(properties)
         return cls(tag, properties)

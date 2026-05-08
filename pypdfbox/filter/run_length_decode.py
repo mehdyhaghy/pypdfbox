@@ -30,6 +30,16 @@ _MAX_RUN: Final[int] = 128  # max literal-or-repeat run length per packet
 RUN_LENGTH_EOD: Final[int] = _EOD
 
 
+def _read_exact(encoded: BinaryIO, size: int) -> bytes:
+    data = bytearray()
+    while len(data) < size:
+        chunk = encoded.read(size - len(data))
+        if not chunk:
+            break
+        data.extend(chunk)
+    return bytes(data)
+
+
 class RunLengthDecode(Filter):
     """RunLengthDecode filter (ISO 32000-1 §7.4.5).
 
@@ -48,6 +58,7 @@ class RunLengthDecode(Filter):
         parameters: COSDictionary | None = None,
         index: int = 0,
     ) -> DecodeResult:
+        bytes_written = 0
         while True:
             length_byte = encoded.read(1)
             if not length_byte:
@@ -63,19 +74,23 @@ class RunLengthDecode(Filter):
                 break
             if length < _EOD:
                 want = length + 1
-                chunk = encoded.read(want)
+                chunk = _read_exact(encoded, want)
                 if len(chunk) != want:
                     raise OSError(
                         f"RunLengthDecode: truncated literal run "
                         f"(wanted {want} bytes, got {len(chunk)})"
                     )
                 decoded.write(chunk)
+                bytes_written += len(chunk)
             else:
                 repeat_byte = encoded.read(1)
                 if not repeat_byte:
                     raise OSError("RunLengthDecode: truncated repeat run (missing payload byte)")
-                decoded.write(repeat_byte * (257 - length))
-        return DecodeResult(parameters if parameters is not None else COSDictionary())
+                repeat_count = 257 - length
+                decoded.write(repeat_byte * repeat_count)
+                bytes_written += repeat_count
+        out_params = parameters if parameters is not None else COSDictionary()
+        return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
     def encode(
         self,

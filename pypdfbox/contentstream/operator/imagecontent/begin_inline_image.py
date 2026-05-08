@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSBase
 
+from ...operator_name import OperatorName
 from .. import Operator
 from ..operator_processor import OperatorProcessor
-from ...operator_name import OperatorName
 
 
 class BeginInlineImage(OperatorProcessor):

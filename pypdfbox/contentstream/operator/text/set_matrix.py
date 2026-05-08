@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from pypdfbox.cos import COSBase, COSNumber
 
 from .. import (
@@ -25,7 +27,8 @@ class SetMatrix(OperatorProcessor):
             raise MissingOperandException(operator, operands)
         if not all(isinstance(o, COSNumber) for o in operands[:6]):
             return
-        matrix = [operands[i].float_value() for i in range(6)]  # type: ignore[union-attr]
+        numbers = cast("list[COSNumber]", operands[:6])
+        matrix = [number.float_value() for number in numbers]
         ctx = self.get_context()
         ctx.set_text_matrix(matrix)
         ctx.set_text_line_matrix(list(matrix))

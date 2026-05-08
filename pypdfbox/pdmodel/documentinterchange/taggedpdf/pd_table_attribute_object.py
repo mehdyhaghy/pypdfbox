@@ -115,21 +115,61 @@ class PDTableAttributeObject(PDStandardAttributeObject):
         """``True`` iff the ``/RowSpan`` entry is explicitly written."""
         return self.is_specified(self.ROW_SPAN)
 
+    def has_row_span(self) -> bool:
+        """Alias for :meth:`is_row_span_specified`."""
+        return self.is_row_span_specified()
+
+    def clear_row_span(self) -> None:
+        """Remove the ``/RowSpan`` entry if present."""
+        self.clear_attribute(self.ROW_SPAN)
+
     def is_col_span_specified(self) -> bool:
         """``True`` iff the ``/ColSpan`` entry is explicitly written."""
         return self.is_specified(self.COL_SPAN)
+
+    def has_col_span(self) -> bool:
+        """Alias for :meth:`is_col_span_specified`."""
+        return self.is_col_span_specified()
+
+    def clear_col_span(self) -> None:
+        """Remove the ``/ColSpan`` entry if present."""
+        self.clear_attribute(self.COL_SPAN)
 
     def is_headers_specified(self) -> bool:
         """``True`` iff the ``/Headers`` entry is explicitly written."""
         return self.is_specified(self.HEADERS)
 
+    def has_headers(self) -> bool:
+        """Alias for :meth:`is_headers_specified`."""
+        return self.is_headers_specified()
+
+    def clear_headers(self) -> None:
+        """Remove the ``/Headers`` entry if present."""
+        self.clear_attribute(self.HEADERS)
+
     def is_scope_specified(self) -> bool:
         """``True`` iff the ``/Scope`` entry is explicitly written."""
         return self.is_specified(self.SCOPE)
 
+    def has_scope(self) -> bool:
+        """Alias for :meth:`is_scope_specified`."""
+        return self.is_scope_specified()
+
+    def clear_scope(self) -> None:
+        """Remove the ``/Scope`` entry if present."""
+        self.clear_attribute(self.SCOPE)
+
     def is_summary_specified(self) -> bool:
         """``True`` iff the ``/Summary`` entry is explicitly written."""
         return self.is_specified(self.SUMMARY)
+
+    def has_summary(self) -> bool:
+        """Alias for :meth:`is_summary_specified`."""
+        return self.is_summary_specified()
+
+    def clear_summary(self) -> None:
+        """Remove the ``/Summary`` entry if present."""
+        self.clear_attribute(self.SUMMARY)
 
     def __str__(self) -> str:
         """Mirror upstream ``PDTableAttributeObject.toString()`` which

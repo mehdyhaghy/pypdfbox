@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -86,7 +87,7 @@ class PDShadingType3(PDShading):
 
     # ---------- /Function ----------
 
-    def get_function(self):
+    def get_function(self) -> Any:
         """Returns the ``/Function`` entry wrapped as a ``PDFunction``
         (dispatched on ``/FunctionType``), or ``None`` when ``/Function``
         is absent. Mirrors upstream ``PDShading.getFunction()`` which
@@ -104,7 +105,7 @@ class PDShadingType3(PDShading):
             return item
         return PDFunction.create(item)
 
-    def get_functions_array(self) -> list:
+    def get_functions_array(self) -> list[Any]:
         """Returns the per-component ``/Function`` entries wrapped as
         ``PDFunction`` instances. When ``/Function`` is a single function,
         returns a one-element list. Returns an empty list when absent."""
@@ -114,7 +115,7 @@ class PDShadingType3(PDShading):
         if item is None:
             return []
         if isinstance(item, COSArray):
-            out = []
+            out: list[Any] = []
             for i in range(item.size()):
                 entry = item.get_object(i)
                 if entry is not None:
@@ -122,9 +123,11 @@ class PDShadingType3(PDShading):
             return out
         return [PDFunction.create(item)]
 
-    def set_function(self, value) -> None:
+    def set_function(self, value: Any) -> None:
         """Set ``/Function``. Accepts a ``PDFunction`` (its backing COS
-        object is stored), a raw ``COSDictionary`` / ``COSStream``, or
+        object is stored), a raw ``COSDictionary`` / ``COSStream``, a
+        ``COSArray`` of per-component functions, an iterable of
+        ``PDFunction`` instances (wrapped into a fresh ``COSArray``), or
         ``None`` to remove."""
         from pypdfbox.pdmodel.common.function import PDFunction
 
@@ -137,10 +140,26 @@ class PDShadingType3(PDShading):
         if isinstance(value, COSBase):
             self._dict.set_item(_FUNCTION, value)
             return
-        raise TypeError(
-            "set_function expects PDFunction, COSDictionary, COSStream, "
-            f"or None; got {type(value).__name__}"
-        )
+        try:
+            iterator = iter(value)
+        except TypeError as exc:
+            raise TypeError(
+                "set_function expects PDFunction, COSDictionary, COSStream, "
+                f"COSArray, iterable of PDFunction, or None; got "
+                f"{type(value).__name__}"
+            ) from exc
+        array = COSArray()
+        for entry in iterator:
+            if isinstance(entry, PDFunction):
+                array.add(entry.get_cos_object())
+            elif isinstance(entry, COSBase):
+                array.add(entry)
+            else:
+                raise TypeError(
+                    "set_function iterable entries must be PDFunction or "
+                    f"COSBase; got {type(entry).__name__}"
+                )
+        self._dict.set_item(_FUNCTION, array)
 
     # ---------- /Extend ----------
 
@@ -158,7 +177,7 @@ class PDShadingType3(PDShading):
             isinstance(b, COSBoolean) and b.get_value(),
         )
 
-    def set_extend(self, start, end=None) -> None:
+    def set_extend(self, start: bool | COSArray | None, end: bool | None = None) -> None:
         """Set ``/Extend``. Accepts either ``(start, end)`` as a pair of
         booleans or the upstream-shaped single ``COSArray`` argument.
         Pass ``None`` for the single-argument form to remove the entry."""

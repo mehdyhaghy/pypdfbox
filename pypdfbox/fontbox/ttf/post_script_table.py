@@ -150,71 +150,140 @@ class PostScriptTable(TTFTable):
     def get_format_type(self) -> float:
         return self._format_type
 
+    def getFormatType(self) -> float:  # noqa: N802 - upstream Java name
+        return self.get_format_type()
+
     def set_format_type(self, value: float) -> None:
         self._format_type = value
+
+    def setFormatType(self, value: float) -> None:  # noqa: N802 - upstream Java name
+        self.set_format_type(value)
 
     def get_italic_angle(self) -> float:
         return self._italic_angle
 
+    def getItalicAngle(self) -> float:  # noqa: N802 - upstream Java name
+        return self.get_italic_angle()
+
     def set_italic_angle(self, value: float) -> None:
         self._italic_angle = value
+
+    def setItalicAngle(self, value: float) -> None:  # noqa: N802 - upstream Java name
+        self.set_italic_angle(value)
 
     def get_underline_position(self) -> int:
         return self._underline_position
 
+    def getUnderlinePosition(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_underline_position()
+
     def set_underline_position(self, value: int) -> None:
         self._underline_position = value
+
+    def setUnderlinePosition(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_underline_position(value)
 
     def get_underline_thickness(self) -> int:
         return self._underline_thickness
 
+    def getUnderlineThickness(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_underline_thickness()
+
     def set_underline_thickness(self, value: int) -> None:
         self._underline_thickness = value
+
+    def setUnderlineThickness(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_underline_thickness(value)
 
     def get_is_fixed_pitch(self) -> int:
         return self._is_fixed_pitch
 
+    def getIsFixedPitch(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_is_fixed_pitch()
+
     def set_is_fixed_pitch(self, value: int) -> None:
         self._is_fixed_pitch = value
+
+    def setIsFixedPitch(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_is_fixed_pitch(value)
 
     def get_min_mem_type42(self) -> int:
         return self._min_mem_type42
 
+    def getMinMemType42(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_min_mem_type42()
+
     def set_min_mem_type42(self, value: int) -> None:
         self._min_mem_type42 = value
+
+    def setMinMemType42(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_min_mem_type42(value)
 
     def get_max_mem_type42(self) -> int:
         return self._max_mem_type42
 
+    def getMaxMemType42(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_max_mem_type42()
+
     def set_max_mem_type42(self, value: int) -> None:
         self._max_mem_type42 = value
+
+    def setMaxMemType42(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_max_mem_type42(value)
 
     def get_min_mem_type1(self) -> int:
         return self._mim_mem_type1
 
+    def getMinMemType1(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_min_mem_type1()
+
+    def getMimMemType1(self) -> int:  # noqa: N802 - upstream Java typo
+        return self.get_min_mem_type1()
+
     def set_min_mem_type1(self, value: int) -> None:
         self._mim_mem_type1 = value
+
+    def setMinMemType1(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_min_mem_type1(value)
 
     def set_mim_mem_type1(self, value: int) -> None:
         """Typo-compatible alias for upstream's ``setMimMemType1``."""
         self.set_min_mem_type1(value)
 
+    def setMimMemType1(self, value: int) -> None:  # noqa: N802 - upstream Java typo
+        self.set_min_mem_type1(value)
+
     def get_max_mem_type1(self) -> int:
         return self._max_mem_type1
+
+    def getMaxMemType1(self) -> int:  # noqa: N802 - upstream Java name
+        return self.get_max_mem_type1()
 
     def set_max_mem_type1(self, value: int) -> None:
         self._max_mem_type1 = value
 
+    def setMaxMemType1(self, value: int) -> None:  # noqa: N802 - upstream Java name
+        self.set_max_mem_type1(value)
+
     def get_glyph_names(self) -> list[str] | None:
         return self._glyph_names
 
+    def getGlyphNames(self) -> list[str] | None:  # noqa: N802 - upstream Java name
+        return self.get_glyph_names()
+
     def set_glyph_names(self, value: list[str] | None) -> None:
         self._glyph_names = value
+
+    def setGlyphNames(self, value: list[str] | None) -> None:  # noqa: N802
+        self.set_glyph_names(value)
 
     def get_name(self, gid: int) -> str | None:
         if gid < 0 or self._glyph_names is None or gid >= len(self._glyph_names):
             return None
         return self._glyph_names[gid]
+
+    def getName(self, gid: int) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_name(gid)
 
     # ---- predicate helpers (no upstream equivalent — additions) ----
 

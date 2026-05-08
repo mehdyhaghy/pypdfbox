@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
 
 from .pd_variable_text import PDVariableText
 
@@ -124,6 +124,10 @@ class PDTextField(PDVariableText):
         """
         self._field.remove_item(_MAX_LEN)
 
+    def clear_max_len(self) -> None:
+        """Alias for :meth:`remove_max_len`, matching local ``clear_*`` style."""
+        self.remove_max_len()
+
     # ---------- /V, /DV ----------
 
     def get_value(self) -> str:
@@ -187,7 +191,7 @@ class PDTextField(PDVariableText):
         the effective value. This predicate is useful for callers that need
         to distinguish "field has its own /V" from "field inherits /V".
         """
-        return self._field.contains_key(_V)
+        return isinstance(self._field.get_dictionary_object(_V), (COSString, COSStream))
 
     def has_default_value(self) -> bool:
         """Predicate — return ``True`` when ``/DV`` is set on this field's own
@@ -196,7 +200,15 @@ class PDTextField(PDVariableText):
         Pypdfbox-only convenience: like :meth:`has_value`, this checks the
         local dictionary only and does not walk the inheritable chain.
         """
-        return self._field.contains_key(_DV)
+        return isinstance(self._field.get_dictionary_object(_DV), (COSString, COSStream))
+
+    def clear_value(self) -> None:
+        """Remove this field's local ``/V`` entry."""
+        self._field.remove_item(_V)
+
+    def clear_default_value(self) -> None:
+        """Remove this field's local ``/DV`` entry."""
+        self._field.remove_item(_DV)
 
     def get_value_as_string(self) -> str:
         return self.get_value()

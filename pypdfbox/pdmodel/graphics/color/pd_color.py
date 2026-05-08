@@ -64,6 +64,10 @@ class PDColor:
         ``pattern=`` keyword are still accepted; the constructor inspects
         the positional argument types to disambiguate.
         """
+        self._components: list[float]
+        self._color_space: PDColorSpace
+        self._pattern_name: COSName | None
+
         # Variant: PDColor(COSName, PDColorSpace) — colored pattern,
         # mirrors upstream's pattern-only constructor (empty components,
         # only the pattern name).
@@ -80,7 +84,7 @@ class PDColor:
                     "must be a PDColorSpace, got COSName"
                 )
             self._components = []
-            self._color_space = arg2  # type: ignore[assignment]
+            self._color_space = arg2
             self._pattern_name = components
             return
 
@@ -91,9 +95,14 @@ class PDColor:
                     "PDColor(COSArray, color_space): no third positional or "
                     "pattern= argument allowed when components is a COSArray"
                 )
+            if isinstance(arg2, COSName):
+                raise TypeError(
+                    "PDColor(COSArray, color_space): second argument must be "
+                    "a PDColorSpace, got COSName"
+                )
             parsed_components, parsed_pattern = self._parse_cos_array(components)
             self._components = parsed_components
-            self._color_space = arg2  # type: ignore[assignment]
+            self._color_space = arg2
             self._pattern_name = parsed_pattern
             return
 
@@ -246,10 +255,7 @@ class PDColor:
     def get_color_space_name(self) -> str | None:
         if self._color_space is None:
             return None
-        get_name = getattr(self._color_space, "get_name", None)
-        if get_name is None:
-            return None
-        return get_name()
+        return self._color_space.get_name()
 
     def get_pattern_name(self) -> COSName | None:
         return self._pattern_name
@@ -334,12 +340,13 @@ class PDColor:
             return _clamp_rgb((r, g, b))
         if name == "Indexed":
             return self._indexed_to_rgb()
-        if name == "CalGray":
-            # Lite: treat as DeviceGray (no gamma/white-point applied).
-            g = _clamp_unit(self._components[0])
-            return (g, g, g)
-        if name == "CalRGB":
-            # Lite: treat as DeviceRGB (no gamma/matrix applied).
+        if name in ("CalGray", "CalRGB"):
+            cs_to_rgb = getattr(self._color_space, "to_rgb", None)
+            if cs_to_rgb is not None:
+                return _clamp_rgb(cs_to_rgb(self._components))
+            if name == "CalGray":
+                g = _clamp_unit(self._components[0])
+                return (g, g, g)
             return _clamp_rgb(
                 (self._components[0], self._components[1], self._components[2])
             )
@@ -401,10 +408,9 @@ class PDColor:
                 base_cs = get_base()
             except (TypeError, ValueError):
                 base_cs = None
-        if base_cs is not None:
-            n_components = base_cs.get_number_of_components()
-        else:
-            n_components = 3
+        n_components = (
+            base_cs.get_number_of_components() if base_cs is not None else 3
+        )
         offset = index * n_components
         if offset + n_components > len(lookup):
             # Clamp to last full entry — defensive parity with upstream's
@@ -466,7 +472,7 @@ class PDColor:
         def _srgb_encode(u: float) -> float:
             if u <= 0.0031308:
                 return 12.92 * u
-            return 1.055 * (u ** (1.0 / 2.4)) - 0.055
+            return float(1.055 * (u ** (1.0 / 2.4)) - 0.055)
 
         return _clamp_rgb(
             (_srgb_encode(r_lin), _srgb_encode(g_lin), _srgb_encode(b_lin))
@@ -549,7 +555,7 @@ class PDColor:
         inv = 1.0 - a
         return tuple(
             _clamp_unit(a * _clamp_unit(t) + inv * _clamp_unit(b))
-            for t, b in zip(top, bottom)
+            for t, b in zip(top, bottom, strict=True)
         )
 
     def to_rgb_image(

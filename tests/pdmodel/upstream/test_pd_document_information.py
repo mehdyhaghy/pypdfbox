@@ -21,7 +21,10 @@ def test_metadata_extraction() -> None:  # pragma: no cover
 
 # ``testPDFBox3068`` — indirect /Title needs the PDFBOX-3068.pdf fixture.
 @pytest.mark.skip(
-    reason="needs PDFBOX-3068.pdf fixture; indirect-object resolution exercised by COSDictionary tests"
+    reason=(
+        "needs PDFBOX-3068.pdf fixture; indirect-object resolution exercised by "
+        "COSDictionary tests"
+    )
 )
 def test_pdfbox_3068() -> None:  # pragma: no cover
     pass

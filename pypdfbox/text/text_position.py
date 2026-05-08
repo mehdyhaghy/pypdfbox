@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import math
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.font import PDFont
@@ -183,15 +184,25 @@ class TextPosition:
         return self.width_of_space
 
     def get_x_scale(self) -> float:
-        """Horizontal scale derived from the text matrix; defaults to 1.0."""
-        if self.text_matrix is not None and len(self.text_matrix) >= 1:
-            return float(self.text_matrix[0])
+        """Horizontal scale derived from the text matrix; defaults to 1.0.
+
+        PDFBox delegates to ``Matrix.getScalingFactorX()``, which is the
+        magnitude of the transformed X basis vector. Reading only the
+        raw ``a`` slot would report ``0`` for 90-degree rotated text even
+        though the glyph scale is still non-zero.
+        """
+        if self.text_matrix is not None and len(self.text_matrix) >= 2:
+            a = float(self.text_matrix[0])
+            b = float(self.text_matrix[1])
+            return math.hypot(a, b)
         return 1.0
 
     def get_y_scale(self) -> float:
         """Vertical scale derived from the text matrix; defaults to 1.0."""
         if self.text_matrix is not None and len(self.text_matrix) >= 4:
-            return float(self.text_matrix[3])
+            c = float(self.text_matrix[2])
+            d = float(self.text_matrix[3])
+            return math.hypot(c, d)
         return 1.0
 
     # ------------------------------------------------------------------
@@ -326,9 +337,7 @@ class TextPosition:
         this_bottom = self.y + self.get_height_dir()
         other_top = other.y
         other_bottom = other.y + other.get_height_dir()
-        if this_top > other_top or other_bottom > this_bottom:
-            return False
-        return True
+        return not (this_top > other_top or other_bottom > this_bottom)
 
     # ------------------------------------------------------------------
     # Per-character widths
@@ -444,9 +453,7 @@ class TextPosition:
             if getattr(self, name) != getattr(other, name):
                 return False
         # Element-wise compare of the optional text matrix list.
-        if self.text_matrix != other.text_matrix:
-            return False
-        return True
+        return self.text_matrix == other.text_matrix
 
     def __hash__(self) -> int:
         """Hash on the same upstream-stable subset used by :meth:`equals`.

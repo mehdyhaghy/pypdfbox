@@ -61,9 +61,8 @@ def test_empty_stream_to_byte_array_returns_empty_bytes() -> None:
 
 
 def test_create_input_stream_on_empty_stream_raises() -> None:
-    with COSStream() as s:
-        with pytest.raises(OSError):
-            s.create_input_stream()
+    with COSStream() as s, pytest.raises(OSError):
+        s.create_input_stream()
 
 
 def test_set_data_with_filters_encodes_on_write() -> None:

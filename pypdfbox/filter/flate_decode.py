@@ -3,12 +3,31 @@ from __future__ import annotations
 import zlib
 from typing import BinaryIO
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSArray, COSDictionary
 
 from ._predictor import predict, unpredict
 from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
+
+
+def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
+    """Resolve Flate predictor params from stream-level or direct dictionaries."""
+    if parameters is None:
+        return COSDictionary()
+    for key in ("DecodeParms", "DP"):
+        params = parameters.get_dictionary_object(key)
+        if isinstance(params, COSDictionary):
+            return params
+        if isinstance(params, COSArray):
+            try:
+                entry = params.get_object(index)
+            except Exception:
+                entry = None
+            if isinstance(entry, COSDictionary):
+                return entry
+            return COSDictionary()
+    return parameters
 
 
 class FlateDecode(Filter):
@@ -40,12 +59,12 @@ class FlateDecode(Filter):
             # one I/O exception type per the Filter contract.
             raise OSError(f"FlateDecode: {exc}") from exc
 
-        predictor = parameters.get_int("Predictor", 1) if parameters is not None else 1
+        decode_params = _get_decode_params(parameters, index)
+        predictor = decode_params.get_int("Predictor", 1)
         if predictor > 1:
-            assert parameters is not None  # narrows for mypy
-            columns = parameters.get_int("Columns", 1)
-            colors = parameters.get_int("Colors", 1)
-            bits_per_component = parameters.get_int("BitsPerComponent", 8)
+            columns = decode_params.get_int("Columns", 1)
+            colors = decode_params.get_int("Colors", 1)
+            bits_per_component = decode_params.get_int("BitsPerComponent", 8)
             try:
                 inflated = unpredict(inflated, predictor, columns, colors, bits_per_component)
             except OSError as exc:

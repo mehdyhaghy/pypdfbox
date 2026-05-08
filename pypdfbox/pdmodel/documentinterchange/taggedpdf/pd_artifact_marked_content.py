@@ -6,6 +6,9 @@ from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
+_TYPE: COSName = COSName.get_pdf_name("Type")
+_SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
+
 
 class PDArtifactMarkedContent(PDMarkedContent):
     """
@@ -32,7 +35,7 @@ class PDArtifactMarkedContent(PDMarkedContent):
         Mirrors upstream ``getProperties().getNameAsString(TYPE)`` which
         accepts both ``COSName`` and ``COSString`` operands.
         """
-        return self._name_as_string(COSName.TYPE)
+        return self._name_as_string(_TYPE)
 
     def get_b_box(self) -> PDRectangle | None:
         """Artifact bounding box ``/BBox``, or ``None`` if absent.
@@ -79,7 +82,7 @@ class PDArtifactMarkedContent(PDMarkedContent):
         Mirrors upstream ``getProperties().getNameAsString(SUBTYPE)`` which
         accepts both ``COSName`` and ``COSString`` operands.
         """
-        return self._name_as_string(COSName.SUBTYPE)
+        return self._name_as_string(_SUBTYPE)
 
     # ---------- helpers ----------
 
@@ -111,10 +114,7 @@ class PDArtifactMarkedContent(PDMarkedContent):
         a = props.get_dictionary_object(COSName.get_pdf_name("Attached"))
         if not isinstance(a, COSArray):
             return False
-        for i in range(a.size()):
-            if a.get_name(i) == edge:
-                return True
-        return False
+        return any(a.get_name(i) == edge for i in range(a.size()))
 
     # ---------- additive parity helpers ----------
 

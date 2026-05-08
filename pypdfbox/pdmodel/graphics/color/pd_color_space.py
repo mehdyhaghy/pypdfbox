@@ -16,9 +16,10 @@ class PDColorSpace(ABC):
     painted on the page. Mirrors PDFBox
     ``org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace``.
 
-    Lite surface: factory ``create()``, image conversion (``to_rgb``,
-    ``to_rgb_image``, ``to_raw_image``), default decode arrays, and the AWT
-    helpers are deferred until the rendering module lands.
+    Lite surface: factory ``create()``, default decode arrays, best-effort
+    raster conversion (``to_rgb_image`` / ``to_raw_image``), and structural
+    predicates. Java AWT helpers are compatibility stubs because there is no
+    Python equivalent.
     """
 
     def __init__(self, array: COSArray | None = None) -> None:

@@ -57,7 +57,7 @@ class PDObjectReference:
     def get_cos_object(self) -> COSDictionary:
         return self._dictionary
 
-    # ---------- /Pg page (raw COSDictionary; typed PDPage deferred) ----
+    # ---------- /Pg page (raw COSDictionary alias) ----
 
     def get_pg(self) -> COSDictionary | None:
         pg = self._dictionary.get_dictionary_object(_PG)
@@ -72,7 +72,7 @@ class PDObjectReference:
 
     # ---------- /Pg page (typed PDPage — mirrors upstream getPage) ----
 
-    def get_page(self) -> "PDPage | None":
+    def get_page(self) -> PDPage | None:
         """Resolve ``/Pg`` to a typed :class:`PDPage`.
 
         Mirrors upstream ``PDObjectReference.getPage()``. Returns ``None``
@@ -89,13 +89,23 @@ class PDObjectReference:
 
         return PDPage(page_dict)
 
-    def set_page(self, page: "PDPage | COSDictionary | None") -> None:
+    def set_page(self, page: PDPage | COSDictionary | None) -> None:
         """Set ``/Pg`` to a typed :class:`PDPage` wrapper or remove it."""
         if page is None:
             self._dictionary.remove_item(_PG)
             return
-        cos = page.get_cos_object() if hasattr(page, "get_cos_object") else page
-        self._dictionary.set_item(_PG, cos)
+        from pypdfbox.pdmodel.pd_page import PDPage
+
+        if isinstance(page, PDPage):
+            self._dictionary.set_item(_PG, page.get_cos_object())
+            return
+        if isinstance(page, COSDictionary):
+            self._dictionary.set_item(_PG, page)
+            return
+        raise TypeError(
+            "set_page expects a PDPage, COSDictionary, or None; "
+            f"got {type(page).__name__}"
+        )
 
     # ---------- /Obj referenced object (raw COSBase) ----
 
@@ -111,7 +121,7 @@ class PDObjectReference:
 
     # ---------- /Obj typed resolution ----
 
-    def get_referenced_object(self) -> "PDAnnotation | PDXObject | None":
+    def get_referenced_object(self) -> PDAnnotation | PDXObject | None:
         """Resolve ``/Obj`` to a typed wrapper.
 
         Mirrors upstream ``getReferencedObject`` (PDF 32000-1 §14.7.4.3):
@@ -253,7 +263,7 @@ class PDObjectReference:
         return obj.get_name(_TYPE) == self.SUBTYPE_ANNOT
 
     def set_referenced_object(
-        self, obj: "PDAnnotation | PDXObject | None"
+        self, obj: PDAnnotation | PDXObject | None
     ) -> None:
         """Set ``/Obj`` to a typed wrapper or remove it.
 
@@ -271,11 +281,16 @@ class PDObjectReference:
         if obj is None:
             self._dictionary.remove_item(_OBJ)
             return
-        if not hasattr(obj, "get_cos_object"):
+        from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
+            PDAnnotation,
+        )
+
+        if not isinstance(obj, (PDAnnotation, PDXObject)):
             raise TypeError(
-                "set_referenced_object expects a typed wrapper exposing "
-                f"get_cos_object(); got {type(obj).__name__}. Use set_obj "
-                "for raw COSBase values."
+                "set_referenced_object expects a PDAnnotation or PDXObject; "
+                f"got {type(obj).__name__}. Use set_obj for raw COSBase "
+                "values."
             )
         self._dictionary.set_item(_OBJ, obj.get_cos_object())
 

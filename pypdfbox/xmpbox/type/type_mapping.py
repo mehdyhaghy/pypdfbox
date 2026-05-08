@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from .abstract_simple_property import AbstractSimpleProperty
+from .abstract_structured_type import AbstractStructuredType
 from .agent_name_type import AgentNameType
 from .array_property import ArrayProperty, Cardinality
 from .boolean_type import BooleanType
@@ -12,6 +13,7 @@ from .colorant_type import ColorantType
 from .date_type import DateType
 from .dimensions_type import DimensionsType
 from .font_type import FontType
+from .gps_coordinate_type import GPSCoordinateType
 from .guid_type import GUIDType
 from .integer_type import IntegerType
 from .job_type import JobType
@@ -39,7 +41,6 @@ from .xpath_type import XPathType
 
 if TYPE_CHECKING:
     from ..xmp_metadata import XMPMetadata
-    from .abstract_structured_type import AbstractStructuredType
 
 
 _SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
@@ -57,13 +58,14 @@ _SIMPLE_TYPE_REGISTRY: dict[str, type[AbstractSimpleProperty]] = {
     "GUID": GUIDType,
     "Choice": ChoiceType,
     "Rational": RationalType,
+    "GPSCoordinate": GPSCoordinateType,
     "Locale": LocaleType,
     "XPath": XPathType,
     "Part": PartType,
 }
 
 
-_STRUCTURED: dict[str, type] = {
+_STRUCTURED: dict[str, type[AbstractStructuredType]] = {
     "Dimensions": DimensionsType,
     "Colorant": ColorantType,
     "Font": FontType,
@@ -292,6 +294,11 @@ class TypeMapping:
         self, ns_uri: str | None, prefix: str | None, name: str, value: str
     ) -> RationalType:
         return RationalType(self._metadata, ns_uri, prefix, name, value)
+
+    def create_gps_coordinate(
+        self, ns_uri: str | None, prefix: str | None, name: str, value: str
+    ) -> GPSCoordinateType:
+        return GPSCoordinateType(self._metadata, ns_uri, prefix, name, value)
 
     def create_locale(
         self, ns_uri: str | None, prefix: str | None, name: str, value: str

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import (
+    COSBase,
+    COSBoolean,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+)
 
-from .pd_transition_direction import PDTransitionDirection
 from .pd_transition_dimension import PDTransitionDimension
+from .pd_transition_direction import PDTransitionDirection
 from .pd_transition_motion import PDTransitionMotion
 from .pd_transition_style import PDTransitionStyle
 
@@ -58,6 +65,14 @@ class PDTransition:
     def set_style(self, style: str) -> None:
         self._dictionary.set_name(_S, style)
 
+    def has_style(self) -> bool:
+        """Return ``True`` when ``/S`` contains a parsable transition style name."""
+        return self._dictionary.get_name(_S) is not None
+
+    def clear_style(self) -> None:
+        """Remove the transition style (``/S``), restoring the default on read."""
+        self._dictionary.remove_item(_S)
+
     # ---------- duration (/D) ----------
 
     def get_duration(self) -> float:
@@ -65,6 +80,15 @@ class PDTransition:
 
     def set_duration(self, duration: float) -> None:
         self._dictionary.set_float(_D, duration)
+
+    def has_duration(self) -> bool:
+        """Return ``True`` when ``/D`` contains a numeric duration."""
+        item = self._dictionary.get_dictionary_object(_D)
+        return isinstance(item, (COSFloat, COSInteger))
+
+    def clear_duration(self) -> None:
+        """Remove the duration (``/D``), restoring the default on read."""
+        self._dictionary.remove_item(_D)
 
     # ---------- motion (/M) ----------
 
@@ -74,6 +98,14 @@ class PDTransition:
     def set_motion(self, motion: str) -> None:
         self._dictionary.set_name(_M, motion)
 
+    def has_motion(self) -> bool:
+        """Return ``True`` when ``/M`` contains a parsable motion name."""
+        return self._dictionary.get_name(_M) is not None
+
+    def clear_motion(self) -> None:
+        """Remove the motion (``/M``), restoring the default on read."""
+        self._dictionary.remove_item(_M)
+
     # ---------- dimension (/Dm) ----------
 
     def get_dimension(self) -> str:
@@ -81,6 +113,14 @@ class PDTransition:
 
     def set_dimension(self, dim: str) -> None:
         self._dictionary.set_name(_DM, dim)
+
+    def has_dimension(self) -> bool:
+        """Return ``True`` when ``/Dm`` contains a parsable dimension name."""
+        return self._dictionary.get_name(_DM) is not None
+
+    def clear_dimension(self) -> None:
+        """Remove the dimension (``/Dm``), restoring the default on read."""
+        self._dictionary.remove_item(_DM)
 
     # ---------- direction (/Di) ----------
 
@@ -102,6 +142,17 @@ class PDTransition:
         else:
             self._dictionary.set_item(_DI, COSInteger.get(direction))
 
+    def has_direction(self) -> bool:
+        """Return ``True`` when ``/Di`` contains a parsable direction value."""
+        item = self._dictionary.get_dictionary_object(_DI)
+        if isinstance(item, COSInteger):
+            return True
+        return isinstance(item, COSName) and item == _NONE
+
+    def clear_direction(self) -> None:
+        """Remove the direction (``/Di``), restoring the default on read."""
+        self._dictionary.remove_item(_DI)
+
     def get_direction_cos(self) -> COSBase:
         """Return the raw ``/Di`` value as a :class:`COSBase`.
 
@@ -112,7 +163,7 @@ class PDTransition:
         """
         item = self._dictionary.get_dictionary_object(_DI)
         if item is None:
-            return COSInteger.ZERO  # type: ignore[attr-defined]
+            return COSInteger.get(0)
         return item
 
     # ---------- fly scale (/SS) ----------
@@ -123,6 +174,15 @@ class PDTransition:
     def set_fly_scale(self, scale: float) -> None:
         self._dictionary.set_float(_SS, scale)
 
+    def has_fly_scale(self) -> bool:
+        """Return ``True`` when ``/SS`` contains a numeric fly scale."""
+        item = self._dictionary.get_dictionary_object(_SS)
+        return isinstance(item, (COSFloat, COSInteger))
+
+    def clear_fly_scale(self) -> None:
+        """Remove the fly scale (``/SS``), restoring the default on read."""
+        self._dictionary.remove_item(_SS)
+
     # ---------- scale aliases (/SS) ----------
 
     def get_scale(self) -> float:
@@ -130,6 +190,14 @@ class PDTransition:
 
     def set_scale(self, scale: float) -> None:
         self._dictionary.set_float(_SS, scale)
+
+    def has_scale(self) -> bool:
+        """Alias of :meth:`has_fly_scale` matching the ``get_scale`` name."""
+        return self.has_fly_scale()
+
+    def clear_scale(self) -> None:
+        """Alias of :meth:`clear_fly_scale` matching the ``get_scale`` name."""
+        self.clear_fly_scale()
 
     # ---------- fly area opaque (/B) ----------
 
@@ -141,6 +209,14 @@ class PDTransition:
 
     def set_fly_area_to_show(self, b: bool) -> None:
         self._dictionary.set_boolean(_B, b)
+
+    def has_fly_area_to_show(self) -> bool:
+        """Return ``True`` when ``/B`` contains a boolean fly-area flag."""
+        return isinstance(self._dictionary.get_dictionary_object(_B), COSBoolean)
+
+    def clear_fly_area_to_show(self) -> None:
+        """Remove the fly-area flag (``/B``), restoring the default on read."""
+        self._dictionary.remove_item(_B)
 
     # ---------- fly area opaque upstream-name aliases ----------
     #
@@ -158,6 +234,14 @@ class PDTransition:
         """Alias of :meth:`set_fly_area_to_show` matching upstream
         ``setFlyAreaOpaque``."""
         self._dictionary.set_boolean(_B, opaque)
+
+    def has_fly_area_opaque(self) -> bool:
+        """Alias of :meth:`has_fly_area_to_show` matching upstream naming."""
+        return self.has_fly_area_to_show()
+
+    def clear_fly_area_opaque(self) -> None:
+        """Alias of :meth:`clear_fly_area_to_show` matching upstream naming."""
+        self.clear_fly_area_to_show()
 
 
 __all__ = ["PDTransition"]

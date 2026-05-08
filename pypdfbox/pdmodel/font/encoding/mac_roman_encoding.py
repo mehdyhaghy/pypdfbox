@@ -12,14 +12,14 @@ class MacRomanEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.MacRomanEncoding``.
     """
 
-    INSTANCE: "MacRomanEncoding"
+    INSTANCE: MacRomanEncoding
 
     def __init__(self) -> None:
         super().__init__()
         for code, name in _TABLE:
             self.add(code, name)
 
-    def get_cos_object(self) -> COSBase:
+    def get_cos_object(self) -> COSBase | None:
         # Upstream returns COSName.MAC_ROMAN_ENCODING directly.
         return COSName.get_pdf_name("MacRomanEncoding")
 

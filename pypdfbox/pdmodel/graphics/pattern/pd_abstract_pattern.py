@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -7,6 +9,9 @@ from pypdfbox.cos import (
     COSInteger,
     COSName,
 )
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _PATTERN: COSName = COSName.get_pdf_name("Pattern")
@@ -25,9 +30,9 @@ class PDAbstractPattern:
     - ``PDShadingPattern`` (type 2) — a shading reference.
 
     Lite surface: ``/Matrix`` is exposed as a ``list[float]`` (typed
-    ``Matrix`` lands with the rendering cluster); ``/ExtGState`` is
-    returned as the raw ``COSDictionary`` (typed
-    ``PDExtendedGraphicsState`` is wrapped on the shading subclass)."""
+    ``Matrix`` lands with the rendering cluster); ``/ExtGState`` keeps the
+    original raw-dictionary getter for back-compat and also exposes the typed
+    ``PDExtendedGraphicsState`` through ``get_ext_g_state``."""
 
     TYPE_TILING_PATTERN: int = 1
     TYPE_SHADING_PATTERN: int = 2
@@ -46,7 +51,7 @@ class PDAbstractPattern:
     @staticmethod
     def create(
         dictionary: COSDictionary | None,
-        resource_cache=None,  # type: ignore[no-untyped-def]
+        resource_cache: PDResourceCache | None = None,
     ) -> PDAbstractPattern | None:
         """Dispatch on ``/PatternType``. Returns ``None`` when ``dictionary``
         is ``None``; raises ``OSError`` for an unknown pattern type (mirrors
@@ -112,6 +117,18 @@ class PDAbstractPattern:
 
     # ---------- /Matrix ----------
 
+    def _matrix_values_or_none(self) -> list[float] | None:
+        value = self._dict.get_dictionary_object(_MATRIX)
+        if not isinstance(value, COSArray) or value.size() < 6:
+            return None
+        out: list[float] = []
+        for i in range(6):
+            entry = value.get_object(i)
+            if not isinstance(entry, (COSInteger, COSFloat)):
+                return None
+            out.append(float(entry.value))
+        return out
+
     def get_matrix(self) -> list[float]:
         """``/Matrix`` as a 6-tuple ``[a, b, c, d, e, f]``. Defaults to the
         identity matrix per PDF §8.7. Mirrors upstream's
@@ -122,18 +139,7 @@ class PDAbstractPattern:
         ``Matrix.createMatrix`` which returns identity when the entry is
         missing, not a ``COSArray``, has fewer than 6 elements, or any
         element is not numeric."""
-        value = self._dict.get_dictionary_object(_MATRIX)
-        if isinstance(value, COSArray) and value.size() >= 6:
-            out: list[float] = []
-            for i in range(6):
-                entry = value.get_object(i)
-                if isinstance(entry, (COSInteger, COSFloat)):
-                    out.append(float(entry.value))
-                else:
-                    # Upstream returns identity if any entry is non-numeric.
-                    return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
-            return out
-        return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        return self._matrix_values_or_none() or [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
 
     def set_matrix(self, values) -> None:  # type: ignore[no-untyped-def]
         """Write ``/Matrix``. Accepts:
@@ -153,17 +159,18 @@ class PDAbstractPattern:
         if isinstance(values, COSArray):
             self._dict.set_item(_MATRIX, values)
             return
-        # Duck-typed AffineTransform-like adapter: any object exposing a
-        # callable ``get_matrix`` that yields a 6-element sequence.
+        # Duck-typed AffineTransform-like adapter: accept either a Pythonic
+        # no-arg ``get_matrix()`` returning six values or the Java-shaped
+        # ``getMatrix(double[])`` pattern that fills a caller-provided buffer.
         if not isinstance(values, (list, tuple)) and hasattr(values, "get_matrix"):
-            extracted = values.get_matrix()
-            if callable(extracted):
-                # Defensive: some adapters expose ``get_matrix`` as a
-                # bound method that requires no args — we already called
-                # it once. If the result itself is callable, the adapter
-                # is broken; fall through to the length check below to
-                # raise a useful error.
-                pass
+            get_matrix = values.get_matrix
+            try:
+                extracted = get_matrix()
+            except TypeError:
+                buffer = [0.0] * 6
+                extracted = get_matrix(buffer)
+                if extracted is None:
+                    extracted = buffer
             try:
                 length = len(extracted)
             except TypeError as exc:
@@ -186,6 +193,16 @@ class PDAbstractPattern:
         arr = COSArray([COSFloat(float(v)) for v in values])
         self._dict.set_item(_MATRIX, arr)
 
+    def has_matrix(self) -> bool:
+        """``True`` when ``/Matrix`` is present as a valid six-number
+        ``COSArray``. Malformed entries return ``False`` because
+        :meth:`get_matrix` will fall back to identity for them."""
+        return self._matrix_values_or_none() is not None
+
+    def clear_matrix(self) -> None:
+        """Remove ``/Matrix``. No-op if absent."""
+        self._dict.remove_item(_MATRIX)
+
     # ---------- /ExtGState ----------
 
     def get_extended_graphics_state(self) -> COSDictionary | None:
@@ -206,6 +223,16 @@ class PDAbstractPattern:
             self._dict.remove_item(_EXT_G_STATE)
             return
         self._dict.set_item(_EXT_G_STATE, extgs)
+
+    def has_extended_graphics_state(self) -> bool:
+        """``True`` when ``/ExtGState`` is present as a ``COSDictionary``."""
+        return isinstance(
+            self._dict.get_dictionary_object(_EXT_G_STATE), COSDictionary
+        )
+
+    def clear_extended_graphics_state(self) -> None:
+        """Remove ``/ExtGState``. No-op if absent."""
+        self._dict.remove_item(_EXT_G_STATE)
 
     def get_ext_g_state(self):  # type: ignore[no-untyped-def]
         """Typed ``/ExtGState`` accessor — mirrors upstream
@@ -245,6 +272,16 @@ class PDAbstractPattern:
             "set_ext_g_state expects PDExtendedGraphicsState, COSDictionary, "
             f"or None; got {type(ext_g_state).__name__}"
         )
+
+    def has_ext_g_state(self) -> bool:
+        """Alias of :meth:`has_extended_graphics_state` using upstream's
+        shorter ``ExtGState`` spelling."""
+        return self.has_extended_graphics_state()
+
+    def clear_ext_g_state(self) -> None:
+        """Alias of :meth:`clear_extended_graphics_state` using upstream's
+        shorter ``ExtGState`` spelling."""
+        self.clear_extended_graphics_state()
 
     # ---------- type predicates ----------
 

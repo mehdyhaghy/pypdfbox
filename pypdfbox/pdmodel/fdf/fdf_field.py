@@ -53,6 +53,12 @@ class FDFField:
     def get_partial_field_name(self) -> str | None:
         return self._field.get_string(_T)
 
+    def has_partial_field_name(self) -> bool:
+        return self.get_partial_field_name() is not None
+
+    def clear_partial_field_name(self) -> None:
+        self.set_partial_field_name(None)
+
     def set_partial_field_name(self, name: str | None) -> None:
         self._field.set_string(_T, name)
 
@@ -69,6 +75,12 @@ class FDFField:
         """
         v = self._field.get_dictionary_object(_V)
         return _cos_value_to_python(v)
+
+    def has_value(self) -> bool:
+        return self._field.contains_key(_V)
+
+    def clear_value(self) -> None:
+        self.set_value(None)
 
     def set_value(self, value: object | None) -> None:
         """Set the field's ``/V`` entry.
@@ -112,6 +124,12 @@ class FDFField:
         v = self._field.get_dictionary_object(_DV)
         return _cos_value_to_python(v)
 
+    def has_default_value(self) -> bool:
+        return self._field.contains_key(_DV)
+
+    def clear_default_value(self) -> None:
+        self.set_default_value(None)
+
     def set_default_value(self, value: object | None) -> None:
         if value is None:
             self._field.remove_item(_DV)
@@ -144,6 +162,12 @@ class FDFField:
                 kids.append(FDFField(resolved))
         return kids
 
+    def has_kids(self) -> bool:
+        return isinstance(self._field.get_dictionary_object(_KIDS), COSArray)
+
+    def clear_kids(self) -> None:
+        self.set_kids(None)
+
     def set_kids(self, kids: list[FDFField] | None) -> None:
         if kids is None:
             self._field.remove_item(_KIDS)
@@ -157,6 +181,12 @@ class FDFField:
 
     def get_mapping_name(self) -> str | None:
         return self._field.get_string(_TM)
+
+    def has_mapping_name(self) -> bool:
+        return self.get_mapping_name() is not None
+
+    def clear_mapping_name(self) -> None:
+        self.set_mapping_name(None)
 
     def set_mapping_name(self, name: str | None) -> None:
         self._field.set_string(_TM, name)
@@ -213,6 +243,45 @@ class FDFField:
         for entry in v:
             out.append(_cos_value_to_python(entry))
         return out
+
+    def has_options(self) -> bool:
+        return isinstance(self._field.get_dictionary_object(_OPT), COSArray)
+
+    def clear_options(self) -> None:
+        self._field.remove_item(_OPT)
+
+    # ---------- /RV rich text value ----------
+
+    def get_rich_text(self) -> object | None:
+        """Return the field's rich text value from ``/RV``.
+
+        PDFBox accepts either a ``COSString`` or ``COSStream`` for this
+        entry. Keep that shape: strings are decoded to ``str`` and streams
+        are returned as the underlying ``COSStream`` for callers that need
+        stream-level access.
+        """
+        return _cos_value_to_python(self._field.get_dictionary_object(_RV))
+
+    def has_rich_text(self) -> bool:
+        return self._field.contains_key(_RV)
+
+    def clear_rich_text(self) -> None:
+        self.set_rich_text(None)
+
+    def set_rich_text(self, rich_text: str | COSString | COSStream | None) -> None:
+        if rich_text is None:
+            self._field.remove_item(_RV)
+            return
+        if isinstance(rich_text, str):
+            self._field.set_string(_RV, rich_text)
+            return
+        if isinstance(rich_text, (COSString, COSStream)):
+            self._field.set_item(_RV, rich_text)
+            return
+        raise TypeError(
+            f"FDFField.set_rich_text expected None, str, COSString, or COSStream; "
+            f"got {type(rich_text).__name__}"
+        )
 
 
 def _cos_value_to_python(v: COSBase | None) -> object | None:

@@ -18,7 +18,6 @@ from pypdfbox.pdmodel.pd_document_information import (
     TRAPPED_UNKNOWN,
 )
 
-
 # ---------- title ----------
 
 
@@ -88,13 +87,13 @@ def test_creation_date_returns_datetime_when_set_as_pdf_date_string() -> None:
     parsed = info.get_creation_date()
     assert isinstance(parsed, _dt.datetime)
     assert parsed == _dt.datetime(
-        2024, 6, 1, 12, 30, 45, tzinfo=_dt.timezone.utc
+        2024, 6, 1, 12, 30, 45, tzinfo=_dt.UTC
     )
 
 
 def test_creation_date_set_then_get() -> None:
     info = PDDocumentInformation()
-    when = _dt.datetime(2025, 11, 15, 9, 0, 0, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2025, 11, 15, 9, 0, 0, tzinfo=_dt.UTC)
     info.set_creation_date(when)
     assert info.get_creation_date() == when
 
@@ -104,7 +103,7 @@ def test_creation_date_set_then_get() -> None:
 
 def test_modification_date_round_trip() -> None:
     info = PDDocumentInformation()
-    when = _dt.datetime(2026, 1, 31, 23, 59, 0, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2026, 1, 31, 23, 59, 0, tzinfo=_dt.UTC)
     info.set_modification_date(when)
     assert info.get_modification_date() == when
 
@@ -234,7 +233,7 @@ def test_contains_property_works_for_custom_keys() -> None:
 
 def test_standard_keys_contains_all_spec_keys() -> None:
     """The class-level constant must mirror PDF 32000-1:2008 §14.3.3."""
-    assert PDDocumentInformation.STANDARD_KEYS == frozenset(
+    assert frozenset(
         {
             "Title",
             "Author",
@@ -246,7 +245,7 @@ def test_standard_keys_contains_all_spec_keys() -> None:
             "ModDate",
             "Trapped",
         }
-    )
+    ) == PDDocumentInformation.STANDARD_KEYS
 
 
 def test_standard_keys_is_immutable() -> None:
@@ -462,7 +461,7 @@ def test_has_producer_round_trip() -> None:
 def test_has_creation_date_round_trip() -> None:
     info = PDDocumentInformation()
     assert info.has_creation_date() is False
-    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc))
+    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.UTC))
     assert info.has_creation_date() is True
     info.set_creation_date(None)
     assert info.has_creation_date() is False
@@ -471,7 +470,7 @@ def test_has_creation_date_round_trip() -> None:
 def test_has_modification_date_round_trip() -> None:
     info = PDDocumentInformation()
     assert info.has_modification_date() is False
-    info.set_modification_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc))
+    info.set_modification_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.UTC))
     assert info.has_modification_date() is True
     info.set_modification_date(None)
     assert info.has_modification_date() is False
@@ -523,7 +522,7 @@ def test_clear_removes_all_entries() -> None:
     info = PDDocumentInformation()
     info.set_title("T")
     info.set_custom_metadata_value("Company", "ACME")
-    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc))
+    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.UTC))
     assert not info.is_empty()
     info.clear()
     assert info.is_empty()
@@ -746,7 +745,7 @@ def test_to_dict_includes_date_strings() -> None:
     in raw form for log/serialization use cases."""
     info = PDDocumentInformation()
     info.set_title("T")
-    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.timezone.utc))
+    info.set_creation_date(_dt.datetime(2024, 1, 1, tzinfo=_dt.UTC))
     snapshot = info.to_dict()
     assert "Title" in snapshot
     assert "CreationDate" in snapshot

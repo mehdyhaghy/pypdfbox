@@ -26,6 +26,8 @@ _KIDS: COSName = COSName.KIDS  # type: ignore[attr-defined]
 _COUNT: COSName = COSName.COUNT  # type: ignore[attr-defined]
 _INFO: COSName = COSName.INFO  # type: ignore[attr-defined]
 _ROOT: COSName = COSName.ROOT  # type: ignore[attr-defined]
+_ENCRYPT: COSName = COSName.ENCRYPT  # type: ignore[attr-defined]
+_RESOURCE_CACHE_UNSET = object()
 
 
 # Source-type alias for ``PDDocument.load`` — same shape as ``Loader.load_pdf``.
@@ -45,20 +47,13 @@ class PDDocument:
     High-level PDF document handle. Mirrors
     ``org.apache.pdfbox.pdmodel.PDDocument``.
 
-    Cluster #1 surface:
-
-    - construction (empty in-memory or wrapping an existing
-      ``COSDocument``);
-    - ``PDDocument.load(source)`` classmethod (forwards to ``Loader``);
-    - page accessors (``get_pages``, ``get_number_of_pages``,
-      ``add_page``, ``remove_page``);
-    - ``save`` / ``save_incremental`` thin wrappers over ``COSWriter``;
-    - version / encryption / security flags;
-    - ``close`` + context manager.
-
-    Methods touching encryption, signing, FDF, overlay, font subsetting,
-    or printing raise ``NotImplementedError`` with a cluster pointer (see
-    ``CHANGES.md`` for the consolidated list).
+    Provides construction and loading, catalog and information access,
+    page-tree mutation, save and incremental-save plumbing, version and
+    encryption state, signing staging, resource cache wiring, and document
+    lifecycle helpers. Feature-specific work that belongs to sibling
+    modules (for example page content, catalog sub-dictionaries, security
+    handlers, or writer serialization details) remains delegated to those
+    modules.
     """
 
     #: Default PDF version stamped on the catalog of an empty
@@ -109,8 +104,8 @@ class PDDocument:
         # Cached PDDocumentInformation wrapper. Mirrors upstream's
         # ``documentInformation`` field — the same wrapper instance is
         # returned across calls so ``getDocumentInformation()`` stays
-        # reference-stable. Cleared when ``set_document_information`` is
-        # called.
+        # reference-stable. Replaced when ``set_document_information`` is
+        # called and cleared when ``clear_document_information`` is called.
         self._document_information: PDDocumentInformation | None = None
 
         # Mirror the upstream ``allSecurityToBeRemoved`` flag.
@@ -122,10 +117,9 @@ class PDDocument:
         # Lazy :class:`DefaultResourceCache` — built on first access via
         # ``get_resource_cache``. Shared across every ``PDResources`` lookup
         # in the document so identical indirect refs round-trip the same
-        # typed wrapper. ``None`` means "not yet allocated"; callers can
-        # inject a custom cache (or ``None`` to disable) via
-        # ``set_resource_cache``.
-        self._resource_cache: Any = None
+        # typed wrapper. A private sentinel represents "not yet allocated"
+        # so callers can pass ``None`` to disable caching.
+        self._resource_cache: Any = _RESOURCE_CACHE_UNSET
         # Stash for TTF fonts that asked to be closed at document close.
         # We don't manage TTF lifetimes at runtime (Python GC handles it),
         # so this list is effectively a registration log — see
@@ -302,8 +296,8 @@ class PDDocument:
 
         The wrapper is cached after the first call — repeated invocations
         return the same instance, mirroring upstream's
-        ``documentInformation`` field. ``set_document_information`` clears
-        the cache."""
+        ``documentInformation`` field. ``set_document_information`` swaps
+        the cache to the supplied wrapper."""
         from .pd_document_information import PDDocumentInformation
 
         if self._document_information is not None:
@@ -330,6 +324,67 @@ class PDDocument:
             self._document.set_trailer(trailer)
         trailer.set_item(_INFO, info.get_cos_object())
         self._document_information = info
+
+    # ---------- trailer presence / clear helpers ----------
+
+    def has_document_catalog(self) -> bool:
+        """Return ``True`` when the trailer has a well-formed ``/Root``
+        catalog dictionary.
+
+        This is a read-only probe: unlike :meth:`get_document_catalog`, it
+        does not materialise a replacement catalog when the trailer is
+        missing or ``/Root`` has a malformed COS value.
+        """
+        trailer = self._document.get_trailer()
+        return trailer is not None and isinstance(
+            trailer.get_dictionary_object(_ROOT), COSDictionary
+        )
+
+    def has_document_information(self) -> bool:
+        """Return ``True`` when the trailer has a well-formed ``/Info``
+        dictionary.
+
+        Malformed values read as absent, matching
+        :meth:`get_document_information`'s type-check posture without
+        replacing the value as that accessor does.
+        """
+        trailer = self._document.get_trailer()
+        return trailer is not None and isinstance(
+            trailer.get_dictionary_object(_INFO), COSDictionary
+        )
+
+    def has_encryption_dictionary(self) -> bool:
+        """Return ``True`` when the trailer has a well-formed ``/Encrypt``
+        dictionary.
+
+        This intentionally differs from :meth:`is_encrypted`, which mirrors
+        the COS-layer key-presence check. A malformed ``/Encrypt`` entry can
+        therefore make ``is_encrypted()`` true while this stricter predicate
+        returns false.
+        """
+        trailer = self._document.get_trailer()
+        return trailer is not None and isinstance(
+            trailer.get_dictionary_object(_ENCRYPT), COSDictionary
+        )
+
+    def clear_document_catalog(self) -> None:
+        """Remove trailer ``/Root`` and invalidate catalog-derived caches."""
+        trailer = self._document.get_trailer()
+        if trailer is not None:
+            trailer.remove_item(_ROOT)
+        self._catalog = None
+        self._pages = None
+
+    def clear_document_information(self) -> None:
+        """Remove trailer ``/Info`` and invalidate the cached wrapper."""
+        trailer = self._document.get_trailer()
+        if trailer is not None:
+            trailer.remove_item(_INFO)
+        self._document_information = None
+
+    def clear_encryption_dictionary(self) -> None:
+        """Remove trailer ``/Encrypt`` and clear the cached wrapper."""
+        self.set_encryption_dictionary(None)
 
     # ---------- pages ----------
 
@@ -411,7 +466,7 @@ class PDDocument:
                             # bytes stay as-is; matches upstream's "best
                             # effort" stripping behaviour.
                             actual.create_input_stream().close()
-                trailer.remove_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+                trailer.remove_item(_ENCRYPT)
 
         opened: BinaryIO | None = None
         sink: BinaryIO | RandomAccessWrite
@@ -800,7 +855,7 @@ class PDDocument:
             self._encryption = None
             trailer = self._document.get_trailer()
             if trailer is not None:
-                trailer.remove_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+                trailer.remove_item(_ENCRYPT)
             return
 
         if isinstance(encryption, _COSDictionary):
@@ -814,7 +869,7 @@ class PDDocument:
         if trailer is None:
             trailer = _COSDictionary()
             self._document.set_trailer(trailer)
-        trailer.set_item(COSName.ENCRYPT, enc_dict)  # type: ignore[attr-defined]
+        trailer.set_item(_ENCRYPT, enc_dict)
 
     def set_encryption(self, encryption: Any) -> None:
         """Alias for :meth:`set_encryption_dictionary`. Mirrors upstream
@@ -1233,7 +1288,7 @@ class PDDocument:
         """Return the document's :class:`PDResourceCache`, lazily allocating
         a :class:`DefaultResourceCache` on first access. Mirrors upstream
         ``PDDocument.getResourceCache``."""
-        if self._resource_cache is None:
+        if self._resource_cache is _RESOURCE_CACHE_UNSET:
             from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 
             self._resource_cache = DefaultResourceCache()

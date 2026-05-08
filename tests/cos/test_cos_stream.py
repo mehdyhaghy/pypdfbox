@@ -146,7 +146,11 @@ def test_get_filters_returns_array() -> None:
         s.set_item(COSName.FILTER, chain)  # type: ignore[attr-defined]
         result = s.get_filters()
         assert isinstance(result, COSArray)
-        assert [n.name for n in result] == ["ASCII85Decode", "FlateDecode"]  # type: ignore[union-attr]
+        names: list[str] = []
+        for entry in result:
+            assert isinstance(entry, COSName)
+            names.append(entry.name)
+        assert names == ["ASCII85Decode", "FlateDecode"]
 
 
 def test_to_text_string_pdfdocencoding() -> None:

@@ -140,6 +140,80 @@ class PDExportFormatAttributeObject(PDLayoutAttributeObject):
     def set_summary(self, summary: str | None) -> None:
         self._set_string(PDTableAttributeObject.SUMMARY, summary)
 
+    # ---------- per-key presence / clear helpers ----------
+
+    def is_list_numbering_specified(self) -> bool:
+        """``True`` iff ``/ListNumbering`` is explicitly written."""
+        return self.is_specified(PDListAttributeObject.LIST_NUMBERING)
+
+    def has_list_numbering(self) -> bool:
+        """Alias for :meth:`is_list_numbering_specified`."""
+        return self.is_list_numbering_specified()
+
+    def clear_list_numbering(self) -> None:
+        """Remove the ``/ListNumbering`` entry if present."""
+        self.clear_attribute(PDListAttributeObject.LIST_NUMBERING)
+
+    def is_row_span_specified(self) -> bool:
+        """``True`` iff ``/RowSpan`` is explicitly written."""
+        return self.is_specified(PDTableAttributeObject.ROW_SPAN)
+
+    def has_row_span(self) -> bool:
+        """Alias for :meth:`is_row_span_specified`."""
+        return self.is_row_span_specified()
+
+    def clear_row_span(self) -> None:
+        """Remove the ``/RowSpan`` entry if present."""
+        self.clear_attribute(PDTableAttributeObject.ROW_SPAN)
+
+    def is_col_span_specified(self) -> bool:
+        """``True`` iff ``/ColSpan`` is explicitly written."""
+        return self.is_specified(PDTableAttributeObject.COL_SPAN)
+
+    def has_col_span(self) -> bool:
+        """Alias for :meth:`is_col_span_specified`."""
+        return self.is_col_span_specified()
+
+    def clear_col_span(self) -> None:
+        """Remove the ``/ColSpan`` entry if present."""
+        self.clear_attribute(PDTableAttributeObject.COL_SPAN)
+
+    def is_headers_specified(self) -> bool:
+        """``True`` iff ``/Headers`` is explicitly written."""
+        return self.is_specified(PDTableAttributeObject.HEADERS)
+
+    def has_headers(self) -> bool:
+        """Alias for :meth:`is_headers_specified`."""
+        return self.is_headers_specified()
+
+    def clear_headers(self) -> None:
+        """Remove the ``/Headers`` entry if present."""
+        self.clear_attribute(PDTableAttributeObject.HEADERS)
+
+    def is_scope_specified(self) -> bool:
+        """``True`` iff ``/Scope`` is explicitly written."""
+        return self.is_specified(PDTableAttributeObject.SCOPE)
+
+    def has_scope(self) -> bool:
+        """Alias for :meth:`is_scope_specified`."""
+        return self.is_scope_specified()
+
+    def clear_scope(self) -> None:
+        """Remove the ``/Scope`` entry if present."""
+        self.clear_attribute(PDTableAttributeObject.SCOPE)
+
+    def is_summary_specified(self) -> bool:
+        """``True`` iff ``/Summary`` is explicitly written."""
+        return self.is_specified(PDTableAttributeObject.SUMMARY)
+
+    def has_summary(self) -> bool:
+        """Alias for :meth:`is_summary_specified`."""
+        return self.is_summary_specified()
+
+    def clear_summary(self) -> None:
+        """Remove the ``/Summary`` entry if present."""
+        self.clear_attribute(PDTableAttributeObject.SUMMARY)
+
     # ---------- owner predicate (parity helper) ----------
 
     @classmethod

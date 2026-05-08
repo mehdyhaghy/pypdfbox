@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from fontTools.pens.recordingPen import RecordingPen
+    from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
 
 
 class GlyfDescript:
@@ -320,6 +320,8 @@ class GlyphData:
         if self._empty:
             self._bounding_box = BoundingBox()
             return
+        assert self._glyf_table is not None
+        assert self._glyph_name is not None
         # fontTools ``_g_l_y_f`` indexes by glyph name. The Glyph object
         # exposes ``xMin``, ``yMin``, ``xMax``, ``yMax`` and
         # ``numberOfContours`` once it has been expanded; for lazy fonts

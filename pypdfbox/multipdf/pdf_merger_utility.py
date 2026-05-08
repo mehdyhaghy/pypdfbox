@@ -65,7 +65,6 @@ _S: COSName = COSName.get_pdf_name("S")
 _P: COSName = COSName.get_pdf_name("P")
 _PG: COSName = COSName.get_pdf_name("Pg")
 _OBJ: COSName = COSName.get_pdf_name("Obj")
-_NUMS: COSName = COSName.get_pdf_name("Nums")
 _KIDS: COSName = COSName.get_pdf_name("Kids")
 _NAMES_TREE: COSName = COSName.get_pdf_name("Names")
 _DOCUMENT: COSName = COSName.get_pdf_name("Document")
@@ -95,10 +94,21 @@ class AcroFormMergeMode(enum.Enum):
     PDFBOX_LEGACY_MODE = "PDFBOX_LEGACY_MODE"
 
 
+_DocumentMergeModeT = DocumentMergeMode
+_AcroFormMergeModeT = AcroFormMergeMode
+
+
 # Convenience aliases mirroring upstream's nested "static final" naming so
 # ``PDFMergerUtility.DocumentMergeMode.PDFBOX_LEGACY_MODE`` etc. line up.
 SourceLike = Union[
-    str, "os.PathLike[str]", BinaryIO, "PDDocument", RandomAccessRead, bytes
+    str,
+    "os.PathLike[str]",
+    BinaryIO,
+    "PDDocument",
+    RandomAccessRead,
+    bytes,
+    bytearray,
+    memoryview,
 ]
 
 
@@ -173,34 +183,34 @@ class PDFMergerUtility:
 
     # ---------- properties / config ----------
 
-    def get_document_merge_mode(self) -> DocumentMergeMode:
+    def get_document_merge_mode(self) -> _DocumentMergeModeT:
         return self._document_merge_mode
 
-    def set_document_merge_mode(self, mode: DocumentMergeMode) -> None:
+    def set_document_merge_mode(self, mode: _DocumentMergeModeT) -> None:
         self._document_merge_mode = mode
 
     # Property-style aliases — Python flavour of upstream's getter/setter
     # pairs. Upstream test ports occasionally rely on bean-style access.
     @property
-    def document_merge_mode_property(self) -> DocumentMergeMode:
+    def document_merge_mode_property(self) -> _DocumentMergeModeT:
         return self._document_merge_mode
 
     @document_merge_mode_property.setter
-    def document_merge_mode_property(self, mode: DocumentMergeMode) -> None:
+    def document_merge_mode_property(self, mode: _DocumentMergeModeT) -> None:
         self._document_merge_mode = mode
 
-    def get_acro_form_merge_mode(self) -> AcroFormMergeMode:
+    def get_acro_form_merge_mode(self) -> _AcroFormMergeModeT:
         return self._acro_form_merge_mode
 
-    def set_acro_form_merge_mode(self, mode: AcroFormMergeMode) -> None:
+    def set_acro_form_merge_mode(self, mode: _AcroFormMergeModeT) -> None:
         self._acro_form_merge_mode = mode
 
     @property
-    def acro_form_merge_mode_property(self) -> AcroFormMergeMode:
+    def acro_form_merge_mode_property(self) -> _AcroFormMergeModeT:
         return self._acro_form_merge_mode
 
     @acro_form_merge_mode_property.setter
-    def acro_form_merge_mode_property(self, mode: AcroFormMergeMode) -> None:
+    def acro_form_merge_mode_property(self, mode: _AcroFormMergeModeT) -> None:
         self._acro_form_merge_mode = mode
 
     def is_ignore_acro_form_errors(self) -> bool:
@@ -265,12 +275,20 @@ class PDFMergerUtility:
 
     def add_source(self, source: SourceLike) -> None:
         """Add a source document. Accepts a file path, an already-opened
-        :class:`PDDocument`, a :class:`RandomAccessRead`, raw ``bytes``,
-        or a binary stream.
+        :class:`PDDocument`, a :class:`RandomAccessRead`, raw bytes-like
+        data, or a binary stream.
         """
         self._sources.append(source)
 
     def add_sources(self, sources: Iterable[SourceLike]) -> None:
+        if isinstance(
+            sources, (str, os.PathLike, bytes, bytearray, memoryview)
+        ) or callable(getattr(sources, "read", None)):
+            raise TypeError(
+                "PDFMergerUtility.add_sources expected an iterable of sources; "
+                f"got a single {type(sources).__name__}. Use add_source(...) "
+                "for one source."
+            )
         for src in sources:
             self.add_source(src)
 
@@ -416,6 +434,7 @@ class PDFMergerUtility:
                 )
 
             if self._destination_stream is None:
+                assert self._destination_file_name is not None
                 destination.save(self._destination_file_name)
             else:
                 destination.save(self._destination_stream)
@@ -453,9 +472,15 @@ class PDFMergerUtility:
             return PDDocument.load(source), True
         if isinstance(source, (bytes, bytearray, memoryview)):
             return PDDocument.load(bytes(source)), True
-        if hasattr(source, "read"):
-            data = source.read()
-            return PDDocument.load(data), True
+        read = getattr(source, "read", None)
+        if callable(read):
+            data = read()
+            if not isinstance(data, (bytes, bytearray, memoryview)):
+                raise TypeError(
+                    "binary stream source read() must return bytes, "
+                    f"bytearray, or memoryview; got {type(data).__name__}"
+                )
+            return PDDocument.load(bytes(data)), True
         raise TypeError(
             f"unsupported source type: {type(source).__name__}"
         )
@@ -730,10 +755,7 @@ class PDFMergerUtility:
 
         dest_dict = dest_form.get_cos_object()
         base = dest_dict.get_item(_FIELDS)
-        if isinstance(base, COSArray):
-            dest_fields_array = base
-        else:
-            dest_fields_array = COSArray()
+        dest_fields_array = base if isinstance(base, COSArray) else COSArray()
 
         for src_field in src_fields:
             cloned = cloner.clone_for_new_document(src_field.get_cos_object())
@@ -1468,10 +1490,10 @@ class PDFMergerUtility:
             PDStructureElement,
         )
 
-        wrapped = {
-            k: PDStructureElement(v) if isinstance(v, COSDictionary) else v
-            for k, v in dest_names.items()
-        }
+        wrapped: dict[str, PDStructureElement] = {}
+        for key, value in dest_names.items():
+            if isinstance(value, COSDictionary):
+                wrapped[key] = PDStructureElement(value)
         new_id_tree.set_names(wrapped)
         dest_struct_tree.set_id_tree(new_id_tree)
 

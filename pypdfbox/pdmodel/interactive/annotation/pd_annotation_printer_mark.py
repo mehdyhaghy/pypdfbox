@@ -39,5 +39,11 @@ class PDAnnotationPrinterMark(PDAnnotation):
     def set_mark_name(self, name: str | None) -> None:
         self._dict.set_string(_MN, name)
 
+    def getMarkName(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_mark_name()
+
+    def setMarkName(self, name: str | None) -> None:  # noqa: N802 - upstream Java name
+        self.set_mark_name(name)
+
 
 __all__ = ["PDAnnotationPrinterMark"]

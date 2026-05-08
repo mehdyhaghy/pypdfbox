@@ -161,7 +161,7 @@ class StandardEncoding(Encoding):
     Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.StandardEncoding``.
     """
 
-    INSTANCE: "StandardEncoding"
+    INSTANCE: StandardEncoding
 
     def __init__(self) -> None:
         super().__init__()

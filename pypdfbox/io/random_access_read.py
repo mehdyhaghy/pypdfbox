@@ -67,7 +67,7 @@ class RandomAccessRead(ABC):
         self.seek(self.get_position() - n)
 
     def is_eof(self) -> bool:
-        return self.get_position() >= self.length()
+        return self.peek() == self.EOF
 
     def read_fully(
         self, buf: bytearray, offset: int = 0, length: int | None = None
@@ -98,7 +98,7 @@ class RandomAccessRead(ABC):
         self.seek(target)
 
     def available(self) -> int:
-        return self.length() - self.get_position()
+        return max(0, self.length() - self.get_position())
 
     def unread(self, b: int | bytes | bytearray | memoryview) -> None:
         """

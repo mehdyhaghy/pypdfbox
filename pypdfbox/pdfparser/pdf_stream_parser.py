@@ -391,7 +391,7 @@ class PDFStreamParser(COSParser):
         kw = self._read_operator_string()
         if kw == "null":
             return COSNull.NULL
-        return Operator(kw)
+        return Operator.get_operator(kw)
 
     def _parse_tf_keyword(self) -> COSBase | Operator:
         kw = self._read_operator_string()
@@ -399,16 +399,16 @@ class PDFStreamParser(COSParser):
             return COSBoolean.TRUE
         if kw == "false":
             return COSBoolean.FALSE
-        return Operator(kw)
+        return Operator.get_operator(kw)
 
     def _parse_b_keyword(self) -> Operator:
         """Handle keywords starting with ``B``. ``BI`` triggers inline-
         image dictionary collection (the actual byte payload is captured
         when the subsequent ``ID`` is parsed)."""
         kw = self._read_operator_string()
-        op = Operator(kw)
         if kw != _OP_BEGIN_INLINE_IMAGE:
-            return op
+            return Operator.get_operator(kw)
+        op = Operator(kw)
         # Inline-image: collect /Key value pairs into a dict until we hit
         # the ``ID`` operator (returned as an Operator carrying image_data).
         self._inline_image_depth += 1
@@ -577,7 +577,7 @@ class PDFStreamParser(COSParser):
     # ---------- generic operator reader ----------
 
     def _read_operator_token(self) -> Operator:
-        return Operator(self._read_operator_string())
+        return Operator.get_operator(self._read_operator_string())
 
     def _read_operator_string(self) -> str:
         """Read an operator keyword. PDF operators are short alphabetic

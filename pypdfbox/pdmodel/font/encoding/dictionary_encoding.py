@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pypdfbox.cos import (
     COSArray,
-    COSBase,
     COSDictionary,
     COSInteger,
     COSName,
@@ -69,15 +68,8 @@ class DictionaryEncoding(Encoding):
             if differences is not None:
                 self._encoding.set_item(_DIFFERENCES, differences)
 
-        # Seed code->name from the base, then overlay /Differences.
-        if self._base_encoding is not None:
-            for code, name in self._base_encoding.get_code_to_name_map().items():
-                self.add(code, name)
-
         self._differences: dict[int, str] = {}
-        diffs = self._encoding.get_dictionary_object(_DIFFERENCES)
-        if isinstance(diffs, COSArray):
-            self._apply_differences(diffs)
+        self._rebuild_mappings()
 
     # -- internals ---------------------------------------------------------
 
@@ -104,12 +96,22 @@ class DictionaryEncoding(Encoding):
         for i in range(diffs.size()):
             entry = diffs.get_object(i)
             if isinstance(entry, COSNumber):
-                code = int(entry.value)  # type: ignore[arg-type]
-            elif isinstance(entry, COSName):
-                if code >= 0:
-                    self.overwrite(code, entry.name)
-                    self._differences[code] = entry.name
-                    code += 1
+                code = entry.int_value()
+            elif isinstance(entry, COSName) and code >= 0:
+                self.overwrite(code, entry.name)
+                self._differences[code] = entry.name
+                code += 1
+
+    def _rebuild_mappings(self) -> None:
+        self._code_to_name.clear()
+        self._name_to_code.clear()
+        self._differences = {}
+        if self._base_encoding is not None:
+            for code, name in self._base_encoding.get_code_to_name_map().items():
+                self.add(code, name)
+        diffs = self.get_differences_array()
+        if diffs is not None:
+            self._apply_differences(diffs)
 
     # -- public API --------------------------------------------------------
 
@@ -169,6 +171,15 @@ class DictionaryEncoding(Encoding):
             return diffs
         return None
 
+    def has_differences(self) -> bool:
+        """Return ``True`` when ``/Differences`` is present as a COS array."""
+        return self.get_differences_array() is not None
+
+    def clear_differences(self) -> None:
+        """Remove ``/Differences`` and restore the mapping to the base encoding."""
+        self._encoding.remove_item(_DIFFERENCES)
+        self._rebuild_mappings()
+
     def set_base_encoding(self, value: Encoding | COSName | str | None) -> None:
         """Replace the ``/BaseEncoding`` entry on the underlying dictionary
         and refresh the cached resolved encoding.
@@ -179,6 +190,7 @@ class DictionaryEncoding(Encoding):
         if value is None:
             self._encoding.remove_item(_BASE_ENCODING)
             self._base_encoding = None
+            self._rebuild_mappings()
             return
         if isinstance(value, Encoding):
             name = value.get_encoding_name()
@@ -187,14 +199,24 @@ class DictionaryEncoding(Encoding):
                 self._encoding.set_item(_BASE_ENCODING, COSName.get_pdf_name(name))
             else:
                 self._encoding.remove_item(_BASE_ENCODING)
+            self._rebuild_mappings()
             return
         if isinstance(value, COSName):
+            resolved = Encoding.get_instance(value)
+            if resolved is None:
+                raise ValueError(f"Invalid encoding: {value}")
             self._encoding.set_item(_BASE_ENCODING, value)
-            self._base_encoding = Encoding.get_instance(value)
+            self._base_encoding = resolved
+            self._rebuild_mappings()
             return
         # Plain string.
-        self._encoding.set_item(_BASE_ENCODING, COSName.get_pdf_name(value))
-        self._base_encoding = Encoding.get_instance(value)
+        cos_name = COSName.get_pdf_name(value)
+        resolved = Encoding.get_instance(cos_name)
+        if resolved is None:
+            raise ValueError(f"Invalid encoding: {cos_name}")
+        self._encoding.set_item(_BASE_ENCODING, cos_name)
+        self._base_encoding = resolved
+        self._rebuild_mappings()
 
     def get_differences(self) -> dict[int, str]:
         return dict(self._differences)
@@ -232,8 +254,7 @@ class DictionaryEncoding(Encoding):
         """
         if isinstance(differences, COSArray):
             self._encoding.set_item(_DIFFERENCES, differences)
-            self._differences = {}
-            self._apply_differences(differences)
+            self._rebuild_mappings()
             return
 
         # Build a COSArray from a {code: name} mapping. Sort by code and
@@ -247,9 +268,7 @@ class DictionaryEncoding(Encoding):
             arr.add(COSName.get_pdf_name(name))
             prev_code = code
         self._encoding.set_item(_DIFFERENCES, arr)
-        # Refresh the cached differences view.
-        self._differences = {}
-        self._apply_differences(arr)
+        self._rebuild_mappings()
 
 
 __all__ = ["DictionaryEncoding"]

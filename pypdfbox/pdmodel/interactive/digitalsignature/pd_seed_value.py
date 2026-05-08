@@ -123,7 +123,7 @@ class PDSeedValue:
         names = v.to_cos_name_string_list()
         if any(n is None for n in names):
             return None
-        return [str(n) for n in names]  # type: ignore[arg-type]
+        return [str(n) for n in names]
 
     def set_sub_filter(self, names: list[str] | None) -> None:
         if names is None:
@@ -158,7 +158,7 @@ class PDSeedValue:
         out = v.to_cos_string_string_list()
         if any(s is None for s in out):
             return None
-        return [str(s) for s in out]  # type: ignore[arg-type]
+        return [str(s) for s in out]
 
     def set_reasons(self, reasons: list[str] | None) -> None:
         if reasons is None:

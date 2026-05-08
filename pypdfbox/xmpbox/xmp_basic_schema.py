@@ -167,6 +167,14 @@ class XMPBasicSchema(XMPSchema):
         """
         return self._array_property_for_bag(self.ADVISORY)
 
+    def set_advisory_property(self, value: ArrayProperty | None) -> None:
+        """Store the Advisory bag as an ``ArrayProperty`` wrapper."""
+        if value is None:
+            self.remove_property(self.ADVISORY)
+            return
+        value.set_property_name(self.ADVISORY)
+        self._properties[self.ADVISORY] = value
+
     # --- creator tool (AgentName / Text) -----------------------------
 
     def set_creator_tool(self, tool: str) -> None:
@@ -407,10 +415,21 @@ class XMPBasicSchema(XMPSchema):
         """
         return self._array_property_for_bag(self.IDENTIFIER)
 
+    def set_identifiers_property(self, value: ArrayProperty | None) -> None:
+        """Store the Identifier bag as an ``ArrayProperty`` wrapper."""
+        if value is None:
+            self.remove_property(self.IDENTIFIER)
+            return
+        value.set_property_name(self.IDENTIFIER)
+        self._properties[self.IDENTIFIER] = value
+
     # --- rating (Integer) --------------------------------------------
 
-    def set_rating(self, value: int | str) -> None:
+    def set_rating(self, value: int | str | None) -> None:
         """Mirror of upstream ``setRating(Integer)``."""
+        if value is None:
+            self.remove_property(self.RATING)
+            return
         prop = IntegerType(
             self._metadata, self._namespace, self._prefix, self.RATING, value
         )
@@ -420,8 +439,11 @@ class XMPBasicSchema(XMPSchema):
         """Mirror of upstream ``getRating()``."""
         return self._read_integer(self.RATING)
 
-    def set_rating_property(self, prop: IntegerType) -> None:
+    def set_rating_property(self, prop: IntegerType | None) -> None:
         """Mirror of upstream ``setRatingProperty(IntegerType)``."""
+        if prop is None:
+            self.remove_property(self.RATING)
+            return
         self._properties[self.RATING] = prop
 
     def get_rating_property(self) -> IntegerType | None:

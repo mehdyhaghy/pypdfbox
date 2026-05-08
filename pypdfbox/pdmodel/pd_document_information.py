@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
-from typing import Any
+from collections.abc import Iterator
 
 from pypdfbox.cos import COSDictionary, COSName, COSString
 
@@ -106,7 +106,7 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
         second = 59
     sign = m.group("offsign")
     if sign is None or sign == "Z":
-        tz: _dt.tzinfo = _dt.timezone.utc
+        tz: _dt.tzinfo = _dt.UTC
     else:
         off_hour = int(m.group("offhour") or 0)
         off_minute = int(m.group("offminute") or 0)
@@ -136,13 +136,23 @@ def _format_pdf_date(value: _dt.datetime) -> str:
     return f"{base}{sign}{hours:02d}'{minutes:02d}'"
 
 
+def _get_info_string(info: COSDictionary, key: COSName | str) -> str | None:
+    """Return a metadata string only when the COS value is a real string."""
+    value = info.get_dictionary_object(key)
+    if isinstance(value, COSString):
+        return value.get_string()
+    return None
+
+
 class PDDocumentInformation:
     """
     Wrapper around the trailer's ``/Info`` dictionary. Mirrors
     ``org.apache.pdfbox.pdmodel.PDDocumentInformation``.
 
-    Each ``get_*`` accessor returns ``None`` if the entry is absent;
-    each ``set_*`` accessor with a ``None`` argument clears the entry.
+    Each ``get_*`` accessor returns ``None`` if the entry is absent or
+    malformed for that field; each ``set_*`` accessor with a ``None`` argument
+    clears the entry. The ``has_*`` helpers report key presence only, so a
+    malformed present entry may still have a ``None`` typed accessor value.
     """
 
     #: Names defined for the standard /Info dictionary keys per PDF 32000-1:2008
@@ -173,42 +183,52 @@ class PDDocumentInformation:
 
         Allows callers to pull date strings unparsed for validation.
         """
-        return self._info.get_string(property_key)
+        return _get_info_string(self._info, property_key)
+
+    def set_property_string_value(
+        self, property_key: str, property_value: str | bytes | None
+    ) -> None:
+        """Set the raw string at ``property_key``.
+
+        Mirrors the upstream ``setPropertyStringValue`` helper. Passing
+        ``None`` removes the entry, matching the standard-field setters.
+        """
+        self._info.set_string(property_key, property_value)
 
     # ---------- standard fields ----------
 
     def get_title(self) -> str | None:
-        return self._info.get_string(_TITLE)
+        return _get_info_string(self._info, _TITLE)
 
     def set_title(self, title: str | None) -> None:
         self._info.set_string(_TITLE, title)
 
     def get_author(self) -> str | None:
-        return self._info.get_string(_AUTHOR)
+        return _get_info_string(self._info, _AUTHOR)
 
     def set_author(self, author: str | None) -> None:
         self._info.set_string(_AUTHOR, author)
 
     def get_subject(self) -> str | None:
-        return self._info.get_string(_SUBJECT)
+        return _get_info_string(self._info, _SUBJECT)
 
     def set_subject(self, subject: str | None) -> None:
         self._info.set_string(_SUBJECT, subject)
 
     def get_keywords(self) -> str | None:
-        return self._info.get_string(_KEYWORDS)
+        return _get_info_string(self._info, _KEYWORDS)
 
     def set_keywords(self, keywords: str | None) -> None:
         self._info.set_string(_KEYWORDS, keywords)
 
     def get_creator(self) -> str | None:
-        return self._info.get_string(_CREATOR)
+        return _get_info_string(self._info, _CREATOR)
 
     def set_creator(self, creator: str | None) -> None:
         self._info.set_string(_CREATOR, creator)
 
     def get_producer(self) -> str | None:
-        return self._info.get_string(_PRODUCER)
+        return _get_info_string(self._info, _PRODUCER)
 
     def set_producer(self, producer: str | None) -> None:
         self._info.set_string(_PRODUCER, producer)
@@ -216,7 +236,7 @@ class PDDocumentInformation:
     # ---------- dates ----------
 
     def get_creation_date(self) -> _dt.datetime | None:
-        raw = self._info.get_string(_CREATION_DATE)
+        raw = _get_info_string(self._info, _CREATION_DATE)
         return _parse_pdf_date(raw) if raw is not None else None
 
     def set_creation_date(self, date: _dt.datetime | None) -> None:
@@ -226,7 +246,7 @@ class PDDocumentInformation:
         self._info.set_item(_CREATION_DATE, COSString(_format_pdf_date(date)))
 
     def get_modification_date(self) -> _dt.datetime | None:
-        raw = self._info.get_string(_MOD_DATE)
+        raw = _get_info_string(self._info, _MOD_DATE)
         return _parse_pdf_date(raw) if raw is not None else None
 
     def set_modification_date(self, date: _dt.datetime | None) -> None:
@@ -336,13 +356,29 @@ class PDDocumentInformation:
         ``get_metadata_keys()`` for a one-off membership check."""
         return self._info.contains_key(property_key)
 
+    def has_property(self, property_key: str) -> bool:
+        """Return ``True`` when ``property_key`` is present in the info dictionary."""
+        return self.contains_property(property_key)
+
     def get_custom_metadata_value(self, field_name: str) -> str | None:
-        return self._info.get_string(field_name)
+        return _get_info_string(self._info, field_name)
 
     def set_custom_metadata_value(
         self, field_name: str, field_value: str | None
     ) -> None:
         self._info.set_string(field_name, field_value)
+
+    def has_custom_metadata_value(self, field_name: str) -> bool:
+        """Return ``True`` when ``field_name`` is present in the info dictionary."""
+        return self._info.contains_key(field_name)
+
+    def clear_custom_metadata_value(self, field_name: str) -> None:
+        """Remove ``field_name`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(field_name)
+
+    def clear_property(self, property_key: str) -> None:
+        """Remove ``property_key`` from the info dictionary. No-op if absent."""
+        self._info.remove_item(property_key)
 
     def get_standard_metadata_keys(self) -> list[str]:
         """Return only the *standard* metadata keys (per PDF 32000-1:2008
@@ -503,7 +539,7 @@ class PDDocumentInformation:
     def __len__(self) -> int:
         return self._info.size()
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         """Iterate metadata key names in sorted order.
 
         Pypdfbox addition — pairs with :meth:`__len__` and :meth:`__contains__`
@@ -532,7 +568,7 @@ class PDDocumentInformation:
         out: dict[str, str] = {}
         for key in self._info.key_set():
             name = key.get_name()
-            value = self._info.get_string(name)
+            value = _get_info_string(self._info, name)
             if value is not None:
                 out[name] = value
         return out
@@ -550,7 +586,3 @@ __all__ = [
     "TRAPPED_FALSE",
     "TRAPPED_UNKNOWN",
 ]
-
-
-# Suppress unused-import in typing-only branch (kept for future expansion).
-_ = Any

@@ -43,6 +43,11 @@ class PDURIDictionary:
             return
         self._dict.set_string("Base", base)
 
+    def clear_base(self) -> None:
+        """Remove ``/Base``. Equivalent to ``set_base(None)`` but reads as
+        explicit intent at call sites."""
+        self._dict.remove_item(_BASE)
+
     # ---------- Predicate / typed-accessor helpers ----------
 
     def has_base(self) -> bool:

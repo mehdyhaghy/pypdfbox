@@ -71,7 +71,7 @@ class PDSignatureLock:
         out = v.to_cos_string_string_list()
         if any(s is None for s in out):
             return None
-        return [str(s) for s in out]  # type: ignore[arg-type]
+        return [str(s) for s in out]
 
     def set_fields(self, names: list[str] | None) -> None:
         if names is None:
@@ -184,8 +184,9 @@ class PDSignatureLock:
             parts.append(f"fields={len(fields)}")
         if self.has_p():
             p = self.get_p()
-            label = self._P_LABELS.get(p, str(p))
-            parts.append(f"p={p} ({label})")
+            if p is not None:
+                label = self._P_LABELS.get(p, str(p))
+                parts.append(f"p={p} ({label})")
         body = ", ".join(parts) if parts else "<empty>"
         return f"PDSignatureLock({body})"
 

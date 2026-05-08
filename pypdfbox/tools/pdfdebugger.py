@@ -80,6 +80,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -106,12 +108,16 @@ _MAX_STREAM_PREVIEW = 64  # bytes shown for stream body previews
 _HEX_PREFIX_BYTES = 4  # 4 bytes -> 8 hex chars for /U /O preview
 _FORMAT_TEXT = "text"
 _FORMAT_JSON = "json"
+_TYPE = COSName.get_pdf_name("Type")
 
 
 def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = subparsers.add_parser(
         "pdfdebugger",
-        help="print a PDF object graph as text (lite CLI replacement for upstream's Swing PDFDebugger)",
+        help=(
+            "print a PDF object graph as text "
+            "(lite CLI replacement for upstream's Swing PDFDebugger)"
+        ),
         description="Print PDF object graph information. Without flags, prints "
         "a terse summary. Use -trailer / -page / -object / -xref / -catalog / "
         "-tree / --list-objects / --show-page-tokens / --show-encryption to "
@@ -315,11 +321,17 @@ def _format_node(
             return
 
         if isinstance(node, COSArray):
-            simple_items = [_fmt_simple(item) for item in node]
-            if all(s is not None for s in simple_items) and len(node) <= 12:
-                # Compact one-line array for short scalar sequences.
-                out.append(f"{pad}[ {' '.join(simple_items)} ]")  # type: ignore[arg-type]
-                return
+            simple_items: list[str] = []
+            if len(node) <= 12:
+                for item in node:
+                    simple_item = _fmt_simple(item)
+                    if simple_item is None:
+                        break
+                    simple_items.append(simple_item)
+                else:
+                    # Compact one-line array for short scalar sequences.
+                    out.append(f"{pad}[ {' '.join(simple_items)} ]")
+                    return
             out.append(f"{pad}[")
             for item in node:
                 _format_node(
@@ -493,7 +505,7 @@ def _print_summary(
     cat_type_str: str | None = None
     pages_simple: str | None = None
     if catalog is not None:
-        cat_type = catalog.get_dictionary_object(COSName.TYPE)
+        cat_type = catalog.get_dictionary_object(_TYPE)
         cat_type_str = _fmt_simple(cat_type) if cat_type is not None else None
         pages = catalog.get_dictionary_object(COSName.get_pdf_name("Pages"))
         if pages is not None:
@@ -894,7 +906,7 @@ def _tokenize_stream_bytes(data: bytes) -> list[Any]:
     if not data:
         return []
     from pypdfbox.io import RandomAccessReadBuffer
-    from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
+    from pypdfbox.pdfparser.pdf_stream_parser import PDFStreamParser
 
     src = RandomAccessReadBuffer.from_bytes(data)
     try:
@@ -904,14 +916,10 @@ def _tokenize_stream_bytes(data: bytes) -> list[Any]:
         finally:
             close = getattr(parser, "close", None)
             if callable(close):
-                try:
+                with suppress(Exception):
                     close()
-                except Exception:  # noqa: BLE001 — best-effort close
-                    pass
     finally:
         src.close()
-    # Reference for type-checker — the parser tokens may include Operator.
-    _ = Operator
 
 
 def _format_token(tok: Any) -> str:
@@ -1242,9 +1250,9 @@ def _interactive_walker(doc: PDDocument) -> int:
 
     # ``stack`` is the (label, node) breadcrumb from trailer to current.
     # Root is labelled ``trailer`` so ``pwd`` reads naturally.
-    stack: list[tuple[str, COSBase]] = [("trailer", trailer)]
+    stack: list[tuple[str, COSBase | None]] = [("trailer", trailer)]
 
-    def current() -> COSBase:
+    def current() -> COSBase | None:
         return stack[-1][1]
 
     def path_str() -> str:
@@ -1331,6 +1339,10 @@ def _interactive_walker(doc: PDDocument) -> int:
             except ValueError:
                 print("ref: num and gen must be integers")
                 continue
+            parsed = _valid_object_id_or_none(num, gen)
+            if parsed is None:
+                print("ref: num and gen must be non-negative integers")
+                continue
             key = COSObjectKey(num, gen)
             if not cos_doc.has_object(key):
                 print(f"ref: object {num} {gen} R not in pool")
@@ -1360,7 +1372,7 @@ def _interactive_walker(doc: PDDocument) -> int:
                 print(f"At: {path_str()}  ({_node_type_label(current())})")
                 continue
             # ``cd <num> <gen>`` shorthand for ``ref``.
-            if len(args) == 2 and all(a.lstrip("-").isdigit() for a in args):
+            if len(args) == 2 and all(a.isdigit() for a in args):
                 num = int(args[0])
                 gen = int(args[1])
                 key = COSObjectKey(num, gen)
@@ -1374,12 +1386,12 @@ def _interactive_walker(doc: PDDocument) -> int:
                 ]
                 print(f"At: {path_str()}  ({_node_type_label(target)})")
                 continue
-            child = _walker_lookup_child(current(), args[0])
-            if child is None:
+            lookup_child = _walker_lookup_child(current(), args[0])
+            if lookup_child is None:
                 print(f"cd: no child '{args[0]}'")
                 continue
             label = args[0] if args[0].startswith(("/", "[")) else f"/{args[0]}"
-            stack.append((label, child))
+            stack.append((label, lookup_child))
             print(f"At: {path_str()}  ({_node_type_label(current())})")
             continue
         print(f"unknown command: {cmd!r} (type 'help' for the list)")
@@ -1398,13 +1410,30 @@ def _parse_show_object(spec: str) -> tuple[int, int] | None:
     if "." in text:
         head, _, tail = text.partition(".")
         try:
-            return int(head), int(tail)
+            return _valid_object_id_or_none(int(head), int(tail))
         except ValueError:
             return None
     try:
-        return int(text), 0
+        return _valid_object_id_or_none(int(text), 0)
     except ValueError:
         return None
+
+
+def _valid_object_id_or_none(num: int, gen: int) -> tuple[int, int] | None:
+    if num < 0 or gen < 0:
+        return None
+    return num, gen
+
+
+def _parse_object_args(values: Sequence[str]) -> tuple[int, int] | None:
+    if len(values) not in (1, 2):
+        return None
+    try:
+        num = int(values[0])
+        gen = int(values[1]) if len(values) == 2 else 0
+    except ValueError:
+        return None
+    return _valid_object_id_or_none(num, gen)
 
 
 def run(args: argparse.Namespace) -> int:
@@ -1413,7 +1442,10 @@ def run(args: argparse.Namespace) -> int:
         print(f"pdfdebugger: {src}: not a file", flush=True)
         return 4
 
-    depth = args.depth if args.depth is not None and args.depth > 0 else _MAX_DEPTH
+    depth = args.depth if args.depth is not None else _MAX_DEPTH
+    if depth < 0:
+        print(f"pdfdebugger: --depth must be >= 0 (got {depth})", flush=True)
+        return 2
     password = args.password
     output_format = getattr(args, "output_format", _FORMAT_TEXT)
 
@@ -1435,25 +1467,14 @@ def run(args: argparse.Namespace) -> int:
                 doc, args.page, max_depth=depth, output_format=output_format,
             )
         if args.object is not None:
-            nums = args.object
-            try:
-                int_nums = [int(n) for n in nums]
-            except ValueError:
+            parsed = _parse_object_args(list(args.object))
+            if parsed is None:
                 print(
-                    "pdfdebugger: -object expects integer NUM [GEN]",
+                    "pdfdebugger: -object expects non-negative integer NUM [GEN]",
                     flush=True,
                 )
                 return 2
-            if len(int_nums) == 1:
-                num, gen = int_nums[0], 0
-            elif len(int_nums) == 2:
-                num, gen = int_nums[0], int_nums[1]
-            else:
-                print(
-                    "pdfdebugger: -object expects NUM [GEN] (one or two ints)",
-                    flush=True,
-                )
-                return 2
+            num, gen = parsed
             return _print_object(
                 doc, num, gen, max_depth=depth, output_format=output_format,
             )
@@ -1506,8 +1527,3 @@ def run(args: argparse.Namespace) -> int:
 
 # Re-export for static analysis / consumers that import the symbol set.
 __all__ = ["build_parser", "run"]
-
-
-# Keep type checkers calm about COSBase being "used" — it gates _fmt_simple.
-_ = COSBase
-_ = Any

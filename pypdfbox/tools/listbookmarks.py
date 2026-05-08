@@ -127,12 +127,7 @@ def _describe_item(
     page_number: int | None = None
 
     dest = item.get_destination()
-    if isinstance(dest, PDPageDestination):
-        resolved = _resolve_page_number(document, dest)
-        if resolved is not None:
-            info.append(f"Destination page: {resolved}")
-            page_number = resolved
-    elif isinstance(dest, PDNamedDestination):
+    if isinstance(dest, (PDPageDestination, PDNamedDestination)):
         resolved = _resolve_page_number(document, dest)
         if resolved is not None:
             info.append(f"Destination page: {resolved}")
@@ -143,13 +138,7 @@ def _describe_item(
     action = item.get_action()
     if isinstance(action, PDActionGoTo):
         action_dest = action.get_destination()
-        if isinstance(action_dest, PDPageDestination):
-            resolved = _resolve_page_number(document, action_dest)
-            if resolved is not None:
-                info.append(f"Destination page: {resolved}")
-                if page_number is None:
-                    page_number = resolved
-        elif isinstance(action_dest, PDNamedDestination):
+        if isinstance(action_dest, (PDPageDestination, PDNamedDestination)):
             resolved = _resolve_page_number(document, action_dest)
             if resolved is not None:
                 info.append(f"Destination page: {resolved}")

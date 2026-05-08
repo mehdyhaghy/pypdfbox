@@ -152,8 +152,14 @@ class PDType3Font(PDSimpleFont):
             return values
         return list(_DEFAULT_FONT_MATRIX)
 
-    def set_font_matrix(self, matrix: list[float]) -> None:
-        """Replace the ``/FontMatrix`` with a 6-element transform."""
+    def set_font_matrix(self, matrix: list[float] | None) -> None:
+        """Replace or clear the ``/FontMatrix`` 6-element transform.
+
+        Clearing restores :meth:`get_font_matrix`'s spec default.
+        """
+        if matrix is None:
+            self._dict.remove_item(_FONT_MATRIX)
+            return
         if len(matrix) != 6:
             raise ValueError(
                 f"/FontMatrix requires exactly 6 elements, got {len(matrix)}"
@@ -203,14 +209,23 @@ class PDType3Font(PDSimpleFont):
     # we only need them on Type3 today, so keeping them local avoids
     # cross-class churn.
 
-    def set_first_char(self, value: int) -> None:
+    def set_first_char(self, value: int | None) -> None:
+        if value is None:
+            self._dict.remove_item(_FIRST_CHAR)
+            return
         self._dict.set_int(_FIRST_CHAR, int(value))
 
-    def set_last_char(self, value: int) -> None:
+    def set_last_char(self, value: int | None) -> None:
+        if value is None:
+            self._dict.remove_item(_LAST_CHAR)
+            return
         self._dict.set_int(_LAST_CHAR, int(value))
 
-    def set_widths(self, values: list[float]) -> None:
-        """Replace the ``/Widths`` array with the given glyph widths."""
+    def set_widths(self, values: list[float] | None) -> None:
+        """Replace or clear the ``/Widths`` array."""
+        if values is None:
+            self._dict.remove_item(_WIDTHS)
+            return
         arr = COSArray([COSFloat(float(v)) for v in values])
         self._dict.set_item(_WIDTHS, arr)
 
@@ -233,8 +248,7 @@ class PDType3Font(PDSimpleFont):
         first = self.get_first_char()
         last = self.get_last_char()
         if widths and first <= code <= last:
-            base = first if first >= 0 else 0
-            index = int(code) - base
+            index = int(code) - first
             if 0 <= index < len(widths):
                 return widths[index]
             # In-range but past the array end mirrors upstream's explicit

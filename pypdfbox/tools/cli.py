@@ -75,7 +75,7 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
         return int(func(args))
     except OSError as exc:
         # I/O failure code matches upstream's PicoCLI tools (exit 4).
-        print(f"{args.command}: I/O error: {exc}", flush=True)
+        print(f"{args.command}: I/O error: {exc}", file=sys.stderr, flush=True)
         return 4
 
 

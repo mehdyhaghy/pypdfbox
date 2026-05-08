@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pypdfbox.cos import (
     COSArray,
@@ -58,10 +58,13 @@ class PDResources:
       (``get_font``, ``get_xobject``);
     - typed accessors (``get_x_object``, ``get_color_space``,
       ``get_pattern``, ``get_shading``, ``get_ext_gstate``,
-      ``get_property_list``) returning the appropriate PD wrapper or ``None``;
+      ``get_property_list``) returning the appropriate PD wrapper or ``None``
+      for missing/malformed non-XObject entries;
     - ``get_proc_set`` / ``set_proc_set`` for the legacy ``/ProcSet`` array;
     - ``add(category, value)`` and ``put(category, name, value)`` for
       registering newly-minted resources across all standard categories.
+    - ``has_*`` / ``clear_*`` helpers for resource-entry presence checks and
+      removals.
 
     Class attributes ``XOBJECT``, ``FONT``, ``COLOR_SPACE``, ``EXT_G_STATE``,
     ``SHADING``, ``PATTERN``, ``PROPERTIES``, and ``PROC_SET`` expose the
@@ -97,6 +100,7 @@ class PDResources:
         # the historical direct-font raw dictionary surface, so this cache is
         # intentionally not consulted by get_font().
         self._direct_font_cache = direct_font_cache
+        self._resolving_color_spaces: set[COSName] = set()
 
     # ---------- COS surface ----------
 
@@ -147,7 +151,7 @@ class PDResources:
 
     def _cache(self) -> PDResourceCache | None:
         if self._document is not None:
-            return self._document.get_resource_cache()
+            return cast("PDResourceCache", self._document.get_resource_cache())
         return self._resource_cache
 
     def get_resource_cache(self) -> PDResourceCache | None:
@@ -194,6 +198,14 @@ class PDResources:
                     f"got {type(entry).__name__}"
                 )
         self._resources.set_item(_PROC_SET, array)
+
+    def has_proc_set(self) -> bool:
+        """Return ``True`` when ``/ProcSet`` is present as a ``COSArray``."""
+        return isinstance(self._resources.get_dictionary_object(_PROC_SET), COSArray)
+
+    def clear_proc_set(self) -> None:
+        """Remove ``/ProcSet``. No-op if absent."""
+        self.set_proc_set(None)
 
     # ---------- raw category accessors ----------
 
@@ -243,7 +255,7 @@ class PDResources:
             )
         subtype = entry.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
         if subtype == "Form":
-            xobject = PDFormXObject(entry)
+            xobject: PDXObject = PDFormXObject(entry)
             if cache is not None and isinstance(raw, COSObject):
                 cache.put_x_object(raw, xobject)
             return xobject
@@ -384,7 +396,18 @@ class PDResources:
         the entry is absent. Mirrors upstream
         ``PDResources.getColorSpace(COSName)`` — dispatch lives in
         ``PDColorSpace.create``."""
-        # Local import keeps cluster boundaries explicit.
+        if name in self._resolving_color_spaces:
+            return None
+
+        self._resolving_color_spaces.add(name)
+        try:
+            return self._get_color_space(name, was_default)
+        finally:
+            self._resolving_color_spaces.remove(name)
+
+    def _get_color_space(
+        self, name: COSName, was_default: bool = False
+    ) -> PDColorSpace | None:
         from pypdfbox.pdmodel.graphics.color import PDColorSpace  # noqa: PLC0415
 
         raw, base = self._lookup_raw_and_resolved(_COLOR_SPACE, name)
@@ -400,7 +423,7 @@ class PDResources:
                 return default_color_space
             return PDColorSpace.create(name)
 
-        color_space = PDColorSpace.create(base)
+        color_space = PDColorSpace.create(base, self, was_default)
         if cache is not None and isinstance(raw, COSObject) and color_space is not None:
             cache.put_color_space(raw, color_space)
         return color_space
@@ -454,6 +477,51 @@ class PDResources:
     def _has(self, category: COSName, name: COSName) -> bool:
         sub = self._get_subdict(category)
         return sub is not None and sub.contains_key(name)
+
+    def clear_color_space(self, name: COSName) -> None:
+        """Remove a ``/ColorSpace`` entry. No-op if absent."""
+        self._clear(_COLOR_SPACE, name)
+
+    def clear_font(self, name: COSName) -> None:
+        """Remove a ``/Font`` entry. No-op if absent."""
+        self._clear(_FONT, name)
+
+    def clear_x_object(self, name: COSName) -> None:
+        """Remove an ``/XObject`` entry. No-op if absent."""
+        self._clear(_X_OBJECT, name)
+
+    def clear_xobject(self, name: COSName) -> None:
+        """Compact-spelled alias for ``clear_x_object``."""
+        self.clear_x_object(name)
+
+    def clear_pattern(self, name: COSName) -> None:
+        """Remove a ``/Pattern`` entry. No-op if absent."""
+        self._clear(_PATTERN, name)
+
+    def clear_shading(self, name: COSName) -> None:
+        """Remove a ``/Shading`` entry. No-op if absent."""
+        self._clear(_SHADING, name)
+
+    def clear_ext_g_state(self, name: COSName) -> None:
+        """Remove an ``/ExtGState`` entry. No-op if absent."""
+        self._clear(_EXT_GSTATE, name)
+
+    def clear_ext_gstate(self, name: COSName) -> None:
+        """Compact-spelled alias for ``clear_ext_g_state``."""
+        self.clear_ext_g_state(name)
+
+    def clear_property_list(self, name: COSName) -> None:
+        """Remove a ``/Properties`` entry. No-op if absent."""
+        self._clear(_PROPERTIES, name)
+
+    def clear_properties(self, name: COSName) -> None:
+        """Upstream-spelled alias for ``clear_property_list``."""
+        self.clear_property_list(name)
+
+    def _clear(self, category: COSName, name: COSName) -> None:
+        sub = self._get_subdict(category)
+        if sub is not None:
+            sub.remove_item(name)
 
     def get_pattern(self, name: COSName) -> PDAbstractPattern | None:
         """Return the typed ``PDAbstractPattern`` for ``name`` (a
@@ -582,6 +650,7 @@ class PDResources:
         - ``put(category, name, value)``: pypdfbox explicit-category form.
         - ``put(name, typed_resource)``: upstream-style typed overload.
         """
+        name: object
         if value is None:
             category = self._category_for_resource(name_or_value)
             name = category_or_name
@@ -617,13 +686,13 @@ class PDResources:
             cos_value = self._cos_value(category_or_value)
         else:
             original_value = value
-            category = category_or_value
             cos_value = self._cos_value(value)
-            if not isinstance(category, COSName):
+            if not isinstance(category_or_value, COSName):
                 raise TypeError(
                     "explicit add category must be COSName, "
-                    f"got {type(category).__name__}"
+                    f"got {type(category_or_value).__name__}"
                 )
+            category = category_or_value
 
         sub = self._get_or_create_subdict(category)
         existing = self._find_existing_key(sub, cos_value)

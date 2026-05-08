@@ -18,7 +18,12 @@ from pypdfbox.cos import (
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
 from .base_parser import BaseParser
-from .cos_parser import COSParser
+from .cos_parser import (
+    COSParser,
+    _parse_xref_entry_line,
+    _read_object_stream_offsets,
+    _validate_xref_index_pair,
+)
 from .parse_error import PDFParseError
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
@@ -49,8 +54,7 @@ class PDFParser:
          ``startxref <int> %%EOF``.
       3. ``parse_xref_chain()`` walks the xref → trailer → ``/Prev`` chain
          via ``XrefTrailerResolver``, populating one entry per indirect
-         object (traditional ``xref`` tables only — xref streams and
-         object streams land in cluster #4).
+         object from traditional xref tables and PDF 1.5+ xref streams.
       4. ``populate_document()`` registers every xref entry as a
          ``COSObject`` in the document's pool with a lazy loader that
          seeks to the entry's offset on demand and parses the body.
@@ -582,7 +586,7 @@ class PDFParser:
                 break
             self._resolver.begin_section(offset)
             self.parse_xref_section_at(offset)
-            trailer = self._resolver.get_trailer()
+            trailer = self._resolver.get_current_trailer()
             # The /Prev pointer for the *current* iteration must come from
             # the section we just parsed, not the merged trailer (which is
             # built up over all sections).
@@ -610,13 +614,8 @@ class PDFParser:
         else:
             # PDF 1.5+ xref-stream (an indirect object whose dict carries
             # /Type /XRef and whose body holds packed xref entries).
-            #
-            # The full xref-stream entry decoder still belongs to parser
-            # cluster #4. What lives here is the *encryption integration*:
-            # we peek at the dictionary to detect ``/Type /XRef`` and, if
-            # the document is encrypted and a password has been staged,
-            # build the security handler so the xref-stream body can be
-            # deciphered before entries are parsed.
+            # The handler also wires the early-decryption bootstrap needed
+            # before encrypted object bodies are parsed later.
             self._handle_xref_stream_at(offset)
 
     def _handle_xref_stream_at(self, offset: int) -> None:
@@ -732,15 +731,21 @@ class PDFParser:
             if idx_obj.size() % 2 != 0:
                 raise PDFParseError("xref stream /Index has odd length")
             for i in range(0, idx_obj.size(), 2):
-                first = idx_obj.get(i)
-                count = idx_obj.get(i + 1)
-                if not isinstance(first, COSInteger) or not isinstance(count, COSInteger):
+                first_obj = idx_obj.get(i)
+                count_obj = idx_obj.get(i + 1)
+                if not isinstance(first_obj, COSInteger) or not isinstance(
+                    count_obj, COSInteger
+                ):
                     raise PDFParseError("xref stream /Index entries must be integers")
-                index_pairs.append((first.value, count.value))
+                first = first_obj.value
+                count = count_obj.value
+                _validate_xref_index_pair(first, count)
+                index_pairs.append((first, count))
         else:
             size_obj = stream.get_dictionary_object(COSName.SIZE)  # type: ignore[attr-defined]
             if not isinstance(size_obj, COSInteger):
                 raise PDFParseError("xref stream missing /Size and /Index")
+            _validate_xref_index_pair(0, size_obj.value)
             index_pairs.append((0, size_obj.value))
         # Decode the body through any /Filter chain (and the security
         # handler, when one is attached).
@@ -758,8 +763,8 @@ class PDFParser:
                 f"xref stream /W defines an entry wider than 20 bytes: {widths!r}"
             )
         cursor = 0
-        for first, count in index_pairs:
-            for i in range(count):
+        for first_obj_num, object_count in index_pairs:
+            for object_index in range(object_count):
                 if cursor + record_size > len(body):
                     raise PDFParseError(
                         "xref stream body truncated relative to /Index"
@@ -776,7 +781,7 @@ class PDFParser:
                     if w3 == 0
                     else int.from_bytes(record[w1 + w2 : w1 + w2 + w3], "big")
                 )
-                obj_num = first + i
+                obj_num = first_obj_num + object_index
                 if field1 == 0:
                     # Free entry — record it but flag with compressed_index=-1
                     # so populate_document() skips it (matches the traditional
@@ -851,18 +856,10 @@ class PDFParser:
         self._resolver.set_trailer(trailer)
 
     def _read_xref_entry(self, object_number: int) -> None:
-        """Read one 20-byte xref entry: ``oooooooooo ggggg n\\r\\n`` (or ``f``)."""
-        raw = bytearray(20)
-        n = self._src.read_into(raw)
-        if n < 20:
-            raise PDFParseError("truncated xref entry", position=self._src.get_position())
-        line = bytes(raw)
-        try:
-            offset = int(line[0:10].decode("ascii"))
-            generation = int(line[11:16].decode("ascii"))
-            flag = chr(line[17])
-        except (ValueError, IndexError) as exc:
-            raise PDFParseError(f"malformed xref entry {line!r}") from exc
+        """Read one traditional xref entry line."""
+        line = self._base.read_until_eol()
+        self._base.skip_eol()
+        offset, generation, flag = _parse_xref_entry_line(line)
         if flag == "n":
             self._resolver.set_entry(
                 COSObjectKey(object_number, generation),
@@ -936,36 +933,15 @@ class PDFParser:
             raise PDFParseError(
                 f"object stream {objstm_obj_num} is not a stream"
             )
-        n_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("N"))
-        first_obj = objstm_body.get_dictionary_object(
-            COSName.get_pdf_name("First")
+        decoded, pairs, first = _read_object_stream_offsets(
+            objstm_body, objstm_obj_num
         )
-        if not isinstance(n_obj, COSInteger) or not isinstance(first_obj, COSInteger):
-            raise PDFParseError(
-                f"object stream {objstm_obj_num} missing /N or /First"
-            )
-        n = n_obj.value
-        first = first_obj.value
-        if not 0 <= inner_index < n:
+        object_count = len(pairs)
+        if not 0 <= inner_index < object_count:
             raise PDFParseError(
                 f"compressed-object index {inner_index} out of range "
-                f"[0, {n}) for ObjStm {objstm_obj_num}"
+                f"[0, {object_count}) for ObjStm {objstm_obj_num}"
             )
-        with objstm_body.create_input_stream() as src:
-            decoded = src.read()
-        # The header is N pairs of "<obj_num> <byte_offset>", whitespace-
-        # separated. Parse all of them so we can locate the requested entry
-        # at ``inner_index``.
-        header_view = RandomAccessReadBuffer(decoded[:first])
-        header_parser = BaseParser(header_view)
-        pairs: list[tuple[int, int]] = []
-        for _ in range(n):
-            header_parser.skip_whitespace()
-            stored_obj_num = header_parser.read_int()
-            header_parser.skip_whitespace()
-            byte_offset = header_parser.read_int()
-            pairs.append((stored_obj_num, byte_offset))
-        header_view.close()
         target_obj_num, target_byte_offset = pairs[inner_index]
         # Optional sanity check: the obj_num stored in the header should
         # match the placeholder's own number (PDFBox warns when they
@@ -1094,5 +1070,8 @@ class PDFParser:
         we resolve it through the COSObject loader."""
         length_obj = stream.get_dictionary_object(COSName.LENGTH)  # type: ignore[attr-defined]
         if isinstance(length_obj, COSInteger):
-            return length_obj.value
+            length = length_obj.value
+            if length < 0:
+                raise PDFParseError(f"stream /Length is negative: {length}")
+            return length
         raise PDFParseError("stream missing or malformed /Length")

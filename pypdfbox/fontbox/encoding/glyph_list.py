@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import re
 from threading import Lock
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -4516,8 +4515,8 @@ class GlyphList:
     (the Adobe Glyph List, AGL) and :attr:`ZAPF_DINGBATS`.
     """
 
-    DEFAULT: "GlyphList"
-    ZAPF_DINGBATS: "GlyphList"
+    DEFAULT: GlyphList
+    ZAPF_DINGBATS: GlyphList
 
     def __init__(self, name_to_unicode: dict[str, str]) -> None:
         # Defensive copy; instances are treated as immutable post-construction.
@@ -4527,36 +4526,36 @@ class GlyphList:
         self._cache_lock = Lock()
         # Reverse map (Unicode string -> first glyph name) is built lazily on
         # first call to :meth:`code_point_to_name` / :meth:`unicode_to_name`.
-        self._unicode_to_name: Optional[dict[str, str]] = None
+        self._unicode_to_name: dict[str, str] | None = None
 
     # -- factories ---------------------------------------------------------
 
     @classmethod
-    def get_adobe_glyph_list(cls) -> "GlyphList":
+    def get_adobe_glyph_list(cls) -> GlyphList:
         return cls.DEFAULT
 
     @classmethod
-    def get_default(cls) -> "GlyphList":
+    def get_default(cls) -> GlyphList:
         """Upstream-named alias for :meth:`get_adobe_glyph_list`."""
         return cls.DEFAULT
 
     @classmethod
-    def get_default_glyph_list(cls) -> "GlyphList":
+    def get_default_glyph_list(cls) -> GlyphList:
         """Alias for :meth:`get_adobe_glyph_list` — the AGL singleton."""
         return cls.DEFAULT
 
     @classmethod
-    def get_zapf_dingbats(cls) -> "GlyphList":
+    def get_zapf_dingbats(cls) -> GlyphList:
         return cls.ZAPF_DINGBATS
 
     # -- public API --------------------------------------------------------
 
-    def to_unicode(self, name: Optional[str]) -> Optional[str]:
+    def to_unicode(self, name: str | None) -> str | None:
         """Return the Unicode string for glyph ``name``, or ``None``.
 
         Honors the upstream extensions:
         - ``foo.suffix`` falls back to ``foo``.
-        - ``uniXXXX`` (4 hex digits, length 7) and ``uXXXX`` (length 5) are
+        - ``uniXXXX`` and ``uXXXX``/``uXXXXX``/``uXXXXXX`` names are
           synthesized from the hex code point.
         """
         if name is None:
@@ -4574,7 +4573,7 @@ class GlyphList:
                     self._uni_cache[name] = unicode
         return unicode
 
-    def name_to_code_points(self, name: Optional[str]) -> Optional[str]:
+    def name_to_code_points(self, name: str | None) -> str | None:
         """Return the Unicode character sequence for glyph ``name``.
 
         Mirrors upstream ``GlyphList.toUnicode(String)``; identical to
@@ -4583,11 +4582,11 @@ class GlyphList:
         """
         return self.to_unicode(name)
 
-    def unicode_for_name(self, name: Optional[str]) -> Optional[str]:
+    def unicode_for_name(self, name: str | None) -> str | None:
         """Alias for :meth:`to_unicode` — glyph name to Unicode string."""
         return self.to_unicode(name)
 
-    def code_point_for_glyph_name(self, name: Optional[str]) -> Optional[int]:
+    def code_point_for_glyph_name(self, name: str | None) -> int | None:
         """Return the single Unicode code point for glyph ``name``, or
         ``None`` if the name is unknown or maps to a multi-code-point sequence.
 
@@ -4600,7 +4599,7 @@ class GlyphList:
             return None
         return ord(unicode)
 
-    def code_point_to_name(self, code_point: int) -> Optional[str]:
+    def code_point_to_name(self, code_point: int) -> str | None:
         """Return the first glyph name that maps to the single ``code_point``.
 
         The reverse map is built on first access from the underlying
@@ -4615,7 +4614,7 @@ class GlyphList:
             return None
         return self._reverse_map().get(ch)
 
-    def code_point_to_string(self, code_point: int) -> Optional[str]:
+    def code_point_to_string(self, code_point: int) -> str | None:
         """Alias for :meth:`code_point_to_name`."""
         return self.code_point_to_name(code_point)
 
@@ -4630,7 +4629,7 @@ class GlyphList:
         name = self.code_point_to_name(code_point)
         return name if name is not None else ".notdef"
 
-    def get_name(self, code_point: int) -> Optional[str]:
+    def get_name(self, code_point: int) -> str | None:
         """Reverse mapping: Unicode code point (``int``) -> glyph name.
 
         Equivalent to :meth:`code_point_to_name`. Returns ``None`` when the
@@ -4639,7 +4638,7 @@ class GlyphList:
         """
         return self.code_point_to_name(code_point)
 
-    def sequence_to_name(self, unicode_sequence: Optional[str]) -> str:
+    def sequence_to_name(self, unicode_sequence: str | None) -> str:
         """Reverse mapping: full Unicode character sequence -> glyph name.
 
         Mirrors upstream ``GlyphList.sequenceToName(String)``. Returns
@@ -4661,7 +4660,7 @@ class GlyphList:
         return self.sequence_to_name(unicode_sequence)
 
     @staticmethod
-    def is_unicode_lookup(name: Optional[str]) -> bool:
+    def is_unicode_lookup(name: str | None) -> bool:
         """Return True if ``name`` matches the synthesized uniXXXX / uXXXX(XX)
         Unicode glyph-name pattern recognized by :meth:`to_unicode`.
         """
@@ -4669,7 +4668,7 @@ class GlyphList:
             return False
         return _UNI_NAME_RE.match(name) is not None
 
-    def get_or_unicode_lookup(self, name: Optional[str]) -> Optional[str]:
+    def get_or_unicode_lookup(self, name: str | None) -> str | None:
         """Return the unicode for ``name``, falling back to the uniXXXX /
         uXXXX(XX) pattern even when the name is not present in the table.
 
@@ -4692,36 +4691,61 @@ class GlyphList:
             if self._unicode_to_name is None:
                 reverse: dict[str, str] = {}
                 for glyph_name, unicode_str in self._name_to_unicode.items():
-                    # First-wins; mirrors how upstream populates the reverse map
-                    # while iterating the glyph list resource in order.
-                    if unicode_str not in reverse:
+                    # Upstream treats names present in the standard encodings
+                    # as canonical when duplicate Unicode mappings exist.
+                    if (
+                        self._is_standard_encoding_name(glyph_name)
+                        or unicode_str not in reverse
+                    ):
                         reverse[unicode_str] = glyph_name
                 self._unicode_to_name = reverse
             return self._unicode_to_name
 
-    def _derive(self, name: str) -> Optional[str]:
+    @staticmethod
+    def _is_standard_encoding_name(glyph_name: str) -> bool:
+        from .mac_expert_encoding import MacExpertEncoding
+        from .mac_roman_encoding import MacRomanEncoding
+        from .standard_encoding import StandardEncoding
+        from .symbol_encoding import SymbolEncoding
+        from .win_ansi_encoding import WinAnsiEncoding
+        from .zapf_dingbats_encoding import ZapfDingbatsEncoding
+
+        return (
+            StandardEncoding.INSTANCE.contains(glyph_name)
+            or WinAnsiEncoding.INSTANCE.contains(glyph_name)
+            or MacRomanEncoding.INSTANCE.contains(glyph_name)
+            or MacExpertEncoding.INSTANCE.contains(glyph_name)
+            or SymbolEncoding.INSTANCE.contains(glyph_name)
+            or ZapfDingbatsEncoding.INSTANCE.contains(glyph_name)
+        )
+
+    def _derive(self, name: str) -> str | None:
         # foo.suffix -> foo
         dot = name.find(".")
         if dot > 0:
             return self.to_unicode(name[:dot])
 
-        if (len(name) == 7 and name.startswith("uni")) or (
-            len(name) == 5 and name.startswith("u")
-        ):
-            start = 3 if len(name) == 7 else 1
-            try:
-                code_point = int(name[start:], 16)
-            except ValueError:
-                logger.warning("Not a number in Unicode character name: %s", name)
-                return None
-            if 0xD7FF < code_point < 0xE000:
-                logger.warning(
-                    "Unicode character name with disallowed code area: %s", name
-                )
-                return None
-            return chr(code_point)
+        if len(name) == 7 and name.startswith("uni"):
+            start = 3
+        elif 5 <= len(name) <= 7 and name.startswith("u"):
+            start = 1
+        else:
+            return None
 
-        return None
+        try:
+            code_point = int(name[start:], 16)
+        except ValueError:
+            logger.warning("Not a number in Unicode character name: %s", name)
+            return None
+        if 0xD7FF < code_point < 0xE000:
+            logger.warning(
+                "Unicode character name with disallowed code area: %s", name
+            )
+            return None
+        if code_point > 0x10FFFF:
+            logger.warning("Unicode character name outside Unicode range: %s", name)
+            return None
+        return chr(code_point)
 
 
 GlyphList.DEFAULT = GlyphList(_ADOBE_GLYPH_LIST)

@@ -76,11 +76,23 @@ class PDOptionalContentConfiguration:
     def set_name(self, name: str | None) -> None:
         self._dict.set_string(_NAME, name)
 
+    def has_name(self) -> bool:
+        return self.get_name() is not None
+
+    def clear_name(self) -> None:
+        self._dict.remove_item(_NAME)
+
     def get_creator(self) -> str | None:
         return self._dict.get_string(_CREATOR)
 
     def set_creator(self, creator: str | None) -> None:
         self._dict.set_string(_CREATOR, creator)
+
+    def has_creator(self) -> bool:
+        return self.get_creator() is not None
+
+    def clear_creator(self) -> None:
+        self._dict.remove_item(_CREATOR)
 
     # ---------- /BaseState ----------
 
@@ -135,6 +147,12 @@ class PDOptionalContentConfiguration:
             )
         self._dict.set_item(_BASE_STATE, cos_name)
 
+    def has_base_state(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_BASE_STATE), COSName)
+
+    def clear_base_state(self) -> None:
+        self._dict.remove_item(_BASE_STATE)
+
     def get_base_state_enum(self) -> object:
         """Typed-enum variant of :meth:`get_base_state`.
 
@@ -157,7 +175,9 @@ class PDOptionalContentConfiguration:
         pages). pypdfbox enrichment — Apache PDFBox 3.0 does not expose
         this key on ``PDOptionalContentProperties``."""
         name = self._dict.get_name(_LIST_MODE, "AllPages")
-        return name if name is not None else "AllPages"
+        if name in _LIST_MODE_VALUES:
+            return name
+        return "AllPages"
 
     def set_list_mode(self, mode: str | None) -> None:
         if mode is None:
@@ -169,6 +189,13 @@ class PDOptionalContentConfiguration:
                 f"got {mode!r}"
             )
         self._dict.set_item(_LIST_MODE, COSName.get_pdf_name(mode))
+
+    def has_list_mode(self) -> bool:
+        value = self._dict.get_dictionary_object(_LIST_MODE)
+        return isinstance(value, COSName) and value.name in _LIST_MODE_VALUES
+
+    def clear_list_mode(self) -> None:
+        self._dict.remove_item(_LIST_MODE)
 
     # ---------- /Intent (View / Design / array) ----------
 
@@ -215,10 +242,10 @@ class PDOptionalContentConfiguration:
         if isinstance(item, COSName):
             return item.name == name
         if isinstance(item, COSArray):
-            for entry in item:
-                if isinstance(entry, COSName) and entry.name == name:
-                    return True
-            return False
+            return any(
+                isinstance(entry, COSName) and entry.name == name
+                for entry in item
+            )
         return False
 
     def set_intent(self, value: str | list[str] | None) -> None:
@@ -262,19 +289,13 @@ class PDOptionalContentConfiguration:
         is matched by *identity* of the wrapped ``COSDictionary`` so OCGs
         that share a /Name aren't accidentally collapsed."""
         target = group.get_cos_object()
-        for g in self.get_on():
-            if g.get_cos_object() is target:
-                return True
-        return False
+        return any(g.get_cos_object() is target for g in self.get_on())
 
     def is_off(self, group: PDOptionalContentGroup) -> bool:
         """``True`` when ``group`` is explicitly listed in /OFF. See
         :meth:`is_on` for the matching contract."""
         target = group.get_cos_object()
-        for g in self.get_off():
-            if g.get_cos_object() is target:
-                return True
-        return False
+        return any(g.get_cos_object() is target for g in self.get_off())
 
     def set_on(
         self, groups: Iterable[PDOptionalContentGroup] | None
@@ -381,6 +402,12 @@ class PDOptionalContentConfiguration:
             )
         self._dict.set_item(_ORDER, order)
 
+    def has_order(self) -> bool:
+        return self.get_order() is not None
+
+    def clear_order(self) -> None:
+        self._dict.remove_item(_ORDER)
+
     # ---------- /RBGroups (radio-button groups) ----------
 
     def get_rbgroups(self) -> list[list[PDOptionalContentGroup]]:
@@ -391,12 +418,21 @@ class PDOptionalContentConfiguration:
         if not isinstance(arr, COSArray):
             return []
         out: list[list[PDOptionalContentGroup]] = []
-        for entry in arr:
-            if isinstance(entry, COSObject):
-                entry = entry.get_object()
+        for raw_entry in arr:
+            entry = (
+                raw_entry.get_object()
+                if isinstance(raw_entry, COSObject)
+                else raw_entry
+            )
             if isinstance(entry, COSArray):
                 out.append(self._wrap_ocg_list(entry))
         return out
+
+    def has_rbgroups(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_RBGROUPS), COSArray)
+
+    def clear_rbgroups(self) -> None:
+        self._dict.remove_item(_RBGROUPS)
 
     def add_rbgroup(self, group: Iterable[PDOptionalContentGroup]) -> None:
         """Append a radio-button group. Each member is recorded by the
@@ -437,9 +473,9 @@ class PDOptionalContentConfiguration:
             return False
         target = group.get_cos_object()
         for entry in list(arr):
-            sub = entry
-            if isinstance(sub, COSObject):
-                sub = sub.get_object()
+            sub = (
+                entry.get_object() if isinstance(entry, COSObject) else entry
+            )
             if not isinstance(sub, COSArray):
                 continue
             for member in sub:
@@ -453,12 +489,15 @@ class PDOptionalContentConfiguration:
     def get_locked(self) -> list[PDOptionalContentGroup]:
         return self._wrap_ocg_list(self._dict.get_dictionary_object(_LOCKED))
 
+    def has_locked(self) -> bool:
+        return isinstance(self._dict.get_dictionary_object(_LOCKED), COSArray)
+
+    def clear_locked(self) -> None:
+        self._dict.remove_item(_LOCKED)
+
     def is_locked(self, group: PDOptionalContentGroup) -> bool:
         target = group.get_cos_object()
-        for g in self.get_locked():
-            if g.get_cos_object() is target:
-                return True
-        return False
+        return any(g.get_cos_object() is target for g in self.get_locked())
 
     def set_locked(
         self, groups: Iterable[PDOptionalContentGroup] | None
@@ -502,6 +541,12 @@ class PDOptionalContentConfiguration:
     def get_as_array(self) -> COSArray | None:
         arr = self._dict.get_dictionary_object(_AS)
         return arr if isinstance(arr, COSArray) else None
+
+    def has_as_array(self) -> bool:
+        return self.get_as_array() is not None
+
+    def clear_as_array(self) -> None:
+        self._dict.remove_item(_AS)
 
     def add_as_entry(
         self,

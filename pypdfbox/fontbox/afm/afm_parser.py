@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import IO, Union
+from contextlib import suppress
+from typing import IO
 
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 
@@ -13,7 +14,7 @@ from .ligature import Ligature
 from .track_kern import TrackKern
 
 # Type alias for accepted inputs: a binary file-like object or raw bytes.
-_BinaryInput = Union[IO[bytes], bytes, bytearray]
+_BinaryInput = IO[bytes] | bytes | bytearray
 
 
 class AFMParser:
@@ -107,10 +108,8 @@ class AFMParser:
         else:
             # Read everything up-front; AFMs are small (Helvetica ~50 KB).
             self._buf = source.read()
-            try:
+            with suppress(Exception):
                 source.close()
-            except Exception:
-                pass
         self._pos: int = 0
 
     # ------------------------------------------------------------------
@@ -231,82 +230,95 @@ class AFMParser:
 
     def _parse_char_metric(self) -> CharMetric:
         line = self._read_line()
-        tokens = line.split()
+        tokens = [t for t in line.replace(";", " ; ").split() if t]
         char_metric = CharMetric()
         i = 0
         n = len(tokens)
-        while i < n:
-            tok = tokens[i]
-            i += 1
-            if tok == self.CHARMETRICS_C:
-                char_metric.set_character_code(int(tokens[i]))
+        try:
+            while i < n:
+                tok = tokens[i]
                 i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_CH:
-                # Hex-encoded character code.
-                char_metric.set_character_code(int(tokens[i], self._BITS_IN_HEX))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_WX:
-                char_metric.set_wx(float(tokens[i]))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W0X:
-                char_metric.set_w0x(float(tokens[i]))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W1X:
-                char_metric.set_w1x(float(tokens[i]))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_WY:
-                char_metric.set_wy(float(tokens[i]))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W0Y:
-                char_metric.set_w0y(float(tokens[i]))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W1Y:
-                char_metric.set_w1y(float(tokens[i]))
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W:
-                char_metric.set_w((float(tokens[i]), float(tokens[i + 1])))
-                i += 2
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W0:
-                char_metric.set_w0((float(tokens[i]), float(tokens[i + 1])))
-                i += 2
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_W1:
-                char_metric.set_w1((float(tokens[i]), float(tokens[i + 1])))
-                i += 2
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_VV:
-                char_metric.set_vv((float(tokens[i]), float(tokens[i + 1])))
-                i += 2
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_N:
-                char_metric.set_name(tokens[i])
-                i += 1
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_B:
-                bbox = BoundingBox()
-                bbox.set_lower_left_x(float(tokens[i]))
-                bbox.set_lower_left_y(float(tokens[i + 1]))
-                bbox.set_upper_right_x(float(tokens[i + 2]))
-                bbox.set_upper_right_y(float(tokens[i + 3]))
-                i += 4
-                char_metric.set_bounding_box(bbox)
-                i = self._verify_semicolon(tokens, i)
-            elif tok == self.CHARMETRICS_L:
-                char_metric.add_ligature(Ligature(tokens[i], tokens[i + 1]))
-                i += 2
-                i = self._verify_semicolon(tokens, i)
-            else:
-                raise OSError(f"Unknown CharMetrics command '{tok}'")
+                if tok == self.CHARMETRICS_C:
+                    char_metric.set_character_code(int(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_CH:
+                    # Hex-encoded character code.
+                    char_metric.set_character_code(
+                        self._parse_hex_character_code(tokens[i])
+                    )
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_WX:
+                    char_metric.set_wx(float(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W0X:
+                    char_metric.set_w0x(float(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W1X:
+                    char_metric.set_w1x(float(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_WY:
+                    char_metric.set_wy(float(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W0Y:
+                    char_metric.set_w0y(float(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W1Y:
+                    char_metric.set_w1y(float(tokens[i]))
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W:
+                    char_metric.set_w((float(tokens[i]), float(tokens[i + 1])))
+                    i += 2
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W0:
+                    char_metric.set_w0((float(tokens[i]), float(tokens[i + 1])))
+                    i += 2
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_W1:
+                    char_metric.set_w1((float(tokens[i]), float(tokens[i + 1])))
+                    i += 2
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_VV:
+                    char_metric.set_vv((float(tokens[i]), float(tokens[i + 1])))
+                    i += 2
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_N:
+                    char_metric.set_name(tokens[i])
+                    i += 1
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_B:
+                    bbox = BoundingBox()
+                    bbox.set_lower_left_x(float(tokens[i]))
+                    bbox.set_lower_left_y(float(tokens[i + 1]))
+                    bbox.set_upper_right_x(float(tokens[i + 2]))
+                    bbox.set_upper_right_y(float(tokens[i + 3]))
+                    i += 4
+                    char_metric.set_bounding_box(bbox)
+                    i = self._verify_semicolon(tokens, i)
+                elif tok == self.CHARMETRICS_L:
+                    char_metric.add_ligature(Ligature(tokens[i], tokens[i + 1]))
+                    i += 2
+                    i = self._verify_semicolon(tokens, i)
+                else:
+                    raise OSError(f"Unknown CharMetrics command '{tok}'")
+        except (IndexError, ValueError) as e:
+            raise OSError(f"Malformed CharMetrics line '{line}'") from e
         return char_metric
+
+    @classmethod
+    def _parse_hex_character_code(cls, token: str) -> int:
+        if token.startswith("<") or token.endswith(">"):
+            if not token.startswith("<") or not token.endswith(">"):
+                raise ValueError(f"Malformed hex character code '{token}'")
+            token = token[1:-1]
+        return int(token, cls._BITS_IN_HEX)
 
     @staticmethod
     def _verify_semicolon(tokens: list[str], i: int) -> int:
@@ -423,33 +435,36 @@ class AFMParser:
     def _parse_composite(self) -> Composite:
         line = self._read_line()
         tokens = [t for t in line.replace(";", " ; ").split() if t]
-        # Expect: CC <name> <count> ; PCC <name> <x> <y> ; ...
-        if not tokens or tokens[0] != self.CC:
-            raise OSError(
-                f"Expected '{self.CC}' actual='{tokens[0] if tokens else ''}'"
-            )
-        name = tokens[1]
-        composite = Composite(name)
-        part_count = int(tokens[2])
-        # Skip the trailing ';' after the part count.
-        i = 3
-        if i < len(tokens) and tokens[i] == ";":
-            i += 1
-        for _ in range(part_count):
-            if tokens[i] != self.PCC:
+        try:
+            # Expect: CC <name> <count> ; PCC <name> <x> <y> ; ...
+            if not tokens or tokens[0] != self.CC:
                 raise OSError(
-                    f"Expected '{self.PCC}' actual='{tokens[i]}'"
+                    f"Expected '{self.CC}' actual='{tokens[0] if tokens else ''}'"
                 )
-            i += 1
-            part_name = tokens[i]
-            i += 1
-            x = int(tokens[i])
-            i += 1
-            y = int(tokens[i])
-            i += 1
+            name = tokens[1]
+            composite = Composite(name)
+            part_count = int(tokens[2])
+            # Skip the trailing ';' after the part count.
+            i = 3
             if i < len(tokens) and tokens[i] == ";":
                 i += 1
-            composite.add_part(CompositePart(part_name, x, y))
+            for _ in range(part_count):
+                if tokens[i] != self.PCC:
+                    raise OSError(
+                        f"Expected '{self.PCC}' actual='{tokens[i]}'"
+                    )
+                i += 1
+                part_name = tokens[i]
+                i += 1
+                x = int(tokens[i])
+                i += 1
+                y = int(tokens[i])
+                i += 1
+                if i < len(tokens) and tokens[i] == ";":
+                    i += 1
+                composite.add_part(CompositePart(part_name, x, y))
+        except (IndexError, ValueError) as e:
+            raise OSError(f"Malformed Composite line '{line}'") from e
         return composite
 
     # ------------------------------------------------------------------
