@@ -8,6 +8,17 @@ _URI: COSName = COSName.get_pdf_name("URI")
 _IS_MAP: COSName = COSName.get_pdf_name("IsMap")
 
 
+def _decode_uri_cos_string(value: COSString) -> str:
+    raw = value.get_bytes()
+    if len(raw) >= 2:
+        b0, b1 = raw[0], raw[1]
+        # UTF-16 BE / LE BOM - defer to COSString.get_string() which
+        # already strips the BOM and decodes accordingly.
+        if (b0 == 0xFE and b1 == 0xFF) or (b0 == 0xFF and b1 == 0xFE):
+            return value.get_string()
+    return raw.decode("utf-8", errors="replace")
+
+
 class PDActionURI(PDAction):
     """URI action. Mirrors PDFBox ``PDActionURI``."""
 
@@ -27,14 +38,7 @@ class PDActionURI(PDAction):
         base = self._action.get_dictionary_object(_URI)
         if not isinstance(base, COSString):
             return None
-        raw = base.get_bytes()
-        if len(raw) >= 2:
-            b0, b1 = raw[0], raw[1]
-            # UTF-16 BE / LE BOM — defer to COSString.get_string() which
-            # already strips the BOM and decodes accordingly.
-            if (b0 == 0xFE and b1 == 0xFF) or (b0 == 0xFF and b1 == 0xFE):
-                return base.get_string()
-        return raw.decode("utf-8", errors="replace")
+        return _decode_uri_cos_string(base)
 
     def set_uri(self, uri: str | None) -> None:
         self._action.set_string(_URI, uri)

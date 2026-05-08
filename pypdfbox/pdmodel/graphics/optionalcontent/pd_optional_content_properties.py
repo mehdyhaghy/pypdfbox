@@ -202,13 +202,31 @@ class PDOptionalContentProperties:
         if not removed_any:
             return False
         d = self._get_d()
-        for key in (_ORDER, _ON, _OFF):
+        order = d.get_dictionary_object(_ORDER)
+        if isinstance(order, COSArray):
+            self._remove_group_from_order(order, target)
+        for key in (_ON, _OFF):
             arr = d.get_dictionary_object(key)
             if isinstance(arr, COSArray):
                 for entry in list(arr):
                     if self._to_dictionary(entry) is target:
                         arr.remove(entry)
         return True
+
+    def _remove_group_from_order(
+        self, order: COSArray, target: COSDictionary
+    ) -> None:
+        """Remove ``target`` from a possibly nested /Order hierarchy."""
+        for index in reversed(range(order.size())):
+            raw = order.get(index)
+            if self._to_dictionary(raw) is target:
+                order.remove_at(index)
+                continue
+            resolved = order.get_object(index)
+            if isinstance(resolved, COSArray):
+                self._remove_group_from_order(resolved, target)
+                if resolved.is_empty():
+                    order.remove_at(index)
 
     # ---------- visibility ----------
 

@@ -1467,3 +1467,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/encryption/public_key_decryption_material.py`: raw private-key bytes are now copied on assignment so caller mutations cannot break lazy decoding.
 - `pypdfbox/xmpbox/dublin_core_schema.py`: `dc:date` typed rebuild/read paths now accept inherited `datetime` sequence entries.
 - `pypdfbox/pdmodel/pd_viewer_preferences.py`: name-valued viewer preference getters now accept COS strings as well as COS names.
+
+## Wave 329 — read streams, optional-content order, URI bases, inline resources, and CID W2 ranges
+
+- `pypdfbox/io/random_access_read_buffer.py`: stream-backed read buffers now consume source streams until EOF instead of trusting a single `read()` call.
+- `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_properties.py`: removing an OCG now recursively scrubs nested `/D /Order` references.
+- `pypdfbox/pdmodel/interactive/action/pd_uri_dictionary.py`: URI dictionary `/Base` values now decode UTF-8 and UTF-16 bytes consistently with URI actions.
+- `pypdfbox/pdmodel/graphics/image/pd_inline_image.py`: inline image named `/CS` entries now resolve through their `PDResources`.
+- `pypdfbox/pdmodel/font/pd_cid_font.py`: oversized `/W2` range-form vertical metrics now stay compact while lookup helpers still resolve values.

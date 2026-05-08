@@ -31,10 +31,15 @@ class RandomAccessReadBuffer(RandomAccessRead):
                 raise TypeError(f"unsupported source type: {type(source).__name__}")
             if not callable(read):
                 raise TypeError("source read attribute must be callable")
-            data = read()
-            if not isinstance(data, (bytes, bytearray, memoryview)):
-                raise TypeError("source stream must yield bytes")
-            self._buf = io.BytesIO(bytes(data))
+            chunks: list[bytes] = []
+            while True:
+                data = read()
+                if not isinstance(data, (bytes, bytearray, memoryview)):
+                    raise TypeError("source stream must yield bytes")
+                if not data:
+                    break
+                chunks.append(bytes(data))
+            self._buf = io.BytesIO(b"".join(chunks))
         self._length = self._buf.getbuffer().nbytes
         self._closed = False
 

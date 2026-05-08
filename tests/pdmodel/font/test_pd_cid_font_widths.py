@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSFloat, COSInteger
+from pypdfbox.cos import COSArray, COSBase, COSFloat, COSInteger
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
-
 
 # ---------- helpers ----------
 
 
 def _arr(*values: int | float) -> COSArray:
-    items = []
+    items: list[COSBase] = []
     for v in values:
         if isinstance(v, bool):  # bool is int subclass — guard explicitly
             raise TypeError("bool not supported in width array helper")
@@ -22,9 +21,9 @@ def _arr(*values: int | float) -> COSArray:
     return COSArray(items)
 
 
-def _nested(*groups: object) -> COSArray:
+def _nested(*groups: int | float | list[int | float]) -> COSArray:
     """Build a /W array where ints/floats are scalars and lists are inner arrays."""
-    items: list[object] = []
+    items: list[COSBase] = []
     for g in groups:
         if isinstance(g, list):
             inner = COSArray()
@@ -40,7 +39,7 @@ def _nested(*groups: object) -> COSArray:
             items.append(COSFloat(float(g)))
     arr = COSArray()
     for it in items:
-        arr.add(it)  # type: ignore[arg-type]
+        arr.add(it)
     return arr
 
 
@@ -213,6 +212,30 @@ def test_w2_range_form_smoke() -> None:
     for cid in (10, 11, 12):
         assert widths2[cid] == (880.0, -500.0, -1000.0)
     assert 13 not in widths2
+
+
+def test_wave329_w2_large_range_is_compact_but_still_lookupable() -> None:
+    font = PDCIDFontType2()
+    # /W2 [0 5000 880 -500 -1000] is range-form vertical metrics. It should
+    # not materialize thousands of identical dict entries just to answer lookups.
+    font.set_w2(_nested(0, 5000, 880, -500, -1000))
+
+    assert font.get_widths2() == {}
+    assert font.get_height(4999) == 880.0
+    assert font.get_position_vector(4999) == (-500.0, -1000.0)
+    assert font.get_vertical_displacement_vector_y(4999) == 880.0
+
+
+def test_wave329_set_w2_none_clears_compact_range_cache() -> None:
+    font = PDCIDFontType2()
+    font.set_w2(_nested(0, 5000, 880, -500, -1000))
+    assert font.get_position_vector(42) == (-500.0, -1000.0)
+
+    font.set_w2(None)
+
+    assert font.get_widths2() == {}
+    assert font.get_position_vector(42) == (500.0, 880.0)
+    assert font.get_vertical_displacement_vector_y(42) == -1000.0
 
 
 def test_w2_consecutive_multi_triple() -> None:

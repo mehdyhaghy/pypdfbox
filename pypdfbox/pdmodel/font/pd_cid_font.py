@@ -18,6 +18,7 @@ _W: COSName = COSName.get_pdf_name("W")
 _W2: COSName = COSName.get_pdf_name("W2")
 _CID_TO_GID_MAP: COSName = COSName.get_pdf_name("CIDToGIDMap")
 _IDENTITY: COSName = COSName.get_pdf_name("Identity")
+_W2_RANGE_EXPANSION_LIMIT: int = 4096
 
 
 class PDCIDFont(PDFont):
@@ -43,6 +44,9 @@ class PDCIDFont(PDFont):
         # Lazy caches for parsed /W and /W2 tables (PDF 32000-1 §9.7.4.3).
         self._widths: dict[int, float] | None = None
         self._widths2: dict[int, tuple[float, float, float]] | None = None
+        self._w2_ranges: list[tuple[int, int, tuple[float, float, float]]] | None = (
+            None
+        )
 
     # ---------- subtype (abstract) ----------
 
@@ -139,6 +143,7 @@ class PDCIDFont(PDFont):
 
     def set_w2(self, arr: COSArray | None) -> None:
         self._widths2 = None
+        self._w2_ranges = None
         if arr is None:
             self._dict.remove_item(_W2)
             return
@@ -185,6 +190,7 @@ class PDCIDFont(PDFont):
         """Drop cached parsed ``/W`` and ``/W2`` tables."""
         self._widths = None
         self._widths2 = None
+        self._w2_ranges = None
 
     @staticmethod
     def _parse_w_array(arr: COSArray, out: dict[int, float]) -> None:
@@ -281,20 +287,38 @@ class PDCIDFont(PDFont):
         * ``c1 c2 w1y v_x v_y`` — every CID in ``c1..c2`` gets the same
           triple.
 
-        Result is cached on first call.
+        Result is cached on first call. Oversized range-form entries are
+        retained compactly for lookup helpers instead of being expanded
+        into thousands of identical dictionary entries.
         """
         if self._widths2 is not None:
             return self._widths2
         widths: dict[int, tuple[float, float, float]] = {}
+        ranges: list[tuple[int, int, tuple[float, float, float]]] = []
         w2 = self.get_w2()
         if w2 is not None:
-            self._parse_w2_array(w2, widths)
+            self._parse_w2_array(w2, widths, ranges)
         self._widths2 = widths
+        self._w2_ranges = ranges
         return widths
+
+    def _get_w2_metrics(self, cid: int) -> tuple[float, float, float] | None:
+        """Return ``/W2`` metrics for ``cid`` without expanding large ranges."""
+        triple = self.get_widths2().get(cid)
+        if triple is not None:
+            return triple
+        if self._w2_ranges is None:
+            return None
+        for first, last, range_triple in self._w2_ranges:
+            if first <= cid <= last:
+                return range_triple
+        return None
 
     @staticmethod
     def _parse_w2_array(
-        arr: COSArray, out: dict[int, tuple[float, float, float]]
+        arr: COSArray,
+        out: dict[int, tuple[float, float, float]],
+        ranges: list[tuple[int, int, tuple[float, float, float]]],
     ) -> None:
         i = 0
         n = arr.size()
@@ -348,8 +372,15 @@ class PDCIDFont(PDFont):
                     fourth.float_value(),
                     fifth.float_value(),
                 )
-                for cid in range(c, c2 + 1):
-                    out[cid] = triple
+                count = c2 - c + 1
+                if count <= 0:
+                    i += 5
+                    continue
+                if count > _W2_RANGE_EXPANSION_LIMIT:
+                    ranges.append((c, c2, triple))
+                else:
+                    for cid in range(c, c2 + 1):
+                        out[cid] = triple
                 i += 5
             else:
                 i += 2
@@ -500,7 +531,7 @@ class PDCIDFont(PDFont):
         ``PDCIDFont.getDefaultPositionVector`` /
         ``PDCIDFont.getPositionVector``.
         """
-        triple = self.get_widths2().get(cid)
+        triple = self._get_w2_metrics(cid)
         if triple is not None:
             _, v_x, v_y = triple
             return (v_x, v_y)
@@ -514,7 +545,7 @@ class PDCIDFont(PDFont):
         Returns ``0.0`` when the font has no ``/W2`` entry for ``cid`` —
         matches PDFBox behaviour for horizontally-written CID fonts.
         """
-        triple = self.get_widths2().get(cid)
+        triple = self._get_w2_metrics(cid)
         if triple is None:
             return 0.0
         return triple[0]
@@ -572,7 +603,7 @@ class PDCIDFont(PDFont):
         (which per spec defaults to ``-1000``).
         """
         cid = self.code_to_cid(code)
-        triple = self.get_widths2().get(cid)
+        triple = self._get_w2_metrics(cid)
         if triple is not None:
             return triple[0]
         # /DW2 is [position_vector_y displacement_vector_y]; the second

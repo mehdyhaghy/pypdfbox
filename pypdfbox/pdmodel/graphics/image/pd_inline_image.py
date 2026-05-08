@@ -247,7 +247,7 @@ class PDInlineImage:
 
     def _create_color_space(self, cs: COSBase) -> PDColorSpace:
         if isinstance(cs, COSName):
-            resolved = PDColorSpace.create(self._to_long_name(cs))
+            resolved = PDColorSpace.create(self._to_long_name(cs), self._resources)
             if resolved is None:
                 raise OSError(
                     f"unsupported inline image color space name: {cs.get_name()!r}"
@@ -266,7 +266,7 @@ class PDInlineImage:
                 base = cs.get(1)
                 if base is not None:
                     dst.set(1, self._to_long_name(base))
-                resolved = PDColorSpace.create(dst)
+                resolved = PDColorSpace.create(dst, self._resources)
                 if resolved is None:
                     raise OSError("unsupported indexed color space in inline image")
                 return resolved
@@ -284,7 +284,7 @@ class PDInlineImage:
                 "CalRGB",
                 "Pattern",
             ):
-                resolved = PDColorSpace.create(cs)
+                resolved = PDColorSpace.create(cs, self._resources)
                 if resolved is None:
                     raise OSError(
                         f"unsupported inline image color space: {cs_type.get_name()!r}"
