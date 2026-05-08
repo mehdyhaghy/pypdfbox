@@ -32,6 +32,7 @@ class PDPageXYZDestination(PDPageDestination):
     def __init__(self, array: COSArray | None = None) -> None:
         super().__init__(array)
         if array is None:
+            self._array.grow_to_size(self._SLOT_ZOOM + 1, COSNull.NULL)
             self._set_type(self.TYPE)
 
     def get_left(self) -> float | None:

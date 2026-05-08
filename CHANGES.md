@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/action/pd_action_java_script.py`: stream-form `/JS` actions decode through `COSStream.to_text_string()`.
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/`: default coordinate-based destination constructors include optional coordinate slots as `COSNull`.
+- `pypdfbox/pdmodel/pd_page_content_stream.py`: `move_text_position_and_set_leading()` requires an active text block.
+- `pypdfbox/cos/cos_dictionary.py`: raw `get_item` supports the PDFBox alternate-key overload shape.
+- `pypdfbox/filter/flate_decode.py`: Flate encode/decode flushes output sinks after writing.
 - `pypdfbox/pdmodel/interactive/annotation/pd_border_effect_dictionary.py`: `set_style(None)` clears optional `/S`.
 - `pypdfbox/pdmodel/graphics/color/pd_cal_rgb.py`: missing or cleared `/Matrix` returns the identity matrix.
 - `pypdfbox/pdmodel/font/encoding/dictionary_encoding.py`: symbolic reader-mode encodings without a valid base or built-in encoding fail explicitly.

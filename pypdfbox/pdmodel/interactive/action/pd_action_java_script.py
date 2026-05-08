@@ -44,12 +44,7 @@ class PDActionJavaScript(PDAction):
         if isinstance(value, COSString):
             return value.get_string()
         if isinstance(value, COSStream):
-            # Wrap via PDStream so we get filter-aware decoding plus the
-            # empty-body safety net rather than COSStream's raw OSError.
-            from pypdfbox.pdmodel.common.pd_stream import PDStream  # noqa: PLC0415
-
-            with PDStream(value).create_input_stream() as src:
-                return src.read().decode("utf-8")
+            return value.to_text_string()
         return None
 
     def set_action(self, javascript: str | None) -> None:

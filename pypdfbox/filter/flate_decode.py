@@ -86,6 +86,9 @@ class FlateDecode(Filter):
                 raise OSError(f"FlateDecode: {exc}") from exc
 
         bytes_written = decoded.write(inflated)
+        flush = getattr(decoded, "flush", None)
+        if callable(flush):
+            flush()
         out_params = parameters if parameters is not None else COSDictionary()
         return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
@@ -111,6 +114,9 @@ class FlateDecode(Filter):
         # ``SYSPROP_DEFLATELEVEL`` env var). ``-1`` means zlib default.
         level = Filter.get_compression_level()
         encoded.write(zlib.compress(data, level))
+        flush = getattr(encoded, "flush", None)
+        if callable(flush):
+            flush()
 
 
 # Register both the long name and (implicitly via the factory's

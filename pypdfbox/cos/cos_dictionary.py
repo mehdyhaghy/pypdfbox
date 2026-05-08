@@ -61,12 +61,24 @@ class COSDictionary(COSBase):
     def removeItem(self, key: COSName | str) -> COSBase | None:  # noqa: N802
         return self.remove_item(key)
 
-    def get_item(self, key: COSName | str, default: COSBase | None = None) -> COSBase | None:
-        """Raw entry — may be a ``COSObject`` indirect reference."""
-        return self._items.get(_as_name(key), default)
+    def get_item(
+        self, key: COSName | str, default: COSBase | COSName | str | None = None
+    ) -> COSBase | None:
+        """Raw entry — may be a ``COSObject`` indirect reference.
+
+        When ``default`` is a ``COSName`` or ``str``, it is treated as PDFBox's
+        second-key overload and returns that raw item only if the first key is
+        absent.
+        """
+        item = self._items.get(_as_name(key))
+        if item is not None:
+            return item
+        if isinstance(default, (COSName, str)):
+            return self._items.get(_as_name(default))
+        return default
 
     def getItem(  # noqa: N802
-        self, key: COSName | str, default: COSBase | None = None
+        self, key: COSName | str, default: COSBase | COSName | str | None = None
     ) -> COSBase | None:
         return self.get_item(key, default)
 

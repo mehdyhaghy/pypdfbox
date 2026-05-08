@@ -162,29 +162,37 @@ def test_restore_graphics_state_rejected_inside_text_block() -> None:
 def test_new_line_at_offset_requires_begin_text() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(
-            RuntimeError, match="begin_text.*new_line_at_offset"
-        ):
-            cs.new_line_at_offset(10.0, 20.0)
+    with PDPageContentStream(doc, page) as cs, pytest.raises(
+        RuntimeError, match="begin_text.*new_line_at_offset"
+    ):
+        cs.new_line_at_offset(10.0, 20.0)
 
 
 def test_new_line_requires_begin_text() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(RuntimeError, match="begin_text.*new_line"):
-            cs.new_line()
+    with PDPageContentStream(doc, page) as cs, pytest.raises(
+        RuntimeError, match="begin_text.*new_line"
+    ):
+        cs.new_line()
+
+
+def test_move_text_position_and_set_leading_requires_begin_text() -> None:
+    doc = PDDocument()
+    page = _make_page(doc)
+    with PDPageContentStream(doc, page) as cs, pytest.raises(
+        RuntimeError, match="begin_text.*move_text_position_and_set_leading"
+    ):
+        cs.move_text_position_and_set_leading(10.0, -14.0)
 
 
 def test_set_text_matrix_requires_begin_text() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(
-            RuntimeError, match="begin_text.*set_text_matrix"
-        ):
-            cs.set_text_matrix(1, 0, 0, 1, 0, 0)
+    with PDPageContentStream(doc, page) as cs, pytest.raises(
+        RuntimeError, match="begin_text.*set_text_matrix"
+    ):
+        cs.set_text_matrix(1, 0, 0, 1, 0, 0)
 
 
 def test_set_text_matrix_iterable_form_requires_begin_text() -> None:
@@ -192,9 +200,10 @@ def test_set_text_matrix_iterable_form_requires_begin_text() -> None:
     — verifies the guard runs before component extraction."""
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(RuntimeError, match="begin_text"):
-            cs.set_text_matrix([1, 0, 0, 1, 5, 6])
+    with PDPageContentStream(doc, page) as cs, pytest.raises(
+        RuntimeError, match="begin_text"
+    ):
+        cs.set_text_matrix([1, 0, 0, 1, 5, 6])  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------------------

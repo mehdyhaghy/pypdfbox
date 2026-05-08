@@ -49,17 +49,31 @@ def test_set_action_none_removes_entry() -> None:
     assert action.get_action() is None
 
 
-def test_get_action_decodes_cos_stream_body_as_utf8() -> None:
-    """When ``/JS`` is a stream rather than a text string, the decoded
-    body is returned as UTF-8."""
+def test_get_action_decodes_cos_stream_body_with_utf8_bom() -> None:
+    """When ``/JS`` is a stream rather than a text string, UTF-8 bytes are
+    honored when the PDF 2.0 UTF-8 BOM is present."""
     src = "var x = 'unicode ☃ snowman';"
     stream = COSStream()
     with stream.create_output_stream() as out:
-        out.write(src.encode("utf-8"))
+        out.write(b"\xef\xbb\xbf" + src.encode("utf-8"))
     action = PDActionJavaScript()
     action.get_cos_object().set_item(_JS, stream)
 
     assert action.get_action() == src
+
+
+def test_get_action_decodes_cos_stream_body_as_pdf_text_string() -> None:
+    """PDFBox reads stream-form ``/JS`` through ``COSStream.toTextString``.
+
+    Non-BOM stream bytes therefore fall back to PDFDocEncoding, not strict
+    UTF-8.
+    """
+    stream = COSStream()
+    stream.set_raw_data(b"app.alert('caf\xe9');")
+    action = PDActionJavaScript()
+    action.get_cos_object().set_item(_JS, stream)
+
+    assert action.get_action() == "app.alert('café');"
 
 
 def test_get_action_returns_none_for_unexpected_type() -> None:

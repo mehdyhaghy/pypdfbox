@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray
+from pypdfbox.cos import COSArray, COSNull
 
 from .pd_page_destination import PDPageDestination
 
@@ -22,6 +22,7 @@ class PDPageFitBoundingBoxHeightDestination(PDPageDestination):
     def __init__(self, array: COSArray | None = None) -> None:
         super().__init__(array)
         if array is None:
+            self._array.grow_to_size(self._SLOT_LEFT + 1, COSNull.NULL)
             self._set_type(self.TYPE)
 
     def get_left(self) -> float | None:

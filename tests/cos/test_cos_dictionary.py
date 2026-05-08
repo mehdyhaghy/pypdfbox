@@ -142,6 +142,29 @@ def test_get_dictionary_object_preserves_non_name_default_value() -> None:
     assert d.get_dictionary_object("Missing", default) is default
 
 
+def test_get_item_falls_back_to_second_key_without_dereferencing() -> None:
+    target = COSName.get_pdf_name("DeviceRGB")
+    indirect = COSObject(17, 0, resolved=target)
+    d = COSDictionary([("ColorSpace", indirect)])
+
+    assert d.get_item("CS", "ColorSpace") is indirect
+    assert d.getItem(COSName.get_pdf_name("CS"), COSName.get_pdf_name("ColorSpace")) is indirect
+
+
+def test_get_item_first_key_wins_even_for_cos_null() -> None:
+    second = COSName.get_pdf_name("DeviceRGB")
+    d = COSDictionary([("CS", COSNull.NULL), ("ColorSpace", second)])
+
+    assert d.get_item("CS", "ColorSpace") is COSNull.NULL
+
+
+def test_get_item_preserves_non_name_default_value() -> None:
+    default = COSInteger.get(17)
+    d = COSDictionary()
+
+    assert d.get_item("Missing", default) is default
+
+
 def test_typed_setters() -> None:
     d = COSDictionary()
     d.set_name("Type", "Page")

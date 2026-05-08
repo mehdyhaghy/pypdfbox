@@ -26,6 +26,16 @@ def _raw_deflate(data: bytes) -> bytes:
     return compressor.compress(data) + compressor.flush()
 
 
+class _FlushTrackingBytesIO(io.BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_count = 0
+
+    def flush(self) -> None:
+        self.flush_count += 1
+        super().flush()
+
+
 class TestRoundTrip:
     def test_empty_input(self) -> None:
         assert _round_trip(b"") == b""
@@ -60,6 +70,24 @@ class TestRoundTrip:
         result = flate.decode(io.BytesIO(_raw_deflate(original)), out, None)
         assert out.getvalue() == original
         assert result.bytes_written == len(original)
+
+    def test_decode_flushes_decoded_sink_after_write(self) -> None:
+        original = b"flush me after inflate"
+        out = _FlushTrackingBytesIO()
+
+        result = FlateDecode().decode(io.BytesIO(zlib.compress(original)), out, None)
+
+        assert out.getvalue() == original
+        assert result.bytes_written == len(original)
+        assert out.flush_count == 1
+
+    def test_encode_flushes_encoded_sink_after_deflate(self) -> None:
+        out = _FlushTrackingBytesIO()
+
+        FlateDecode().encode(io.BytesIO(b"flush me after deflate"), out, None)
+
+        assert zlib.decompress(out.getvalue()) == b"flush me after deflate"
+        assert out.flush_count == 1
 
 
 class TestDecodeResult:

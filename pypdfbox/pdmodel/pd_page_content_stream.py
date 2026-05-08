@@ -907,6 +907,7 @@ class PDPageContentStream:
             x y Td
 
         but emitted as a single ``TD`` operator."""
+        self._require_inside_text_block("move_text_position_and_set_leading")
         self._write_operands(x, y)
         self._write_operator(b"TD")
 
