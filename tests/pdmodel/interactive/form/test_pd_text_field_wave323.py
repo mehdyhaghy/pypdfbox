@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
+import pytest
+
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
@@ -50,3 +54,19 @@ def test_wave323_get_max_len_inherits_from_acroform() -> None:
 
     assert field.get_max_len() == 20
     assert field.has_max_len() is False
+
+
+def test_text_field_value_setters_reject_non_string_values_without_mutating() -> None:
+    form = PDAcroForm()
+    field = PDTextField(form)
+    bad_value = cast(Any, 123)
+
+    field.set_value("current")
+    with pytest.raises(TypeError, match="set_value expected str or None"):
+        field.set_value(bad_value)
+    assert field.get_value() == "current"
+
+    field.set_default_value("default")
+    with pytest.raises(TypeError, match="set_default_value expected str or None"):
+        field.set_default_value(bad_value)
+    assert field.get_default_value() == "default"

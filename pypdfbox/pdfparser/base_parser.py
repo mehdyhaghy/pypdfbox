@@ -459,11 +459,14 @@ class BaseParser:
                 out.append(b)
             elif b == 0x29:  # ')'
                 depth -= 1
+                depth = self._check_for_end_of_string(depth)
                 if depth == 0:
                     return bytes(out)
                 out.append(b)
             elif b == 0x5C:  # '\'
-                self._consume_escape(out)
+                depth = self._consume_escape(out, depth)
+                if depth == 0:
+                    return bytes(out)
             elif b == 0x0D:
                 # CR or CRLF → LF (§7.3.4.2 EOL normalization).
                 if self._src.peek() == 0x0A:
@@ -472,14 +475,34 @@ class BaseParser:
             else:
                 out.append(b)
 
-    def _consume_escape(self, out: bytearray) -> None:
+    def _check_for_end_of_string(self, depth: int) -> int:
+        if depth == 0:
+            return 0
+        next_three = bytearray(3)
+        amount_read = self._src.read_into(next_three)
+        if amount_read > 0:
+            self._src.rewind(amount_read)
+        if amount_read < 3:
+            return depth
+        if self.is_eol(next_three[0]) and next_three[1] in (0x2F, 0x3E):  # '/', '>'
+            return 0
+        return depth
+
+    def _consume_escape(self, out: bytearray, depth: int) -> int:
         b = self._src.read()
         if b == RandomAccessRead.EOF:
-            return
+            return depth
+        if b == 0x29:  # ')' — PDFBox-276 malformed string recovery.
+            depth = self._check_for_end_of_string(depth)
+            if depth == 0:
+                out.append(0x5C)
+                return 0
+            out.append(b)
+            return depth
         mapped = self._ESCAPE_MAP.get(b)
         if mapped is not None:
             out.append(mapped)
-            return
+            return depth
         if 0x30 <= b <= 0x37:  # octal: 1-3 digits
             digits = bytearray([b])
             for _ in range(2):
@@ -489,15 +512,16 @@ class BaseParser:
                 digits.append(self._src.read())
             value = int(digits.decode("ascii"), 8)
             out.append(value & 0xFF)
-            return
+            return depth
         if b == 0x0D:  # CR or CRLF after backslash → line continuation
             if self._src.peek() == 0x0A:
                 self._src.read()
-            return
+            return depth
         if b == 0x0A:  # LF after backslash → line continuation
-            return
+            return depth
         # Unknown escape: drop the backslash, keep the byte literally (§7.3.4.2).
         out.append(b)
+        return depth
 
     # ---------- hex string < ... > ----------
 

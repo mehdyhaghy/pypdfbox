@@ -262,6 +262,18 @@ def test_literal_string_unknown_escape_drops_backslash() -> None:
     assert p.read_literal_string() == b"zfoo"
 
 
+def test_literal_string_unbalanced_paren_recovers_before_next_name_line() -> None:
+    p = parser(b"((5)\n/Creator (tool)")
+    assert p.read_literal_string() == b"(5"
+    assert p.peek_byte() == ord("\n")
+
+
+def test_literal_string_escaped_close_recovers_before_next_name_line() -> None:
+    p = parser(b"(c:\\)\n/Producer (tool)")
+    assert p.read_literal_string() == b"c:\\"
+    assert p.peek_byte() == ord("\n")
+
+
 def test_literal_string_unterminated_raises() -> None:
     with pytest.raises(PDFParseError):
         parser(b"(unterminated").read_literal_string()

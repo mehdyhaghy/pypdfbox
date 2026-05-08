@@ -17,7 +17,6 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     PDPanoseClassification,
 )
 
-
 # ---------------------------------------------------------------------------
 # PDPanoseClassification — accessors
 # ---------------------------------------------------------------------------
@@ -68,6 +67,15 @@ def test_classification_short_buffer_raises_index_error_on_demand() -> None:
     assert cls_obj.get_weight() == 3
     with pytest.raises(IndexError):
         cls_obj.get_proportion()
+
+
+def test_classification_accessors_widen_java_bytes_as_signed_ints() -> None:
+    """Java returns ``byte`` values widened to signed ``int`` values."""
+    cls_obj = PDPanoseClassification(bytes([0x80, 0xFF, 0x7F]) + b"\x00" * 7)
+
+    assert cls_obj.get_family_kind() == -128
+    assert cls_obj.get_serif_style() == -1
+    assert cls_obj.get_weight() == 127
 
 
 # ---------------------------------------------------------------------------
@@ -340,11 +348,16 @@ def test_panose_constructor_accepts_any_length() -> None:
     PDPanose(bytes(12))  # nominal
     PDPanose(bytes(24))  # over-long, ok
     short = PDPanose(bytes(5))  # short, ok
-    # Accessors past the end raise IndexError on demand.
+    # Java Arrays.copyOfRange(bytes, 2, 12) pads with zeros when from <= len.
+    assert short.get_panose().get_bytes() == b"\x00" * 10
+
+
+def test_panose_get_panose_raises_when_slice_start_exceeds_buffer() -> None:
+    """Java Arrays.copyOfRange raises when the start offset is past the end."""
+    short = PDPanose(b"\x00")
+
     with pytest.raises(IndexError):
-        # bytes 2..12 — slicing past-end yields a short buffer; the
-        # resulting classification's accessors fail when reached.
-        short.get_panose().get_x_height()
+        short.get_panose()
 
 
 # ---------------------------------------------------------------------------

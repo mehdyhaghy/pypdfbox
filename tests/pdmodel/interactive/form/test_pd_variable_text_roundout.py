@@ -9,6 +9,10 @@ Hand-written tests covering remaining gaps on the variable-text base:
 """
 from __future__ import annotations
 
+from typing import Any, cast
+
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
@@ -71,6 +75,27 @@ def test_has_default_appearance_after_clearing_with_none() -> None:
     assert tf.has_default_appearance() is True
     tf.set_default_appearance(None)
     assert tf.has_default_appearance() is False
+
+
+def test_text_setters_reject_non_string_values_without_mutating() -> None:
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    bad_value = cast(Any, 123)
+
+    tf.set_default_appearance("/Helv 12 Tf 0 g")
+    with pytest.raises(TypeError, match="set_default_appearance expected str or None"):
+        tf.set_default_appearance(bad_value)
+    assert tf.get_default_appearance() == "/Helv 12 Tf 0 g"
+
+    tf.set_default_style_string("font: Helvetica")
+    with pytest.raises(TypeError, match="set_default_style_string expected str or None"):
+        tf.set_default_style_string(bad_value)
+    assert tf.get_default_style_string() == "font: Helvetica"
+
+    tf.set_rich_text_value("<body>Hi</body>")
+    with pytest.raises(TypeError, match="set_rich_text_value expected str or None"):
+        tf.set_rich_text_value(bad_value)
+    assert tf.get_rich_text_value() == "<body>Hi</body>"
 
 
 # ---------- has_default_style_string ----------

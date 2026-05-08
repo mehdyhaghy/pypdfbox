@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/form/pd_text_field.py`, `pypdfbox/pdmodel/interactive/form/pd_variable_text.py`: text setters reject non-string values before mutating COS state.
+- `pypdfbox/pdfparser/base_parser.py`: malformed literal-string recovery mirrors PDFBox end-of-string handling around dictionary-key boundaries.
+- `pypdfbox/pdmodel/graphics/color/pd_device_n_process.py`: re-exports the canonical `PDDeviceNProcess` used by DeviceN attributes.
+- `pypdfbox/pdmodel/font/pd_font_descriptor.py`: PANOSE classification follows Java signed-byte widening and range behavior.
+- `pypdfbox/io/random_access_read_view.py`: zero-length `read_into()` returns `0` without disturbing the parent cursor.
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py`: widget dictionaries preserve an existing non-`/Annot` `/Type` while stamping `/Subtype /Widget`.
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: image suffix and predicate helpers recognize standard short filter aliases.
 - `pypdfbox/cos/cos_document.py`: exposes `get_key()` / `getKey()` lookup for object-pool keys by resolved object identity.

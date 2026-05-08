@@ -58,8 +58,10 @@ class RandomAccessReadView(RandomAccessRead):
             raise ValueError("length must be non-negative")
         if offset < 0 or offset + length > len(buf):
             raise ValueError("offset/length out of range for buf")
+        if length == 0:
+            return 0
         if self._position >= self._length:
-            return self.EOF if length > 0 else 0
+            return self.EOF
         remaining = min(length, self._length - self._position)
         self._parent.seek(self._start + self._position)
         n = self._parent.read_into(buf, offset, remaining)

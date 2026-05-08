@@ -648,35 +648,39 @@ class PDPanoseClassification:
     def get_bytes(self) -> bytes:
         return self._bytes
 
+    def _signed_byte_at(self, index: int) -> int:
+        value = self._bytes[index]
+        return value - 0x100 if value >= 0x80 else value
+
     def get_family_kind(self) -> int:
-        return self._bytes[0]
+        return self._signed_byte_at(0)
 
     def get_serif_style(self) -> int:
-        return self._bytes[1]
+        return self._signed_byte_at(1)
 
     def get_weight(self) -> int:
-        return self._bytes[2]
+        return self._signed_byte_at(2)
 
     def get_proportion(self) -> int:
-        return self._bytes[3]
+        return self._signed_byte_at(3)
 
     def get_contrast(self) -> int:
-        return self._bytes[4]
+        return self._signed_byte_at(4)
 
     def get_stroke_variation(self) -> int:
-        return self._bytes[5]
+        return self._signed_byte_at(5)
 
     def get_arm_style(self) -> int:
-        return self._bytes[6]
+        return self._signed_byte_at(6)
 
     def get_letterform(self) -> int:
-        return self._bytes[7]
+        return self._signed_byte_at(7)
 
     def get_midline(self) -> int:
-        return self._bytes[8]
+        return self._signed_byte_at(8)
 
     def get_x_height(self) -> int:
-        return self._bytes[9]
+        return self._signed_byte_at(9)
 
     # ---------- family-kind predicates ----------
 
@@ -844,6 +848,8 @@ class PDPanose:
 
     def get_panose(self) -> PDPanoseClassification:
         """The 10-byte PANOSE classification (bytes 2-11)."""
+        if len(self._bytes) < self.CLASSIFICATION_OFFSET:
+            raise IndexError("PDPanose buffer is too short for a classification slice")
         payload = self._bytes[
             self.CLASSIFICATION_OFFSET : self.CLASSIFICATION_OFFSET
             + PDPanoseClassification.LENGTH

@@ -17,6 +17,12 @@ _RV: COSName = COSName.get_pdf_name("RV")
 _KIDS: COSName = COSName.get_pdf_name("Kids")
 
 
+def _require_text_or_none(value: object, method: str) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError(f"{method} expected str or None; got {type(value).__name__}")
+
+
 class PDVariableText(PDTerminalField):
     """Abstract intermediate for fields with variable text. Mirrors PDFBox
     ``PDVariableText`` lite surface (``/DA``, ``/Q``, ``/DS``, ``/RV``).
@@ -47,6 +53,7 @@ class PDVariableText(PDTerminalField):
         return None
 
     def set_default_appearance(self, da_value: str | None) -> None:
+        da_value = _require_text_or_none(da_value, "set_default_appearance")
         self._field.set_string(_DA, da_value)
         if self._field.contains_key(_KIDS):
             for widget in self.get_widgets():
@@ -74,6 +81,7 @@ class PDVariableText(PDTerminalField):
         return self._field.get_string(_DS)
 
     def set_default_style_string(self, value: str | None) -> None:
+        value = _require_text_or_none(value, "set_default_style_string")
         self._field.set_string(_DS, value)
 
     def has_default_style_string(self) -> bool:
@@ -126,6 +134,7 @@ class PDVariableText(PDTerminalField):
         return self._get_string_or_stream(self.get_inheritable_attribute(_RV))
 
     def set_rich_text_value(self, value: str | None) -> None:
+        value = _require_text_or_none(value, "set_rich_text_value")
         self._field.set_string(_RV, value)
 
     def has_rich_text_value(self) -> bool:

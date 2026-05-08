@@ -36,6 +36,17 @@ def test_read_into_clipped_at_view_end() -> None:
     assert bytes(buf[:2]) == b"ij"
 
 
+def test_zero_length_read_into_is_noop_for_view_and_parent() -> None:
+    p = _parent()
+    p.seek(7)
+    v = RandomAccessReadView(p, start_position=2, length=4)
+    v.seek(1)
+
+    assert v.read_into(bytearray(), offset=0, length=0) == 0
+    assert v.get_position() == 1
+    assert p.get_position() == 7
+
+
 def test_read_at_eof_returns_minus_one() -> None:
     p = _parent()
     v = RandomAccessReadView(p, start_position=0, length=3)

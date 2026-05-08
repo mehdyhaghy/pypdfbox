@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary, COSName, COSNumber, COSStream, COSString
 
-from .pd_variable_text import PDVariableText
+from .pd_variable_text import PDVariableText, _require_text_or_none
 
 if TYPE_CHECKING:
     from .pd_acro_form import PDAcroForm
@@ -158,6 +158,7 @@ class PDTextField(PDVariableText):
         of writing the value alone — the existing object graph is untouched
         for callers that flatten or re-render externally.
         """
+        value = _require_text_or_none(value, "set_value")
         if value is None:
             self._field.remove_item(_V)
         else:
@@ -180,6 +181,7 @@ class PDTextField(PDVariableText):
         )
 
     def set_default_value(self, value: str | None) -> None:
+        value = _require_text_or_none(value, "set_default_value")
         if value is None:
             self._field.remove_item(_DV)
         else:
