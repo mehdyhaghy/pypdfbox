@@ -1,6 +1,6 @@
 """
 ``pypdfbox split -i in.pdf [-split N] [-startPage X -endPage Y]
-[-outputPrefix prefix] [-password PWD]`` — break a PDF into per-N-page
+[--outputPrefix prefix] [-password PWD]`` — break a PDF into per-N-page
 output files.
 
 Mirrors upstream ``org.apache.pdfbox.tools.PDFSplit``, which delegates to
@@ -57,7 +57,7 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         metavar="N", help="1-based last page to include (default last)",
     )
     p.add_argument(
-        "-outputPrefix", dest="output_prefix", default=None,
+        "-outputPrefix", "--outputPrefix", dest="output_prefix", default=None,
         metavar="PREFIX",
         help="filename prefix for split files (default: input stem)",
     )

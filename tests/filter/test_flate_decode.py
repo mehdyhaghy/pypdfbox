@@ -21,6 +21,11 @@ def _round_trip(data: bytes, parameters: COSDictionary | None = None) -> bytes:
     return decoded.getvalue()
 
 
+def _raw_deflate(data: bytes) -> bytes:
+    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    return compressor.compress(data) + compressor.flush()
+
+
 class TestRoundTrip:
     def test_empty_input(self) -> None:
         assert _round_trip(b"") == b""
@@ -47,6 +52,14 @@ class TestRoundTrip:
         # Round-trip on a fixed, known sequence of all 256 byte values.
         original = bytes(range(256)) * 5
         assert _round_trip(original) == original
+
+    def test_raw_deflate_without_zlib_wrapper_decodes(self) -> None:
+        original = b"raw deflate stream without zlib header" * 30
+        flate = FlateDecode()
+        out = io.BytesIO()
+        result = flate.decode(io.BytesIO(_raw_deflate(original)), out, None)
+        assert out.getvalue() == original
+        assert result.bytes_written == len(original)
 
 
 class TestDecodeResult:
@@ -204,6 +217,13 @@ class TestErrors:
         truncated = encoded[: len(encoded) // 2]
         flate = FlateDecode()
         with pytest.raises(OSError):
+            flate.decode(io.BytesIO(truncated), io.BytesIO(), None)
+
+    def test_truncated_zlib_stream_does_not_fall_back_to_raw_deflate(self) -> None:
+        encoded = zlib.compress(b"some data" * 100)
+        truncated = encoded[:-2]
+        flate = FlateDecode()
+        with pytest.raises(OSError, match="incomplete|truncated"):
             flate.decode(io.BytesIO(truncated), io.BytesIO(), None)
 
     def test_garbage_input_raises_oserror(self) -> None:

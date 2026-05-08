@@ -288,6 +288,38 @@ def test_set_resource_cache_round_trip() -> None:
     assert page.get_resource_cache() is None
 
 
+def test_get_resources_threads_page_resource_cache() -> None:
+    """PDFBox constructs PDResources with the page resource cache so typed
+    indirect resource wrappers can be reused."""
+    page = PDPage()
+    resources = COSDictionary()
+    page.get_cos_object().set_item(COSName.RESOURCES, resources)  # type: ignore[attr-defined]
+    cache = object()
+    page.set_resource_cache(cache)
+
+    resolved = page.get_resources()
+
+    assert resolved.get_cos_object() is resources
+    assert resolved.get_resource_cache() is cache
+
+
+def test_get_resources_threads_resource_cache_for_inherited_resources() -> None:
+    parent_resources = COSDictionary()
+    parent = COSDictionary()
+    parent.set_item(COSName.RESOURCES, parent_resources)  # type: ignore[attr-defined]
+    child_dict = COSDictionary()
+    child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child_dict.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    page = PDPage(child_dict)
+    cache = object()
+    page.set_resource_cache(cache)
+
+    resolved = page.get_resources()
+
+    assert resolved.get_cos_object() is parent_resources
+    assert resolved.get_resource_cache() is cache
+
+
 def test_inheritable_walks_via_p_alias() -> None:
     """Upstream PDFBox falls back to ``/P`` when ``/Parent`` is absent
     (``COSDictionary.getCOSDictionary(PARENT, P)``); inheritable lookups

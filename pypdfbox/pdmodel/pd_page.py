@@ -162,11 +162,17 @@ class PDPage:
     def get_resources(self) -> PDResources:
         """Resolve ``/Resources`` walking parents. If absent everywhere,
         returns an empty resource dict and does **not** attach it (matches
-        upstream's lazy behaviour — set_resources is required to persist)."""
+        upstream's lazy behaviour — set_resources is required to persist).
+
+        The page's resource cache is threaded through to the returned
+        wrapper, matching PDFBox's ``new PDResources(resources, resourceCache)``
+        path so indirect resource wrappers can be reused.
+        """
         resolved = self._get_inheritable(_RESOURCES)
+        cache = self.get_resource_cache()
         if isinstance(resolved, COSDictionary):
-            return PDResources(resolved)
-        return PDResources()
+            return PDResources(resolved, resource_cache=cache)
+        return PDResources(resource_cache=cache)
 
     def set_resources(self, resources: PDResources | COSDictionary | None) -> None:
         if resources is None:

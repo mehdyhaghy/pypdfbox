@@ -132,3 +132,72 @@ def test_structure_array_name_inherited_by_subclass(metadata: XMPMetadata) -> No
     st = _MyStruct(metadata, "http://www.apache.org/test#", "test")
     assert type(st).STRUCTURE_ARRAY_NAME == "li"
     assert st.STRUCTURE_ARRAY_NAME == "li"
+
+
+def test_structured_type_pdfbox_camelcase_identity_aliases(
+    metadata: XMPMetadata,
+) -> None:
+    st = _MyStruct(metadata, "http://www.apache.org/test#", "test")
+
+    assert st.getNamespace() == "http://www.apache.org/test#"
+    assert st.getPrefix() == "test"
+    assert st.getPreferedPrefix() == "test"
+    assert st.getPreferredPrefix() == "test"
+
+    st.setNamespace("http://example.com/changed#")
+    st.setPrefix("changed")
+    assert st.getNamespace() == "http://example.com/changed#"
+    assert st.getPrefix() == "changed"
+
+
+def test_structured_type_pdfbox_camelcase_namespace_aliases(
+    st: _MyStruct,
+) -> None:
+    st.addNamespace("http://example.com/ns/", "ex")
+
+    assert st.getNamespacePrefix("http://example.com/ns/") == "ex"
+    assert st.getAllNamespacesWithPrefix()["http://example.com/ns/"] == "ex"
+
+
+def test_structured_type_pdfbox_camelcase_property_aliases(
+    st: _MyStruct,
+) -> None:
+    first = TextType(st.get_metadata(), st.get_namespace(), st.get_prefix(), "name", "a")
+    second = TextType(st.get_metadata(), st.get_namespace(), st.get_prefix(), "name", "b")
+
+    st.addProperty(first)
+    st.addProperty(second)
+
+    assert st.getProperty("name") is second
+    assert st.hasProperty("name") is True
+    assert st.getAllProperties() == [second]
+
+    st.removeProperty(second)
+    assert st.getProperty("name") is None
+
+
+def test_structured_type_pdfbox_camelcase_typed_helper_aliases(
+    st: _MyStruct,
+) -> None:
+    when = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+    st.addSimpleProperty(_MyStruct.MYTEXT, "value")
+    st.addSimpleProperty(_MyStruct.MYDATE, when)
+
+    assert st.getPropertyValueAsString(_MyStruct.MYTEXT) == "value"
+    assert st.getDatePropertyAsCalendar(_MyStruct.MYDATE) == when
+    assert isinstance(
+        st.getFirstEquivalentProperty(_MyStruct.MYDATE, DateType), DateType
+    )
+
+    text = st.createTextType("createdText", "text")
+    array = st.createArrayProperty("createdArray", Cardinality.Seq)
+    assert isinstance(text, TextType)
+    assert text.get_string_value() == "text"
+    assert isinstance(array, ArrayProperty)
+    assert array.get_array_type() is Cardinality.Seq
+    st.addProperty(array)
+    assert st.getArrayProperty("createdArray") is array
+
+    st.clearProperty(_MyStruct.MYTEXT)
+    assert st.hasProperty(_MyStruct.MYTEXT) is False

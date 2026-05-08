@@ -1539,3 +1539,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/digitalsignature/pd_prop_build_data_dict.py`: repeated `set_os()` calls now replace the `/OS` array instead of retaining stale names.
 - `pypdfbox/pdmodel/common/filespecification/pd_embedded_file.py`: embedded-file size reads now return `-1` for absent or malformed `/Params/Size` and accept any COS number.
 - `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_properties.py`: unsupported base-state inputs now raise `TypeError` instead of leaking attribute errors.
+
+## Wave 338 — GSUB no-data guards, split options, page resource caches, Flate fallback, and XMP aliases
+
+- `pypdfbox/fontbox/ttf/gsub/gsub_data.py`: `NO_DATA_FOUND` now raises consistently for all remaining public read and apply helpers.
+- `pypdfbox/tools/split.py`: the split tool now accepts the documented `--outputPrefix` option spelling.
+- `pypdfbox/pdmodel/pd_page.py`: page resources now receive the page's resource cache, including inherited resource dictionaries.
+- `pypdfbox/filter/flate_decode.py`: raw-deflate fallback is limited to zlib header-format failures while truncated and checksum-bad zlib streams stay strict.
+- `pypdfbox/xmpbox/type/abstract_structured_type.py` and `array_property.py`: structured and array XMP properties gained Java-style camelCase aliases.

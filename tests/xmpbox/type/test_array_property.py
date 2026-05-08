@@ -29,6 +29,11 @@ def test_simple_cardinality_is_not_array() -> None:
     assert Cardinality.Simple.is_array() is False
 
 
+def test_cardinality_pdfbox_camelcase_alias() -> None:
+    assert Cardinality.Bag.isArray() is True
+    assert Cardinality.Simple.isArray() is False
+
+
 def test_array_append_and_iterate(metadata: XMPMetadata) -> None:
     arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
     arr.add_property(TextType(metadata, "ns", "p", "li", "one"))
@@ -167,3 +172,40 @@ def test_contains_property_round_trip(metadata: XMPMetadata) -> None:
     arr.add_property(a)
     assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "x")) is True
     assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "y")) is False
+
+
+def test_array_property_pdfbox_camelcase_aliases(metadata: XMPMetadata) -> None:
+    arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
+    first = TextType(metadata, "ns", "p", "li", "one")
+    second = TextType(metadata, "ns", "p", "li", "two")
+
+    assert arr.getNamespace() == "ns"
+    assert arr.getPrefix() == "p"
+    arr.addProperty(first)
+    arr.addProperty(second)
+
+    assert arr.getAllProperties() == [first, second]
+    assert arr.getPropertiesByLocalName("li") == [first, second]
+    assert arr.getProperty("li") is first
+    assert arr.containsProperty(TextType(metadata, "ns", "p", "li", "one")) is True
+    assert arr.isSameProperty(first, TextType(metadata, "ns", "p", "li", "one")) is True
+
+    arr.addNamespace("http://example.com/ns/", "ex")
+    assert arr.getNamespacePrefix("http://example.com/ns/") == "ex"
+    assert arr.getAllNamespacesWithPrefix()["http://example.com/ns/"] == "ex"
+
+    arr.removeProperty(first)
+    assert arr.getAllProperties() == [second]
+    arr.removePropertiesByName("li")
+    assert arr.getAllProperties() == []
+
+
+def test_array_property_get_array_property_camelcase_alias(
+    metadata: XMPMetadata,
+) -> None:
+    outer = ArrayProperty(metadata, "ns", "p", "outer", Cardinality.Bag)
+    inner = ArrayProperty(metadata, "ns", "p", "nested", Cardinality.Seq)
+    outer.addProperty(inner)
+
+    assert outer.getArrayProperty("nested") is inner
+    assert outer.getArrayProperty("missing") is None

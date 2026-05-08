@@ -38,7 +38,7 @@ def test_round_trip_script_and_lookup_lists() -> None:
 
 
 def test_is_feature_supported_and_get_feature_table() -> None:
-    feat = {(70, 70): (500,)}
+    feat: dict[tuple[int, ...], tuple[int, ...]] = {(70, 70): (500,)}
     gd = GsubData(feature_list={"liga": feat})
     assert gd.is_feature_supported("liga") is True
     assert gd.is_feature_supported("sups") is False
@@ -83,7 +83,7 @@ def test_apply_substitution_lookup_list_expands_to_multiple_glyphs() -> None:
 
 
 def test_get_feature_returns_per_feature_substitution_map() -> None:
-    feature_map = {(1,): (2,)}
+    feature_map: dict[tuple[int, ...], tuple[int, ...]] = {(1,): (2,)}
     gd = GsubData(feature_list={"liga": feature_map})
     assert gd.get_feature("liga") is feature_map
     assert gd.get_feature("missing") is None
@@ -106,8 +106,20 @@ def test_no_data_found_sentinel_raises_on_every_accessor() -> None:
     with pytest.raises(NotImplementedError):
         sentinel.get_active_script_name()
     with pytest.raises(NotImplementedError):
+        sentinel.get_script_list()
+    with pytest.raises(NotImplementedError):
+        sentinel.get_feature_list()
+    with pytest.raises(NotImplementedError):
+        sentinel.get_glyph_substitution_map()
+    with pytest.raises(NotImplementedError):
+        sentinel.get_lookup_tables()
+    with pytest.raises(NotImplementedError):
         sentinel.is_feature_supported("liga")
+    with pytest.raises(NotImplementedError):
+        sentinel.get_feature_table("liga")
     with pytest.raises(NotImplementedError):
         sentinel.get_feature("liga")
     with pytest.raises(NotImplementedError):
         sentinel.get_supported_features()
+    with pytest.raises(NotImplementedError):
+        sentinel.apply_substitution_lookup_list([1, 2, 3])

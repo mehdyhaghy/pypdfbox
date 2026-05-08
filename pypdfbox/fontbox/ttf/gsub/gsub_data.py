@@ -178,7 +178,28 @@ class _NoDataFoundGsubData(GsubData):
     def get_active_script_name(self) -> str:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
+    def get_script_list(self) -> dict[str, ScriptTable]:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_feature_list(
+        self,
+    ) -> dict[str, dict[tuple[int, ...], tuple[int, ...]]]:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_glyph_substitution_map(
+        self,
+    ) -> dict[tuple[int, ...], tuple[int, ...]]:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_lookup_tables(self) -> tuple[LookupTable, ...]:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
     def is_feature_supported(self, feature_tag: str) -> bool:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def get_feature_table(
+        self, feature_tag: str
+    ) -> dict[tuple[int, ...], tuple[int, ...]] | None:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
     def get_feature(
@@ -187,6 +208,11 @@ class _NoDataFoundGsubData(GsubData):
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
     def get_supported_features(self) -> set[str]:
+        raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
+
+    def apply_substitution_lookup_list(
+        self, glyph_ids: list[int]
+    ) -> list[int]:
         raise NotImplementedError("NO_DATA_FOUND has no GSUB data")
 
 

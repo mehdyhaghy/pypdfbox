@@ -1,6 +1,7 @@
 """Tests for ``pypdfbox split``."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -8,8 +9,13 @@ import pytest
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.tools import cli
 
+MakePdf = Callable[..., Path]
 
-def test_split_one_per_page_default(make_pdf, capsys: pytest.CaptureFixture[str]) -> None:
+
+def test_split_one_per_page_default(
+    make_pdf: MakePdf,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     pdf = make_pdf("doc.pdf", page_count=3)
     rc = cli.run_cli(["split", "-i", str(pdf)])
     assert rc == 0
@@ -20,7 +26,7 @@ def test_split_one_per_page_default(make_pdf, capsys: pytest.CaptureFixture[str]
             assert d.get_number_of_pages() == 1
 
 
-def test_split_n_per_chunk(make_pdf) -> None:
+def test_split_n_per_chunk(make_pdf: MakePdf) -> None:
     pdf = make_pdf("chunked.pdf", page_count=5)
     rc = cli.run_cli(["split", "-i", str(pdf), "-split", "2"])
     assert rc == 0
@@ -31,7 +37,7 @@ def test_split_n_per_chunk(make_pdf) -> None:
     assert sizes == [2, 2, 1]
 
 
-def test_split_with_page_range(make_pdf) -> None:
+def test_split_with_page_range(make_pdf: MakePdf) -> None:
     pdf = make_pdf("ranged.pdf", page_count=10)
     cli.run_cli(
         ["split", "-i", str(pdf), "-startPage", "3", "-endPage", "5"]
@@ -45,7 +51,7 @@ def test_split_with_page_range(make_pdf) -> None:
         assert d.get_number_of_pages() == 3
 
 
-def test_split_with_page_range_and_explicit_split(make_pdf) -> None:
+def test_split_with_page_range_and_explicit_split(make_pdf: MakePdf) -> None:
     pdf = make_pdf("rangesplit.pdf", page_count=10)
     cli.run_cli(
         [
@@ -61,7 +67,7 @@ def test_split_with_page_range_and_explicit_split(make_pdf) -> None:
     assert sizes == [2, 2, 2]
 
 
-def test_split_only_start_page(make_pdf) -> None:
+def test_split_only_start_page(make_pdf: MakePdf) -> None:
     pdf = make_pdf("startonly.pdf", page_count=5)
     cli.run_cli(["split", "-i", str(pdf), "-startPage", "3"])
     parts = sorted(pdf.parent.glob("startonly-*.pdf"))
@@ -71,7 +77,7 @@ def test_split_only_start_page(make_pdf) -> None:
         assert d.get_number_of_pages() == 3
 
 
-def test_split_password_flag_accepts_unencrypted_doc(make_pdf) -> None:
+def test_split_password_flag_accepts_unencrypted_doc(make_pdf: MakePdf) -> None:
     pdf = make_pdf("nopwd.pdf", page_count=2)
     rc = cli.run_cli(
         ["split", "-i", str(pdf), "-password", "ignored"]
@@ -83,7 +89,7 @@ def test_split_password_flag_accepts_unencrypted_doc(make_pdf) -> None:
     assert len(parts) == 2
 
 
-def test_split_password_long_form(make_pdf) -> None:
+def test_split_password_long_form(make_pdf: MakePdf) -> None:
     pdf = make_pdf("nopwd2.pdf", page_count=2)
     rc = cli.run_cli(
         ["split", "-i", str(pdf), "--password", "ignored"]
@@ -93,15 +99,23 @@ def test_split_password_long_form(make_pdf) -> None:
     assert len(parts) == 2
 
 
-def test_split_custom_prefix(tmp_path: Path, make_pdf) -> None:
+def test_split_custom_prefix(tmp_path: Path, make_pdf: MakePdf) -> None:
     pdf = make_pdf("ignored.pdf", page_count=2)
     cli.run_cli(["split", "-i", str(pdf), "-outputPrefix", "chunk"])
     parts = sorted(pdf.parent.glob("chunk-*.pdf"))
     assert len(parts) == 2
 
 
+def test_split_custom_prefix_long_form(tmp_path: Path, make_pdf: MakePdf) -> None:
+    pdf = make_pdf("ignored.pdf", page_count=2)
+    rc = cli.run_cli(["split", "-i", str(pdf), "--outputPrefix", "chunk"])
+    assert rc == 0
+    parts = sorted(pdf.parent.glob("chunk-*.pdf"))
+    assert len(parts) == 2
+
+
 def test_split_zero_split_rejected(
-    make_pdf, capsys: pytest.CaptureFixture[str]
+    make_pdf: MakePdf, capsys: pytest.CaptureFixture[str]
 ) -> None:
     pdf = make_pdf("doc.pdf", page_count=2)
     rc = cli.run_cli(["split", "-i", str(pdf), "-split", "0"])
@@ -110,7 +124,7 @@ def test_split_zero_split_rejected(
 
 
 def test_split_empty_range(
-    make_pdf, capsys: pytest.CaptureFixture[str]
+    make_pdf: MakePdf, capsys: pytest.CaptureFixture[str]
 ) -> None:
     pdf = make_pdf("doc.pdf", page_count=3)
     rc = cli.run_cli(

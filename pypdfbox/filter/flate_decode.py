@@ -10,6 +10,11 @@ from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
 
+_RAW_DEFLATE_FALLBACK_ERRORS = (
+    "incorrect header check",
+    "unknown compression method",
+)
+
 
 def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
     """Resolve Flate predictor params from stream-level or direct dictionaries."""
@@ -51,13 +56,23 @@ class FlateDecode(Filter):
         parameters: COSDictionary | None = None,
         index: int = 0,
     ) -> DecodeResult:
+        raw = encoded.read()
         try:
-            inflated = zlib.decompress(encoded.read())
+            inflated = zlib.decompress(raw)
         except zlib.error as exc:
-            # Surface decompression failures (truncated streams, bad
-            # checksums, etc.) as ``OSError`` so callers can rely on
-            # one I/O exception type per the Filter contract.
-            raise OSError(f"FlateDecode: {exc}") from exc
+            if any(message in str(exc) for message in _RAW_DEFLATE_FALLBACK_ERRORS):
+                # Be tolerant of malformed PDFs that store raw deflate
+                # bytes without the zlib wrapper normally required by
+                # /FlateDecode, but keep checksum/truncation failures strict.
+                try:
+                    inflated = zlib.decompress(raw, wbits=-zlib.MAX_WBITS)
+                except zlib.error as raw_exc:
+                    raise OSError(f"FlateDecode: {raw_exc}") from raw_exc
+            else:
+                # Surface decompression failures (truncated streams, bad
+                # checksums, etc.) as ``OSError`` so callers can rely on
+                # one I/O exception type per the Filter contract.
+                raise OSError(f"FlateDecode: {exc}") from exc
 
         decode_params = _get_decode_params(parameters, index)
         predictor = decode_params.get_int("Predictor", 1)
