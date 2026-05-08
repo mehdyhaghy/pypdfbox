@@ -56,11 +56,41 @@ class PDCryptFilterDictionary:
 
     # ---------- /CFM ----------
 
+    def get_crypt_filter_method(self) -> COSName | None:
+        """Return the raw ``/CFM`` COS name.
+
+        Mirrors PDFBox ``getCryptFilterMethod()``; callers that need the
+        string value can use :meth:`get_cfm`.
+        """
+        v = self._dict.get_dictionary_object(_CFM)
+        if isinstance(v, COSName):
+            return v
+        return None
+
+    def set_crypt_filter_method(self, cfm: COSName | str | None) -> None:
+        """Set the raw ``/CFM`` COS name.
+
+        ``str`` is accepted as the local Python convenience; ``None`` clears
+        the entry, matching the existing name-setter semantics.
+        """
+        if cfm is None:
+            self._dict.remove_item(_CFM)
+        elif isinstance(cfm, COSName):
+            self._dict.set_item(_CFM, cfm)
+        elif isinstance(cfm, str):
+            self._dict.set_item(_CFM, COSName.get_pdf_name(cfm))
+        else:
+            msg = f"cfm must be COSName, str, or None, got {type(cfm).__name__}"
+            raise TypeError(msg)
+
     def get_cfm(self) -> str | None:
-        return self._dict.get_name(_CFM)
+        cfm = self.get_crypt_filter_method()
+        if cfm is None:
+            return None
+        return cfm.name
 
     def set_cfm(self, name: str | None) -> None:
-        self._dict.set_name(_CFM, name)
+        self.set_crypt_filter_method(name)
 
     def has_cfm(self) -> bool:
         return isinstance(self._dict.get_dictionary_object(_CFM), COSName)

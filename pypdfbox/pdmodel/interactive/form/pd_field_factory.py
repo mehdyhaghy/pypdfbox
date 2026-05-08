@@ -53,7 +53,10 @@ def _resolve_field_type(
     if isinstance(item, COSName):
         return item.name
     if parent is not None:
-        return parent.get_field_type()
+        item = parent.get_inheritable_attribute(_FT)
+        if isinstance(item, COSName):
+            return item.name
+        return None
     item = form.get_cos_object().get_dictionary_object(_FT)
     if isinstance(item, COSName):
         return item.name
@@ -69,7 +72,10 @@ def _resolve_field_flags(
     if isinstance(item, COSInteger):
         return item.value
     if parent is not None:
-        return parent.get_field_flags()
+        item = parent.get_inheritable_attribute(_FF)
+        if isinstance(item, COSInteger):
+            return item.value
+        return 0
     item = form.get_cos_object().get_dictionary_object(_FF)
     if isinstance(item, COSInteger):
         return item.value
@@ -115,7 +121,7 @@ class PDFieldFactory:
     @staticmethod
     def create_field(
         form: PDAcroForm,
-        field: COSDictionary,
+        field: COSDictionary | None,
         parent: PDNonTerminalField | None = None,
     ) -> PDField | None:
         from .pd_non_terminal_field import PDNonTerminalField as NTField

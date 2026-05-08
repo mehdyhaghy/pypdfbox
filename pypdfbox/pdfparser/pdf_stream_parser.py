@@ -244,10 +244,18 @@ class PDFStreamParser(COSParser):
         if b == 0x3C:  # '<' — '<<' (dict) or '<...>' (hex string)
             second = self._peek_two_bytes()[1]
             if second == 0x3C:
-                return self.parse_cos_dictionary()
+                try:
+                    return self.parse_cos_dictionary()
+                except PDFParseError:
+                    self.close()
+                    return None
             return self._read_cos_hex_string()
         if b == 0x5B:  # '[' — array
-            return self.parse_cos_array()
+            try:
+                return self.parse_cos_array()
+            except PDFParseError:
+                self.close()
+                return None
         if b == 0x28:  # '(' — literal string
             return self._read_cos_literal_string()
         if b == 0x2F:  # '/' — name

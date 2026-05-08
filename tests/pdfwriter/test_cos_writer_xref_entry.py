@@ -7,10 +7,14 @@ from pypdfbox.pdfwriter.cos_writer_xref_entry import COSWriterXRefEntry
 def test_value_type_basics() -> None:
     e = COSWriterXRefEntry(offset=42, key=COSObjectKey(3, 0))
     assert e.get_offset() == 42
+    assert e.getOffset() == 42
     assert e.offset == 42
     assert e.get_key() == COSObjectKey(3, 0)
+    assert e.getKey() == COSObjectKey(3, 0)
     assert e.is_free() is False
+    assert e.isFree() is False
     assert e.get_object() is None
+    assert e.getObject() is None
 
 
 def test_frozen_immutable() -> None:
@@ -50,6 +54,7 @@ def test_null_entry_is_free_object_zero_gen_65535() -> None:
 def test_nullentry_constant_matches_upstream_singleton() -> None:
     n = COSWriterXRefEntry.NULLENTRY
     assert n is COSWriterXRefEntry.get_null_entry()
+    assert n is COSWriterXRefEntry.getNullEntry()
     assert n.is_free() is True
     assert n.key == COSObjectKey(0, 65535)
     assert n.offset == 0
@@ -67,14 +72,18 @@ def test_compare_to_matches_upstream_signs() -> None:
     c = COSWriterXRefEntry(offset=99, key=COSObjectKey(2, 0))
     assert a.compare_to(b) == -1
     assert b.compare_to(a) == 1
+    assert a.compareTo(b) == -1
+    assert b.compareTo(a) == 1
     # Same object number → 0 regardless of offset/free.
     assert a.compare_to(c) == 0
+    assert a.compareTo(c) == 0
 
 
 def test_compare_to_none_returns_minus_one() -> None:
     # Mirrors upstream ``compareTo(null)`` returning -1.
     a = COSWriterXRefEntry(offset=0, key=COSObjectKey(7, 0))
     assert a.compare_to(None) == -1
+    assert a.compareTo(None) == -1
 
 
 def test_with_free_returns_new_instance() -> None:

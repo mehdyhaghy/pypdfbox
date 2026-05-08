@@ -105,6 +105,30 @@ def test_dispatch_child_inherits_ft_from_parent() -> None:
     assert isinstance(result, PDTextField)
 
 
+def test_dispatch_child_inherits_ft_through_non_terminal_parent() -> None:
+    """A terminal child inherits /FT through local-less non-terminal ancestors."""
+    form = PDAcroForm()
+    grandparent = PDNonTerminalField(form, _make_field("Tx"))
+    parent = PDNonTerminalField(form, COSDictionary(), grandparent)
+    child_dict = COSDictionary()
+
+    result = PDFieldFactory.create_field(form, child_dict, parent)
+
+    assert isinstance(result, PDTextField)
+
+
+def test_dispatch_child_inherits_ft_from_form_through_parent() -> None:
+    """The AcroForm dictionary remains the inheritance fallback with a parent."""
+    form = PDAcroForm()
+    form.get_cos_object().set_name(_FT, "Tx")
+    parent = PDNonTerminalField(form, COSDictionary())
+    child_dict = COSDictionary()
+
+    result = PDFieldFactory.create_field(form, child_dict, parent)
+
+    assert isinstance(result, PDTextField)
+
+
 def test_dispatch_child_inherits_btn_ft_with_combo_flag_irrelevant() -> None:
     """Child inherits /FT /Btn from parent; without /Ff bits → checkbox."""
     form = PDAcroForm()

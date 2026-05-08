@@ -3,7 +3,9 @@ through ``PDEncryption`` and ``StandardSecurityHandler``."""
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary
+import pytest
+
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.encryption.pd_crypt_filter_dictionary import (
     PDCryptFilterDictionary,
 )
@@ -45,6 +47,45 @@ def test_round_trip_cfm_length_encrypt_metadata() -> None:
     assert rehydrated.get_cfm() == "AESV2"
     assert rehydrated.get_length() == 16
     assert rehydrated.get_encrypt_metadata() is False
+
+
+def test_crypt_filter_method_round_trips_raw_cos_name() -> None:
+    cf = PDCryptFilterDictionary()
+    method = COSName.get_pdf_name(PDCryptFilterDictionary.CFM_AESV3)
+
+    cf.set_crypt_filter_method(method)
+
+    assert cf.get_crypt_filter_method() is method
+    assert cf.get_cfm() == "AESV3"
+    assert cf.get_cos_object().get_dictionary_object("CFM") is method
+
+
+def test_crypt_filter_method_ignores_malformed_non_name_value() -> None:
+    raw = COSDictionary()
+    raw.set_item("CFM", COSString("AESV2"))
+
+    cf = PDCryptFilterDictionary(raw)
+
+    assert cf.get_crypt_filter_method() is None
+    assert cf.get_cfm() is None
+
+
+def test_set_crypt_filter_method_accepts_string_and_none() -> None:
+    cf = PDCryptFilterDictionary()
+
+    cf.set_crypt_filter_method(PDCryptFilterDictionary.CFM_V2)
+    assert cf.get_crypt_filter_method() is COSName.get_pdf_name("V2")
+
+    cf.set_crypt_filter_method(None)
+    assert cf.get_crypt_filter_method() is None
+    assert cf.has_cfm() is False
+
+
+def test_set_crypt_filter_method_rejects_non_name_or_string() -> None:
+    cf = PDCryptFilterDictionary()
+
+    with pytest.raises(TypeError, match="cfm must be COSName, str, or None"):
+        cf.set_crypt_filter_method(16)  # type: ignore[arg-type]
 
 
 def test_default_length_is_5_bytes_default_encrypt_metadata_true() -> None:

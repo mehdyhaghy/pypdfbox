@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -10,6 +11,8 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.multipdf import Overlay, Position
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
+
+_CONTENTS = COSName.get_pdf_name("Contents")
 
 
 def _build_base_doc(num_pages: int = 2) -> PDDocument:
@@ -61,7 +64,7 @@ def _resolve_xobject_keys(page: PDPage) -> list[str]:
 
 
 def _flatten_contents(page: PDPage) -> list[COSStream]:
-    contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     out: list[COSStream] = []
     if isinstance(contents, COSStream):
         out.append(contents)
@@ -220,12 +223,14 @@ def test_overlay_pdfbox_6048_uses_real_lower_left_corner() -> None:
 
 
 def test_overlay_position_enum_round_trip() -> None:
-    assert Position.FOREGROUND is not Position.BACKGROUND
+    assert len({Position.FOREGROUND, Position.BACKGROUND}) == 2
     overlay = Overlay()
     overlay.set_overlay_position(Position.FOREGROUND)
-    assert overlay._position is Position.FOREGROUND  # noqa: SLF001
+    actual: Position = overlay._position  # noqa: SLF001
+    assert actual is Position.FOREGROUND
     overlay.set_overlay_position(Position.BACKGROUND)
-    assert overlay._position is Position.BACKGROUND  # noqa: SLF001
+    actual = overlay._position  # noqa: SLF001
+    assert actual is Position.BACKGROUND
 
 
 def test_overlay_close_is_idempotent() -> None:
@@ -243,9 +248,37 @@ def test_overlay_context_manager_closes_only_owned_documents() -> None:
         overlay.set_default_overlay_pdf(overlay_doc)
         overlay.overlay({})
     # Caller-owned documents must NOT be closed by Overlay.close (mirrors
-    # upstream: Overlay only closes documents IT loaded). The base doc
-    # was passed in by setInputPDF — it stays open.
+    # upstream: Overlay only closes documents IT loaded). These documents
+    # were passed in by setInputPDF / setDefaultOverlayPDF, so they stay open.
     assert not base.is_closed()
+    assert not overlay_doc.is_closed()
+
+
+def test_overlay_context_manager_closes_file_loaded_documents(
+    tmp_path: Path,
+) -> None:
+    base_path = tmp_path / "base.pdf"
+    overlay_path = tmp_path / "overlay.pdf"
+
+    base = _build_base_doc()
+    base.save(str(base_path))
+    base.close()
+
+    overlay_doc = _build_overlay_doc()
+    overlay_doc.save(str(overlay_path))
+    overlay_doc.close()
+
+    with Overlay() as overlay:
+        overlay.set_input_file(str(base_path))
+        overlay.set_default_overlay_file(str(overlay_path))
+        result = overlay.overlay({})
+        loaded_overlay = overlay._default_overlay_document  # noqa: SLF001
+        assert loaded_overlay is not None
+        assert not result.is_closed()
+        assert not loaded_overlay.is_closed()
+
+    assert result.is_closed()
+    assert loaded_overlay.is_closed()
 
 
 # ---------- odd / even / all-pages / file-path round-out ----------
@@ -417,7 +450,7 @@ def test_overlay_combined_content_handles_array_of_streams() -> None:
     ) as cs:
         cs.add_rect(40.0, 40.0, 20.0, 20.0)
         cs.stroke()
-    contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     assert isinstance(contents, COSArray)
     pre_overlay_count = len(contents)
 
@@ -426,7 +459,7 @@ def test_overlay_combined_content_handles_array_of_streams() -> None:
     overlay.set_default_overlay_pdf(_build_overlay_doc())
     overlay.overlay({})
 
-    new_contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    new_contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     assert isinstance(new_contents, COSArray)
     # Background: 1 overlay invocation stream + the original streams.
     assert len(new_contents) == 1 + pre_overlay_count
@@ -507,7 +540,7 @@ def test_overlay_no_overlay_configured_leaves_pages_untouched() -> None:
     every page and skip them all without modifying /Contents."""
     base = _build_base_doc()
     original_contents = [
-        base.get_page(i).get_cos_object().get_dictionary_object(COSName.CONTENTS)
+        base.get_page(i).get_cos_object().get_dictionary_object(_CONTENTS)
         for i in range(base.get_number_of_pages())
     ]
     overlay = Overlay()
@@ -518,7 +551,7 @@ def test_overlay_no_overlay_configured_leaves_pages_untouched() -> None:
         assert (
             base.get_page(i)
             .get_cos_object()
-            .get_dictionary_object(COSName.CONTENTS)
+            .get_dictionary_object(_CONTENTS)
             is original
         )
 
@@ -581,7 +614,7 @@ def test_overlay_form_bbox_uses_create_retranslated_rectangle() -> None:
     bbox = form_stream.get_dictionary_object(COSName.get_pdf_name("BBox"))
     assert isinstance(bbox, COSArray)
     # Retranslated: (0, 0, width, height) where width=200, height=200.
-    floats = [bbox.get(i).float_value() for i in range(4)]  # type: ignore[union-attr]
+    floats = [cast(Any, bbox.get(i)).float_value() for i in range(4)]
     assert floats == [0.0, 0.0, 200.0, 200.0]
 
 

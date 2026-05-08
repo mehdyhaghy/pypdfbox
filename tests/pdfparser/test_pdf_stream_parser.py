@@ -47,13 +47,13 @@ def test_begin_end_text_block() -> None:
         "Operator",
         "Operator",
     ]
-    assert toks[0].name == "BT"  # type: ignore[union-attr]
+    assert isinstance(toks[0], Operator) and toks[0].name == "BT"
     assert toks[1] is COSName.get_pdf_name("F1")
-    assert toks[2].value == 12  # type: ignore[union-attr]
-    assert toks[3].name == "Tf"  # type: ignore[union-attr]
-    assert toks[4].get_bytes() == b"hello"  # type: ignore[union-attr]
-    assert toks[5].name == "Tj"  # type: ignore[union-attr]
-    assert toks[6].name == "ET"  # type: ignore[union-attr]
+    assert isinstance(toks[2], COSInteger) and toks[2].value == 12
+    assert isinstance(toks[3], Operator) and toks[3].name == "Tf"
+    assert isinstance(toks[4], COSString) and toks[4].get_bytes() == b"hello"
+    assert isinstance(toks[5], Operator) and toks[5].name == "Tj"
+    assert isinstance(toks[6], Operator) and toks[6].name == "ET"
 
 
 def test_numeric_and_name_operands_mixed() -> None:
@@ -90,6 +90,22 @@ def test_dict_operand() -> None:
     assert isinstance(toks[1], Operator) and toks[1].name == "def"
 
 
+def test_malformed_dictionary_stops_parsing_and_closes() -> None:
+    p = parser(b"q << /A 1")
+    toks = p.parse()
+    assert len(toks) == 1
+    assert isinstance(toks[0], Operator) and toks[0].name == "q"
+    assert p.is_closed()
+
+
+def test_malformed_array_stops_parsing_and_closes() -> None:
+    p = parser(b"q [1 2")
+    toks = p.parse()
+    assert len(toks) == 1
+    assert isinstance(toks[0], Operator) and toks[0].name == "q"
+    assert p.is_closed()
+
+
 def test_apostrophe_text_show_operator() -> None:
     toks = tokens(b"(line) '")
     assert isinstance(toks[0], COSString)
@@ -114,7 +130,9 @@ def test_boolean_and_null_operands() -> None:
 
 def test_b_star_and_f_star_operators() -> None:
     toks = tokens(b"B* f* n")
-    assert [t.name for t in toks] == ["B*", "f*", "n"]  # type: ignore[union-attr]
+    ops = [t for t in toks if isinstance(t, Operator)]
+    assert len(ops) == len(toks)
+    assert [op.name for op in ops] == ["B*", "f*", "n"]
 
 
 def test_d0_and_d1_type3_operators() -> None:
@@ -175,8 +193,8 @@ def test_comments_between_tokens() -> None:
     raw = b"100 % first coord\n 200 % second\n m"
     toks = tokens(raw)
     assert len(toks) == 3
-    assert toks[0].value == 100  # type: ignore[union-attr]
-    assert toks[1].value == 200  # type: ignore[union-attr]
+    assert isinstance(toks[0], COSInteger) and toks[0].value == 100
+    assert isinstance(toks[1], COSInteger) and toks[1].value == 200
     assert isinstance(toks[2], Operator) and toks[2].name == "m"
 
 

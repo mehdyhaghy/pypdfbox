@@ -1547,3 +1547,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/pd_page.py`: page resources now receive the page's resource cache, including inherited resource dictionaries.
 - `pypdfbox/filter/flate_decode.py`: raw-deflate fallback is limited to zlib header-format failures while truncated and checksum-bad zlib streams stay strict.
 - `pypdfbox/xmpbox/type/abstract_structured_type.py` and `array_property.py`: structured and array XMP properties gained Java-style camelCase aliases.
+
+## Wave 339 — xref entry aliases, field inheritance, overlay ownership, crypt methods, and stream recovery
+
+- `pypdfbox/pdfwriter/cos_writer_xref_entry.py`: xref entries gained Java-style aliases for their existing accessors.
+- `pypdfbox/pdmodel/interactive/form/pd_field_factory.py`: terminal child dispatch now resolves inherited `/FT` and `/Ff` through the full form chain.
+- `pypdfbox/multipdf/overlay.py`: overlay cleanup now closes only documents opened by the overlay utility itself.
+- `pypdfbox/pdmodel/encryption/pd_crypt_filter_dictionary.py`: crypt filter dictionaries gained raw `/CFM` getter and setter accessors while preserving string helpers.
+- `pypdfbox/pdfparser/pdf_stream_parser.py`: malformed content-stream dictionaries and arrays now stop parsing, close the source, and return `None`.
