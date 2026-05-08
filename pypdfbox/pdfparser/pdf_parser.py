@@ -130,8 +130,10 @@ class PDFParser:
         # parameter dictionary. Advisory only — the regular xref-walk
         # path below is unaffected (trailing xref still wins).
         self._detect_linearization()
-        startxref = self.find_startxref_offset()
+        startxref = self.find_startxref_offset(validate_bounds=not self._lenient)
         startxref = self._recover_xref_offset_if_needed(startxref)
+        if not self._xref_section_starts_at(startxref):
+            raise PDFParseError(f"startxref offset {startxref} does not point to xref")
         self._cos_parser.set_xref_offset(startxref)
         # Record so the incremental writer can chain its appended xref
         # via /Prev (PRD §6.5 cluster #2).
@@ -549,13 +551,15 @@ class PDFParser:
 
     # ---------- step 2: locate startxref ----------
 
-    def find_startxref_offset(self) -> int:
+    def find_startxref_offset(self, *, validate_bounds: bool = True) -> int:
         """Return the byte offset given by the ``startxref`` directive
         near the end of the file. Raises ``PDFParseError`` if not found.
 
         The trailing-byte scan window honours :meth:`get_eof_lookup_range`
         (default :data:`_TAIL_SCAN_BYTES`), matching upstream's
-        ``readTrailBytes`` knob."""
+        ``readTrailBytes`` knob. ``validate_bounds=False`` is used by the
+        lenient parse path so an invalid declared offset can still be
+        corrected by the brute-force xref search."""
         length = self._src.length()
         scan_from = max(0, length - self._eof_lookup_range)
         self._src.seek(scan_from)
@@ -571,7 +575,7 @@ class PDFParser:
         self._base.skip_whitespace()
         offset = self._base.read_int()
         # Defensive: ensure the offset is plausible.
-        if not 0 <= offset < length:
+        if validate_bounds and not 0 <= offset < length:
             raise PDFParseError(f"startxref offset {offset} out of file bounds")
         return offset
 

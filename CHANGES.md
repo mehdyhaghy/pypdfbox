@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_file_attachment.py`: exposes PDFBox attachment-name aliases, including the legacy misspelled setter.
+- `pypdfbox/pdmodel/graphics/color/pd_icc_based.py`: malformed ICCBased `/Range` arrays default component ranges to `(0.0, 1.0)`.
+- `pypdfbox/pdmodel/font/pd_font_factory.py`: embedded font-program headers are read from decoded stream bytes.
+- `pypdfbox/pdfparser/pdf_parser.py`: lenient parsing attempts shifted-offset recovery before rejecting out-of-bounds `startxref`.
+- `pypdfbox/pdmodel/common/filespecification/pd_embedded_file.py`: malformed PDF date timezone offsets return `None`.
 - `pypdfbox/pdmodel/pd_viewer_preferences.py`: includes the long-form deprecated `UseOC` non-full-screen page mode constant.
 - `pypdfbox/cos/cos_stream.py`: `stop_filters` canonicalizes standard filter aliases before comparison.
 - `pypdfbox/pdmodel/font/pd_cid_system_info.py`: string rendering uses Java-style `null` for missing registry or ordering.

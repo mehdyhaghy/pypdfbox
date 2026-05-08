@@ -107,7 +107,9 @@ def test_pd_icc_based_default_decode_uses_component_ranges() -> None:
     )
 
 
-def test_pd_icc_based_default_decode_defaults_missing_range_pairs() -> None:
+def test_pd_icc_based_short_range_defaults_all_pairs() -> None:
+    """PDFBox treats a malformed short /Range array as absent for the
+    whole ICCBased color space, not just for the missing trailing slots."""
     cs = PDICCBased()
     cs.set_n(3)
     rng = COSArray()
@@ -115,7 +117,8 @@ def test_pd_icc_based_default_decode_defaults_missing_range_pairs() -> None:
     rng.add(COSFloat(1.0))
     cs.set_range(rng)
 
-    assert cs.get_default_decode(8) == [-1.0, 1.0, 0.0, 1.0, 0.0, 1.0]
+    assert cs.get_range_for_component(0) == (0.0, 1.0)
+    assert cs.get_default_decode(8) == [0.0, 1.0] * 3
 
 
 # ---------- get_iccprofile_bytes ----------

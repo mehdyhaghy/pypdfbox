@@ -130,6 +130,45 @@ def test_parse_strict_mode_rejects_shifted_startxref_offset() -> None:
         p.parse()
 
 
+def test_parse_leniently_recovers_out_of_bounds_startxref_offset() -> None:
+    pdf = _build_pdf(
+        [b"1 0 obj\n<< /Type /Catalog >>\nendobj"],
+        b"<< /Size 2 /Root 1 0 R >>",
+    )
+    xref_offset = pdf.find(b"xref\n")
+    bad_pdf = pdf.replace(
+        b"startxref\n" + str(xref_offset).encode("ascii") + b"\n",
+        b"startxref\n9999999\n",
+    )
+
+    p = _parser(bad_pdf)
+    doc = p.parse()
+
+    try:
+        assert p.get_xref_offset() == xref_offset
+        assert doc.get_start_xref() == xref_offset
+        assert isinstance(doc.get_catalog(), COSDictionary)
+    finally:
+        doc.close()
+
+
+def test_parse_strict_mode_rejects_out_of_bounds_startxref_offset() -> None:
+    pdf = _build_pdf(
+        [b"1 0 obj\n<< /Type /Catalog >>\nendobj"],
+        b"<< /Size 2 /Root 1 0 R >>",
+    )
+    xref_offset = pdf.find(b"xref\n")
+    bad_pdf = pdf.replace(
+        b"startxref\n" + str(xref_offset).encode("ascii") + b"\n",
+        b"startxref\n9999999\n",
+    )
+    p = _parser(bad_pdf)
+    p.set_lenient(False)
+
+    with pytest.raises(PDFParseError, match="out of file bounds"):
+        p.parse()
+
+
 # ---------- end-to-end ----------
 
 

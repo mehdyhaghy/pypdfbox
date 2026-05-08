@@ -175,15 +175,14 @@ class PDICCBased(PDColorSpace):
         """Return the ``(low, high)`` pair from ``/Range`` for component
         ``n``. Mirrors upstream
         ``PDICCBased.getRangeForComponent(int) : PDRange``. Defaults to
-        ``(0.0, 1.0)`` when ``/Range`` is missing or the slot for ``n``
-        is absent — matches PDF 32000-1 §8.6.5.5."""
+        ``(0.0, 1.0)`` when ``/Range`` is missing or the array is too
+        short for all components — mirrors PDFBox's lenient handling of
+        malformed short ``/Range`` arrays."""
         rng = self.get_range()
-        if rng is None:
+        if rng is None or len(rng) < self.get_n() * 2:
             return (0.0, 1.0)
         low_idx = 2 * n
         high_idx = 2 * n + 1
-        if high_idx >= len(rng):
-            return (0.0, 1.0)
         floats = rng.to_float_array()
         return (float(floats[low_idx]), float(floats[high_idx]))
 

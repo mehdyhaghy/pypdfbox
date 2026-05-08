@@ -57,23 +57,25 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
     m = _PDF_DATE_RE.match(value.strip())
     if m is None:
         return None
-    year = int(m.group("year"))
-    month = int(m.group("month") or 1)
-    day = int(m.group("day") or 1)
-    hour = int(m.group("hour") or 0)
-    minute = int(m.group("minute") or 0)
-    second = int(m.group("second") or 0)
-    sign = m.group("offsign")
-    if sign is None or sign == "Z":
-        tz: _dt.tzinfo = _dt.UTC
-    else:
-        off_hour = int(m.group("offhour") or 0)
-        off_minute = int(m.group("offminute") or 0)
-        delta = _dt.timedelta(hours=off_hour, minutes=off_minute)
-        if sign == "-":
-            delta = -delta
-        tz = _dt.timezone(delta)
     try:
+        year = int(m.group("year"))
+        month = int(m.group("month") or 1)
+        day = int(m.group("day") or 1)
+        hour = int(m.group("hour") or 0)
+        minute = int(m.group("minute") or 0)
+        second = int(m.group("second") or 0)
+        sign = m.group("offsign")
+        if sign is None or sign == "Z":
+            tz: _dt.tzinfo = _dt.UTC
+        else:
+            off_hour = int(m.group("offhour") or 0)
+            off_minute = int(m.group("offminute") or 0)
+            if off_hour > 23 or off_minute > 59:
+                return None
+            delta = _dt.timedelta(hours=off_hour, minutes=off_minute)
+            if sign == "-":
+                delta = -delta
+            tz = _dt.timezone(delta)
         return _dt.datetime(year, month, day, hour, minute, second, tzinfo=tz)
     except ValueError:
         return None

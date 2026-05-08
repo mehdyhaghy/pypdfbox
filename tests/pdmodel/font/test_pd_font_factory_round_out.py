@@ -207,6 +207,14 @@ def test_get_font_program_header_reads_font_file3() -> None:
     assert out == b"OTTO"
 
 
+def test_get_font_program_header_reads_decoded_stream_bytes() -> None:
+    descriptor = COSDictionary()
+    stream = COSStream()
+    stream.set_data(b"OTTO\x00\x10", filters="FlateDecode")
+    descriptor.set_item(_FONT_FILE3, stream)
+    assert PDFontFactory.get_font_program_header(descriptor) == b"OTTO"
+
+
 def test_get_font_program_header_prefers_font_file_over_font_file2() -> None:
     # When both /FontFile and /FontFile2 are set, the one-true /FontFile
     # wins (matches upstream's getFontHeader preference order).

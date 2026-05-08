@@ -126,6 +126,19 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
             return
         self._dict.set_name(_NAME, name)
 
+    def getAttachmentName(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_attachment_name()
+
+    def setAttachmentName(  # noqa: N802 - upstream Java name
+        self, name: str | None
+    ) -> None:
+        self.set_attachment_name(name)
+
+    def setAttachementName(  # noqa: N802 - upstream legacy misspelling
+        self, name: str | None
+    ) -> None:
+        self.set_attachment_name(name)
+
     def has_attachment_name(self) -> bool:
         """``True`` when ``/Name`` is explicitly set (vs. relying on the
         ``"PushPin"`` spec default).

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.font_box_font import FontBoxFont
@@ -20,6 +21,9 @@ from .pd_type1_font import PDType1Font
 from .pd_type1c_font import PDType1CFont
 from .pd_type3_font import PDType3Font
 from .standard14_fonts import Standard14Fonts
+
+if TYPE_CHECKING:
+    from .pd_font_descriptor import PDFontDescriptor
 
 _LOG = logging.getLogger(__name__)
 
@@ -316,7 +320,7 @@ class PDFontFactory:
     @staticmethod
     def find_font_box_font(
         base_font: str,
-        font_descriptor: object | None = None,
+        font_descriptor: PDFontDescriptor | None = None,
     ) -> FontMapping[FontBoxFont] | None:
         """Resolve ``base_font`` through the active mapper.
 
@@ -571,7 +575,7 @@ class PDFontFactory:
     def get_font_program_header(
         font_descriptor: COSDictionary | None,
     ) -> bytes | None:
-        """Return the first 4 bytes of the embedded font program reachable
+        """Return the first 4 decoded bytes of the embedded font program reachable
         from ``font_descriptor`` — checks ``/FontFile`` then ``/FontFile2``
         then ``/FontFile3`` (matching upstream's preference order).
 
@@ -601,10 +605,10 @@ class PDFontFactory:
         for key in (_FONT_FILE, _FONT_FILE2, _FONT_FILE3):
             stream = font_descriptor.get_dictionary_object(key)
             if isinstance(stream, COSStream):
-                raw = stream.get_raw_data()
-                if raw is None or len(raw) < 4:
+                data = stream.to_byte_array()
+                if len(data) < 4:
                     return None
-                return bytes(raw[:4])
+                return bytes(data[:4])
         return None
 
     @staticmethod
