@@ -68,6 +68,17 @@ def test_get_suffix_maps_native_image_filters() -> None:
     assert image.get_suffix() == "jb2"
 
 
+def test_get_suffix_maps_short_native_filter_aliases() -> None:
+    image = _make_image()
+    cos = image.get_cos_object()
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("JPX"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "jpx"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("CCF"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "tiff"
+
+
 def test_get_suffix_maps_lossless_pdf_filters_to_png() -> None:
     image = _make_image()
     cos = image.get_cos_object()
@@ -79,6 +90,20 @@ def test_get_suffix_maps_lossless_pdf_filters_to_png() -> None:
     assert image.get_suffix() == "png"
 
     cos.set_item(COSName.FILTER, COSName.get_pdf_name("RunLengthDecode"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "png"
+
+
+def test_get_suffix_maps_short_lossless_filter_aliases_to_png() -> None:
+    image = _make_image()
+    cos = image.get_cos_object()
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("Fl"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "png"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("LZW"))  # type: ignore[attr-defined]
+    assert image.get_suffix() == "png"
+
+    cos.set_item(COSName.FILTER, COSName.get_pdf_name("RL"))  # type: ignore[attr-defined]
     assert image.get_suffix() == "png"
 
 

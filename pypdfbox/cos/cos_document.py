@@ -130,6 +130,22 @@ class COSDocument(COSBase):
     def get_object_keys(self) -> list[COSObjectKey]:
         return list(self._objects.keys())
 
+    def get_key(self, base_object: COSBase) -> COSObjectKey | None:
+        """Return the object-pool key for ``base_object``, or ``None``.
+
+        Mirrors PDFBox ``getKey(COSBase)``: this is a linear scan over the
+        pool and compares object identity, not value equality. Callers use
+        it when they already hold a resolved COS object and need its
+        indirect-reference key for lifecycle/update bookkeeping.
+        """
+        for key, cos_obj in self._objects.items():
+            if cos_obj is base_object or cos_obj.get_object() is base_object:
+                return key
+        return None
+
+    def getKey(self, base_object: COSBase) -> COSObjectKey | None:  # noqa: N802
+        return self.get_key(base_object)
+
     def remove_object(self, key: COSObjectKey) -> COSObject | None:
         return self._objects.pop(key, None)
 

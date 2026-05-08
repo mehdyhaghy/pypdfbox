@@ -260,6 +260,14 @@ def test_is_jpx_when_jpx_decode() -> None:
     assert image.is_jpeg() is False
 
 
+def test_is_jpx_when_short_jpx_filter_alias() -> None:
+    image = _make_image()
+    image.get_cos_object().set_item(
+        COSName.FILTER, COSName.get_pdf_name("JPX")  # type: ignore[attr-defined]
+    )
+    assert image.is_jpx() is True
+
+
 def test_is_jbig2_when_jbig2_decode() -> None:
     image = _make_image()
     image.get_cos_object().set_item(
@@ -272,6 +280,14 @@ def test_is_ccittfax_when_ccittfax_decode() -> None:
     image = _make_image()
     image.get_cos_object().set_item(
         COSName.FILTER, COSName.get_pdf_name("CCITTFaxDecode")  # type: ignore[attr-defined]
+    )
+    assert image.is_ccittfax() is True
+
+
+def test_is_ccittfax_when_short_ccf_filter_alias() -> None:
+    image = _make_image()
+    image.get_cos_object().set_item(
+        COSName.FILTER, COSName.get_pdf_name("CCF")  # type: ignore[attr-defined]
     )
     assert image.is_ccittfax() is True
 

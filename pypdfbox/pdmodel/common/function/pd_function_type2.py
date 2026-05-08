@@ -176,7 +176,28 @@ class PDFunctionType2(PDFunction):
         # Sized by min(c0, c1) — upstream parity.
         size = min(len(c0), len(c1))
         result = [c0[j] + x_pow * (c1[j] - c0[j]) for j in range(size)]
-        return self.clip_output(result)
+        return self._clip_output_to_range_dimensions(result)
+
+    def _clip_output_to_range_dimensions(self, values: list[float]) -> list[float]:
+        """Clip Type 2 outputs, sizing the result to explicit /Range pairs.
+
+        PDFBox's base ``clipToRange(float[])`` returns one value per range pair
+        whenever ``/Range`` is present. Keep that Type 2 parity locally without
+        changing this port's shared ``clip_output`` helper, whose public
+        contract preserves values beyond the declared range pairs.
+        """
+        ranges = self.get_ranges_for_outputs()
+        if not ranges:
+            return list(values)
+        out: list[float] = []
+        for i, (lo, hi) in enumerate(ranges):
+            if i >= len(values):
+                break
+            v = values[i]
+            if lo > hi:
+                lo, hi = hi, lo
+            out.append(min(max(v, lo), hi))
+        return out
 
     def __str__(self) -> str:
         """Mirror upstream ``toString()`` —

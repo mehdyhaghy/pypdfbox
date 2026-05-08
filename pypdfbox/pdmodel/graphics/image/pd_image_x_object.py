@@ -44,6 +44,11 @@ _RUN_LENGTH_DECODE: COSName = COSName.get_pdf_name("RunLengthDecode")
 _JBIG2_DECODE: COSName = COSName.get_pdf_name("JBIG2Decode")
 _MATTE: COSName = COSName.get_pdf_name("Matte")
 _DCT: COSName = COSName.get_pdf_name("DCT")
+_JPX: COSName = COSName.get_pdf_name("JPX")
+_CCF: COSName = COSName.get_pdf_name("CCF")
+_FL: COSName = COSName.get_pdf_name("Fl")
+_LZW: COSName = COSName.get_pdf_name("LZW")
+_RL: COSName = COSName.get_pdf_name("RL")
 
 # Public ``/Subtype /Image`` constant. Mirrors upstream's reliance on
 # ``COSName.IMAGE`` for ``/Subtype`` checks across the image cluster, and
@@ -200,11 +205,19 @@ class PDImageXObject(PDXObject):
             return "png"
         if _has_named_filter(filters, _DCT_DECODE, _DCT):
             return "jpg"
-        if _JPX_DECODE in filters:
+        if _has_named_filter(filters, _JPX_DECODE, _JPX):
             return "jpx"
-        if _CCITTFAX_DECODE in filters:
+        if _has_named_filter(filters, _CCITTFAX_DECODE, _CCF):
             return "tiff"
-        if any(f in filters for f in (_FLATE_DECODE, _LZW_DECODE, _RUN_LENGTH_DECODE)):
+        if _has_named_filter(
+            filters,
+            _FLATE_DECODE,
+            _FL,
+            _LZW_DECODE,
+            _LZW,
+            _RUN_LENGTH_DECODE,
+            _RL,
+        ):
             return "png"
         if _JBIG2_DECODE in filters:
             return "jb2"
@@ -582,7 +595,10 @@ class PDImageXObject(PDXObject):
 
     def is_jpx(self) -> bool:
         """Return ``True`` when the filter chain contains ``/JPXDecode``."""
-        return self._has_filter(_JPX_DECODE)
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return False
+        return _has_named_filter(cos.get_filter_list(), _JPX_DECODE, _JPX)
 
     def is_jbig2(self) -> bool:
         """Return ``True`` when the filter chain contains ``/JBIG2Decode``."""
@@ -590,7 +606,10 @@ class PDImageXObject(PDXObject):
 
     def is_ccittfax(self) -> bool:
         """Return ``True`` when the filter chain contains ``/CCITTFaxDecode``."""
-        return self._has_filter(_CCITTFAX_DECODE)
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return False
+        return _has_named_filter(cos.get_filter_list(), _CCITTFAX_DECODE, _CCF)
 
     # ---------- PIL image helper ----------
 
@@ -620,8 +639,8 @@ class PDImageXObject(PDXObject):
         if "DCTDecode" in filter_names or "DCT" in filter_names:
             with self.create_input_stream(stop_filters=["DCTDecode", "DCT"]) as src:
                 return Image.open(io.BytesIO(src.read())).convert("RGB")
-        if "JPXDecode" in filter_names:
-            with self.create_input_stream(stop_filters=["JPXDecode"]) as src:
+        if "JPXDecode" in filter_names or "JPX" in filter_names:
+            with self.create_input_stream(stop_filters=["JPXDecode", "JPX"]) as src:
                 return Image.open(io.BytesIO(src.read())).convert("RGB")
 
         bpc = self.get_bits_per_component()

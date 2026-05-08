@@ -210,6 +210,33 @@ def test_get_object_returns_existing_placeholder() -> None:
         assert doc.get_object(key) is placeholder
 
 
+def test_get_key_finds_pool_entry_for_resolved_object_by_identity() -> None:
+    with COSDocument() as doc:
+        key = COSObjectKey(8, 0)
+        target = COSDictionary()
+        target.set_int("Count", 3)
+        doc.get_object_from_pool(key).set_object(target)
+
+        assert doc.get_key(target) == key
+        assert doc.getKey(target) == key
+
+
+def test_get_key_does_not_match_equal_distinct_objects() -> None:
+    with COSDocument() as doc:
+        stored = COSInteger(4)
+        doc.get_object_from_pool(COSObjectKey(9, 0)).set_object(stored)
+
+        assert doc.get_key(COSInteger(4)) is None
+
+
+def test_get_key_accepts_pool_cos_object_itself() -> None:
+    with COSDocument() as doc:
+        key = COSObjectKey(10, 0)
+        placeholder = doc.get_object_from_pool(key)
+
+        assert doc.get_key(placeholder) == key
+
+
 def test_xref_table_round_trip() -> None:
     with COSDocument() as doc:
         table = {
@@ -217,7 +244,7 @@ def test_xref_table_round_trip() -> None:
             COSObjectKey(2, 0): 200,
             None: 999,  # PDFBOX-6132 — must be ignored
         }
-        doc.add_xref_table(table)  # type: ignore[arg-type]
+        doc.add_xref_table(table)
         x = doc.get_xref_table()
         assert x[COSObjectKey(1, 0)] == 100
         assert x[COSObjectKey(2, 0)] == 200
@@ -375,7 +402,7 @@ def test_create_cos_stream_copies_dictionary_entries() -> None:
         seed.set_name("Filter", "FlateDecode")
         stream = doc.create_cos_stream(seed)
         assert stream.get_int(COSName.LENGTH, -1) == 7  # type: ignore[attr-defined]
-        assert stream.get_dictionary_object(  # type: ignore[attr-defined]
+        assert stream.get_dictionary_object(
             COSName.FILTER  # type: ignore[attr-defined]
         ) == COSName.get_pdf_name("FlateDecode")
         stream.close()

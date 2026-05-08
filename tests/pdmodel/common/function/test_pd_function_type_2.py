@@ -273,6 +273,20 @@ def test_eval_clips_output_below_range_min() -> None:
     assert fn.eval([1.0]) == pytest.approx([0.0])
 
 
+def test_eval_with_shorter_range_truncates_extra_outputs() -> None:
+    """When /Range is present, PDFBox returns one output per range pair."""
+    fn = _make(
+        [0.0, 10.0, 100.0],
+        [1.0, 20.0, 200.0],
+        1.0,
+        domain=[0.0, 1.0],
+        rng=[0.0, 1.0, 0.0, 15.0],
+    )
+
+    assert fn.get_output_dimensions() == 2
+    assert fn.eval([1.0]) == pytest.approx([1.0, 15.0])
+
+
 def test_eval_no_range_no_clip() -> None:
     """When /Range is absent the raw eval result is returned unmodified."""
     fn = _make([0.0], [10.0], 1.0, domain=[0.0, 1.0])

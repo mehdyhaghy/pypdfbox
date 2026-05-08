@@ -24,6 +24,22 @@ def test_constructor_with_dict_preserves_subtype() -> None:
     assert ann.get_subtype() == "Widget"
 
 
+def test_constructor_with_dict_defaults_missing_type_to_annot() -> None:
+    d = COSDictionary()
+    ann = PDAnnotationWidget(d)
+    assert ann.get_cos_object().get_name(COSName.TYPE) == "Annot"  # type: ignore[attr-defined]
+
+
+def test_constructor_with_dict_preserves_existing_non_annot_type() -> None:
+    d = COSDictionary()
+    d.set_name(COSName.TYPE, "XObject")  # type: ignore[attr-defined]
+
+    ann = PDAnnotationWidget(d)
+
+    assert ann.get_cos_object().get_name(COSName.TYPE) == "XObject"  # type: ignore[attr-defined]
+    assert ann.get_subtype() == "Widget"
+
+
 def test_subtype_constant() -> None:
     assert PDAnnotationWidget.SUB_TYPE == "Widget"
 

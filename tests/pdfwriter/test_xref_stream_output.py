@@ -105,6 +105,45 @@ def test_constructor_flags_propagate() -> None:
         assert w.is_object_stream_output()
 
 
+def test_object_stream_requires_xref_stream_output() -> None:
+    sink = io.BytesIO()
+    doc = _make_doc()
+    try:
+        with pytest.raises(ValueError, match="requires xref_stream=True"), COSWriter(
+            sink, object_stream=True
+        ) as w:
+            w.write(doc)
+    finally:
+        doc.close()
+
+
+def test_object_stream_setter_requires_xref_stream_before_write() -> None:
+    sink = io.BytesIO()
+    doc = _make_doc()
+    try:
+        with pytest.raises(ValueError, match="requires xref_stream=True"), COSWriter(
+            sink
+        ) as w:
+            w.set_object_stream(True)
+            w.write(doc)
+    finally:
+        doc.close()
+
+
+def test_object_stream_rejects_hybrid_xref_output() -> None:
+    sink = io.BytesIO()
+    doc = _make_doc()
+    try:
+        with pytest.raises(
+            ValueError, match="not supported with hybrid_xref"
+        ), COSWriter(
+            sink, xref_stream=True, object_stream=True, hybrid_xref=True
+        ) as w:
+            w.write(doc)
+    finally:
+        doc.close()
+
+
 # ---------- regression: default path stays traditional ---------------------
 
 

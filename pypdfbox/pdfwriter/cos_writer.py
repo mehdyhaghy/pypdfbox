@@ -727,6 +727,8 @@ class COSWriter(ICOSVisitor):
                 f"{type(document).__name__}"
             )
 
+        self._validate_stream_output_flags()
+
         # Stage the encryption handler BEFORE numbering / serialisation so
         # that ``prepare_document`` has a chance to mutate the trailer
         # (it may add an /Encrypt indirect entry whose object number must
@@ -763,6 +765,21 @@ class COSWriter(ICOSVisitor):
         # may have been wrapped in an indirect since.
         self._refresh_encrypt_dict_id(cos_document)
         cos_document.accept(self)
+
+    def _validate_stream_output_flags(self) -> None:
+        """Reject flag combinations that would silently ignore ObjStm output."""
+        if not self._object_stream:
+            return
+        if self._hybrid_xref:
+            raise ValueError(
+                "object_stream output is not supported with hybrid_xref; "
+                "use xref_stream=True without hybrid_xref"
+            )
+        if not self._xref_stream:
+            raise ValueError(
+                "object_stream output requires xref_stream=True so packed "
+                "objects can be addressed by type-2 xref entries"
+            )
 
     # ---------- encryption staging ----------
 

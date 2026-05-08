@@ -68,6 +68,17 @@ def test_image_create_input_stream_delegates_to_pd_stream_stop_filters() -> None
     assert image.create_input_stream().read() == b"pixels"
 
 
+def test_image_create_input_stream_honors_short_filter_alias_stop() -> None:
+    encoded = zlib.compress(b"alias pixels")
+    stream = COSStream()
+    stream.set_raw_data(encoded)
+    stream.set_item(COSName.FILTER, COSName.get_pdf_name("Fl"))  # type: ignore[attr-defined]
+
+    image = PDImageXObject(stream)
+    assert image.create_input_stream(["FlateDecode"]).read() == encoded
+    assert image.create_input_stream().read() == b"alias pixels"
+
+
 def _g4_strip(image: Image.Image) -> bytes:
     """Encode a 1-bit Pillow image as a Group 4 TIFF and return only the
     encoded strip bytes."""
@@ -75,8 +86,8 @@ def _g4_strip(image: Image.Image) -> bytes:
     image.save(buf, format="TIFF", compression="group4")
     raw = buf.getvalue()
     parsed = Image.open(io.BytesIO(raw))
-    offsets = parsed.tag_v2[273]
-    counts = parsed.tag_v2[279]
+    offsets = parsed.tag_v2[273]  # type: ignore[attr-defined]
+    counts = parsed.tag_v2[279]  # type: ignore[attr-defined]
     offset = offsets[0] if isinstance(offsets, tuple) else offsets
     count = counts[0] if isinstance(counts, tuple) else counts
     return raw[offset : offset + count]
@@ -94,7 +105,10 @@ def test_image_xobject_decodes_ccitt_g4_end_to_end() -> None:
 
     stream = COSStream()
     stream.set_raw_data(encoded_strip)
-    stream.set_item(COSName.FILTER, COSName.get_pdf_name("CCITTFaxDecode"))
+    stream.set_item(
+        COSName.FILTER,  # type: ignore[attr-defined]
+        COSName.get_pdf_name("CCITTFaxDecode"),
+    )
     decode_parms = COSDictionary()
     decode_parms.set_int("K", -1)
     decode_parms.set_int("Columns", 8)
@@ -118,7 +132,10 @@ def test_image_xobject_decodes_run_length_end_to_end() -> None:
     encoded = b"\x01ab\xfdX\x01cd\x80"
     stream = COSStream()
     stream.set_raw_data(encoded)
-    stream.set_item(COSName.FILTER, COSName.get_pdf_name("RunLengthDecode"))
+    stream.set_item(
+        COSName.FILTER,  # type: ignore[attr-defined]
+        COSName.get_pdf_name("RunLengthDecode"),
+    )
 
     image = PDImageXObject(stream)
     image.set_width(8)

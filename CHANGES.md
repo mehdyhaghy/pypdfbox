@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_widget.py`: widget dictionaries preserve an existing non-`/Annot` `/Type` while stamping `/Subtype /Widget`.
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: image suffix and predicate helpers recognize standard short filter aliases.
+- `pypdfbox/cos/cos_document.py`: exposes `get_key()` / `getKey()` lookup for object-pool keys by resolved object identity.
+- `pypdfbox/pdfwriter/cos_writer.py`: unsupported object-stream output combinations fail early instead of being silently ignored.
+- `pypdfbox/pdmodel/common/function/pd_function_type2.py`: Type 2 functions clip outputs according to explicit `/Range` pairs.
 - `pypdfbox/pdmodel/fdf/fdf_dictionary.py`: `get_file()` returns a typed file specification and string helpers remain available.
 - `pypdfbox/fontbox/ttf/horizontal_metrics_table.py`: horizontal metric lookups guard negative and out-of-range glyph ids.
 - `pypdfbox/pdmodel/common/pd_matrix.py`: matrix row/column access rejects coordinates outside `0..2`.
