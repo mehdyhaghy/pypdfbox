@@ -123,7 +123,7 @@ class DublinCoreSchema(XMPSchema):
             Cardinality.Seq,
         )
         for item in items:
-            if isinstance(item, str):
+            if isinstance(item, str | datetime):
                 array.add_property(self._make_date(local_name, item))
         return array
 
@@ -471,7 +471,7 @@ class DublinCoreSchema(XMPSchema):
             return None
         result: list[datetime] = []
         for item in items:
-            if isinstance(item, str):
+            if isinstance(item, str | datetime):
                 result.append(self._make_date(self.DATE, item).get_value())
         return result
 

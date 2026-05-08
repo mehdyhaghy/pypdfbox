@@ -230,7 +230,7 @@ class PDComplexFileSpecification(PDFileSpecification):
         are ``Source``, ``Data``, ``Alternative``, ``Supplement``,
         ``EncryptedPayload``, ``FormData`` and ``Unspecified``.
         Mirrors PDFBox ``getAFRelationship()``."""
-        return self._fs.get_name(_AF_RELATIONSHIP)
+        return self._fs.get_name_as_string(_AF_RELATIONSHIP)
 
     def set_af_relationship(self, relationship: str | None) -> None:
         """Set the ``/AFRelationship`` name entry. Pass ``None`` to

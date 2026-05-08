@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDViewerPreferences
 
 
@@ -283,3 +283,40 @@ def test_construct_from_existing_dict() -> None:
     assert fetched.size() == 2
     assert fetched.get_int(0) == 2
     assert fetched.get_int(1) == 6
+
+
+def test_wave328_name_preferences_accept_cos_string_values() -> None:
+    raw = COSDictionary()
+    raw.set_item(
+        COSName.get_pdf_name("NonFullScreenPageMode"),
+        COSString("UseOutlines"),
+    )
+    raw.set_item(COSName.get_pdf_name("Direction"), COSString("R2L"))
+    raw.set_item(COSName.get_pdf_name("ViewArea"), COSString("MediaBox"))
+    raw.set_item(COSName.get_pdf_name("ViewClip"), COSString("BleedBox"))
+    raw.set_item(COSName.get_pdf_name("PrintArea"), COSString("TrimBox"))
+    raw.set_item(COSName.get_pdf_name("PrintClip"), COSString("ArtBox"))
+    raw.set_item(
+        COSName.get_pdf_name("Duplex"),
+        COSString("DuplexFlipLongEdge"),
+    )
+    raw.set_item(COSName.get_pdf_name("PrintScaling"), COSString("None"))
+
+    prefs = PDViewerPreferences(raw)
+
+    assert prefs.get_non_full_screen_page_mode() == "UseOutlines"
+    assert (
+        prefs.get_non_full_screen_page_mode_enum()
+        is PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE.UseOutlines
+    )
+    assert prefs.get_reading_direction() == "R2L"
+    assert prefs.get_reading_direction_enum() is PDViewerPreferences.READING_DIRECTION.R2L
+    assert prefs.get_view_area() == "MediaBox"
+    assert prefs.get_view_area_enum() is PDViewerPreferences.BOUNDARY.MediaBox
+    assert prefs.get_view_clip() == "BleedBox"
+    assert prefs.get_print_area() == "TrimBox"
+    assert prefs.get_print_clip() == "ArtBox"
+    assert prefs.get_duplex() == "DuplexFlipLongEdge"
+    assert prefs.get_duplex_enum() is PDViewerPreferences.DUPLEX.DuplexFlipLongEdge
+    assert prefs.get_print_scaling() == "None"
+    assert prefs.get_print_scaling_enum() is PDViewerPreferences.PRINT_SCALING.None_

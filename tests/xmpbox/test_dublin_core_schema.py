@@ -221,8 +221,9 @@ def test_creators_property_is_seq_of_proper_name() -> None:
     assert prop.get_array_type() is Cardinality.Seq
     children = prop.get_all_properties()
     assert len(children) == 2
-    assert all(isinstance(c, ProperNameType) for c in children)
-    assert [c.get_string_value() for c in children] == ["Alice", "Bob"]
+    typed_children = [c for c in children if isinstance(c, ProperNameType)]
+    assert len(typed_children) == 2
+    assert [c.get_string_value() for c in typed_children] == ["Alice", "Bob"]
 
 
 def test_set_creators_property_replaces_seq() -> None:
@@ -265,10 +266,7 @@ def test_contributors_property_is_bag() -> None:
     prop = dc.get_contributors_property()
     assert isinstance(prop, ArrayProperty)
     assert prop.get_array_type() is Cardinality.Bag
-    assert [c.get_string_value() for c in prop.get_all_properties()] == [
-        "Eve",
-        "Frank",
-    ]
+    assert prop.get_elements_as_string() == ["Eve", "Frank"]
     dc.remove_contributor("Eve")
     assert dc.get_contributors() == ["Frank"]
 
@@ -346,8 +344,9 @@ def test_dates_property_round_trip() -> None:
     assert isinstance(prop, ArrayProperty)
     assert prop.get_array_type() is Cardinality.Seq
     children = prop.get_all_properties()
-    assert all(isinstance(c, DateType) for c in children)
-    assert children[0].get_value() == when
+    first = children[0]
+    assert isinstance(first, DateType)
+    assert first.get_value() == when
 
 
 def test_dates_remove() -> None:
@@ -356,6 +355,31 @@ def test_dates_remove() -> None:
     dc.add_date(when)
     dc.remove_date(when)
     assert dc.get_dates() == []
+
+
+def test_wave328_dates_accept_inherited_datetime_sequence_entries() -> None:
+    dc = _dc()
+    when = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+    later = datetime(2025, 6, 7, 8, 9, 10, tzinfo=UTC)
+    dc.add_date(when)
+    dc.add_unqualified_sequence_date_value(DublinCoreSchema.DATE, later)
+
+    assert dc.get_dates() == [when, later]
+
+
+def test_wave328_dates_property_wraps_inherited_datetime_entries() -> None:
+    dc = _dc()
+    when = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+    dc.add_unqualified_sequence_date_value(DublinCoreSchema.DATE, when)
+
+    prop = dc.get_dates_property()
+
+    assert isinstance(prop, ArrayProperty)
+    assert prop.get_array_type() is Cardinality.Seq
+    children = prop.get_all_properties()
+    assert len(children) == 1
+    assert isinstance(children[0], DateType)
+    assert children[0].get_value() == when
 
 
 def test_set_creators_property_with_text_type_children_works() -> None:

@@ -1459,3 +1459,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/form/pd_acro_form.py`: field lookup now guards recursive `/Kids` traversal by COS dictionary identity.
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: short `/DCT` filters now count as JPEG for suffix detection, predicates, and PIL stop-filter handling.
 - `pypdfbox/tools/encrypt.py`: in-place encryption now writes through a sibling temp file and replaces the source only after a successful save.
+
+## Wave 328 — glyph aliases, AF relationships, private-key snapshots, Dublin Core dates, and viewer names
+
+- `pypdfbox/fontbox/ttf/glyph_data.py`: glyph descriptions gained PDFBox-style camelCase aliases that delegate to existing snake_case methods.
+- `pypdfbox/pdmodel/common/filespecification/pd_complex_file_specification.py`: `/AFRelationship` now reads string-form values through name-as-string lookup.
+- `pypdfbox/pdmodel/encryption/public_key_decryption_material.py`: raw private-key bytes are now copied on assignment so caller mutations cannot break lazy decoding.
+- `pypdfbox/xmpbox/dublin_core_schema.py`: `dc:date` typed rebuild/read paths now accept inherited `datetime` sequence entries.
+- `pypdfbox/pdmodel/pd_viewer_preferences.py`: name-valued viewer preference getters now accept COS strings as well as COS names.

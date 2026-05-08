@@ -256,7 +256,7 @@ class PDViewerPreferences:
     # ---------- name-valued accessors (with documented defaults) ----------
 
     def get_non_full_screen_page_mode(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _NON_FULL_SCREEN_PAGE_MODE,
             self.NON_FULL_SCREEN_PAGE_MODE.UseNone.value,
         ) or self.NON_FULL_SCREEN_PAGE_MODE.UseNone.value
@@ -273,7 +273,7 @@ class PDViewerPreferences:
         self._prefs.remove_item(_NON_FULL_SCREEN_PAGE_MODE)
 
     def get_reading_direction(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _DIRECTION, self.READING_DIRECTION.L2R.value
         ) or self.READING_DIRECTION.L2R.value
 
@@ -299,7 +299,7 @@ class PDViewerPreferences:
         self.clear_reading_direction()
 
     def get_view_area(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _VIEW_AREA, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
@@ -313,7 +313,7 @@ class PDViewerPreferences:
         self._prefs.remove_item(_VIEW_AREA)
 
     def get_view_clip(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _VIEW_CLIP, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
@@ -327,7 +327,7 @@ class PDViewerPreferences:
         self._prefs.remove_item(_VIEW_CLIP)
 
     def get_print_area(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _PRINT_AREA, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
@@ -341,7 +341,7 @@ class PDViewerPreferences:
         self._prefs.remove_item(_PRINT_AREA)
 
     def get_print_clip(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _PRINT_CLIP, self.BOUNDARY.CropBox.value
         ) or self.BOUNDARY.CropBox.value
 
@@ -356,7 +356,7 @@ class PDViewerPreferences:
 
     def get_duplex(self) -> str | None:
         # Upstream returns null when /Duplex is absent (no spec default).
-        return self._prefs.get_name(_DUPLEX)
+        return self._prefs.get_name_as_string(_DUPLEX)
 
     def set_duplex(self, value: DUPLEX | str | None) -> None:
         if value is None:
@@ -368,7 +368,7 @@ class PDViewerPreferences:
         self._prefs.remove_item(_DUPLEX)
 
     def get_print_scaling(self) -> str:
-        return self._prefs.get_name(
+        return self._prefs.get_name_as_string(
             _PRINT_SCALING, self.PRINT_SCALING.AppDefault.value
         ) or self.PRINT_SCALING.AppDefault.value
 

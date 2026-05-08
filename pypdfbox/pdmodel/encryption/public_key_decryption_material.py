@@ -87,7 +87,7 @@ class PublicKeyDecryptionMaterial:
         return serialization.load_der_private_key(data, password=self._password)
 
     def set_private_key(self, key: PrivateKeyLike) -> None:
-        self._private_key_raw = key
+        self._private_key_raw = bytes(key) if isinstance(key, (bytes, bytearray)) else key
 
     # ---------- password ----------
 
