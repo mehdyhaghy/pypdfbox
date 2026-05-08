@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+from pypdfbox.pdmodel.common.filespecification import (
+    PDComplexFileSpecification,
+    PDSimpleFileSpecification,
+)
 from pypdfbox.pdmodel.fdf import FDFAnnotation, FDFDictionary, FDFField
 
 
@@ -10,6 +14,7 @@ def test_default_constructor_is_empty() -> None:
     assert fdf.get_fields() is None
     assert fdf.get_annotations() is None
     assert fdf.get_file() is None
+    assert fdf.get_file_path() is None
 
 
 def test_fields_round_trip() -> None:
@@ -31,14 +36,31 @@ def test_fields_clear() -> None:
     assert fdf.get_fields() is None
 
 
-def test_file_round_trip_via_get_set_file_and_legacy_aliases() -> None:
+def test_file_round_trip_via_simple_file_spec_and_string_conveniences() -> None:
     fdf = FDFDictionary()
     fdf.set_file("source.pdf")
-    assert fdf.get_file() == "source.pdf"
-    # Upstream-spelling aliases.
+
+    fs = fdf.get_file()
+    assert isinstance(fs, PDSimpleFileSpecification)
+    assert fs.get_file() == "source.pdf"
+    assert fdf.get_file_path() == "source.pdf"
     assert fdf.get_f() == "source.pdf"
+
     fdf.set_f("other.pdf")
-    assert fdf.get_file() == "other.pdf"
+    assert fdf.get_file_path() == "other.pdf"
+
+
+def test_file_round_trip_via_complex_file_spec() -> None:
+    fdf = FDFDictionary()
+    fs = PDComplexFileSpecification()
+    fs.set_file("complex.pdf")
+
+    fdf.set_file(fs)
+
+    got = fdf.get_file()
+    assert isinstance(got, PDComplexFileSpecification)
+    assert got.get_file() == "complex.pdf"
+    assert fdf.get_file_path() == "complex.pdf"
 
 
 def test_status_round_trip() -> None:

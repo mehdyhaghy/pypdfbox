@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -27,7 +28,7 @@ def test_get_catalog_returns_same_wrapper() -> None:
     assert a is b
 
 
-def test_round_trip_through_save_and_load(tmp_path) -> None:
+def test_round_trip_through_save_and_load(tmp_path: Path) -> None:
     fdf = FDFDocument()
     cat = fdf.get_catalog()
     cat.get_fdf().set_status("OK")
@@ -39,7 +40,7 @@ def test_round_trip_through_save_and_load(tmp_path) -> None:
     loaded = FDFDocument.load(out)
     try:
         assert loaded.get_catalog().get_fdf().get_status() == "OK"
-        assert loaded.get_catalog().get_fdf().get_file() == "source.pdf"
+        assert loaded.get_catalog().get_fdf().get_file_path() == "source.pdf"
     finally:
         loaded.close()
 

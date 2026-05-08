@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from typing import cast
 
 import pytest
 
 from pypdfbox.fontbox.ttf.horizontal_metrics_table import HorizontalMetricsTable
+from pypdfbox.fontbox.ttf.true_type_font import TrueTypeFont
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
 
@@ -29,6 +31,10 @@ class _StubTTF:
         return self.h_header
 
 
+def _as_ttf(stub: _StubTTF) -> TrueTypeFont:
+    return cast(TrueTypeFont, stub)
+
+
 def _pack_metric(advance: int, lsb: int) -> bytes:
     return struct.pack(">Hh", advance, lsb)
 
@@ -46,8 +52,10 @@ def test_read_basic_h_metrics_only() -> None:
     ])
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
-    table.read(_StubTTF(num_glyphs=3, h_header=_StubHHEA(num_h_metrics=3)),
-              MemoryTTFDataStream(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=3, h_header=_StubHHEA(num_h_metrics=3))),
+        MemoryTTFDataStream(blob),
+    )
 
     assert table.get_initialized() is True
     assert table.get_advance_width(0) == 500
@@ -69,8 +77,10 @@ def test_read_with_trailing_lsb_array() -> None:
     ])
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
-    table.read(_StubTTF(num_glyphs=5, h_header=_StubHHEA(num_h_metrics=2)),
-              MemoryTTFDataStream(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=5, h_header=_StubHHEA(num_h_metrics=2))),
+        MemoryTTFDataStream(blob),
+    )
 
     # advance widths fall back to last-defined for gids >= num_h_metrics
     assert table.get_advance_width(0) == 500
@@ -95,7 +105,7 @@ def test_pdfbox_camelcase_accessors_delegate_to_snake_case() -> None:
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
     table.read(
-        _StubTTF(num_glyphs=3, h_header=_StubHHEA(num_h_metrics=2)),
+        _as_ttf(_StubTTF(num_glyphs=3, h_header=_StubHHEA(num_h_metrics=2))),
         MemoryTTFDataStream(blob),
     )
 
@@ -109,8 +119,7 @@ def test_read_raises_when_no_horizontal_header() -> None:
     table = HorizontalMetricsTable()
     table.set_length(0)
     with pytest.raises(OSError, match="Could not get hmtx table"):
-        table.read(_StubTTF(num_glyphs=1, h_header=None),
-                   MemoryTTFDataStream(b""))
+        table.read(_as_ttf(_StubTTF(num_glyphs=1, h_header=None)), MemoryTTFDataStream(b""))
 
 
 def test_read_handles_bad_font_too_many_h_metrics() -> None:
@@ -119,8 +128,10 @@ def test_read_handles_bad_font_too_many_h_metrics() -> None:
     blob = _pack_metric(500, 10) + _pack_metric(600, -5)
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
-    table.read(_StubTTF(num_glyphs=1, h_header=_StubHHEA(num_h_metrics=2)),
-              MemoryTTFDataStream(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=1, h_header=_StubHHEA(num_h_metrics=2))),
+        MemoryTTFDataStream(blob),
+    )
     assert table.get_advance_width(0) == 500
     # gid==1 falls back to last defined entry, since 1 == num_h_metrics-1 still
     # within array; for clarity check gid=2 too
@@ -133,8 +144,10 @@ def test_read_truncated_lsb_array_pads_with_zeros() -> None:
     blob = _pack_metric(500, 10) + _pack_lsb(7)
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
-    table.read(_StubTTF(num_glyphs=4, h_header=_StubHHEA(num_h_metrics=1)),
-              MemoryTTFDataStream(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=4, h_header=_StubHHEA(num_h_metrics=1))),
+        MemoryTTFDataStream(blob),
+    )
     assert table.get_left_side_bearing(0) == 10
     assert table.get_left_side_bearing(1) == 7
     assert table.get_left_side_bearing(2) == 0
@@ -153,11 +166,40 @@ def test_get_left_side_bearing_empty_returns_zero() -> None:
     assert table.get_left_side_bearing(0) == 0
 
 
+def test_invalid_negative_gid_does_not_use_python_negative_indexing() -> None:
+    blob = _pack_metric(500, 10) + _pack_metric(600, -5)
+    table = HorizontalMetricsTable()
+    table.set_length(len(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=2, h_header=_StubHHEA(num_h_metrics=2))),
+        MemoryTTFDataStream(blob),
+    )
+
+    assert table.get_advance_width(-1) == 250
+    assert table.get_left_side_bearing(-1) == 0
+
+
+def test_get_left_side_bearing_beyond_available_lsb_returns_zero() -> None:
+    blob = _pack_metric(500, 10) + _pack_lsb(7)
+    table = HorizontalMetricsTable()
+    table.set_length(len(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=2, h_header=_StubHHEA(num_h_metrics=1))),
+        MemoryTTFDataStream(blob),
+    )
+
+    assert table.get_left_side_bearing(1) == 7
+    assert table.get_left_side_bearing(2) == 0
+    assert table.get_left_side_bearing(99) == 0
+
+
 def test_signed_lsb_two_complement() -> None:
     blob = _pack_metric(1000, -32768) + _pack_metric(1000, 32767)
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
-    table.read(_StubTTF(num_glyphs=2, h_header=_StubHHEA(num_h_metrics=2)),
-              MemoryTTFDataStream(blob))
+    table.read(
+        _as_ttf(_StubTTF(num_glyphs=2, h_header=_StubHHEA(num_h_metrics=2))),
+        MemoryTTFDataStream(blob),
+    )
     assert table.get_left_side_bearing(0) == -32768
     assert table.get_left_side_bearing(1) == 32767

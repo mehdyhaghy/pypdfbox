@@ -136,6 +136,16 @@ def test_get_page_indices_by_labels() -> None:
     assert inv == {"1": 0, "2": 1, "3": 2}
 
 
+def test_get_page_indices_by_labels_ignores_out_of_document_ranges() -> None:
+    doc = _doc_with_pages(3)
+    labels = PDPageLabels(doc)
+    labels.set_label_range(2, style=PDPageLabels.STYLE_DECIMAL, prefix="A-")
+    labels.set_label_range(5, style=PDPageLabels.STYLE_DECIMAL, prefix="B-")
+
+    assert labels.get_labels_by_page_indices() == ["1", "2", "A-1"]
+    assert labels.get_page_indices_by_labels() == {"1": 0, "2": 1, "A-1": 2}
+
+
 def test_label_range_iterator_in_order() -> None:
     doc = _doc_with_pages(4)
     labels = PDPageLabels(doc)

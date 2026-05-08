@@ -145,11 +145,17 @@ class PDMatrix:
     def get_value(self, row: int, column: int) -> float:
         """Return the entry at ``(row, column)`` (0-indexed, row-major
         within the flat 3x3 storage)."""
-        return self._single[row * 3 + column]
+        return self._single[self._index(row, column)]
 
     def set_value(self, row: int, column: int, value: float) -> None:
         """Replace the entry at ``(row, column)``."""
-        self._single[row * 3 + column] = float(value)
+        self._single[self._index(row, column)] = float(value)
+
+    @staticmethod
+    def _index(row: int, column: int) -> int:
+        if row < 0 or row >= 3 or column < 0 or column >= 3:
+            raise IndexError("PDMatrix row and column must be in range 0..2")
+        return row * 3 + column
 
     def get_values(self) -> list[list[float]]:
         """Return the 3x3 matrix as a fresh ``list[list[float]]``.

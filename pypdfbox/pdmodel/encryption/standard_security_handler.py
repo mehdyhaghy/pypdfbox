@@ -643,6 +643,7 @@ class StandardSecurityHandler(SecurityHandler):
             )
             if key is None:
                 raise PDInvalidPasswordException()
+            owner_password = self._is_owner_password_r5_r6(password, o, u, revision)
             self.set_encryption_key(key)
             # Algorithm 13 — verify /Perms. Upstream merely warns on mismatch
             # since some encoders mis-emit the field; we do the same so we
@@ -654,15 +655,14 @@ class StandardSecurityHandler(SecurityHandler):
                     "Verification of /Perms failed — using /P from "
                     "the encryption dictionary"
                 )
-            # R5/R6: differentiating owner vs user path needs separate
-            # validation-salt checks (Algorithm 11/12). For now, default to
-            # /P-derived permissions; callers needing owner-vs-user distinction
-            # in R5/R6 can probe via ``compute_revision_5_or_6_owner_password``
-            # (left as future work — the existing standard tests in
-            # tests/pdmodel/encryption cover the key-derivation correctness).
-            ap = AccessPermission(self._permissions)
-            ap.set_read_only()
-            self.set_current_access_permission(ap)
+            if owner_password:
+                self.set_current_access_permission(
+                    AccessPermission.get_owner_access_permission()
+                )
+            else:
+                ap = AccessPermission(self._permissions)
+                ap.set_read_only()
+                self.set_current_access_permission(ap)
             return
 
         # Revisions 2-4: try owner password first, then user password.
@@ -1109,6 +1109,22 @@ class StandardSecurityHandler(SecurityHandler):
             return _aes_cbc_no_padding_decrypt(inter, b"\x00" * 16, ue[:32])
 
         return None
+
+    @classmethod
+    def _is_owner_password_r5_r6(
+        cls, password: bytes, o: bytes, u: bytes, revision: int
+    ) -> bool:
+        """Return True when ``password`` matches the r5/r6 owner hash."""
+        if len(o) < 40 or len(u) < 48:
+            return False
+        truncated_pw = password[:127]
+        owner_validation_salt = o[32:40]
+        return cls._compute_hash_r5_r6(
+            truncated_pw + owner_validation_salt + u[:48],
+            truncated_pw,
+            u[:48],
+            revision,
+        ) == o[:32]
 
     @classmethod
     def _compute_hash_r5_r6(

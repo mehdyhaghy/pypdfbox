@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject, COSString
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSObject, COSString
+from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
+    PDFileSpecification,
+)
 
 from .fdf_annotation import FDFAnnotation
 from .fdf_field import FDFField
@@ -62,24 +65,49 @@ class FDFDictionary:
             arr.add(f.get_cos_object())
         self._fdf.set_item(_FIELDS, arr)
 
-    # ---------- /F (source PDF file path) ----------
+    # ---------- /F (source PDF file specification) ----------
 
-    def get_file(self) -> str | None:
-        return self._fdf.get_string(_F)
+    def get_file(self) -> PDFileSpecification | None:
+        """Return ``/F`` typed as a :class:`PDFileSpecification`.
+
+        PDFBox exposes FDF ``/F`` as a file specification, not as a raw
+        string. A simple string-backed ``/F`` therefore returns a
+        :class:`PDSimpleFileSpecification`, while a dictionary-backed entry
+        returns a :class:`PDComplexFileSpecification`.
+        """
+        return PDFileSpecification.create_fs(self._fdf.get_dictionary_object(_F))
 
     def has_file(self) -> bool:
-        return self.get_file() is not None
+        return self._fdf.get_dictionary_object(_F) is not None
 
     def clear_file(self) -> None:
         self.set_file(None)
 
-    def set_file(self, file: str | None) -> None:
-        self._fdf.set_string(_F, file)
+    def set_file(self, file: PDFileSpecification | COSBase | str | bytes | None) -> None:
+        if file is None:
+            self._fdf.remove_item(_F)
+            return
+        if isinstance(file, PDFileSpecification):
+            self._fdf.set_item(_F, file.get_cos_object())
+            return
+        if isinstance(file, (str, bytes)):
+            self._fdf.set_string(_F, file)
+            return
+        self._fdf.set_item(_F, file)
 
-    # Upstream-spelling aliases (PDFBox uses ``getF``/``setF``).
+    # Plain string convenience over /F.
+
+    def get_file_path(self) -> str | None:
+        try:
+            fs = self.get_file()
+        except OSError:
+            return None
+        if fs is None:
+            return None
+        return fs.get_file()
 
     def get_f(self) -> str | None:
-        return self.get_file()
+        return self.get_file_path()
 
     def set_f(self, file: str | None) -> None:
         self.set_file(file)

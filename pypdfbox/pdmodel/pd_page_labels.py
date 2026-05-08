@@ -493,15 +493,18 @@ class PDPageLabels:
         handler: Callable[[int, str], object],
         number_of_pages: int,
     ) -> None:
-        if not self._labels:
+        if not self._labels or number_of_pages <= 0:
             return
         sorted_starts = sorted(self._labels)
         for i, start in enumerate(sorted_starts):
+            if start >= number_of_pages:
+                break
             label_info = self._labels[start]
             if i + 1 < len(sorted_starts):
-                num_pages = sorted_starts[i + 1] - start
+                range_end = min(sorted_starts[i + 1], number_of_pages)
             else:
-                num_pages = number_of_pages - start
+                range_end = number_of_pages
+            num_pages = range_end - start
             page_index = start
             for label in _LabelGenerator(label_info, num_pages):
                 handler(page_index, label)

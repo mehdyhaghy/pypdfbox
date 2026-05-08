@@ -165,7 +165,7 @@ def test_load_fdf_delegates_to_fdf_document_loader() -> None:
     try:
         assert isinstance(loaded, FDFDocument)
         assert loaded.get_catalog().get_fdf().get_status() == "OK"
-        assert loaded.get_catalog().get_fdf().get_file() == "source.pdf"
+        assert loaded.get_catalog().get_fdf().get_file_path() == "source.pdf"
     finally:
         loaded.close()
 

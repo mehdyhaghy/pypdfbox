@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/fdf/fdf_dictionary.py`: `get_file()` returns a typed file specification and string helpers remain available.
+- `pypdfbox/fontbox/ttf/horizontal_metrics_table.py`: horizontal metric lookups guard negative and out-of-range glyph ids.
+- `pypdfbox/pdmodel/common/pd_matrix.py`: matrix row/column access rejects coordinates outside `0..2`.
+- `pypdfbox/pdmodel/encryption/standard_security_handler.py`: AES-256 owner-password decryption grants owner permissions.
+- `pypdfbox/pdmodel/pd_page_labels.py`: computed page-label ranges are clamped to the actual document page count.
 - `pypdfbox/pdmodel/interactive/action/pd_additional_actions.py`: generic additional-actions wrapper supports `/F` trigger round-tripping.
 - `pypdfbox/pdmodel/common/pd_stream.py`: decode-parameter replacement clears stale `/DP`, and committed zero-byte streams report empty.
 - `pypdfbox/fontbox/cff/cff_font.py`: format-1 CFF encoding ranges stop at code `255` instead of wrapping.

@@ -56,7 +56,7 @@ class HorizontalMetricsTable(TTFTable):
         self.initialized = True
 
     def get_advance_width(self, gid: int) -> int:
-        if not self._advance_width:
+        if gid < 0 or not self._advance_width:
             return 250
         if gid < self._num_h_metrics:
             return self._advance_width[gid]
@@ -67,11 +67,14 @@ class HorizontalMetricsTable(TTFTable):
         return self.get_advance_width(gid)
 
     def get_left_side_bearing(self, gid: int) -> int:
-        if not self._left_side_bearing:
+        if gid < 0 or not self._left_side_bearing:
             return 0
         if gid < self._num_h_metrics:
             return self._left_side_bearing[gid]
-        return self._non_horizontal_left_side_bearing[gid - self._num_h_metrics]
+        non_horizontal_index = gid - self._num_h_metrics
+        if non_horizontal_index >= len(self._non_horizontal_left_side_bearing):
+            return 0
+        return self._non_horizontal_left_side_bearing[non_horizontal_index]
 
     def getLeftSideBearing(self, gid: int) -> int:  # noqa: N802 - upstream Java name
         return self.get_left_side_bearing(gid)

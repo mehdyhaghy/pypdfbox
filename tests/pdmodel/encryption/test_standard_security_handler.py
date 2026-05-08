@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
 from pypdfbox.pdmodel.encryption.security_handler import SecurityHandler
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
@@ -17,7 +18,6 @@ from pypdfbox.pdmodel.encryption.standard_security_handler import (
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
-
 
 # ----------------------------------------------------------------- helpers
 
@@ -221,6 +221,87 @@ def test_prepare_for_decryption_owner_password_r6() -> None:
         encryption, b"", StandardDecryptionMaterial("owner")
     )
     assert decoder.get_encryption_key() == handler.get_encryption_key()
+
+
+def test_prepare_for_decryption_owner_password_r6_gets_owner_permissions() -> None:
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os
+
+    handler.set_encryption_key(os.urandom(32))
+    restricted = AccessPermission()
+    restricted.set_can_print(False)
+    permissions = restricted.get_permission_bytes()
+    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", permissions
+    )
+
+    encryption = PDEncryption()
+    encryption.set_filter("Standard")
+    encryption.set_v(5)
+    encryption.set_revision(6)
+    encryption.set_length(256)
+    encryption.set_p(permissions)
+    encryption.set_o(o)
+    encryption.set_u(u)
+    encryption.set_oe(oe)
+    encryption.set_ue(ue)
+    encryption.set_perms(perms)
+
+    decoder = StandardSecurityHandler()
+    decoder.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial("owner")
+    )
+
+    current = decoder.get_current_access_permission()
+    assert current is not None
+    assert current.is_owner_permission()
+    assert current.can_print()
+
+
+def test_prepare_for_decryption_user_password_r6_keeps_limited_permissions() -> None:
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os
+
+    handler.set_encryption_key(os.urandom(32))
+    restricted = AccessPermission()
+    restricted.set_can_print(False)
+    permissions = restricted.get_permission_bytes()
+    o, oe, u, ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", permissions
+    )
+
+    encryption = PDEncryption()
+    encryption.set_filter("Standard")
+    encryption.set_v(5)
+    encryption.set_revision(6)
+    encryption.set_length(256)
+    encryption.set_p(permissions)
+    encryption.set_o(o)
+    encryption.set_u(u)
+    encryption.set_oe(oe)
+    encryption.set_ue(ue)
+    encryption.set_perms(perms)
+
+    decoder = StandardSecurityHandler()
+    decoder.prepare_for_decryption(
+        encryption, b"", StandardDecryptionMaterial("user")
+    )
+
+    current = decoder.get_current_access_permission()
+    assert current is not None
+    assert not current.is_owner_permission()
+    assert not current.can_print()
+    assert current.is_read_only()
 
 
 # ---------------------------------------------------------- per-object key
@@ -693,7 +774,7 @@ def test_compute_revision_number_consistent_with_round_trip() -> None:
         # methods the handler reaches for.
         class _DocStub:
             def __init__(self) -> None:
-                self.encryption = None
+                self.encryption: PDEncryption | None = None
 
             def set_encryption_dictionary(self, e: PDEncryption) -> None:
                 self.encryption = e
