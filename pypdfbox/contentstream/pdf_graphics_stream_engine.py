@@ -19,6 +19,7 @@ from .operator.color.set_stroking_gray import SetStrokingGray
 from .operator.color.set_stroking_rgb import SetStrokingRGB
 from .operator.graphics.concatenate_matrix import ConcatenateMatrix
 from .operator.graphics.invoke_named_xobject import InvokeNamedXObject
+from .operator.graphics.shading_fill import ShadingFill
 from .operator.imagecontent.begin_inline_image import BeginInlineImage
 from .operator.markedcontent.begin_marked_content import BeginMarkedContent
 from .operator.markedcontent.begin_marked_content_with_props import (
@@ -185,6 +186,7 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             SetNonStrokingColor(),                # sc
             SetStrokingColorN(),                  # SCN
             SetNonStrokingColorN(),               # scn
+            ShadingFill(),                        # sh
             CurveToReplicateInitialPoint(),       # v
             ClipNonZeroWinding(),                 # W
             ClipEvenOdd(),                        # W*
@@ -200,7 +202,7 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             # consistent with upstream's ``addOperator(new X(this))``
             # invariant — every registered processor sees its engine.
             processor.set_context(self)
-            self._operators[processor.get_name()] = processor
+            self._operators[processor.get_name()] = processor  # type: ignore[assignment]
 
         # Device color operators need engine context so they can forward
         # PDColor values into the color-state hooks. They overwrite the
@@ -213,7 +215,7 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             SetStrokingCMYK(),                     # K
             SetNonStrokingCMYK(),                  # k
         ):
-            self.add_operator(color_processor)
+            self.add_operator(color_processor)  # type: ignore[arg-type]
 
         # Engine-bound text-operator handlers (call back into engine hooks
         # via ``get_context()``). These need ``add_operator`` so the

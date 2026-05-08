@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import IO
+from io import BytesIO
+from typing import IO, cast
 from xml.etree import ElementTree as ET
 
 from .adobe_pdf_schema import AdobePDFSchema
@@ -171,6 +172,7 @@ class DomXmpParser:
         body, xpacket_begin, xpacket_id, xpacket_bytes, xpacket_encoding, xpacket_end = (
             self._extract_packet(raw)
         )
+        namespace_prefixes = self._collect_namespace_prefixes(body)
 
         try:
             # ``fromstring`` accepts bytes; the XML declaration's encoding is
@@ -202,7 +204,7 @@ class DomXmpParser:
         # per namespace (this is how PDFBOX-5976 is shaped).
         per_ns: dict[str, XMPSchema] = {}
         for desc in rdf.findall(f"{{{_RDF_NS}}}Description"):
-            self._merge_description(desc, metadata, per_ns)
+            self._merge_description(desc, metadata, per_ns, namespace_prefixes)
 
         for schema in per_ns.values():
             metadata.add_schema(schema)
@@ -270,7 +272,7 @@ class DomXmpParser:
         """
         if per_ns is None:
             per_ns = {}
-        self._merge_description(desc, metadata, per_ns)
+        self._merge_description(desc, metadata, per_ns, {})
         return per_ns
 
     def parse_property(self, element: ET.Element) -> object:
@@ -338,11 +340,32 @@ class DomXmpParser:
         rdf = root.find(f"{{{_RDF_NS}}}RDF")
         return rdf
 
+    @staticmethod
+    def _collect_namespace_prefixes(body: bytes) -> dict[str, str]:
+        """
+        Return namespace URI -> first prefix seen in the packet.
+
+        ``ElementTree`` expands element names to ``{uri}local`` and drops the
+        source ``xmlns`` declarations from ``Element.attrib``. The parser needs
+        this side table for fallback schemas whose prefixes are not known ahead
+        of time.
+        """
+        prefixes: dict[str, str] = {}
+        try:
+            for _event, ns in ET.iterparse(BytesIO(body), events=("start-ns",)):
+                prefix, uri = cast(tuple[str, str], ns)
+                prefixes.setdefault(uri, prefix)
+        except ET.ParseError:
+            # Preserve the main parse path's existing FORMAT exception message.
+            return {}
+        return prefixes
+
     def _merge_description(
         self,
         desc: ET.Element,
         metadata: XMPMetadata,
         per_ns: dict[str, XMPSchema],
+        namespace_prefixes: dict[str, str],
     ) -> None:
         about = desc.get(f"{{{_RDF_NS}}}about", "")
 
@@ -353,7 +376,9 @@ class DomXmpParser:
             ns, local = _strip_qname(qname)
             if ns in ("", _RDF_NS, _XML_NS):
                 continue
-            schema = self._schema_for(ns, local, desc, metadata, per_ns, about)
+            schema = self._schema_for(
+                ns, local, desc, metadata, per_ns, about, namespace_prefixes
+            )
             schema.set_text_property_value(local, value)
 
         # Element-form properties: each direct child whose namespace is not RDF
@@ -362,7 +387,9 @@ class DomXmpParser:
             ns, local = _strip_qname(child.tag)
             if ns == _RDF_NS:
                 continue
-            schema = self._schema_for(ns, local, desc, metadata, per_ns, about)
+            schema = self._schema_for(
+                ns, local, desc, metadata, per_ns, about, namespace_prefixes
+            )
             parsed_value = self._parse_property_value(child)
             self._assign(schema, local, parsed_value)
 
@@ -374,17 +401,21 @@ class DomXmpParser:
         metadata: XMPMetadata,
         per_ns: dict[str, XMPSchema],
         about: str,
+        namespace_prefixes: dict[str, str],
     ) -> XMPSchema:
         existing = per_ns.get(ns)
         if existing is not None:
             return existing
         cls = _SCHEMA_REGISTRY.get(ns, XMPSchema)
         if cls is XMPSchema:
-            # Plain schema needs explicit namespace. Prefix is best-effort:
-            # infer it from the description element's xmlns map by scanning
-            # attributes — ElementTree drops xmlns declarations from .attrib,
-            # so we fall back to "ns0" if nothing better is available.
-            schema = XMPSchema(metadata, namespace_uri=ns, prefix="ns0")
+            # Plain schema needs explicit namespace. Prefix comes from
+            # ``start-ns`` events because ElementTree drops xmlns declarations
+            # from ``Element.attrib``.
+            schema = XMPSchema(
+                metadata,
+                namespace_uri=ns,
+                prefix=namespace_prefixes.get(ns) or "ns0",
+            )
         else:
             schema = cls(metadata)
         schema.set_about(about)

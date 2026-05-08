@@ -310,6 +310,8 @@ def create_pdf_from_text(
     resulting PDF is valid for Adobe Reader and friends — matches the
     ``textIsEmpty`` branch in upstream.
     """
+    if font_size <= 0:
+        raise ValueError(f"font size must be positive: {font_size}")
     if line_spacing <= 0:
         raise ValueError(f"line spacing must be positive: {line_spacing}")
 

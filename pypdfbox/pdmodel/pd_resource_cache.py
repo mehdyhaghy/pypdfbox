@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from pypdfbox.cos import COSObject
 
@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
     from pypdfbox.pdmodel.graphics.shading import PDShading
     from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
+
+
+_T = TypeVar("_T")
+_StableKey = tuple[int, int]
 
 
 class PDResourceCache(ABC):
@@ -124,6 +128,7 @@ class PDResourceCache(ABC):
     def put_cid_font(self, indirect: COSObject, cid_font: PDCIDFont) -> None:
         """Cache ``cid_font`` under ``indirect``. Mirrors upstream
         ``ResourceCache.put(COSObject, PDCIDFont)`` default (no-op)."""
+        return None
 
     # ---------- font descriptors ----------
 
@@ -139,6 +144,7 @@ class PDResourceCache(ABC):
     ) -> None:
         """Cache ``font_descriptor`` under ``indirect``. Mirrors upstream
         default ``put(COSObject, PDFontDescriptor)`` (no-op)."""
+        return None
 
     # ---------- removal hooks (default ``None``, matching upstream) ----------
 
@@ -234,11 +240,6 @@ class DefaultResourceCache(PDResourceCache):
     MAX_REMOVALS: int = 3
 
     def __init__(self, enable_stable_cache: bool = True) -> None:
-        # Upstream parameter ``enableStableCache`` (default ``true``) gates
-        # the post-``MAX_REMOVALS`` "stop honouring removals" behaviour.
-        # pypdfbox doesn't yet implement the SoftReference-driven eviction
-        # path, so the flag is currently stored for API parity only — see
-        # ``CHANGES.md`` for the deviation note.
         self._stable_cache_enabled: bool = enable_stable_cache
         self._fonts: dict[COSObject, PDFont] = {}
         self._cid_fonts: dict[COSObject, PDCIDFont] = {}
@@ -249,6 +250,20 @@ class DefaultResourceCache(PDResourceCache):
         self._shadings: dict[COSObject, PDShading] = {}
         self._ext_g_states: dict[COSObject, PDExtendedGraphicsState] = {}
         self._property_lists: dict[COSObject, PDPropertyList] = {}
+        self._removed_fonts: dict[_StableKey, int] = {}
+        self._stable_fonts: set[_StableKey] = set()
+        self._removed_xobjects: dict[_StableKey, int] = {}
+        self._stable_xobjects: set[_StableKey] = set()
+        self._removed_color_spaces: dict[_StableKey, int] = {}
+        self._stable_color_spaces: set[_StableKey] = set()
+        self._removed_patterns: dict[_StableKey, int] = {}
+        self._stable_patterns: set[_StableKey] = set()
+        self._removed_shadings: dict[_StableKey, int] = {}
+        self._stable_shadings: set[_StableKey] = set()
+        self._removed_ext_g_states: dict[_StableKey, int] = {}
+        self._stable_ext_g_states: set[_StableKey] = set()
+        self._removed_property_lists: dict[_StableKey, int] = {}
+        self._stable_property_lists: set[_StableKey] = set()
 
     # ---------- fonts ----------
 
@@ -341,15 +356,30 @@ class DefaultResourceCache(PDResourceCache):
     # ---------- removal hooks ----------
 
     def remove_color_space(self, indirect: COSObject) -> PDColorSpace | None:
-        return self._color_spaces.pop(indirect, None)
+        return self._remove_stable(
+            self._color_spaces,
+            self._removed_color_spaces,
+            self._stable_color_spaces,
+            indirect,
+        )
 
     def remove_ext_g_state(
         self, indirect: COSObject
     ) -> PDExtendedGraphicsState | None:
-        return self._ext_g_states.pop(indirect, None)
+        return self._remove_stable(
+            self._ext_g_states,
+            self._removed_ext_g_states,
+            self._stable_ext_g_states,
+            indirect,
+        )
 
     def remove_font(self, indirect: COSObject) -> PDFont | None:
-        return self._fonts.pop(indirect, None)
+        return self._remove_stable(
+            self._fonts,
+            self._removed_fonts,
+            self._stable_fonts,
+            indirect,
+        )
 
     def remove_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
         return self._cid_fonts.pop(indirect, None)
@@ -360,18 +390,38 @@ class DefaultResourceCache(PDResourceCache):
         return self._font_descriptors.pop(indirect, None)
 
     def remove_shading(self, indirect: COSObject) -> PDShading | None:
-        return self._shadings.pop(indirect, None)
+        return self._remove_stable(
+            self._shadings,
+            self._removed_shadings,
+            self._stable_shadings,
+            indirect,
+        )
 
     def remove_pattern(self, indirect: COSObject) -> PDAbstractPattern | None:
-        return self._patterns.pop(indirect, None)
+        return self._remove_stable(
+            self._patterns,
+            self._removed_patterns,
+            self._stable_patterns,
+            indirect,
+        )
 
     def remove_property_list(
         self, indirect: COSObject
     ) -> PDPropertyList | None:
-        return self._property_lists.pop(indirect, None)
+        return self._remove_stable(
+            self._property_lists,
+            self._removed_property_lists,
+            self._stable_property_lists,
+            indirect,
+        )
 
     def remove_x_object(self, indirect: COSObject) -> PDXObject | None:
-        return self._xobjects.pop(indirect, None)
+        return self._remove_stable(
+            self._xobjects,
+            self._removed_xobjects,
+            self._stable_xobjects,
+            indirect,
+        )
 
     # ---------- maintenance ----------
 
@@ -395,3 +445,41 @@ class DefaultResourceCache(PDResourceCache):
         self._shadings.clear()
         self._ext_g_states.clear()
         self._property_lists.clear()
+        self._removed_fonts.clear()
+        self._stable_fonts.clear()
+        self._removed_xobjects.clear()
+        self._stable_xobjects.clear()
+        self._removed_color_spaces.clear()
+        self._stable_color_spaces.clear()
+        self._removed_patterns.clear()
+        self._stable_patterns.clear()
+        self._removed_shadings.clear()
+        self._stable_shadings.clear()
+        self._removed_ext_g_states.clear()
+        self._stable_ext_g_states.clear()
+        self._removed_property_lists.clear()
+        self._stable_property_lists.clear()
+
+    @staticmethod
+    def _stable_key(indirect: COSObject) -> _StableKey:
+        return (indirect.get_object_number(), indirect.get_generation_number())
+
+    def _remove_stable(
+        self,
+        cache: dict[COSObject, _T],
+        removed_counts: dict[_StableKey, int],
+        stable_keys: set[_StableKey],
+        indirect: COSObject,
+    ) -> _T | None:
+        if self._stable_cache_enabled:
+            key = self._stable_key(indirect)
+            if key in stable_keys:
+                return None
+            counter = removed_counts.setdefault(key, 1)
+            if counter < self.MAX_REMOVALS:
+                removed_counts[key] = counter + 1
+            else:
+                stable_keys.add(key)
+                removed_counts.pop(key, None)
+                return None
+        return cache.pop(indirect, None)

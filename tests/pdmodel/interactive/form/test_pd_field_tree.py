@@ -201,6 +201,22 @@ def test_pd_field_tree_contains_on_empty_tree() -> None:
     assert stub not in tree
 
 
+def test_iterator_skips_erroneous_non_field_root_dictionary() -> None:
+    form = PDAcroForm()
+    fields = COSArray()
+    fields.add(COSDictionary())
+
+    text = COSDictionary()
+    text.set_name("FT", "Tx")
+    text.set_string("T", "real")
+    fields.add(text)
+    form.get_cos_object().set_item("Fields", fields)
+
+    assert [field.get_fully_qualified_name() for field in form.get_field_tree()] == [
+        "real",
+    ]
+
+
 def test_iterator_skips_repeated_cos_dictionary_to_avoid_recursion(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

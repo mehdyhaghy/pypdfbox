@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from pypdfbox import PDDocument
@@ -17,6 +19,10 @@ def _ref(object_number: int, generation_number: int = 0) -> COSObject:
     return COSObject(object_number, generation_number)
 
 
+def _font_standin() -> Any:
+    return COSDictionary()
+
+
 # ---------- DefaultResourceCache ----------
 
 
@@ -27,7 +33,7 @@ def test_default_cache_is_a_pd_resource_cache() -> None:
 def test_put_font_get_font_round_trip() -> None:
     cache = DefaultResourceCache()
     key = _ref(7)
-    font = COSDictionary()  # stand-in for a PDFont wrapper
+    font = _font_standin()
     cache.put_font(key, font)
     assert cache.get_font(key) is font
 
@@ -53,7 +59,7 @@ def test_get_x_object_missing_returns_none() -> None:
 def test_clear_empties_the_cache() -> None:
     cache = DefaultResourceCache()
     key = _ref(3)
-    cache.put_font(key, COSDictionary())
+    cache.put_font(key, _font_standin())
     cache.put_x_object(key, PDFormXObject(COSStream()))
     cache.put_color_space(key, object())  # type: ignore[arg-type]
     cache.put_pattern(key, object())  # type: ignore[arg-type]
@@ -75,7 +81,7 @@ def test_identity_caching_same_key_returns_same_instance() -> None:
     resolve to the same cached entry — the cache keys on
     ``(object_number, generation_number)`` equality, not identity."""
     cache = DefaultResourceCache()
-    font = COSDictionary()
+    font = _font_standin()
     cache.put_font(_ref(11, 0), font)
     # Different COSObject instance, same ref pair.
     assert cache.get_font(_ref(11, 0)) is font
@@ -83,7 +89,7 @@ def test_identity_caching_same_key_returns_same_instance() -> None:
 
 def test_distinct_keys_do_not_collide() -> None:
     cache = DefaultResourceCache()
-    a, b = COSDictionary(), COSDictionary()
+    a, b = _font_standin(), _font_standin()
     cache.put_font(_ref(1), a)
     cache.put_font(_ref(2), b)
     assert cache.get_font(_ref(1)) is a
@@ -93,7 +99,7 @@ def test_distinct_keys_do_not_collide() -> None:
 def test_each_category_is_isolated() -> None:
     cache = DefaultResourceCache()
     key = _ref(5)
-    font = COSDictionary()
+    font = _font_standin()
     cache.put_font(key, font)
     # Same key in a different category should miss.
     assert cache.get_color_space(key) is None
@@ -127,9 +133,8 @@ def test_set_resource_cache_to_none_disables_caching() -> None:
     # Force lazy allocation.
     doc.get_resource_cache()
     doc.set_resource_cache(None)
-    # Next access lazily re-allocates a fresh DefaultResourceCache.
-    cache = doc.get_resource_cache()
-    assert isinstance(cache, DefaultResourceCache)
+    # ``None`` is an explicit "disabled" value, not an unset sentinel.
+    assert doc.get_resource_cache() is None
 
 
 def test_add_signature_rejects_non_pdsignature() -> None:
@@ -157,8 +162,8 @@ def test_register_true_type_font_for_closing_is_a_noop() -> None:
 def test_put_cid_font_get_cid_font_round_trip() -> None:
     cache = DefaultResourceCache()
     key = _ref(20)
-    cid_font = COSDictionary()  # stand-in for a PDCIDFont wrapper
-    cache.put_cid_font(key, cid_font)  # type: ignore[arg-type]
+    cid_font: Any = COSDictionary()  # stand-in for a PDCIDFont wrapper
+    cache.put_cid_font(key, cid_font)
     assert cache.get_cid_font(key) is cid_font
 
 
@@ -169,8 +174,8 @@ def test_get_cid_font_missing_returns_none() -> None:
 def test_put_font_descriptor_get_font_descriptor_round_trip() -> None:
     cache = DefaultResourceCache()
     key = _ref(22)
-    descriptor = COSDictionary()  # stand-in for a PDFontDescriptor
-    cache.put_font_descriptor(key, descriptor)  # type: ignore[arg-type]
+    descriptor: Any = COSDictionary()  # stand-in for a PDFontDescriptor
+    cache.put_font_descriptor(key, descriptor)
     assert cache.get_font_descriptor(key) is descriptor
 
 
@@ -196,7 +201,7 @@ def test_remove_methods_return_value_and_clear_each_category() -> None:
     cache = DefaultResourceCache()
     key = _ref(32)
     font, xobject, ext, shading, pattern, prop = (
-        COSDictionary(),
+        _font_standin(),
         PDFormXObject(COSStream()),
         object(),
         object(),
@@ -229,9 +234,10 @@ def test_remove_methods_return_value_and_clear_each_category() -> None:
 def test_remove_cid_font_and_font_descriptor_round_trip() -> None:
     cache = DefaultResourceCache()
     key = _ref(33)
-    cid_font, descriptor = COSDictionary(), COSDictionary()
-    cache.put_cid_font(key, cid_font)  # type: ignore[arg-type]
-    cache.put_font_descriptor(key, descriptor)  # type: ignore[arg-type]
+    cid_font: Any = COSDictionary()
+    descriptor: Any = COSDictionary()
+    cache.put_cid_font(key, cid_font)
+    cache.put_font_descriptor(key, descriptor)
 
     assert cache.remove_cid_font(key) is cid_font
     assert cache.remove_font_descriptor(key) is descriptor
@@ -245,46 +251,46 @@ class _MinimalCache(PDResourceCache):
     :class:`PDResourceCache`. Mirrors the upstream ``ResourceCache`` defaults
     that return ``null``."""
 
-    def get_font(self, indirect):  # type: ignore[override]
+    def get_font(self, indirect: COSObject) -> Any:
         return None
 
-    def put_font(self, indirect, font):  # type: ignore[override]
+    def put_font(self, indirect: COSObject, font: Any) -> None:
         pass
 
-    def get_x_object(self, indirect):  # type: ignore[override]
+    def get_x_object(self, indirect: COSObject) -> Any:
         return None
 
-    def put_x_object(self, indirect, xobject):  # type: ignore[override]
+    def put_x_object(self, indirect: COSObject, xobject: Any) -> None:
         pass
 
-    def get_color_space(self, indirect):  # type: ignore[override]
+    def get_color_space(self, indirect: COSObject) -> Any:
         return None
 
-    def put_color_space(self, indirect, color_space):  # type: ignore[override]
+    def put_color_space(self, indirect: COSObject, color_space: Any) -> None:
         pass
 
-    def get_pattern(self, indirect):  # type: ignore[override]
+    def get_pattern(self, indirect: COSObject) -> Any:
         return None
 
-    def put_pattern(self, indirect, pattern):  # type: ignore[override]
+    def put_pattern(self, indirect: COSObject, pattern: Any) -> None:
         pass
 
-    def get_shading(self, indirect):  # type: ignore[override]
+    def get_shading(self, indirect: COSObject) -> Any:
         return None
 
-    def put_shading(self, indirect, shading):  # type: ignore[override]
+    def put_shading(self, indirect: COSObject, shading: Any) -> None:
         pass
 
-    def get_ext_g_state(self, indirect):  # type: ignore[override]
+    def get_ext_g_state(self, indirect: COSObject) -> Any:
         return None
 
-    def put_ext_g_state(self, indirect, ext_g_state):  # type: ignore[override]
+    def put_ext_g_state(self, indirect: COSObject, ext_g_state: Any) -> None:
         pass
 
-    def get_property_list(self, indirect):  # type: ignore[override]
+    def get_property_list(self, indirect: COSObject) -> Any:
         return None
 
-    def put_property_list(self, indirect, property_list):  # type: ignore[override]
+    def put_property_list(self, indirect: COSObject, property_list: Any) -> None:
         pass
 
 
@@ -391,7 +397,76 @@ def test_stable_cache_can_be_disabled_via_constructor() -> None:
     # Removals still work regardless of the flag (eviction policy is a no-op
     # until SoftReference semantics are implemented — see CHANGES.md).
     key = _ref(60)
-    font = COSDictionary()
+    font = _font_standin()
+    cache.put_font(key, font)
+    assert cache.remove_font(key) is font
+    assert cache.get_font(key) is None
+
+
+def test_stable_cache_stops_removing_shared_font_after_threshold() -> None:
+    """Upstream stable caching marks repeatedly removed resources as stable
+    after ``MAX_REMOVALS`` attempts; the threshold removal itself is ignored."""
+    cache = DefaultResourceCache()
+    key = _ref(61)
+
+    first = _font_standin()
+    cache.put_font(key, first)
+    assert cache.remove_font(key) is first
+
+    second = _font_standin()
+    cache.put_font(_ref(61), second)
+    assert cache.remove_font(_ref(61)) is second
+
+    stable = _font_standin()
+    cache.put_font(key, stable)
+    assert cache.remove_font(key) is None
+    assert cache.get_font(_ref(61)) is stable
+
+    assert cache.remove_font(_ref(61)) is None
+    assert cache.get_font(key) is stable
+
+
+def test_stable_cache_disabled_keeps_honoring_repeated_removals() -> None:
+    cache = DefaultResourceCache(enable_stable_cache=False)
+    key = _ref(62)
+
+    for _ in range(DefaultResourceCache.MAX_REMOVALS + 1):
+        font = _font_standin()
+        cache.put_font(key, font)
+        assert cache.remove_font(_ref(62)) is font
+        assert cache.get_font(key) is None
+
+
+def test_stable_cache_applies_to_upstream_removal_aliases() -> None:
+    cache = DefaultResourceCache()
+    key = _ref(63)
+
+    for removed in range(DefaultResourceCache.MAX_REMOVALS):
+        prop = object()
+        cache.put_property_list(key, prop)  # type: ignore[arg-type]
+        removed_value = cache.remove_properties(_ref(63))
+        if removed < DefaultResourceCache.MAX_REMOVALS - 1:
+            assert removed_value is prop
+            assert cache.get_property_list(key) is None
+        else:
+            assert removed_value is None
+            assert cache.get_property_list(key) is prop
+
+
+def test_clear_resets_stable_cache_bookkeeping() -> None:
+    cache = DefaultResourceCache()
+    key = _ref(64)
+
+    for _ in range(DefaultResourceCache.MAX_REMOVALS):
+        font = _font_standin()
+        cache.put_font(key, font)
+        cache.remove_font(key)
+
+    assert cache.get_font(key) is not None
+
+    cache.clear()
+
+    font = _font_standin()
     cache.put_font(key, font)
     assert cache.remove_font(key) is font
     assert cache.get_font(key) is None

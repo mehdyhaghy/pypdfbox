@@ -168,6 +168,10 @@ class PDFieldFactory:
         if ft == "Sig":
             from .pd_signature_field import PDSignatureField
             return PDSignatureField(form, field, parent)
+        if ft is not None or field.get_string(_T) is None:
+            # PDFBOX-2885: erroneous non-field objects in /Fields are ignored
+            # by upstream instead of being wrapped as generic fields.
+            return None
         return PDFieldStub(form, field, parent)
 
 

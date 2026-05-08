@@ -14,7 +14,6 @@ from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
 from pypdfbox.pdmodel.interactive.form.pd_push_button import PDPushButton
 from pypdfbox.pdmodel.interactive.form.pd_radio_button import PDRadioButton
 from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
-from pypdfbox.pdmodel.interactive.form.pd_terminal_field import PDFieldStub
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 
 _FT = COSName.get_pdf_name("FT")
@@ -152,12 +151,22 @@ def test_dispatch_child_inherits_choice_with_combo_flag() -> None:
 # ---------- non-terminal vs unknown fallback ----------
 
 
-def test_dispatch_no_ft_no_parent_no_kids_falls_back_to_stub() -> None:
-    """No /FT, no parent /FT, no /Kids → unknown → fallback PDFieldStub."""
+def test_dispatch_empty_field_dictionary_returns_none_pdfbox_2885() -> None:
+    """No /FT, no parent /FT, no /Kids → erroneous non-field object."""
     form = PDAcroForm()
     field = COSDictionary()
     result = PDFieldFactory.create_field(form, field)
-    assert isinstance(result, PDFieldStub)
+    assert result is None
+
+
+def test_dispatch_unknown_field_type_returns_none_pdfbox_2885() -> None:
+    form = PDAcroForm()
+    field = _make_field("Bogus")
+    field.set_string(_T, "still_not_a_field")
+
+    result = PDFieldFactory.create_field(form, field)
+
+    assert result is None
 
 
 def test_dispatch_no_ft_with_field_kids_returns_non_terminal() -> None:

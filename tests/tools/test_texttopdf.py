@@ -168,6 +168,22 @@ def test_create_pdf_from_text_negative_line_spacing_rejected(
         doc.close()
 
 
+def test_create_pdf_from_text_negative_font_size_rejected() -> None:
+    from pypdfbox.pdmodel.font import PDFontFactory
+
+    doc = PDDocument()
+    try:
+        with pytest.raises(ValueError, match="font size must be positive"):
+            texttopdf.create_pdf_from_text(
+                doc,
+                ["abc"],
+                font=PDFontFactory.create_default_font(),
+                font_size=-1.0,
+            )
+    finally:
+        doc.close()
+
+
 # ---------------------------------------------------------- CLI surface
 
 
@@ -209,6 +225,21 @@ def test_cli_unknown_page_size_returns_usage_error(
     assert rc == 2
     assert not out.exists()
     assert "unknown page size" in capsys.readouterr().out
+
+
+def test_cli_negative_font_size_returns_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    src = _write_text(tmp_path / "in.txt", "x\n")
+    out = tmp_path / "out.pdf"
+
+    rc = cli.run_cli(
+        ["texttopdf", "-i", str(src), "-o", str(out), "-fontSize", "-1"]
+    )
+
+    assert rc == 2
+    assert not out.exists()
+    assert "font size must be positive" in capsys.readouterr().out
 
 
 def test_cli_landscape(tmp_path: Path) -> None:

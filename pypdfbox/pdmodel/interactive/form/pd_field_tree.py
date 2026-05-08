@@ -29,7 +29,7 @@ class PDFieldTree(Sequence["PDField"]):
     def __iter__(self) -> Iterator[PDField]:
         return self.iterator()
 
-    def iterator(self) -> Iterator[PDField]:
+    def iterator(self) -> _FieldIterator:
         """Return an iterator which walks all fields in the tree, in order."""
         return _FieldIterator(self._acro_form)
 

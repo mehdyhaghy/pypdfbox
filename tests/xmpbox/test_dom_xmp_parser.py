@@ -8,11 +8,10 @@ from pypdfbox.xmpbox import (
     DomXmpParser,
     DublinCoreSchema,
     XMPBasicSchema,
-    XMPSchema,
     XmpParsingException,
+    XMPSchema,
 )
 from pypdfbox.xmpbox.dom_xmp_parser import parse as module_parse
-
 
 SIMPLE_PACKET = b"""<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -112,6 +111,25 @@ def test_parse_unknown_namespace_falls_back_to_plain_schema() -> None:
     assert schema.get_unqualified_text_property_value("Label") == "my-label"
 
 
+def test_parse_unknown_namespace_preserves_declared_prefix() -> None:
+    packet = (
+        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+        b' xmlns:vendor="http://example.com/vendor/1.0/">'
+        b'<rdf:Description rdf:about="urn:doc">'
+        b'<vendor:TrackingID>track-42</vendor:TrackingID>'
+        b'</rdf:Description></rdf:RDF>'
+    )
+
+    meta = DomXmpParser().parse(packet)
+    schema = meta.get_schema("http://example.com/vendor/1.0/")
+
+    assert schema is not None
+    assert type(schema) is XMPSchema
+    assert schema.get_prefix() == "vendor"
+    assert schema.get_namespaces() == {"vendor": "http://example.com/vendor/1.0/"}
+    assert meta.get_schema_by_prefix("vendor", "http://example.com/vendor/1.0/") is schema
+
+
 def test_parse_packet_without_xpacket_wrapper() -> None:
     # Some PDFs embed bare RDF without the processing instructions.
     packet = (
@@ -124,7 +142,7 @@ def test_parse_packet_without_xpacket_wrapper() -> None:
     )
     meta = DomXmpParser().parse(packet)
     dc = meta.get_dublin_core_schema()
-    assert dc is not None
+    assert isinstance(dc, DublinCoreSchema)
     assert dc.get_format() == "application/pdf"
 
 
@@ -138,8 +156,9 @@ def test_parse_handles_x_xmpmeta_wrapper() -> None:
         b'</rdf:Description></rdf:RDF></x:xmpmeta>'
     )
     meta = DomXmpParser().parse(packet)
-    assert meta.get_dublin_core_schema() is not None
-    assert meta.get_dublin_core_schema().get_format() == "application/pdf"
+    dc = meta.get_dublin_core_schema()
+    assert isinstance(dc, DublinCoreSchema)
+    assert dc.get_format() == "application/pdf"
 
 
 def test_parse_malformed_raises_xmp_parsing_exception() -> None:
@@ -226,6 +245,6 @@ def test_multiple_descriptions_for_same_namespace_merge() -> None:
     )
     meta = DomXmpParser().parse(packet)
     dc = meta.get_dublin_core_schema()
-    assert dc is not None
+    assert isinstance(dc, DublinCoreSchema)
     assert dc.get_format() == "application/pdf"
     assert dc.get_identifier() == "id-1"

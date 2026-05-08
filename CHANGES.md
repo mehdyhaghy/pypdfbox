@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/form/pd_field_factory.py`: malformed or unknown field dictionaries are skipped by factory/tree traversal.
+- `pypdfbox/xmpbox/dom_xmp_parser.py`: unknown namespaces preserve their declared XML prefixes.
+- `pypdfbox/contentstream/pdf_graphics_stream_engine.py`: registers the `sh` shading operator.
+- `pypdfbox/pdmodel/pd_resource_cache.py`: repeated removals mark shared resources stable at `MAX_REMOVALS`.
+- `pypdfbox/tools/texttopdf.py`: non-positive font sizes fail early as usage errors.
 - `pypdfbox/pdmodel/interactive/annotation/pd_appearance_stream.py`: appearance streams expose the content-stream byte-access surface.
 - `pypdfbox/pdmodel/interactive/documentnavigation/destination/`: `/XYZ` and `/FitR` coordinate setters grow short arrays before writing.
 - `pypdfbox/pdfparser/endstream_filter_stream.py`: mid-stream CRLF bytes are preserved until final endstream length is proven.

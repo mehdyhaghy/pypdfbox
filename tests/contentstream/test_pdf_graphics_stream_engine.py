@@ -217,7 +217,7 @@ def test_constructor_registers_clip_and_state_operators() -> None:
 def test_constructor_registers_image_and_text_operators() -> None:
     engine = _RecordingGraphicsEngine()
     ops = engine.get_operators()
-    for name in ("Do", "BI", "BT", "ET", "Tj", "TJ", "Tf", "Tm"):
+    for name in ("Do", "BI", "sh", "BT", "ET", "Tj", "TJ", "Tf", "Tm"):
         assert name in ops, f"missing image/text operator: {name}"
 
 
@@ -240,7 +240,7 @@ def test_constructor_binds_engine_context_to_every_registered_operator() -> None
     # Sample a path operator (lite stub), a state operator (lite stub),
     # a colour operator (engine-bound), and a text operator (engine-bound)
     # — all should report the engine as their context.
-    for name in ("m", "h", "q", "Q", "cm", "BMC", "G", "BT"):
+    for name in ("m", "h", "q", "Q", "cm", "sh", "BMC", "G", "BT"):
         processor = ops[name]
         assert processor._context is engine, (
             f"operator {name!r} processor was not bound to engine context"
