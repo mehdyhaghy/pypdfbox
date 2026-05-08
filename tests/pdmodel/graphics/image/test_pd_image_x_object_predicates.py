@@ -21,6 +21,7 @@ from pypdfbox.cos import (
     COSStream,
 )
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+from pypdfbox.pdmodel.graphics.color import PDDeviceGray
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
 from pypdfbox.pdmodel.graphics.image.pd_image_x_object import SUBTYPE_IMAGE
 from pypdfbox.pdmodel.graphics.optionalcontent import PDOptionalContentGroup
@@ -86,6 +87,14 @@ def test_get_bits_per_component_non_stencil_after_reset() -> None:
     assert image.get_bits_per_component() == 1
     image.set_stencil(False)
     assert image.get_bits_per_component() == 8
+
+
+def test_get_color_space_stencil_without_entry_yields_devicegray() -> None:
+    """Stencil masks have an implicit gray color space when /ColorSpace is absent."""
+    image = _make_image()
+    image.set_stencil(True)
+
+    assert image.get_color_space() is PDDeviceGray.INSTANCE
 
 
 # ---------- /Matte accessor ----------

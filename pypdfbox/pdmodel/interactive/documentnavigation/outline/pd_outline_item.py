@@ -83,8 +83,7 @@ class PDOutlineItem(PDOutlineNode):
         """Insert ``new_sibling`` immediately after this item."""
         self._require_single_node(new_sibling)
         parent = self.get_parent()
-        if parent is not None:
-            new_sibling._set_parent(parent)
+        new_sibling._set_parent(parent)
         nxt = self.get_next_sibling()
         self._set_next_sibling(new_sibling)
         new_sibling._set_previous_sibling(self)
@@ -99,8 +98,7 @@ class PDOutlineItem(PDOutlineNode):
         """Insert ``new_sibling`` immediately before this item."""
         self._require_single_node(new_sibling)
         parent = self.get_parent()
-        if parent is not None:
-            new_sibling._set_parent(parent)
+        new_sibling._set_parent(parent)
         prev = self.get_previous_sibling()
         self._set_previous_sibling(new_sibling)
         new_sibling._set_next_sibling(self)

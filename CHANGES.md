@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: stencil image XObjects now treat missing `/ColorSpace` as implicit `DeviceGray`.
+- `pypdfbox/pdmodel/interactive/measurement/pd_media_clip.py`, `pypdfbox/pdmodel/interactive/measurement/pd_rendition.py`: media clip and rendition factories dereference indirect objects and treat unresolved or null references as absent.
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_item.py`, `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_node.py`: sibling insertion rewrites inserted item parents consistently.
+- `pypdfbox/fontbox/cff/cff_font.py`: empty or unparsed CFF fonts return safe width/path fallbacks.
+- `pypdfbox/pdmodel/fdf/fdf_annotation_line.py`: FDF line annotations expose `/L` accessors and malformed coordinate arrays read as absent.
 - `pypdfbox/io/random_access_read_buffer.py`: wraps `io.BytesIO` instead of reimplementing PDFBox's chunked-list storage. Observable behavior is identical; implementation is C-backed and ~25 lines instead of ~120. Justification: PRD §3.7 (stdlib-first for generic infrastructure).
 - `pypdfbox/io/random_access_read_buffered_file.py`: wraps `io.BufferedReader` over a raw file fd. Stdlib provides the read-ahead buffering that upstream's `RandomAccessReadBufferedFile` implements manually. Justification: PRD §3.7.
 - `pypdfbox/io/random_access_read_memory_mapped.py`: net-new optional implementation backed by `mmap.mmap`. No upstream counterpart; offered as opt-in for very large files where kernel paging beats userspace buffering. Justification: PRD §3.7 — use stdlib affordances when they fit.

@@ -585,6 +585,8 @@ class CFFFont:
         before the first moveto is interpreted as ``width - nominalWidthX``.
         Glyphs without a leading width operand default to ``defaultWidthX``.
         """
+        if self._top is None:
+            return 0.0
         cached = self._widths.get(name)
         if cached is not None:
             return cached
@@ -629,6 +631,8 @@ class CFFFont:
     def get_path(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for ``name`` as a list of draw commands in
         font units. Returns ``[]`` when the glyph is missing."""
+        if self._top is None:
+            return []
         cs_map = self._charstrings_dict()
         try:
             cs = cs_map[name]

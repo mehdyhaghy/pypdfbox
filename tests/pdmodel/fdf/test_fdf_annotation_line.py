@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.fdf import FDFAnnotation, FDFAnnotationLine
 
 
@@ -19,6 +19,65 @@ def test_start_and_end_points_round_trip() -> None:
     a.set_end_point(30.0, 40.0)
     assert a.get_start_point() == (10.0, 20.0)
     assert a.get_end_point() == (30.0, 40.0)
+
+
+def test_line_round_trip_and_point_helpers() -> None:
+    a = FDFAnnotationLine()
+    assert a.get_line() is None
+
+    a.set_line([10.0, -2.5, 30.25, 40.0])
+
+    assert a.get_line() == [10.0, -2.5, 30.25, 40.0]
+    assert a.get_start_point() == (10.0, -2.5)
+    assert a.get_end_point() == (30.25, 40.0)
+    raw = a.get_cos_object().get_dictionary_object(COSName.get_pdf_name("L"))
+    assert isinstance(raw, COSArray)
+    assert raw.to_float_array() == [10.0, -2.5, 30.25, 40.0]
+
+
+def test_line_rejects_wrong_length() -> None:
+    a = FDFAnnotationLine()
+
+    with pytest.raises(ValueError, match="4-element"):
+        a.set_line([1.0, 2.0, 3.0])
+
+
+def test_line_raw_long_array_is_truncated_to_first_four_values() -> None:
+    d = COSDictionary()
+    d.set_item(
+        COSName.get_pdf_name("L"),
+        COSArray(
+            [
+                COSFloat(1.0),
+                COSFloat(2.0),
+                COSFloat(3.0),
+                COSFloat(4.0),
+                COSFloat(999.0),
+            ]
+        ),
+    )
+
+    assert FDFAnnotationLine(d).get_line() == [1.0, 2.0, 3.0, 4.0]
+
+
+def test_line_malformed_coordinate_array_reports_absent() -> None:
+    d = COSDictionary()
+    d.set_item(
+        COSName.get_pdf_name("L"),
+        COSArray(
+            [
+                COSInteger.get(1),
+                COSName.get_pdf_name("Bad"),
+                COSInteger.get(3),
+                COSInteger.get(4),
+            ]
+        ),
+    )
+    a = FDFAnnotationLine(d)
+
+    assert a.get_line() is None
+    assert a.get_start_point() is None
+    assert a.get_end_point() is None
 
 
 def test_setting_only_end_point_initialises_start_zero() -> None:

@@ -80,8 +80,11 @@ class PDOutlineNode:
             return PDDocumentOutline(parent)
         return PDOutlineItem(parent)
 
-    def _set_parent(self, parent: PDOutlineNode) -> None:
-        self._dictionary.set_item(_PARENT, parent.get_cos_object())
+    def _set_parent(self, parent: PDOutlineNode | None) -> None:
+        self._dictionary.set_item(
+            _PARENT,
+            parent.get_cos_object() if parent is not None else None,
+        )
 
     # ---------- children: first / last ----------
 

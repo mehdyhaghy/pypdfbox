@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSNull, COSObject
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _RENDITION: COSName = COSName.get_pdf_name("Rendition")
@@ -22,21 +22,28 @@ class PDRendition:
             self._dict.set_item(_TYPE, _RENDITION)
 
     @staticmethod
-    def create(dictionary: COSDictionary | None) -> PDRendition | None:
+    def create(base: COSBase | None) -> PDRendition | None:
         from .pd_media_rendition import PDMediaRendition
         from .pd_selector_rendition import PDSelectorRendition
 
-        if dictionary is None:
+        seen_refs: set[int] = set()
+        while isinstance(base, COSObject):
+            ref_id = id(base)
+            if ref_id in seen_refs:
+                return None
+            seen_refs.add(ref_id)
+            base = base.get_object()
+        if base is None or base is COSNull.NULL:
             return None
-        if not isinstance(dictionary, COSDictionary):
+        if not isinstance(base, COSDictionary):
             raise TypeError(
-                f"PDRendition.create expects COSDictionary, got {type(dictionary).__name__}"
+                f"PDRendition.create expects COSDictionary, got {type(base).__name__}"
             )
-        sub_type = dictionary.get_string(_S)
+        sub_type = base.get_string(_S)
         if sub_type == PDMediaRendition.SUB_TYPE:
-            return PDMediaRendition(dictionary)
+            return PDMediaRendition(base)
         if sub_type == PDSelectorRendition.SUB_TYPE:
-            return PDSelectorRendition(dictionary)
+            return PDSelectorRendition(base)
         return None
 
     def get_cos_object(self) -> COSDictionary:

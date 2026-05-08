@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSNumber, COSObject
 
 from .fdf_annotation import FDFAnnotation, _float_values
@@ -61,10 +63,27 @@ class FDFAnnotationLine(FDFAnnotation):
             arr.add(COSFloat(0.0))
         return arr
 
-    def get_start_point(self) -> tuple[float, float] | None:
+    def get_line(self) -> list[float] | None:
+        """Return the 4-element ``[x1, y1, x2, y2]`` line coordinate array."""
         arr = self._get_l_array()
         if arr is not None and arr.size() >= 4:
-            return (_as_float(arr.get(0)), _as_float(arr.get(1)))
+            values = _float_values(arr, 4)
+            if values is not None:
+                return list(values)
+        return None
+
+    def set_line(self, line: Sequence[float]) -> None:
+        """Set ``/L`` to ``[x1, y1, x2, y2]`` coordinates."""
+        if len(line) != 4:
+            raise ValueError(
+                f"/L must be a 4-element [x1 y1 x2 y2] array; got {len(line)} elements"
+            )
+        self._annot.set_item(_L, COSArray([COSFloat(float(c)) for c in line]))
+
+    def get_start_point(self) -> tuple[float, float] | None:
+        line = self.get_line()
+        if line is not None:
+            return (line[0], line[1])
         return None
 
     def set_start_point(self, x: float, y: float) -> None:
@@ -73,9 +92,9 @@ class FDFAnnotationLine(FDFAnnotation):
         arr.set(1, COSFloat(float(y)))
 
     def get_end_point(self) -> tuple[float, float] | None:
-        arr = self._get_l_array()
-        if arr is not None and arr.size() >= 4:
-            return (_as_float(arr.get(2)), _as_float(arr.get(3)))
+        line = self.get_line()
+        if line is not None:
+            return (line[2], line[3])
         return None
 
     def set_end_point(self, x: float, y: float) -> None:

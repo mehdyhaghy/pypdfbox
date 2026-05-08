@@ -130,7 +130,14 @@ class PDImageXObject(PDXObject):
 
     def get_color_space(self) -> PDColorSpace | None:
         """Typed ``/ColorSpace`` wrapper, or ``None`` when absent/unsupported."""
-        return PDColorSpace.create(self.get_color_space_cos_object())
+        value = self.get_color_space_cos_object()
+        if value is not None:
+            return PDColorSpace.create(value)
+        if self.is_stencil():
+            from pypdfbox.pdmodel.graphics.color import PDDeviceGray  # noqa: PLC0415
+
+            return PDDeviceGray.INSTANCE
+        return None
 
     def set_color_space(self, name: PDColorSpace | COSName | str | None) -> None:
         cos = self.get_cos_object()

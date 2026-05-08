@@ -32,7 +32,7 @@ def _load_cff_bytes() -> bytes | None:
     """Return raw CFF bytes extracted from the first available OTF, or
     ``None`` when nothing usable is on the host."""
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]  # noqa: PLC0415
     except ImportError:
         return None
     for candidate in _OTF_CANDIDATES:
@@ -151,6 +151,8 @@ def test_empty_cff_font_accessors_are_safe() -> None:
     assert f.get_property("FullName") is None
     assert f.get_default_width_x() == 0.0
     assert f.get_nominal_width_x() == 0.0
+    assert f.get_width("A") == 0.0
+    assert f.get_path("A") == []
     assert f.get_glyph_widths() == {}
     # Wave 41 round-out additions.
     assert f.get_data() == b""

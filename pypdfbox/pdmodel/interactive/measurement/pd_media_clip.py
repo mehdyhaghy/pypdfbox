@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSName, COSNull, COSObject
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _MEDIA_CLIP: COSName = COSName.get_pdf_name("MediaClip")
@@ -19,21 +19,28 @@ class PDMediaClip:
             self._dict.set_item(_TYPE, _MEDIA_CLIP)
 
     @staticmethod
-    def create(dictionary: COSDictionary | None) -> PDMediaClip | None:
+    def create(base: COSBase | None) -> PDMediaClip | None:
         from .pd_media_clip_data import PDMediaClipData
         from .pd_media_clip_section import PDMediaClipSection
 
-        if dictionary is None:
+        seen_refs: set[int] = set()
+        while isinstance(base, COSObject):
+            ref_id = id(base)
+            if ref_id in seen_refs:
+                return None
+            seen_refs.add(ref_id)
+            base = base.get_object()
+        if base is None or base is COSNull.NULL:
             return None
-        if not isinstance(dictionary, COSDictionary):
+        if not isinstance(base, COSDictionary):
             raise TypeError(
-                f"PDMediaClip.create expects COSDictionary, got {type(dictionary).__name__}"
+                f"PDMediaClip.create expects COSDictionary, got {type(base).__name__}"
             )
-        sub_type = dictionary.get_string(_S)
+        sub_type = base.get_string(_S)
         if sub_type == PDMediaClipData.SUB_TYPE:
-            return PDMediaClipData(dictionary)
+            return PDMediaClipData(base)
         if sub_type == PDMediaClipSection.SUB_TYPE:
-            return PDMediaClipSection(dictionary)
+            return PDMediaClipSection(base)
         return None
 
     def get_cos_object(self) -> COSDictionary:
