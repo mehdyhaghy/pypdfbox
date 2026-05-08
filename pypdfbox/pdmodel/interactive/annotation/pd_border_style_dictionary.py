@@ -64,7 +64,8 @@ class PDBorderStyleDictionary:
 
     # ---------- /S (border style) ----------
 
-    def set_style(self, s: str) -> None:
+    def set_style(self, s: str | None) -> None:
+        """Set the border style name; ``None`` clears the optional ``/S`` entry."""
         self._dict.set_name(_S, s)
 
     def get_style(self) -> str:

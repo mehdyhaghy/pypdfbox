@@ -229,7 +229,12 @@ class PDNumberTreeNode[T](ABC):
             for child in kids:
                 lower = child.get_lower_limit()
                 upper = child.get_upper_limit()
-                if lower is not None and upper is not None and lower <= index <= upper:
+                if lower is None or upper is None or upper < lower:
+                    value = child.get_value(index)
+                    if value is not None:
+                        return value
+                    continue
+                if lower <= index <= upper:
                     return child.get_value(index)
         else:
             _LOG.warning('NumberTreeNode does not have "nums" nor "kids" objects.')

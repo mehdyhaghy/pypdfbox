@@ -338,7 +338,10 @@ class ScratchFile:
 
     def _ensure_tmp(self) -> IO[bytes]:
         if self._tmp is None:
-            self._tmp = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115
+            self._tmp = tempfile.TemporaryFile(  # noqa: SIM115
+                mode="w+b",
+                dir=self._setting.temp_dir,
+            )
         return self._tmp
 
     def _allocate_new_page(self) -> int:

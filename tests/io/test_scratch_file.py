@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import io
+from pathlib import Path
+
 import pytest
 
 from pypdfbox.io import (
@@ -315,6 +318,25 @@ def test_temp_file_only_pages_round_trip() -> None:
         out = bytearray(64)
         sf.read_page(idx, out)
         assert bytes(out) == payload
+
+
+def test_temp_file_uses_configured_temp_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen_dirs: list[object] = []
+
+    def fake_temporary_file(*, mode: str, dir: object | None = None) -> io.BytesIO:
+        assert mode == "w+b"
+        seen_dirs.append(dir)
+        return io.BytesIO()
+
+    setting = MemoryUsageSetting.setup_temp_file_only().set_temp_dir(tmp_path)
+    monkeypatch.setattr("pypdfbox.io.scratch_file.tempfile.TemporaryFile", fake_temporary_file)
+
+    with ScratchFile(setting):
+        pass
+
+    assert seen_dirs == [tmp_path]
 
 
 def test_mixed_mode_spills_pages_above_cap() -> None:

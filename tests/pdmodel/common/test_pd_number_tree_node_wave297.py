@@ -56,3 +56,32 @@ def test_get_value_uses_child_limits_without_flattening_siblings() -> None:
     assert root.get_value(1) == 10
     with pytest.raises(OSError, match="Expected COSInteger"):
         root.get_numbers()
+
+
+def test_get_value_probes_child_when_limits_are_missing() -> None:
+    child = _leaf_with_raw_nums(COSInteger.get(9), COSInteger.get(90))
+
+    kids = COSArray()
+    kids.add(child)
+    root_dict = COSDictionary()
+    root_dict.set_item(_KIDS, kids)
+    root = _IntNumberTreeNode(root_dict)
+
+    assert root.get_value(9) == 90
+    assert root.get_value(10) is None
+
+
+def test_get_value_probes_child_when_limits_are_reversed() -> None:
+    child = _leaf_with_raw_nums(COSInteger.get(5), COSInteger.get(50))
+    wrapped_child = _IntNumberTreeNode(child)
+    wrapped_child.set_lower_limit(10)
+    wrapped_child.set_upper_limit(1)
+
+    kids = COSArray()
+    kids.add(child)
+    root_dict = COSDictionary()
+    root_dict.set_item(_KIDS, kids)
+    root = _IntNumberTreeNode(root_dict)
+
+    assert root.get_value(5) == 50
+    assert root.get_value(6) is None

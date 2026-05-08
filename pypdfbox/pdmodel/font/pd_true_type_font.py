@@ -15,6 +15,8 @@ from .pd_simple_font import PDSimpleFont
 if TYPE_CHECKING:
     from typing import BinaryIO
 
+    from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
+
 _LOG = logging.getLogger(__name__)
 
 _BASE_FONT: COSName = COSName.get_pdf_name("BaseFont")
@@ -39,7 +41,7 @@ class PDTrueTypeFont(PDSimpleFont):
         # Lazily-loaded embedded TTF — None means "not yet attempted",
         # ``False`` means "tried, no /FontFile2 or parse failed".
         self._ttf: TrueTypeFont | None | bool = None
-        self._cmap_subtable = None
+        self._cmap_subtable: CmapSubtable | None = None
         self._cmap_resolved: bool = False
         # Codepoints accumulated by :meth:`add_to_subset` during text
         # rendering / construction; consumed by :meth:`subset` on save.
@@ -117,7 +119,7 @@ class PDTrueTypeFont(PDSimpleFont):
         for ch in text:
             self._subset_codepoints.add(ord(ch))
 
-    def subset(
+    def subset(  # type: ignore[override]
         self,
         text_or_codepoints: str | Iterable[int] | None = None,
         *,
@@ -238,7 +240,7 @@ class PDTrueTypeFont(PDSimpleFont):
 
     # ---------- glyph paths ----------
 
-    def get_path(self, name: str) -> list[tuple]:
+    def get_path(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for the PostScript glyph ``name``, in font units.
 
         Returns the recorded pen segments emitted by fontTools' glyph
@@ -253,7 +255,7 @@ class PDTrueTypeFont(PDSimpleFont):
             return []
         return _draw_glyph_by_name(ttf, name)
 
-    def get_glyph_path(self, code: int) -> list[tuple]:
+    def get_glyph_path(self, code: int) -> list[tuple[Any, ...]]:
         """Glyph outline for character ``code``, in font units.
 
         Resolves ``code`` to a glyph through the encoding (via
@@ -274,7 +276,7 @@ class PDTrueTypeFont(PDSimpleFont):
             return []
         return _draw_glyph_by_gid(ttf, gid)
 
-    def get_path_by_name(self, name: str) -> list[tuple]:
+    def get_path_by_name(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for the PostScript glyph ``name``, with the same
         name-resolution fallbacks upstream applies in ``getPath(String)``:
 
@@ -452,10 +454,21 @@ class PDTrueTypeFont(PDSimpleFont):
                         return gid
         # Fallback: ask the cmap directly (symbolic fonts / no encoding).
         if cmap is not None:
-            return cmap.get_glyph_id(code)
+            gid = cmap.get_glyph_id(code)
+            if gid != 0:
+                return gid
+            if self.is_symbolic():
+                for start in (
+                    self.START_RANGE_F000,
+                    self.START_RANGE_F100,
+                    self.START_RANGE_F200,
+                ):
+                    gid = cmap.get_glyph_id(start + code)
+                    if gid != 0:
+                        return gid
         return 0
 
-    def _get_unicode_cmap(self, ttf: TrueTypeFont):  # type: ignore[no-untyped-def]
+    def _get_unicode_cmap(self, ttf: TrueTypeFont) -> CmapSubtable | None:
         if not self._cmap_resolved:
             try:
                 self._cmap_subtable = ttf.get_unicode_cmap_subtable()
@@ -496,12 +509,12 @@ def _gid_to_glyph_name(ttf: TrueTypeFont, gid: int) -> str | None:
     return None
 
 
-def _draw_glyph_by_name(ttf: TrueTypeFont, name: str) -> list[tuple]:
+def _draw_glyph_by_name(ttf: TrueTypeFont, name: str) -> list[tuple[Any, ...]]:
     glyph_set = _fonttools_glyph_set(ttf)
     if glyph_set is None or name not in glyph_set:
         return []
     try:
-        from fontTools.pens.recordingPen import RecordingPen  # noqa: PLC0415
+        from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
 
         pen = RecordingPen()
         glyph_set[name].draw(pen)
@@ -511,7 +524,7 @@ def _draw_glyph_by_name(ttf: TrueTypeFont, name: str) -> list[tuple]:
     return list(pen.value)
 
 
-def _draw_glyph_by_gid(ttf: TrueTypeFont, gid: int) -> list[tuple]:
+def _draw_glyph_by_gid(ttf: TrueTypeFont, gid: int) -> list[tuple[Any, ...]]:
     name = _gid_to_glyph_name(ttf, gid)
     if name is None:
         return []
@@ -544,7 +557,7 @@ def _glyph_bbox_height(ttf: TrueTypeFont, gid: int) -> float:
             return 0.0
     # CFF-style fallback via the bounding-box pen.
     try:
-        from fontTools.pens.boundsPen import BoundsPen  # noqa: PLC0415
+        from fontTools.pens.boundsPen import BoundsPen  # type: ignore[import-untyped]
 
         glyph_set = _fonttools_glyph_set(ttf)
         if glyph_set is None or name not in glyph_set:

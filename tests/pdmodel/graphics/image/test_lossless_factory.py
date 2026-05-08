@@ -179,6 +179,32 @@ def test_create_from_i16_image() -> None:
     assert body[6:8] == b"\xab\xcd"
 
 
+def test_create_from_i16_little_endian_image() -> None:
+    document = PDDocument()
+    src = Image.new("I;16L", (2, 1), color=0)
+    src.putpixel((0, 0), 0x1234)
+    src.putpixel((1, 0), 0xABCD)
+
+    image_x = LosslessFactory.create_from_image(document, src)
+
+    assert image_x.get_bits_per_component() == 16
+    body = _decoded_body(image_x)
+    assert body == b"\x12\x34\xab\xcd"
+
+
+def test_create_from_i16_big_endian_image_preserves_pdf_order() -> None:
+    document = PDDocument()
+    src = Image.new("I;16B", (2, 1), color=0)
+    src.putpixel((0, 0), 0x1234)
+    src.putpixel((1, 0), 0xABCD)
+
+    image_x = LosslessFactory.create_from_image(document, src)
+
+    assert image_x.get_bits_per_component() == 16
+    body = _decoded_body(image_x)
+    assert body == b"\x12\x34\xab\xcd"
+
+
 # ---------- LA (gray+alpha) ----------
 
 

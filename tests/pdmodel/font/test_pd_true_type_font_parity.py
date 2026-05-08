@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
+
+import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.ttf import TrueTypeFont
@@ -42,6 +45,22 @@ def _font_with_embedded_ttf(*, symbolic: bool = False) -> PDTrueTypeFont:
     # twice — and so set_true_type_font's wiring is exercised too.
     font.set_true_type_font(_load_ttf())
     return font
+
+
+class _CMapStub:
+    def __init__(self, mapping: dict[int, int]) -> None:
+        self._mapping = mapping
+
+    def get_glyph_id(self, code_point: int) -> int:
+        return self._mapping.get(code_point, 0)
+
+
+class _TrueTypeFontStub:
+    def __init__(self, cmap: _CMapStub) -> None:
+        self._cmap = cmap
+
+    def get_unicode_cmap_subtable(self) -> _CMapStub:
+        return self._cmap
 
 
 # ---------- /BaseFont round-trip (get_name + get_base_font) ----------
@@ -294,6 +313,38 @@ def test_start_range_constants_match_upstream() -> None:
     assert PDTrueTypeFont.START_RANGE_F000 == 0xF000
     assert PDTrueTypeFont.START_RANGE_F100 == 0xF100
     assert PDTrueTypeFont.START_RANGE_F200 == 0xF200
+
+
+@pytest.mark.parametrize(
+    "start_range",
+    [
+        PDTrueTypeFont.START_RANGE_F000,
+        PDTrueTypeFont.START_RANGE_F100,
+        PDTrueTypeFont.START_RANGE_F200,
+    ],
+)
+def test_code_to_gid_symbolic_tries_private_use_ranges(start_range: int) -> None:
+    """Symbolic Windows TrueType cmaps may store byte code glyphs in one
+    of the private-use F000/F100/F200 ranges."""
+    font = PDTrueTypeFont()
+    fd = PDFontDescriptor()
+    fd.set_flags(FLAG_SYMBOLIC)
+    font.set_font_descriptor(fd)
+    cmap = _CMapStub({start_range + ord("A"): 42})
+
+    gid = font._code_to_gid(ord("A"), cast(TrueTypeFont, _TrueTypeFontStub(cmap)))
+
+    assert gid == 42
+
+
+def test_code_to_gid_nonsymbolic_does_not_probe_private_use_ranges() -> None:
+    font = PDTrueTypeFont()
+    font.set_font_descriptor(PDFontDescriptor())
+    cmap = _CMapStub({PDTrueTypeFont.START_RANGE_F000 + ord("A"): 42})
+
+    gid = font._code_to_gid(ord("A"), cast(TrueTypeFont, _TrueTypeFontStub(cmap)))
+
+    assert gid == 0
 
 
 # ---------- get_gid_to_code ----------

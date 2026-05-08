@@ -1507,3 +1507,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/multipdf/pdf_clone_utility.py`: clone merges now treat distinct wrappers exposing the same COS object as identical and avoid duplicate array entries.
 - `pypdfbox/fontbox/ttf/naming_table.py`: UTF-16 TTF name strings now consume an optional BOM while preserving UTF-16BE as the default.
 - `pypdfbox/xmpbox/xmp_media_management_schema.py`: media management schemas gained typed `SaveID` property getter and setter accessors.
+
+## Wave 334 — scratch temp dirs, border defaults, number-tree fallbacks, 16-bit images, and symbolic TTF maps
+
+- `pypdfbox/io/scratch_file.py`: scratch files now honor the temp directory configured on `MemoryUsageSetting`.
+- `pypdfbox/pdmodel/interactive/annotation/pd_border_style_dictionary.py`: border style setters can clear optional `/S` so reads fall back to solid style.
+- `pypdfbox/pdmodel/common/pd_number_tree_node.py`: number-tree lookups now probe children directly when `/Limits` are missing or reversed.
+- `pypdfbox/pdmodel/graphics/image/lossless_factory.py`: 16-bit grayscale Pillow images now preserve 16-bit samples as `/DeviceGray` with big-endian bytes.
+- `pypdfbox/pdmodel/font/pd_true_type_font.py`: symbolic TrueType glyph lookup now checks `F000`, `F100`, and `F200` private-use cmap ranges after direct lookup misses.

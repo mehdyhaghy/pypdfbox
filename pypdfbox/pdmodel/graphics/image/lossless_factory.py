@@ -76,7 +76,8 @@ class LosslessFactory:
       (avoids the per-stream overhead of CCITT params for trivial
       images).
     - 8-bit grayscale (``mode == "L"``) → ``/DeviceGray`` 8 BPC.
-    - 16-bit grayscale (``mode == "I;16"``) → ``/DeviceGray`` 16 BPC.
+    - 16-bit grayscale (``mode in ("I;16", "I;16L", "I;16B")``) →
+      ``/DeviceGray`` 16 BPC.
     - RGB → ``/DeviceRGB`` 8 BPC.
     - RGBA → split alpha into a separate 8-bit ``/DeviceGray`` SMask
       :class:`PDImageXObject`, attach via ``/SMask``.
@@ -141,7 +142,7 @@ class LosslessFactory:
         # Upstream handles this through PredictorEncoder when source is
         # ``DataBuffer.TYPE_USHORT``; we keep behaviour ("preserve
         # bit-depth") and use a plain flate raster.
-        if mode == "I;16":
+        if mode in ("I;16", "I;16L", "I;16B"):
             return _create_from_gray16(document, image)
 
         # Grayscale + alpha → DeviceGray 8 BPC + 8-bit SMask.
@@ -216,11 +217,24 @@ def _create_from_gray(
 
 
 def _create_from_gray16(document: PDDocument, image: Image.Image) -> PDImageXObject:
-    """16-bit grayscale → DeviceGray 16 BPC. Pillow's ``"I;16"`` mode
-    stores raw little-endian shorts; PDF spec §8.9.5.1 mandates
-    big-endian sample order, so we byte-swap row by row."""
+    """16-bit grayscale → DeviceGray 16 BPC.
+
+    PDF spec §8.9.5.1 mandates big-endian sample order. Pillow's
+    ``"I;16"`` and ``"I;16L"`` modes store little-endian shorts, while
+    ``"I;16B"`` already stores bytes in PDF order.
+    """
     width, height = image.size
-    raw = image.tobytes()  # native-endian; PIL "I;16" is little-endian
+    raw = image.tobytes()
+    if image.mode == "I;16B":
+        return _prepare_image_x_object(
+            document,
+            raw,
+            width,
+            height,
+            bits_per_component=16,
+            color_space=_DEVICE_GRAY,
+        )
+
     # Swap each pair of bytes to MSB-first.
     out = bytearray(len(raw))
     out[0::2] = raw[1::2]

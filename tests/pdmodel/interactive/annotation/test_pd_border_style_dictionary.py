@@ -53,6 +53,16 @@ def test_style_round_trip_dashed() -> None:
     assert bs.get_style() == "D"
 
 
+def test_set_style_none_clears_entry_and_restores_default() -> None:
+    bs = PDBorderStyleDictionary()
+    bs.set_style(PDBorderStyleDictionary.STYLE_DASHED)
+
+    bs.set_style(None)
+
+    assert bs.get_style() == PDBorderStyleDictionary.STYLE_SOLID
+    assert not bs.get_cos_object().contains_key(COSName.get_pdf_name("S"))
+
+
 def test_dash_style_round_trip() -> None:
     from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 
