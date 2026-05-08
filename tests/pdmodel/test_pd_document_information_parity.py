@@ -740,6 +740,16 @@ def test_to_dict_skips_non_string_values() -> None:
     assert snapshot == {"Title": "T"}
 
 
+def test_to_dict_includes_name_values_that_coerce_to_strings() -> None:
+    """``/Trapped`` is stored as a name; ``to_dict`` follows
+    ``COSDictionary.get_string`` so it appears in snapshots."""
+    info = PDDocumentInformation()
+    info.set_title("T")
+    info.set_trapped("True")
+
+    assert info.to_dict() == {"Title": "T", "Trapped": "True"}
+
+
 def test_to_dict_includes_date_strings() -> None:
     """Dates are stored as PDF date literal strings — to_dict surfaces those
     in raw form for log/serialization use cases."""

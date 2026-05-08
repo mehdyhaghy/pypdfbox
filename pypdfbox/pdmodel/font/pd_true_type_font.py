@@ -102,6 +102,19 @@ class PDTrueTypeFont(PDSimpleFont):
         re-parse) and by tests that bypass ``/FontFile2``."""
         self._ttf = ttf if ttf is not None else False
 
+    def is_damaged(self) -> bool:
+        """``True`` iff the embedded TrueType program failed to parse.
+
+        Mirrors upstream ``PDFont.isDamaged`` for ``PDTrueTypeFont``.
+        Returns ``False`` when the font is not embedded or when parsing
+        succeeded.
+        """
+        descriptor = self.get_font_descriptor()
+        if descriptor is None or descriptor.get_font_file2() is None:
+            return False
+        self.get_true_type_font()
+        return self._ttf is False
+
     # ---------- subsetting ----------
 
     def add_to_subset(self, code_point: int) -> None:

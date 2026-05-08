@@ -110,9 +110,10 @@ class PDSoftMask:
 
     def get_group(self) -> Any | None:
         """Returns the ``/G`` transparency-group form XObject as a
-        :class:`PDFormXObject` typed wrapper, or ``None`` when absent /
-        unparseable. The form's ``/Group`` entry is required to be a
-        transparency group with ``/S /Transparency``."""
+        :class:`PDTransparencyGroup` typed wrapper when the form advertises
+        ``/Group << /S /Transparency >>``. Plain form streams still return
+        :class:`PDFormXObject` for the library's existing lenient surface;
+        absent / unparseable entries return ``None``."""
         g = self._dict.get_dictionary_object(_G)
         if not isinstance(g, COSStream):
             return None
@@ -120,12 +121,28 @@ class PDSoftMask:
             from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
                 PDFormXObject,
             )
+            from pypdfbox.pdmodel.graphics.pd_x_object import (  # noqa: PLC0415
+                PDXObject,
+            )
+            from pypdfbox.pdmodel.pd_resources import PDResources  # noqa: PLC0415
         except ImportError:
             return None
         try:
-            return PDFormXObject(g, cache=self._resource_cache)
+            resources = PDResources(
+                COSDictionary(), resource_cache=self._resource_cache
+            )
+            xobject = PDXObject.create_x_object(g, resources)
+        except OSError:
+            # Backwards-compatible leniency for caller-built bare streams:
+            # older pypdfbox tests use ``set_group(COSStream())`` without
+            # stamping /Subtype /Form first. Well-formed PDF streams go
+            # through the factory branch above.
+            if g.get_name(COSName.SUBTYPE) is None:  # type: ignore[attr-defined]
+                return PDFormXObject(g, cache=self._resource_cache)
+            return None
         except Exception:  # noqa: BLE001
             return None
+        return xobject if isinstance(xobject, PDFormXObject) else None
 
     def set_group(self, group: Any | None) -> None:
         if group is None:

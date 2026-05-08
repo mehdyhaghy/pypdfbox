@@ -19,6 +19,16 @@ def _decode(data: bytes) -> bytes:
     return out.getvalue()
 
 
+class _FlushTrackingBytesIO(io.BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_count = 0
+
+    def flush(self) -> None:
+        self.flush_count += 1
+        super().flush()
+
+
 def test_round_trip_simple() -> None:
     payload = b"Man is distinguished, not only by his reason"
     assert _decode(_encode(payload)) == payload
@@ -77,6 +87,25 @@ def test_decode_ignores_embedded_whitespace() -> None:
     # Sprinkle space, tab, newline, carriage return, NUL into a valid stream.
     encoded = b"9j\nq\to \r ~>"
     assert _decode(encoded) == b"Man"
+
+
+def test_decode_flushes_decoded_sink_after_write() -> None:
+    out = _FlushTrackingBytesIO()
+
+    result = ASCII85Decode().decode(io.BytesIO(b"9jqo~>"), out)
+
+    assert out.getvalue() == b"Man"
+    assert result.bytes_written == 3
+    assert out.flush_count == 1
+
+
+def test_encode_flushes_encoded_sink_after_eod_marker() -> None:
+    out = _FlushTrackingBytesIO()
+
+    ASCII85Decode().encode(io.BytesIO(b"Man"), out)
+
+    assert out.getvalue() == b"9jqo~>"
+    assert out.flush_count == 1
 
 
 def test_decode_stops_at_eod_marker() -> None:

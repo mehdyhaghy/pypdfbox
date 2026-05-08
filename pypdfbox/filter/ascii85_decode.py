@@ -53,6 +53,9 @@ class ASCII85Decode(Filter):
         data = encoded.read()
         decoded_bytes = self._decode_bytes(data)
         bytes_written = decoded.write(decoded_bytes)
+        flush = getattr(decoded, "flush", None)
+        if callable(flush):
+            flush()
         out_params = parameters if parameters is not None else COSDictionary()
         return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
@@ -68,6 +71,9 @@ class ASCII85Decode(Filter):
         framed = base64.a85encode(data, adobe=True)
         # framed always starts with b'<~' and ends with b'~>'.
         encoded.write(framed[2:])
+        flush = getattr(encoded, "flush", None)
+        if callable(flush):
+            flush()
 
     def is_decompression_input_size_known(self) -> bool:
         return False

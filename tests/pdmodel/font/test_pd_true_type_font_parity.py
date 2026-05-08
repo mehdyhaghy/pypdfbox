@@ -112,6 +112,24 @@ def test_is_damaged_default_false() -> None:
     assert PDTrueTypeFont().is_damaged() is False
 
 
+def test_is_damaged_true_when_font_file2_unparseable() -> None:
+    font = PDTrueTypeFont()
+    fd = PDFontDescriptor()
+    bogus = COSStream()
+    bogus.set_raw_data(b"not a valid TrueType font")
+    fd.set_font_file2(bogus)
+    font.set_font_descriptor(fd)
+
+    assert font.is_damaged() is True
+    assert font.get_true_type_font() is None
+
+
+def test_is_damaged_false_when_font_file2_parses_cleanly() -> None:
+    font = _font_with_embedded_ttf()
+    assert font.is_damaged() is False
+    assert font.get_true_type_font() is not None
+
+
 # ---------- get_displacement ----------
 
 

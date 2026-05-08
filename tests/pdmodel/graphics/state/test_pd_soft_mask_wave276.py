@@ -18,6 +18,7 @@ from pypdfbox.cos import (
 )
 from pypdfbox.pdmodel.common.function.pd_function import PDFunctionTypeIdentity
 from pypdfbox.pdmodel.common.function.pd_function_type2 import PDFunctionType2
+from pypdfbox.pdmodel.graphics.form import PDTransparencyGroup
 from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
 from pypdfbox.pdmodel.graphics.state.pd_soft_mask import PDSoftMask
 from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
@@ -117,8 +118,9 @@ def test_group_accessors_accept_stream_and_form_clear_and_thread_cache() -> None
 
     assert isinstance(group, PDFormXObject)
     assert group.get_cos_object() is stream
-    assert group.get_resources() is not None
-    assert group.get_resources().get_resource_cache() is cache
+    group_resources = group.get_resources()
+    assert group_resources is not None
+    assert group_resources.get_resource_cache() is cache
     assert sm.get_cos_object().get_dictionary_object(G) is stream
 
     typed_form = PDFormXObject(COSStream())
@@ -130,6 +132,26 @@ def test_group_accessors_accept_stream_and_form_clear_and_thread_cache() -> None
 
     assert sm.get_group() is None
     assert not sm.get_cos_object().contains_key(G)
+
+
+def test_get_group_promotes_form_transparency_group_and_threads_cache() -> None:
+    cache = DefaultResourceCache()
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
+    stream.set_item(COSName.RESOURCES, COSDictionary())  # type: ignore[attr-defined]
+    group_dict = COSDictionary()
+    group_dict.set_item(S, COSName.get_pdf_name("Transparency"))
+    stream.set_item(COSName.get_pdf_name("Group"), group_dict)
+    dictionary = COSDictionary()
+    dictionary.set_item(G, stream)
+
+    group = PDSoftMask(dictionary, resource_cache=cache).get_group()
+
+    assert isinstance(group, PDTransparencyGroup)
+    assert group.get_cos_object() is stream
+    resources = group.get_resources()
+    assert resources is not None
+    assert resources.get_resource_cache() is cache
 
 
 def test_create_and_cos_dictionary_round_trip_preserve_raw_entries() -> None:
@@ -150,8 +172,9 @@ def test_create_and_cos_dictionary_round_trip_preserve_raw_entries() -> None:
     assert sm.get_subtype() == ALPHA
     assert sm.get_backdrop_color() is backdrop
     assert sm.get_transfer_function() is transfer
-    assert isinstance(sm.get_group(), PDFormXObject)
-    assert sm.get_group().get_cos_object() is stream
+    group = sm.get_group()
+    assert isinstance(group, PDFormXObject)
+    assert group.get_cos_object() is stream
 
 
 def test_create_defaults_and_malformed_shapes_are_graceful() -> None:

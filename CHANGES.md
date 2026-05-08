@@ -1579,3 +1579,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/common/function/pd_function_type4.py`: Type 4 calculator functions now skip PostScript `%` comments through end-of-line.
 - `pypdfbox/xmpbox/xmp_paged_text_schema.py`: `NPages` gained typed integer property accessors and reads typed or primitive storage.
 - `pypdfbox/pdmodel/graphics/shading/pd_shading_type4.py` through `pd_shading_type7.py`: mesh decode arrays now accept only COS number entries, avoiding boolean coercion.
+
+## Wave 343 — text annotation aliases, TrueType damage, ASCII85 flushes, document info names, and soft-mask groups
+
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_text.py`: text annotations gained PDFBox-style accessors for open, name, state, and state model values.
+- `pypdfbox/pdmodel/font/pd_true_type_font.py`: TrueType font damage checks now parse embedded `/FontFile2` streams and report invalid programs.
+- `pypdfbox/filter/ascii85_decode.py`: ASCII85 encode and decode operations now flush output streams after writing.
+- `pypdfbox/pdmodel/pd_document_information.py`: document information snapshots now include name-backed string values such as `/Trapped /True`.
+- `pypdfbox/pdmodel/graphics/state/pd_soft_mask.py`: soft-mask groups now use XObject dispatch for well-formed form XObjects, preserving transparency groups and resource caches.

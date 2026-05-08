@@ -568,7 +568,7 @@ class PDDocumentInformation:
         out: dict[str, str] = {}
         for key in self._info.key_set():
             name = key.get_name()
-            value = _get_info_string(self._info, name)
+            value = self._info.get_string(name)
             if value is not None:
                 out[name] = value
         return out

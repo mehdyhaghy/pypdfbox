@@ -78,6 +78,12 @@ class PDAnnotationText(PDAnnotationMarkup):
     def set_open(self, value: bool) -> None:
         self._dict.set_item(_OPEN, COSBoolean.get(value))
 
+    def getOpen(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.get_open()
+
+    def setOpen(self, value: bool) -> None:  # noqa: N802 - upstream Java name
+        self.set_open(value)
+
     # ---------- /Name (icon) ----------
 
     def get_name(self) -> str:
@@ -90,6 +96,12 @@ class PDAnnotationText(PDAnnotationMarkup):
             self._dict.remove_item(_NAME)
             return
         self._dict.set_name(_NAME, name)
+
+    def getName(self) -> str:  # noqa: N802 - upstream Java name
+        return self.get_name()
+
+    def setName(self, name: str | None) -> None:  # noqa: N802 - upstream Java name
+        self.set_name(name)
 
     # ---------- icon predicates ----------
 
@@ -108,6 +120,12 @@ class PDAnnotationText(PDAnnotationMarkup):
     def set_state(self, state: str | None) -> None:
         self._dict.set_string(_STATE, state)
 
+    def getState(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_state()
+
+    def setState(self, state: str | None) -> None:  # noqa: N802 - upstream Java name
+        self.set_state(state)
+
     # ---------- /StateModel ----------
 
     def get_state_model(self) -> str | None:
@@ -115,6 +133,12 @@ class PDAnnotationText(PDAnnotationMarkup):
 
     def set_state_model(self, model: str | None) -> None:
         self._dict.set_string(_STATE_MODEL, model)
+
+    def getStateModel(self) -> str | None:  # noqa: N802 - upstream Java name
+        return self.get_state_model()
+
+    def setStateModel(self, model: str | None) -> None:  # noqa: N802 - upstream Java name
+        self.set_state_model(model)
 
 
 __all__ = ["PDAnnotationText"]

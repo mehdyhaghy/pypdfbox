@@ -27,6 +27,28 @@ def test_open_round_trip() -> None:
     assert ann.get_open() is False
 
 
+def test_pdfbox_camelcase_accessors_round_trip() -> None:
+    ann = PDAnnotationText()
+
+    ann.setOpen(True)
+    assert ann.getOpen() is True
+
+    ann.setName(PDAnnotationText.NAME_COMMENT)
+    assert ann.getName() == PDAnnotationText.NAME_COMMENT
+    ann.setName(None)
+    assert ann.getName() == PDAnnotationText.NAME_NOTE
+
+    ann.setState(PDAnnotationText.STATE_ACCEPTED)
+    assert ann.getState() == PDAnnotationText.STATE_ACCEPTED
+    ann.setState(None)
+    assert ann.getState() is None
+
+    ann.setStateModel(PDAnnotationText.STATE_MODEL_REVIEW)
+    assert ann.getStateModel() == PDAnnotationText.STATE_MODEL_REVIEW
+    ann.setStateModel(None)
+    assert ann.getStateModel() is None
+
+
 def test_name_default_note() -> None:
     ann = PDAnnotationText()
     assert ann.get_name() == PDAnnotationText.NAME_NOTE
