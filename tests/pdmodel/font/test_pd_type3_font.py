@@ -8,12 +8,12 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.pdmodel.font import PDFontLike
 from pypdfbox.pdmodel.font.encoding import WinAnsiEncoding
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.font.pd_type3_char_proc import PDType3CharProc
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
-
 
 # ---------- get_char_proc(int code) -- typed wrapper ----------
 
@@ -76,7 +76,7 @@ def test_get_char_proc_str_form_still_returns_raw_stream() -> None:
 def test_get_char_proc_rejects_bool() -> None:
     font, _ = _make_font_with_glyph(0x41, "A")
     with pytest.raises(TypeError):
-        font.get_char_proc(True)  # type: ignore[arg-type]
+        font.get_char_proc(True)
 
 
 # ---------- get_width(code) ----------
@@ -186,6 +186,31 @@ def test_get_name_returns_basefont_when_set() -> None:
 def test_get_name_returns_none_when_basefont_absent() -> None:
     font = PDType3Font()
     assert font.get_name() is None
+
+
+# ---------- PDFontLike parity surface ----------
+
+
+def test_get_bounding_box_delegates_to_font_bbox() -> None:
+    font = PDType3Font()
+    rect = PDRectangle(0.0, -200.0, 750.0, 900.0)
+    font.set_font_bbox(rect)
+
+    assert font.get_bounding_box() == rect
+
+
+def test_get_bounding_box_returns_none_when_font_bbox_missing() -> None:
+    assert PDType3Font().get_bounding_box() is None
+
+
+def test_get_position_vector_is_horizontal_zero_vector() -> None:
+    font = PDType3Font()
+
+    assert font.get_position_vector(0x41) == (0.0, 0.0)
+
+
+def test_type3_font_satisfies_font_like_protocol() -> None:
+    assert isinstance(PDType3Font(), PDFontLike)
 
 
 # ---------- get_encoding (raw) ----------

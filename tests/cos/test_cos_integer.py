@@ -43,7 +43,16 @@ def test_bool_is_rejected() -> None:
     # Python booleans subclass int — explicitly reject to avoid silent
     # COSInteger(True) → integer(1) confusion.
     with pytest.raises(TypeError):
-        COSInteger(True)  # type: ignore[arg-type]
+        COSInteger(True)
+
+
+def test_get_rejects_bool() -> None:
+    # The factory goes through a cache for 0/1, so it must enforce the same
+    # type contract as the constructor before checking cached integers.
+    with pytest.raises(TypeError):
+        COSInteger.get(True)
+    with pytest.raises(TypeError):
+        COSInteger.get(False)
 
 
 def test_equality_and_hashing() -> None:

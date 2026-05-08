@@ -201,6 +201,14 @@ class PDType3Font(PDSimpleFont):
             return
         self._dict.set_item(_FONT_BBOX, bbox)
 
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the font bounding box.
+
+        Mirrors upstream ``PDType3Font.getBoundingBox()``, which exposes
+        the same Type 3 ``/FontBBox`` used by :meth:`get_font_bbox`.
+        """
+        return self.get_font_bbox()
+
     # ---------- /FirstChar /LastChar /Widths ----------
     #
     # Inherited ``get_first_char`` / ``get_last_char`` / ``get_widths`` come
@@ -321,6 +329,15 @@ class PDType3Font(PDSimpleFont):
         matrix = self.get_font_matrix()
         # 6-element matrix [a b c d e f]; transform of (x, 0) = (a*x, b*x).
         return matrix[0] * width, matrix[1] * width
+
+    def get_position_vector(self, code: int) -> tuple[float, float]:
+        """Return the glyph position vector for ``code``.
+
+        Type 3 fonts are simple horizontal fonts in PDFBox; vertical
+        writing is only available via Type 0 / CID fonts. Mirrors the
+        upstream horizontal-font default.
+        """
+        return 0.0, 0.0
 
     @overload
     def has_glyph(self, key: int) -> bool: ...

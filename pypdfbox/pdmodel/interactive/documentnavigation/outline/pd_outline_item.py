@@ -389,8 +389,8 @@ class PDOutlineItem(PDOutlineNode):
         - direct page-dict destinations (``/D[0]`` is already a page
           ``COSDictionary``);
         - ``PDNamedDestination`` (string or name) — looked up first in
-          the catalog ``/Dests`` dictionary (PDF 1.1) and then in the
-          ``/Names/Dests`` name tree (PDF 1.2+).
+          the ``/Names/Dests`` name tree (PDF 1.2+) and then in the
+          catalog ``/Dests`` dictionary (PDF 1.1).
 
         **Pypdfbox divergence from upstream**: upstream returns a typed
         ``PDPage``; we return the page's ``COSDictionary`` so existing
@@ -446,12 +446,13 @@ class PDOutlineItem(PDOutlineNode):
     def _resolve_named_destination(
         document: PDDocument, named: object
     ) -> PDDestination | None:
-        """Resolve a ``PDNamedDestination`` via the catalog's ``/Dests``
-        dictionary (PDF 1.1) and ``/Names/Dests`` name tree (PDF 1.2+).
+        """Resolve a ``PDNamedDestination`` via the catalog's
+        ``/Names/Dests`` name tree (PDF 1.2+) and legacy ``/Dests``
+        dictionary (PDF 1.1).
 
         Returns the typed ``PDDestination`` whose ``/D`` array was
         looked up, or ``None`` when the name is missing from both
-        sources. The lookup prefers the catalog ``/Dests`` entry to
+        sources. The lookup prefers the modern name-tree entry to
         match upstream ``PDDocumentCatalog#findNamedDestinationPage``
         precedence.
         """
@@ -462,6 +463,30 @@ class PDOutlineItem(PDOutlineNode):
         if not isinstance(name, str):
             return None
         catalog = document.get_document_catalog()
+
+        # /Names/Dests name tree (PDF 1.2+).
+        names = catalog.get_names()
+        if names is not None:
+            get_dests_tree = getattr(names, "get_dests", None)
+            if callable(get_dests_tree):
+                tree = get_dests_tree()
+                if tree is not None:
+                    get_value = getattr(tree, "get_value", None)
+                    if callable(get_value):
+                        entry = get_value(name)
+                        if entry is not None:
+                            if isinstance(entry, COSDictionary):
+                                inner = entry.get_dictionary_object(
+                                    COSName.get_pdf_name("D")
+                                )
+                                if inner is not None:
+                                    entry = inner
+                            resolved = PDOutlineItem._coerce_named_destination_entry(
+                                entry
+                            )
+                            if resolved is not None:
+                                return resolved
+
         # /Dests dictionary (PDF 1.1).
         dests = catalog.get_dests()
         if dests is not None:
@@ -485,27 +510,7 @@ class PDOutlineItem(PDOutlineNode):
                 resolved = PDOutlineItem._coerce_named_destination_entry(entry)
                 if resolved is not None:
                     return resolved
-        # /Names/Dests name tree (PDF 1.2+).
-        names = catalog.get_names()
-        if names is None:
-            return None
-        get_dests_tree = getattr(names, "get_dests", None)
-        if not callable(get_dests_tree):
-            return None
-        tree = get_dests_tree()
-        if tree is None:
-            return None
-        get_value = getattr(tree, "get_value", None)
-        if not callable(get_value):
-            return None
-        entry = get_value(name)
-        if entry is None:
-            return None
-        if isinstance(entry, COSDictionary):
-            inner = entry.get_dictionary_object(COSName.get_pdf_name("D"))
-            if inner is not None:
-                entry = inner
-        return PDOutlineItem._coerce_named_destination_entry(entry)
+        return None
 
     @staticmethod
     def _coerce_named_destination_entry(entry: object) -> PDDestination | None:

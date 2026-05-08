@@ -198,6 +198,9 @@ class LZWDecode(Filter):
             )
 
         decoded.write(raw_bytes)
+        flush = getattr(decoded, "flush", None)
+        if callable(flush):
+            flush()
         result_params = parameters if parameters is not None else COSDictionary()
         return DecodeResult(parameters=result_params, bytes_written=len(raw_bytes))
 
@@ -275,6 +278,9 @@ class LZWDecode(Filter):
         chunk = _calculate_chunk(len(code_table), early_change)
         writer.write_bits(EOD, chunk)
         writer.flush()
+        flush = getattr(encoded, "flush", None)
+        if callable(flush):
+            flush()
 
     # ------------------------------------------------------------------
     # Upstream parity helpers.

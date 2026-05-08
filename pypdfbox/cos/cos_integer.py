@@ -37,6 +37,8 @@ class COSInteger(COSNumber):
     @classmethod
     def get(cls, value: int) -> COSInteger:  # type: ignore[override]
         """Return a cached instance for small values, else a new one."""
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise TypeError("COSInteger value must be int")
         if _CACHE_LOW <= value <= _CACHE_HIGH:
             cached = cls._cache.get(value)
             if cached is None:

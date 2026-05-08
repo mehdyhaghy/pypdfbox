@@ -28,6 +28,20 @@ def _build(
     return props, groups
 
 
+def _default_config(props: PDOptionalContentProperties) -> COSDictionary:
+    d = props.get_cos_object().get_dictionary_object(COSName.D)  # type: ignore[attr-defined]
+    assert isinstance(d, COSDictionary)
+    return d
+
+
+def _state_array(
+    props: PDOptionalContentProperties, name: str
+) -> COSArray:
+    arr = _default_config(props).get_dictionary_object(COSName.get_pdf_name(name))
+    assert isinstance(arr, COSArray)
+    return arr
+
+
 # ---------- set_visible / set_hidden / set_visibility ----------
 
 
@@ -53,6 +67,42 @@ def test_set_visibility_round_trip_by_name() -> None:
     assert props.is_group_enabled(a) is True
     # B untouched.
     assert props.is_group_enabled(b) is True
+
+
+def test_set_visible_is_idempotent_and_does_not_duplicate_on_entry() -> None:
+    props, (a,) = _build("A")
+
+    assert props.set_visible(a) is False
+    assert props.set_visible(a) is True
+
+    on = _state_array(props, "ON")
+    off = _state_array(props, "OFF")
+    assert on.size() == 1
+    assert on.get_object(0) is a.get_cos_object()
+    assert off.size() == 0
+
+
+def test_set_group_enabled_repairs_contradictory_state_arrays() -> None:
+    props, (a,) = _build("A")
+    d = _default_config(props)
+    on = COSArray([a.get_cos_object(), a.get_cos_object()])
+    off = COSArray([a.get_cos_object(), a.get_cos_object()])
+    d.set_item(COSName.get_pdf_name("ON"), on)
+    d.set_item(COSName.get_pdf_name("OFF"), off)
+
+    assert props.set_group_enabled(a, False) is True
+    assert props.is_group_enabled(a) is False
+    assert _state_array(props, "ON").size() == 0
+    off = _state_array(props, "OFF")
+    assert off.size() == 1
+    assert off.get_object(0) is a.get_cos_object()
+
+    assert props.set_group_enabled(a, True) is True
+    assert props.is_group_enabled(a) is True
+    on = _state_array(props, "ON")
+    assert on.size() == 1
+    assert on.get_object(0) is a.get_cos_object()
+    assert _state_array(props, "OFF").size() == 0
 
 
 def test_set_visibility_drives_compute_visible_ocgs() -> None:

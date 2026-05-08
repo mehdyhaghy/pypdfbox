@@ -37,6 +37,16 @@ def _decode(encoded: bytes, params: COSDictionary | None = None) -> bytes:
     return out.getvalue()
 
 
+class _FlushTrackingBytesIO(BytesIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.flush_count = 0
+
+    def flush(self) -> None:
+        self.flush_count += 1
+        super().flush()
+
+
 def _make_params(
     early_change: int | None = None,
     predictor: int | None = None,
@@ -449,6 +459,29 @@ def test_decode_result_byte_count() -> None:
     result = f.decode(BytesIO(enc.getvalue()), out, None)
     assert result.bytes_written == len(payload)
     assert out.getvalue() == payload
+
+
+def test_decode_flushes_decoded_sink_after_write() -> None:
+    f = LZWDecode()
+    enc = BytesIO()
+    payload = b"flush me through lzw"
+    f.encode(BytesIO(payload), enc, None)
+    out = _FlushTrackingBytesIO()
+
+    result = f.decode(BytesIO(enc.getvalue()), out, None)
+
+    assert out.getvalue() == payload
+    assert result.bytes_written == len(payload)
+    assert out.flush_count == 1
+
+
+def test_encode_flushes_encoded_sink_after_final_byte() -> None:
+    out = _FlushTrackingBytesIO()
+
+    LZWDecode().encode(BytesIO(b"flush me through lzw"), out, None)
+
+    assert out.getvalue()
+    assert out.flush_count == 1
 
 
 def test_decode_returns_input_parameters_when_provided() -> None:

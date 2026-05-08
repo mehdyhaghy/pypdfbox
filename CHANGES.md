@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/font/pd_type3_font.py`: Type 3 fonts expose bounding-box and position-vector methods from the `PDFontLike` surface.
+- `pypdfbox/cos/cos_integer.py`: `COSInteger.get(True/False)` rejects booleans instead of returning cached `1`/`0` integers.
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_item.py`: named destination page lookup prefers `/Names /Dests` over legacy catalog `/Dests`.
+- `pypdfbox/filter/lzw_decode.py`: LZW encode/decode flushes caller-provided output streams.
+- `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_properties.py`: visibility writes remove stale duplicate `/ON` and `/OFF` references before storing the new state.
 - `pypdfbox/pdmodel/interactive/annotation/pd_appearance_content_stream.py`: dashed borders without explicit `/D` materialize the default `[3]` dash pattern.
 - `pypdfbox/loader.py`: exposes Java-style `loadPDF`, `loadFDF`, and `loadXFDF` aliases.
 - `pypdfbox/pdmodel/font/afm_loader.py`: bundled AFM resources load through `importlib.resources` handles instead of filesystem paths.

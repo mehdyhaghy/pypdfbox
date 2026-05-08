@@ -296,29 +296,32 @@ class PDOptionalContentProperties:
             d.set_item(_OFF, off)
 
         target = group.get_cos_object()
-        found = False
+        was_on, on_entry = self._drain_group_state_entries(on, target)
+        was_off, off_entry = self._drain_group_state_entries(off, target)
+        found = was_on or was_off
         if enabled:
-            for entry in list(off):
-                if self._to_dictionary(entry) is target:
-                    off.remove(entry)
-                    on.add(entry)
-                    found = True
-                    break
+            target_entry = on_entry if on_entry is not None else off_entry
+            on.add(target_entry if target_entry is not None else target)
         else:
-            for entry in list(on):
-                if self._to_dictionary(entry) is target:
-                    on.remove(entry)
-                    off.add(entry)
-                    found = True
-                    break
-        if not found:
-            if enabled:
-                on.add(target)
-            else:
-                off.add(target)
+            target_entry = off_entry if off_entry is not None else on_entry
+            off.add(target_entry if target_entry is not None else target)
         if enabled:
             self._enforce_radio_button(group, on, off)
         return found
+
+    def _drain_group_state_entries(
+        self, state_array: COSArray, target: COSDictionary
+    ) -> tuple[bool, COSBase | None]:
+        """Remove all entries resolving to ``target`` and return the first."""
+        first: COSBase | None = None
+        found = False
+        for entry in list(state_array):
+            if self._to_dictionary(entry) is target:
+                if first is None:
+                    first = entry
+                state_array.remove(entry)
+                found = True
+        return found, first
 
     def _enforce_radio_button(
         self,
