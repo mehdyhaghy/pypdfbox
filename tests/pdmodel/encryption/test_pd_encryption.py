@@ -94,6 +94,25 @@ def test_pd_encryption_round_trip_oe_ue_perms_bytes() -> None:
     assert enc.get_perms() == perms
 
 
+def test_pd_encryption_get_perms_pads_short_buffer_to_16_bytes() -> None:
+    enc = PDEncryption()
+    enc.set_perms(b"\x01\x02\x03")
+
+    perms = enc.get_perms()
+
+    assert perms is not None
+    assert len(perms) == 16
+    assert perms[:3] == b"\x01\x02\x03"
+    assert perms[3:] == b"\x00" * 13
+
+
+def test_pd_encryption_get_perms_truncates_overlong_buffer_to_16_bytes() -> None:
+    enc = PDEncryption()
+    enc.set_perms(bytes(range(32)))
+
+    assert enc.get_perms() == bytes(range(16))
+
+
 def test_pd_encryption_set_o_none_removes_entry() -> None:
     enc = PDEncryption()
     enc.set_o(b"\x01\x02\x03")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.xmpbox import (
     DomXmpParser,
+    IntegerType,
     XMPMediaManagementSchema,
     XMPMetadata,
 )
@@ -277,6 +278,43 @@ def test_save_id_round_trip() -> None:
     assert schema.get_save_id() == 42
     schema.set_save_id(None)
     assert schema.get_save_id() is None
+
+
+def test_save_id_property_accessor_interops_with_value_getter() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = XMPMediaManagementSchema(metadata)
+    schema.set_save_id("42")
+
+    prop = schema.get_save_id_property()
+
+    assert isinstance(prop, IntegerType)
+    assert prop.get_property_name() == XMPMediaManagementSchema.SAVE_ID
+    assert prop.get_value() == 42
+
+    replacement = IntegerType(
+        metadata,
+        XMPMediaManagementSchema.NAMESPACE,
+        XMPMediaManagementSchema.PREFERRED_PREFIX,
+        XMPMediaManagementSchema.SAVE_ID,
+        7,
+    )
+    schema.set_save_id_property(replacement)
+
+    assert schema.get_save_id_property() is replacement
+    assert schema.get_save_id() == 7
+
+    schema.set_save_id_property(None)
+    assert schema.get_save_id_property() is None
+    assert schema.get_save_id() is None
+
+
+def test_save_id_property_getter_ignores_invalid_raw_storage() -> None:
+    schema = _mm()
+    schema.set_property(XMPMediaManagementSchema.SAVE_ID, "not-an-integer")
+    assert schema.get_save_id_property() is None
+
+    schema.set_property(XMPMediaManagementSchema.SAVE_ID, True)
+    assert schema.get_save_id_property() is None
 
 
 def test_save_id_constant_matches_upstream() -> None:

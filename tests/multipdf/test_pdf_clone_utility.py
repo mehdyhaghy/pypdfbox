@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import (
     COSArray,
+    COSBase,
     COSDictionary,
     COSInteger,
     COSName,
@@ -11,6 +12,14 @@ from pypdfbox.cos import (
 )
 from pypdfbox.multipdf import PDFCloneUtility
 from pypdfbox.pdmodel import PDDocument
+
+
+class _Wrap:
+    def __init__(self, base: COSBase) -> None:
+        self._b = base
+
+    def get_cos_object(self) -> COSBase:
+        return self._b
 
 
 def test_clone_for_new_document_returns_none_for_none() -> None:
@@ -100,6 +109,7 @@ def test_shared_subgraph_cloned_once() -> None:
         root.add(a)
         root.add(b)
         cloned_root = cloner.clone_for_new_document(root)
+        assert isinstance(cloned_root, COSArray)
         cloned_a = cloned_root.get(0)
         cloned_b = cloned_root.get(1)
         assert isinstance(cloned_a, COSDictionary)
@@ -191,13 +201,6 @@ def test_clone_merge_arrays_appends_clones() -> None:
     with PDDocument() as dst:
         cloner = PDFCloneUtility(dst)
 
-        class _Wrap:
-            def __init__(self, base):
-                self._b = base
-
-            def get_cos_object(self):
-                return self._b
-
         src_arr = COSArray()
         src_arr.add(COSInteger.get(1))
         src_arr.add(COSInteger.get(2))
@@ -210,16 +213,26 @@ def test_clone_merge_arrays_appends_clones() -> None:
         assert tgt_arr.get_int(2) == 2
 
 
-def test_clone_merge_dictionaries_adds_missing_keys() -> None:
+def test_clone_merge_same_underlying_cos_object_is_noop() -> None:
+    """Different wrappers can expose the same COS object; merging one into
+    itself should not duplicate entries."""
     with PDDocument() as dst:
         cloner = PDFCloneUtility(dst)
 
-        class _Wrap:
-            def __init__(self, base):
-                self._b = base
+        arr = COSArray()
+        arr.add(COSInteger.get(1))
+        arr.add(COSInteger.get(2))
 
-            def get_cos_object(self):
-                return self._b
+        cloner.clone_merge(_Wrap(arr), _Wrap(arr))
+
+        assert arr.size() == 2
+        assert arr.get_int(0) == 1
+        assert arr.get_int(1) == 2
+
+
+def test_clone_merge_dictionaries_adds_missing_keys() -> None:
+    with PDDocument() as dst:
+        cloner = PDFCloneUtility(dst)
 
         src_dict = COSDictionary()
         src_dict.set_name("New", "Value")
@@ -299,6 +312,7 @@ def test_clone_annotation_with_action_and_dest() -> None:
         annot.set_item("A", action)
         annot.set_item("Dest", dest)
         cloned = cloner.clone_for_new_document(annot)
+        assert isinstance(cloned, COSDictionary)
         cloned_a = cloned.get_item("A")
         cloned_dest = cloned.get_item("Dest")
         assert isinstance(cloned_a, COSDictionary)
@@ -345,6 +359,9 @@ def test_clone_indirect_ref_shared_across_two_parents_clones_once() -> None:
         root.add(a)
         root.add(b)
         cloned_root = cloner.clone_for_new_document(root)
+        assert isinstance(cloned_root, COSArray)
         cloned_a = cloned_root.get(0)
         cloned_b = cloned_root.get(1)
+        assert isinstance(cloned_a, COSDictionary)
+        assert isinstance(cloned_b, COSDictionary)
         assert cloned_a.get_item("Ref") is cloned_b.get_item("Ref")

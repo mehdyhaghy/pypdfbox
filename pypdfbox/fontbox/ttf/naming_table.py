@@ -58,7 +58,7 @@ class NamingTable(TTFTable):
             charset = self._charset_for(nr)
             raw = data.read_bytes(nr.get_string_length())
             try:
-                string = raw.decode(charset, errors="replace")
+                string = self._decode_string(raw, charset)
             except LookupError:
                 # best-effort fallback for unknown Macintosh script codes
                 string = raw.decode("latin-1")
@@ -95,6 +95,14 @@ class NamingTable(TTFTable):
             if encoding == 1:
                 return "shift_jis"
         return "iso-8859-1"
+
+    @staticmethod
+    def _decode_string(raw: bytes, charset: str) -> str:
+        if charset == "utf-16-be" and (
+            raw.startswith(b"\xfe\xff") or raw.startswith(b"\xff\xfe")
+        ):
+            return raw.decode("utf-16", errors="replace")
+        return raw.decode(charset, errors="replace")
 
     def _fill_lookup_table(self) -> None:
         for nr in self._name_records:

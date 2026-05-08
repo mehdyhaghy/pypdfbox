@@ -22,6 +22,7 @@ import zlib
 import pytest
 
 from pypdfbox.cos import (
+    COSArray,
     COSDictionary,
     COSDocument,
     COSName,
@@ -46,6 +47,18 @@ def _make_doc(catalog_dict: COSDictionary | None = None) -> COSDocument:
     trailer.set_item(COSName.ROOT, catalog_obj)  # type: ignore[attr-defined]
     doc.set_trailer(trailer)
     return doc
+
+
+def _make_doc_with_referenced_dictionaries(count: int) -> COSDocument:
+    catalog = COSDictionary()
+    catalog.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
+    kids = COSArray()
+    for obj_num in range(2, count + 2):
+        child = COSDictionary()
+        child.set_int(COSName.get_pdf_name("Ordinal"), obj_num)
+        kids.add(COSObject(obj_num, 0, resolved=child))
+    catalog.set_item(COSName.get_pdf_name("Kids"), kids)
+    return _make_doc(catalog)
 
 
 def _write_xref_stream(doc: COSDocument, *, object_stream: bool = False) -> bytes:
@@ -202,6 +215,19 @@ def test_object_stream_emits_objstm_marker_in_output() -> None:
     # /N (object count) and /First (offset) are mandatory ObjStm dict keys.
     assert b"/N " in out
     assert b"/First " in out
+
+
+def test_object_stream_default_chunk_size_matches_compress_parameters() -> None:
+    out = _write_xref_stream(
+        _make_doc_with_referenced_dictionaries(150),
+        object_stream=True,
+    )
+
+    object_stream_count = out.count(b"/Type /ObjStm") + out.count(b"/Type/ObjStm")
+    packed_counts = [int(raw) for raw in re.findall(rb"/N\s+(\d+)", out)]
+
+    assert object_stream_count == 1
+    assert max(packed_counts) > 100
 
 
 def test_object_stream_yields_type2_xref_entries() -> None:

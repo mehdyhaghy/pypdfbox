@@ -1499,3 +1499,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/state/pd_extended_graphics_state.py`: copying extended graphics state now activates soft masks, snapshots the current transformation matrix, and clears masks for `/SMask /None`.
 - `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_marked_content.py`: marked-content language reads now accept string-like `/Lang` operands.
 - `pypdfbox/pdmodel/interactive/form/pd_button.py`: button default values now validate known button states before writing `/DV`.
+
+## Wave 333 — object streams, encryption perms, clone merges, TTF names, and XMP SaveID
+
+- `pypdfbox/pdfwriter/cos_writer.py`: object-stream packing now uses `CompressParameters.DEFAULT_OBJECT_STREAM_SIZE` instead of a hard-coded chunk size.
+- `pypdfbox/pdmodel/encryption/pd_encryption.py`: `/Perms` values now normalize to the 16-byte PDFBox surface by padding or truncating when present.
+- `pypdfbox/multipdf/pdf_clone_utility.py`: clone merges now treat distinct wrappers exposing the same COS object as identical and avoid duplicate array entries.
+- `pypdfbox/fontbox/ttf/naming_table.py`: UTF-16 TTF name strings now consume an optional BOM while preserving UTF-16BE as the default.
+- `pypdfbox/xmpbox/xmp_media_management_schema.py`: media management schemas gained typed `SaveID` property getter and setter accessors.

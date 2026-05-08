@@ -26,6 +26,7 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
 
+from .compress.compress_parameters import CompressParameters
 from .cos_standard_output_stream import COSStandardOutputStream
 from .cos_writer_xref_entry import COSWriterXRefEntry
 
@@ -92,10 +93,10 @@ def _format_xref_generation(gen: int) -> bytes:
     return f"{gen:05d}".encode("ascii")
 
 
-# Per PDF 32000-1 §7.5.7 PDFBox caps each ObjStm at 100 objects so that
-# slow ObjStm decoders (the index header is parsed sequentially) stay
-# bounded; we mirror that ceiling.
-_OBJSTM_MAX: int = 100
+# Per PDF 32000-1 §7.5.7 readers parse ObjStm index headers sequentially,
+# so PDFBox bounds each packed stream via CompressParameters. Mirror the
+# default here for the writer's opt-in object-stream path.
+_OBJSTM_DEFAULT_MAX: int = CompressParameters.DEFAULT_OBJECT_STREAM_SIZE
 
 
 def _ceil_log256(value: int) -> int:
@@ -197,6 +198,7 @@ class COSWriter(ICOSVisitor):
         # reference stream), pack non-stream indirect objects into ObjStm
         # streams to shrink the output.
         self._object_stream: bool = object_stream
+        self._object_stream_size: int = _OBJSTM_DEFAULT_MAX
         # PDF 32000-1 §7.5.8.4 hybrid layout — emit BOTH a traditional
         # ``xref`` table and a parallel ``/Type /XRef`` stream, with the
         # trailer announcing the latter via ``/XRefStm <offset>``. Old
@@ -1509,7 +1511,8 @@ class COSWriter(ICOSVisitor):
         """Bundle eligible non-stream indirect objects into one or more
         ``/Type /ObjStm`` streams (PDF 32000-1 §7.5.7).
 
-        Each ObjStm carries up to ``_OBJSTM_MAX`` payloads. Wire format:
+        Each ObjStm carries up to the PDFBox default
+        ``CompressParameters.DEFAULT_OBJECT_STREAM_SIZE`` payloads. Wire format:
 
         * dictionary entries: ``/Type /ObjStm /N <count> /First <offset>
           /Filter /FlateDecode /Length ...``
@@ -1542,8 +1545,10 @@ class COSWriter(ICOSVisitor):
         # reader will reconstruct.
         candidates.sort(key=lambda kv: kv[0].object_number)
 
-        for chunk_start in range(0, len(candidates), _OBJSTM_MAX):
-            chunk = candidates[chunk_start : chunk_start + _OBJSTM_MAX]
+        for chunk_start in range(0, len(candidates), self._object_stream_size):
+            chunk = candidates[
+                chunk_start : chunk_start + self._object_stream_size
+            ]
             self._emit_one_object_stream(chunk)
 
     def _is_packable(self, actual: COSBase, key: COSObjectKey) -> bool:

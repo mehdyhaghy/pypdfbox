@@ -331,6 +331,29 @@ class XMPMediaManagementSchema(XMPSchema):
         )
         self._properties[self.SAVE_ID] = prop
 
+    def get_save_id_property(self) -> IntegerType | None:
+        """Mirror of upstream ``getSaveIDProperty()``."""
+        v = self._properties.get(self.SAVE_ID)
+        if isinstance(v, IntegerType):
+            return v
+        if isinstance(v, bool):
+            return None
+        if isinstance(v, int | str):
+            try:
+                return IntegerType(
+                    self._metadata, self._namespace, self._prefix, self.SAVE_ID, v
+                )
+            except ValueError:
+                return None
+        return None
+
+    def set_save_id_property(self, value: IntegerType | None) -> None:
+        """Mirror of upstream ``setSaveIDProperty(IntegerType)``."""
+        if value is None:
+            self.remove_property(self.SAVE_ID)
+            return
+        self._properties[self.SAVE_ID] = value
+
     # --- RenditionOf (single ResourceRef) ---------------------------
 
     def get_rendition_of(self) -> ResourceRefType | None:

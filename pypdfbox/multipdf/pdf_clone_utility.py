@@ -148,6 +148,8 @@ class PDFCloneUtility:
             return
         source_cos = base.get_cos_object()  # type: ignore[attr-defined]
         target_cos = target.get_cos_object()  # type: ignore[attr-defined]
+        if source_cos is target_cos:
+            return
         self._clone_merge_cos_base(source_cos, target_cos, set())
 
     def _clone_merge_cos_base(

@@ -246,7 +246,10 @@ class PDEncryption:
     # ---------- /Perms (R6) ----------
 
     def get_perms(self) -> bytes | None:
-        return _get_bytes(self._dict, _PERMS)
+        raw = _get_bytes(self._dict, _PERMS)
+        if raw is None:
+            return None
+        return _pad_or_truncate(raw, 16)
 
     def set_perms(self, b: bytes | None) -> None:
         _set_bytes(self._dict, _PERMS, b)
