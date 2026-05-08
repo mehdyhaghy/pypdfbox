@@ -230,6 +230,11 @@ class PDChoice(PDVariableText):
                 value = _entry_to_str(second)
                 if value is not None:
                     out.append(value)
+            elif isinstance(entry, COSArray) and entry.size() > 0:
+                first = entry.get_object(0)
+                value = _entry_to_str(first)
+                if value is not None:
+                    out.append(value)
             else:
                 value = _entry_to_str(entry)
                 if value is not None:

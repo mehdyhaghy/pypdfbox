@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from contextlib import suppress
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from .digital_signature_table import DigitalSignatureTable
@@ -261,6 +262,8 @@ class TrueTypeFont:
         h._magic_number = int(ft.magicNumber)  # noqa: SLF001
         h._flags = int(ft.flags)  # noqa: SLF001
         h._units_per_em = int(ft.unitsPerEm)  # noqa: SLF001
+        h._created = self._long_datetime(int(ft.created))  # noqa: SLF001
+        h._modified = self._long_datetime(int(ft.modified))  # noqa: SLF001
         h._x_min = int(ft.xMin)  # noqa: SLF001
         h._y_min = int(ft.yMin)  # noqa: SLF001
         h._x_max = int(ft.xMax)  # noqa: SLF001
@@ -1133,6 +1136,12 @@ class TrueTypeFont:
         whole = (raw >> 16) & 0xFFFF
         frac = raw & 0xFFFF
         return whole + frac / 65536.0
+
+    @staticmethod
+    def _long_datetime(seconds_since_1904: int) -> datetime:
+        """Decode an OpenType LONGDATETIME value."""
+        epoch = datetime(1904, 1, 1, tzinfo=UTC)
+        return epoch + timedelta(seconds=seconds_since_1904)
 
     @staticmethod
     def _read_all_bytes(data: TTFDataStream) -> bytes:

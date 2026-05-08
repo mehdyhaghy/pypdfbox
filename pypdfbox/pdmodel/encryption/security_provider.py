@@ -1,14 +1,16 @@
 """Dispatch helper that picks a SecurityHandler subclass from a /Filter name.
 
 Mirrors ``org.apache.pdfbox.pdmodel.encryption.SecurityHandlerFactory`` (lite).
-For now only the standard handler is registered; public-key handlers can be
-added without changing call sites.
+The standard and public-key handlers are registered under their PDF /Filter
+names so callers can resolve parsed encryption dictionaries without knowing
+the concrete handler class upfront.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .public_key_security_handler import PublicKeySecurityHandler
 from .standard_security_handler import StandardSecurityHandler
 
 if TYPE_CHECKING:
@@ -16,6 +18,7 @@ if TYPE_CHECKING:
 
 
 _HANDLERS: dict[str, type[SecurityHandler]] = {
+    PublicKeySecurityHandler.FILTER: PublicKeySecurityHandler,
     StandardSecurityHandler.FILTER: StandardSecurityHandler,
 }
 

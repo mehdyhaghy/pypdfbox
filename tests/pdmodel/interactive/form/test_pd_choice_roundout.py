@@ -333,6 +333,26 @@ def test_get_options_unwraps_cos_string_opt_singleton() -> None:
     assert lb.get_options_display_values() == ["only"]
 
 
+def test_get_options_display_values_unwraps_single_element_nested_options() -> None:
+    """One-element nested /Opt entries are tolerated like export values.
+
+    Upstream's choice-option parsing accepts this shape for ``getOptions``;
+    display reads should not report a false export/display split when there
+    is no second display element.
+    """
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    first = COSArray()
+    first.add(COSString("A"))
+    second = COSArray()
+    second.add(COSString("B"))
+    lb.get_cos_object().set_item(_OPT, COSArray([first, second]))
+
+    assert lb.get_options() == ["A", "B"]
+    assert lb.get_options_display_values() == ["A", "B"]
+    assert lb.has_separate_export_and_display_values() is False
+
+
 def test_get_options_returns_empty_when_opt_is_unexpected_type() -> None:
     """A non-array, non-string /Opt yields an empty list — defensive parity
     with upstream's ``FieldUtils.getPairableItems`` final fall-through.

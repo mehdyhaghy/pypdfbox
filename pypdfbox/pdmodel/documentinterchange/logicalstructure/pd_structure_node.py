@@ -220,14 +220,17 @@ class PDStructureNode:
         existing = self._dictionary.get_dictionary_object(_K)
         if existing is None:
             self._dictionary.set_item(_K, cos_kid)
+            _set_parent_if_structure_element(kid, self)
             return
         if isinstance(existing, COSArray):
             existing.add(cos_kid)
+            _set_parent_if_structure_element(kid, self)
             return
         arr = COSArray()
         arr.add(existing)
         arr.add(cos_kid)
         self._dictionary.set_item(_K, arr)
+        _set_parent_if_structure_element(kid, self)
 
     def create_object(self, kid: Any) -> Any:
         """Convert a single ``/K`` kid (a ``COSBase``) to its typed wrapper.
@@ -350,9 +353,12 @@ class PDStructureNode:
                 only = existing.get_object(0)
                 if only is not None:
                     self._dictionary.set_item(_K, only)
+            if removed:
+                _clear_parent_if_structure_element(kid)
             return removed
         if _same_kid(existing, cos_kid):
             self._dictionary.remove_item(_K)
+            _clear_parent_if_structure_element(kid)
             return True
         return False
 
@@ -385,6 +391,20 @@ def _same_kid(left: Any, right: Any) -> bool:
     if isinstance(left, int) and not isinstance(left, bool) and isinstance(right, COSInteger):
         return left == right.value
     return bool(left == right)
+
+
+def _set_parent_if_structure_element(kid: Any, parent: PDStructureNode) -> None:
+    from .pd_structure_element import PDStructureElement
+
+    if isinstance(kid, PDStructureElement):
+        kid.set_parent(parent)
+
+
+def _clear_parent_if_structure_element(kid: Any) -> None:
+    from .pd_structure_element import PDStructureElement
+
+    if isinstance(kid, PDStructureElement):
+        kid.set_parent(None)
 
 
 __all__ = ["PDStructureNode"]

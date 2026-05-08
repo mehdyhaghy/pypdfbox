@@ -227,3 +227,27 @@ def test_wave330_get_color_space_re_resolves_named_entry_per_resources() -> None
 
     assert attrs.get_color_space(gray_resources) is PDDeviceGray.INSTANCE
     assert attrs.get_color_space(rgb_resources) is PDDeviceRGB.INSTANCE
+
+
+def test_color_space_cache_tracks_external_cos_replacement() -> None:
+    raw = COSDictionary()
+    raw.set_item(_CS, COSName.get_pdf_name("DeviceGray"))
+    attrs = PDTransparencyGroupAttributes(raw)
+
+    assert attrs.get_color_space() is PDDeviceGray.INSTANCE
+
+    raw.set_item(_CS, COSName.get_pdf_name("DeviceRGB"))
+
+    assert attrs.get_color_space() is PDDeviceRGB.INSTANCE
+
+
+def test_color_space_cache_clears_after_external_cos_removal() -> None:
+    raw = COSDictionary()
+    raw.set_item(_CS, COSName.get_pdf_name("DeviceGray"))
+    attrs = PDTransparencyGroupAttributes(raw)
+
+    assert attrs.get_color_space() is PDDeviceGray.INSTANCE
+
+    raw.remove_item(_CS)
+
+    assert attrs.get_color_space() is None

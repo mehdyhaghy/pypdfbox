@@ -12,6 +12,7 @@ re-implementing every table writer fontTools already ships).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,15 @@ def test_get_table_bytes_unknown_returns_none(liberation_sans: TrueTypeFont) -> 
 
 
 # ---------- typed table accessors ----------------------------------------
+
+
+def test_get_header_preserves_long_datetime_metadata(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    header = liberation_sans.get_header()
+    assert header is not None
+    assert header.get_created() == datetime(2010, 6, 18, 10, 23, 22, tzinfo=UTC)
+    assert header.get_modified() == datetime(2021, 9, 30, 9, 4, 22, tzinfo=UTC)
 
 
 def test_get_naming_returns_populated_table(liberation_sans: TrueTypeFont) -> None:

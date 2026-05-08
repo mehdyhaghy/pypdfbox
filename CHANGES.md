@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/form/pd_choice.py`: one-element nested `/Opt` entries are preserved in display values so tolerated malformed option arrays keep export/display alignment.
+- `pypdfbox/fontbox/ttf/true_type_font.py`: synthesized header metadata preserves `head.created` and `head.modified` as UTC `datetime` values.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_node.py`: direct structure-element kid append/remove operations maintain the child's `/P` parent pointer.
+- `pypdfbox/pdmodel/graphics/form/pd_transparency_group_attributes.py`: cached `/CS` color spaces are invalidated when the raw COS source is externally replaced or removed.
+- `pypdfbox/pdmodel/encryption/security_provider.py`: `/Adobe.PubSec` resolves through the public-key security handler factory.
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: stencil image XObjects now treat missing `/ColorSpace` as implicit `DeviceGray`.
 - `pypdfbox/pdmodel/interactive/measurement/pd_media_clip.py`, `pypdfbox/pdmodel/interactive/measurement/pd_rendition.py`: media clip and rendition factories dereference indirect objects and treat unresolved or null references as absent.
 - `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_item.py`, `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_node.py`: sibling insertion rewrites inserted item parents consistently.

@@ -32,6 +32,7 @@ class PDTransparencyGroupAttributes:
             dictionary.set_item(_S, _TRANSPARENCY)
         self._dictionary = dictionary
         self._color_space: PDColorSpace | None = None
+        self._color_space_source: COSBase | None = None
 
     def get_cos_object(self) -> COSDictionary:
         return self._dictionary
@@ -43,6 +44,8 @@ class PDTransparencyGroupAttributes:
         resolved via :class:`PDColorSpace`.create and cached. Mirrors
         upstream ``getColorSpace([resources])`` overloads."""
         if not self._dictionary.contains_key(_CS):
+            self._color_space = None
+            self._color_space_source = None
             return None
 
         # Resource-name resolution is contextual. A form's /Group /CS can be
@@ -57,7 +60,7 @@ class PDTransparencyGroupAttributes:
 
             return PDColorSpace.create(value, resources)
 
-        if self._color_space is None:
+        if self._color_space is None or self._color_space_source is not value:
             # Local import keeps the cluster boundary explicit and avoids a
             # cycle through the rest of the graphics package.
             from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
@@ -65,6 +68,7 @@ class PDTransparencyGroupAttributes:
             )
 
             self._color_space = PDColorSpace.create(value, resources)
+            self._color_space_source = value
         return self._color_space
 
     def set_color_space(
@@ -91,6 +95,7 @@ class PDTransparencyGroupAttributes:
         if color_space is None:
             self._dictionary.remove_item(_CS)
             self._color_space = None
+            self._color_space_source = None
             return
         if isinstance(color_space, _PDColorSpace):
             cs_cos = color_space.get_cos_object()
@@ -100,10 +105,12 @@ class PDTransparencyGroupAttributes:
                 cs_cos = COSName.get_pdf_name(color_space.get_name())
             self._dictionary.set_item(_CS, cs_cos)
             self._color_space = None
+            self._color_space_source = None
             return
         if isinstance(color_space, COSBase):
             self._dictionary.set_item(_CS, color_space)
             self._color_space = None
+            self._color_space_source = None
             return
         raise TypeError(
             "set_color_space expects PDColorSpace, COSBase, or None; got "
