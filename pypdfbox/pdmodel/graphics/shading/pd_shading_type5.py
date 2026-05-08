@@ -101,9 +101,9 @@ class PDShadingType5(PDShading):
         when neither is available."""
         if self._dict.get_dictionary_object(_FUNCTION) is not None:
             return 1
-        cs = self.get_color_space()
+        cs = self.get_color_space_object()
         if cs is None:
-            return -1
+            cs = self.get_color_space()
         get_components = getattr(cs, "get_number_of_components", None)
         if callable(get_components):
             return int(get_components())

@@ -42,6 +42,15 @@ def test_default_get_schemas_element_is_none() -> None:
     assert schema.get_schemas_element() is None
 
 
+def test_wave326_get_extension_schemas_does_not_materialize_empty_bag() -> None:
+    schema = _ext()
+
+    assert schema.get_extension_schemas() == []
+    assert not schema.has_property(PDFAExtensionSchema.SCHEMAS)
+    assert schema.get_schemas_element() is None
+    assert schema.get_schemas_property() is None
+
+
 def test_add_then_get_round_trips_single_entry() -> None:
     schema = _ext()
     schema.add_extension_schema(

@@ -56,19 +56,22 @@ class PDFAExtensionSchema(XMPSchema):
 
     # --- pdfaExtension:schemas Bag — lite struct surface --------------
 
-    def _get_extension_list(self) -> list[dict[str, str]]:
+    def _get_extension_list(self, *, create: bool = False) -> list[dict[str, str]]:
         """
-        Return the mutable backing list for ``pdfaExtension:schemas``,
-        installing an empty Bag the first time it is read so downstream
-        mutators always operate on an in-place container.
+        Return the backing list for ``pdfaExtension:schemas``.
+
+        Read paths leave an absent property absent; mutating paths opt into
+        creating an empty Bag so they can append in place.
         """
         existing = self._properties.get(self.SCHEMAS)
         if isinstance(existing, list) and all(isinstance(item, dict) for item in existing):
             return cast(list[dict[str, str]], existing)
-        if existing is None:
+        if existing is None and create:
             new_list: list[dict[str, str]] = []
             self._properties[self.SCHEMAS] = new_list
             return new_list
+        if existing is None:
+            return []
         # Property exists in some other shape (e.g. a list of empty strings
         # from the parser path which currently lacks struct decoding). Surface
         # an empty list rather than raising — the raw element is still
@@ -93,7 +96,7 @@ class PDFAExtensionSchema(XMPSchema):
         ``addExtensionSchemaDefinition`` for the common-case write path; full
         ``pdfaSchema:property`` / ``pdfaSchema:valueType`` Seqs land later.
         """
-        backing = self._get_extension_list()
+        backing = self._get_extension_list(create=True)
         backing.append(
             {
                 self.SCHEMA: schema,

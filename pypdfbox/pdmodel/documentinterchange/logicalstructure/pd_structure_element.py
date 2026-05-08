@@ -674,12 +674,19 @@ class PDStructureElement(PDStructureNode):
             return Revisions(c)
         revs: Revisions[COSName] = Revisions()
         if isinstance(c, COSName):
-            revs.add_object(c, self.get_revision_number())
+            revs.add_object(c, 0)
         return revs
 
     def set_class_names(self, class_names: Revisions[COSName] | None) -> None:
         if class_names is None:
             self._dictionary.remove_item(_C)
+            return
+        if class_names.size() == 1 and class_names.get_revision_number_at(0) == 0:
+            class_name = class_names.get_object_at(0)
+            if isinstance(class_name, COSName):
+                self._dictionary.set_item(_C, class_name)
+            else:
+                self._dictionary.set_name(_C, str(class_name))
             return
         self._dictionary.set_item(_C, class_names.to_cos_array())
 

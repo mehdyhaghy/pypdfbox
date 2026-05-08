@@ -107,11 +107,9 @@ class PDShadingType4(PDShading):
         is available."""
         if self._dict.get_dictionary_object(_FUNCTION) is not None:
             return 1
-        cs = self.get_color_space()
+        cs = self.get_color_space_object()
         if cs is None:
-            return -1
-        # PDColorSpace exposes get_number_of_components(); a raw COSBase
-        # fallback returns -1 since we cannot infer the count.
+            cs = self.get_color_space()
         get_components = getattr(cs, "get_number_of_components", None)
         if callable(get_components):
             return int(get_components())

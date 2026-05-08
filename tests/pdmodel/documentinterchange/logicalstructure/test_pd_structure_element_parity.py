@@ -213,7 +213,7 @@ def test_class_names_set_none_removes_c_entry() -> None:
 def test_class_names_bare_name_fallback() -> None:
     # Defensive: PDFs in the wild may store /C as a bare /Name (single
     # entry) rather than an array. Upstream wraps that into a
-    # single-entry Revisions using the element's current /R.
+    # single-entry Revisions using revision 0.
     elem = PDStructureElement(structure_type="P")
     elem.set_revision_number(7)
     elem.get_cos_object().set_item(_C, COSName.get_pdf_name("Bare"))
@@ -222,7 +222,7 @@ def test_class_names_bare_name_fallback() -> None:
     assert got.size() == 1
     val = got.get_object_at(0)
     assert (val.get_name() if isinstance(val, COSName) else val) == "Bare"
-    assert got.get_revision_number_at(0) == 7
+    assert got.get_revision_number_at(0) == 0
 
 
 # ---------- /A attributes ----------

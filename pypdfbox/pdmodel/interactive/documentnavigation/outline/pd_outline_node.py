@@ -240,6 +240,7 @@ class PDOutlineNode:
         """
         target = child.get_cos_object()
         current = self.get_first_child()
+        previous_in_chain: PDOutlineItem | None = None
         seen: set[int] = set()
         while current is not None:
             current_dict = current.get_cos_object()
@@ -248,18 +249,22 @@ class PDOutlineNode:
                 return False
             seen.add(current_id)
             if current_dict is target:
-                self._unlink_child(current)
+                self._unlink_child(current, previous_in_chain)
                 return True
+            previous_in_chain = current
             current = current.get_next_sibling()
         return False
 
-    def _unlink_child(self, child: PDOutlineItem) -> None:
+    def _unlink_child(
+        self, child: PDOutlineItem, previous_in_chain: PDOutlineItem | None
+    ) -> None:
         child_dict = child.get_cos_object()
-        previous_sibling = child.get_previous_sibling()
+        previous_sibling = previous_in_chain
         next_sibling = child.get_next_sibling()
 
         first_child = self.get_first_child()
         if first_child is not None and first_child.get_cos_object() is child_dict:
+            previous_sibling = None
             if next_sibling is None:
                 self._dictionary.remove_item(_FIRST)
             else:
@@ -267,6 +272,7 @@ class PDOutlineNode:
 
         last_child = self.get_last_child()
         if last_child is not None and last_child.get_cos_object() is child_dict:
+            next_sibling = None
             if previous_sibling is None:
                 self._dictionary.remove_item(_LAST)
             else:

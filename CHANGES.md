@@ -1443,3 +1443,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/color/pd_indexed.py`: Indexed `/Hival` values are now clamped into the valid `0..255` range.
 - `pypdfbox/fontbox/type1/type1_font.py`: named `/ISOLatin1Encoding` now resolves instead of producing an empty Type1 encoding map.
 - `pypdfbox/pdmodel/interactive/digitalsignature/sig_utils.py`: signed digest computation now rejects negative and out-of-bounds `/ByteRange` entries.
+
+## Wave 326 — PDF/A extension reads, structure classes, mesh color components, outline unlinking, and content writer aliases
+
+- `pypdfbox/xmpbox/pdfa_extension_schema.py`: reading extension schemas no longer materializes an empty `pdfaExtension:schemas` property.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_element.py`: bare `/C /Name` class entries now round-trip as zero-revision class names.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading_type4.py` through `pd_shading_type7.py`: mesh shading color-component counts now resolve through typed color spaces before legacy fallbacks.
+- `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_node.py`: child removal now unlinks by actual `/First` traversal and ignores stale edge links.
+- `pypdfbox/pdfwriter/content_stream_writer.py`: content stream writers gained Java-style `writeToken()` and `writeTokens()` aliases.
