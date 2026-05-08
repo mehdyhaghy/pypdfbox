@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import (
     PDAcroForm,
+    PDNonTerminalField,
     PDTextField,
 )
 from pypdfbox.pdmodel.pd_document import PDDocument
@@ -135,7 +136,9 @@ def test_flatten_two_widgets_same_page_get_unique_names() -> None:
     form.flatten()
 
     res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
+    assert isinstance(res, COSDictionary)
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
+    assert isinstance(xo, COSDictionary)
     keys = sorted(k.name for k in xo.key_set())
     assert len(keys) == 2
     assert len(set(keys)) == 2  # truly unique
@@ -206,6 +209,7 @@ def test_flatten_two_pages_each_get_their_own_appended_stream() -> None:
         contents = page.get_contents()
         assert f"/{names[0].name} Do".encode("ascii") in contents
         annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+        assert isinstance(annots, COSArray)
         assert annots.size() == 0
 
 
@@ -252,11 +256,14 @@ def test_flatten_subset_keeps_other_fields_and_acro_form() -> None:
     assert [f.get_partial_name() for f in fields_now] == ["keep"]
     # `keep`'s widget is still in /Annots.
     annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+    assert isinstance(annots, COSArray)
     assert annots.size() == 1
     # Only the flattened form was appended.
     contents = page.get_contents()
     res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
+    assert isinstance(res, COSDictionary)
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
+    assert isinstance(xo, COSDictionary)
     names = list(xo.key_set())
     assert len(names) == 1
     assert xo.get_dictionary_object(names[0]) is flat_ap
@@ -300,8 +307,33 @@ def test_flatten_checkbox_uses_as_state_to_pick_appearance() -> None:
     form.flatten()
 
     res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
+    assert isinstance(res, COSDictionary)
     xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
+    assert isinstance(xo, COSDictionary)
     names = list(xo.key_set())
     assert len(names) == 1
     # Should have picked the /Yes stream, not /Off.
     assert xo.get_dictionary_object(names[0]) is on_stream
+
+
+def test_flatten_cyclic_non_terminal_subtree_returns_without_recursing() -> None:
+    form = PDAcroForm()
+    root = PDNonTerminalField(form)
+    root.set_partial_name("root")
+
+    child = COSDictionary()
+    child.set_string(COSName.get_pdf_name("T"), "child")
+    child_kids = COSArray()
+    child_kids.add(root.get_cos_object())
+    child.set_item(COSName.get_pdf_name("Kids"), child_kids)
+
+    root_kids = COSArray()
+    root_kids.add(child)
+    root.get_cos_object().set_item(COSName.get_pdf_name("Kids"), root_kids)
+    form.set_fields([root])
+
+    form.flatten(fields=[root])
+
+    fields = form.get_fields()
+    assert len(fields) == 1
+    assert fields[0].get_cos_object() is root.get_cos_object()

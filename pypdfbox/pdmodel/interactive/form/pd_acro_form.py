@@ -786,11 +786,24 @@ class PDAcroForm:
 
     # ---------- flatten internals ----------
 
-    def _collect_terminals(self, field: PDField) -> list[PDTerminalField]:
+    def _collect_terminals(
+        self, field: PDField, seen: set[int] | None = None
+    ) -> list[PDTerminalField]:
         """Depth-first walk of a field subtree returning every terminal
         descendant. Mirrors the implicit recursion in PDFBox's
         ``flatten`` which only emits content for terminal fields with
         widgets."""
+        if seen is None:
+            seen = set()
+        field_id = id(field.get_cos_object())
+        if field_id in seen:
+            _logger.error(
+                "Field '%s' already exists in flatten traversal, ignored to avoid recursion",
+                field.get_fully_qualified_name(),
+            )
+            return []
+        seen.add(field_id)
+
         from .pd_terminal_field import PDTerminalField
 
         if field.is_terminal():
@@ -803,7 +816,7 @@ class PDAcroForm:
             return []
         out: list[PDTerminalField] = []
         for child in field.get_children():
-            out.extend(self._collect_terminals(child))
+            out.extend(self._collect_terminals(child, seen))
         return out
 
     def _flatten_widget(self, widget: COSDictionary) -> None:

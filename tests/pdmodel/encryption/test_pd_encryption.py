@@ -17,6 +17,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
 def test_pd_encryption_defaults() -> None:
     enc = PDEncryption()
     assert isinstance(enc.get_cos_object(), COSDictionary)
+    assert enc.get_cos_dictionary() is enc.get_cos_object()
     assert enc.get_filter() is None
     assert enc.get_sub_filter() is None
     # Spec defaults: V=0 (undocumented), Length=40, R=0.

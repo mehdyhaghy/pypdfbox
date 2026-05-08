@@ -126,5 +126,13 @@ class CCITTFactory:
         x_image.set_color_space(PDDeviceGray.INSTANCE)
         return x_image
 
+    @staticmethod
+    def createFromImage(  # noqa: N802 - upstream Java alias
+        document: PDDocument,
+        image: Image.Image,
+    ) -> PDImageXObject:
+        """Java-style alias for :meth:`create_from_image`."""
+        return CCITTFactory.create_from_image(document, image)
+
 
 __all__ = ["CCITTFactory"]

@@ -12,11 +12,16 @@ from pypdfbox.pdmodel.common.pd_metadata import (
 )
 from pypdfbox.pdmodel.pd_document import PDDocument
 
-
 _TYPE = COSName.TYPE  # type: ignore[attr-defined]
 _SUBTYPE = COSName.SUBTYPE  # type: ignore[attr-defined]
 _FILTER = COSName.FILTER  # type: ignore[attr-defined]
 _FLATE = COSName.FLATE_DECODE  # type: ignore[attr-defined]
+
+
+def _name_entry(cos: COSStream, key: COSName) -> str:
+    value = cos.get_dictionary_object(key)
+    assert isinstance(value, COSName)
+    return value.get_name()
 
 
 # ---------- constructor variants ----------
@@ -44,8 +49,8 @@ def test_constructor_with_pddocument_tags_metadata() -> None:
     try:
         meta = PDMetadata(doc)
         cos = meta.get_cos_object()
-        assert cos.get_dictionary_object(_TYPE).get_name() == "Metadata"
-        assert cos.get_dictionary_object(_SUBTYPE).get_name() == "XML"
+        assert _name_entry(cos, _TYPE) == "Metadata"
+        assert _name_entry(cos, _SUBTYPE) == "XML"
     finally:
         doc.close()
 
@@ -56,7 +61,7 @@ def test_constructor_with_pddocument_and_input_imports_packet() -> None:
         packet = b"<x:xmpmeta xmlns:x='adobe:ns:meta/'/>"
         meta = PDMetadata(doc, packet)
         assert meta.export_xmp_metadata() == packet
-        assert meta.get_cos_object().get_dictionary_object(_TYPE).get_name() == "Metadata"
+        assert _name_entry(meta.get_cos_object(), _TYPE) == "Metadata"
     finally:
         doc.close()
 
@@ -81,8 +86,8 @@ def test_constructor_with_bytes_round_trips_via_export() -> None:
     assert meta.export_xmp_metadata() == packet
     assert meta.get_metadata_as_string() == packet.decode("utf-8")
     # tagging is preserved
-    assert meta.get_cos_object().get_dictionary_object(_TYPE).get_name() == "Metadata"
-    assert meta.get_cos_object().get_dictionary_object(_SUBTYPE).get_name() == "XML"
+    assert _name_entry(meta.get_cos_object(), _TYPE) == "Metadata"
+    assert _name_entry(meta.get_cos_object(), _SUBTYPE) == "XML"
 
 
 def test_constructor_with_str_round_trips_as_utf8() -> None:
@@ -298,3 +303,14 @@ def test_get_metadata_size_matches_utf8_byte_length() -> None:
     packet = "<x>héllo</x>"  # 'é' is 2 bytes in UTF-8
     meta = PDMetadata(packet)
     assert meta.get_metadata_size() == len(packet.encode("utf-8"))
+
+
+def test_get_metadata_size_reports_decoded_length_for_filtered_stream() -> None:
+    packet = b"<rdf:RDF>" + b"a" * 200 + b"</rdf:RDF>"
+    meta = PDMetadata()
+    meta.set_filters(_FLATE)
+
+    meta.import_xmp_metadata(packet)
+
+    assert len(meta.create_raw_input_stream().read()) != len(packet)
+    assert meta.get_metadata_size() == len(packet)

@@ -182,6 +182,14 @@ class JPEGFactory:
         return _build_image_xobject(jpeg_bytes, width, height, num_components)
 
     @staticmethod
+    def createFromByteArray(  # noqa: N802 - upstream Java alias
+        document: PDDocument | None,
+        byte_array: bytes | bytearray | memoryview,
+    ) -> PDImageXObject:
+        """Java-style alias for :meth:`create_from_byte_array`."""
+        return JPEGFactory.create_from_byte_array(document, byte_array)
+
+    @staticmethod
     def create_from_stream(
         document: PDDocument | None,
         stream: BinaryIO | bytes | bytearray | memoryview,
@@ -198,6 +206,14 @@ class JPEGFactory:
         else:
             data = stream.read()
         return JPEGFactory.create_from_byte_array(document, data)
+
+    @staticmethod
+    def createFromStream(  # noqa: N802 - upstream Java alias
+        document: PDDocument | None,
+        stream: BinaryIO | bytes | bytearray | memoryview,
+    ) -> PDImageXObject:
+        """Java-style alias for :meth:`create_from_stream`."""
+        return JPEGFactory.create_from_stream(document, stream)
 
     @staticmethod
     def create_from_image(
@@ -260,6 +276,16 @@ class JPEGFactory:
         # encoded SOF as the source of truth.
         width, height, num_components = _retrieve_dimensions(jpeg_bytes)
         return _build_image_xobject(jpeg_bytes, width, height, num_components)
+
+    @staticmethod
+    def createFromImage(  # noqa: N802 - upstream Java alias
+        document: PDDocument | None,
+        image: Image.Image,
+        quality: float = 0.75,
+        dpi: int = 72,
+    ) -> PDImageXObject:
+        """Java-style alias for :meth:`create_from_image`."""
+        return JPEGFactory.create_from_image(document, image, quality, dpi)
 
 
 __all__ = ["JPEGFactory"]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, BinaryIO
+from typing import TYPE_CHECKING, BinaryIO, TextIO
 
 from pypdfbox.cos import COSName, COSStream
 
@@ -61,7 +61,7 @@ class PDMetadata(PDStream):
         stream_or_doc: (
             PDDocument | COSStream | bytes | bytearray | memoryview | str | None
         ) = None,
-        input_data: bytes | bytearray | memoryview | str | BinaryIO | None = None,
+        input_data: bytes | bytearray | memoryview | str | BinaryIO | TextIO | None = None,
     ) -> None:
         # Local import to avoid circular dependency.
         from pypdfbox.cos import COSDocument  # noqa: PLC0415
@@ -152,7 +152,7 @@ class PDMetadata(PDStream):
     # ---------- XMP I/O ----------
 
     def import_xmp_metadata(
-        self, xmp: bytes | bytearray | memoryview | str | BinaryIO
+        self, xmp: bytes | bytearray | memoryview | str | BinaryIO | TextIO
     ) -> None:
         """Replace the stream body with the supplied XMP packet bytes.
 
@@ -223,11 +223,14 @@ class PDMetadata(PDStream):
         """Return the byte length of the XMP packet body.
 
         Equivalent to ``len(export_xmp_metadata())`` but avoids
-        materialising the bytes when the stream's raw buffer can answer
-        the question directly. Empty stream → ``0``."""
+        materialising the bytes when an unfiltered stream's raw buffer can
+        answer the question directly. Empty stream → ``0``."""
         cos = self.get_cos_object()
         if not cos.has_data():
             return 0
+        if self.get_filters():
+            with self.create_input_stream() as src:
+                return len(src.read())
         return cos.get_length()
 
     def set_metadata_from_string(self, xmp: str) -> None:

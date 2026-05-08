@@ -54,6 +54,14 @@ class PDCryptFilterDictionary:
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    def get_cos_dictionary(self) -> COSDictionary:
+        """Return the wrapped crypt-filter dictionary.
+
+        Mirrors upstream ``getCOSDictionary()`` for this dictionary-only
+        wrapper while preserving the existing ``get_cos_object`` spelling.
+        """
+        return self._dict
+
     # ---------- /CFM ----------
 
     def get_crypt_filter_method(self) -> COSName | None:

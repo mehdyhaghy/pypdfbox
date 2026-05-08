@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/form/pd_acro_form.py`: form flattening guards against cyclic `/Kids` graphs.
+- `pypdfbox/pdmodel/graphics/image/`: image factories expose Java-style PDFBox creation aliases.
+- `pypdfbox/fontbox/ttf/ttf_data_stream.py`: `read_unsigned_int()` treats any negative byte as EOF.
+- `pypdfbox/pdmodel/encryption/pd_encryption.py`, `pypdfbox/pdmodel/encryption/pd_crypt_filter_dictionary.py`: dictionary wrappers expose `get_cos_dictionary()`.
+- `pypdfbox/pdmodel/common/pd_metadata.py`: filtered metadata size reports decoded XMP byte length.
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_file_attachment.py`: exposes PDFBox attachment-name aliases, including the legacy misspelled setter.
 - `pypdfbox/pdmodel/graphics/color/pd_icc_based.py`: malformed ICCBased `/Range` arrays default component ranges to `(0.0, 1.0)`.
 - `pypdfbox/pdmodel/font/pd_font_factory.py`: embedded font-program headers are read from decoded stream bytes.

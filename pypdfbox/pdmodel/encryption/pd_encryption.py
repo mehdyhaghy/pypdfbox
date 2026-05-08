@@ -93,6 +93,15 @@ class PDEncryption:
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    def get_cos_dictionary(self) -> COSDictionary:
+        """Return the wrapped encryption dictionary.
+
+        Upstream PDFBox exposes this dictionary-only wrapper as
+        ``getCOSDictionary()``; keep ``get_cos_object`` as the broader
+        Python COSObjectable-style name and provide this alias for parity.
+        """
+        return self._dict
+
     # ---------- /Filter ----------
 
     def get_filter(self) -> str | None:

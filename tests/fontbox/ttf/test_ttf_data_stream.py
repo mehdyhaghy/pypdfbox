@@ -11,6 +11,43 @@ from pypdfbox.fontbox.ttf.ttf_data_stream import (
 )
 from pypdfbox.io import RandomAccessReadBuffer
 
+
+class _IntermittentEOFStream(TTFDataStream):
+    """Test stream that can return EOF before later byte values."""
+
+    def __init__(self, reads: list[int]) -> None:
+        self._reads = reads
+        self._pos = 0
+
+    def read(self) -> int:
+        if self._pos >= len(self._reads):
+            return -1
+        value = self._reads[self._pos]
+        self._pos += 1
+        return value
+
+    def read_long(self) -> int:
+        raise NotImplementedError
+
+    def read_into(self, buf: bytearray, offset: int, length: int) -> int:
+        raise NotImplementedError
+
+    def seek(self, pos: int) -> None:
+        self._pos = pos
+
+    def get_current_position(self) -> int:
+        return self._pos
+
+    def get_original_data(self) -> bytes:
+        return b""
+
+    def get_original_data_size(self) -> int:
+        return 0
+
+    def close(self) -> None:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # MemoryTTFDataStream
 # ---------------------------------------------------------------------------
@@ -252,6 +289,12 @@ def test_read_unsigned_int_full_range() -> None:
 
 def test_read_unsigned_int_eof() -> None:
     s = MemoryTTFDataStream(b"\x00\x00\x00")  # only 3 bytes
+    with pytest.raises(EOFError):
+        s.read_unsigned_int()
+
+
+def test_read_unsigned_int_treats_any_negative_byte_as_eof() -> None:
+    s = _IntermittentEOFStream([-1, 0, 0, 0])
     with pytest.raises(EOFError):
         s.read_unsigned_int()
 

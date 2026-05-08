@@ -20,6 +20,7 @@ from pypdfbox.pdmodel.encryption.standard_security_handler import (
 
 def test_fresh_crypt_filter_has_type_crypt_filter() -> None:
     cf = PDCryptFilterDictionary()
+    assert cf.get_cos_dictionary() is cf.get_cos_object()
     assert cf.get_cos_object().get_name("Type") == "CryptFilter"
 
 

@@ -100,7 +100,7 @@ class TTFDataStream(ABC):
         b2 = self.read()
         b3 = self.read()
         b4 = self.read()
-        if b4 < 0:
+        if b1 < 0 or b2 < 0 or b3 < 0 or b4 < 0:
             raise EOFError(
                 f"EOF at {self.get_current_position()}, "
                 f"b1: {b1}, b2: {b2}, b3: {b3}, b4: {b4}"

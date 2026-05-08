@@ -165,6 +165,14 @@ class LosslessFactory:
             image = image.convert("RGB")
         return _create_from_rgb(document, image)
 
+    @staticmethod
+    def createFromImage(  # noqa: N802 - upstream Java alias
+        document: PDDocument,
+        image: Image.Image,
+    ) -> PDImageXObject:
+        """Java-style alias for :meth:`create_from_image`."""
+        return LosslessFactory.create_from_image(document, image)
+
 
 # ---------- per-mode builders ----------
 
