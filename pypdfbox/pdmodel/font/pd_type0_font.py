@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO
 
@@ -145,7 +146,7 @@ class PDType0Font(PDFont):
 
     # ---------- /FontDescriptor (descendant fallback) ----------
 
-    def get_font_descriptor(self) -> PDFontDescriptor | None:  # type: ignore[override]
+    def get_font_descriptor(self) -> PDFontDescriptor | None:
         """Return the font descriptor for this composite font.
 
         Type 0 dictionaries do not carry ``/FontDescriptor`` directly —
@@ -308,19 +309,14 @@ class PDType0Font(PDFont):
         # (PDCIDFontType2). Otherwise fall back to CID == GID.
         cid = self.code_to_cid(code)
         cid_to_gid = getattr(descendant, "cid_to_gid", None)
-        if callable(cid_to_gid):
-            gid = cid_to_gid(cid)
-        else:
-            gid = cid
+        gid = int(cid_to_gid(cid)) if callable(cid_to_gid) else cid
 
         # GSUB single-substitution — glyph-by-glyph rewrites only.
         gsub = self._get_gsub_table()
         if gsub is not None:
             features = self.get_gsub_features()
-            try:
-                gid = gsub.get_substitution(gid, None, features)
-            except Exception:  # noqa: BLE001 — defensive: malformed GSUB graphs
-                pass
+            with suppress(Exception):
+                gid = int(gsub.get_substitution(gid, None, features))
         return gid
 
     # ---------- GSUB feature gating ----------
@@ -714,14 +710,17 @@ class PDType0Font(PDFont):
         ttf = descendant.get_true_type_font()
         if ttf is None:
             return None
-        # When embedded, code_to_gid already follows /CIDToGIDMap;
-        # otherwise PDFBOX-5331 says fall back to code_to_cid to avoid
-        # infinite recursion (PDCIDFontType2.codeToGID's fallback path).
+        # Resolve the parent character code through the Type0 CMap first.
+        # The descendant receives CIDs, not raw character codes; skipping
+        # this step breaks embedded-cmap fallback for non-Identity encodings.
         try:
+            cid = self.code_to_cid(code)
             if descendant.is_embedded():
-                gid = descendant.code_to_gid(code)
+                gid = descendant.code_to_gid(cid)
             else:
-                gid = descendant.code_to_cid(code)
+                # PDFBOX-5331 fallback: avoid the descendant's substitute-font
+                # GID path and use the CMap-resolved CID directly.
+                gid = descendant.code_to_cid(cid)
         except Exception:  # noqa: BLE001
             return None
         if gid <= 0:
@@ -871,7 +870,7 @@ class PDType0Font(PDFont):
         get_wff = getattr(descendant, "get_width_from_font", None)
         if not callable(get_wff):
             return 0.0
-        return get_wff(self.code_to_cid(code))
+        return float(get_wff(self.code_to_cid(code)))
 
     def get_displacement(self, code: int) -> tuple[float, float]:
         """Glyph displacement vector ``(dx, dy)`` for ``code`` in em.
@@ -921,7 +920,7 @@ class PDType0Font(PDFont):
         if descendant is not None:
             encoder = getattr(descendant, "encode_glyph_id", None)
             if callable(encoder):
-                return encoder(glyph_id)
+                return bytes(encoder(glyph_id))
         return (int(glyph_id) & 0xFFFF).to_bytes(2, "big")
 
     # ---------- /FontMatrix ----------
@@ -1153,13 +1152,8 @@ class PDType0Font(PDFont):
             return 0
         code, consumed = self.read_code(bytes(data), 0)
         if consumed < len(data):
-            try:
+            with suppress(OSError, AttributeError, ValueError):
                 source.seek(-(len(data) - consumed), 1)
-            except (OSError, AttributeError, ValueError):
-                # Non-seekable stream — over-read tolerated; this matches
-                # upstream behaviour for ``InputStream`` consumers that
-                # cannot rewind.
-                pass
         return code
 
     # ---------- subsetting ----------

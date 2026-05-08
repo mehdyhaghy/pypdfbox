@@ -9,7 +9,6 @@ from pypdfbox.pdmodel import PDDocument, PDRectangle
 from pypdfbox.text import PDFTextStripper
 from pypdfbox.tools import cli, texttopdf
 
-
 # ---------------------------------------------------------------------- helpers
 
 
@@ -113,6 +112,16 @@ def test_create_pdf_from_text_a4_media_box(tmp_path: Path) -> None:
         assert mb.get_height() == pytest.approx(842.0)
 
 
+def test_create_pdf_from_text_unknown_page_size_rejected(tmp_path: Path) -> None:
+    src = _write_text(tmp_path / "in.txt", "x")
+    out = tmp_path / "out.pdf"
+
+    with pytest.raises(ValueError, match="unknown page size"):
+        texttopdf.create_pdf_from_text_file(src, out, page_size="Tabloid")
+
+    assert not out.exists()
+
+
 def test_create_pdf_from_text_landscape_swaps_dimensions(tmp_path: Path) -> None:
     src = _write_text(tmp_path / "in.txt", "x")
     out = tmp_path / "out.pdf"
@@ -185,6 +194,21 @@ def test_cli_page_size_a4(tmp_path: Path) -> None:
     with PDDocument.load(out) as doc:
         mb = doc.get_page(0).get_media_box()
         assert mb.get_width() == pytest.approx(595.0)
+
+
+def test_cli_unknown_page_size_returns_usage_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    src = _write_text(tmp_path / "in.txt", "x\n")
+    out = tmp_path / "out.pdf"
+
+    rc = cli.run_cli(
+        ["texttopdf", "-i", str(src), "-o", str(out), "-pageSize", "Tabloid"]
+    )
+
+    assert rc == 2
+    assert not out.exists()
+    assert "unknown page size" in capsys.readouterr().out
 
 
 def test_cli_landscape(tmp_path: Path) -> None:

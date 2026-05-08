@@ -162,12 +162,15 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
 def _resolve_page_size(name: str) -> PDRectangle:
     """Resolve a page-size keyword to a :class:`PDRectangle`.
 
-    Unknown names fall back to Letter, matching upstream's default-enum
-    behaviour for ``-pageSize`` (PicoCLI rejects out-of-range enum values
-    at parse time, so the fall-back is what upstream uses for a *valid*
-    keyword that's not in our table).
+    Unknown names are rejected, matching upstream's fixed ``PageSizes``
+    enum for ``-pageSize``.
     """
-    return _PAGE_SIZES.get((name or "").strip().lower(), _LETTER)
+    key = (name or "").strip().lower()
+    page_size = _PAGE_SIZES.get(key)
+    if page_size is None:
+        candidates = ", ".join(sorted(_PAGE_SIZES))
+        raise ValueError(f"unknown page size {name!r}; expected one of: {candidates}")
+    return page_size
 
 
 class _WidthCapableFont(Protocol):
@@ -532,19 +535,23 @@ def run(args: argparse.Namespace) -> int:
         llx, lly, urx, ury = (float(x) for x in args.media_box)
         media_box = PDRectangle(llx, lly, urx, ury)
 
-    create_pdf_from_text_file(
-        args.input,
-        Path(args.output),
-        page_size=args.page_size,
-        font_size=float(args.font_size),
-        standard_font=args.standard_font,
-        landscape=bool(args.landscape),
-        line_spacing=float(args.line_spacing),
-        left_margin=left_margin,
-        right_margin=right_margin,
-        top_margin=top_margin,
-        bottom_margin=bottom_margin,
-        media_box=media_box,
-        charset=args.charset,
-    )
+    try:
+        create_pdf_from_text_file(
+            args.input,
+            Path(args.output),
+            page_size=args.page_size,
+            font_size=float(args.font_size),
+            standard_font=args.standard_font,
+            landscape=bool(args.landscape),
+            line_spacing=float(args.line_spacing),
+            left_margin=left_margin,
+            right_margin=right_margin,
+            top_margin=top_margin,
+            bottom_margin=bottom_margin,
+            media_box=media_box,
+            charset=args.charset,
+        )
+    except ValueError as exc:
+        print(f"texttopdf: {exc}", flush=True)
+        return 2
     return 0

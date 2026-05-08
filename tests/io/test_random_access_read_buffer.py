@@ -191,7 +191,7 @@ def test_create_buffer_from_stream_consumes_and_closes_source() -> None:
 
 def test_create_buffer_from_stream_closes_source_on_failure() -> None:
     class BoomStream(io.BytesIO):
-        def read(self, *_args: object, **_kw: object) -> bytes:  # type: ignore[override]
+        def read(self, *_args: object, **_kw: object) -> bytes:
             raise RuntimeError("boom")
 
     src = BoomStream(b"abc")
@@ -207,6 +207,27 @@ def test_create_buffer_from_stream_camelcase_alias() -> None:
     assert src.closed
 
 
+def test_read_fully_integer_length_returns_bytes() -> None:
+    rab = RandomAccessReadBuffer(b"abcdef")
+
+    assert rab.read_fully(3) == b"abc"
+    assert rab.get_position() == 3
+
+
+def test_read_fully_integer_length_raises_on_short_read() -> None:
+    rab = RandomAccessReadBuffer(b"ab")
+
+    with pytest.raises(EOFError):
+        rab.read_fully(3)
+
+
+def test_read_fully_integer_length_rejects_buffer_arguments() -> None:
+    rab = RandomAccessReadBuffer(b"abcdef")
+
+    with pytest.raises(TypeError):
+        rab.read_fully(3, offset=1)
+
+
 def test_camelcase_aliases_on_read_api() -> None:
     rab = RandomAccessReadBuffer(b"abcd")
     # getPosition / isEOF / isClosed / readFully / createView
@@ -216,6 +237,7 @@ def test_camelcase_aliases_on_read_api() -> None:
     buf = bytearray(3)
     rab.readFully(buf)
     assert bytes(buf) == b"abc"
+    assert rab.readFully(1) == b"d"
     view = rab.createView(0, 2)
     assert view.length() == 2
     rab.close()

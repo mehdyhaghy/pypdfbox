@@ -9,6 +9,8 @@ subclasses are exercised separately in ``test_attribute_objects.py``.
 
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -128,6 +130,25 @@ def test_get_set_array_of_name_round_trip_and_writes_cos_name() -> None:
     raw = obj.get_cos_object().get_dictionary_object("Roles")
     assert isinstance(raw, COSArray)
     assert isinstance(raw.get_object(0), COSName)
+
+
+def test_get_set_array_of_number_round_trip_and_removes() -> None:
+    obj = _make()
+    assert obj.get_array_of_number("Dashes") is None
+    obj.set_array_of_number("Dashes", [1.0, 2.5, 3.0])
+    assert obj.get_array_of_number("Dashes") == [1.0, 2.5, 3.0]
+    raw = obj.get_cos_object().get_dictionary_object("Dashes")
+    assert isinstance(raw, COSArray)
+    assert all(isinstance(raw.get_object(i), COSFloat) for i in range(raw.size()))
+
+    obj.set_array_of_number("Dashes", None)
+    assert not obj.has_attribute("Dashes")
+
+
+def test_set_array_of_number_rejects_bool_entries() -> None:
+    obj = _make()
+    with pytest.raises(TypeError):
+        obj.set_array_of_number("Dashes", [1.0, True])
 
 
 # ---------- color / color-or-four-colours ----------

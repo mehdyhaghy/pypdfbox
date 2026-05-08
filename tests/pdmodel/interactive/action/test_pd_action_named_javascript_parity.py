@@ -53,6 +53,18 @@ def test_named_set_n_none_clears_entry() -> None:
     assert action.get_n() is None
 
 
+def test_named_get_n_accepts_string_form_like_pdfbox_get_name_as_string() -> None:
+    """Upstream reads ``/N`` via ``getNameAsString``: names are the
+    conforming form, but malformed string-form entries are still tolerated."""
+    action = PDActionNamed()
+    action.get_cos_object().set_item(_N, COSString(PDActionNamed.NAMED_ACTION_NEXT_PAGE))
+
+    assert action.get_n() == PDActionNamed.NAMED_ACTION_NEXT_PAGE
+    assert action.has_n() is True
+    assert action.is_next_page() is True
+    assert action.is_standard_named_action() is True
+
+
 # ---------- PDActionJavaScript ----------
 
 

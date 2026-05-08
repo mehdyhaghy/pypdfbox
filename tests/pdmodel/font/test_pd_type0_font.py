@@ -24,6 +24,7 @@ import pytest
 
 from pypdfbox.cos import (
     COSArray,
+    COSBase,
     COSDictionary,
     COSName,
     COSStream,
@@ -89,7 +90,7 @@ def _build_descendant(
     return raw
 
 
-def _make_number(value: float):
+def _make_number(value: float) -> COSBase:
     from pypdfbox.cos import COSFloat, COSInteger
 
     return COSInteger.get(int(value)) if value == int(value) else COSFloat(value)
@@ -459,7 +460,7 @@ def test_load_otf_dispatches_through_same_path(liberation_bytes: bytes) -> None:
 
 def test_load_ttf_rejects_text_stream() -> None:
     with pytest.raises(TypeError, match="binary mode"):
-        PDType0Font.load_ttf(None, io.StringIO("not a font"))
+        PDType0Font.load_ttf(None, io.StringIO("not a font"))  # type: ignore[arg-type]
 
 
 def test_load_ttf_string_path_works(liberation_bytes: bytes) -> None:
@@ -545,6 +546,47 @@ def test_get_width_from_font_uses_descendant_embedded(
     assert font.get_width_from_font(ord("A")) > 0.0
 
 
+def test_to_unicode_embedded_cmap_fallback_uses_parent_cmap_cid(
+    liberation_bytes: bytes,
+) -> None:
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    descendant = font.get_descendant_font()
+    assert isinstance(descendant, PDCIDFontType2)
+    ttf = descendant.get_true_type_font()
+    assert ttf is not None
+
+    inner = ttf._tt  # noqa: SLF001
+    glyph_name = inner["cmap"].getBestCmap()[ord("A")]
+    gid_for_a = inner.getGlyphOrder().index(glyph_name)
+
+    cid_to_gid = bytearray(12)
+    cid_to_gid[10:12] = gid_for_a.to_bytes(2, "big")  # CID 5 -> gid("A")
+    cid_to_gid_stream = COSStream()
+    cid_to_gid_stream.set_data(bytes(cid_to_gid))
+    descendant.set_cid_to_gid_map(cid_to_gid_stream)
+
+    cmap_text = (
+        "/CIDInit /ProcSet findresource begin\n"
+        "12 dict begin\n"
+        "begincmap\n"
+        "/CMapName /Test-Code-To-CID def\n"
+        "/CMapType 1 def\n"
+        "1 begincodespacerange <01> <01> endcodespacerange\n"
+        "1 begincidchar <01> 5 endcidchar\n"
+        "endcmap\n"
+        "CMapName currentdict /CMap defineresource pop\n"
+        "end\n"
+        "end\n"
+    )
+    cmap_stream = COSStream()
+    cmap_stream.set_data(cmap_text.encode("ascii"))
+    font.get_cos_object().set_item(_ENCODING, cmap_stream)
+
+    assert font.code_to_cid(0x01) == 5
+    assert font.code_to_gid(0x01) == gid_for_a
+    assert font.to_unicode(0x01) == "A"
+
+
 # ---------- get_displacement ----------
 
 
@@ -571,7 +613,7 @@ def test_get_position_vector_returns_zero_without_descendant() -> None:
 
 
 def test_get_position_vector_negates_and_scales_by_1000() -> None:
-    """Upstream's ``getPositionVector`` calls ``descendant.getPositionVector(code).scale(-1/1000f)``.
+    """Upstream's ``getPositionVector`` scales the descendant vector.
 
     PDCIDFont's default position vector (when ``/W2`` has no entry) is
     ``(width(cid)/2, dw2[0])`` per upstream

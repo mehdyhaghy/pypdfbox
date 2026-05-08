@@ -300,6 +300,17 @@ class PDStandardAttributeObject(PDAttributeObject):
         else:
             self._set_array_of_name(name, values)
 
+    def get_array_of_number(self, name: str) -> list[float] | None:
+        return self._get_array_of_number(name)
+
+    def set_array_of_number(self, name: str, values: list[float] | None) -> None:
+        if values is None:
+            self._dictionary.remove_item(name)
+            return
+        if any(isinstance(value, bool) for value in values):
+            raise TypeError(f"{name} values must be numbers")
+        self._set_array_of_number(name, values)
+
     # ---- single-color and color-or-four-colours ----
 
     def get_color(self, name: str) -> tuple[float, ...] | None:

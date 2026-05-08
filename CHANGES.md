@@ -1563,3 +1563,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/color/pd_device_n_process.py`: standalone DeviceN process wrappers now expose upstream-style string output.
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_line.py`: line annotations now reject non-four-coordinate `/L` arrays before mutating dictionaries.
 - `pypdfbox/xmpbox/photoshop_schema.py`: Photoshop document ancestors gained a typed property setter and return stored `ArrayProperty` values.
+
+## Wave 341 — CID Unicode maps, readFully bytes, named action strings, tagged arrays, and texttopdf page sizes
+
+- `pypdfbox/pdmodel/font/pd_type0_font.py`: embedded TrueType Unicode fallback now maps code to CID before resolving descendant CID-to-GID values.
+- `pypdfbox/io/random_access_read.py`: `read_fully(int)` and `readFully(int)` now return bytes while preserving the bytearray fill form.
+- `pypdfbox/pdmodel/interactive/action/pd_action_named.py`: named actions now read string-form `/N` values via name-as-string semantics.
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_standard_attribute_object.py`: standard tagged attributes gained public number-array helper methods.
+- `pypdfbox/tools/texttopdf.py`: unknown `-pageSize` values now fail with usage exit code `2` instead of falling back to Letter.

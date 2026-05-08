@@ -36,7 +36,7 @@ class PDActionNamed(PDAction):
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
     def get_n(self) -> str | None:
-        return self._action.get_name(_N)
+        return self._action.get_name_as_string(_N)
 
     def set_n(self, name: str | None) -> None:
         if name is None:
@@ -45,10 +45,11 @@ class PDActionNamed(PDAction):
         self._action.set_name(_N, name)
 
     def has_n(self) -> bool:
-        """``True`` when ``/N`` is present as a PDF name.
+        """``True`` when ``/N`` is present as a PDF name or string.
 
-        Malformed COS shapes are intentionally reported as absent, matching
-        :meth:`get_n` and the standard named-action predicates.
+        Mirrors upstream's ``getNameAsString`` tolerance: conforming named
+        actions store ``/N`` as a name, but string-form entries from
+        malformed producers are still readable.
         """
         return self.get_n() is not None
 

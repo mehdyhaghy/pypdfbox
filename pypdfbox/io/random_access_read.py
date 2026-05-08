@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import overload
 
 
 class RandomAccessRead(ABC):
@@ -69,14 +70,32 @@ class RandomAccessRead(ABC):
     def is_eof(self) -> bool:
         return self.peek() == self.EOF
 
+    @overload
+    def read_fully(self, buf: bytearray, offset: int = 0, length: int | None = None) -> None:
+        ...
+
+    @overload
+    def read_fully(self, buf: int, offset: int = 0, length: int | None = None) -> bytes:
+        ...
+
     def read_fully(
-        self, buf: bytearray, offset: int = 0, length: int | None = None
-    ) -> None:
+        self, buf: bytearray | int, offset: int = 0, length: int | None = None
+    ) -> bytes | None:
         """
         Read exactly ``length`` bytes into ``buf`` starting at ``offset``.
         Raises ``EOFError`` if EOF is reached before ``length`` bytes are read.
-        Mirrors ``DataInput.readFully`` / PDFBox's ``RandomAccessRead.readFully``.
+        Passing an integer mirrors PDFBox 2.x ``RandomAccessRead.readFully(int)``
+        and returns the bytes read.
         """
+        if isinstance(buf, int):
+            if offset != 0 or length is not None:
+                raise TypeError("offset/length are only valid with a bytearray buffer")
+            if buf < 0:
+                raise ValueError("length must be non-negative")
+            out = bytearray(buf)
+            self.read_fully(out)
+            return bytes(out)
+
         if length is None:
             length = len(buf) - offset
         if length < 0:
@@ -89,6 +108,7 @@ class RandomAccessRead(ABC):
             if n <= 0:
                 raise EOFError("EOF reached before reading requested length")
             total += n
+        return None
 
     def skip(self, n: int) -> None:
         """Advance position by ``n`` bytes (clipped to length)."""
@@ -147,10 +167,22 @@ class RandomAccessRead(ABC):
     def isEOF(self) -> bool:  # noqa: N802 — upstream Java alias
         return self.is_eof()
 
+    @overload
     def readFully(  # noqa: N802 — upstream Java alias
         self, buf: bytearray, offset: int = 0, length: int | None = None
     ) -> None:
-        self.read_fully(buf, offset, length)
+        ...
+
+    @overload
+    def readFully(  # noqa: N802 — upstream Java alias
+        self, buf: int, offset: int = 0, length: int | None = None
+    ) -> bytes:
+        ...
+
+    def readFully(  # noqa: N802 — upstream Java alias
+        self, buf: bytearray | int, offset: int = 0, length: int | None = None
+    ) -> bytes | None:
+        return self.read_fully(buf, offset, length)
 
     def createView(  # noqa: N802 — upstream Java alias
         self, start_position: int, length: int
