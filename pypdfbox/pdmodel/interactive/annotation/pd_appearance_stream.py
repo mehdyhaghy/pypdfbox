@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import (
     COSArray,
@@ -12,6 +13,9 @@ from pypdfbox.cos import (
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
+
+if TYPE_CHECKING:
+    from pypdfbox.io.random_access_read import RandomAccessRead
 
 _RESOURCES: COSName = COSName.RESOURCES  # type: ignore[attr-defined]
 _FORM_TYPE: COSName = COSName.get_pdf_name("FormType")
@@ -57,6 +61,43 @@ class PDAppearanceStream:
         wrapper; the lite port exposes the raw ``COSStream`` directly
         because :class:`PDStream` isn't on the appearance surface yet)."""
         return self._stream
+
+    # ---------- PDContentStream byte access ----------
+
+    def get_content_stream(self) -> COSStream:
+        """Return the underlying content stream.
+
+        Mirrors upstream ``PDFormXObject.getContentStream()``; this lite
+        appearance wrapper exposes the raw ``COSStream`` for the same
+        reason :meth:`get_stream` does.
+        """
+        return self._stream
+
+    def get_contents(self) -> BinaryIO:
+        """Decoded appearance content bytes as a readable stream.
+
+        Mirrors upstream ``PDContentStream.getContents()`` / form-XObject
+        behaviour for the single stream backing an appearance.
+        """
+        return self._stream.create_input_stream()
+
+    def get_contents_for_random_access(self) -> RandomAccessRead:
+        """Random-access view of the decoded appearance content bytes."""
+        from pypdfbox.io.random_access_read_buffer import (  # noqa: PLC0415
+            RandomAccessReadBuffer,
+        )
+
+        with self._stream.create_input_stream() as src:
+            data = src.read()
+        return RandomAccessReadBuffer.from_bytes(data)
+
+    def get_contents_for_stream_parsing(self) -> RandomAccessRead:
+        """Random-access stream used by the PDF stream parser.
+
+        Mirrors ``PDContentStream``'s default implementation, which
+        delegates to ``getContentsForRandomAccess()``.
+        """
+        return self.get_contents_for_random_access()
 
     # ---------- /Resources ----------
 

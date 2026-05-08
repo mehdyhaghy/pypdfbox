@@ -46,7 +46,12 @@ class EndstreamFilterStream:
         line break at end-of-stream can be dropped by
         :meth:`calculate_length`.
         """
-        if self._pos == 0 and length > self._ASCII_PROBE_LENGTH:
+        if (
+            self._pos == 0
+            and not self._has_cr
+            and not self._has_lf
+            and length > self._ASCII_PROBE_LENGTH
+        ):
             # PDFBOX-2120: don't filter if the leading bytes look like
             # ASCII — preserve the trailing CR LF / LF in that case.
             self._must_filter = False
@@ -68,8 +73,11 @@ class EndstreamFilterStream:
                     and data[off] == 0x0A
                 ):
                     # Buffer is just a single LF — completes the CR LF
-                    # we held back; drop everything (including the CR
-                    # we'd otherwise keep) and bail.
+                    # we held back. Keep the pair buffered until either
+                    # more bytes arrive or calculate_length() confirms it
+                    # was final.
+                    self._has_cr = True
+                    self._has_lf = True
                     return
                 self._length += 1
             if self._has_lf:

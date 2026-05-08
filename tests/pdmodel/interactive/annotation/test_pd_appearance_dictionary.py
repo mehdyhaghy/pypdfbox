@@ -14,7 +14,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-
 # ---------- PDAppearanceDictionary ----------
 
 
@@ -190,6 +189,41 @@ def test_appearance_stream_get_cos_object() -> None:
 def test_appearance_stream_rejects_non_stream() -> None:
     with pytest.raises(TypeError):
         PDAppearanceStream(COSDictionary())  # type: ignore[arg-type]
+
+
+# ---------- PDAppearanceStream — PDContentStream byte access ----------
+
+
+def test_appearance_stream_get_content_stream_returns_cos_stream() -> None:
+    stream = COSStream()
+    pap = PDAppearanceStream(stream)
+    assert pap.get_content_stream() is stream
+
+
+def test_appearance_stream_get_contents_returns_decoded_bytes() -> None:
+    stream = COSStream()
+    payload = b"q 1 0 0 1 0 0 cm Q"
+    stream.set_data(payload)
+
+    pap = PDAppearanceStream(stream)
+    with pap.get_contents() as contents:
+        assert contents.read() == payload
+
+
+def test_appearance_stream_get_contents_for_stream_parsing() -> None:
+    stream = COSStream()
+    payload = b"0 0 10 10 re f"
+    stream.set_data(payload)
+
+    pap = PDAppearanceStream(stream)
+    parser_view = pap.get_contents_for_stream_parsing()
+    random_view = pap.get_contents_for_random_access()
+    try:
+        assert parser_view.length() == random_view.length()
+        assert parser_view.length() == len(payload)
+    finally:
+        parser_view.close()
+        random_view.close()
 
 
 # ---------- PDAppearanceStream — PDFormXObject parity additions ----------

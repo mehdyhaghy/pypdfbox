@@ -3216,6 +3216,12 @@ class PDFRenderer(PDFStreamEngine):
         Anything else (CCITT, JBIG2, JPX lossless, indexed, masks) is left
         to later clusters; we return ``None`` and the caller skips the
         paste."""
+        to_pil_image = getattr(image, "to_pil_image", None)
+        if callable(to_pil_image):
+            decoded = to_pil_image()
+            if isinstance(decoded, Image.Image):
+                return decoded.convert("RGB")
+
         cos = image.get_cos_object()
         if not isinstance(cos, COSStream):
             return None

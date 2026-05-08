@@ -5,6 +5,7 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from .cmap_table import CmapTable
 from .digital_signature_table import DigitalSignatureTable
 from .glyph_positioning_table import GlyphPositioningTable
 from .glyph_substitution_table import GlyphSubstitutionTable
@@ -751,12 +752,12 @@ class TrueTypeFont:
     def get_unicode_cmap_subtable(self) -> CmapSubtable | None:
         """Return a Unicode-style cmap subtable view.
 
-        Wraps the dict that ``fontTools`` resolves via
-        ``cmap.getBestCmap()`` (which prefers Windows Unicode Full /
-        Windows Unicode BMP / Unicode platform tables in the same order
-        PDFBox does) inside a thin :class:`CmapSubtable` view so callers
-        can continue to use ``get_glyph_id(code)`` / ``get_char_codes(gid)``
-        unchanged. Returns ``None`` if the font has no cmap.
+        Selects a fontTools cmap subtable using the same priority order as
+        PDFBox's ``TrueTypeFont.getUnicodeCmapImpl`` and wraps its mapping in
+        a thin :class:`CmapSubtable` view so callers can continue to use
+        ``get_glyph_id(code)`` / ``get_char_codes(gid)`` unchanged. Returns
+        ``None`` if the font has no cmap, or no PDFBox-compatible Unicode /
+        symbol cmap.
         """
         if self._cmap_resolved:
             return self._cmap_subtable
@@ -765,30 +766,44 @@ class TrueTypeFont:
             self._cmap_subtable = None
             return None
         cmap_table = self._tt["cmap"]
-        best = cmap_table.getBestCmap()  # dict[int, str] of unicode -> glyph name
-        if not best:
-            self._cmap_subtable = None
-            return None
-        # Find the picked subtable so platform_id / platform_encoding_id
-        # stay reportable. fontTools picks a preferred order internally;
-        # we mirror it by re-walking the same priority list.
         preferred = (
-            (3, 10), (0, 6), (0, 4), (3, 1), (0, 3), (0, 2), (0, 1), (0, 0),
+            (
+                CmapTable.PLATFORM_UNICODE,
+                CmapTable.ENCODING_UNICODE_2_0_FULL,
+            ),
+            (
+                CmapTable.PLATFORM_WINDOWS,
+                CmapTable.ENCODING_WIN_UNICODE_FULL,
+            ),
+            (
+                CmapTable.PLATFORM_UNICODE,
+                CmapTable.ENCODING_UNICODE_2_0_BMP,
+            ),
+            (
+                CmapTable.PLATFORM_WINDOWS,
+                CmapTable.ENCODING_WIN_UNICODE_BMP,
+            ),
+            (
+                CmapTable.PLATFORM_WINDOWS,
+                CmapTable.ENCODING_WIN_SYMBOL,
+            ),
+            (
+                CmapTable.PLATFORM_UNICODE,
+                CmapTable.ENCODING_UNICODE_1_1,
+            ),
         )
         chosen = None
-        for plat, enc in preferred:
-            for sub in cmap_table.tables:
-                if sub.platformID == plat and sub.platEncID == enc:
-                    chosen = sub
-                    break
+        for platform_id, platform_encoding_id in preferred:
+            chosen = cmap_table.getcmap(platform_id, platform_encoding_id)
             if chosen is not None:
                 break
         if chosen is None:
-            chosen = cmap_table.tables[0] if cmap_table.tables else None
+            self._cmap_subtable = None
+            return None
 
         glyph_name_to_gid = {n: i for i, n in enumerate(self._tt.getGlyphOrder())}
         char_to_gid: dict[int, int] = {}
-        for code, name in best.items():
+        for code, name in chosen.cmap.items():
             gid = glyph_name_to_gid.get(name)
             if gid is not None:
                 char_to_gid[code] = gid
@@ -796,9 +811,8 @@ class TrueTypeFont:
         from .cmap_subtable import CmapSubtable  # noqa: PLC0415
 
         view = CmapSubtable()
-        if chosen is not None:
-            view.set_platform_id(int(chosen.platformID))
-            view.set_platform_encoding_id(int(chosen.platEncID))
+        view.set_platform_id(int(chosen.platformID))
+        view.set_platform_encoding_id(int(chosen.platEncID))
         # Reuse the existing subtable's storage: ``_character_code_to_glyph_id``
         # is what ``get_glyph_id`` reads; ``_glyph_id_to_character_code`` /
         # ``_multiple`` power ``get_char_codes``.

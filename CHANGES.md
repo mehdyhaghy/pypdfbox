@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/annotation/pd_appearance_stream.py`: appearance streams expose the content-stream byte-access surface.
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/`: `/XYZ` and `/FitR` coordinate setters grow short arrays before writing.
+- `pypdfbox/pdfparser/endstream_filter_stream.py`: mid-stream CRLF bytes are preserved until final endstream length is proven.
+- `pypdfbox/fontbox/ttf/true_type_font.py`: unicode cmap selection follows PDFBox priority order including Windows Symbol fallback.
+- `pypdfbox/rendering/pdf_renderer.py`: image rendering uses `PDImageXObject.to_pil_image()` before legacy RGB/gray fallback.
 - `pypdfbox/contentstream/operator/text/set_text_rendering_mode_op.py`: out-of-range text rendering modes no-op before notifying the engine.
 - `pypdfbox/pdfparser/pdf_parser.py`: xref stream decoding rejects negative `/W` field widths.
 - `pypdfbox/pdmodel/common/filespecification/pd_embedded_file.py`: embedded-file subtype lookup accepts COS string-backed names.

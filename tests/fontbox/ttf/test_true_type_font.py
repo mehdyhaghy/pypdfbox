@@ -29,6 +29,7 @@ from pypdfbox.fontbox.ttf import (
     TTFTable,
 )
 from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
+from pypdfbox.fontbox.ttf.cmap_table import CmapTable
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -181,6 +182,99 @@ def test_get_cmap_alias(liberation_sans: TrueTypeFont) -> None:
     b = liberation_sans.get_unicode_cmap_subtable()
     assert a is b
     assert isinstance(a, CmapSubtable)
+
+
+class _FakeFontToolsCmapSubtable:
+    def __init__(self, platform_id: int, encoding_id: int, cmap: dict[int, str]) -> None:
+        self.platformID = platform_id
+        self.platEncID = encoding_id
+        self.cmap = cmap
+
+
+class _FakeFontToolsCmapTable:
+    def __init__(self, subtables: list[_FakeFontToolsCmapSubtable]) -> None:
+        self.tables = subtables
+
+    def getcmap(
+        self, platform_id: int, encoding_id: int
+    ) -> _FakeFontToolsCmapSubtable | None:
+        for subtable in self.tables:
+            if subtable.platformID == platform_id and subtable.platEncID == encoding_id:
+                return subtable
+        return None
+
+
+class _FakeFontToolsTTFont:
+    def __init__(
+        self, cmap_table: _FakeFontToolsCmapTable, glyph_order: list[str]
+    ) -> None:
+        self._cmap_table = cmap_table
+        self._glyph_order = glyph_order
+
+    def __contains__(self, tag: object) -> bool:
+        return tag == "cmap"
+
+    def __getitem__(self, tag: str) -> _FakeFontToolsCmapTable:
+        if tag != "cmap":
+            raise KeyError(tag)
+        return self._cmap_table
+
+    def getGlyphOrder(self) -> list[str]:  # noqa: N802 - fontTools API
+        return list(self._glyph_order)
+
+
+def _fake_ttf_with_cmaps(subtables: list[_FakeFontToolsCmapSubtable]) -> TrueTypeFont:
+    font = object.__new__(TrueTypeFont)
+    font._tt = _FakeFontToolsTTFont(  # noqa: SLF001
+        _FakeFontToolsCmapTable(subtables),
+        [".notdef", "A", "B"],
+    )
+    font._cmap_subtable = None  # noqa: SLF001
+    font._cmap_resolved = False  # noqa: SLF001
+    return font
+
+
+def test_get_unicode_cmap_uses_pdfbox_priority_before_fonttools_priority() -> None:
+    font = _fake_ttf_with_cmaps(
+        [
+            _FakeFontToolsCmapSubtable(
+                CmapTable.PLATFORM_WINDOWS,
+                CmapTable.ENCODING_WIN_UNICODE_FULL,
+                {ord("A"): "B"},
+            ),
+            _FakeFontToolsCmapSubtable(
+                CmapTable.PLATFORM_UNICODE,
+                CmapTable.ENCODING_UNICODE_2_0_FULL,
+                {ord("A"): "A"},
+            ),
+        ]
+    )
+
+    cmap = font.get_unicode_cmap_subtable()
+
+    assert cmap is not None
+    assert cmap.get_platform_id() == CmapTable.PLATFORM_UNICODE
+    assert cmap.get_platform_encoding_id() == CmapTable.ENCODING_UNICODE_2_0_FULL
+    assert cmap.get_glyph_id(ord("A")) == 1
+
+
+def test_get_unicode_cmap_falls_back_to_windows_symbol() -> None:
+    font = _fake_ttf_with_cmaps(
+        [
+            _FakeFontToolsCmapSubtable(
+                CmapTable.PLATFORM_WINDOWS,
+                CmapTable.ENCODING_WIN_SYMBOL,
+                {0xF041: "A"},
+            )
+        ]
+    )
+
+    cmap = font.get_unicode_cmap_subtable()
+
+    assert cmap is not None
+    assert cmap.get_platform_id() == CmapTable.PLATFORM_WINDOWS
+    assert cmap.get_platform_encoding_id() == CmapTable.ENCODING_WIN_SYMBOL
+    assert cmap.get_glyph_id(0xF041) == 1
 
 
 # ---------- name-to-gid lookup -------------------------------------------

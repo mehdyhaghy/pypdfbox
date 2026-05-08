@@ -21,36 +21,37 @@ class PDPageFitRectangleDestination(PDPageDestination):
     _SLOT_BOTTOM: int = 3
     _SLOT_RIGHT: int = 4
     _SLOT_TOP: int = 5
+    _ARRAY_SIZE: int = _SLOT_TOP + 1
 
     def __init__(self, array: COSArray | None = None) -> None:
         super().__init__(array)
         if array is None:
-            self._array.grow_to_size(self._SLOT_TOP + 1, COSNull.NULL)
+            self._array.grow_to_size(self._ARRAY_SIZE, COSNull.NULL)
             self._set_type(self.TYPE)
 
     def get_left(self) -> float | None:
         return self._get_float(self._SLOT_LEFT)
 
     def set_left(self, left: float | None) -> None:
-        self._set_float(self._SLOT_LEFT, left)
+        self._set_float(self._SLOT_LEFT, left, self._ARRAY_SIZE)
 
     def get_bottom(self) -> float | None:
         return self._get_float(self._SLOT_BOTTOM)
 
     def set_bottom(self, bottom: float | None) -> None:
-        self._set_float(self._SLOT_BOTTOM, bottom)
+        self._set_float(self._SLOT_BOTTOM, bottom, self._ARRAY_SIZE)
 
     def get_right(self) -> float | None:
         return self._get_float(self._SLOT_RIGHT)
 
     def set_right(self, right: float | None) -> None:
-        self._set_float(self._SLOT_RIGHT, right)
+        self._set_float(self._SLOT_RIGHT, right, self._ARRAY_SIZE)
 
     def get_top(self) -> float | None:
         return self._get_float(self._SLOT_TOP)
 
     def set_top(self, top: float | None) -> None:
-        self._set_float(self._SLOT_TOP, top)
+        self._set_float(self._SLOT_TOP, top, self._ARRAY_SIZE)
 
     # ---------- typed accessors ----------
 

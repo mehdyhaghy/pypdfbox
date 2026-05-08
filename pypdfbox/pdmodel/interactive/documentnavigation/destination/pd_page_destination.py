@@ -165,8 +165,11 @@ class PDPageDestination(PDDestination):
             return float(value.value)
         return None
 
-    def _set_float(self, index: int, value: float | None) -> None:
-        self._array.grow_to_size(index + 1, COSNull.NULL)
+    def _set_float(
+        self, index: int, value: float | None, array_size: int | None = None
+    ) -> None:
+        target_size = index + 1 if array_size is None else array_size
+        self._array.grow_to_size(target_size, COSNull.NULL)
         if value is None or float(value) == -1.0:
             self._array.set(index, COSNull.NULL)
             return
