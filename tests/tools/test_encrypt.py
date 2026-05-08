@@ -8,21 +8,28 @@ policy.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Protocol
 
 import pytest
 
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.encryption import AccessPermission
 from pypdfbox.tools import cli
+from pypdfbox.tools import encrypt as encrypt_tool
 from pypdfbox.tools.encrypt import encrypt_pdf
+
+
+class MakePdf(Protocol):
+    def __call__(self, name: str | None = None, *, page_count: int = 1) -> Path: ...
 
 
 # -------------------------------------------------------------- CLI: basics
 
 
 def test_encrypt_cli_round_trip_with_decrypt(
-    tmp_path: Path, make_pdf
+    tmp_path: Path, make_pdf: MakePdf
 ) -> None:
     src = make_pdf("plain.pdf")
     enc = tmp_path / "enc.pdf"
@@ -55,7 +62,7 @@ def test_encrypt_cli_round_trip_with_decrypt(
         assert doc.get_number_of_pages() == 1
 
 
-def test_encrypt_cli_owner_password_only(tmp_path: Path, make_pdf) -> None:
+def test_encrypt_cli_owner_password_only(tmp_path: Path, make_pdf: MakePdf) -> None:
     src = make_pdf("oo.pdf")
     enc = tmp_path / "enc.pdf"
     rc = cli.run_cli(
@@ -76,7 +83,7 @@ def test_encrypt_cli_missing_input(
 
 
 def test_encrypt_cli_already_encrypted_is_noop(
-    tmp_path: Path, make_pdf, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, make_pdf: MakePdf, capsys: pytest.CaptureFixture[str]
 ) -> None:
     src = make_pdf("plain.pdf")
     enc = tmp_path / "enc.pdf"
@@ -98,11 +105,56 @@ def test_encrypt_cli_already_encrypted_is_noop(
     assert not enc2.exists()
 
 
+def test_encrypt_cli_wave327_in_place_without_output_encrypts_source(
+    make_pdf: MakePdf,
+) -> None:
+    src = make_pdf("wave327-in-place.pdf")
+    rc = cli.run_cli(
+        ["encrypt", "-i", str(src), "-U", "user", "-keyLength", "128"]
+    )
+    assert rc == 0
+    with PDDocument.load(src, password="user") as doc:
+        assert doc.is_encrypted() is True
+        assert doc.get_number_of_pages() == 1
+
+
+def test_encrypt_cli_wave327_in_place_failure_preserves_source(
+    make_pdf: MakePdf,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    src = make_pdf("wave327-preserve.pdf")
+    original = src.read_bytes()
+
+    def fail_encrypt_pdf(
+        input_path: str | Path,
+        output_path: str | Path,
+        *,
+        owner_password: str | None = None,
+        user_password: str | None = None,
+        permissions: AccessPermission | None = None,
+        cert_files: Iterable[str | Path] = (),
+        key_length: int = 256,
+    ) -> None:
+        assert Path(input_path) == src
+        Path(output_path).write_bytes(b"partial encrypted output")
+        raise OSError("forced wave327 failure")
+
+    monkeypatch.setattr(encrypt_tool, "encrypt_pdf", fail_encrypt_pdf)
+    rc = cli.run_cli(
+        ["encrypt", "-i", str(src), "-U", "user", "-keyLength", "128"]
+    )
+    assert rc == 4
+    assert "forced wave327 failure" in capsys.readouterr().out
+    assert src.read_bytes() == original
+    assert list(src.parent.glob(f".{src.name}.*.tmp")) == []
+
+
 # ----------------------------------------------------- permission flags
 
 
 def test_encrypt_cli_permission_flags_disabled(
-    tmp_path: Path, make_pdf
+    tmp_path: Path, make_pdf: MakePdf
 ) -> None:
     src = make_pdf("perm.pdf")
     enc = tmp_path / "enc.pdf"
@@ -133,7 +185,7 @@ def test_encrypt_cli_permission_flags_disabled(
 
 
 def test_encrypt_cli_default_permissions_all_true(
-    tmp_path: Path, make_pdf
+    tmp_path: Path, make_pdf: MakePdf
 ) -> None:
     src = make_pdf("allow.pdf")
     enc = tmp_path / "enc.pdf"
@@ -158,7 +210,7 @@ def test_encrypt_cli_default_permissions_all_true(
 # ------------------------------------------------------ encrypt_pdf API
 
 
-def test_encrypt_pdf_helper_round_trips(tmp_path: Path, make_pdf) -> None:
+def test_encrypt_pdf_helper_round_trips(tmp_path: Path, make_pdf: MakePdf) -> None:
     src = make_pdf("api.pdf")
     out = tmp_path / "api-enc.pdf"
     encrypt_pdf(
@@ -172,7 +224,7 @@ def test_encrypt_pdf_helper_round_trips(tmp_path: Path, make_pdf) -> None:
 
 
 def test_encrypt_pdf_helper_skips_already_encrypted(
-    tmp_path: Path, make_pdf
+    tmp_path: Path, make_pdf: MakePdf
 ) -> None:
     src = make_pdf("twice.pdf")
     once = tmp_path / "once.pdf"
@@ -184,7 +236,7 @@ def test_encrypt_pdf_helper_skips_already_encrypted(
 
 
 def test_encrypt_pdf_helper_invalid_key_length_raises(
-    tmp_path: Path, make_pdf
+    tmp_path: Path, make_pdf: MakePdf
 ) -> None:
     src = make_pdf("bad.pdf")
     out = tmp_path / "bad-enc.pdf"
@@ -193,7 +245,7 @@ def test_encrypt_pdf_helper_invalid_key_length_raises(
 
 
 def test_encrypt_cli_invalid_key_length_returns_four(
-    tmp_path: Path, make_pdf, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, make_pdf: MakePdf, capsys: pytest.CaptureFixture[str]
 ) -> None:
     src = make_pdf("bad.pdf")
     out = tmp_path / "bad-enc.pdf"
@@ -209,7 +261,7 @@ def test_encrypt_cli_invalid_key_length_returns_four(
 
 
 def test_encrypt_cli_no_can_print_faithful(
-    tmp_path: Path, make_pdf
+    tmp_path: Path, make_pdf: MakePdf
 ) -> None:
     """`--no-canPrintFaithful` must clear the FAITHFUL_PRINT_BIT (the
     high-quality print bit, 12) — verified by reading /P off the saved

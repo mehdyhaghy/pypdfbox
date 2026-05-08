@@ -43,6 +43,7 @@ _LZW_DECODE: COSName = COSName.get_pdf_name("LZWDecode")
 _RUN_LENGTH_DECODE: COSName = COSName.get_pdf_name("RunLengthDecode")
 _JBIG2_DECODE: COSName = COSName.get_pdf_name("JBIG2Decode")
 _MATTE: COSName = COSName.get_pdf_name("Matte")
+_DCT: COSName = COSName.get_pdf_name("DCT")
 
 # Public ``/Subtype /Image`` constant. Mirrors upstream's reliance on
 # ``COSName.IMAGE`` for ``/Subtype`` checks across the image cluster, and
@@ -190,7 +191,7 @@ class PDImageXObject(PDXObject):
         filters = cos.get_filter_list()
         if not filters:
             return "png"
-        if _DCT_DECODE in filters:
+        if _has_named_filter(filters, _DCT_DECODE, _DCT):
             return "jpg"
         if _JPX_DECODE in filters:
             return "jpx"
@@ -567,7 +568,10 @@ class PDImageXObject(PDXObject):
 
     def is_jpeg(self) -> bool:
         """Return ``True`` when the filter chain contains ``/DCTDecode``."""
-        return self._has_filter(_DCT_DECODE)
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return False
+        return _has_named_filter(cos.get_filter_list(), _DCT_DECODE, _DCT)
 
     def is_jpx(self) -> bool:
         """Return ``True`` when the filter chain contains ``/JPXDecode``."""
@@ -606,8 +610,8 @@ class PDImageXObject(PDXObject):
             return None
 
         filter_names = {item.name for item in cos.get_filter_list()}
-        if "DCTDecode" in filter_names:
-            with self.create_input_stream(stop_filters=["DCTDecode"]) as src:
+        if "DCTDecode" in filter_names or "DCT" in filter_names:
+            with self.create_input_stream(stop_filters=["DCTDecode", "DCT"]) as src:
                 return Image.open(io.BytesIO(src.read())).convert("RGB")
         if "JPXDecode" in filter_names:
             with self.create_input_stream(stop_filters=["JPXDecode"]) as src:
@@ -648,6 +652,10 @@ def _numeric_array_to_floats(value: COSBase | None) -> list[float] | None:
             return None
         out.append(float(item.value))
     return out
+
+
+def _has_named_filter(filters: Iterable[COSName], *names: COSName) -> bool:
+    return any(filter_name in names for filter_name in filters)
 
 
 def _decode_devicen_to_rgb(

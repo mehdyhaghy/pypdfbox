@@ -473,8 +473,8 @@ class CMapParser:
 
     def _parse_next_token(self, ras: RandomAccessRead) -> object:
         next_byte = ras.read()
-        # Skip whitespace (TAB / SPACE / CR / LF, matching upstream's narrow set).
-        while next_byte in (0x09, 0x20, 0x0D, 0x0A):
+        # Skip PDF whitespace at token boundaries.
+        while _is_whitespace(next_byte):
             next_byte = ras.read()
         if next_byte == 0x25:  # '%'
             return self._read_line(ras, next_byte)
@@ -649,7 +649,11 @@ class CMapParser:
 
 
 def _is_whitespace_or_eof(b: int) -> bool:
-    return b in (-1, 0x09, 0x20, 0x0D, 0x0A)
+    return b == -1 or _is_whitespace(b)
+
+
+def _is_whitespace(b: int) -> bool:
+    return b in (0x00, 0x09, 0x0A, 0x0C, 0x0D, 0x20)
 
 
 def _is_delimiter(b: int) -> bool:

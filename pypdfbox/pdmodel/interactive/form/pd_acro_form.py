@@ -209,7 +209,15 @@ class PDAcroForm:
         for child in field.get_children():
             self._append_field_subtree(child, out)
 
-    def _find_field(self, field: PDField, fqn: str) -> PDField | None:
+    def _find_field(
+        self, field: PDField, fqn: str, seen: set[int] | None = None
+    ) -> PDField | None:
+        if seen is None:
+            seen = set()
+        key = id(field.get_cos_object())
+        if key in seen:
+            return None
+        seen.add(key)
         if field.get_fully_qualified_name() == fqn:
             return field
         if not field.is_terminal():
@@ -217,7 +225,7 @@ class PDAcroForm:
 
             assert isinstance(field, PDNonTerminalField)
             for child in field.get_children():
-                found = self._find_field(child, fqn)
+                found = self._find_field(child, fqn, seen)
                 if found is not None:
                     return found
         return None

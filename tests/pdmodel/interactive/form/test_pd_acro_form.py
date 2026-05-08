@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSArray, COSDictionary
 from pypdfbox.pdmodel.interactive.form import (
     PDAcroForm,
     PDFieldStub,
@@ -96,6 +96,51 @@ def test_get_field_by_fully_qualified_name() -> None:
     assert found.get_partial_name() == "street"
     assert form.get_field("address") is not None
     assert form.get_field("does.not.exist") is None
+
+
+def test_wave327_get_field_ignores_cyclic_kids_for_missing_name() -> None:
+    form = PDAcroForm()
+    parent = COSDictionary()
+    parent.set_string("T", "parent")
+    child = COSDictionary()
+    child.set_string("T", "child")
+
+    parent_kids = COSArray()
+    parent_kids.add(child)
+    parent.set_item("Kids", parent_kids)
+    child_kids = COSArray()
+    child_kids.add(parent)
+    child.set_item("Kids", child_kids)
+
+    fields = COSArray()
+    fields.add(parent)
+    form.get_cos_object().set_item("Fields", fields)
+
+    assert form.get_field("missing") is None
+
+
+def test_wave327_get_field_finds_descendant_before_cyclic_back_edge() -> None:
+    form = PDAcroForm()
+    parent = COSDictionary()
+    parent.set_string("T", "parent")
+    child = COSDictionary()
+    child.set_string("T", "child")
+
+    parent_kids = COSArray()
+    parent_kids.add(child)
+    parent.set_item("Kids", parent_kids)
+    child_kids = COSArray()
+    child_kids.add(parent)
+    child.set_item("Kids", child_kids)
+
+    fields = COSArray()
+    fields.add(parent)
+    form.get_cos_object().set_item("Fields", fields)
+
+    found = form.get_field("parent.child")
+
+    assert found is not None
+    assert found.get_cos_object() is child
 
 
 def test_field_tree_and_iterator_walk_recursively_in_order() -> None:

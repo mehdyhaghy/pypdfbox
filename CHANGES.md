@@ -1451,3 +1451,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/graphics/shading/pd_shading_type4.py` through `pd_shading_type7.py`: mesh shading color-component counts now resolve through typed color spaces before legacy fallbacks.
 - `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_node.py`: child removal now unlinks by actual `/First` traversal and ignores stale edge links.
 - `pypdfbox/pdfwriter/content_stream_writer.py`: content stream writers gained Java-style `writeToken()` and `writeTokens()` aliases.
+
+## Wave 327 — ASCII85 whitespace, CMap whitespace, AcroForm cycles, DCT aliases, and safe encrypt writes
+
+- `pypdfbox/filter/ascii85_decode.py`: ASCII85 decoding now matches PDF whitespace rules and no longer treats vertical tab as whitespace.
+- `pypdfbox/fontbox/cmap/cmap_parser.py`: CMap tokenization now treats the full PDF whitespace set as token separators.
+- `pypdfbox/pdmodel/interactive/form/pd_acro_form.py`: field lookup now guards recursive `/Kids` traversal by COS dictionary identity.
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: short `/DCT` filters now count as JPEG for suffix detection, predicates, and PIL stop-filter handling.
+- `pypdfbox/tools/encrypt.py`: in-place encryption now writes through a sibling temp file and replaces the source only after a successful save.

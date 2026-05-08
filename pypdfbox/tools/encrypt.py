@@ -13,6 +13,7 @@ Exit codes follow upstream: 0 success, 4 IO / certificate error.
 from __future__ import annotations
 
 import argparse
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -226,6 +227,42 @@ def run(args: argparse.Namespace) -> int:
         print(f"encrypt: Error encrypting PDF [{type(exc).__name__}]: {exc}",
               flush=True)
         return 4
+
+    try:
+        same_output = src.resolve() == out.resolve()
+    except OSError:
+        same_output = src == out
+
+    if same_output:
+        with tempfile.NamedTemporaryFile(
+            dir=src.parent,
+            prefix=f".{src.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            try:
+                encrypt_pdf(
+                    src,
+                    tmp_path,
+                    owner_password=args.owner_password,
+                    user_password=args.user_password,
+                    permissions=ap,
+                    cert_files=args.cert_files,
+                    key_length=args.key_length,
+                )
+            except (OSError, ValueError, NotImplementedError) as exc:
+                print(
+                    f"encrypt: Error encrypting PDF [{type(exc).__name__}]: {exc}",
+                    flush=True,
+                )
+                return 4
+            tmp_path.replace(src)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        return 0
 
     try:
         encrypt_pdf(

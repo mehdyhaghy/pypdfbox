@@ -31,7 +31,7 @@ from .filter_factory import FilterFactory
 #     strict mode but we double-check for a clearer error message).
 
 _EOD: Final[bytes] = b"~>"
-_WHITESPACE: Final[frozenset[int]] = frozenset(b" \t\n\r\f\v\x00")
+_WHITESPACE: Final[frozenset[int]] = frozenset(b"\x00\t\n\x0c\r ")
 
 
 class ASCII85Decode(Filter):
