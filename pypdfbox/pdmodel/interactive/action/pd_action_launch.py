@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBoolean, COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSBoolean, COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
@@ -32,11 +32,17 @@ class PDActionLaunch(PDAction):
     def get_file(self) -> PDFileSpecification | None:
         return PDFileSpecification.create_fs(self._action.get_dictionary_object(_F))
 
-    def set_file(self, fs: PDFileSpecification | None) -> None:
+    def set_file(self, fs: PDFileSpecification | COSBase | str | bytes | None) -> None:
         if fs is None:
             self._action.remove_item(_F)
             return
-        self._action.set_item(_F, fs.get_cos_object())
+        if isinstance(fs, PDFileSpecification):
+            self._action.set_item(_F, fs.get_cos_object())
+            return
+        if isinstance(fs, (str, bytes)):
+            self._action.set_string(_F, fs)
+            return
+        self._action.set_item(_F, fs)
 
     # /F as a plain string — upstream ``getF()``/``setF(String)`` surface,
     # kept for callers that work directly with the legacy text-form file

@@ -89,6 +89,13 @@ def test_date_from_pdf_dictionary_form(metadata: XMPMetadata) -> None:
     assert (val.hour, val.minute, val.second) == (14, 33, 11)
 
 
+def test_wave324_date_type_accepts_pdf_apostrophe_offset(
+    metadata: XMPMetadata,
+) -> None:
+    field = DateType(metadata, "ns", "p", "when", "D:20100322143311-05'30'")
+    assert field.get_string_value() == "2010-03-22T14:33:11-05:30"
+
+
 def test_date_rejects_garbage_string(metadata: XMPMetadata) -> None:
     with pytest.raises(ValueError):
         DateType(metadata, "ns", "p", "when", "not a date")

@@ -21,6 +21,16 @@ from datetime import UTC, datetime, timedelta, timezone
 # Mirrors upstream's regex check that distinguishes a leading-ISO-style date
 # (``YYYY-MM-DDT...``) from the ``D:YYYYMMDD...`` PDF dictionary form.
 _ISO_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T.*")
+_PDF_LIKE_RE = re.compile(
+    r"^(?P<year>\d{4})"
+    r"(?:-?(?P<month>\d{2})"
+    r"(?:-?(?P<day>\d{2})"
+    r"(?:T?(?P<hour>\d{2})"
+    r"(?::?(?P<minute>\d{2})"
+    r"(?::?(?P<second>\d{2})?)?"
+    r")?)?)?)?"
+    r"(?P<tz>Z|[+-]\d{2}(?::?'?\d{2}'?)?)?$"
+)
 
 
 def _from_iso8601(date_string: str) -> datetime:
@@ -78,58 +88,35 @@ def to_calendar(date_string: str | None) -> datetime | None:
     if pos_of_t != 10 and pos_of_t != -1:
         raise OSError(f"Error converting date:{date}")
 
-    date = re.sub(r"[-:T]", "", date)
-
-    if len(date) < 4:
+    match = _PDF_LIKE_RE.match(date)
+    if match is None:
         raise OSError(f"Error: Invalid date format '{date}'")
 
     try:
-        year = int(date[0:4])
-        if len(date) >= 6:
-            month = int(date[4:6])
-        if len(date) >= 8:
-            day = int(date[6:8])
-        if len(date) >= 10:
-            hour = int(date[8:10])
-        if len(date) >= 12:
-            minute = int(date[10:12])
+        year = int(match.group("year"))
+        if match.group("month") is not None:
+            month = int(match.group("month"))
+        if match.group("day") is not None:
+            day = int(match.group("day"))
+        if match.group("hour") is not None:
+            hour = int(match.group("hour"))
+        if match.group("minute") is not None:
+            minute = int(match.group("minute"))
+        if match.group("second") is not None:
+            second = int(match.group("second"))
 
-        time_zone_pos = 12
-        if (
-            len(date) == 14
-            or len(date) - 12 > 5
-            or (len(date) - 12 == 3 and date.endswith("Z"))
-        ):
-            second = int(date[12:14])
-            time_zone_pos = 14
-
+        tz_text = match.group("tz")
         tz: timezone | None = None
-        if len(date) >= (time_zone_pos + 1):
-            sign = date[time_zone_pos]
-            if sign == "Z":
-                tz = UTC
-            else:
-                hours = 0
-                minutes = 0
-                if len(date) >= (time_zone_pos + 3):
-                    if sign == "+":
-                        hours = int(date[time_zone_pos + 1 : time_zone_pos + 3])
-                    else:
-                        hours = -int(date[time_zone_pos : time_zone_pos + 2])
-                if sign == "+":
-                    if len(date) >= (time_zone_pos + 5):
-                        minutes = int(
-                            date[time_zone_pos + 3 : time_zone_pos + 5]
-                        )
-                else:
-                    if len(date) >= (time_zone_pos + 4):
-                        minutes = int(
-                            date[time_zone_pos + 2 : time_zone_pos + 4]
-                        )
-                # Upstream: hours * 3600s + minutes * 60s (additive, no
-                # sign-mirroring on minutes — matches Java SimpleTimeZone arg).
-                offset_seconds = hours * 3600 + minutes * 60
-                tz = timezone(timedelta(seconds=offset_seconds))
+        if tz_text == "Z":
+            tz = UTC
+        elif tz_text is not None:
+            offset_text = tz_text[1:].replace(":", "").replace("'", "")
+            hours = int(offset_text[0:2])
+            minutes = int(offset_text[2:4]) if len(offset_text) >= 4 else 0
+            offset = timedelta(hours=hours, minutes=minutes)
+            if tz_text[0] == "-":
+                offset = -offset
+            tz = timezone(offset)
     except ValueError as exc:
         raise OSError(f"Error converting date:{date}") from exc
 

@@ -17,7 +17,6 @@ from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
-
 _FORM = COSName.get_pdf_name("Form")
 _TYPE = COSName.get_pdf_name("Type")
 _SUBTYPE = COSName.get_pdf_name("Subtype")
@@ -282,6 +281,36 @@ def test_set_group_raw_dict_invalidates_typed_cache() -> None:
     assert rewrapped.get_cos_object() is other
 
 
+def test_wave324_group_attributes_cache_tracks_external_cos_replacement() -> None:
+    form = _new_form()
+    first = COSDictionary()
+    first.set_name(COSName.get_pdf_name("S"), "Transparency")
+    form.set_group(first)
+
+    cached = form.get_group_attributes()
+    assert cached is not None
+    assert cached.get_cos_object() is first
+
+    replacement = COSDictionary()
+    replacement.set_name(COSName.get_pdf_name("S"), "Transparency")
+    form.get_cos_object().set_item(_GROUP, replacement)
+
+    rewrapped = form.get_group_attributes()
+    assert rewrapped is not None
+    assert rewrapped is not cached
+    assert rewrapped.get_cos_object() is replacement
+
+
+def test_wave324_group_attributes_cache_clears_after_external_cos_removal() -> None:
+    form = _new_form()
+    form.set_group_attributes(PDTransparencyGroupAttributes())
+    assert form.get_group_attributes() is not None
+
+    form.get_cos_object().remove_item(_GROUP)
+
+    assert form.get_group_attributes() is None
+
+
 # ---------- /StructParents ----------
 
 
@@ -387,7 +416,7 @@ def test_last_modified_round_trip() -> None:
     form = _new_form()
     assert form.get_last_modified() is None
 
-    when = _dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.UTC)
     form.set_last_modified(when)
     assert form.get_last_modified() == when
     assert form.get_cos_object().contains_key(_LAST_MODIFIED)
@@ -488,7 +517,7 @@ def test_matrix_returns_identity_when_entry_non_numeric() -> None:
         COSFloat(0),
         COSFloat(0),
         COSFloat(1),
-        COSName.get_pdf_name("NotANumber"),  # type: ignore[arg-type]
+        COSName.get_pdf_name("NotANumber"),
         COSFloat(0),
     ])
     form.get_cos_object().set_item(_MATRIX, bogus)
@@ -595,7 +624,7 @@ def test_has_piece_info_round_trip() -> None:
 def test_has_last_modified_round_trip() -> None:
     form = _new_form()
     assert not form.has_last_modified()
-    form.set_last_modified(_dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.timezone.utc))
+    form.set_last_modified(_dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.UTC))
     assert form.has_last_modified()
     form.set_last_modified(None)
     assert not form.has_last_modified()

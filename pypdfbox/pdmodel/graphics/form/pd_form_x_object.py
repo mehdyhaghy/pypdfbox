@@ -269,9 +269,14 @@ class PDFormXObject(PDXObject):
         when no ``/Group`` entry exists. Mirrors upstream
         ``getGroup()`` (which returns ``PDTransparencyGroupAttributes``).
         Lazily wraps and caches the underlying dictionary."""
-        if self._group_attributes is not None:
-            return self._group_attributes
         value = self.get_cos_object().get_dictionary_object(_GROUP)
+        if self._group_attributes is not None:
+            if (
+                isinstance(value, COSDictionary)
+                and self._group_attributes.get_cos_object() is value
+            ):
+                return self._group_attributes
+            self._group_attributes = None
         if isinstance(value, COSDictionary):
             self._group_attributes = PDTransparencyGroupAttributes(value)
             return self._group_attributes

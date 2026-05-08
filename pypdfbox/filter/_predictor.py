@@ -231,6 +231,8 @@ def _untiff(data: bytes, columns: int, colors: int, bits_per_component: int) -> 
     out = bytearray()
     for row_start in range(0, len(data), row_bytes):
         row = bytearray(data[row_start : row_start + row_bytes])
+        if len(row) < row_bytes:
+            row.extend(b"\x00" * (row_bytes - len(row)))
         if bits_per_component == 8:
             for i in range(colors, len(row)):
                 row[i] = (row[i] + row[i - colors]) & 0xFF

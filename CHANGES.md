@@ -1427,3 +1427,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/fontbox/ttf/ttf_data_stream.py`: zero-length `read_into()` no longer consumes data and invalid buffer ranges are rejected explicitly.
 - `pypdfbox/pdmodel/interactive/form/pd_text_field.py`: `/MaxLen` now resolves through inherited field attributes.
 - `pypdfbox/pdmodel/common/function/pd_function_type2.py`: Type2 exponentiation stays in the float domain and returns `NaN` for invalid negative-base fractional powers.
+
+## Wave 324 — TIFF predictors, launch files, renditions, date offsets, and form groups
+
+- `pypdfbox/filter/_predictor.py`: TIFF predictor decode now pads short final rows with zeros before row math.
+- `pypdfbox/pdmodel/interactive/action/pd_action_launch.py`: launch actions now accept file specs, raw COS values, strings, bytes, or `None` in `set_file()`.
+- `pypdfbox/pdmodel/interactive/measurement/pd_rendition.py` and `pd_media_clip.py`: subtype dispatch now accepts `/S` stored as either a COS name or COS string.
+- `pypdfbox/xmpbox/date_converter.py`: PDF-style date timezone offsets with apostrophes now parse through date conversion and `DateType`.
+- `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py`: cached group attributes now refresh when the backing `/Group` dictionary is externally replaced or removed.

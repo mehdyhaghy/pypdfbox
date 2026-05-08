@@ -32,7 +32,7 @@ class PDRendition:
             raise TypeError(
                 f"PDRendition.create expects COSDictionary, got {type(dictionary).__name__}"
             )
-        sub_type = dictionary.get_name(_S)
+        sub_type = dictionary.get_string(_S)
         if sub_type == PDMediaRendition.SUB_TYPE:
             return PDMediaRendition(dictionary)
         if sub_type == PDSelectorRendition.SUB_TYPE:
@@ -43,7 +43,7 @@ class PDRendition:
         return self._dict
 
     def get_subtype(self) -> str | None:
-        return self._dict.get_name(_S)
+        return self._dict.get_string(_S)
 
     def get_n(self) -> str | None:
         return self._dict.get_string(_N)

@@ -60,6 +60,24 @@ def test_pdf_prefixed_full_with_z() -> None:
     assert cal.utcoffset() == timedelta(0)
 
 
+def test_wave324_pdf_prefixed_apostrophe_offset() -> None:
+    cal = DateConverter.to_calendar("D:20150203101112+05'30'")
+    assert cal is not None
+    assert cal.year == 2015
+    assert cal.month == 2
+    assert cal.day == 3
+    assert cal.hour == 10
+    assert cal.minute == 11
+    assert cal.second == 12
+    assert cal.utcoffset() == timedelta(hours=5, minutes=30)
+
+
+def test_wave324_pdf_prefixed_negative_apostrophe_offset() -> None:
+    cal = DateConverter.to_calendar("D:20150203101112-05'30'")
+    assert cal is not None
+    assert cal.utcoffset() == -timedelta(hours=5, minutes=30)
+
+
 def test_iso8601_with_milliseconds() -> None:
     cal = DateConverter.to_calendar("2025-09-03T15:43:47.989082+00:00")
     assert cal is not None
@@ -104,6 +122,7 @@ def test_invalid_t_position_raises() -> None:
 
 def test_to_iso8601_round_trip_z() -> None:
     cal = DateConverter.to_calendar("2015-02-02T16:37:19.192Z")
+    assert cal is not None
     formatted = DateConverter.to_iso8601(cal, True)
     again = DateConverter.to_calendar(formatted)
     assert cal == again
