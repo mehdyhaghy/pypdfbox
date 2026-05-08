@@ -55,7 +55,7 @@ class PDRectlinearMeasureDictionary(PDMeasureDictionary):
     ) -> list[PDNumberFormatDictionary]:
         retval: list[PDNumberFormatDictionary] = []
         for i in range(arr.size()):
-            entry = arr.get(i)
+            entry = arr.get_object(i)
             if isinstance(entry, COSDictionary):
                 retval.append(PDNumberFormatDictionary(entry))
         return retval

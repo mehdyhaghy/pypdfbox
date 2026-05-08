@@ -67,7 +67,9 @@ class PDAttributeObject:
             return PDExportFormatAttributeObject(dictionary)
         if owner == PDUserAttributeObject.OWNER:
             return PDUserAttributeObject(dictionary)
-        return PDAttributeObject(dictionary)
+        from .pd_default_attribute_object import PDDefaultAttributeObject
+
+        return PDDefaultAttributeObject(dictionary)
 
     def get_cos_object(self) -> COSDictionary:
         return self._dictionary

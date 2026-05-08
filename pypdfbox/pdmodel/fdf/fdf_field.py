@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import cast
+
 from pypdfbox.cos import (
     COSArray,
     COSBase,
@@ -250,6 +253,32 @@ class FDFField:
     def clear_options(self) -> None:
         self._field.remove_item(_OPT)
 
+    def set_options(self, options: Sequence[object] | None) -> None:
+        """Set the field's ``/Opt`` entry.
+
+        Mirrors PDFBox ``FDFField.setOptions(List<Object>)``. Each option may
+        be a string, a two-string sequence (export value + default appearance
+        string), or a pre-built ``COSBase`` value.
+        """
+        if options is None:
+            self._field.remove_item(_OPT)
+            return
+
+        arr = COSArray()
+        for option in options:
+            if isinstance(option, COSBase):
+                arr.add(option)
+            elif isinstance(option, str):
+                arr.add(COSString(option))
+            elif isinstance(option, (list, tuple)):
+                arr.add(_option_pair_to_cos_array(option))
+            else:
+                raise TypeError(
+                    "FDFField options must be str, two-string list/tuple, or COSBase; "
+                    f"got {type(option).__name__}"
+                )
+        self._field.set_item(_OPT, arr)
+
     # ---------- /RV rich text value ----------
 
     def get_rich_text(self) -> object | None:
@@ -300,3 +329,17 @@ def _cos_value_to_python(v: COSBase | None) -> object | None:
     if isinstance(v, COSStream):
         return v
     return v
+
+
+def _option_pair_to_cos_array(option: Sequence[object]) -> COSArray:
+    if len(option) != 2 or not all(isinstance(part, str) for part in option):
+        raise TypeError(
+            "FDFField option pairs must contain exactly two strings "
+            "(option, default appearance string)"
+        )
+    first = cast(str, option[0])
+    second = cast(str, option[1])
+    arr = COSArray()
+    arr.add(COSString(first))
+    arr.add(COSString(second))
+    return arr

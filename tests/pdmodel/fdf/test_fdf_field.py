@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.fdf import FDFField
 
 
@@ -119,3 +119,48 @@ def test_widget_field_flags_round_trip() -> None:
 def test_options_returns_none_when_absent() -> None:
     f = FDFField()
     assert f.get_options() is None
+
+
+def test_options_string_round_trip() -> None:
+    f = FDFField()
+    f.set_options(["one", "two"])
+
+    assert f.has_options()
+    assert f.get_options() == ["one", "two"]
+    raw = f.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Opt"))
+    assert isinstance(raw, COSArray)
+    assert isinstance(raw.get_object(0), COSString)
+
+
+def test_options_pair_round_trip() -> None:
+    f = FDFField()
+    f.set_options([("export", "display")])
+
+    assert f.get_options() == [["export", "display"]]
+    raw = f.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Opt"))
+    assert isinstance(raw, COSArray)
+    pair = raw.get_object(0)
+    assert isinstance(pair, COSArray)
+    assert pair.get_string(0) == "export"
+    assert pair.get_string(1) == "display"
+
+
+def test_options_none_removes_entry() -> None:
+    f = FDFField()
+    f.set_options(["one"])
+
+    f.set_options(None)
+
+    assert f.get_options() is None
+    assert not f.has_options()
+    assert not f.get_cos_object().contains_key(COSName.get_pdf_name("Opt"))
+
+
+def test_options_rejects_invalid_entry() -> None:
+    f = FDFField()
+
+    with pytest.raises(TypeError, match="options must be"):
+        f.set_options([object()])
+
+    with pytest.raises(TypeError, match="option pairs"):
+        f.set_options([["only-one"]])

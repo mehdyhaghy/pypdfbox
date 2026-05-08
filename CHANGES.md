@@ -1523,3 +1523,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdfparser/pdf_parser.py`: lenient parsing now searches for nearby xref sections when `startxref` or `/Prev` offsets are shifted.
 - `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_destination.py`: page destinations now accept numeric page slots as COS numbers and truncate floats like Java `intValue()`.
 - `pypdfbox/text/pdf_text_stripper.py`: `write_text()` now binds the supplied writer during extraction hooks and restores previous output state afterward.
+
+## Wave 336 — color recursion, shading CS fallback, FDF options, measurement refs, and default attributes
+
+- `pypdfbox/pdmodel/graphics/color/pd_color_space.py`: recursive `/ColorSpace` wrapper dictionaries now raise `OSError` instead of recursing until Python fails.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading.py`: shading color-space lookup now falls back from `/ColorSpace` to abbreviated `/CS`.
+- `pypdfbox/pdmodel/fdf/fdf_field.py`: FDF field options now write strings, option pairs, raw COS entries, and clear `/Opt` on `None`.
+- `pypdfbox/pdmodel/interactive/measurement/pd_rectlinear_measure_dictionary.py`: rectlinear number-format arrays now resolve indirect dictionary entries before wrapping them.
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_attribute_object.py`: unknown or missing attribute owners now produce default attribute objects.

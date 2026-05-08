@@ -4,9 +4,10 @@ import logging
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
-from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
+from pypdfbox.cos import COSDictionary, COSInteger, COSName
+from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDAttributeObject,
+    PDDefaultAttributeObject,
 )
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
     PDStructureElement,
@@ -56,6 +57,32 @@ def test_get_revision_number_reads_existing_dict() -> None:
     assert attr.get_revision_number() == 5
 
 
+# ---------- create fallback ----------
+
+
+def test_create_unknown_owner_returns_default_attribute_object() -> None:
+    cos = COSDictionary()
+    cos.set_name(COSName.get_pdf_name("O"), "CustomOwner")
+    cos.set_item(COSName.get_pdf_name("CustomAttr"), COSInteger.get(7))
+
+    attr = PDAttributeObject.create(cos)
+
+    assert isinstance(attr, PDDefaultAttributeObject)
+    assert attr.get_cos_object() is cos
+    assert attr.get_attribute_names() == ["CustomAttr"]
+    assert attr.get_attribute_value("CustomAttr") == COSInteger.get(7)
+
+
+def test_create_missing_owner_returns_default_attribute_object() -> None:
+    cos = COSDictionary()
+    cos.set_item(COSName.get_pdf_name("CustomAttr"), COSInteger.get(7))
+
+    attr = PDAttributeObject.create(cos)
+
+    assert isinstance(attr, PDDefaultAttributeObject)
+    assert attr.get_owner() is None
+
+
 # ---------- structure-element back-pointer ----------
 
 
@@ -87,7 +114,7 @@ def test_notify_change_callable_and_no_op() -> None:
     attr.set_owner("Layout")
     snapshot = dict(attr.get_cos_object().entry_set())
     # Should not raise and should not mutate the underlying dictionary.
-    assert attr.notify_change() is None
+    attr.notify_change()
     assert dict(attr.get_cos_object().entry_set()) == snapshot
 
 
@@ -107,7 +134,7 @@ def test_notify_change_logs_at_debug(caplog: pytest.LogCaptureFixture) -> None:
 def test_add_to_structure_element_callable_no_op() -> None:
     attr = PDAttributeObject()
     attr.set_owner("Layout")
-    assert attr.add_to_structure_element() is None
+    attr.add_to_structure_element()
     # No mutation expected on the lite surface.
     assert attr.get_owner() == "Layout"
 
@@ -115,7 +142,7 @@ def test_add_to_structure_element_callable_no_op() -> None:
 def test_remove_from_structure_element_callable_no_op() -> None:
     attr = PDAttributeObject()
     attr.set_owner("Layout")
-    assert attr.remove_from_structure_element() is None
+    attr.remove_from_structure_element()
     assert attr.get_owner() == "Layout"
 
 

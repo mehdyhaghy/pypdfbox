@@ -187,6 +187,21 @@ def test_create_dictionary_self_reference_raises() -> None:
         PDColorSpace.create(wrapper)
 
 
+def test_create_dictionary_color_space_cycle_raises() -> None:
+    # PDFBOX-5315 also applies when wrapper dictionaries recurse through
+    # each other instead of pointing directly at themselves.
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+
+    first = COSDictionary()
+    second = COSDictionary()
+    first.set_item(COSName.get_pdf_name("ColorSpace"), second)
+    second.set_item(COSName.get_pdf_name("ColorSpace"), first)
+
+    with pytest.raises(OSError, match="Recursion in colorspace"):
+        PDColorSpace.create(first)
+
+
 # ---------- was_default flag plumbing ----------
 
 

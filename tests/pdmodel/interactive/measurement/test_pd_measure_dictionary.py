@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject, COSString
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotationPolygon,
     PDAnnotationPolyline,
@@ -182,6 +182,21 @@ def test_rectlinear_number_format_array_accepts_tuple() -> None:
     assert len(fetched) == 1
 
 
+def test_rectlinear_number_format_array_resolves_indirect_entries() -> None:
+    rl = PDRectlinearMeasureDictionary()
+    nf = PDNumberFormatDictionary()
+    nf.set_units("cm")
+    arr = COSArray()
+    arr.add(COSObject(336, 0, resolved=nf.get_cos_object()))
+    rl.get_cos_object().set_item(_D, arr)
+
+    fetched = rl.get_distances()
+    assert fetched is not None
+    assert len(fetched) == 1
+    assert fetched[0].get_cos_object() is nf.get_cos_object()
+    assert fetched[0].get_units() == "cm"
+
+
 def test_rectlinear_coord_system_origin_round_trip() -> None:
     rl = PDRectlinearMeasureDictionary()
     assert rl.get_coord_system_origin() is None
@@ -239,7 +254,9 @@ def test_rectlinear_full_round_trip_via_cos_dictionary() -> None:
 
 
 @pytest.mark.parametrize("cls", [PDAnnotationPolygon, PDAnnotationPolyline])
-def test_annotation_set_typed_measure_round_trip(cls) -> None:
+def test_annotation_set_typed_measure_round_trip(
+    cls: type[PDAnnotationPolygon] | type[PDAnnotationPolyline],
+) -> None:
     ann = cls()
     measure = PDRectlinearMeasureDictionary()
     measure.set_scale_ratio("1cm = 1m")
@@ -255,7 +272,9 @@ def test_annotation_set_typed_measure_round_trip(cls) -> None:
 
 
 @pytest.mark.parametrize("cls", [PDAnnotationPolygon, PDAnnotationPolyline])
-def test_annotation_set_raw_cos_dict_still_supported(cls) -> None:
+def test_annotation_set_raw_cos_dict_still_supported(
+    cls: type[PDAnnotationPolygon] | type[PDAnnotationPolyline],
+) -> None:
     ann = cls()
     raw = COSDictionary()
     raw.set_name(_TYPE, "Measure")
@@ -268,7 +287,9 @@ def test_annotation_set_raw_cos_dict_still_supported(cls) -> None:
 
 
 @pytest.mark.parametrize("cls", [PDAnnotationPolygon, PDAnnotationPolyline])
-def test_annotation_set_measure_none_removes_entry(cls) -> None:
+def test_annotation_set_measure_none_removes_entry(
+    cls: type[PDAnnotationPolygon] | type[PDAnnotationPolyline],
+) -> None:
     ann = cls()
     ann.set_measure(PDRectlinearMeasureDictionary())
     ann.set_measure(None)

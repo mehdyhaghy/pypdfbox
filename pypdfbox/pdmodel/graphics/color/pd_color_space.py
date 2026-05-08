@@ -34,6 +34,7 @@ class PDColorSpace(ABC):
         base: COSBase | None,
         resources: PDResources | None = None,
         was_default: bool = False,
+        _seen_color_space_dicts: set[int] | None = None,
     ) -> PDColorSpace | None:
         """Build a typed ``PDColorSpace`` from its COS form.
 
@@ -72,7 +73,8 @@ class PDColorSpace(ABC):
         A ``COSDictionary`` whose ``/ColorSpace`` entry references a
         valid color-space form is unwrapped (PDFBOX-4833). A
         ``/ColorSpace`` entry that points back to its containing
-        dictionary (PDFBOX-5315) raises :class:`OSError`.
+        dictionary, directly or through another wrapper dictionary
+        (PDFBOX-5315), raises :class:`OSError`.
         """
         from pypdfbox.cos.cos_object import COSObject
 
@@ -152,6 +154,14 @@ class PDColorSpace(ABC):
         if isinstance(base, COSDictionary) and base.contains_key(
             COSName.get_pdf_name("ColorSpace")
         ):
+            if _seen_color_space_dicts is None:
+                _seen_color_space_dicts = set()
+            dictionary_id = id(base)
+            if dictionary_id in _seen_color_space_dicts:
+                raise OSError(
+                    "Recursion in colorspace: /ColorSpace chain loops"
+                )
+            _seen_color_space_dicts.add(dictionary_id)
             inner = base.get_dictionary_object(
                 COSName.get_pdf_name("ColorSpace")
             )
@@ -162,7 +172,9 @@ class PDColorSpace(ABC):
                 raise OSError(
                     "Recursion in colorspace: /ColorSpace points to itself"
                 )
-            return PDColorSpace.create(inner, resources, was_default)
+            return PDColorSpace.create(
+                inner, resources, was_default, _seen_color_space_dicts
+            )
         return None
 
     # ---------- COS surface ----------

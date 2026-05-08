@@ -13,15 +13,28 @@ def _float_array(*values: float) -> COSArray:
 
 def test_color_space_presence_uses_short_form_and_clear_removes_both_keys() -> None:
     shading = PDShadingType2()
-    shading.get_cos_object().set_item("CS", COSName.get_pdf_name("DeviceRGB"))
+    cs = COSName.get_pdf_name("DeviceRGB")
+    shading.get_cos_object().set_item("CS", cs)
 
     assert shading.has_color_space() is True
+    assert shading.get_color_space() is cs
 
     shading.clear_color_space()
 
     assert shading.has_color_space() is False
+    assert shading.get_color_space() is None
     assert shading.get_color_space_object() is None
     assert shading.get_cos_object().get_dictionary_object("CS") is None
+
+
+def test_color_space_prefers_long_form_over_short_form() -> None:
+    shading = PDShadingType2()
+    color_space = COSName.get_pdf_name("DeviceRGB")
+    cs = COSName.get_pdf_name("DeviceCMYK")
+    shading.get_cos_object().set_item("ColorSpace", color_space)
+    shading.get_cos_object().set_item("CS", cs)
+
+    assert shading.get_color_space() is color_space
 
 
 def test_numeric_array_presence_helpers_reject_malformed_entries() -> None:

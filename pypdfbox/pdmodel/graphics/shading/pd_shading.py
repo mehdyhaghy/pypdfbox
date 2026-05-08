@@ -164,7 +164,7 @@ class PDShading:
     # ---------- /ColorSpace ----------
 
     def get_color_space(self) -> COSBase | None:
-        return self._dict.get_dictionary_object(_COLOR_SPACE)
+        return self._dict.get_dictionary_object(_COLOR_SPACE, _CS)
 
     def set_color_space(self, color_space: COSBase | None) -> None:
         if color_space is None:
