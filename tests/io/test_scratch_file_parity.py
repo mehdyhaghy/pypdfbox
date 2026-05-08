@@ -30,6 +30,18 @@ def test_create_buffer_with_data_accepts_bytearray_and_memoryview() -> None:
         assert buf_b.length() == 4
 
 
+def test_get_main_memory_only_instance_factory() -> None:
+    with ScratchFile.get_main_memory_only_instance() as sf:
+        assert sf.setting.is_main_memory_only()
+        assert sf.get_main_memory_max_pages() == -1
+
+
+def test_get_main_memory_only_instance_camelcase_alias() -> None:
+    with ScratchFile.getMainMemoryOnlyInstance() as sf:
+        assert sf.setting.is_main_memory_only()
+        assert sf.get_main_memory_max_pages() == -1
+
+
 def test_is_closed_false_after_construction() -> None:
     sf = ScratchFile()
     try:
@@ -74,7 +86,7 @@ def test_get_main_memory_max_pages_returns_minus_one() -> None:
 def test_enqueue_dequeue_page_are_inert() -> None:
     with ScratchFile() as sf:
         # No-op; should not raise.
-        assert sf.enqueue_page(0) is None
-        assert sf.enqueue_page(42) is None
+        sf.enqueue_page(0)
+        sf.enqueue_page(42)
         # Dequeue always returns -1 since the free-page pool is inert.
         assert sf.dequeue_page() == -1

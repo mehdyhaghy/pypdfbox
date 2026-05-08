@@ -86,6 +86,17 @@ class ScratchFile:
         if self._setting.mode is StorageMode.TEMP_FILE_ONLY:
             self._ensure_tmp()
 
+    @classmethod
+    def get_main_memory_only_instance(cls) -> ScratchFile:
+        """
+        Return a scratch file configured for unrestricted main-memory storage.
+
+        Mirrors upstream ``ScratchFile.getMainMemoryOnlyInstance()``.
+        """
+        return cls(MemoryUsageSetting.setup_main_memory_only())
+
+    getMainMemoryOnlyInstance = get_main_memory_only_instance  # noqa: N815
+
     # ----- properties -----
 
     @property

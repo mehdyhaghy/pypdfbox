@@ -51,7 +51,7 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     # ---------- /Role ----------
 
     def get_role(self) -> str | None:
-        return self._get_name(self.ROLE)
+        return self._dictionary.get_name_as_string(self.ROLE)
 
     def set_role(self, role: str | None) -> None:
         self._set_name(self.ROLE, role)
@@ -61,7 +61,9 @@ class PDPrintFieldAttributeObject(PDStandardAttributeObject):
     def get_checked_state(self) -> str:
         """Upstream-parity name. Returns the checked state, default
         :attr:`CHECKED_STATE_OFF` when absent."""
-        value = self._get_name(self.CHECKED, self.CHECKED_STATE_OFF)
+        value = self._dictionary.get_name_as_string(
+            self.CHECKED, self.CHECKED_STATE_OFF
+        )
         return value if value is not None else self.CHECKED_STATE_OFF
 
     def set_checked_state(self, checked_state: str) -> None:

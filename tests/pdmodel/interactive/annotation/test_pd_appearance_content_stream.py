@@ -4,6 +4,9 @@ import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_content_stream import (
     PDAppearanceContentStream,
 )
@@ -14,17 +17,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
     PDBorderStyleDictionary,
 )
 from pypdfbox.pdmodel.pd_resources import PDResources
-
-
-# ---------- helpers ----------
-
-
-class _FakeColorSpace:
-    def __init__(self, name: str) -> None:
-        self._name = name
-
-    def get_name(self) -> str:
-        return self._name
 
 
 def _new_appearance() -> PDAppearanceStream:
@@ -158,7 +150,7 @@ def test_set_color_two_components_is_silent_no_op() -> None:
 def test_set_stroking_color_on_demand_with_color() -> None:
     appearance = _new_appearance()
     cs = PDAppearanceContentStream(appearance)
-    color = PDColor([0.25, 0.5, 0.75], _FakeColorSpace("DeviceRGB"))
+    color = PDColor([0.25, 0.5, 0.75], PDDeviceRGB.INSTANCE)
     assert cs.set_stroking_color_on_demand(color) is True
     cs.close()
     body = _decoded_body(appearance)
@@ -176,7 +168,7 @@ def test_set_stroking_color_on_demand_with_none_returns_false() -> None:
 def test_set_stroking_color_on_demand_with_empty_components() -> None:
     appearance = _new_appearance()
     cs = PDAppearanceContentStream(appearance)
-    color = PDColor([], _FakeColorSpace("Pattern"))
+    color = PDColor([], PDPattern())
     assert cs.set_stroking_color_on_demand(color) is False
     cs.close()
 
@@ -184,7 +176,7 @@ def test_set_stroking_color_on_demand_with_empty_components() -> None:
 def test_set_non_stroking_color_on_demand() -> None:
     appearance = _new_appearance()
     cs = PDAppearanceContentStream(appearance)
-    color = PDColor([0.5], _FakeColorSpace("DeviceGray"))
+    color = PDColor([0.5], PDDeviceGray.INSTANCE)
     assert cs.set_non_stroking_color_on_demand(color) is True
     assert cs.set_non_stroking_color_on_demand(None) is False
     cs.close()
@@ -227,6 +219,22 @@ def test_set_border_line_with_dashed_bs() -> None:
     body = _decoded_body(appearance)
     assert b"[3 2] 0 d" in body
     assert b"2 w" in body
+
+
+def test_set_border_line_with_dashed_bs_without_dash_array_uses_default() -> None:
+    appearance = _new_appearance()
+    bs = PDBorderStyleDictionary()
+    bs.set_style(PDBorderStyleDictionary.STYLE_DASHED)
+
+    with PDAppearanceContentStream(appearance) as cs:
+        cs.set_border_line(2.0, bs, None)
+
+    body = _decoded_body(appearance)
+    assert b"[3] 0 d" in body
+    assert b"2 w" in body
+    stored = bs.get_cos_object().get_dictionary_object(COSName.get_pdf_name("D"))
+    assert isinstance(stored, COSArray)
+    assert stored.to_float_array() == [3.0]
 
 
 def test_set_border_line_solid_bs_skips_dash() -> None:

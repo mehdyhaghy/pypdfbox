@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from importlib import resources
+from importlib.resources.abc import Traversable
 from typing import Any
 
 from pypdfbox.fontbox.afm import AFMParser, CharMetric, FontMetrics, KernPair, Ligature
@@ -304,11 +305,10 @@ class AfmMetrics:
 _CACHE: dict[str, AfmMetrics] = {}
 
 
-def _afm_path_for(name: str) -> str:
-    """Return the on-disk path of the bundled ``<name>.afm`` resource."""
+def _afm_resource_for(name: str) -> Traversable:
+    """Return the bundled ``<name>.afm`` resource."""
     pkg = resources.files("pypdfbox.pdmodel.font.afm")
-    res = pkg.joinpath(f"{name}.afm")
-    return str(res)
+    return pkg.joinpath(f"{name}.afm")
 
 
 def load_standard14(name: str) -> AfmMetrics:
@@ -325,7 +325,7 @@ def load_standard14(name: str) -> AfmMetrics:
     if name not in _CACHE:
         if name not in _STANDARD14:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
-        with open(_afm_path_for(name), "rb") as fp:
+        with _afm_resource_for(name).open("rb") as fp:
             font_metrics = AFMParser(fp).parse()
         _CACHE[name] = AfmMetrics(name, font_metrics)
     return _CACHE[name]

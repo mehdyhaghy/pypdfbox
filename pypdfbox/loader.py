@@ -240,3 +240,8 @@ class Loader:
             "Loader.load_pdf expected a path, bytes-like object, binary "
             f"stream, or RandomAccessRead; got {type(source).__name__}"
         )
+
+    # Upstream Java aliases (camelCase mirrors of the snake_case API).
+    loadPDF = load_pdf  # noqa: N815
+    loadFDF = load_fdf  # noqa: N815
+    loadXFDF = load_xfdf  # noqa: N815

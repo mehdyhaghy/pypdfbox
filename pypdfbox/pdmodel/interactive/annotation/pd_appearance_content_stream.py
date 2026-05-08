@@ -85,6 +85,9 @@ class PDAppearanceContentStream(PDPageContentStream):
     # lifecycle — overridden to support the explicit-output-stream path
     # ------------------------------------------------------------------
 
+    def __enter__(self) -> PDAppearanceContentStream:
+        return self
+
     def close(self) -> None:
         """Flush the buffered operator bytes.
 
@@ -210,9 +213,9 @@ class PDAppearanceContentStream(PDPageContentStream):
     ) -> None:
         """Convenience for annotations: sets the line dash style and width.
 
-        - When ``bs`` is non-null, has a ``/D`` entry, and its style is
-          ``"D"`` (dashed), emit the dash pattern from
-          :meth:`PDBorderStyleDictionary.get_dash_style`.
+        - When ``bs`` is non-null and its style is ``"D"`` (dashed),
+          emit the dash pattern from
+          :meth:`PDBorderStyleDictionary.get_dash_style_or_default`.
         - When ``bs`` is null and ``border`` has more than 3 entries,
           treat ``border[3]`` as the dash array (or fall back to a
           1-element invisible-dash array per PDFBOX-5266 if ``border[3]``
@@ -221,12 +224,10 @@ class PDAppearanceContentStream(PDPageContentStream):
         """
         if (
             bs is not None
-            and bs.get_cos_object().contains_key(COSName.get_pdf_name("D"))
             and bs.get_style() == PDBorderStyleDictionary.STYLE_DASHED
         ):
-            dash = bs.get_dash_style()
-            if dash is not None:
-                self.set_dash_pattern(list(dash.get_dash_array()), 0)
+            dash = bs.get_dash_style_or_default()
+            self.set_dash_pattern(list(dash.get_dash_array()), 0)
         elif bs is None and border is not None and border.size() > 3:
             entry = border.get_object(3)
             if isinstance(entry, COSArray):

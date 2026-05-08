@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSName
+from pypdfbox.cos import COSName, COSString
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDPrintFieldAttributeObject,
 )
@@ -42,6 +42,15 @@ def test_checked_round_trip_all_values() -> None:
         raw = obj.get_cos_object().get_dictionary_object("checked")
         assert isinstance(raw, COSName)
         assert raw.name == state
+
+
+def test_role_and_checked_accept_cos_string_values() -> None:
+    obj = PDPrintFieldAttributeObject()
+    obj.get_cos_object().set_item("Role", COSString("rb"))
+    obj.get_cos_object().set_item("checked", COSString("neutral"))
+
+    assert obj.get_role() == PDPrintFieldAttributeObject.ROLE_RB
+    assert obj.get_checked_state() == PDPrintFieldAttributeObject.CHECKED_STATE_NEUTRAL
 
 
 def test_description_round_trip() -> None:

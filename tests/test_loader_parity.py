@@ -86,6 +86,14 @@ def test_load_alias_matches_load_pdf() -> None:
         via_canonical.close()
 
 
+def test_load_pdf_java_alias_matches_load_pdf() -> None:
+    doc = Loader.loadPDF(_minimal_pdf())
+    try:
+        _assert_minimal_document(doc)
+    finally:
+        doc.close()
+
+
 # ---------- explicit-source entry points ----------
 
 
@@ -140,6 +148,11 @@ def test_load_xfdf_raises_not_implemented() -> None:
         Loader.load_xfdf(b"<?xml version='1.0'?><xfdf/>")
 
 
+def test_load_xfdf_java_alias_matches_load_xfdf() -> None:
+    with pytest.raises(NotImplementedError, match="XFDF"):
+        Loader.loadXFDF(b"<?xml version='1.0'?><xfdf/>")
+
+
 def test_load_fdf_delegates_to_fdf_document_loader() -> None:
     source = FDFDocument()
     source.get_catalog().get_fdf().set_status("OK")
@@ -153,5 +166,20 @@ def test_load_fdf_delegates_to_fdf_document_loader() -> None:
         assert isinstance(loaded, FDFDocument)
         assert loaded.get_catalog().get_fdf().get_status() == "OK"
         assert loaded.get_catalog().get_fdf().get_file() == "source.pdf"
+    finally:
+        loaded.close()
+
+
+def test_load_fdf_java_alias_matches_load_fdf() -> None:
+    source = FDFDocument()
+    source.get_catalog().get_fdf().set_status("OK")
+    buf = io.BytesIO()
+    source.save(buf)
+    source.close()
+
+    loaded = Loader.loadFDF(buf.getvalue())
+    try:
+        assert isinstance(loaded, FDFDocument)
+        assert loaded.get_catalog().get_fdf().get_status() == "OK"
     finally:
         loaded.close()

@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/annotation/pd_appearance_content_stream.py`: dashed borders without explicit `/D` materialize the default `[3]` dash pattern.
+- `pypdfbox/loader.py`: exposes Java-style `loadPDF`, `loadFDF`, and `loadXFDF` aliases.
+- `pypdfbox/pdmodel/font/afm_loader.py`: bundled AFM resources load through `importlib.resources` handles instead of filesystem paths.
+- `pypdfbox/io/scratch_file.py`: exposes main-memory-only ScratchFile factory aliases.
+- `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_print_field_attribute_object.py`: print-field role and checked-state getters accept COS string-backed names.
 - `pypdfbox/pdmodel/interactive/form/pd_acro_form.py`: form flattening guards against cyclic `/Kids` graphs.
 - `pypdfbox/pdmodel/graphics/image/`: image factories expose Java-style PDFBox creation aliases.
 - `pypdfbox/fontbox/ttf/ttf_data_stream.py`: `read_unsigned_int()` treats any negative byte as EOF.
