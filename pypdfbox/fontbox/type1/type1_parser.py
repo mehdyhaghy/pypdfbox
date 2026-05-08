@@ -32,6 +32,7 @@ Type1Font accessors can hand it on.
 from __future__ import annotations
 
 import re
+import string
 from typing import Any
 
 from .type1_font_util import Type1FontUtil
@@ -60,6 +61,8 @@ _NUMBER_RE = re.compile(r"^[+-]?(\d+\.\d*|\.\d+|\d+\.?)(?:[eE][+-]?\d+)?$")
 _INT_RE = re.compile(r"^[+-]?\d+$")
 # Radix-form integers: ``base#digits`` (e.g. ``16#FF``). PostScript spec.
 _RADIX_RE = re.compile(r"^(\d+)#([0-9A-Za-z]+)$")
+_HEX_CHARS = frozenset(ord(ch) for ch in string.hexdigits)
+_HEX_WHITESPACE = frozenset(b"\n\r \t")
 
 
 class Type1Lexer:
@@ -398,7 +401,9 @@ class Type1Parser:
         # warm-up. We accept the parameter to mirror upstream's signature.
         del len_iv
         self._parse_ascii(bytes(segment1))
-        self.decrypted_binary = Type1FontUtil.eexec_decrypt(bytes(segment2))
+        self.decrypted_binary = Type1FontUtil.eexec_decrypt(
+            self._normalise_eexec_segment(bytes(segment2))
+        )
         # Best-effort second-stage parse over the decrypted block. Any
         # parse failure leaves Private / Subrs / CharStrings empty and is
         # logged at debug — matches our overall "tolerant defaults"
@@ -413,6 +418,27 @@ class Type1Parser:
                 "Type1Parser: binary segment parse failed: %s", exc
             )
         return self.font_dict
+
+    @staticmethod
+    def _normalise_eexec_segment(segment: bytes) -> bytes:
+        """Return binary eexec bytes, decoding ASCII-hex PFA data when used.
+
+        Mirrors PDFBox's ``Type1Parser.isBinary`` heuristic: if all of the
+        first four ciphertext bytes are hex digits or whitespace, treat the
+        whole segment as ASCII hex and ignore non-hex separators.
+        """
+        if len(segment) < 4:
+            return segment
+        for by in segment[:4]:
+            if by not in _HEX_WHITESPACE and by not in _HEX_CHARS:
+                return segment
+
+        nibbles = [by for by in segment if by in _HEX_CHARS]
+        # PDFBox truncates an unmatched trailing nibble when normalising
+        # ASCII-hex eexec data.
+        if len(nibbles) % 2:
+            nibbles.pop()
+        return bytes.fromhex(bytes(nibbles).decode("ascii"))
 
     # ---------- ascii section ----------
 

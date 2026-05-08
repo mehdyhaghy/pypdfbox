@@ -11,7 +11,7 @@ import zlib
 
 import pytest
 
-from pypdfbox.cos import COSObjectKey, COSStream, COSString
+from pypdfbox.cos import COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser
 from pypdfbox.pdfparser.parse_error import PDFParseError
@@ -57,10 +57,7 @@ def _build_xref_stream_pdf(
     xref_obj_offset = len(out)
     body = zlib.compress(xref_records) if encode else xref_records
     size = xref_obj_num + 1  # objects 0..N + xref-stream object
-    if index_array is None:
-        index_bytes = f"[ 0 {size} ]".encode("ascii")
-    else:
-        index_bytes = index_array
+    index_bytes = f"[ 0 {size} ]".encode("ascii") if index_array is None else index_array
     dict_lines = [
         b"<< /Type /XRef",
         f"/Size {size}".encode("ascii"),
@@ -191,7 +188,6 @@ def test_xref_stream_prev_chain_walks_to_older_section() -> None:
     out += obj1_v1 + b"\n"
     # First xref stream describes objects 0..2 where object 2 is the
     # xref stream itself (object 1 is the only payload).
-    xref1_obj_num = 2
     xref1_off = len(out)
     records1 = (
         _pack_record(0, 0, 65535, w2=4)
@@ -212,7 +208,6 @@ def test_xref_stream_prev_chain_walks_to_older_section() -> None:
     # that points at the new body and chains /Prev to the old xref.
     obj1_v2_off = len(out)
     out += b"1 0 obj\n(new)\nendobj\n"
-    xref2_obj_num = 3
     xref2_off = len(out)
     records2 = (
         _pack_record(0, 0, 65535, w2=4)
@@ -256,15 +251,15 @@ def test_encrypted_xref_stream_with_handler_decodes_body() -> None:
     pool entries would never appear.
     """
     pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
+    from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: PLC0415
+        AccessPermission,
+    )
     from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
     from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: PLC0415
         StandardProtectionPolicy,
     )
     from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: PLC0415
         StandardSecurityHandler,
-    )
-    from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: PLC0415
-        AccessPermission,
     )
 
     # Build the standard handler so we can encrypt the xref-stream body.
@@ -375,6 +370,19 @@ def test_xref_stream_w_widths_above_20_rejected() -> None:
         b"startxref\n9\n%%EOF"
     )
     with pytest.raises(PDFParseError):
+        PDFParser(RandomAccessReadBuffer(pdf)).parse()
+
+
+def test_xref_stream_negative_w_width_rejected() -> None:
+    """Negative /W widths are malformed and must be rejected before
+    record slicing."""
+    pdf = (
+        b"%PDF-1.5\n"
+        b"1 0 obj\n<< /Type /XRef /Size 1 /W [ 5 -1 5 ] /Length 9 >>\n"
+        b"stream\n" + b"\x00" * 9 + b"\nendstream\nendobj\n"
+        b"startxref\n9\n%%EOF"
+    )
+    with pytest.raises(PDFParseError, match="negative width"):
         PDFParser(RandomAccessReadBuffer(pdf)).parse()
 
 

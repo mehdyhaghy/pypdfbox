@@ -70,3 +70,14 @@ def test_wrong_type_silently_drops() -> None:
     p.process(Operator.get_operator("Tr"), [COSString(b"x")])
     assert engine.mode is None
     assert engine.calls == 0
+
+
+@pytest.mark.parametrize("value", [-1, 8])
+def test_out_of_range_mode_silently_drops(value: int) -> None:
+    """PDFBox ignores Tr integers outside the RenderingMode table."""
+    p = SetTextRenderingMode()
+    engine = _Spy()
+    engine.add_operator(p)
+    p.process(Operator.get_operator("Tr"), [COSInteger.get(value)])
+    assert engine.mode is None
+    assert engine.calls == 0

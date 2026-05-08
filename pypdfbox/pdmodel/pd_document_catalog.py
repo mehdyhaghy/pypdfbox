@@ -824,6 +824,11 @@ class PDDocumentCatalog:
         if perms is None:
             self._catalog.remove_item(_PERMS)
             return
+        if not isinstance(perms, COSDictionary):
+            raise TypeError(
+                "PDDocumentCatalog.set_perms expected COSDictionary or None; "
+                f"got {type(perms).__name__}"
+            )
         self._catalog.set_item(_PERMS, perms)
 
     # ---------- /Legal ----------
@@ -838,6 +843,11 @@ class PDDocumentCatalog:
         if legal is None:
             self._catalog.remove_item(_LEGAL)
             return
+        if not isinstance(legal, COSDictionary):
+            raise TypeError(
+                "PDDocumentCatalog.set_legal expected COSDictionary or None; "
+                f"got {type(legal).__name__}"
+            )
         self._catalog.set_item(_LEGAL, legal)
 
     # ---------- /Collection ----------
@@ -852,6 +862,11 @@ class PDDocumentCatalog:
         if collection is None:
             self._catalog.remove_item(_COLLECTION)
             return
+        if not isinstance(collection, COSDictionary):
+            raise TypeError(
+                "PDDocumentCatalog.set_collection expected COSDictionary or None; "
+                f"got {type(collection).__name__}"
+            )
         self._catalog.set_item(_COLLECTION, collection)
 
     # ---------- /Extensions (developer extensions) ----------
@@ -1071,6 +1086,11 @@ class PDDocumentCatalog:
         if piece_info is None:
             self._catalog.remove_item(_PIECE_INFO)
             return
+        if not isinstance(piece_info, COSDictionary):
+            raise TypeError(
+                "PDDocumentCatalog.set_piece_info expected COSDictionary or None; "
+                f"got {type(piece_info).__name__}"
+            )
         self._catalog.set_item(_PIECE_INFO, piece_info)
 
     # ---------- /NeedsRendering (PDF 1.7+, §7.7.3.4 Table 28) ----------

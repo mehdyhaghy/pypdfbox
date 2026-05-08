@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/contentstream/operator/text/set_text_rendering_mode_op.py`: out-of-range text rendering modes no-op before notifying the engine.
+- `pypdfbox/pdfparser/pdf_parser.py`: xref stream decoding rejects negative `/W` field widths.
+- `pypdfbox/pdmodel/common/filespecification/pd_embedded_file.py`: embedded-file subtype lookup accepts COS string-backed names.
+- `pypdfbox/pdmodel/pd_document_catalog.py`: dictionary-only catalog setters reject non-dictionary values.
+- `pypdfbox/fontbox/type1/type1_parser.py`: ASCII-hex eexec segments are normalized before Type1 decryption.
 - `pypdfbox/pdmodel/fdf/fdf_annotation_file_attachment.py`: FDF file attachment annotations are implemented and factory-dispatched.
 - `pypdfbox/pdmodel/font/pd_cid_font_type2.py`: embedded Type2 CID font programs are probed in PDFBox order: `/FontFile2`, `/FontFile3`, then `/FontFile`.
 - `pypdfbox/pdmodel/encryption/protection_policy.py`: exposes Java-style key-length and AES preference aliases.

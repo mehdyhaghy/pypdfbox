@@ -780,6 +780,8 @@ class PDFParser:
                 raise PDFParseError(f"xref stream /W[{i}] is not an integer")
             widths.append(wi.value)
         w1, w2, w3 = widths
+        if any(width < 0 for width in widths):
+            raise PDFParseError("xref stream /W contains a negative width")
         # /Index [first1 count1 first2 count2 ...]; default = [0 /Size].
         index_pairs: list[tuple[int, int]] = []
         idx_obj = stream.get_dictionary_object(COSName.get_pdf_name("Index"))

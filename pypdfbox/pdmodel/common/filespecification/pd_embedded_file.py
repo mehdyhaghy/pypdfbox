@@ -210,7 +210,7 @@ class PDEmbeddedFile(PDStream):
     # ---------- /Subtype (mime type, e.g. "application/pdf") ----------
 
     def get_subtype(self) -> str | None:
-        return self.get_cos_object().get_name(_SUBTYPE)
+        return self.get_cos_object().get_name_as_string(_SUBTYPE)
 
     def set_subtype(self, mime_type: str | None) -> None:
         cos = self.get_cos_object()
@@ -220,8 +220,8 @@ class PDEmbeddedFile(PDStream):
         cos.set_name(_SUBTYPE, mime_type)
 
     def has_subtype(self) -> bool:
-        """Return ``True`` when ``/Subtype`` is present as a PDF name."""
-        return self.get_cos_object().get_name(_SUBTYPE) is not None
+        """Return ``True`` when ``/Subtype`` is present as a name-like value."""
+        return self.get_subtype() is not None
 
     def clear_subtype(self) -> None:
         """Remove ``/Subtype``. Equivalent to ``set_subtype(None)``."""

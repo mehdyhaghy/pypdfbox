@@ -1682,6 +1682,22 @@ def test_has_collection_rejects_non_dict_entry() -> None:
     assert cat.has_collection() is False
 
 
+def test_dictionary_only_catalog_setters_reject_non_dict_values() -> None:
+    """Dictionary-typed catalog setters reject stray COS values at the API
+    boundary instead of persisting malformed entries."""
+    with PDDocument() as doc:
+        cat = doc.get_document_catalog()
+
+        with pytest.raises(TypeError, match="set_perms expected COSDictionary"):
+            cat.set_perms(COSArray())  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="set_legal expected COSDictionary"):
+            cat.set_legal(COSArray())  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="set_collection expected COSDictionary"):
+            cat.set_collection(COSArray())  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match="set_piece_info expected COSDictionary"):
+            cat.set_piece_info(COSArray())  # type: ignore[arg-type]
+
+
 def test_has_perms_round_trip() -> None:
     doc = PDDocument()
     cat = doc.get_document_catalog()

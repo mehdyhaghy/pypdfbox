@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSBase, COSNumber
+from pypdfbox.pdmodel.graphics.state import RenderingMode
 
 from .. import (
     MissingOperandException,
@@ -36,10 +37,13 @@ class SetTextRenderingMode(OperatorProcessor):
         mode = operands[0]
         if not isinstance(mode, COSNumber):
             return
+        value = mode.int_value()
+        if value < 0 or value >= len(RenderingMode):
+            return
         ctx = self.get_context()
         notifier = getattr(ctx, "set_text_rendering_mode", None)
         if callable(notifier):
-            notifier(mode.int_value())
+            notifier(value)
 
     def get_name(self) -> str:
         return OperatorName.SET_TEXT_RENDERINGMODE
