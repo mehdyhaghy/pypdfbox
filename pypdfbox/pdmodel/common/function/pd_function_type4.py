@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 from pypdfbox.cos import COSBase, COSStream
 
@@ -11,7 +12,9 @@ from .pd_function import PDFunction
 #   * ``str``                    — an operator name or boolean literal
 #   * ``list[Token]`` (sub-seq)  — a ``{...}`` instruction sub-sequence (operand
 #                                  to ``if`` / ``ifelse``)
-Token = "float | bool | str | list"
+Instruction = list[object]
+Stack = list[object]
+Operator = Callable[[Stack], None]
 
 
 class PDFunctionType4(PDFunction):
@@ -44,7 +47,7 @@ class PDFunctionType4(PDFunction):
         # lifetime of the wrapper. Callers that mutate the body via
         # ``pd_stream.set_data(...)`` can invalidate via
         # ``clear_instruction_cache()``.
-        self._instruction_cache: list | None = None
+        self._instruction_cache: Instruction | None = None
 
     def get_function_type(self) -> int:
         return 4
@@ -68,12 +71,12 @@ class PDFunctionType4(PDFunction):
 
         sequence = self.get_instructions()
 
-        stack: list[float | bool] = list(clipped)
+        stack: Stack = list(clipped)
         _execute(sequence, stack)
 
         # Booleans surviving in the output are coerced to floats (1.0 / 0.0)
         # before /Range clipping; /Range is defined over numeric outputs.
-        result = [float(v) for v in stack]
+        result = [_to_output_float(v) for v in stack]
 
         # Upstream parity: when /Range declares N output dimensions, the
         # program must leave at least N values on the stack. Under-supply
@@ -90,7 +93,7 @@ class PDFunctionType4(PDFunction):
 
         return self.clip_output(result)
 
-    def get_instructions(self) -> list:
+    def get_instructions(self) -> Instruction:
         """Return the cached parsed instruction sequence, parsing the
         underlying stream body on first access.
 
@@ -140,9 +143,11 @@ class PDFunctionType4(PDFunction):
 
 def _tokenize(body: str) -> list[str]:
     """Whitespace-split the body, splitting ``{`` and ``}`` into their own
-    tokens regardless of whitespace adjacency."""
+    tokens regardless of whitespace adjacency and skipping PostScript
+    ``%`` comments through end-of-line."""
     out: list[str] = []
     buf: list[str] = []
+    in_comment = False
 
     def flush() -> None:
         if buf:
@@ -150,7 +155,14 @@ def _tokenize(body: str) -> list[str]:
             buf.clear()
 
     for ch in body:
-        if ch in "{}":
+        if in_comment:
+            if ch in "\r\n":
+                in_comment = False
+            continue
+        if ch == "%":
+            flush()
+            in_comment = True
+        elif ch in "{}":
             flush()
             out.append(ch)
         elif ch.isspace():
@@ -161,7 +173,7 @@ def _tokenize(body: str) -> list[str]:
     return out
 
 
-def _parse(body: str) -> list:
+def _parse(body: str) -> Instruction:
     """Parse ``body`` into a nested instruction sequence.
 
     The outermost ``{ ... }`` wrap is required (PDF 32000-1 §7.10.5: the
@@ -174,8 +186,8 @@ def _parse(body: str) -> list:
 
     pos = [0]
 
-    def parse_block() -> list:
-        seq: list = []
+    def parse_block() -> Instruction:
+        seq: Instruction = []
         while pos[0] < len(tokens):
             tok = tokens[pos[0]]
             pos[0] += 1
@@ -224,13 +236,13 @@ def _classify(tok: str) -> float | bool | str:
 # ---------- stack machine ----------
 
 
-def _pop(stack: list) -> float | bool:
+def _pop(stack: Stack) -> object:
     if not stack:
         raise OSError("stack underflow")
     return stack.pop()
 
 
-def _pop_num(stack: list) -> float:
+def _pop_num(stack: Stack) -> float:
     v = _pop(stack)
     if isinstance(v, bool):
         raise OSError("type mismatch: expected number, got boolean")
@@ -239,26 +251,42 @@ def _pop_num(stack: list) -> float:
     return float(v)
 
 
-def _pop_int(stack: list) -> int:
+def _pop_int(stack: Stack) -> int:
     v = _pop_num(stack)
     if v != int(v):
         raise OSError(f"type mismatch: expected integer, got {v}")
     return int(v)
 
 
-def _pop_bool(stack: list) -> bool:
+def _pop_bool(stack: Stack) -> bool:
     v = _pop(stack)
     if not isinstance(v, bool):
         raise OSError(f"type mismatch: expected boolean, got {type(v).__name__}")
     return v
 
 
-def _execute(sequence: list, stack: list) -> None:
+def _int_bit_operand(value: object, operator_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise OSError(
+            f"type mismatch: {operator_name} operands must both be bool or both int"
+        )
+    return int(value)
+
+
+def _to_output_float(value: object) -> float:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    raise OSError(f"type mismatch: expected numeric output, got {type(value).__name__}")
+
+
+def _execute(sequence: Instruction, stack: Stack) -> None:
     for token in sequence:
         if isinstance(token, list):
             # A ``{ ... }`` substack is a literal — push for ``if``/``ifelse``
             # to consume. Bare execution would consume the whole frame.
-            stack.append(token)  # type: ignore[arg-type]
+            stack.append(token)
             continue
         if isinstance(token, bool):
             stack.append(token)
@@ -266,6 +294,8 @@ def _execute(sequence: list, stack: list) -> None:
         if isinstance(token, (int, float)):
             stack.append(float(token))
             continue
+        if not isinstance(token, str):
+            raise OSError(f"unsupported PostScript token: {token!r}")
         # Operator name.
         op = _OPERATORS.get(token)
         if op is None:
@@ -281,25 +311,25 @@ def _execute(sequence: list, stack: list) -> None:
 # "unsupported operator" via the dispatcher.
 
 
-def _op_add(s: list) -> None:
+def _op_add(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a + b)
 
 
-def _op_sub(s: list) -> None:
+def _op_sub(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a - b)
 
 
-def _op_mul(s: list) -> None:
+def _op_mul(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a * b)
 
 
-def _op_div(s: list) -> None:
+def _op_div(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     if b == 0:
@@ -307,7 +337,7 @@ def _op_div(s: list) -> None:
     s.append(a / b)
 
 
-def _op_idiv(s: list) -> None:
+def _op_idiv(s: Stack) -> None:
     b = _pop_int(s)
     a = _pop_int(s)
     if b == 0:
@@ -319,7 +349,7 @@ def _op_idiv(s: list) -> None:
     s.append(float(q))
 
 
-def _op_mod(s: list) -> None:
+def _op_mod(s: Stack) -> None:
     b = _pop_int(s)
     a = _pop_int(s)
     if b == 0:
@@ -331,55 +361,55 @@ def _op_mod(s: list) -> None:
     s.append(float(r))
 
 
-def _op_neg(s: list) -> None:
+def _op_neg(s: Stack) -> None:
     a = _pop_num(s)
     s.append(-a)
 
 
-def _op_abs(s: list) -> None:
+def _op_abs(s: Stack) -> None:
     a = _pop_num(s)
     s.append(abs(a))
 
 
-def _op_ceiling(s: list) -> None:
+def _op_ceiling(s: Stack) -> None:
     a = _pop_num(s)
     s.append(float(math.ceil(a)))
 
 
-def _op_floor(s: list) -> None:
+def _op_floor(s: Stack) -> None:
     a = _pop_num(s)
     s.append(float(math.floor(a)))
 
 
-def _op_round(s: list) -> None:
+def _op_round(s: Stack) -> None:
     a = _pop_num(s)
     # PostScript round(): nearest, ties go toward +infinity.
     s.append(float(math.floor(a + 0.5)))
 
 
-def _op_truncate(s: list) -> None:
+def _op_truncate(s: Stack) -> None:
     a = _pop_num(s)
     s.append(float(math.trunc(a)))
 
 
-def _op_sqrt(s: list) -> None:
+def _op_sqrt(s: Stack) -> None:
     a = _pop_num(s)
     if a < 0:
         raise OSError("sqrt of negative number")
     s.append(math.sqrt(a))
 
 
-def _op_sin(s: list) -> None:
+def _op_sin(s: Stack) -> None:
     a = _pop_num(s)  # degrees per PostScript
     s.append(math.sin(math.radians(a)))
 
 
-def _op_cos(s: list) -> None:
+def _op_cos(s: Stack) -> None:
     a = _pop_num(s)
     s.append(math.cos(math.radians(a)))
 
 
-def _op_atan(s: list) -> None:
+def _op_atan(s: Stack) -> None:
     den = _pop_num(s)
     num = _pop_num(s)
     # PostScript atan(num, den) returns degrees in [0, 360).
@@ -389,32 +419,32 @@ def _op_atan(s: list) -> None:
     s.append(deg)
 
 
-def _op_exp(s: list) -> None:
+def _op_exp(s: Stack) -> None:
     exponent = _pop_num(s)
     base = _pop_num(s)
     s.append(math.pow(base, exponent))
 
 
-def _op_ln(s: list) -> None:
+def _op_ln(s: Stack) -> None:
     a = _pop_num(s)
     if a <= 0:
         raise OSError("ln of non-positive number")
     s.append(math.log(a))
 
 
-def _op_log(s: list) -> None:
+def _op_log(s: Stack) -> None:
     a = _pop_num(s)
     if a <= 0:
         raise OSError("log of non-positive number")
     s.append(math.log10(a))
 
 
-def _op_cvi(s: list) -> None:
+def _op_cvi(s: Stack) -> None:
     a = _pop_num(s)
     s.append(float(int(math.trunc(a))))
 
 
-def _op_cvr(s: list) -> None:
+def _op_cvr(s: Stack) -> None:
     a = _pop_num(s)
     s.append(float(a))
 
@@ -422,24 +452,24 @@ def _op_cvr(s: list) -> None:
 # ---------- stack ----------
 
 
-def _op_dup(s: list) -> None:
+def _op_dup(s: Stack) -> None:
     if not s:
         raise OSError("stack underflow")
     s.append(s[-1])
 
 
-def _op_exch(s: list) -> None:
+def _op_exch(s: Stack) -> None:
     b = _pop(s)
     a = _pop(s)
     s.append(b)
     s.append(a)
 
 
-def _op_pop(s: list) -> None:
+def _op_pop(s: Stack) -> None:
     _pop(s)
 
 
-def _op_copy(s: list) -> None:
+def _op_copy(s: Stack) -> None:
     n = _pop_int(s)
     if n < 0 or n > len(s):
         raise OSError("copy operand out of range")
@@ -449,14 +479,14 @@ def _op_copy(s: list) -> None:
     s.extend(top)
 
 
-def _op_index(s: list) -> None:
+def _op_index(s: Stack) -> None:
     n = _pop_int(s)
     if n < 0 or n >= len(s):
         raise OSError("index operand out of range")
     s.append(s[-1 - n])
 
 
-def _op_roll(s: list) -> None:
+def _op_roll(s: Stack) -> None:
     j = _pop_int(s)
     n = _pop_int(s)
     if n < 0 or n > len(s):
@@ -474,47 +504,47 @@ def _op_roll(s: list) -> None:
 # ---------- boolean ----------
 
 
-def _cmp_pop(s: list) -> tuple:
+def _cmp_pop(s: Stack) -> tuple[object, object]:
     b = _pop(s)
     a = _pop(s)
     return a, b
 
 
-def _op_eq(s: list) -> None:
+def _op_eq(s: Stack) -> None:
     a, b = _cmp_pop(s)
     s.append(a == b)
 
 
-def _op_ne(s: list) -> None:
+def _op_ne(s: Stack) -> None:
     a, b = _cmp_pop(s)
     s.append(a != b)
 
 
-def _op_lt(s: list) -> None:
+def _op_lt(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a < b)
 
 
-def _op_le(s: list) -> None:
+def _op_le(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a <= b)
 
 
-def _op_gt(s: list) -> None:
+def _op_gt(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a > b)
 
 
-def _op_ge(s: list) -> None:
+def _op_ge(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
     s.append(a >= b)
 
 
-def _op_and(s: list) -> None:
+def _op_and(s: Stack) -> None:
     b = _pop(s)
     a = _pop(s)
     if isinstance(a, bool) and isinstance(b, bool):
@@ -522,10 +552,10 @@ def _op_and(s: list) -> None:
     elif isinstance(a, bool) or isinstance(b, bool):
         raise OSError("type mismatch: and operands must both be bool or both int")
     else:
-        s.append(float(int(a) & int(b)))
+        s.append(float(_int_bit_operand(a, "and") & _int_bit_operand(b, "and")))
 
 
-def _op_or(s: list) -> None:
+def _op_or(s: Stack) -> None:
     b = _pop(s)
     a = _pop(s)
     if isinstance(a, bool) and isinstance(b, bool):
@@ -533,10 +563,10 @@ def _op_or(s: list) -> None:
     elif isinstance(a, bool) or isinstance(b, bool):
         raise OSError("type mismatch: or operands must both be bool or both int")
     else:
-        s.append(float(int(a) | int(b)))
+        s.append(float(_int_bit_operand(a, "or") | _int_bit_operand(b, "or")))
 
 
-def _op_xor(s: list) -> None:
+def _op_xor(s: Stack) -> None:
     b = _pop(s)
     a = _pop(s)
     if isinstance(a, bool) and isinstance(b, bool):
@@ -544,10 +574,10 @@ def _op_xor(s: list) -> None:
     elif isinstance(a, bool) or isinstance(b, bool):
         raise OSError("type mismatch: xor operands must both be bool or both int")
     else:
-        s.append(float(int(a) ^ int(b)))
+        s.append(float(_int_bit_operand(a, "xor") ^ _int_bit_operand(b, "xor")))
 
 
-def _op_not(s: list) -> None:
+def _op_not(s: Stack) -> None:
     a = _pop(s)
     if isinstance(a, bool):
         s.append(not a)
@@ -562,7 +592,7 @@ def _op_not(s: list) -> None:
         raise OSError("type mismatch: not operand must be bool or int")
 
 
-def _op_bitshift(s: list) -> None:
+def _op_bitshift(s: Stack) -> None:
     shift = _pop_int(s)
     val = _pop_int(s)
     if shift >= 0:
@@ -571,18 +601,18 @@ def _op_bitshift(s: list) -> None:
         s.append(float(val >> -shift))
 
 
-def _op_true(s: list) -> None:
+def _op_true(s: Stack) -> None:
     s.append(True)
 
 
-def _op_false(s: list) -> None:
+def _op_false(s: Stack) -> None:
     s.append(False)
 
 
 # ---------- conditional ----------
 
 
-def _op_if(s: list) -> None:
+def _op_if(s: Stack) -> None:
     proc = _pop(s)
     cond = _pop(s)
     if not isinstance(proc, list):
@@ -593,7 +623,7 @@ def _op_if(s: list) -> None:
         _execute(proc, s)
 
 
-def _op_ifelse(s: list) -> None:
+def _op_ifelse(s: Stack) -> None:
     proc_false = _pop(s)
     proc_true = _pop(s)
     cond = _pop(s)
@@ -627,7 +657,7 @@ BOOLEAN_OPERATORS: tuple[str, ...] = (
 CONDITIONAL_OPERATORS: tuple[str, ...] = ("if", "ifelse")
 
 
-_OPERATORS = {
+_OPERATORS: dict[str, Operator] = {
     # arithmetic
     "add": _op_add,
     "sub": _op_sub,
@@ -680,7 +710,7 @@ _OPERATORS = {
 ALL_OPERATORS: tuple[str, ...] = tuple(_OPERATORS.keys())
 
 
-def get_operator(name: str):
+def get_operator(name: str) -> Operator | None:
     """Return the executor callable registered for PostScript operator
     ``name``, or ``None`` when no such operator exists.
 

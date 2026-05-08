@@ -5,8 +5,9 @@ from pypdfbox.xmpbox import (
     DimensionsType,
     DomXmpParser,
     FontType,
-    XMPMetadata,
+    IntegerType,
     XMPageTextSchema,
+    XMPMetadata,
 )
 
 
@@ -35,6 +36,7 @@ def test_local_name_constants_match_upstream() -> None:
 def test_default_accessors_return_none() -> None:
     schema = _pt()
     assert schema.get_n_pages() is None
+    assert schema.get_n_pages_property() is None
     assert schema.get_max_page_size() is None
     assert schema.get_max_page_size_property() is None
     assert schema.get_plate_names() is None
@@ -71,6 +73,38 @@ def test_n_pages_returns_none_when_value_is_not_integer() -> None:
     # Simulate a parser-stored bogus value.
     schema.set_property(XMPageTextSchema.N_PAGES, "not-a-number")
     assert schema.get_n_pages() is None
+
+
+def test_n_pages_property_materializes_from_primitive_storage() -> None:
+    schema = _pt()
+    schema.set_n_pages(12)
+
+    prop = schema.get_n_pages_property()
+
+    assert isinstance(prop, IntegerType)
+    assert prop.get_property_name() == XMPageTextSchema.N_PAGES
+    assert prop.get_value() == 12
+
+
+def test_n_pages_typed_property_visible_to_primitive_getter_and_clearable() -> None:
+    schema = _pt()
+    metadata = schema.get_metadata()
+    prop = IntegerType(
+        metadata,
+        XMPageTextSchema.NAMESPACE,
+        XMPageTextSchema.PREFERRED_PREFIX,
+        XMPageTextSchema.N_PAGES,
+        9,
+    )
+
+    schema.set_n_pages_property(prop)
+
+    assert schema.get_n_pages_property() is prop
+    assert schema.get_n_pages() == 9
+
+    schema.set_n_pages_property(None)
+    assert schema.get_n_pages() is None
+    assert schema.get_n_pages_property() is None
 
 
 def test_max_page_size_round_trip_dict_payload() -> None:
@@ -302,8 +336,9 @@ def test_fonts_typed_skips_untyped_entries() -> None:
     schema.add_font_property(FontType(schema.get_metadata()))
 
     # Legacy accessor surfaces both shapes.
-    assert schema.get_fonts() is not None
-    assert len(schema.get_fonts()) == 2
+    fonts = schema.get_fonts()
+    assert fonts is not None
+    assert len(fonts) == 2
     # Typed accessor filters down to FontType instances.
     typed = schema.get_font_properties()
     assert typed is not None

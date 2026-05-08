@@ -10,7 +10,14 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBoolean,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+)
 from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.shading import (
@@ -20,7 +27,19 @@ from pypdfbox.pdmodel.graphics.shading import (
     PDShadingType7,
 )
 
-MESH_TYPES = [PDShadingType4, PDShadingType5, PDShadingType6, PDShadingType7]
+MeshShadingClass = (
+    type[PDShadingType4]
+    | type[PDShadingType5]
+    | type[PDShadingType6]
+    | type[PDShadingType7]
+)
+
+MESH_TYPES: list[MeshShadingClass] = [
+    PDShadingType4,
+    PDShadingType5,
+    PDShadingType6,
+    PDShadingType7,
+]
 
 
 def _function_type2_dict() -> COSDictionary:
@@ -44,13 +63,15 @@ def _function_type2_dict() -> COSDictionary:
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_decode_for_parameter_none_when_decode_absent(cls):
+def test_decode_for_parameter_none_when_decode_absent(
+    cls: MeshShadingClass,
+) -> None:
     assert cls().get_decode_for_parameter(0) is None
     assert cls().get_decode_for_parameter(2) is None
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_decode_for_parameter_returns_xy_pairs(cls):
+def test_decode_for_parameter_returns_xy_pairs(cls: MeshShadingClass) -> None:
     shading = cls()
     # x: [0, 100], y: [50, 200], r: [0, 1], g: [0, 1], b: [0, 1]
     shading.set_decode([0.0, 100.0, 50.0, 200.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
@@ -63,7 +84,7 @@ def test_decode_for_parameter_returns_xy_pairs(cls):
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_decode_for_parameter_out_of_range(cls):
+def test_decode_for_parameter_out_of_range(cls: MeshShadingClass) -> None:
     shading = cls()
     # only 2 entries (one pair) — index 0 OK, index 1+ should be None
     shading.set_decode([0.0, 100.0])
@@ -74,7 +95,9 @@ def test_decode_for_parameter_out_of_range(cls):
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_decode_for_parameter_short_array_returns_none(cls):
+def test_decode_for_parameter_short_array_returns_none(
+    cls: MeshShadingClass,
+) -> None:
     shading = cls()
     # odd-length array — index for last pair is incomplete
     shading.set_decode([0.0, 1.0, 2.0])
@@ -84,7 +107,7 @@ def test_decode_for_parameter_short_array_returns_none(cls):
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_decode_for_parameter_with_integer_entries(cls):
+def test_decode_for_parameter_with_integer_entries(cls: MeshShadingClass) -> None:
     """Integer entries in /Decode should still convert cleanly to floats."""
     shading = cls()
     arr = COSArray()
@@ -96,20 +119,39 @@ def test_decode_for_parameter_with_integer_entries(cls):
     assert shading.get_decode_for_parameter(1) == (50.0, 200.0)
 
 
+@pytest.mark.parametrize("cls", MESH_TYPES)
+def test_decode_for_parameter_rejects_boolean_entries(
+    cls: MeshShadingClass,
+) -> None:
+    """Booleans have a Python ``value`` attribute but are not COS numbers."""
+    shading = cls()
+    arr = COSArray()
+    arr.add(COSBoolean.TRUE)
+    arr.add(COSBoolean.FALSE)
+    arr.add(COSInteger.get(0))
+    arr.add(COSBoolean.TRUE)
+    shading.get_cos_object().set_item("Decode", arr)
+
+    assert shading.get_decode_for_parameter(0) is None
+    assert shading.get_decode_for_parameter(1) is None
+
+
 # ---------- get_number_of_color_components ----------
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
 def test_number_of_color_components_minus_one_when_no_function_no_color_space(
-    cls,
-):
+    cls: MeshShadingClass,
+) -> None:
     """No /Function and no /ColorSpace → -1 (mirrors upstream's -1
     sentinel from getInt(... -1) and absent color-space."""
     assert cls().get_number_of_color_components() == -1
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_number_of_color_components_one_when_function_present(cls):
+def test_number_of_color_components_one_when_function_present(
+    cls: MeshShadingClass,
+) -> None:
     """/Function present → 1 (function maps a single mesh sample to N
     output components, so the mesh stream encodes only 1 channel)."""
     shading = cls()
@@ -119,7 +161,9 @@ def test_number_of_color_components_one_when_function_present(cls):
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_number_of_color_components_falls_back_to_color_space(cls):
+def test_number_of_color_components_falls_back_to_color_space(
+    cls: MeshShadingClass,
+) -> None:
     """No /Function, but /ColorSpace set → use the color-space component count."""
     shading = cls()
     # DeviceRGB always has 3 components.
@@ -136,23 +180,25 @@ def test_number_of_color_components_falls_back_to_color_space(cls):
     # Our get_color_space returns the raw COSBase, so the helper has to
     # walk via PDColorSpace.create. Verify by patching get_color_space to
     # return a typed instance instead.
-    shading.get_color_space = lambda: PDDeviceRGB.INSTANCE  # type: ignore[method-assign]
+    shading.get_color_space = lambda: PDDeviceRGB.INSTANCE  # type: ignore[method-assign,assignment,return-value]
 
     assert shading.get_number_of_color_components() == 3
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_number_of_color_components_function_takes_priority(cls):
+def test_number_of_color_components_function_takes_priority(
+    cls: MeshShadingClass,
+) -> None:
     """When both /Function and /ColorSpace are set, /Function wins (returns 1)."""
     shading = cls()
     shading.get_cos_object().set_item("Function", _function_type2_dict())
-    shading.get_color_space = lambda: PDDeviceRGB.INSTANCE  # type: ignore[method-assign]
+    shading.get_color_space = lambda: PDDeviceRGB.INSTANCE  # type: ignore[method-assign,assignment,return-value]
 
     assert shading.get_number_of_color_components() == 1
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_number_of_color_components_with_device_n(cls):
+def test_number_of_color_components_with_device_n(cls: MeshShadingClass) -> None:
     """A 5-component DeviceN color space surfaces the right component count."""
     # Build a DeviceN COS array: [/DeviceN [...names...] alternate tintTransform]
     names = COSArray()
@@ -167,6 +213,6 @@ def test_number_of_color_components_with_device_n(cls):
 
     shading = cls()
     typed = PDDeviceN(cs_array)
-    shading.get_color_space = lambda: typed  # type: ignore[method-assign]
+    shading.get_color_space = lambda: typed  # type: ignore[method-assign,assignment,return-value]
 
     assert shading.get_number_of_color_components() == 5

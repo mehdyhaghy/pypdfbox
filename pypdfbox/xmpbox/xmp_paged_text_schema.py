@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from .type.colorant_type import ColorantType
 from .type.dimensions_type import DimensionsType
 from .type.font_type import FontType
+from .type.integer_type import IntegerType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -64,11 +65,19 @@ class XMPageTextSchema(XMPSchema):
     def get_n_pages(self) -> int | None:
         """
         Return the ``NPages`` integer property. The cluster #1 storage is the
-        raw text value written by :meth:`set_n_pages`; we coerce to ``int`` on
-        read so callers see Python-native semantics. Returns ``None`` when the
-        property is absent or cannot be parsed as an integer.
+        raw text value written by :meth:`set_n_pages`, but typed callers may
+        install an :class:`IntegerType` through :meth:`set_n_pages_property`;
+        both storage shapes are coerced to ``int`` on read so callers see
+        Python-native semantics. Returns ``None`` when the property is absent
+        or cannot be parsed as an integer.
         """
-        raw = self.get_unqualified_text_property_value(self.N_PAGES)
+        raw = self._properties.get(self.N_PAGES)
+        if isinstance(raw, IntegerType):
+            return raw.get_value()
+        if isinstance(raw, int) and not isinstance(raw, bool):
+            return raw
+        if not isinstance(raw, str):
+            raw = self.get_unqualified_text_property_value(self.N_PAGES)
         if raw is None:
             return None
         try:
@@ -81,6 +90,29 @@ class XMPageTextSchema(XMPSchema):
             self.remove_property(self.N_PAGES)
             return
         self.set_text_property_value(self.N_PAGES, str(int(value)))
+
+    def get_n_pages_property(self) -> IntegerType | None:
+        """
+        Typed accessor mirroring upstream ``getNPagesProperty``. Materialises
+        an :class:`IntegerType` from primitive storage when possible.
+        """
+        raw = self._properties.get(self.N_PAGES)
+        if isinstance(raw, IntegerType):
+            return raw
+        value = self.get_n_pages()
+        if value is None:
+            return None
+        return IntegerType(
+            self._metadata, self._namespace, self._prefix, self.N_PAGES, value
+        )
+
+    def set_n_pages_property(self, value: IntegerType | None) -> None:
+        """Typed setter mirroring upstream ``setNPagesProperty``."""
+        if value is None:
+            self.remove_property(self.N_PAGES)
+            return
+        value.set_property_name(self.N_PAGES)
+        self._properties[self.N_PAGES] = value
 
     # --- HasVisibleTransparency / HasVisibleOverprint -------------------
 

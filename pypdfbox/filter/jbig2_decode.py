@@ -35,7 +35,7 @@ def _resolve_decode_params(parameters: COSDictionary | None, index: int) -> COSD
             return params
         if isinstance(params, COSArray):
             try:
-                entry = params.get(index)
+                entry = params.get_object(index)
             except Exception:
                 entry = None
             if isinstance(entry, COSDictionary):

@@ -6,7 +6,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_line_info import PDLineInfo
 from pypdfbox.pdmodel.interactive.annotation.pd_path_info import PDPathInfo
 from pypdfbox.pdmodel.interactive.annotation.pd_vertices import PDVertices
 
-
 # ---------- PDPathInfo ----------
 
 
@@ -32,6 +31,11 @@ def test_path_info_default_empty() -> None:
     path = PDPathInfo()
     assert path.point_count() == 0
     assert path.get_points() == []
+
+
+def test_path_info_get_cos_object_alias() -> None:
+    path = PDPathInfo()
+    assert path.get_cos_object() is path.get_cos_array()
 
 
 # ---------- PDLineInfo ----------
@@ -208,3 +212,8 @@ def test_vertices_default_empty() -> None:
     v = PDVertices()
     assert v.point_count() == 0
     assert v.get_points() == []
+
+
+def test_vertices_get_cos_object_alias() -> None:
+    v = PDVertices()
+    assert v.get_cos_object() is v.get_cos_array()

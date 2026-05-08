@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSNumber, COSStream
 
 from .pd_shading import PDShading
 
@@ -118,10 +118,9 @@ class PDShadingType6(PDShading):
             return None
         lo = v.get_object(param_num * 2)
         hi = v.get_object(param_num * 2 + 1)
-        try:
-            return (float(lo.value), float(hi.value))  # type: ignore[union-attr]
-        except (AttributeError, TypeError, ValueError):
+        if not isinstance(lo, COSNumber) or not isinstance(hi, COSNumber):
             return None
+        return (lo.float_value(), hi.float_value())
 
     def get_number_of_color_components(self) -> int:
         """Return the number of color components for this shading.

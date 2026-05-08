@@ -6,7 +6,7 @@ from unittest import mock
 import pytest
 from PIL import Image
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject, COSStream
 from pypdfbox.filter import FilterFactory, JBIG2Decode
 
 # ---------- helpers ----------------------------------------------------
@@ -135,6 +135,32 @@ def test_jbig2_decode_decode_parms_array_indexed_by_filter_position() -> None:
     arr = COSArray()
     arr.add(other)
     arr.add(jbig2_params)
+
+    parent = COSDictionary()
+    parent.set_item("DecodeParms", arr)
+
+    with mock.patch(
+        "jbig2_parser.parse_jbig2", return_value=fake_png
+    ) as parse:
+        JBIG2Decode().decode(io.BytesIO(encoded), io.BytesIO(), parent, index=1)
+
+    parse.assert_called_once_with(globals_payload + encoded)
+
+
+def test_jbig2_decode_resolves_indirect_indexed_decode_parms() -> None:
+    """PDFBox resolves ``/DecodeParms`` array entries through
+    ``COSArray.getObject`` so indirect decode-parameter dictionaries
+    work in filter chains."""
+    globals_payload = b"INDIRECT-GLOBALS"
+    encoded = b"BODY"
+    fake_png = _png_bytes(8, 1)
+
+    jbig2_params = COSDictionary()
+    jbig2_params.set_item("JBIG2Globals", _make_globals_stream(globals_payload))
+
+    arr = COSArray()
+    arr.add(COSDictionary())
+    arr.add(COSObject(342, 0, resolved=jbig2_params))
 
     parent = COSDictionary()
     parent.set_item("DecodeParms", arr)

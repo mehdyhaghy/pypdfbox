@@ -1571,3 +1571,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/action/pd_action_named.py`: named actions now read string-form `/N` values via name-as-string semantics.
 - `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_standard_attribute_object.py`: standard tagged attributes gained public number-array helper methods.
 - `pypdfbox/tools/texttopdf.py`: unknown `-pageSize` values now fail with usage exit code `2` instead of falling back to Letter.
+
+## Wave 342 — JBIG2 params, annotation COS aliases, Type4 comments, XMP page counts, and mesh decode numbers
+
+- `pypdfbox/filter/jbig2_decode.py`: indexed `/DecodeParms` entries now resolve indirect dictionaries in filter chains.
+- `pypdfbox/pdmodel/interactive/annotation/pd_path_info.py` and `pd_vertices.py`: path and vertex wrappers gained `get_cos_object()` aliases.
+- `pypdfbox/pdmodel/common/function/pd_function_type4.py`: Type 4 calculator functions now skip PostScript `%` comments through end-of-line.
+- `pypdfbox/xmpbox/xmp_paged_text_schema.py`: `NPages` gained typed integer property accessors and reads typed or primitive storage.
+- `pypdfbox/pdmodel/graphics/shading/pd_shading_type4.py` through `pd_shading_type7.py`: mesh decode arrays now accept only COS number entries, avoiding boolean coercion.

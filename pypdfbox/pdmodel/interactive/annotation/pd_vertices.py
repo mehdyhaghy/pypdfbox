@@ -18,6 +18,11 @@ class PDVertices:
     def get_cos_array(self) -> COSArray:
         return self._array
 
+    def get_cos_object(self) -> COSArray:
+        """Alias for :meth:`get_cos_array` matching the COSObjectable
+        convention used by sibling annotation helpers."""
+        return self._array
+
     def get_points(self) -> list[tuple[float, float]]:
         flat = self._array.to_float_array()
         n = (len(flat) // 2) * 2

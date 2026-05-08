@@ -99,6 +99,19 @@ def test_braces_without_separating_whitespace_tokenise_correctly() -> None:
     assert fn.eval([]) == pytest.approx([5.0])
 
 
+def test_percent_comments_are_ignored() -> None:
+    """PostScript comments start with ``%`` and run through end-of-line."""
+    body = "{ 2 % ignored operator text: frobnicate }\n 3 add }"
+    fn = _make(body, domain=[])
+    assert fn.eval([]) == pytest.approx([5.0])
+
+
+def test_inline_percent_comment_delimits_token() -> None:
+    """A comment immediately after a token must still preserve that token."""
+    fn = _make("{ 2%comment\n 3 add }", domain=[])
+    assert fn.eval([]) == pytest.approx([5.0])
+
+
 def test_unknown_operator_raises() -> None:
     fn = _make("{ frobnicate }", domain=[])
     with pytest.raises(OSError):
