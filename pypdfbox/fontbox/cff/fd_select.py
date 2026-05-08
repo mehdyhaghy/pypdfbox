@@ -156,15 +156,21 @@ class Format3FDSelect(FDSelect):
         return self._sentinel
 
     def get_fd_index(self, gid: int) -> int:
-        if not self._ranges or gid < 0 or gid >= self._sentinel:
+        if gid < 0 or self._sentinel <= 0 or not self._ranges:
             return 0
-        # Linear scan — ranges count is typically small (≤16).
-        last_fd = 0
-        for first, fd in self._ranges:
+        # Linear scan mirroring PDFBox's Format3FDSelect range walk.
+        for i, (first, fd) in enumerate(self._ranges):
             if gid < first:
-                break
-            last_fd = fd
-        return int(last_fd)
+                continue
+            if i + 1 < len(self._ranges):
+                next_first = self._ranges[i + 1][0]
+                if gid < next_first:
+                    return int(fd)
+                continue
+            if gid < self._sentinel:
+                return int(fd)
+            return -1
+        return 0
 
     def __len__(self) -> int:
         return self._sentinel

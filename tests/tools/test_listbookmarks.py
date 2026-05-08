@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+    PDNamedDestination,
+)
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
     PDPageFitDestination,
 )
@@ -18,7 +22,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.outline.pd_outline_item imp
 )
 from pypdfbox.tools import cli
 from pypdfbox.tools.listbookmarks import list_bookmarks
-
 
 # ----------------------------------------------------------------- helpers
 
@@ -83,6 +86,39 @@ def _build_empty_outline_pdf(path: Path) -> Path:
     return path
 
 
+def _build_named_destination_outline_pdf(path: Path) -> Path:
+    """Build a PDF whose outline item points through /Names /Dests."""
+    doc = PDDocument()
+    try:
+        for _ in range(3):
+            doc.add_page(PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0)))
+
+        named_page = PDPageFitDestination()
+        named_page.set_page_number(2)
+        names_array = COSArray()
+        names_array.add(COSString("named-chapter"))
+        names_array.add(named_page.get_cos_object())
+        dests = COSDictionary()
+        dests.set_item(COSName.get_pdf_name("Names"), names_array)
+        names = COSDictionary()
+        names.set_item(COSName.get_pdf_name("Dests"), dests)
+        doc.get_document_catalog().get_cos_object().set_item(
+            COSName.get_pdf_name("Names"), names
+        )
+
+        outline = PDDocumentOutline()
+        doc.get_document_catalog().set_document_outline(outline)
+        item = PDOutlineItem()
+        item.set_title("Named Chapter")
+        item.set_destination(PDNamedDestination("named-chapter"))
+        outline.add_last(item)
+
+        doc.save(path)
+    finally:
+        doc.close()
+    return path
+
+
 # --------------------------------------------------------------- list_bookmarks helper
 
 
@@ -120,6 +156,20 @@ def test_list_bookmarks_helper_emits_destination_pages(tmp_path: Path) -> None:
     assert "Destination page: 2" in text
     assert "Destination page: 3" in text
     assert "Destination page: 4" in text
+
+
+def test_list_bookmarks_helper_resolves_named_destinations(
+    tmp_path: Path,
+) -> None:
+    pdf = _build_named_destination_outline_pdf(tmp_path / "named.pdf")
+    tree = io.StringIO()
+    flat = io.StringIO()
+    with PDDocument.load(pdf) as doc:
+        list_bookmarks(doc, tree, format="tree")
+        list_bookmarks(doc, flat, format="flat")
+
+    assert "Destination page: 3\nNamed Chapter\n" in tree.getvalue()
+    assert flat.getvalue() == "Named Chapter -> page 3\n"
 
 
 def test_list_bookmarks_helper_flat_format(tmp_path: Path) -> None:

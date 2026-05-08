@@ -54,3 +54,11 @@ def test_wrapped_fdselect_malformed_len_falls_back_to_zero() -> None:
 
     assert select.get_num_glyphs() == 0
     assert 0 not in select
+
+
+def test_format3_gid_at_or_after_sentinel_returns_minus_one_like_pdfbox() -> None:
+    select = Format3FDSelect(ranges=[(0, 2), (3, 4)], sentinel=6)
+
+    assert select.get_fd_index(5) == 4
+    assert select.get_fd_index(6) == -1
+    assert select.get_fd_index(99) == -1

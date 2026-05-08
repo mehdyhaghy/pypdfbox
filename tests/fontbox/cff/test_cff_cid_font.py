@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -36,7 +37,7 @@ def _load_cid_cff_bytes() -> bytes | None:
     """Pull raw CFF bytes out of the first available CIDKeyed font, or
     ``None`` if nothing usable is on the host."""
     try:
-        from fontTools.ttLib import TTFont  # noqa: PLC0415
+        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]  # noqa: PLC0415
     except ImportError:
         return None
     for candidate in _CID_OTF_CANDIDATES:
@@ -104,9 +105,9 @@ class TestFormat3FDSelect:
         assert sel[6] == 2
         assert sel[7] == 0
         assert sel[9] == 0
-        # Past the sentinel → 0.
-        assert sel[10] == 0
-        assert sel[100] == 0
+        # At / past the sentinel -> -1, matching PDFBox's Format3FDSelect.
+        assert sel[10] == -1
+        assert sel[100] == -1
 
 
 class TestFDSelectWrapper:
@@ -257,7 +258,7 @@ class TestFormat3FDSelectAccessors:
 class TestFDArrayContains:
     def test_contains_valid_index(self) -> None:
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font(), _Font()])
@@ -276,7 +277,7 @@ class TestFDArrayGetFontName:
     def test_get_font_name_attribute_form(self) -> None:
         class _Font:
             FontName = "MyFont-Bold"  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])
@@ -292,7 +293,7 @@ class TestFDArrayGetFontName:
 
     def test_get_font_name_missing(self) -> None:
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])
@@ -549,7 +550,7 @@ class TestFDArrayHasPrivateDict:
             rawDict = {"defaultWidthX": 500}  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -557,7 +558,7 @@ class TestFDArrayHasPrivateDict:
 
     def test_false_when_private_absent(self) -> None:
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])
@@ -576,10 +577,10 @@ class TestFDArrayHasLocalSubrs:
     def test_true_when_nonempty_subrs(self) -> None:
         class _Priv:
             Subrs = [b"\x0e", b"\x0e"]  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -588,10 +589,10 @@ class TestFDArrayHasLocalSubrs:
     def test_false_when_empty_subrs(self) -> None:
         class _Priv:
             Subrs: list[bytes] = []  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -599,7 +600,7 @@ class TestFDArrayHasLocalSubrs:
 
     def test_false_when_no_private_dict(self) -> None:
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])
@@ -622,10 +623,10 @@ class TestFDArrayGetLocalSubrIndex:
 
         class _Priv:
             Subrs = [_Cs(), _Cs()]  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -635,10 +636,10 @@ class TestFDArrayGetLocalSubrIndex:
     def test_returns_raw_bytes_when_already_bytes(self) -> None:
         class _Priv:
             Subrs = [b"\x0e", bytearray(b"\x0a")]  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -649,11 +650,11 @@ class TestFDArrayGetLocalSubrIndex:
 
     def test_empty_when_no_subrs(self) -> None:
         class _Priv:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Subrs = None  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -661,7 +662,7 @@ class TestFDArrayGetLocalSubrIndex:
 
     def test_empty_when_no_private(self) -> None:
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])
@@ -678,10 +679,10 @@ class TestFDArrayGetLocalSubrIndex:
         # — emit ``b""`` instead so the indices stay aligned.
         class _Priv:
             Subrs = [object(), b"\x0e"]  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
 
         class _Font:
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = _Priv()
 
         arr = FDArray.from_fonttools([_Font()])
@@ -696,12 +697,12 @@ class TestFDArrayIndexForFontName:
     def test_finds_first_match(self) -> None:
         class _Font0:
             FontName = "FD-Latin"  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         class _Font1:
             FontName = "FD-Greek"  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font0(), _Font1()])
@@ -711,7 +712,7 @@ class TestFDArrayIndexForFontName:
     def test_unknown_name_returns_minus_one(self) -> None:
         class _Font:
             FontName = "FD-Latin"  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])
@@ -720,7 +721,7 @@ class TestFDArrayIndexForFontName:
     def test_empty_or_none_name_returns_minus_one(self) -> None:
         class _Font:
             FontName = "FD0"  # noqa: N815
-            rawDict = {}  # noqa: N815
+            rawDict: dict[str, Any] = {}  # noqa: N815
             Private = None
 
         arr = FDArray.from_fonttools([_Font()])

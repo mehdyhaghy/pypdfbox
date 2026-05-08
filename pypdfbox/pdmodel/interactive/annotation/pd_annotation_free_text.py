@@ -171,8 +171,17 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         self._dict.set_item(_CL, arr)
 
     def get_callout(self) -> list[float] | None:
-        """Upstream-named alias for :meth:`get_callout_line`."""
-        return self.get_callout_line()
+        """Return the raw ``/CL`` float array, matching upstream ``getCallout``.
+
+        Unlike :meth:`get_callout_line`, this does not normalize the result
+        to the spec's 4- or 6-coordinate shapes. PDFBox delegates to
+        ``COSArray.toFloatArray()``, so extra or non-numeric entries are
+        preserved by the COS conversion rules.
+        """
+        value = self._dict.get_dictionary_object(_CL)
+        if isinstance(value, COSArray):
+            return value.to_float_array()
+        return None
 
     def set_callout(self, callout: list[float] | None) -> None:
         """Upstream-named alias for :meth:`set_callout_line`."""

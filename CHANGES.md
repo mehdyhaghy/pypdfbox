@@ -1483,3 +1483,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_square_circle.py`: square and circle annotation interior colors now accept numeric Python sequences as well as raw `COSArray` values.
 - `pypdfbox/pdmodel/graphics/form/pd_transparency_group_attributes.py`: resource-contextual group `/CS` names now re-resolve against the supplied resources instead of reusing stale cached color spaces.
 - `pypdfbox/xmpbox/exif_schema.py` and `tiff_schema.py`: malformed raw parser values no longer escape typed getter rebuilding as constructor errors.
+
+## Wave 331 — free-text callouts, Type 0 cache resets, CFF FDSelect sentinels, bookmarks, and output intents
+
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_free_text.py`: raw free-text callout access now preserves the full `/CL` array conversion while the normalized callout-line helper remains strict.
+- `pypdfbox/pdmodel/common/function/pd_function_type0.py`: `set_size()` and `set_bits_per_sample()` now invalidate decoded stream bytes as well as sample grids.
+- `pypdfbox/fontbox/cff/fd_select.py`: Format 3 FDSelect lookups now return `-1` for glyph IDs at or past a positive sentinel.
+- `pypdfbox/tools/listbookmarks.py`: named bookmark destinations now resolve through the document catalog before page-number output.
+- `pypdfbox/pdmodel/graphics/color/pd_output_intent.py`: dictionary-backed output intents now wrap the supplied dictionary without synthesizing a missing `/Type`.

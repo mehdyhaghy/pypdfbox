@@ -14,10 +14,9 @@ these tests target the documented behaviour of the public Java API:
 """
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
 from pypdfbox.pdmodel.pd_document import PDDocument
-
 
 _S = COSName.get_pdf_name("S")
 _TYPE = COSName.TYPE  # type: ignore[attr-defined]
@@ -68,7 +67,8 @@ def test_constructor_pd_document_input_stream_compresses_via_flate() -> None:
     assert dest is not None
     filt = dest.get_dictionary_object(_FILTER)
     flate = COSName.get_pdf_name("FlateDecode")
-    assert filt == flate or flate in (list(filt) if filt is not None else [])
+    filter_values = filt.to_list() if isinstance(filt, COSArray) else [filt]
+    assert flate in filter_values
 
 
 def test_constructor_pd_document_input_stream_n_for_cmyk() -> None:
@@ -86,6 +86,16 @@ def test_constructor_cos_dictionary_wrap() -> None:
     raw.set_item(_TYPE, COSName.get_pdf_name("OutputIntent"))
     intent = PDOutputIntent(raw)
     assert intent.get_cos_object() is raw
+
+
+def test_constructor_cos_dictionary_wrap_does_not_add_type() -> None:
+    """Upstream wraps the supplied dictionary as-is; it does not repair
+    a missing ``/Type`` entry in the ``COSDictionary`` constructor."""
+    raw = COSDictionary()
+    intent = PDOutputIntent(raw)
+    assert intent.get_cos_object() is raw
+    assert raw.get_dictionary_object(_TYPE) is None
+    assert intent.get_type() is None
 
 
 def test_info_round_trip() -> None:

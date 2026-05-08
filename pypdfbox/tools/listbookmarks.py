@@ -88,10 +88,8 @@ def _resolve_page_number(
     destination doesn't resolve to a concrete page within this document.
 
     Mirrors upstream's ``pd.retrievePageNumber() + 1`` plus the named-
-    destination branch. Named-destination resolution requires a
-    ``/Names`` / ``/Dests`` walk that pypdfbox does not yet expose on
-    ``PDDocumentCatalog`` (no ``find_named_destination_page`` yet); when
-    we encounter one, return ``None`` rather than guess.
+    destination branch through
+    ``PDDocumentCatalog.findNamedDestinationPage``.
     """
     if isinstance(dest, PDPageDestination):
         idx = dest.retrieve_page_number(document)
@@ -99,10 +97,9 @@ def _resolve_page_number(
             return idx + 1
         return None
     if isinstance(dest, PDNamedDestination):
-        # Catalog-level named-destination resolution is not yet ported;
-        # the outline-item ``find_destination_page`` fallback in
-        # ``_describe_item`` handles the explicit-array case.
-        return None
+        resolved = document.get_document_catalog().find_named_destination_page(dest)
+        if isinstance(resolved, PDPageDestination):
+            return _resolve_page_number(document, resolved)
     return None
 
 

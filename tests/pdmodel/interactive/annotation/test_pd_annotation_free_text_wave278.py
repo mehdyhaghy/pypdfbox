@@ -71,15 +71,34 @@ def test_callout_line_reads_four_or_six_coordinates_and_round_trips_cos() -> Non
 
     ann.set_callout_line([1, 2, 3, 4])
     assert ann.get_callout_line() == [1.0, 2.0, 3.0, 4.0]
-    assert ann.get_cos_object().get_dictionary_object(_CL).to_float_array() == [
-        1.0,
-        2.0,
-        3.0,
-        4.0,
-    ]
+    callout = ann.get_cos_object().get_dictionary_object(_CL)
+    assert isinstance(callout, COSArray)
+    assert callout.to_float_array() == [1.0, 2.0, 3.0, 4.0]
 
     ann.get_cos_object().set_item(_CL, _float_array(10, 20, 30, 40, 50, 60, 70))
-    assert ann.get_callout() == [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    assert ann.get_callout_line() == [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    assert ann.get_callout() == [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0]
+
+
+def test_callout_alias_matches_pdfbox_raw_float_array_conversion() -> None:
+    ann = PDAnnotationFreeText()
+    ann.get_cos_object().set_item(
+        _CL,
+        COSArray(
+            [
+                COSFloat(1),
+                COSName.get_pdf_name("Bad"),
+                COSFloat(3),
+                COSFloat(4),
+                COSFloat(5),
+                COSFloat(6),
+                COSFloat(7),
+            ]
+        ),
+    )
+
+    assert ann.get_callout_line() is None
+    assert ann.get_callout() == [1.0, 0.0, 3.0, 4.0, 5.0, 6.0, 7.0]
 
 
 def test_rectangle_differences_plural_singular_and_clear_paths_share_rd() -> None:
@@ -120,9 +139,13 @@ def test_border_effect_and_border_style_wrappers_preserve_underlying_cos() -> No
 
     assert ann.get_cos_object().get_dictionary_object(_BS) is bs.get_cos_object()
     assert ann.get_cos_object().get_dictionary_object(_BE) is be.get_cos_object()
-    assert ann.get_border_style().get_style() == PDBorderStyleDictionary.STYLE_UNDERLINE
-    assert ann.get_border_effect().get_style() == PDBorderEffectDictionary.STYLE_CLOUDY
-    assert ann.get_border_effect().get_intensity() == 1.25
+    border_style = ann.get_border_style()
+    border_effect = ann.get_border_effect()
+    assert border_style is not None
+    assert border_effect is not None
+    assert border_style.get_style() == PDBorderStyleDictionary.STYLE_UNDERLINE
+    assert border_effect.get_style() == PDBorderEffectDictionary.STYLE_CLOUDY
+    assert border_effect.get_intensity() == 1.25
 
     ann.set_border_style(None)
     ann.set_border_effect(None)

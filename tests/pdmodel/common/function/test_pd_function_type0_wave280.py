@@ -139,6 +139,24 @@ def test_get_samples_cache_is_invalidated_when_bits_per_sample_changes() -> None
     assert fn.get_samples() == [[0x1], [0x2]]
 
 
+def test_bits_per_sample_setter_reloads_mutated_stream_bytes() -> None:
+    raw = COSStream()
+    raw.set_int("FunctionType", 0)
+    raw.set_item("Domain", _float_array([0.0, 1.0]))
+    raw.set_item("Range", _float_array([0.0, 255.0]))
+    raw.set_item("Size", _size_array([2]))
+    raw.set_int("BitsPerSample", 8)
+    raw.set_data(bytes([0x10, 0x20]))
+    fn = PDFunctionType0(raw)
+
+    assert fn.get_samples() == [[0x10], [0x20]]
+
+    raw.set_data(bytes([0x30, 0x40]))
+    fn.set_bits_per_sample(8)
+
+    assert fn.get_samples() == [[0x30], [0x40]]
+
+
 @pytest.mark.parametrize(
     ("size", "match"),
     [

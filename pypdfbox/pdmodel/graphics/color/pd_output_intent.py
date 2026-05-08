@@ -166,8 +166,6 @@ class PDOutputIntent:
             cos.set_item(_TYPE, _OUTPUT_INTENT)
             self._dictionary = cos
         else:
-            if dictionary.get_dictionary_object(_TYPE) is None:
-                dictionary.set_item(_TYPE, _OUTPUT_INTENT)
             self._dictionary = dictionary
 
         # If both forms supplied (PDOutputIntent(dictionary, color_profile))

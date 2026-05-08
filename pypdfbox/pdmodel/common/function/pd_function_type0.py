@@ -40,6 +40,10 @@ class PDFunctionType0(PDFunction):
         # upstream — outer index = linearised input cell, inner = output dim.
         self._samples_cache: list[list[int]] | None = None
 
+    def _invalidate_samples(self) -> None:
+        self._sample_bytes = None
+        self._samples_cache = None
+
     def get_function_type(self) -> int:
         return 0
 
@@ -52,8 +56,8 @@ class PDFunctionType0(PDFunction):
     def set_size(self, size: COSArray | None) -> None:
         """Set ``/Size`` — one entry per input dimension (sample count
         along that axis). ``None`` removes the entry."""
-        # Invalidate any cached decoded samples — grid layout changes.
-        self._samples_cache = None
+        # Invalidate decoded samples — grid layout changes.
+        self._invalidate_samples()
         if size is None:
             self.get_cos_object().remove_item(_SIZE)
         else:
@@ -67,7 +71,7 @@ class PDFunctionType0(PDFunction):
         24, 32} per PDF 32000-1 §7.10.2 Table 38, but the value is not
         validated here (mirrors upstream's permissive setter — eval
         rejects unsupported widths)."""
-        self._samples_cache = None
+        self._invalidate_samples()
         self.get_cos_object().set_int(_BITS_PER_SAMPLE, bits)
 
     def get_order(self) -> int:
