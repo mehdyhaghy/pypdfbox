@@ -27,10 +27,19 @@ class COSArray(COSBase):
 
     # ---------- core list operations ----------
 
+    def _check_non_negative_index(self, index: int) -> None:
+        if index < 0:
+            raise IndexError("COSArray index out of range")
+
+    def _check_insert_index(self, index: int) -> None:
+        if index < 0 or index > len(self._items):
+            raise IndexError("COSArray insert index out of range")
+
     def add(self, item: COSBase) -> None:
         self._items.append(item)
 
     def add_at(self, index: int, item: COSBase) -> None:
+        self._check_insert_index(index)
         self._items.insert(index, item)
 
     def add_all(self, items: Iterable[COSBase]) -> None:
@@ -41,6 +50,7 @@ class COSArray(COSBase):
 
     def get(self, index: int) -> COSBase:
         """Raw entry at ``index`` — may be a ``COSObject`` indirect ref."""
+        self._check_non_negative_index(index)
         return self._items[index]
 
     @staticmethod
@@ -55,12 +65,14 @@ class COSArray(COSBase):
     def get_object(self, index: int) -> COSBase | None:
         """Resolved entry — if the entry is a ``COSObject``, returns its
         target; otherwise returns the entry itself."""
+        self._check_non_negative_index(index)
         return self._resolve(self._items[index])
 
     def getObject(self, index: int) -> COSBase | None:  # noqa: N802 - upstream Java name
         return self.get_object(index)
 
     def set(self, index: int, item: COSBase) -> None:
+        self._check_non_negative_index(index)
         self._items[index] = item
 
     def remove(self, item: COSBase) -> bool:
@@ -71,6 +83,7 @@ class COSArray(COSBase):
             return False
 
     def remove_at(self, index: int) -> COSBase:
+        self._check_non_negative_index(index)
         return self._items.pop(index)
 
     def removeAt(self, index: int) -> COSBase:  # noqa: N802
@@ -167,6 +180,7 @@ class COSArray(COSBase):
     # ---------- typed convenience accessors ----------
 
     def set_name(self, index: int, value: str) -> None:
+        self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
         self._items[index] = COSName.get_pdf_name(value)
 
@@ -174,6 +188,7 @@ class COSArray(COSBase):
         self.set_name(index, value)
 
     def get_name(self, index: int, default: str | None = None) -> str | None:
+        self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
         item = self.get_object(index)
@@ -185,6 +200,7 @@ class COSArray(COSBase):
         return self.get_name(index, default)
 
     def set_int(self, index: int, value: int) -> None:
+        self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
         self._items[index] = COSInteger.get(value)
 
@@ -192,6 +208,7 @@ class COSArray(COSBase):
         self.set_int(index, value)
 
     def get_int(self, index: int, default: int = -1) -> int:
+        self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
         item = self.get_object(index)
@@ -205,6 +222,7 @@ class COSArray(COSBase):
         return self.get_int(index, default)
 
     def set_float(self, index: int, value: float) -> None:
+        self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
         self._items[index] = COSFloat(value)
 
@@ -212,6 +230,7 @@ class COSArray(COSBase):
         self.set_float(index, value)
 
     def get_float(self, index: int, default: float = -1.0) -> float:
+        self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
         item = self.get_object(index)
@@ -223,6 +242,7 @@ class COSArray(COSBase):
         return self.get_float(index, default)
 
     def set_boolean(self, index: int, value: bool) -> None:
+        self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
         self._items[index] = COSBoolean.get(value)
 
@@ -230,6 +250,7 @@ class COSArray(COSBase):
         self.set_boolean(index, value)
 
     def get_boolean(self, index: int, default: bool = False) -> bool:
+        self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
         item = self.get_object(index)
@@ -241,6 +262,7 @@ class COSArray(COSBase):
         return self.get_boolean(index, default)
 
     def set_string(self, index: int, value: str) -> None:
+        self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
         self._items[index] = COSString(value)
 
@@ -248,6 +270,7 @@ class COSArray(COSBase):
         self.set_string(index, value)
 
     def get_string(self, index: int, default: str | None = None) -> str | None:
+        self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
         item = self.get_object(index)

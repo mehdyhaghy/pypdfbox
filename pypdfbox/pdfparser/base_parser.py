@@ -529,21 +529,27 @@ class BaseParser:
     # ---------- keywords ----------
 
     def read_keyword(self) -> bytes:
-        """Read a keyword token (alphabetic ASCII run). Used for
+        """Read a keyword-like regular token with an alphabetic start. Used for
         ``true``/``false``/``null``/``obj``/``endobj``/``stream``/
         ``endstream``/``R``/``xref``/``trailer``/``startxref``."""
+        start_pos = self.position
         out = bytearray()
+        b = self._src.read()
+        if b == RandomAccessRead.EOF:
+            raise PDFParseError("expected keyword", position=start_pos)
+        if not ((0x41 <= b <= 0x5A) or (0x61 <= b <= 0x7A)):
+            self._src.rewind(1)
+            raise PDFParseError("expected keyword", position=start_pos)
+        out.append(b)
         while True:
             b = self._src.read()
             if b == RandomAccessRead.EOF:
                 break
-            if (0x41 <= b <= 0x5A) or (0x61 <= b <= 0x7A):
+            if self.is_regular(b):
                 out.append(b)
             else:
                 self._src.rewind(1)
                 break
-        if not out:
-            raise PDFParseError("expected keyword", position=self.position)
         return bytes(out)
 
     def read_string(self) -> str:

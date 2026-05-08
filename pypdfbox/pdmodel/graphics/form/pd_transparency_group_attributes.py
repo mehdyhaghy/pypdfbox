@@ -42,17 +42,29 @@ class PDTransparencyGroupAttributes:
         """Group color space (``/CS``); ``None`` when absent. Lazily
         resolved via :class:`PDColorSpace`.create and cached. Mirrors
         upstream ``getColorSpace([resources])`` overloads."""
-        if self._color_space is None and self._dictionary.contains_key(_CS):
+        if not self._dictionary.contains_key(_CS):
+            return None
+
+        # Resource-name resolution is contextual. A form's /Group /CS can be
+        # a name in the caller-provided resource dictionary, so do not let a
+        # previous resource-backed lookup poison later calls with different
+        # resources.
+        value = self._dictionary.get_dictionary_object(_CS)
+        if resources is not None:
+            from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+                PDColorSpace,
+            )
+
+            return PDColorSpace.create(value, resources)
+
+        if self._color_space is None:
             # Local import keeps the cluster boundary explicit and avoids a
             # cycle through the rest of the graphics package.
             from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
                 PDColorSpace,
             )
 
-            self._color_space = PDColorSpace.create(
-                self._dictionary.get_dictionary_object(_CS),
-                resources,
-            )
+            self._color_space = PDColorSpace.create(value, resources)
         return self._color_space
 
     def set_color_space(

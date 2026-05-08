@@ -89,10 +89,16 @@ class PDAnnotationSquareCircle(PDAnnotation):
             return value
         return None
 
-    def set_interior_color(self, ic: COSArray | None) -> None:
+    def set_interior_color(
+        self, ic: COSArray | list[float] | tuple[float, ...] | None
+    ) -> None:
         if ic is None:
             self._dict.remove_item(_IC)
             return
+        if isinstance(ic, COSArray):
+            self._dict.set_item(_IC, ic)
+            return
+        ic = COSArray([COSFloat(float(c)) for c in ic])
         self._dict.set_item(_IC, ic)
 
     # ---------- /BE (border effect) ----------

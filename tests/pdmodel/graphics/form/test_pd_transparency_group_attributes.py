@@ -6,6 +6,7 @@ from pypdfbox.cos import COSBoolean, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form import PDTransparencyGroupAttributes
+from pypdfbox.pdmodel.pd_resources import PDResources
 
 _S = COSName.get_pdf_name("S")
 _I = COSName.get_pdf_name("I")
@@ -203,3 +204,26 @@ def test_presence_predicates_report_explicit_dictionary_entries() -> None:
     assert attrs.has_isolated() is True
     assert attrs.has_knockout() is True
     assert attrs.has_subtype() is True
+
+
+def test_wave330_get_color_space_re_resolves_named_entry_per_resources() -> None:
+    alias = COSName.get_pdf_name("GroupCS")
+    raw = COSDictionary()
+    raw.set_item(_CS, alias)
+    attrs = PDTransparencyGroupAttributes(raw)
+
+    gray_resources = PDResources()
+    gray_resources.put(
+        PDResources.COLOR_SPACE,
+        alias,
+        COSName.get_pdf_name("DeviceGray"),
+    )
+    rgb_resources = PDResources()
+    rgb_resources.put(
+        PDResources.COLOR_SPACE,
+        alias,
+        COSName.get_pdf_name("DeviceRGB"),
+    )
+
+    assert attrs.get_color_space(gray_resources) is PDDeviceGray.INSTANCE
+    assert attrs.get_color_space(rgb_resources) is PDDeviceRGB.INSTANCE

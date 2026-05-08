@@ -480,6 +480,14 @@ def test_date_typed_property_round_trip() -> None:
     assert schema.get_date_time_original() == "2026-04-27T12:00:00+00:00"
 
 
+def test_wave330_malformed_raw_date_does_not_escape_typed_getter() -> None:
+    schema = _exif()
+    schema.set_text_property_value(ExifSchema.DATE_TIME_ORIGINAL, "not-a-date")
+
+    assert schema.get_date_time_original() == "not-a-date"
+    assert schema.get_date_time_original_property() is None
+
+
 def test_rational_property_string_round_trip() -> None:
     schema = _exif()
     schema.set_exposure_time("1/250")

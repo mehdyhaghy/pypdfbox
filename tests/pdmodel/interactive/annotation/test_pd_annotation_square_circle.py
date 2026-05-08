@@ -107,6 +107,28 @@ def test_interior_color_clear() -> None:
     assert ann.get_interior_color() is None
 
 
+def test_interior_color_accepts_component_list_wave330() -> None:
+    ann = PDAnnotationSquare()
+
+    ann.set_interior_color([0.25, 0.5, 0.75])
+
+    resolved = ann.get_interior_color()
+    assert isinstance(resolved, COSArray)
+    assert resolved.to_float_array() == [0.25, 0.5, 0.75]
+    for item in resolved:
+        assert isinstance(item, COSFloat)
+
+
+def test_interior_color_accepts_component_tuple_wave330() -> None:
+    ann = PDAnnotationCircle()
+
+    ann.set_interior_color((0.5,))
+
+    resolved = ann.get_interior_color()
+    assert isinstance(resolved, COSArray)
+    assert resolved.to_float_array() == [0.5]
+
+
 def test_border_effect_round_trip() -> None:
     from pypdfbox.pdmodel.interactive.annotation import PDBorderEffectDictionary
 
@@ -215,7 +237,7 @@ def test_set_rect_differences_list_wrong_length_raises() -> None:
 def test_set_rect_differences_invalid_arity_raises() -> None:
     ann = PDAnnotationCircle()
     with pytest.raises(TypeError):
-        ann.set_rect_differences(1.0, 2.0, 3.0)  # type: ignore[arg-type]
+        ann.set_rect_differences(1.0, 2.0, 3.0)
 
 
 def test_get_rect_differences_after_set_rect_difference() -> None:

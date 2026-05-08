@@ -380,12 +380,15 @@ def test_make_model_artist_typed_property() -> None:
             metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.ARTIST, "Ansel"
         )
     )
-    assert isinstance(schema.get_make_property(), ProperNameType)
-    assert schema.get_make_property().get_string_value() == "Canon"
-    assert isinstance(schema.get_model_property(), ProperNameType)
-    assert schema.get_model_property().get_string_value() == "EOS R5"
-    assert isinstance(schema.get_artist_property(), ProperNameType)
-    assert schema.get_artist_property().get_string_value() == "Ansel"
+    make = schema.get_make_property()
+    model = schema.get_model_property()
+    artist = schema.get_artist_property()
+    assert isinstance(make, ProperNameType)
+    assert make.get_string_value() == "Canon"
+    assert isinstance(model, ProperNameType)
+    assert model.get_string_value() == "EOS R5"
+    assert isinstance(artist, ProperNameType)
+    assert artist.get_string_value() == "Ansel"
 
 
 def test_software_typed_property() -> None:
@@ -420,7 +423,17 @@ def test_date_time_typed_property() -> None:
     # ``DateType`` normalises ``Z`` into the explicit ``+00:00`` offset; the
     # round-trip preserves the same timezone moment regardless of spelling.
     assert fetched.get_string_value().startswith("2026-04-27T12:34:56")
-    assert schema.get_date_time().startswith("2026-04-27T12:34:56")
+    date_time = schema.get_date_time()
+    assert date_time is not None
+    assert date_time.startswith("2026-04-27T12:34:56")
+
+
+def test_wave330_malformed_raw_date_does_not_escape_typed_getter() -> None:
+    schema = _tiff()
+    schema.set_text_property_value(TiffSchema.DATE_TIME, "not-a-date")
+
+    assert schema.get_date_time() == "not-a-date"
+    assert schema.get_date_time_property() is None
 
 
 def test_integer_typed_property_round_trip() -> None:
@@ -436,10 +449,13 @@ def test_integer_typed_property_round_trip() -> None:
             metadata, TiffSchema.NAMESPACE, "tiff", TiffSchema.ORIENTATION, 1
         )
     )
-    assert isinstance(schema.get_image_width_property(), IntegerType)
-    assert schema.get_image_width_property().get_value() == 4000
+    image_width = schema.get_image_width_property()
+    orientation = schema.get_orientation_property()
+    assert isinstance(image_width, IntegerType)
+    assert image_width.get_value() == 4000
     assert schema.get_image_width() == 4000
-    assert schema.get_orientation_property().get_value() == 1
+    assert isinstance(orientation, IntegerType)
+    assert orientation.get_value() == 1
 
 
 def test_integer_typed_property_promotes_string_form() -> None:

@@ -329,6 +329,13 @@ def test_read_keyword_terminates_at_non_alpha() -> None:
     assert p.read_int() == 7
 
 
+def test_wave330_read_keyword_keeps_regular_suffix_inside_token() -> None:
+    p = parser(b"true1 /Next")
+    assert p.read_keyword() == b"true1"
+    p.skip_whitespace()
+    assert p.read_name() == "Next"
+
+
 def test_read_keyword_at_eof_raises_on_empty() -> None:
     with pytest.raises(PDFParseError):
         parser(b"").read_keyword()

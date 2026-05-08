@@ -254,17 +254,20 @@ class ExifSchema(XMPSchema):
             return None
         if isinstance(raw, expected):
             return raw
-        if isinstance(raw, AbstractSimpleProperty):
+        try:
+            if isinstance(raw, AbstractSimpleProperty):
+                return expected(
+                    self._metadata,
+                    self._namespace,
+                    self._prefix,
+                    local_name,
+                    raw.get_string_value(),
+                )
             return expected(
-                self._metadata,
-                self._namespace,
-                self._prefix,
-                local_name,
-                raw.get_string_value(),
+                self._metadata, self._namespace, self._prefix, local_name, raw
             )
-        return expected(
-            self._metadata, self._namespace, self._prefix, local_name, raw
-        )
+        except (TypeError, ValueError):
+            return None
 
     def _typed_set(
         self, local_name: str, prop: AbstractSimpleProperty | None

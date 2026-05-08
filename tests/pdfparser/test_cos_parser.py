@@ -96,7 +96,8 @@ def test_array_of_mixed_primitives() -> None:
     assert isinstance(obj, COSArray)
     items = obj.to_list()
     assert items[0] == COSInteger(1)
-    assert items[1].value == 2.5  # type: ignore[union-attr]
+    assert isinstance(items[1], COSFloat)
+    assert items[1].value == 2.5
     assert isinstance(items[2], COSString)
     assert items[3] is COSName.get_pdf_name("Foo")
     assert items[4] is COSBoolean.TRUE
@@ -172,6 +173,12 @@ def test_indirect_reference_inside_document_uses_pool() -> None:
     obj2 = parser(b"7 0 R", document=doc).parse_direct_object()
     assert obj1 is obj2  # same pool entry
     assert doc.has_object(COSObjectKey(7, 0))
+
+
+def test_wave330_indirect_reference_requires_r_token_boundary() -> None:
+    obj = parser(b"7 0 R2").parse_direct_object()
+    assert isinstance(obj, COSInteger)
+    assert obj.value == 7
 
 
 def test_lone_integer_does_not_become_indirect_ref() -> None:
@@ -294,6 +301,11 @@ def test_unknown_keyword_raises() -> None:
         parser(b"truthy").parse_direct_object()
 
 
+def test_wave330_boolean_keyword_requires_token_boundary() -> None:
+    with pytest.raises(PDFParseError, match="unexpected keyword"):
+        parser(b"true1").parse_direct_object()
+
+
 # ---------- realistic compound input ----------
 
 
@@ -389,7 +401,7 @@ def test_parse_xref_table_traditional_section() -> None:
         b"0000000089 00000 n \n"
         b"trailer << /Size 3 >>\n"
     )
-    table: dict = {}
+    table: dict[COSObjectKey, int] = {}
     assert parser(pdf).parse_xref_table(0, table) is True
     assert table[COSObjectKey(0, 65535)] == -1  # free entry
     assert table[COSObjectKey(1, 0)] == 17
@@ -408,7 +420,7 @@ def test_parse_xref_table_first_write_wins_for_duplicate_keys() -> None:
         b"0 1\n0000000999 00000 n \n"
         b"trailer << /Size 1 >>\n"
     )
-    table: dict = {}
+    table: dict[COSObjectKey, int] = {}
     parser(pdf).parse_xref_table(0, table)
     # First write wins — the "f" entry at offset 0.
     assert table[COSObjectKey(0, 65535)] == -1

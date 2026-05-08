@@ -1475,3 +1475,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/action/pd_uri_dictionary.py`: URI dictionary `/Base` values now decode UTF-8 and UTF-16 bytes consistently with URI actions.
 - `pypdfbox/pdmodel/graphics/image/pd_inline_image.py`: inline image named `/CS` entries now resolve through their `PDResources`.
 - `pypdfbox/pdmodel/font/pd_cid_font.py`: oversized `/W2` range-form vertical metrics now stay compact while lookup helpers still resolve values.
+
+## Wave 330 — COSArray indexes, parser tokens, square colors, group color spaces, and XMP typed reads
+
+- `pypdfbox/cos/cos_array.py`: PDFBox-style index methods now reject negative indexes while preserving Python dunder indexing behavior.
+- `pypdfbox/pdfparser/base_parser.py`: keyword reads now consume full regular tokens after an alphabetic start so malformed forms such as `true1` are not split into valid keywords plus trailing objects.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_square_circle.py`: square and circle annotation interior colors now accept numeric Python sequences as well as raw `COSArray` values.
+- `pypdfbox/pdmodel/graphics/form/pd_transparency_group_attributes.py`: resource-contextual group `/CS` names now re-resolve against the supplied resources instead of reusing stale cached color spaces.
+- `pypdfbox/xmpbox/exif_schema.py` and `tiff_schema.py`: malformed raw parser values no longer escape typed getter rebuilding as constructor errors.
