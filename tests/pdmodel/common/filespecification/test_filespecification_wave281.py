@@ -150,7 +150,7 @@ def test_embedded_file_malformed_params_can_be_cleared_or_replaced() -> None:
 
     assert embedded.has_params() is False
     assert embedded.has_size() is False
-    assert embedded.get_size() is None
+    assert embedded.get_size() == -1
 
     embedded.clear_size()
     assert embedded.has_params() is False

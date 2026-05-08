@@ -117,6 +117,17 @@ def test_data_dict_os_set_creates_direct_cos_array_of_names() -> None:
     assert d.get_os() == "Linux"
 
 
+def test_data_dict_os_set_replaces_existing_array_value() -> None:
+    d = PDPropBuildDataDict()
+    d.set_os("Linux")
+    d.set_os("Windows")
+    arr = d.get_cos_object().get_dictionary_object("OS")
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 1
+    assert arr.get_name(0) == "Windows"
+    assert d.get_os() == "Windows"
+
+
 def test_data_dict_os_string_form_supported_on_read() -> None:
     """PDF v1.5 stored OS as a plain string. Both encodings must read."""
     raw = COSDictionary()
@@ -258,10 +269,11 @@ def test_pd_signature_set_prop_build_round_trip() -> None:
 
     got = sig.get_prop_build()
     assert got is not None
-    assert got.get_app() is not None
-    assert got.get_app().get_name() == "Acrobat"
-    assert got.get_app().get_version() == "11.0.6"
-    assert got.get_app().get_os() == "Linux"
+    app = got.get_app()
+    assert app is not None
+    assert app.get_name() == "Acrobat"
+    assert app.get_version() == "11.0.6"
+    assert app.get_os() == "Linux"
 
     # /Prop_Build sub-dictionary must be present under that exact key.
     assert sig.get_cos_object().contains_key("Prop_Build")

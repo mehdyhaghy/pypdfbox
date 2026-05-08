@@ -473,11 +473,14 @@ class CMapParser:
 
     def _parse_next_token(self, ras: RandomAccessRead) -> object:
         next_byte = ras.read()
-        # Skip PDF whitespace at token boundaries.
-        while _is_whitespace(next_byte):
+        while True:
+            # Skip PDF whitespace and comments at token boundaries.
+            while _is_whitespace(next_byte):
+                next_byte = ras.read()
+            if next_byte != 0x25:  # '%'
+                break
+            self._read_line(ras, next_byte)
             next_byte = ras.read()
-        if next_byte == 0x25:  # '%'
-            return self._read_line(ras, next_byte)
         if next_byte == 0x28:  # '('
             return self._read_string(ras)
         if next_byte == 0x3E:  # '>'

@@ -115,7 +115,7 @@ def test_embedded_file_subtype_and_size() -> None:
 
 def test_embedded_file_creation_date_round_trip_datetime() -> None:
     embedded = PDEmbeddedFile()
-    when = _dt.datetime(2026, 1, 2, 3, 4, 5, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2026, 1, 2, 3, 4, 5, tzinfo=_dt.UTC)
     embedded.set_creation_date(when)
     assert embedded.get_creation_date() == when
 
@@ -124,7 +124,7 @@ def test_embedded_file_creation_date_accepts_string_verbatim() -> None:
     embedded = PDEmbeddedFile()
     embedded.set_creation_date("D:20260101000000Z")
     assert embedded.get_creation_date() == _dt.datetime(
-        2026, 1, 1, 0, 0, 0, tzinfo=_dt.timezone.utc
+        2026, 1, 1, 0, 0, 0, tzinfo=_dt.UTC
     )
 
 
@@ -169,11 +169,11 @@ def test_embedded_file_size_subtype_creator_round_trip() -> None:
     assert embedded.get_creator() == "pypdfbox-test"
 
 
-def test_embedded_file_size_clear_returns_none() -> None:
+def test_embedded_file_size_clear_returns_default() -> None:
     embedded = PDEmbeddedFile()
     embedded.set_size(99)
     embedded.set_size(None)
-    assert embedded.get_size() is None
+    assert embedded.get_size() == -1
 
 
 def test_embedded_file_subtype_clear() -> None:

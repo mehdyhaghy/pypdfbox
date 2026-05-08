@@ -448,6 +448,11 @@ class PDOptionalContentProperties:
                 _BASE_STATE, BaseState.value_of(state).get_pdf_name()
             )
             return
+        if not isinstance(state, str):
+            raise TypeError(
+                "base state must be str, BaseState, or COSName, "
+                f"got {type(state).__name__}"
+            )
         key = state.upper()
         cos_name = _BASE_STATE_NAMES.get(key)
         if cos_name is None:

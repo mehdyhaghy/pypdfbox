@@ -505,6 +505,13 @@ class Type1Parser:
 
             # Top-level key collection.
             if pending_key in _TOP_LEVEL_KEYS:
+                if pending_key == "Encoding" and kind == TOKEN_INTEGER:
+                    self.font_dict[pending_key] = self._read_encoding_array(
+                        lex,
+                        int(value),
+                    )
+                    pending_key = None
+                    continue
                 if kind == TOKEN_START_ARRAY:
                     self.font_dict[pending_key] = self._read_array(lex)
                     pending_key = None
@@ -571,6 +578,62 @@ class Type1Parser:
             elif kind == TOKEN_NAME:
                 out.append(value)
         return out
+
+    def _read_encoding_array(self, lex: Type1Lexer, length: int) -> list[str]:
+        """Read a PostScript-built Encoding vector.
+
+        Real Type 1 programs commonly spell custom encodings as::
+
+            /Encoding 256 array
+              0 1 255 {1 index exch /.notdef put} for
+              dup 65 /A put
+            readonly def
+
+        The generic top-level parser would otherwise capture only the
+        leading integer. Track ``dup <code> /<glyph> put`` assignments
+        until the surrounding definition closes.
+        """
+        encoding = [".notdef"] * max(length, 0)
+
+        while True:
+            tok = lex.next_token()
+            if tok is None:
+                break
+            kind, value = tok
+            if kind == TOKEN_START_PROC:
+                self._read_proc(lex)
+                continue
+            if kind == TOKEN_NAME and value == "def":
+                break
+            if kind != TOKEN_NAME or value != "dup":
+                continue
+
+            code_tok = lex.next_token()
+            name_tok = lex.next_token()
+            if (
+                code_tok is None
+                or name_tok is None
+                or code_tok[0] != TOKEN_INTEGER
+                or name_tok[0] != TOKEN_LITERAL
+            ):
+                continue
+
+            code = int(code_tok[1])
+            if 0 <= code < len(encoding):
+                encoding[code] = str(name_tok[1])
+
+            while True:
+                peek = lex.peek_token()
+                if peek is None:
+                    return encoding
+                if peek[0] == TOKEN_NAME and peek[1] in ("put", "readonly", "noaccess"):
+                    lex.next_token()
+                    if peek[1] == "put":
+                        break
+                    continue
+                break
+
+        return encoding
 
     # ---------- binary section (eexec-decrypted) ----------
 

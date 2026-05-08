@@ -10,6 +10,8 @@ Covers:
   BaseState-derived flag without consulting /D /ON or /D /OFF.
 - ``set_base_state(COSName)`` — accept the same ``COSName`` shape that
   :meth:`BaseState.value_of` already takes, for write-side symmetry.
+- ``set_base_state(object)`` — reject unsupported object types with a clear
+  ``TypeError`` instead of leaking an implementation ``AttributeError``.
 """
 
 from __future__ import annotations
@@ -21,7 +23,6 @@ from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_properties im
     BaseState,
     PDOptionalContentProperties,
 )
-
 
 # ---------- BaseState.get_name() ----------
 
@@ -80,3 +81,9 @@ def test_set_base_state_cos_name_unknown_raises() -> None:
     props = PDOptionalContentProperties()
     with pytest.raises(ValueError):
         props.set_base_state(COSName.get_pdf_name("Bogus"))
+
+
+def test_set_base_state_rejects_unsupported_type_with_type_error() -> None:
+    props = PDOptionalContentProperties()
+    with pytest.raises(TypeError, match="base state must be str"):
+        props.set_base_state(123)  # type: ignore[arg-type]

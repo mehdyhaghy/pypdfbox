@@ -127,12 +127,10 @@ class PDPropBuildDataDict:
         if os is None:
             self._dict.remove_item(_OS)
             return
-        v = self._dict.get_dictionary_object(_OS)
-        if not isinstance(v, COSArray):
-            v = COSArray()
-            v.set_direct(True)
-            self._dict.set_item(_OS, v)
-        v.add_at(0, COSName.get_pdf_name(os))
+        v = COSArray()
+        v.set_direct(True)
+        v.add(COSName.get_pdf_name(os))
+        self._dict.set_item(_OS, v)
 
     # ---------- /NonEFontNoWarn ----------
 

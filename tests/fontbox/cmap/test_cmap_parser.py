@@ -30,6 +30,34 @@ def test_parser_handles_comments_tabs_and_basic_mappings() -> None:
     assert cmap.to_cid_bytes(b"A") == 65
 
 
+def test_parser_ignores_comments_inside_mapping_blocks() -> None:
+    cmap = CMapParser().parse(
+        b"""
+        1 begincodespacerange
+        % comment before codespace row
+        <00> <ff>
+        endcodespacerange
+        1 beginbfchar
+        % comment before bfchar row
+        <20> <0020>
+        endbfchar
+        1 beginbfrange
+        % comment before bfrange row
+        <42> <43> [
+          <0042>
+          % comment between array targets
+          <0043>
+        ]
+        endbfrange
+        endcmap
+        """
+    )
+
+    assert cmap.to_unicode_bytes(b" ") == " "
+    assert cmap.to_unicode_bytes(b"B") == "B"
+    assert cmap.to_unicode_bytes(b"C") == "C"
+
+
 def test_parser_requires_full_bfrange_array() -> None:
     cmap = CMapParser().parse(
         b"""

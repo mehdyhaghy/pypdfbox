@@ -1531,3 +1531,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/fdf/fdf_field.py`: FDF field options now write strings, option pairs, raw COS entries, and clear `/Opt` on `None`.
 - `pypdfbox/pdmodel/interactive/measurement/pd_rectlinear_measure_dictionary.py`: rectlinear number-format arrays now resolve indirect dictionary entries before wrapping them.
 - `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_attribute_object.py`: unknown or missing attribute owners now produce default attribute objects.
+
+## Wave 337 — CMap comments, Type1 encodings, signature build data, embedded sizes, and optional-content validation
+
+- `pypdfbox/fontbox/cmap/cmap_parser.py`: CMap tokenization now skips `%` comments inside codespace, `bfchar`, `bfrange`, and array contexts.
+- `pypdfbox/fontbox/type1/type1_parser.py`: custom Type 1 encodings built with `256 array` and `dup ... put` entries now populate the encoding vector.
+- `pypdfbox/pdmodel/interactive/digitalsignature/pd_prop_build_data_dict.py`: repeated `set_os()` calls now replace the `/OS` array instead of retaining stale names.
+- `pypdfbox/pdmodel/common/filespecification/pd_embedded_file.py`: embedded-file size reads now return `-1` for absent or malformed `/Params/Size` and accept any COS number.
+- `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_properties.py`: unsupported base-state inputs now raise `TypeError` instead of leaking attribute errors.

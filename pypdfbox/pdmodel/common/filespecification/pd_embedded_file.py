@@ -10,6 +10,7 @@ from pypdfbox.cos import (
     COSDocument,
     COSInteger,
     COSName,
+    COSNumber,
     COSStream,
     COSString,
 )
@@ -245,18 +246,27 @@ class PDEmbeddedFile(PDStream):
 
     # ---------- /Params/Size ----------
 
-    def get_size(self) -> int | None:
+    def get_size(self) -> int:
+        """Return ``/Params/Size`` as an integer, or ``-1`` when absent.
+
+        Mirrors PDFBox ``COSDictionary.getEmbeddedInt("Params", "Size")``:
+        missing or malformed entries use the embedded-int default of ``-1``,
+        and numeric COS values are converted through ``int_value()``.
+        """
         params = self._params_dict()
         if params is None:
-            return None
+            return -1
         v = params.get_dictionary_object(_SIZE)
-        if isinstance(v, COSInteger):
-            return v.value
-        return None
+        if isinstance(v, COSNumber):
+            return v.int_value()
+        return -1
 
     def has_size(self) -> bool:
-        """Return ``True`` when ``/Params/Size`` is present as an integer."""
-        return self.get_size() is not None
+        """Return ``True`` when ``/Params/Size`` is present as a number."""
+        params = self._params_dict()
+        return params is not None and isinstance(
+            params.get_dictionary_object(_SIZE), COSNumber
+        )
 
     def set_size(self, size: int | None) -> None:
         if size is None:
