@@ -58,6 +58,15 @@ class TTFDataStream(ABC):
     def close(self) -> None:
         """Release underlying resources."""
 
+    @staticmethod
+    def _check_read_bounds(buf: bytearray, offset: int, length: int) -> None:
+        if offset < 0 or length < 0 or length > len(buf) - offset:
+            msg = (
+                f"read_into range out of bounds: offset={offset}, "
+                f"length={length}, buffer length={len(buf)}"
+            )
+            raise IndexError(msg)
+
     # ---- helpers (translated 1:1 from upstream TTFDataStream) ----
 
     def read_signed_byte(self) -> int:
@@ -185,6 +194,9 @@ class RandomAccessReadDataStream(TTFDataStream):
         return v
 
     def read_into(self, buf: bytearray, offset: int, length: int) -> int:
+        self._check_read_bounds(buf, offset, length)
+        if length == 0:
+            return 0
         avail = len(self._data) - self._pos
         if avail <= 0:
             return -1
@@ -240,6 +252,9 @@ class MemoryTTFDataStream(TTFDataStream):
         return v
 
     def read_into(self, buf: bytearray, offset: int, length: int) -> int:
+        self._check_read_bounds(buf, offset, length)
+        if length == 0:
+            return 0
         avail = len(self._data) - self._pos
         if avail <= 0:
             return -1

@@ -241,6 +241,7 @@ class Splitter:
         them before closing ``document`` (cross-document resource sharing
         means the source must outlive its splits)."""
         self._current_page_number = 0
+        self._current_destination_document = None
         self._destination_documents = []
         self._source_document = document
         self._page_dict_maps = []

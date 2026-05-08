@@ -11,7 +11,6 @@ from pypdfbox.fontbox.ttf.ttf_data_stream import (
 )
 from pypdfbox.io import RandomAccessReadBuffer
 
-
 # ---------------------------------------------------------------------------
 # MemoryTTFDataStream
 # ---------------------------------------------------------------------------
@@ -57,6 +56,25 @@ def test_memory_ttf_data_stream_read_into_with_offset() -> None:
     assert n == 2
     assert bytes(buf) == b"....01...."
     assert s.get_current_position() == 2
+
+
+def test_wave323_memory_read_into_zero_length_is_noop_at_eof() -> None:
+    s = MemoryTTFDataStream(b"")
+    buf = bytearray(b"abc")
+
+    assert s.read_into(buf, 1, 0) == 0
+    assert bytes(buf) == b"abc"
+    assert s.get_current_position() == 0
+
+
+def test_wave323_memory_read_into_rejects_invalid_range() -> None:
+    s = MemoryTTFDataStream(b"abc")
+    buf = bytearray(2)
+
+    with pytest.raises(IndexError, match="out of bounds"):
+        s.read_into(buf, 2, 1)
+
+    assert s.get_current_position() == 0
 
 
 def test_memory_ttf_data_stream_seek_and_position() -> None:
@@ -134,6 +152,25 @@ def test_random_access_read_data_stream_read_into_partial_then_eof() -> None:
     assert s.read_into(buf, 0, 4) == 2
     assert bytes(buf[:2]) == b"ef"
     assert s.read_into(buf, 0, 4) == -1
+
+
+def test_wave323_random_access_read_into_zero_length_is_noop_at_eof() -> None:
+    s = _ra(b"")
+    buf = bytearray(b"abc")
+
+    assert s.read_into(buf, 1, 0) == 0
+    assert bytes(buf) == b"abc"
+    assert s.get_current_position() == 0
+
+
+def test_wave323_random_access_read_into_rejects_invalid_range() -> None:
+    s = _ra(b"abc")
+    buf = bytearray(2)
+
+    with pytest.raises(IndexError, match="out of bounds"):
+        s.read_into(buf, 2, 1)
+
+    assert s.get_current_position() == 0
 
 
 def test_random_access_read_data_stream_seek_and_position() -> None:

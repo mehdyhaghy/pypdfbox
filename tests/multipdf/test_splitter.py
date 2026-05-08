@@ -186,6 +186,27 @@ def test_split_subclass_can_override_split_at_page() -> None:
     src.close()
 
 
+def test_wave323_reused_subclass_splitter_starts_fresh_destination() -> None:
+    class SingleChunkSplitter(Splitter):
+        def split_at_page(self, page_number: int) -> bool:
+            return False
+
+    splitter = SingleChunkSplitter()
+    first_src = _make_doc(2)
+    second_src = _make_doc(3)
+
+    first_chunks = splitter.split(first_src)
+    second_chunks = splitter.split(second_src)
+
+    assert [c.get_number_of_pages() for c in first_chunks] == [2]
+    assert [c.get_number_of_pages() for c in second_chunks] == [3]
+
+    for c in [*first_chunks, *second_chunks]:
+        c.close()
+    first_src.close()
+    second_src.close()
+
+
 def test_memory_usage_setting_recorded() -> None:
     """``set_memory_usage_setting`` is advisory in this port — verify
     the setter round-trips so the hook stays available for future
@@ -201,7 +222,7 @@ def test_memory_usage_setting_recorded() -> None:
 def test_stream_cache_create_function_round_trips() -> None:
     splitter = Splitter()
 
-    def make_cache():  # noqa: ANN202
+    def make_cache() -> None:
         return None
 
     splitter.set_stream_cache_create_function(make_cache)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from pypdfbox.cos import COSArray, COSBase, COSFloat
 
 from .pd_function import PDFunction
@@ -170,7 +172,7 @@ class PDFunctionType2(PDFunction):
         c0 = self.get_c0()
         c1 = self.get_c1()
         n = self.get_n()
-        x_pow = x ** n
+        x_pow = _pow_as_pdf_float(x, n)
         # Sized by min(c0, c1) — upstream parity.
         size = min(len(c0), len(c1))
         result = [c0[j] + x_pow * (c1[j] - c0[j]) for j in range(size)]
@@ -185,6 +187,14 @@ class PDFunctionType2(PDFunction):
             f"C1: {self.get_c1_array()} "
             f"N: {self.get_n()}}}"
         )
+
+
+def _pow_as_pdf_float(base: float, exponent: float) -> float:
+    """Evaluate exponentiation in the Java/PDFBox-style float domain."""
+    try:
+        return math.pow(base, exponent)
+    except ValueError:
+        return math.nan
 
 
 __all__ = ["PDFunctionType2"]

@@ -11,11 +11,12 @@ present, exponent semantics for negative bases).
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat
 from pypdfbox.pdmodel.common.function import PDFunction, PDFunctionType2
-
 
 # --------------------------------------------------------------------------
 # Constructor / type
@@ -230,6 +231,16 @@ def test_eval_fractional_exponent() -> None:
     """N=0.5 at x=0.25 → x**N = 0.5 → midpoint of C0..C1."""
     fn = _make([0.0], [1.0], 0.5, domain=[0.0, 1.0])
     assert fn.eval([0.25]) == pytest.approx([0.5])
+
+
+def test_wave323_eval_fractional_exponent_negative_input_returns_nan() -> None:
+    """Negative base with fractional /N stays in the float domain."""
+    fn = _make([0.0], [1.0], 0.5, domain=[-1.0, 1.0], rng=[0.0, 1.0])
+
+    out = fn.eval([-0.25])
+
+    assert len(out) == 1
+    assert math.isnan(out[0])
 
 
 # --------------------------------------------------------------------------

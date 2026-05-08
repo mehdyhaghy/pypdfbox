@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
+from pypdfbox.cos import COSDictionary, COSName, COSNumber, COSStream, COSString
 
 from .pd_variable_text import PDVariableText
 
@@ -100,7 +100,10 @@ class PDTextField(PDVariableText):
     # ---------- /MaxLen ----------
 
     def get_max_len(self) -> int:
-        return self._field.get_int(_MAX_LEN, -1)
+        item = self.get_inheritable_attribute(_MAX_LEN)
+        if isinstance(item, COSNumber):
+            return item.int_value()
+        return -1
 
     def set_max_len(self, max_len: int) -> None:
         self._field.set_int(_MAX_LEN, max_len)

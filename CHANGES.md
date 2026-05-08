@@ -1419,3 +1419,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_marked_content_reference.py` and `pd_object_reference.py`: `/Pg` setters now reject unsupported wrapper-like values instead of accepting any `get_cos_object()` result.
 - `pypdfbox/pdfparser/pdf_parser.py`: resolved negative stream `/Length` values now raise `PDFParseError` consistently.
 - `pypdfbox/pdmodel/font/pd_simple_font.py`: simple fonts gained metric writers for `/FirstChar`, `/LastChar`, and `/Widths`.
+
+## Wave 323 — splitter reuse, curve operands, TTF reads, text-field inheritance, and Type2 functions
+
+- `pypdfbox/multipdf/splitter.py`: reused splitter instances now reset the current destination document at the start of each split.
+- `pypdfbox/contentstream/operator/path/curve_to_replicate_initial_point.py` and `curve_to_replicate_final_point.py`: `v` and `y` curve operators now match sibling curve operand validation.
+- `pypdfbox/fontbox/ttf/ttf_data_stream.py`: zero-length `read_into()` no longer consumes data and invalid buffer ranges are rejected explicitly.
+- `pypdfbox/pdmodel/interactive/form/pd_text_field.py`: `/MaxLen` now resolves through inherited field attributes.
+- `pypdfbox/pdmodel/common/function/pd_function_type2.py`: Type2 exponentiation stays in the float domain and returns `NaN` for invalid negative-base fractional powers.

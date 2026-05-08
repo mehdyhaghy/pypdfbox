@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.path import CurveToReplicateInitialPoint
 from pypdfbox.contentstream.operator.path.curve_to_replicate_initial_point import (
     CurveToReplicateInitialPoint as Direct,
 )
-from pypdfbox.cos import COSFloat
+from pypdfbox.cos import COSFloat, COSName
 
 
 def test_class_attribute_operator_name() -> None:
@@ -28,5 +30,21 @@ def test_process_with_four_operands_is_noop() -> None:
     )
 
 
-def test_process_accepts_empty_operands_list() -> None:
-    CurveToReplicateInitialPoint().process(Operator.get_operator("v"), [])
+def test_wave323_process_with_empty_operands_raises_missing_operand() -> None:
+    with pytest.raises(MissingOperandException):
+        CurveToReplicateInitialPoint().process(Operator.get_operator("v"), [])
+
+
+def test_wave323_process_with_three_operands_raises_missing_operand() -> None:
+    with pytest.raises(MissingOperandException):
+        CurveToReplicateInitialPoint().process(
+            Operator.get_operator("v"),
+            [COSFloat(0.0), COSFloat(0.0), COSFloat(100.0)],
+        )
+
+
+def test_wave323_process_with_non_number_operand_is_silent_no_op() -> None:
+    CurveToReplicateInitialPoint().process(
+        Operator.get_operator("v"),
+        [COSFloat(50.0), COSName("bad"), COSFloat(100.0), COSFloat(0.0)],
+    )
