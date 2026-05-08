@@ -15,7 +15,17 @@ from pypdfbox.contentstream.operator.operator_registry import (
 from pypdfbox.contentstream.operator.state.set_dash_pattern import (
     SetDashPattern,
 )
+from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
+
+
+class _DashRecordingEngine(PDFStreamEngine):
+    def __init__(self) -> None:
+        super().__init__()
+        self.line_dash_calls: list[tuple[COSArray, int]] = []
+
+    def set_line_dash_pattern(self, array: COSArray, phase: int) -> None:
+        self.line_dash_calls.append((array, phase))
 
 
 def test_class_advertises_d_operator_name() -> None:
@@ -44,6 +54,43 @@ def test_process_with_dashed_pattern_does_not_raise() -> None:
     p.process(
         Operator.get_operator("d"), [array, COSInteger.get(0)]
     )
+
+
+def test_process_forwards_dash_array_and_phase_to_engine() -> None:
+    engine = _DashRecordingEngine()
+    array = COSArray()
+    array.add(COSFloat(3.0))
+    array.add(COSFloat(2.0))
+    p = SetDashPattern(engine)
+
+    p.process(Operator.get_operator("d"), [array, COSInteger.get(5)])
+
+    assert engine.line_dash_calls == [(array, 5)]
+
+
+def test_process_truncates_float_phase_for_engine() -> None:
+    engine = _DashRecordingEngine()
+    array = COSArray()
+    p = SetDashPattern(engine)
+
+    p.process(Operator.get_operator("d"), [array, COSFloat(2.75)])
+
+    assert engine.line_dash_calls == [(array, 2)]
+
+
+def test_process_replaces_dash_array_with_non_number_as_solid() -> None:
+    engine = _DashRecordingEngine()
+    array = COSArray()
+    array.add(COSFloat(3.0))
+    array.add(COSName.get_pdf_name("Bogus"))
+    p = SetDashPattern(engine)
+
+    p.process(Operator.get_operator("d"), [array, COSInteger.get(0)])
+
+    [(dash_array, phase)] = engine.line_dash_calls
+    assert dash_array is not array
+    assert dash_array.is_empty()
+    assert phase == 0
 
 
 def test_process_with_zero_operands_raises_missing_operand() -> None:
@@ -150,3 +197,22 @@ def test_get_dash_phase_returns_none_when_array_not_an_array() -> None:
         )
         is None
     )
+
+
+def test_get_sanitized_dash_array_returns_original_for_numbers() -> None:
+    array = COSArray()
+    array.add(COSFloat(3.0))
+    array.add(COSInteger.get(2))
+
+    assert SetDashPattern.get_sanitized_dash_array(array) is array
+
+
+def test_get_sanitized_dash_array_returns_empty_for_non_number() -> None:
+    array = COSArray()
+    array.add(COSFloat(3.0))
+    array.add(COSName.get_pdf_name("Bogus"))
+
+    sanitized = SetDashPattern.get_sanitized_dash_array(array)
+
+    assert sanitized is not array
+    assert sanitized.is_empty()

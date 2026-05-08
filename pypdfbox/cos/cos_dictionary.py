@@ -81,7 +81,7 @@ class COSDictionary(COSBase):
         return item
 
     def get_dictionary_object(
-        self, key: COSName | str, default: COSBase | None = None
+        self, key: COSName | str, default: COSBase | COSName | str | None = None
     ) -> COSBase | None:
         """Resolved entry — dereferences ``COSObject`` if needed.
 
@@ -97,7 +97,7 @@ class COSDictionary(COSBase):
         return default
 
     def getDictionaryObject(  # noqa: N802
-        self, key: COSName | str, default: COSBase | None = None
+        self, key: COSName | str, default: COSBase | COSName | str | None = None
     ) -> COSBase | None:
         return self.get_dictionary_object(key, default)
 
@@ -106,6 +106,31 @@ class COSDictionary(COSBase):
 
     def containsKey(self, key: COSName | str) -> bool:  # noqa: N802
         return self.contains_key(key)
+
+    def contains_value(self, value: object) -> bool:
+        """Return true if any entry stores ``value``.
+
+        Mirrors PDFBox ``COSDictionary.containsValue`` and uses normal
+        value equality, just like Java's ``Map.containsValue``.
+        """
+        return value in self._items.values()
+
+    def containsValue(self, value: object) -> bool:  # noqa: N802 - upstream Java name
+        return self.contains_value(value)
+
+    def get_key_for_value(self, value: object) -> COSName | None:
+        """Return the first key whose value equals ``value``, if any.
+
+        Dictionary insertion order is preserved, so "first" is deterministic
+        and matches the order used when writing or iterating the dictionary.
+        """
+        for key, item in self._items.items():
+            if item == value:
+                return key
+        return None
+
+    def getKeyForValue(self, value: object) -> COSName | None:  # noqa: N802
+        return self.get_key_for_value(value)
 
     def clear_item(self, key: COSName | str) -> None:
         """Remove ``key`` if present."""

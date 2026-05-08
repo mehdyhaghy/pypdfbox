@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import re
 import sys
+from collections.abc import Callable
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
@@ -494,7 +496,7 @@ def test_write_characters_default_is_no_op() -> None:
     chain via ``super().write_characters(...)``."""
     s = PDFTextStripper()
     pos = TextPosition(text="z", x=0.0, y=0.0, font_size=10.0)
-    assert s.write_characters(pos) is None
+    s.write_characters(pos)
 
 
 def test_start_and_end_article_hooks_default_no_op() -> None:
@@ -503,10 +505,10 @@ def test_start_and_end_article_hooks_default_no_op() -> None:
     the upstream signatures: ``start_article(is_ltr=True)`` and
     ``end_article()``."""
     s = PDFTextStripper()
-    assert s.start_article() is None
-    assert s.start_article(is_ltr=True) is None
-    assert s.start_article(is_ltr=False) is None
-    assert s.end_article() is None
+    s.start_article()
+    s.start_article(is_ltr=True)
+    s.start_article(is_ltr=False)
+    s.end_article()
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +523,55 @@ def test_get_output_default_is_none() -> None:
     ``write_text(doc, writer)`` flow."""
     s = PDFTextStripper()
     assert s.get_output() is None
+
+
+def test_write_text_writes_extracted_text_to_writer() -> None:
+    """``write_text`` mirrors upstream's ``writeText`` writer-driven API."""
+    doc = PDDocument()
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (written) Tj ET")
+    writer = io.StringIO()
+
+    s = PDFTextStripper()
+    try:
+        s.write_text(doc, writer)
+
+        assert writer.getvalue() == "written\n"
+        assert s.get_output() is None
+    finally:
+        doc.close()
+
+
+def test_write_text_exposes_output_during_hooks_and_restores_afterwards() -> None:
+    doc = PDDocument()
+    _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (hooked) Tj ET")
+    writer = io.StringIO()
+    seen: list[object | None] = []
+
+    class _OutputAware(PDFTextStripper):
+        def start_document(self, document: PDDocument) -> None:
+            seen.append(self.get_output())
+
+        def write_string(
+            self,
+            text: str,
+            text_positions: list[TextPosition],
+            sink: Callable[[str], None],
+        ) -> None:
+            seen.append(self.get_output())
+            sink(text)
+
+        def end_document(self, document: PDDocument) -> None:
+            seen.append(self.get_output())
+
+    s = _OutputAware()
+    try:
+        s.write_text(doc, writer)
+
+        assert writer.getvalue() == "hooked\n"
+        assert seen == [writer, writer, writer]
+        assert s.get_output() is None
+    finally:
+        doc.close()
 
 
 def test_get_characters_by_article_empty_before_walk() -> None:

@@ -5,7 +5,14 @@ Mirrors the contract in
 """
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSNull,
+)
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageFitDestination,
     PDPageFitHeightDestination,
@@ -86,6 +93,22 @@ def test_get_page_returns_none_when_d0_is_integer() -> None:
     assert dest.get_page() is None
     # The page slot is an integer at this point.
     assert isinstance(dest.get_cos_array().get_object(0), COSInteger)
+
+
+def test_raw_cos_number_page_slot_accepts_float_like_upstream() -> None:
+    """PDFBox checks ``COSNumber`` for ``/D[0]`` and calls ``intValue()``.
+
+    Malformed PDFs can carry a float where an integer page index is expected;
+    mirror upstream by accepting it and truncating toward zero.
+    """
+    arr = COSArray([COSFloat(2.75), COSName.get_pdf_name("XYZ")])
+    dest = PDPageXYZDestination(arr)
+
+    assert dest.has_page_number() is True
+    assert dest.get_page() is None
+    assert dest.get_page_number() == 2
+    assert dest.find_page_number() == 2
+    assert dest.retrieve_page_number() == 2
 
 
 def test_get_page_returns_none_for_explicit_negative_index() -> None:

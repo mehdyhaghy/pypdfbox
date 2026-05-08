@@ -59,6 +59,28 @@ def test_contains_key() -> None:
     assert "Bar" not in d
 
 
+def test_contains_value_uses_cos_value_equality() -> None:
+    d = COSDictionary([("A", COSInteger(7)), ("B", COSString("title"))])
+
+    assert d.contains_value(COSInteger(7))
+    assert d.containsValue(COSString("title"))
+    assert not d.contains_value(COSInteger(8))
+
+
+def test_get_key_for_value_returns_first_matching_key() -> None:
+    d = COSDictionary(
+        [
+            ("First", COSInteger(1)),
+            ("Second", COSString("shared")),
+            ("Third", COSString("shared")),
+        ]
+    )
+
+    assert d.get_key_for_value(COSString("shared")) == COSName.get_pdf_name("Second")
+    assert d.getKeyForValue(COSInteger(1)) == COSName.get_pdf_name("First")
+    assert d.get_key_for_value(COSInteger(99)) is None
+
+
 def test_clear() -> None:
     d = COSDictionary([("A", COSInteger(1)), ("B", COSInteger(2))])
     d.clear()

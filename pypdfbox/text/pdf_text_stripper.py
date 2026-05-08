@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import sys
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream, COSString
 from pypdfbox.fontbox.cmap import CMap, CMapParser
@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.documentnavigation.outline.pd_outline_item import (
         PDOutlineItem,
     )
+
+
+class _TextWriter(Protocol):
+    def write(self, text: str) -> object: ...
 
 
 class PDFTextStripper:
@@ -503,6 +507,21 @@ class PDFTextStripper:
             self.end_document(document)
             self._current_page_no = 0
         return "".join(chunks)
+
+    def write_text(self, document: PDDocument, output: _TextWriter) -> None:
+        """Write extracted text to ``output``.
+
+        Mirrors upstream ``PDFTextStripper.writeText(PDDocument, Writer)``:
+        the supplied writer is exposed through :meth:`get_output` while
+        document/page/string hooks run, and is cleared when the walk
+        completes or raises.
+        """
+        previous_output = self._output
+        self._output = output
+        try:
+            output.write(self.get_text(document))
+        finally:
+            self._output = previous_output
 
     @staticmethod
     def _resolve_bookmark_page(

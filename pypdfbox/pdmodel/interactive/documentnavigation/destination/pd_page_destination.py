@@ -51,11 +51,15 @@ class PDPageDestination(PDDestination):
             return
         raise TypeError(f"Cannot set page from {type(page).__name__}")
 
+    @staticmethod
+    def _coerce_page_number(page: COSBase | None) -> int:
+        if isinstance(page, (COSInteger, COSFloat)):
+            return int(page.value)
+        return -1
+
     def get_page_number(self) -> int:
         page = self._array.get_object(0)
-        if isinstance(page, COSInteger):
-            return page.value
-        return -1
+        return self._coerce_page_number(page)
 
     def set_page_number(self, page_number: int) -> None:
         self._array.set(0, COSInteger.get(page_number))
@@ -67,21 +71,22 @@ class PDPageDestination(PDDestination):
         return isinstance(self._array.get_object(0), COSDictionary)
 
     def has_page_number(self) -> bool:
-        """``True`` when ``/D[0]`` is a page-index ``COSInteger`` (remote destination)."""
-        return isinstance(self._array.get_object(0), COSInteger)
+        """``True`` when ``/D[0]`` is a numeric page index (remote destination)."""
+        return isinstance(self._array.get_object(0), (COSInteger, COSFloat))
 
     def find_page_number(self, document: Any | None = None) -> int:
         """Return the 0-based destination page index.
 
-        ``/D[0]`` may be an integer page index, a direct page dictionary, or
+        ``/D[0]`` may be a numeric page index, a direct page dictionary, or
         an indirect object that resolves to either. Page-object destinations
         require a ``PDDocument`` or ``PDPageTree`` context and are matched by
         underlying COS dictionary identity. Returns ``-1`` when the page can't
         be located.
         """
         page = self._array.get_object(0)
-        if isinstance(page, COSInteger):
-            return page.value
+        page_number = self._coerce_page_number(page)
+        if page_number != -1:
+            return page_number
         if isinstance(page, COSDictionary):
             pages = self._resolve_page_tree(document)
             if pages is not None:
@@ -104,8 +109,9 @@ class PDPageDestination(PDDestination):
         if document is not None:
             return self.find_page_number(document)
         page = self._array.get_object(0)
-        if isinstance(page, COSInteger):
-            return page.value
+        page_number = self._coerce_page_number(page)
+        if page_number != -1:
+            return page_number
         if not isinstance(page, COSDictionary):
             return -1
         # Walk /Parent (or /P) until we find a /Type /Pages root.

@@ -1515,3 +1515,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/common/pd_number_tree_node.py`: number-tree lookups now probe children directly when `/Limits` are missing or reversed.
 - `pypdfbox/pdmodel/graphics/image/lossless_factory.py`: 16-bit grayscale Pillow images now preserve 16-bit samples as `/DeviceGray` with big-endian bytes.
 - `pypdfbox/pdmodel/font/pd_true_type_font.py`: symbolic TrueType glyph lookup now checks `F000`, `F100`, and `F200` private-use cmap ranges after direct lookup misses.
+
+## Wave 335 — dash patterns, COS dictionary values, xref recovery, page destinations, and text output
+
+- `pypdfbox/contentstream/operator/state/set_dash_pattern.py`: dash pattern processing now forwards valid operands and falls back to a solid line for malformed dash arrays.
+- `pypdfbox/cos/cos_dictionary.py`: COS dictionaries gained value containment and reverse key lookup helpers matching PDFBox names.
+- `pypdfbox/pdfparser/pdf_parser.py`: lenient parsing now searches for nearby xref sections when `startxref` or `/Prev` offsets are shifted.
+- `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_destination.py`: page destinations now accept numeric page slots as COS numbers and truncate floats like Java `intValue()`.
+- `pypdfbox/text/pdf_text_stripper.py`: `write_text()` now binds the supplied writer during extraction hooks and restores previous output state afterward.

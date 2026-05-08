@@ -131,6 +131,7 @@ class PDFParser:
         # path below is unaffected (trailing xref still wins).
         self._detect_linearization()
         startxref = self.find_startxref_offset()
+        startxref = self._recover_xref_offset_if_needed(startxref)
         self._cos_parser.set_xref_offset(startxref)
         # Record so the incremental writer can chain its appended xref
         # via /Prev (PRD §6.5 cluster #2).
@@ -581,6 +582,7 @@ class PDFParser:
         cycle is detected."""
         offset = start_offset
         while offset >= 0:
+            offset = self._recover_xref_offset_if_needed(offset)
             if self._resolver.has_visited(offset):
                 # Cycle in /Prev — stop instead of looping.
                 break
@@ -596,6 +598,56 @@ class PDFParser:
                 if isinstance(prev_obj, COSInteger):
                     current_prev = prev_obj.value
             offset = current_prev
+
+    def _recover_xref_offset_if_needed(self, offset: int) -> int:
+        """Return a usable xref offset, recovering in lenient mode when
+        ``startxref`` or ``/Prev`` points near but not at the section.
+
+        PDFBox's lenient parser falls back to ``bfSearchForXRef`` when a
+        declared xref position is malformed. Keep the correction before
+        ``XrefTrailerResolver.begin_section`` so visited-offset tracking
+        records the real section start."""
+        if self._xref_section_starts_at(offset):
+            return offset
+        if not self._lenient or self._cos_parser is None:
+            return offset
+        recovered = self._cos_parser.bf_search_for_xref(offset)
+        if recovered >= 0 and self._xref_section_starts_at(recovered):
+            return recovered
+        return offset
+
+    def _xref_section_starts_at(self, offset: int) -> bool:
+        """Lightweight shape check for a traditional xref table or xref
+        stream object at ``offset``. Cursor position is preserved."""
+        if offset < 0 or offset >= self._src.length():
+            return False
+        saved = self._src.get_position()
+        try:
+            self._src.seek(offset)
+            self._base.skip_whitespace()
+            peek = self._base.peek_byte()
+            if peek == 0x78:  # 'x'
+                return self._base.read_keyword() == b"xref"
+            if not (0x30 <= peek <= 0x39) or self._cos_parser is None:
+                return False
+            # Xref streams start as indirect-object definitions whose
+            # dictionary advertises /Type /XRef.
+            self._base.read_int()
+            self._base.skip_whitespace()
+            self._base.read_int()
+            self._base.skip_whitespace()
+            if self._base.read_keyword() != b"obj":
+                return False
+            self._base.skip_whitespace()
+            if self._base.peek_byte() != 0x3C:  # '<'
+                return False
+            body = self._cos_parser.parse_cos_dictionary()
+            type_obj = body.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+            return isinstance(type_obj, COSName) and type_obj.name == "XRef"
+        except PDFParseError:
+            return False
+        finally:
+            self._src.seek(saved)
 
     def parse_xref_section_at(self, offset: int) -> None:
         """Parse one xref section + trailer starting at ``offset``."""

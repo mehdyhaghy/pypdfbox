@@ -20,10 +20,8 @@ class SetDashPattern(OperatorProcessor):
       is silently skipped likewise.
 
     Upstream additionally inspects the dash array for non-number
-    elements and warn-logs / replaces it with an empty (solid) array;
-    that sanitisation step lands with the rendering-prep cluster, since
-    the lite registry-routing scaffold has no graphics state yet to
-    forward the cleaned array into.
+    elements and warn-logs / replaces it with an empty (solid) array
+    before notifying the stream engine.
     """
 
     OPERATOR_NAME = "d"
@@ -31,11 +29,17 @@ class SetDashPattern(OperatorProcessor):
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         if len(operands) < 2:
             raise MissingOperandException(operator, operands)
-        if not isinstance(operands[0], COSArray):
+        dash_array = self.get_dash_array(operands)
+        phase = self.get_dash_phase(operands)
+        if dash_array is None or phase is None:
             return
-        if not isinstance(operands[1], COSNumber):
+        dash_array = self.get_sanitized_dash_array(dash_array)
+
+        context = self.get_context()
+        if context is None:
+            self._log_invocation(operator, operands)
             return
-        self._log_invocation(operator, operands)
+        context.set_line_dash_pattern(dash_array, phase.int_value())
 
     @staticmethod
     def get_dash_array(operands: list[COSBase]) -> COSArray | None:
@@ -66,3 +70,16 @@ class SetDashPattern(OperatorProcessor):
         if not isinstance(second, COSNumber):
             return None
         return second
+
+    @staticmethod
+    def get_sanitized_dash_array(dash_array: COSArray) -> COSArray:
+        """Return ``dash_array`` when all entries resolve to numbers.
+
+        PDFBox treats a dash array containing any non-number as malformed
+        and applies an empty array instead, yielding a solid line rather
+        than propagating bogus values into graphics state.
+        """
+        for index in range(dash_array.size()):
+            if not isinstance(dash_array.get_object(index), COSNumber):
+                return COSArray()
+        return dash_array
