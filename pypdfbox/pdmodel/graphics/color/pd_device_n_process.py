@@ -76,5 +76,15 @@ class PDDeviceNProcess:
         """Remove the process ``/Components`` entry."""
         self.set_components(None)
 
+    def __str__(self) -> str:
+        """Mirror upstream ``PDDeviceNProcess.toString``."""
+        color_space = self.get_color_space()
+        color_space_repr = "None" if color_space is None else color_space.get_name()
+        parts = [f"Process{{{color_space_repr}"]
+        for component in self.get_components():
+            parts.append(f' "{component}"')
+        parts.append("}")
+        return "".join(parts)
+
 
 __all__ = ["PDDeviceNProcess"]

@@ -124,7 +124,7 @@ class COSStream(COSDictionary):
     # ---------- raw bytes I/O ----------
 
     def has_data(self) -> bool:
-        return self._buffer is not None and self._buffer.length() > 0
+        return self._buffer is not None
 
     def get_length(self) -> int:
         return self._buffer.length() if self._buffer is not None else 0

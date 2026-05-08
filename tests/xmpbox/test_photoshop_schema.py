@@ -534,12 +534,62 @@ def test_document_ancestors_property_returns_bag_array_property() -> None:
     children = bag.get_all_properties()
     assert len(children) == 2
     assert all(isinstance(child, TextType) for child in children)
-    assert {child.get_string_value() for child in children} == {
+    assert {
+        child.get_string_value() for child in children if isinstance(child, TextType)
+    } == {
         "uuid:parent-1",
         "uuid:parent-2",
     }
     # Plain-list view stays consistent with the typed view.
     assert schema.get_document_ancestors() == ["uuid:parent-1", "uuid:parent-2"]
+
+
+def test_document_ancestors_property_setter_round_trips_array_property() -> None:
+    """Mirror upstream ``setDocumentAncestorsProperty(ArrayProperty)``."""
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = PhotoshopSchema(metadata)
+    bag = ArrayProperty(
+        metadata,
+        PhotoshopSchema.NAMESPACE,
+        "photoshop",
+        "temporary-name",
+        Cardinality.Bag,
+    )
+    bag.add_property(
+        TextType(
+            metadata,
+            PhotoshopSchema.NAMESPACE,
+            "photoshop",
+            "li",
+            "uuid:parent-1",
+        )
+    )
+    bag.add_property(
+        TextType(
+            metadata,
+            PhotoshopSchema.NAMESPACE,
+            "photoshop",
+            "li",
+            "uuid:parent-2",
+        )
+    )
+
+    schema.set_document_ancestors_property(bag)
+
+    assert bag.get_property_name() == PhotoshopSchema.DOCUMENT_ANCESTORS
+    assert schema.get_document_ancestors_property() is bag
+    assert schema.get_property(PhotoshopSchema.DOCUMENT_ANCESTORS) is bag
+    assert schema.get_document_ancestors() == ["uuid:parent-1", "uuid:parent-2"]
+
+
+def test_document_ancestors_property_setter_with_none_clears_property() -> None:
+    schema = _photoshop()
+    schema.add_document_ancestors("uuid:parent-1")
+
+    schema.set_document_ancestors_property(None)
+
+    assert schema.get_document_ancestors_property() is None
+    assert schema.get_document_ancestors() is None
 
 
 def test_add_text_layers_upstream_method_appends_layer() -> None:

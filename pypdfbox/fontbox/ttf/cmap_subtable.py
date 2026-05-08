@@ -168,10 +168,15 @@ class CmapSubtable(CmapLookup):
         glyph_id_array = data.read_unsigned_short_array(entry_count)
         max_glyph_id = 0
         for i in range(entry_count):
-            if glyph_id_array[i] > max_glyph_id:
-                max_glyph_id = glyph_id_array[i]
-            self._character_code_to_glyph_id[first_code + i] = glyph_id_array[i]
-        self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+            glyph_id = glyph_id_array[i]
+            if glyph_id >= num_glyphs:
+                _LOG.warning("Format 6 cmap contains an invalid glyph index")
+                continue
+            if glyph_id > max_glyph_id:
+                max_glyph_id = glyph_id
+            self._character_code_to_glyph_id[first_code + i] = glyph_id
+        if self._character_code_to_glyph_id:
+            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
 
     # ----- format 8 (mixed 16-/32-bit coverage) -----
 

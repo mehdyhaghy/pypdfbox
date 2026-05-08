@@ -1555,3 +1555,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/multipdf/overlay.py`: overlay cleanup now closes only documents opened by the overlay utility itself.
 - `pypdfbox/pdmodel/encryption/pd_crypt_filter_dictionary.py`: crypt filter dictionaries gained raw `/CFM` getter and setter accessors while preserving string helpers.
 - `pypdfbox/pdfparser/pdf_stream_parser.py`: malformed content-stream dictionaries and arrays now stop parsing, close the source, and return `None`.
+
+## Wave 340 — stream data presence, cmap glyph guards, DeviceN strings, line coordinates, and Photoshop ancestors
+
+- `pypdfbox/cos/cos_stream.py`: `has_data()` now reports explicit zero-length stream data as present.
+- `pypdfbox/fontbox/ttf/cmap_subtable.py`: cmap format 6 now skips glyph IDs outside `num_glyphs` consistently with other cmap formats.
+- `pypdfbox/pdmodel/graphics/color/pd_device_n_process.py`: standalone DeviceN process wrappers now expose upstream-style string output.
+- `pypdfbox/pdmodel/interactive/annotation/pd_annotation_line.py`: line annotations now reject non-four-coordinate `/L` arrays before mutating dictionaries.
+- `pypdfbox/xmpbox/photoshop_schema.py`: Photoshop document ancestors gained a typed property setter and return stored `ArrayProperty` values.

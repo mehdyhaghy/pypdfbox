@@ -21,6 +21,23 @@ def test_set_and_get_raw_data() -> None:
         assert s.get_raw_data() == b"hello world"
 
 
+def test_zero_length_raw_data_still_counts_as_stream_data() -> None:
+    with COSStream() as s:
+        s.set_raw_data(b"")
+        assert s.has_data()
+        assert s.get_length() == 0
+        assert s.create_raw_input_stream().read() == b""
+
+
+def test_zero_length_output_stream_still_counts_as_stream_data() -> None:
+    with COSStream() as s:
+        with s.create_raw_output_stream():
+            pass
+        assert s.has_data()
+        assert s.get_length() == 0
+        assert s.create_input_stream().read() == b""
+
+
 def test_set_raw_data_replaces_previous() -> None:
     with COSStream() as s:
         s.set_raw_data(b"first")

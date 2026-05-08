@@ -397,6 +397,9 @@ class PhotoshopSchema(XMPSchema):
         from the simple-list storage so callers always see an upstream-shaped
         ``ArrayProperty`` carrying :class:`TextType` children.
         """
+        existing = self._properties.get(self.DOCUMENT_ANCESTORS)
+        if isinstance(existing, ArrayProperty):
+            return existing
         items = self.get_unqualified_bag_value_list(self.DOCUMENT_ANCESTORS)
         if items is None:
             return None
@@ -419,6 +422,18 @@ class PhotoshopSchema(XMPSchema):
                     )
                 )
         return bag
+
+    def set_document_ancestors_property(self, value: ArrayProperty | None) -> None:
+        """
+        Mirror of upstream ``setDocumentAncestorsProperty(ArrayProperty)``.
+        Installs the provided array under the ``DocumentAncestors`` local name;
+        passing ``None`` removes the property.
+        """
+        if value is None:
+            self.remove_property(self.DOCUMENT_ANCESTORS)
+            return
+        value.set_property_name(self.DOCUMENT_ANCESTORS)
+        self._properties[self.DOCUMENT_ANCESTORS] = value
 
     # --- Headline (Text) ---------------------------------------------
 

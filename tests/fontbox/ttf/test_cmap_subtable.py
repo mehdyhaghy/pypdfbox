@@ -6,17 +6,16 @@ import pytest
 
 from pypdfbox.fontbox.ttf.cmap_lookup import CmapLookup
 from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
+from pypdfbox.fontbox.ttf.cmap_table import CmapTable
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
 
-class _CmapStub:
+class _CmapStub(CmapTable):
     """Minimal stand-in for ``CmapTable`` — only exposes ``get_offset()``."""
 
     def __init__(self, offset: int = 0) -> None:
-        self._offset = offset
-
-    def get_offset(self) -> int:
-        return self._offset
+        super().__init__()
+        self.set_offset(offset)
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +193,18 @@ def test_format_6_trimmed_table_round_trip() -> None:
 
     assert sub.get_char_codes(10) == [0x30]
     assert sub.get_char_codes(13) == [0x33]
+    assert sub.get_char_codes(99) is None
+
+
+def test_format_6_invalid_glyph_index_skipped() -> None:
+    blob = _build_format6(0x30, [1, 99, 3])
+    data = MemoryTTFDataStream(blob)
+    sub = CmapSubtable()
+    sub.init_subtable(_CmapStub(), num_glyphs=5, data=data)
+
+    assert sub.get_glyph_id(0x30) == 1
+    assert sub.get_glyph_id(0x31) == 0
+    assert sub.get_glyph_id(0x32) == 3
     assert sub.get_char_codes(99) is None
 
 

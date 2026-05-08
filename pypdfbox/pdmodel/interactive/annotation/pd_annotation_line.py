@@ -85,8 +85,12 @@ class PDAnnotationLine(PDAnnotationMarkup):
             return value.to_float_array()[:4]
         return None
 
-    def set_line(self, line: list[float]) -> None:
+    def set_line(self, line: list[float] | tuple[float, ...]) -> None:
         """Set ``/L`` to the supplied 4-element ``[x1, y1, x2, y2]``."""
+        if len(line) != 4:
+            raise ValueError(
+                f"/L must be a 4-element [x1 y1 x2 y2] array; got {len(line)} elements"
+            )
         arr = COSArray([COSFloat(float(c)) for c in line])
         self._dict.set_item(_L, arr)
 
