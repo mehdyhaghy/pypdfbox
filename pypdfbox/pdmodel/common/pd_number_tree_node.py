@@ -156,13 +156,12 @@ class PDNumberTreeNode[T](ABC):
             for kid in kids:
                 arr.add(kid.get_cos_object())
             self._node.set_item(_KIDS, arr)
-            # root nodes with kids do not have Nums
-            if self.is_root_node():
-                self._node.remove_item(_NUMS)
+            self._node.remove_item(_NUMS)
         else:
             self._node.remove_item(_KIDS)
             self._node.remove_item(_LIMITS)
         self._calculate_limits()
+        self._notify_parent_limits_changed()
 
     # ---------- /Nums ----------
 

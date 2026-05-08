@@ -227,6 +227,11 @@ def test_non_full_screen_page_mode_constants_match_pdf_names() -> None:
     assert PDViewerPreferences.NON_FS_USE_OUTLINES == "UseOutlines"
     assert PDViewerPreferences.NON_FS_USE_THUMBS == "UseThumbs"
     assert PDViewerPreferences.NON_FS_USE_OC == "UseOC"
+    assert PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE_USE_OPTIONAL_CONTENT == "UseOC"
+    assert (
+        PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE_USE_OPTIONAL_CONTENT
+        == PDViewerPreferences.NON_FULL_SCREEN_PAGE_MODE_USE_OC
+    )
 
 
 def test_direction_constants_match_pdf_names() -> None:

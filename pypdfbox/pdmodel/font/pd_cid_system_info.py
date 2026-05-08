@@ -148,7 +148,13 @@ class PDCIDSystemInfo:
         return self.get_registry() == self.REGISTRY_ADOBE
 
     def __str__(self) -> str:
-        return f"{self.get_registry()}-{self.get_ordering()}-{self.get_supplement()}"
+        registry = self.get_registry()
+        ordering = self.get_ordering()
+        return (
+            f"{registry if registry is not None else 'null'}-"
+            f"{ordering if ordering is not None else 'null'}-"
+            f"{self.get_supplement()}"
+        )
 
     # ---------- value-equality / hashing ----------
 

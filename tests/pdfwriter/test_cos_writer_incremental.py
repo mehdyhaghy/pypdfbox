@@ -59,6 +59,43 @@ def _make_seed_pdf() -> bytes:
     return _full_save(doc)
 
 
+# ---------- position accounting --------------------------------------------
+
+
+def test_incremental_writer_seeds_position_from_explicit_source() -> None:
+    """PDFBox seeds COSStandardOutputStream with inputData.length() so any
+    xref offsets observed during an incremental save are absolute offsets in
+    the concatenated output, not offsets relative to the append buffer."""
+    src = _make_seed_pdf()
+    sink = io.BytesIO()
+
+    with RandomAccessReadBuffer(src) as source, COSWriter(
+        sink, incremental=True, incremental_input=source
+    ) as writer:
+        assert writer.get_standard_output().get_position() == len(src)
+
+
+def test_incremental_writer_position_tracks_final_output_length() -> None:
+    src = _make_seed_pdf()
+    parsed = Loader.load_pdf(src)
+    sink = io.BytesIO()
+    writer = COSWriter(sink, incremental=True)
+    try:
+        catalog = parsed.get_catalog()
+        assert catalog is not None
+        catalog.set_int(COSName.get_pdf_name("V"), 2)
+        catalog.set_needs_to_be_updated(True)
+
+        writer.write(parsed)
+
+        out = sink.getvalue()
+        assert out.startswith(src)
+        assert writer.get_standard_output().get_position() == len(out)
+    finally:
+        writer.close()
+        parsed.close()
+
+
 # ---------- contracts (PRD §6.5 cluster #2) --------------------------------
 
 
@@ -96,7 +133,9 @@ def test_incremental_marks_one_object_appends_only_that_object() -> None:
     obj_blocks = re.findall(rb"\b(\d+) (\d+) obj\b", increment)
     assert obj_blocks == [(b"1", b"0")], obj_blocks
     # 3. New trailer carries /Prev pointing at the old startxref.
-    old_startxref = int(re.search(rb"startxref\n(\d+)\n%%EOF", src).group(1))
+    old_startxref_match = re.search(rb"startxref\n(\d+)\n%%EOF", src)
+    assert old_startxref_match is not None
+    old_startxref = int(old_startxref_match.group(1))
     new_trailers = re.findall(rb"/Prev (\d+)", increment)
     assert new_trailers == [str(old_startxref).encode("ascii")]
     # 4. Final %%EOF.

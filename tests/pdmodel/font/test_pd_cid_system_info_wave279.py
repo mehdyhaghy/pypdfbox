@@ -42,7 +42,19 @@ def test_no_arg_defaults_are_empty_and_not_identity_or_adobe() -> None:
     assert info.get_supplement() == 0
     assert info.is_identity() is False
     assert info.is_adobe() is False
-    assert str(info) == "None-None-0"
+    assert str(info) == "null-null-0"
+
+
+def test_string_representation_matches_java_null_text_for_missing_parts() -> None:
+    info = PDCIDSystemInfo()
+    info.set_registry("Adobe")
+
+    assert str(info) == "Adobe-null-0"
+
+    info.set_registry(None)
+    info.set_ordering("Identity")
+
+    assert str(info) == "null-Identity-0"
 
 
 def test_cos_dictionary_round_trip_preserves_backing_object() -> None:

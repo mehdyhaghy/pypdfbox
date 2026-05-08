@@ -226,8 +226,11 @@ class COSWriter(ICOSVisitor):
             # are computed as if the increment were already concatenated to
             # the original file. Matches upstream's
             # ``new COSStandardOutputStream(output, inputData.length())``.
+            initial_position = (
+                incremental_input.length() if incremental_input is not None else 0
+            )
             self._standard_output = COSStandardOutputStream(
-                self._adapter, position=0
+                self._adapter, position=initial_position
             )
         else:
             self._increment_buffer = None
@@ -962,6 +965,7 @@ class COSWriter(ICOSVisitor):
         assert self._increment_buffer is not None
 
         source_length = self._incremental_input.length()
+        self._seed_incremental_position(source_length)
 
         # 1. ``prepareIncrement`` — register every existing key/actual so
         # references emitted from the dirty graph reuse the source's keys.
@@ -987,21 +991,21 @@ class COSWriter(ICOSVisitor):
         out.write_crlf()
 
         # 3. Emit each indirect object's body. Offsets recorded by
-        # ``_do_write_object`` are relative to the increment buffer, so we
-        # compensate when writing the xref to make them absolute.
+        # ``_do_write_object`` are absolute because the standard output
+        # position is seeded with the source length.
         self._do_write_objects()
 
         # 4. Emit the new xref section. Must include only the changed
         # objects + the mandatory free-list head (object 0).
-        self._do_write_xref_increment(source_length)
+        self._do_write_xref_increment()
 
         # 5. Emit the trailer with /Prev pointing at the prior startxref.
         self._do_write_trailer_increment(doc)
 
-        # 6. startxref + %%EOF (offsets are absolute = source_length + buffer pos).
+        # 6. startxref + %%EOF.
         out.write(STARTXREF)
         out.write_eol()
-        out.write_int(source_length + self._startxref)
+        out.write_int(self._startxref)
         out.write_eol()
         out.write(EOF)
         out.write_eol()
@@ -1011,6 +1015,22 @@ class COSWriter(ICOSVisitor):
         increment = self._increment_buffer.getvalue()
         if increment:
             self._write_to_output(increment)
+
+    def _seed_incremental_position(self, source_length: int) -> None:
+        """Align the buffered incremental stream with absolute file offsets.
+
+        When ``incremental_input`` is supplied at construction time this is
+        already true. If the source is auto-pulled from the document during
+        ``write()``, seed the position just before the first append byte.
+        """
+        assert self._increment_buffer is not None
+        if (
+            self._standard_output.get_position() == 0
+            and self._increment_buffer.tell() == 0
+        ):
+            self._standard_output = COSStandardOutputStream(
+                self._adapter, position=source_length
+            )
 
     def _prepare_increment(self, doc: COSDocument) -> None:
         """Populate ``object_keys`` / ``key_object`` from the source's
@@ -1039,7 +1059,7 @@ class COSWriter(ICOSVisitor):
             if actual.is_needs_to_be_updated() or cos_obj.is_needs_to_be_updated():
                 self._add_object_to_write(cos_obj)
 
-    def _do_write_xref_increment(self, source_length: int) -> None:
+    def _do_write_xref_increment(self) -> None:
         """Emit the new xref section. Subsections cover only the changed /
         new objects plus the mandatory free-list head."""
         out = self._standard_output
@@ -1049,8 +1069,8 @@ class COSWriter(ICOSVisitor):
         self._xref_entries.append(COSWriterXRefEntry.get_null_entry())
 
         entries = sorted(self._xref_entries)
-        # Record startxref relative to the increment buffer (we add
-        # source_length back when writing the trailer / startxref line).
+        # Record startxref as an absolute offset. The standard output
+        # position was seeded with ``source_length`` before any append bytes.
         self._startxref = out.get_position()
 
         out.write(XREF)
@@ -1060,16 +1080,12 @@ class COSWriter(ICOSVisitor):
             self._write_xref_range(first, count)
             for entry in entries:
                 if first <= entry.key.object_number < first + count:
-                    self._write_xref_entry_incremental(entry, source_length)
+                    self._write_xref_entry_incremental(entry)
 
-    def _write_xref_entry_incremental(
-        self, entry: COSWriterXRefEntry, source_length: int
-    ) -> None:
-        """Same wire format as the full-save xref entry, but offsets are
-        rebased to absolute (= source_length + offset-in-buffer)."""
+    def _write_xref_entry_incremental(self, entry: COSWriterXRefEntry) -> None:
+        """Same wire format as the full-save xref entry."""
         out = self._standard_output
-        absolute = entry.offset + source_length if not entry.free else entry.offset
-        out.write(_format_xref_offset(absolute))
+        out.write(_format_xref_offset(entry.offset))
         out.write(SPACE)
         out.write(_format_xref_generation(entry.key.generation_number))
         out.write(SPACE)

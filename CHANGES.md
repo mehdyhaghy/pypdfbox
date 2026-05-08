@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/pd_viewer_preferences.py`: includes the long-form deprecated `UseOC` non-full-screen page mode constant.
+- `pypdfbox/cos/cos_stream.py`: `stop_filters` canonicalizes standard filter aliases before comparison.
+- `pypdfbox/pdmodel/font/pd_cid_system_info.py`: string rendering uses Java-style `null` for missing registry or ordering.
+- `pypdfbox/pdmodel/common/pd_number_tree_node.py`: switching a number tree node to kids clears stale `/Nums` and refreshes ancestor limits.
+- `pypdfbox/pdfwriter/cos_writer.py`: incremental saves track absolute output offsets after copied source bytes.
 - `pypdfbox/pdmodel/interactive/action/pd_action_java_script.py`: stream-form `/JS` actions decode through `COSStream.to_text_string()`.
 - `pypdfbox/pdmodel/interactive/documentnavigation/destination/`: default coordinate-based destination constructors include optional coordinate slots as `COSNull`.
 - `pypdfbox/pdmodel/pd_page_content_stream.py`: `move_text_position_and_set_leading()` requires an active text block.

@@ -16,6 +16,16 @@ _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _DECODE_PARMS = COSName.get_pdf_name("DecodeParms")
 _DP = COSName.get_pdf_name("DP")
+_FILTER_NAME_ALIASES: dict[str, str] = {
+    "AHx": "ASCIIHexDecode",
+    "A85": "ASCII85Decode",
+    "LZW": "LZWDecode",
+    "Fl": "FlateDecode",
+    "RL": "RunLengthDecode",
+    "CCF": "CCITTFaxDecode",
+    "DCT": "DCTDecode",
+    "JPX": "JPXDecode",
+}
 
 
 class _CommittingOutputStream(io.BytesIO):
@@ -265,7 +275,7 @@ class COSStream(COSDictionary):
 
         data = self.get_raw_data()
         for index, name in enumerate(chain):
-            if name.name in stop_set:
+            if _canonical_filter_name(name.name) in stop_set:
                 break
             f = FilterFactory.get(name)
             src = io.BytesIO(data)
@@ -514,7 +524,14 @@ def _coerce_stop_filter_names(
     if stop_filters is None:
         return set()
     if isinstance(stop_filters, COSName):
-        return {stop_filters.name}
+        return {_canonical_filter_name(stop_filters.name)}
     if isinstance(stop_filters, str):
-        return {stop_filters}
-    return {entry.name if isinstance(entry, COSName) else entry for entry in stop_filters}
+        return {_canonical_filter_name(stop_filters)}
+    return {
+        _canonical_filter_name(entry.name if isinstance(entry, COSName) else entry)
+        for entry in stop_filters
+    }
+
+
+def _canonical_filter_name(name: str) -> str:
+    return _FILTER_NAME_ALIASES.get(name, name)

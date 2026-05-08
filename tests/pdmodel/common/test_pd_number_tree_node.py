@@ -25,6 +25,15 @@ class _IntNumberTreeNode(PDNumberTreeNode[int]):
         return _IntNumberTreeNode(dic)
 
 
+def _number_tree_keys(arr: COSArray) -> list[int]:
+    keys: list[int] = []
+    for i in range(0, arr.size(), 2):
+        key = arr.get_object(i)
+        assert isinstance(key, COSInteger)
+        keys.append(int(key.value))
+    return keys
+
+
 def test_flat_numbers_round_trip() -> None:
     tree = _IntNumberTreeNode()
     tree.set_numbers({1: 100, 2: 200, 3: 300})
@@ -42,8 +51,7 @@ def test_set_numbers_sorts_keys_in_array() -> None:
 
     arr = tree.get_cos_object().get_dictionary_object(_NUMS)
     assert isinstance(arr, COSArray)
-    keys = [arr.get_object(i).value for i in range(0, arr.size(), 2)]
-    assert keys == [10, 20, 30]
+    assert _number_tree_keys(arr) == [10, 20, 30]
 
 
 def test_get_value_walks_kids_via_limits() -> None:
@@ -206,8 +214,7 @@ def test_large_root_numbers_write_as_deterministic_kids() -> None:
 
     first_nums = kids[0].get_cos_object().get_dictionary_object(_NUMS)
     assert isinstance(first_nums, COSArray)
-    first_keys = [first_nums.get_object(i).value for i in range(0, first_nums.size(), 2)]
-    assert first_keys == list(range(1, 65))
+    assert _number_tree_keys(first_nums) == list(range(1, 65))
 
 
 def test_create_child_node_returns_same_type() -> None:
@@ -256,6 +263,39 @@ def test_set_kids_replaces_existing_numbers_on_root() -> None:
     # Root with /Kids must drop /Nums per spec.
     assert root.get_cos_object().get_dictionary_object(_NUMS) is None
     assert root.get_value(10) == 100
+
+
+def test_set_kids_replaces_existing_numbers_on_non_root() -> None:
+    parent = _IntNumberTreeNode()
+    parent.set_numbers({1: 10})
+    root = _IntNumberTreeNode()
+    root.set_kids([parent])
+
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({20: 200})
+    parent.set_kids([leaf])
+
+    assert parent.get_cos_object().get_dictionary_object(_NUMS) is None
+    assert parent.is_intermediate_node() is True
+    assert parent.get_numbers() == {20: 200}
+    assert root.get_value(20) == 200
+
+
+def test_set_kids_on_non_root_refreshes_ancestor_limits() -> None:
+    parent = _IntNumberTreeNode()
+    parent.set_numbers({1: 10})
+    middle = _IntNumberTreeNode()
+    middle.set_kids([parent])
+    root = _IntNumberTreeNode()
+    root.set_kids([middle])
+
+    leaf = _IntNumberTreeNode()
+    leaf.set_numbers({50: 500})
+    parent.set_kids([leaf])
+
+    assert middle.get_lower_limit() == 50
+    assert middle.get_upper_limit() == 50
+    assert root.get_value(50) == 500
 
 
 def test_lower_upper_limit_can_be_cleared() -> None:
@@ -310,8 +350,8 @@ def test_contains_operator_walks_tree() -> None:
     assert 10 in root
     assert 7 not in root
     # Non-int keys (including bool, which subclasses int) are rejected.
-    assert "5" not in root  # type: ignore[operator]
-    assert True not in root  # type: ignore[operator]
+    assert "5" not in root
+    assert True not in root
 
 
 def test_contains_operator_on_flat_node() -> None:
