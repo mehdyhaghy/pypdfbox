@@ -30,6 +30,7 @@ from pypdfbox.rendering.render_destination import RenderDestination
 if TYPE_CHECKING:
     from pypdfbox.contentstream.operator import Operator
     from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
 
 _log = logging.getLogger(__name__)
 
@@ -371,7 +372,7 @@ class PDFRenderer(PDFStreamEngine):
         white-RGB canvas behaviour.
         """
         dpi = _require_positive_finite(dpi, "dpi")
-        page = self._document.get_pages()[page_index]
+        page = self._get_page_for_render(page_index)
         media_box = page.get_media_box()
         # PDF user-space units are 1/72 inch. Pixel dims = pts * dpi / 72.
         scale = float(dpi) / 72.0
@@ -479,6 +480,11 @@ class PDFRenderer(PDFStreamEngine):
     ) -> Image.Image:
         """Java-style alias for ``render_image_with_dpi``."""
         return self.render_image_with_dpi(page_index, dpi=dpi, image_type=image_type)
+
+    def _get_page_for_render(self, page_index: int) -> PDPage:
+        if page_index < 0 or page_index >= self._document.get_number_of_pages():
+            raise IndexError(f"page index out of range: {page_index}")
+        return self._document.get_pages()[page_index]
 
     # ------------------------------------------------------------------
     # public config surface (mirrors upstream PDFRenderer setters/getters)

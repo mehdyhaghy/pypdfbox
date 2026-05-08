@@ -101,6 +101,9 @@ class PDTrueTypeFont(PDSimpleFont):
         that already have the font program in hand (avoids a redundant
         re-parse) and by tests that bypass ``/FontFile2``."""
         self._ttf = ttf if ttf is not None else False
+        self._cmap_subtable = None
+        self._cmap_resolved = False
+        self._gid_to_code = None
 
     def is_damaged(self) -> bool:
         """``True`` iff the embedded TrueType program failed to parse.
@@ -176,6 +179,7 @@ class PDTrueTypeFont(PDSimpleFont):
         self._ttf = None
         self._cmap_subtable = None
         self._cmap_resolved = False
+        self._gid_to_code = None
         # Consume the accumulated set — callers re-register codepoints
         # for the next save cycle if they want to subset again.
         self._subset_codepoints.clear()

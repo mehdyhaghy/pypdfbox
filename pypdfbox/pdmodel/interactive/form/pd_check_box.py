@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName
 
 from .pd_button import PDButton
 
@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 _FT_KEY: COSName = COSName.get_pdf_name("FT")
 _AP: COSName = COSName.get_pdf_name("AP")
 _N: COSName = COSName.get_pdf_name("N")
-_KIDS: COSName = COSName.get_pdf_name("Kids")
 _OFF: COSName = COSName.get_pdf_name("Off")
 
 
@@ -44,15 +43,8 @@ class PDCheckBox(PDButton):
     # ---------- on/off helpers ----------
 
     def _widget_appearance_dict(self) -> COSDictionary | None:
-        # Prefer first widget kid; fall back to the field dict (merged widget).
-        kids = self._field.get_dictionary_object(_KIDS)
-        candidate: COSDictionary | None = None
-        if isinstance(kids, COSArray) and kids.size() > 0:
-            entry = kids.get_object(0)
-            if isinstance(entry, COSDictionary):
-                candidate = entry
-        if candidate is None:
-            candidate = self._field
+        widgets = self.get_widgets()
+        candidate = widgets[0].get_cos_object() if widgets else self._field
         ap = candidate.get_dictionary_object(_AP)
         if not isinstance(ap, COSDictionary):
             return None

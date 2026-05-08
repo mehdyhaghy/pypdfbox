@@ -193,6 +193,28 @@ def test_get_true_type_font_none_when_not_embedded() -> None:
     assert PDTrueTypeFont().get_true_type_font() is None
 
 
+def test_set_true_type_font_invalidates_cmap_and_gid_caches() -> None:
+    """Replacing the injected program must not keep cmap-derived state
+    from the old program."""
+    font = PDTrueTypeFont()
+    first_ttf = cast(TrueTypeFont, _TrueTypeFontStub(_CMapStub({65: 1})))
+    second_ttf = cast(TrueTypeFont, _TrueTypeFontStub(_CMapStub({65: 2})))
+
+    first_cmap = font._get_unicode_cmap(first_ttf)
+    assert first_cmap is not None
+    assert first_cmap.get_glyph_id(65) == 1
+    font._gid_to_code = {1: 65}
+
+    font.set_true_type_font(second_ttf)
+
+    assert font._cmap_resolved is False
+    assert font._cmap_subtable is None
+    assert font._gid_to_code is None
+    second_cmap = font._get_unicode_cmap(second_ttf)
+    assert second_cmap is not None
+    assert second_cmap.get_glyph_id(65) == 2
+
+
 # ---------- get_glyph_name_for_code ----------
 
 

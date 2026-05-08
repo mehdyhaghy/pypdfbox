@@ -293,16 +293,25 @@ class COSDictionary(COSBase):
     def clearName(self, key: COSName | str) -> None:  # noqa: N802
         self.clear_name(key)
 
-    def get_int(self, key: COSName | str, default: int = -1) -> int:
-        v = self.get_dictionary_object(key)
+    def get_int(
+        self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
+    ) -> int:
+        if isinstance(default, (COSName, str)):
+            v = self.get_dictionary_object(key, default)
+            default_value = fallback
+        else:
+            v = self.get_dictionary_object(key)
+            default_value = default
         if isinstance(v, COSInteger):
             return v.value
         if isinstance(v, COSFloat):
             return int(v.value)
-        return default
+        return default_value
 
-    def getInt(self, key: COSName | str, default: int = -1) -> int:  # noqa: N802
-        return self.get_int(key, default)
+    def getInt(  # noqa: N802
+        self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
+    ) -> int:
+        return self.get_int(key, default, fallback)
 
     def has_int(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), (COSInteger, COSFloat))
@@ -316,19 +325,28 @@ class COSDictionary(COSBase):
     def clearInt(self, key: COSName | str) -> None:  # noqa: N802
         self.clear_int(key)
 
-    def get_long(self, key: COSName | str, default: int = -1) -> int:
+    def get_long(
+        self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
+    ) -> int:
         """Return a numeric value as an integer, or ``default`` if absent.
 
         Python has a single unbounded ``int`` type, so this mirrors PDFBox's
         ``getLong`` contract while sharing the same COS storage as integers.
         """
-        v = self.get_dictionary_object(key)
+        if isinstance(default, (COSName, str)):
+            v = self.get_dictionary_object(key, default)
+            default_value = fallback
+        else:
+            v = self.get_dictionary_object(key)
+            default_value = default
         if isinstance(v, (COSInteger, COSFloat)):
             return v.long_value()
-        return default
+        return default_value
 
-    def getLong(self, key: COSName | str, default: int = -1) -> int:  # noqa: N802
-        return self.get_long(key, default)
+    def getLong(  # noqa: N802
+        self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
+    ) -> int:
+        return self.get_long(key, default, fallback)
 
     def has_long(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), (COSInteger, COSFloat))
@@ -342,14 +360,23 @@ class COSDictionary(COSBase):
     def clearLong(self, key: COSName | str) -> None:  # noqa: N802
         self.clear_long(key)
 
-    def get_float(self, key: COSName | str, default: float = -1.0) -> float:
-        v = self.get_dictionary_object(key)
+    def get_float(
+        self, key: COSName | str, default: float | COSName | str = -1.0, fallback: float = -1.0
+    ) -> float:
+        if isinstance(default, (COSName, str)):
+            v = self.get_dictionary_object(key, default)
+            default_value = fallback
+        else:
+            v = self.get_dictionary_object(key)
+            default_value = default
         if isinstance(v, (COSInteger, COSFloat)):
             return float(v.value)
-        return default
+        return default_value
 
-    def getFloat(self, key: COSName | str, default: float = -1.0) -> float:  # noqa: N802
-        return self.get_float(key, default)
+    def getFloat(  # noqa: N802
+        self, key: COSName | str, default: float | COSName | str = -1.0, fallback: float = -1.0
+    ) -> float:
+        return self.get_float(key, default, fallback)
 
     def has_float(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), (COSInteger, COSFloat))
@@ -363,14 +390,23 @@ class COSDictionary(COSBase):
     def clearFloat(self, key: COSName | str) -> None:  # noqa: N802
         self.clear_float(key)
 
-    def get_boolean(self, key: COSName | str, default: bool = False) -> bool:
-        v = self.get_dictionary_object(key)
+    def get_boolean(
+        self, key: COSName | str, default: bool | COSName | str = False, fallback: bool = False
+    ) -> bool:
+        if isinstance(default, (COSName, str)):
+            v = self.get_dictionary_object(key, default)
+            default_value = fallback
+        else:
+            v = self.get_dictionary_object(key)
+            default_value = default
         if isinstance(v, COSBoolean):
             return v.value
-        return default
+        return default_value
 
-    def getBoolean(self, key: COSName | str, default: bool = False) -> bool:  # noqa: N802
-        return self.get_boolean(key, default)
+    def getBoolean(  # noqa: N802
+        self, key: COSName | str, default: bool | COSName | str = False, fallback: bool = False
+    ) -> bool:
+        return self.get_boolean(key, default, fallback)
 
     def has_boolean(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), COSBoolean)

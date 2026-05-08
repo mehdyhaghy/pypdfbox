@@ -34,3 +34,21 @@ def test_wave318_get_value_continues_after_limitless_child_miss() -> None:
     root = PDStringNameTreeNode(root_dict)
 
     assert root.get_value("bravo") == "B"
+
+
+def test_get_value_continues_after_stale_limit_match_miss() -> None:
+    stale = _raw_leaf("alpha", "A", with_limits=True)
+    limits = stale.get_dictionary_object(_LIMITS)
+    assert isinstance(limits, COSArray)
+    limits.set(1, COSString("charlie"))
+
+    target = _raw_leaf("bravo", "B", with_limits=True)
+    kids = COSArray()
+    kids.add(stale)
+    kids.add(target)
+    root_dict = COSDictionary()
+    root_dict.set_item(_KIDS, kids)
+
+    root = PDStringNameTreeNode(root_dict)
+
+    assert root.get_value("bravo") == "B"

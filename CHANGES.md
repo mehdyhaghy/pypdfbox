@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/form/pd_check_box.py`: checkbox on-value lookup resolves widgets and skips malformed `/Kids` entries.
+- `pypdfbox/pdmodel/font/pd_true_type_font.py`: replacing or subsetting a TrueType font clears cmap and GID caches.
+- `pypdfbox/cos/cos_dictionary.py`: numeric and boolean typed getters support fallback-key overloads.
+- `pypdfbox/pdmodel/common/pd_name_tree_node.py`: name-tree lookup continues past matching child ranges that do not contain the requested name.
+- `pypdfbox/rendering/pdf_renderer.py`: page rendering rejects negative page indexes.
 - `pypdfbox/pdmodel/interactive/form/pd_text_field.py`, `pypdfbox/pdmodel/interactive/form/pd_variable_text.py`: text setters reject non-string values before mutating COS state.
 - `pypdfbox/pdfparser/base_parser.py`: malformed literal-string recovery mirrors PDFBox end-of-string handling around dictionary-key boundaries.
 - `pypdfbox/pdmodel/graphics/color/pd_device_n_process.py`: re-exports the canonical `PDDeviceNProcess` used by DeviceN attributes.

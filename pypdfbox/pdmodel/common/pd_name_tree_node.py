@@ -202,7 +202,9 @@ class PDNameTreeNode[T](ABC):
                         return value
                     continue
                 if lower <= name <= upper:
-                    return child.get_value(name)
+                    value = child.get_value(name)
+                    if value is not None:
+                        return value
         else:
             _LOG.warning('NameTreeNode does not have "Names" nor "Kids" objects.')
         return None
