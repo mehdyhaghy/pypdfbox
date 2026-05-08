@@ -2,8 +2,8 @@
 
 Covers ``get_cid_to_gid_map_bytes``, ``is_identity_cid_to_gid_map``,
 ``code_to_gid``, ``code_to_cid``, ``is_embedded``, and the lazy
-``get_true_type_font`` / ``set_true_type_font`` plumbing for the
-embedded ``/FontFile2``.
+``get_true_type_font`` / ``set_true_type_font`` plumbing for embedded
+font program streams.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def test_code_to_cid_default_identity() -> None:
     assert font.code_to_cid(0xFFFF) == 0xFFFF
 
 
-# ---------- is_embedded (narrowed to /FontFile2) ----------
+# ---------- is_embedded ----------
 
 
 def test_is_embedded_false_when_no_descriptor() -> None:

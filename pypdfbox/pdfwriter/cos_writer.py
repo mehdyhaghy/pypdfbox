@@ -93,6 +93,24 @@ def _format_xref_generation(gen: int) -> bytes:
     return f"{gen:05d}".encode("ascii")
 
 
+def _format_xref_table_offset(offset: int) -> bytes:
+    """Return a 10-byte xref-table offset or reject an unrepresentable one."""
+    formatted = _format_xref_offset(offset)
+    if len(formatted) != 10:
+        raise ValueError(
+            "xref table offsets must fit in 10 decimal digits; "
+            f"got {offset}"
+        )
+    return formatted
+
+
+def _format_xref_table_generation(gen: int) -> bytes:
+    """Return a 5-byte xref-table generation or reject an invalid one."""
+    if gen < 0 or gen > 65535:
+        raise ValueError(f"generation must be in [0, 65535]; got {gen}")
+    return _format_xref_generation(gen)
+
+
 # Per PDF 32000-1 §7.5.7 readers parse ObjStm index headers sequentially,
 # so PDFBox bounds each packed stream via CompressParameters. Mirror the
 # default here for the writer's opt-in object-stream path.
@@ -1102,9 +1120,9 @@ class COSWriter(ICOSVisitor):
     def _write_xref_entry_incremental(self, entry: COSWriterXRefEntry) -> None:
         """Same wire format as the full-save xref entry."""
         out = self._standard_output
-        out.write(_format_xref_offset(entry.offset))
+        out.write(_format_xref_table_offset(entry.offset))
         out.write(SPACE)
-        out.write(_format_xref_generation(entry.key.generation_number))
+        out.write(_format_xref_table_generation(entry.key.generation_number))
         out.write(SPACE)
         out.write(XREF_FREE if entry.free else XREF_USED)
         out.write_crlf()
@@ -1494,9 +1512,9 @@ class COSWriter(ICOSVisitor):
 
     def _write_xref_entry(self, entry: COSWriterXRefEntry) -> None:
         out = self._standard_output
-        out.write(_format_xref_offset(entry.offset))
+        out.write(_format_xref_table_offset(entry.offset))
         out.write(SPACE)
-        out.write(_format_xref_generation(entry.key.generation_number))
+        out.write(_format_xref_table_generation(entry.key.generation_number))
         out.write(SPACE)
         out.write(XREF_FREE if entry.free else XREF_USED)
         # Each xref entry must end with a 2-byte EOL so the row is exactly

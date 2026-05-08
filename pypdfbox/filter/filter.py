@@ -112,7 +112,7 @@ class Filter(ABC):
                 return params
             if isinstance(params, COSArray):
                 try:
-                    entry = params.get(index)
+                    entry = params.get_object(index)
                 except Exception:
                     entry = None
                 if isinstance(entry, COSDictionary):

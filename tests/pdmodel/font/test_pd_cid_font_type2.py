@@ -2,8 +2,8 @@
 
 Covers the embedded-program metric path (``get_height``,
 ``get_width_from_font``, ``get_average_font_width``,
-``get_bounding_box``, ``get_font_matrix``), the ``/FontFile3
-/OpenType`` fallback for :meth:`is_embedded` /
+``get_bounding_box``, ``get_font_matrix``), the ``/FontFile3`` and
+legacy ``/FontFile`` fallbacks for :meth:`is_embedded` /
 :meth:`get_true_type_font`, and the :meth:`is_damaged` semantics.
 
 The fontTools-backed paths use a synthetic stand-in TTF (object with
@@ -107,7 +107,10 @@ def _make_font_with_stub_ttf(stub: _StubTTF) -> PDCIDFontType2:
     # ``get_true_type_font`` short-circuits when ``_ttf`` is already a
     # TrueTypeFont; we monkey-patch the cache slot via a thin shim that
     # returns the stub for the duration of the test instance.
-    font.get_true_type_font = lambda _stub=stub: _stub  # type: ignore[method-assign]
+    def get_stub_ttf() -> _StubTTF:
+        return stub
+
+    font.get_true_type_font = get_stub_ttf  # type: ignore[assignment,method-assign]
     return font
 
 
@@ -288,7 +291,7 @@ def test_get_bounding_box_none_when_neither_source() -> None:
     assert font.get_bounding_box() is None
 
 
-# ---------- /FontFile3 /OpenType fallback ----------
+# ---------- embedded program stream fallbacks ----------
 
 
 def test_is_embedded_true_for_font_file3_open_type() -> None:
@@ -301,16 +304,26 @@ def test_is_embedded_true_for_font_file3_open_type() -> None:
     assert font.is_embedded() is True
 
 
-def test_is_embedded_false_for_font_file3_unknown_subtype() -> None:
-    # A FontFile3 with the wrong /Subtype (e.g. CIDFontType0C) is *not*
-    # a valid CIDFontType2 program -- the descendant must reject it.
+def test_is_embedded_true_for_font_file3_unknown_subtype() -> None:
+    # Upstream probes FontFile3 as an embedded OTF candidate without
+    # rejecting unknown /Subtype values up front.
     font = PDCIDFontType2()
     fd = PDFontDescriptor()
     stream = COSStream()
     stream.set_name(COSName.SUBTYPE, "CIDFontType0C")  # type: ignore[attr-defined]
     fd.set_font_file3(stream)
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is False
+    assert font.is_embedded() is True
+
+
+def test_is_embedded_true_for_legacy_font_file() -> None:
+    # Acrobat/PDFBox tolerate legacy /FontFile here for malformed Type2
+    # descendants (PDFBOX-2599).
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    fd.set_font_file(COSStream())
+    font.set_font_descriptor(fd)
+    assert font.is_embedded() is True
 
 
 def test_get_true_type_font_falls_back_to_font_file3_open_type() -> None:
@@ -325,6 +338,29 @@ def test_get_true_type_font_falls_back_to_font_file3_open_type() -> None:
     font.set_font_descriptor(fd)
     assert font.get_true_type_font() is None
     # Sentinel set: "tried, parse failed".
+    assert font._ttf is False  # noqa: SLF001
+
+
+def test_get_true_type_font_tries_font_file3_without_open_type_subtype() -> None:
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    stream = COSStream()
+    stream.set_name(COSName.SUBTYPE, "CIDFontType0C")  # type: ignore[attr-defined]
+    stream.set_data(b"not-a-real-otf")
+    fd.set_font_file3(stream)
+    font.set_font_descriptor(fd)
+    assert font.get_true_type_font() is None
+    assert font._ttf is False  # noqa: SLF001
+
+
+def test_get_true_type_font_falls_back_to_legacy_font_file() -> None:
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    stream = COSStream()
+    stream.set_data(b"not-a-real-ttf")
+    fd.set_font_file(stream)
+    font.set_font_descriptor(fd)
+    assert font.get_true_type_font() is None
     assert font._ttf is False  # noqa: SLF001
 
 

@@ -234,6 +234,10 @@ class FDFAnnotation:
             from .fdf_annotation_free_text import FDFAnnotationFreeText
 
             return FDFAnnotationFreeText(annot)
+        if name == "FileAttachment":
+            from .fdf_annotation_file_attachment import FDFAnnotationFileAttachment
+
+            return FDFAnnotationFileAttachment(annot)
         if name == "Square":
             from .fdf_annotation_square import FDFAnnotationSquare
 

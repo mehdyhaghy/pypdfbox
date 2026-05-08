@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSObject
 from pypdfbox.filter import (
     ASCII85Decode,
     ASCIIHexDecode,
@@ -29,128 +29,128 @@ from pypdfbox.filter.decode_result import DecodeResult
 
 
 class TestFilterFactorySingleton:
-    def test_instance_exists(self):
+    def test_instance_exists(self) -> None:
         assert FilterFactory.INSTANCE is not None
 
-    def test_instance_is_filter_factory(self):
+    def test_instance_is_filter_factory(self) -> None:
         assert isinstance(FilterFactory.INSTANCE, FilterFactory)
 
-    def test_instance_is_singleton(self):
+    def test_instance_is_singleton(self) -> None:
         # Two attribute reads return the same object.
         assert FilterFactory.INSTANCE is FilterFactory.INSTANCE
 
 
 class TestGetFilter:
-    def test_get_filter_flate(self):
+    def test_get_filter_flate(self) -> None:
         f = FilterFactory.get_filter("FlateDecode")
         assert isinstance(f, FlateDecode)
 
-    def test_get_filter_ascii_hex(self):
+    def test_get_filter_ascii_hex(self) -> None:
         f = FilterFactory.get_filter("ASCIIHexDecode")
         assert isinstance(f, ASCIIHexDecode)
 
-    def test_get_filter_ascii85(self):
+    def test_get_filter_ascii85(self) -> None:
         f = FilterFactory.get_filter("ASCII85Decode")
         assert isinstance(f, ASCII85Decode)
 
-    def test_get_filter_lzw(self):
+    def test_get_filter_lzw(self) -> None:
         f = FilterFactory.get_filter("LZWDecode")
         assert isinstance(f, LZWDecode)
 
-    def test_get_filter_run_length(self):
+    def test_get_filter_run_length(self) -> None:
         f = FilterFactory.get_filter("RunLengthDecode")
         assert isinstance(f, RunLengthDecode)
 
-    def test_get_filter_ccitt(self):
+    def test_get_filter_ccitt(self) -> None:
         f = FilterFactory.get_filter("CCITTFaxDecode")
         assert isinstance(f, CCITTFaxDecode)
 
-    def test_get_filter_dct(self):
+    def test_get_filter_dct(self) -> None:
         f = FilterFactory.get_filter("DCTDecode")
         assert isinstance(f, DCTDecode)
 
-    def test_get_filter_jpx(self):
+    def test_get_filter_jpx(self) -> None:
         f = FilterFactory.get_filter("JPXDecode")
         assert isinstance(f, JPXDecode)
 
-    def test_get_filter_jbig2(self):
+    def test_get_filter_jbig2(self) -> None:
         f = FilterFactory.get_filter("JBIG2Decode")
         assert isinstance(f, JBIG2Decode)
 
-    def test_get_filter_accepts_cos_name(self):
+    def test_get_filter_accepts_cos_name(self) -> None:
         f = FilterFactory.get_filter(COSName.get_pdf_name("FlateDecode"))
         assert isinstance(f, FlateDecode)
 
-    def test_get_filter_unknown_raises(self):
+    def test_get_filter_unknown_raises(self) -> None:
         with pytest.raises(KeyError):
             FilterFactory.get_filter("BogusDecode")
 
 
 class TestGetFilterByShortName:
-    def test_short_fl_returns_flate(self):
+    def test_short_fl_returns_flate(self) -> None:
         f = FilterFactory.get_filter_by_short_name("Fl")
         assert isinstance(f, FlateDecode)
 
-    def test_short_fl_matches_long(self):
+    def test_short_fl_matches_long(self) -> None:
         # The short-name lookup must return the same singleton instance
         # as the long-name lookup.
         long_inst = FilterFactory.get_filter("FlateDecode")
         short_inst = FilterFactory.get_filter_by_short_name("Fl")
         assert short_inst is long_inst
 
-    def test_short_ahx_returns_ascii_hex(self):
+    def test_short_ahx_returns_ascii_hex(self) -> None:
         f = FilterFactory.get_filter_by_short_name("AHx")
         assert isinstance(f, ASCIIHexDecode)
 
-    def test_short_a85_returns_ascii85(self):
+    def test_short_a85_returns_ascii85(self) -> None:
         f = FilterFactory.get_filter_by_short_name("A85")
         assert isinstance(f, ASCII85Decode)
 
-    def test_short_lzw_returns_lzw(self):
+    def test_short_lzw_returns_lzw(self) -> None:
         f = FilterFactory.get_filter_by_short_name("LZW")
         assert isinstance(f, LZWDecode)
 
-    def test_short_rl_returns_run_length(self):
+    def test_short_rl_returns_run_length(self) -> None:
         f = FilterFactory.get_filter_by_short_name("RL")
         assert isinstance(f, RunLengthDecode)
 
-    def test_short_ccf_returns_ccitt(self):
+    def test_short_ccf_returns_ccitt(self) -> None:
         f = FilterFactory.get_filter_by_short_name("CCF")
         assert isinstance(f, CCITTFaxDecode)
 
-    def test_short_dct_returns_dct(self):
+    def test_short_dct_returns_dct(self) -> None:
         f = FilterFactory.get_filter_by_short_name("DCT")
         assert isinstance(f, DCTDecode)
 
-    def test_short_jpx_returns_jpx(self):
+    def test_short_jpx_returns_jpx(self) -> None:
         f = FilterFactory.get_filter_by_short_name("JPX")
         assert isinstance(f, JPXDecode)
 
-    def test_short_name_accepts_cos_name(self):
+    def test_short_name_accepts_cos_name(self) -> None:
         f = FilterFactory.get_filter_by_short_name(COSName.get_pdf_name("Fl"))
         assert isinstance(f, FlateDecode)
 
-    def test_unknown_short_name_raises(self):
+    def test_unknown_short_name_raises(self) -> None:
         with pytest.raises(KeyError):
             FilterFactory.get_filter_by_short_name("XYZ")
 
-    def test_long_name_via_short_lookup_raises(self):
+    def test_long_name_via_short_lookup_raises(self) -> None:
         # ``get_filter_by_short_name`` strictly requires an abbreviation.
         with pytest.raises(KeyError):
             FilterFactory.get_filter_by_short_name("FlateDecode")
 
 
 class TestFilterDecodeResultHelper:
-    def test_returns_decode_result(self):
+    def test_returns_decode_result(self) -> None:
         r = Filter.decode_result()
         assert isinstance(r, DecodeResult)
 
-    def test_default_parameters_is_empty_cos_dict(self):
+    def test_default_parameters_is_empty_cos_dict(self) -> None:
         r = Filter.decode_result()
         assert isinstance(r.parameters, COSDictionary)
         assert r.bytes_written == 0
 
-    def test_passes_through_parameters_and_count(self):
+    def test_passes_through_parameters_and_count(self) -> None:
         params = COSDictionary()
         params.set_int("Predictor", 12)
         r = Filter.decode_result(params, 1024)
@@ -159,12 +159,12 @@ class TestFilterDecodeResultHelper:
 
 
 class TestFilterGetDecodeParams:
-    def test_none_parameters_returns_empty_dict(self):
+    def test_none_parameters_returns_empty_dict(self) -> None:
         out = Filter.get_decode_params(None, 0)
         assert isinstance(out, COSDictionary)
         assert out.size() == 0
 
-    def test_single_dict_decode_parms(self):
+    def test_single_dict_decode_parms(self) -> None:
         parameters = COSDictionary()
         inner = COSDictionary()
         inner.set_int("Predictor", 15)
@@ -172,7 +172,7 @@ class TestFilterGetDecodeParams:
         out = Filter.get_decode_params(parameters, 0)
         assert out is inner
 
-    def test_dp_abbreviation(self):
+    def test_dp_abbreviation(self) -> None:
         parameters = COSDictionary()
         inner = COSDictionary()
         inner.set_int("Predictor", 2)
@@ -180,7 +180,7 @@ class TestFilterGetDecodeParams:
         out = Filter.get_decode_params(parameters, 0)
         assert out is inner
 
-    def test_array_indexed(self):
+    def test_array_indexed(self) -> None:
         parameters = COSDictionary()
         arr = COSArray()
         first = COSDictionary()
@@ -193,7 +193,17 @@ class TestFilterGetDecodeParams:
         assert Filter.get_decode_params(parameters, 0) is first
         assert Filter.get_decode_params(parameters, 1) is second
 
-    def test_array_out_of_range_returns_empty(self):
+    def test_array_indexed_resolves_indirect_dictionary(self) -> None:
+        parameters = COSDictionary()
+        arr = COSArray()
+        inner = COSDictionary()
+        inner.set_int("Predictor", 12)
+        arr.add(COSObject(7, 0, resolved=inner))
+        parameters.set_item("DecodeParms", arr)
+
+        assert Filter.get_decode_params(parameters, 0) is inner
+
+    def test_array_out_of_range_returns_empty(self) -> None:
         parameters = COSDictionary()
         arr = COSArray()
         parameters.set_item("DecodeParms", arr)
@@ -201,7 +211,7 @@ class TestFilterGetDecodeParams:
         assert isinstance(out, COSDictionary)
         assert out.size() == 0
 
-    def test_missing_key_returns_empty(self):
+    def test_missing_key_returns_empty(self) -> None:
         parameters = COSDictionary()
         out = Filter.get_decode_params(parameters, 0)
         assert isinstance(out, COSDictionary)
@@ -214,13 +224,13 @@ class TestGetAllFilters:
     same singleton; we deduplicate so callers iterating the result don't
     process the same filter instance twice."""
 
-    def test_returns_list_of_filter_instances(self):
+    def test_returns_list_of_filter_instances(self) -> None:
         result = FilterFactory.get_all_filters()
         assert isinstance(result, list)
         for f in result:
             assert isinstance(f, Filter)
 
-    def test_includes_each_concrete_filter(self):
+    def test_includes_each_concrete_filter(self) -> None:
         # We don't pin the exact size — new filters can be added — but
         # every concrete filter type registered today must be present.
         types = {type(f) for f in FilterFactory.get_all_filters()}
@@ -237,7 +247,7 @@ class TestGetAllFilters:
         ):
             assert cls in types
 
-    def test_deduplicates_short_and_long_aliases(self):
+    def test_deduplicates_short_and_long_aliases(self) -> None:
         # The registry keys flate under both ``FlateDecode`` and ``Fl``;
         # the de-duplicated result must list each Filter instance once.
         result = FilterFactory.get_all_filters()
@@ -246,25 +256,25 @@ class TestGetAllFilters:
 
 
 class TestIsDecompressionInputSizeKnown:
-    def test_ascii85_false(self):
+    def test_ascii85_false(self) -> None:
         assert (
             FilterFactory.get_filter("ASCII85Decode").is_decompression_input_size_known()
             is False
         )
 
-    def test_ascii_hex_false(self):
+    def test_ascii_hex_false(self) -> None:
         assert (
             FilterFactory.get_filter("ASCIIHexDecode").is_decompression_input_size_known()
             is False
         )
 
-    def test_default_true_on_flate(self):
+    def test_default_true_on_flate(self) -> None:
         # The base implementation defaults to True; concrete filters
         # inherit unless they override. FlateDecode does not override,
         # so the default applies.
         assert FilterFactory.get_filter("FlateDecode").is_decompression_input_size_known() is True
 
-    def test_default_true_on_lzw(self):
+    def test_default_true_on_lzw(self) -> None:
         assert FilterFactory.get_filter("LZWDecode").is_decompression_input_size_known() is True
 
 
@@ -274,43 +284,43 @@ class TestDecodeResultParity:
     ``getParameters``, ``getJPXColorSpace``/``setColorSpace``,
     ``getJPXSMask``/``setJPXSMask``)."""
 
-    def test_create_default_returns_decode_result(self):
+    def test_create_default_returns_decode_result(self) -> None:
         r = DecodeResult.create_default()
         assert isinstance(r, DecodeResult)
 
-    def test_create_default_has_empty_parameters(self):
+    def test_create_default_has_empty_parameters(self) -> None:
         r = DecodeResult.create_default()
         assert isinstance(r.parameters, COSDictionary)
         assert r.parameters.size() == 0
 
-    def test_create_default_no_color_space(self):
+    def test_create_default_no_color_space(self) -> None:
         r = DecodeResult.create_default()
         assert r.get_jpx_color_space() is None
         assert r.get_jpx_smask() is None
 
-    def test_create_default_zero_bytes_written(self):
+    def test_create_default_zero_bytes_written(self) -> None:
         r = DecodeResult.create_default()
         assert r.bytes_written == 0
 
-    def test_get_parameters_returns_field(self):
+    def test_get_parameters_returns_field(self) -> None:
         params = COSDictionary()
         params.set_int("Predictor", 12)
         r = DecodeResult(parameters=params)
         assert r.get_parameters() is params
 
-    def test_set_and_get_color_space(self):
+    def test_set_and_get_color_space(self) -> None:
         sentinel = object()
         r = DecodeResult.create_default()
         r.set_color_space(sentinel)
         assert r.get_jpx_color_space() is sentinel
 
-    def test_set_and_get_jpx_smask(self):
+    def test_set_and_get_jpx_smask(self) -> None:
         sentinel = object()
         r = DecodeResult.create_default()
         r.set_jpx_smask(sentinel)
         assert r.get_jpx_smask() is sentinel
 
-    def test_color_space_independent_of_smask(self):
+    def test_color_space_independent_of_smask(self) -> None:
         # Setting one must not perturb the other.
         cs = object()
         sm = object()
@@ -320,12 +330,12 @@ class TestDecodeResultParity:
         assert r.get_jpx_color_space() is cs
         assert r.get_jpx_smask() is sm
 
-    def test_constructor_accepts_color_space_kwarg(self):
+    def test_constructor_accepts_color_space_kwarg(self) -> None:
         cs = object()
         r = DecodeResult(parameters=COSDictionary(), color_space=cs)
         assert r.get_jpx_color_space() is cs
 
-    def test_constructor_accepts_jpx_smask_kwarg(self):
+    def test_constructor_accepts_jpx_smask_kwarg(self) -> None:
         sm = object()
         r = DecodeResult(parameters=COSDictionary(), jpx_smask=sm)
         assert r.get_jpx_smask() is sm

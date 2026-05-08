@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/fdf/fdf_annotation_file_attachment.py`: FDF file attachment annotations are implemented and factory-dispatched.
+- `pypdfbox/pdmodel/font/pd_cid_font_type2.py`: embedded Type2 CID font programs are probed in PDFBox order: `/FontFile2`, `/FontFile3`, then `/FontFile`.
+- `pypdfbox/pdmodel/encryption/protection_policy.py`: exposes Java-style key-length and AES preference aliases.
+- `pypdfbox/pdfwriter/cos_writer.py`: xref table serialization rejects offsets and generations that cannot fit fixed-width rows.
+- `pypdfbox/filter/filter.py`: decode-params arrays dereference indirect entries.
 - `pypdfbox/pdmodel/interactive/form/pd_check_box.py`: checkbox on-value lookup resolves widgets and skips malformed `/Kids` entries.
 - `pypdfbox/pdmodel/font/pd_true_type_font.py`: replacing or subsetting a TrueType font clears cmap and GID caches.
 - `pypdfbox/cos/cos_dictionary.py`: numeric and boolean typed getters support fallback-key overloads.

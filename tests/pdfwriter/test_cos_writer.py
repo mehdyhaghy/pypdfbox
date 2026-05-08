@@ -393,7 +393,7 @@ def test_encrypted_cos_document_writes_passthrough() -> None:
 def test_pddocument_not_supported() -> None:
     sink = io.BytesIO()
     with pytest.raises(TypeError), COSWriter(sink) as w:
-        w.write(object())  # type: ignore[arg-type]
+        w.write(object())
 
 
 def test_close_is_idempotent() -> None:
@@ -714,6 +714,25 @@ def test_format_xref_offset_does_not_truncate_large_values() -> None:
     assert out == b"99999999999"
 
 
+def test_write_xref_rejects_offset_that_would_overflow_row() -> None:
+    """The public formatter preserves large offsets, but the xref-table
+    serializer must reject them before emitting non-20-byte rows."""
+    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.pdfwriter import COSWriterXRefEntry
+
+    sink = io.BytesIO()
+    with COSWriter(sink) as writer:
+        writer.add_xref_entry(
+            COSWriterXRefEntry(
+                offset=10_000_000_000,
+                key=COSObjectKey(1, 0),
+                obj=COSDictionary(),
+            )
+        )
+        with pytest.raises(ValueError, match="10 decimal digits"):
+            writer.write_xref()
+
+
 def test_format_xref_offset_rejects_negative() -> None:
     with pytest.raises(ValueError):
         COSWriter.format_xref_offset(-1)
@@ -730,7 +749,7 @@ def test_format_xref_offset_rejects_bool() -> None:
     """``bool`` is a subclass of ``int`` in Python; reject explicitly so
     ``True`` doesn't sneak through as offset 1."""
     with pytest.raises(TypeError):
-        COSWriter.format_xref_offset(True)  # type: ignore[arg-type]
+        COSWriter.format_xref_offset(True)
 
 
 def test_format_xref_generation_pads_to_five_digits() -> None:
@@ -748,11 +767,28 @@ def test_format_xref_generation_rejects_out_of_range() -> None:
         COSWriter.format_xref_generation(65536)
 
 
+def test_write_xref_rejects_generation_that_would_overflow_row() -> None:
+    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.pdfwriter import COSWriterXRefEntry
+
+    sink = io.BytesIO()
+    with COSWriter(sink) as writer:
+        writer.add_xref_entry(
+            COSWriterXRefEntry(
+                offset=42,
+                key=COSObjectKey(1, 65536),
+                obj=COSDictionary(),
+            )
+        )
+        with pytest.raises(ValueError, match=r"\[0, 65535\]"):
+            writer.write_xref()
+
+
 def test_format_xref_generation_rejects_non_int() -> None:
     with pytest.raises(TypeError):
         COSWriter.format_xref_generation("0")  # type: ignore[arg-type]
     with pytest.raises(TypeError):
-        COSWriter.format_xref_generation(False)  # type: ignore[arg-type]
+        COSWriter.format_xref_generation(False)
 
 
 def test_format_xref_helpers_match_internal_emission() -> None:

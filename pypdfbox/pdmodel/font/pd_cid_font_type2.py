@@ -10,6 +10,8 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from .pd_cid_font import PDCIDFont
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.pd_stream import PDStream
+
     from .pd_type0_font import PDType0Font
 
 _LOG = logging.getLogger(__name__)
@@ -161,33 +163,35 @@ class PDCIDFontType2(PDCIDFont):
 
     # ---------- embedded TTF program ----------
 
+    def _get_font_program_stream(self) -> PDStream | None:
+        descriptor = self.get_font_descriptor()
+        if descriptor is None:
+            return None
+        for getter in (
+            descriptor.get_font_file2,
+            descriptor.get_font_file3,
+            descriptor.get_font_file,
+        ):
+            stream = getter()
+            if stream is not None:
+                return stream
+        return None
+
     def get_true_type_font(self) -> TrueTypeFont | None:
         """Return the parsed :class:`TrueTypeFont` for this font's
         embedded program, or ``None`` if no embedded program exists or
         it cannot be parsed. Result is cached on the instance.
 
-        Mirrors upstream ``PDCIDFontType2.getTrueTypeFont``. Tries
+        Mirrors upstream ``PDCIDFontType2`` program probing. Tries
         ``/FontFile2`` first (the canonical form per PDF 32000-1
-        §9.6.2 Table 122); falls back to ``/FontFile3`` with
-        ``/Subtype /OpenType`` (the OpenType-flavoured form permitted
-        by §9.9.1 for CIDFontType2 descendants).
+        §9.6.2 Table 122), then ``/FontFile3`` (embedded OTF), then the
+        legacy ``/FontFile`` slot Acrobat accepts for malformed Type2
+        descendants (PDFBOX-2599).
         """
         if self._ttf is not None:
             return self._ttf if isinstance(self._ttf, TrueTypeFont) else None
 
-        descriptor = self.get_font_descriptor()
-        if descriptor is None:
-            self._ttf = False
-            return None
-        program_stream = descriptor.get_font_file2()
-        if program_stream is None:
-            font_file3 = descriptor.get_font_file3()
-            if font_file3 is not None:
-                subtype = font_file3.get_cos_object().get_name(
-                    COSName.SUBTYPE  # type: ignore[attr-defined]
-                )
-                if subtype == _OPEN_TYPE:
-                    program_stream = font_file3
+        program_stream = self._get_font_program_stream()
         if program_stream is None:
             self._ttf = False
             return None
@@ -210,24 +214,10 @@ class PDCIDFontType2(PDCIDFont):
         """``True`` when the descriptor carries an embedded font program
         usable as a CIDFontType2.
 
-        Mirrors upstream ``PDCIDFontType2.isEmbedded``. Accepts the
-        canonical ``/FontFile2`` form (PDF 32000-1 §9.6.2 Table 122)
-        and the OpenType-flavoured ``/FontFile3`` with
-        ``/Subtype /OpenType`` form permitted by §9.9.1 for
-        CIDFontType2 descendants of a Type 0 composite.
+        Mirrors upstream ``PDCIDFontType2.isEmbedded`` probing order:
+        ``/FontFile2``, then ``/FontFile3``, then legacy ``/FontFile``.
         """
-        descriptor = self.get_font_descriptor()
-        if descriptor is None:
-            return False
-        if descriptor.get_font_file2() is not None:
-            return True
-        font_file3 = descriptor.get_font_file3()
-        if font_file3 is None:
-            return False
-        subtype = font_file3.get_cos_object().get_name(
-            COSName.SUBTYPE  # type: ignore[attr-defined]
-        )
-        return subtype == _OPEN_TYPE
+        return self._get_font_program_stream() is not None
 
     def is_damaged(self) -> bool:
         """``True`` when the descriptor advertises an embedded font
@@ -268,7 +258,7 @@ class PDCIDFontType2(PDCIDFont):
             return 0.0
         return float(advance) * 1000.0 / float(units_per_em)
 
-    def get_height(self, cid: int) -> float:  # type: ignore[override]
+    def get_height(self, cid: int) -> float:
         """Vertical extent of glyph ``cid`` in 1/1000 em.
 
         Mirrors upstream ``PDCIDFontType2.getHeight``. Reads
@@ -304,7 +294,7 @@ class PDCIDFontType2(PDCIDFont):
             return 0.0
         return float(y_max - y_min) * 1000.0 / float(units_per_em)
 
-    def get_average_font_width(self) -> float:  # type: ignore[override]
+    def get_average_font_width(self) -> float:
         """Mean glyph advance across the embedded program (1/1000 em).
 
         Mirrors upstream ``PDCIDFontType2.getAverageFontWidth``. Walks
@@ -352,7 +342,7 @@ class PDCIDFontType2(PDCIDFont):
         scale = 1.0 / float(upem)
         return [scale, 0.0, 0.0, scale, 0.0, 0.0]
 
-    def get_bounding_box(self) -> PDRectangle | None:  # type: ignore[override]
+    def get_bounding_box(self) -> PDRectangle | None:
         """Return the font's bounding box.
 
         Mirrors upstream ``PDCIDFontType2.getBoundingBox``. Prefers the
@@ -377,7 +367,7 @@ class PDCIDFontType2(PDCIDFont):
                     pass
         return super().get_bounding_box()
 
-    def has_glyph(self, cid: int) -> bool:  # type: ignore[override]
+    def has_glyph(self, cid: int) -> bool:
         """``True`` when ``cid`` resolves to a non-``.notdef`` glyph.
 
         Prefers the embedded TTF (a glyph maps to GID != 0); falls back
@@ -393,7 +383,7 @@ class PDCIDFontType2(PDCIDFont):
             return gid > 0
         return super().has_glyph(cid)
 
-    def get_glyph_path(self, cid: int) -> list[tuple]:
+    def get_glyph_path(self, cid: int) -> list[tuple[Any, ...]]:
         """Glyph outline for ``cid`` in *font units*.
 
         Resolves ``cid`` to a GID via :meth:`cid_to_gid`, then draws the
@@ -420,9 +410,9 @@ class PDCIDFontType2(PDCIDFont):
             glyph.draw(pen)
         except Exception:  # noqa: BLE001
             return []
-        return list(pen.commands)  # type: ignore[attr-defined]
+        return list(pen.commands)
 
-    def get_normalized_path(self, cid: int) -> list[tuple]:
+    def get_normalized_path(self, cid: int) -> list[tuple[Any, ...]]:
         """Glyph outline for ``cid`` normalized to 1/1000 em.
 
         Mirrors upstream ``PDCIDFontType2.getNormalizedPath`` which
@@ -455,7 +445,7 @@ class PDCIDFontType2(PDCIDFont):
         if units_per_em <= 0 or units_per_em == 1000:
             return path
         scale = 1000.0 / float(units_per_em)
-        scaled: list[tuple] = []
+        scaled: list[tuple[Any, ...]] = []
         for cmd in path:
             if len(cmd) <= 1:
                 # ("closepath",) — no coordinates to scale.
