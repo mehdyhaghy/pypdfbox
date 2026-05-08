@@ -47,9 +47,8 @@ class AnnotationBorder:
             ab.width = border_style.get_width()
             style = border_style.get_style()
             if style == PDBorderStyleDictionary.STYLE_DASHED:
-                dash = border_style.get_dash_style()
-                if dash is not None:
-                    ab.dash_array = list(dash.get_dash_array())
+                dash = border_style.get_dash_style_or_default()
+                ab.dash_array = list(dash.get_dash_array())
             if style == PDBorderStyleDictionary.STYLE_UNDERLINE:
                 ab.underline = True
         # An all-zero dash array is meaningless; drop it (mirrors upstream).

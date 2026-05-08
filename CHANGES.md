@@ -1435,3 +1435,11 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/measurement/pd_rendition.py` and `pd_media_clip.py`: subtype dispatch now accepts `/S` stored as either a COS name or COS string.
 - `pypdfbox/xmpbox/date_converter.py`: PDF-style date timezone offsets with apostrophes now parse through date conversion and `DateType`.
 - `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py`: cached group attributes now refresh when the backing `/Group` dictionary is externally replaced or removed.
+
+## Wave 325 — border dashes, text angles, Indexed hival, Type1 ISO Latin, and signature byte ranges
+
+- `pypdfbox/pdmodel/interactive/annotation/handlers/annotation_border.py`: dashed border styles now use the default `[3.0]` dash array when `/D` is missing.
+- `pypdfbox/text/filtered_text_stripper.py`: `AngleCollector` now records rotations only when text emission produces a `TextPosition`.
+- `pypdfbox/pdmodel/graphics/color/pd_indexed.py`: Indexed `/Hival` values are now clamped into the valid `0..255` range.
+- `pypdfbox/fontbox/type1/type1_font.py`: named `/ISOLatin1Encoding` now resolves instead of producing an empty Type1 encoding map.
+- `pypdfbox/pdmodel/interactive/digitalsignature/sig_utils.py`: signed digest computation now rejects negative and out-of-bounds `/ByteRange` entries.

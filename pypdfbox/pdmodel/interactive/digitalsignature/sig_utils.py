@@ -423,6 +423,17 @@ def compute_signed_digest(
             f"/ByteRange must have exactly 4 entries, got {len(byte_range)}"
         )
     start1, len1, start2, len2 = byte_range
+    document_len = len(document_bytes)
+    for start, length in ((start1, len1), (start2, len2)):
+        if start < 0 or length < 0:
+            raise ValueError(
+                f"/ByteRange entries must be non-negative, got {byte_range}"
+            )
+        if start > document_len or start + length > document_len:
+            raise ValueError(
+                f"/ByteRange slice out of bounds for document size "
+                f"{document_len}: {byte_range}"
+            )
     chunk = bytes(document_bytes[start1 : start1 + len1]) + bytes(
         document_bytes[start2 : start2 + len2]
     )

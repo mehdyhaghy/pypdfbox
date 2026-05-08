@@ -170,11 +170,10 @@ class AngleCollector(PDFTextStripper):
         state: _TextState,
         positions: list[TextPosition],
     ) -> None:
-        # Record the angle from parser state before ``should_skip_glyph``
-        # suppresses output. This preserves upstream AngleCollector's
-        # side-effect-only behaviour while avoiding a second parse pass.
-        self._angles.add(_state_angle(state))
+        before = len(positions)
         super()._emit(s, state, positions)
+        if len(positions) > before:
+            self._angles.add(_state_angle(state))
 
 
 class FilteredTextStripper(PDFTextStripper):

@@ -144,8 +144,33 @@ def test_angle_collector_public_process_text_position_collects_angle() -> None:
         text_matrix=[1.0, b, 0.0, d, 0.0, 0.0],
     )
     collector = AngleCollector()
-    assert collector.process_text_position(pos) is None
+    collector.process_text_position(pos)
     assert collector.get_angles() == {90}
+
+
+def test_wave325_angle_collector_ignores_empty_show_text(tmp_path: Path) -> None:
+    doc = PDDocument()
+    try:
+        page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+        stream = COSStream()
+        stream.set_data(
+            b"BT /F0 12 Tf 0 1 -1 0 100 700 Tm () Tj ET\n"
+            b"BT /F0 12 Tf 1 0 0 1 100 600 Tm (VISIBLE) Tj ET\n"
+        )
+        page.set_contents(stream)
+        doc.add_page(page)
+        out = tmp_path / "empty-angle.pdf"
+        doc.save(out)
+    finally:
+        doc.close()
+
+    doc = PDDocument.load(out)
+    try:
+        collector = AngleCollector()
+        assert collector.get_text(doc).strip() == ""
+        assert collector.get_angles() == {0}
+    finally:
+        doc.close()
 
 
 # ---------------------------------------------------------------------------

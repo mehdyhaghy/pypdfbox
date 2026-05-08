@@ -553,6 +553,13 @@ class Type1Font:
                 from ..encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
 
                 result = StandardEncoding.INSTANCE.get_codes()
+            elif raw == "ISOLatin1Encoding":
+                from ..encoding.glyph_list import GlyphList  # noqa: PLC0415
+
+                for code in range(256):
+                    name = GlyphList.DEFAULT.code_point_to_name(code)
+                    if name is not None and name != ".notdef":
+                        result[code] = name
             else:
                 logger.debug("Type1Font: unknown named /Encoding %r", raw)
         else:

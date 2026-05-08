@@ -87,7 +87,7 @@ class PDIndexed(PDColorSpace):
         assert self._array is not None
         if self._array.size() <= 2:
             return 0
-        return self._array.get_int(2, 0)
+        return max(0, min(self._array.get_int(2, 0), 255))
 
     def set_hival(self, hival: int) -> None:
         assert self._array is not None

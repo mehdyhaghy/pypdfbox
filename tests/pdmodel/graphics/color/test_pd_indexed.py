@@ -63,6 +63,7 @@ def test_get_lookup_data_pads_short_payload_with_zero_bytes() -> None:
     short = b"\x01\x02\x03\x04\x05\x06"
     cs = _make_indexed(3, COSString(short))
     out = cs.get_lookup_data()
+    assert out is not None
     assert len(out) == 12
     assert out[: len(short)] == short
     assert out[len(short):] == b"\x00" * (12 - len(short))
@@ -74,6 +75,7 @@ def test_get_lookup_data_truncates_overlong_payload() -> None:
     long = bytes(range(20))  # 20 bytes, expected 12
     cs = _make_indexed(3, COSString(long))
     out = cs.get_lookup_data()
+    assert out is not None
     assert len(out) == 12
     assert out == long[:12]
 
@@ -283,3 +285,22 @@ def test_get_lookup_data_unresolvable_base_returns_raw_bytes() -> None:
     cs = PDIndexed(arr)
     assert cs.get_base_color_space() is None
     assert cs.get_lookup_data() == raw
+
+
+def test_wave325_hival_above_byte_range_is_clamped_to_255() -> None:
+    """``/Hival`` is limited to one-byte indexed samples. Malformed PDFs
+    sometimes write larger values; clamp to 255 so lookup padding cannot
+    grow beyond the legal 256 palette entries."""
+    cs = _make_indexed(999, COSString(b"\xff\x00\x00"))
+
+    assert cs.get_hival() == 255
+    assert len(cs.get_lookup_data() or b"") == 256 * 3
+
+
+def test_wave325_negative_hival_is_clamped_to_zero() -> None:
+    """A malformed negative ``/Hival`` still represents no more than the
+    first palette entry for tolerant rendering."""
+    cs = _make_indexed(-7, COSString(b"\x01\x02\x03\x04\x05\x06"))
+
+    assert cs.get_hival() == 0
+    assert cs.get_lookup_data() == b"\x01\x02\x03"
