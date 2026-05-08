@@ -328,6 +328,19 @@ class TestReadEncoding:
         assert encoding[0x42] == 200
         assert encoding[0x43] == 300
 
+    def test_format_1_overlong_range_does_not_wrap_to_low_codes(self) -> None:
+        # A malformed range starting at 254 with nLeft=3 would cover
+        # codes 254,255,256,257. Since PDF character codes are one byte,
+        # overflow entries are unreachable and must not wrap to 0,1.
+        data = bytes([0x01, 0x01, 0xFE, 0x03])
+        stream = io.BytesIO(data)
+        encoding, sup = read_encoding(stream, [0, 100, 200, 300, 400])
+        assert sup == []
+        assert encoding[0xFE] == 100
+        assert encoding[0xFF] == 200
+        assert encoding[0x00] == 0
+        assert encoding[0x01] == 0
+
     def test_format_0_with_supplement_high_bit(self) -> None:
         # Format byte 0x80 = format 0 + supplement bit.
         # Base: nCodes=1, code 0x41 → GID 1 (SID 100).

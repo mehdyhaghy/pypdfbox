@@ -450,13 +450,13 @@ class PDResources:
         """Return ``True`` if an ``/XObject`` entry exists for ``name``."""
         return self._has(_X_OBJECT, name)
 
-    def has_pattern(self, name: COSName) -> bool:
+    def has_pattern(self, name: COSName | str) -> bool:
         """Return ``True`` if a ``/Pattern`` entry exists for ``name``."""
-        return self._has(_PATTERN, name)
+        return self._has(_PATTERN, _to_cos_name(name))
 
-    def has_shading(self, name: COSName) -> bool:
+    def has_shading(self, name: COSName | str) -> bool:
         """Return ``True`` if a ``/Shading`` entry exists for ``name``."""
-        return self._has(_SHADING, name)
+        return self._has(_SHADING, _to_cos_name(name))
 
     def has_ext_g_state(self, name: COSName) -> bool:
         """Return ``True`` if an ``/ExtGState`` entry exists for ``name``."""
@@ -494,13 +494,13 @@ class PDResources:
         """Compact-spelled alias for ``clear_x_object``."""
         self.clear_x_object(name)
 
-    def clear_pattern(self, name: COSName) -> None:
+    def clear_pattern(self, name: COSName | str) -> None:
         """Remove a ``/Pattern`` entry. No-op if absent."""
-        self._clear(_PATTERN, name)
+        self._clear(_PATTERN, _to_cos_name(name))
 
-    def clear_shading(self, name: COSName) -> None:
+    def clear_shading(self, name: COSName | str) -> None:
         """Remove a ``/Shading`` entry. No-op if absent."""
-        self._clear(_SHADING, name)
+        self._clear(_SHADING, _to_cos_name(name))
 
     def clear_ext_g_state(self, name: COSName) -> None:
         """Remove an ``/ExtGState`` entry. No-op if absent."""
@@ -523,7 +523,7 @@ class PDResources:
         if sub is not None:
             sub.remove_item(name)
 
-    def get_pattern(self, name: COSName) -> PDAbstractPattern | None:
+    def get_pattern(self, name: COSName | str) -> PDAbstractPattern | None:
         """Return the typed ``PDAbstractPattern`` for ``name`` (a
         ``PDTilingPattern`` or ``PDShadingPattern``), or ``None`` when the
         entry is missing or not a dictionary."""
@@ -531,7 +531,8 @@ class PDResources:
             PDAbstractPattern,
         )
 
-        raw, base = self._lookup_raw_and_resolved(_PATTERN, name)
+        key = _to_cos_name(name)
+        raw, base = self._lookup_raw_and_resolved(_PATTERN, key)
         cache = self._cache()
         if cache is not None and isinstance(raw, COSObject):
             cached = cache.get_pattern(raw)
@@ -546,13 +547,14 @@ class PDResources:
             return pattern
         return None
 
-    def get_shading(self, name: COSName) -> PDShading | None:
+    def get_shading(self, name: COSName | str) -> PDShading | None:
         """Return the typed ``PDShading`` for ``name`` (one of
         ``PDShadingType1``..``PDShadingType7``), or ``None`` when the entry
         is absent."""
         from pypdfbox.pdmodel.graphics.shading import PDShading  # noqa: PLC0415
 
-        raw, base = self._lookup_raw_and_resolved(_SHADING, name)
+        key = _to_cos_name(name)
+        raw, base = self._lookup_raw_and_resolved(_SHADING, key)
         cache = self._cache()
         if cache is not None and isinstance(raw, COSObject):
             cached = cache.get_shading(raw)
@@ -821,6 +823,10 @@ class PDResources:
             if not sub.contains_key(candidate):
                 return candidate
             n += 1
+
+
+def _to_cos_name(name: COSName | str) -> COSName:
+    return name if isinstance(name, COSName) else COSName.get_pdf_name(name)
 
 
 # ---- module-level COSName constants for category lookups -------------------

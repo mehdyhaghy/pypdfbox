@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/action/pd_additional_actions.py`: generic additional-actions wrapper supports `/F` trigger round-tripping.
+- `pypdfbox/pdmodel/common/pd_stream.py`: decode-parameter replacement clears stale `/DP`, and committed zero-byte streams report empty.
+- `pypdfbox/fontbox/cff/cff_font.py`: format-1 CFF encoding ranges stop at code `255` instead of wrapping.
+- `pypdfbox/pdfparser/xref_trailer_resolver.py`: `reset()` clears visited xref offsets for recovery/reparse passes.
+- `pypdfbox/pdmodel/pd_resources.py`: pattern and shading resource helpers accept plain string names.
 - `pypdfbox/pdmodel/font/pd_type3_font.py`: Type 3 fonts expose bounding-box and position-vector methods from the `PDFontLike` surface.
 - `pypdfbox/cos/cos_integer.py`: `COSInteger.get(True/False)` rejects booleans instead of returning cached `1`/`0` integers.
 - `pypdfbox/pdmodel/interactive/documentnavigation/outline/pd_outline_item.py`: named destination page lookup prefers `/Names /Dests` over legacy catalog `/Dests`.

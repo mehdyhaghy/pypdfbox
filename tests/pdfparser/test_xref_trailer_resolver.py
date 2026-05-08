@@ -236,6 +236,21 @@ def test_reset_clears_entries_but_preserves_sections() -> None:
         r.set_entry(COSObjectKey(3, 0), _entry(30))
 
 
+def test_reset_clears_visited_offsets_for_reparse() -> None:
+    r = XrefTrailerResolver()
+    r.begin_section(100)
+    r.begin_section(200)
+
+    assert r.has_visited(100)
+    assert r.has_visited(200)
+
+    r.reset()
+
+    assert r.visited_offsets() == set()
+    assert not r.has_visited(100)
+    assert not r.has_visited(200)
+
+
 def test_int_helper_used_consistently() -> None:
     """Smoke test using COSInteger directly to make sure the trailer's
     typed accessors round-trip without the dictionary copy losing the

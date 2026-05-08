@@ -23,6 +23,7 @@ from .pd_action_thread import PDActionThread
 from .pd_action_transition import PDActionTransition
 from .pd_action_unknown import PDActionUnknown
 from .pd_action_uri import PDActionURI
+from .pd_additional_actions import PDAdditionalActions
 from .pd_annotation_additional_actions import PDAnnotationAdditionalActions
 from .pd_document_catalog_additional_actions import PDDocumentCatalogAdditionalActions
 from .pd_form_field_additional_actions import PDFormFieldAdditionalActions
@@ -55,6 +56,7 @@ __all__ = [
     "PDActionTransition",
     "PDActionURI",
     "PDActionUnknown",
+    "PDAdditionalActions",
     "PDAnnotationAdditionalActions",
     "PDDocumentCatalogAdditionalActions",
     "PDFormFieldAdditionalActions",

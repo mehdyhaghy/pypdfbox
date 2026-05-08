@@ -858,9 +858,9 @@ def read_encoding(
             code = _read_card8(stream)
             n_left = _read_card8(stream)
             for _ in range(n_left + 1):
-                if 0 <= gid < len(charset):
+                if 0 <= code <= 255 and 0 <= gid < len(charset):
                     encoding[code] = charset[gid]
-                code = (code + 1) & 0xFF
+                code += 1
                 gid += 1
     else:
         msg = f"Unknown CFF encoding format: {fmt}"

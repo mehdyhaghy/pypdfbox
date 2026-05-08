@@ -125,6 +125,35 @@ def test_set_decode_parms_none_removes_entry() -> None:
     assert stream.get_decode_parms() is None
 
 
+def test_set_decode_parms_none_removes_legacy_dp_alias() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream(input_data=b"x")
+    stream.get_cos_object().set_item(COSName.get_pdf_name("DP"), COSDictionary())
+    assert stream.get_decode_parms() is not None
+
+    stream.set_decode_parms(None)
+
+    assert stream.get_decode_parms() is None
+    assert not stream.get_cos_object().contains_key(COSName.get_pdf_name("DP"))
+
+
+def test_set_decode_parms_replaces_legacy_dp_alias() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    stream = PDStream(input_data=b"x")
+    stream.get_cos_object().set_item(COSName.get_pdf_name("DP"), COSDictionary())
+    canonical = COSDictionary()
+    canonical.set_int("Predictor", 12)
+
+    stream.set_decode_parms(canonical)
+
+    out = stream.get_decode_parms()
+    assert out is not None
+    assert out[0].get_int("Predictor") == 12
+    assert not stream.get_cos_object().contains_key(COSName.get_pdf_name("DP"))
+
+
 def test_get_decode_parms_falls_back_to_dp() -> None:
     """Per PDF Reference 1.5 implementation note 7, some producers spell
     the entry ``/DP`` rather than ``/DecodeParms``. ``get_decode_parms``

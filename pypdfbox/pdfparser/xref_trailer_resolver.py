@@ -172,7 +172,9 @@ class XrefTrailerResolver:
         Trailers and start offsets are preserved on each section,
         matching upstream's ``reset()`` (which clears the per-object
         ``xrefTable`` map but keeps the ``XrefTrailerObj`` envelope and
-        its trailer)."""
+        its trailer). Visited offsets are parser-walk state, so they are
+        cleared with the entries."""
         for section in self._sections:
             section.entries.clear()
         self._current = None
+        self._visited_offsets.clear()

@@ -38,6 +38,22 @@ def test_get_pattern_dispatches_to_tiling_pattern() -> None:
     assert isinstance(p, PDTilingPattern)
 
 
+def test_pattern_resource_lookup_accepts_string_name() -> None:
+    res = PDResources()
+    pattern_dict = COSDictionary()
+    pattern_dict.set_item(_TYPE, COSName.get_pdf_name("Pattern"))
+    pattern_dict.set_item(_PATTERN_TYPE, COSInteger(1))
+    res.put(_PATTERN, COSName.get_pdf_name("PString"), pattern_dict)
+
+    assert res.has_pattern("PString")
+    assert isinstance(res.get_pattern("PString"), PDTilingPattern)
+
+    res.clear_pattern("PString")
+
+    assert not res.has_pattern("PString")
+    assert res.get_pattern("PString") is None
+
+
 def test_get_shading_dispatches_to_shading_type2() -> None:
     res = PDResources()
     shading_dict = COSDictionary()
@@ -49,6 +65,24 @@ def test_get_shading_dispatches_to_shading_type2() -> None:
     res.put(_SHADING, COSName.get_pdf_name("Sh0"), shading_dict)
     sh = res.get_shading(COSName.get_pdf_name("Sh0"))
     assert isinstance(sh, PDShadingType2)
+
+
+def test_shading_resource_lookup_accepts_string_name() -> None:
+    res = PDResources()
+    shading_dict = COSDictionary()
+    shading_dict.set_item(_SHADING_TYPE, COSInteger(2))
+    shading_dict.set_item(
+        COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("DeviceRGB")
+    )
+    res.put(_SHADING, COSName.get_pdf_name("ShString"), shading_dict)
+
+    assert res.has_shading("ShString")
+    assert isinstance(res.get_shading("ShString"), PDShadingType2)
+
+    res.clear_shading("ShString")
+
+    assert not res.has_shading("ShString")
+    assert res.get_shading("ShString") is None
 
 
 def test_get_ext_gstate_returns_typed_wrapper() -> None:

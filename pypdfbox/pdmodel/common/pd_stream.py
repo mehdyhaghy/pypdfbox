@@ -347,9 +347,11 @@ class PDStream:
         self,
         parms: COSDictionary | Sequence[COSDictionary] | None,
     ) -> None:
-        """Replace ``/DecodeParms``. Accepts ``None`` (removes the entry),
-        a single ``COSDictionary`` (stored as-is — single-filter form),
-        or a sequence of dictionaries (stored as a ``COSArray``)."""
+        """Replace ``/DecodeParms``. Accepts ``None`` (removes both the
+        canonical entry and legacy ``/DP`` alias), a single
+        ``COSDictionary`` (stored as-is — single-filter form), or a
+        sequence of dictionaries (stored as a ``COSArray``)."""
+        self._stream.remove_item(_DP)
         if parms is None:
             self._stream.remove_item(_DECODE_PARMS)
             return
@@ -622,9 +624,9 @@ class PDStream:
 
         Useful for short-circuiting filter / decode pipelines that would
         otherwise create empty ``BytesIO`` handles. Note this checks the
-        live raw buffer — a stream whose ``/Length`` was set but whose
-        body was never populated still reports ``True``."""
-        return not self._stream.has_data()
+        live raw-byte length — a stream whose ``/Length`` was set but
+        whose body was never populated still reports ``True``."""
+        return self._stream.get_length() == 0
 
 
 def _to_name(value: COSName | str) -> COSName:
