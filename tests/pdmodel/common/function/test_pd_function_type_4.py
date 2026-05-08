@@ -125,6 +125,21 @@ def test_trailing_tokens_after_closing_brace_raise() -> None:
         fn.eval([])
 
 
+def test_missing_closing_brace_raises() -> None:
+    """A malformed body with an unterminated procedure must be rejected."""
+    fn = _make("{ 1 2 add", domain=[])
+    with pytest.raises(OSError, match="missing closing brace"):
+        fn.eval([])
+
+
+def test_unmatched_closing_brace_without_outer_wrapper_raises() -> None:
+    """Outer braces are optional for lenient real-world streams, but a stray
+    closing brace is still malformed."""
+    fn = _make("1 }", domain=[])
+    with pytest.raises(OSError, match="unexpected closing brace"):
+        fn.eval([])
+
+
 # --------------------------------------------------------------------------
 # Multi-input / multi-output
 # --------------------------------------------------------------------------

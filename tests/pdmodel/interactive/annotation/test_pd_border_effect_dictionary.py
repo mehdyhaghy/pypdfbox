@@ -62,6 +62,18 @@ def test_style_round_trip_solid() -> None:
     assert be.get_style() == "S"
 
 
+def test_set_style_none_clears_entry_and_restores_default() -> None:
+    be = PDBorderEffectDictionary()
+    be.set_style(PDBorderEffectDictionary.STYLE_CLOUDY)
+    assert be.has_style() is True
+
+    be.set_style(None)
+
+    assert be.has_style() is False
+    assert be.get_style() == PDBorderEffectDictionary.STYLE_SOLID
+    assert not be.get_cos_object().contains_key(COSName.get_pdf_name("S"))
+
+
 def test_style_constants() -> None:
     assert PDBorderEffectDictionary.STYLE_SOLID == "S"
     assert PDBorderEffectDictionary.STYLE_CLOUDY == "C"

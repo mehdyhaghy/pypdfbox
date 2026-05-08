@@ -10,6 +10,7 @@ _WHITE_POINT: COSName = COSName.get_pdf_name("WhitePoint")
 _BLACK_POINT: COSName = COSName.get_pdf_name("BlackPoint")
 _GAMMA: COSName = COSName.get_pdf_name("Gamma")
 _MATRIX: COSName = COSName.get_pdf_name("Matrix")
+_IDENTITY_MATRIX: list[float] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
 
 
 def _read_float_array(
@@ -105,11 +106,16 @@ class PDCalRGB(PDColorSpace):
         """Remove ``/Gamma`` so reads fall back to ``[1, 1, 1]``."""
         self._dict().remove_item(_GAMMA)
 
-    def get_matrix(self) -> list[float] | None:
+    def get_matrix(self) -> list[float]:
+        """Return the linear interpretation matrix.
+
+        Mirrors PDFBox ``PDCalRGB.getMatrix()``: when ``/Matrix`` is absent
+        or not an array, callers see the identity matrix default.
+        """
         entry = self._dict().get_dictionary_object(_MATRIX)
         if isinstance(entry, COSArray):
             return entry.to_float_array()
-        return None
+        return list(_IDENTITY_MATRIX)
 
     def set_matrix(self, matrix: list[float] | None) -> None:
         d = self._dict()
@@ -176,7 +182,7 @@ class PDCalRGB(PDColorSpace):
         c_p = (c ** g_b) if c > 0.0 else 0.0
 
         m = self.get_matrix()
-        if m is None or len(m) < 9:
+        if len(m) < 9:
             # Identity: X = A', Y = B', Z = C'
             x, y, z = a_p, b_p, c_p
         else:

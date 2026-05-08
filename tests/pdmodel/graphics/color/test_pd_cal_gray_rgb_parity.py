@@ -6,7 +6,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.color.pd_cal_gray import PDCalGray
 from pypdfbox.pdmodel.graphics.color.pd_cal_rgb import PDCalRGB
 
-
 # ---------- PDCalGray defaults (PDF 32000-1 §8.6.5.2 Table 65) ----------
 
 
@@ -82,12 +81,20 @@ def test_pd_cal_rgb_default_gamma_is_unit_triple() -> None:
     assert len(g) == 3
 
 
-def test_pd_cal_rgb_default_matrix_is_identity_or_none() -> None:
-    # Per §8.6.5.3, when /Matrix is absent the default is the identity
-    # matrix flattened. Upstream returns None for absent /Matrix; callers
-    # apply the identity default. Both are acceptable shapes for parity.
-    m = PDCalRGB().get_matrix()
-    assert m is None or m == [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+def test_pd_cal_rgb_default_matrix_is_identity() -> None:
+    # Per §8.6.5.3 and upstream PDFBox, when /Matrix is absent the
+    # accessor returns the flattened identity matrix default.
+    assert PDCalRGB().get_matrix() == [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
 
 
 # ---------- PDCalRGB round-trips ----------
@@ -124,12 +131,23 @@ def test_pd_cal_rgb_matrix_round_trip() -> None:
     assert cs.get_matrix() == pytest.approx(matrix)
 
 
-def test_pd_cal_rgb_matrix_clear_returns_none() -> None:
+def test_pd_cal_rgb_matrix_clear_returns_identity_default() -> None:
     cs = PDCalRGB()
     cs.set_matrix([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])
-    assert cs.get_matrix() is not None
+    assert cs.has_matrix()
     cs.set_matrix(None)
-    assert cs.get_matrix() is None
+    assert not cs.has_matrix()
+    assert cs.get_matrix() == [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
 
 
 def test_pd_cal_rgb_setters_write_to_params_dict() -> None:

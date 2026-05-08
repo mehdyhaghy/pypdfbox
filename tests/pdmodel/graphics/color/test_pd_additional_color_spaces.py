@@ -22,7 +22,6 @@ from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
-
 # ---------- get_name correctness ----------
 
 
@@ -283,8 +282,18 @@ def test_pd_cal_rgb_matrix_round_trip() -> None:
     assert cs.get_matrix() == identity
 
 
-def test_pd_cal_rgb_matrix_default_is_none_until_set() -> None:
-    assert PDCalRGB().get_matrix() is None
+def test_pd_cal_rgb_matrix_default_is_identity() -> None:
+    assert PDCalRGB().get_matrix() == [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    ]
 
 
 # ---------- PDLab ----------
@@ -341,7 +350,7 @@ def test_pd_color_space_create_dispatches_indexed() -> None:
     arr.add(COSName.get_pdf_name("DeviceRGB"))
     arr.add(COSInteger.get(255))
     arr.add(COSString(b"\x00" * 768))
-    cs = PDColorSpace.create(arr)  # type: ignore[attr-defined]
+    cs = PDColorSpace.create(arr)
     assert isinstance(cs, PDIndexed)
     assert cs.get_hival() == 255
 
@@ -351,5 +360,5 @@ def test_pd_color_space_create_dispatches_indexed() -> None:
     reason="PDColorSpace.create factory not yet wired (see CLAUDE wiring instructions)",
 )
 def test_pd_color_space_create_dispatches_device_rgb_name() -> None:
-    cs = PDColorSpace.create(COSName.get_pdf_name("DeviceRGB"))  # type: ignore[attr-defined]
+    cs = PDColorSpace.create(COSName.get_pdf_name("DeviceRGB"))
     assert cs is PDDeviceRGB.INSTANCE

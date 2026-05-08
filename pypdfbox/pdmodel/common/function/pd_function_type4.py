@@ -186,30 +186,34 @@ def _parse(body: str) -> Instruction:
 
     pos = [0]
 
-    def parse_block() -> Instruction:
+    def parse_block(expect_close: bool) -> Instruction:
         seq: Instruction = []
         while pos[0] < len(tokens):
             tok = tokens[pos[0]]
             pos[0] += 1
             if tok == "{":
-                seq.append(parse_block())
+                seq.append(parse_block(True))
             elif tok == "}":
+                if not expect_close:
+                    raise OSError("unexpected closing brace in PostScript body")
                 return seq
             else:
                 seq.append(_classify(tok))
+        if expect_close:
+            raise OSError("missing closing brace in PostScript body")
         return seq
 
     # Strip an optional outer { ... }; any extra braces are reported.
     if tokens[0] == "{":
         pos[0] = 1
-        seq = parse_block()
+        seq = parse_block(True)
         if pos[0] != len(tokens):
             raise OSError(
                 f"unexpected trailing tokens in PostScript body: "
                 f"{tokens[pos[0]:]!r}"
             )
         return seq
-    return parse_block()
+    return parse_block(False)
 
 
 def _classify(tok: str) -> float | bool | str:

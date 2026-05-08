@@ -33,7 +33,8 @@ class DictionaryEncoding(Encoding):
        is_non_symbolic=bool, built_in=Encoding | None)`` — general PDF font
        reader; resolves a base encoding from ``/BaseEncoding`` if present,
        else falls back to ``StandardEncoding`` (non-symbolic) or the font's
-       built-in encoding (symbolic).
+       built-in encoding (symbolic). Symbolic fonts require a built-in
+       encoding when no valid base encoding is available.
     """
 
     def __init__(
@@ -89,6 +90,8 @@ class DictionaryEncoding(Encoding):
             return None
         if is_non_symbolic:
             return StandardEncoding.INSTANCE
+        if built_in is None:
+            raise ValueError("Symbolic fonts must have a built-in encoding")
         return built_in
 
     def _apply_differences(self, diffs: COSArray) -> None:

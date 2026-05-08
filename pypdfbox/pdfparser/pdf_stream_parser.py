@@ -450,18 +450,14 @@ class PDFStreamParser(COSParser):
         return op
 
     def _parse_id_operator(self) -> Operator:
-        """Handle the ``ID`` operator: consume one EOL/whitespace byte
-        then capture raw bytes up to (and not including) ``EI`` followed
-        by whitespace."""
-        start = self.position
-        b1 = self.read_byte()
-        b2 = self.read_byte()
-        if b1 != 0x49 or b2 != 0x44:  # 'I' 'D'
-            raise PDFParseError(
-                f"expected 'ID' operator at byte {start}, got "
-                f"{bytes((max(b1, 0), max(b2, 0)))!r}",
-                position=start,
-            )
+        """Handle ``ID`` exactly as the inline-image data operator.
+
+        Other uppercase-I operators are legal content-stream operator names,
+        so they must flow through the regular operator path.
+        """
+        kw = self._read_operator_string()
+        if kw != _OP_BEGIN_INLINE_IMAGE_DATA:
+            return Operator.get_operator(kw)
         # Consume one line break (CR / LF / CRLF) or any single whitespace
         # byte, mirroring upstream's ``skipLinebreak() || isWhitespace()``.
         if not self._skip_linebreak():

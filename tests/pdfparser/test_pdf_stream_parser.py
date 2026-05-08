@@ -142,6 +142,20 @@ def test_d0_and_d1_type3_operators() -> None:
     assert any(isinstance(t, Operator) and t.name == "d1" for t in toks)
 
 
+def test_uppercase_i_operator_is_not_inline_image_data() -> None:
+    toks = tokens(b"I Q")
+    assert len(toks) == 2
+    assert isinstance(toks[0], Operator) and toks[0].name == "I"
+    assert isinstance(toks[1], Operator) and toks[1].name == "Q"
+
+
+def test_id_prefix_operator_is_not_inline_image_data() -> None:
+    toks = tokens(b"IDx Q")
+    assert len(toks) == 2
+    assert isinstance(toks[0], Operator) and toks[0].name == "IDx"
+    assert isinstance(toks[1], Operator) and toks[1].name == "Q"
+
+
 def test_close_bracket_returns_cosnull() -> None:
     # Stray ']' becomes COSNull.NULL (matches upstream PDFBox).
     toks = tokens(b"]")

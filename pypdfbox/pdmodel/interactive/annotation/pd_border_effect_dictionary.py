@@ -61,8 +61,8 @@ class PDBorderEffectDictionary:
 
     # ---------- /S (style) ----------
 
-    def set_style(self, s: str) -> None:
-        """Set the border effect style; see the ``STYLE_*`` constants."""
+    def set_style(self, s: str | None) -> None:
+        """Set the border effect style; ``None`` clears the optional ``/S`` entry."""
         self._dict.set_name(_S, s)
 
     def get_style(self) -> str:

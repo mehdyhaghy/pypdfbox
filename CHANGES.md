@@ -19,6 +19,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Per-file deviations
 
+- `pypdfbox/pdmodel/interactive/annotation/pd_border_effect_dictionary.py`: `set_style(None)` clears optional `/S`.
+- `pypdfbox/pdmodel/graphics/color/pd_cal_rgb.py`: missing or cleared `/Matrix` returns the identity matrix.
+- `pypdfbox/pdmodel/font/encoding/dictionary_encoding.py`: symbolic reader-mode encodings without a valid base or built-in encoding fail explicitly.
+- `pypdfbox/pdfparser/pdf_stream_parser.py`: inline-image parsing only treats exact `ID` as image data, leaving `I` and longer operator names as normal operators.
+- `pypdfbox/pdmodel/common/function/pd_function_type4.py`: Type 4 function parsing rejects missing and stray closing braces.
 - `pypdfbox/pdmodel/interactive/form/pd_choice.py`: one-element nested `/Opt` entries are preserved in display values so tolerated malformed option arrays keep export/display alignment.
 - `pypdfbox/fontbox/ttf/true_type_font.py`: synthesized header metadata preserves `head.created` and `head.modified` as UTC `datetime` values.
 - `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_node.py`: direct structure-element kid append/remove operations maintain the child's `/P` parent pointer.
