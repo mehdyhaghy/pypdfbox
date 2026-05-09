@@ -1824,3 +1824,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/jpeg_factory.py`: `create_from_image()` now preserves alpha by splitting RGBA/LA/PA inputs into a color JPEG plus a grayscale JPEG `/SMask`, matching upstream `JPEGFactory`'s recursive soft-mask producer path.
 - `tests/pdmodel/graphics/image/test_jpeg_factory.py`, `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py`: replaced the prior alpha-flattening expectations with `/SMask` metadata assertions and kept non-alpha RGB images mask-free.
+
+## Wave 378 — JPEGFactory soft-mask signal assertions
+
+- `tests/pdmodel/graphics/image/test_jpeg_factory.py`, `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py`: changed the alpha fixtures from constant-alpha RGBA to gradients and assert the decoded grayscale `/SMask` carries non-uniform alpha data, matching the upstream `colorCount` intent rather than checking metadata only.

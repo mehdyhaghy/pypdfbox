@@ -67,6 +67,26 @@ def _validate_smask(ximage, width: int, height: int) -> None:
     _validate(smask, 8, width, height, "DeviceGray")
 
 
+def _rgba_gradient(width: int, height: int) -> Image.Image:
+    image = Image.new("RGBA", (width, height), color=(80, 160, 240, 255))
+    pixels = image.load()
+    assert pixels is not None
+    for y in range(height):
+        for x in range(width):
+            alpha = round(255 * y / max(height - 1, 1))
+            pixels[x, y] = (80, 160, 240, alpha)
+    return image
+
+
+def _assert_non_uniform_smask(ximage, min_colors: int) -> None:
+    smask = ximage.get_soft_mask()
+    assert smask is not None
+    mask_image = smask.to_pil_image()
+    assert mask_image is not None
+    values = set(mask_image.convert("L").tobytes())
+    assert len(values) > min_colors
+
+
 def _make_jpeg(mode: str, size: tuple[int, int], color) -> bytes:
     img = Image.new(mode, size, color=color)
     buf = io.BytesIO()
@@ -157,19 +177,21 @@ def test_create_from_image_int_argb():
     """Upstream covers ``BufferedImage.TYPE_INT_ARGB`` round-trip plus the
     /SMask soft-mask extraction. PIL's RGBA mode is the moral equivalent
     of INT_ARGB."""
-    src = Image.new("RGBA", (344, 287), color=(80, 160, 240, 200))
+    src = _rgba_gradient(344, 287)
     ximage = JPEGFactory.create_from_image(None, src)
     _validate(ximage, 8, 344, 287, "DeviceRGB")
     _validate_smask(ximage, 344, 287)
+    _assert_non_uniform_smask(ximage, src.height // 10)
 
 
 def test_create_from_image_4byte_abgr():
     """``BufferedImage.TYPE_4BYTE_ABGR`` exercises the same alpha split
     as INT_ARGB through PIL's RGBA bridge."""
-    src = Image.new("RGBA", (344, 287), color=(50, 100, 150, 220))
+    src = _rgba_gradient(344, 287)
     ximage = JPEGFactory.create_from_image(None, src)
     _validate(ximage, 8, 344, 287, "DeviceRGB")
     _validate_smask(ximage, 344, 287)
+    _assert_non_uniform_smask(ximage, src.height // 10)
 
 
 def test_create_from_image_ushort_555_rgb():

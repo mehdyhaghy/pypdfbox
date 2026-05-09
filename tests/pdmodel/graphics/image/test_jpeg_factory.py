@@ -189,14 +189,31 @@ def _assert_dct_gray_smask(image, width: int, height: int) -> None:
     assert filt.name == "DCTDecode"
 
 
+def _rgba_gradient(width: int, height: int) -> Image.Image:
+    image = Image.new("RGBA", (width, height), color=(50, 100, 150, 255))
+    pixels = image.load()
+    assert pixels is not None
+    for y in range(height):
+        for x in range(width):
+            alpha = round(255 * ((y * width) + x) / ((width * height) - 1))
+            pixels[x, y] = (50, 100, 150, alpha)
+    return image
+
+
 def test_create_from_image_rgba_extracts_alpha_smask():
     """RGBA inputs become RGB JPEGs with a grayscale JPEG /SMask."""
-    img = Image.new("RGBA", (16, 16), color=(50, 100, 150, 200))
+    img = _rgba_gradient(16, 16)
     image = JPEGFactory.create_from_image(None, img)
     cs = image.get_color_space()
     assert cs is not None
     assert cs.get_name() == "DeviceRGB"
     _assert_dct_gray_smask(image, 16, 16)
+    smask = image.get_soft_mask()
+    assert smask is not None
+    mask_image = smask.to_pil_image()
+    assert mask_image is not None
+    lo, hi = mask_image.convert("L").getextrema()
+    assert lo < hi
 
 
 def test_create_from_image_rgb_has_no_soft_mask():
