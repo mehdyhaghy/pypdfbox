@@ -3,10 +3,10 @@ Ported from Apache PDFBox 3.0:
   pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java
 
 Upstream targets ``COSParser.parseCOSString`` / ``parseCOSName``. We don't
-ship ``COSParser`` yet (cluster #2), so:
+ship every fixture needed by the upstream class, so:
 
-* ``parseCOSString`` tests are skipped — to be re-ported with the COSParser
-  cluster.
+* ``parseCOSString`` string-end recovery is executed against the ported
+  ``COSParser.parse_cos_string``.
 * ``parseCOSName`` tests are translated to exercise our ``BaseParser.read_name``,
   which mirrors the upstream name-parsing logic byte-for-byte.
 * The PDF-fixture-driven stack-overflow test is skipped pending the fixture pass.
@@ -20,17 +20,33 @@ import pytest
 
 from pypdfbox.cos import COSName
 from pypdfbox.io import RandomAccessReadBuffer
-from pypdfbox.pdfparser import BaseParser
+from pypdfbox.pdfparser import BaseParser, COSParser
 
 
 def _parser(data: bytes) -> BaseParser:
     return BaseParser(RandomAccessReadBuffer(data))
 
 
-# Upstream: testCheckForEndOfString — exercises parseCOSString (COSParser, cluster #2).
-@pytest.mark.skip(reason="parseCOSString lives in COSParser; port with cluster #2")
 def test_check_for_end_of_string() -> None:
-    pass
+    assert COSParser(RandomAccessReadBuffer(b"(Test)")).parse_cos_string().get_string() == "Test"
+    assert (
+        COSParser(RandomAccessReadBuffer(b"((Test)\n/ "))
+        .parse_cos_string()
+        .get_string()
+        == "(Test"
+    )
+    assert (
+        COSParser(RandomAccessReadBuffer(b"((Test)\r/ "))
+        .parse_cos_string()
+        .get_string()
+        == "(Test"
+    )
+    assert (
+        COSParser(RandomAccessReadBuffer(b"((Test)\r\n>"))
+        .parse_cos_string()
+        .get_string()
+        == "(Test"
+    )
 
 
 # Upstream: testBaseParserStackOverflow — needs sample PDF

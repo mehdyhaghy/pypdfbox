@@ -1737,3 +1737,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 357 — PDPage null thread-beads upstream test
 
 - `tests/pdmodel/upstream/test_pd_page.py`: enabled the upstream PDFBOX-6186 `testNullThreadBeads` parity check now that `PDPage.get_thread_beads()` / `set_thread_beads()` are ported. The test verifies absent `/B`, explicit empty arrays, and `set_thread_beads(None)` all read back as an empty list.
+
+## Wave 358 — BaseParser literal string end recovery
+
+- `pypdfbox/pdfparser/base_parser.py`: `_check_for_end_of_string()` now recognizes the PDFBOX-6093 malformed literal-string recovery case where a nested string is followed by `\r\n>`; this matches upstream `COSParser.parseCOSString` leniency alongside the existing LF/CR plus `/` or `>` cases.
+- `tests/pdfparser/upstream/test_base_parser.py`: enabled the upstream `testCheckForEndOfString` assertions against the ported `COSParser.parse_cos_string()`.

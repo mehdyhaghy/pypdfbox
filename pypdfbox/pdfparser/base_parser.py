@@ -491,6 +491,12 @@ class BaseParser:
             return depth
         if self.is_eol(next_three[0]) and next_three[1] in (0x2F, 0x3E):  # '/', '>'
             return 0
+        if (
+            next_three[0] == 0x0D
+            and next_three[1] == 0x0A
+            and next_three[2] in (0x2F, 0x3E)  # '/', '>'
+        ):
+            return 0
         return depth
 
     def _consume_escape(self, out: bytearray, depth: int) -> int:
