@@ -1,9 +1,8 @@
 """Hand-written tests for :class:`CCITTFactory`.
 
-Covers the 1-bit ``create_from_image`` path: G4 filter wiring,
-``/DecodeParms`` carrying ``K=-1`` plus real columns/rows, raw-bytes
-round-trip through :class:`CCITTFaxDecode`, and the input-validation
-guards (non-image / non-1-bit-image rejection).
+Covers 1-bit image encoding plus single-strip CCITT TIFF extraction:
+filter wiring, ``/DecodeParms`` metadata, byte preservation, decoder
+round-trips, and input-validation guards.
 """
 from __future__ import annotations
 
@@ -16,6 +15,37 @@ from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.filter import CCITTFaxDecode
 from pypdfbox.pdmodel.graphics.image import CCITTFactory, PDImageXObject
 from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+def _pattern_image(size: tuple[int, int] = (17, 9)) -> Image.Image:
+    image = Image.new("1", size, color=1)
+    width, height = size
+    for x in range(width):
+        image.putpixel((x, x % height), 0)
+    return image
+
+
+def _tiff_bytes(image: Image.Image, compression: str) -> bytes:
+    buf = io.BytesIO()
+    image.save(buf, format="TIFF", compression=compression)
+    return buf.getvalue()
+
+
+def _single_strip(tiff_bytes: bytes) -> bytes:
+    with Image.open(io.BytesIO(tiff_bytes)) as parsed:
+        offsets = parsed.tag_v2[273]
+        counts = parsed.tag_v2[279]
+        offset = offsets[0] if isinstance(offsets, tuple) else offsets
+        count = counts[0] if isinstance(counts, tuple) else counts
+    return tiff_bytes[offset : offset + count]
+
+
+def _decode(image_x: PDImageXObject) -> bytes:
+    cos = image_x.get_cos_object()
+    assert isinstance(cos, COSStream)
+    out = io.BytesIO()
+    CCITTFaxDecode().decode(io.BytesIO(cos.get_raw_data()), out, cos)
+    return out.getvalue()
 
 # ---------------------------------------------------------------------------
 # create_from_image
@@ -100,6 +130,115 @@ def test_create_from_image_rejects_non_image() -> None:
     document = PDDocument()
     with pytest.raises(TypeError):
         CCITTFactory.create_from_image(document, b"not an image")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# create_from_byte_array / create_from_file
+# ---------------------------------------------------------------------------
+
+
+def test_create_from_byte_array_extracts_group4_tiff_strip_verbatim() -> None:
+    document = PDDocument()
+    src = _pattern_image()
+    tiff = _tiff_bytes(src, "group4")
+
+    image_x = CCITTFactory.create_from_byte_array(document, tiff)
+    cos = image_x.get_cos_object()
+
+    assert isinstance(cos, COSStream)
+    assert cos.get_raw_data() == _single_strip(tiff)
+
+
+def test_create_from_byte_array_group4_metadata_and_decode_parms() -> None:
+    document = PDDocument()
+    tiff = _tiff_bytes(_pattern_image(), "group4")
+
+    image_x = CCITTFactory.create_from_byte_array(document, tiff)
+    cos = image_x.get_cos_object()
+
+    assert isinstance(cos, COSStream)
+    assert image_x.get_width() == 17
+    assert image_x.get_height() == 9
+    assert image_x.get_bits_per_component() == 1
+    assert image_x.get_filter() == COSName.get_pdf_name("CCITTFaxDecode")
+    decode_parms = cos.get_dictionary_object("DecodeParms")
+    assert isinstance(decode_parms, COSDictionary)
+    assert decode_parms.get_int("K", 0) == -1
+    assert decode_parms.get_int("Columns", 0) == 17
+    assert decode_parms.get_int("Rows", 0) == 9
+
+
+def test_create_from_byte_array_group4_round_trips_through_decoder() -> None:
+    document = PDDocument()
+    src = _pattern_image()
+    image_x = CCITTFactory.create_from_byte_array(
+        document, _tiff_bytes(src, "group4")
+    )
+
+    assert _decode(image_x) == src.tobytes()
+
+
+def test_create_from_byte_array_extracts_group3_tiff_as_k_zero() -> None:
+    document = PDDocument()
+    src = _pattern_image()
+    image_x = CCITTFactory.create_from_byte_array(
+        document, _tiff_bytes(src, "group3")
+    )
+    cos = image_x.get_cos_object()
+
+    assert isinstance(cos, COSStream)
+    decode_parms = cos.get_dictionary_object("DecodeParms")
+    assert isinstance(decode_parms, COSDictionary)
+    assert decode_parms.get_int("K", -99) == 0
+    assert _decode(image_x) == src.tobytes()
+
+
+def test_create_from_file_delegates_to_byte_array(tmp_path) -> None:  # noqa: ANN001
+    document = PDDocument()
+    src = _pattern_image()
+    tiff = _tiff_bytes(src, "group4")
+    path = tmp_path / "image.tif"
+    path.write_bytes(tiff)
+
+    image_x = CCITTFactory.create_from_file(document, path)
+    cos = image_x.get_cos_object()
+
+    assert isinstance(cos, COSStream)
+    assert cos.get_raw_data() == _single_strip(tiff)
+
+
+def test_ccitt_factory_file_and_byte_array_java_aliases(tmp_path) -> None:  # noqa: ANN001
+    document = PDDocument()
+    tiff = _tiff_bytes(_pattern_image(), "group4")
+    path = tmp_path / "image.tif"
+    path.write_bytes(tiff)
+
+    from_bytes = CCITTFactory.createFromByteArray(document, tiff)
+    from_file = CCITTFactory.createFromFile(document, path)
+
+    assert from_bytes.get_width() == from_file.get_width() == 17
+    assert from_bytes.get_height() == from_file.get_height() == 9
+
+
+def test_create_from_byte_array_rejects_non_bytes() -> None:
+    document = PDDocument()
+    with pytest.raises(TypeError):
+        CCITTFactory.create_from_byte_array(document, "not bytes")  # type: ignore[arg-type]
+
+
+def test_create_from_byte_array_rejects_non_tiff() -> None:
+    document = PDDocument()
+    with pytest.raises(ValueError, match="unreadable TIFF|expected TIFF"):
+        CCITTFactory.create_from_byte_array(document, b"not a tiff")
+
+
+def test_create_from_byte_array_rejects_non_ccitt_tiff() -> None:
+    document = PDDocument()
+    image = Image.new("1", (8, 8), color=1)
+    tiff = _tiff_bytes(image, "raw")
+
+    with pytest.raises(ValueError, match="unsupported TIFF compression"):
+        CCITTFactory.create_from_byte_array(document, tiff)
 
 
 # ---------------------------------------------------------------------------

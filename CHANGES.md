@@ -1842,3 +1842,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/jpeg_factory.py`: `create_from_image()` now treats paletted images carrying `info["transparency"]` as alpha-bearing inputs, converting through RGBA and attaching a grayscale JPEG `/SMask`.
 - `tests/pdmodel/graphics/image/test_jpeg_factory.py`: added explicit LA, PA, and palette-transparency coverage for `JPEGFactory.create_from_image()`, asserting grayscale+alpha inputs produce DeviceGray JPEGs with grayscale `/SMask` and palette alpha inputs produce DeviceRGB JPEGs with grayscale `/SMask`.
+
+## Wave 382 — CCITTFactory TIFF strip extraction
+
+- `pypdfbox/pdmodel/graphics/image/ccitt_factory.py`: added `create_from_byte_array()` / `create_from_file()` and Java aliases for single-strip 1-bit TIFFs compressed with CCITT T.4 Group 3 or T.6 Group 4. The factory extracts the existing TIFF strip bytes, preserves them in a `/CCITTFaxDecode` image XObject, and populates `/DecodeParms` from TIFF width, height, compression, and photometric tags.
+- `tests/pdmodel/graphics/image/test_ccitt_factory.py`: covered Group 4 byte preservation, metadata, decode round-trip, Group 3 `K=0` extraction, file/Java aliases, and invalid input rejection.
