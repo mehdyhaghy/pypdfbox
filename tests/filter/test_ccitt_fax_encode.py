@@ -1,7 +1,7 @@
 """Hand-written tests for ``CCITTFaxDecode.encode``.
 
 The encoder routes raw 1-bit packed scanlines through Pillow's
-libtiff Group 4 codec and extracts the encoded strip. Each test
+libtiff Group 3/4 codecs and extracts the encoded strip. Each test
 encodes a small bitmap, then round-trips through ``decode()`` to
 confirm the output reproduces the input byte-for-byte.
 """
@@ -31,8 +31,10 @@ def _params(**kwargs: object) -> COSDictionary:
     return params
 
 
-def _round_trip(raw: bytes, columns: int, rows: int, **extra: object) -> bytes:
-    params = _params(K=-1, Columns=columns, Rows=rows, **extra)
+def _round_trip(
+    raw: bytes, columns: int, rows: int, *, k: int = -1, **extra: object
+) -> bytes:
+    params = _params(K=k, Columns=columns, Rows=rows, **extra)
     enc_buf = io.BytesIO()
     CCITTFaxDecode().encode(io.BytesIO(raw), enc_buf, params)
     encoded = enc_buf.getvalue()
@@ -82,6 +84,19 @@ def test_encode_decode_round_trip_non_byte_aligned_width() -> None:
     img.putpixel((12, 6), 0)
     raw = img.tobytes()
     decoded = _round_trip(raw, 13, 7)
+    assert decoded == raw
+
+
+def test_encode_group3_1d_round_trips() -> None:
+    """K=0 emits CCITT Group 3 1D and decodes back through the same
+    T.4 path used for existing input files."""
+    img = Image.new("1", (32, 16), 1)
+    for x in range(32):
+        img.putpixel((x, x % 16), 0)
+    raw = img.tobytes()
+
+    decoded = _round_trip(raw, 32, 16, k=0)
+
     assert decoded == raw
 
 
@@ -135,9 +150,9 @@ def test_encode_short_payload_raises() -> None:
         CCITTFaxDecode().encode(io.BytesIO(b"\x00" * 16), io.BytesIO(), params)
 
 
-def test_encode_group3_not_implemented() -> None:
-    """Only G4 is wired up; G3 (K=0 / K>0) raises NotImplementedError."""
-    params = _params(K=0, Columns=8, Rows=4)
+def test_encode_group3_2d_not_implemented() -> None:
+    """Pillow/libtiff does not expose a stable T.4 2D encoder option."""
+    params = _params(K=1, Columns=8, Rows=4)
     with pytest.raises(NotImplementedError):
         CCITTFaxDecode().encode(io.BytesIO(b"\x00" * 4), io.BytesIO(), params)
 

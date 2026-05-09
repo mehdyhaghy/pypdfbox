@@ -776,7 +776,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThread.java` |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread_bead.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThreadBead.java` |
 | `pypdfbox/tools/pdfdebugger.py` | 3.0.x | original (upstream `PDFDebugger` is a Swing GUI — pypdfbox provides a CLI-only COS walker/debugger per CLAUDE.md "no GUI subsystems": summary/trailer/page/object/xref/list-objects/tree, stream dumps, page-token dumps, encryption summary, JSON output, and interactive text walker) |
-| `pypdfbox/tools/imagetopdf.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/tools/ImageToPDF.java` (image embedding inline via Pillow + zlib since `JPEGFactory` / `LosslessFactory` are not yet ported) |
+| `pypdfbox/tools/imagetopdf.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/tools/ImageToPDF.java` (image embedding remains inline via Pillow + zlib; image factories are ported separately) |
 | `tests/pdmodel/common/upstream/test_pdfdoc_encoding.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/cos/PDFDocEncodingTest.java` |
 | `tests/pdmodel/common/function/upstream/test_pd_function_type4.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/type4/TestOperators.java` |
 | `tests/multipdf/upstream/test_overlay.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/multipdf/OverlayTest.java` (rendering-comparison tests skipped — depend on bundled fixture PDFs we don't carry) |

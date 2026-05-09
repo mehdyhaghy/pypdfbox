@@ -271,11 +271,10 @@ class CCITTFaxDecode(Filter):
         ``/Columns`` and ``/Rows`` to be known up front (we cannot
         introspect the row count from raw packed bits without it).
 
-        Only Group 4 (``K = -1``) is currently emitted: it's the only
-        polarity the modern PDF tooling cares about and the only one
-        :class:`pypdfbox.pdmodel.graphics.image.LosslessFactory` uses.
-        Group 3 1D / 2D could be added by routing through Pillow's
-        ``compression='group3'`` codec but no producer needs it yet.
+        Group 3 1D (``K = 0``) and Group 4 (``K < 0``) are emitted via
+        Pillow's libtiff bridge. Mixed Group 3 2D (``K > 0``) remains
+        unsupported because Pillow does not expose a stable T.4 2D
+        encoder option.
         """
         decode_params = _resolve_decode_params(parameters, 0)
 
@@ -292,10 +291,11 @@ class CCITTFaxDecode(Filter):
             raise OSError(
                 f"CCITTFaxDecode.encode: /Rows must be > 0, got {rows}"
             )
-        if k != -1:
+        if k > 0:
             raise NotImplementedError(
-                f"CCITTFaxDecode.encode: only Group 4 (K=-1) is supported, got K={k}"
+                f"CCITTFaxDecode.encode: Group 3 2D (K>0) is not supported, got K={k}"
             )
+        compression = "group3" if k == 0 else "group4"
 
         raw_bytes = raw.read()
         row_bytes = (columns + 7) // 8
@@ -323,7 +323,7 @@ class CCITTFaxDecode(Filter):
         try:
             image = Image.frombytes("1", (columns, rows), raw_bytes)
             buf = io.BytesIO()
-            image.save(buf, format="TIFF", compression="group4")
+            image.save(buf, format="TIFF", compression=compression)
             tiff_bytes = buf.getvalue()
         except Exception as exc:
             raise OSError(f"CCITTFaxDecode.encode: libtiff encode failed: {exc}") from exc

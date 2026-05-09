@@ -9,8 +9,9 @@ to ``JPEGFactory`` / ``LosslessFactory``), creates one page per image,
 and draws the image at ``(0, 0)`` either at its intrinsic pixel size or
 stretched to the page when ``-resize`` is set.
 
-pypdfbox doesn't yet ship the ``JPEGFactory`` / ``LosslessFactory``
-helpers, so we build the Image XObject inline:
+pypdfbox builds the Image XObject inline in this CLI path rather than
+routing through the separately ported ``JPEGFactory`` / ``LosslessFactory``
+helpers:
 
 * ``.jpg`` / ``.jpeg`` payloads embed verbatim as ``/DCTDecode``.
 * every other Pillow-readable format (PNG, TIFF, BMP, GIF, ...) is
@@ -207,8 +208,8 @@ def _create_lossless_xobject(path: Path) -> PDImageXObject:
         if src.mode in ("RGBA", "LA", "P"):
             # Flatten transparency / palette to RGB; full /SMask handling
             # would require a second image XObject which the upstream
-            # LosslessFactory only emits for true alpha — skipped here
-            # since pypdfbox doesn't yet bind into the soft-mask helper.
+            # LosslessFactory only emits for true alpha. The CLI's inline
+            # path intentionally stays on a single image XObject here.
             rgb = src.convert("RGB")
         elif src.mode == "L":
             rgb = src
