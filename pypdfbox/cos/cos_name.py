@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, BinaryIO
 
 from .cos_base import COSBase
 from .i_cos_visitor import ICOSVisitor
@@ -12,59 +12,96 @@ class COSName(COSBase):
     two ``COSName.get_pdf_name(s)`` calls with the same string return the
     same instance, so equality and ``is`` are interchangeable.
 
-    PDF 1.2+ encodes the name as UTF-8 with ``#xx`` escapes for special
-    bytes. The stored ``name`` here is the decoded logical string (without
-    the leading ``/`` and without ``#xx`` escaping); encoding/decoding for
-    the wire format is the writer/parser's responsibility.
+    PDF names are byte strings. ``get_pdf_name(str)`` uses UTF-8 bytes,
+    while ``get_pdf_name(bytes)`` preserves parser-supplied raw bytes.
+    ``get_name()`` decodes those bytes as UTF-8 and falls back to Latin-1,
+    matching PDFBox's ``COSName.getName()`` behavior.
     """
 
-    _registry: dict[str, COSName] = {}
+    _registry: dict[bytes, COSName] = {}
 
-    __slots__ = ("_name", "_direct", "_needs_to_be_updated")
+    __slots__ = ("_bytes", "_direct", "_needs_to_be_updated")
 
-    def __new__(cls, name: str) -> COSName:
-        existing = cls._registry.get(name)
+    def __new__(cls, name: str | bytes | bytearray | memoryview) -> COSName:
+        data = cls._coerce_name_bytes(name)
+        existing = cls._registry.get(data)
         if existing is not None:
             return existing
         inst = super().__new__(cls)
-        cls._registry[name] = inst
+        cls._registry[data] = inst
         return inst
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str | bytes | bytearray | memoryview) -> None:
         # Re-init guard: __new__ may return an interned instance.
-        if getattr(self, "_name", None) is not None:
+        if getattr(self, "_bytes", None) is not None:
             return
         super().__init__()
-        self._name = name
+        self._bytes = self._coerce_name_bytes(name)
+
+    @staticmethod
+    def _coerce_name_bytes(name: str | bytes | bytearray | memoryview) -> bytes:
+        if isinstance(name, str):
+            return name.encode("utf-8")
+        return bytes(name)
 
     @classmethod
-    def get_pdf_name(cls, name: str) -> COSName:
+    def get_pdf_name(cls, name: str | bytes | bytearray | memoryview) -> COSName:
         """Canonical accessor — returns the interned instance."""
         return cls(name)
 
     @property
     def name(self) -> str:
-        return self._name
+        return self.get_name()
 
     def get_name(self) -> str:
-        return self._name
+        try:
+            return self._bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return self._bytes.decode("latin-1")
+
+    def get_bytes(self) -> bytes:
+        return bytes(self._bytes)
+
+    def getBytes(self) -> bytes:  # noqa: N802
+        return self.get_bytes()
+
+    def write_pdf(self, output: BinaryIO) -> None:
+        output.write(b"/")
+        for b in self._bytes:
+            if _is_printable_name_byte(b):
+                output.write(bytes((b,)))
+            else:
+                output.write(b"#")
+                output.write(f"{b:02X}".encode("ascii"))
+
+    def writePDF(self, output: BinaryIO) -> None:  # noqa: N802
+        self.write_pdf(output)
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_name(self)
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSName):
-            return self._name == other._name
+            return self._bytes == other._bytes
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(self._name)
+        return hash(self._bytes)
 
     def __repr__(self) -> str:
-        return f"COSName({self._name!r})"
+        return f"COSName({self.get_name()!r})"
 
     def __str__(self) -> str:
-        return f"/{self._name}"
+        return f"/{self.get_name()}"
+
+
+def _is_printable_name_byte(b: int) -> bool:
+    return (
+        (0x41 <= b <= 0x5A)
+        or (0x61 <= b <= 0x7A)
+        or (0x30 <= b <= 0x39)
+        or b in (0x2B, 0x2D, 0x5F, 0x40, 0x2A, 0x24, 0x3B, 0x2E)
+    )
 
 
 # A small starter set of predefined names. The full PDFBox catalog has

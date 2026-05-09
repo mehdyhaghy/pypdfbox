@@ -393,6 +393,16 @@ class BaseParser:
         """Parse a name object ``/Foo`` per §7.3.5. Caller must position
         the reader at the leading ``/``. Returns the **decoded** name
         (``#xx`` hex escapes resolved per PDF 1.2+)."""
+        out = self.read_name_bytes()
+        # Names are UTF-8 in PDF 1.2+; fall back to latin-1 for malformed input
+        # rather than raise — PDF callers expect a string they can stash on a COSName.
+        try:
+            return out.decode("utf-8")
+        except UnicodeDecodeError:
+            return out.decode("latin-1")
+
+    def read_name_bytes(self) -> bytes:
+        """Parse a name object and return the raw decoded byte sequence."""
         start_pos = self.position
         b = self._src.read()
         if b != 0x2F:  # '/'
@@ -421,12 +431,7 @@ class BaseParser:
                 out.append(int(bytes((hi, lo)).decode("ascii"), 16))
             else:
                 out.append(b)
-        # Names are UTF-8 in PDF 1.2+; fall back to latin-1 for malformed input
-        # rather than raise — PDF callers expect a string they can stash on a COSName.
-        try:
-            return out.decode("utf-8")
-        except UnicodeDecodeError:
-            return out.decode("latin-1")
+        return bytes(out)
 
     # ---------- literal string ( ... ) ----------
 

@@ -1970,7 +1970,7 @@ class COSWriter(ICOSVisitor):
     def visit_from_name(self, obj: COSName) -> Any:
         out = self._standard_output
         out.write(b"/")
-        for b in obj.get_name().encode("utf-8"):
+        for b in obj.get_bytes():
             if _is_printable_name_byte(b):
                 out.write_byte(b)
             else:

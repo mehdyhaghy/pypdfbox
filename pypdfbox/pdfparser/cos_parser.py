@@ -145,7 +145,7 @@ class COSParser(BaseParser):
         if b == 0x28:  # '('
             return self._read_cos_literal_string()
         if b == 0x2F:  # '/'
-            return COSName.get_pdf_name(self.read_name())
+            return COSName.get_pdf_name(self.read_name_bytes())
         if b == 0x5B:  # '['
             return self.parse_cos_array()
         if b in (0x2B, 0x2D, 0x2E) or self.is_digit(b):
@@ -202,7 +202,7 @@ class COSParser(BaseParser):
                         f"expected name in dictionary at byte {self.position}",
                         position=self.position,
                     )
-                key = self.read_name()
+                key = COSName.get_pdf_name(self.read_name_bytes())
                 value = self.parse_direct_object()
                 d.set_item(key, value)
         finally:
@@ -516,7 +516,7 @@ class COSParser(BaseParser):
         ``COSName``. Whitespace is consumed first. Mirrors upstream
         ``COSParser.parseCOSName``."""
         self.skip_whitespace()
-        return COSName.get_pdf_name(self.read_name())
+        return COSName.get_pdf_name(self.read_name_bytes())
 
     def parse_cos_number(self) -> COSBase:
         """Parse a numeric literal at the current position and return

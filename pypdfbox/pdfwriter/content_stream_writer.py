@@ -244,7 +244,7 @@ class ContentStreamWriter:
         any non-printable byte ``#xx``-escaped (ISO 32000-1 §7.3.5).
         Mirrors :func:`pypdfbox.pdfwriter.cos_writer._is_printable_name_byte`."""
         self._write(b"/")
-        for b in name.get_name().encode("utf-8"):
+        for b in name.get_bytes():
             if _is_printable_name_byte(b):
                 self._write(bytes((b,)))
             else:

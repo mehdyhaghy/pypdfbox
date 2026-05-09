@@ -259,7 +259,7 @@ class PDFStreamParser(COSParser):
         if b == 0x28:  # '(' — literal string
             return self._read_cos_literal_string()
         if b == 0x2F:  # '/' — name
-            return COSName.get_pdf_name(self.read_name())
+            return COSName.get_pdf_name(self.read_name_bytes())
         if b == 0x6E:  # 'n' — possibly 'null' or an operator starting with 'n'
             return self._parse_n_keyword()
         if b in (0x74, 0x66):  # 't' / 'f' — true / false / operator
