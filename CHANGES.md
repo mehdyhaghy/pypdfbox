@@ -1775,3 +1775,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 366 — XMPBasicSchema Bag property upstream parity
 
 - `tests/xmpbox/upstream/test_xmp_basic_schema.py`: enabled the upstream Bag-cardinality typed-property rows for Advisory and Identifier, round-tripping `ArrayProperty` values through the existing `get/set*_property` accessors.
+
+## Wave 367 — CMap identity bfrange upstream test
+
+- `tests/fontbox/cmap/upstream/test_cmap_parser.py`: enabled the upstream PDFBOX-4720 identity `bfrange` placeholder, asserting the full `<0000> <FFFF> <0000>` mapping for representative low, ASCII, and high code points.

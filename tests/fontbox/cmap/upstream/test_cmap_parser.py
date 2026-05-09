@@ -17,14 +17,20 @@ def _parser() -> CMapParser:
     return CMapParser()
 
 
-# Translated from testIdentityHorBfRange (PDFBOX-4720). The full-range
-# variant <0000> <FFFF> <0000> trips Python's strict UTF-16BE decoder
-# on the lone surrogates (0xD800-0xDFFF) -- skip with a one-line note;
-# the equivalent identity mapping is exercised via begincidrange in
-# tests/fontbox/cmap/test_cmap_parser_round_out.py.
-@pytest.mark.skip(reason="Full identity bfrange range hits UTF-16BE surrogates; cidrange identity is covered separately.")
+# Translated from testIdentityHorBfRange (PDFBOX-4720).
 def test_identity_hor_bfrange() -> None:
-    pass
+    cmap = _parser().parse(
+        b"""
+        1 beginbfrange
+        <0000> <FFFF> <0000>
+        endbfrange
+        endcmap
+        """
+    )
+
+    assert cmap.to_unicode_bytes(b"\x00\x00") == "\x00"
+    assert cmap.to_unicode_bytes(b"\x00A") == "A"
+    assert cmap.to_unicode_bytes(b"\xff\xff") == "\uffff"
 
 
 # Translated from testPdfbox4550 -- corrupt bfrange where end < start.
