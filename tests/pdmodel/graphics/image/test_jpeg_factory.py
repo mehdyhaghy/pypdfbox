@@ -200,10 +200,96 @@ def _rgba_gradient(width: int, height: int) -> Image.Image:
     return image
 
 
+def _la_gradient(width: int, height: int) -> Image.Image:
+    image = Image.new("LA", (width, height), color=(80, 255))
+    pixels = image.load()
+    assert pixels is not None
+    for y in range(height):
+        for x in range(width):
+            alpha = round(255 * ((y * width) + x) / ((width * height) - 1))
+            pixels[x, y] = (80, alpha)
+    return image
+
+
+def _pa_gradient(width: int, height: int) -> Image.Image:
+    image = Image.new("PA", (width, height))
+    image.putpalette([50, 100, 150, 150, 100, 50] * 128)
+    pixels = image.load()
+    assert pixels is not None
+    for y in range(height):
+        for x in range(width):
+            alpha = round(255 * ((y * width) + x) / ((width * height) - 1))
+            pixels[x, y] = ((x + y) % 2, alpha)
+    return image
+
+
+def _p_transparency_gradient(width: int, height: int) -> Image.Image:
+    image = Image.new("P", (width, height))
+    palette: list[int] = []
+    for i in range(256):
+        palette.extend((i, 255 - i, (i * 3) % 256))
+    image.putpalette(palette)
+    pixels = image.load()
+    assert pixels is not None
+    for y in range(height):
+        for x in range(width):
+            pixels[x, y] = ((y * width) + x) % 256
+    image.info["transparency"] = bytes(range(256))
+    return image
+
+
 def test_create_from_image_rgba_extracts_alpha_smask():
     """RGBA inputs become RGB JPEGs with a grayscale JPEG /SMask."""
     img = _rgba_gradient(16, 16)
     image = JPEGFactory.create_from_image(None, img)
+    cs = image.get_color_space()
+    assert cs is not None
+    assert cs.get_name() == "DeviceRGB"
+    _assert_dct_gray_smask(image, 16, 16)
+    smask = image.get_soft_mask()
+    assert smask is not None
+    mask_image = smask.to_pil_image()
+    assert mask_image is not None
+    lo, hi = mask_image.convert("L").getextrema()
+    assert lo < hi
+
+
+def test_create_from_image_la_extracts_gray_alpha_smask():
+    img = _la_gradient(16, 16)
+    image = JPEGFactory.create_from_image(None, img)
+
+    cs = image.get_color_space()
+    assert cs is not None
+    assert cs.get_name() == "DeviceGray"
+    _assert_dct_gray_smask(image, 16, 16)
+    smask = image.get_soft_mask()
+    assert smask is not None
+    mask_image = smask.to_pil_image()
+    assert mask_image is not None
+    lo, hi = mask_image.convert("L").getextrema()
+    assert lo < hi
+
+
+def test_create_from_image_pa_extracts_palette_alpha_smask():
+    img = _pa_gradient(16, 16)
+    image = JPEGFactory.create_from_image(None, img)
+
+    cs = image.get_color_space()
+    assert cs is not None
+    assert cs.get_name() == "DeviceRGB"
+    _assert_dct_gray_smask(image, 16, 16)
+    smask = image.get_soft_mask()
+    assert smask is not None
+    mask_image = smask.to_pil_image()
+    assert mask_image is not None
+    lo, hi = mask_image.convert("L").getextrema()
+    assert lo < hi
+
+
+def test_create_from_image_p_transparency_extracts_alpha_smask():
+    img = _p_transparency_gradient(16, 16)
+    image = JPEGFactory.create_from_image(None, img)
+
     cs = image.get_color_space()
     assert cs is not None
     assert cs.get_name() == "DeviceRGB"

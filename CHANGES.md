@@ -1837,3 +1837,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now applies component-wise `/Decode` arrays for raw 8-bit DeviceGray and DeviceRGB rasters. Unsupported decode array lengths still return `None`; DCT/JPX, DeviceN/Separation, Indexed, masks, and non-8bpc paths are unchanged.
 - `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1279.py`: added DeviceGray inversion, DeviceRGB per-component remap, and malformed decode-array coverage.
+
+## Wave 381 — JPEGFactory palette alpha coverage
+
+- `pypdfbox/pdmodel/graphics/image/jpeg_factory.py`: `create_from_image()` now treats paletted images carrying `info["transparency"]` as alpha-bearing inputs, converting through RGBA and attaching a grayscale JPEG `/SMask`.
+- `tests/pdmodel/graphics/image/test_jpeg_factory.py`: added explicit LA, PA, and palette-transparency coverage for `JPEGFactory.create_from_image()`, asserting grayscale+alpha inputs produce DeviceGray JPEGs with grayscale `/SMask` and palette alpha inputs produce DeviceRGB JPEGs with grayscale `/SMask`.

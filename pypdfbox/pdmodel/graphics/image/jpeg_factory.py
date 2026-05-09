@@ -91,6 +91,9 @@ def _split_alpha_for_smask(image: Image.Image) -> tuple[Image.Image, Image.Image
     if image.mode == "PA":
         rgba = image.convert("RGBA")
         return rgba.convert("RGB"), rgba.getchannel("A")
+    if image.mode == "P" and "transparency" in image.info:
+        rgba = image.convert("RGBA")
+        return rgba.convert("RGB"), rgba.getchannel("A")
     return image, None
 
 
