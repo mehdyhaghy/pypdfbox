@@ -1751,3 +1751,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 360 — PDPage annotation pre-add upstream test
 
 - `tests/pdmodel/upstream/test_pd_page.py`: enabled the upstream PDFBOX-6097 regression where a page already wired to an AcroForm text-field widget is added to the document and saved without recursive COS traversal or stack overflow.
+
+## Wave 361 — PDDocumentCatalog page-count upstream test
+
+- `tests/pdmodel/upstream/test_pd_document_catalog.py`: enabled the upstream `retrieveNumberOfPages` placeholder with a fixture-free in-memory document, covering the fresh-document zero count and page-tree count after adding blank pages.

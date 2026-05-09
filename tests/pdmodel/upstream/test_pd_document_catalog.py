@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox import PDDocument
+from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSBoolean, COSName
 
 
@@ -29,12 +29,12 @@ def test_retrieve_page_labels_on_malformed_pdf() -> None:  # pragma: no cover
     pass
 
 
-# ``retrieveNumberOfPages`` — needs the ``test.unc.pdf`` fixture. The
-# mechanic (loaded doc → number_of_pages) is exercised by our hand-written
-# ``test_pd_document.py``; skip rather than gather a redistributable PDF.
-@pytest.mark.skip(reason="needs test.unc.pdf fixture; round-trip exercised in hand-written tests")
-def test_retrieve_number_of_pages() -> None:  # pragma: no cover
-    pass
+def test_retrieve_number_of_pages() -> None:
+    with PDDocument() as doc:
+        assert doc.get_number_of_pages() == 0
+        doc.add_page(PDPage())
+        doc.add_page(PDPage())
+        assert doc.get_number_of_pages() == 2
 
 
 # ``handleOutputIntents`` — needs PDOutputIntent (pdmodel cluster #2 /
