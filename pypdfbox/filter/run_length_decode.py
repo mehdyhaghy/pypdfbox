@@ -75,17 +75,14 @@ class RunLengthDecode(Filter):
             if length < _EOD:
                 want = length + 1
                 chunk = _read_exact(encoded, want)
-                if len(chunk) != want:
-                    raise OSError(
-                        f"RunLengthDecode: truncated literal run "
-                        f"(wanted {want} bytes, got {len(chunk)})"
-                    )
                 decoded.write(chunk)
                 bytes_written += len(chunk)
+                if len(chunk) != want:
+                    break
             else:
                 repeat_byte = encoded.read(1)
                 if not repeat_byte:
-                    raise OSError("RunLengthDecode: truncated repeat run (missing payload byte)")
+                    break
                 repeat_count = 257 - length
                 decoded.write(repeat_byte * repeat_count)
                 bytes_written += repeat_count

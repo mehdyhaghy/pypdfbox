@@ -1892,3 +1892,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/xmpbox/dom_xmp_parser.py`: strict parsing now rejects properties not listed in a schema's `KNOWN_PROPERTIES`, matching PDFBOX-6106 for invalid Adobe PDF fields such as `pdf:CreationDate` and `pdf:ModDate`; lenient mode still accepts and stores them as text.
 - `tests/xmpbox/upstream/test_dom_xmp_parser.py`, `tests/xmpbox/test_dom_xmp_parser.py`: enabled the PDFBOX-6106 attribute-form regression, added lenient-mode coverage, and added a local element-form guard for the same strict known-property rule.
+
+## Wave 392 — RunLengthDecode truncation leniency
+
+- `pypdfbox/filter/run_length_decode.py`: `decode()` now matches PDFBox leniency for truncated packets by writing available literal bytes and stopping cleanly when a repeat packet lacks its payload byte.
+- `tests/filter/test_run_length_decode.py`: replaced truncation exception expectations with partial-literal and empty-repeat output assertions.

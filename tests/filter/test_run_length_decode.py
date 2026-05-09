@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from pypdfbox.filter import FilterFactory, RunLengthDecode
 
 
@@ -112,16 +110,12 @@ def test_decode_eod_marker_stops() -> None:
     assert _decode(encoded) == b"ABC"
 
 
-def test_decode_truncated_literal_raises() -> None:
-    # Length 4 promises 5 bytes but only 3 follow.
-    with pytest.raises(OSError):
-        _decode(b"\x04abc")
+def test_decode_truncated_literal_copies_available_bytes_and_stops() -> None:
+    assert _decode(b"\x04abc") == b"abc"
 
 
-def test_decode_truncated_repeat_raises() -> None:
-    # 0xFD promises a byte to repeat but stream ends.
-    with pytest.raises(OSError):
-        _decode(b"\xfd")
+def test_decode_truncated_repeat_stops_without_output() -> None:
+    assert _decode(b"\xfd") == b""
 
 
 def test_factory_resolves_long_and_short_names() -> None:
