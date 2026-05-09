@@ -565,7 +565,7 @@ PDFBox does not ship a focused `CMapParserTest` in the same shape as this cluste
 
 ### `tests/pdmodel/interactive/action/` and `tests/pdmodel/interactive/documentnavigation/`
 
-PDFBox 3.0 does not provide focused unit-test classes for each lightweight action and destination wrapper. Cluster #7 wrappers are covered with hand-written tests for factory dispatch, COS round-trip, and outline/catalog/link integration. Broader upstream tests that depend on fixture PDFs remain skipped in `tests/pdmodel/upstream/` until those fixtures and page-index lookup support land.
+PDFBox 3.0 does not provide focused unit-test classes for each lightweight action and destination wrapper. Cluster #7 wrappers are covered with hand-written tests for factory dispatch, COS round-trip, and outline/catalog/link integration. Broader upstream tests that depend on fixture PDFs remain skipped in `tests/pdmodel/upstream/` until those fixtures land.
 
 ### `tests/tools/upstream/`
 
