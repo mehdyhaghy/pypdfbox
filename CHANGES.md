@@ -1690,3 +1690,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/cos/cos_name.py`: COS names now intern by raw byte sequence, expose `get_bytes()` / `getBytes()`, and provide `write_pdf()` / `writePDF()` with PDFBox-compatible `#XX` escaping. String-created names still use UTF-8 bytes; parser-created names can preserve non-UTF-8 bytes and ASCII NUL.
 - `pypdfbox/pdfparser/base_parser.py`, `cos_parser.py`, and `pdf_stream_parser.py`: name parsing now exposes raw decoded bytes and constructs `COSName` instances from those bytes, avoiding lossy text re-encoding.
+
+## Wave 347 — COSInteger writePDF upstream test
+
+- `tests/cos/upstream/test_cos_integer.py`: the upstream `testWritePDF` placeholder now exercises `COSInteger.write_pdf()` over the translated PDFBox integer range, removing a stale writer-related skip.

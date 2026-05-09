@@ -5,13 +5,13 @@ Ported from Apache PDFBox 3.0:
 Upstream extends TestCOSNumber (which itself extends TestCOSBase). We pull
 the relevant parent-class tests inline here so the suite is self-contained.
 
-The ``testAccept`` and ``testWritePDF`` upstream tests rely on
-``COSWriter`` to serialize the integer to bytes; pypdfbox does not yet
-ship a writer (pdfwriter cluster) so those serialization checks are
-replaced with a recording-visitor / direct-string check.
+The upstream ``testAccept`` assertion is translated to a recording visitor;
+``testWritePDF`` exercises the direct PDFBox-shaped writer method.
 """
 
 from __future__ import annotations
+
+import io
 
 import pytest
 
@@ -126,9 +126,11 @@ def test_accept() -> None:
     assert len(visitor.calls) == len(range(-1000, 3000, 200))
 
 
-@pytest.mark.skip(reason="writePDF requires pdfwriter / COSWriter (not yet ported)")
 def test_write_pdf() -> None:
-    pass
+    for i in range(-1000, 3000, 200):
+        out = io.BytesIO()
+        COSInteger.get(i).write_pdf(out)
+        assert out.getvalue() == str(i).encode("iso-8859-1")
 
 
 # ---------- inherited from TestCOSBase ----------
