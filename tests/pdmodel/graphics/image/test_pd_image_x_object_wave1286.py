@@ -131,3 +131,65 @@ def test_wave1286_to_pil_image_applies_two_bit_indexed_decode() -> None:
 
     assert rendered is not None
     assert rendered.tobytes() == bytes([40, 50, 60, 10, 0, 0])
+
+
+def test_wave1288_to_pil_image_decodes_raw_16bpc_devicegray() -> None:
+    image = _image(
+        b"\x00\x00\x00\x80\x00\x81\x7f\xff\x80\x00\xff\x00\xff\x7f\xff\x80\xff\xff",
+        "DeviceGray",
+        width=9,
+        height=1,
+        bpc=16,
+    )
+
+    rendered = image.to_pil_image()
+
+    assert rendered is not None
+    assert rendered.mode == "RGB"
+    assert rendered.tobytes() == bytes(
+        [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            127,
+            127,
+            127,
+            128,
+            128,
+            128,
+            254,
+            254,
+            254,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+            255,
+        ]
+    )
+
+
+def test_wave1288_to_pil_image_applies_16bpc_devicegray_decode() -> None:
+    image = _image(b"\x00\x00\xff\xff", "DeviceGray", width=2, height=1, bpc=16)
+    image.set_decode([1.0, 0.0])
+
+    rendered = image.to_pil_image()
+
+    assert rendered is not None
+    assert rendered.tobytes() == bytes([255, 255, 255, 0, 0, 0])
+
+
+def test_wave1288_to_pil_image_rejects_short_16bpc_devicegray_raster() -> None:
+    image = _image(b"\x00\x00\xff", "DeviceGray", width=2, height=1, bpc=16)
+
+    assert image.to_pil_image() is None

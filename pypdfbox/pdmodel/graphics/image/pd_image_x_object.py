@@ -623,11 +623,13 @@ class PDImageXObject(PDXObject):
         alternate colour space (typically DeviceCMYK or DeviceRGB)
         before compositing into sRGB.
 
-        Raw DeviceGray and Indexed rasters support 1/2/4/8 bits per
+        Raw DeviceGray rasters support 1/2/4/8/16 bits per
+        component, while Indexed rasters support 1/2/4/8 bits per
         component; raw 8-bit DeviceRGB and DeviceCMYK rasters apply
         simple component-wise ``/Decode`` arrays. More complex PDF image
-        features such as masks, 16-bit samples, and non-device color
-        models remain rendering-cluster work and return ``None`` here.
+        features such as masks, multi-component 16-bit samples, and
+        non-device color models remain rendering-cluster work and
+        return ``None`` here.
         """
         cos = self.get_cos_object()
         if not isinstance(cos, COSStream):
@@ -650,7 +652,8 @@ class PDImageXObject(PDXObject):
         color_space_name = color_space.get_name() if color_space is not None else None
         sub_byte = bpc in (1, 2, 4)
         if bpc not in (8, -1) and not (
-            sub_byte and color_space_name in ("DeviceGray", "Indexed")
+            (sub_byte and color_space_name in ("DeviceGray", "Indexed"))
+            or (bpc == 16 and color_space_name == "DeviceGray")
         ):
             return None
         with self.create_input_stream() as src:
@@ -675,12 +678,20 @@ class PDImageXObject(PDXObject):
                 samples = _unpack_sub_byte_samples(data, width, height, bpc)
                 if samples is None:
                     return None
+            elif bpc == 16:
+                samples = _unpack_16bit_samples(data, width, height)
+                if samples is None:
+                    return None
             else:
                 if len(data) < gray_len:
                     return None
                 samples = data[:gray_len]
             decoded = _apply_decode_to_8bit_samples(
-                samples, pixel_count, 1, decode, bpc=bpc if sub_byte else 8
+                samples,
+                pixel_count,
+                1,
+                decode,
+                bpc=bpc if sub_byte or bpc == 16 else 8,
             )
             if decoded is None:
                 return None
@@ -720,7 +731,7 @@ class PDImageXObject(PDXObject):
 
 
 def _apply_decode_to_8bit_samples(
-    data: bytes,
+    data: Sequence[int],
     pixel_count: int,
     components: int,
     decode: Sequence[float] | None,
@@ -812,6 +823,24 @@ def _unpack_sub_byte_samples(
             shift = 8 - int(bpc) - (bit_index % 8)
             out[out_offset + sample_index] = (byte >> shift) & mask
     return bytes(out)
+
+
+def _unpack_16bit_samples(
+    data: bytes,
+    width: int,
+    height: int,
+    components: int = 1,
+) -> list[int] | None:
+    sample_count = int(width) * int(height) * int(components)
+    expected = sample_count * 2
+    if len(data) < expected:
+        return None
+
+    out: list[int] = []
+    for sample_index in range(sample_count):
+        offset = sample_index * 2
+        out.append((data[offset] << 8) | data[offset + 1])
+    return out
 
 
 def _numeric_array_to_floats(value: COSBase | None) -> list[float] | None:

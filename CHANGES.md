@@ -1872,3 +1872,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/filter/ascii_hex_decode.py`: `ASCIIHexDecode.encode()` now matches PDFBox `ASCIIHexFilter.encode()` by emitting uppercase hex bytes without appending the ASCIIHex `>` EOD marker. Decode remains permissive and still accepts EOD markers.
 - `tests/filter/test_ascii_hex_decode.py`, `tests/filter/test_ascii_hex_decode_wave310.py`: updated encode expectations for empty, single-byte, text, mixed high-nibble data, and flush behavior.
+
+## Wave 388 — PDImageXObject 16-bit DeviceGray rendering
+
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now decodes raw 16-bit big-endian `/DeviceGray` image XObject samples, scales them to 8-bit output with PDFBox-style rounded normalization, and applies `/Decode` arrays before RGB conversion.
+- `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1286.py`: added 16-bit gray scaling checkpoints, decode inversion, and short-raster rejection coverage.
