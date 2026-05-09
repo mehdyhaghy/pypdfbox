@@ -41,9 +41,10 @@ class XMPMetadata:
     lookup by namespace returns the first schema with that namespace URI,
     matching upstream behavior.
 
-    Cluster #1 deviates from upstream by omitting the ``TypeMapping`` system
-    and the per-property ``AbstractField`` hierarchy; properties are stored as
-    plain strings, lists, or language-keyed dicts inside ``XMPSchema``.
+    Cluster #1 stored parsed properties as plain strings, lists, or
+    language-keyed dicts inside ``XMPSchema``. Later typed-property waves add
+    ``TypeMapping`` and ``AbstractField`` wrappers for explicit typed accessors
+    while preserving that parser-facing storage shape.
     """
 
     def __init__(

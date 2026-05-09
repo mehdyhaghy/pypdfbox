@@ -122,7 +122,7 @@ class XMPBasicSchema(XMPSchema):
         """
         Return an :class:`ArrayProperty` wrapper for a Bag property whose
         backing storage is either an existing wrapper or a plain ``list``
-        of strings (cluster-#1 storage shape). Returns ``None`` when the
+        of strings (legacy parser storage shape). Returns ``None`` when the
         property is absent.
         """
         existing = self._properties.get(local_name)
@@ -177,10 +177,9 @@ class XMPBasicSchema(XMPSchema):
 
     def get_advisory_property(self) -> ArrayProperty | None:
         """
-        Mirror of upstream ``getAdvisoryProperty()``. Cluster #1 stores Bag
-        contents as a plain Python list; this materialises the entries into
-        an :class:`ArrayProperty` wrapper on demand for callers that expect
-        the typed return shape.
+        Mirror of upstream ``getAdvisoryProperty()``. Plain-list parser
+        storage is materialised into an :class:`ArrayProperty` wrapper with
+        ``XPathType`` children for callers that expect the typed return shape.
         """
         return self._array_property_for_bag(self.ADVISORY, XPathType)
 
@@ -427,8 +426,8 @@ class XMPBasicSchema(XMPSchema):
     def get_identifiers_property(self) -> ArrayProperty | None:
         """
         Mirror of upstream ``getIdentifiersProperty()``. Materialises the
-        plain-list cluster-#1 storage into an :class:`ArrayProperty` wrapper
-        on demand.
+        plain-list parser storage into an :class:`ArrayProperty` wrapper on
+        demand.
         """
         return self._array_property_for_bag(self.IDENTIFIER)
 

@@ -25,7 +25,8 @@ Per PRD §3.7 (stdlib-first), the io module is adapter code over Python stdlib (
 | `pypdfbox/io/random_access_read.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/RandomAccessRead.java` | interface contract only (method signatures + semantics) |
 | `pypdfbox/io/random_access_write.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/RandomAccessWrite.java` | interface contract only |
 | `pypdfbox/io/memory_usage_setting.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/MemoryUsageSetting.java` | API surface (modes, factories, predicates) |
-| `pypdfbox/io/scratch_file.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/ScratchFile.java` | API surface (`create_buffer()`, lifecycle); storage is `tempfile.SpooledTemporaryFile`, not page-based |
+| `pypdfbox/io/scratch_file.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/ScratchFile.java` | page-oriented allocator API (`get_new_page()`, `read_page()`, `write_page()`, free-page queue, `create_buffer()` lifecycle); backing storage is RAM/temp-file/mixed per `MemoryUsageSetting` |
+| `pypdfbox/io/scratch_file_buffer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/io/ScratchFileBuffer.java` | random-access read/write buffer backed by fixed-size `ScratchFile` pages |
 
 Original work (no PROVENANCE entry needed; listed here for clarity):
 - `pypdfbox/io/random_access_read_buffer.py` — adapter over `io.BytesIO`
@@ -64,10 +65,10 @@ PDF-specific parsing — port territory.
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization subset only) |
+| `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization plus literal-string parsing/recovery subset; includes PDFBOX-6093 `\r\n>` end-of-string leniency) |
 | `pypdfbox/pdfparser/cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (direct-object / array / dict / indirect-ref + brute-force recovery + parsePDFHeader + parseXrefTable + parseXrefObjStream + parseObjectStream + direct-/Length stream body; indirect-/Length deferred to PDFParser) |
 | `pypdfbox/pdfparser/xref_trailer_resolver.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java` |
-| `pypdfbox/pdfparser/pdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFParser.java` (traditional xref + trailer + /Prev + stream body; xref-streams / object-streams / malformed recovery deferred) |
+| `pypdfbox/pdfparser/pdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFParser.java` + `PDFXRefStreamParser.java` + `PDFObjectStreamParser.java` (traditional xref + trailer + /Prev, PDF 1.5 xref streams, compressed object streams, lenient startxref recovery, direct-/Length and missing-/Length stream body recovery, encrypted xref-stream early decryption, linearization metadata detection) |
 | `pypdfbox/pdfparser/pdf_stream_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java` |
 | `pypdfbox/pdfparser/endstream_filter_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/EndstreamFilterStream.java` |
 | `pypdfbox/loader.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/Loader.java` (path / bytes / stream forms only — encryption + password params deferred) |
@@ -165,7 +166,7 @@ Cluster #1 (PDDocument / PDPage / PDPageTree / PDDocumentCatalog / PDResources /
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
 | `pypdfbox/pdmodel/pd_document.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocument.java` (cluster #1 surface — load / save / save_incremental / pages / version / encryption flags; signing, FDF, overlay, font subsetting deferred) |
-| `pypdfbox/pdmodel/pd_document_catalog.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentCatalog.java` (cluster #1 surface — pages / version / language / page layout / page mode; struct tree, AcroForm, outlines, metadata stubbed) |
+| `pypdfbox/pdmodel/pd_document_catalog.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDDocumentCatalog.java` (cluster #1 + follow-on waves — pages, version, language, page layout/mode defaults, structure/mark-info shortcuts, AcroForm cache/fixup overload, outlines, metadata, additional actions, names/dests, viewer preferences, page labels, output intents, threads, URI/base URI, requirements, associated files, developer extensions, piece info, needs-rendering, has_*/clear_* helpers; collection/perms/legal stay raw COS dictionaries until typed wrappers land) |
 | `pypdfbox/pdmodel/pd_page.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPage.java` |
 | `pypdfbox/pdmodel/pd_page_tree.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java` |
 | `pypdfbox/pdmodel/pd_resources.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDResources.java` (cluster #1 surface — resource-dict accessors; XObject / font / colorspace lookups stubbed for later clusters) |
@@ -432,18 +433,20 @@ Cluster #4 — PostScript CMap parsing.
 
 ### `pypdfbox/xmpbox/`
 
-Cluster #1 — XMP packet read path. Wraps `xml.etree.ElementTree` (stdlib).
+XMP packet parsing plus typed schema/property surfaces. Parser storage remains
+primitive-compatible while schema APIs expose the ported `AbstractField`,
+`ArrayProperty`, simple-property, structured-type, and `TypeMapping` layers.
 
 | pypdfbox path | upstream PDFBox version | upstream Java path |
 |---|---|---|
-| `pypdfbox/xmpbox/xmp_metadata.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/XMPMetadata.java` (+ `XmpConstants.java` folded in; `TypeMapping` omitted — deferred to write-path cluster) |
-| `pypdfbox/xmpbox/xmp_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java` (read-path accessors only; AbstractField/ArrayProperty hierarchy deferred) |
+| `pypdfbox/xmpbox/xmp_metadata.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/XMPMetadata.java` (+ `XmpConstants.java` folded in; schema factories/getters and typed-property accessors wired for the implemented schema set) |
+| `pypdfbox/xmpbox/xmp_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java` (primitive parser storage plus upstream-named generic property hooks; typed `AbstractField` / `ArrayProperty` classes live under `pypdfbox/xmpbox/type/`) |
 | `pypdfbox/xmpbox/dublin_core_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/DublinCoreSchema.java` (constants + value getters) |
-| `pypdfbox/xmpbox/xmp_basic_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPBasicSchema.java` (constants plus string-form and typed property accessors; Advisory Bag entries use `XPathType`, Identifier Bag entries use `TextType`; dates kept as ISO strings) |
+| `pypdfbox/xmpbox/xmp_basic_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPBasicSchema.java` (string-form and typed property accessors; `Advisory` exposes `Bag<XPathType>`, `Identifier` exposes `Bag<TextType>`, `Thumbnails` exposes `Alt<ThumbnailType>`; string date getters preserve ISO strings while typed date accessors return `DateType`) |
 | `pypdfbox/xmpbox/pdfa_identification_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/PDFAIdentificationSchema.java` (typed `part` / `conformance` / `amd` / `rev` accessors with upstream `setPartValueWithInt` / `setPartValueWithString` / `setRevValueWithInt` / `setRevValueWithString` aliases; conformance validates against `{A, B, U, e, f}` per PDFBOX-6088 and raises `BadFieldValueException`; pypdfbox-only `corr` correction-year passthrough) |
 | `pypdfbox/xmpbox/pdfa_extension_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/PDFAExtensionSchema.java` (lite surface — `pdfaExtension:schemas` Bag dict accessors + raw element passthrough; nested `pdfaProperty` / `pdfaType` struct hierarchy deferred) |
 | `pypdfbox/xmpbox/xmp_rights_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPRightsManagementSchema.java` (typed `Certificate` / `Marked` / `Owner` / `UsageTerms` / `WebStatement` accessors) |
-| `pypdfbox/xmpbox/xmp_media_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPMediaManagementSchema.java` (typed `DocumentID` / `InstanceID` / `OriginalDocumentID` / `VersionID` / `RenditionClass` / `RenditionParams` / `ManageTo` / `ManageUI` / `Manager` / `ManagerVariant` accessors; `DerivedFrom` / `Ingredients` deferred) |
+| `pypdfbox/xmpbox/xmp_media_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPMediaManagementSchema.java` (typed simple properties plus ResourceRef/ResourceEvent/Version-backed `DerivedFrom`, `RenditionOf`, `ManagedFrom`, `History`, `Versions`, `Manifest`, and `Ingredients`) |
 | `pypdfbox/xmpbox/dom_xmp_parser.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java` (+ `XmpParsingException.java`; read path only, ElementTree-backed) |
 | `pypdfbox/xmpbox/date_converter.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/DateConverter.java` (returns `datetime.datetime` instead of `Calendar`; naive ISO 8601 strings are anchored to UTC matching upstream's `fromISO8601` fallback; year-0 input rejected — Python `datetime` does not support year 0, deviates from upstream `0000-01-01` → `0001-01-01`) |
 
@@ -456,7 +459,7 @@ Tools cluster #1 — command-line dispatcher and basic commands.
 | `pypdfbox/tools/cli.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/PDFBox.java` |
 | `pypdfbox/tools/merge.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/PDFMerger.java` |
 | `pypdfbox/tools/split.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/PDFSplit.java` |
-| `pypdfbox/tools/decrypt.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/Decrypt.java` |
+| `pypdfbox/tools/decrypt.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/Decrypt.java` (owner-password flow, exit-code parity, safe in-place rewrite, `-keyStore`/`-alias` PKCS#12 loading surface; public-key material is validated but end-to-end public-key decrypt remains deferred) |
 | `pypdfbox/tools/version.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/Version.java` |
 
 Original work (no PROVENANCE entry needed; listed here for clarity):
@@ -474,8 +477,8 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 
 | pypdfbox test path | upstream Java test path |
 |---|---|
-| `tests/io/upstream/test_random_access_read_buffer.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadBufferTest.java` |
-| `tests/io/upstream/test_random_access_read_buffered_file.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadBufferedFileTest.java` |
+| `tests/io/upstream/test_random_access_read_buffer.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadBufferTest.java` (includes PDFBOX-5764 sliced-input parity) |
+| `tests/io/upstream/test_random_access_read_buffered_file.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadBufferedFileTest.java` (includes `readFullyAcrossBuffers` cross-buffer read parity) |
 | `tests/io/upstream/test_random_access_read_memory_mapped.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadMemoryMappedFileTest.java` |
 | `tests/io/upstream/test_random_access_read_view.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadViewTest.java` |
 | `tests/io/upstream/test_random_access_write_buffer.py` | `io/src/test/java/org/apache/pdfbox/io/RandomAccessReadWriteBufferTest.java` (read+write split — write portion only) |
@@ -511,7 +514,7 @@ Not yet ported (classes not implemented in pypdfbox): `SequenceRandomAccessReadT
 
 | pypdfbox test path | upstream Java test path |
 |---|---|
-| `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` |
+| `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` (includes `testCheckForEndOfString` / PDFBOX-6093 literal-string recovery) |
 | `tests/pdfparser/upstream/test_pdf_stream_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFStreamParserTest.java` |
 | `tests/pdfparser/upstream/test_cos_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/COSParserTest.java` (parse-header / brute-force / rebuild-trailer / parse-xref-stream / parse-xref-table subset; fixture-corpus-driven cases skipped) |
 | `tests/pdfparser/upstream/test_endstream_filter_stream.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/EndstreamFilterStreamTest.java` (byte-sequence test directly ported; PDFBOX-2079 embedded-file fixture path covered by a synthetic missing-`/Length` stream-body regression through `PDFParser._read_stream_body()`) |
@@ -736,10 +739,10 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cmap/cid_range.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cmap/CIDRange.java` (promoted from private `_CIDRange` to public typed) |
 | `pypdfbox/fontbox/cmap/bf_char_entry.py` | 3.0.x | original (no upstream class — `bfchar` triples are inlined by upstream `CMapParser`; pypdfbox surfaces typed value object) |
 | `pypdfbox/fontbox/cmap/bf_char_range.py` | 3.0.x | original (no upstream class — `bfrange` triples are inlined by upstream `CMapParser`) |
-| `pypdfbox/xmpbox/exif_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/ExifSchema.java` (simple-typed properties only — Rational / GPSCoordinate / typed-struct properties deferred until `RationalType` / `OECF` / `CFAPattern` / `Flash` / `DeviceSettings` types land) |
+| `pypdfbox/xmpbox/exif_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/ExifSchema.java` (simple, rational, GPS coordinate, date, integer, text, and LangAlt typed-property accessors; OECF / CFAPattern / Flash / DeviceSettings struct families remain deferred) |
 | `pypdfbox/xmpbox/tiff_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/TiffSchema.java` (substitute for non-existent `CameraRawSchema` — TIFF tags cover camera-pipeline metadata) |
-| `pypdfbox/tools/extracttext.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/ExtractText.java` (round-out: `-html`/`-md` minimal-wrapper output, `-ignoreBeads`, `-debug` stderr summary — see CHANGES.md) |
-| `tests/tools/upstream/test_extracttext.py` | 3.0.x | `pdfbox-tools/src/test/java/org/apache/pdfbox/tools/TestExtractText.java` |
+| `pypdfbox/tools/extracttext.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/ExtractText.java` (round-out: embedded-PDF extraction, `-html`/`-md` minimal-wrapper output, `-ignoreBeads`, `-debug` stderr summary — see CHANGES.md) |
+| `tests/tools/upstream/test_extracttext.py` | 3.0.x | `pdfbox-tools/src/test/java/org/apache/pdfbox/tools/TestExtractText.java` (fixture-free ports for console extraction, embedded-PDF extraction, `-addFileName`, `-rotationMagic`, and output append/overwrite behavior) |
 | `pypdfbox/tools/encrypt.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/Encrypt.java` |
 | `pypdfbox/contentstream/pdf_graphics_stream_engine.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/PDFGraphicsStreamEngine.java` |
 | `pypdfbox/pdmodel/documentinterchange/markedcontent/pd_property_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/markedcontent/PDPropertyList.java` (re-export module — implementation lives in `pypdfbox/pdmodel/graphics/pd_property_list.py`) |
@@ -772,7 +775,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/multipdf/page_extractor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PageExtractor.java` (delegates to direct page-tree append since `Splitter` is not yet ported) |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThread.java` |
 | `pypdfbox/pdmodel/interactive/pagenavigation/pd_thread_bead.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/pagenavigation/PDThreadBead.java` |
-| `pypdfbox/tools/pdfdebugger.py` | 3.0.x | original (upstream `PDFDebugger` is a Swing GUI — pypdfbox provides a CLI-only lite version per CLAUDE.md "no GUI subsystems") |
+| `pypdfbox/tools/pdfdebugger.py` | 3.0.x | original (upstream `PDFDebugger` is a Swing GUI — pypdfbox provides a CLI-only COS walker/debugger per CLAUDE.md "no GUI subsystems": summary/trailer/page/object/xref/list-objects/tree, stream dumps, page-token dumps, encryption summary, JSON output, and interactive text walker) |
 | `pypdfbox/tools/imagetopdf.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/tools/ImageToPDF.java` (image embedding inline via Pillow + zlib since `JPEGFactory` / `LosslessFactory` are not yet ported) |
 | `tests/pdmodel/common/upstream/test_pdfdoc_encoding.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/cos/PDFDocEncodingTest.java` |
 | `tests/pdmodel/common/function/upstream/test_pd_function_type4.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/type4/TestOperators.java` |
@@ -813,7 +816,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/xmpbox/type/choice_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ChoiceType.java` |
 | `pypdfbox/xmpbox/type/array_property.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ArrayProperty.java` + `Cardinality.java` + `AbstractComplexProperty.java` + `ComplexPropertyContainer.java` |
 | `pypdfbox/xmpbox/type/lang_alt.py` | 3.0.x | derived from `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java#reorganizeAltOrder` + `ArrayProperty(Cardinality.Alt)` idiom |
-| `pypdfbox/xmpbox/type/type_mapping.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/TypeMapping.java` (subset: simple-property registry + create_* factories; structured-type plumbing deferred) |
+| `pypdfbox/xmpbox/type/type_mapping.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/TypeMapping.java` (simple-property registry, structured-type registry, defined-type namespace registration, and create_* factories; schema factory / PropertiesDescription reflection machinery deferred) |
 | `pypdfbox/pdmodel/interactive/action/pd_windows_launch_params.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PDWindowsLaunchParams.java` |
 | `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/AppearanceGeneratorHelper.java` (text-field flat-text path only — button/choice/signature appearances deferred) |
 | `pypdfbox/tools/texttopdf.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/TextToPDF.java` |
@@ -868,7 +871,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cmap/resources/KSC-EUC-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/KSC-EUC-V` |
 | `tests/xmpbox/type/upstream/test_abstract_structured_type.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestAbstractStructuredType.java` |
 | `tests/xmpbox/type/upstream/test_structured_type.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestStructuredType.java` |
-| `tests/xmpbox/upstream/test_xmp_basic_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPBasicTest.java` |
+| `tests/xmpbox/upstream/test_xmp_basic_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPBasicTest.java` (includes Bag-cardinality typed-property parity for Advisory/XPath and Identifier/Text) |
 | `tests/xmpbox/upstream/test_dublin_core_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/DublinCoreTest.java` |
 | `tests/fontbox/afm/upstream/test_afm_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/AFMParserTest.java` |
 | `tests/fontbox/afm/upstream/test_font_metrics.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/FontMetricsTest.java` |
@@ -949,7 +952,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/font/pd_type3_char_proc.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType3CharProc.java` |
 | `tests/pdmodel/font/upstream/test_pd_type3_font.py` | 3.0.x | combined `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDType3FontTest.java` + `PDType3CharProcTest.java` |
 | `tests/pdmodel/font/upstream/test_pd_font_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/PDFontTest.java` (factory subset) |
-| `tests/fontbox/cmap/upstream/test_cmap_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/cmap/CMapParserTest.java` |
+| `tests/fontbox/cmap/upstream/test_cmap_parser.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/cmap/CMapParserTest.java` (focused parser regressions including PDFBOX-4720 identity `bfrange`) |
 | `pypdfbox/contentstream/operator/state/set_line_width.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineWidth.java` |
 | `pypdfbox/contentstream/operator/state/set_line_cap_style.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineCapStyle.java` |
 | `pypdfbox/contentstream/operator/state/set_line_join_style.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineJoinStyle.java` |
@@ -1000,7 +1003,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_configuration.py` | 3.0.x | original (no standalone upstream class — Apache PDFBox 3.0 inlines /D accessors on `PDOptionalContentProperties.java`; pypdfbox extracts a typed wrapper so the same surface services /Configs entries) |
 | `tests/pdmodel/graphics/optionalcontent/upstream/test_optional_content_groups.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/optionalcontent/TestOptionalContentGroups.java` (state-assertion subset — content-stream writing + image-diff render phases skipped per per-test comment) |
 | `tests/multipdf/test_merger_struct_tree.py` | 3.0.x | hand-written; structure-tree edge-case coverage for `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` — RoleMap conflict, MCID-indexed parent-tree leaves, /Pg rewriting, destination /Info / /Metadata override, AcroFormMergeMode dispatch, IDTree collision (synthetic equivalents to upstream `PDFMergerUtilityTest.testStructureTreeMerge*` cases that depend on `input/PDFA-1b.pdf` fixture) |
-| `tests/xmpbox/upstream/test_pdfa_identification_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/PDFAIdentificationOthersTest.java` + `PDFAIdentificationTest.java` (parameterised value channel — typed-field round-trip via `getPartProperty().getStringValue()` deferred until the AbstractField hierarchy lands; XmpSerializer round-trip uses a hand-rolled XMP packet because pypdfbox does not yet ship an upstream-shaped serializer) |
+| `tests/xmpbox/upstream/test_pdfa_identification_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/PDFAIdentificationOthersTest.java` + `PDFAIdentificationTest.java` (parameterised value channel and typed-field property round-trip covered; XmpSerializer round-trip uses a hand-rolled XMP packet because pypdfbox does not yet ship an upstream-shaped serializer) |
 | `tests/pdmodel/graphics/color/upstream/test_pd_output_intent.py` | 3.0.x | parity-shaped tests for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDOutputIntent.java` — upstream PDFBox 3.0 ships no dedicated `PDOutputIntentTest.java`, so coverage targets the documented Java API contract (subtype + flate-compressed `/DestOutputProfile` + `/N` + string accessors) |
 | `tests/pdmodel/interactive/digitalsignature/upstream/test_pd_signature.py` | 3.0.x | placeholder — upstream has no `PDSignatureTest.java` (verified 2026-04-27 against `apache/pdfbox` `3.0` branch); coverage in hand-written `tests/pdmodel/interactive/digitalsignature/test_pd_signature.py` |
 | `tests/pdmodel/interactive/digitalsignature/upstream/test_pd_prop_build.py` | 3.0.x | placeholder — upstream has no `PDPropBuild*Test.java` (verified 2026-04-27); coverage in hand-written `tests/pdmodel/interactive/digitalsignature/test_pd_prop_build.py` |

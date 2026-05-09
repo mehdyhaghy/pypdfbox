@@ -1,11 +1,13 @@
 """
 pypdfbox.xmpbox — Python port of the Apache PDFBox xmpbox subproject.
 
-Cluster #1 ships the XMP packet read path: ``XMPMetadata`` plus a
-``DomXmpParser`` backed by ``xml.etree.ElementTree``. Schema dispatch
-covers Dublin Core and XMP Basic; unknown namespaces fall back to a
-plain :class:`XMPSchema`. Writing, ``TypeMapping``, and the rich
-``AbstractField`` hierarchy are deferred to later clusters.
+Cluster #1 shipped the XMP packet read path: ``XMPMetadata`` plus a
+``DomXmpParser`` backed by ``xml.etree.ElementTree``. Schema dispatch covers
+the common Adobe, Dublin Core, PDF/A, PDF/UA, Photoshop, TIFF, and XMP
+namespaces; unknown namespaces fall back to a plain :class:`XMPSchema`. Later
+waves add the typed property hierarchy, ``ArrayProperty`` Bag/Seq/Alt
+containers, ``TypeMapping``, and selected typed schema accessors while keeping
+parser storage backwards-compatible.
 """
 
 from __future__ import annotations

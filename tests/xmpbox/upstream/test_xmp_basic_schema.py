@@ -5,8 +5,8 @@ Ported from Apache PDFBox 3.0:
 Upstream's test is a JUnit 5 parameterised test driven by an
 ``XMPSchemaTester`` reflection helper. It exercises ``getXxx`` /
 ``setXxx`` / ``getXxxProperty`` / ``setXxxProperty`` for every
-property declared on ``XMPBasicSchema``. Cluster #1 ships both
-surfaces directly so the parameter table maps cleanly to pytest.
+property declared on ``XMPBasicSchema``. Later Bag/XPath and typed-property
+waves make the parameter table map cleanly to pytest.
 """
 
 from __future__ import annotations

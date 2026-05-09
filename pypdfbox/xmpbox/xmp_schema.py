@@ -28,10 +28,9 @@ class XMPSchema:
                                    with the upstream ``"x-default"`` sentinel
                                    used when no explicit language is supplied.
 
-    The upstream ``AbstractField`` / ``ArrayProperty`` / ``TextType`` hierarchy
-    is intentionally deferred — see CLAUDE.md ("Behavior over style") and the
-    cluster #1 plan: this is the read path only. Writers, type validation and
-    structured types arrive in later clusters.
+    Later waves add typed ``AbstractField`` / ``ArrayProperty`` / ``TextType``
+    wrappers. This base class still accepts primitive storage for parsed packets,
+    but exposes upstream-named hooks such as ``add_property`` for typed callers.
     """
 
     # Subclasses should set these to mirror upstream's @StructuredType

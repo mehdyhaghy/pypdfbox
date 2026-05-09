@@ -2,9 +2,10 @@
 Ported from Apache PDFBox 3.0:
   xmpbox/src/test/java/org/apache/xmpbox/XMPMetaDataTest.java
 
-Cluster #1 omits ``TypeMapping`` (deferred to the write-path cluster) so
-the upstream ``testAddingSchem`` snippet is translated to the equivalent
-``XMPSchema`` constructor + property-setter calls. The two
+The upstream ``testAddingSchem`` snippet is translated to the equivalent
+``XMPSchema`` constructor + property-setter calls because the parser-facing
+storage path remains primitive even though later waves add ``TypeMapping``
+and typed property wrappers for explicit accessors. The two
 ``XmpSerializationException`` smoke tests exercise upstream's exception
 type — pypdfbox raises a plain :class:`RuntimeError` from the (eventual)
 serializer instead, so those tests are skipped here. ``testPDFBOX3257``
