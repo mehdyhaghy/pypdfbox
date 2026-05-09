@@ -17,7 +17,6 @@ from pypdfbox.filter import CCITTFaxDecode
 from pypdfbox.pdmodel.graphics.image import CCITTFactory, PDImageXObject
 from pypdfbox.pdmodel.pd_document import PDDocument
 
-
 # ---------------------------------------------------------------------------
 # create_from_image
 # ---------------------------------------------------------------------------
