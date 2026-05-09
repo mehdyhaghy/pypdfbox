@@ -191,7 +191,7 @@ Cluster #3 (PDStream + XObject family).
 | `pypdfbox/pdmodel/common/pd_range.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDRange.java` (typed wrapper around the 2-entry COSArray pair; pypdfbox extensions: `width`, `contains`, `clamp`, `is_normalized`, `is_well_formed`, `as_tuple`, iteration, value-equality / hashing, `set_starting_index`) |
 | `pypdfbox/pdmodel/common/pd_matrix.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Matrix.java` (renamed `PDMatrix` and re-homed under `pdmodel/common` for callers that work with page-level matrices without reaching into `pypdfbox.util`; deferred surface that depends on classes not yet ported: AffineTransform/Vector overloads. pypdfbox extensions: `is_identity`, `get_single` defensive copy, `__copy__`/`__deepcopy__` hooks. Static `Matrix.concatenate(a, b)` is exposed as `concatenate_matrices` to avoid colliding with the instance method `concatenate`.) |
 | `pypdfbox/pdmodel/graphics/pd_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/PDXObject.java` |
-| `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObject.java` (metadata + stream access surface only; image decoding deferred) |
+| `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObject.java` (metadata + stream access, typed color-space/mask metadata, filter predicates, suffixes, decoded stream access, and best-effort PIL conversion for DCT/JPX plus raw 8-bit DeviceGray/DeviceRGB/Separation/DeviceN; full sampled-image rendering features such as decode arrays, masks, Indexed expansion, and non-8bpc samples remain rendering-cluster work) |
 | `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/form/PDFormXObject.java` |
 | `pypdfbox/pdmodel/graphics/form/pd_transparency_group_attributes.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/form/PDTransparencyGroupAttributes.java` |
 | `pypdfbox/pdmodel/graphics/form/pd_transparency_group.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/form/PDTransparencyGroup.java` |
@@ -552,7 +552,7 @@ Not yet ported (classes not implemented in pypdfbox): `PDFObjectStreamParserTest
 
 ### `tests/pdmodel/upstream/` (cluster #3 additions)
 
-PDFBox 3.0 has no focused upstream JUnit classes for `PDStream`, `PDXObject`, or `PDFormXObject`. `PDImageXObjectTest` exists upstream but its useful cases depend on image codecs, `PDImageXObject.createFromFile*`, `LosslessFactory`, and rendering/color-space classes outside pdmodel cluster #3. Cluster #3 is covered by hand-written tests under `tests/pdmodel/common/` and `tests/pdmodel/graphics/`; upstream image decoding tests are deferred to the rendering / image factory clusters.
+PDFBox 3.0 has no focused upstream JUnit classes for `PDStream`, `PDXObject`, or `PDFormXObject`. At cluster #3 time, `PDImageXObjectTest` cases that depended on image codecs, `PDImageXObject.createFromFile*`, `LosslessFactory`, and rendering/color-space classes were deferred. Later image factory and mask coverage is tracked under the Wave 31+ image entries below.
 
 ### `tests/pdmodel/interactive/annotation/upstream/`
 
