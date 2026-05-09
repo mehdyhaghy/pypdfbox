@@ -266,6 +266,18 @@ def test_get_content_streams_single_stream() -> None:
     assert streams[0].get_cos_object() is s
 
 
+def test_set_contents_accepts_single_pdstream_wrapper() -> None:
+    page = PDPage()
+    stream = PDStream()
+    with stream.create_output_stream() as out:
+        out.write(b"q 1 0 0 1 0 0 cm Q")
+
+    page.set_contents(stream)
+
+    assert page.get_cos_object().get_dictionary_object(COSName.CONTENTS) is stream.get_cos_object()
+    assert page.get_contents() == b"q 1 0 0 1 0 0 cm Q"
+
+
 def test_get_content_streams_array_form() -> None:
     page = PDPage()
     s1 = COSStream()

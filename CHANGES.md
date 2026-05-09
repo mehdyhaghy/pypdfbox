@@ -1723,3 +1723,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 354 — BaseParser COSName upstream tests
 
 - `tests/pdfparser/upstream/test_base_parser.py`: enabled the upstream UTF-8 name and name-canonicalization checks directly against `COSName`, now that raw-byte name interning and writing parity is implemented.
+
+## Wave 355 — ContentStreamWriter PDFBOX-4750 upstream test
+
+- `pypdfbox/pdmodel/pd_page.py`: `set_contents(...)` now accepts a single `PDStream` wrapper and stores its underlying `COSStream`, matching upstream `PDPage.setContents(PDStream)` while preserving the existing COS stream, COS array, and list overloads.
+- `tests/pdfwriter/upstream/test_content_stream_writer.py`: enabled the upstream PDFBOX-4750 parse -> rewrite -> render comparison against the in-tree `PDFStreamParser`, `ContentStreamWriter`, `PDStream.create_output_stream(FlateDecode)`, and `PDFRenderer`.

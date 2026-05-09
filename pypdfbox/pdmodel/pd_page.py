@@ -268,7 +268,7 @@ class PDPage:
 
     def set_contents(
         self,
-        stream: COSStream | list[COSStream] | COSArray | None,
+        stream: COSStream | list[COSStream] | COSArray | Any | None,
     ) -> None:
         """Replace ``/Contents``.
 
@@ -276,6 +276,8 @@ class PDPage:
 
         - ``None`` — remove the entry entirely.
         - a single :class:`COSStream` — written verbatim (single-stream form).
+        - a single stream wrapper such as :class:`PDStream` — unwrapped to its
+          ``COSStream`` and written in single-stream form.
         - a ``list`` of streams or stream wrappers, or :class:`COSArray` of
           streams — written as the array form. Mirrors upstream's
           ``setContents(List<PDStream>)`` overload.
@@ -286,6 +288,15 @@ class PDPage:
         if isinstance(stream, COSStream):
             self._page.set_item(_CONTENTS, stream)
             return
+        if hasattr(stream, "get_cos_object"):
+            cos = stream.get_cos_object()
+            if isinstance(cos, COSStream):
+                self._page.set_item(_CONTENTS, cos)
+                return
+            raise TypeError(
+                "PDPage.set_contents expected stream wrapper to wrap a "
+                f"COSStream; got {type(cos).__name__}"
+            )
         if isinstance(stream, COSArray):
             self._page.set_item(_CONTENTS, stream)
             return
@@ -311,7 +322,7 @@ class PDPage:
             self._page.set_item(_CONTENTS, arr)
             return
         raise TypeError(
-            "PDPage.set_contents expected None, COSStream, COSArray, or "
+            "PDPage.set_contents expected None, COSStream, stream wrapper, COSArray, or "
             f"list[COSStream]; got {type(stream).__name__}"
         )
 

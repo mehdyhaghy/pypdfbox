@@ -531,7 +531,7 @@ Not yet ported (classes not implemented in pypdfbox): `PDFObjectStreamParserTest
 | pypdfbox test path | upstream Java test path |
 |---|---|
 | `tests/pdfwriter/upstream/test_save_incremental.py` | `pdfbox/src/test/java/org/apache/pdfbox/cos/TestCOSIncrement.java` (all skipped — needs PDDocument + PDPageContentStream + pdmodel + fontbox) |
-| `tests/pdfwriter/upstream/test_content_stream_writer.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/ContentStreamWriterTest.java` (single test `testPDFBox4750` skipped — depends on PDFRenderer + TestPDFToImage + PDStream.createOutputStream; round-trip semantics covered by hand-written tests) |
+| `tests/pdfwriter/upstream/test_content_stream_writer.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/ContentStreamWriterTest.java` (single test `testPDFBox4750` executable against in-tree PDFStreamParser, ContentStreamWriter, PDStream, and PDFRenderer) |
 
 ### `tests/xmpbox/upstream/`
 
