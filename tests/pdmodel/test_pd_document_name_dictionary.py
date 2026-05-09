@@ -56,6 +56,34 @@ def test_dict_init_with_existing_names_reuses_it() -> None:
     assert nd.get_cos_object() is existing
 
 
+def test_upstream_camelcase_aliases_round_trip() -> None:
+    cat = _FakeCatalog()
+    nd = PDDocumentNameDictionary(catalog=cat)
+    dests = PDDestinationNameTreeNode()
+    embedded = PDEmbeddedFilesNameTreeNode()
+    javascript = PDJavascriptNameTreeNode()
+
+    assert nd.getCOSObject() is nd.get_cos_object()
+
+    nd.setDests(dests)
+    assert nd.getDests() is not None
+    assert nd.getDests().get_cos_object() is dests.get_cos_object()  # type: ignore[union-attr]
+    nd.setDests(None)
+    assert nd.getDests() is None
+
+    nd.setEmbeddedFiles(embedded)
+    assert nd.getEmbeddedFiles() is not None
+    assert nd.getEmbeddedFiles().get_cos_object() is embedded.get_cos_object()  # type: ignore[union-attr]
+    nd.setEmbeddedFiles(None)
+    assert nd.getEmbeddedFiles() is None
+
+    nd.setJavascript(javascript)
+    assert nd.getJavaScript() is not None
+    assert nd.getJavaScript().get_cos_object() is javascript.get_cos_object()  # type: ignore[union-attr]
+    nd.setJavascript(None)
+    assert nd.getJavaScript() is None
+
+
 def test_set_and_get_embedded_files_round_trip() -> None:
     nd = PDDocumentNameDictionary()
     efs = PDEmbeddedFilesNameTreeNode()

@@ -1707,3 +1707,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/cos`: added document-state-gated `COSUpdateState` support for dictionaries, arrays, streams, and COS object wrappers, with parser/PDDocument lifecycle wiring so parsed objects accept dirty marks only after parsing completes.
 - `tests/cos/upstream/test_cos_update_info.py`: enabled the upstream COSUpdateInfo toggle test for `COSDictionary` and `COSObject`.
+
+## Wave 351 — PDDocumentNameDictionary upstream aliases
+
+- `pypdfbox/pdmodel/pd_document_name_dictionary.py`: added upstream Java aliases for `getCOSObject`, named destinations, embedded files, and document-level JavaScript name-tree accessors, and removed stale provenance text that still marked the extra name-tree accessors as deferred.

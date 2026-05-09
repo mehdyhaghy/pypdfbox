@@ -99,6 +99,9 @@ class PDDocumentNameDictionary:
     def get_cos_object(self) -> COSDictionary:
         return self._name_dictionary
 
+    def getCOSObject(self) -> COSDictionary:  # noqa: N802 - upstream Java name
+        return self.get_cos_object()
+
     def get_cos_dictionary(self) -> COSDictionary:
         return self._name_dictionary
 
@@ -205,6 +208,17 @@ class PDDocumentNameDictionary:
         if self._catalog is not None:
             self._catalog.get_cos_object().remove_item(_DESTS)
 
+    def getDests(  # noqa: N802 - upstream Java name
+        self,
+    ) -> PDDestinationNameTreeNode | PDDocumentNameDestinationDictionary | None:
+        return self.get_dests()
+
+    def setDests(  # noqa: N802 - upstream Java name
+        self,
+        dests: PDDestinationNameTreeNode | PDDocumentNameDestinationDictionary | None,
+    ) -> None:
+        self.set_dests(dests)
+
     # ---------- /EmbeddedFiles ----------
 
     def get_embedded_files(self) -> PDEmbeddedFilesNameTreeNode | None:
@@ -222,6 +236,15 @@ class PDDocumentNameDictionary:
             self._name_dictionary.set_item(
                 _EMBEDDED_FILES, embedded_files.get_cos_object()
             )
+
+    def getEmbeddedFiles(self) -> PDEmbeddedFilesNameTreeNode | None:  # noqa: N802
+        return self.get_embedded_files()
+
+    def setEmbeddedFiles(  # noqa: N802 - upstream Java name
+        self,
+        embedded_files: PDEmbeddedFilesNameTreeNode | None,
+    ) -> None:
+        self.set_embedded_files(embedded_files)
 
     # ---------- /JavaScript ----------
 
@@ -248,6 +271,15 @@ class PDDocumentNameDictionary:
             self._name_dictionary.set_item(
                 _JAVA_SCRIPT, javascript.get_cos_object()
             )
+
+    def getJavaScript(self) -> PDJavascriptNameTreeNode | None:  # noqa: N802
+        return self.get_javascript()
+
+    def setJavascript(  # noqa: N802 - upstream Java spelling
+        self,
+        javascript: PDJavascriptNameTreeNode | None,
+    ) -> None:
+        self.set_javascript(javascript)
 
     # ---------- /Pages ----------
 
