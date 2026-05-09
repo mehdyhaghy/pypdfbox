@@ -91,16 +91,19 @@ def test_wave426_clear_aliases_remove_entries() -> None:
     assert image.has_matte() is False
 
 
-def test_wave426_to_pil_image_rejects_bad_dimensions_and_bpc() -> None:
+def test_wave426_to_pil_image_rejects_bad_dimensions_and_decodes_sub_byte_gray() -> None:
     image = _image()
     assert image.to_pil_image() is None
 
     image.set_width(1)
     image.set_height(1)
     image.set_bits_per_component(4)
-    image.get_cos_object().set_raw_data(b"\x00")
+    image.get_cos_object().set_raw_data(b"\xf0")
     image.set_color_space("DeviceGray")
-    assert image.to_pil_image() is None
+    rendered = image.to_pil_image()
+
+    assert rendered is not None
+    assert rendered.tobytes() == bytes([255, 255, 255])
 
 
 def test_wave426_to_pil_image_decodes_raw_rgb_gray_and_short_data() -> None:

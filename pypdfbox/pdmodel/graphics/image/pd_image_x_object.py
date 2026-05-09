@@ -623,12 +623,11 @@ class PDImageXObject(PDXObject):
         alternate colour space (typically DeviceCMYK or DeviceRGB)
         before compositing into sRGB.
 
-        Raw 8-bit DeviceGray, DeviceRGB, and DeviceCMYK rasters apply simple
-        component-wise ``/Decode`` arrays. Raw 8-bit and 1-bit Indexed
-        rasters expand through their lookup table, with ``/Decode``
-        remapping the source sample to a palette index. More complex
-        PDF image features such as masks and other non-8bpc samples
-        remain rendering-cluster work and return ``None`` here.
+        Raw DeviceGray and Indexed rasters support 1/2/4/8 bits per
+        component; raw 8-bit DeviceRGB and DeviceCMYK rasters apply
+        simple component-wise ``/Decode`` arrays. More complex PDF image
+        features such as masks, 16-bit samples, and non-device color
+        models remain rendering-cluster work and return ``None`` here.
         """
         cos = self.get_cos_object()
         if not isinstance(cos, COSStream):
@@ -649,8 +648,9 @@ class PDImageXObject(PDXObject):
         bpc = self.get_bits_per_component()
         color_space = self.get_color_space()
         color_space_name = color_space.get_name() if color_space is not None else None
+        sub_byte = bpc in (1, 2, 4)
         if bpc not in (8, -1) and not (
-            bpc == 1 and color_space_name == "Indexed"
+            sub_byte and color_space_name in ("DeviceGray", "Indexed")
         ):
             return None
         with self.create_input_stream() as src:
@@ -671,10 +671,16 @@ class PDImageXObject(PDXObject):
                 return None
             return Image.frombytes("RGB", (width, height), decoded)
         if color_space_name == "DeviceGray":
-            if len(data) < gray_len:
-                return None
+            if sub_byte:
+                samples = _unpack_sub_byte_samples(data, width, height, bpc)
+                if samples is None:
+                    return None
+            else:
+                if len(data) < gray_len:
+                    return None
+                samples = data[:gray_len]
             decoded = _apply_decode_to_8bit_samples(
-                data[:gray_len], pixel_count, 1, decode
+                samples, pixel_count, 1, decode, bpc=bpc if sub_byte else 8
             )
             if decoded is None:
                 return None
@@ -690,15 +696,18 @@ class PDImageXObject(PDXObject):
                 return None
             return color_space.to_rgb_image(decoded, width, height)
         if color_space_name == "Indexed" and color_space is not None:
-            if bpc == 1:
-                decoded = _apply_decode_to_1bit_indexed_samples(
-                    data, width, height, decode
+            if sub_byte:
+                samples = _unpack_sub_byte_samples(data, width, height, bpc)
+                if samples is None:
+                    return None
+                decoded = _apply_decode_to_indexed_samples(
+                    samples, pixel_count, decode, bpc=bpc
                 )
             else:
                 if len(data) < pixel_count:
                     return None
-                decoded = _apply_decode_to_8bit_indexed_samples(
-                    data[:pixel_count], pixel_count, decode
+                decoded = _apply_decode_to_indexed_samples(
+                    data[:pixel_count], pixel_count, decode, bpc=8
                 )
             if decoded is None:
                 return None
@@ -715,13 +724,21 @@ def _apply_decode_to_8bit_samples(
     pixel_count: int,
     components: int,
     decode: Sequence[float] | None,
+    *,
+    bpc: int = 8,
 ) -> bytes | None:
     expected = pixel_count * components
     if len(data) < expected:
         return None
-    if decode is None:
+    if decode is None and bpc == 8:
         return data[:expected]
-    if len(decode) != components * 2:
+    if decode is None:
+        decode = [0.0, 1.0] * components
+    elif len(decode) != components * 2:
+        return None
+
+    max_sample = float((1 << int(bpc)) - 1)
+    if max_sample <= 0.0:
         return None
 
     out = bytearray(expected)
@@ -729,15 +746,17 @@ def _apply_decode_to_8bit_samples(
         component = i % components
         dmin = decode[component * 2]
         dmax = decode[component * 2 + 1]
-        value = dmin + (data[i] / 255.0) * (dmax - dmin)
+        value = dmin + (data[i] / max_sample) * (dmax - dmin)
         out[i] = int(round(_clamp01(value) * 255.0))
     return bytes(out)
 
 
-def _apply_decode_to_8bit_indexed_samples(
+def _apply_decode_to_indexed_samples(
     data: bytes,
     pixel_count: int,
     decode: Sequence[float] | None,
+    *,
+    bpc: int = 8,
 ) -> bytes | None:
     if len(data) < pixel_count:
         return None
@@ -746,38 +765,52 @@ def _apply_decode_to_8bit_indexed_samples(
     if len(decode) != 2:
         return None
 
+    max_sample = float((1 << int(bpc)) - 1)
+    if max_sample <= 0.0:
+        return None
     dmin = decode[0]
     dmax = decode[1]
     out = bytearray(pixel_count)
     for i in range(pixel_count):
-        value = dmin + (data[i] / 255.0) * (dmax - dmin)
+        value = dmin + (data[i] / max_sample) * (dmax - dmin)
         out[i] = int(round(_clamp(value, 0.0, 255.0)))
     return bytes(out)
 
 
-def _apply_decode_to_1bit_indexed_samples(
+def _apply_decode_to_8bit_indexed_samples(
+    data: bytes,
+    pixel_count: int,
+    decode: Sequence[float] | None,
+) -> bytes | None:
+    return _apply_decode_to_indexed_samples(data, pixel_count, decode, bpc=8)
+
+
+def _unpack_sub_byte_samples(
     data: bytes,
     width: int,
     height: int,
-    decode: Sequence[float] | None,
+    bpc: int,
+    components: int = 1,
 ) -> bytes | None:
-    row_bytes = (int(width) + 7) // 8
+    if bpc not in (1, 2, 4) or components <= 0:
+        return None
+    row_samples = int(width) * int(components)
+    row_bits = row_samples * int(bpc)
+    row_bytes = (row_bits + 7) // 8
     expected = row_bytes * int(height)
     if len(data) < expected:
         return None
-    if decode is not None and len(decode) != 2:
-        return None
 
-    dmin = decode[0] if decode is not None else 0.0
-    dmax = decode[1] if decode is not None else 1.0
-    out = bytearray(int(width) * int(height))
+    mask = (1 << int(bpc)) - 1
+    out = bytearray(row_samples * int(height))
     for y in range(int(height)):
         row_offset = y * row_bytes
-        for x in range(int(width)):
-            byte = data[row_offset + (x // 8)]
-            bit = (byte >> (7 - (x % 8))) & 1
-            value = dmin + bit * (dmax - dmin)
-            out[(y * int(width)) + x] = int(round(_clamp(value, 0.0, 255.0)))
+        out_offset = y * row_samples
+        for sample_index in range(row_samples):
+            bit_index = sample_index * int(bpc)
+            byte = data[row_offset + (bit_index // 8)]
+            shift = 8 - int(bpc) - (bit_index % 8)
+            out[out_offset + sample_index] = (byte >> shift) & mask
     return bytes(out)
 
 

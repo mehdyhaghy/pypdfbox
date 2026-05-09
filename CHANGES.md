@@ -1862,3 +1862,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now unpacks row-aligned, MSB-first 1-bit `/Indexed` image XObject samples, applies two-entry `/Decode` remapping, and expands through the existing indexed color-space path.
 - `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1283.py`: added 1-bit Indexed expansion, decode inversion, and short packed-raster rejection coverage.
+
+## Wave 386 — PDImageXObject sub-byte DeviceGray/Indexed rendering
+
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now unpacks row-aligned, MSB-first sub-byte `/DeviceGray` and `/Indexed` image XObject samples for 1, 2, and 4 bits per component, applies `/Decode` remapping, expands Indexed samples through the existing indexed color-space path, and converts DeviceGray samples to RGB.
+- `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1286.py`, `tests/pdmodel/graphics/image/test_pd_image_x_object_wave426.py`: added sub-byte DeviceGray/Indexed expansion, decode inversion, row-padding, and packed-raster coverage.
