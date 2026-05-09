@@ -1787,3 +1787,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 369 — RandomAccessReadBuffer sliced input parity
 
 - `tests/io/upstream/test_random_access_read_buffer.py`: enabled a PDFBOX-5764 equivalent for sliced `memoryview` inputs, asserting the in-memory reader never exposes bytes outside the caller's slice.
+
+## Wave 370 — PDDocumentInformation metadata-key assertions
+
+- `tests/pdmodel/upstream/test_pd_document_information.py`: strengthened the upstream metadata extraction parity test to assert the exact `/Info` metadata key set parsed from the synthetic fixture.

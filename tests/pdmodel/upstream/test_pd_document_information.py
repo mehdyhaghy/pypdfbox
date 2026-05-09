@@ -76,6 +76,16 @@ def test_metadata_extraction() -> None:
         assert info.get_keywords() is None
         assert info.get_subject() is None
         assert info.get_trapped() is None
+        assert info.get_metadata_keys() == [
+            "Author",
+            "Company",
+            "CreationDate",
+            "Creator",
+            "ModDate",
+            "Producer",
+            "SourceModified",
+            "Title",
+        ]
 
 
 def test_pdfbox_3068() -> None:
