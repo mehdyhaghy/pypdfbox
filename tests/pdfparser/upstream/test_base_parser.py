@@ -10,14 +10,15 @@ ship ``COSParser`` yet (cluster #2), so:
 * ``parseCOSName`` tests are translated to exercise our ``BaseParser.read_name``,
   which mirrors the upstream name-parsing logic byte-for-byte.
 * The PDF-fixture-driven stack-overflow test is skipped pending the fixture pass.
-* The two ``COSName`` canonicalization / UTF-8 tests are out of scope for the
-  parser cluster — they belong with the cos cluster's upstream tests.
+* The two ``COSName`` canonicalization / UTF-8 tests are executed directly
+  against the COSName API, matching the upstream assertions' target.
 """
 
 from __future__ import annotations
 
 import pytest
 
+from pypdfbox.cos import COSName
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import BaseParser
 
@@ -152,13 +153,15 @@ def test_ascii_regular_characters() -> None:
     )
 
 
-# Upstream: testUTF8InNames — exercises COSName.getPDFName (cos cluster).
-@pytest.mark.skip(reason="COSName API lives in cos cluster, not pdfparser")
 def test_utf8_in_names() -> None:
-    pass
+    special = "中国你好!"
+    name = COSName.get_pdf_name(special)
+
+    assert name.get_name() == special
+    assert name.get_bytes() == special.encode("utf-8")
 
 
-# Upstream: testNameCanonicaliation — exercises COSName interning (cos cluster).
-@pytest.mark.skip(reason="COSName API lives in cos cluster, not pdfparser")
 def test_name_canonicalization() -> None:
-    pass
+    assert COSName.get_pdf_name("Test") is COSName.get_pdf_name("Test")
+    assert COSName.get_pdf_name(b"Test") is COSName.get_pdf_name(bytearray(b"Test"))
+    assert COSName.get_pdf_name("ä") is not COSName.get_pdf_name(b"\xe4")

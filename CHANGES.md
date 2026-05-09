@@ -1719,3 +1719,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 353 — PDDocumentNameDictionary malformed-entry guards
 
 - `tests/pdmodel/test_pd_document_name_dictionary.py`: added parity guards for the explicit `(catalog, names)` constructor path and for malformed non-dictionary entries across every document-level `/Names` category getter.
+
+## Wave 354 — BaseParser COSName upstream tests
+
+- `tests/pdfparser/upstream/test_base_parser.py`: enabled the upstream UTF-8 name and name-canonicalization checks directly against `COSName`, now that raw-byte name interning and writing parity is implemented.
