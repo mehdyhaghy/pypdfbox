@@ -1681,3 +1681,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 344 — unmodifiable COS dictionaries
 
 - `pypdfbox/cos/cos_dictionary.py`: `as_unmodifiable_dictionary()` / `asUnmodifiableDictionary()` now return a live read-only view matching PDFBox's `UnmodifiableCOSDictionary`; mutating the view raises `TypeError`. COS dictionaries also gained the upstream-shaped `setDate`, embedded string/date/int helpers, and flag accessors needed by the upstream parity test.
+
+## Wave 345 — PDFDocEncoding upstream COS test
+
+- `tests/cos/upstream/test_pdf_doc_encoding.py`: the PDFBox `PDFDocEncodingTest` placeholder is now executable against `COSString`'s PDFDocEncoding-backed text-string constructor and decoder, covering the ISO deviation table and PDFBOX-3864 semantic round-trip.

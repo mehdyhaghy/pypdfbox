@@ -1,24 +1,68 @@
-"""
-Ported from Apache PDFBox 3.0:
-  pdfbox/src/test/java/org/apache/pdfbox/cos/PDFDocEncodingTest.java
+"""Ported upstream tests for PDFDocEncoding.
 
-PDFDocEncoding is a custom 8-bit encoding with deviations from Latin-1
-in the 0x18..0x9F band; pypdfbox's ``COSString`` currently approximates
-text via Latin-1 and will be revisited when fontbox/PDFDocEncoding lands.
-The deviation round-trip and PDFBOX-3864 hex round-trip both depend on
-that proper encoder, so they are skipped here.
+Translated from
+``pdfbox/src/test/java/org/apache/pdfbox/cos/PDFDocEncodingTest.java``.
+Upstream keeps PDFDocEncoding package-private under ``cos``; pypdfbox
+implements the encoding helpers in ``pdmodel.common`` and wires them into
+``COSString``.
 """
 
 from __future__ import annotations
 
-import pytest
+from pypdfbox.cos import COSString
+
+_DEVIATIONS: tuple[str, ...] = (
+    "˘",
+    "ˇ",
+    "ˆ",
+    "˙",
+    "˝",
+    "˛",
+    "˚",
+    "˜",
+    "•",
+    "†",
+    "‡",
+    "…",
+    "—",
+    "–",
+    "ƒ",
+    "⁄",
+    "‹",
+    "›",
+    "−",
+    "‰",
+    "„",
+    "“",
+    "”",
+    "‘",
+    "’",
+    "‚",
+    "™",
+    "ﬁ",
+    "ﬂ",
+    "Ł",
+    "Œ",
+    "Š",
+    "Ÿ",
+    "Ž",
+    "ı",
+    "ł",
+    "œ",
+    "š",
+    "ž",
+    "€",
+)
 
 
-@pytest.mark.skip(reason="needs PDFDocEncoding (fontbox cluster, not yet ported)")
 def test_deviations() -> None:
-    pass
+    for deviation in _DEVIATIONS:
+        assert COSString(deviation).get_string() == deviation
 
 
-@pytest.mark.skip(reason="needs PDFDocEncoding (PDFBOX-3864) — fontbox cluster not yet ported")
 def test_pdfbox3864() -> None:
-    pass
+    for i in range(256):
+        hex_text = f"FEFF{i:04X}"
+        cs1 = COSString.parse_hex(hex_text)
+        cs2 = COSString(cs1.get_string())
+        assert cs1.get_string() == cs2.get_string()
