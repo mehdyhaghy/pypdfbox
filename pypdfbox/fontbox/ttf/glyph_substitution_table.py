@@ -382,7 +382,9 @@ class GlyphSubstitutionTable(TTFTable):
 
         feature_records = self._gsub_table.FeatureList.FeatureRecord
 
-        def tag_for(fi: int) -> str:
+        def tag_for(fi: int) -> str | None:
+            if fi < 0 or fi >= len(feature_records):
+                return None
             return str(feature_records[fi].FeatureTag).strip()
 
         # Filter to enabled set, then re-sort to preserve the caller's
@@ -393,7 +395,7 @@ class GlyphSubstitutionTable(TTFTable):
         # Mirrors upstream containsFeature/removeFeature pair.
         if any(tag_for(fi) == "vrt2" for fi in filtered):
             filtered = [fi for fi in filtered if tag_for(fi) != "vert"]
-        filtered.sort(key=lambda fi: enabled_features.index(tag_for(fi)))
+        filtered.sort(key=lambda fi: enabled_features.index(tag_for(fi) or ""))
         return filtered
 
     def _apply_single_lookup_in_gid_space(self, lookup: Any, gid: int) -> int:

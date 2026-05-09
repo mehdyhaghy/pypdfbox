@@ -217,6 +217,7 @@ def test_wave654_clone_structure_tree_tolerates_bad_page_and_annotation_state() 
     splitter = Splitter()
     splitter._source_document = SourceDocument(_Root(source_root_dict))  # type: ignore[assignment]  # noqa: SLF001,E501
     destination = DestinationDocument()
+    assert destination.pages.index_of(COSDictionary()) == -1
 
     splitter._clone_structure_tree(destination)  # type: ignore[arg-type]  # noqa: SLF001
 
@@ -299,6 +300,7 @@ def test_wave654_clone_id_tree_noops_for_missing_empty_and_unretained_names() ->
     assert destination.id_tree is None
 
     source.id_tree = UnretainedTree()
+    assert source.id_tree.get_kids() is None
     splitter._id_set = {"keep"}  # noqa: SLF001
     splitter._clone_id_tree(source, destination, _IdentityNameTree)  # noqa: SLF001
     assert destination.id_tree is None

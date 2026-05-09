@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+from io import BytesIO
+
+import pytest
+
+from pypdfbox.cos import COSArray, COSDictionary
+from pypdfbox.filter import ASCII85Decode, FilterFactory, LZWDecode, RunLengthDecode, lzw_decode
+from pypdfbox.filter.lzw_decode import _BitWriter
+
+
+def _decode_ascii85(data: bytes) -> bytes:
+    out = BytesIO()
+    ASCII85Decode().decode(BytesIO(data), out)
+    return out.getvalue()
+
+
+def _pack_lzw_codes(codes: list[tuple[int, int]]) -> bytes:
+    out = BytesIO()
+    writer = _BitWriter(out)
+    for code, width in codes:
+        writer.write_bits(code, width)
+    writer.flush()
+    return out.getvalue()
+
+
+def test_ascii85_decoder_wraps_stdlib_overflow_as_oserror() -> None:
+    with pytest.raises(OSError, match="decode failed"):
+        _decode_ascii85(b"uuuuu~>")
+
+
+def test_lzw_decode_params_array_out_of_range_falls_back_to_empty_dict() -> None:
+    payload = b"decode params array fallback"
+    encoded = BytesIO()
+    LZWDecode().encode(BytesIO(payload), encoded)
+
+    parameters = COSDictionary()
+    parameters.set_item("DecodeParms", COSArray())
+
+    decoded = BytesIO()
+    result = LZWDecode().decode(BytesIO(encoded.getvalue()), decoded, parameters)
+
+    assert decoded.getvalue() == payload
+    assert result.parameters is parameters
+
+
+def test_lzw_reserved_table_slot_referenced_as_data_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def poisoned_table() -> list[bytes | None]:
+        table = [bytes((i,)) for i in range(256)]
+        table[65] = None
+        table.extend([None, None])
+        return table
+
+    monkeypatch.setattr(lzw_decode, "_initial_code_table", poisoned_table)
+
+    with pytest.raises(OSError, match="reserved entry"):
+        LZWDecode._do_lzw_decode(BytesIO(_pack_lzw_codes([(65, 9)])), BytesIO(), True)
+
+
+def test_run_length_decode_empty_stream_stops_without_eod() -> None:
+    decoded = BytesIO()
+
+    result = RunLengthDecode().decode(BytesIO(b""), decoded)
+
+    assert decoded.getvalue() == b""
+    assert result.bytes_written == 0
+
+
+def test_filter_factory_short_name_raises_when_registered_long_name_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(FilterFactory, "_registry", {})
+
+    with pytest.raises(KeyError, match="resolved to 'FlateDecode'"):
+        FilterFactory.get_filter_by_short_name("Fl")
+
+
+def test_filter_factory_registered_names_are_sorted() -> None:
+    names = FilterFactory.registered_names()
+
+    assert names == sorted(names)
+    assert "ASCII85Decode" in names
