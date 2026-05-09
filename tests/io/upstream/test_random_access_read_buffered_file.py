@@ -173,10 +173,24 @@ def test_read_fully_exact() -> None:
         assert bytes(b) == _FILE1.read_bytes()
 
 
-# skipped: testReadFullyAcrossBuffers references the upstream Java source file
-# layout (a fixed file path under pdfbox/io/src/test/java/...), which doesn't
-# exist in this repo. Cross-buffer read_fully is exercised by test_read_fully2
-# and test_read_fully_exact above.
+def test_read_fully_across_buffers(tmp_path: Path) -> None:
+    payload = bytes(range(251)) * 100
+    path = tmp_path / "across-buffers.bin"
+    path.write_bytes(payload)
+
+    buffer_len = 64
+    expected = bytearray(buffer_len * 2)
+    expected[1:] = payload[buffer_len // 2 : buffer_len // 2 + len(expected) - 1]
+
+    with RandomAccessReadBufferedFile(path, buffer_size=buffer_len) as r:
+        assert buffer_len * 2 < r.length()
+        r.seek(buffer_len // 2)
+
+        data = bytearray(buffer_len * 2)
+        r.read_fully(data, 1, len(data) - 1)
+
+        assert data == expected
+        assert r.get_position() == buffer_len // 2 + len(data) - 1
 
 
 def test_read_fully_nothing() -> None:

@@ -1791,3 +1791,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 370 — PDDocumentInformation metadata-key assertions
 
 - `tests/pdmodel/upstream/test_pd_document_information.py`: strengthened the upstream metadata extraction parity test to assert the exact `/Info` metadata key set parsed from the synthetic fixture.
+
+## Wave 371 — RandomAccessReadBufferedFile cross-buffer read parity
+
+- `tests/io/upstream/test_random_access_read_buffered_file.py`: replaced the skipped upstream `readFullyAcrossBuffers` marker with a fixture-free temp-file test that reads across a small buffer boundary into a nonzero destination offset.
