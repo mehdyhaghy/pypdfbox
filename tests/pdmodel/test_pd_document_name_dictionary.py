@@ -151,6 +151,7 @@ def test_get_dests_falls_back_to_catalog_legacy() -> None:
     nd = PDDocumentNameDictionary(catalog=cat)
     out = nd.get_dests()
     assert out is not None
+    assert isinstance(out, PDDestinationNameTreeNode)
     assert out.get_cos_object() is legacy
 
 

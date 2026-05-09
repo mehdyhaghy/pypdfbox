@@ -1711,3 +1711,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 351 — PDDocumentNameDictionary upstream aliases
 
 - `pypdfbox/pdmodel/pd_document_name_dictionary.py`: added upstream Java aliases for `getCOSObject`, named destinations, embedded files, and document-level JavaScript name-tree accessors, and removed stale provenance text that still marked the extra name-tree accessors as deferred.
+
+## Wave 352 — PDDocumentNameDictionary legacy Dests parity
+
+- `pypdfbox/pdmodel/pd_document_name_dictionary.py`: legacy catalog-level `/Dests` fallback now returns `PDDestinationNameTreeNode`, matching upstream `PDDocumentNameDictionary.getDests()`. The raw `/AP` helper docstring now identifies that surface as pypdfbox spec-expanded convenience rather than a PDFBox method.

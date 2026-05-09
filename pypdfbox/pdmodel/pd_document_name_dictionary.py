@@ -185,14 +185,14 @@ class PDDocumentNameDictionary:
 
     def get_dests(
         self,
-    ) -> PDDestinationNameTreeNode | PDDocumentNameDestinationDictionary | None:
+    ) -> PDDestinationNameTreeNode | None:
         dic = self._name_dictionary.get_dictionary_object(_DESTS)
         if isinstance(dic, COSDictionary):
             return PDDestinationNameTreeNode(dic)
         if self._catalog is not None:
             cat_dests = self._catalog.get_cos_object().get_dictionary_object(_DESTS)
             if isinstance(cat_dests, COSDictionary):
-                return PDDocumentNameDestinationDictionary(cat_dests)
+                return PDDestinationNameTreeNode(cat_dests)
         return None
 
     def set_dests(
@@ -210,7 +210,7 @@ class PDDocumentNameDictionary:
 
     def getDests(  # noqa: N802 - upstream Java name
         self,
-    ) -> PDDestinationNameTreeNode | PDDocumentNameDestinationDictionary | None:
+    ) -> PDDestinationNameTreeNode | None:
         return self.get_dests()
 
     def setDests(  # noqa: N802 - upstream Java name
@@ -377,10 +377,11 @@ class PDDocumentNameDictionary:
     def get_ap(self) -> COSDictionary | None:
         """Return the raw ``/AP`` name-tree dictionary, or ``None`` if absent.
 
-        Mirrors PDFBox ``PDDocumentNameDictionary.getAP()``. The ``/AP`` entry
-        is a name tree mapping name strings to appearance streams (PDF
-        32000-1 §7.7.4, Table 31). A typed wrapper is not yet provided —
-        callers receive the raw ``COSDictionary``.
+        ``/AP`` is a spec-defined document-level name tree mapping name
+        strings to appearance streams (PDF 32000-1 §7.7.4, Table 31), but
+        current PDFBox does not expose a public accessor for it on
+        ``PDDocumentNameDictionary``. pypdfbox keeps this raw-COS convenience
+        until a typed appearance-stream name-tree wrapper exists.
         """
         dic = self._name_dictionary.get_dictionary_object(_AP)
         if isinstance(dic, COSDictionary):
@@ -390,8 +391,9 @@ class PDDocumentNameDictionary:
     def set_ap(self, ap: COSDictionary | None) -> None:
         """Set or clear the ``/AP`` name-tree dictionary.
 
-        Mirrors PDFBox ``PDDocumentNameDictionary.setAP()``. Accepts the
-        raw ``COSDictionary`` since no typed wrapper is yet provided.
+        Accepts the raw ``COSDictionary`` since no typed wrapper is yet
+        provided; this is pypdfbox spec-expanded surface rather than a current
+        PDFBox method.
         """
         if ap is None:
             self._name_dictionary.remove_item(_AP)
