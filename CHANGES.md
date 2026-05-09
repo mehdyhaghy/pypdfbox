@@ -1882,3 +1882,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/filter/jpx_decode.py`: `JPXDecode.decode()` now creates a fresh `DecodeResult.parameters` dictionary and copies caller parameters before applying intrinsic JPX width, height, bit-depth, component-count, and `/Decode` cleanup, matching upstream `JPXFilter` without mutating the caller's dictionary.
 - `tests/filter/test_jpx_decode.py`: added parameter-copy and non-mutation coverage for repaired geometry, `/Decode` removal, and image-mask preservation.
+
+## Wave 390 — DCT leading LF parity
+
+- `pypdfbox/filter/dct_decode.py`: `DCTDecode.decode()` now skips exactly one leading line-feed byte before handing JPEG data to Pillow, matching upstream `DCTFilter` behavior before ImageIO reads the stream.
+- `tests/filter/test_dct_decode.py`: added coverage for a valid JPEG prefixed by one LF byte.

@@ -35,6 +35,8 @@ class DCTDecode(Filter):
         out_params = parameters if parameters is not None else COSDictionary()
         if not encoded_bytes:
             return DecodeResult(parameters=out_params, bytes_written=0)
+        if encoded_bytes.startswith(b"\n"):
+            encoded_bytes = encoded_bytes[1:]
 
         try:
             with Image.open(io.BytesIO(encoded_bytes)) as image:

@@ -30,6 +30,18 @@ def test_dct_decode_rgb_jpeg_surfaces_image_parameters() -> None:
     assert result.parameters.get_int("ColorComponents") == 3
 
 
+def test_dct_decode_skips_one_leading_lf_before_jpeg() -> None:
+    encoded = _jpeg_bytes("RGB", (1, 1), b"\x00\x00\x00")
+    decoded = io.BytesIO()
+
+    result = DCTDecode().decode(io.BytesIO(b"\n" + encoded), decoded)
+
+    assert decoded.getvalue() == b"\x00\x00\x00"
+    assert result.bytes_written == 3
+    assert result.parameters.get_int("Width") == 1
+    assert result.parameters.get_int("Height") == 1
+
+
 def test_dct_decode_reuses_supplied_parameters() -> None:
     encoded = _jpeg_bytes("L", (1, 1), b"\x80")
     params = COSDictionary()
