@@ -37,7 +37,7 @@ class RandomAccessReadBuffer(RandomAccessRead):
             except TypeError:
                 data = read()
                 if not isinstance(data, (bytes, bytearray, memoryview)):
-                    raise TypeError("source stream must yield bytes")
+                    raise TypeError("source stream must yield bytes") from None
                 if not data:
                     data = b""
                 else:

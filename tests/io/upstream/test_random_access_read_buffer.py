@@ -142,6 +142,17 @@ def test_pdfbox5161() -> None:
         assert r.read_into(buf, 0, 3) == 3
 
 
-# skipped: testPDFBOX5764 exercises Java ByteBuffer.limit semantics; pypdfbox
-# RandomAccessReadBuffer accepts bytes/memoryview directly, so the equivalent
-# invariant (don't read past the slice) is enforced by the caller's slice.
+def test_pdfbox5764_sliced_memoryview_limit() -> None:
+    # PDFBOX-5764: the reader must not expose bytes beyond the caller's
+    # ByteBuffer limit. A sliced memoryview is Python's equivalent input.
+    with RandomAccessReadBuffer(memoryview(b"0123456789")[2:7]) as r:
+        assert r.length() == 5
+        assert r.read_fully(5) == b"23456"
+        assert r.read() == -1
+
+        r.seek(0)
+        r.skip(2)
+        assert r.read() == ord("4")
+        r.skip(99)
+        assert r.get_position() == 5
+        assert r.is_eof()

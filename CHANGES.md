@@ -1783,3 +1783,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 368 — XMPBasicSchema Advisory XPath bag parity
 
 - `pypdfbox/xmpbox/xmp_basic_schema.py`: Advisory bag typed accessors now materialize and append `XPathType` children, matching upstream's `XPath` Bag declaration, while Identifier remains a Text Bag.
+
+## Wave 369 — RandomAccessReadBuffer sliced input parity
+
+- `tests/io/upstream/test_random_access_read_buffer.py`: enabled a PDFBOX-5764 equivalent for sliced `memoryview` inputs, asserting the in-memory reader never exposes bytes outside the caller's slice.
