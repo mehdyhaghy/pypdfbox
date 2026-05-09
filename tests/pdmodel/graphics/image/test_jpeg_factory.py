@@ -175,15 +175,34 @@ def test_create_from_image_gray():
     assert image.get_height() == 18
 
 
-def test_create_from_image_rgba_flattens_alpha():
-    """RGBA must flatten to RGB — JPEG cannot carry alpha. The current
-    port drops the alpha channel rather than emitting an /SMask second
-    XObject (see CHANGES.md soft-mask follow-up)."""
+def _assert_dct_gray_smask(image, width: int, height: int) -> None:
+    smask = image.get_soft_mask()
+    assert smask is not None
+    assert smask.get_width() == width
+    assert smask.get_height() == height
+    assert smask.get_bits_per_component() == 8
+    cs = smask.get_color_space()
+    assert cs is not None
+    assert cs.get_name() == "DeviceGray"
+    filt = smask.get_filter()
+    assert isinstance(filt, COSName)
+    assert filt.name == "DCTDecode"
+
+
+def test_create_from_image_rgba_extracts_alpha_smask():
+    """RGBA inputs become RGB JPEGs with a grayscale JPEG /SMask."""
     img = Image.new("RGBA", (16, 16), color=(50, 100, 150, 200))
     image = JPEGFactory.create_from_image(None, img)
     cs = image.get_color_space()
     assert cs is not None
     assert cs.get_name() == "DeviceRGB"
+    _assert_dct_gray_smask(image, 16, 16)
+
+
+def test_create_from_image_rgb_has_no_soft_mask():
+    img = Image.new("RGB", (8, 8), color=(50, 100, 150))
+    image = JPEGFactory.create_from_image(None, img)
+    assert image.get_soft_mask() is None
 
 
 def test_create_from_image_quality_clamped():

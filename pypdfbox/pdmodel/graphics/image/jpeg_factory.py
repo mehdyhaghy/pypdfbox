@@ -82,6 +82,18 @@ def _pil_mode_to_components(mode: str) -> int:
     return 0
 
 
+def _split_alpha_for_smask(image: Image.Image) -> tuple[Image.Image, Image.Image | None]:
+    """Return ``(color_image, alpha_mask)`` for JPEG soft-mask encoding."""
+    if image.mode == "RGBA":
+        return image.convert("RGB"), image.getchannel("A")
+    if image.mode == "LA":
+        return image.getchannel("L"), image.getchannel("A")
+    if image.mode == "PA":
+        rgba = image.convert("RGBA")
+        return rgba.convert("RGB"), rgba.getchannel("A")
+    return image, None
+
+
 def _retrieve_dimensions(jpeg_bytes: bytes) -> tuple[int, int, int]:
     """Sniff ``(width, height, num_components)`` from JPEG header bytes.
 
@@ -229,22 +241,16 @@ class JPEGFactory:
         runs ``[1, 95]`` so we rescale. ``dpi`` is recorded in the JFIF
         header for round-trip parity with upstream.
 
-        The image is flattened to ``RGB`` when it carries an alpha
-        channel — JPEG cannot represent alpha. Upstream extracts the
-        alpha as a soft mask via a second JPEG XObject; we currently
-        drop alpha (a TODO mirrored in CHANGES.md describes the
-        soft-mask follow-up). Modes ``L``, ``RGB``, and ``CMYK`` are
-        encoded directly.
+        The image is split into a color JPEG plus a grayscale JPEG
+        ``/SMask`` when it carries an alpha channel. Modes ``L``, ``RGB``,
+        and ``CMYK`` are encoded directly.
         """
-        del document  # kept for API parity; see create_from_byte_array
         if not isinstance(image, Image.Image):
             raise TypeError(
                 f"image must be a PIL.Image.Image, got {type(image).__name__}"
             )
 
-        # Flatten alpha — JPEG cannot carry an alpha channel. Upstream
-        # extracts /SMask separately; that path is deferred (see
-        # CHANGES.md "JPEGFactory soft-mask").
+        image, alpha = _split_alpha_for_smask(image)
         if image.mode in ("RGBA", "LA", "PA"):
             image = image.convert("RGB" if image.mode == "RGBA" else "L")
         elif image.mode == "P":
@@ -275,7 +281,12 @@ class JPEGFactory:
         # source image — upstream's roundtrip equally relies on the
         # encoded SOF as the source of truth.
         width, height, num_components = _retrieve_dimensions(jpeg_bytes)
-        return _build_image_xobject(jpeg_bytes, width, height, num_components)
+        ximage = _build_image_xobject(jpeg_bytes, width, height, num_components)
+        if alpha is not None:
+            ximage.set_soft_mask(
+                JPEGFactory.create_from_image(document, alpha, quality, dpi)
+            )
+        return ximage
 
     @staticmethod
     def createFromImage(  # noqa: N802 - upstream Java alias

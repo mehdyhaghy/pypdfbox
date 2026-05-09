@@ -1819,3 +1819,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 376 — JPEGFactory PDFBOX-5137 synthetic regression
 
 - `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py`: enabled the upstream `testPDFBox5137` regression without adding a binary fixture by using a minimal JPEG whose SOF frame declares three RGB components while the SOS scan lists one component. This locks `JPEGFactory` to SOF-derived dimensions/components and raw-byte preservation.
+
+## Wave 377 — JPEGFactory alpha soft-mask parity
+
+- `pypdfbox/pdmodel/graphics/image/jpeg_factory.py`: `create_from_image()` now preserves alpha by splitting RGBA/LA/PA inputs into a color JPEG plus a grayscale JPEG `/SMask`, matching upstream `JPEGFactory`'s recursive soft-mask producer path.
+- `tests/pdmodel/graphics/image/test_jpeg_factory.py`, `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py`: replaced the prior alpha-flattening expectations with `/SMask` metadata assertions and kept non-alpha RGB images mask-free.
