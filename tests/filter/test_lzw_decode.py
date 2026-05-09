@@ -377,23 +377,29 @@ def test_predictor_one_is_passthrough() -> None:
 # ---------- error handling -------------------------------------------
 
 
-def test_truncated_stream_raises_oserror() -> None:
+def test_truncated_stream_without_eod_stops_without_error() -> None:
     # A single byte cannot encode a full 9-bit code plus EOD.
     f = LZWDecode()
     out = BytesIO()
-    with pytest.raises(OSError):
-        f.decode(BytesIO(b"\x00"), out, None)
+    f.decode(BytesIO(b"\x00"), out, None)
+    assert out.getvalue() == b""
 
 
-def test_truncated_after_clear_raises_oserror() -> None:
+def test_truncated_after_clear_without_eod_stops_without_error() -> None:
     # CLEAR followed by half a code, no EOD.
     half_code = _build_stream([(CLEAR_TABLE, 9)])
     # Drop the trailing byte to truncate the next 9-bit slot mid-byte.
     truncated = half_code[:1]
     f = LZWDecode()
     out = BytesIO()
-    with pytest.raises(OSError):
-        f.decode(BytesIO(truncated), out, None)
+    f.decode(BytesIO(truncated), out, None)
+    assert out.getvalue() == b""
+
+
+def test_missing_eod_after_valid_data_returns_decoded_prefix() -> None:
+    stream = _build_stream([(CLEAR_TABLE, 9), (ord("A"), 9), (ord("B"), 9)])
+
+    assert _decode(stream) == b"AB"
 
 
 def test_invalid_code_raises_oserror() -> None:

@@ -1897,3 +1897,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/filter/run_length_decode.py`: `decode()` now matches PDFBox leniency for truncated packets by writing available literal bytes and stopping cleanly when a repeat packet lacks its payload byte.
 - `tests/filter/test_run_length_decode.py`: replaced truncation exception expectations with partial-literal and empty-repeat output assertions.
+
+## Wave 393 — LZW missing EOD leniency
+
+- `pypdfbox/filter/lzw_decode.py`: `decode()` now stops cleanly when the stream ends before an explicit EOD code, matching PDFBox's missing-EOD leniency while preserving invalid-code errors.
+- `tests/filter/test_lzw_decode.py`: replaced truncated missing-EOD exception expectations with no-error output assertions and added a valid-prefix-without-EOD regression.

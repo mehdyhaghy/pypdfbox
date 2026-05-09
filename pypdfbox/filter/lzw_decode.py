@@ -380,11 +380,9 @@ class LZWDecode(Filter):
 
                 prev = curr
                 chunk = _calculate_chunk(len(code_table), early_change)
-        except EOFError as exc:
-            # Premature EOF without an EOD code — treat as a truncated
-            # stream. PDFBox logs a warning and stops; we surface the
-            # situation as an OSError so callers can decide.
-            raise OSError("premature EOF in LZW stream, EOD code missing") from exc
+        except EOFError:
+            # PDFBox logs a warning and stops when the stream ends before EOD.
+            return
 
 
 # Register at import time so ``FilterFactory.get("LZWDecode")`` works as
