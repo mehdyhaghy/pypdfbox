@@ -624,9 +624,11 @@ class PDImageXObject(PDXObject):
         compositing into sRGB.
 
         Raw 8-bit DeviceGray and DeviceRGB rasters apply simple
-        component-wise ``/Decode`` arrays. More complex PDF image
-        features such as masks, Indexed expansion, and non-8bpc samples
-        remain rendering-cluster work and return ``None`` here.
+        component-wise ``/Decode`` arrays. Raw 8-bit Indexed rasters
+        expand through their lookup table, with ``/Decode`` remapping
+        the source sample to a palette index. More complex PDF image
+        features such as masks and non-8bpc samples remain
+        rendering-cluster work and return ``None`` here.
         """
         cos = self.get_cos_object()
         if not isinstance(cos, COSStream):
@@ -675,6 +677,15 @@ class PDImageXObject(PDXObject):
             if decoded is None:
                 return None
             return Image.frombytes("L", (width, height), decoded).convert("RGB")
+        if color_space_name == "Indexed" and color_space is not None:
+            if len(data) < pixel_count:
+                return None
+            decoded = _apply_decode_to_8bit_indexed_samples(
+                data[:pixel_count], pixel_count, decode
+            )
+            if decoded is None:
+                return None
+            return color_space.to_rgb_image(decoded, width, height)
         if color_space_name in ("Separation", "DeviceN") and color_space is not None:
             return _decode_devicen_to_rgb(
                 color_space, data, width, height
@@ -703,6 +714,27 @@ def _apply_decode_to_8bit_samples(
         dmax = decode[component * 2 + 1]
         value = dmin + (data[i] / 255.0) * (dmax - dmin)
         out[i] = int(round(_clamp01(value) * 255.0))
+    return bytes(out)
+
+
+def _apply_decode_to_8bit_indexed_samples(
+    data: bytes,
+    pixel_count: int,
+    decode: Sequence[float] | None,
+) -> bytes | None:
+    if len(data) < pixel_count:
+        return None
+    if decode is None:
+        return data[:pixel_count]
+    if len(decode) != 2:
+        return None
+
+    dmin = decode[0]
+    dmax = decode[1]
+    out = bytearray(pixel_count)
+    for i in range(pixel_count):
+        value = dmin + (data[i] / 255.0) * (dmax - dmin)
+        out[i] = int(round(_clamp(value, 0.0, 255.0)))
     return bytes(out)
 
 
@@ -820,4 +852,12 @@ def _clamp01(value: float) -> float:
         return 0.0
     if value > 1.0:
         return 1.0
+    return value
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    if value < low:
+        return low
+    if value > high:
+        return high
     return value

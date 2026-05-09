@@ -1847,3 +1847,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/ccitt_factory.py`: added `create_from_byte_array()` / `create_from_file()` and Java aliases for single-strip 1-bit TIFFs compressed with CCITT T.4 Group 3 or T.6 Group 4. The factory extracts the existing TIFF strip bytes, preserves them in a `/CCITTFaxDecode` image XObject, and populates `/DecodeParms` from TIFF width, height, compression, and photometric tags.
 - `tests/pdmodel/graphics/image/test_ccitt_factory.py`: covered Group 4 byte preservation, metadata, decode round-trip, Group 3 `K=0` extraction, file/Java aliases, and invalid input rejection.
+
+## Wave 383 — PDImageXObject raw Indexed rendering
+
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now expands raw 8-bit `/Indexed` image XObjects through `PDIndexed.to_rgb_image()` and applies two-entry `/Decode` arrays to remap source samples to palette indices.
+- `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1283.py`: added DeviceRGB and DeviceGray palette expansion, indexed `/Decode` inversion, short-raster rejection, and malformed decode-array rejection.
