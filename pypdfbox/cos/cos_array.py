@@ -11,6 +11,7 @@ from .cos_name import COSName
 from .cos_null import COSNull
 from .cos_object import COSObject
 from .cos_string import COSString
+from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
 
@@ -24,6 +25,7 @@ class COSArray(COSBase):
     def __init__(self, items: Iterable[COSBase] | None = None) -> None:
         super().__init__()
         self._items: list[COSBase] = list(items) if items is not None else []
+        self._update_state = COSUpdateState(self)
 
     # ---------- core list operations ----------
 
@@ -37,13 +39,18 @@ class COSArray(COSBase):
 
     def add(self, item: COSBase) -> None:
         self._items.append(item)
+        self._update_state.update(child=item)
 
     def add_at(self, index: int, item: COSBase) -> None:
         self._check_insert_index(index)
         self._items.insert(index, item)
+        self._update_state.update(child=item)
 
     def add_all(self, items: Iterable[COSBase]) -> None:
-        self._items.extend(items)
+        materialized = list(items)
+        if materialized:
+            self._items.extend(materialized)
+            self._update_state.update(children=materialized)
 
     def addAll(self, items: Iterable[COSBase]) -> None:  # noqa: N802 - upstream Java name
         self.add_all(items)
@@ -74,23 +81,29 @@ class COSArray(COSBase):
     def set(self, index: int, item: COSBase) -> None:
         self._check_non_negative_index(index)
         self._items[index] = item
+        self._update_state.update(child=item)
 
     def remove(self, item: COSBase) -> bool:
         try:
             self._items.remove(item)
+            self._update_state.update()
             return True
         except ValueError:
             return False
 
     def remove_at(self, index: int) -> COSBase:
         self._check_non_negative_index(index)
-        return self._items.pop(index)
+        item = self._items.pop(index)
+        self._update_state.update()
+        return item
 
     def removeAt(self, index: int) -> COSBase:  # noqa: N802
         return self.remove_at(index)
 
     def clear(self) -> None:
-        self._items.clear()
+        if self._items:
+            self._items.clear()
+            self._update_state.update()
 
     def size(self) -> int:
         return len(self._items)
@@ -152,6 +165,8 @@ class COSArray(COSBase):
             while item in self._items:
                 self._items.remove(item)
                 changed = True
+        if changed:
+            self._update_state.update()
         return changed
 
     def removeAll(self, items: Iterable[COSBase]) -> bool:  # noqa: N802 - upstream Java name
@@ -163,7 +178,10 @@ class COSArray(COSBase):
         keep = list(items)
         before = len(self._items)
         self._items = [x for x in self._items if x in keep]
-        return len(self._items) != before
+        changed = len(self._items) != before
+        if changed:
+            self._update_state.update()
+        return changed
 
     def retainAll(self, items: Iterable[COSBase]) -> bool:  # noqa: N802 - upstream Java name
         return self.retain_all(items)
@@ -171,18 +189,36 @@ class COSArray(COSBase):
     def grow_to_size(self, size: int, fill: COSBase | None = None) -> None:
         """Pad the array with ``fill`` (default ``None``) until it has at
         least ``size`` entries."""
+        changed = False
         while len(self._items) < size:
             self._items.append(fill)  # type: ignore[arg-type]
+            changed = True
+        if changed:
+            self._update_state.update(child=fill)
 
     def growToSize(self, size: int, fill: COSBase | None = None) -> None:  # noqa: N802
         self.grow_to_size(size, fill)
+
+    def get_update_state(self) -> COSUpdateState:
+        return self._update_state
+
+    def getUpdateState(self) -> COSUpdateState:  # noqa: N802 - upstream Java name
+        return self.get_update_state()
+
+    def is_needs_to_be_updated(self) -> bool:
+        return self._update_state.is_updated()
+
+    def set_needs_to_be_updated(self, value: bool) -> None:
+        self._update_state.update(value)
 
     # ---------- typed convenience accessors ----------
 
     def set_name(self, index: int, value: str) -> None:
         self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
-        self._items[index] = COSName.get_pdf_name(value)
+        item = COSName.get_pdf_name(value)
+        self._items[index] = item
+        self._update_state.update(child=item)
 
     def setName(self, index: int, value: str) -> None:  # noqa: N802 - upstream Java name
         self.set_name(index, value)
@@ -202,7 +238,9 @@ class COSArray(COSBase):
     def set_int(self, index: int, value: int) -> None:
         self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
-        self._items[index] = COSInteger.get(value)
+        item = COSInteger.get(value)
+        self._items[index] = item
+        self._update_state.update(child=item)
 
     def setInt(self, index: int, value: int) -> None:  # noqa: N802 - upstream Java name
         self.set_int(index, value)
@@ -224,7 +262,9 @@ class COSArray(COSBase):
     def set_float(self, index: int, value: float) -> None:
         self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
-        self._items[index] = COSFloat(value)
+        item = COSFloat(value)
+        self._items[index] = item
+        self._update_state.update(child=item)
 
     def setFloat(self, index: int, value: float) -> None:  # noqa: N802 - upstream Java name
         self.set_float(index, value)
@@ -244,7 +284,9 @@ class COSArray(COSBase):
     def set_boolean(self, index: int, value: bool) -> None:
         self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
-        self._items[index] = COSBoolean.get(value)
+        item = COSBoolean.get(value)
+        self._items[index] = item
+        self._update_state.update(child=item)
 
     def setBoolean(self, index: int, value: bool) -> None:  # noqa: N802
         self.set_boolean(index, value)
@@ -264,7 +306,9 @@ class COSArray(COSBase):
     def set_string(self, index: int, value: str) -> None:
         self._check_non_negative_index(index)
         self.grow_to_size(index + 1)
-        self._items[index] = COSString(value)
+        item = COSString(value)
+        self._items[index] = item
+        self._update_state.update(child=item)
 
     def setString(self, index: int, value: str) -> None:  # noqa: N802 - upstream Java name
         self.set_string(index, value)
@@ -284,6 +328,7 @@ class COSArray(COSBase):
     def set_float_array(self, values: Iterable[float]) -> None:
         """Replace contents with ``COSFloat`` instances built from ``values``."""
         self._items = [COSFloat(v) for v in values]
+        self._update_state.update(children=self._items)
 
     def setFloatArray(self, values: Iterable[float]) -> None:  # noqa: N802
         self.set_float_array(values)

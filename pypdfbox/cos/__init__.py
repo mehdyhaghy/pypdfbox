@@ -15,6 +15,7 @@ from .cos_object import COSObject
 from .cos_object_key import COSObjectKey
 from .cos_stream import COSStream
 from .cos_string import COSString
+from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     "COSObjectKey",
     "COSStream",
     "COSString",
+    "COSUpdateState",
     "ICOSVisitor",
 ]

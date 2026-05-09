@@ -143,6 +143,7 @@ class PDFParser:
         if trailer is not None:
             self._document.set_trailer(trailer)
         self.populate_document()
+        self._document.get_document_state().set_parsing(False)
         return self._document
 
     # ---------- document accessors ----------

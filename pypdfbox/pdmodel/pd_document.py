@@ -84,11 +84,13 @@ class PDDocument:
             self._document = COSDocument()
             self._owns_document = True
             self._build_minimal_skeleton()
+            self._prepare_document_for_updates()
         elif isinstance(source_or_doc, COSDocument):
             self._document = source_or_doc
             # Loader-built documents pass ownership of the source via
             # ``COSDocument._source``; we don't double-own it here.
             self._owns_document = True
+            self._prepare_document_for_updates()
         else:
             raise TypeError(
                 f"PDDocument expected COSDocument or None; got "
@@ -212,6 +214,27 @@ class PDDocument:
         trailer.set_item(_ROOT, catalog)
         self._document.set_trailer(trailer)
 
+    def _prepare_document_for_updates(self) -> None:
+        """Link existing COS update-info objects to this document lifecycle.
+
+        Parser-created documents already do this while parsing. This pass
+        also covers manually assembled ``COSDocument`` instances and the
+        no-arg constructor's skeleton without marking the graph dirty.
+        """
+        state = self._document.get_document_state()
+        trailer = self._document.get_trailer()
+        if trailer is not None:
+            trailer.get_update_state().set_origin_document_state(
+                state,
+                dereferencing=True,
+            )
+        for cos_object in self._document.get_objects():
+            cos_object.get_update_state().set_origin_document_state(
+                state,
+                dereferencing=True,
+            )
+        state.set_parsing(False)
+
     # ---------- alternate construction ----------
 
     @classmethod
@@ -309,7 +332,7 @@ class PDDocument:
         info = trailer.get_dictionary_object(_INFO)
         if not isinstance(info, COSDictionary):
             info = COSDictionary()
-            trailer.set_item(_INFO, info)
+            trailer._set_item_quiet(_INFO, info)
         self._document_information = PDDocumentInformation(info)
         return self._document_information
 
@@ -531,6 +554,9 @@ class PDDocument:
                         f"save_incremental: objects_to_write must contain only "
                         f"COSDictionary instances, got {type(entry).__name__}"
                     )
+                entry.get_update_state().set_origin_document_state(
+                    self._document.get_document_state()
+                )
                 entry.set_needs_to_be_updated(True)
 
         # Pending-signature path → full sign pipeline.

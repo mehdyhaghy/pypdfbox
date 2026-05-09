@@ -13,6 +13,7 @@ from .cos_name import COSName
 from .cos_null import COSNull
 from .cos_object import COSObject
 from .cos_string import COSString
+from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
 # Sentinel for "no default supplied" — distinguishes from a caller-passed None.
@@ -63,6 +64,7 @@ class COSDictionary(COSBase):
     def __init__(self, items: Iterable[tuple[COSName | str, COSBase]] | None = None) -> None:
         super().__init__()
         self._items: dict[COSName, COSBase] = {}
+        self._update_state = COSUpdateState(self)
         if items is not None:
             for k, v in items:
                 self.set_item(k, v)
@@ -74,12 +76,21 @@ class COSDictionary(COSBase):
             self.remove_item(key)
         else:
             self._items[_as_name(key)] = value
+            self._update_state.update(child=value)
+
+    def _set_item_quiet(self, key: COSName | str, value: COSBase) -> None:
+        """Set an internal/cache-created entry without marking it dirty."""
+        self._items[_as_name(key)] = value
+        self._update_state.dereference_child(value)
 
     def setItem(self, key: COSName | str, value: COSBase | None) -> None:  # noqa: N802
         self.set_item(key, value)
 
     def remove_item(self, key: COSName | str) -> COSBase | None:
-        return self._items.pop(_as_name(key), None)
+        item = self._items.pop(_as_name(key), None)
+        if item is not None:
+            self._update_state.update()
+        return item
 
     def removeItem(self, key: COSName | str) -> COSBase | None:  # noqa: N802
         return self.remove_item(key)
@@ -184,7 +195,9 @@ class COSDictionary(COSBase):
         return self.is_empty()
 
     def clear(self) -> None:
-        self._items.clear()
+        if self._items:
+            self._items.clear()
+            self._update_state.update()
 
     def key_set(self) -> KeysView[COSName]:
         return self._items.keys()
@@ -203,10 +216,24 @@ class COSDictionary(COSBase):
 
     def add_all(self, other: COSDictionary) -> None:
         """Merge ``other`` into self, overwriting keys present in both."""
-        self._items.update(other._items)
+        if other._items:
+            self._items.update(other._items)
+            self._update_state.update(children=other._items.values())
 
     def addAll(self, other: COSDictionary) -> None:  # noqa: N802 - upstream Java name
         self.add_all(other)
+
+    def get_update_state(self) -> COSUpdateState:
+        return self._update_state
+
+    def getUpdateState(self) -> COSUpdateState:  # noqa: N802 - upstream Java name
+        return self.get_update_state()
+
+    def is_needs_to_be_updated(self) -> bool:
+        return self._update_state.is_updated()
+
+    def set_needs_to_be_updated(self, value: bool) -> None:
+        self._update_state.update(value)
 
     # ---------- typed convenience setters ----------
 
@@ -615,6 +642,7 @@ class COSDictionary(COSBase):
         if name not in self._items:
             raise KeyError(key)
         del self._items[name]
+        self._update_state.update()
 
     def __contains__(self, key: object) -> bool:
         if isinstance(key, (COSName, str)):

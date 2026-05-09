@@ -22,8 +22,14 @@ class COSDocumentState:
         the document is open for edits."""
         self._parsing = parsing
 
+    def setParsing(self, parsing: bool) -> None:  # noqa: N802 - upstream Java name
+        self.set_parsing(parsing)
+
     def is_accepting_updates(self) -> bool:
         """``True`` when the document has finished parsing and may be
         mutated. Mirrors upstream ``isAcceptingUpdates()`` —
         equivalent to ``not parsing``."""
         return not self._parsing
+
+    def isAcceptingUpdates(self) -> bool:  # noqa: N802 - upstream Java name
+        return self.is_accepting_updates()

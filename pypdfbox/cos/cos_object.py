@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .cos_base import COSBase
+from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
 
@@ -39,6 +40,7 @@ class COSObject(COSBase):
         # ``None`` *after* the loader ran, which still counts as
         # dereferenced. Mirrors upstream ``isDereferenced`` semantics.
         self._dereferenced: bool = resolved is not None
+        self._update_state = COSUpdateState(self)
 
     @property
     def object_number(self) -> int:
@@ -65,6 +67,7 @@ class COSObject(COSBase):
             self._dereferenced = True
             self._object = self._loader(self)
             self._loader = None
+            self._update_state.dereference_child(self._object)
         return self._object
 
     def set_object(self, value: COSBase | None) -> None:
@@ -72,6 +75,7 @@ class COSObject(COSBase):
         loads xref entries eagerly)."""
         self._object = value
         self._dereferenced = True
+        self._update_state.dereference_child(value)
 
     def set_loader(self, loader: Callable[[COSObject], COSBase | None] | None) -> None:
         """Attach (or replace) the lazy loader. ``None`` removes any loader.
@@ -86,6 +90,18 @@ class COSObject(COSBase):
         """Return ``True`` once a load attempt has been made (whether it
         produced a value or not). Mirrors upstream ``isDereferenced``."""
         return self._dereferenced
+
+    def get_update_state(self) -> COSUpdateState:
+        return self._update_state
+
+    def getUpdateState(self) -> COSUpdateState:  # noqa: N802 - upstream Java name
+        return self.get_update_state()
+
+    def is_needs_to_be_updated(self) -> bool:
+        return self._update_state.is_updated()
+
+    def set_needs_to_be_updated(self, value: bool) -> None:
+        self._update_state.update(value)
 
     def is_object_null(self) -> bool:
         """Return ``True`` when no resolved object is attached. Mirrors

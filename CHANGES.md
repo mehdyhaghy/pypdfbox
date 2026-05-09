@@ -1702,3 +1702,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 349 — COSFloat writePDF upstream test
 
 - `tests/cos/upstream/test_cos_float.py`: the upstream `testWritePDF` placeholder now exercises `COSFloat.write_pdf()` for parsed literal forms, removing another stale writer-related skip.
+
+## Wave 350 — COSUpdateInfo update-state parity
+
+- `pypdfbox/cos`: added document-state-gated `COSUpdateState` support for dictionaries, arrays, streams, and COS object wrappers, with parser/PDDocument lifecycle wiring so parsed objects accept dirty marks only after parsing completes.
+- `tests/cos/upstream/test_cos_update_info.py`: enabled the upstream COSUpdateInfo toggle test for `COSDictionary` and `COSObject`.

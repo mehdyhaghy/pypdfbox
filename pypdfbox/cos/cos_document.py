@@ -102,6 +102,10 @@ class COSDocument(COSBase):
         if existing is None:
             existing = COSObject(key.object_number, key.generation_number)
             self._objects[key] = existing
+            existing.get_update_state().set_origin_document_state(
+                self._document_state,
+                dereferencing=True,
+            )
         return existing
 
     def getObjectFromPool(self, key: COSObjectKey) -> COSObject:  # noqa: N802
@@ -237,10 +241,13 @@ class COSDocument(COSBase):
     def getTrailer(self) -> COSDictionary | None:  # noqa: N802
         return self.get_trailer()
 
-    def set_trailer(self, trailer: COSDictionary) -> None:
+    def set_trailer(self, trailer: COSDictionary | None) -> None:
         self._trailer = trailer
+        if trailer is None:
+            return
+        trailer.get_update_state().set_origin_document_state(self._document_state)
 
-    def setTrailer(self, trailer: COSDictionary) -> None:  # noqa: N802
+    def setTrailer(self, trailer: COSDictionary | None) -> None:  # noqa: N802
         self.set_trailer(trailer)
 
     def get_catalog(self) -> COSDictionary | None:
@@ -267,7 +274,7 @@ class COSDocument(COSBase):
         mirrors PDFBox's ``setDocumentID`` while sparing callers from
         seeding a trailer first when building a document from scratch."""
         if self._trailer is None:
-            self._trailer = COSDictionary()
+            self.set_trailer(COSDictionary())
         self._trailer.set_item(COSName.ID, ids)  # type: ignore[attr-defined]
 
     def is_encrypted(self) -> bool:
@@ -294,7 +301,7 @@ class COSDocument(COSBase):
         trailer is auto-created when absent so callers building a document
         from scratch do not have to seed it first."""
         if self._trailer is None:
-            self._trailer = COSDictionary()
+            self.set_trailer(COSDictionary())
         self._trailer.set_item(COSName.ENCRYPT, enc_dictionary)  # type: ignore[attr-defined]
 
     def is_decrypted(self) -> bool:
@@ -387,6 +394,7 @@ class COSDocument(COSBase):
         if dictionary is not None:
             for key, value in dictionary.entry_set():
                 stream.set_item(key, value)
+        stream.get_update_state().set_origin_document_state(self._document_state)
         return stream
 
     # ---------- highest xref object number ----------
@@ -431,6 +439,9 @@ class COSDocument(COSBase):
         xref consumption completes. Mirrors upstream ``getDocumentState()``.
         """
         return self._document_state
+
+    def getDocumentState(self) -> COSDocumentState:  # noqa: N802 - upstream Java name
+        return self.get_document_state()
 
     # ---------- visitor / lifecycle ----------
 
