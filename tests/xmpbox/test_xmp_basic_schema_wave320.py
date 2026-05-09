@@ -6,6 +6,7 @@ from pypdfbox.xmpbox import (
     TextType,
     XMPBasicSchema,
     XMPMetadata,
+    XPathType,
 )
 
 
@@ -50,6 +51,7 @@ def test_wave320_advisory_property_setter_interops_with_string_helpers() -> None
     assert schema.get_advisory_property() is advisory
     assert schema.get_advisory() == ["/dc:title", "/pdf:Producer"]
     assert advisory.get_elements_as_string() == ["/dc:title", "/pdf:Producer"]
+    assert isinstance(advisory.get_all_properties()[-1], XPathType)
 
 
 def test_wave320_identifiers_property_setter_round_trips_and_clears() -> None:

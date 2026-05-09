@@ -24,6 +24,7 @@ from pypdfbox.xmpbox import (
     ThumbnailType,
     XMPBasicSchema,
     XMPMetadata,
+    XPathType,
 )
 
 # Upstream initializeParameters() — kept verbatim so future re-syncs are diffable.
@@ -205,8 +206,9 @@ def test_set_then_get_typed_form(
             Cardinality.Bag,
         )
         assert isinstance(value, str)
+        child_type = XPathType if type_token == "XPath" else TextType
         prop.add_property(
-            TextType(
+            child_type(
                 metadata,
                 "http://ns.adobe.com/xap/1.0/",
                 "xmp",
@@ -214,6 +216,8 @@ def test_set_then_get_typed_form(
                 value,
             )
         )
+        if type_token == "XPath":
+            assert isinstance(prop.get_all_properties()[0], XPathType)
     elif type_token == "Integer":
         prop: object = IntegerType(
             metadata,

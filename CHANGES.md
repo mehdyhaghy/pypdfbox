@@ -1779,3 +1779,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 367 — CMap identity bfrange upstream test
 
 - `tests/fontbox/cmap/upstream/test_cmap_parser.py`: enabled the upstream PDFBOX-4720 identity `bfrange` placeholder, asserting the full `<0000> <FFFF> <0000>` mapping for representative low, ASCII, and high code points.
+
+## Wave 368 — XMPBasicSchema Advisory XPath bag parity
+
+- `pypdfbox/xmpbox/xmp_basic_schema.py`: Advisory bag typed accessors now materialize and append `XPathType` children, matching upstream's `XPath` Bag declaration, while Identifier remains a Text Bag.

@@ -11,6 +11,7 @@ from pypdfbox.xmpbox import (
     ThumbnailType,
     XMPBasicSchema,
     XMPMetadata,
+    XPathType,
 )
 
 
@@ -332,6 +333,7 @@ def test_get_advisory_property_returns_array_wrapper() -> None:
     assert isinstance(prop, ArrayProperty)
     assert prop.get_array_type() == Cardinality.Bag
     assert prop.get_property_name() == XMPBasicSchema.ADVISORY
+    assert all(isinstance(child, XPathType) for child in prop.get_all_properties())
     # the cluster-1 string getter still mirrors the entries
     assert b.get_advisory() == ["/x:foo", "/x:bar"]
 
@@ -346,6 +348,8 @@ def test_get_identifiers_property_returns_array_wrapper() -> None:
     assert isinstance(prop, ArrayProperty)
     assert prop.get_array_type() == Cardinality.Bag
     assert prop.get_property_name() == XMPBasicSchema.IDENTIFIER
+    assert all(isinstance(child, TextType) for child in prop.get_all_properties())
+    assert not any(isinstance(child, XPathType) for child in prop.get_all_properties())
     assert b.get_identifiers() == [
         "urn:isbn:0451524934",
         "urn:isbn:0140177396",

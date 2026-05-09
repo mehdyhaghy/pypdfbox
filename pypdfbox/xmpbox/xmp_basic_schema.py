@@ -8,6 +8,7 @@ from .type.date_type import DateType
 from .type.integer_type import IntegerType
 from .type.text_type import TextType
 from .type.thumbnail_type import ThumbnailType
+from .type.xpath_type import XPathType
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -113,7 +114,11 @@ class XMPBasicSchema(XMPSchema):
                 return None
         return None
 
-    def _array_property_for_bag(self, local_name: str) -> ArrayProperty | None:
+    def _array_property_for_bag(
+        self,
+        local_name: str,
+        child_type: type[TextType] = TextType,
+    ) -> ArrayProperty | None:
         """
         Return an :class:`ArrayProperty` wrapper for a Bag property whose
         backing storage is either an existing wrapper or a plain ``list``
@@ -134,7 +139,7 @@ class XMPBasicSchema(XMPSchema):
         )
         for item in existing:
             wrapper.add_property(
-                TextType(
+                child_type(
                     self._metadata,
                     self._namespace,
                     self._prefix,
@@ -148,6 +153,18 @@ class XMPBasicSchema(XMPSchema):
 
     def add_advisory(self, xpath: str) -> None:
         """Mirror of upstream ``addAdvisory`` — append to the Advisory bag."""
+        existing = self._properties.get(self.ADVISORY)
+        if isinstance(existing, ArrayProperty):
+            existing.add_property(
+                XPathType(
+                    self._metadata,
+                    self._namespace,
+                    self._prefix,
+                    "li",
+                    xpath,
+                )
+            )
+            return
         self.add_qualified_bag_value(self.ADVISORY, xpath)
 
     def remove_advisory(self, xpath: str) -> None:
@@ -165,7 +182,7 @@ class XMPBasicSchema(XMPSchema):
         an :class:`ArrayProperty` wrapper on demand for callers that expect
         the typed return shape.
         """
-        return self._array_property_for_bag(self.ADVISORY)
+        return self._array_property_for_bag(self.ADVISORY, XPathType)
 
     def set_advisory_property(self, value: ArrayProperty | None) -> None:
         """Store the Advisory bag as an ``ArrayProperty`` wrapper."""
