@@ -322,7 +322,7 @@ class PDPage:
             self._page.set_item(_CONTENTS, arr)
             return
         raise TypeError(
-            "PDPage.set_contents expected None, COSStream, stream wrapper, COSArray, or "
+            "PDPage.set_contents expected None, COSStream, COSArray, stream wrapper, or "
             f"list[COSStream]; got {type(stream).__name__}"
         )
 
