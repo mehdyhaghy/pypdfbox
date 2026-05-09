@@ -3,16 +3,18 @@ Ported from Apache PDFBox 3.0:
   pdfbox/src/test/java/org/apache/pdfbox/cos/TestCOSString.java
 
 Upstream extends TestCOSBase. Tests that depend on ``COSWriter`` to verify
-the PDF-encoded form (``writePDFTests``, the unicode round-trip via
-``COSWriter.writeString``, and ``testAccept``) are skipped pending the
-pdfwriter cluster — pypdfbox doesn't yet emit literal/hex string syntax.
+the PDF-encoded form are translated through pypdfbox's ``COSWriter``
+string helpers.
 """
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
 from pypdfbox.cos import COSString
+from pypdfbox.pdfwriter.cos_writer import COSWriter
 
 
 def _create_hex(s: str) -> str:
@@ -75,19 +77,39 @@ def test_get_bytes() -> None:
     assert s.get_bytes() == esc_char_string.encode("latin-1")
 
 
-@pytest.mark.skip(reason="writePDF requires pdfwriter / COSWriter (not yet ported)")
 def test_write_pdf() -> None:
-    pass
+    out = io.BytesIO()
+    COSWriter.write_string(COSString("Test"), out)
+    assert out.getvalue() == b"(Test)"
+
+    out = io.BytesIO()
+    COSWriter.write_string(COSString(r"( test#some) escaped< \chars>!~1239857 "), out)
+    assert out.getvalue() == br"(\( test#some\) escaped< \\chars>!~1239857 )"
+
+    cos_str = COSString("Test")
+    cos_str.set_force_hex_form(True)
+    out = io.BytesIO()
+    COSWriter.write_string(cos_str, out)
+    assert out.getvalue() == b"<54657374>"
 
 
-@pytest.mark.skip(reason="testUnicode round-trips through COSWriter (not yet ported)")
 def test_unicode() -> None:
-    pass
+    expected = "洪水"
+    out = io.BytesIO()
+
+    COSWriter.write_string(COSString(expected), out)
+
+    data = out.getvalue()
+    assert data == b"<FEFF6D2A6C34>"
+    assert COSString.parse_hex(data[1:-1].decode("ascii")).get_string() == expected
 
 
-@pytest.mark.skip(reason="testAccept needs COSWriter (not ported); covered by hand-written test")
 def test_accept() -> None:
-    pass
+    out = io.BytesIO()
+
+    COSString("Test").accept(COSWriter(out))
+
+    assert out.getvalue() == b"(Test)"
 
 
 def test_equals() -> None:

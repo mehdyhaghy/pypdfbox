@@ -1694,3 +1694,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 347 — COSInteger writePDF upstream test
 
 - `tests/cos/upstream/test_cos_integer.py`: the upstream `testWritePDF` placeholder now exercises `COSInteger.write_pdf()` over the translated PDFBox integer range, removing a stale writer-related skip.
+
+## Wave 348 — COSString writer upstream tests
+
+- `tests/cos/upstream/test_cos_string.py`: the upstream writePDF, unicode, and accept placeholders now execute against `COSWriter.write_string()` / visitor dispatch, covering literal escaping, forced hex output, and UTF-16BE Unicode round-trip.
