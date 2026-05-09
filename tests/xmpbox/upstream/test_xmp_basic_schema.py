@@ -43,10 +43,14 @@ _PARAMETERS: tuple[tuple[str, str, str], ...] = (
 
 
 # Map upstream local-name to the (string-getter, string-setter,
-# typed-getter, typed-setter) tuple. Bag-cardinality entries put the
-# bag accessors in the string slots and ``None`` in the typed slots.
+# typed-getter, typed-setter) tuple.
 _ACCESSORS: dict[str, tuple[str | None, str | None, str | None, str | None]] = {
-    "Advisory": ("get_advisory", "add_advisory", None, None),
+    "Advisory": (
+        "get_advisory",
+        "add_advisory",
+        "get_advisory_property",
+        "set_advisory_property",
+    ),
     "BaseURL": (
         "get_base_url",
         "set_base_url",
@@ -65,7 +69,12 @@ _ACCESSORS: dict[str, tuple[str | None, str | None, str | None, str | None]] = {
         "get_creator_tool_property",
         "set_creator_tool_property",
     ),
-    "Identifier": ("get_identifiers", "add_identifier", None, None),
+    "Identifier": (
+        "get_identifiers",
+        "add_identifier",
+        "get_identifiers_property",
+        "set_identifiers_property",
+    ),
     "Label": (
         "get_label",
         "set_label",
@@ -184,12 +193,28 @@ def test_set_then_get_typed_form(
     Translated from upstream ``testElementProperty`` — exercises the typed
     ``getXxxProperty`` / ``setXxxProperty`` round-trip.
     """
-    if card == "Bag":
-        pytest.skip("Bag cardinality has no typed *_property accessor in cluster #1")
     _, _, typed_getter, typed_setter = _ACCESSORS[field_name]
     assert typed_getter is not None and typed_setter is not None
     value = _sample_value(type_token, metadata)
-    if type_token == "Integer":
+    if card == "Bag":
+        prop = ArrayProperty(
+            metadata,
+            "http://ns.adobe.com/xap/1.0/",
+            "xmp",
+            field_name,
+            Cardinality.Bag,
+        )
+        assert isinstance(value, str)
+        prop.add_property(
+            TextType(
+                metadata,
+                "http://ns.adobe.com/xap/1.0/",
+                "xmp",
+                "li",
+                value,
+            )
+        )
+    elif type_token == "Integer":
         prop: object = IntegerType(
             metadata,
             "http://ns.adobe.com/xap/1.0/",

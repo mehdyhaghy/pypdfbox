@@ -1771,3 +1771,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 365 — PDDocumentInformation upstream tests
 
 - `tests/pdmodel/upstream/test_pd_document_information.py`: replaced the skipped `hello3.pdf` and PDFBOX-3068 fixture placeholders with synthetic PDFs that exercise `/Info` metadata extraction and indirect `/Title` resolution through `PDDocument.load()`.
+
+## Wave 366 — XMPBasicSchema Bag property upstream parity
+
+- `tests/xmpbox/upstream/test_xmp_basic_schema.py`: enabled the upstream Bag-cardinality typed-property rows for Advisory and Identifier, round-tripping `ArrayProperty` values through the existing `get/set*_property` accessors.
