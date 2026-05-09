@@ -1742,3 +1742,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdfparser/base_parser.py`: `_check_for_end_of_string()` now recognizes the PDFBOX-6093 malformed literal-string recovery case where a nested string is followed by `\r\n>`; this matches upstream `COSParser.parseCOSString` leniency alongside the existing LF/CR plus `/` or `>` cases.
 - `tests/pdfparser/upstream/test_base_parser.py`: enabled the upstream `testCheckForEndOfString` assertions against the ported `COSParser.parse_cos_string()`.
+
+## Wave 359 — PDFParser missing stream length recovery
+
+- `pypdfbox/pdfparser/pdf_parser.py`: lenient stream loading now falls back to scanning until `endstream` when `/Length` is missing or malformed, then trims the terminal stream line break using `EndstreamFilterStream`. Strict mode still raises `PDFParseError`, and direct-length stream handling remains unchanged.
+- `tests/pdfparser/test_pdf_parser_wave405.py`: updated the missing-`/Length` parser regression to assert recovery, and added malformed-length plus strict-mode guards.

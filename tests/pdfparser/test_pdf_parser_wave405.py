@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSDocument, COSObjectKey
+from pypdfbox.cos import COSDictionary, COSDocument, COSObjectKey, COSStream
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParseError, PDFParser
 
@@ -152,9 +152,36 @@ def test_wave405_linearization_records_hint_table_bytes() -> None:
         doc.close()
 
 
-def test_wave405_load_stream_rejects_missing_length() -> None:
+def test_wave405_load_stream_recovers_missing_length_leniently() -> None:
     pdf = _build_pdf([b"1 0 obj\n<< /Type /Catalog >>\nstream\nabc\nendstream\nendobj"])
     parser = _parser(pdf)
+    doc = parser.parse()
+    try:
+        stream = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
+        assert isinstance(stream, COSStream)
+        assert stream.get_raw_data() == b"abc"
+    finally:
+        doc.close()
+
+
+def test_wave405_load_stream_recovers_malformed_length_leniently() -> None:
+    pdf = _build_pdf(
+        [b"1 0 obj\n<< /Type /Catalog /Length /Bad >>\nstream\nabc\nendstream\nendobj"]
+    )
+    parser = _parser(pdf)
+    doc = parser.parse()
+    try:
+        stream = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
+        assert isinstance(stream, COSStream)
+        assert stream.get_raw_data() == b"abc"
+    finally:
+        doc.close()
+
+
+def test_wave405_load_stream_rejects_missing_length_in_strict_mode() -> None:
+    pdf = _build_pdf([b"1 0 obj\n<< /Type /Catalog >>\nstream\nabc\nendstream\nendobj"])
+    parser = _parser(pdf)
+    parser.set_lenient(False)
     doc = parser.parse()
     try:
         with pytest.raises(PDFParseError, match="stream missing or malformed /Length"):

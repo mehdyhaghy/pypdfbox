@@ -24,6 +24,7 @@ from .cos_parser import (
     _read_object_stream_offsets,
     _validate_xref_index_pair,
 )
+from .endstream_filter_stream import EndstreamFilterStream
 from .parse_error import PDFParseError
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
@@ -1089,7 +1090,14 @@ class PDFParser:
         # into ``_load_indirect_object_at`` and moves the shared cursor.
         # Snapshot here, resolve, then re-seek before reading the body.
         body_start = self._src.get_position()
-        length = self._resolve_stream_length(stream)
+        try:
+            length = self._resolve_stream_length(stream)
+        except PDFParseError as exc:
+            if not self._lenient or "missing or malformed /Length" not in str(exc):
+                raise
+            self._src.seek(body_start)
+            stream.set_raw_data(self._read_until_endstream())
+            return
         self._src.seek(body_start)
         body = bytearray(length)
         n = self._src.read_into(body)
@@ -1107,6 +1115,35 @@ class PDFParser:
             raise PDFParseError(
                 f"expected 'endstream', got {kw!r}", position=self._base.position
             )
+
+    def _read_until_endstream(self) -> bytes:
+        """Lenient stream recovery for missing or malformed ``/Length``.
+
+        Reads from the current source position until the next ``endstream``
+        marker, strips the final stream line break using
+        :class:`EndstreamFilterStream`, and leaves the cursor immediately
+        after the consumed marker.
+        """
+        start = self._src.get_position()
+        remaining = max(0, self._src.length() - start)
+        buf = bytearray(remaining)
+        n = self._src.read_into(buf)
+        if n == RandomAccessRead.EOF:
+            raise PDFParseError("expected 'endstream'", position=start)
+        if n < remaining:
+            del buf[n:]
+
+        marker = b"endstream"
+        marker_at = bytes(buf).find(marker)
+        if marker_at < 0:
+            raise PDFParseError("expected 'endstream'", position=self._src.get_position())
+
+        body = bytes(buf[:marker_at])
+        filtered = EndstreamFilterStream()
+        filtered.filter(body, 0, len(body))
+        length = filtered.calculate_length()
+        self._src.seek(start + marker_at + len(marker))
+        return body[:length]
 
     def _consume_eol_after_stream_keyword(self) -> None:
         """Per spec: a single CRLF or LF after ``stream``. Tolerate a CR
