@@ -1747,3 +1747,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdfparser/pdf_parser.py`: lenient stream loading now falls back to scanning until `endstream` when `/Length` is missing or malformed, then trims the terminal stream line break using `EndstreamFilterStream`. Strict mode still raises `PDFParseError`, and direct-length stream handling remains unchanged.
 - `tests/pdfparser/test_pdf_parser_wave405.py`: updated the missing-`/Length` parser regression to assert recovery, and added malformed-length plus strict-mode guards.
+
+## Wave 360 — PDPage annotation pre-add upstream test
+
+- `tests/pdmodel/upstream/test_pd_page.py`: enabled the upstream PDFBOX-6097 regression where a page already wired to an AcroForm text-field widget is added to the document and saved without recursive COS traversal or stack overflow.
