@@ -617,13 +617,13 @@ class PDImageXObject(PDXObject):
         """Best-effort conversion to a PIL image.
 
         Supports DCT/JPX payloads via Pillow and raw 8-bit DeviceRGB,
-        DeviceGray, ``Separation``, and ``DeviceN`` rasters. ``Separation``
-        and ``DeviceN`` evaluate the colour space's tint transform via
-        :class:`PDFunction` and forward the result to the alternate
-        colour space (typically DeviceCMYK or DeviceRGB) before
-        compositing into sRGB.
+        DeviceGray, DeviceCMYK, ``Separation``, and ``DeviceN`` rasters.
+        ``Separation`` and ``DeviceN`` evaluate the colour space's tint
+        transform via :class:`PDFunction` and forward the result to the
+        alternate colour space (typically DeviceCMYK or DeviceRGB)
+        before compositing into sRGB.
 
-        Raw 8-bit DeviceGray and DeviceRGB rasters apply simple
+        Raw 8-bit DeviceGray, DeviceRGB, and DeviceCMYK rasters apply simple
         component-wise ``/Decode`` arrays. Raw 8-bit Indexed rasters
         expand through their lookup table, with ``/Decode`` remapping
         the source sample to a palette index. More complex PDF image
@@ -677,6 +677,16 @@ class PDImageXObject(PDXObject):
             if decoded is None:
                 return None
             return Image.frombytes("L", (width, height), decoded).convert("RGB")
+        if color_space_name == "DeviceCMYK" and color_space is not None:
+            cmyk_len = width * height * 4
+            if len(data) < cmyk_len:
+                return None
+            decoded = _apply_decode_to_8bit_samples(
+                data[:cmyk_len], pixel_count, 4, decode
+            )
+            if decoded is None:
+                return None
+            return color_space.to_rgb_image(decoded, width, height)
         if color_space_name == "Indexed" and color_space is not None:
             if len(data) < pixel_count:
                 return None
