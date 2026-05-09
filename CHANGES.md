@@ -1815,3 +1815,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 375 — JPX encode exception parity
 
 - `pypdfbox/filter/jpx_decode.py`, `tests/filter/test_jpx_decode.py`: kept JPX encode intentionally unsupported, matching upstream `JPXFilter`, and changed the exception text to the upstream-compatible `JPX encoding not implemented`.
+
+## Wave 376 — JPEGFactory PDFBOX-5137 synthetic regression
+
+- `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py`: enabled the upstream `testPDFBox5137` regression without adding a binary fixture by using a minimal JPEG whose SOF frame declares three RGB components while the SOS scan lists one component. This locks `JPEGFactory` to SOF-derived dimensions/components and raw-byte preservation.

@@ -28,17 +28,16 @@ Notes on the port:
   per-AWT-type assertions are skipped with a one-line comment per the
   CLAUDE.md test-porting conventions.
 
-- ``testPDFBox5137`` requires the ``PDFBOX-5196-lotus.jpg`` regression
-  fixture. We skip it pending a fixture import (the regression covers
-  ``numFrameComponents`` vs ``numScanComponents`` ambiguity, which the
-  PIL header sniffer sidesteps entirely — PIL reads the SOF directly
-  rather than the SOS scan.) Skip mirrored in CHANGES.md.
+- ``testPDFBox5137`` uses a tiny synthetic JPEG whose SOF frame declares
+  RGB data while the first SOS scan lists one component. The bytes are
+  intentionally metadata-only: ``JPEGFactory`` only sniffs dimensions and
+  preserves the stream body, so the test does not depend on a renderable
+  pixel payload.
 """
 from __future__ import annotations
 
 import io
 
-import pytest
 from PIL import Image
 
 from pypdfbox.cos import COSName
@@ -67,6 +66,15 @@ def _make_jpeg(mode: str, size: tuple[int, int], color) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
+
+
+_PDFBOX_5137_JPEG = bytes.fromhex(
+    "ffd8"  # SOI
+    "ffc0001108000b001103011100021100031100"  # SOF0: 17x11, 3 frame comps
+    "ffda0008010100003f00"  # SOS: 1 scan comp
+    "00"
+    "ffd9"  # EOI
+)
 
 
 # ---------------------------------------------------------------------------
@@ -173,12 +181,8 @@ def test_create_from_image_ushort_555_rgb():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "Requires the upstream PDFBOX-5196-lotus.jpg regression fixture; "
-        "PIL's header sniffer reads SOF directly so the bug class doesn't "
-        "apply to the pypdfbox port. Skip mirrored in CHANGES.md."
-    )
-)
-def test_pdfbox_5137():  # pragma: no cover - skipped
-    raise NotImplementedError
+def test_pdfbox_5137():
+    ximage = JPEGFactory.create_from_byte_array(None, _PDFBOX_5137_JPEG)
+
+    _validate(ximage, 8, 17, 11, "DeviceRGB")
+    assert ximage.get_cos_object().get_raw_data() == _PDFBOX_5137_JPEG
