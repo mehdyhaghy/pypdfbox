@@ -101,7 +101,7 @@ def test_jpx_decode_invalid_input_raises_oserror() -> None:
 
 
 def test_jpx_encode_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="decode-only"):
+    with pytest.raises(NotImplementedError, match="JPX encoding not implemented"):
         JPXDecode().encode(io.BytesIO(b""), io.BytesIO(), COSDictionary())
 
 

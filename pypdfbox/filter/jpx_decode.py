@@ -31,9 +31,8 @@ class JPXDecode(Filter):
     """``/JPXDecode`` filter (ISO 32000-1 §7.4.9).
 
     Decodes a JPEG 2000 (JP2 / JPX / raw J2K) codestream by delegating to
-    Pillow's OpenJPEG-backed ``Jpeg2KImagePlugin``. Decoder-only — PDF
-    rarely *encodes* JPEG 2000 from raw samples on the write side and we
-    have no producer use case yet.
+    Pillow's OpenJPEG-backed ``Jpeg2KImagePlugin``. Encode is intentionally
+    unsupported, matching upstream ``JPXFilter``.
 
     Per the spec the decoder must surface the codestream's intrinsic
     geometry (``/Width``, ``/Height``, ``/BitsPerComponent``, and number
@@ -97,9 +96,7 @@ class JPXDecode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
-        raise NotImplementedError(
-            "JPXDecode.encode is not implemented (decode-only)"
-        )
+        raise NotImplementedError("JPX encoding not implemented")
 
 
 FilterFactory.register("JPXDecode", JPXDecode())

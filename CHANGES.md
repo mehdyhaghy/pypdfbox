@@ -1811,3 +1811,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/filter/ccitt_fax_decode.py`: `encode()` now supports `K=0` CCITT Group 3 1D output via Pillow/libtiff's `group3` encoder while preserving the existing `K<0` Group 4 path; mixed Group 3 2D (`K>0`) remains unsupported because Pillow does not expose the required T.4 2D option.
 - `tests/filter/test_ccitt_fax_encode.py`: replaced the broad Group 3 unsupported assertion with a byte-exact `K=0` encode/decode round-trip and a narrower `K>0` unsupported assertion.
 - `CHANGES.md`, `PROVENANCE.md`, `pypdfbox/tools/imagetopdf.py`: cleaned up stale migration notes that still described CCITT as fully decode-only or said `JPEGFactory` / `LosslessFactory` were not ported. Current notes now distinguish the real remaining gaps: CCITT Group 3 2D encode, `ImageToPDF`'s inline embedding path, and alpha preservation for direct factory use.
+
+## Wave 375 — JPX encode exception parity
+
+- `pypdfbox/filter/jpx_decode.py`, `tests/filter/test_jpx_decode.py`: kept JPX encode intentionally unsupported, matching upstream `JPXFilter`, and changed the exception text to the upstream-compatible `JPX encoding not implemented`.
