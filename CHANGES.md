@@ -1755,3 +1755,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 361 — PDDocumentCatalog page-count upstream test
 
 - `tests/pdmodel/upstream/test_pd_document_catalog.py`: enabled the upstream `retrieveNumberOfPages` placeholder with a fixture-free in-memory document, covering the fresh-document zero count and page-tree count after adding blank pages.
+
+## Wave 362 — PDDocumentCatalog output-intents upstream test
+
+- `tests/pdmodel/upstream/test_pd_document_catalog.py`: enabled the upstream `handleOutputIntents` placeholder with synthetic `PDOutputIntent` instances, covering catalog set/get order and COS identity without requiring an ICC profile fixture.

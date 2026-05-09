@@ -9,6 +9,7 @@ import pytest
 
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSBoolean, COSName
+from pypdfbox.pdmodel.graphics.color import PDOutputIntent
 
 
 # ``retrievePageLabels`` and ``retrievePageLabelsOnMalformedPdf`` — need
@@ -37,11 +38,20 @@ def test_retrieve_number_of_pages() -> None:
         assert doc.get_number_of_pages() == 2
 
 
-# ``handleOutputIntents`` — needs PDOutputIntent (pdmodel cluster #2 /
-# graphics color cluster) + ICC profile fixture.
-@pytest.mark.skip(reason="needs PDOutputIntent — pdmodel cluster #2 + ICC fixture")
-def test_handle_output_intents() -> None:  # pragma: no cover
-    pass
+def test_handle_output_intents() -> None:
+    with PDDocument() as doc:
+        catalog = doc.get_document_catalog()
+        first = PDOutputIntent()
+        first.set_subtype(PDOutputIntent.GTS_PDFA1)
+        second = PDOutputIntent()
+        second.set_subtype(PDOutputIntent.GTS_PDFX)
+
+        catalog.set_output_intents([first, second])
+
+        fetched = catalog.get_output_intents()
+        assert len(fetched) == 2
+        assert fetched[0].get_cos_object() is first.get_cos_object()
+        assert fetched[1].get_cos_object() is second.get_cos_object()
 
 
 def test_handle_boolean_in_open_action() -> None:
