@@ -439,7 +439,7 @@ Cluster #1 — XMP packet read path. Wraps `xml.etree.ElementTree` (stdlib).
 | `pypdfbox/xmpbox/xmp_metadata.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/XMPMetadata.java` (+ `XmpConstants.java` folded in; `TypeMapping` omitted — deferred to write-path cluster) |
 | `pypdfbox/xmpbox/xmp_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPSchema.java` (read-path accessors only; AbstractField/ArrayProperty hierarchy deferred) |
 | `pypdfbox/xmpbox/dublin_core_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/DublinCoreSchema.java` (constants + value getters) |
-| `pypdfbox/xmpbox/xmp_basic_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPBasicSchema.java` (constants + value getters; dates kept as ISO strings) |
+| `pypdfbox/xmpbox/xmp_basic_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPBasicSchema.java` (constants plus string-form and typed property accessors; Advisory Bag entries use `XPathType`, Identifier Bag entries use `TextType`; dates kept as ISO strings) |
 | `pypdfbox/xmpbox/pdfa_identification_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/PDFAIdentificationSchema.java` (typed `part` / `conformance` / `amd` / `rev` accessors with upstream `setPartValueWithInt` / `setPartValueWithString` / `setRevValueWithInt` / `setRevValueWithString` aliases; conformance validates against `{A, B, U, e, f}` per PDFBOX-6088 and raises `BadFieldValueException`; pypdfbox-only `corr` correction-year passthrough) |
 | `pypdfbox/xmpbox/pdfa_extension_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/PDFAExtensionSchema.java` (lite surface — `pdfaExtension:schemas` Bag dict accessors + raw element passthrough; nested `pdfaProperty` / `pdfaType` struct hierarchy deferred) |
 | `pypdfbox/xmpbox/xmp_rights_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPRightsManagementSchema.java` (typed `Certificate` / `Marked` / `Owner` / `UsageTerms` / `WebStatement` accessors) |
@@ -514,7 +514,7 @@ Not yet ported (classes not implemented in pypdfbox): `SequenceRandomAccessReadT
 | `tests/pdfparser/upstream/test_base_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestBaseParser.java` |
 | `tests/pdfparser/upstream/test_pdf_stream_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFStreamParserTest.java` |
 | `tests/pdfparser/upstream/test_cos_parser.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/COSParserTest.java` (parse-header / brute-force / rebuild-trailer / parse-xref-stream / parse-xref-table subset; fixture-corpus-driven cases skipped) |
-| `tests/pdfparser/upstream/test_endstream_filter_stream.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/EndstreamFilterStreamTest.java` (the byte-sequence test is a direct port; the `embedded_zip.pdf` round-trip case is skipped — fixture not in pypdfbox corpus and it really tests `readUntilEndStream` plumbing rather than the filter helper) |
+| `tests/pdfparser/upstream/test_endstream_filter_stream.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/EndstreamFilterStreamTest.java` (byte-sequence test directly ported; PDFBOX-2079 embedded-file fixture path covered by a synthetic missing-`/Length` stream-body regression through `PDFParser._read_stream_body()`) |
 
 Not yet ported (classes not implemented in pypdfbox): `PDFObjectStreamParserTest`, `TestPDFParser`.
 
@@ -543,7 +543,7 @@ Not yet ported (classes not implemented in pypdfbox): `PDFObjectStreamParserTest
 
 | pypdfbox test path | upstream Java test path |
 |---|---|
-| `tests/pdmodel/upstream/test_pd_document_information.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/TestPDDocumentInformation.java` (2 cases skipped — need fixtures) |
+| `tests/pdmodel/upstream/test_pd_document_information.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/TestPDDocumentInformation.java` (fixture-backed metadata extraction and PDFBOX-3068 indirect-title cases covered by synthetic PDFs) |
 
 `PDPageLabelsTest` / `PDViewerPreferencesTest` do not exist upstream in PDFBox 3.0.
 
@@ -561,7 +561,7 @@ PDFBox 3.0 has no focused upstream JUnit classes for `PDStream`, `PDXObject`, or
 
 ### `tests/fontbox/cmap/`
 
-PDFBox does not ship a focused `CMapParserTest` in the same shape as this cluster; CMap behavior is covered here with hand-written parser and mapping tests until broader font/text parity fixtures are ported.
+`tests/fontbox/cmap/upstream/test_cmap_parser.py` ports focused `CMapParserTest` parser regressions, including PDFBOX-4720 identity `bfrange`; broader bundled-resource/font-text parity remains covered by local parser tests until fixtures are ported.
 
 ### `tests/pdmodel/interactive/action/` and `tests/pdmodel/interactive/documentnavigation/`
 
@@ -599,9 +599,9 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | pypdfbox test path | upstream Java test path |
 |---|---|
 | `tests/pdmodel/upstream/test_pd_document.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/TestPDDocument.java` (`testVersions` partial — auto-bump-on-save deferred to font / encryption clusters; `testSaveArabicLocale` skipped — Java-locale-specific) |
-| `tests/pdmodel/upstream/test_pd_document_catalog.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDDocumentCatalogTest.java` (page-labels / output-intents / open-action / threads cases skipped — depend on later clusters) |
-| `tests/pdmodel/upstream/test_pd_page.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTest.java` (acroform / annotation / thread-bead cases skipped — depend on later clusters) |
-| `tests/pdmodel/upstream/test_pd_page_tree.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTreeTest.java` (cases requiring `with_outline.pdf` / `page_tree_multiple_levels.pdf` / `PDFBOX-6040-nodeloop.pdf` fixtures skipped) |
+| `tests/pdmodel/upstream/test_pd_document_catalog.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDDocumentCatalogTest.java` (page-labels, malformed page-labels, page count, output-intents, malformed open-action boolean, and null threads covered with fixture-free synthetic documents) |
+| `tests/pdmodel/upstream/test_pd_page.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTest.java` (annotation pre-add and null thread-bead cases active with fixture-free synthetic coverage; remaining fixture-dependent cases still deferred) |
+| `tests/pdmodel/upstream/test_pd_page_tree.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTreeTest.java` (node-loop case covered with a fixture-free synthetic page-tree cycle; cases requiring `with_outline.pdf` / `page_tree_multiple_levels.pdf` fixtures skipped) |
 
 ### `tests/contentstream/upstream/`
 
