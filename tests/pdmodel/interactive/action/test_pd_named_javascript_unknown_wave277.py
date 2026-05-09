@@ -74,15 +74,15 @@ def test_named_factory_round_trips_existing_cos_dictionary() -> None:
     assert action.is_last_page() is True
 
 
-def test_named_malformed_name_shape_is_treated_as_missing() -> None:
+def test_named_string_form_name_shape_is_tolerated() -> None:
     raw = COSDictionary()
     raw.set_name(_S, PDActionNamed.SUB_TYPE)
     raw.set_item(_N, COSString("NextPage"))
     action = PDActionNamed(raw)
 
-    assert action.get_n() is None
-    assert action.is_next_page() is False
-    assert action.is_standard_named_action() is False
+    assert action.get_n() == "NextPage"
+    assert action.is_next_page() is True
+    assert action.is_standard_named_action() is True
 
     action.set_n(None)
     assert not raw.contains_key(_N)

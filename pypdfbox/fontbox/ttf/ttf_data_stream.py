@@ -59,13 +59,42 @@ class TTFDataStream(ABC):
         """Release underlying resources."""
 
     @staticmethod
-    def _check_read_bounds(buf: bytearray, offset: int, length: int) -> None:
-        if offset < 0 or length < 0 or length > len(buf) - offset:
+    def _read_capacity(buf: bytearray, offset: int, length: int) -> int:
+        if offset < 0 or offset > len(buf) or length < 0:
             msg = (
                 f"read_into range out of bounds: offset={offset}, "
                 f"length={length}, buffer length={len(buf)}"
             )
             raise IndexError(msg)
+        return len(buf) - offset
+
+    @staticmethod
+    def _check_read_bounds(buf: bytearray, offset: int, length: int) -> None:
+        capacity = TTFDataStream._read_capacity(buf, offset, length)
+        if length > capacity:
+            msg = (
+                f"read_into range out of bounds: offset={offset}, "
+                f"length={length}, buffer length={len(buf)}"
+            )
+            raise IndexError(msg)
+
+    @staticmethod
+    def _checked_read_count(
+        buf: bytearray, offset: int, length: int, available: int
+    ) -> int:
+        capacity = TTFDataStream._read_capacity(buf, offset, length)
+        if length == 0:
+            return 0
+        if available <= 0:
+            return -1
+        n = min(length, available)
+        if n > capacity:
+            msg = (
+                f"read_into range out of bounds: offset={offset}, "
+                f"length={length}, buffer length={len(buf)}"
+            )
+            raise IndexError(msg)
+        return n
 
     # ---- helpers (translated 1:1 from upstream TTFDataStream) ----
 
@@ -194,13 +223,10 @@ class RandomAccessReadDataStream(TTFDataStream):
         return v
 
     def read_into(self, buf: bytearray, offset: int, length: int) -> int:
-        self._check_read_bounds(buf, offset, length)
-        if length == 0:
-            return 0
         avail = len(self._data) - self._pos
-        if avail <= 0:
-            return -1
-        n = min(length, avail)
+        n = self._checked_read_count(buf, offset, length, avail)
+        if n <= 0:
+            return n
         buf[offset : offset + n] = self._data[self._pos : self._pos + n]
         self._pos += n
         return n
@@ -252,13 +278,10 @@ class MemoryTTFDataStream(TTFDataStream):
         return v
 
     def read_into(self, buf: bytearray, offset: int, length: int) -> int:
-        self._check_read_bounds(buf, offset, length)
-        if length == 0:
-            return 0
         avail = len(self._data) - self._pos
-        if avail <= 0:
-            return -1
-        n = min(length, avail)
+        n = self._checked_read_count(buf, offset, length, avail)
+        if n <= 0:
+            return n
         buf[offset : offset + n] = self._data[self._pos : self._pos + n]
         self._pos += n
         return n

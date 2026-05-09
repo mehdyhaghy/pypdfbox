@@ -297,7 +297,9 @@ class PDPageTree:
         """Remove ``page`` from its parent's ``/Kids`` and decrement
         ``/Count`` up the chain. Returns True if removal occurred."""
         page_dict = _unwrap_page_dict(page)
-        parent = _resolve_parent(page_dict) or self._root
+        parent = _resolve_parent(page_dict)
+        if parent is None:
+            parent = self._root
         kids = _kids_array(parent)
         if kids is None:
             return False
@@ -343,7 +345,9 @@ class PDPageTree:
         parent's ``/Kids``."""
         target_dict = _unwrap_page_dict(target)
         new_dict = _unwrap_page_dict(new_page)
-        parent = _resolve_parent(target_dict) or self._root
+        parent = _resolve_parent(target_dict)
+        if parent is None:
+            parent = self._root
         kids = _kids_array(parent)
         if kids is None:
             raise ValueError("target page has no /Kids parent array")
@@ -359,7 +363,9 @@ class PDPageTree:
     ) -> None:
         target_dict = _unwrap_page_dict(target)
         new_dict = _unwrap_page_dict(new_page)
-        parent = _resolve_parent(target_dict) or self._root
+        parent = _resolve_parent(target_dict)
+        if parent is None:
+            parent = self._root
         kids = _kids_array(parent)
         if kids is None:
             raise ValueError("target page has no /Kids parent array")

@@ -828,7 +828,9 @@ class PDFMergerUtility:
                 if cloned is not None:
                     dest_dict.set_item(_NAMES, cloned)
             else:
-                cloner._clone_merge_cos_base(src_names_dict, dest_names_dict)  # noqa: SLF001
+                cloner._clone_merge_cos_base(  # noqa: SLF001
+                    src_names_dict, dest_names_dict, set()
+                )
 
         # Re-fetch in case we just installed a /Names dict above.
         dest_names_dict = dest_dict.get_dictionary_object(_NAMES)
@@ -849,7 +851,9 @@ class PDFMergerUtility:
                 if cloned is not None:
                     dest_dict.set_item(_DESTS, cloned)
             else:
-                cloner._clone_merge_cos_base(src_dests, dest_dests)  # noqa: SLF001
+                cloner._clone_merge_cos_base(  # noqa: SLF001
+                    src_dests, dest_dests, set()
+                )
 
     def _merge_outline(
         self,
@@ -985,7 +989,7 @@ class PDFMergerUtility:
             if cloned is not None:
                 dest_catalog.get_cos_object().set_item(_OC_PROPERTIES, cloned)
             return
-        cloner._clone_merge_cos_base(src_dict, dest_dict)  # noqa: SLF001
+        cloner._clone_merge_cos_base(src_dict, dest_dict, set())  # noqa: SLF001
 
     def _merge_output_intents(
         self,

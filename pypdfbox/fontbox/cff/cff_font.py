@@ -179,7 +179,7 @@ class CFFFont:
         layered on top."""
         merged: dict[str, Any] = {}
         if self._top is not None:
-            merged.update(self._top.rawDict)
+            merged.update(getattr(self._top, "rawDict", {}))
         merged.update(self._top_overlay)
         return merged
 

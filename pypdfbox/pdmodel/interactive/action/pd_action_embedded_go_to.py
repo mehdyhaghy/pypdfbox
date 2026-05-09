@@ -526,7 +526,10 @@ def _resolve_named_destination(
                 return value
         flat = names.get_dests()
         if flat is not None:
-            value = flat.get_destination(name)
+            if hasattr(flat, "get_destination"):
+                value = flat.get_destination(name)
+            else:
+                value = flat.get_value(name)
             if isinstance(value, PDDestination):
                 return value
 
@@ -537,6 +540,19 @@ def _resolve_named_destination(
         value = legacy.get_value(name)
         if isinstance(value, PDDestination):
             return value
+        from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+            PDDocumentNameDestinationDictionary,
+        )
+
+        legacy_dict = catalog.get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("Dests")
+        )
+        if isinstance(legacy_dict, COSDictionary):
+            value = PDDocumentNameDestinationDictionary(
+                legacy_dict
+            ).get_destination(name)
+            if isinstance(value, PDDestination):
+                return value
     return None
 
 

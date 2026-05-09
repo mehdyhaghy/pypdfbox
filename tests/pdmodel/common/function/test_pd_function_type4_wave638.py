@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import pytest
+
+from pypdfbox.cos import COSArray, COSDictionary, COSStream
+from pypdfbox.pdmodel.common.function import PDFunctionType4
+from pypdfbox.pdmodel.common.function import pd_function_type4 as type4
+
+
+def _array(values: list[float]) -> COSArray:
+    arr = COSArray()
+    arr.set_float_array(values)
+    return arr
+
+
+def _make(
+    body: str,
+    *,
+    domain: list[float] | None = None,
+    rng: list[float] | None = None,
+) -> PDFunctionType4:
+    stream = COSStream()
+    stream.set_int("FunctionType", 4)
+    if domain is not None:
+        stream.set_item("Domain", _array(domain))
+    if rng is not None:
+        stream.set_item("Range", _array(rng))
+    stream.set_data(body.encode("ascii"))
+    return PDFunctionType4(stream)
+
+
+def test_wave638_dictionary_backed_type4_reads_empty_body() -> None:
+    dictionary = COSDictionary()
+    dictionary.set_int("FunctionType", 4)
+    dictionary.set_item("Domain", _array([0.0, 1.0, -1.0, 1.0]))
+
+    fn = PDFunctionType4(dictionary)
+
+    assert fn.is_stream_backed() is False
+    assert fn.get_instructions() == []
+    assert fn.eval([2.0, -2.0]) == pytest.approx([1.0, -1.0])
+
+
+def test_wave638_input_and_output_clipping_honor_reversed_bounds() -> None:
+    fn = _make(
+        "{ 2 mul 10 add }",
+        domain=[5.0, -5.0],
+        rng=[12.0, 4.0],
+    )
+
+    assert fn.eval([9.0]) == pytest.approx([12.0])
+    assert fn.eval([-9.0]) == pytest.approx([4.0])
+    assert fn.eval([1.0]) == pytest.approx([12.0])
+
+
+def test_wave638_parser_accepts_bare_program_without_outer_braces() -> None:
+    fn = _make("1 2 add", domain=[])
+
+    assert fn.get_instructions() == [1.0, 2.0, "add"]
+    assert fn.eval([]) == pytest.approx([3.0])
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("{ 1 0 idiv }", "integer division by zero"),
+        ("{ 1 0 mod }", "mod by zero"),
+        ("{ 2.5 1 bitshift }", "expected integer"),
+        ("{ true 1 lt }", "expected number, got boolean"),
+    ],
+)
+def test_wave638_numeric_error_paths_surface_as_oserror(
+    body: str,
+    message: str,
+) -> None:
+    fn = _make(body, domain=[])
+
+    with pytest.raises(OSError, match=message):
+        fn.eval([])
+
+
+def test_wave638_private_stack_helpers_reject_non_numeric_and_non_integral() -> None:
+    with pytest.raises(OSError, match="expected number, got str"):
+        type4._pop_num(["x"])
+
+    with pytest.raises(OSError, match="expected integer, got 1.25"):
+        type4._pop_int([1.25])

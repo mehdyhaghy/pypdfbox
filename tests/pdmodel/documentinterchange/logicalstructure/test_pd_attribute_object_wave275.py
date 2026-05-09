@@ -8,6 +8,9 @@ from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
     PDAttributeObject,
 )
+from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_default_attribute_object import (
+    PDDefaultAttributeObject,
+)
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
     PDStructureElement,
 )
@@ -121,9 +124,9 @@ def test_factory_dispatches_known_owner_and_falls_back_for_unknown_wave275() -> 
     missing = PDAttributeObject.create(_owner_dictionary(None))
 
     assert isinstance(layout, PDLayoutAttributeObject)
-    assert type(unknown) is PDAttributeObject
+    assert isinstance(unknown, PDDefaultAttributeObject)
     assert unknown.get_owner() == "Wave275Owner"
-    assert type(missing) is PDAttributeObject
+    assert isinstance(missing, PDDefaultAttributeObject)
     assert missing.get_owner() is None
 
 

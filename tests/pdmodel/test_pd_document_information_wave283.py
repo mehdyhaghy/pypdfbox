@@ -73,7 +73,7 @@ def test_clear_property_removes_standard_and_custom_keys_wave283() -> None:
     assert info.is_empty() is True
 
 
-def test_to_dict_skips_malformed_non_string_values_wave283() -> None:
+def test_to_dict_includes_name_values_but_skips_non_string_values_wave283() -> None:
     raw = COSDictionary()
     raw.set_item("Title", COSString("Report"))
     raw.set_name("Author", "MalformedName")
@@ -81,4 +81,4 @@ def test_to_dict_skips_malformed_non_string_values_wave283() -> None:
 
     info = PDDocumentInformation(raw)
 
-    assert info.to_dict() == {"Title": "Report"}
+    assert info.to_dict() == {"Title": "Report", "Author": "MalformedName"}

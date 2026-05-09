@@ -352,9 +352,16 @@ def _create_from_indexed(
     # quadruplets for palette modes that include alpha; normalise.
     raw_mode = image.palette.mode if image.palette is not None else "RGB"
     if raw_mode == "RGBA":
+        raw_palette = (
+            image.palette.palette
+            if image.palette is not None
+            else bytes(palette)
+        )
+        if isinstance(raw_palette, list):
+            raw_palette = bytes(raw_palette)
         triplets = bytearray()
-        for i in range(0, len(palette), 4):
-            triplets.extend(palette[i : i + 3])
+        for i in range(0, len(raw_palette), 4):
+            triplets.extend(raw_palette[i : i + 3])
         palette_bytes = bytes(triplets)
     else:
         palette_bytes = bytes(palette)

@@ -215,7 +215,7 @@ def test_registry_lookup_returns_correct_instance_per_new_operator() -> None:
 # blanket "every stub accepts empty operands" smoke test below skips
 # these — see the dedicated arity-validation test that follows.
 _OPERATORS_WITH_ARITY_VALIDATION: frozenset[str] = frozenset(
-    {"m", "l", "c", "re"}
+    {"m", "l", "c", "v", "y", "re"}
 )
 
 

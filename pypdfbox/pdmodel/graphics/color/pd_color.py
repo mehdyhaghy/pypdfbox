@@ -421,8 +421,9 @@ class PDColor:
         # color spaces (Device*, Cal*, ICCBased) this matches the
         # /Decode default of [0, 1] and lets the base's to_rgb()
         # consume the components directly.
+        available_components = max(0, min(n_components, len(lookup) - offset))
         components = [
-            lookup[offset + i] / 255.0 for i in range(n_components)
+            lookup[offset + i] / 255.0 for i in range(available_components)
         ]
         if base_cs is None:
             # Treat as DeviceRGB (the lite legacy behaviour).
@@ -434,6 +435,8 @@ class PDColor:
                 g = _clamp_unit(components[0])
                 return (g, g, g)
             return (0.0, 0.0, 0.0)
+        if len(components) < n_components:
+            components.extend([0.0] * (n_components - len(components)))
         return _clamp_rgb(PDColor(components, base_cs).to_rgb())
 
     def _lab_to_rgb(self) -> tuple[float, float, float]:

@@ -24,16 +24,16 @@ def test_named_has_and_clear_n_track_typed_name_entry() -> None:
     assert not action.get_cos_object().contains_key(_N)
 
 
-def test_named_malformed_n_is_not_reported_present_and_can_be_cleared() -> None:
+def test_named_string_form_n_is_tolerated_and_can_be_cleared() -> None:
     raw = COSDictionary()
     raw.set_name(_S, PDActionNamed.SUB_TYPE)
     raw.set_item(_N, COSString(PDActionNamed.NAMED_ACTION_NEXT_PAGE))
     action = PDActionNamed(raw)
 
-    assert action.get_n() is None
-    assert action.has_n() is False
-    assert action.is_next_page() is False
-    assert action.is_standard_named_action() is False
+    assert action.get_n() == PDActionNamed.NAMED_ACTION_NEXT_PAGE
+    assert action.has_n() is True
+    assert action.is_next_page() is True
+    assert action.is_standard_named_action() is True
 
     action.clear_n()
 
