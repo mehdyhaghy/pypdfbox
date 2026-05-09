@@ -24,6 +24,9 @@ def _make_page_with_stream(doc: PDDocument, content: bytes) -> PDPage:
     return page
 
 
+_WAVE964_BRACKETED_CLASS: type[PDFTextStripper] | None = None
+
+
 # ---------------------------------------------------------------------------
 # TextPosition dataclass
 # ---------------------------------------------------------------------------
@@ -476,6 +479,9 @@ def test_end_document_runs_even_on_empty_range() -> None:
 
         def end_document(self, document: PDDocument) -> None:
             events.append("end")
+
+    global _WAVE964_BRACKETED_CLASS
+    _WAVE964_BRACKETED_CLASS = _Bracketed
 
     b = _Bracketed()
     b.set_start_page(5)  # past the only page

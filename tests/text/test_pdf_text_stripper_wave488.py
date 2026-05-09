@@ -12,6 +12,21 @@ from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.text import PDFTextStripper, TextPosition
 
 
+class StallingCMap:
+    def read_code(self, _stream: Any) -> int:
+        return 65
+
+    def to_unicode(self, _code: int) -> str:
+        return "unreachable"
+
+
+class WidthFont(PDType1Font):
+    def get_glyph_width(self, code: int) -> float:
+        if code == 32:
+            return 250.0
+        return 0.0
+
+
 def _make_page_with_stream(doc: PDDocument, content: bytes | None) -> PDPage:
     page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
     if content is not None:
@@ -185,23 +200,10 @@ def test_wave488_decode_text_via_cmap_skips_misses_and_stops_on_stall() -> None:
 
     assert PDFTextStripper._decode_text_via_cmap(b"ABC", cast(Any, FakeCMap())) == "AC"
 
-    class StallingCMap:
-        def read_code(self, _stream: Any) -> int:
-            return 65
-
-        def to_unicode(self, _code: int) -> str:
-            return "unreachable"
-
     assert PDFTextStripper._decode_text_via_cmap(b"A", cast(Any, StallingCMap())) == ""
 
 
 def test_wave488_width_helpers_and_sorting_paths() -> None:
-    class WidthFont(PDType1Font):
-        def get_glyph_width(self, code: int) -> float:
-            if code == 32:
-                return 250.0
-            return 0.0
-
     assert PDFTextStripper._compute_width_of_space(WidthFont(), 20.0, fallback=9.0) == 5.0
 
     class BadWidthFont(PDType1Font):

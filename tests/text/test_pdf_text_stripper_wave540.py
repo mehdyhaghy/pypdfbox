@@ -17,6 +17,21 @@ def _make_page_with_stream(doc: PDDocument, content: bytes | None) -> PDPage:
     return page
 
 
+class RecordingStripper(PDFTextStripper):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[str] = []
+
+    def write_string(
+        self,
+        text: str,
+        text_positions: list[TextPosition],
+        sink: Callable[[str], None],
+    ) -> None:
+        self.calls.append(text)
+        sink(text)
+
+
 def test_wave540_should_skip_glyph_filters_before_processing_or_output() -> None:
     doc = PDDocument()
     _make_page_with_stream(
@@ -40,18 +55,6 @@ def test_wave540_should_skip_glyph_filters_before_processing_or_output() -> None
 
 
 def test_wave540_write_string_with_empty_payload_is_not_dispatched() -> None:
-    calls: list[str] = []
-
-    class RecordingStripper(PDFTextStripper):
-        def write_string(
-            self,
-            text: str,
-            text_positions: list[TextPosition],
-            sink: Callable[[str], None],
-        ) -> None:
-            calls.append(text)
-            sink(text)
-
     stripper = RecordingStripper()
     sinked: list[str] = []
     pos = TextPosition(text="x", x=0.0, y=0.0, font_size=10.0)
@@ -59,7 +62,7 @@ def test_wave540_write_string_with_empty_payload_is_not_dispatched() -> None:
     stripper.write_string_with_positions("", [pos], sinked.append)
     stripper.write_string_with_positions("x", [], sinked.append)
 
-    assert calls == []
+    assert stripper.calls == []
     assert sinked == []
 
 

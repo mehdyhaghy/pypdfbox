@@ -34,6 +34,11 @@ class _FakeStream(PDContentStream):
         return None
 
 
+class _IncompleteContentStream(PDContentStream):
+    def get_contents(self) -> IO[bytes]:
+        return io.BytesIO(b"")
+
+
 def test_subclass_satisfies_interface() -> None:
     res = PDResources()
     bbox = PDRectangle(0.0, 0.0, 612.0, 792.0)
@@ -56,9 +61,5 @@ def test_cannot_instantiate_abstract_directly() -> None:
 
 
 def test_subclass_missing_method_cannot_instantiate() -> None:
-    class _Incomplete(PDContentStream):
-        def get_contents(self) -> IO[bytes]:
-            return io.BytesIO(b"")
-
     with pytest.raises(TypeError):
-        _Incomplete()  # type: ignore[abstract]
+        _IncompleteContentStream()  # type: ignore[abstract]

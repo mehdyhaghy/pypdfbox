@@ -52,6 +52,10 @@ def _namespace(**overrides: object) -> argparse.Namespace:
     return argparse.Namespace(**values)
 
 
+def _fail_encrypt_pdf(*args: object, **kwargs: object) -> None:
+    raise AssertionError("encrypt_pdf should not be called")
+
+
 def test_wave630_load_certificates_uses_der_then_pem_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -178,10 +182,7 @@ def test_wave630_run_already_encrypted_skips_encrypt_pdf(
         lambda path: _ProbeDocument(encrypted=True),
     )
 
-    def fail_encrypt_pdf(*args: object, **kwargs: object) -> None:
-        raise AssertionError("encrypt_pdf should not be called")
-
-    monkeypatch.setattr(encrypt_tool, "encrypt_pdf", fail_encrypt_pdf)
+    monkeypatch.setattr(encrypt_tool, "encrypt_pdf", _fail_encrypt_pdf)
 
     rc = encrypt_tool.run(_namespace(input=str(src), output=str(tmp_path / "out.pdf")))
 

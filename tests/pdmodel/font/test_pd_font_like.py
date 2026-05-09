@@ -176,6 +176,7 @@ def test_protocol_runtime_checkable_does_not_check_signatures() -> None:
         def is_damaged(self): return ""  # noqa: E704
         def get_average_font_width(self): return ""  # noqa: E704
 
+    globals()["_WrongSig"] = _WrongSig
     assert isinstance(_WrongSig(), PDFontLike)
 
 
@@ -209,6 +210,7 @@ def test_protocol_inheritance_disabled_for_runtime_check_only() -> None:
         def extra(self) -> None:
             pass
 
+    globals()["_ExtendedFontLike"] = _ExtendedFontLike
     assert isinstance(_ExtendedFontLike(), PDFontLike)
 
 

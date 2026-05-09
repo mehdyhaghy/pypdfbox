@@ -192,6 +192,8 @@ def test_wave396_image_factory_import_errors_raise_guidance(monkeypatch) -> None
             raise ImportError(name)
         return __import__(name)
 
+    assert missing_factories("math").__name__ == "math"
+
     monkeypatch.setattr(pcs.importlib, "import_module", missing_factories)
 
     with pytest.raises(NotImplementedError, match="JPEGFactory"):
@@ -217,6 +219,8 @@ def test_wave396_image_factory_pil_import_error_reaches_lossless_guidance(
         if name == "PIL.Image":
             raise ImportError(name)
         return __import__(name)
+
+    assert fake_import("math").__name__ == "math"
 
     monkeypatch.setattr(pcs.importlib, "import_module", fake_import)
 

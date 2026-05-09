@@ -47,6 +47,8 @@ def test_seek_failure_falls_back_to_read_and_discard() -> None:
     stream = COSFilterInputStream(SeekFails(b"abcdef"), [2, 3])
 
     assert stream.read_all() == b"cde"
+    assert stream._source.tell() == 5
+    stream.close()
 
 
 def test_skip_source_stops_when_source_ends_before_range_start() -> None:

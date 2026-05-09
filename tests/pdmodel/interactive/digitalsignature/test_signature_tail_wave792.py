@@ -154,7 +154,7 @@ def test_prop_build_app_round_trip_and_removal() -> None:
     assert str(prop_build) == "PDPropBuild(<empty>)"
 
 
-def test_pkcs7_signature_default_hash_and_no_extra_certificates(monkeypatch) -> None:
+def test_pkcs7_signature_default_hash_and_additional_certificate(monkeypatch) -> None:
     calls: dict[str, Any] = {}
 
     class FakeHashes:
@@ -203,10 +203,15 @@ def test_pkcs7_signature_default_hash_and_no_extra_certificates(monkeypatch) -> 
     )
 
     certificate = object()
-    signer = Pkcs7Signature(certificate, object())
+    extra_certificate = object()
+    signer = Pkcs7Signature(
+        certificate,
+        object(),
+        additional_certificates=[extra_certificate],
+    )
 
     assert signer.certificate is certificate
     assert signer.sign(io.BytesIO(b"content")) == b"signed"
     assert calls["data"] == b"content"
     assert isinstance(calls["signer"][2], FakeHashes.SHA256)
-    assert "extra" not in calls
+    assert calls["extra"] == [extra_certificate]

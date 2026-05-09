@@ -58,6 +58,18 @@ def _float_array(values: list[float]) -> COSArray:
     return array
 
 
+class _TilingPattern:
+    def __init__(self, cos_object: Any, resources: Any | None = None) -> None:
+        self._cos_object = cos_object
+        self._resources = resources
+
+    def get_cos_object(self) -> Any:
+        return self._cos_object
+
+    def get_resources(self) -> Any | None:
+        return self._resources
+
+
 def test_decode_inline_image_handles_abbreviations_and_rejects_malformed() -> None:
     gray = PDFRenderer._decode_inline_image(
         _inline_params(width=2, height=1, color_space=COSName.get_pdf_name("G")),
@@ -263,24 +275,13 @@ def test_shading_static_helpers_default_and_convert_defensively() -> None:
 
 
 def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
-    class _Pattern:
-        def __init__(self, cos_object: Any, resources: Any | None = None) -> None:
-            self._cos_object = cos_object
-            self._resources = resources
-
-        def get_cos_object(self) -> Any:
-            return self._cos_object
-
-        def get_resources(self) -> Any | None:
-            return self._resources
-
     doc, renderer = _make_doc()[0], PDFRenderer(_make_doc()[0])
     renderer._gs_stack = [_GState()]  # noqa: SLF001
     try:
         empty_stream = COSStream()
         empty_stream.set_raw_data(b"")
         tile = renderer._render_tiling_cell(  # noqa: SLF001
-            _Pattern(empty_stream),
+            _TilingPattern(empty_stream),
             bbox=PDRectangle(0.0, 0.0, 4.0, 4.0),
             tile_size=(3, 3),
         )
@@ -289,7 +290,7 @@ def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
         assert tile.getpixel((1, 1)) == (255, 255, 255)
 
         assert renderer._render_tiling_cell(  # noqa: SLF001
-            _Pattern(COSDictionary()),
+            _TilingPattern(COSDictionary()),
             bbox=PDRectangle(0.0, 0.0, 4.0, 4.0),
             tile_size=(3, 3),
         ) is None
@@ -297,7 +298,7 @@ def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
         nonempty_stream = COSStream()
         nonempty_stream.set_raw_data(b"0 0 1 rg 0 0 1 1 re f\n")
         assert renderer._render_tiling_cell(  # noqa: SLF001
-            _Pattern(nonempty_stream),
+            _TilingPattern(nonempty_stream),
             bbox=PDRectangle(0.0, 0.0, 0.0, 4.0),
             tile_size=(3, 3),
         ) is None

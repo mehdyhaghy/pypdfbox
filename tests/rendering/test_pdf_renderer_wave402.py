@@ -38,6 +38,22 @@ def _finish(renderer: PDFRenderer) -> None:
         draw.flush()
 
 
+class _Substitute:
+    def __init__(self, width: float | Exception, units: int | Exception | None = None) -> None:
+        self._width = width
+        self._units = units
+
+    def get_width(self, _glyph_name: str) -> float:
+        if isinstance(self._width, Exception):
+            raise self._width
+        return self._width
+
+    def get_units_per_em(self) -> int:
+        if isinstance(self._units, Exception):
+            raise self._units
+        return 1000 if self._units is None else self._units
+
+
 def test_paste_image_with_blend_honors_clip_and_alpha() -> None:
     doc, renderer = _prepared_renderer((4, 2))
     try:
@@ -109,21 +125,6 @@ def test_text_metric_helpers_cover_fallback_and_error_branches() -> None:
             if isinstance(self._value, Exception):
                 raise self._value
             return self._value
-
-    class _Substitute:
-        def __init__(self, width: float | Exception, units: int | Exception | None = None) -> None:
-            self._width = width
-            self._units = units
-
-        def get_width(self, _glyph_name: str) -> float:
-            if isinstance(self._width, Exception):
-                raise self._width
-            return self._width
-
-        def get_units_per_em(self) -> int:
-            if isinstance(self._units, Exception):
-                raise self._units
-            return 1000 if self._units is None else self._units
 
     assert PDFRenderer._font_width_units(_WidthFont(321.0), 65) == 321.0  # noqa: SLF001
     assert PDFRenderer._font_width_units(_WidthFont(RuntimeError("width")), 65) == 500.0  # noqa: E501, SLF001

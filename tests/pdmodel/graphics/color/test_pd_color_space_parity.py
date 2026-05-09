@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
 from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
 from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+
+_BASE_DECODE_STUB_CLASS: type[PDColorSpace] | None = None
 
 
 # ---------- DeviceGray ----------
@@ -71,6 +71,8 @@ def test_device_cmyk_get_default_decode() -> None:
 
 
 def test_base_get_default_decode_returns_zero_one_per_component() -> None:
+    global _BASE_DECODE_STUB_CLASS
+
     # Default behaviour matches PDF spec's general rule: ``[0, 1]``
     # repeated per component. Concrete subclasses override for
     # CMYK/Indexed/Lab where the spec declares a different default.
@@ -84,6 +86,7 @@ def test_base_get_default_decode_returns_zero_one_per_component() -> None:
         def get_initial_color(self) -> PDColor:
             return PDColor([0.0, 0.0], self)
 
+    _BASE_DECODE_STUB_CLASS = _Stub
     stub = _Stub()
     assert stub.get_default_decode(8) == [0.0, 1.0, 0.0, 1.0]
 

@@ -7,25 +7,32 @@ from types import FrameType
 from tests.fontbox.encoding import test_encoding
 
 
-def _capture_local_class(test_func: Callable[[], None], name: str) -> type:
-    captured: list[type] = []
+class _LocalClassCapture:
+    def __init__(self, test_func: Callable[[], None], name: str) -> None:
+        self.test_func = test_func
+        self.name = name
+        self.captured: list[type] = []
 
-    def tracer(frame: FrameType, event: str, arg: object) -> object:
-        if frame.f_code is test_func.__code__ and event == "line":
-            local_value = frame.f_locals.get(name)
+    def tracer(self, frame: FrameType, event: str, arg: object) -> object:
+        if frame.f_code is self.test_func.__code__ and event == "line":
+            local_value = frame.f_locals.get(self.name)
             if isinstance(local_value, type):
-                captured.append(local_value)
-        return tracer
+                self.captured.append(local_value)
+        return self.tracer
+
+
+def _capture_local_class(test_func: Callable[[], None], name: str) -> type:
+    capture = _LocalClassCapture(test_func, name)
 
     old_trace = sys.gettrace()
-    sys.settrace(tracer)
+    sys.settrace(capture.tracer)
     try:
         test_func()
     finally:
         sys.settrace(old_trace)
 
-    assert captured
-    return captured[-1]
+    assert capture.captured
+    return capture.captured[-1]
 
 
 def test_wave893_top_level_dummy_encoding_names() -> None:

@@ -88,6 +88,9 @@ def test_wave369_extract_ignores_imported_page_setter_failures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     src = _make_doc(1)
+    prefs = PDViewerPreferences()
+    prefs.set_hide_toolbar(True)
+    src.get_document_catalog().set_viewer_preferences(prefs)
     calls: list[str] = []
 
     class RejectingImportedPage:

@@ -19,6 +19,19 @@ def _font_with_font_file2(data: bytes) -> PDCIDFontType2:
     return font
 
 
+def _fail_if_called(_data: bytes) -> Any:
+    raise AssertionError("cached None should not parse embedded bytes")
+
+
+class _ZeroUnitsTTF:
+    def get_units_per_em(self) -> int:
+        return 0
+
+    @property
+    def advance_widths(self) -> list[int]:
+        return [300, 600]
+
+
 def test_wave579_get_true_type_font_caches_parse_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -43,12 +56,9 @@ def test_wave579_get_true_type_font_caches_parse_failure(
 def test_wave579_set_true_type_font_none_sets_negative_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail_if_called(_data: bytes) -> Any:
-        raise AssertionError("cached None should not parse embedded bytes")
-
     monkeypatch.setattr(
         "pypdfbox.pdmodel.font.pd_cid_font_type2.TrueTypeFont.from_bytes",
-        fail_if_called,
+        _fail_if_called,
     )
     font = _font_with_font_file2(b"would-parse-if-cache-was-clear")
 
@@ -60,17 +70,8 @@ def test_wave579_set_true_type_font_none_sets_negative_cache(
 
 
 def test_wave579_get_average_font_width_falls_back_for_non_positive_upem() -> None:
-    class ZeroUnitsTTF:
-        def get_units_per_em(self) -> int:
-            return 0
-
-        @property
-        def advance_widths(self) -> list[int]:
-            return [300, 600]
-
     font = PDCIDFontType2()
-    font.get_true_type_font = lambda: ZeroUnitsTTF()  # type: ignore[method-assign]
+    font.get_true_type_font = lambda: _ZeroUnitsTTF()  # type: ignore[method-assign]
     font.set_dw(812)
 
     assert font.get_average_font_width() == pytest.approx(812.0)
-

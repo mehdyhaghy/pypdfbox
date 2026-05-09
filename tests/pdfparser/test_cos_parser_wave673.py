@@ -11,6 +11,11 @@ def _parser(data: bytes = b"") -> COSParser:
     return COSParser(RandomAccessReadBuffer(data))
 
 
+class _FailingHandler:
+    def decrypt_stream(self, data: bytes, obj_num: int, gen_num: int) -> bytes:
+        raise AssertionError("skip-encryption streams must not be decrypted")
+
+
 def test_wave673_bruteforce_xref_stream_scan_skips_unparseable_candidate() -> None:
     class ParserWithBadCandidate(COSParser):
         def bf_search_for_objects(self) -> dict[COSObjectKey, int]:
@@ -22,15 +27,11 @@ def test_wave673_bruteforce_xref_stream_scan_skips_unparseable_candidate() -> No
 
 
 def test_wave673_cos_stream_skip_encryption_blocks_handler_attachment() -> None:
-    class FailingHandler:
-        def decrypt_stream(self, data: bytes, obj_num: int, gen_num: int) -> bytes:
-            raise AssertionError("skip-encryption streams must not be decrypted")
-
     stream = COSStream()
     stream.set_raw_data(b"plain")
     stream.set_skip_encryption(True)
 
-    stream.set_security_handler(FailingHandler(), 10, 0)
+    stream.set_security_handler(_FailingHandler(), 10, 0)
 
     with stream.create_input_stream() as src:
         assert src.read() == b"plain"

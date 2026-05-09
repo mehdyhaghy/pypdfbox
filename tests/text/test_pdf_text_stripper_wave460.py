@@ -16,6 +16,9 @@ def _make_page_with_stream(doc: PDDocument, content: bytes) -> PDPage:
     return page
 
 
+_WAVE963_HOOK_STRIPPER_CLASS: type[PDFTextStripper] | None = None
+
+
 def test_wave460_list_item_patterns_are_cached_customizable_and_fullmatch_only() -> None:
     stripper = PDFTextStripper()
 
@@ -44,6 +47,9 @@ def test_wave460_get_text_empty_range_does_not_call_document_hooks() -> None:
 
         def end_document(self, document: PDDocument) -> None:
             events.append("end")
+
+    global _WAVE963_HOOK_STRIPPER_CLASS
+    _WAVE963_HOOK_STRIPPER_CLASS = HookStripper
 
     stripper = HookStripper()
     stripper.set_start_page(3)
