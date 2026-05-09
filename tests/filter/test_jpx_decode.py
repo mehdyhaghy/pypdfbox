@@ -5,7 +5,7 @@ import io
 import pytest
 from PIL import Image
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat
 from pypdfbox.filter import FilterFactory, JPXDecode
 
 
@@ -114,7 +114,6 @@ def test_jpx_decode_clears_decode_entry_when_not_image_mask() -> None:
     encoded_bytes = _encode_jp2(src)
 
     params = COSDictionary()
-    from pypdfbox.cos import COSArray, COSFloat
 
     decode_arr = COSArray()
     for _ in range(3):
@@ -126,6 +125,35 @@ def test_jpx_decode_clears_decode_entry_when_not_image_mask() -> None:
         io.BytesIO(encoded_bytes), io.BytesIO(), params
     )
 
+    assert result.parameters is not params
+    assert "Decode" in params
+    assert "Decode" not in result.parameters
+
+
+def test_jpx_decode_returns_repaired_parameter_copy_without_mutating_input() -> None:
+    src = Image.new("RGB", (4, 3), color=(10, 20, 30))
+    encoded_bytes = _encode_jp2(src)
+
+    params = COSDictionary()
+    params.set_name("ColorSpace", "DeviceRGB")
+    params.set_int("Width", 99)
+    decode_arr = COSArray()
+    for _ in range(3):
+        decode_arr.add(COSFloat(0.0))
+        decode_arr.add(COSFloat(1.0))
+    params.set_item("Decode", decode_arr)
+
+    result = JPXDecode().decode(io.BytesIO(encoded_bytes), io.BytesIO(), params)
+
+    assert result.parameters is not params
+    assert params.get_int("Width") == 99
+    assert "Height" not in params
+    assert "Decode" in params
+    assert result.parameters.get_name("ColorSpace") == "DeviceRGB"
+    assert result.parameters.get_int("Width") == 4
+    assert result.parameters.get_int("Height") == 3
+    assert result.parameters.get_int("BitsPerComponent") == 8
+    assert result.parameters.get_int("ColorComponents") == 3
     assert "Decode" not in result.parameters
 
 
@@ -136,7 +164,6 @@ def test_jpx_decode_preserves_decode_entry_when_image_mask() -> None:
     encoded_bytes = _encode_jp2(src)
 
     params = COSDictionary()
-    from pypdfbox.cos import COSArray, COSFloat
 
     params.set_boolean("ImageMask", True)
     decode_arr = COSArray()
@@ -148,4 +175,6 @@ def test_jpx_decode_preserves_decode_entry_when_image_mask() -> None:
         io.BytesIO(encoded_bytes), io.BytesIO(), params
     )
 
+    assert result.parameters is not params
+    assert "Decode" in params
     assert "Decode" in result.parameters

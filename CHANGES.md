@@ -1877,3 +1877,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now decodes raw 16-bit big-endian `/DeviceGray` image XObject samples, scales them to 8-bit output with PDFBox-style rounded normalization, and applies `/Decode` arrays before RGB conversion.
 - `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1286.py`: added 16-bit gray scaling checkpoints, decode inversion, and short-raster rejection coverage.
+
+## Wave 389 — JPX decode result parameter copy
+
+- `pypdfbox/filter/jpx_decode.py`: `JPXDecode.decode()` now creates a fresh `DecodeResult.parameters` dictionary and copies caller parameters before applying intrinsic JPX width, height, bit-depth, component-count, and `/Decode` cleanup, matching upstream `JPXFilter` without mutating the caller's dictionary.
+- `tests/filter/test_jpx_decode.py`: added parameter-copy and non-mutation coverage for repaired geometry, `/Decode` removal, and image-mask preservation.

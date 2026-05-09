@@ -51,7 +51,9 @@ class JPXDecode(Filter):
         index: int = 0,
     ) -> DecodeResult:
         encoded_bytes = encoded.read()
-        out_params = parameters if parameters is not None else COSDictionary()
+        out_params = COSDictionary()
+        if parameters is not None:
+            out_params.add_all(parameters)
         if not encoded_bytes:
             return DecodeResult(parameters=out_params, bytes_written=0)
 
