@@ -1733,3 +1733,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/tools/extracttext.py`: after extracting the top-level document, `extracttext` now walks catalog `/Names /EmbeddedFiles`, reads each default `/EF /F` embedded file whose subtype is exactly `application/pdf`, loads it as a one-level child `PDDocument`, and extracts all child pages into the same output stream. Top-level `-startPage/-endPage` bounds do not constrain embedded PDFs, and `-addFileName` still writes only the parent input path, matching upstream `ExtractText`.
 - `tests/tools/upstream/test_extracttext.py`: replaced the stale embedded-PDF substitute with model-built embedded-file fixtures covering console extraction, `-addFileName`, exact subtype matching, and parent-page-range independence.
+
+## Wave 357 — PDPage null thread-beads upstream test
+
+- `tests/pdmodel/upstream/test_pd_page.py`: enabled the upstream PDFBOX-6186 `testNullThreadBeads` parity check now that `PDPage.get_thread_beads()` / `set_thread_beads()` are ported. The test verifies absent `/B`, explicit empty arrays, and `set_thread_beads(None)` all read back as an empty list.

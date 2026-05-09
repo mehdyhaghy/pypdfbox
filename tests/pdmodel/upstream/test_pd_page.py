@@ -19,8 +19,13 @@ def test_adding_page_after_creating_annotation() -> None:  # pragma: no cover
     pass
 
 
-# Skipped: ``testNullThreadBeads`` — ``PDPage.get_thread_beads`` requires
-# the article-thread machinery (pdmodel cluster #5 / interactive features).
-@pytest.mark.skip(reason="PDPage.get_thread_beads — pdmodel cluster #5")
-def test_null_thread_beads() -> None:  # pragma: no cover
-    pass
+def test_null_thread_beads() -> None:
+    page = PDPage()
+
+    assert page.get_thread_beads() == []
+
+    page.set_thread_beads([])
+    assert page.get_thread_beads() == []
+
+    page.set_thread_beads(None)
+    assert page.get_thread_beads() == []
