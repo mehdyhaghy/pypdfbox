@@ -8,6 +8,8 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox import PDDocument, PDPage
+from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.pdmodel import PDPageTree
 
 
 # ``indexOfPageFromOutlineDestination`` — outline/destination primitives
@@ -71,14 +73,33 @@ def test_insert_after_blank_page() -> None:
         assert pages.index_of(page_three) == 2
 
 
-# ``testNodeLoop`` — needs the PDFBOX-6040-nodeloop.pdf fixture. Our
-# hand-written ``test_inheritable_attribute_breaks_cycles`` covers the
-# same loop-protection invariant synthetically.
-@pytest.mark.skip(
-    reason=(
-        "needs PDFBOX-6040-nodeloop.pdf fixture; "
-        "cycle protection covered synthetically"
+def test_node_loop() -> None:
+    """``testNodeLoop`` / PDFBOX-6040: resource inheritance must terminate."""
+    root = COSDictionary()
+    root.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    root_kids = COSArray()
+    root.set_item(COSName.KIDS, root_kids)  # type: ignore[attr-defined]
+    root.set_int(COSName.COUNT, 1)  # type: ignore[attr-defined]
+
+    loop = COSDictionary()
+    loop.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    loop_kids = COSArray()
+    loop.set_item(COSName.KIDS, loop_kids)  # type: ignore[attr-defined]
+    loop.set_item(COSName.PARENT, loop)  # type: ignore[attr-defined]
+    loop.set_int(COSName.COUNT, 1)  # type: ignore[attr-defined]
+    root_kids.add(loop)
+
+    raw_page = COSDictionary()
+    raw_page.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    raw_page.set_item(COSName.PARENT, loop)  # type: ignore[attr-defined]
+    loop_kids.add(raw_page)
+
+    page = PDPageTree(root).get(0)
+
+    assert page.get_cos_object() is raw_page
+    assert page.get_inherited_cos_object(COSName.RESOURCES) is None  # type: ignore[attr-defined]
+    assert (
+        PDPageTree.get_inheritable_attribute(raw_page, COSName.RESOURCES)  # type: ignore[attr-defined]
+        is None
     )
-)
-def test_node_loop() -> None:  # pragma: no cover
-    pass
+    assert page.get_resources().get_cos_object().is_empty()

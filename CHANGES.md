@@ -1795,3 +1795,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 371 — RandomAccessReadBufferedFile cross-buffer read parity
 
 - `tests/io/upstream/test_random_access_read_buffered_file.py`: replaced the skipped upstream `readFullyAcrossBuffers` marker with a fixture-free temp-file test that reads across a small buffer boundary into a nonzero destination offset.
+
+## Wave 372 — PDPageTree node-loop upstream test
+
+- `tests/pdmodel/upstream/test_pd_page_tree.py`: replaced the PDFBOX-6040 fixture skip with a synthetic parent-cycle check against `PDPageTree.get_inheritable_attribute()`, preserving the upstream loop-protection invariant.
