@@ -1832,3 +1832,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 379 — Filter/image status note cleanup
 
 - `README.md`, `PROVENANCE.md`, `CHANGES.md`: refreshed stale filter and image-factory status text after the DCT/CCITT/JPX/JBIG2 and JPEGFactory alpha waves. Current notes now distinguish implemented decode/producer paths from the remaining encode and full sampled-image rendering gaps.
+
+## Wave 380 — PDImageXObject raw Decode array rendering
+
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now applies component-wise `/Decode` arrays for raw 8-bit DeviceGray and DeviceRGB rasters. Unsupported decode array lengths still return `None`; DCT/JPX, DeviceN/Separation, Indexed, masks, and non-8bpc paths are unchanged.
+- `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1279.py`: added DeviceGray inversion, DeviceRGB per-component remap, and malformed decode-array coverage.

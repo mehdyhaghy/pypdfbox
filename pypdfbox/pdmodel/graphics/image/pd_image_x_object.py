@@ -623,9 +623,10 @@ class PDImageXObject(PDXObject):
         colour space (typically DeviceCMYK or DeviceRGB) before
         compositing into sRGB.
 
-        More complex PDF image features such as decode arrays, masks,
-        Indexed expansion, and non-8bpc samples remain rendering-cluster
-        work and return ``None`` here.
+        Raw 8-bit DeviceGray and DeviceRGB rasters apply simple
+        component-wise ``/Decode`` arrays. More complex PDF image
+        features such as masks, Indexed expansion, and non-8bpc samples
+        remain rendering-cluster work and return ``None`` here.
         """
         cos = self.get_cos_object()
         if not isinstance(cos, COSStream):
@@ -652,21 +653,57 @@ class PDImageXObject(PDXObject):
             data = src.read()
         rgb_len = width * height * 3
         gray_len = width * height
+        pixel_count = width * height
+        decode = self.get_decode()
         if color_space_name == "DeviceRGB" or (
             color_space_name is None and len(data) >= rgb_len
         ):
             if len(data) < rgb_len:
                 return None
-            return Image.frombytes("RGB", (width, height), data[:rgb_len])
+            decoded = _apply_decode_to_8bit_samples(
+                data[:rgb_len], pixel_count, 3, decode
+            )
+            if decoded is None:
+                return None
+            return Image.frombytes("RGB", (width, height), decoded)
         if color_space_name == "DeviceGray":
             if len(data) < gray_len:
                 return None
-            return Image.frombytes("L", (width, height), data[:gray_len]).convert("RGB")
+            decoded = _apply_decode_to_8bit_samples(
+                data[:gray_len], pixel_count, 1, decode
+            )
+            if decoded is None:
+                return None
+            return Image.frombytes("L", (width, height), decoded).convert("RGB")
         if color_space_name in ("Separation", "DeviceN") and color_space is not None:
             return _decode_devicen_to_rgb(
                 color_space, data, width, height
             )
         return None
+
+
+def _apply_decode_to_8bit_samples(
+    data: bytes,
+    pixel_count: int,
+    components: int,
+    decode: Sequence[float] | None,
+) -> bytes | None:
+    expected = pixel_count * components
+    if len(data) < expected:
+        return None
+    if decode is None:
+        return data[:expected]
+    if len(decode) != components * 2:
+        return None
+
+    out = bytearray(expected)
+    for i in range(expected):
+        component = i % components
+        dmin = decode[component * 2]
+        dmax = decode[component * 2 + 1]
+        value = dmin + (data[i] / 255.0) * (dmax - dmin)
+        out[i] = int(round(_clamp01(value) * 255.0))
+    return bytes(out)
 
 
 def _numeric_array_to_floats(value: COSBase | None) -> list[float] | None:
