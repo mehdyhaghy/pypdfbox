@@ -1767,3 +1767,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 364 — PDDocumentCatalog page-label upstream tests
 
 - `tests/pdmodel/upstream/test_pd_document_catalog.py`: enabled the page-label retrieval and malformed-page-label upstream placeholders with fixture-free synthetic `PDPageLabels`/`/Nums` trees, covering generated labels and tolerant malformed-entry traversal.
+
+## Wave 365 — PDDocumentInformation upstream tests
+
+- `tests/pdmodel/upstream/test_pd_document_information.py`: replaced the skipped `hello3.pdf` and PDFBOX-3068 fixture placeholders with synthetic PDFs that exercise `/Info` metadata extraction and indirect `/Title` resolution through `PDDocument.load()`.
