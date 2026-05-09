@@ -19,8 +19,8 @@ class ASCIIHexDecode(Filter):
     ``/ASCIIHexDecode`` filter (ISO 32000-1 §7.4.2).
 
     Thin adapter over :func:`binascii.unhexlify` / :func:`binascii.hexlify`.
-    The PDF-specific behaviours — whitespace tolerance, ``>`` end-of-data
-    marker, and odd-trailing-digit zero-pad — are original.
+    Decode handles the PDF-specific behaviours — whitespace tolerance,
+    ``>`` end-of-data marker, and odd-trailing-digit zero-pad.
 
     Mirrors `org.apache.pdfbox.filter.ASCIIHexFilter`.
     """
@@ -68,8 +68,7 @@ class ASCIIHexDecode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
-        encoded.write(binascii.hexlify(raw.read()))
-        encoded.write(b">")
+        encoded.write(binascii.hexlify(raw.read()).upper())
         flush = getattr(encoded, "flush", None)
         if callable(flush):
             flush()

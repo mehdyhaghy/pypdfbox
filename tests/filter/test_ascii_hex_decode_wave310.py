@@ -25,10 +25,10 @@ def test_decode_flushes_decoded_sink_after_write() -> None:
     assert out.flush_count == 1
 
 
-def test_encode_flushes_encoded_sink_after_eod_marker() -> None:
+def test_encode_flushes_encoded_sink_after_write() -> None:
     out = _FlushTrackingBytesIO()
 
     ASCIIHexDecode().encode(io.BytesIO(b"ABC"), out)
 
-    assert out.getvalue() == b"414243>"
+    assert out.getvalue() == b"414243"
     assert out.flush_count == 1

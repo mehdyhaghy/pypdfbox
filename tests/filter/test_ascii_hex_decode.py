@@ -25,19 +25,18 @@ def _encode(raw: bytes) -> bytes:
 class TestRoundTrip:
     def test_empty_input(self) -> None:
         encoded = _encode(b"")
-        # Empty payload still gets the EOD marker.
-        assert encoded == b">"
+        assert encoded == b""
         assert _decode(encoded) == b""
 
     def test_single_byte(self) -> None:
         encoded = _encode(b"\x42")
-        assert encoded == b"42>"
+        assert encoded == b"42"
         assert _decode(encoded) == b"\x42"
 
     def test_short_text(self) -> None:
         original = "Hi!".encode(encoding="utf-8")
         encoded = _encode(original)
-        assert encoded == b"486921>"
+        assert encoded == b"486921"
         assert _decode(encoded) == original
 
     def test_full_byte_range(self) -> None:
@@ -46,10 +45,8 @@ class TestRoundTrip:
 
 
 class TestEncode:
-    def test_encode_uses_lowercase_hex(self) -> None:
-        # ``binascii.hexlify`` emits lowercase digits — keep that fact
-        # documented so future contributors know the wire format.
-        assert _encode(b"\xab\xcd\xef") == b"abcdef>"
+    def test_encode_uses_pdfbox_uppercase_hex_without_eod(self) -> None:
+        assert _encode(b"\xab\xcd\xef") == b"ABCDEF"
 
 
 class TestDecodeWhitespace:
