@@ -155,9 +155,8 @@ class DomXmpParser:
 
     def __init__(self) -> None:
         # Upstream DomXmpParser exposes a strict-parsing toggle and a
-        # throw-on-invalid-xmp toggle. Strict mode is a deferred behavior in
-        # this port (we currently always parse permissively), so the flag is
-        # stored but not yet consumed by the parse pipeline.
+        # throw-on-invalid-xmp toggle. Strict mode currently enforces known
+        # property names on schemas that expose a ``KNOWN_PROPERTIES`` surface.
         self._strict_parsing: bool = True
         self._throw_exception_on_invalid_xmp: bool = False
 
@@ -221,7 +220,7 @@ class DomXmpParser:
     # ------------------------------------------------------------------
 
     def set_strict_parsing(self, b: bool) -> None:
-        """Toggle strict parsing. Stored but not yet enforced in this port."""
+        """Toggle strict parsing."""
         self._strict_parsing = bool(b)
 
     def is_strict_parsing(self) -> bool:
@@ -379,6 +378,7 @@ class DomXmpParser:
             schema = self._schema_for(
                 ns, local, desc, metadata, per_ns, about, namespace_prefixes
             )
+            self._validate_strict_property(schema, ns, local)
             schema.set_text_property_value(local, value)
 
         # Element-form properties: each direct child whose namespace is not RDF
@@ -390,8 +390,21 @@ class DomXmpParser:
             schema = self._schema_for(
                 ns, local, desc, metadata, per_ns, about, namespace_prefixes
             )
+            self._validate_strict_property(schema, ns, local)
             parsed_value = self._parse_property_value(child)
             self._assign(schema, local, parsed_value)
+
+    def _validate_strict_property(
+        self, schema: XMPSchema, ns: str, local: str
+    ) -> None:
+        if not self._strict_parsing:
+            return
+        known = getattr(schema, "KNOWN_PROPERTIES", None)
+        if known is not None and local not in known:
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.INVALID_TYPE,
+                f"No type defined for {{{ns}}}{local}",
+            )
 
     @staticmethod
     def _schema_for(

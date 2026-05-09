@@ -1887,3 +1887,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/filter/dct_decode.py`: `DCTDecode.decode()` now skips exactly one leading line-feed byte before handing JPEG data to Pillow, matching upstream `DCTFilter` behavior before ImageIO reads the stream.
 - `tests/filter/test_dct_decode.py`: added coverage for a valid JPEG prefixed by one LF byte.
+
+## Wave 391 — XMP strict Adobe PDF properties
+
+- `pypdfbox/xmpbox/dom_xmp_parser.py`: strict parsing now rejects properties not listed in a schema's `KNOWN_PROPERTIES`, matching PDFBOX-6106 for invalid Adobe PDF fields such as `pdf:CreationDate` and `pdf:ModDate`; lenient mode still accepts and stores them as text.
+- `tests/xmpbox/upstream/test_dom_xmp_parser.py`, `tests/xmpbox/test_dom_xmp_parser.py`: enabled the PDFBOX-6106 attribute-form regression, added lenient-mode coverage, and added a local element-form guard for the same strict known-property rule.

@@ -248,3 +248,21 @@ def test_multiple_descriptions_for_same_namespace_merge() -> None:
     assert isinstance(dc, DublinCoreSchema)
     assert dc.get_format() == "application/pdf"
     assert dc.get_identifier() == "id-1"
+
+
+def test_strict_parsing_rejects_unknown_adobe_pdf_element_form_property() -> None:
+    packet = (
+        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+        b' xmlns:pdf="http://ns.adobe.com/pdf/1.3/">'
+        b'<rdf:Description rdf:about="">'
+        b"<pdf:CreationDate>2004-01-30T17:21:50Z</pdf:CreationDate>"
+        b"</rdf:Description></rdf:RDF>"
+    )
+
+    with pytest.raises(XmpParsingException) as info:
+        DomXmpParser().parse(packet)
+
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.INVALID_TYPE
+    assert str(info.value) == (
+        "No type defined for {http://ns.adobe.com/pdf/1.3/}CreationDate"
+    )

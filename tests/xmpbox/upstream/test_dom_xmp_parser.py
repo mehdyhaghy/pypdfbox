@@ -15,7 +15,6 @@ import pytest
 
 from pypdfbox.xmpbox import DomXmpParser, XmpParsingException
 
-
 PDFBOX_5976_PACKET = (
     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n"
     "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
@@ -27,6 +26,18 @@ PDFBOX_5976_PACKET = (
     "    <rdf:Description pdf:Producer=\"WeasyPrint 64.1\" rdf:about=\"\"/>\n"
     "</rdf:RDF>\n"
     "<?xpacket end=\"r\"?>"
+)
+
+
+PDFBOX_6106_PACKET = (
+    b"<?xpacket begin='' id='W5M0MpCehiHzreSzNTczkc9d'?>"
+    b"<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'"
+    b" xmlns:pdf='http://ns.adobe.com/pdf/1.3/'>"
+    b"<rdf:Description rdf:about=''"
+    b" pdf:CreationDate='2004-01-30T17:21:50Z'"
+    b" pdf:ModDate='2004-01-30T17:21:50Z'"
+    b" pdf:Producer='Acrobat Distiller 5.0.5 (Windows)'/>"
+    b"</rdf:RDF><?xpacket end='r'?>"
 )
 
 
@@ -77,16 +88,40 @@ def test_malformed_raises_xmp_parsing_exception() -> None:
         DomXmpParser().parse(b"<not-rdf>oops")
 
 
+def test_pdfbox6106() -> None:
+    with pytest.raises(XmpParsingException) as info:
+        DomXmpParser().parse(PDFBOX_6106_PACKET)
+
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.INVALID_TYPE
+    assert str(info.value) == (
+        "No type defined for {http://ns.adobe.com/pdf/1.3/}CreationDate"
+    )
+
+
+def test_pdfbox6106_lenient_mode_accepts_unknown_adobe_pdf_properties() -> None:
+    parser = DomXmpParser()
+    parser.set_strict_parsing(False)
+
+    xmp = parser.parse(PDFBOX_6106_PACKET)
+
+    pdf = xmp.get_adobe_pdf_schema()
+    assert pdf is not None
+    assert pdf.get_unqualified_text_property_value("Producer") == (
+        "Acrobat Distiller 5.0.5 (Windows)"
+    )
+    assert pdf.get_unqualified_text_property_value("CreationDate") == (
+        "2004-01-30T17:21:50Z"
+    )
+    assert pdf.get_unqualified_text_property_value("ModDate") == (
+        "2004-01-30T17:21:50Z"
+    )
+
+
 # --- skipped placeholders for parity with upstream test list ----------------
 
 
 @pytest.mark.skip(reason="needs PDFBOX-5835.xml fixture + PDFAIdentificationSchema typed accessors")
 def test_pdfbox5835() -> None:
-    pass
-
-
-@pytest.mark.skip(reason="needs strict-mode parser flag (deferred from cluster #1)")
-def test_pdfbox6106() -> None:
     pass
 
 
@@ -105,6 +140,8 @@ def test_layer() -> None:
     pass
 
 
-@pytest.mark.skip(reason="needs ResourceEventType / ResourceRefType (rich type system, not yet ported)")
+@pytest.mark.skip(
+    reason="needs ResourceEventType / ResourceRefType (rich type system, not yet ported)"
+)
 def test_history() -> None:
     pass
