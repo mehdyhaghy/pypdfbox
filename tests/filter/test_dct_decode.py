@@ -50,6 +50,9 @@ def test_filter_factory_resolves_dct_short_name_to_registered_filter() -> None:
     )
 
 
-def test_dct_encode_is_decode_only() -> None:
-    with pytest.raises(NotImplementedError):
+def test_dct_encode_is_decode_only_with_jpegfactory_guidance() -> None:
+    with pytest.raises(
+        NotImplementedError,
+        match="DCTFilter encoding not implemented, use the JPEGFactory methods instead",
+    ):
         DCTDecode().encode(io.BytesIO(b"raw"), io.BytesIO())

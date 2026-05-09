@@ -45,8 +45,11 @@ def test_factory_resolves_dct_filter_via_cosname() -> None:
 def test_factory_dct_decode_unchanged() -> None:
     long_filter = FilterFactory.get("DCTDecode")
     short_filter = FilterFactory.get("DCT")
-    assert isinstance(long_filter, DCTDecode)
+
+    assert type(long_filter) is DCTDecode
+    assert type(short_filter) is DCTDecode
     assert long_filter is short_filter
+    assert long_filter is not FilterFactory.get("DCTFilter")
 
 
 def test_factory_is_registered_dct_filter() -> None:
@@ -67,6 +70,9 @@ def test_dct_filter_decode_surfaces_image_parameters() -> None:
     assert result.parameters.get_int("ColorComponents") == 3
 
 
-def test_dct_filter_encode_is_decode_only() -> None:
-    with pytest.raises(NotImplementedError):
+def test_dct_filter_encode_is_decode_only_with_upstream_name() -> None:
+    with pytest.raises(
+        NotImplementedError,
+        match="DCTFilter encoding not implemented, use the JPEGFactory methods instead",
+    ):
         DCTFilter().encode(io.BytesIO(b"raw"), io.BytesIO())

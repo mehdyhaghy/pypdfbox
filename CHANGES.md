@@ -1799,3 +1799,9 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 372 — PDPageTree node-loop upstream test
 
 - `tests/pdmodel/upstream/test_pd_page_tree.py`: replaced the PDFBOX-6040 fixture skip with a synthetic parent-cycle check against `PDPageTree.get_inheritable_attribute()`, preserving the upstream loop-protection invariant.
+
+## Wave 373 — DCTFilter encode guidance and alias registry parity
+
+- `pypdfbox/filter/dct_decode.py`: `encode()` remains intentionally unsupported like upstream `DCTFilter`, but now raises the upstream-facing guidance to use `JPEGFactory` for creating DCT-encoded image streams.
+- `tests/filter/test_dct_decode.py`, `tests/filter/test_dct_filter.py`, `tests/filter/test_ccitt_fax_filter.py`: locked the unsupported DCT encode message and tightened alias registry assertions so `/DCTDecode`/`DCT` and `/CCITTFaxDecode`/`CCF` keep resolving to their canonical decode classes rather than the upstream-named alias subclasses.
+- `PROVENANCE.md`: refreshed the CCITT filter derivation note to acknowledge existing Group 4 encode support instead of the stale decode-only label.

@@ -70,7 +70,7 @@ class DCTDecode(Filter):
         parameters: COSDictionary | None = None,
     ) -> None:
         raise NotImplementedError(
-            "DCTDecode.encode is not implemented (decode-only)"
+            "DCTFilter encoding not implemented, use the JPEGFactory methods instead"
         )
 
 

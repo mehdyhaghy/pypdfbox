@@ -65,8 +65,11 @@ def test_factory_resolves_ccitt_fax_filter_via_cosname() -> None:
 def test_factory_ccitt_fax_decode_unchanged() -> None:
     long_filter = FilterFactory.get("CCITTFaxDecode")
     short_filter = FilterFactory.get("CCF")
-    assert isinstance(long_filter, CCITTFaxDecode)
+
+    assert type(long_filter) is CCITTFaxDecode
+    assert type(short_filter) is CCITTFaxDecode
     assert long_filter is short_filter
+    assert long_filter is not FilterFactory.get("CCITTFaxFilter")
 
 
 def test_factory_is_registered_ccitt_fax_filter() -> None:
