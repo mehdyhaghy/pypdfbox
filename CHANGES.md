@@ -1857,3 +1857,8 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now converts raw 8-bit `/DeviceCMYK` image XObjects to RGB through the existing color-space conversion path and applies four-component `/Decode` arrays before conversion.
 - `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1284.py`: added CMYK-to-RGB conversion, explicit `/Decode`, short-raster rejection, and malformed decode-array rejection coverage.
+
+## Wave 385 — PDImageXObject 1-bit Indexed rendering
+
+- `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py`: `to_pil_image()` now unpacks row-aligned, MSB-first 1-bit `/Indexed` image XObject samples, applies two-entry `/Decode` remapping, and expands through the existing indexed color-space path.
+- `tests/pdmodel/graphics/image/test_pd_image_x_object_wave1283.py`: added 1-bit Indexed expansion, decode inversion, and short packed-raster rejection coverage.

@@ -624,11 +624,11 @@ class PDImageXObject(PDXObject):
         before compositing into sRGB.
 
         Raw 8-bit DeviceGray, DeviceRGB, and DeviceCMYK rasters apply simple
-        component-wise ``/Decode`` arrays. Raw 8-bit Indexed rasters
-        expand through their lookup table, with ``/Decode`` remapping
-        the source sample to a palette index. More complex PDF image
-        features such as masks and non-8bpc samples remain
-        rendering-cluster work and return ``None`` here.
+        component-wise ``/Decode`` arrays. Raw 8-bit and 1-bit Indexed
+        rasters expand through their lookup table, with ``/Decode``
+        remapping the source sample to a palette index. More complex
+        PDF image features such as masks and other non-8bpc samples
+        remain rendering-cluster work and return ``None`` here.
         """
         cos = self.get_cos_object()
         if not isinstance(cos, COSStream):
@@ -647,10 +647,12 @@ class PDImageXObject(PDXObject):
                 return Image.open(io.BytesIO(src.read())).convert("RGB")
 
         bpc = self.get_bits_per_component()
-        if bpc not in (8, -1):
-            return None
         color_space = self.get_color_space()
         color_space_name = color_space.get_name() if color_space is not None else None
+        if bpc not in (8, -1) and not (
+            bpc == 1 and color_space_name == "Indexed"
+        ):
+            return None
         with self.create_input_stream() as src:
             data = src.read()
         rgb_len = width * height * 3
@@ -688,11 +690,16 @@ class PDImageXObject(PDXObject):
                 return None
             return color_space.to_rgb_image(decoded, width, height)
         if color_space_name == "Indexed" and color_space is not None:
-            if len(data) < pixel_count:
-                return None
-            decoded = _apply_decode_to_8bit_indexed_samples(
-                data[:pixel_count], pixel_count, decode
-            )
+            if bpc == 1:
+                decoded = _apply_decode_to_1bit_indexed_samples(
+                    data, width, height, decode
+                )
+            else:
+                if len(data) < pixel_count:
+                    return None
+                decoded = _apply_decode_to_8bit_indexed_samples(
+                    data[:pixel_count], pixel_count, decode
+                )
             if decoded is None:
                 return None
             return color_space.to_rgb_image(decoded, width, height)
@@ -745,6 +752,32 @@ def _apply_decode_to_8bit_indexed_samples(
     for i in range(pixel_count):
         value = dmin + (data[i] / 255.0) * (dmax - dmin)
         out[i] = int(round(_clamp(value, 0.0, 255.0)))
+    return bytes(out)
+
+
+def _apply_decode_to_1bit_indexed_samples(
+    data: bytes,
+    width: int,
+    height: int,
+    decode: Sequence[float] | None,
+) -> bytes | None:
+    row_bytes = (int(width) + 7) // 8
+    expected = row_bytes * int(height)
+    if len(data) < expected:
+        return None
+    if decode is not None and len(decode) != 2:
+        return None
+
+    dmin = decode[0] if decode is not None else 0.0
+    dmax = decode[1] if decode is not None else 1.0
+    out = bytearray(int(width) * int(height))
+    for y in range(int(height)):
+        row_offset = y * row_bytes
+        for x in range(int(width)):
+            byte = data[row_offset + (x // 8)]
+            bit = (byte >> (7 - (x % 8))) & 1
+            value = dmin + bit * (dmax - dmin)
+            out[(y * int(width)) + x] = int(round(_clamp(value, 0.0, 255.0)))
     return bytes(out)
 
 
