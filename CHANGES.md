@@ -1759,3 +1759,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 362 — PDDocumentCatalog output-intents upstream test
 
 - `tests/pdmodel/upstream/test_pd_document_catalog.py`: enabled the upstream `handleOutputIntents` placeholder with synthetic `PDOutputIntent` instances, covering catalog set/get order and COS identity without requiring an ICC profile fixture.
+
+## Wave 363 — Endstream PDFBOX-2079 upstream regression
+
+- `tests/pdfparser/upstream/test_endstream_filter_stream.py`: replaced the skipped embedded-zip fixture placeholder with a synthetic PDFBOX-2079 regression that drives `PDFParser._read_stream_body()` on a stream with missing `/Length`, asserting the lenient `readUntilEndStream` path trims the terminal CRLF and returns the payload bytes.

@@ -6,16 +6,17 @@ The upstream test has two methods. ``testEndstreamFilterStream`` walks
 five hand-built byte-sequence scenarios and is a direct translation.
 ``testPDFBox2079EmbeddedFile`` exercises the high-level ``Loader`` /
 ``PDDocument`` / embedded-file plumbing on the ``embedded_zip.pdf``
-fixture; it is skipped here because it really tests the upstream
-``readUntilEndStream`` integration rather than the filter helper, and
-the fixture isn't part of our test corpus.
+fixture upstream. We use a synthetic stream-body regression here because
+the upstream bug is the parser's ``readUntilEndStream`` fallback when
+``/Length`` is missing.
 """
 
 from __future__ import annotations
 
-import pytest
-
+from pypdfbox.cos import COSStream
+from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import EndstreamFilterStream
+from pypdfbox.pdfparser.pdf_parser import PDFParser
 
 
 def test_endstream_filter_stream():
@@ -80,12 +81,10 @@ def test_endstream_filter_stream():
     assert feos.calculate_length() == len(expected_result_5)
 
 
-# Upstream: testPDFBox2079EmbeddedFile — exercises Loader + embedded-file
-# round-trip on a PDF whose stream omits /Length. The fixture isn't in
-# our corpus and the test really covers ``readUntilEndStream`` plumbing
-# rather than EndstreamFilterStream itself.
-@pytest.mark.skip(
-    reason="High-level Loader/embedded-file integration; fixture not in pypdfbox corpus"
-)
-def test_pdfbox_2079_embedded_file():  # pragma: no cover
-    pass
+def test_pdfbox_2079_embedded_file():
+    parser = PDFParser(RandomAccessReadBuffer(b"payload\r\nendstream\n"))
+    stream = COSStream()
+
+    parser._read_stream_body(stream)  # noqa: SLF001
+
+    assert stream.get_raw_data() == b"payload"
