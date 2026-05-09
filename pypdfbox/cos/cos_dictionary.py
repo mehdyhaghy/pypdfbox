@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as _dt
 from collections.abc import ItemsView, Iterable, Iterator, KeysView, ValuesView
 from typing import Any
 
@@ -25,6 +26,28 @@ def _as_name(key: COSName | str) -> COSName:
     if isinstance(key, str):
         return COSName.get_pdf_name(key)
     raise TypeError(f"key must be COSName or str, got {type(key).__name__}")
+
+
+def _format_pdf_date(value: _dt.date | _dt.datetime | str | None) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    if isinstance(value, _dt.datetime):
+        base = value.strftime("D:%Y%m%d%H%M%S")
+        if value.tzinfo is None or value.utcoffset() is None:
+            return base
+        offset = value.utcoffset() or _dt.timedelta()
+        if offset == _dt.timedelta():
+            return base + "Z"
+        sign = "+" if offset >= _dt.timedelta() else "-"
+        offset = abs(offset)
+        total_minutes = int(offset.total_seconds() // 60)
+        hours, minutes = divmod(total_minutes, 60)
+        return f"{base}{sign}{hours:02d}'{minutes:02d}'"
+    if isinstance(value, _dt.date):
+        return value.strftime("D:%Y%m%d000000")
+    if hasattr(value, "strftime"):
+        return value.strftime("D:%Y%m%d%H%M%S")
+    raise TypeError(f"date must be date, datetime, str, or None, got {type(value).__name__}")
 
 
 class COSDictionary(COSBase):
@@ -229,6 +252,89 @@ class COSDictionary(COSBase):
 
     def setBoolean(self, key: COSName | str, value: bool) -> None:  # noqa: N802
         self.set_boolean(key, value)
+
+    def set_date(
+        self,
+        key: COSName | str,
+        value: _dt.date | _dt.datetime | str | None,
+    ) -> None:
+        self.set_string(key, _format_pdf_date(value))
+
+    def setDate(  # noqa: N802
+        self,
+        key: COSName | str,
+        value: _dt.date | _dt.datetime | str | None,
+    ) -> None:
+        self.set_date(key, value)
+
+    def set_embedded_date(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: _dt.date | _dt.datetime | str | None,
+    ) -> None:
+        self.set_embedded_string(embedded, key, _format_pdf_date(value))
+
+    def setEmbeddedDate(  # noqa: N802
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: _dt.date | _dt.datetime | str | None,
+    ) -> None:
+        self.set_embedded_date(embedded, key, value)
+
+    def set_embedded_string(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: str | bytes | None,
+    ) -> None:
+        dictionary = self.get_cos_dictionary(embedded)
+        if dictionary is None and value is not None:
+            dictionary = COSDictionary()
+            self.set_item(embedded, dictionary)
+        if dictionary is not None:
+            dictionary.set_string(key, value)
+
+    def setEmbeddedString(  # noqa: N802
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: str | bytes | None,
+    ) -> None:
+        self.set_embedded_string(embedded, key, value)
+
+    def set_embedded_int(self, embedded: COSName | str, key: COSName | str, value: int) -> None:
+        dictionary = self.get_cos_dictionary(embedded)
+        if dictionary is None:
+            dictionary = COSDictionary()
+            self.set_item(embedded, dictionary)
+        dictionary.set_int(key, value)
+
+    def setEmbeddedInt(  # noqa: N802
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: int,
+    ) -> None:
+        self.set_embedded_int(embedded, key, value)
+
+    def set_flag(self, key: COSName | str, bit_flag: int, value: bool) -> None:
+        flags = self.get_int(key, 0)
+        if value:
+            flags |= bit_flag
+        else:
+            flags &= ~bit_flag
+        self.set_int(key, flags)
+
+    def setFlag(self, key: COSName | str, bit_flag: int, value: bool) -> None:  # noqa: N802
+        self.set_flag(key, bit_flag, value)
+
+    def get_flag(self, key: COSName | str, bit_flag: int) -> bool:
+        return (self.get_int(key, 0) & bit_flag) == bit_flag
+
+    def getFlag(self, key: COSName | str, bit_flag: int) -> bool:  # noqa: N802
+        return self.get_flag(key, bit_flag)
 
     # ---------- typed convenience getters ----------
 
@@ -472,6 +578,18 @@ class COSDictionary(COSBase):
     def clearCOSArray(self, key: COSName | str) -> None:  # noqa: N802
         self.clear_cos_array(key)
 
+    def as_unmodifiable_dictionary(self) -> COSDictionary:
+        """Return a live, read-only view of this dictionary.
+
+        Mirrors PDFBox ``asUnmodifiableDictionary``: the view shares the
+        backing entries with the source dictionary, so later source mutations
+        are visible through the view, while mutating the view raises.
+        """
+        return UnmodifiableCOSDictionary(self)
+
+    def asUnmodifiableDictionary(self) -> COSDictionary:  # noqa: N802
+        return self.as_unmodifiable_dictionary()
+
     # ---------- visitor / Python protocols ----------
 
     def accept(self, visitor: ICOSVisitor) -> Any:
@@ -506,3 +624,86 @@ class COSDictionary(COSBase):
     def __repr__(self) -> str:
         body = ", ".join(f"{k!s}: {v!r}" for k, v in self._items.items())
         return f"COSDictionary({{{body}}})"
+
+
+class UnmodifiableCOSDictionary(COSDictionary):
+    """Live read-only ``COSDictionary`` view, matching PDFBox's wrapper."""
+
+    def __init__(self, source: COSDictionary) -> None:
+        super().__init__()
+        self._items = source._items
+
+    @staticmethod
+    def _raise_read_only() -> None:
+        raise TypeError("COSDictionary is unmodifiable")
+
+    def set_item(self, key: COSName | str, value: COSBase | None) -> None:
+        self._raise_read_only()
+
+    def remove_item(self, key: COSName | str) -> COSBase | None:
+        self._raise_read_only()
+
+    def clear_item(self, key: COSName | str) -> None:
+        self._raise_read_only()
+
+    def clear(self) -> None:
+        self._raise_read_only()
+
+    def add_all(self, other: COSDictionary) -> None:
+        self._raise_read_only()
+
+    def set_name(self, key: COSName | str, value: str | None) -> None:
+        self._raise_read_only()
+
+    def set_string(self, key: COSName | str, value: str | bytes | None) -> None:
+        self._raise_read_only()
+
+    def set_int(self, key: COSName | str, value: int) -> None:
+        self._raise_read_only()
+
+    def set_long(self, key: COSName | str, value: int) -> None:
+        self._raise_read_only()
+
+    def set_float(self, key: COSName | str, value: float) -> None:
+        self._raise_read_only()
+
+    def set_boolean(self, key: COSName | str, value: bool) -> None:
+        self._raise_read_only()
+
+    def set_date(
+        self,
+        key: COSName | str,
+        value: _dt.date | _dt.datetime | str | None,
+    ) -> None:
+        self._raise_read_only()
+
+    def set_embedded_date(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: _dt.date | _dt.datetime | str | None,
+    ) -> None:
+        self._raise_read_only()
+
+    def set_embedded_string(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        value: str | bytes | None,
+    ) -> None:
+        self._raise_read_only()
+
+    def set_embedded_int(self, embedded: COSName | str, key: COSName | str, value: int) -> None:
+        self._raise_read_only()
+
+    def set_flag(self, key: COSName | str, bit_flag: int, value: bool) -> None:
+        self._raise_read_only()
+
+    def set_needs_to_be_updated(self, value: bool) -> None:
+        self._raise_read_only()
+
+    def __setitem__(self, key: COSName | str, value: COSBase) -> None:
+        self._raise_read_only()
+
+    def __delitem__(self, key: COSName | str) -> None:
+        self._raise_read_only()

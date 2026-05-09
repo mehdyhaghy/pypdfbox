@@ -1677,3 +1677,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/filter/ascii85_decode.py`: ASCII85 encode and decode operations now flush output streams after writing.
 - `pypdfbox/pdmodel/pd_document_information.py`: document information snapshots now include name-backed string values such as `/Trapped /True`.
 - `pypdfbox/pdmodel/graphics/state/pd_soft_mask.py`: soft-mask groups now use XObject dispatch for well-formed form XObjects, preserving transparency groups and resource caches.
+
+## Wave 344 — unmodifiable COS dictionaries
+
+- `pypdfbox/cos/cos_dictionary.py`: `as_unmodifiable_dictionary()` / `asUnmodifiableDictionary()` now return a live read-only view matching PDFBox's `UnmodifiableCOSDictionary`; mutating the view raises `TypeError`. COS dictionaries also gained the upstream-shaped `setDate`, embedded string/date/int helpers, and flag accessors needed by the upstream parity test.
