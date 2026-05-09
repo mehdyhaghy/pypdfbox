@@ -1698,3 +1698,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 348 — COSString writer upstream tests
 
 - `tests/cos/upstream/test_cos_string.py`: the upstream writePDF, unicode, and accept placeholders now execute against `COSWriter.write_string()` / visitor dispatch, covering literal escaping, forced hex output, and UTF-16BE Unicode round-trip.
+
+## Wave 349 — COSFloat writePDF upstream test
+
+- `tests/cos/upstream/test_cos_float.py`: the upstream `testWritePDF` placeholder now exercises `COSFloat.write_pdf()` for parsed literal forms, removing another stale writer-related skip.

@@ -4,13 +4,12 @@ Ported from Apache PDFBox 3.0:
 
 Upstream extends TestCOSNumber/TestCOSBase. The looped pseudorandom
 ``BaseTester`` machinery is collapsed to a single deterministic loop here.
-``testAccept`` and ``testWritePDF`` upstream rely on COSWriter which
-pypdfbox doesn't ship yet (pdfwriter cluster); they're replaced with a
-recording-visitor dispatch check.
+``testAccept`` is translated to a recording-visitor dispatch check.
 """
 
 from __future__ import annotations
 
+import io
 import math
 import struct
 
@@ -95,9 +94,11 @@ def test_accept() -> None:
     assert len(visitor.calls) == 5
 
 
-@pytest.mark.skip(reason="writePDF requires pdfwriter / COSWriter (not yet ported)")
 def test_write_pdf() -> None:
-    pass
+    for literal in ("1.23", "-4.5", "0.000001", "2.500"):
+        out = io.BytesIO()
+        COSFloat(literal).write_pdf(out)
+        assert out.getvalue() == literal.encode("iso-8859-1")
 
 
 def test_double_negative() -> None:
