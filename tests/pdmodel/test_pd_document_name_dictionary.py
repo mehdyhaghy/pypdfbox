@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
@@ -56,6 +58,18 @@ def test_dict_init_with_existing_names_reuses_it() -> None:
     assert nd.get_cos_object() is existing
 
 
+def test_dict_init_with_explicit_names_takes_precedence_over_catalog() -> None:
+    cat = _FakeCatalog()
+    catalog_names = COSDictionary()
+    explicit_names = COSDictionary()
+    cat.get_cos_object().set_item(_NAMES, catalog_names)
+
+    nd = PDDocumentNameDictionary(catalog=cat, names=explicit_names)
+
+    assert nd.get_cos_object() is explicit_names
+    assert cat.get_cos_object().get_dictionary_object(_NAMES) is catalog_names
+
+
 def test_upstream_camelcase_aliases_round_trip() -> None:
     cat = _FakeCatalog()
     nd = PDDocumentNameDictionary(catalog=cat)
@@ -82,6 +96,36 @@ def test_upstream_camelcase_aliases_round_trip() -> None:
     assert nd.getJavaScript().get_cos_object() is javascript.get_cos_object()  # type: ignore[union-attr]
     nd.setJavascript(None)
     assert nd.getJavaScript() is None
+
+
+@pytest.mark.parametrize(
+    ("key", "getter_name"),
+    [
+        (PDDocumentNameDictionary.KEY_DESTS, "get_dests"),
+        (PDDocumentNameDictionary.KEY_AP, "get_ap"),
+        (PDDocumentNameDictionary.KEY_EMBEDDED_FILES, "get_embedded_files"),
+        (PDDocumentNameDictionary.KEY_JAVA_SCRIPT, "get_javascript"),
+        (PDDocumentNameDictionary.KEY_PAGES, "get_pages"),
+        (PDDocumentNameDictionary.KEY_TEMPLATES, "get_templates"),
+        (PDDocumentNameDictionary.KEY_IDS, "get_ids"),
+        (PDDocumentNameDictionary.KEY_URLS, "get_urls"),
+        (
+            PDDocumentNameDictionary.KEY_ALTERNATE_PRESENTATIONS,
+            "get_alternate_presentations",
+        ),
+        (PDDocumentNameDictionary.KEY_RENDITIONS, "get_renditions"),
+    ],
+)
+def test_name_dictionary_getters_ignore_malformed_non_dictionary_entries(
+    key: COSName,
+    getter_name: str,
+) -> None:
+    nd = PDDocumentNameDictionary()
+    nd.get_cos_object().set_item(key, COSName.get_pdf_name("NotADictionary"))
+
+    getter = getattr(nd, getter_name)
+
+    assert getter() is None
 
 
 def test_set_and_get_embedded_files_round_trip() -> None:

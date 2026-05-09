@@ -1715,3 +1715,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 ## Wave 352 — PDDocumentNameDictionary legacy Dests parity
 
 - `pypdfbox/pdmodel/pd_document_name_dictionary.py`: legacy catalog-level `/Dests` fallback now returns `PDDestinationNameTreeNode`, matching upstream `PDDocumentNameDictionary.getDests()`. The raw `/AP` helper docstring now identifies that surface as pypdfbox spec-expanded convenience rather than a PDFBox method.
+
+## Wave 353 — PDDocumentNameDictionary malformed-entry guards
+
+- `tests/pdmodel/test_pd_document_name_dictionary.py`: added parity guards for the explicit `(catalog, names)` constructor path and for malformed non-dictionary entries across every document-level `/Names` category getter.
