@@ -26,11 +26,10 @@ Notes on flag round-out:
   pypdfbox's stripper already raises rather than aborting silently, so
   the equivalent is just retrying with a narrower ``-startPage``/``-endPage``
   window.
-
-Embedded-PDF extraction (the ``/Names → /EmbeddedFiles`` walk in
-upstream's ``call``) is not implemented; pypdfbox does not yet expose a
-``PDDocumentNameDictionary`` facade rich enough to enumerate embedded
-files.
+* Embedded PDF extraction mirrors upstream's one-level
+  ``/Names → /EmbeddedFiles`` walk. Only the default ``/EF /F`` embedded
+  file is considered, and only when its subtype is exactly
+  ``application/pdf``.
 
 Exit codes follow upstream:
   0  success
@@ -237,6 +236,52 @@ def extract_text(
     output.write(stripper.get_text(document))
 
 
+def extract_embedded_pdfs(
+    document: PDDocument,
+    output: IO[str],
+    *,
+    sort: bool = False,
+    rotation_magic: bool = False,
+    ignore_beads: bool = False,
+) -> None:
+    """Extract top-level embedded PDFs after the main document.
+
+    Mirrors upstream ``ExtractText``: walk catalog ``/Names /EmbeddedFiles``,
+    use each file specification's default ``getEmbeddedFile()`` stream,
+    require an exact ``application/pdf`` subtype match, and extract every
+    page from the embedded document. This is intentionally one-level only;
+    embedded PDFs inside embedded PDFs are not recursively traversed.
+    """
+    catalog = document.get_document_catalog()
+    names = catalog.get_names()
+    if names is None:
+        return
+    embedded_files = names.get_embedded_files()
+    if embedded_files is None:
+        return
+    entries = embedded_files.get_names()
+    if not entries:
+        return
+
+    for file_spec in entries.values():
+        embedded = file_spec.get_embedded_file()
+        if embedded is None or embedded.get_subtype() != "application/pdf":
+            continue
+        sub_doc = PDDocument.load(embedded.to_byte_array())
+        try:
+            extract_text(
+                sub_doc,
+                output,
+                start_page=1,
+                end_page=sys.maxsize,
+                sort=sort,
+                rotation_magic=rotation_magic,
+                ignore_beads=ignore_beads,
+            )
+        finally:
+            sub_doc.close()
+
+
 def _extract_text_rotation_magic(
     document: PDDocument, output: IO[str], *, first: int, last: int, sort: bool,
     ignore_beads: bool = False,
@@ -341,6 +386,13 @@ def run(args: argparse.Namespace) -> int:
                     rotation_magic=args.rotation_magic,
                     ignore_beads=args.ignore_beads,
                 )
+                extract_embedded_pdfs(
+                    doc,
+                    buf,
+                    sort=args.sort,
+                    rotation_magic=args.rotation_magic,
+                    ignore_beads=args.ignore_beads,
+                )
                 wrapped = _wrap_html(buf.getvalue()) if html else _wrap_md(buf.getvalue())
                 output.write(wrapped)
             else:
@@ -351,6 +403,13 @@ def run(args: argparse.Namespace) -> int:
                     output,
                     start_page=args.start_page,
                     end_page=args.end_page,
+                    sort=args.sort,
+                    rotation_magic=args.rotation_magic,
+                    ignore_beads=args.ignore_beads,
+                )
+                extract_embedded_pdfs(
+                    doc,
+                    output,
                     sort=args.sort,
                     rotation_magic=args.rotation_magic,
                     ignore_beads=args.ignore_beads,
