@@ -5,29 +5,69 @@ Upstream baseline: PDFBox 3.0.
 
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSBoolean, COSName
+from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
+from pypdfbox.pdmodel.pd_page_label_range import PDPageLabelRange
+from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
 
 
-# ``retrievePageLabels`` and ``retrievePageLabelsOnMalformedPdf`` — need
-# the upstream test_pagelabels.pdf / badpagelabels.pdf fixtures. PDPageLabels
-# itself shipped in pdmodel cluster #2; same label generator is exercised
-# synthetically in ``tests/pdmodel/test_pd_page_labels.py``.
-@pytest.mark.skip(
-    reason="needs test_pagelabels.pdf fixture; covered by test_pd_page_labels.py"
-)
-def test_retrieve_page_labels() -> None:  # pragma: no cover
-    pass
+def test_retrieve_page_labels() -> None:
+    with PDDocument() as doc:
+        for _ in range(12):
+            doc.add_page(PDPage())
+        labels = PDPageLabels(doc)
+        labels.set_label_range(0, style=PDPageLabels.STYLE_DECIMAL, prefix="A")
+        labels.set_label_range(3, style=PDPageLabels.STYLE_ROMAN_LOWER)
+        labels.set_label_range(
+            10,
+            style=PDPageLabels.STYLE_ROMAN_UPPER,
+            prefix="Appendix ",
+        )
+        doc.get_document_catalog().set_page_labels(labels)
+
+        fetched = doc.get_document_catalog().get_page_labels()
+        assert fetched is not None
+        assert fetched.get_labels_by_page_indices() == [
+            "A1",
+            "A2",
+            "A3",
+            "i",
+            "ii",
+            "iii",
+            "iv",
+            "v",
+            "vi",
+            "vii",
+            "Appendix I",
+            "Appendix II",
+        ]
 
 
-@pytest.mark.skip(
-    reason="needs badpagelabels.pdf fixture; tolerant traversal covered synthetically"
-)
-def test_retrieve_page_labels_on_malformed_pdf() -> None:  # pragma: no cover
-    pass
+def test_retrieve_page_labels_on_malformed_pdf() -> None:
+    with PDDocument() as doc:
+        for _ in range(4):
+            doc.add_page(PDPage())
+        nums = COSArray()
+        nums.add(COSName.get_pdf_name("NotAnInt"))
+        nums.add(COSDictionary())
+        nums.add(COSInteger.get(-1))
+        nums.add(COSDictionary())
+        nums.add(COSInteger.get(1))
+        nums.add(COSName.get_pdf_name("NotARange"))
+        nums.add(COSInteger.get(2))
+        valid = COSDictionary()
+        valid.set_name(COSName.get_pdf_name("S"), PDPageLabelRange.STYLE_ROMAN_LOWER)
+        nums.add(valid)
+        tree = COSDictionary()
+        tree.set_item(COSName.get_pdf_name("Nums"), nums)
+        doc.get_document_catalog().get_cos_object().set_item(
+            COSName.get_pdf_name("PageLabels"), tree
+        )
+
+        fetched = doc.get_document_catalog().get_page_labels()
+        assert fetched is not None
+        assert fetched.get_labels_by_page_indices() == ["1", "2", "i", "ii"]
 
 
 def test_retrieve_number_of_pages() -> None:
