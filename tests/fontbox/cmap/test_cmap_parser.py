@@ -58,7 +58,11 @@ def test_parser_ignores_comments_inside_mapping_blocks() -> None:
     assert cmap.to_unicode_bytes(b"C") == "C"
 
 
-def test_parser_requires_full_bfrange_array() -> None:
+def test_parser_array_bfrange_tolerates_off_by_one() -> None:
+    # Upstream guard is `array.size() >= end - start` (not +1) — see
+    # CMapParser.java parseBeginbfrange. A 2-entry array against a 3-code
+    # range therefore maps the first two codes and silently leaves the
+    # last unmapped, rather than dropping the whole range.
     cmap = CMapParser().parse(
         b"""
         1 begincodespacerange
@@ -71,8 +75,8 @@ def test_parser_requires_full_bfrange_array() -> None:
         """
     )
 
-    assert cmap.to_unicode_bytes(b"\x01") is None
-    assert cmap.to_unicode_bytes(b"\x02") is None
+    assert cmap.to_unicode_bytes(b"\x01") == "A"
+    assert cmap.to_unicode_bytes(b"\x02") == "B"
     assert cmap.to_unicode_bytes(b"\x03") is None
 
 

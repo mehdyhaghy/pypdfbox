@@ -95,6 +95,9 @@ class Type2CharString:
         self._t2: Any = None
         self._cached_path: list[tuple[Any, ...]] | None = None
         self._cached_width: float | None = None
+        # Mirrors upstream ``Type2CharString.pathCount`` — tracked by
+        # ``markPath`` / ``closeCharString2Path`` during conversion.
+        self._path_count: int = 0
         # Mirror upstream's ``type1Sequence`` (inherited from
         # ``Type1CharString`` in Java). Upstream's
         # ``convertType1ToType2`` populates this buffer via
@@ -261,6 +264,280 @@ class Type2CharString:
             return None
         return self._type1_sequence[-1]
 
+    # ---------- Type 2 → Type 1 conversion (parity with upstream private API)
+
+    def convert_type1_to_type2(self, sequence: list[Any]) -> None:
+        """Convert a Type 2 char-string sequence into a Type 1 command
+        sequence appended to the internal buffer.
+
+        Mirrors upstream private ``Type2CharString.convertType1ToType2``
+        (Type2CharString.java:75). Operands are numbers; operators are
+        string mnemonics (matching ``fontTools.misc.psCharStrings``
+        conventions) or ``CharStringCommand``-shaped tokens exposing a
+        ``.name``. The actual outline interpretation is delegated to
+        fontTools — this method is provided for upstream-shape parity
+        callers and tests that want the Type 1 sequence buffer
+        populated explicitly.
+
+        PDFBOX-5987: collapse ``num denom DIV`` triplets into their
+        evaluated quotient before the conversion walk. See
+        Type2CharString.java:79–110.
+        """
+        self._path_count = 0
+        # PDFBOX-5987: replace "num denom DIV" with the quotient.
+        new_sequence: list[Any] = []
+        for i, tok in enumerate(sequence):
+            if (
+                _token_name(tok) == "div"
+                and i >= 2
+                and isinstance(sequence[i - 2], (int, float))
+                and isinstance(sequence[i - 1], (int, float))
+                and len(new_sequence) >= 2
+            ):
+                num = float(sequence[i - 2])
+                den = float(sequence[i - 1])
+                if den != 0.0:
+                    new_sequence.pop()
+                    new_sequence.pop()
+                    new_sequence.append(num / den)
+                else:
+                    new_sequence.append(tok)  # GIGO
+            else:
+                new_sequence.append(tok)
+
+        numbers: list[Any] = []
+        for obj in new_sequence:
+            if _is_command_token(obj):
+                results = self._convert_type2_command(numbers, obj)
+                numbers = list(results)
+            else:
+                numbers.append(obj)
+
+    def _convert_type2_command(
+        self, numbers: list[Any], command: Any
+    ) -> list[Any]:
+        """Dispatch a single Type 2 operator. Mirrors upstream
+        ``convertType2Command`` (Type2CharString.java:127)."""
+        kw = _token_name(command)
+        if kw in ("hstem", "hstemhm", "vstem", "vstemhm", "hintmask", "cntrmask"):
+            numbers = self._clear_stack(numbers, len(numbers) % 2 != 0)
+            self._expand_stem_hints(numbers, kw in ("hstem", "hstemhm"))
+        elif kw in ("hmoveto", "vmoveto"):
+            numbers = self._clear_stack(numbers, len(numbers) > 1)
+            self._mark_path()
+            self.add_command(numbers, command)
+        elif kw == "rlineto":
+            self._add_command_list(_split(numbers, 2), command)
+        elif kw in ("hlineto", "vlineto"):
+            self._add_alternating_line(list(numbers), kw == "hlineto")
+        elif kw == "rrcurveto":
+            self._add_command_list(_split(numbers, 6), command)
+        elif kw == "endchar":
+            numbers = self._clear_stack(
+                numbers, len(numbers) == 5 or len(numbers) == 1
+            )
+            self._close_char_string2_path()
+            if len(numbers) == 4:
+                # Deprecated "seac" operator (CharStringCommand 12 6).
+                seac_args = [0, *numbers]
+                self.add_command(seac_args, "seac")
+            else:
+                self.add_command(numbers, command)
+        elif kw == "rmoveto":
+            numbers = self._clear_stack(numbers, len(numbers) > 2)
+            self._mark_path()
+            self.add_command(numbers, command)
+        elif kw in ("hvcurveto", "vhcurveto"):
+            self._add_alternating_curve(list(numbers), kw == "hvcurveto")
+        elif kw == "hflex":
+            if len(numbers) >= 7:
+                first = [numbers[0], 0, numbers[1], numbers[2], numbers[3], 0]
+                second = [
+                    numbers[4],
+                    0,
+                    numbers[5],
+                    -float(numbers[2]),
+                    numbers[6],
+                    0,
+                ]
+                self._add_command_list([first, second], "rrcurveto")
+        elif kw == "flex":
+            if len(numbers) >= 12:
+                first = list(numbers[0:6])
+                second = list(numbers[6:12])
+                self._add_command_list([first, second], "rrcurveto")
+        elif kw == "hflex1":
+            if len(numbers) >= 9:
+                first = [
+                    numbers[0],
+                    numbers[1],
+                    numbers[2],
+                    numbers[3],
+                    numbers[4],
+                    0,
+                ]
+                second = [
+                    numbers[5],
+                    0,
+                    numbers[6],
+                    numbers[7],
+                    numbers[8],
+                    0,
+                ]
+                self._add_command_list([first, second], "rrcurveto")
+        elif kw == "flex1":
+            if len(numbers) >= 11:
+                dx = 0
+                dy = 0
+                for i in range(5):
+                    dx += int(numbers[i * 2])
+                    dy += int(numbers[i * 2 + 1])
+                first = list(numbers[0:6])
+                dx_is_bigger = abs(dx) > abs(dy)
+                second = [
+                    numbers[6],
+                    numbers[7],
+                    numbers[8],
+                    numbers[9],
+                    numbers[10] if dx_is_bigger else -dx,
+                    -dy if dx_is_bigger else numbers[10],
+                ]
+                self._add_command_list([first, second], "rrcurveto")
+        elif kw == "rcurveline":
+            if len(numbers) >= 2:
+                self._add_command_list(_split(numbers[:-2], 6), "rrcurveto")
+                self.add_command(list(numbers[-2:]), "rlineto")
+        elif kw == "rlinecurve":
+            if len(numbers) >= 6:
+                self._add_command_list(_split(numbers[:-6], 2), "rlineto")
+                self.add_command(list(numbers[-6:]), "rrcurveto")
+        elif kw in ("hhcurveto", "vvcurveto"):
+            self._add_curve(list(numbers), kw == "hhcurveto")
+        else:
+            self.add_command(numbers, command)
+        return []
+
+    def _clear_stack(self, numbers: list[Any], flag: bool) -> list[Any]:
+        """Mirrors upstream ``clearStack`` (Type2CharString.java:264).
+
+        On the *first* operator, drain any leading width operand into a
+        synthetic ``hsbw`` command; otherwise pass the stack through.
+        """
+        if self.is_sequence_empty():
+            if flag and numbers:
+                self.add_command(
+                    [0, float(numbers[0]) + self._nominal_width_x], "hsbw"
+                )
+                return list(numbers[1:])
+            self.add_command([0, self._default_width_x], "hsbw")
+        return list(numbers)
+
+    def _expand_stem_hints(self, numbers: list[Any], horizontal: bool) -> None:
+        """Mirrors upstream ``expandStemHints`` (Type2CharString.java:286).
+
+        Upstream ships this as a ``// TODO`` no-op — we match that
+        behaviour exactly. The unused parameters carry parity intent.
+        """
+        del numbers, horizontal
+
+    def _mark_path(self) -> None:
+        """Mirrors upstream ``markPath`` (Type2CharString.java:291)."""
+        if self._path_count > 0:
+            self._close_char_string2_path()
+        self._path_count += 1
+
+    def _close_char_string2_path(self) -> None:
+        """Mirrors upstream ``closeCharString2Path``
+        (Type2CharString.java:300). Emits a ``closepath`` only when the
+        last command is not already a ``closepath``."""
+        last = self.get_last_sequence_entry() if self._path_count > 0 else None
+        if last is not None and _token_name(last) != "closepath":
+            self.add_command([], "closepath")
+
+    def _add_alternating_line(
+        self, numbers: list[Any], horizontal: bool
+    ) -> None:
+        """Mirrors upstream ``addAlternatingLine``
+        (Type2CharString.java:310)."""
+        while numbers:
+            self.add_command(
+                [numbers[0]], "hlineto" if horizontal else "vlineto"
+            )
+            numbers = numbers[1:]
+            horizontal = not horizontal
+
+    def _add_alternating_curve(
+        self, numbers: list[Any], horizontal: bool
+    ) -> None:
+        """Mirrors upstream ``addAlternatingCurve``
+        (Type2CharString.java:321)."""
+        while len(numbers) >= 4:
+            last = len(numbers) == 5
+            if horizontal:
+                self.add_command(
+                    [
+                        numbers[0],
+                        0,
+                        numbers[1],
+                        numbers[2],
+                        numbers[4] if last else 0,
+                        numbers[3],
+                    ],
+                    "rrcurveto",
+                )
+            else:
+                self.add_command(
+                    [
+                        0,
+                        numbers[0],
+                        numbers[1],
+                        numbers[2],
+                        numbers[3],
+                        numbers[4] if last else 0,
+                    ],
+                    "rrcurveto",
+                )
+            numbers = numbers[5 if last else 4 :]
+            horizontal = not horizontal
+
+    def _add_curve(self, numbers: list[Any], horizontal: bool) -> None:
+        """Mirrors upstream ``addCurve`` (Type2CharString.java:345)."""
+        while len(numbers) >= 4:
+            first = len(numbers) % 4 == 1
+            if horizontal:
+                self.add_command(
+                    [
+                        numbers[1 if first else 0],
+                        numbers[0] if first else 0,
+                        numbers[2 if first else 1],
+                        numbers[3 if first else 2],
+                        numbers[4 if first else 3],
+                        0,
+                    ],
+                    "rrcurveto",
+                )
+            else:
+                self.add_command(
+                    [
+                        numbers[0] if first else 0,
+                        numbers[1 if first else 0],
+                        numbers[2 if first else 1],
+                        numbers[3 if first else 2],
+                        0,
+                        numbers[4 if first else 3],
+                    ],
+                    "rrcurveto",
+                )
+            numbers = numbers[5 if first else 4 :]
+
+    def _add_command_list(
+        self, numbers: list[list[Any]], command: Any
+    ) -> None:
+        """Mirrors upstream ``addCommandList``
+        (Type2CharString.java:370)."""
+        for ns in numbers:
+            self.add_command(list(ns), command)
+
     # ---------- low-level access -------------------------------------------
 
     @property
@@ -308,6 +585,39 @@ def _stringify_token(tok: Any) -> str:
     if isinstance(name, str):
         return name
     return str(tok)
+
+
+def _token_name(tok: Any) -> str | None:
+    """Return the operator mnemonic for a token, or ``None`` if it is a
+    plain operand. Strings pass through unchanged; objects exposing a
+    ``.name`` attribute (CharStringCommand-shaped) yield that name;
+    numbers and unknown shapes return ``None``."""
+    if isinstance(tok, str):
+        return tok
+    if isinstance(tok, (int, float)):
+        return None
+    name = getattr(tok, "name", None)
+    if isinstance(name, str):
+        return name
+    return None
+
+
+def _is_command_token(tok: Any) -> bool:
+    """``True`` when ``tok`` represents a charstring operator rather
+    than an operand. Mirrors the ``obj instanceof CharStringCommand``
+    guard upstream uses inside ``convertType1ToType2``."""
+    return _token_name(tok) is not None
+
+
+def _split(items: list[Any], size: int) -> list[list[Any]]:
+    """Mirrors upstream static ``split(List<E> list, int size)``
+    (Type2CharString.java:375). Slices ``items`` into consecutive
+    chunks of ``size``; trailing partial chunks are dropped (matches
+    upstream which iterates ``list.size() / size`` whole chunks)."""
+    if size <= 0:
+        return []
+    n = len(items) // size
+    return [list(items[i * size : (i + 1) * size]) for i in range(n)]
 
 
 def _coerce_program_token(tok: Any) -> Any:

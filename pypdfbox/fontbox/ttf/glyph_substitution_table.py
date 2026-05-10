@@ -46,6 +46,19 @@ class GlyphSubstitutionTable(TTFTable):
 
     TAG: str = "GSUB"
 
+    # OpenType GSUB lookup-type constants (mirrors the OT spec § GSUB Header).
+    # Surface them so callers walking :meth:`get_lookup_types` /
+    # :meth:`get_lookup` don't have to hard-code magic integers; matches the
+    # ``LOOKUP_TYPE_*`` constant style of :class:`GlyphPositioningTable`.
+    LOOKUP_TYPE_SINGLE: int = 1
+    LOOKUP_TYPE_MULTIPLE: int = 2
+    LOOKUP_TYPE_ALTERNATE: int = 3
+    LOOKUP_TYPE_LIGATURE: int = 4
+    LOOKUP_TYPE_CONTEXT: int = 5
+    LOOKUP_TYPE_CHAINING_CONTEXT: int = 6
+    LOOKUP_TYPE_EXTENSION_SUBSTITUTION: int = 7
+    LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE: int = 8
+
     def __init__(self) -> None:
         super().__init__()
         self._tag = self.TAG
@@ -203,6 +216,272 @@ class GlyphSubstitutionTable(TTFTable):
                 seen.add(lookup_index_i)
                 out.append(lookup_index_i)
         return out
+
+    def get_lookup_count(self) -> int:
+        """Number of lookups in this GSUB's LookupList (0 if absent).
+
+        Mirrors the count upstream stores on
+        ``LookupListTable.getLookupCount()`` — pypdfbox-only convenience
+        accessor over the fontTools ``LookupList``.
+        """
+        if self._gsub_table is None:
+            return 0
+        ll = getattr(self._gsub_table, "LookupList", None)
+        if ll is None:
+            return 0
+        return len(getattr(ll, "Lookup", None) or [])
+
+    def get_lookup_types(self) -> list[int]:
+        """Per-lookup ``LookupType`` integer in directory order.
+
+        Useful for callers that want to know what substitution behaviour
+        the font advertises (single / multiple / alternate / ligature /
+        chaining / extension). Not present on upstream — mirrors the same
+        introspection helper exposed by :class:`GlyphPositioningTable`.
+        """
+        if self._gsub_table is None:
+            return []
+        ll = getattr(self._gsub_table, "LookupList", None)
+        if ll is None:
+            return []
+        return [int(lk.LookupType) for lk in (getattr(ll, "Lookup", None) or [])]
+
+    # ------------------------------------------------------------------
+    # OT-aliased structural accessors
+    # ------------------------------------------------------------------
+    #
+    # Upstream PDFBox's ``GlyphSubstitutionTable`` keeps the on-disk
+    # OpenType structures (``scriptList``, ``featureListTable``,
+    # ``lookupListTable``) as private fields without exposing them —
+    # callers only get the derived tag/inventory views and the projected
+    # ``GsubData``. We surface the underlying fontTools structures so
+    # consumers that need full access (substitution engine ports,
+    # OpenType introspection tools) don't have to reach through
+    # :meth:`get_raw_table`.
+
+    def get_script_list(self) -> Any | None:
+        """Underlying ``otTables.ScriptList`` (or ``None`` when absent).
+
+        Each ``ScriptRecord`` carries a ``ScriptTag`` plus a ``Script``
+        with a ``DefaultLangSys`` and a ``LangSysRecord`` list. Walk this
+        when per-language feature selection matters.
+
+        Not present on upstream; pypdfbox-only structural accessor that
+        mirrors the GPOS-side accessor of the same name.
+        """
+        if self._gsub_table is None:
+            return None
+        return getattr(self._gsub_table, "ScriptList", None)
+
+    def get_feature_list(self) -> Any | None:
+        """Underlying ``otTables.FeatureList`` (or ``None`` when absent).
+
+        Carries an indexed ``FeatureRecord`` list — each record's
+        ``FeatureTag`` is the four-byte feature identifier (``liga``,
+        ``dlig``, ``sups``, ...) and ``Feature.LookupListIndex`` is the
+        list of lookup indices that implement that feature.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        if self._gsub_table is None:
+            return None
+        return getattr(self._gsub_table, "FeatureList", None)
+
+    def get_lookup_list(self) -> Any | None:
+        """Underlying ``otTables.LookupList`` (or ``None`` when absent).
+
+        Carries an indexed ``Lookup`` list — each entry has a
+        ``LookupType`` (1..8 per OT § GSUB Header — see
+        ``LOOKUP_TYPE_*`` constants on this class), a ``LookupFlag``
+        bitfield, and an ordered ``SubTable`` list whose entries carry
+        the actual substitution records.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        if self._gsub_table is None:
+            return None
+        return getattr(self._gsub_table, "LookupList", None)
+
+    def get_lookup(self, lookup_index: int) -> Any | None:
+        """Return the ``otTables.Lookup`` at ``lookup_index`` (or
+        ``None`` for out-of-range / missing-table queries).
+
+        Index space matches ``FeatureRecord.Feature.LookupListIndex`` —
+        feed those values straight in.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        ll = self.get_lookup_list()
+        if ll is None:
+            return None
+        lookups = getattr(ll, "Lookup", None) or []
+        if lookup_index < 0 or lookup_index >= len(lookups):
+            return None
+        return lookups[lookup_index]
+
+    def get_lookup_subtables(self, lookup_index: int) -> list[Any]:
+        """Return the ordered ``SubTable`` list for the lookup at
+        ``lookup_index``, or an empty list when out of range / absent.
+
+        Subtable shape varies with ``LookupType``:
+
+        * Type 1 — ``SingleSubst`` (Format 1 ``DeltaGlyphID``,
+          Format 2 explicit substitute-glyph array)
+        * Type 2 — ``MultipleSubst`` (one-to-many sequence)
+        * Type 3 — ``AlternateSubst`` (alternate glyph set)
+        * Type 4 — ``LigatureSubst`` (many-to-one ligature)
+        * Type 5 — ``ContextSubst`` (rule-based, three sub-formats)
+        * Type 6 — ``ChainContextSubst`` (chained, three sub-formats)
+        * Type 7 — ``ExtensionSubst`` (transparently inlined by
+          fontTools — surfaces as the wrapped type at this layer)
+        * Type 8 — ``ReverseChainSingleSubst`` (right-to-left)
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        lookup = self.get_lookup(lookup_index)
+        if lookup is None:
+            return []
+        return list(getattr(lookup, "SubTable", None) or [])
+
+    def get_feature_record(self, feature_index: int) -> Any | None:
+        """Return the ``otTables.FeatureRecord`` at ``feature_index``,
+        or ``None`` for out-of-range / missing-table queries.
+
+        Index space matches ``LangSys.FeatureIndex`` and
+        ``LangSys.ReqFeatureIndex`` — feed those values straight in.
+
+        Not present on upstream; pypdfbox-only structural accessor.
+        """
+        fl = self.get_feature_list()
+        if fl is None:
+            return None
+        records = getattr(fl, "FeatureRecord", None) or []
+        if feature_index < 0 or feature_index >= len(records):
+            return None
+        return records[feature_index]
+
+    def get_lang_sys_tables(self, script_tag: str) -> list[Any]:
+        """Return every ``LangSys`` table for ``script_tag`` — both the
+        ``DefaultLangSys`` (when present) and the per-language entries.
+
+        Mirrors upstream's private ``getLangSysTables(String)``; surfaced
+        here as a public snake_case helper so callers can enumerate the
+        language systems available for a given script without reaching
+        through :meth:`get_script_list`. Returns ``[]`` when the script
+        tag isn't supported by this font.
+        """
+        if self._gsub_table is None:
+            return []
+        sl = getattr(self._gsub_table, "ScriptList", None)
+        if sl is None:
+            return []
+        for sr in getattr(sl, "ScriptRecord", None) or []:
+            if str(sr.ScriptTag) != script_tag:
+                continue
+            script = getattr(sr, "Script", None)
+            if script is None:
+                return []
+            result: list[Any] = []
+            # Upstream always lists per-language entries first when no
+            # default is present; when a default exists it appends the
+            # default after the per-language list. Match that ordering
+            # (see ``getLangSysTables`` in GlyphSubstitutionTable.java).
+            for lsr in getattr(script, "LangSysRecord", None) or []:
+                ls = getattr(lsr, "LangSys", None)
+                if ls is not None:
+                    result.append(ls)
+            default_ls = getattr(script, "DefaultLangSys", None)
+            if default_ls is not None:
+                result.append(default_ls)
+            return result
+        return []
+
+    def get_feature_records(
+        self,
+        lang_sys_tables: list[Any] | tuple[Any, ...],
+        enabled_features: list[str] | None = None,
+    ) -> list[Any]:
+        """Return ``FeatureRecord`` entries reachable from the supplied
+        ``lang_sys_tables``, optionally filtered by ``enabled_features``.
+
+        Mirrors upstream's private ``getFeatureRecords(Collection,
+        List<String>)`` — surfaced as a public snake_case helper for
+        callers that want the same selection without reimplementing the
+        traversal. Behaviour:
+
+        * Required features (``ReqFeatureIndex != 0xFFFF``) are always
+          included — even when not in ``enabled_features``.
+        * When ``enabled_features`` is ``None`` every reachable feature
+          is returned.
+        * ``vrt2`` supersedes ``vert`` — when both are present ``vert``
+          is dropped (matches the OT spec note upstream encodes via
+          ``containsFeature``/``removeFeature``).
+        * Result ordering follows ``enabled_features`` index order when
+          a filter list is supplied (matches upstream's
+          ``Comparator.comparing(...indexOf)``).
+        """
+        if self._gsub_table is None or not lang_sys_tables:
+            return []
+        fl = getattr(self._gsub_table, "FeatureList", None)
+        if fl is None:
+            return []
+        feature_records = getattr(fl, "FeatureRecord", None) or []
+        if not feature_records:
+            return []
+
+        result: list[Any] = []
+        for ls in lang_sys_tables:
+            if ls is None:
+                continue
+            required = int(getattr(ls, "ReqFeatureIndex", 0xFFFF))
+            if required != 0xFFFF and required < len(feature_records):
+                result.append(feature_records[required])
+            for fi in getattr(ls, "FeatureIndex", None) or []:
+                fi_i = int(fi)
+                if fi_i >= len(feature_records):
+                    continue
+                tag = str(feature_records[fi_i].FeatureTag).strip()
+                if enabled_features is None or tag in enabled_features:
+                    result.append(feature_records[fi_i])
+
+        # 'vrt2' supersedes 'vert' — drop 'vert' when both are present.
+        tags_in_result = [str(fr.FeatureTag).strip() for fr in result]
+        if "vrt2" in tags_in_result:
+            result = [
+                fr for fr in result if str(fr.FeatureTag).strip() != "vert"
+            ]
+
+        if enabled_features is not None and len(result) > 1:
+            result.sort(
+                key=lambda fr: enabled_features.index(
+                    str(fr.FeatureTag).strip()
+                )
+                if str(fr.FeatureTag).strip() in enabled_features
+                else len(enabled_features),
+            )
+
+        return result
+
+    def select_script_tag(self, script_tags: list[str] | tuple[str, ...]) -> str | None:
+        """Public mirror of upstream's private ``selectScriptTag``.
+
+        Picks the best supported OT script tag from a candidate list
+        and updates the internal ``last_used_supported_script`` hint.
+        Returns ``None`` only when the table has no script records and
+        no candidates were supplied.
+        """
+        return self._select_script_tag(tuple(script_tags))
+
+    def get_last_used_supported_script(self) -> str | None:
+        """Return the most recent script tag :meth:`select_script_tag`
+        successfully resolved against, or ``None`` if no resolution has
+        happened yet.
+
+        Mirrors upstream's private ``lastUsedSupportedScript`` field —
+        useful for tooling that wants to inspect script-detection state
+        between calls.
+        """
+        return self._last_used_supported_script
 
     def get_substitution(
         self,
@@ -427,6 +706,63 @@ class GlyphSubstitutionTable(TTFTable):
             if dst_gid is not None:
                 return dst_gid
         return gid
+
+    # ------------------------------------------------------------------
+    # Public mirrors of upstream private substitution helpers
+    # ------------------------------------------------------------------
+
+    def apply_feature(self, feature_record: Any, gid: int) -> int:
+        """Apply every type-1 lookup attached to ``feature_record`` to
+        ``gid`` and return the resulting (possibly-rewritten) GID.
+
+        Mirrors upstream's private ``applyFeature(FeatureRecord, int)``
+        — surfaced as a public snake_case helper so callers that have
+        already isolated the feature record they want (e.g. via
+        :meth:`get_feature_record`) can apply it directly without going
+        through :meth:`get_substitution`'s script/feature selection.
+
+        Skips lookups whose ``LookupType != 1`` (matches upstream's
+        ``getLookupType() != 1`` skip).
+        """
+        if self._gsub_table is None or feature_record is None:
+            return gid
+        ll = getattr(self._gsub_table, "LookupList", None)
+        if ll is None:
+            return gid
+        lookups = getattr(ll, "Lookup", None) or []
+        feature = getattr(feature_record, "Feature", None)
+        if feature is None:
+            return gid
+        result = gid
+        for lookup_index in getattr(feature, "LookupListIndex", None) or []:
+            li = int(lookup_index)
+            if li < 0 or li >= len(lookups):
+                continue
+            lookup = lookups[li]
+            if int(getattr(lookup, "LookupType", 0)) != self.LOOKUP_TYPE_SINGLE:
+                continue
+            result = self.do_lookup(lookup, result)
+        return result
+
+    def do_lookup(self, lookup_table: Any, gid: int) -> int:
+        """Apply a single ``LookupTable`` to ``gid`` and return the
+        possibly-rewritten GID.
+
+        Mirrors upstream's private ``doLookup(LookupTable, int)`` —
+        surfaced as a public snake_case helper for callers that want to
+        evaluate one lookup in isolation. Walks the lookup's subtables
+        in order and returns the first match's substitute GID; returns
+        ``gid`` unchanged when no subtable covers the input.
+
+        Only single-substitution (LookupType=1) lookups produce a
+        rewritten GID — see the class docstring for why higher-order
+        lookups can't fit the GID-in / GID-out signature.
+        """
+        if lookup_table is None:
+            return gid
+        if int(getattr(lookup_table, "LookupType", 0)) != self.LOOKUP_TYPE_SINGLE:
+            return gid
+        return self._apply_single_lookup_in_gid_space(lookup_table, gid)
 
 
 __all__ = ["GlyphSubstitutionTable"]

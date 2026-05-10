@@ -239,3 +239,172 @@ def test_t2_property_exposes_underlying_charstring(cff_font: CFFFont) -> None:
 
     cs = cff_font.get_type2_char_string(1)
     assert isinstance(cs.t2, T2CharString)
+
+
+# ---------------------------------------------------------------------------
+# Type 2 → Type 1 conversion (parity with upstream private convertType2Command)
+# ---------------------------------------------------------------------------
+
+
+def _fresh() -> Type2CharString:
+    return Type2CharString(None, "F", "A", 0, None, default_width_x=500, nominal_width_x=0)
+
+
+def test_convert_emits_hsbw_prologue_when_no_width_operand() -> None:
+    """First operator with even-arg count → synthetic ``hsbw 0 defaultWidthX``.
+    Mirrors upstream ``clearStack`` (Type2CharString.java:264, ``flag=false``)."""
+    cs = _fresh()
+    # 4 operands → vstem (even arg count); width omitted → defaultWidthX path.
+    cs.convert_type1_to_type2([10, 20, 30, 40, "vstem"])
+    seq = cs._type1_sequence
+    # Expect hsbw command emitted before any other operator.
+    assert seq[:3] == [0, 500.0, "hsbw"]
+
+
+def test_convert_emits_hsbw_with_width_when_odd_arg_count() -> None:
+    """First operator with odd-arg count → leading operand is the
+    width-delta. ``hsbw 0 (width + nominalWidthX)``."""
+    cs = Type2CharString(None, "F", "A", 0, None, default_width_x=500, nominal_width_x=100)
+    # 5 operands for vstem → leading 1234 is width-delta.
+    cs.convert_type1_to_type2([1234, 10, 20, 30, 40, "vstem"])
+    # The first 3 entries are the synthetic hsbw with the width.
+    assert cs._type1_sequence[:3] == [0, 1334.0, "hsbw"]
+
+
+def test_convert_rlineto_splits_into_pairs() -> None:
+    """rlineto with 6 operands → 3 separate rlineto commands of 2
+    operands each. Mirrors ``addCommandList(split(numbers, 2),
+    command)``."""
+    cs = _fresh()
+    cs.convert_type1_to_type2([100, 0, 0, 100, -50, 50, "rlineto"])
+    rlineto_commands = [
+        i for i, t in enumerate(cs._type1_sequence) if t == "rlineto"
+    ]
+    # 3 split rlinetos → 3 rlineto tokens.
+    assert len(rlineto_commands) == 3
+
+
+def test_convert_hlineto_alternates() -> None:
+    """``addAlternatingLine`` peels off one operand per command,
+    flipping horizontal/vertical. Upstream's switch for hlineto/vlineto
+    does NOT pass through ``clearStack`` (Type2CharString.java:157),
+    so no synthetic hsbw is emitted by this op alone."""
+    cs = _fresh()
+    cs.convert_type1_to_type2([10, 20, 30, "hlineto"])
+    ops = [t for t in cs._type1_sequence if isinstance(t, str)]
+    assert ops == ["hlineto", "vlineto", "hlineto"]
+
+
+def test_convert_div_collapses_quotient() -> None:
+    """PDFBOX-5987: ``num denom div`` is collapsed to its quotient
+    *before* the conversion walk. With nominal_width_x=0 and
+    default_width_x=500, the leading ``10`` becomes the width-delta
+    consumed by clearStack(flag=True), and 2.0 stays as vmoveto's arg."""
+    cs = _fresh()
+    # 100 50 div → 2.0; rewritten program is [10, 2.0, vmoveto].
+    # vmoveto sees size=2 > 1 → flag=True → strips 10 as width-delta,
+    # leaving [2.0] for the actual vmoveto.
+    cs.convert_type1_to_type2([10, 100, 50, "div", "vmoveto"])
+    seq = cs._type1_sequence
+    vmoveto_idx = seq.index("vmoveto")
+    # Synthetic hsbw with width = 10 + nominal(0) = 10.0.
+    assert seq[:3] == [0, 10.0, "hsbw"]
+    # Operand directly before vmoveto is the collapsed quotient 2.0.
+    assert seq[vmoveto_idx - 1] == 2.0
+
+
+def test_convert_endchar_closes_path() -> None:
+    """endchar after a moveto must emit closepath before endchar."""
+    cs = _fresh()
+    cs.convert_type1_to_type2([0, 100, "vmoveto", "endchar"])
+    seq = cs._type1_sequence
+    # closepath emitted before endchar.
+    closepath_idx = seq.index("closepath")
+    endchar_idx = seq.index("endchar")
+    assert closepath_idx < endchar_idx
+
+
+def test_convert_endchar_seac_form() -> None:
+    """endchar with 4 operands → deprecated seac (Type2CharString.java:166)."""
+    cs = _fresh()
+    cs.convert_type1_to_type2([10, 20, 30, 65, 66, "endchar"])
+    # 5 args; clearStack flag triggers (size==5) → drains the leading
+    # width operand, leaving 4 args → seac.
+    assert "seac" in cs._type1_sequence
+
+
+def test_convert_flex_expands_to_two_rrcurves() -> None:
+    """flex consumes 12 operands and emits two rrcurveto commands."""
+    cs = _fresh()
+    cs.convert_type1_to_type2(
+        [0, 100, "vmoveto", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 50, "flex"]
+    )
+    rrcurve_count = sum(
+        1 for t in cs._type1_sequence if t == "rrcurveto"
+    )
+    assert rrcurve_count == 2
+
+
+def test_convert_hflex_expands_to_two_rrcurves() -> None:
+    """hflex (7 operands) expands to two rrcurveto commands."""
+    cs = _fresh()
+    cs.convert_type1_to_type2(
+        [0, 100, "vmoveto", 1, 2, 3, 4, 5, 6, 7, "hflex"]
+    )
+    rrcurve_count = sum(
+        1 for t in cs._type1_sequence if t == "rrcurveto"
+    )
+    assert rrcurve_count == 2
+
+
+def test_convert_rcurveline_emits_curve_then_line() -> None:
+    """rcurveline emits N-2-grouped curves followed by a final line."""
+    cs = _fresh()
+    cs.convert_type1_to_type2(
+        [0, 100, "vmoveto", 1, 2, 3, 4, 5, 6, 7, 8, "rcurveline"]
+    )
+    seq = cs._type1_sequence
+    # Last two operators must be rrcurveto then rlineto.
+    str_ops = [t for t in seq if isinstance(t, str)]
+    assert str_ops[-2:] == ["rrcurveto", "rlineto"]
+
+
+def test_convert_rlinecurve_emits_lines_then_curve() -> None:
+    """rlinecurve emits 2-grouped lines followed by a final curve."""
+    cs = _fresh()
+    cs.convert_type1_to_type2(
+        [
+            0,
+            100,
+            "vmoveto",
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            "rlinecurve",
+        ]
+    )
+    str_ops = [t for t in cs._type1_sequence if isinstance(t, str)]
+    # vmoveto + 2 rlinetos + final rrcurveto preceded by hsbw prologue.
+    assert str_ops[-2:] == ["rlineto", "rrcurveto"]
+
+
+def test_convert_hhcurveto_via_addcurve() -> None:
+    """hhcurveto routes through ``_add_curve`` which emits rrcurveto."""
+    cs = _fresh()
+    cs.convert_type1_to_type2(
+        [0, 100, "vmoveto", 10, 20, 30, 40, "hhcurveto"]
+    )
+    assert "rrcurveto" in cs._type1_sequence
+
+
+def test_get_gid_returns_constructor_value() -> None:
+    """getGID parity (Type2CharString.java:66)."""
+    cs = Type2CharString(None, "F", "A", 42, None)
+    assert cs.get_gid() == 42

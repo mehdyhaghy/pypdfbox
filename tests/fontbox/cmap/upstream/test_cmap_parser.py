@@ -1,20 +1,32 @@
-"""Port of upstream ``CMapParserTest`` from
-``fontbox/src/test/java/org/apache/fontbox/cmap/CMapParserTest.java``.
+"""Port of upstream ``TestCMapParser`` from
+``fontbox/src/test/java/org/apache/fontbox/cmap/TestCMapParser.java``.
 
-Only the operator-level cases that don't require the upstream resource
-JAR are translated here -- bundled-resource tests are covered by
+Operator-level synthetic cases live here alongside the upstream
+fixture-driven tests (``CMapTest``, ``CMapNoWhitespace``,
+``CMapMalformedbfrange[12]``, ``Identitybfrange``) which were copied
+verbatim into ``tests/fixtures/fontbox/cmap/``. Bundled-resource tests
+that require Adobe predefined CMaps (UniJIS-UTF16-H, Adobe-GB1-UCS2,
+Adobe-Korea1-UCS2) are covered separately in
 ``tests/fontbox/cmap/test_cmap_parser_parity.py``.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pypdfbox.fontbox.cmap import CMapParser
 
+_FIXTURES = Path(__file__).resolve().parents[3] / "fixtures" / "fontbox" / "cmap"
+
 
 def _parser() -> CMapParser:
     return CMapParser()
+
+
+def _fixture(name: str) -> bytes:
+    return (_FIXTURES / name).read_bytes()
 
 
 # Translated from testIdentityHorBfRange (PDFBOX-4720).
@@ -174,3 +186,97 @@ def test_endcmap_stops_parse() -> None:
 def test_parse_unicode_cmap_none_raises() -> None:
     with pytest.raises(OSError):
         _parser().parse_unicode_cmap(None)  # type: ignore[arg-type]
+
+
+# ---------- fixture-driven upstream tests (TestCMapParser.java) ----------
+
+
+# Translated from testLookup -- exhaustive check of bfchar / bfrange /
+# cidchar / cidrange / single-value cidrange against the canonical
+# CMapTest fixture.
+def test_lookup() -> None:
+    cmap = _parser().parse(_fixture("CMapTest"))
+
+    # char mappings
+    assert cmap.to_unicode_bytes(bytes([0, 1])) == "A"
+    assert cmap.to_unicode_bytes(bytes([1, 0])) == "0"
+    assert cmap.to_unicode_bytes(bytes([1, 32])) == "P"
+    assert cmap.to_unicode_bytes(bytes([1, 33])) == "R"
+    assert cmap.to_unicode_bytes(bytes([0, 10])) == "*"
+    assert cmap.to_unicode_bytes(bytes([1, 10])) == "+"
+
+    # CID mappings
+    assert cmap.to_cid_bytes(bytes([0, 65])) == 65
+    assert cmap.to_cid_bytes(bytes([1, 24])) == 0x0118
+    assert cmap.to_cid_bytes(bytes([2, 8])) == 0x0208
+    assert cmap.to_cid_bytes(bytes([1, 0x2C])) == 0x12C
+
+
+# Translated from testIdentity.
+def test_identity() -> None:
+    cmap = CMapParser.parse_predefined("Identity-H")
+
+    assert cmap.to_cid_bytes(bytes([0, 65])) == 65
+    assert cmap.to_cid_bytes(bytes([0x30, 0x39])) == 12345
+    assert cmap.to_cid_bytes(bytes([0xFF, 0xFF])) == 0xFFFF
+
+
+# Translated from testParserWithPoorWhitespace -- the CMapNoWhitespace
+# fixture is a structurally-valid CMap with deliberately gnarly
+# whitespace; parsing must not abort.
+def test_parser_with_poor_whitespace() -> None:
+    cmap = _parser().parse(_fixture("CMapNoWhitespace"))
+    assert cmap is not None
+
+
+# Translated from testParserWithMalformedbfrange1.
+def test_parser_with_malformed_bfrange1() -> None:
+    cmap = _parser().parse(_fixture("CMapMalformedbfrange1"))
+    assert cmap is not None
+    assert cmap.to_unicode_bytes(bytes([0, 1])) == "A"
+    assert cmap.to_unicode_bytes(bytes([1, 0])) is None
+
+
+# Translated from testParserWithMalformedbfrange2 -- exercises both the
+# default permissive mode and strict mode (PDFBOX-4661 / PDFBOX-5090).
+def test_parser_with_malformed_bfrange2() -> None:
+    payload = _fixture("CMapMalformedbfrange2")
+    cmap = _parser().parse(payload)
+    assert cmap is not None
+    assert cmap.to_unicode_bytes(bytes([0, 1])) == "0"
+    assert cmap.to_unicode_bytes(bytes([2, 0x32])) == "A"
+
+    # Permissive mode: low-byte overflow extends past 0xF0.
+    assert cmap.to_unicode_bytes(bytes([2, 0xF0])) is not None
+    assert cmap.to_unicode_bytes(bytes([2, 0xF1])) is not None
+
+    # Strict mode rejects the overflowed mapping at 0xF1 (last legal value
+    # is 0xF0; one past triggers PDFBOX-5090's overflow guard).
+    cmap_strict = CMapParser(strict_mode=True).parse(payload)
+    assert cmap_strict.to_unicode_bytes(bytes([2, 0xF0])) is not None
+    assert cmap_strict.to_unicode_bytes(bytes([2, 0xF1])) is None
+
+
+# Translated from testIdentitybfrange -- a strict-mode parse of a
+# bfrange covering 0x0000..0xFFFF where the dst is also identity.
+def test_identity_bfrange() -> None:
+    cmap = CMapParser(strict_mode=True).parse(_fixture("Identitybfrange"))
+    assert cmap.get_name() == "Adobe-Identity-UCS"
+
+    for code in (
+        bytes([0, 65]),
+        bytes([0x30, 0x39]),
+        bytes([0x30, 0xFF]),
+        bytes([0x31, 0x00]),
+        bytes([0xFF, 0xFF]),
+    ):
+        assert cmap.to_unicode_bytes(code) == code.decode("utf-16-be")
+
+
+# Translated from testBadIncrement -- empty hex strings produce zero-
+# length byte arrays; the increment helper must not throw an
+# IndexOutOfBounds for position -1.
+def test_bad_increment() -> None:
+    cmap_data = b"1 beginbfrange\n<> <> <2223>\nendbfrange"
+    cmap = _parser().parse(cmap_data)
+    assert cmap is not None

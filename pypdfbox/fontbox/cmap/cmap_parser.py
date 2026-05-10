@@ -107,14 +107,10 @@ class CMapParser:
         identity = _build_identity_cmap(name)
         if identity is not None:
             return identity
-        resource = _RESOURCES_DIR / name
-        if not resource.is_file():
-            raise OSError(
-                f"Error: Could not find referenced cmap stream {name}"
-            )
         # Strict mode is deactivated for predefined CMaps (matches upstream).
         parser = cls(strict_mode=False)
-        return parser.parse(resource.read_bytes())
+        with parser._get_external_cmap(name) as ras:
+            return parser.parse(ras)
 
     def parse_unicode_cmap(
         self, cmap_bytes: bytes | bytearray | memoryview
@@ -186,8 +182,30 @@ class CMapParser:
         # V variants reference (Uni*-UTF16-V → Uni*-UTF16-H, GB-EUC-V → GB-EUC-H,
         # etc.). Names outside the bundled set raise OSError here, matching
         # upstream's behaviour when the referenced cmap stream is not found.
-        use_cmap = type(self).parse_predefined(use_cmap_name.name)
+        # Fast-path the programmatic Identity-H/V builder so we don't have to
+        # round-trip through a synthetic byte stream just to satisfy `usecmap`.
+        identity = _build_identity_cmap(use_cmap_name.name)
+        if identity is not None:
+            result.use_cmap(identity)
+            return
+        with self._get_external_cmap(use_cmap_name.name) as ras:
+            use_cmap = self.parse(ras)
         result.use_cmap(use_cmap)
+
+    def _get_external_cmap(self, name: str) -> RandomAccessRead:
+        """Open a ``RandomAccessRead`` over the bundled CMap resource ``name``.
+
+        Mirrors upstream ``CMapParser#getExternalCMap`` — used by
+        ``parse_predefined`` and the ``usecmap`` directive to resolve
+        bundled Adobe CMap files. Raises :class:`OSError` (upstream
+        throws ``IOException``) when the resource is not bundled.
+        """
+        resource = _RESOURCES_DIR / name
+        if not resource.is_file():
+            raise OSError(
+                f"Error: Could not find referenced cmap stream {name}"
+            )
+        return RandomAccessReadBuffer(resource.read_bytes())
 
     def _parse_literal_name(
         self, literal: _LiteralName, ras: RandomAccessRead, result: CMap
@@ -417,8 +435,10 @@ class CMapParser:
             nxt = self._parse_next_token(ras)
             if isinstance(nxt, list):
                 # Array-form bfrange: [<u1> <u2> ...] one entry per code.
+                # Upstream guard is `array.size() >= end - start` (not +1) — match
+                # it verbatim so off-by-one tolerant CMaps parse identically.
                 array: list[bytes] = [bytes(x) for x in nxt if isinstance(x, (bytes, bytearray))]
-                if array and len(array) >= end - start + 1:
+                if array and len(array) >= end - start:
                     self._add_mapping_from_bfrange_list(result, start_code, array)
             elif isinstance(nxt, (bytes, bytearray)):
                 token_bytes = bytearray(nxt)
@@ -537,15 +557,25 @@ class CMapParser:
         # Match Java's `(char) byte` widening — latin-1 is the byte-identity codec.
         return out.decode("latin-1")
 
-    @staticmethod
-    def _read_line(ras: RandomAccessRead, first_byte: int) -> str:
-        # Comment line; read through EOL.
+    @classmethod
+    def _read_line(cls, ras: RandomAccessRead, first_byte: int) -> str:
+        # Comment / header line; read through EOL.
         out = bytearray([first_byte])
+        cls._read_until_end_of_line(ras, out)
+        return out.decode("latin-1")
+
+    @staticmethod
+    def _read_until_end_of_line(ras: RandomAccessRead, buf: bytearray) -> None:
+        """Read bytes from ``ras`` into ``buf`` up to (but not including)
+        the next CR / LF / EOF. Mirrors upstream
+        ``CMapParser#readUntilEndOfLine`` — separated from :meth:`_read_line`
+        so callers that already have a buffer (header-line collector,
+        comment skipper) can share the EOL scan.
+        """
         b = ras.read()
         while b != -1 and b != 0x0D and b != 0x0A:
-            out.append(b)
+            buf.append(b)
             b = ras.read()
-        return out.decode("latin-1")
 
     @staticmethod
     def _read_literal_name(ras: RandomAccessRead) -> _LiteralName:

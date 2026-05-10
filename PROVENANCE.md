@@ -597,6 +597,11 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | pypdfbox fixture path | upstream resource path | upstream PDFBox version |
 |---|---|---|
 | `tests/fixtures/fontbox/ttf/LiberationSans-Regular.ttf` | `fontbox/src/test/resources/ttf/LiberationSans-Regular.ttf` | 3.0.x |
+| `tests/fixtures/fontbox/cmap/CMapTest` | `fontbox/src/test/resources/cmap/CMapTest` | 3.0.x |
+| `tests/fixtures/fontbox/cmap/CMapNoWhitespace` | `fontbox/src/test/resources/cmap/CMapNoWhitespace` | 3.0.x |
+| `tests/fixtures/fontbox/cmap/CMapMalformedbfrange1` | `fontbox/src/test/resources/cmap/CMapMalformedbfrange1` | 3.0.x |
+| `tests/fixtures/fontbox/cmap/CMapMalformedbfrange2` | `fontbox/src/test/resources/cmap/CMapMalformedbfrange2` | 3.0.x |
+| `tests/fixtures/fontbox/cmap/Identitybfrange` | `fontbox/src/test/resources/cmap/Identitybfrange` | 3.0.x |
 
 ### `tests/pdmodel/upstream/`
 

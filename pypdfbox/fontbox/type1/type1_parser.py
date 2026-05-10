@@ -369,10 +369,21 @@ class Type1Parser:
     can pass it to a real interpreter.
     """
 
+    # Upstream constants for encryption (parity with Type1Parser.java
+    # ``EEXEC_KEY`` / ``CHARSTRING_KEY``).
+    EEXEC_KEY = 55665
+    CHARSTRING_KEY = 4330
+
     def __init__(self) -> None:
         # Public outputs — populated by parse().
         self.font_dict: dict[str, Any] = {}
         self.decrypted_binary: bytes = b""
+        # Mirror of upstream's ``private Type1Lexer lexer`` field — the
+        # parity helper methods below (``read``, ``read_maybe``,
+        # ``read_value``, ...) operate against this. ``parse()`` keeps it
+        # populated so callers can also drive the parser one token at a
+        # time after handing in segments.
+        self._lexer: Type1Lexer | None = None
 
     # ---------- entry point ----------
 
@@ -444,6 +455,7 @@ class Type1Parser:
 
     def _parse_ascii(self, segment1: bytes) -> None:
         lex = Type1Lexer(segment1)
+        self._lexer = lex
         # Sliding window of last consumed tokens — enough to recognise
         # "/key value def" without building a full AST.
         pending_key: str | None = None
@@ -724,6 +736,7 @@ class Type1Parser:
         if not decrypted:
             return
         lex = Type1Lexer(decrypted)
+        self._lexer = lex
         private: dict[str, Any] = {}
         subrs: list[bytes] = []
         charstrings: dict[str, bytes] = {}
@@ -1012,6 +1025,506 @@ class Type1Parser:
                 return False
             return value
         return value
+
+    # ---------- upstream-parity helpers ----------
+    #
+    # The block below mirrors ``Type1Parser.java`` method-for-method.
+    # Our top-level ``parse()`` takes the streaming/extractor path
+    # because real-world Type 1 fonts deviate from the spec in many
+    # documented ways (PDFBOX-2134, PDFBOX-5942, ...). These helpers
+    # round out the upstream API surface so callers can drive the
+    # parser at a finer granularity (handy for fuzz-style fixtures and
+    # for direct port-tests). They all operate on ``self._lexer`` —
+    # the same field upstream uses.
+
+    @staticmethod
+    def is_binary(data: bytes | bytearray) -> bool:
+        """Return ``True`` when ``data`` looks like raw eexec ciphertext.
+
+        Mirrors ``Type1Parser.isBinary`` (Type1Parser.java line 958). Per
+        Adobe Type 1 7.2: at least one of the first 4 ciphertext bytes
+        must not be ASCII hex / whitespace.
+        """
+        if len(data) < 4:
+            return True
+        for by in data[:4]:
+            if by in _HEX_WHITESPACE:
+                continue
+            if by in _HEX_CHARS:
+                continue
+            return True
+        return False
+
+    @staticmethod
+    def hex_to_binary(data: bytes | bytearray) -> bytes:
+        """Decode an ASCII-hex eexec segment to raw bytes.
+
+        Mirrors ``Type1Parser.hexToBinary`` (Type1Parser.java line 978).
+        Whitespace and other non-hex bytes are discarded; an unmatched
+        trailing nibble is dropped (upstream truncates the same way via
+        the integer division in ``new byte[len / 2]``).
+        """
+        nibbles = bytes(by for by in data if by in _HEX_CHARS)
+        if len(nibbles) % 2:
+            nibbles = nibbles[:-1]
+        return bytes.fromhex(nibbles.decode("ascii"))
+
+    @staticmethod
+    def decrypt(cipher: bytes | bytearray, r: int, n: int) -> bytes:
+        """Type 1 eexec / charstring decryption.
+
+        Mirrors ``Type1Parser.decrypt`` (Type1Parser.java line 927). The
+        ``r`` seed selects between eexec (``EEXEC_KEY``) and charstring
+        (``CHARSTRING_KEY``) flows; ``n`` is the number of warm-up bytes
+        to drop (``lenIV``). ``n == -1`` means "no encryption" (an
+        undocumented tolerance found in PDFBox).
+        """
+        if n == -1:
+            return bytes(cipher)
+        if len(cipher) == 0 or n > len(cipher):
+            return b""
+        c1 = 52845
+        c2 = 22719
+        plain = bytearray(len(cipher) - n)
+        for i, by in enumerate(cipher):
+            cipher_byte = by & 0xFF
+            plain_byte = cipher_byte ^ (r >> 8)
+            if i >= n:
+                plain[i - n] = plain_byte & 0xFF
+            r = ((cipher_byte + r) * c1 + c2) & 0xFFFF
+        return bytes(plain)
+
+    def read(self, kind: str, name: str | None = None) -> tuple[str, Any]:
+        """Read the next token, raising if it does not match.
+
+        Mirrors the two ``read`` overloads (Type1Parser.java lines 881
+        and 895). ``kind`` selects the expected token kind; pass
+        ``name`` to additionally require a specific text value (used by
+        upstream when matching named operators like ``begin`` / ``def``).
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        token = self._lexer.next_token()
+        if token is None or token[0] != kind:
+            raise OSError(f"Found {token!r} but expected {kind}")
+        if name is not None and token[1] != name:
+            raise OSError(f"Found {token!r} but expected {name}")
+        return token
+
+    def read_maybe(self, kind: str, name: str) -> tuple[str, Any] | None:
+        """Consume the next token only if it matches ``kind`` + ``name``.
+
+        Mirrors ``Type1Parser.readMaybe`` (Type1Parser.java line 910).
+        Returns the consumed token, or ``None`` if the next token does
+        not match (in which case the lexer position is unchanged).
+        """
+        if self._lexer is None:
+            return None
+        peek = self._lexer.peek_token()
+        if peek is None or peek[0] != kind or peek[1] != name:
+            return None
+        return self._lexer.next_token()
+
+    def read_value(self) -> list[tuple[str, Any]]:
+        """Read a simple value (number, name, literal, array, proc, ...).
+
+        Mirrors ``Type1Parser.readValue`` (Type1Parser.java line 385).
+        Returns the list of raw tokens that make up the value, with
+        nested arrays and procedures preserved verbatim.
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        value: list[tuple[str, Any]] = []
+        token = self._lexer.next_token()
+        if token is None or self._lexer.peek_token() is None:
+            return value
+        value.append(token)
+
+        kind = token[0]
+        if kind == TOKEN_START_ARRAY:
+            open_array = 1
+            while True:
+                peek = self._lexer.peek_token()
+                if peek is None:
+                    return value
+                if peek[0] == TOKEN_START_ARRAY:
+                    open_array += 1
+                tok = self._lexer.next_token()
+                if tok is None:
+                    return value
+                value.append(tok)
+                if tok[0] == TOKEN_END_ARRAY:
+                    open_array -= 1
+                    if open_array == 0:
+                        break
+        elif kind == TOKEN_START_PROC:
+            value.extend(self.read_proc())
+        elif kind == TOKEN_START_DICT:
+            # skip "/GlyphNames2HostCode << >> def"
+            self.read(TOKEN_END_DICT)
+            return value
+
+        self.read_post_script_wrapper(value)
+        return value
+
+    def read_dict_value(self) -> list[tuple[str, Any]]:
+        """Read a value followed by ``def`` / ``ND`` / ``|-``.
+
+        Mirrors ``Type1Parser.readDictValue`` (Type1Parser.java line 373).
+        """
+        value = self.read_value()
+        self.read_def()
+        return value
+
+    def read_proc(self) -> list[tuple[str, Any]]:
+        """Read a balanced ``{ ... }`` procedure.
+
+        Mirrors ``Type1Parser.readProc`` (Type1Parser.java line 472).
+        Returns the procedure body tokens including the trailing
+        ``executeonly`` bareword if present.
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        value: list[tuple[str, Any]] = []
+        open_proc = 1
+        while True:
+            peek = self._lexer.peek_token()
+            if peek is None:
+                raise OSError("Malformed procedure: missing token")
+            if peek[0] == TOKEN_START_PROC:
+                open_proc += 1
+            tok = self._lexer.next_token()
+            if tok is None:
+                raise OSError("Malformed procedure: missing token")
+            value.append(tok)
+            if tok[0] == TOKEN_END_PROC:
+                open_proc -= 1
+                if open_proc == 0:
+                    break
+        executeonly = self.read_maybe(TOKEN_NAME, "executeonly")
+        if executeonly is not None:
+            value.append(executeonly)
+        return value
+
+    def read_proc_void(self) -> None:
+        """Read and discard a balanced ``{ ... }`` procedure.
+
+        Mirrors ``Type1Parser.readProcVoid`` (Type1Parser.java line 513).
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        open_proc = 1
+        while True:
+            peek = self._lexer.peek_token()
+            if peek is None:
+                raise OSError("Malformed procedure: missing token")
+            if peek[0] == TOKEN_START_PROC:
+                open_proc += 1
+            tok = self._lexer.next_token()
+            if tok is None:
+                raise OSError("Malformed procedure: missing token")
+            if tok[0] == TOKEN_END_PROC:
+                open_proc -= 1
+                if open_proc == 0:
+                    break
+        self.read_maybe(TOKEN_NAME, "executeonly")
+
+    def read_post_script_wrapper(self, value: list[tuple[str, Any]]) -> None:
+        """Strip the optional ``systemdict / internaldict known`` wrapper.
+
+        Mirrors ``Type1Parser.readPostScriptWrapper`` (Type1Parser.java
+        line 437). Used when the cleartext segment wraps a value in a
+        runtime guard procedure; the inner value replaces the outer.
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        peek = self._lexer.peek_token()
+        if peek is None:
+            raise OSError("Missing start token for the system dictionary")
+        if peek[1] == "systemdict":
+            self.read(TOKEN_NAME, "systemdict")
+            self.read(TOKEN_LITERAL, "internaldict")
+            self.read(TOKEN_NAME, "known")
+
+            self.read(TOKEN_START_PROC)
+            self.read_proc_void()
+
+            self.read(TOKEN_START_PROC)
+            self.read_proc_void()
+
+            self.read(TOKEN_NAME, "ifelse")
+
+            # replace value
+            self.read(TOKEN_START_PROC)
+            self.read(TOKEN_NAME, "pop")
+            value.clear()
+            value.extend(self.read_value())
+            self.read(TOKEN_END_PROC)
+
+            self.read(TOKEN_NAME, "if")
+
+    def read_def(self) -> None:
+        """Consume an optional ``readonly``/``noaccess`` then ``def``/``ND``.
+
+        Mirrors ``Type1Parser.readDef`` (Type1Parser.java line 824).
+        """
+        self.read_maybe(TOKEN_NAME, "readonly")
+        self.read_maybe(TOKEN_NAME, "noaccess")
+        token = self.read(TOKEN_NAME)
+        text = token[1]
+        if text in ("ND", "|-"):
+            return
+        if text == "noaccess":
+            token = self.read(TOKEN_NAME)
+            text = token[1]
+        if text == "def":
+            return
+        raise OSError(f"Found {token!r} but expected ND")
+
+    def read_put(self) -> None:
+        """Consume an optional ``readonly`` then ``put``/``NP``/``|``.
+
+        Mirrors ``Type1Parser.readPut`` (Type1Parser.java line 852).
+        """
+        self.read_maybe(TOKEN_NAME, "readonly")
+        token = self.read(TOKEN_NAME)
+        text = token[1]
+        if text in ("NP", "|"):
+            return
+        if text == "noaccess":
+            token = self.read(TOKEN_NAME)
+            text = token[1]
+        if text == "put":
+            return
+        raise OSError(f"Found {token!r} but expected NP")
+
+    def read_simple_dict(self) -> dict[str, list[tuple[str, Any]]]:
+        """Read a ``<N> dict dup begin ... end def`` flat sub-dict.
+
+        Mirrors ``Type1Parser.readSimpleDict`` (Type1Parser.java line 319).
+        Values are returned as raw token lists; FontInfo / Metrics are
+        the only consumers and they normalise from there.
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        out: dict[str, list[tuple[str, Any]]] = {}
+        length = self.read(TOKEN_INTEGER)[1]
+        self.read(TOKEN_NAME, "dict")
+        self.read_maybe(TOKEN_NAME, "dup")
+        if self.read_maybe(TOKEN_NAME, "def") is not None:
+            # PDFBOX-5942 empty dict.
+            return out
+        self.read(TOKEN_NAME, "begin")
+        for _ in range(int(length)):
+            peek = self._lexer.peek_token()
+            if peek is None:
+                break
+            if peek[0] == TOKEN_NAME and peek[1] != "end":
+                self.read(TOKEN_NAME)
+            peek = self._lexer.peek_token()
+            if peek is None:
+                break
+            if peek[0] == TOKEN_NAME and peek[1] == "end":
+                break
+            key_tok = self.read(TOKEN_LITERAL)
+            value = self.read_dict_value()
+            out[str(key_tok[1])] = value
+        self.read(TOKEN_NAME, "end")
+        self.read_maybe(TOKEN_NAME, "readonly")
+        self.read(TOKEN_NAME, "def")
+        return out
+
+    @staticmethod
+    def array_to_numbers(value: list[tuple[str, Any]]) -> list[Any]:
+        """Extract integer / real values from a tokenised array.
+
+        Mirrors ``Type1Parser.arrayToNumbers`` (Type1Parser.java line 247).
+        Strips the leading ``[`` and trailing ``]`` tokens upstream
+        leaves in place when handing over a value list.
+        """
+        numbers: list[Any] = []
+        for i in range(1, len(value) - 1):
+            tok = value[i]
+            kind, val = tok
+            if kind == TOKEN_REAL:
+                numbers.append(float(val))
+            elif kind == TOKEN_INTEGER:
+                numbers.append(int(val))
+            else:
+                raise OSError(
+                    f"Expected INTEGER or REAL but got {tok!r} at array position {i}"
+                )
+        return numbers
+
+    def read_simple_value(self, key: str) -> None:
+        """Harvest one ``/Key value def`` triple into ``font_dict``.
+
+        Mirrors ``Type1Parser.readSimpleValue`` (Type1Parser.java line 157).
+        Recognised top-level keys are coerced to their canonical type;
+        unknowns are silently dropped (matching upstream's ``default``).
+        """
+        value = self.read_dict_value()
+        if not value:
+            return
+        first = value[0]
+        if key == "FontName":
+            self.font_dict["FontName"] = first[1]
+        elif key == "PaintType":
+            self.font_dict["PaintType"] = int(first[1])
+        elif key == "FontType":
+            self.font_dict["FontType"] = int(first[1])
+        elif key == "FontMatrix":
+            self.font_dict["FontMatrix"] = self.array_to_numbers(value)
+        elif key == "FontBBox":
+            self.font_dict["FontBBox"] = self.array_to_numbers(value)
+        elif key == "UniqueID":
+            self.font_dict["UniqueID"] = int(first[1])
+        elif key == "StrokeWidth":
+            self.font_dict["StrokeWidth"] = float(first[1])
+        elif key == "FID":
+            self.font_dict["FID"] = first[1]
+
+    def read_font_info(self, font_info: dict[str, list[tuple[str, Any]]]) -> None:
+        """Lift recognised entries from a tokenised FontInfo sub-dict.
+
+        Mirrors ``Type1Parser.readFontInfo`` (Type1Parser.java line 273).
+        """
+        info: dict[str, Any] = {}
+        for key, value in font_info.items():
+            if not value:
+                continue
+            first = value[0]
+            kind, val = first
+            if key == "version":
+                info["version"] = val
+            elif key == "Notice":
+                info["Notice"] = val
+            elif key == "FullName":
+                info["FullName"] = val
+            elif key == "FamilyName":
+                info["FamilyName"] = val
+            elif key == "Weight":
+                info["Weight"] = val
+            elif key == "ItalicAngle":
+                info["ItalicAngle"] = float(val) if kind in (TOKEN_REAL, TOKEN_INTEGER) else val
+            elif key == "isFixedPitch":
+                if kind == TOKEN_NAME:
+                    info["isFixedPitch"] = (val == "true")
+                else:
+                    info["isFixedPitch"] = bool(val)
+            elif key == "UnderlinePosition":
+                info["UnderlinePosition"] = (
+                    float(val) if kind in (TOKEN_REAL, TOKEN_INTEGER) else val
+                )
+            elif key == "UnderlineThickness":
+                info["UnderlineThickness"] = (
+                    float(val) if kind in (TOKEN_REAL, TOKEN_INTEGER) else val
+                )
+        if info:
+            existing = self.font_dict.get("FontInfo", {})
+            existing.update(info)
+            self.font_dict["FontInfo"] = existing
+
+    def read_encoding(self) -> None:
+        """Read either ``StandardEncoding def`` or a built-in ``dup`` table.
+
+        Mirrors ``Type1Parser.readEncoding`` (Type1Parser.java line 192).
+        Stores ``"StandardEncoding"`` (string) for the predefined case;
+        otherwise stores the ``code -> name`` map under the ``Encoding``
+        key (note: differs from the streaming parser, which stores a
+        positional list — this helper preserves upstream's dict shape).
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        peek = self._lexer.peek_token()
+        if peek is not None and peek[0] == TOKEN_NAME:
+            name_tok = self._lexer.next_token()
+            if name_tok is None:
+                raise OSError("Unexpected EOF in encoding")
+            name = name_tok[1]
+            if name == "StandardEncoding":
+                self.font_dict["Encoding"] = "StandardEncoding"
+            else:
+                raise OSError(f"Unknown encoding: {name}")
+            self.read_maybe(TOKEN_NAME, "readonly")
+            self.read(TOKEN_NAME, "def")
+            return
+        self.read(TOKEN_INTEGER)
+        self.read_maybe(TOKEN_NAME, "array")
+
+        # Drain operators ahead of dup/readonly/def (PDFBOX-2134).
+        while True:
+            peek = self._lexer.peek_token()
+            if peek is None:
+                raise OSError("Incomplete data while reading encoding of type 1 font")
+            if peek[0] == TOKEN_NAME and peek[1] in ("dup", "readonly", "def"):
+                break
+            if self._lexer.next_token() is None:
+                raise OSError("Incomplete data while reading encoding of type 1 font")
+
+        code_to_name: dict[int, str] = {}
+        while True:
+            peek = self._lexer.peek_token()
+            if peek is None or peek[0] != TOKEN_NAME or peek[1] != "dup":
+                break
+            self.read(TOKEN_NAME, "dup")
+            code = int(self.read(TOKEN_INTEGER)[1])
+            glyph = self.read(TOKEN_LITERAL)[1]
+            self.read(TOKEN_NAME, "put")
+            code_to_name[code] = str(glyph)
+        self.font_dict["Encoding"] = code_to_name
+        self.read_maybe(TOKEN_NAME, "readonly")
+        self.read(TOKEN_NAME, "def")
+
+    def read_private(self, key: str, value: list[tuple[str, Any]]) -> None:
+        """Harvest one ``/Key value`` entry from the Private dict.
+
+        Mirrors ``Type1Parser.readPrivate`` (Type1Parser.java line 660).
+        Stores recognised keys under ``font_dict["Private"]``.
+        """
+        if not value:
+            return
+        first = value[0]
+        kind, val = first
+        private = self.font_dict.setdefault("Private", {})
+        if key in ("BlueValues", "OtherBlues", "FamilyBlues", "FamilyOtherBlues",
+                   "StdHW", "StdVW", "StemSnapH", "StemSnapV"):
+            private[key] = self.array_to_numbers(value)
+        elif key == "BlueScale":
+            private[key] = float(val)
+        elif key in ("BlueShift", "BlueFuzz", "LanguageGroup"):
+            private[key] = int(val)
+        elif key == "ForceBold":
+            if kind == TOKEN_NAME:
+                private[key] = (val == "true")
+            else:
+                private[key] = bool(val)
+
+    def read_other_subrs(self) -> None:
+        """Drain the ``/OtherSubrs`` array — values are not modelled.
+
+        Mirrors ``Type1Parser.readOtherSubrs`` (Type1Parser.java line 752).
+        OtherSubrs are PostScript procedures the spec lets us skip; we
+        consume tokens up to the matching ``def`` so the parser cursor
+        ends in the right place.
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        peek = self._lexer.peek_token()
+        if peek is None:
+            raise OSError("Missing start token of OtherSubrs procedure")
+        if peek[0] == TOKEN_START_ARRAY:
+            self.read_value()
+            self.read_def()
+            return
+        length = int(self.read(TOKEN_INTEGER)[1])
+        self.read(TOKEN_NAME, "array")
+        for _ in range(length):
+            self.read(TOKEN_NAME, "dup")
+            self.read(TOKEN_INTEGER)
+            self.read_value()
+            self.read_put()
+        self.read_def()
 
 
 __all__ = ["Type1Parser", "Type1Lexer"]

@@ -29,6 +29,12 @@ class AFMParser:
     kern and composite blocks the same way upstream does, and tolerates
     unknown trailing keywords once char metrics have been read so that a
     truncated font can still be parsed for its glyph table.
+
+    Internal helper methods (``read_string``, ``parse_kern_data``,
+    ``hex_to_string`` etc.) keep their upstream names without a leading
+    underscore so that 1:1 method-level parity with Apache PDFBox's
+    ``AFMParser`` is preserved. They remain implementation details and
+    are not part of any external pypdfbox API.
     """
 
     # ------------------------------------------------------------------
@@ -122,95 +128,94 @@ class AFMParser:
         ``reduced_dataset`` skips kern and composite blocks the same way
         as upstream's ``AFMParser.parse(true)`` overload.
         """
-        return self._parse_font_metric(reduced_dataset)
+        return self.parse_font_metric(reduced_dataset)
 
     # ------------------------------------------------------------------
     # Top-level body
     # ------------------------------------------------------------------
 
-    def _parse_font_metric(self, reduced_dataset: bool) -> FontMetrics:
-        self._read_command(self.START_FONT_METRICS)
+    def parse_font_metric(self, reduced_dataset: bool) -> FontMetrics:
+        self.read_command(self.START_FONT_METRICS)
         font_metrics = FontMetrics()
-        font_metrics.set_afm_version(self._read_float())
+        font_metrics.set_afm_version(self.read_float())
         char_metrics_read = False
         while True:
-            next_command = self._read_string()
+            next_command = self.read_string()
             if next_command == self.END_FONT_METRICS:
                 break
             if next_command == self.METRIC_SETS:
-                font_metrics.set_metric_sets(self._read_int())
+                font_metrics.set_metric_sets(self.read_int())
             elif next_command == self.FONT_NAME:
-                font_metrics.set_font_name(self._read_line())
+                font_metrics.set_font_name(self.read_line())
             elif next_command == self.FULL_NAME:
-                font_metrics.set_full_name(self._read_line())
+                font_metrics.set_full_name(self.read_line())
             elif next_command == self.FAMILY_NAME:
-                font_metrics.set_family_name(self._read_line())
+                font_metrics.set_family_name(self.read_line())
             elif next_command == self.WEIGHT:
-                font_metrics.set_weight(self._read_line())
+                font_metrics.set_weight(self.read_line())
             elif next_command == self.FONT_BBOX:
                 bbox = BoundingBox()
-                bbox.set_lower_left_x(self._read_float())
-                bbox.set_lower_left_y(self._read_float())
-                bbox.set_upper_right_x(self._read_float())
-                bbox.set_upper_right_y(self._read_float())
+                bbox.set_lower_left_x(self.read_float())
+                bbox.set_lower_left_y(self.read_float())
+                bbox.set_upper_right_x(self.read_float())
+                bbox.set_upper_right_y(self.read_float())
                 font_metrics.set_font_b_box(bbox)
             elif next_command == self.VERSION:
-                font_metrics.set_font_version(self._read_line())
+                font_metrics.set_font_version(self.read_line())
             elif next_command == self.NOTICE:
-                font_metrics.set_notice(self._read_line())
+                font_metrics.set_notice(self.read_line())
             elif next_command == self.ENCODING_SCHEME:
-                font_metrics.set_encoding_scheme(self._read_line())
+                font_metrics.set_encoding_scheme(self.read_line())
             elif next_command == self.MAPPING_SCHEME:
-                font_metrics.set_mapping_scheme(self._read_int())
+                font_metrics.set_mapping_scheme(self.read_int())
             elif next_command == self.ESC_CHAR:
-                font_metrics.set_esc_char(self._read_int())
+                font_metrics.set_esc_char(self.read_int())
             elif next_command == self.CHARACTER_SET:
-                font_metrics.set_character_set(self._read_line())
+                font_metrics.set_character_set(self.read_line())
             elif next_command == self.CHARACTERS:
-                font_metrics.set_characters(self._read_int())
+                font_metrics.set_characters(self.read_int())
             elif next_command == self.IS_BASE_FONT:
-                font_metrics.set_is_base_font(self._read_boolean())
+                font_metrics.set_is_base_font(self.read_boolean())
             elif next_command == self.V_VECTOR:
-                font_metrics.set_v_vector((self._read_float(), self._read_float()))
+                font_metrics.set_v_vector((self.read_float(), self.read_float()))
             elif next_command == self.IS_FIXED_V:
-                font_metrics.set_is_fixed_v(self._read_boolean())
+                font_metrics.set_is_fixed_v(self.read_boolean())
             elif next_command == self.CAP_HEIGHT:
-                font_metrics.set_cap_height(self._read_float())
+                font_metrics.set_cap_height(self.read_float())
             elif next_command == self.X_HEIGHT:
-                font_metrics.set_x_height(self._read_float())
+                font_metrics.set_x_height(self.read_float())
             elif next_command == self.ASCENDER:
-                font_metrics.set_ascender(self._read_float())
+                font_metrics.set_ascender(self.read_float())
             elif next_command == self.DESCENDER:
-                font_metrics.set_descender(self._read_float())
+                font_metrics.set_descender(self.read_float())
             elif next_command == self.STD_HW:
-                font_metrics.set_standard_horizontal_width(self._read_float())
+                font_metrics.set_standard_horizontal_width(self.read_float())
             elif next_command == self.STD_VW:
-                font_metrics.set_standard_vertical_width(self._read_float())
+                font_metrics.set_standard_vertical_width(self.read_float())
             elif next_command == self.COMMENT:
-                font_metrics.add_comment(self._read_line())
+                font_metrics.add_comment(self.read_line())
             elif next_command == self.UNDERLINE_POSITION:
-                font_metrics.set_underline_position(self._read_float())
+                font_metrics.set_underline_position(self.read_float())
             elif next_command == self.UNDERLINE_THICKNESS:
-                font_metrics.set_underline_thickness(self._read_float())
+                font_metrics.set_underline_thickness(self.read_float())
             elif next_command == self.ITALIC_ANGLE:
-                font_metrics.set_italic_angle(self._read_float())
+                font_metrics.set_italic_angle(self.read_float())
             elif next_command == self.CHAR_WIDTH:
                 font_metrics.set_char_width(
-                    (self._read_float(), self._read_float())
+                    (self.read_float(), self.read_float())
                 )
             elif next_command == self.IS_FIXED_PITCH:
-                font_metrics.set_fixed_pitch(self._read_boolean())
+                font_metrics.set_fixed_pitch(self.read_boolean())
             elif next_command == self.START_CHAR_METRICS:
-                self._parse_char_metrics(font_metrics)
-                char_metrics_read = True
+                char_metrics_read = self.parse_char_metrics(font_metrics)
             elif next_command == self.START_KERN_DATA:
                 if not reduced_dataset:
-                    self._parse_kern_data(font_metrics)
+                    self.parse_kern_data(font_metrics)
                 else:
                     self._skip_to(self.END_KERN_DATA)
             elif next_command == self.START_COMPOSITES:
                 if not reduced_dataset:
-                    self._parse_composites(font_metrics)
+                    self.parse_composites(font_metrics)
                 else:
                     self._skip_to(self.END_COMPOSITES)
             else:
@@ -222,14 +227,24 @@ class AFMParser:
     # Char metrics
     # ------------------------------------------------------------------
 
-    def _parse_char_metrics(self, font_metrics: FontMetrics) -> None:
-        count = self._read_int()
+    def parse_char_metrics(self, font_metrics: FontMetrics) -> bool:
+        # Upstream returns ``true`` after consuming a CharMetrics block;
+        # the caller uses that flag to relax unknown-key strictness in
+        # reduced-dataset mode.
+        count = self.read_int()
         for _ in range(count):
-            font_metrics.add_char_metric(self._parse_char_metric())
-        self._read_command(self.END_CHAR_METRICS)
+            font_metrics.add_char_metric(self.parse_char_metric())
+        self.read_command(self.END_CHAR_METRICS)
+        return True
 
-    def _parse_char_metric(self) -> CharMetric:
-        line = self._read_line()
+    def parse_char_metric(self) -> CharMetric:
+        # Note: this method uses bare ``int()`` / ``float()`` and lets
+        # ``ValueError`` bubble up to be wrapped as "Malformed CharMetrics
+        # line" by the surrounding try/except. Upstream calls
+        # ``parseInt``/``parseFloat`` here, which would surface "Error
+        # parsing AFM document"; the wrapped message is a deliberate
+        # divergence (see CHANGES.md, wave287).
+        line = self.read_line()
         tokens = [t for t in line.replace(";", " ; ").split() if t]
         char_metric = CharMetric()
         i = 0
@@ -241,58 +256,61 @@ class AFMParser:
                 if tok == self.CHARMETRICS_C:
                     char_metric.set_character_code(int(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_CH:
-                    # Hex-encoded character code.
+                    # Hex-encoded character code. Spec is unclear whether
+                    # the value is bare hex (e.g. ``41``) or angle-bracketed
+                    # (e.g. ``<41>``); we accept either, matching upstream's
+                    # "wait and see if it breaks anything" comment.
                     char_metric.set_character_code(
                         self._parse_hex_character_code(tokens[i])
                     )
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_WX:
                     char_metric.set_wx(float(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W0X:
                     char_metric.set_w0x(float(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W1X:
                     char_metric.set_w1x(float(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_WY:
                     char_metric.set_wy(float(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W0Y:
                     char_metric.set_w0y(float(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W1Y:
                     char_metric.set_w1y(float(tokens[i]))
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W:
                     char_metric.set_w((float(tokens[i]), float(tokens[i + 1])))
                     i += 2
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W0:
                     char_metric.set_w0((float(tokens[i]), float(tokens[i + 1])))
                     i += 2
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_W1:
                     char_metric.set_w1((float(tokens[i]), float(tokens[i + 1])))
                     i += 2
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_VV:
                     char_metric.set_vv((float(tokens[i]), float(tokens[i + 1])))
                     i += 2
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_N:
                     char_metric.set_name(tokens[i])
                     i += 1
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_B:
                     bbox = BoundingBox()
                     bbox.set_lower_left_x(float(tokens[i]))
@@ -301,11 +319,11 @@ class AFMParser:
                     bbox.set_upper_right_y(float(tokens[i + 3]))
                     i += 4
                     char_metric.set_bounding_box(bbox)
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_L:
                     char_metric.add_ligature(Ligature(tokens[i], tokens[i + 1]))
                     i += 2
-                    i = self._verify_semicolon(tokens, i)
+                    i = self.verify_semicolon(tokens, i)
                 else:
                     raise OSError(f"Unknown CharMetrics command '{tok}'")
         except (IndexError, ValueError) as e:
@@ -321,10 +339,14 @@ class AFMParser:
         return int(token, cls._BITS_IN_HEX)
 
     @staticmethod
-    def _verify_semicolon(tokens: list[str], i: int) -> int:
+    def verify_semicolon(tokens: list[str], i: int) -> int:
         # CharMetric lines separate items with ``;``. A trailing ``;`` may be
         # present or absent at end-of-line; we accept either, matching what
         # bundled Adobe Core 14 AFMs ship.
+        #
+        # Upstream takes a ``StringTokenizer`` and consumes the next token in
+        # place; we take ``(tokens, i)`` and return the new cursor. Same
+        # semantics, Pythonic shape.
         if i >= len(tokens):
             return i
         if tokens[i] != ";":
@@ -337,76 +359,82 @@ class AFMParser:
     # Kern data
     # ------------------------------------------------------------------
 
-    def _parse_kern_data(self, font_metrics: FontMetrics) -> None:
+    def parse_kern_data(self, font_metrics: FontMetrics) -> None:
         while True:
-            next_command = self._read_string()
+            next_command = self.read_string()
             if next_command == self.END_KERN_DATA:
                 break
             if next_command == self.START_TRACK_KERN:
-                count = self._read_int()
+                count = self.read_int()
                 for _ in range(count):
                     # Per AFM spec 5004 §9, each track-kern entry is
                     # introduced by a literal ``TrackKern`` keyword.
-                    self._read_command("TrackKern")
+                    self.read_command("TrackKern")
                     font_metrics.add_track_kern(
                         TrackKern(
-                            self._read_int(),
-                            self._read_float(),
-                            self._read_float(),
-                            self._read_float(),
-                            self._read_float(),
+                            self.read_int(),
+                            self.read_float(),
+                            self.read_float(),
+                            self.read_float(),
+                            self.read_float(),
                         )
                     )
-                self._read_command(self.END_TRACK_KERN)
+                self.read_command(self.END_TRACK_KERN)
             elif next_command == self.START_KERN_PAIRS:
-                self._parse_kern_pairs(font_metrics, list_index=0)
+                self.parse_kern_pairs(font_metrics)
             elif next_command == self.START_KERN_PAIRS0:
-                self._parse_kern_pairs(font_metrics, list_index=1)
+                self.parse_kern_pairs0(font_metrics)
             elif next_command == self.START_KERN_PAIRS1:
-                self._parse_kern_pairs(font_metrics, list_index=2)
+                self.parse_kern_pairs1(font_metrics)
             else:
                 raise OSError(f"Unknown kerning data type '{next_command}'")
 
-    def _parse_kern_pairs(self, font_metrics: FontMetrics, list_index: int) -> None:
-        count = self._read_int()
-        if list_index == 0:
-            adder = font_metrics.add_kern_pair
-        elif list_index == 1:
-            adder = font_metrics.add_kern_pair0
-        else:
-            adder = font_metrics.add_kern_pair1
+    def parse_kern_pairs(self, font_metrics: FontMetrics) -> None:
+        count = self.read_int()
         for _ in range(count):
-            adder(self._parse_kern_pair())
-        self._read_command(self.END_KERN_PAIRS)
+            font_metrics.add_kern_pair(self.parse_kern_pair())
+        self.read_command(self.END_KERN_PAIRS)
 
-    def _parse_kern_pair(self) -> KernPair:
-        cmd = self._read_string()
+    def parse_kern_pairs0(self, font_metrics: FontMetrics) -> None:
+        count = self.read_int()
+        for _ in range(count):
+            font_metrics.add_kern_pair0(self.parse_kern_pair())
+        self.read_command(self.END_KERN_PAIRS)
+
+    def parse_kern_pairs1(self, font_metrics: FontMetrics) -> None:
+        count = self.read_int()
+        for _ in range(count):
+            font_metrics.add_kern_pair1(self.parse_kern_pair())
+        self.read_command(self.END_KERN_PAIRS)
+
+    def parse_kern_pair(self) -> KernPair:
+        cmd = self.read_string()
         if cmd == self.KERN_PAIR_KP:
             return KernPair(
-                self._read_string(),
-                self._read_string(),
-                self._read_float(),
-                self._read_float(),
+                self.read_string(),
+                self.read_string(),
+                self.read_float(),
+                self.read_float(),
             )
         if cmd == self.KERN_PAIR_KPH:
             return KernPair(
-                self._hex_to_string(self._read_string()),
-                self._hex_to_string(self._read_string()),
-                self._read_float(),
-                self._read_float(),
+                self.hex_to_string(self.read_string()),
+                self.hex_to_string(self.read_string()),
+                self.read_float(),
+                self.read_float(),
             )
         if cmd == self.KERN_PAIR_KPX:
             return KernPair(
-                self._read_string(), self._read_string(), self._read_float(), 0.0
+                self.read_string(), self.read_string(), self.read_float(), 0.0
             )
         if cmd == self.KERN_PAIR_KPY:
             return KernPair(
-                self._read_string(), self._read_string(), 0.0, self._read_float()
+                self.read_string(), self.read_string(), 0.0, self.read_float()
             )
         raise OSError(f"Error expected kern pair command actual='{cmd}'")
 
     @staticmethod
-    def _hex_to_string(hex_token: str) -> str:
+    def hex_to_string(hex_token: str) -> str:
         if len(hex_token) < 2:
             raise OSError(
                 f"Error: Expected hex string of length >= 2 not='{hex_token}"
@@ -426,14 +454,18 @@ class AFMParser:
     # Composites
     # ------------------------------------------------------------------
 
-    def _parse_composites(self, font_metrics: FontMetrics) -> None:
-        count = self._read_int()
+    def parse_composites(self, font_metrics: FontMetrics) -> None:
+        count = self.read_int()
         for _ in range(count):
-            font_metrics.add_composite(self._parse_composite())
-        self._read_command(self.END_COMPOSITES)
+            font_metrics.add_composite(self.parse_composite())
+        self.read_command(self.END_COMPOSITES)
 
-    def _parse_composite(self) -> Composite:
-        line = self._read_line()
+    def parse_composite(self) -> Composite:
+        # Same divergence as ``parse_char_metric``: bare ``int()`` raises
+        # ``ValueError`` on malformed numeric tokens which we wrap as a
+        # "Malformed Composite line" error rather than upstream's "Error
+        # parsing AFM document" surface (see CHANGES.md, wave294).
+        line = self.read_line()
         tokens = [t for t in line.replace(";", " ; ").split() if t]
         try:
             # Expect: CC <name> <count> ; PCC <name> <x> <y> ; ...
@@ -473,7 +505,7 @@ class AFMParser:
 
     def _skip_to(self, terminator: str) -> None:
         while True:
-            tok = self._read_string()
+            tok = self.read_string()
             if tok == terminator:
                 return
             if not tok:
@@ -484,11 +516,11 @@ class AFMParser:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _is_eol(b: int) -> bool:
+    def is_eol(b: int) -> bool:
         return b == 0x0D or b == 0x0A
 
     @staticmethod
-    def _is_whitespace(b: int) -> bool:
+    def is_whitespace(b: int) -> bool:
         return b in (0x20, 0x09, 0x0D, 0x0A)
 
     def _read_byte(self) -> int:
@@ -498,51 +530,59 @@ class AFMParser:
         self._pos += 1
         return b
 
-    def _read_string(self) -> str:
+    def read_string(self) -> str:
         # Skip leading whitespace.
         b = self._read_byte()
-        while b != -1 and self._is_whitespace(b):
+        while b != -1 and self.is_whitespace(b):
             b = self._read_byte()
         if b == -1:
             return ""
         out = bytearray([b])
         b = self._read_byte()
-        while b != -1 and not self._is_whitespace(b):
+        while b != -1 and not self.is_whitespace(b):
             out.append(b)
             b = self._read_byte()
         return out.decode("latin-1")
 
-    def _read_line(self) -> str:
+    def read_line(self) -> str:
         b = self._read_byte()
-        while b != -1 and self._is_whitespace(b):
+        while b != -1 and self.is_whitespace(b):
             b = self._read_byte()
         if b == -1:
             return ""
         out = bytearray([b])
         b = self._read_byte()
-        while b != -1 and not self._is_eol(b):
+        while b != -1 and not self.is_eol(b):
             out.append(b)
             b = self._read_byte()
         return out.decode("latin-1")
 
-    def _read_command(self, expected: str) -> None:
-        cmd = self._read_string()
+    def read_command(self, expected: str) -> None:
+        cmd = self.read_string()
         if cmd != expected:
             raise OSError(f"Error: Expected '{expected}' actual '{cmd}'")
 
-    def _read_int(self) -> int:
-        s = self._read_string()
+    def read_int(self) -> int:
+        return self.parse_int(self.read_string(), 10)
+
+    def parse_int(self, value: str, radix: int = 10) -> int:
+        # Mirrors upstream's two ``parseInt`` overloads: the no-radix form
+        # delegates to the radix-10 form. ``ValueError`` from Python's
+        # ``int(...)`` is wrapped in ``OSError`` so callers see the same
+        # ``IOException``-shaped failure mode as upstream.
         try:
-            return int(s, 10)
+            return int(value, radix)
         except ValueError as e:
             raise OSError(f"Error parsing AFM document:{e}") from e
 
-    def _read_float(self) -> float:
-        s = self._read_string()
+    def read_float(self) -> float:
+        return self.parse_float(self.read_string())
+
+    def parse_float(self, value: str) -> float:
         try:
-            return float(s)
+            return float(value)
         except ValueError as e:
             raise OSError(f"Error parsing AFM document:{e}") from e
 
-    def _read_boolean(self) -> bool:
-        return self._read_string().lower() == "true"
+    def read_boolean(self) -> bool:
+        return self.read_string().lower() == "true"

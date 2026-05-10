@@ -260,3 +260,225 @@ def test_read_method_is_noop(liberation_sans: TrueTypeFont) -> None:
     # Should not raise even with an empty stream — read is intentionally a no-op.
     table.read(liberation_sans, MemoryTTFDataStream(b""))
     assert table.get_initialized() is False
+
+
+# ---------- structural accessor coverage -----------------------------------
+
+
+def test_lookup_type_constants_match_ot_spec() -> None:
+    """Class-level ``LOOKUP_TYPE_*`` constants must match the OT spec
+    GSUB Header lookup-type taxonomy."""
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_SINGLE == 1
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_MULTIPLE == 2
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_ALTERNATE == 3
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_LIGATURE == 4
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_CONTEXT == 5
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_CHAINING_CONTEXT == 6
+    assert GlyphSubstitutionTable.LOOKUP_TYPE_EXTENSION_SUBSTITUTION == 7
+    assert (
+        GlyphSubstitutionTable.LOOKUP_TYPE_REVERSE_CHAINING_CONTEXTUAL_SINGLE
+        == 8
+    )
+
+
+def test_get_lookup_count_unpopulated() -> None:
+    t = GlyphSubstitutionTable()
+    assert t.get_lookup_count() == 0
+
+
+def test_get_lookup_count_populated(gsub: GlyphSubstitutionTable) -> None:
+    """Liberation Sans's GSUB has a non-empty LookupList."""
+    assert gsub.get_lookup_count() > 0
+
+
+def test_get_lookup_types_unpopulated() -> None:
+    t = GlyphSubstitutionTable()
+    assert t.get_lookup_types() == []
+
+
+def test_get_lookup_types_all_legal(gsub: GlyphSubstitutionTable) -> None:
+    """Every lookup type must fall in the OT spec range 1..8."""
+    types = gsub.get_lookup_types()
+    assert types
+    for lt in types:
+        assert 1 <= lt <= 8
+
+
+def test_get_script_list_unpopulated() -> None:
+    assert GlyphSubstitutionTable().get_script_list() is None
+
+
+def test_get_script_list_populated(gsub: GlyphSubstitutionTable) -> None:
+    sl = gsub.get_script_list()
+    assert sl is not None
+    assert hasattr(sl, "ScriptRecord")
+
+
+def test_get_feature_list_unpopulated() -> None:
+    assert GlyphSubstitutionTable().get_feature_list() is None
+
+
+def test_get_feature_list_populated(gsub: GlyphSubstitutionTable) -> None:
+    fl = gsub.get_feature_list()
+    assert fl is not None
+    assert hasattr(fl, "FeatureRecord")
+
+
+def test_get_lookup_list_unpopulated() -> None:
+    assert GlyphSubstitutionTable().get_lookup_list() is None
+
+
+def test_get_lookup_list_populated(gsub: GlyphSubstitutionTable) -> None:
+    ll = gsub.get_lookup_list()
+    assert ll is not None
+    assert hasattr(ll, "Lookup")
+
+
+def test_get_lookup_out_of_range(gsub: GlyphSubstitutionTable) -> None:
+    assert gsub.get_lookup(-1) is None
+    assert gsub.get_lookup(99999) is None
+
+
+def test_get_lookup_in_range(gsub: GlyphSubstitutionTable) -> None:
+    lookup = gsub.get_lookup(0)
+    assert lookup is not None
+    assert hasattr(lookup, "LookupType")
+
+
+def test_get_lookup_subtables_out_of_range(gsub: GlyphSubstitutionTable) -> None:
+    assert gsub.get_lookup_subtables(-1) == []
+    assert gsub.get_lookup_subtables(99999) == []
+
+
+def test_get_lookup_subtables_in_range(gsub: GlyphSubstitutionTable) -> None:
+    subs = gsub.get_lookup_subtables(0)
+    assert isinstance(subs, list)
+    # Lookup 0 must have at least one subtable in a real font.
+    assert subs
+
+
+def test_get_feature_record_out_of_range(gsub: GlyphSubstitutionTable) -> None:
+    assert gsub.get_feature_record(-1) is None
+    assert gsub.get_feature_record(99999) is None
+
+
+def test_get_feature_record_in_range(gsub: GlyphSubstitutionTable) -> None:
+    fr = gsub.get_feature_record(0)
+    assert fr is not None
+    assert hasattr(fr, "FeatureTag")
+
+
+def test_get_lang_sys_tables_unknown_script(gsub: GlyphSubstitutionTable) -> None:
+    assert gsub.get_lang_sys_tables("zzzz") == []
+
+
+def test_get_lang_sys_tables_known_script(gsub: GlyphSubstitutionTable) -> None:
+    """A populated script must yield at least one LangSys (default or
+    per-language)."""
+    tables = gsub.get_lang_sys_tables("latn")
+    assert tables  # non-empty
+
+
+def test_get_lang_sys_tables_unpopulated() -> None:
+    assert GlyphSubstitutionTable().get_lang_sys_tables("latn") == []
+
+
+def test_get_feature_records_empty_lang_sys() -> None:
+    t = GlyphSubstitutionTable()
+    assert t.get_feature_records([], None) == []
+
+
+def test_get_feature_records_filtered(gsub: GlyphSubstitutionTable) -> None:
+    """Filtering by feature tag must drop records whose tag isn't
+    enabled."""
+    lang_sys = gsub.get_lang_sys_tables("latn")
+    assert lang_sys
+    only_sups = gsub.get_feature_records(lang_sys, ["sups"])
+    for fr in only_sups:
+        assert str(fr.FeatureTag).strip() == "sups"
+
+
+def test_get_feature_records_no_filter_returns_all(
+    gsub: GlyphSubstitutionTable,
+) -> None:
+    lang_sys = gsub.get_lang_sys_tables("latn")
+    assert lang_sys
+    everything = gsub.get_feature_records(lang_sys, None)
+    # Liberation Sans's latn LangSys references multiple feature
+    # records; expect at least one.
+    assert everything
+
+
+def test_select_script_tag_public_mirror(gsub: GlyphSubstitutionTable) -> None:
+    """The public mirror must resolve a real script tag and update the
+    last-used hint."""
+    chosen = gsub.select_script_tag(["latn"])
+    assert chosen == "latn"
+    assert gsub.get_last_used_supported_script() == "latn"
+
+
+def test_select_script_tag_unknown_returns_first(
+    gsub: GlyphSubstitutionTable,
+) -> None:
+    assert gsub.select_script_tag(["zzzz"]) == "zzzz"
+
+
+def test_get_last_used_supported_script_initial() -> None:
+    assert GlyphSubstitutionTable().get_last_used_supported_script() is None
+
+
+def test_apply_feature_unpopulated_passthrough() -> None:
+    """Unpopulated table — apply_feature must return input unchanged."""
+    t = GlyphSubstitutionTable()
+    assert t.apply_feature(None, 7) == 7
+
+
+def test_apply_feature_with_real_record(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """Plumb a real FeatureRecord through and verify substitution
+    matches what get_substitution returns."""
+    table = GlyphSubstitutionTable()
+    table.populate_from_fonttools(liberation_sans._tt)
+    src = _gid(liberation_sans, "four")
+    expected = _gid(liberation_sans, "four.sups")
+    # Find the sups feature record — there's only one in this font.
+    fl = table.get_feature_list()
+    assert fl is not None
+    sups_fr = next(
+        fr
+        for fr in fl.FeatureRecord
+        if str(fr.FeatureTag).strip() == "sups"
+    )
+    assert table.apply_feature(sups_fr, src) == expected
+
+
+def test_do_lookup_unpopulated_passthrough() -> None:
+    t = GlyphSubstitutionTable()
+    assert t.do_lookup(None, 5) == 5
+
+
+def test_do_lookup_skips_non_type_1(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """do_lookup must short-circuit when the LookupType isn't 1."""
+
+    class FakeLookup:
+        LookupType = 4  # ligature
+        SubTable: list[object] = []
+
+    table = GlyphSubstitutionTable()
+    table.populate_from_fonttools(liberation_sans._tt)
+    assert table.do_lookup(FakeLookup(), 42) == 42
+
+
+def test_do_lookup_with_real_type_1(liberation_sans: TrueTypeFont) -> None:
+    table = GlyphSubstitutionTable()
+    table.populate_from_fonttools(liberation_sans._tt)
+    src = _gid(liberation_sans, "four")
+    expected = _gid(liberation_sans, "four.sups")
+    # Lookup index 5 is the sups single-substitution lookup
+    # (asserted by the existing wave548 test).
+    sups_lookup = table.get_lookup(5)
+    assert sups_lookup is not None
+    assert table.do_lookup(sups_lookup, src) == expected
