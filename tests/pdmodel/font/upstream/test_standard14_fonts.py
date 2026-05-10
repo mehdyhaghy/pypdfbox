@@ -153,3 +153,156 @@ def test_get_afm_caches_through_alias() -> None:
     via_alias = Standard14Fonts.get_afm("Arial")
     via_canonical = Standard14Fonts.get_afm("Helvetica")
     assert via_alias is via_canonical
+
+
+# ---------- getMappedFont ----------
+
+
+@pytest.mark.parametrize("name", _BASE_14)
+def test_get_mapped_font_returns_a_wrapper_for_each_canonical(name: str) -> None:
+    """``getMappedFont`` returns a substitute wrapper for every canonical name.
+
+    Ports the spirit of upstream's private ``getMappedFont(FontName)``
+    accessor (Standard14Fonts.java line 245).
+    """
+    wrapper = Standard14Fonts.get_mapped_font(name)
+    assert wrapper is not None
+    # The wrapper is the FontBoxFont protocol — name round-trips through it.
+    assert wrapper.get_name() == name
+
+
+def test_get_mapped_font_caches_per_canonical_name() -> None:
+    """Two calls with the same canonical name share a wrapper instance.
+
+    Mirrors upstream's ``GENERIC_FONTS`` EnumMap caching contract.
+    """
+    first = Standard14Fonts.get_mapped_font("Helvetica")
+    second = Standard14Fonts.get_mapped_font("Helvetica")
+    assert first is second
+
+
+def test_get_mapped_font_resolves_alias_to_canonical_wrapper() -> None:
+    """``Arial`` lookup returns the same wrapper as ``Helvetica``."""
+    via_alias = Standard14Fonts.get_mapped_font("Arial")
+    via_canonical = Standard14Fonts.get_mapped_font("Helvetica")
+    assert via_alias is via_canonical
+
+
+# ---------- getGlyphPath ----------
+
+
+def test_get_glyph_path_for_notdef_returns_empty_path() -> None:
+    """``.notdef`` short-circuits — upstream returns ``new GeneralPath()``.
+
+    Ports the upstream check at Standard14Fonts.java line 274.
+    """
+    path = Standard14Fonts.get_glyph_path("Helvetica", ".notdef")
+    assert path == []
+
+
+def test_get_glyph_path_returns_list_for_unknown_glyph() -> None:
+    """Unknown glyph names yield an empty path (upstream trailing return).
+
+    Ports the upstream tail at Standard14Fonts.java line 306 (``return
+    new GeneralPath();``). The bundled ``Standard14FontWrapper`` carries
+    no outlines, so any name will hit this branch in pypdfbox.
+    """
+    path = Standard14Fonts.get_glyph_path("Helvetica", "NoSuchGlyph")
+    assert path == []
+
+
+def test_get_glyph_path_rejects_unknown_font_with_empty_path() -> None:
+    """Unknown font name returns ``[]`` — pypdfbox swallows the upstream
+    ``IllegalArgumentException`` here for the path API since drawing
+    nothing matches the upstream end-state."""
+    assert Standard14Fonts.get_glyph_path("NotAFont", "A") == []
+
+
+# ---------- loadMetrics ----------
+
+
+@pytest.mark.parametrize("name", _BASE_14)
+def test_load_metrics_returns_parsed_metrics_for_each_canonical(name: str) -> None:
+    """``loadMetrics`` parses each Standard 14 AFM and caches it.
+
+    Ports the upstream private ``loadMetrics(FontName)`` accessor
+    (Standard14Fonts.java line 129).
+    """
+    metrics = Standard14Fonts.load_metrics(name)
+    assert isinstance(metrics, AfmMetrics)
+    assert metrics.get_font_name() == name
+
+
+def test_load_metrics_rejects_aliases() -> None:
+    """The upstream private form takes a ``FontName`` enum, so the alias
+    string is not a valid input — pypdfbox surfaces a ``ValueError``."""
+    with pytest.raises(ValueError, match="canonical Standard 14"):
+        Standard14Fonts.load_metrics("Arial")
+
+
+# ---------- mapName ----------
+
+
+def test_map_name_registers_a_new_alias() -> None:
+    """``mapName(alias, FontName)`` adds a new alias to the lookup table.
+
+    Ports the upstream private ``mapName(String, FontName)`` overload
+    (Standard14Fonts.java line 165).
+    """
+    try:
+        Standard14Fonts.map_name("HelveticaParityAlias", "Helvetica")
+        assert Standard14Fonts.contains_name("HelveticaParityAlias") is True
+        assert (
+            Standard14Fonts.get_mapped_font_name("HelveticaParityAlias")
+            == "Helvetica"
+        )
+    finally:
+        # Restore the pre-test state so other tests aren't affected.
+        from pypdfbox.pdmodel.font.standard14_fonts import (
+            _ALIASES,
+            _NAME_LOOKUP,
+        )
+
+        _ALIASES.pop("HelveticaParityAlias", None)
+        _NAME_LOOKUP.pop("helveticaparityalias", None)
+
+
+def test_map_name_rejects_unknown_canonical_target() -> None:
+    """The target must be a Standard 14 canonical name."""
+    with pytest.raises(ValueError, match="canonical Standard 14"):
+        Standard14Fonts.map_name("MyAlias", "NotAFont")
+
+
+# ---------- getGlyphList ----------
+
+
+def test_get_glyph_list_for_zapf_dingbats_picks_zapf_list() -> None:
+    """ZapfDingbats picks the dedicated Zapf glyph list.
+
+    Ports upstream's private ``getGlyphList(FontName)`` selector
+    (Standard14Fonts.java line 309).
+    """
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+
+    assert (
+        Standard14Fonts.get_glyph_list("ZapfDingbats")
+        is GlyphList.get_zapf_dingbats()
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Helvetica",
+        "Times-Roman",
+        "Courier",
+        "Symbol",
+    ],
+)
+def test_get_glyph_list_for_non_zapf_picks_adobe_list(name: str) -> None:
+    """Every Standard 14 except ZapfDingbats picks the Adobe Glyph List."""
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+
+    assert (
+        Standard14Fonts.get_glyph_list(name) is GlyphList.get_adobe_glyph_list()
+    )

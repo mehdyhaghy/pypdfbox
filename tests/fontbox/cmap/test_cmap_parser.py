@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.fontbox.cmap import CMapParser
+from pypdfbox.fontbox.cmap import CMap, CMapParser, CodespaceRange
+from pypdfbox.io import RandomAccessReadBuffer
 
 
 def test_parser_handles_comments_tabs_and_basic_mappings() -> None:
@@ -95,3 +96,142 @@ def test_bundled_predefined_loads_from_disk() -> None:
 def test_unknown_predefined_raises() -> None:
     with pytest.raises(OSError):
         CMapParser.parse_predefined("NotARealPredefinedCMap-XYZ")
+
+
+# ---------- direct parity tests for the newly-public surface ----------
+
+
+def _ras(data: bytes) -> RandomAccessReadBuffer:
+    return RandomAccessReadBuffer(data)
+
+
+def test_is_whitespace_or_eof_matches_upstream_spec() -> None:
+    # Java upstream: -1 (EOF), 0x20 (space), 0x0D (CR), 0x0A (LF).
+    for b in (-1, 0x20, 0x0D, 0x0A):
+        assert CMapParser.is_whitespace_or_eof(b) is True
+    for b in (0x09, 0x21, 0x30, 0x41):
+        assert CMapParser.is_whitespace_or_eof(b) is False
+
+
+def test_is_delimiter_matches_upstream_spec() -> None:
+    for b in (0x28, 0x29, 0x3C, 0x3E, 0x5B, 0x5D, 0x7B, 0x7D, 0x2F, 0x25):
+        assert CMapParser.is_delimiter(b) is True
+    for b in (0x20, 0x09, 0x41, 0x30, 0x00):
+        assert CMapParser.is_delimiter(b) is False
+
+
+def test_increment_low_byte_carries_in_lenient_mode() -> None:
+    data = bytearray(b"\x01\xFF")
+    assert CMapParser.increment(data, 1, False) is True
+    assert bytes(data) == b"\x02\x00"
+
+
+def test_increment_low_byte_overflows_in_strict_mode() -> None:
+    data = bytearray(b"\x01\xFF")
+    assert CMapParser.increment(data, 1, True) is False
+    # Buffer left untouched on overflow refusal.
+    assert bytes(data) == b"\x01\xFF"
+
+
+def test_increment_at_negative_position_returns_false() -> None:
+    data = bytearray(b"\x10")
+    assert CMapParser.increment(data, -1, False) is False
+    assert bytes(data) == b"\x10"
+
+
+def test_create_string_from_bytes_one_byte_through_latin1() -> None:
+    assert CMapParser.create_string_from_bytes(b"\x41") == "A"
+    assert CMapParser.create_string_from_bytes(b"\xFF") == "ÿ"
+
+
+def test_create_string_from_bytes_multibyte_utf16be() -> None:
+    assert CMapParser.create_string_from_bytes(b"\x00\x41") == "A"
+    assert CMapParser.create_string_from_bytes(b"\x00\x41\x00\x42") == "AB"
+
+
+def test_parse_next_token_returns_integer_for_digits() -> None:
+    parser = CMapParser()
+    ras = _ras(b"42 ")
+    assert parser.parse_next_token(ras) == 42
+
+
+def test_parse_next_token_returns_float_for_decimal() -> None:
+    parser = CMapParser()
+    ras = _ras(b"3.14 ")
+    assert parser.parse_next_token(ras) == 3.14
+
+
+def test_parse_next_token_returns_bytes_for_hex() -> None:
+    parser = CMapParser()
+    assert parser.parse_next_token(_ras(b"<41 42>")) == b"AB"
+
+
+def test_parse_integer_rejects_non_int_token() -> None:
+    parser = CMapParser()
+    with pytest.raises(OSError):
+        parser.parse_integer(_ras(b"<41>"))
+
+
+def test_parse_byte_array_rejects_non_bytes_token() -> None:
+    parser = CMapParser()
+    with pytest.raises(OSError):
+        parser.parse_byte_array(_ras(b"42"))
+
+
+def test_read_string_collects_until_closing_paren() -> None:
+    # Caller has already consumed '(' before invoking read_string.
+    ras = _ras(b"hello)")
+    assert CMapParser.read_string(ras) == "hello"
+
+
+def test_read_array_returns_inner_tokens() -> None:
+    parser = CMapParser()
+    # Caller has already consumed '['.
+    out = parser.read_array(_ras(b"<41> <42> ]"))
+    assert out == [b"A", b"B"]
+
+
+def test_check_expected_operator_passes_on_match() -> None:
+    # Indirect: build an Operator via a synthetic snippet then dispatch
+    # through parse_begincodespacerange — failure path raises OSError.
+    parser = CMapParser()
+    parser.parse(b"1 begincodespacerange <00> <FF> endcodespacerange endcmap")
+
+
+def test_check_expected_operator_rejects_wrong_terminator() -> None:
+    # ``count`` over-states the body length, so the parser hits the
+    # closing operator before exhausting the loop. A non-matching
+    # terminator must raise an OSError per upstream's
+    # ``checkExpectedOperator``.
+    with pytest.raises(OSError):
+        CMapParser().parse(
+            b"2 begincodespacerange <00> <FF> endbfchar endcmap"
+        )
+
+
+def test_add_mapping_frombfrange_count_form_increments_dst() -> None:
+    parser = CMapParser()
+    cmap = CMap()
+    cmap.add_codespace_range(CodespaceRange(b"\x00", b"\xFF"))
+    start = bytearray(b"\x01")
+    dst = bytearray(b"\x00\x41")  # "A"
+    parser.add_mapping_frombfrange(cmap, start, 3, dst)
+    assert cmap.to_unicode_bytes(b"\x01") == "A"
+    assert cmap.to_unicode_bytes(b"\x02") == "B"
+    assert cmap.to_unicode_bytes(b"\x03") == "C"
+
+
+def test_add_mapping_frombfrange_list_form_takes_explicit_targets() -> None:
+    parser = CMapParser()
+    cmap = CMap()
+    cmap.add_codespace_range(CodespaceRange(b"\x00", b"\xFF"))
+    start = bytearray(b"\x10")
+    parser.add_mapping_frombfrange(cmap, start, [b"\x00\x41", b"\x00\x42"])
+    assert cmap.to_unicode_bytes(b"\x10") == "A"
+    assert cmap.to_unicode_bytes(b"\x11") == "B"
+
+
+def test_get_external_c_map_raises_for_unknown_resource() -> None:
+    parser = CMapParser()
+    with pytest.raises(OSError, match="Could not find referenced cmap stream"):
+        parser.get_external_c_map("DefinitelyNotBundled")

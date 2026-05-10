@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .afm_loader import AfmMetrics, load_standard14
 from .encoding.encoding import Encoding
 from .encoding.standard_encoding import StandardEncoding
 from .encoding.symbol_encoding import SymbolEncoding
 from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
+
+if TYPE_CHECKING:
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+    from pypdfbox.fontbox.font_mapper import Standard14FontWrapper
 
 # ---------------------------------------------------------------------------
 # Per-family flag bits + default-encoding map.
@@ -138,6 +142,26 @@ for _alias, _target in _ALIASES.items():
 # encoding (StandardEncoding / SymbolEncoding / ZapfDingbatsEncoding) plus
 # the bundled AFM. Built once on first access.
 _AVG_WIDTHS_CACHE: dict[str, list[float]] = {}
+
+
+# Per-canonical-name cache for the substitute :class:`Standard14FontWrapper`
+# returned by :meth:`Standard14Fonts.get_mapped_font`. Mirrors upstream's
+# ``GENERIC_FONTS`` ``EnumMap`` (Standard14Fonts.java line 67) — the wrapper
+# is built once on first access and reused for the lifetime of the process.
+_GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
+
+
+def _uni_name_of_code_point(code_point: int) -> str:
+    """Synthesize the ``uniXXXX`` glyph name for ``code_point``.
+
+    Mirrors upstream ``UniUtil.getUniNameOfCodePoint`` — pads the
+    uppercase hex to a minimum width of four. Used by
+    :meth:`Standard14Fonts.get_glyph_path` for the AGL-fallback branch.
+    """
+    hex_str = format(code_point, "X")
+    if len(hex_str) < 4:
+        hex_str = hex_str.rjust(4, "0")
+    return "uni" + hex_str
 
 
 class Standard14Fonts:
@@ -386,6 +410,171 @@ class Standard14Fonts:
         if canonical is None:
             return None
         return load_standard14(canonical).get_font_metrics()
+
+    # ---- Internal helpers (port of private upstream methods) ----------
+
+    @classmethod
+    def map_name(cls, alias: str, base_name: str | None = None) -> None:
+        """Register ``alias`` -> ``base_name`` in the alias table.
+
+        Mirrors the upstream private overloads
+        ``mapName(FontName)`` and ``mapName(String, FontName)`` on
+        :class:`org.apache.pdfbox.pdmodel.font.Standard14Fonts` (lines
+        153-168). When ``base_name`` is ``None`` the alias is treated as
+        a self-mapping (the upstream single-argument form used to seed
+        the 14 canonical names). The lookup map is rebuilt so future
+        :meth:`contains_name` / :meth:`get_mapped_font_name` calls see
+        the new entry.
+
+        Raises ``ValueError`` when ``base_name`` is not one of the 14
+        canonical PostScript names (mirrors upstream's reliance on a
+        ``FontName`` enum constant).
+        """
+        target = base_name if base_name is not None else alias
+        if target not in _FAMILY_FLAGS:
+            raise ValueError(
+                f"{target!r} is not one of the 14 canonical Standard 14 names"
+            )
+        if base_name is None:
+            # Self-mapping — already covered by the canonical seed pass.
+            _NAME_LOOKUP[alias.lower()] = alias
+            return
+        _ALIASES[alias] = target
+        _NAME_LOOKUP[alias.lower()] = target
+
+    @classmethod
+    def load_metrics(cls, name: str) -> AfmMetrics:
+        """Parse and cache the AFM metrics for ``name``.
+
+        Mirrors the upstream private ``loadMetrics(FontName)`` helper
+        (Standard14Fonts.java line 129) — exposed as a classmethod here so
+        callers porting from Java can drive the cache priming explicitly.
+        Returns the parsed :class:`AfmMetrics`; subsequent calls hit the
+        same cache that backs :meth:`get_afm`.
+
+        Raises ``ValueError`` when ``name`` is not one of the 14 canonical
+        PostScript names (the upstream private form takes a ``FontName``
+        enum, so aliases are intentionally rejected).
+        """
+        if name not in _FAMILY_FLAGS:
+            raise ValueError(
+                f"{name!r} is not one of the 14 canonical Standard 14 names"
+            )
+        return load_standard14(name)
+
+    @classmethod
+    def get_mapped_font(cls, base_name: str) -> Standard14FontWrapper:
+        """Return the substitute font wrapper for the given canonical name.
+
+        Mirrors upstream private ``getMappedFont(FontName)``
+        (Standard14Fonts.java line 245) — caches a
+        :class:`pypdfbox.fontbox.font_mapper.Standard14FontWrapper` per
+        canonical name. The wrapper exposes the ``FontBoxFont`` protocol
+        (``get_name`` / ``has_glyph`` / ``get_path`` / ``get_width``)
+        backed by the bundled AFM metrics.
+
+        Aliases are accepted on the input — they are normalised to their
+        canonical form before the wrapper is created.
+
+        Raises ``ValueError`` when ``base_name`` is not a Standard 14
+        canonical name or known alias.
+        """
+        canonical = cls.get_mapped_font_name(base_name)
+        if canonical is None:
+            raise ValueError(
+                f"{base_name!r} is not one of the 14 Standard fonts"
+            )
+        cached = _GENERIC_FONTS_CACHE.get(canonical)
+        if cached is not None:
+            return cached
+        # Local import — :mod:`pypdfbox.fontbox.font_mapper` reaches back
+        # into this module via :class:`DefaultFontMapper`, so import at
+        # call time to break the cycle.
+        from pypdfbox.fontbox.font_mapper import (  # noqa: PLC0415
+            Standard14FontWrapper,
+        )
+
+        metrics = load_standard14(canonical)
+        wrapper = Standard14FontWrapper(canonical, metrics)
+        _GENERIC_FONTS_CACHE[canonical] = wrapper
+        return wrapper
+
+    @classmethod
+    def get_glyph_list(cls, base_name: str) -> GlyphList:
+        """Return the AGL / ZapfDingbats glyph list for ``base_name``.
+
+        Mirrors the upstream private ``getGlyphList(FontName)`` selector
+        (Standard14Fonts.java line 309): ZapfDingbats picks the dedicated
+        Zapf list, every other Standard 14 picks the Adobe Glyph List.
+        Aliases are normalised on the input.
+
+        Raises ``ValueError`` when ``base_name`` is not a Standard 14
+        canonical name or known alias.
+        """
+        canonical = cls.get_mapped_font_name(base_name)
+        if canonical is None:
+            raise ValueError(
+                f"{base_name!r} is not one of the 14 Standard fonts"
+            )
+        from pypdfbox.fontbox.encoding.glyph_list import (  # noqa: PLC0415
+            GlyphList,
+        )
+
+        if canonical == "ZapfDingbats":
+            return GlyphList.get_zapf_dingbats()
+        return GlyphList.get_adobe_glyph_list()
+
+    @classmethod
+    def get_glyph_path(cls, base_name: str, glyph_name: str) -> list[tuple[Any, ...]]:
+        """Return the glyph outline for ``glyph_name`` in the named font.
+
+        Mirrors upstream ``Standard14Fonts.getGlyphPath`` (line 271).
+        Resolution order:
+
+        1. ``.notdef`` short-circuits to an empty path (upstream returns
+           ``new GeneralPath()``).
+        2. If the substitute font already carries a glyph by that name,
+           draw it directly.
+        3. Otherwise, run ``glyph_name`` through the family's
+           :class:`GlyphList` (Adobe Glyph List for everything except
+           ZapfDingbats) and re-probe under the synthesized
+           ``uniXXXX`` glyph name.
+        4. As a final fallback, when the substitute reports its name as
+           ``"SymbolMT"`` (the Microsoft alias for Symbol),
+           re-probe under ``uniF0XX`` for codes 0x20-0xFF — matches
+           upstream's PUA-shifted Symbol glyph naming.
+        5. If none of the above hit, return an empty path.
+
+        Returns a ``list`` of segment tuples (the pypdfbox shape — a
+        Java ``GeneralPath`` is upstream's analogue).
+        """
+        if glyph_name == ".notdef":
+            return []
+        try:
+            mapped_font = cls.get_mapped_font(base_name)
+        except ValueError:
+            return []
+        if mapped_font.has_glyph(glyph_name):
+            return list(mapped_font.get_path(glyph_name))
+        # AGL / ZapfDingbats fallback — upstream re-probes under the
+        # synthesized ``uniXXXX`` form when the direct name misses.
+        unicodes = cls.get_glyph_list(base_name).to_unicode(glyph_name)
+        if unicodes is not None and len(unicodes) == 1:
+            uni_name = _uni_name_of_code_point(ord(unicodes))
+            if mapped_font.has_glyph(uni_name):
+                return list(mapped_font.get_path(uni_name))
+        # PUA-shifted Symbol fallback — only fires for the Microsoft
+        # ``SymbolMT`` substitute; pypdfbox's bundled wrapper reports
+        # the canonical name (``Symbol``) so the branch is normally
+        # inert here, but kept for upstream-symmetry when an external
+        # mapper is plugged in.
+        if mapped_font.get_name() == "SymbolMT":
+            code = SymbolEncoding.INSTANCE.get_code(glyph_name)
+            if code is not None:
+                uni_name = _uni_name_of_code_point(code + 0xF000)
+                if mapped_font.has_glyph(uni_name):
+                    return list(mapped_font.get_path(uni_name))
+        return []
 
 
 __all__ = ["Standard14Fonts"]

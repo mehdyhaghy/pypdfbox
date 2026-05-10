@@ -180,6 +180,55 @@ class COSFilterInputStream:
         """Convenience: read every byte covered by ``byte_range`` at once."""
         return self.read(-1)
 
+    def to_byte_array(self) -> bytes:
+        """Read every byte covered by ``byte_range`` into a single ``bytes``.
+
+        Mirrors upstream ``COSFilterInputStream.toByteArray()`` (Java line 81),
+        which delegates to ``IOUtils.toByteArray(this)``. Same semantics as
+        :meth:`read_all`, kept under the upstream-spelled name so callers
+        translating PDFBox code can find it without renaming.
+        """
+        return self.read(-1)
+
+    def calculate_ranges(self, byte_range: Sequence[int]) -> list[tuple[int, int]]:
+        """Translate a flat ``[start1, len1, start2, len2, ...]`` array into a
+        list of ``(start, end)`` pairs, mirroring upstream
+        ``calculateRanges(int[])`` (Java line 86).
+
+        Upstream stores ranges as ``[start, start + length]``; we expose the
+        same representation here for callers that want to inspect or rebuild
+        the structure. The instance's own ranges are unchanged — this method
+        is a pure helper, matching the static-feel Java private method.
+        """
+        flat = list(byte_range)
+        if len(flat) % 2 != 0:
+            raise ValueError(
+                "COSFilterInputStream: flat byte_range must have an even "
+                "number of entries"
+            )
+        out: list[tuple[int, int]] = []
+        for i in range(0, len(flat), 2):
+            out.append((int(flat[i]), int(flat[i]) + int(flat[i + 1])))
+        return out
+
+    def get_remaining(self) -> int:
+        """Bytes left to read in the current range, mirroring upstream
+        ``getRemaining()`` (Java line 96)."""
+        return self._remaining_in_range
+
+    def next_range(self) -> bool:
+        """Advance to the next byte range, returning ``True`` if one exists.
+
+        Mirrors upstream ``nextRange()`` (Java line 101). Like the Java
+        original, this is normally driven by :meth:`read`; it's exposed here
+        so callers porting upstream subclasses can override it.
+        """
+        if self._range_index + 1 < len(self._ranges):
+            self._range_index += 1
+            self._prime_next_range()
+            return True
+        return False
+
     def readable(self) -> bool:
         return not self._closed
 

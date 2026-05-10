@@ -9,8 +9,16 @@ from typing import TYPE_CHECKING, Any, overload
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.ttf import TrueTypeFont, TTFSubsetter
+from pypdfbox.fontbox.ttf.cmap_table import CmapTable
+from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 
+from .encoding import (
+    BuiltInEncoding,
+    Encoding,
+    StandardEncoding,
+)
 from .pd_simple_font import PDSimpleFont
+from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -50,6 +58,18 @@ class PDTrueTypeFont(PDSimpleFont):
         # Memoised inverted ``code → gid`` map used by the embedding /
         # encoding path. Built lazily by :meth:`get_gid_to_code`.
         self._gid_to_code: dict[int, int] | None = None
+        # Per-platform ``cmap`` subtables resolved by :meth:`extract_cmap_table`
+        # — Win-Unicode (3,1), Win-Symbol (3,0), Mac-Roman (1,0), and the
+        # two Unicode-platform aliases (0,0)/(0,3) the spec lets us treat
+        # as Win-Unicode. ``None`` means "no cmap of this flavour"; the
+        # extraction method only runs once per font instance.
+        self._cmap_win_unicode: CmapSubtable | None = None
+        self._cmap_win_symbol: CmapSubtable | None = None
+        self._cmap_mac_roman: CmapSubtable | None = None
+        self._cmap_initialized: bool = False
+        # Cached BoundingBox returned by :meth:`get_bounding_box` — mirrors
+        # upstream's ``fontBBox`` field. Computed once, then reused.
+        self._font_bbox: BoundingBox | None = None
 
     # ---------- font identity ----------
 
@@ -104,6 +124,11 @@ class PDTrueTypeFont(PDSimpleFont):
         self._cmap_subtable = None
         self._cmap_resolved = False
         self._gid_to_code = None
+        self._cmap_win_unicode = None
+        self._cmap_win_symbol = None
+        self._cmap_mac_roman = None
+        self._cmap_initialized = False
+        self._font_bbox = None
 
     def is_damaged(self) -> bool:
         """``True`` iff the embedded TrueType program failed to parse.
@@ -118,7 +143,65 @@ class PDTrueTypeFont(PDSimpleFont):
         self.get_true_type_font()
         return self._ttf is False
 
-    # ---------- subsetting ----------
+    def is_embedded(self) -> bool:
+        """``True`` iff the font has a successfully parsed ``/FontFile2``.
+
+        Mirrors upstream ``PDTrueTypeFont.isEmbedded`` which returns the
+        ``isEmbedded`` field that the constructor sets to ``ttfFont != null``
+        — i.e. embedding is true *only* when a TrueType program was both
+        present **and** parsed cleanly. A damaged ``/FontFile2`` does not
+        count as embedded for this class (matches upstream).
+        """
+        if isinstance(self._ttf, TrueTypeFont):
+            return True
+        if self._ttf is False:
+            return False
+        # Lazy parse on first ask — subsequent calls hit the cached state.
+        return self.get_true_type_font() is not None
+
+    # ---------- bounding box ----------
+
+    def get_bounding_box(self) -> BoundingBox | None:  # type: ignore[override]
+        """Return the font's bounding box as a :class:`BoundingBox`.
+
+        Mirrors upstream ``PDTrueTypeFont.getBoundingBox`` — pulls
+        ``/FontBBox`` from the descriptor when set, otherwise falls back
+        to the embedded TTF's ``head`` table. Cached on first call,
+        matching upstream's ``fontBBox`` field.
+
+        Returns ``None`` when neither source can answer.
+        """
+        if self._font_bbox is not None:
+            return self._font_bbox
+        bbox = self._generate_bounding_box()
+        if bbox is not None:
+            self._font_bbox = bbox
+        return bbox
+
+    def _generate_bounding_box(self) -> BoundingBox | None:
+        """Build the font's :class:`BoundingBox` once.
+
+        Mirrors upstream ``private BoundingBox generateBoundingBox()``.
+        Descriptor ``/FontBBox`` wins when present (with non-zero corners);
+        otherwise the embedded TTF's ``head`` table provides the rect.
+        """
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            rect = descriptor.get_font_bounding_box()
+            if rect is not None:
+                return BoundingBox(
+                    rect.get_lower_left_x(),
+                    rect.get_lower_left_y(),
+                    rect.get_upper_right_x(),
+                    rect.get_upper_right_y(),
+                )
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return None
+        x_min, y_min, x_max, y_max = ttf.get_font_bbox()
+        return BoundingBox(x_min, y_min, x_max, y_max)
+
+    # ---------- glyph widths from font program ----------
 
     def add_to_subset(self, code_point: int) -> None:
         """Register a Unicode codepoint to keep when :meth:`subset` runs.
@@ -206,9 +289,9 @@ class PDTrueTypeFont(PDSimpleFont):
 
         Resolution order matches PDF 32000-1 §9.7.3 — the font dict's
         ``/Widths`` array (with ``/FirstChar``) takes precedence over
-        the embedded font program. Falls back to the ``hmtx`` advance
-        from the embedded TrueType, scaled by ``1000 / unitsPerEm``.
-        Returns 0.0 when neither source can answer.
+        the embedded font program. Falls back to
+        :meth:`get_width_from_font` (the ``hmtx`` advance scaled by
+        ``1000 / unitsPerEm``). Returns 0.0 when neither source can answer.
         """
         first_char = self.get_first_char()
         widths = self.get_widths()
@@ -217,15 +300,29 @@ class PDTrueTypeFont(PDSimpleFont):
             if 0 <= idx < len(widths):
                 return float(widths[idx])
 
+        return self.get_width_from_font(code)
+
+    def get_width_from_font(self, code: int) -> float:  # type: ignore[override]
+        """Advance width for ``code`` read directly from the embedded TTF.
+
+        Mirrors upstream ``PDTrueTypeFont.getWidthFromFont`` — looks up
+        the GID via :meth:`code_to_gid`, fetches the advance from the
+        TTF's ``hmtx`` table, then scales it from font units to the
+        PDF text-space convention of 1/1000 em via ``1000 / unitsPerEm``.
+
+        Returns ``0.0`` when no TTF program is available or the font's
+        ``unitsPerEm`` is invalid.
+        """
         ttf = self.get_true_type_font()
         if ttf is None:
             return 0.0
-
-        gid = self._code_to_gid(code, ttf)
         units_per_em = ttf.get_units_per_em()
         if units_per_em <= 0:
             return 0.0
+        gid = self._code_to_gid(code, ttf)
         advance = ttf.get_advance_width(gid)
+        if units_per_em == 1000:
+            return float(advance)
         return advance * 1000.0 / units_per_em
 
     # ---------- displacement / vertical metrics ----------
@@ -292,6 +389,39 @@ class PDTrueTypeFont(PDSimpleFont):
         if gid <= 0:
             return []
         return _draw_glyph_by_gid(ttf, gid)
+
+    def get_normalized_path(self, code: int) -> list[tuple[Any, ...]]:
+        """Glyph outline for ``code`` scaled to the 1000-unit text space.
+
+        Mirrors upstream ``PDTrueTypeFont.getNormalizedPath(int)``:
+
+        1. Resolve ``code`` to a path via :meth:`get_glyph_path`.
+        2. ``.notdef`` (GID 0) glyphs in fonts that are *neither* embedded
+           *nor* Standard 14 are dropped — Acrobat refuses to draw them
+           per PDFBOX-2372 — and reported as the empty path.
+        3. When the embedded font's ``unitsPerEm`` is not 1000, scale every
+           coordinate in the recorded segments by ``1000 / unitsPerEm``
+           so callers always receive units in PDF text space.
+
+        Returns an empty list when no path can be drawn (no program,
+        unknown code, or the GID-0 / non-embedded / non-Standard14 guard
+        above kicks in).
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return []
+        gid = self._code_to_gid(code, ttf)
+        # Acrobat only renders GID 0 for embedded or Standard 14 fonts.
+        if gid == 0 and not self.is_embedded() and not self.is_standard14():
+            return []
+        path = self.get_glyph_path(code)
+        if not path:
+            return []
+        units_per_em = ttf.get_units_per_em()
+        if units_per_em == 1000 or units_per_em <= 0:
+            return path
+        scale = 1000.0 / units_per_em
+        return _scale_path(path, scale)
 
     def get_path_by_name(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for the PostScript glyph ``name``, with the same
@@ -494,6 +624,258 @@ class PDTrueTypeFont(PDSimpleFont):
                 self._cmap_subtable = None
             self._cmap_resolved = True
         return self._cmap_subtable
+
+    # ---------- cmap-platform extraction ----------
+
+    def extract_cmap_table(self) -> None:
+        """Pull the (3,1) Win-Unicode, (3,0) Win-Symbol and (1,0) Mac-Roman
+        ``cmap`` subtables off the embedded TTF, plus the (0,0) and (0,3)
+        Unicode-platform aliases that count as Win-Unicode for our purposes.
+
+        Mirrors upstream ``private void extractCmapTable()`` — runs once,
+        fills the three private slots used by :meth:`code_to_gid` and the
+        symbolic-encoding path. Idempotent. Safe to call before any
+        ``cmap``-driven lookup; :meth:`code_to_gid_via_platforms` calls it
+        on demand.
+        """
+        if self._cmap_initialized:
+            return
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            self._cmap_initialized = True
+            return
+        try:
+            tt_inner = getattr(ttf, "_tt", None)
+            cmap_table = (
+                tt_inner["cmap"]
+                if tt_inner is not None and "cmap" in tt_inner
+                else None
+            )
+        except Exception:  # noqa: BLE001
+            _LOG.exception("failed to read cmap table for %s", self.get_name())
+            self._cmap_initialized = True
+            return
+        if cmap_table is None:
+            self._cmap_initialized = True
+            return
+        for sub in cmap_table.tables:
+            platform_id = int(getattr(sub, "platformID", -1))
+            encoding_id = int(getattr(sub, "platEncID", -1))
+            if platform_id == CmapTable.PLATFORM_WINDOWS:
+                if encoding_id == CmapTable.ENCODING_WIN_UNICODE_BMP:
+                    self._cmap_win_unicode = _CmapPlatformView(sub)
+                elif encoding_id == CmapTable.ENCODING_WIN_SYMBOL:
+                    self._cmap_win_symbol = _CmapPlatformView(sub)
+            elif (
+                platform_id == CmapTable.PLATFORM_MACINTOSH
+                and encoding_id == CmapTable.ENCODING_MAC_ROMAN
+            ):
+                self._cmap_mac_roman = _CmapPlatformView(sub)
+            elif (
+                platform_id == CmapTable.PLATFORM_UNICODE
+                and encoding_id
+                in (
+                    CmapTable.ENCODING_UNICODE_1_0,
+                    CmapTable.ENCODING_UNICODE_2_0_BMP,
+                )
+                and self._cmap_win_unicode is None
+            ):
+                # PDFBOX-4755 / PDF.js #5501 / PDFBOX-5484 — Unicode platform
+                # entries promote to Win-Unicode when no explicit (3,1) is
+                # present. ``putIfAbsent`` semantics: don't clobber a real
+                # (3,1) subtable.
+                self._cmap_win_unicode = _CmapPlatformView(sub)
+        self._cmap_initialized = True
+
+    # ---------- encoding lookup from font program ----------
+
+    def read_encoding_from_font(self) -> Encoding | None:
+        """Synthesise an :class:`Encoding` from the embedded font program.
+
+        Mirrors upstream ``PDTrueTypeFont.readEncodingFromFont``:
+
+        * Non-symbolic fonts default to :class:`StandardEncoding` per
+          PDF 32000-1 §9.6.6.4 — the explicit ``/Encoding`` entry, when
+          present, overrides this caller-side.
+        * Standard 14 ``Symbol`` / ``ZapfDingbats`` keep the font's own
+          built-in encoding — :data:`None` is returned so the caller
+          falls back to the font program's own glyph names.
+        * Other Standard 14 fonts also default to Standard Encoding.
+        * Otherwise we synthesise a :class:`BuiltInEncoding` by walking
+          codes 0..256 through :meth:`code_to_gid` and looking each gid
+          up in the TTF's ``post`` table; missing names fall back to the
+          decimal GID pseudo-name (``"42"`` etc.), matching upstream.
+
+        Returns ``None`` for the AFM-driven branch (we currently have no
+        ``Type1Encoding`` port) — callers should fall through to their
+        usual encoding-resolution path.
+        """
+        # Non-symbolic, non-embedded fonts: PDF spec defaults to Standard.
+        if not self.is_embedded() and self.get_standard14_afm() is not None:
+            # Upstream returns ``new Type1Encoding(getStandard14AFM())`` here.
+            # We don't have a Type1Encoding-from-AFM port yet; fall through
+            # to None and let the caller use its standard encoding chain.
+            return None
+        if self.get_symbolic_flag() is False:
+            return StandardEncoding.INSTANCE
+        standard14_name = Standard14Fonts.get_mapped_font_name(self.get_name())
+        if (
+            self.is_standard14()
+            and standard14_name != Standard14Fonts.SYMBOL
+            and standard14_name != Standard14Fonts.ZAPF_DINGBATS
+        ):
+            return StandardEncoding.INSTANCE
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return None
+        post = ttf.get_post_script()
+        code_to_name: dict[int, str] = {}
+        for code in range(257):
+            gid = self.code_to_gid(code)
+            if gid <= 0:
+                continue
+            name: str | None = None
+            if post is not None:
+                try:
+                    name = post.get_name(gid)
+                except Exception:  # noqa: BLE001
+                    name = None
+            if not name:
+                # GID pseudo-name (mirrors upstream's
+                # ``Integer.toString(gid)`` fallback).
+                name = str(gid)
+            code_to_name[code] = name
+        return BuiltInEncoding(code_to_name)
+
+    # ---------- encode (codepoint -> bytes) ----------
+
+    def encode_codepoint(self, unicode: int) -> bytes:  # type: ignore[override]
+        """Encode a single Unicode codepoint to a 1-byte PDF code.
+
+        Mirrors upstream ``PDTrueTypeFont.encode(int unicode)``:
+
+        * With an ``/Encoding``: the codepoint must be mappable through
+          the active glyph list to a name that the encoding contains
+          *and* the embedded TTF carries (or its ``uniXXXX`` synonym).
+          Returns the byte the encoding assigns to that name.
+        * Without an ``/Encoding``: the codepoint must round-trip
+          through ``glyph-list -> glyph-name -> ttf-gid -> gid_to_code``;
+          returns the resulting code.
+
+        Raises :class:`ValueError` whenever no glyph or no encoding slot
+        can be found — matches upstream's ``IllegalArgumentException``
+        for the same conditions, mapped to ``ValueError`` per the
+        project's Java→Python exception convention.
+        """
+        encoding = self.get_encoding_typed()
+        glyph_list = self.get_glyph_list()
+        name = glyph_list.code_point_to_name(unicode)
+        ttf = self.get_true_type_font()
+        if encoding is not None:
+            if not encoding.contains(name if name is not None else ".notdef"):
+                raise ValueError(
+                    f"U+{unicode:04X} is not available in font {self.get_name()} "
+                    f"encoding: {encoding.get_encoding_name()}"
+                )
+            # Verify the embedded TTF actually has a glyph by that name —
+            # try the AGL name first, then the uniXXXX fallback.
+            if ttf is not None and name is not None and not ttf.has_glyph(name):
+                uni_name = _uni_name_of_code_point(unicode)
+                if not ttf.has_glyph(uni_name):
+                    raise ValueError(
+                        f"No glyph for U+{unicode:04X} in font {self.get_name()}"
+                    )
+            inverted = encoding.get_name_to_code_map()
+            assert name is not None
+            code = inverted.get(name)
+            if code is None:
+                raise ValueError(
+                    f"U+{unicode:04X} is not available in font {self.get_name()} "
+                    f"encoding"
+                )
+            return bytes([code & 0xFF])
+        # No /Encoding — round-trip through the gid-to-code map.
+        if ttf is None or name is None:
+            raise ValueError(
+                f"No glyph for U+{unicode:04X} in font {self.get_name()}"
+            )
+        if not ttf.has_glyph(name):
+            raise ValueError(
+                f"No glyph for U+{unicode:04X} in font {self.get_name()}"
+            )
+        gid = ttf.name_to_gid(name)
+        code = self.get_gid_to_code().get(gid)
+        if code is None:
+            raise ValueError(
+                f"U+{unicode:04X} is not available in font {self.get_name()} encoding"
+            )
+        return bytes([code & 0xFF])
+
+
+class _CmapPlatformView:
+    """Thin ``code -> gid`` view over a fontTools cmap subtable.
+
+    Mirrors enough of :class:`CmapSubtable` for :meth:`extract_cmap_table`
+    callers to resolve glyphs through the (3,1) Win-Unicode, (3,0)
+    Win-Symbol and (1,0) Mac-Roman tables independently of the
+    priority-ordered Unicode subtable returned by
+    :meth:`TrueTypeFont.get_unicode_cmap_subtable`.
+
+    Only :meth:`get_glyph_id` is exposed because that is the single entry
+    upstream's ``codeToGID`` reaches for. Materialises ``code -> name``
+    once at construction so repeated lookups don't hit fontTools.
+    """
+
+    __slots__ = ("_chars",)
+
+    def __init__(self, fonttools_subtable: Any) -> None:
+        self._chars: dict[int, str] = dict(fonttools_subtable.cmap)
+
+    def get_name(self, code: int) -> str | None:
+        """Glyph name for ``code`` (``None`` when unmapped)."""
+        return self._chars.get(code)
+
+
+def _scale_path(
+    path: list[tuple[Any, ...]], scale: float
+) -> list[tuple[Any, ...]]:
+    """Return a copy of ``path`` with every coordinate tuple scaled by
+    ``scale``. Verbs are preserved unchanged; the args of ``moveTo``,
+    ``lineTo``, ``curveTo``, ``qCurveTo`` are re-emitted with each point
+    scaled. ``closePath`` carries no args.
+    """
+    out: list[tuple[Any, ...]] = []
+    for verb, args in path:
+        if verb == "closePath" or not args:
+            out.append((verb, args))
+            continue
+        scaled_pts: list[Any] = []
+        for pt in args:
+            if pt is None:
+                scaled_pts.append(None)
+            elif (
+                isinstance(pt, (tuple, list))
+                and len(pt) == 2
+                and not isinstance(pt[0], (tuple, list))
+            ):
+                scaled_pts.append((pt[0] * scale, pt[1] * scale))
+            else:
+                scaled_pts.append(pt)
+        out.append((verb, tuple(scaled_pts)))
+    return out
+
+
+def _uni_name_of_code_point(code_point: int) -> str:
+    """Synthesise the ``uniXXXX`` glyph name for ``code_point``.
+
+    Mirrors upstream ``UniUtil.getUniNameOfCodePoint`` (uppercase hex,
+    minimum width four). Used by :meth:`PDTrueTypeFont.encode_codepoint`
+    to fall back when the canonical AGL name has no glyph in the font.
+    """
+    hex_str = format(code_point, "X")
+    if len(hex_str) < 4:
+        hex_str = hex_str.rjust(4, "0")
+    return "uni" + hex_str
 
 
 # ---------- module-level helpers (fontTools shim) ----------

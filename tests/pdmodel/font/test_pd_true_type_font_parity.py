@@ -87,12 +87,22 @@ def test_get_name_none_when_base_font_absent() -> None:
 # ---------- is_embedded ----------
 
 
-def test_is_embedded_true_when_font_file2_present() -> None:
+def test_is_embedded_true_when_font_file2_parses() -> None:
+    """Upstream PDTrueTypeFont.isEmbedded only returns True when the
+    /FontFile2 stream is non-empty AND parses cleanly into a TrueTypeFont
+    program (constructor's ``isEmbedded = ttfFont != null`` field)."""
+    font = _font_with_embedded_ttf()
+    assert font.is_embedded() is True
+
+
+def test_is_embedded_false_when_font_file2_unparseable() -> None:
+    """An empty / damaged /FontFile2 is *not* considered embedded — the
+    upstream constructor sets ``isEmbedded`` to false on parse failure."""
     font = PDTrueTypeFont()
     fd = PDFontDescriptor()
     fd.set_font_file2(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    assert font.is_embedded() is False
 
 
 def test_is_embedded_false_when_no_descriptor() -> None:
@@ -436,3 +446,179 @@ def test_get_gid_to_code_with_embedded_ttf_winansi() -> None:
     assert gid_a > 0
     mapping = font.get_gid_to_code()
     assert mapping.get(gid_a) == ord("A")
+
+
+# ---------- get_bounding_box / get_width_from_font ----------
+
+
+def test_get_bounding_box_from_descriptor() -> None:
+    """When /FontDescriptor has /FontBBox set, get_bounding_box mirrors it
+    as a ``BoundingBox``. Mirrors upstream's descriptor-first branch."""
+    from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    font = PDTrueTypeFont()
+    fd = PDFontDescriptor()
+    fd.set_font_bounding_box(PDRectangle(-100.0, -200.0, 1000.0, 900.0))
+    font.set_font_descriptor(fd)
+    bbox = font.get_bounding_box()
+    assert isinstance(bbox, BoundingBox)
+    assert bbox.get_lower_left_x() == -100.0
+    assert bbox.get_lower_left_y() == -200.0
+    assert bbox.get_upper_right_x() == 1000.0
+    assert bbox.get_upper_right_y() == 900.0
+
+
+def test_get_bounding_box_from_ttf_head_table() -> None:
+    """No descriptor /FontBBox → fall back to TTF ``head`` table."""
+    from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
+
+    font = _font_with_embedded_ttf()
+    bbox = font.get_bounding_box()
+    assert isinstance(bbox, BoundingBox)
+    # Liberation Sans has a non-degenerate head bbox
+    assert bbox.get_upper_right_x() > bbox.get_lower_left_x()
+    assert bbox.get_upper_right_y() > bbox.get_lower_left_y()
+
+
+def test_get_bounding_box_none_without_data() -> None:
+    """No descriptor and no embedded TTF → no bbox available."""
+    assert PDTrueTypeFont().get_bounding_box() is None
+
+
+def test_get_bounding_box_is_cached() -> None:
+    """Repeated calls must return the same instance — upstream caches
+    in a ``fontBBox`` field."""
+    font = _font_with_embedded_ttf()
+    first = font.get_bounding_box()
+    second = font.get_bounding_box()
+    assert first is second
+
+
+def test_get_width_from_font_returns_advance_in_thousands() -> None:
+    """Width-from-font reads the TTF's hmtx advance and scales it from
+    the font's unitsPerEm to the PDF-spec 1000-unit text space."""
+    font = _font_with_embedded_ttf()
+    width = font.get_width_from_font(ord("A"))
+    assert width > 0.0
+    # Liberation Sans has unitsPerEm 2048; scaled value sits within
+    # the 1000-unit PDF text space.
+    assert width < 2048.0
+
+
+def test_get_width_from_font_zero_without_program() -> None:
+    """No embedded TTF → width-from-font is zero (no source to consult)."""
+    assert PDTrueTypeFont().get_width_from_font(65) == 0.0
+
+
+# ---------- get_normalized_path ----------
+
+
+def test_get_normalized_path_returns_scaled_outline() -> None:
+    """Normalized path is glyph_path scaled to the 1000-unit square."""
+    font = _font_with_embedded_ttf()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    raw = font.get_glyph_path(ord("A"))
+    norm = font.get_normalized_path(ord("A"))
+    assert raw, "raw glyph path expected to be non-empty"
+    assert norm, "normalized glyph path expected to be non-empty"
+    # Same number of segments, same verb sequence.
+    assert [v for v, _ in raw] == [v for v, _ in norm]
+
+
+def test_get_normalized_path_empty_without_program() -> None:
+    assert PDTrueTypeFont().get_normalized_path(65) == []
+
+
+# ---------- extract_cmap_table ----------
+
+
+def test_extract_cmap_table_populates_subtables() -> None:
+    """Liberation Sans ships at least a (3,1) Win-Unicode cmap; the
+    extractor must populate the corresponding slot."""
+    font = _font_with_embedded_ttf()
+    font.extract_cmap_table()
+    assert font._cmap_initialized is True
+    # At least one of the platform views should exist.
+    assert (
+        font._cmap_win_unicode is not None
+        or font._cmap_win_symbol is not None
+        or font._cmap_mac_roman is not None
+    )
+
+
+def test_extract_cmap_table_idempotent() -> None:
+    font = _font_with_embedded_ttf()
+    font.extract_cmap_table()
+    snapshot = (
+        font._cmap_win_unicode,
+        font._cmap_win_symbol,
+        font._cmap_mac_roman,
+    )
+    font.extract_cmap_table()
+    assert (
+        font._cmap_win_unicode,
+        font._cmap_win_symbol,
+        font._cmap_mac_roman,
+    ) == snapshot
+
+
+def test_extract_cmap_table_no_program_safe() -> None:
+    """No embedded program → extractor still completes and marks done."""
+    font = PDTrueTypeFont()
+    font.extract_cmap_table()
+    assert font._cmap_initialized is True
+    assert font._cmap_win_unicode is None
+
+
+# ---------- read_encoding_from_font ----------
+
+
+def test_read_encoding_from_font_nonsymbolic_returns_standard_encoding() -> None:
+    """Nonsymbolic flag set → upstream defaults to StandardEncoding."""
+    from pypdfbox.pdmodel.font.encoding import StandardEncoding
+
+    font = PDTrueTypeFont()
+    fd = PDFontDescriptor()
+    fd.set_flags(0)  # nonsymbolic — bit 3 (FLAG_SYMBOLIC) unset
+    font.set_font_descriptor(fd)
+    encoding = font.read_encoding_from_font()
+    assert encoding is StandardEncoding.INSTANCE
+
+
+def test_read_encoding_from_font_symbolic_synthesises_built_in_encoding() -> None:
+    """Symbolic + embedded TTF → synthesise BuiltInEncoding from /post."""
+    from pypdfbox.pdmodel.font.encoding import BuiltInEncoding
+
+    font = _font_with_embedded_ttf(symbolic=True)
+    encoding = font.read_encoding_from_font()
+    assert isinstance(encoding, BuiltInEncoding)
+
+
+# ---------- encode_codepoint ----------
+
+
+def test_encode_codepoint_via_winansi_encoding() -> None:
+    """Codepoint → byte through the active /Encoding."""
+    font = _font_with_embedded_ttf()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    assert font.encode_codepoint(ord("A")) == bytes([0x41])
+
+
+def test_encode_codepoint_unknown_in_encoding_raises() -> None:
+    """U+XXXX with no name in the encoding raises (mirrors upstream
+    IllegalArgumentException → ValueError)."""
+    font = _font_with_embedded_ttf()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"),
+        COSName.get_pdf_name("WinAnsiEncoding"),
+    )
+    with pytest.raises(ValueError):
+        # U+4E2D ('中') is not in WinAnsi
+        font.encode_codepoint(0x4E2D)

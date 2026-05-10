@@ -51,36 +51,36 @@ class CMapParser:
         ras = self._coerce(source)
         result = CMap()
         previous_token: object = None
-        token = self._parse_next_token(ras)
+        token = self.parse_next_token(ras)
         while token is not None:
             if isinstance(token, str) and token.startswith("%"):
-                token = self._parse_next_token(ras)
+                token = self.parse_next_token(ras)
                 continue
             if isinstance(token, _Operator):
                 op = token.op
                 if op == "endcmap":
                     break
                 if op == "usecmap" and isinstance(previous_token, _LiteralName):
-                    self._parse_usecmap(previous_token, result)
+                    self.parse_usecmap(previous_token, result)
                 elif isinstance(previous_token, (int, float)):
                     if op == "begincodespacerange":
-                        self._parse_begincodespacerange(int(previous_token), ras, result)
+                        self.parse_begincodespacerange(int(previous_token), ras, result)
                     elif op == "beginbfchar":
-                        self._parse_beginbfchar(int(previous_token), ras, result)
+                        self.parse_beginbfchar(int(previous_token), ras, result)
                     elif op == "beginbfrange":
-                        self._parse_beginbfrange(int(previous_token), ras, result)
+                        self.parse_beginbfrange(int(previous_token), ras, result)
                     elif op == "begincidchar":
-                        self._parse_begincidchar(int(previous_token), ras, result)
+                        self.parse_begincidchar(int(previous_token), ras, result)
                     elif op == "begincidrange" and isinstance(previous_token, int):
-                        self._parse_begincidrange(int(previous_token), ras, result)
+                        self.parse_begincidrange(int(previous_token), ras, result)
                     elif op == "beginnotdefchar":
                         self._parse_beginnotdefchar(int(previous_token), ras, result)
                     elif op == "beginnotdefrange":
                         self._parse_beginnotdefrange(int(previous_token), ras, result)
             elif isinstance(token, _LiteralName):
-                self._parse_literal_name(token, ras, result)
+                self.parse_literal_name(token, ras, result)
             previous_token = token
-            token = self._parse_next_token(ras)
+            token = self.parse_next_token(ras)
         return result
 
     @classmethod
@@ -109,7 +109,7 @@ class CMapParser:
             return identity
         # Strict mode is deactivated for predefined CMaps (matches upstream).
         parser = cls(strict_mode=False)
-        with parser._get_external_cmap(name) as ras:
+        with parser.get_external_c_map(name) as ras:
             return parser.parse(ras)
 
     def parse_unicode_cmap(
@@ -177,7 +177,11 @@ class CMapParser:
 
     # ---------- usecmap / literal name handling ----------
 
-    def _parse_usecmap(self, use_cmap_name: _LiteralName, result: CMap) -> None:
+    def parse_usecmap(self, use_cmap_name: _LiteralName, result: CMap) -> None:
+        """Resolve a ``usecmap`` directive: load the referenced CMap and
+        fold its state into ``result``. Mirrors upstream
+        ``CMapParser#parseUsecmap`` (private in Java; promoted here as a
+        protected hook so subclasses can override CMap resolution)."""
         # Recursive predefined-CMap load. Bundled set covers the H/V pairs the
         # V variants reference (Uni*-UTF16-V → Uni*-UTF16-H, GB-EUC-V → GB-EUC-H,
         # etc.). Names outside the bundled set raise OSError here, matching
@@ -188,11 +192,11 @@ class CMapParser:
         if identity is not None:
             result.use_cmap(identity)
             return
-        with self._get_external_cmap(use_cmap_name.name) as ras:
+        with self.get_external_c_map(use_cmap_name.name) as ras:
             use_cmap = self.parse(ras)
         result.use_cmap(use_cmap)
 
-    def _get_external_cmap(self, name: str) -> RandomAccessRead:
+    def get_external_c_map(self, name: str) -> RandomAccessRead:
         """Open a ``RandomAccessRead`` over the bundled CMap resource ``name``.
 
         Mirrors upstream ``CMapParser#getExternalCMap`` — used by
@@ -207,38 +211,42 @@ class CMapParser:
             )
         return RandomAccessReadBuffer(resource.read_bytes())
 
-    def _parse_literal_name(
+    def parse_literal_name(
         self, literal: _LiteralName, ras: RandomAccessRead, result: CMap
     ) -> None:
+        """Dispatch a top-level ``/Name`` literal to the matching CMap
+        setter (``WMode``, ``CMapName``, ``Registry``, ``Ordering``,
+        ``Supplement``, ``CIDSystemInfo``, ...). Mirrors upstream
+        ``CMapParser#parseLiteralName``."""
         name = literal.name
         if name == "WMode":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, int) and not isinstance(nxt, bool):
                 result.set_wmode(nxt)
         elif name == "CMapName":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _LiteralName):
                 result.set_name(nxt.name)
         elif name == "CMapVersion":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, (int, float)):
                 result.set_version(str(nxt))
             elif isinstance(nxt, str):
                 result.set_version(nxt)
         elif name == "CMapType":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, int) and not isinstance(nxt, bool):
                 result.set_type(nxt)
         elif name == "Registry":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, str):
                 result.set_registry(nxt)
         elif name == "Ordering":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, str):
                 result.set_ordering(nxt)
         elif name == "Supplement":
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, int) and not isinstance(nxt, bool):
                 result.set_supplement(nxt)
         elif name == "CIDSystemInfo":
@@ -247,7 +255,7 @@ class CMapParser:
             # rather than three top-level literals. Extract the inner
             # values when we see the dict form so downstream callers
             # observe identical CMap state either way.
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, dict):
                 registry = nxt.get("Registry")
                 if isinstance(registry, str):
@@ -262,45 +270,54 @@ class CMapParser:
     # ---------- range / char body parsers ----------
 
     @staticmethod
-    def _check_expected_operator(
+    def check_expected_operator(
         operator: _Operator, expected: str, range_name: str
     ) -> None:
+        """Raise ``OSError`` if ``operator.op`` differs from ``expected``.
+
+        Mirrors upstream ``CMapParser#checkExpectedOperator`` — provides
+        a uniform error message for the various ``end<rangetype>``
+        sentinels the body parsers expect."""
         if operator.op != expected:
             raise OSError(
                 f"Error : ~{range_name} contains an unexpected operator : {operator.op}"
             )
 
-    def _parse_begincodespacerange(
+    def parse_begincodespacerange(
         self, count: int, ras: RandomAccessRead, result: CMap
     ) -> None:
+        """Parse ``count`` codespace-range entries and register each on
+        ``result``. Mirrors upstream ``parseBegincodespacerange``."""
         for _ in range(count):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endcodespacerange", "codespacerange")
+                self.check_expected_operator(nxt, "endcodespacerange", "codespacerange")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("start range missing")
             start_range = bytes(nxt)
-            end_range = self._parse_byte_array(ras)
+            end_range = self.parse_byte_array(ras)
             try:
                 result.add_codespace_range(CodespaceRange(start_range, end_range))
             except ValueError as exc:
                 raise OSError(str(exc)) from exc
 
-    def _parse_beginbfchar(
+    def parse_beginbfchar(
         self, count: int, ras: RandomAccessRead, result: CMap
     ) -> None:
+        """Parse ``count`` ``beginbfchar`` entries (one-to-one Unicode
+        mappings). Mirrors upstream ``parseBeginbfchar``."""
         for _ in range(count):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endbfchar", "bfchar")
+                self.check_expected_operator(nxt, "endbfchar", "bfchar")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("input code missing")
             input_code = bytes(nxt)
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, (bytes, bytearray)):
-                value = _create_string_from_bytes(bytes(nxt))
+                value = self.create_string_from_bytes(bytes(nxt))
                 result.add_base_font_character(input_code, value)
             elif isinstance(nxt, _LiteralName):
                 result.add_base_font_character(input_code, nxt.name)
@@ -310,19 +327,22 @@ class CMapParser:
                     f"{{COSString or COSName}} and not {nxt!r}"
                 )
 
-    def _parse_begincidrange(
+    def parse_begincidrange(
         self, number_of_lines: int, ras: RandomAccessRead, result: CMap
     ) -> None:
+        """Parse ``number_of_lines`` ``begincidrange`` entries (CID
+        mappings whose dst CID increments across the range). Mirrors
+        upstream ``parseBegincidrange``."""
         for _ in range(number_of_lines):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endcidrange", "cidrange")
+                self.check_expected_operator(nxt, "endcidrange", "cidrange")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("start code missing")
             start_code = bytes(nxt)
-            end_code = self._parse_byte_array(ras)
-            mapped_code = self._parse_integer(ras)
+            end_code = self.parse_byte_array(ras)
+            mapped_code = self.parse_integer(ras)
             if len(start_code) == len(end_code):
                 if start_code == end_code:
                     # Single-value "range" — collapse into a CID mapping.
@@ -334,46 +354,49 @@ class CMapParser:
                     "Error : ~cidrange values must not have different byte lengths"
                 )
 
-    def _parse_begincidchar(
+    def parse_begincidchar(
         self, count: int, ras: RandomAccessRead, result: CMap
     ) -> None:
+        """Parse ``count`` ``begincidchar`` entries (single CID
+        mappings). Mirrors upstream ``parseBegincidchar``."""
         for _ in range(count):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endcidchar", "cidchar")
+                self.check_expected_operator(nxt, "endcidchar", "cidchar")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("input code missing")
             input_code = bytes(nxt)
-            mapped_cid = self._parse_integer(ras)
+            mapped_cid = self.parse_integer(ras)
             result.add_cid_mapping(input_code, mapped_cid)
 
     def _parse_beginnotdefchar(
         self, count: int, ras: RandomAccessRead, result: CMap
     ) -> None:
-        """Parse a ``beginnotdefchar`` block.
+        """Parse a ``beginnotdefchar`` block (pypdfbox extension).
 
         Each entry is ``<inputCode> <substituteCID>`` and registers a
         substitute CID for an undefined character code. Upstream PDFBox
-        stores these via ``addCIDMapping`` — we follow suit so that
-        ``CMap.to_cid`` returns the .notdef CID for unmapped codes that
-        fall in a notdef range.
+        4.0 currently does not handle this directive at all — we add it
+        here so ``CMap.to_cid`` returns the .notdef CID for unmapped
+        codes that fall in a notdef range. See ``CHANGES.md`` for the
+        divergence note.
         """
         for _ in range(count):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endnotdefchar", "notdefchar")
+                self.check_expected_operator(nxt, "endnotdefchar", "notdefchar")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("input code missing")
             input_code = bytes(nxt)
-            mapped_cid = self._parse_integer(ras)
+            mapped_cid = self.parse_integer(ras)
             result.add_cid_mapping(input_code, mapped_cid)
 
     def _parse_beginnotdefrange(
         self, count: int, ras: RandomAccessRead, result: CMap
     ) -> None:
-        """Parse a ``beginnotdefrange`` block.
+        """Parse a ``beginnotdefrange`` block (pypdfbox extension).
 
         Each entry is ``<startCode> <endCode> <substituteCID>`` and
         assigns the *same* substitute CID to every input code in the
@@ -382,15 +405,15 @@ class CMapParser:
         calls rather than reusing ``add_cid_range``.
         """
         for _ in range(count):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endnotdefrange", "notdefrange")
+                self.check_expected_operator(nxt, "endnotdefrange", "notdefrange")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("start code missing")
             start_code = bytes(nxt)
-            end_code = self._parse_byte_array(ras)
-            mapped_cid = self._parse_integer(ras)
+            end_code = self.parse_byte_array(ras)
+            mapped_cid = self.parse_integer(ras)
             if len(start_code) != len(end_code):
                 raise OSError(
                     "Error : ~notdefrange values must not have different byte lengths"
@@ -409,20 +432,25 @@ class CMapParser:
                     v >>= 8
                 result.add_cid_mapping(bytes(code_bytes), mapped_cid)
 
-    def _parse_beginbfrange(
+    def parse_beginbfrange(
         self, count: int, ras: RandomAccessRead, result: CMap
     ) -> None:
+        """Parse ``count`` ``beginbfrange`` entries (Unicode range or
+        array form). Mirrors upstream ``parseBeginbfrange`` including
+        the PDFBOX-4550 / PDFBOX-3807 / PDFBOX-3450 / PDFBOX-4720 /
+        PDFBOX-4661 / PDFBOX-5090 quirks called out in the upstream
+        comments."""
         for _ in range(count):
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endbfrange", "bfrange")
+                self.check_expected_operator(nxt, "endbfrange", "bfrange")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("start code missing")
             start_code = bytearray(nxt)
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, _Operator):
-                self._check_expected_operator(nxt, "endbfrange", "bfrange")
+                self.check_expected_operator(nxt, "endbfrange", "bfrange")
                 break
             if not isinstance(nxt, (bytes, bytearray)):
                 raise OSError("end code missing")
@@ -432,14 +460,14 @@ class CMapParser:
             if end < start:
                 # PDFBOX-4550: likely corrupt stream — bail out of this range list.
                 break
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
             if isinstance(nxt, list):
                 # Array-form bfrange: [<u1> <u2> ...] one entry per code.
                 # Upstream guard is `array.size() >= end - start` (not +1) — match
                 # it verbatim so off-by-one tolerant CMaps parse identically.
                 array: list[bytes] = [bytes(x) for x in nxt if isinstance(x, (bytes, bytearray))]
                 if array and len(array) >= end - start:
-                    self._add_mapping_from_bfrange_list(result, start_code, array)
+                    self.add_mapping_frombfrange(result, start_code, array)
             elif isinstance(nxt, (bytes, bytearray)):
                 token_bytes = bytearray(nxt)
                 if len(token_bytes) > 0:
@@ -457,52 +485,84 @@ class CMapParser:
                             start_code[1] = 0
                             token_bytes[0] = i
                             token_bytes[1] = 0
-                            self._add_mapping_from_bfrange_count(
+                            self.add_mapping_frombfrange(
                                 result, bytearray(start_code), 256, bytearray(token_bytes)
                             )
                     else:
-                        self._add_mapping_from_bfrange_count(
+                        self.add_mapping_frombfrange(
                             result, start_code, end - start + 1, token_bytes
                         )
             # else: PDFBOX-3807 — ignore null-typed mapping value
 
-    def _add_mapping_from_bfrange_list(
-        self, cmap: CMap, start_code: bytearray, token_list: list[bytes]
-    ) -> None:
-        for token_bytes in token_list:
-            value = _create_string_from_bytes(token_bytes)
-            cmap.add_base_font_character(bytes(start_code), value)
-            _increment(start_code, len(start_code) - 1, False)
-
-    def _add_mapping_from_bfrange_count(
+    def add_mapping_frombfrange(
         self,
         cmap: CMap,
         start_code: bytearray,
-        values: int,
-        token_bytes: bytearray,
+        values_or_list: int | list[bytes] | list[bytearray],
+        token_bytes: bytearray | None = None,
     ) -> None:
-        for _ in range(values):
-            value = _create_string_from_bytes(bytes(token_bytes))
+        """Register the bfrange mapping rows discovered by
+        :meth:`parse_beginbfrange`.
+
+        Mirrors the two upstream Java overloads of
+        ``addMappingFrombfrange``:
+
+        * ``addMappingFrombfrange(cmap, startCode, List<byte[]>)`` — the
+          array form with one explicit dst per src. Pass ``token_bytes``
+          as ``None`` and ``values_or_list`` as the list of dst byte
+          sequences (this is the only call form when no count is
+          supplied).
+        * ``addMappingFrombfrange(cmap, startCode, int values, byte[]
+          tokenBytes)`` — the count form with a single dst that
+          increments alongside ``startCode``. Pass ``values_or_list`` as
+          the integer count and ``token_bytes`` as the dst buffer.
+        """
+        if token_bytes is None:
+            # List-form overload.
+            if not isinstance(values_or_list, list):
+                raise TypeError(
+                    "add_mapping_frombfrange list form requires a list of dst bytes"
+                )
+            for entry in values_or_list:
+                value = self.create_string_from_bytes(bytes(entry))
+                cmap.add_base_font_character(bytes(start_code), value)
+                self.increment(start_code, len(start_code) - 1, False)
+            return
+        # Count-form overload.
+        if not isinstance(values_or_list, int):
+            raise TypeError(
+                "add_mapping_frombfrange count form requires an int count"
+            )
+        for _ in range(values_or_list):
+            value = self.create_string_from_bytes(bytes(token_bytes))
             cmap.add_base_font_character(bytes(start_code), value)
-            if not _increment(token_bytes, len(token_bytes) - 1, self._strict_mode):
+            if not self.increment(token_bytes, len(token_bytes) - 1, self._strict_mode):
                 # overflow detected -> stop adding further mappings
                 break
-            _increment(start_code, len(start_code) - 1, False)
+            self.increment(start_code, len(start_code) - 1, False)
 
     # ---------- tokenizer ----------
 
-    def _parse_next_token(self, ras: RandomAccessRead) -> object:
+    def parse_next_token(self, ras: RandomAccessRead) -> object:
+        """Read one PostScript token from ``ras`` and return its native
+        Python representation (``int`` / ``float`` / ``bytes`` /
+        ``str`` / ``list`` / ``dict`` / :class:`_LiteralName` /
+        :class:`_Operator` / ``None`` at EOF). Mirrors upstream
+        ``parseNextToken``."""
         next_byte = ras.read()
         while True:
-            # Skip PDF whitespace and comments at token boundaries.
+            # Skip PDF whitespace and comments at token boundaries. The
+            # whitespace set is intentionally broader than upstream (which
+            # only skips 0x09 / 0x20 / 0x0D / 0x0A) so we tolerate NUL /
+            # FF padding seen in a few wild ToUnicode streams.
             while _is_whitespace(next_byte):
                 next_byte = ras.read()
             if next_byte != 0x25:  # '%'
                 break
-            self._read_line(ras, next_byte)
+            self.read_line(ras, next_byte)
             next_byte = ras.read()
         if next_byte == 0x28:  # '('
-            return self._read_string(ras)
+            return self.read_string(ras)
         if next_byte == 0x3E:  # '>'
             if ras.read() == 0x3E:
                 return _MARK_END_OF_DICTIONARY
@@ -510,43 +570,51 @@ class CMapParser:
         if next_byte == 0x5D:  # ']'
             return _MARK_END_OF_ARRAY
         if next_byte == 0x5B:  # '['
-            return self._read_array(ras)
+            return self.read_array(ras)
         if next_byte == 0x3C:  # '<'
-            return self._read_dictionary_or_hex(ras)
+            return self.read_dictionary(ras)
         if next_byte == 0x2F:  # '/'
-            return self._read_literal_name(ras)
+            return self.read_literal_name(ras)
         if next_byte == -1:
             return None
         if 0x30 <= next_byte <= 0x39:  # digit
-            return self._read_number(ras, next_byte)
-        return self._read_operator(ras, next_byte)
+            return self.read_number(ras, next_byte)
+        return self.read_operator(ras, next_byte)
 
-    def _parse_integer(self, ras: RandomAccessRead) -> int:
-        nxt = self._parse_next_token(ras)
+    def parse_integer(self, ras: RandomAccessRead) -> int:
+        """Read the next token and require it to be an integer.
+        Mirrors upstream ``parseInteger``."""
+        nxt = self.parse_next_token(ras)
         if nxt is None:
             raise OSError("expected integer value is missing")
         if isinstance(nxt, int) and not isinstance(nxt, bool):
             return nxt
         raise OSError("invalid type for next token")
 
-    def _parse_byte_array(self, ras: RandomAccessRead) -> bytes:
-        nxt = self._parse_next_token(ras)
+    def parse_byte_array(self, ras: RandomAccessRead) -> bytes:
+        """Read the next token and require it to be a byte array.
+        Mirrors upstream ``parseByteArray``."""
+        nxt = self.parse_next_token(ras)
         if nxt is None:
             raise OSError("expected byte[] value is missing")
         if isinstance(nxt, (bytes, bytearray)):
             return bytes(nxt)
         raise OSError("invalid type for next token")
 
-    def _read_array(self, ras: RandomAccessRead) -> list[object]:
+    def read_array(self, ras: RandomAccessRead) -> list[object]:
+        """Consume tokens until ``]`` and return them as a list.
+        Mirrors upstream ``readArray``."""
         out: list[object] = []
-        nxt = self._parse_next_token(ras)
+        nxt = self.parse_next_token(ras)
         while nxt is not None and nxt != _MARK_END_OF_ARRAY:
             out.append(nxt)
-            nxt = self._parse_next_token(ras)
+            nxt = self.parse_next_token(ras)
         return out
 
     @staticmethod
-    def _read_string(ras: RandomAccessRead) -> str:
+    def read_string(ras: RandomAccessRead) -> str:
+        """Read a PostScript ``( ... )`` string. Mirrors upstream
+        ``readString``."""
         # PostScript-flavored string: bytes up to ')'. Upstream does *not*
         # decode escapes here — every byte becomes a char via (char) cast.
         out = bytearray()
@@ -558,17 +626,19 @@ class CMapParser:
         return out.decode("latin-1")
 
     @classmethod
-    def _read_line(cls, ras: RandomAccessRead, first_byte: int) -> str:
+    def read_line(cls, ras: RandomAccessRead, first_byte: int) -> str:
+        """Read a comment / header line up to (and not including) the
+        next CR/LF. Mirrors upstream ``readLine``."""
         # Comment / header line; read through EOL.
         out = bytearray([first_byte])
-        cls._read_until_end_of_line(ras, out)
+        cls.read_until_end_of_line(ras, out)
         return out.decode("latin-1")
 
     @staticmethod
-    def _read_until_end_of_line(ras: RandomAccessRead, buf: bytearray) -> None:
+    def read_until_end_of_line(ras: RandomAccessRead, buf: bytearray) -> None:
         """Read bytes from ``ras`` into ``buf`` up to (but not including)
         the next CR / LF / EOF. Mirrors upstream
-        ``CMapParser#readUntilEndOfLine`` — separated from :meth:`_read_line`
+        ``CMapParser#readUntilEndOfLine`` — separated from :meth:`read_line`
         so callers that already have a buffer (header-line collector,
         comment skipper) can share the EOL scan.
         """
@@ -578,7 +648,9 @@ class CMapParser:
             b = ras.read()
 
     @staticmethod
-    def _read_literal_name(ras: RandomAccessRead) -> _LiteralName:
+    def read_literal_name(ras: RandomAccessRead) -> _LiteralName:
+        """Read a ``/name`` token. Mirrors upstream
+        ``readLiteralName``."""
         out = bytearray()
         b = ras.read()
         while not _is_whitespace_or_eof(b) and not _is_delimiter(b):
@@ -589,7 +661,10 @@ class CMapParser:
         return _LiteralName(out.decode("latin-1"))
 
     @staticmethod
-    def _read_operator(ras: RandomAccessRead, first_byte: int) -> _Operator:
+    def read_operator(ras: RandomAccessRead, first_byte: int) -> _Operator:
+        """Read a PostScript operator name. Mirrors upstream
+        ``readOperator`` — newline separator may be missing in malformed
+        CMap files (PDFBOX-2035)."""
         out = bytearray([first_byte])
         b = ras.read()
         # Newline separator may be missing in malformed CMap files (PDFBOX-2035).
@@ -605,7 +680,9 @@ class CMapParser:
         return _Operator(out.decode("latin-1"))
 
     @staticmethod
-    def _read_number(ras: RandomAccessRead, first_byte: int) -> int | float:
+    def read_number(ras: RandomAccessRead, first_byte: int) -> int | float:
+        """Read an integer or float literal. Mirrors upstream
+        ``readNumber``."""
         out = bytearray([first_byte])
         b = ras.read()
         while not _is_whitespace_or_eof(b) and (0x30 <= b <= 0x39 or b == 0x2E):
@@ -621,16 +698,18 @@ class CMapParser:
         except ValueError as exc:
             raise OSError(f"Invalid number '{text}'") from exc
 
-    def _read_dictionary_or_hex(self, ras: RandomAccessRead) -> object:
+    def read_dictionary(self, ras: RandomAccessRead) -> object:
+        """Read either a dictionary (``<< ... >>``) or a hex string
+        (``< ... >``). Mirrors upstream ``readDictionary``."""
         the_next = ras.read()
         if the_next == 0x3C:  # '<'
             # Dictionary ``<< ... >>``.
             result: dict[str, object] = {}
-            key = self._parse_next_token(ras)
+            key = self.parse_next_token(ras)
             while isinstance(key, _LiteralName) and key.name != _MARK_END_OF_DICTIONARY:
-                value = self._parse_next_token(ras)
+                value = self.parse_next_token(ras)
                 result[key.name] = value
-                key = self._parse_next_token(ras)
+                key = self.parse_next_token(ras)
             return result
         # Hex string ``< ... >`` — accumulate hex digits into bytes.
         buf = bytearray()
@@ -665,6 +744,69 @@ class CMapParser:
             buf.append(current & 0xFF)
         return bytes(buf)
 
+    # ---------- shared static helpers (parity with Java statics) ----------
+
+    @staticmethod
+    def is_whitespace_or_eof(a_byte: int) -> bool:
+        """Return ``True`` for ``-1`` (EOF), ``0x20`` (space), ``0x0D``
+        (CR) or ``0x0A`` (LF). Mirrors upstream
+        ``CMapParser#isWhitespaceOrEOF``."""
+        return a_byte in (-1, 0x20, 0x0D, 0x0A)
+
+    @staticmethod
+    def is_delimiter(a_byte: int) -> bool:
+        """Return ``True`` for the standard PDF delimiter characters
+        ``( ) < > [ ] { } / %``. Mirrors upstream
+        ``CMapParser#isDelimiter``."""
+        return a_byte in (
+            0x28,  # (
+            0x29,  # )
+            0x3C,  # <
+            0x3E,  # >
+            0x5B,  # [
+            0x5D,  # ]
+            0x7B,  # {
+            0x7D,  # }
+            0x2F,  # /
+            0x25,  # %
+        )
+
+    @staticmethod
+    def increment(data: bytearray, position: int, use_strict_mode: bool) -> bool:
+        """In-place big-endian increment of ``data`` at ``position`` with
+        carry. Returns ``False`` when overflow was detected and the
+        increment was suppressed (PDFBOX-4661 / PDFBOX-5090 strict mode);
+        otherwise ``True``. Mirrors upstream ``CMapParser#increment``."""
+        if position < 0:
+            return False
+        pos = position
+        while True:
+            if pos > 0 and (data[pos] & 0xFF) == 0xFF:
+                # PDFBOX-4661 / PDFBOX-5090: avoid overflow on the lowest byte
+                # in strict mode.
+                if use_strict_mode:
+                    return False
+                data[pos] = 0
+                pos -= 1
+                if pos < 0:
+                    return True
+                continue
+            data[pos] = (data[pos] + 1) & 0xFF
+            return True
+
+    @staticmethod
+    def create_string_from_bytes(data: bytes) -> str:
+        """Map a byte sequence to its CMap string value.
+
+        Mirrors upstream ``CMapParser#createStringFromBytes``: 1 byte
+        decodes through latin-1 (one char per byte), longer values
+        decode as UTF-16BE. Malformed UTF-16BE input is decoded with
+        replacement so corrupt ToUnicode CMaps do not abort parsing.
+        """
+        if len(data) == 1:
+            return data.decode("latin-1")
+        return data.decode("utf-16-be", errors="replace")
+
     # ---------- input coercion ----------
 
     @staticmethod
@@ -678,7 +820,7 @@ class CMapParser:
         raise TypeError(f"unsupported source type: {type(source).__name__}")
 
 
-# ---------- helpers ----------
+# ---------- module-level helpers (kept for back-compat with existing imports) ----------
 
 
 def _is_whitespace_or_eof(b: int) -> bool:
@@ -694,38 +836,15 @@ def _is_delimiter(b: int) -> bool:
 
 
 def _increment(data: bytearray, position: int, use_strict_mode: bool) -> bool:
-    """In-place increment of the big-endian byte sequence ``data`` at
-    ``position`` (with carry). Returns False if overflow was detected
-    and the increment was suppressed. Mirrors PDFBox's recursive helper
-    iteratively for clarity."""
-    if position < 0:
-        return False
-    pos = position
-    while True:
-        if pos > 0 and (data[pos] & 0xFF) == 0xFF:
-            # PDFBOX-4661 / PDFBOX-5090: avoid overflow on the lowest byte
-            # in strict mode.
-            if use_strict_mode:
-                return False
-            data[pos] = 0
-            pos -= 1
-            if pos < 0:
-                return True
-            continue
-        data[pos] = (data[pos] + 1) & 0xFF
-        return True
+    """Module-level alias for :meth:`CMapParser.increment` retained so
+    existing callers (``tests/fontbox/cmap/test_cmap_tail_wave795.py``)
+    keep working without reaching across the class boundary."""
+    return CMapParser.increment(data, position, use_strict_mode)
 
 
 def _create_string_from_bytes(data: bytes) -> str:
-    """Map a byte sequence to its CMap string value.
-
-    Per PDFBox: 1 byte maps through latin-1 (one char per byte), while
-    longer values decode as UTF-16BE. Malformed UTF-16BE input is decoded
-    with replacement so corrupt ToUnicode CMaps do not abort parsing.
-    """
-    if len(data) == 1:
-        return data.decode("latin-1")
-    return data.decode("utf-16-be", errors="replace")
+    """Module-level alias for :meth:`CMapParser.create_string_from_bytes`."""
+    return CMapParser.create_string_from_bytes(data)
 
 
 _PREDEFINED_CACHE: dict[str, CMap] = {}

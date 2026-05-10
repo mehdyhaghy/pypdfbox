@@ -380,3 +380,163 @@ def test_get_names_and_get_all_names_differ_by_alias_set() -> None:
     all_names = Standard14Fonts.get_all_names()
     assert canonical < all_names  # strict subset
     assert all_names - canonical == set(Standard14Fonts.get_aliases())
+
+
+# ---------- map_name / load_metrics / get_mapped_font / get_glyph_list / get_glyph_path ----------
+
+
+def test_load_metrics_for_each_canonical_returns_metrics() -> None:
+    from pypdfbox.pdmodel.font.afm_loader import AfmMetrics
+
+    for name in _BASE_14:
+        metrics = Standard14Fonts.load_metrics(name)
+        assert isinstance(metrics, AfmMetrics)
+        assert metrics.get_font_name() == name
+
+
+def test_load_metrics_caches_result() -> None:
+    first = Standard14Fonts.load_metrics("Times-Roman")
+    second = Standard14Fonts.load_metrics("Times-Roman")
+    assert first is second
+
+
+def test_load_metrics_rejects_unknown_name() -> None:
+    with pytest.raises(ValueError):
+        Standard14Fonts.load_metrics("NotAFont")
+
+
+def test_load_metrics_rejects_alias_input() -> None:
+    """``load_metrics`` mirrors the upstream private ``FontName``-typed form
+    — aliases must go through :meth:`get_afm`."""
+    with pytest.raises(ValueError):
+        Standard14Fonts.load_metrics("Arial")
+
+
+def test_map_name_extends_alias_table() -> None:
+    try:
+        Standard14Fonts.map_name("HelveticaWaveAlias", "Helvetica")
+        assert Standard14Fonts.contains_name("HelveticaWaveAlias") is True
+        assert (
+            Standard14Fonts.get_mapped_font_name("HelveticaWaveAlias")
+            == "Helvetica"
+        )
+        assert "HelveticaWaveAlias" in Standard14Fonts.get_aliases()
+    finally:
+        from pypdfbox.pdmodel.font.standard14_fonts import (
+            _ALIASES,
+            _NAME_LOOKUP,
+        )
+
+        _ALIASES.pop("HelveticaWaveAlias", None)
+        _NAME_LOOKUP.pop("helveticawavealias", None)
+
+
+def test_map_name_self_seed_form() -> None:
+    """The single-argument form (mirror of upstream's ``mapName(FontName)``)
+    seeds a self-mapping for a canonical name without altering the alias map."""
+    aliases_before = dict(Standard14Fonts.get_aliases())
+    Standard14Fonts.map_name("Helvetica")
+    assert Standard14Fonts.contains_name("Helvetica") is True
+    # No alias added — self-mapping is canonical-only.
+    assert Standard14Fonts.get_aliases() == aliases_before
+
+
+def test_map_name_rejects_unknown_target() -> None:
+    with pytest.raises(ValueError):
+        Standard14Fonts.map_name("MyAlias", "NotAFont")
+
+
+def test_get_mapped_font_returns_wrapper_with_canonical_name() -> None:
+    wrapper = Standard14Fonts.get_mapped_font("Helvetica")
+    assert wrapper.get_name() == "Helvetica"
+    # Wrapper exposes the FontBoxFont protocol.
+    assert hasattr(wrapper, "has_glyph")
+    assert hasattr(wrapper, "get_path")
+    assert hasattr(wrapper, "get_width")
+
+
+def test_get_mapped_font_caches() -> None:
+    a = Standard14Fonts.get_mapped_font("Times-Roman")
+    b = Standard14Fonts.get_mapped_font("Times-Roman")
+    assert a is b
+
+
+def test_get_mapped_font_through_alias_returns_canonical_wrapper() -> None:
+    via_alias = Standard14Fonts.get_mapped_font("ArialMT")
+    via_canonical = Standard14Fonts.get_mapped_font("Helvetica")
+    assert via_alias is via_canonical
+
+
+def test_get_mapped_font_rejects_unknown_name() -> None:
+    with pytest.raises(ValueError):
+        Standard14Fonts.get_mapped_font("NotAFont")
+
+
+def test_get_glyph_list_zapf_picks_zapf_list() -> None:
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+
+    assert (
+        Standard14Fonts.get_glyph_list("ZapfDingbats")
+        is GlyphList.get_zapf_dingbats()
+    )
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Helvetica", "Helvetica-Bold", "Times-Italic", "Courier", "Symbol"],
+)
+def test_get_glyph_list_non_zapf_picks_adobe_list(name: str) -> None:
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+
+    assert (
+        Standard14Fonts.get_glyph_list(name) is GlyphList.get_adobe_glyph_list()
+    )
+
+
+def test_get_glyph_list_resolves_alias() -> None:
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+
+    # ArialMT -> Helvetica, which uses the AGL (not Zapf).
+    assert (
+        Standard14Fonts.get_glyph_list("ArialMT")
+        is GlyphList.get_adobe_glyph_list()
+    )
+
+
+def test_get_glyph_list_rejects_unknown_name() -> None:
+    with pytest.raises(ValueError):
+        Standard14Fonts.get_glyph_list("NotAFont")
+
+
+def test_get_glyph_path_notdef_returns_empty() -> None:
+    assert Standard14Fonts.get_glyph_path("Helvetica", ".notdef") == []
+
+
+def test_get_glyph_path_unknown_font_returns_empty() -> None:
+    """Upstream raises ``IllegalArgumentException``; pypdfbox draws nothing
+    rather than aborting the rendering pipeline."""
+    assert Standard14Fonts.get_glyph_path("NotAFont", "A") == []
+
+
+def test_get_glyph_path_returns_list_type() -> None:
+    """Bundled wrapper carries no outlines — every glyph hits the empty
+    fallback. The contract: result is always a ``list`` of segment tuples
+    (the upstream ``GeneralPath`` analogue)."""
+    path = Standard14Fonts.get_glyph_path("Helvetica", "A")
+    assert isinstance(path, list)
+
+
+def test_get_glyph_path_resolves_alias() -> None:
+    """``ArialMT`` lookup goes through the canonical Helvetica wrapper."""
+    path = Standard14Fonts.get_glyph_path("ArialMT", "A")
+    assert isinstance(path, list)
+
+
+def test_uni_name_helper_pads_short_hex() -> None:
+    """``_uni_name_of_code_point`` mirrors upstream ``UniUtil`` — pad to 4."""
+    from pypdfbox.pdmodel.font.standard14_fonts import _uni_name_of_code_point
+
+    assert _uni_name_of_code_point(0x41) == "uni0041"
+    assert _uni_name_of_code_point(0x100) == "uni0100"
+    assert _uni_name_of_code_point(0x1234) == "uni1234"
+    assert _uni_name_of_code_point(0x10FFFF) == "uni10FFFF"
