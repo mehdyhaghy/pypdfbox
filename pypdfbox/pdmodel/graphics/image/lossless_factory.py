@@ -8,6 +8,7 @@ from PIL import Image
 
 from pypdfbox.cos import (
     COSArray,
+    COSBase,
     COSDictionary,
     COSInteger,
     COSName,
@@ -15,6 +16,7 @@ from pypdfbox.cos import (
     COSString,
 )
 from pypdfbox.filter import CCITTFaxDecode
+from pypdfbox.pdmodel.graphics.color import PDColorSpace
 
 from .pd_image_x_object import PDImageXObject
 
@@ -172,6 +174,129 @@ class LosslessFactory:
     ) -> PDImageXObject:
         """Java-style alias for :meth:`create_from_image`."""
         return LosslessFactory.create_from_image(document, image)
+
+    # ---------- helper-level entry points (parity with upstream
+    # private/package-private helpers) ----------
+
+    @staticmethod
+    def is_gray_image(image: Image.Image) -> bool:
+        """Mirrors upstream private ``LosslessFactory.isGrayImage`` (Java
+        line 118). Returns ``True`` if ``image`` is opaque and its sample
+        layout is either 8-bit gray (``TYPE_BYTE_GRAY``) or 1-bit gray
+        (``TYPE_BYTE_BINARY``) — the two cases routed to
+        :meth:`create_from_gray_image`.
+
+        The Python port keys on PIL's ``mode``: ``"L"`` (8-bit gray) and
+        ``"1"`` (1-bit) qualify; modes carrying alpha (``"LA"``,
+        ``"RGBA"``, ``"PA"``) and modes carrying chroma (``"RGB"``, ``"P"``,
+        ``"CMYK"`` …) do not.
+        """
+        if not isinstance(image, Image.Image):
+            return False
+        mode = image.mode
+        if mode == "L":
+            return True
+        # PIL "1" never carries an alpha channel; upstream's transparency
+        # check is implicitly satisfied for that mode.
+        return mode == "1"
+
+    @staticmethod
+    def create_from_gray_image(
+        image: Image.Image,
+        document: PDDocument,
+    ) -> PDImageXObject:
+        """Create a ``/DeviceGray`` Image XObject from a grayscale source.
+
+        Mirrors upstream private static
+        ``LosslessFactory.createFromGrayImage(BufferedImage, PDDocument)``
+        (Java line 136). Accepts the same shape upstream does:
+
+        - 8-bit gray (``mode == "L"``) → 8 BPC ``/DeviceGray``.
+        - 1-bit gray (``mode == "1"``) → 1 BPC ``/DeviceGray`` with rows
+          packed MSB-first; large bitmaps go through ``/CCITTFaxDecode``
+          Group 4 the same way :meth:`create_from_image` routes them.
+
+        Argument order matches upstream Java (``image, document``); the
+        public :meth:`create_from_image` keeps Pythonic ``document, image``
+        order.
+        """
+        if not isinstance(image, Image.Image):
+            raise TypeError(
+                f"image must be a PIL.Image.Image, got {type(image).__name__}"
+            )
+        if image.mode == "1":
+            return _create_from_one_bit(document, image)
+        if image.mode == "L":
+            return _create_from_gray(document, image, bpc=8)
+        raise ValueError(
+            f"image mode {image.mode!r} is not a grayscale layout; "
+            "convert to 'L' or '1' first"
+        )
+
+    @staticmethod
+    def create_from_rgb_image(
+        image: Image.Image,
+        document: PDDocument,
+    ) -> PDImageXObject:
+        """Create a ``/DeviceRGB`` Image XObject from an RGB(A) source.
+
+        Mirrors upstream private static
+        ``LosslessFactory.createFromRGBImage(BufferedImage, PDDocument)``
+        (Java line 164). Accepts opaque RGB and RGBA-with-alpha sources;
+        the alpha channel (when present) is split into a separate 8-bit
+        ``/DeviceGray`` ``/SMask`` image.
+
+        Modes outside ``("RGB", "RGBA")`` are first converted to RGB —
+        upstream falls back to "8-bit sRGB and might lose color
+        information" for unknown layouts.
+        """
+        if not isinstance(image, Image.Image):
+            raise TypeError(
+                f"image must be a PIL.Image.Image, got {type(image).__name__}"
+            )
+        if image.mode == "RGBA":
+            return _create_from_rgba(document, image)
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        return _create_from_rgb(document, image)
+
+    @staticmethod
+    def prepare_image_x_object(
+        document: PDDocument,
+        byte_array: bytes,
+        width: int,
+        height: int,
+        bits_per_component: int,
+        init_color_space: PDColorSpace | COSName | COSArray,
+    ) -> PDImageXObject:
+        """Create a flate-encoded Image XObject from raw sample bytes.
+
+        Mirrors upstream package-private static
+        ``LosslessFactory.prepareImageXObject`` (Java line 243). The
+        ``init_color_space`` parameter accepts either a
+        :class:`PDColorSpace` (matching the Java signature) or a raw
+        :class:`COSName`/:class:`COSArray` for callers that already hold
+        the COS form.
+        """
+        cs_cos: COSBase
+        if isinstance(init_color_space, PDColorSpace):
+            cs_resolved = init_color_space.get_cos_object()
+            if cs_resolved is None:
+                raise ValueError(
+                    "init_color_space.get_cos_object() returned None; "
+                    "cannot stamp /ColorSpace"
+                )
+            cs_cos = cs_resolved
+        else:
+            cs_cos = init_color_space
+        return _prepare_image_x_object(
+            document,
+            bytes(byte_array),
+            int(width),
+            int(height),
+            bits_per_component=int(bits_per_component),
+            color_space=cs_cos,  # type: ignore[arg-type]
+        )
 
 
 # ---------- per-mode builders ----------

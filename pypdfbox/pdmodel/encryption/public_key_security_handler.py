@@ -336,6 +336,130 @@ class PublicKeySecurityHandler(SecurityHandler):
             return value
         return None
 
+    @staticmethod
+    def append_cert_info(
+        extra_info: list[str],
+        rid_serial_number: int | None,
+        rid_issuer: object,
+        certificate: object,
+        material_cert: object,
+    ) -> None:
+        """Append a diagnostic ``serial-#`` / ``issuer`` mismatch line.
+
+        Mirrors upstream ``PublicKeySecurityHandler#appendCertInfo`` (Java
+        line 296). Emitted by :meth:`prepare_for_decryption` when no
+        recipient envelope matched the supplied certificate, so callers can
+        see *why* the cert lookup failed (serial-number mismatch vs. issuer
+        mismatch).
+
+        ``extra_info`` is the diagnostic accumulator — upstream passes a
+        ``StringBuilder``; we use a list of strings the caller can ``"".join``
+        to keep the helper allocation-free.
+        """
+        if rid_serial_number is None:
+            return
+        cert_serial: str = "unknown"
+        cert_serial_number = getattr(certificate, "serial_number", None)
+        if cert_serial_number is not None:
+            cert_serial = format(int(cert_serial_number), "x")
+        if material_cert is None:
+            material_issuer = "null"
+        else:
+            material_issuer = str(getattr(material_cert, "issuer", material_cert))
+        extra_info.append("serial-#: rid ")
+        extra_info.append(format(int(rid_serial_number), "x"))
+        extra_info.append(" vs. cert ")
+        extra_info.append(cert_serial)
+        extra_info.append(" issuer: rid '")
+        extra_info.append(str(rid_issuer))
+        extra_info.append("' vs. cert '")
+        extra_info.append(material_issuer)
+        extra_info.append("' ")
+
+    def _prepare_encryption_dict_aes(
+        self,
+        encryption_dictionary: PDEncryption,
+        cfm: str,
+        recipients: list[bytes],
+    ) -> None:
+        """Wire the ``/CF /DefaultCryptFilter`` slot for an AES recipient set.
+
+        Mirrors upstream private ``prepareEncryptionDictAES`` (Java line 419)
+        — extracted as a protected helper so subclasses can override the
+        ``/CF`` shape without re-implementing :meth:`prepare_document`.
+        """
+        crypt_filter = PDCryptFilterDictionary()
+        crypt_filter.set_cfm(cfm)
+        # /CF /Length is in bytes per Table 25 (note the bits/bytes split).
+        crypt_filter.set_length(self.get_key_length() // 8)
+        recipients_array = COSArray()
+        for blob in recipients:
+            recipients_array.add(COSString(blob))
+        from pypdfbox.cos import COSName  # noqa: PLC0415 — lazy import
+
+        crypt_filter.get_cos_object().set_item(
+            COSName.get_pdf_name("Recipients"), recipients_array
+        )
+        recipients_array.set_direct(True)
+        encryption_dictionary.set_default_crypt_filter_dictionary(crypt_filter)
+        encryption_dictionary.set_stream_filter_name("DefaultCryptFilter")
+        encryption_dictionary.set_string_filter_name("DefaultCryptFilter")
+        crypt_filter.get_cos_object().set_direct(True)
+        self.set_aes(True)
+
+    def _compute_recipients_field(self, seed: bytes) -> list[bytes]:
+        """Build the per-recipient PKCS#7 envelopes for a write.
+
+        Mirrors upstream private ``computeRecipientsField`` (Java line 438)
+        — surfaces the inline loop in :meth:`prepare_document` as a reusable
+        protected helper. Returns one DER-encoded ``ContentInfo`` per
+        recipient, in policy order.
+        """
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
+        )
+
+        policy = self._protection_policy
+        if not isinstance(policy, PublicKeyProtectionPolicy):
+            raise ValueError(
+                "_compute_recipients_field requires an attached "
+                "PublicKeyProtectionPolicy"
+            )
+
+        # Pick AES content algorithm by policy key length — matches the
+        # branch logic in :meth:`prepare_document`.
+        key_length_bits = policy.get_encryption_key_length() or 128
+        if key_length_bits >= 256:
+            content_alg: type[algorithms.AES128] | type[algorithms.AES256] = algorithms.AES256
+        else:
+            content_alg = algorithms.AES128
+
+        envelopes: list[bytes] = []
+        for recipient in policy.get_recipients():
+            cert = recipient.get_x509()
+            if cert is None:
+                raise ValueError(
+                    "PublicKeyRecipient is missing its X.509 certificate"
+                )
+            permission_obj = recipient.get_permission()
+            if permission_obj is None:
+                raise ValueError(
+                    "PublicKeyRecipient is missing its AccessPermission"
+                )
+            perms_int = permission_obj.get_permission_bytes() & 0xFFFFFFFF
+            blob = seed + perms_int.to_bytes(4, "big")
+
+            builder = pkcs7.PKCS7EnvelopeBuilder()
+            builder = builder.set_data(blob)
+            builder = builder.add_recipient(cert)
+            builder = builder.set_content_encryption_algorithm(content_alg)
+            envelope_der = builder.encrypt(
+                serialization.Encoding.DER,
+                [pkcs7.PKCS7Options.Binary],
+            )
+            envelopes.append(envelope_der)
+        return envelopes
+
     # ------------------------------------------------------- upstream aliases
     #
     # These accessors mirror the surface that upstream's

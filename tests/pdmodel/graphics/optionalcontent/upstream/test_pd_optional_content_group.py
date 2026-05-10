@@ -58,3 +58,18 @@ def test_render_state_enum_round_trip() -> None:
     ocg = PDOptionalContentGroup("L")
     ocg.set_render_state_enum(RenderState.ON, "View")
     assert ocg.get_render_state_enum("View") is RenderState.ON
+
+
+# Mirrors upstream PDOptionalContentGroup.RenderState#getName() (Java
+# line 91) — each enum member exposes the PDF :class:`COSName` payload
+# its constructor was given (``COSName.ON`` / ``COSName.OFF``).
+def test_render_state_get_name_returns_cos_name() -> None:
+    assert RenderState.ON.get_name() == COSName.get_pdf_name("ON")
+    assert RenderState.OFF.get_name() == COSName.get_pdf_name("OFF")
+
+
+# Round-trip: valueOf(member.getName()) yields the same member, mirroring
+# the upstream contract used by PDOptionalContentGroup#getRenderState.
+def test_render_state_value_of_get_name_round_trip() -> None:
+    for member in RenderState:
+        assert RenderState.value_of(member.get_name()) is member

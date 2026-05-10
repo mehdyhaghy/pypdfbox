@@ -13,10 +13,28 @@ if TYPE_CHECKING:
 
 class RenderState(Enum):
     """Render state for an OCG /Usage entry. Mirrors upstream nested enum
-    ``PDOptionalContentGroup.RenderState`` (values "ON"/"OFF")."""
+    ``PDOptionalContentGroup.RenderState`` (values "ON"/"OFF").
+
+    Each member carries a ``COSName`` payload (``COSName.ON`` /
+    ``COSName.OFF``) accessible via :meth:`get_name`, mirroring the
+    upstream ``RenderState(COSName value)`` constructor that stores the
+    PDF name as an instance field.
+    """
 
     ON = "ON"
     OFF = "OFF"
+
+    def get_name(self) -> COSName:
+        """Mirrors upstream ``RenderState.getName()`` (Java line 91) —
+        returns the PDF :class:`COSName` for this state, i.e.
+        ``COSName.ON`` or ``COSName.OFF``."""
+        return COSName.get_pdf_name(self.value)
+
+    def get_pdf_name(self) -> COSName:
+        """Convenience alias for :meth:`get_name` matching the
+        :class:`BaseState` / :class:`MembershipDictionaryVisibilityPolicy`
+        sibling-enum spelling used elsewhere in this package."""
+        return self.get_name()
 
     @classmethod
     def value_of(cls, name: str | COSName | None) -> RenderState | None:

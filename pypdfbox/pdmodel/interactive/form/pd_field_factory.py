@@ -143,29 +143,14 @@ class PDFieldFactory:
                     return NTField(form, field, parent)
         # Terminal: dispatch on /FT (walks parent chain via inherited lookup).
         ft = _resolve_field_type(field, parent, form)
-        if ft == "Tx":
+        if ft == PDFieldFactory.FIELD_TYPE_TEXT:
             from .pd_text_field import PDTextField
             return PDTextField(form, field, parent)
-        if ft == "Btn":
-            from .pd_button import PDButton
-            ff = _resolve_field_flags(field, parent, form)
-            if ff & PDButton.FLAG_PUSHBUTTON:
-                from .pd_push_button import PDPushButton
-                return PDPushButton(form, field, parent)
-            if ff & PDButton.FLAG_RADIO:
-                from .pd_radio_button import PDRadioButton
-                return PDRadioButton(form, field, parent)
-            from .pd_check_box import PDCheckBox
-            return PDCheckBox(form, field, parent)
-        if ft == "Ch":
-            from .pd_choice import PDChoice
-            ff = _resolve_field_flags(field, parent, form)
-            if ff & PDChoice.FLAG_COMBO:
-                from .pd_combo_box import PDComboBox
-                return PDComboBox(form, field, parent)
-            from .pd_list_box import PDListBox
-            return PDListBox(form, field, parent)
-        if ft == "Sig":
+        if ft == PDFieldFactory.FIELD_TYPE_BUTTON:
+            return PDFieldFactory.create_button_sub_type(form, field, parent)
+        if ft == PDFieldFactory.FIELD_TYPE_CHOICE:
+            return PDFieldFactory.create_choice_sub_type(form, field, parent)
+        if ft == PDFieldFactory.FIELD_TYPE_SIGNATURE:
             from .pd_signature_field import PDSignatureField
             return PDSignatureField(form, field, parent)
         if ft is not None or field.get_string(_T) is None:
@@ -173,6 +158,52 @@ class PDFieldFactory:
             # by upstream instead of being wrapped as generic fields.
             return None
         return PDFieldStub(form, field, parent)
+
+    @staticmethod
+    def create_choice_sub_type(
+        form: PDAcroForm,
+        field: COSDictionary,
+        parent: PDNonTerminalField | None = None,
+    ) -> PDField:
+        """Dispatch a ``/FT /Ch`` field to the right choice subclass.
+
+        Mirrors upstream ``PDFieldFactory.createChoiceSubType``. Honours the
+        ``Combo`` (bit 18) flag — set → :class:`PDComboBox`, otherwise
+        :class:`PDListBox`. ``/Ff`` is resolved through the inheritable
+        chain (parent → AcroForm) for parity with terminal-field dispatch.
+        """
+        from .pd_choice import PDChoice
+        flags = _resolve_field_flags(field, parent, form)
+        if flags & PDChoice.FLAG_COMBO:
+            from .pd_combo_box import PDComboBox
+            return PDComboBox(form, field, parent)
+        from .pd_list_box import PDListBox
+        return PDListBox(form, field, parent)
+
+    @staticmethod
+    def create_button_sub_type(
+        form: PDAcroForm,
+        field: COSDictionary,
+        parent: PDNonTerminalField | None = None,
+    ) -> PDField:
+        """Dispatch a ``/FT /Btn`` field to the right button subclass.
+
+        Mirrors upstream ``PDFieldFactory.createButtonSubType``. Honours
+        ``Radio`` (bit 16) → :class:`PDRadioButton`, ``Pushbutton``
+        (bit 17) → :class:`PDPushButton`, otherwise :class:`PDCheckBox`.
+        ``/Ff`` is resolved through the inheritable chain (parent →
+        AcroForm) for parity with terminal-field dispatch.
+        """
+        from .pd_button import PDButton
+        flags = _resolve_field_flags(field, parent, form)
+        if flags & PDButton.FLAG_RADIO:
+            from .pd_radio_button import PDRadioButton
+            return PDRadioButton(form, field, parent)
+        if flags & PDButton.FLAG_PUSHBUTTON:
+            from .pd_push_button import PDPushButton
+            return PDPushButton(form, field, parent)
+        from .pd_check_box import PDCheckBox
+        return PDCheckBox(form, field, parent)
 
 
 __all__ = ["PDFieldFactory"]

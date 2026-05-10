@@ -344,3 +344,88 @@ def test_is_known_field_type_is_case_sensitive() -> None:
     """PDF spec field-type names are case-sensitive — ``tx`` is not ``Tx``."""
     assert PDFieldFactory.is_known_field_type("tx") is False
     assert PDFieldFactory.is_known_field_type("BTN") is False
+
+
+# ---------- create_button_sub_type / create_choice_sub_type ----------
+
+
+def test_create_button_sub_type_no_flags_returns_check_box() -> None:
+    form = PDAcroForm()
+    field = _make_field("Btn")
+    result = PDFieldFactory.create_button_sub_type(form, field)
+    assert isinstance(result, PDCheckBox)
+
+
+def test_create_button_sub_type_radio_flag() -> None:
+    form = PDAcroForm()
+    field = _make_field("Btn", ff=PDButton.FLAG_RADIO)
+    result = PDFieldFactory.create_button_sub_type(form, field)
+    assert isinstance(result, PDRadioButton)
+
+
+def test_create_button_sub_type_pushbutton_flag() -> None:
+    form = PDAcroForm()
+    field = _make_field("Btn", ff=PDButton.FLAG_PUSHBUTTON)
+    result = PDFieldFactory.create_button_sub_type(form, field)
+    assert isinstance(result, PDPushButton)
+
+
+def test_create_button_sub_type_radio_takes_precedence_over_pushbutton() -> None:
+    """Upstream checks /Ff bit 16 (Radio) before bit 17 (Pushbutton).
+    When both bits are set, Radio wins. Mirrors PDFBox 3.0
+    ``PDFieldFactory.createButtonSubType`` line 118."""
+    form = PDAcroForm()
+    field = _make_field("Btn", ff=PDButton.FLAG_RADIO | PDButton.FLAG_PUSHBUTTON)
+    result = PDFieldFactory.create_button_sub_type(form, field)
+    assert isinstance(result, PDRadioButton)
+
+
+def test_create_button_sub_type_inherits_flags_from_parent() -> None:
+    form = PDAcroForm()
+    parent_dict = _make_field("Btn", ff=PDButton.FLAG_RADIO)
+    parent = PDNonTerminalField(form, parent_dict)
+    child_dict = COSDictionary()
+    result = PDFieldFactory.create_button_sub_type(form, child_dict, parent)
+    assert isinstance(result, PDRadioButton)
+
+
+def test_create_choice_sub_type_no_flags_returns_list_box() -> None:
+    form = PDAcroForm()
+    field = _make_field("Ch")
+    result = PDFieldFactory.create_choice_sub_type(form, field)
+    assert isinstance(result, PDListBox)
+
+
+def test_create_choice_sub_type_combo_flag_returns_combo_box() -> None:
+    form = PDAcroForm()
+    field = _make_field("Ch", ff=PDChoice.FLAG_COMBO)
+    result = PDFieldFactory.create_choice_sub_type(form, field)
+    assert isinstance(result, PDComboBox)
+
+
+def test_create_choice_sub_type_inherits_flags_from_parent() -> None:
+    form = PDAcroForm()
+    parent_dict = _make_field("Ch", ff=PDChoice.FLAG_COMBO)
+    parent = PDNonTerminalField(form, parent_dict)
+    child_dict = COSDictionary()
+    result = PDFieldFactory.create_choice_sub_type(form, child_dict, parent)
+    assert isinstance(result, PDComboBox)
+
+
+def test_create_field_button_uses_create_button_sub_type() -> None:
+    """Top-level dispatch must route ``/Btn`` through the named subtype helper
+    so callers patching the helper see the redirection. Mirrors upstream's
+    extraction of ``createButtonSubType`` from ``createField``."""
+    form = PDAcroForm()
+    field = _make_field("Btn", ff=PDButton.FLAG_RADIO)
+    via_dispatch = PDFieldFactory.create_field(form, field)
+    via_helper = PDFieldFactory.create_button_sub_type(form, field)
+    assert type(via_dispatch) is type(via_helper) is PDRadioButton
+
+
+def test_create_field_choice_uses_create_choice_sub_type() -> None:
+    form = PDAcroForm()
+    field = _make_field("Ch", ff=PDChoice.FLAG_COMBO)
+    via_dispatch = PDFieldFactory.create_field(form, field)
+    via_helper = PDFieldFactory.create_choice_sub_type(form, field)
+    assert type(via_dispatch) is type(via_helper) is PDComboBox

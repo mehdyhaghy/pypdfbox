@@ -12,7 +12,6 @@ from pypdfbox.pdmodel.graphics.optionalcontent import (
     RenderState,
 )
 
-
 # ---------- RenderState ----------
 
 
@@ -26,6 +25,19 @@ def test_render_state_value_of() -> None:
     assert RenderState.value_of("OFF") is RenderState.OFF
     with pytest.raises(ValueError):
         RenderState.value_of("Unchanged")
+
+
+def test_render_state_get_name() -> None:
+    # Mirrors upstream RenderState.getName() — returns COSName.ON/COSName.OFF.
+    assert RenderState.ON.get_name() == COSName.get_pdf_name("ON")
+    assert RenderState.OFF.get_name() == COSName.get_pdf_name("OFF")
+
+
+def test_render_state_get_pdf_name_alias() -> None:
+    # pypdfbox-only alias matching BaseState.get_pdf_name() spelling.
+    assert RenderState.ON.get_pdf_name() == COSName.get_pdf_name("ON")
+    assert RenderState.OFF.get_pdf_name() == COSName.get_pdf_name("OFF")
+    assert RenderState.ON.get_name() is RenderState.ON.get_pdf_name()
 
 
 def test_render_state_exposed_as_nested() -> None:

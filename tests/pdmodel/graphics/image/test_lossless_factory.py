@@ -355,3 +355,175 @@ def test_create_from_cmyk_image_converts_to_rgb() -> None:
     assert image_x.get_bits_per_component() == 8
     body = _decoded_body(image_x)
     assert len(body) == 2 * 1 * 3
+
+
+# ---------- helper-level entry points (mirror upstream private helpers) ----------
+
+
+def test_is_gray_image_returns_true_for_l_and_one_bit() -> None:
+    """Mirrors upstream ``LosslessFactory.isGrayImage`` (Java line 118):
+    8-bit gray and 1-bit gray sources qualify."""
+    assert LosslessFactory.is_gray_image(Image.new("L", (2, 2)))
+    assert LosslessFactory.is_gray_image(Image.new("1", (2, 2)))
+
+
+def test_is_gray_image_returns_false_for_color_or_alpha_modes() -> None:
+    """Modes carrying chroma or alpha do not qualify."""
+    assert not LosslessFactory.is_gray_image(Image.new("RGB", (2, 2)))
+    assert not LosslessFactory.is_gray_image(Image.new("RGBA", (2, 2)))
+    assert not LosslessFactory.is_gray_image(Image.new("LA", (2, 2)))
+    assert not LosslessFactory.is_gray_image(Image.new("P", (2, 2)))
+    assert not LosslessFactory.is_gray_image(Image.new("CMYK", (2, 2)))
+
+
+def test_is_gray_image_returns_false_for_non_pil_input() -> None:
+    """Defensive: non-PIL arguments return ``False`` rather than raising,
+    mirroring upstream's null-safe guard pattern."""
+    assert not LosslessFactory.is_gray_image(b"not an image")  # type: ignore[arg-type]
+
+
+def test_create_from_gray_image_l_mode() -> None:
+    """``create_from_gray_image`` on an 8-bit ``L`` source produces 8 BPC
+    DeviceGray with the body matching the raw pixel bytes."""
+    document = PDDocument()
+    src = Image.new("L", (3, 2), color=0)
+    src.putpixel((0, 0), 42)
+    src.putpixel((2, 1), 211)
+
+    image_x = LosslessFactory.create_from_gray_image(src, document)
+    assert image_x.get_width() == 3
+    assert image_x.get_height() == 2
+    assert image_x.get_bits_per_component() == 8
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceGray"
+    body = _decoded_body(image_x)
+    assert body[0] == 42
+    assert body[-1] == 211
+
+
+def test_create_from_gray_image_one_bit_mode() -> None:
+    """``create_from_gray_image`` on a ``"1"`` source produces 1 BPC
+    DeviceGray with row-padded bit packing (matches upstream's
+    ``TYPE_BYTE_BINARY`` path)."""
+    document = PDDocument()
+    src = Image.new("1", (5, 2), color=0)
+    src.putpixel((0, 0), 1)
+
+    image_x = LosslessFactory.create_from_gray_image(src, document)
+    assert image_x.get_bits_per_component() == 1
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceGray"
+    body = _decoded_body(image_x)
+    # 5 px → 1 byte/row, 2 rows. First bit set, rest zero.
+    assert len(body) == 2
+    assert body[0] == 0b1000_0000
+
+
+def test_create_from_gray_image_rejects_non_gray_modes() -> None:
+    """Mirrors upstream's "this should only be called for grayscale"
+    contract: callers handing in a chroma mode get a ``ValueError``."""
+    document = PDDocument()
+    try:
+        LosslessFactory.create_from_gray_image(Image.new("RGB", (2, 2)), document)
+    except ValueError:
+        return
+    raise AssertionError("create_from_gray_image should reject 'RGB'")
+
+
+def test_create_from_gray_image_rejects_non_pil_input() -> None:
+    document = PDDocument()
+    try:
+        LosslessFactory.create_from_gray_image(b"nope", document)  # type: ignore[arg-type]
+    except TypeError:
+        return
+    raise AssertionError("create_from_gray_image should reject non-PIL input")
+
+
+def test_create_from_rgb_image_opaque_rgb() -> None:
+    """``create_from_rgb_image`` on opaque RGB → DeviceRGB 8 BPC."""
+    document = PDDocument()
+    src = Image.new("RGB", (2, 1), color=(0, 0, 0))
+    src.putpixel((0, 0), (10, 20, 30))
+    src.putpixel((1, 0), (40, 50, 60))
+
+    image_x = LosslessFactory.create_from_rgb_image(src, document)
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceRGB"
+    assert image_x.get_bits_per_component() == 8
+    assert image_x.get_soft_mask() is None
+    body = _decoded_body(image_x)
+    assert body == bytes([10, 20, 30, 40, 50, 60])
+
+
+def test_create_from_rgb_image_rgba_attaches_smask() -> None:
+    """``create_from_rgb_image`` on RGBA splits alpha into an SMask, the
+    same shape upstream's ``TYPE_INT_ARGB`` path produces."""
+    document = PDDocument()
+    src = Image.new("RGBA", (2, 1), color=(0, 0, 0, 0))
+    src.putpixel((0, 0), (10, 20, 30, 90))
+    src.putpixel((1, 0), (40, 50, 60, 250))
+
+    image_x = LosslessFactory.create_from_rgb_image(src, document)
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceRGB"
+    smask = image_x.get_soft_mask()
+    assert smask is not None
+    assert smask.get_bits_per_component() == 8
+    smask_body = _decoded_body(smask)
+    assert smask_body == bytes([90, 250])
+
+
+def test_create_from_rgb_image_converts_unknown_modes() -> None:
+    """Unknown source modes (e.g. ``CMYK``) fall through to RGB
+    conversion, the same fallback upstream documents."""
+    document = PDDocument()
+    src = Image.new("CMYK", (2, 1), color=(255, 0, 0, 0))
+
+    image_x = LosslessFactory.create_from_rgb_image(src, document)
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceRGB"
+    assert image_x.get_bits_per_component() == 8
+
+
+def test_create_from_rgb_image_rejects_non_pil_input() -> None:
+    document = PDDocument()
+    try:
+        LosslessFactory.create_from_rgb_image(b"nope", document)  # type: ignore[arg-type]
+    except TypeError:
+        return
+    raise AssertionError("create_from_rgb_image should reject non-PIL input")
+
+
+def test_prepare_image_x_object_with_pd_color_space() -> None:
+    """``prepare_image_x_object`` mirrors upstream's package-private
+    helper: takes raw bytes, encodes via flate, and stamps the standard
+    image-XObject dictionary entries. Accepts a :class:`PDColorSpace`
+    just like the Java signature."""
+    from pypdfbox.pdmodel.graphics.color import PDDeviceGray
+
+    document = PDDocument()
+    raw = bytes(range(12))
+    image_x = LosslessFactory.prepare_image_x_object(
+        document, raw, 4, 3, 8, PDDeviceGray.INSTANCE
+    )
+    assert image_x.get_width() == 4
+    assert image_x.get_height() == 3
+    assert image_x.get_bits_per_component() == 8
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceGray"
+    body = _decoded_body(image_x)
+    assert body == raw
+
+
+def test_prepare_image_x_object_with_cos_name_color_space() -> None:
+    """The Python helper also accepts a raw COSName for callers that
+    already hold the encoded color-space form."""
+    document = PDDocument()
+    raw = bytes(range(6))
+    image_x = LosslessFactory.prepare_image_x_object(
+        document, raw, 2, 1, 8, COSName.get_pdf_name("DeviceRGB")
+    )
+    cs = image_x.get_color_space_cos_object()
+    assert isinstance(cs, COSName) and cs.name == "DeviceRGB"
+    body = _decoded_body(image_x)
+    assert body == raw

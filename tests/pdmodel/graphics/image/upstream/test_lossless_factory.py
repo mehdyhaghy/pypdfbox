@@ -157,3 +157,74 @@ def test_create_lossless_from_image_argb_attaches_smask() -> None:
     smask = image_x.get_soft_mask()
     assert smask is not None
     _validate(smask, 8, width, height, "DeviceGray")
+
+
+# ---------- helper-level entry points (parity with private helpers) ----------
+
+
+def test_is_gray_image_dispatch_matches_create_from_image() -> None:
+    """Mirrors upstream private ``isGrayImage`` (Java line 118): when it
+    returns true, ``createFromImage`` routes through ``createFromGrayImage``;
+    when false, through the predictor / RGB encoder. The Python port wires
+    the same dispatch — confirm the predicate's verdict matches the
+    DeviceGray vs DeviceRGB color-space stamp on the resulting XObject."""
+    document = PDDocument()
+
+    gray = _make_source_rgb().convert("L")
+    assert LosslessFactory.is_gray_image(gray)
+    cs_gray = LosslessFactory.create_from_image(document, gray)\
+        .get_color_space_cos_object()
+    assert isinstance(cs_gray, COSName) and cs_gray.name == "DeviceGray"
+
+    rgb = _make_source_rgb()
+    assert not LosslessFactory.is_gray_image(rgb)
+    cs_rgb = LosslessFactory.create_from_image(document, rgb)\
+        .get_color_space_cos_object()
+    assert isinstance(cs_rgb, COSName) and cs_rgb.name == "DeviceRGB"
+
+
+def test_create_from_gray_image_helper_matches_dispatch() -> None:
+    """Calling the helper directly produces the same metadata shape as
+    routing through the public entry point — mirrors upstream's
+    ``createFromGrayImage`` (Java line 136) being the inner workhorse for
+    grayscale dispatch."""
+    document = PDDocument()
+    gray = _make_source_rgb().convert("L")
+
+    via_helper = LosslessFactory.create_from_gray_image(gray, document)
+    via_public = LosslessFactory.create_from_image(document, gray)
+
+    _validate(via_helper, 8, gray.width, gray.height, "DeviceGray")
+    _validate(via_public, 8, gray.width, gray.height, "DeviceGray")
+
+
+def test_create_from_rgb_image_helper_matches_dispatch() -> None:
+    """Calling ``createFromRGBImage`` (Java line 164) directly produces
+    the same metadata shape as routing through the public entry point."""
+    document = PDDocument()
+    rgb = _make_source_rgb()
+
+    via_helper = LosslessFactory.create_from_rgb_image(rgb, document)
+    via_public = LosslessFactory.create_from_image(document, rgb)
+
+    _validate(via_helper, 8, rgb.width, rgb.height, "DeviceRGB")
+    _validate(via_public, 8, rgb.width, rgb.height, "DeviceRGB")
+
+
+def test_prepare_image_x_object_helper_smoke() -> None:
+    """``LosslessFactory.prepareImageXObject`` (Java line 243) is the
+    package-private helper every dispatch path funnels through. Confirm
+    the Python equivalent stamps the same dictionary entries upstream
+    does: /Width, /Height, /BitsPerComponent, /ColorSpace and a flate
+    /Filter."""
+    from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
+
+    document = PDDocument()
+    width, height = 4, 2
+    raw = bytes(range(width * height * 3))
+    image_x = LosslessFactory.prepare_image_x_object(
+        document, raw, width, height, 8, PDDeviceRGB.INSTANCE
+    )
+    _validate(image_x, 8, width, height, "DeviceRGB")
+    f = image_x.get_filter()
+    assert isinstance(f, COSName) and f.name == "FlateDecode"

@@ -276,3 +276,123 @@ def test_prepare_document_round_trip_matches_decrypt_path(
     assert (decoded.get_permission_bytes() & 0xFFFFFFFF) == (
         permissions.get_permission_bytes() & 0xFFFFFFFF
     )
+
+
+# --------------------------------------------------------- new parity surface
+
+
+def test_append_cert_info_emits_serial_and_issuer_diagnostic() -> None:
+    """Mirrors upstream ``appendCertInfo`` (Java line 296) — produces the
+    ``serial-#`` / ``issuer`` mismatch diagnostic that ``prepare_for_decryption``
+    appends to its error message."""
+
+    class _Cert:
+        serial_number = 0xDEADBEEF
+
+    class _MaterialCert:
+        issuer = "CN=test-cert"
+
+    accumulator: list[str] = []
+    PublicKeySecurityHandler.append_cert_info(
+        accumulator,
+        rid_serial_number=0xCAFEBABE,
+        rid_issuer="CN=other-issuer",
+        certificate=_Cert(),
+        material_cert=_MaterialCert(),
+    )
+    rendered = "".join(accumulator)
+    assert "serial-#: rid cafebabe" in rendered
+    assert "vs. cert deadbeef" in rendered
+    assert "rid 'CN=other-issuer'" in rendered
+    assert "vs. cert 'CN=test-cert'" in rendered
+
+
+def test_append_cert_info_no_op_when_serial_is_none() -> None:
+    accumulator: list[str] = []
+    PublicKeySecurityHandler.append_cert_info(
+        accumulator,
+        rid_serial_number=None,
+        rid_issuer="CN=ignored",
+        certificate=object(),
+        material_cert=None,
+    )
+    assert accumulator == []
+
+
+def test_append_cert_info_handles_null_material_cert() -> None:
+    class _Cert:
+        serial_number = 1
+
+    accumulator: list[str] = []
+    PublicKeySecurityHandler.append_cert_info(
+        accumulator,
+        rid_serial_number=2,
+        rid_issuer="CN=issuer",
+        certificate=_Cert(),
+        material_cert=None,
+    )
+    assert "vs. cert 'null'" in "".join(accumulator)
+
+
+def test_append_cert_info_unknown_cert_serial_when_attribute_missing() -> None:
+    """When the material cert lacks ``serial_number``, the diagnostic uses
+    ``unknown`` — matches upstream's null-guard around ``getSerialNumber``."""
+    accumulator: list[str] = []
+    PublicKeySecurityHandler.append_cert_info(
+        accumulator,
+        rid_serial_number=0x10,
+        rid_issuer="CN=issuer",
+        certificate=object(),  # no serial_number attribute
+        material_cert=None,
+    )
+    rendered = "".join(accumulator)
+    assert "vs. cert unknown" in rendered
+
+
+def test_compute_recipients_field_requires_attached_policy() -> None:
+    """Mirrors upstream ``computeRecipientsField`` precondition — without a
+    policy the helper raises rather than silently producing an empty list."""
+    handler = PublicKeySecurityHandler()
+    with pytest.raises(ValueError, match="PublicKeyProtectionPolicy"):
+        handler._compute_recipients_field(b"\x00" * 20)
+
+
+def test_compute_recipients_field_validates_recipient_certificate() -> None:
+    policy = PublicKeyProtectionPolicy()
+    policy.add_recipient(PublicKeyRecipient(permissions=AccessPermission()))
+    handler = PublicKeySecurityHandler(protection_policy=policy)
+    with pytest.raises(ValueError, match="X.509 certificate"):
+        handler._compute_recipients_field(b"\x00" * 20)
+
+
+def test_compute_recipients_field_validates_recipient_permissions() -> None:
+    policy = PublicKeyProtectionPolicy()
+    policy.add_recipient(PublicKeyRecipient(certificate=object()))  # type: ignore[arg-type]
+    handler = PublicKeySecurityHandler(protection_policy=policy)
+    with pytest.raises(ValueError, match="AccessPermission"):
+        handler._compute_recipients_field(b"\x00" * 20)
+
+
+def test_prepare_encryption_dict_aes_wires_default_crypt_filter() -> None:
+    """Mirrors upstream ``prepareEncryptionDictAES`` — the helper sets the
+    ``/CF /DefaultCryptFilter`` slot, ``/StmF``, ``/StrF`` and flips the
+    handler's AES flag."""
+    from pypdfbox.pdmodel.encryption.pd_crypt_filter_dictionary import (
+        PDCryptFilterDictionary,
+    )
+    from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
+
+    handler = PublicKeySecurityHandler()
+    handler.set_key_length(128)
+    encryption = PDEncryption()
+    handler._prepare_encryption_dict_aes(
+        encryption, PDCryptFilterDictionary.CFM_AESV2, [b"recipient-blob"]
+    )
+    assert handler.is_aes() is True
+    crypt_filter = encryption.get_default_crypt_filter_dictionary()
+    assert crypt_filter is not None
+    assert crypt_filter.get_cfm() == PDCryptFilterDictionary.CFM_AESV2
+    # /CF /Length is bytes (not bits) per Table 25.
+    assert crypt_filter.get_length() == 16
+    assert encryption.get_stm_f() == "DefaultCryptFilter"
+    assert encryption.get_str_f() == "DefaultCryptFilter"
