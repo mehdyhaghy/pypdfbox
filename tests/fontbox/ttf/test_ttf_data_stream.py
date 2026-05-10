@@ -370,12 +370,91 @@ def test_read_long_date_time_one_day() -> None:
     assert s.read_long_date_time() == datetime(1904, 1, 2, tzinfo=UTC)
 
 
+def test_read_international_date_alias_matches_long_date_time() -> None:
+    # Upstream `readInternationalDate` parity: same bytes -> same datetime.
+    s = MemoryTTFDataStream((123_456_789).to_bytes(8, "big", signed=True))
+    s2 = MemoryTTFDataStream((123_456_789).to_bytes(8, "big", signed=True))
+    assert s.read_international_date() == s2.read_long_date_time()
+
+
+def test_read_international_date_epoch_is_1904_utc() -> None:
+    s = MemoryTTFDataStream(b"\x00" * 8)
+    assert s.read_international_date() == datetime(1904, 1, 1, tzinfo=UTC)
+
+
 def test_helpers_via_random_access_read_data_stream() -> None:
     # Smoke-test that helpers also work through the RandomAccessRead-backed
     # subclass (since they live on the base class).
     s = _ra(b"\x01\x02\x03\x04")
     assert s.read_unsigned_short() == 0x0102
     assert s.read_unsigned_short() == 0x0304
+
+
+# ---------------------------------------------------------------------------
+# create_sub_view
+# ---------------------------------------------------------------------------
+
+
+def test_random_access_create_sub_view_reads_from_current_position() -> None:
+    # Mirrors upstream RandomAccessReadDataStream.createSubView.
+    s = _ra(b"0123456789")
+    s.seek(3)
+    view = s.create_sub_view(4)
+    assert view is not None
+    try:
+        # Two-arg read into a buffer to confirm the view returns the right bytes.
+        buf = bytearray(4)
+        view.seek(0)
+        n = view.read_into(buf, 0, 4)
+        assert n == 4
+        assert bytes(buf) == b"3456"
+    finally:
+        view.close()
+    # Closing the view must NOT advance the parent cursor.
+    assert s.get_current_position() == 3
+
+
+def test_random_access_create_sub_view_close_independent_of_parent() -> None:
+    s = _ra(b"abcdef")
+    view = s.create_sub_view(3)
+    assert view is not None
+    view.close()
+    # Parent stream still usable after view close.
+    assert s.read() == ord("a")
+
+
+def test_memory_create_sub_view_reads_from_current_position() -> None:
+    s = MemoryTTFDataStream(b"0123456789")
+    s.seek(2)
+    view = s.create_sub_view(3)
+    assert view is not None
+    try:
+        buf = bytearray(3)
+        view.seek(0)
+        assert view.read_into(buf, 0, 3) == 3
+        assert bytes(buf) == b"234"
+    finally:
+        view.close()
+
+
+# ---------------------------------------------------------------------------
+# RandomAccessReadDataStream — InputStream constructor parity
+# ---------------------------------------------------------------------------
+
+
+def test_random_access_read_data_stream_from_input_stream() -> None:
+    # Mirrors upstream second constructor `RandomAccessReadDataStream(InputStream)`.
+    import io
+
+    s = RandomAccessReadDataStream(io.BytesIO(b"hello world"))
+    assert s.get_original_data() == b"hello world"
+    assert s.get_original_data_size() == 11
+    assert s.read_string(5) == "hello"
+
+
+def test_random_access_read_data_stream_from_bytes() -> None:
+    s = RandomAccessReadDataStream(b"raw-bytes")
+    assert s.get_original_data() == b"raw-bytes"
 
 
 # ---------------------------------------------------------------------------
@@ -386,3 +465,10 @@ def test_helpers_via_random_access_read_data_stream() -> None:
 def test_ttf_data_stream_is_abstract() -> None:
     with pytest.raises(TypeError):
         TTFDataStream()  # type: ignore[abstract]
+
+
+def test_create_sub_view_default_returns_none() -> None:
+    # Default (abstract base) returns None — caller falls back to read_bytes.
+    # Use a minimal concrete stub that doesn't override create_sub_view.
+    s = _IntermittentEOFStream([])
+    assert s.create_sub_view(4) is None

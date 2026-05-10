@@ -71,12 +71,12 @@ def test_get_tables_returns_directory_entries(liberation_sans: TrueTypeFont) -> 
     assert {table.get_tag() for table in tables} == set(table_map)
 
 
-def test_pdfbox_camelcase_table_aliases(liberation_sans: TrueTypeFont) -> None:
-    head = liberation_sans.getTable("head")
+def test_get_table_and_tables_are_consistent(liberation_sans: TrueTypeFont) -> None:
+    head = liberation_sans.get_table("head")
 
-    assert head is liberation_sans.get_table("head")
-    assert liberation_sans.getTables() == liberation_sans.get_tables()
     assert head is not None
+    # ``get_table`` reads from the same table-map ``get_tables`` walks.
+    assert head in liberation_sans.get_tables()
 
 
 def test_get_table_bytes_matches_directory_length(
@@ -130,13 +130,14 @@ def test_get_naming_is_cached(liberation_sans: TrueTypeFont) -> None:
     assert a is b
 
 
-def test_pdfbox_camelcase_scalar_name_aliases(liberation_sans: TrueTypeFont) -> None:
-    assert liberation_sans.getUnitsPerEm() == liberation_sans.get_units_per_em()
-    assert liberation_sans.getNumberOfGlyphs() == liberation_sans.get_number_of_glyphs()
-    assert liberation_sans.getName() == liberation_sans.get_name()
-    assert liberation_sans.getFamilyName() == liberation_sans.get_family_name()
-    assert liberation_sans.getFullName() == liberation_sans.get_full_name()
-    assert liberation_sans.getVersion() == liberation_sans.get_version()
+def test_scalar_name_accessors_return_strings(liberation_sans: TrueTypeFont) -> None:
+    assert liberation_sans.get_units_per_em() > 0
+    assert liberation_sans.get_number_of_glyphs() > 0
+    assert isinstance(liberation_sans.get_name(), str)
+    assert isinstance(liberation_sans.get_family_name(), str)
+    assert isinstance(liberation_sans.get_full_name(), str)
+    # name-table version (nameID 5) — present on Liberation Sans.
+    assert liberation_sans.get_version() is not None
 
 
 def test_get_post_script(liberation_sans: TrueTypeFont) -> None:
@@ -517,3 +518,134 @@ def test_enabled_features_isolated_per_font() -> None:
     assert f1.get_enabled_gsub_features() == ["liga"]
     # The second font must not see ``liga`` — features are per-instance.
     assert f2.get_enabled_gsub_features() == []
+
+
+# ---------- SFNT scaler version (set_version / get_sfnt_version) ---------
+
+
+def test_sfnt_version_default_is_one(liberation_sans: TrueTypeFont) -> None:
+    # Constructed fonts default to 1.0 (TrueType scaler).
+    assert liberation_sans.get_sfnt_version() == 1.0
+
+
+def test_set_version_records_value() -> None:
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    f.set_version(0.5)
+    assert f.get_sfnt_version() == 0.5
+    f.set_version(1.0)
+    assert f.get_sfnt_version() == 1.0
+
+
+# ---------- _parse_uni_name ---------------------------------------------
+
+
+def test_parse_uni_name_decodes_basic_codepoint() -> None:
+    # ``uni0041`` = 'A'.
+    assert TrueTypeFont._parse_uni_name("uni0041") == 0x41  # noqa: SLF001
+
+
+def test_parse_uni_name_rejects_short_form() -> None:
+    assert TrueTypeFont._parse_uni_name("uni04") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("uni") == -1  # noqa: SLF001
+
+
+def test_parse_uni_name_rejects_non_hex() -> None:
+    assert TrueTypeFont._parse_uni_name("uniZZZZ") == -1  # noqa: SLF001
+
+
+def test_parse_uni_name_skips_surrogate_area() -> None:
+    # 0xD800-0xDFFF are surrogate codepoints — upstream skips them.
+    assert TrueTypeFont._parse_uni_name("uniD800") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("uniDFFF") == -1  # noqa: SLF001
+
+
+def test_parse_uni_name_rejects_non_uni_prefix() -> None:
+    assert TrueTypeFont._parse_uni_name("foo0041") == -1  # noqa: SLF001
+    assert TrueTypeFont._parse_uni_name("") == -1  # noqa: SLF001
+
+
+# ---------- name_to_gid post-table fallback ------------------------------
+
+
+def test_name_to_gid_uses_post_table_first(liberation_sans: TrueTypeFont) -> None:
+    # ``A`` is in the post table for Liberation Sans (post format 2.0),
+    # so we shouldn't need to consult the cmap.
+    gid_a = liberation_sans.name_to_gid("A")
+    assert gid_a > 0
+    # The same gid should be reachable via cmap-based ``uniXXXX`` lookup.
+    via_uni = liberation_sans.name_to_gid("uni0041")
+    assert via_uni == gid_a
+
+
+def test_name_to_gid_pdfbox_5604_g_digit_fallback(liberation_sans: TrueTypeFont) -> None:
+    # PDFBOX-5604: ``g\d+`` is interpreted as a literal GID, even when
+    # the post / cmap lookups fail.
+    assert liberation_sans.name_to_gid("g5") == 5
+    assert liberation_sans.name_to_gid("g123") == 123
+    # Non-conforming forms fall through.
+    assert liberation_sans.name_to_gid("gabc") == 0
+
+
+# ---------- get_unicode_cmap_lookup --------------------------------------
+
+
+def test_get_unicode_cmap_lookup_default_strict(liberation_sans: TrueTypeFont) -> None:
+    cmap = liberation_sans.get_unicode_cmap_lookup()
+    assert cmap is not None
+    assert cmap.get_glyph_id(ord("A")) > 0
+
+
+def test_get_unicode_cmap_lookup_non_strict(liberation_sans: TrueTypeFont) -> None:
+    cmap = liberation_sans.get_unicode_cmap_lookup(is_strict=False)
+    assert cmap is not None
+
+
+def test_get_unicode_cmap_lookup_substitution_wrapping() -> None:
+    # When at least one GSUB feature is enabled and the font carries a
+    # GSUB table, the returned lookup wraps the inner cmap.
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    f.enable_gsub_feature("liga")
+    inner = f.get_unicode_cmap_subtable()
+    wrapper = f.get_unicode_cmap_lookup()
+    if f.get_gsub() is None:
+        # No GSUB table — wrapper falls through to the inner cmap.
+        assert wrapper is inner
+    else:
+        # Substituting wrapper still resolves the unsubstituted glyph
+        # for unaffected codepoints.
+        assert wrapper is not None
+        assert wrapper.get_glyph_id(ord("A")) > 0
+
+
+# ---------- get_gsub_data ------------------------------------------------
+
+
+def test_get_gsub_data_when_gsub_disabled() -> None:
+    from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    f.set_enable_gsub(False)
+    assert f.get_gsub_data() is GsubData.NO_DATA_FOUND
+
+
+def test_get_gsub_data_when_no_gsub_table() -> None:
+    from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+
+    if not FIXTURE.exists():
+        pytest.skip(f"Fixture font not present: {FIXTURE}")
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    if f.get_gsub() is None:
+        assert f.get_gsub_data() is GsubData.NO_DATA_FOUND
+
+
+# ---------- toString-equivalent (__str__) --------------------------------
+
+
+def test_str_returns_post_script_name(liberation_sans: TrueTypeFont) -> None:
+    assert str(liberation_sans) == "LiberationSans"

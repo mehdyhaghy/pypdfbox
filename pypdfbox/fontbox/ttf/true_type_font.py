@@ -9,6 +9,7 @@ from .cmap_table import CmapTable
 from .digital_signature_table import DigitalSignatureTable
 from .glyph_positioning_table import GlyphPositioningTable
 from .glyph_substitution_table import GlyphSubstitutionTable
+from .gsub.gsub_data import GsubData
 from .header_table import HeaderTable
 from .horizontal_header_table import HorizontalHeaderTable
 from .horizontal_metrics_table import HorizontalMetricsTable
@@ -24,10 +25,54 @@ from .vertical_header_table import VerticalHeaderTable
 from .vertical_metrics_table import VerticalMetricsTable
 
 if TYPE_CHECKING:
+    from .cmap_lookup import CmapLookup
     from .cmap_subtable import CmapSubtable
     from .glyph_data import GlyphData
     from .glyph_table import GlyphTable
     from .kerning_table import KerningTable
+
+
+class _SubstitutingCmapLookup:
+    """A :class:`CmapLookup` that applies GSUB substitutions on top of an
+    inner Unicode cmap.
+
+    Internal stand-in for upstream's
+    ``org.apache.fontbox.ttf.SubstitutingCmapLookup`` — kept module-local
+    because the standalone class hasn't been ported yet, but the
+    behaviour the PDF rendering pipeline cares about (transparent glyph
+    substitution after a Unicode-style ``get_glyph_id`` call) is what
+    matters here.
+    """
+
+    def __init__(
+        self,
+        cmap: CmapSubtable,
+        gsub_table: GlyphSubstitutionTable,
+        features: tuple[str, ...],
+    ) -> None:
+        self._cmap = cmap
+        self._gsub = gsub_table
+        self._features = features
+
+    def get_glyph_id(self, code_point: int) -> int:
+        """Look up ``code_point`` in the inner cmap, then run any enabled
+        GSUB feature substitutions over the resolved GID.
+        """
+        gid = int(self._cmap.get_glyph_id(code_point))
+        substitute = getattr(self._gsub, "substitute_glyph", None)
+        if substitute is None:
+            return gid
+        for feature in self._features:
+            try:
+                replaced = substitute(gid, feature)
+            except (KeyError, ValueError, TypeError):
+                continue
+            if replaced is not None:
+                gid = int(replaced)
+        return gid
+
+    def get_char_codes(self, gid: int) -> list[int] | None:
+        return self._cmap.get_char_codes(gid)
 
 
 class TrueTypeFont:
@@ -49,6 +94,13 @@ class TrueTypeFont:
 
     def __init__(self, data: TTFDataStream) -> None:
         self._data: TTFDataStream = data
+        # Mirrors upstream's ``version`` ``float`` field — the SFNT scaler
+        # value (1.0 / 0x00010000 for TrueType, the floats encoding ``OTTO``
+        # / ``true`` / ``typ1`` for the legacy magics). Seeded to 1.0 so a
+        # caller that constructs a :class:`TrueTypeFont` directly (without
+        # going through :class:`TTFParser`) still observes a sensible
+        # default; the parser overrides it through :meth:`set_version`.
+        self._version: float = 1.0
         # Mirrors upstream's ``enableGsub`` flag: callers can suppress the
         # GSUB table if a font's substitution rules misbehave. Defaults to
         # ``True`` to match upstream.
@@ -57,6 +109,11 @@ class TrueTypeFont:
         # have explicitly opted into (e.g. ``"vrt2"`` / ``"vert"`` for
         # vertical writing).
         self._enabled_gsub_features: list[str] = []
+        # Cache for the PostScript-name lookup map (gid by glyph name).
+        # Mirrors upstream's volatile ``postScriptNames`` field, lazily
+        # populated on first :meth:`name_to_gid` call. ``None`` until the
+        # ``post`` table has been consulted.
+        self._post_script_names: dict[str, int] | None = None
         # Materialise the SFNT bytes into a BytesIO for fontTools. The
         # legacy TTFDataStream surface only guarantees random-access
         # reads, so we round-trip through bytes rather than wrapping it.
@@ -106,15 +163,7 @@ class TrueTypeFont:
         """Parse a TTF from an in-memory byte buffer."""
         return cls(MemoryTTFDataStream(data))
 
-    # ---------- attribute-style accessors (PDFBox-equivalent fields) ----
-
-    @property
-    def unitsPerEm(self) -> int:  # noqa: N802 — mirror upstream Java field name
-        return int(self._tt["head"].unitsPerEm)
-
-    @property
-    def numGlyphs(self) -> int:  # noqa: N802 — mirror upstream Java field name
-        return int(self._tt["maxp"].numGlyphs)
+    # ---------- attribute-style accessors -------------------------------
 
     @property
     def advance_widths(self) -> list[int]:
@@ -129,16 +178,21 @@ class TrueTypeFont:
     # ---------- method-style accessors (camelCase -> snake_case) --------
 
     def get_units_per_em(self) -> int:
-        return self.unitsPerEm
-
-    def getUnitsPerEm(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_units_per_em()
+        """Mirrors upstream ``getUnitsPerEm()`` — caches on first call,
+        falls back to 0 when the font has no ``head`` table (matches
+        upstream's defensive ``// this should never happen`` branch).
+        """
+        if "head" not in self._tt:
+            return 0
+        return int(self._tt["head"].unitsPerEm)
 
     def get_number_of_glyphs(self) -> int:
-        return self.numGlyphs
-
-    def getNumberOfGlyphs(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_number_of_glyphs()
+        """Mirrors upstream ``getNumberOfGlyphs()`` — caches on first call,
+        falls back to 0 when the font has no ``maxp`` table.
+        """
+        if "maxp" not in self._tt:
+            return 0
+        return int(self._tt["maxp"].numGlyphs)
 
     def get_advance_width(self, gid: int) -> int:
         """Advance width (in font units) for ``gid``. Falls back to 250
@@ -199,9 +253,6 @@ class TrueTypeFont:
         """
         return self.get_table_map().get(tag)
 
-    def getTable(self, tag: str) -> TTFTable | None:  # noqa: N802
-        return self.get_table(tag)
-
     def get_tables(self) -> list[TTFTable]:
         """Return all SFNT-directory entries.
 
@@ -210,9 +261,6 @@ class TrueTypeFont:
         :meth:`get_table_map`.
         """
         return list(self.get_table_map().values())
-
-    def getTables(self) -> list[TTFTable]:  # noqa: N802
-        return self.get_tables()
 
     def get_table_bytes(self, table: str | TTFTable) -> bytes | None:
         """Return the raw on-disk bytes of ``table``, or ``None`` if absent.
@@ -644,32 +692,52 @@ class TrueTypeFont:
         return str(value)
 
     def get_name(self) -> str | None:
-        """PostScript name of the font (name table, nameID 6)."""
-        return self._get_name_string(6)
+        """PostScript name of the font (name table, nameID 6).
 
-    def getName(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_name()
+        Mirrors upstream ``getName()``; returns ``None`` when the font
+        has no ``name`` table.
+        """
+        return self._get_name_string(6)
 
     def get_family_name(self) -> str | None:
         """Font family name (name table, nameID 1)."""
         return self._get_name_string(1)
 
-    def getFamilyName(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_family_name()
-
     def get_full_name(self) -> str | None:
         """Full font name (name table, nameID 4)."""
         return self._get_name_string(4)
 
-    def getFullName(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_full_name()
-
     def get_version(self) -> str | None:
-        """Version string (name table, nameID 5)."""
+        """Version string (name table, nameID 5).
+
+        **Deviation from upstream:** Java's ``TrueTypeFont.getVersion()``
+        returns the SFNT scaler ``float`` written by
+        :meth:`set_version`; the name-table version string is not
+        otherwise exposed. We surface the name-table version under the
+        same accessor (existing wave tests rely on it) and provide
+        :meth:`get_sfnt_version` for the upstream-shaped scaler value.
+        """
         return self._get_name_string(5)
 
-    def getVersion(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_version()
+    def get_sfnt_version(self) -> float:
+        """Return the SFNT scaler version (upstream's ``float version``).
+
+        Mirrors what upstream's ``getVersion()`` returns. Set by the
+        parser through :meth:`set_version`; defaults to 1.0 when the
+        font was constructed directly without going through
+        :class:`TTFParser`.
+        """
+        return self._version
+
+    def set_version(self, version_value: float) -> None:
+        """Record the SFNT scaler version (upstream parser hook).
+
+        Mirrors upstream ``setVersion(float)`` — package-private on the
+        Java side, called by :class:`TTFParser` while seeding the font.
+        Python has no package visibility, so it's exposed here too;
+        callers outside parsing should not invoke it directly.
+        """
+        self._version = float(version_value)
 
     # ---------- head / post / OS/2 scalar accessors --------------------
 
@@ -833,22 +901,207 @@ class TrueTypeFont:
         """
         return self.get_unicode_cmap_subtable()
 
+    def get_unicode_cmap_lookup(self, is_strict: bool = True) -> CmapLookup | None:  # noqa: FBT001, FBT002
+        """Return a Unicode :class:`CmapLookup` for this font.
+
+        Mirrors upstream's ``getUnicodeCmapLookup()`` /
+        ``getUnicodeCmapLookup(boolean isStrict)`` (TrueTypeFont.java
+        lines 581 / 597). When GSUB features have been enabled through
+        :meth:`enable_gsub_feature` and the font carries a GSUB table,
+        the lookup is wrapped in a :class:`SubstitutingCmapLookup` so
+        glyph substitution kicks in transparently for the caller.
+
+        When ``is_strict`` is ``True`` (the default) and the font has no
+        cmap table, raises :class:`OSError` matching upstream's
+        ``IOException`` contract; ``is_strict=False`` returns the first
+        cmap subtable available (potentially non-Unicode), or ``None``
+        if the font has no cmaps at all.
+        """
+        cmap = self._get_unicode_cmap_impl(is_strict=is_strict)
+        if cmap is not None and self._enabled_gsub_features:
+            gsub_table = self.get_gsub()
+            if gsub_table is not None:
+                return _SubstitutingCmapLookup(
+                    cmap, gsub_table, tuple(self._enabled_gsub_features)
+                )
+        return cmap
+
+    def _get_unicode_cmap_impl(self, *, is_strict: bool) -> CmapSubtable | None:
+        """Implementation of :meth:`get_unicode_cmap_lookup` minus the
+        substitution-wrapper step.
+
+        Mirrors upstream's private ``getUnicodeCmapImpl(boolean)`` —
+        applies the same priority order :meth:`get_unicode_cmap_subtable`
+        uses but adds the ``is_strict`` semantics for the no-cmap and
+        no-Unicode-cmap cases.
+        """
+        cmap = self.get_unicode_cmap_subtable()
+        if cmap is not None:
+            return cmap
+        if "cmap" not in self._tt:
+            if is_strict:
+                msg = (
+                    f"The TrueType font {self.get_name()} does not contain "
+                    "a 'cmap' table"
+                )
+                raise OSError(msg)
+            return None
+        # cmap table is present but no preferred Unicode subtable matched.
+        if is_strict:
+            msg = "The TrueType font does not contain a Unicode cmap"
+            raise OSError(msg)
+        # Non-strict fallback: return the first cmap subtable available.
+        cmap_table = self._tt["cmap"]
+        subtables = list(getattr(cmap_table, "tables", []) or [])
+        if not subtables:
+            return None
+        chosen = subtables[0]
+        glyph_name_to_gid = {n: i for i, n in enumerate(self._tt.getGlyphOrder())}
+        char_to_gid: dict[int, int] = {}
+        for code, name in chosen.cmap.items():
+            gid = glyph_name_to_gid.get(name)
+            if gid is not None:
+                char_to_gid[code] = gid
+
+        from .cmap_subtable import CmapSubtable  # noqa: PLC0415
+
+        view = CmapSubtable()
+        view.set_platform_id(int(chosen.platformID))
+        view.set_platform_encoding_id(int(chosen.platEncID))
+        view._character_code_to_glyph_id = char_to_gid  # noqa: SLF001
+        max_gid = max(char_to_gid.values(), default=-1)
+        if max_gid >= 0:
+            view._build_glyph_id_to_character_code_lookup(max_gid)  # noqa: SLF001
+        return view
+
+    def get_gsub_data(self) -> GsubData:
+        """Return the parsed GSUB data, or :attr:`GsubData.NO_DATA_FOUND`.
+
+        Mirrors upstream's ``getGsubData()`` (TrueTypeFont.java line
+        717) — returns the sentinel :attr:`GsubData.NO_DATA_FOUND` when
+        GSUB has been disabled via :meth:`set_enable_gsub`, when the
+        font has no GSUB table, or when the table has no parsed data
+        for the active script.
+        """
+        if not self._enable_gsub:
+            return GsubData.NO_DATA_FOUND
+        table = self.get_gsub()
+        if table is None:
+            return GsubData.NO_DATA_FOUND
+        get_data = getattr(table, "get_gsub_data", None)
+        if get_data is None:
+            return GsubData.NO_DATA_FOUND
+        result = get_data()
+        if result is None:
+            return GsubData.NO_DATA_FOUND
+        return result
+
     def name_to_gid(self, name: str) -> int:
         """Return the GID for a PostScript glyph name (0 / ``.notdef`` if unknown).
 
-        Mirrors upstream's ``nameToGID(String)``: walks the font's glyph
-        order, falling back to gid 0 (``.notdef``) when the name is not
-        present. Names like ``glyph123`` (fontTools placeholder for
-        unnamed glyphs) are accepted by that path too because they live
-        in the glyph order.
+        Mirrors upstream's ``nameToGID(String)`` (TrueTypeFont.java line
+        680) — three-stage lookup:
+
+        1. Consult the ``post`` table's PostScript-name -> GID map.
+        2. If the name is a ``uniXXXX`` form, parse the codepoint and
+           consult the Unicode cmap (non-strict).
+        3. PDFBOX-5604: ``g\\d+`` is interpreted as a literal GID.
+
+        Falls back to gid 0 (``.notdef``) when nothing matches.
         """
         if not name:
             return 0
+
+        # 1) post-table lookup. Wrapped in a try/except so a stub TTFont
+        # without a ``post`` table (or a half-built fixture that bypassed
+        # ``__init__``) still falls through to the cmap / glyph-order
+        # branches below.
+        try:
+            self._read_post_script_names()
+        except AttributeError:
+            pass
+        else:
+            psn = getattr(self, "_post_script_names", None)
+            if psn:
+                gid = psn.get(name)
+                if gid is not None and gid > 0:
+                    num_glyphs = self.get_number_of_glyphs()
+                    if 0 < gid < num_glyphs:
+                        return gid
+
+        # 2) cmap fallback for ``uniXXXX``-style names.
+        uni = self._parse_uni_name(name)
+        if uni > -1:
+            try:
+                cmap = self.get_unicode_cmap_lookup(is_strict=False)
+            except (AttributeError, OSError):
+                cmap = None
+            if cmap is not None:
+                return int(cmap.get_glyph_id(uni))
+
+        # 3) PDFBOX-5604 — ``g\d+`` is a literal GID.
+        if len(name) > 1 and name[0] == "g" and name[1:].isdigit():
+            try:
+                return int(name[1:])
+            except ValueError:
+                return 0
+
+        # Final fallback — fontTools glyph-order lookup, which catches the
+        # synthetic ``glyph123`` placeholders for unnamed glyphs (the only
+        # path we previously supported, retained as a safety net).
         order = self._tt.getGlyphOrder()
         try:
             return int(order.index(name))
         except ValueError:
             return 0
+
+    def _read_post_script_names(self) -> None:
+        """Build the PostScript-name -> GID map from the ``post`` table.
+
+        Mirrors upstream's private ``readPostScriptNames`` — caches in
+        ``_post_script_names``; subsequent calls are no-ops. The ``post``
+        table only carries glyph names for format 2.0 / 2.5; for other
+        formats the map is empty.
+        """
+        # Tolerate test fixtures that bypass ``__init__`` via
+        # ``object.__new__(TrueTypeFont)`` — those mocks predate the
+        # ``_post_script_names`` cache being a constructor field.
+        if getattr(self, "_post_script_names", None) is not None:
+            return
+        post = self.get_post_script()
+        names = post.get_glyph_names() if post is not None else None
+        if names:
+            self._post_script_names = {n: i for i, n in enumerate(names)}
+        else:
+            self._post_script_names = {}
+
+    @staticmethod
+    def _parse_uni_name(name: str) -> int:
+        """Decode a Unicode PostScript name in the ``uniXXXX`` form.
+
+        Mirrors upstream's private ``parseUniName`` — accepts a 7-char
+        string starting ``uni`` followed by 4 hex digits and returns the
+        decoded codepoint (or -1 on any of: wrong shape, surrogate-area
+        codepoint, parse error). Multi-character forms (``uniXXXXYYYY``)
+        return the codepoint of the first character only, matching
+        upstream's ``unicode.codePointAt(0)`` return.
+        """
+        if not (name.startswith("uni") and len(name) == 7):
+            return -1
+        try:
+            chars: list[str] = []
+            pos = 3
+            while pos + 4 <= len(name):
+                code_point = int(name[pos : pos + 4], 16)
+                # Skip the disallowed surrogate area.
+                if code_point <= 0xD7FF or code_point >= 0xE000:
+                    chars.append(chr(code_point))
+                pos += 4
+        except ValueError:
+            return -1
+        if not chars:
+            return -1
+        return ord(chars[0])
 
     # ---------- naming / post / OS/2 / loca typed-table accessors --------
 
@@ -916,8 +1169,16 @@ class TrueTypeFont:
         t._mim_mem_type1 = int(ft_post.minMemType1)  # noqa: SLF001
         t._max_mem_type1 = int(ft_post.maxMemType1)  # noqa: SLF001
         # fontTools resolves glyph names onto the post table for format 2.0;
-        # both formats end up in ``glyphOrder``, indexed by gid.
+        # both formats end up in ``glyphOrder``, indexed by gid. In lazy
+        # mode ``glyphOrder`` may not yet be populated on the post table,
+        # so fall back to the parent ``TTFont``'s glyph order — same data,
+        # always present once the font is parsed.
         glyph_names = getattr(ft_post, "glyphOrder", None)
+        if glyph_names is None:
+            try:
+                glyph_names = self._tt.getGlyphOrder()
+            except (AttributeError, KeyError):
+                glyph_names = None
         if glyph_names is not None:
             t._glyph_names = list(glyph_names)  # noqa: SLF001
         t.initialized = True
@@ -1141,6 +1402,21 @@ class TrueTypeFont:
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
+    def __str__(self) -> str:
+        """Mirrors upstream's ``toString()`` — returns the PostScript
+        name from the ``name`` table, or ``"(null)"`` if the font lacks
+        one (or fails to read it).
+        """
+        try:
+            naming_table = self.get_naming()
+            if naming_table is not None:
+                ps_name = naming_table.get_post_script_name()
+                if ps_name is not None:
+                    return ps_name
+            return "(null)"
+        except OSError as exc:
+            return f"(null - {exc})"
 
     # ---------- helpers -------------------------------------------------
 

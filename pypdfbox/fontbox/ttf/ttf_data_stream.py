@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
+from typing import BinaryIO
 
 from pypdfbox.io.random_access_read import RandomAccessRead
+
+_LOG = logging.getLogger(__name__)
 
 # Epoch for TrueType `LONGDATETIME`: midnight 1904-01-01 UTC. Stored as a
 # signed 64-bit count of seconds. Naïve datetimes break around year-2038, so
@@ -181,6 +185,25 @@ class TTFDataStream(ABC):
         seconds_since_1904 = self.read_long()
         return _TTF_EPOCH + timedelta(seconds=seconds_since_1904)
 
+    def read_international_date(self) -> datetime:
+        """Read an eight-byte international date (signed 64-bit seconds since 1904-01-01 UTC).
+
+        Mirrors upstream ``TTFDataStream.readInternationalDate``.
+        """
+        return self.read_long_date_time()
+
+    def create_sub_view(self, length: int) -> RandomAccessRead | None:
+        """
+        Return a ``RandomAccessRead`` view spanning the next ``length`` bytes
+        from the current position, or ``None`` when this stream cannot
+        produce a view (caller should fall back to :meth:`read_bytes`).
+
+        Mirrors upstream ``TTFDataStream.createSubView``: subclasses with a
+        random-access backing store override; the abstract default returns
+        ``None``. Closing the returned view must not affect this stream.
+        """
+        return None
+
 
 class RandomAccessReadDataStream(TTFDataStream):
     """Wraps a :class:`RandomAccessRead` to satisfy :class:`TTFDataStream`.
@@ -190,20 +213,36 @@ class RandomAccessReadDataStream(TTFDataStream):
     so subsequent reads/seeks are O(1).
     """
 
-    def __init__(self, source: RandomAccessRead) -> None:
-        size = source.length()
-        buf = bytearray(size)
-        source.seek(0)
-        # read in a loop in case the source returns short reads
-        total = 0
-        while total < size:
-            n = source.read_into(buf, total, size - total)
-            if n <= 0:
-                break
-            total += n
-        if total != size:
-            raise OSError("Unexpected end of TTF stream reached")
-        self._data: bytes = bytes(buf)
+    def __init__(self, source: RandomAccessRead | BinaryIO | bytes | bytearray) -> None:
+        # Mirrors upstream's two constructors: ``RandomAccessReadDataStream(RandomAccessRead)``
+        # slurps the whole source via ``length()`` + ``read(...)``; the input-stream
+        # overload (``RandomAccessReadDataStream(InputStream)``) drains the stream via
+        # ``IOUtils.toByteArray``. Dispatch is duck-typed: anything exposing
+        # ``length()`` + ``read_into(...)`` looks like RandomAccessRead;
+        # otherwise we treat ``source`` as a file-like / input stream.
+        if isinstance(source, (bytes, bytearray)):
+            self._data: bytes = bytes(source)
+        elif hasattr(source, "length") and hasattr(source, "read_into"):
+            size = source.length()
+            buf = bytearray(size)
+            source.seek(0)
+            # read in a loop in case the source returns short reads
+            total = 0
+            while total < size:
+                n = source.read_into(buf, total, size - total)
+                if n <= 0:
+                    break
+                total += n
+            if total != size:
+                raise OSError("Unexpected end of TTF stream reached")
+            self._data = bytes(buf)
+        else:
+            # File-like / InputStream: drain to EOF.
+            data = source.read()
+            if not isinstance(data, (bytes, bytearray)):
+                msg = "input stream must return bytes from read()"
+                raise TypeError(msg)
+            self._data = bytes(data)
         self._pos: int = 0
         self._closed = False
 
@@ -248,6 +287,25 @@ class RandomAccessReadDataStream(TTFDataStream):
 
     def close(self) -> None:
         self._closed = True
+
+    def create_sub_view(self, length: int) -> RandomAccessRead | None:
+        """Return a sliced view starting at the current position.
+
+        Mirrors upstream ``RandomAccessReadDataStream.createSubView``: build
+        a fresh ``RandomAccessReadBuffer`` over our cached bytes and return
+        a ``createView`` of ``length`` bytes from the cursor. Closing the
+        returned view does not affect this stream (the new buffer owns it).
+        Returns ``None`` if the underlying buffer cannot produce a view.
+        """
+        # Local import to avoid an import cycle (io -> fontbox -> io).
+        from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
+
+        try:
+            buffer = RandomAccessReadBuffer(self._data)
+            return buffer.create_view(self._pos, length)
+        except Exception:  # pragma: no cover — defensive: log + None like upstream
+            _LOG.warning("Could not create a SubView", exc_info=True)
+            return None
 
 
 class MemoryTTFDataStream(TTFDataStream):
@@ -302,3 +360,19 @@ class MemoryTTFDataStream(TTFDataStream):
 
     def close(self) -> None:
         self._closed = True
+
+    def create_sub_view(self, length: int) -> RandomAccessRead | None:
+        """Return a ``RandomAccessRead`` view over the next ``length`` bytes.
+
+        Same contract as :meth:`RandomAccessReadDataStream.create_sub_view`
+        but for the in-memory variant; closing the returned view does not
+        affect this stream.
+        """
+        from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
+
+        try:
+            buffer = RandomAccessReadBuffer(self._data)
+            return buffer.create_view(self._pos, length)
+        except Exception:  # pragma: no cover
+            _LOG.warning("Could not create a SubView", exc_info=True)
+            return None

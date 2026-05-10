@@ -7,8 +7,23 @@ from .type.abstract_simple_property import AbstractSimpleProperty
 from .type.array_property import ArrayProperty
 
 if TYPE_CHECKING:
+    from .type.boolean_type import BooleanType
+    from .type.date_type import DateType
+    from .type.integer_type import IntegerType
     from .type.text_type import TextType
     from .xmp_metadata import XMPMetadata
+
+
+class BadFieldValueException(ValueError):
+    """
+    Mirror of upstream ``org.apache.xmpbox.type.BadFieldValueException``.
+
+    Raised by typed-property accessors when the property at a requested name
+    exists but is stored with a different XMP type than the caller asked for.
+    Subclasses :class:`ValueError` so callers that aren't aware of the upstream
+    class can still catch it idiomatically. Re-exported under the same name as
+    the type-package class via :mod:`pypdfbox.xmpbox`.
+    """
 
 
 # Sentinel value used to distinguish "no language" from an explicit "x-default".
@@ -51,6 +66,12 @@ class XMPSchema:
         self._name = name
         # property local-name -> stored value (str | list[str] | dict[str,str])
         self._properties: dict[str, object] = {}
+        # property local-name -> typed wrapper (TextType / BooleanType / ...).
+        # Mirrors the typed-cache pattern used by :mod:`adobe_pdf_schema`: the
+        # raw value in ``_properties`` is authoritative for string-form readers,
+        # while ``_typed_properties`` lets typed-form getters return the same
+        # ``AbstractSimpleProperty`` instance the caller installed.
+        self._typed_properties: dict[str, AbstractSimpleProperty] = {}
         # rdf:about attribute on the surrounding rdf:Description
         self._about: str = ""
         # extra namespace declarations seen on the description element
@@ -155,6 +176,7 @@ class XMPSchema:
     def clear(self) -> None:
         """Remove every property stored on this schema."""
         self._properties.clear()
+        self._typed_properties.clear()
 
     def add_property(self, prop: object) -> None:
         """
@@ -181,6 +203,7 @@ class XMPSchema:
 
     def remove_property(self, local_name: str) -> None:
         self._properties.pop(local_name, None)
+        self._typed_properties.pop(local_name, None)
 
     def get_all_properties(self) -> dict[str, object]:
         return dict(self._properties)
@@ -238,8 +261,15 @@ class XMPSchema:
         """
         if value is None:
             self._properties.pop(local_name, None)
+            self._typed_properties.pop(local_name, None)
             return
         self._properties[local_name] = value
+        # Drop any cached typed wrapper that no longer reflects the stored
+        # string-form value, mirroring the per-subclass cache invalidation
+        # already used by :mod:`adobe_pdf_schema`.
+        cached = self._typed_properties.get(local_name)
+        if cached is not None and cached.get_string_value() != value:
+            self._typed_properties.pop(local_name, None)
 
     def set_text_property_value_as_simple(
         self, simple_name: str, value: str | None
@@ -405,13 +435,26 @@ class XMPSchema:
     # --- LangAlt ------------------------------------------------------
 
     def set_unqualified_language_property_value(
-        self, local_name: str, lang: str | None, value: str
+        self, local_name: str, lang: str | None, value: str | None
     ) -> None:
+        """
+        Mirror of upstream ``setUnqualifiedLanguagePropertyValue``: install a
+        Lang Alt entry for ``lang`` (defaulting to ``x-default``). Passing
+        ``None`` for ``value`` removes the existing entry — upstream's
+        behavior, see XMPSchema.java line 1026 ("// the same language has been
+        found ... if (value != null)") where a null value triggers the
+        entry-removal path with no replacement.
+        """
+        language = lang or X_DEFAULT
         existing = self._properties.get(local_name)
+        if value is None:
+            # Remove-only path: drop the language entry if present.
+            if isinstance(existing, dict):
+                existing.pop(language, None)
+            return
         if not isinstance(existing, dict):
             existing = {}
             self._properties[local_name] = existing
-        language = lang or X_DEFAULT
         existing[language] = value
         if language == X_DEFAULT:
             self._reorganize_alt_order(existing)
@@ -466,8 +509,12 @@ class XMPSchema:
         """
         if value is None:
             self._properties.pop(qualified_name, None)
+            self._typed_properties.pop(qualified_name, None)
             return
         self._properties[qualified_name] = bool(value)
+        cached = self._typed_properties.get(qualified_name)
+        if cached is not None and cached.get_value() != bool(value):
+            self._typed_properties.pop(qualified_name, None)
 
     def set_boolean_property_value_as_simple(
         self, simple_name: str, value: bool | None
@@ -502,12 +549,16 @@ class XMPSchema:
         """
         if value is None:
             self._properties.pop(qualified_name, None)
+            self._typed_properties.pop(qualified_name, None)
             return
         # Reject Python booleans here: ``bool`` is a subclass of ``int`` but
         # upstream treats integers and booleans as distinct types.
         if isinstance(value, bool):
             raise TypeError("set_integer_property_value expects int, got bool")
         self._properties[qualified_name] = int(value)
+        cached = self._typed_properties.get(qualified_name)
+        if cached is not None and cached.get_value() != int(value):
+            self._typed_properties.pop(qualified_name, None)
 
     def set_integer_property_value_as_simple(
         self, simple_name: str, value: int | None
@@ -552,6 +603,7 @@ class XMPSchema:
         """
         if value is None:
             self._properties.pop(qualified_name, None)
+            self._typed_properties.pop(qualified_name, None)
             return
         if not isinstance(value, datetime):
             raise TypeError(
@@ -559,6 +611,9 @@ class XMPSchema:
                 f"{type(value).__name__}"
             )
         self._properties[qualified_name] = value
+        cached = self._typed_properties.get(qualified_name)
+        if cached is not None and cached.get_value() != value:
+            self._typed_properties.pop(qualified_name, None)
 
     def set_date_property_value_as_simple(
         self, simple_name: str, value: datetime | None
@@ -642,6 +697,259 @@ class XMPSchema:
             if not (isinstance(item, datetime) and item == value)
         ]
 
+    # --- typed simple-property setters / getters ----------------------
+    #
+    # These mirror upstream's ``setXxxProperty(XxxType)`` / ``getXxxProperty``
+    # entry points (XMPSchema.java lines 258, 391, 493, 588 for the setters and
+    # 333, 430, 532 for the getters). Passing a typed wrapper installs both
+    # the raw value (so the existing string-form readers keep working) and
+    # caches the wrapper itself, which the typed getters then return so callers
+    # see the very instance they handed in (matching upstream's
+    # ``addProperty`` semantics inside ``setSpecifiedSimpleTypeProperty``).
+    #
+    # Type-mismatched lookups raise :class:`BadFieldValueException`, mirroring
+    # upstream's ``throws BadFieldValueException`` declarations on the
+    # ``getXxxProperty`` family.
+
+    def set_specified_simple_type_property(
+        self, prop: AbstractSimpleProperty
+    ) -> None:
+        """
+        Port of upstream ``setSpecifiedSimpleTypeProperty(AbstractSimpleProperty)``
+        (XMPSchema.java line 236) — install ``prop`` under its property name,
+        replacing any existing entry. The raw value is stored so existing
+        string-form accessors keep working; the typed wrapper is cached so the
+        typed getter returns the same instance.
+        """
+        name = prop.get_property_name()
+        self._properties[name] = prop.get_value()
+        self._typed_properties[name] = prop
+
+    def set_text_property(self, prop: TextType) -> None:
+        """
+        Mirror of upstream ``setTextProperty(TextType)`` (XMPSchema.java
+        line 258) — install ``prop``, replacing any existing entry under the
+        same property name.
+        """
+        self.set_specified_simple_type_property(prop)
+
+    def set_boolean_property(self, prop: BooleanType) -> None:
+        """
+        Mirror of upstream ``setBooleanProperty(BooleanType)`` (XMPSchema.java
+        line 493) — install ``prop``, replacing any existing entry under the
+        same property name.
+        """
+        self.set_specified_simple_type_property(prop)
+
+    def set_integer_property(self, prop: IntegerType) -> None:
+        """
+        Mirror of upstream ``setIntegerProperty(IntegerType)`` (XMPSchema.java
+        line 588) — install ``prop``, replacing any existing entry under the
+        same property name.
+        """
+        self.set_specified_simple_type_property(prop)
+
+    def set_date_property(self, prop: DateType) -> None:
+        """
+        Mirror of upstream ``setDateProperty(DateType)`` (XMPSchema.java
+        line 391) — install ``prop``, replacing any existing entry under the
+        same property name.
+        """
+        self.set_specified_simple_type_property(prop)
+
+    def _typed_property_or_raise(
+        self, qualified_name: str, expected_cls: type, type_label: str
+    ) -> AbstractSimpleProperty | None:
+        """
+        Shared body for typed-property getters: return the cached typed
+        wrapper, lazily rehydrating one from the raw value when none is
+        cached. Returns ``None`` when the property is absent. Raises
+        :class:`BadFieldValueException` when the stored value's Python type
+        doesn't match the requested XMP type.
+        """
+        cached = self._typed_properties.get(qualified_name)
+        raw = self._properties.get(qualified_name)
+        if raw is None and cached is None:
+            return None
+        if cached is not None and isinstance(cached, expected_cls):
+            return cached
+        # Raw value present but no (or wrong-type) cached wrapper. Decide based
+        # on the raw value's Python type, mirroring upstream's
+        # ``instanceof XxxType`` check on the stored field.
+        return None if raw is None else self._rehydrate_simple_or_raise(
+            qualified_name, raw, expected_cls, type_label
+        )
+
+    def _rehydrate_simple_or_raise(
+        self,
+        qualified_name: str,
+        raw: object,
+        expected_cls: type,
+        type_label: str,
+    ) -> AbstractSimpleProperty:
+        # Lazy import to avoid an import cycle with the type submodules.
+        from .type.boolean_type import BooleanType
+        from .type.date_type import DateType
+        from .type.integer_type import IntegerType
+        from .type.text_type import TextType
+
+        # Booleans are an int subclass in Python; check ``bool`` first.
+        if isinstance(raw, bool):
+            actual_cls: type = BooleanType
+        elif isinstance(raw, int):
+            actual_cls = IntegerType
+        elif isinstance(raw, datetime):
+            actual_cls = DateType
+        elif isinstance(raw, str):
+            actual_cls = TextType
+        else:
+            raise BadFieldValueException(
+                f"Property asked is not a {type_label} Property"
+            )
+        if actual_cls is not expected_cls:
+            raise BadFieldValueException(
+                f"Property asked is not a {type_label} Property"
+            )
+        wrapper = actual_cls(
+            self._metadata, self._namespace, self._prefix, qualified_name, raw
+        )
+        self._typed_properties[qualified_name] = wrapper
+        return wrapper
+
+    def get_boolean_property(self, qualified_name: str) -> BooleanType | None:
+        """
+        Mirror of upstream ``getBooleanProperty(String)`` (XMPSchema.java
+        line 430) — return the :class:`BooleanType` wrapping the value at
+        ``qualified_name``, or ``None`` when the property is absent. Raises
+        :class:`BadFieldValueException` when the property exists but is not a
+        boolean.
+        """
+        from .type.boolean_type import BooleanType
+
+        result = self._typed_property_or_raise(
+            qualified_name, BooleanType, "Boolean"
+        )
+        return result  # type: ignore[return-value]
+
+    def get_integer_property(self, qualified_name: str) -> IntegerType | None:
+        """
+        Mirror of upstream ``getIntegerProperty(String)`` (XMPSchema.java
+        line 532) — return the :class:`IntegerType` wrapping the value at
+        ``qualified_name``, or ``None`` when the property is absent. Raises
+        :class:`BadFieldValueException` when the property exists but is not
+        an integer.
+        """
+        from .type.integer_type import IntegerType
+
+        result = self._typed_property_or_raise(
+            qualified_name, IntegerType, "Integer"
+        )
+        return result  # type: ignore[return-value]
+
+    def get_date_property(self, qualified_name: str) -> DateType | None:
+        """
+        Mirror of upstream ``getDateProperty(String)`` (XMPSchema.java
+        line 333) — return the :class:`DateType` wrapping the value at
+        ``qualified_name``, or ``None`` when the property is absent. Raises
+        :class:`BadFieldValueException` when the property exists but is not a
+        date.
+        """
+        from .type.date_type import DateType
+
+        result = self._typed_property_or_raise(qualified_name, DateType, "Date")
+        return result  # type: ignore[return-value]
+
+    # --- typed bag helpers --------------------------------------------
+
+    def add_bag_value(self, qualified_name: str, value: object) -> None:
+        """
+        Mirror of upstream ``addBagValue(String, AbstractField)`` (XMPSchema
+        .java line 806) — append a typed :class:`AbstractField` to the Bag at
+        ``qualified_name``, creating the array when absent. Cluster #1 stores
+        Bag arrays as plain lists; if ``value`` is an
+        :class:`AbstractSimpleProperty`, its underlying string value is
+        appended so existing string-form readers keep working.
+        """
+        self.internal_add_bag_value(qualified_name, value)
+
+    def internal_add_bag_value(self, qualified_name: str, value: object) -> None:
+        """
+        Port of upstream ``internalAddBagValue(String, String)`` (XMPSchema
+        .java line 672). Cluster #1 stores Bag arrays as plain lists, so this
+        unwraps an :class:`AbstractSimpleProperty` to its string value before
+        appending.
+        """
+        existing = self._properties.get(qualified_name)
+        if isinstance(value, AbstractSimpleProperty):
+            string_value = value.get_string_value()
+        else:
+            string_value = str(value)
+        if isinstance(existing, ArrayProperty):
+            from .type.text_type import TextType
+
+            existing.add_property(
+                TextType(
+                    self._metadata,
+                    self._namespace,
+                    self._prefix,
+                    "li",
+                    string_value,
+                )
+            )
+            return
+        if not isinstance(existing, list):
+            existing = []
+            self._properties[qualified_name] = existing
+        existing.append(string_value)
+
+    # --- LangAlt helpers ----------------------------------------------
+
+    def reorganize_alt_order(self, values: dict[str, str] | object) -> None:
+        """
+        Mirror of upstream ``reorganizeAltOrder(ComplexPropertyContainer)``
+        (XMPSchema.java line 954) — keep the ``x-default`` entry first when an
+        Alt array contains one. Cluster #1 stores Alt arrays as ``dict`` keyed
+        by language; this delegates to :meth:`_reorganize_alt_order` for that
+        shape and is a no-op for any other shape.
+        """
+        if isinstance(values, dict):
+            self._reorganize_alt_order(values)
+
+    # --- protected helpers (subclass-facing) --------------------------
+
+    def instanciate_simple(
+        self, property_name: str, value: object
+    ) -> AbstractSimpleProperty:
+        """
+        Port of upstream ``instanciateSimple(String, Object)`` (XMPSchema.java
+        line 1224) — build an :class:`AbstractSimpleProperty` whose concrete
+        type is inferred from ``value``'s Python type. Used by subclasses that
+        want to install a typed wrapper without restating the namespace /
+        prefix. Naming preserves the upstream typo (``instanciate`` not
+        ``instantiate``) for diff parity. Raises :class:`TypeError` for values
+        whose type can't be mapped to a supported XMP simple type.
+        """
+        from .type.boolean_type import BooleanType
+        from .type.date_type import DateType
+        from .type.integer_type import IntegerType
+        from .type.text_type import TextType
+
+        # ``bool`` first — it is an ``int`` subclass.
+        if isinstance(value, bool):
+            cls: type[AbstractSimpleProperty] = BooleanType
+        elif isinstance(value, int):
+            cls = IntegerType
+        elif isinstance(value, datetime):
+            cls = DateType
+        elif isinstance(value, str):
+            cls = TextType
+        else:
+            raise TypeError(
+                f"Cannot instanciate a simple property for value of type "
+                f"{type(value).__name__}"
+            )
+        return cls(self._metadata, self._namespace, self._prefix, property_name, value)
+
     # --- merge --------------------------------------------------------
 
     def merge(self, other: XMPSchema) -> None:
@@ -684,3 +992,25 @@ class XMPSchema:
             else:
                 # Simple / mismatched-shape: replace.
                 self._properties[name] = new_value
+
+    def merge_complex_property(
+        self, new_values: list[object], existing: list[object]
+    ) -> bool:
+        """
+        Port of upstream ``mergeComplexProperty(Iterator, ArrayProperty)``
+        (XMPSchema.java line 1176) — iterate ``new_values`` and append each one
+        that doesn't already appear in ``existing``; return ``True`` as soon as
+        a duplicate is encountered (upstream's ``return true`` short-circuits
+        the iteration so any remaining entries in ``new_values`` are dropped).
+        Returns ``False`` when every new entry was appended cleanly.
+
+        ``XMPSchema.merge`` does not call this helper directly because cluster
+        #1 prefers a full union (no early short-circuit on duplicates) — see
+        ``CHANGES.md``. The helper is provided so callers wanting strict
+        upstream behavior can opt in.
+        """
+        for item in new_values:
+            if item in existing:
+                return True
+            existing.append(item)
+        return False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -17,12 +18,19 @@ from .operator_processor import MissingOperandException, OperatorProcessor
 from .pd_content_stream import PDContentStream
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.graphics.color import PDColor
     from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
     from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (
         PDTransparencyGroup,
     )
     from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
+        PDAnnotation,
+    )
+    from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
+        PDAppearanceStream,
+    )
     from pypdfbox.pdmodel.pd_page import PDPage
     from pypdfbox.pdmodel.pd_resources import PDResources
 
@@ -131,16 +139,15 @@ class PDFStreamEngine:
     def process_page(self, page: PDPage) -> None:
         """Walk the page's content stream(s) and dispatch every operator.
 
-        Cluster #2 covers the dispatch path only: we pull raw bytes via
-        :meth:`PDPage.get_contents`, hand them to :class:`PDFStreamParser`,
-        and invoke :meth:`process_operator` on each token-run. The
-        graphics-state push/pop and resource-stack handling that upstream
-        wraps around this loop arrive in cluster #3.
+        Mirrors upstream ``processPage(PDPage)``: delegates to
+        :meth:`init_page` to set up the current page / resources /
+        initial matrix, then drives the parser. The
+        graphics-state push/pop and full resource-stack handling that
+        upstream wraps around this loop arrive in cluster #3.
         """
-        self._current_page = page
+        self.init_page(page)
         self._is_processing_page = True
         try:
-            self._resources = page.get_resources()
             data = page.get_contents()
             if not data:
                 return
@@ -148,6 +155,29 @@ class PDFStreamEngine:
         finally:
             self._is_processing_page = False
             self._current_page = None
+
+    def init_page(self, page: PDPage) -> None:
+        """Initialize the engine for the given page.
+
+        Mirrors upstream's private ``initPage(PDPage)``: sets the
+        current-page reference, clears the graphics-state stack, seeds
+        the resources from the page, and captures the page's initial
+        matrix on :attr:`_initial_matrix`. Exposed as a public hook so
+        the rendering subclass can override to push a typed
+        ``PDGraphicsState`` onto the stack (upstream does the same via
+        ``graphicsStack.push(new PDGraphicsState(page.getCropBox()))``).
+        """
+        if page is None:
+            raise ValueError("Page cannot be null")
+        self._current_page = page
+        self._graphics_stack = []
+        self._resources = page.get_resources()
+        # ``page.getMatrix()`` upstream — we expose whatever the page's
+        # ``get_matrix()`` returns when present, falling back to ``None``
+        # so the base engine doesn't force materialisation of a Matrix
+        # type that doesn't yet exist in pypdfbox.
+        getter = getattr(page, "get_matrix", None)
+        self._initial_matrix = getter() if callable(getter) else None
 
     def process_stream(self, content_stream: PDContentStream) -> None:
         """Dispatch operators from any :class:`PDContentStream`.
@@ -201,6 +231,24 @@ class PDFStreamEngine:
     def _process_bytes(self, data: bytes) -> None:
         """Internal: feed raw content-stream bytes through the parser."""
         with RandomAccessReadBuffer(data) as src:
+            parser = PDFStreamParser(src)
+            self._dispatch_tokens(parser)
+
+    def process_stream_operators(self, content_stream: PDContentStream) -> None:
+        """Drive the parser of ``content_stream`` and dispatch each
+        operator with its accumulated operands.
+
+        Mirrors upstream's private ``processStreamOperators(PDContentStream)``.
+        Exposed publicly here (as the snake_case counterpart) because the
+        nested-stream entry points — :meth:`process_transparency_group`,
+        :meth:`process_annotation`, the rendering subclass' Type3 path —
+        all call this to re-enter dispatch after they've fenced the
+        graphics stack / resources / matrix. The cluster #2 base does not
+        carry the colour-operator gating for ``PDTilingPattern`` /
+        Type3 ``d1`` first-operator detection — :meth:`_dispatch_tokens`
+        does not yet inspect those — but the call surface matches.
+        """
+        with content_stream.get_contents_for_stream_parsing() as src:
             parser = PDFStreamParser(src)
             self._dispatch_tokens(parser)
 
@@ -584,14 +632,65 @@ class PDFStreamEngine:
         """Public transparency-group entry point.
 
         Mirrors upstream's ``public void showTransparencyGroup`` which
-        is a thin wrapper over ``processTransparencyGroup``. Cluster #2
-        has no soft-mask / blend-mode handling yet, so this delegates to
-        :meth:`process_stream` (the lite analogue of
-        ``processTransparencyGroup``); the rendering subclass overrides
-        with the full graphics-state save/restore + CTM concatenation
-        that upstream performs.
+        is a thin wrapper over :meth:`process_transparency_group`.
         """
-        self.process_stream(form)
+        self.process_transparency_group(form)
+
+    def process_transparency_group(self, group: PDTransparencyGroup) -> None:
+        """Process a transparency-group content stream.
+
+        Mirrors upstream's ``protected processTransparencyGroup``: pushes
+        the group's resources, fences the graphics-state stack, swaps in
+        the group's matrix as the new initial matrix, clips to the group
+        BBox, drives the operators via :meth:`process_stream_operators`,
+        then restores. Cluster #2 has no concrete graphics state to
+        mutate (blend mode, alpha constants, soft mask, CTM) so those
+        upstream side-effects are deferred to the rendering subclass —
+        the structural fencing and dispatch is in place.
+        """
+        if self._current_page is None:
+            raise RuntimeError(
+                "No current page, call "
+                "process_child_stream(content_stream, page) instead"
+            )
+        parent = self.push_resources(group)
+        saved_stack = self.save_graphics_stack()
+        parent_matrix = self._initial_matrix
+        # Upstream snapshots the CTM into ``initialMatrix`` so nested
+        # streams compose against it. Without a concrete CTM we mirror
+        # the structure: capture the current top-of-stack frame's matrix
+        # if exposed, else just keep the parent matrix.
+        gs = self.get_graphics_state()
+        ctm = getattr(gs, "current_transformation_matrix", None)
+        if ctm is not None:
+            self._initial_matrix = ctm
+        with contextlib.suppress(AttributeError, TypeError):
+            # group.get_bbox() may legitimately not be defined in cluster #2
+            self.clip_to_rect(group.get_bbox())
+        try:
+            self.process_stream_operators(group)
+        finally:
+            self._initial_matrix = parent_matrix
+            self.restore_graphics_stack(saved_stack)
+            self.pop_resources(parent)
+
+    def process_soft_mask(self, group: PDTransparencyGroup) -> None:
+        """Process a soft-mask transparency-group stream.
+
+        Mirrors upstream's ``protected processSoftMask``: saves the
+        graphics state, swaps the CTM/text matrices/colour spaces for
+        the soft-mask convention (DeviceGray, soft-mask CTM), drives
+        :meth:`process_transparency_group`, then restores. The cluster
+        #2 base does not own a concrete graphics state — the colour /
+        matrix mutations land with the rendering subclass — so the
+        structural fencing (save/restore around the dispatch) is what
+        stays here.
+        """
+        self.save_graphics_state()
+        try:
+            self.process_transparency_group(group)
+        finally:
+            self.restore_graphics_state()
 
     def process_tiling_pattern(
         self,
@@ -617,6 +716,164 @@ class PDFStreamEngine:
         ``processType3Stream``."""
         del text_matrix  # rendering subclass consumes this
         self.process_stream(charproc)
+
+    # ---------- annotation entry points ----------
+
+    def show_annotation(self, annotation: PDAnnotation) -> None:
+        """Public annotation entry point.
+
+        Mirrors upstream's ``public void showAnnotation(PDAnnotation)``:
+        looks up the active appearance via :meth:`get_appearance` and
+        forwards to :meth:`process_annotation`. Skips silently when no
+        appearance is present (an annotation with neither a normal
+        appearance nor any drawing payload is a no-op for rendering).
+        """
+        appearance = self.get_appearance(annotation)
+        if appearance is not None:
+            self.process_annotation(annotation, appearance)
+
+    def get_appearance(
+        self, annotation: PDAnnotation
+    ) -> PDAppearanceStream | None:
+        """Return the appearance stream to process for ``annotation``.
+
+        Mirrors upstream's ``public PDAppearanceStream getAppearance(
+        PDAnnotation)`` — defaults to the annotation's normal
+        appearance. Subclasses override to render a different state
+        (e.g. ``hover`` / ``down``).
+        """
+        getter = getattr(annotation, "get_normal_appearance_stream", None)
+        if getter is None:
+            return None
+        return getter()
+
+    def process_annotation(
+        self,
+        annotation: PDAnnotation,
+        appearance: PDAppearanceStream,
+    ) -> None:
+        """Process an annotation's appearance stream.
+
+        Mirrors upstream's ``protected processAnnotation(PDAnnotation,
+        PDAppearanceStream)``: validates the annotation rectangle and
+        appearance bbox are non-zero, fences the graphics-state stack
+        around :meth:`process_stream_operators`, and pushes the
+        appearance's resources frame. The geometric matrix-construction
+        (mapping the appearance bbox to the annotation rect) is the
+        rendering-subclass concern and lands with cluster #3 — the
+        cluster #2 base ships the structural fencing only.
+        """
+        bbox = appearance.get_bbox() if hasattr(appearance, "get_bbox") else None
+        rect_getter = getattr(annotation, "get_rectangle", None)
+        rect = rect_getter() if callable(rect_getter) else None
+        # Upstream guard: zero-sized rect or bbox => skip
+        if rect is None or bbox is None:
+            return
+        try:
+            if rect.get_width() <= 0 or rect.get_height() <= 0:
+                return
+            if bbox.get_width() <= 0 or bbox.get_height() <= 0:
+                return
+        except (AttributeError, TypeError):
+            return
+
+        parent = self.push_resources(appearance)
+        saved_stack = self.save_graphics_stack()
+        parent_matrix = self._initial_matrix
+        try:
+            self.clip_to_rect(bbox)
+            self.process_stream_operators(appearance)
+        finally:
+            self._initial_matrix = parent_matrix
+            self.restore_graphics_stack(saved_stack)
+            self.pop_resources(parent)
+
+    # ---------- resource-stack helpers ----------
+
+    def push_resources(
+        self, content_stream: PDContentStream
+    ) -> PDResources | None:
+        """Push the resources of ``content_stream``, returning the prior
+        frame so :meth:`pop_resources` can restore it later.
+
+        Mirrors upstream's private ``pushResources(PDContentStream)``:
+
+        - if the stream owns a ``/Resources`` dictionary, that becomes
+          active;
+        - else, the parent resources stay in place (PDFBOX-1359 — the
+          PDF spec doesn't require this fall-through but Acrobat does
+          it and so do we);
+        - else, fall back to the current page's resources, or a fresh
+          empty :class:`PDResources` if the page has none.
+
+        Returns the previously active resources so the caller can hand
+        them to :meth:`pop_resources` after the nested dispatch runs.
+        """
+        parent_resources = self._resources
+        stream_resources = content_stream.get_resources()
+        if stream_resources is not None:
+            self._resources = stream_resources
+        elif self._resources is not None:
+            # Inherit from parent stream — see method docstring.
+            pass
+        else:
+            page = self._current_page
+            page_resources = page.get_resources() if page is not None else None
+            if page_resources is None:
+                from pypdfbox.pdmodel.pd_resources import (  # noqa: PLC0415
+                    PDResources as _PDResources,
+                )
+
+                self._resources = _PDResources()
+            else:
+                self._resources = page_resources
+        return parent_resources
+
+    def pop_resources(
+        self, parent_resources: PDResources | None
+    ) -> None:
+        """Restore the resources frame previously returned by
+        :meth:`push_resources`.
+
+        Mirrors upstream's private ``popResources(PDResources)`` —
+        wholesale replaces the active frame with ``parent_resources``.
+        """
+        self._resources = parent_resources
+
+    # ---------- clipping helper ----------
+
+    def clip_to_rect(self, rectangle: PDRectangle | None) -> None:
+        """Intersect the active clipping path with ``rectangle``
+        transformed through the current CTM.
+
+        Mirrors upstream's private ``clipToRect(PDRectangle)``. Cluster
+        #2 has no concrete graphics-state to mutate (no clipping path,
+        no real CTM) — this is a structural placeholder so the
+        nested-stream entry points (:meth:`process_transparency_group`,
+        :meth:`process_annotation`) can call it where upstream does.
+        The rendering subclass overrides with the real intersection.
+        """
+        if rectangle is None:
+            return
+        gs = self.get_graphics_state()
+        if gs is None:
+            return
+        clipper = getattr(gs, "intersect_clipping_path", None)
+        if clipper is None:
+            return
+        # If the rectangle exposes a ``transform`` method (real
+        # PDRectangle), feed it the current CTM so the clip path is in
+        # device space; else hand the raw rectangle through.
+        ctm = getattr(gs, "current_transformation_matrix", None)
+        if ctm is not None and hasattr(rectangle, "transform"):
+            try:
+                clip_path = rectangle.transform(ctm)
+            except (TypeError, AttributeError):
+                clip_path = rectangle
+        else:
+            clip_path = rectangle
+        with contextlib.suppress(TypeError, AttributeError):
+            clipper(clip_path)
 
     # ---------- graphics-state hooks (overridable in renderer) ----------
 
@@ -882,6 +1139,95 @@ class PDFStreamEngine:
         subclass overrides to actually paint the glyph; the
         text-extraction subclass overrides to record the glyph + its
         position. Mirrors upstream ``showGlyph``."""
+
+    def show_type3_glyph(
+        self,
+        text_rendering_matrix: Any,
+        font: Any,
+        code: int,
+        displacement: Any,
+    ) -> None:
+        """Per-Type3-glyph hook.
+
+        Mirrors upstream's ``protected showType3Glyph(Matrix, PDType3Font,
+        int, Vector)`` which looks up the matching ``PDType3CharProc``
+        and re-enters dispatch via :meth:`process_type3_stream`. When
+        ``font`` exposes a ``get_char_proc(code)`` method we follow that
+        contract; otherwise the call is a no-op so subclasses without a
+        Type3 font can ignore the hook.
+        """
+        if font is None:
+            return
+        getter = getattr(font, "get_char_proc", None)
+        if getter is None:
+            return
+        try:
+            charproc = getter(code)
+        except (OSError, KeyError, ValueError):
+            return
+        if charproc is None:
+            return
+        self.process_type3_stream(charproc, text_rendering_matrix)
+
+    # ---------- text-adjustment / coordinate helpers ----------
+
+    def apply_text_adjustment(self, tx: float, ty: float) -> None:
+        """Apply a TJ-style text-position adjustment.
+
+        Mirrors upstream's ``protected applyTextAdjustment(float, float)``
+        which translates the text matrix by ``(tx, ty)``. Cluster #2
+        carries the text matrix as an opaque object on the engine; if
+        the stored matrix exposes a ``translate`` method we delegate to
+        it (matches the rendering-subclass ``Matrix.translate`` shape),
+        otherwise the call is a no-op.
+        """
+        matrix = self.get_text_matrix()
+        if matrix is None:
+            return
+        translator = getattr(matrix, "translate", None)
+        if translator is None:
+            return
+        with contextlib.suppress(TypeError, ValueError):
+            translator(tx, ty)
+
+    def transformed_point(self, x: float, y: float) -> tuple[float, float]:
+        """Transform a user-space point through the current CTM.
+
+        Mirrors upstream's ``public Point2D.Float transformedPoint(float,
+        float)``. The base engine has no concrete CTM; if the active
+        graphics state exposes a ``current_transformation_matrix`` with
+        a ``transform_point(x, y)`` method we delegate to it, else the
+        point is returned unchanged. The
+        :class:`PDFGraphicsStreamEngine` subclass overrides this hook
+        with its own identity default; the rendering subclass overrides
+        with the full CTM-aware transform.
+        """
+        gs = self.get_graphics_state()
+        if gs is None:
+            return (float(x), float(y))
+        ctm = getattr(gs, "current_transformation_matrix", None)
+        if ctm is None:
+            return (float(x), float(y))
+        transformer = getattr(ctm, "transform_point", None)
+        if transformer is None:
+            return (float(x), float(y))
+        try:
+            tx, ty = transformer(x, y)
+        except (TypeError, ValueError):
+            return (float(x), float(y))
+        return (float(tx), float(ty))
+
+    def get_default_font(self) -> Any:
+        """Return a default font to fall back on when no font is selected.
+
+        Mirrors upstream's private ``getDefaultFont`` which lazily
+        instantiates ``PDType1Font(FontName.HELVETICA)``. The cluster #2
+        base does not own a font tree to instantiate from; we return
+        ``None`` and let :meth:`show_text` callers fall through to the
+        per-byte dispatch path. Subclasses with the font tree available
+        override to materialise the Helvetica fallback.
+        """
+        return None
 
     # ---------- helpers used by handlers ----------
 

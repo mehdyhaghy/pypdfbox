@@ -694,7 +694,7 @@ def test_save_graphics_stack_uncopyable_top_falls_back_to_reference() -> None:
     frame entirely."""
 
     class _Uncopyable:
-        def __copy__(self) -> "_Uncopyable":
+        def __copy__(self) -> _Uncopyable:
             raise TypeError("intentionally uncopyable")
 
     engine = PDFStreamEngine()
@@ -911,7 +911,9 @@ def test_show_form_increments_level_through_process_stream() -> None:
 
 def test_show_transparency_group_routes_through_process_stream() -> None:
     """Cluster #2 alias for transparency-group dispatch — runs the
-    operators just like ``process_stream`` does."""
+    operators just like ``process_stream`` does. Mirrors upstream's
+    ``showTransparencyGroup`` -> ``processTransparencyGroup`` chain
+    which requires a current page."""
 
     class _Probe(OperatorProcessor):
         def __init__(self) -> None:
@@ -932,10 +934,360 @@ def test_show_transparency_group_routes_through_process_stream() -> None:
     engine = PDFStreamEngine()
     probe = _Probe()
     engine.add_operator(probe)
+    engine._current_page = PDPage()
+    engine._is_processing_page = True
 
     cos = COSStream()
     cos.set_raw_data(b"(Tx) Tj")
     group = PDTransparencyGroup(cos)
-    engine.show_transparency_group(group)
+    try:
+        engine.show_transparency_group(group)
+    finally:
+        engine._current_page = None
+        engine._is_processing_page = False
 
     assert probe.calls == 1
+
+
+def test_show_transparency_group_raises_without_current_page() -> None:
+    """No current page ⇒ ``RuntimeError`` (upstream:
+    ``IllegalStateException``) — matches the same fence
+    ``show_form`` / ``process_transparency_group`` use."""
+    from pypdfbox.cos import COSStream  # noqa: PLC0415
+    from pypdfbox.pdmodel.graphics.form.pd_transparency_group import (  # noqa: PLC0415
+        PDTransparencyGroup,
+    )
+
+    engine = PDFStreamEngine()
+    cos = COSStream()
+    cos.set_raw_data(b"(X) Tj")
+    group = PDTransparencyGroup(cos)
+    with pytest.raises(RuntimeError, match="process_child_stream"):
+        engine.show_transparency_group(group)
+
+
+# ---------- init_page / push_resources / pop_resources ----------
+
+
+def test_init_page_clears_graphics_stack_and_seeds_resources() -> None:
+    """``init_page`` mirrors upstream's ``initPage(PDPage)``: sets the
+    current page, clears the graphics stack, and seeds resources."""
+    engine = PDFStreamEngine()
+    # Pre-populate with stale state to verify init_page wipes it.
+    engine._graphics_stack.append({"depth": 9})
+    page = PDPage()
+    res = PDResources()
+    page.set_resources(res)
+
+    engine.init_page(page)
+
+    assert engine.get_current_page() is page
+    assert engine.get_graphics_stack_size() == 0
+    # PDPage.get_resources() builds a fresh wrapper around the same COS
+    # dict each call, so compare via the underlying COS dict.
+    seeded = engine.get_resources()
+    assert seeded is not None
+    assert seeded.get_cos_object() is res.get_cos_object()
+
+
+def test_init_page_rejects_none_page() -> None:
+    """``init_page(None)`` raises ``ValueError`` — upstream throws
+    ``IllegalArgumentException`` for the same input."""
+    engine = PDFStreamEngine()
+    with pytest.raises(ValueError, match="cannot be null"):
+        engine.init_page(None)  # type: ignore[arg-type]
+
+
+def test_push_resources_replaces_current_and_returns_parent() -> None:
+    """``push_resources`` returns the previously active resources frame
+    and swaps in the stream's own."""
+
+    class _StreamWithResources(_BytesContentStream):
+        def __init__(self, body: bytes, res: PDResources) -> None:
+            super().__init__(body)
+            self._res = res
+
+        def get_resources(self) -> PDResources | None:
+            return self._res
+
+    engine = PDFStreamEngine()
+    parent_res = PDResources()
+    engine._resources = parent_res
+    child_res = PDResources()
+    stream = _StreamWithResources(b"", child_res)
+
+    returned = engine.push_resources(stream)
+
+    assert returned is parent_res
+    assert engine.get_resources() is child_res
+
+
+def test_push_resources_inherits_parent_when_stream_has_none() -> None:
+    """A stream with no resources falls through to the parent resources
+    (PDFBOX-1359 semantics)."""
+    engine = PDFStreamEngine()
+    parent_res = PDResources()
+    engine._resources = parent_res
+    stream = _BytesContentStream(b"")  # default get_resources() returns a fresh
+    # We want the no-resources path: override.
+    stream.get_resources = lambda: None  # type: ignore[method-assign]
+
+    returned = engine.push_resources(stream)
+
+    assert returned is parent_res
+    assert engine.get_resources() is parent_res
+
+
+def test_push_resources_falls_back_to_page_when_no_parent() -> None:
+    """No parent resources, no stream resources ⇒ fall back to the
+    page's resources, or a fresh empty :class:`PDResources` when the
+    page has none."""
+    engine = PDFStreamEngine()
+    page = PDPage()
+    page_res = PDResources()
+    page.set_resources(page_res)
+    engine._current_page = page
+
+    stream = _BytesContentStream(b"")
+    stream.get_resources = lambda: None  # type: ignore[method-assign]
+
+    returned = engine.push_resources(stream)
+
+    assert returned is None
+    seeded = engine.get_resources()
+    assert seeded is not None
+    assert seeded.get_cos_object() is page_res.get_cos_object()
+
+
+def test_pop_resources_restores_parent_frame() -> None:
+    engine = PDFStreamEngine()
+    parent_res = PDResources()
+    engine._resources = PDResources()  # current frame
+    engine.pop_resources(parent_res)
+    assert engine.get_resources() is parent_res
+
+
+# ---------- process_stream_operators ----------
+
+
+def test_process_stream_operators_drives_dispatch() -> None:
+    """Direct call to ``process_stream_operators`` runs the operators
+    without entering the wrapping ``process_stream`` resource fence —
+    matches upstream's ``processStreamOperators`` private surface."""
+    engine = _RecordingEngine()
+    _register_all_text_ops(engine)
+    stream = _BytesContentStream(b"BT (Hello) Tj ET")
+    engine.process_stream_operators(stream)
+    assert ("show_text_string", (b"Hello",)) in engine.events
+
+
+# ---------- get_appearance / show_annotation ----------
+
+
+def test_get_appearance_returns_normal_appearance_stream() -> None:
+    """``get_appearance(annotation)`` defaults to the annotation's
+    normal appearance — matches upstream's contract."""
+
+    sentinel = object()
+
+    class _Annot:
+        def get_normal_appearance_stream(self) -> Any:
+            return sentinel
+
+    engine = PDFStreamEngine()
+    assert engine.get_appearance(_Annot()) is sentinel
+
+
+def test_get_appearance_returns_none_when_annotation_lacks_method() -> None:
+    engine = PDFStreamEngine()
+    assert engine.get_appearance(object()) is None  # type: ignore[arg-type]
+
+
+def test_show_annotation_no_appearance_is_silent_skip() -> None:
+    """No appearance stream ⇒ no dispatch, no exception. Mirrors
+    upstream's ``showAnnotation`` which skips when ``getAppearance``
+    returns null."""
+
+    class _Annot:
+        def get_normal_appearance_stream(self) -> Any:
+            return None
+
+    engine = PDFStreamEngine()
+    engine.show_annotation(_Annot())  # type: ignore[arg-type]
+
+
+def test_process_annotation_skips_zero_sized_rect() -> None:
+    """Annotations with a zero rect are skipped — PDFBOX-4783."""
+    calls: list[str] = []
+
+    class _Rect:
+        def get_width(self) -> float:
+            return 0.0
+
+        def get_height(self) -> float:
+            return 100.0
+
+    class _Appearance:
+        def get_bbox(self) -> Any:
+            return _Rect()
+
+        def get_resources(self) -> PDResources | None:
+            return None
+
+    class _Annot:
+        def get_rectangle(self) -> Any:
+            return _Rect()
+
+    class _Engine(PDFStreamEngine):
+        def process_stream_operators(
+            self, content_stream: PDContentStream
+        ) -> None:
+            calls.append("dispatched")
+
+    engine = _Engine()
+    engine.process_annotation(_Annot(), _Appearance())  # type: ignore[arg-type]
+    assert calls == []
+
+
+# ---------- apply_text_adjustment ----------
+
+
+def test_apply_text_adjustment_translates_when_matrix_supports_it() -> None:
+    """``apply_text_adjustment`` delegates to the stored text matrix's
+    ``translate`` if available — matches upstream's
+    ``getTextMatrix().translate(tx, ty)``."""
+    captured: list[tuple[float, float]] = []
+
+    class _Mat:
+        def translate(self, tx: float, ty: float) -> None:
+            captured.append((tx, ty))
+
+    engine = PDFStreamEngine()
+    engine.set_text_matrix_object(_Mat())
+    engine.apply_text_adjustment(1.5, 2.0)
+    assert captured == [(1.5, 2.0)]
+
+
+def test_apply_text_adjustment_no_op_without_matrix() -> None:
+    engine = PDFStreamEngine()
+    # Should not raise — silently no-ops.
+    engine.apply_text_adjustment(1.0, 2.0)
+
+
+# ---------- transformed_point ----------
+
+
+def test_transformed_point_default_is_identity() -> None:
+    engine = PDFStreamEngine()
+    assert engine.transformed_point(5.0, 7.0) == (5.0, 7.0)
+
+
+def test_transformed_point_uses_ctm_when_available() -> None:
+    class _CTM:
+        def transform_point(self, x: float, y: float) -> tuple[float, float]:
+            return (x + 10, y + 20)
+
+    class _GS:
+        current_transformation_matrix = _CTM()
+
+    engine = PDFStreamEngine()
+    engine._graphics_stack.append(_GS())
+    assert engine.transformed_point(1.0, 2.0) == (11.0, 22.0)
+
+
+# ---------- get_default_font ----------
+
+
+def test_get_default_font_default_is_none() -> None:
+    """Cluster #2 base has no font tree; the default font helper
+    returns ``None``. Subclasses with the font tree override."""
+    engine = PDFStreamEngine()
+    assert engine.get_default_font() is None
+
+
+# ---------- show_type3_glyph ----------
+
+
+def test_show_type3_glyph_drives_process_type3_stream() -> None:
+    """``show_type3_glyph`` looks up the glyph's char-proc and re-enters
+    dispatch via :meth:`process_type3_stream`."""
+    captured: list[Any] = []
+
+    class _CharProc:
+        pass
+
+    cp = _CharProc()
+
+    class _Type3Font:
+        def get_char_proc(self, code: int) -> Any:
+            return cp if code == 65 else None
+
+    class _Engine(PDFStreamEngine):
+        def process_type3_stream(
+            self, charproc: PDContentStream, text_matrix: Any | None = None
+        ) -> None:
+            captured.append((charproc, text_matrix))
+
+    engine = _Engine()
+    engine.show_type3_glyph("matrix", _Type3Font(), 65, "disp")  # type: ignore[arg-type]
+    assert captured == [(cp, "matrix")]
+
+
+def test_show_type3_glyph_no_op_when_charproc_missing() -> None:
+    class _Type3Font:
+        def get_char_proc(self, code: int) -> Any:
+            return None
+
+    engine = PDFStreamEngine()
+    engine.show_type3_glyph(None, _Type3Font(), 99, None)
+
+
+def test_show_type3_glyph_no_op_when_font_lacks_method() -> None:
+    engine = PDFStreamEngine()
+    engine.show_type3_glyph(None, object(), 0, None)
+    engine.show_type3_glyph(None, None, 0, None)
+
+
+# ---------- clip_to_rect ----------
+
+
+def test_clip_to_rect_no_op_with_none_rectangle() -> None:
+    engine = PDFStreamEngine()
+    # Should not raise.
+    engine.clip_to_rect(None)
+
+
+def test_clip_to_rect_no_op_without_graphics_state() -> None:
+    engine = PDFStreamEngine()
+    rect = PDRectangle(0.0, 0.0, 10.0, 10.0)
+    engine.clip_to_rect(rect)
+
+
+def test_clip_to_rect_invokes_intersect_clipping_path() -> None:
+    """A graphics-state frame that exposes ``intersect_clipping_path``
+    receives the (transformed-or-raw) rectangle."""
+    captured: list[Any] = []
+
+    class _GS:
+        def intersect_clipping_path(self, path: Any) -> None:
+            captured.append(path)
+
+    engine = PDFStreamEngine()
+    engine._graphics_stack.append(_GS())
+    rect = PDRectangle(0.0, 0.0, 10.0, 10.0)
+    engine.clip_to_rect(rect)
+    assert captured == [rect]
+
+
+# ---------- process_page uses init_page ----------
+
+
+def test_process_page_clears_stale_graphics_stack() -> None:
+    """``process_page`` should call ``init_page`` and wipe any
+    pre-existing graphics-state frames left from a prior run."""
+    engine = _RecordingEngine()
+    _register_all_text_ops(engine)
+    engine._graphics_stack.append({"stale": True})
+    page = PDPage()
+    engine.process_page(page)
+    assert engine.get_graphics_stack_size() == 0

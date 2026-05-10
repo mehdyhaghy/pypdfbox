@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from typing import IO
+
 from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
 
 from .fdf_dictionary import FDFDictionary
 
 _FDF: COSName = COSName.get_pdf_name("FDF")
 _VERSION: COSName = COSName.get_pdf_name("Version")
+_SIG: COSName = COSName.get_pdf_name("Sig")
 
 
 class FDFCatalog:
@@ -82,3 +86,39 @@ class FDFCatalog:
             self._catalog.remove_item(_VERSION)
         else:
             self._catalog.set_item(_VERSION, COSName.get_pdf_name(version))
+
+    # ---------- /Sig (digital signature) ----------
+
+    def get_signature(self) -> PDSignature | None:
+        """Return the signature dictionary (``/Sig``) or ``None`` if absent.
+
+        Mirrors upstream ``FDFCatalog.getSignature()`` (lines 147-151).
+        """
+        sig = self._catalog.get_dictionary_object(_SIG)
+        if isinstance(sig, COSDictionary):
+            return PDSignature(sig)
+        return None
+
+    def set_signature(self, sig: PDSignature | None) -> None:
+        """Set the signature dictionary (``/Sig``).
+
+        Mirrors upstream ``FDFCatalog.setSignature(PDSignature)`` (lines
+        158-161). Passing ``None`` removes the entry; upstream lacks an
+        explicit clear path but ``setItem(name, null)`` removes the key
+        in PDFBox.
+        """
+        if sig is None:
+            self._catalog.remove_item(_SIG)
+        else:
+            self._catalog.set_item(_SIG, sig.get_cos_object())
+
+    # ---------- XFDF XML serialisation ----------
+
+    def write_xml(self, output: IO[str]) -> None:
+        """Serialise the embedded ``/FDF`` dictionary as XFDF XML to
+        ``output``.
+
+        Mirrors upstream ``FDFCatalog.writeXML(Writer)`` (lines 74-78),
+        which simply delegates to the embedded FDF dictionary.
+        """
+        self.get_fdf().write_xml(output)

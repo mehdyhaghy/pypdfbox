@@ -1101,6 +1101,9 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/pdmodel/fdf/upstream/test_fdf_annotation_free_text.py` | 3.0.x | placeholder — no upstream `FDFAnnotationFreeTextTest.java` (FreeText is exercised transitively via `FDFAnnotationTest.loadXFDFAnnotations` which depends on the unported XFDF Loader); tests pin `FDFAnnotationFreeText.java` contract |
 | `tests/pdmodel/documentinterchange/taggedpdf/upstream/test_pd_user_property.py` | 3.0.x | placeholder — upstream has no dedicated `PDUserPropertyTest.java`; surface inferred from `PDUserProperty.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/interactive/form/upstream/test_pd_field.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldTest.java` |
+| `tests/fontbox/ttf/upstream/test_true_type_font.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/pdfparser/TestTTFParser.java` (`testPostTable` slice — TrueTypeFont accessors only) |
+| `tests/xmpbox/upstream/test_xmp_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPSchemaTest.java` |
+| `tests/contentstream/upstream/test_pdf_stream_engine.py` | 3.0.x | placeholder — upstream has no dedicated `PDFStreamEngineTest.java`; tests pin behaviour-mirroring smoke tests against `PDFStreamEngine.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |
