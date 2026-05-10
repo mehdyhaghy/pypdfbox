@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import cast
+from typing import IO, TYPE_CHECKING, cast
 
 from pypdfbox.cos import (
     COSArray,
@@ -13,6 +13,15 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
+    from pypdfbox.pdmodel.interactive.action.pd_additional_actions import (
+        PDAdditionalActions,
+    )
+    from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
+        PDAppearanceDictionary,
+    )
 
 _T: COSName = COSName.get_pdf_name("T")
 _V: COSName = COSName.get_pdf_name("V")
@@ -70,14 +79,44 @@ class FDFField:
     def get_value(self) -> object | None:
         """Return the field's ``/V`` entry as a Python value.
 
+        Mirrors upstream ``FDFField.getValue()``:
+
         - ``COSString`` → ``str``
         - ``COSName`` → ``str`` (without leading slash)
         - ``COSArray`` (multi-select) → list of strings
-        - ``COSStream`` (rich text / large value) → underlying ``COSStream``
-        - anything else → returned as-is (rare)
+        - ``COSStream`` → decoded text (``COSStream.to_text_string()``)
+        - anything else → ``OSError`` (matches upstream ``IOException``)
         """
         v = self._field.get_dictionary_object(_V)
-        return _cos_value_to_python(v)
+        if v is None:
+            return None
+        if isinstance(v, COSObject):
+            v = v.get_object()
+        if isinstance(v, COSName):
+            return v.name
+        if isinstance(v, COSArray):
+            return [_cos_value_to_python(e) for e in v]
+        if isinstance(v, COSString):
+            return v.get_string()
+        if isinstance(v, COSStream):
+            return v.to_text_string()
+        raise OSError(f"Error: Unknown type for field import: {v!r}")
+
+    def get_cos_value(self) -> COSBase | None:
+        """Return the raw COS value of this field (``/V`` entry).
+
+        Mirrors upstream ``FDFField.getCOSValue()``: only ``COSName``,
+        ``COSArray``, ``COSString`` and ``COSStream`` are accepted; any
+        other non-null value raises ``OSError``.
+        """
+        v = self._field.get_dictionary_object(_V)
+        if v is None:
+            return None
+        if isinstance(v, COSObject):
+            v = v.get_object()
+        if isinstance(v, (COSName, COSArray, COSString, COSStream)):
+            return v
+        raise OSError(f"Error: Unknown type for field import: {v!r}")
 
     def has_value(self) -> bool:
         return self._field.contains_key(_V)
@@ -281,15 +320,23 @@ class FDFField:
 
     # ---------- /RV rich text value ----------
 
-    def get_rich_text(self) -> object | None:
+    def get_rich_text(self) -> str | None:
         """Return the field's rich text value from ``/RV``.
 
-        PDFBox accepts either a ``COSString`` or ``COSStream`` for this
-        entry. Keep that shape: strings are decoded to ``str`` and streams
-        are returned as the underlying ``COSStream`` for callers that need
-        stream-level access.
+        Mirrors upstream ``FDFField.getRichText()``: ``COSString`` is
+        decoded to ``str``; ``COSStream`` is decoded via
+        ``COSStream.to_text_string()``; absent → ``None``.
         """
-        return _cos_value_to_python(self._field.get_dictionary_object(_RV))
+        v = self._field.get_dictionary_object(_RV)
+        if v is None:
+            return None
+        if isinstance(v, COSObject):
+            v = v.get_object()
+        if isinstance(v, COSString):
+            return v.get_string()
+        if isinstance(v, COSStream):
+            return v.to_text_string()
+        return None
 
     def has_rich_text(self) -> bool:
         return self._field.contains_key(_RV)
@@ -311,6 +358,142 @@ class FDFField:
             f"FDFField.set_rich_text expected None, str, COSString, or COSStream; "
             f"got {type(rich_text).__name__}"
         )
+
+    # ---------- /AP appearance dictionary ----------
+
+    def get_appearance_dictionary(self) -> PDAppearanceDictionary | None:
+        """Return the ``/AP`` appearance dictionary or ``None`` if absent.
+
+        Mirrors upstream ``FDFField.getAppearanceDictionary()``.
+        """
+        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
+            PDAppearanceDictionary,
+        )
+
+        d = self._field.get_cos_dictionary(_AP)
+        return PDAppearanceDictionary(d) if d is not None else None
+
+    def set_appearance_dictionary(self, ap: PDAppearanceDictionary | None) -> None:
+        """Set the ``/AP`` appearance dictionary.
+
+        Mirrors upstream ``FDFField.setAppearanceDictionary(PDAppearanceDictionary)``.
+        Passing ``None`` removes the entry.
+        """
+        if ap is None:
+            self._field.remove_item(_AP)
+            return
+        self._field.set_item(_AP, ap.get_cos_object())
+
+    # ---------- /A action ----------
+
+    def get_action(self) -> PDAction | None:
+        """Return the ``/A`` action wrapper or ``None`` if absent.
+
+        Mirrors upstream ``FDFField.getAction()``.
+        """
+        from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
+
+        return PDAction.create(self._field.get_cos_dictionary(_A))
+
+    def set_action(self, action: PDAction | None) -> None:
+        """Set the ``/A`` action.
+
+        Mirrors upstream ``FDFField.setAction(PDAction)``. Passing ``None``
+        removes the entry.
+        """
+        if action is None:
+            self._field.remove_item(_A)
+            return
+        self._field.set_item(_A, action.get_cos_object())
+
+    # ---------- /AA additional actions ----------
+
+    def get_additional_actions(self) -> PDAdditionalActions | None:
+        """Return the ``/AA`` additional-actions wrapper or ``None``.
+
+        Mirrors upstream ``FDFField.getAdditionalActions()``.
+        """
+        from pypdfbox.pdmodel.interactive.action.pd_additional_actions import (
+            PDAdditionalActions,
+        )
+
+        d = self._field.get_cos_dictionary(_AA)
+        return PDAdditionalActions(d) if d is not None else None
+
+    def set_additional_actions(self, aa: PDAdditionalActions | None) -> None:
+        """Set the ``/AA`` additional actions.
+
+        Mirrors upstream ``FDFField.setAdditionalActions(PDAdditionalActions)``.
+        Passing ``None`` removes the entry.
+        """
+        if aa is None:
+            self._field.remove_item(_AA)
+            return
+        self._field.set_item(_AA, aa.get_cos_object())
+
+    # ---------- XML serialisation ----------
+
+    def write_xml(self, output: IO[str]) -> None:
+        """Serialise this field as XFDF XML to ``output``.
+
+        Mirrors upstream ``FDFField.writeXML(Writer)``: emits the partial
+        field name, value (string or list of strings), rich-text value, and
+        recurses into ``/Kids``.
+        """
+        name = self.get_partial_field_name() or ""
+        output.write('<field name="')
+        output.write(name)
+        output.write('">\n')
+
+        value = self.get_value()
+        if isinstance(value, str):
+            output.write("<value>")
+            output.write(_escape_xml(value))
+            output.write("</value>\n")
+        elif isinstance(value, list):
+            for item in value:
+                if not isinstance(item, str):
+                    continue
+                output.write("<value>")
+                output.write(_escape_xml(item))
+                output.write("</value>\n")
+
+        rich = self.get_rich_text()
+        if isinstance(rich, str):
+            output.write("<value-richtext>")
+            output.write(_escape_xml(rich))
+            output.write("</value-richtext>\n")
+        elif isinstance(rich, COSStream):
+            output.write("<value-richtext>")
+            output.write(_escape_xml(rich.to_text_string()))
+            output.write("</value-richtext>\n")
+
+        kids = self.get_kids()
+        if kids is not None:
+            for kid in kids:
+                kid.write_xml(output)
+        output.write("</field>\n")
+
+
+def _escape_xml(text: str) -> str:
+    """Mirrors upstream ``FDFField.escapeXML(String)``."""
+    out: list[str] = []
+    for ch in text:
+        if ch == "<":
+            out.append("&lt;")
+        elif ch == ">":
+            out.append("&gt;")
+        elif ch == '"':
+            out.append("&quot;")
+        elif ch == "&":
+            out.append("&amp;")
+        elif ch == "'":
+            out.append("&apos;")
+        elif ord(ch) > 0x7E:
+            out.append(f"&#{ord(ch)};")
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _cos_value_to_python(v: COSBase | None) -> object | None:

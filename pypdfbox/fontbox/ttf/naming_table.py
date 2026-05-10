@@ -8,6 +8,7 @@ from .ttf_table import TTFTable
 if TYPE_CHECKING:
     from .true_type_font import TrueTypeFont
     from .ttf_data_stream import TTFDataStream
+    from .ttf_parser import FontHeaders
 
 
 class NamingTable(TTFTable):
@@ -29,6 +30,37 @@ class NamingTable(TTFTable):
         self._trademark: str | None = None
 
     def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
+        """Read the ``name`` table.
+
+        Mirrors upstream ``NamingTable#read(TrueTypeFont, TTFDataStream)``
+        (NamingTable.java line 59).
+        """
+        self._read(ttf, data, only_headers=False)
+        self.initialized = True
+
+    def read_headers(
+        self,
+        ttf: TrueTypeFont,
+        data: TTFDataStream,
+        out_headers: FontHeaders,
+    ) -> None:
+        """Populate ``out_headers`` with the PostScript name and font family /
+        sub-family.
+
+        Mirrors upstream ``NamingTable#readHeaders`` (NamingTable.java
+        line 67) — the ``FileSystemFontProvider`` fast path uses this to skip
+        decoding records that aren't useful for header-only metadata.
+        """
+        self._read(ttf, data, only_headers=True)
+        out_headers.set_name(self._ps_name)
+        out_headers.set_font_family(self._font_family, self._font_sub_family)
+
+    def _read(
+        self,
+        ttf: TrueTypeFont,
+        data: TTFDataStream,
+        only_headers: bool,  # noqa: FBT001 — upstream private overload
+    ) -> None:
         data.read_unsigned_short()  # format selector
         number_of_name_records = data.read_unsigned_short()
         offset_to_start_of_string_storage = data.read_unsigned_short()
@@ -37,7 +69,8 @@ class NamingTable(TTFTable):
         for _i in range(number_of_name_records):
             nr = NameRecord()
             nr.init_data(ttf, data)
-            self._name_records.append(nr)
+            if not only_headers or self.is_useful_for_only_headers(nr):
+                self._name_records.append(nr)
 
         for nr in self._name_records:
             string_start = offset_to_start_of_string_storage + nr.get_string_offset()
@@ -65,12 +98,17 @@ class NamingTable(TTFTable):
             nr.set_string(string)
 
         self._lookup_table = {}
-        self._fill_lookup_table()
-        self._read_interesting_strings()
-        self.initialized = True
+        self.fill_lookup_table()
+        self.read_interesting_strings()
 
     @staticmethod
-    def _charset_for(nr: NameRecord) -> str:
+    def get_charset(nr: NameRecord) -> str:
+        """Return the Python codec name to decode ``nr``'s raw bytes with.
+
+        Mirrors upstream ``NamingTable#getCharset`` (NamingTable.java
+        line 110), expressed in Python codec strings rather than
+        ``java.nio.charset.Charset`` instances.
+        """
         platform = nr.get_platform_id()
         encoding = nr.get_platform_encoding_id()
         if platform == NameRecord.PLATFORM_WINDOWS and encoding in (
@@ -96,6 +134,12 @@ class NamingTable(TTFTable):
                 return "shift_jis"
         return "iso-8859-1"
 
+    @classmethod
+    def _charset_for(cls, nr: NameRecord) -> str:
+        """Backwards-compatible alias kept so historical monkeypatch fixtures
+        continue to override the codec lookup. Prefer :meth:`get_charset`."""
+        return cls.get_charset(nr)
+
     @staticmethod
     def _decode_string(raw: bytes, charset: str) -> str:
         if charset == "utf-16-be" and (
@@ -104,14 +148,28 @@ class NamingTable(TTFTable):
             return raw.decode("utf-16", errors="replace")
         return raw.decode(charset, errors="replace")
 
-    def _fill_lookup_table(self) -> None:
+    def fill_lookup_table(self) -> None:
+        """Build the ``(name, platform, encoding, language) → string`` lookup.
+
+        Mirrors upstream ``NamingTable#fillLookupTable`` (NamingTable.java
+        line 141).
+        """
         for nr in self._name_records:
             platform_lookup = self._lookup_table.setdefault(nr.get_name_id(), {})
             encoding_lookup = platform_lookup.setdefault(nr.get_platform_id(), {})
             language_lookup = encoding_lookup.setdefault(nr.get_platform_encoding_id(), {})
             language_lookup[nr.get_language_id()] = nr.get_string()
 
-    def _read_interesting_strings(self) -> None:
+    def _fill_lookup_table(self) -> None:
+        """Backwards-compatible alias for :meth:`fill_lookup_table`."""
+        self.fill_lookup_table()
+
+    def read_interesting_strings(self) -> None:
+        """Cache the family / sub-family / PostScript name etc. for fast access.
+
+        Mirrors upstream ``NamingTable#readInterestingStrings``
+        (NamingTable.java line 157).
+        """
         self._font_family = self._get_english_name(NameRecord.NAME_FONT_FAMILY_NAME)
         self._font_sub_family = self._get_english_name(NameRecord.NAME_FONT_SUB_FAMILY_NAME)
 
@@ -135,6 +193,32 @@ class NamingTable(TTFTable):
         self._version = self._get_english_name(NameRecord.NAME_VERSION)
         self._copyright = self._get_english_name(NameRecord.NAME_COPYRIGHT)
         self._trademark = self._get_english_name(NameRecord.NAME_TRADEMARK)
+
+    def _read_interesting_strings(self) -> None:
+        """Backwards-compatible alias for :meth:`read_interesting_strings`."""
+        self.read_interesting_strings()
+
+    @staticmethod
+    def is_useful_for_only_headers(nr: NameRecord) -> bool:
+        """Filter for ``read_headers``: keep only the records consulted by
+        :meth:`read_interesting_strings` so the header-only fast path can
+        skip decoding everything else.
+
+        Mirrors upstream ``NamingTable#isUsefulForOnlyHeaders``
+        (NamingTable.java line 181).
+        """
+        name_id = nr.get_name_id()
+        if name_id in (
+            NameRecord.NAME_POSTSCRIPT_NAME,
+            NameRecord.NAME_FONT_FAMILY_NAME,
+            NameRecord.NAME_FONT_SUB_FAMILY_NAME,
+        ):
+            language_id = nr.get_language_id()
+            return language_id in (
+                NameRecord.LANGUAGE_UNICODE,
+                NameRecord.LANGUAGE_WINDOWS_EN_US,
+            )
+        return False
 
     def _get_english_name(self, name_id: int) -> str | None:
         # try Unicode platform first (Full, BMP, 1.1, 1.0)

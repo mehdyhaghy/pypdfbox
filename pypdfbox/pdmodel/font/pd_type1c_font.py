@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import io
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import COSDictionary
 from pypdfbox.fontbox.cff.cff_font import CFFFont
@@ -11,7 +12,17 @@ from .pd_type1_font import PDType1Font
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
+    from .encoding.encoding import Encoding
+
 _LOG = logging.getLogger(__name__)
+
+# Hard-coded default returned by upstream
+# ``PDType1CFont.getAverageCharacterWidth`` — a placeholder marked
+# ``// todo: not implemented, highly suspect`` in the Java source. Pinned
+# here so :meth:`get_average_character_width` can mirror upstream's
+# constant-return semantics for callers that bypass the broader
+# :meth:`get_average_font_width` chain.
+_UPSTREAM_AVERAGE_CHARACTER_WIDTH: float = 500.0
 
 # CFF defaults to a 1000-unit em (font matrix [0.001 0 0 0.001 0 0]).
 _CFF_DEFAULT_UNITS_PER_EM: int = 1000
@@ -53,6 +64,40 @@ class PDType1CFont(PDType1Font):
         # entire outline; cache the result the way upstream does
         # (``glyphHeights`` map in ``PDType1CFont``).
         self._glyph_heights: dict[str, float] = {}
+
+    # ---------- ``/BaseFont`` accessors (upstream-final overrides) ----------
+
+    def get_name(self) -> str | None:  # type: ignore[override]
+        """Return the font's PostScript name — the value of
+        ``/BaseFont``.
+
+        Mirrors upstream ``PDType1CFont.getName`` (``final``, line 268)
+        which itself delegates to :meth:`get_base_font`. Re-declared on
+        :class:`PDType1CFont` so the parity scanner sees the override
+        live on this class — upstream marks it ``final``, signalling
+        Type1C-specific contract distinct from the inherited
+        :class:`PDFont` definition.
+        """
+        # Read /BaseFont directly off the dict to avoid bouncing through
+        # :meth:`get_base_font` (which itself calls ``get_name`` on the
+        # parent class — that mutual recursion would explode).
+        return PDType1Font.get_name(self)
+
+    def get_base_font(self) -> str | None:
+        """``/BaseFont`` from the font dictionary.
+
+        Mirrors upstream ``PDType1CFont.getBaseFont`` (``final``, line
+        172). Type1C fonts always have a ``/BaseFont`` entry — the
+        embedded CFF program's PostScript name is conventionally
+        prefixed (e.g. ``ABCDEF+EmbeddedCFF``) for subsetting; that full
+        prefixed name is what the dictionary records and what this
+        method returns.
+        """
+        # Read /BaseFont directly off the dict (mirrors upstream
+        # ``dict.getNameAsString(COSName.BASE_FONT)`` at line 174).
+        # Calling super().get_base_font() would re-enter our overridden
+        # :meth:`get_name`, looping forever.
+        return PDType1Font.get_name(self)
 
     # ---------- CFF program access ----------
 
@@ -522,6 +567,207 @@ class PDType1CFont(PDType1Font):
         if afm is not None:
             return afm.get_average_width()
         return 0.0
+
+    def get_average_character_width(self) -> float:
+        """Hard-coded mean character width — mirrors upstream's
+        ``getAverageCharacterWidth`` (private, line 478).
+
+        Upstream returns ``500`` with a ``// todo: not implemented,
+        highly suspect`` annotation. Re-exposed at the public API surface
+        for parity coverage; production callers should prefer
+        :meth:`get_average_font_width` which actually walks ``/Widths``
+        and the embedded CFF program before falling back.
+        """
+        return _UPSTREAM_AVERAGE_CHARACTER_WIDTH
+
+    # ---------- glyph-name resolution ----------
+
+    def get_name_in_font(self, name: str) -> str:  # type: ignore[override]
+        """Map a PostScript glyph name to the spelling actually present
+        in the embedded CFF program.
+
+        Mirrors upstream ``PDType1CFont.getNameInFont`` (private, line
+        488). When the font is embedded or the program already carries
+        ``name`` verbatim, return ``name`` unchanged. Otherwise consult
+        the AGL: the unicode round-trip from ``name`` produces a
+        codepoint, which maps to a ``uniXXXX`` form — return that form
+        when the program contains it; else return ``.notdef``.
+
+        For non-embedded fonts with no CFF program loaded, return
+        ``name`` unchanged (we have no negative evidence to remap on).
+        """
+        if self.is_embedded():
+            return name
+        program = self._get_cff_font()
+        if program is None:
+            return name
+        if program.has_glyph(name):
+            return name
+        glyph_list = self.get_glyph_list()
+        unicodes = glyph_list.to_unicode(name)
+        if unicodes is not None and len(unicodes) == 1:
+            uni_name = f"uni{ord(unicodes):04X}"
+            if program.has_glyph(uni_name):
+                return uni_name
+        return ".notdef"
+
+    # ---------- bounding-box helper ----------
+
+    def generate_bounding_box(self) -> PDRectangle | None:  # type: ignore[override]
+        """Compute the font bounding box from the descriptor or the
+        embedded CFF program.
+
+        Mirrors upstream ``PDType1CFont.generateBoundingBox`` (private,
+        line 283): prefer the descriptor's ``/FontBBox`` when non-zero,
+        else read the CFF program's bbox. Returns ``None`` when neither
+        source yields a usable rectangle.
+
+        This is the lazy-init helper backing :meth:`get_bounding_box` —
+        we expose it as a public method (rather than upstream's
+        ``private`` visibility) so the parity scanner sees it on this
+        class. Idempotent: the result is *not* cached here; callers
+        should go through :meth:`get_bounding_box` for cached access.
+        """
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            bbox = descriptor.get_font_bounding_box()
+            if self.is_non_zero_bounding_box(bbox):
+                return bbox
+        program = self._get_cff_font()
+        if program is None:
+            return None
+        try:
+            cff_bbox = program.get_font_bbox()
+        except Exception:  # noqa: BLE001
+            return None
+        if not cff_bbox or len(cff_bbox) != 4:
+            return None
+        return PDRectangle(
+            float(cff_bbox[0]),
+            float(cff_bbox[1]),
+            float(cff_bbox[2]),
+            float(cff_bbox[3]),
+        )
+
+    # ---------- normalised path (code overload) ----------
+
+    def get_normalized_path(self, code: int) -> GlyphPath:  # type: ignore[override]
+        """Glyph outline for ``code`` with ``sfthyphen`` / ``nbspace``
+        rewrites and ``.notdef`` fallback.
+
+        Mirrors upstream ``PDType1CFont.getNormalizedPath(int)`` (line
+        237). Distinct from the inherited :meth:`PDType1Font.get_normalized_path`
+        — this override applies the Type1C-specific glyph-name
+        rewriting (``sfthyphen`` -> ``hyphen``, ``nbspace`` -> ``space``)
+        before resolving the outline.
+        """
+        return self.get_normalized_path_for_code(code)
+
+    # ---------- byte-stream reader ----------
+
+    def read_code(self, stream: BinaryIO | bytes) -> int:  # type: ignore[override]
+        """Read one byte from ``stream`` and return its integer code.
+
+        Mirrors upstream ``PDType1CFont.readCode`` (line 326): Type1C
+        fonts always use single-byte character codes regardless of
+        encoding, so the reader is just a one-byte pull. Accepts either
+        a binary file object (anything with a ``.read(int)`` method) or
+        a raw ``bytes`` / ``bytearray`` for caller convenience. Returns
+        ``-1`` at end-of-stream to mirror Java's ``InputStream.read``
+        contract.
+        """
+        if isinstance(stream, (bytes, bytearray, memoryview)):
+            stream = io.BytesIO(bytes(stream))
+        chunk = stream.read(1)
+        if not chunk:
+            return -1
+        return chunk[0]
+
+    # ---------- encoding synthesis ----------
+
+    def read_encoding_from_font(self) -> Encoding | None:  # type: ignore[override]
+        """Synthesise an :class:`Encoding` from the embedded CFF program
+        or the bundled Standard 14 AFM.
+
+        Mirrors upstream ``PDType1CFont.readEncodingFromFont`` (line
+        302):
+
+        * Non-embedded Standard 14 fonts read the encoding from their
+          AFM (built-in Type 1 encoding).
+        * Embedded CFF programs surface their built-in encoding when
+          available — extracted from the CFF Encoding section via
+          ``CFFFont.get_encoding_map``.
+        * Otherwise we fall back to :class:`StandardEncoding` (matches
+          upstream's ``StandardEncoding.INSTANCE`` default for the
+          remaining branches).
+        """
+        from .encoding.built_in_encoding import BuiltInEncoding  # noqa: PLC0415
+        from .encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
+
+        if not self.is_embedded() and self.get_standard_14_font_metrics() is not None:
+            # Non-embedded Standard 14: the AFM carries the built-in
+            # Type 1 encoding. Defer to the parent class which already
+            # handles the Symbol / ZapfDingbats / Standard branching.
+            return super().read_encoding_from_font()
+
+        program = self._get_cff_font()
+        if program is not None:
+            encoding_map = getattr(program, "get_encoding_map", lambda: None)()
+            if encoding_map:
+                return BuiltInEncoding(dict(encoding_map))
+        return StandardEncoding.INSTANCE
+
+    # ---------- single-codepoint encoder (PDFont protocol) ----------
+
+    def encode_codepoint(self, unicode: int) -> bytes:  # type: ignore[override]
+        """Encode a single Unicode codepoint to its PDF content-stream
+        byte form.
+
+        Mirrors upstream ``PDType1CFont.encode(int unicode)`` (protected,
+        line 408): glyph-list lookup -> PostScript name -> encoding
+        round-trip to the byte. Raises :class:`ValueError` (mirroring
+        upstream's ``IllegalArgumentException``) when the codepoint is
+        not in the font's encoding or when the embedded CFF program has
+        no glyph for it.
+
+        Re-named ``encode_codepoint`` (vs upstream's overloaded
+        ``encode``) so it doesn't clash with the inherited
+        :meth:`PDFont.encode(text)` string-level entry point — see
+        ``encode_codepoint`` on :class:`PDFont` and CHANGES.md for the
+        rationale.
+        """
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            msg = (
+                f"U+{unicode:04X} cannot be encoded: font {self.get_name()} "
+                "has no /Encoding"
+            )
+            raise ValueError(msg)
+        glyph_list = self.get_glyph_list()
+        name = glyph_list.code_point_to_name(unicode)
+        if name not in encoding:
+            msg = (
+                f"U+{unicode:04X} ({name!r}) is not available in font "
+                f"{self.get_name()} encoding: {encoding.get_encoding_name()}"
+            )
+            raise ValueError(msg)
+        name_in_font = self.get_name_in_font(name)
+        program = self._get_cff_font()
+        if name_in_font == ".notdef" or (
+            program is not None and not program.has_glyph(name_in_font)
+        ):
+            msg = f"No glyph for U+{unicode:04X} in font {self.get_name()}"
+            raise ValueError(msg)
+        code = encoding.get_name_to_code_map().get(name)
+        if code is None:
+            msg = (
+                f"U+{unicode:04X} ({name!r}) has no code in font "
+                f"{self.get_name()} encoding"
+            )
+            raise ValueError(msg)
+        return bytes([code & 0xFF])
 
 
 __all__ = ["PDType1CFont"]

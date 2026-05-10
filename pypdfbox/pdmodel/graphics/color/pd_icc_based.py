@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
@@ -105,6 +105,16 @@ class PDICCBased(PDColorSpace):
             raise OSError(
                 "ICCBased colorspace array must have a stream as second element"
             )
+
+    @staticmethod
+    def check_array(icc_array: COSArray) -> None:
+        """Public alias of :meth:`_check_array`. Mirrors upstream's
+        private static ``checkArray(COSArray)`` (line 134 of
+        ``PDICCBased.java``) — surfaced here so callers building or
+        validating an ICCBased ``COSArray`` outside the constructor can
+        run the same shape check.
+        """
+        PDICCBased._check_array(icc_array)
 
     # ---------- abstract surface ----------
 
@@ -434,6 +444,198 @@ class PDICCBased(PDColorSpace):
             return TYPE_CMYK
         return -1
 
+    @staticmethod
+    def is_s_rgb(profile_bytes: bytes) -> bool:
+        """Return ``True`` when ``profile_bytes`` carries the sRGB device
+        model marker. Mirrors upstream's private
+        ``is_sRGB(ICC_Profile) : boolean`` helper (line 246 of
+        ``PDICCBased.java``).
+
+        Reads bytes 84..91 of the 128-byte ICC profile header
+        (``icHdrModel`` signature, length 7) as US-ASCII and returns
+        ``True`` when the trimmed value equals ``"sRGB"``. ``False`` when
+        the buffer is too short or the signature differs — matches the
+        upstream behaviour that defaults to non-sRGB when the header
+        can't be read.
+        """
+        if len(profile_bytes) < 91:
+            return False
+        try:
+            device_model = profile_bytes[84:91].decode(
+                "ascii", errors="replace"
+            ).strip("\x00 \t\r\n")
+        except UnicodeDecodeError:
+            return False
+        return device_model == "sRGB"
+
+    @staticmethod
+    def int_to_big_endian(value: int, array: bytearray, index: int) -> None:
+        """Write ``value`` as a 4-byte big-endian integer into ``array``
+        starting at ``index``. Mirrors upstream's private static
+        ``intToBigEndian(int, byte[], int)`` (line 272 of
+        ``PDICCBased.java``).
+
+        Used by :meth:`ensure_display_profile` when patching the ICC
+        header's ``deviceClass`` signature to ``scnr``/``mntr`` etc.
+        Operates in place on ``array``; returns ``None``.
+        """
+        v = int(value) & 0xFFFFFFFF
+        array[index] = (v >> 24) & 0xFF
+        array[index + 1] = (v >> 16) & 0xFF
+        array[index + 2] = (v >> 8) & 0xFF
+        array[index + 3] = v & 0xFF
+
+    @staticmethod
+    def ensure_display_profile(profile_bytes: bytes) -> bytes:
+        """Patch a non-display ICC profile to ``CLASS_DISPLAY`` when the
+        rendering intent is Perceptual. Mirrors upstream's private static
+        ``ensureDisplayProfile(ICC_Profile) : ICC_Profile`` (line 256 of
+        ``PDICCBased.java``).
+
+        Upstream borrows the workaround from twelvemonkeys' JPEG reader
+        (PDFBOX-4114): ICC profiles whose ``deviceClass`` is something
+        other than ``"mntr"`` (Display) confuse Java's CMM. When the
+        rendering intent (header byte 64) is Perceptual (``0``) we
+        rewrite ``deviceClass`` (header bytes 12..15) in place to the
+        display signature ``"mntr"``. Otherwise the profile is returned
+        unchanged — same shape as upstream.
+        """
+        if len(profile_bytes) < 68:
+            return profile_bytes
+        # ``icHdrDeviceClass`` is bytes 12..15 (4-byte ASCII signature).
+        device_class = profile_bytes[12:16]
+        # ``icSigDisplayClass`` = "mntr"; bail out if already display.
+        if device_class == b"mntr":
+            return profile_bytes
+        # ``icHdrRenderingIntent`` is at byte offset 64 (4-byte BE int).
+        # Perceptual = 0; keep upstream's narrow guard.
+        rendering_intent = int.from_bytes(
+            profile_bytes[64:68], "big", signed=False
+        )
+        if rendering_intent != 0:
+            return profile_bytes
+        patched = bytearray(profile_bytes)
+        # icSigDisplayClass = ASCII "mntr" packed big-endian.
+        sig = int.from_bytes(b"mntr", "big", signed=False)
+        PDICCBased.int_to_big_endian(sig, patched, 12)
+        return bytes(patched)
+
+    def fallback_to_alternate_color_space(
+        self, error: BaseException | None = None
+    ) -> PDColorSpace | None:
+        """Return the ``/Alternate`` color space (or one inferred from
+        ``/N``) and surface the same shape as upstream's private
+        ``fallbackToAlternateColorSpace(Exception)`` (line 226 of
+        ``PDICCBased.java``).
+
+        Upstream mutates instance state — clearing ``awtColorSpace``,
+        memoising ``alternateColorSpace`` and ``initialColor``, and
+        flipping ``isRGB`` when the alternate is DeviceRGB. We don't
+        cache an AWT color-space adapter, so this just resolves and
+        returns the alternate (the caller can pass it to
+        :meth:`to_rgb`, etc.). When ``error`` is supplied it's accepted
+        for surface compatibility and ignored — upstream uses it only
+        for a logger warning.
+        """
+        from .pd_device_cmyk import PDDeviceCMYK
+        from .pd_device_gray import PDDeviceGray
+        from .pd_device_rgb import PDDeviceRGB
+
+        del error  # surface-only, mirrors upstream's logger-only use
+        alternate = self.get_alternate()
+        if alternate is not None:
+            return alternate
+        n = self.get_n()
+        if n == 1:
+            return PDDeviceGray.INSTANCE
+        if n == 3:
+            return PDDeviceRGB.INSTANCE
+        if n == 4:
+            return PDDeviceCMYK.INSTANCE
+        return None
+
+    def load_icc_profile(self) -> bytes:
+        """Materialise and lightly validate the embedded ICC profile.
+        Mirrors upstream's private ``loadICCProfile()`` (line 164 of
+        ``PDICCBased.java``).
+
+        Upstream parses the profile through ``java.awt.color.ICC_Profile``
+        and falls back to the alternate color space on parse failure,
+        mutating private state along the way. We don't carry an AWT
+        color-space cache, so this returns the profile bytes after
+        running them through :meth:`ensure_display_profile` (the
+        Perceptual → Display class fix-up). Returns ``b""`` when the
+        underlying stream is missing — same shape as upstream's
+        fallback-to-alternate path which leaves ``iccProfile`` ``None``.
+        """
+        profile_bytes = self.get_iccprofile_bytes()
+        if not profile_bytes:
+            return b""
+        return self.ensure_display_profile(profile_bytes)
+
+    def clamp_colors(
+        self, components: list[float]
+    ) -> list[float]:
+        """Clamp ``components`` against this color space's per-component
+        ``/Range`` bounds. Mirrors upstream's private
+        ``clampColors(ICC_ColorSpace, float[])`` (line 299 of
+        ``PDICCBased.java``).
+
+        Upstream pulls per-component ``minValue``/``maxValue`` from the
+        AWT color-space adapter; we read them from ``/Range`` (default
+        ``(0.0, 1.0)``) so the result honours the same lower/upper
+        bounds as upstream when the profile is well-formed and the
+        ``/Range`` array matches the profile's gamut. Components beyond
+        ``len(components)`` are not invented; the returned list matches
+        the input length.
+        """
+        out: list[float] = []
+        for i, value in enumerate(components):
+            low, high = self.get_range_for_component(i)
+            v = float(value)
+            if v < low:
+                v = low
+            elif v > high:
+                v = high
+            out.append(v)
+        return out
+
+    # ---------- rendering overrides ----------
+
+    def to_rgb_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Convert an 8-bpc raster in this ICCBased color space into an
+        sRGB Pillow image. Mirrors upstream
+        ``PDICCBased.toRGBImage(WritableRaster)`` (line 312 of
+        ``PDICCBased.java``).
+
+        Defers to :meth:`PDColorSpace.to_rgb_image`, which iterates the
+        raster through :meth:`to_rgb` per pixel — the same conversion
+        path upstream uses (just without the AWT raster shortcut). When
+        the embedded profile is unreadable :meth:`to_rgb` falls back to
+        the alternate color space, matching upstream's
+        ``alternateColorSpace.toRGBImage(raster)`` branch.
+        """
+        return super().to_rgb_image(raster, width, height)
+
+    def to_raw_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Wrap an 8-bpc raster as a Pillow image in this ICCBased color
+        space's native mode when possible (1/3/4 components → ``L`` /
+        ``RGB`` / ``CMYK``); falls through to :meth:`to_rgb_image`
+        otherwise. Mirrors upstream
+        ``PDICCBased.toRawImage(WritableRaster)`` (line 325 of
+        ``PDICCBased.java``).
+
+        Upstream short-circuits to ``alternateColorSpace.toRawImage``
+        when the AWT color space is null; we route through the base
+        class's ``to_raw_image`` which already prefers native modes for
+        Device* spaces and falls through to RGB for everything else.
+        """
+        return super().to_raw_image(raster, width, height)
+
     # ---------- conversion ----------
 
     def to_rgb(
@@ -557,6 +759,17 @@ class PDICCBased(PDColorSpace):
         ``ICCBased{numberOfComponents: <n>}``.
         """
         return f"{self.get_name()}{{numberOfComponents: {self.get_n()}}}"
+
+    def to_string(self) -> str:
+        """Return the upstream-style ``toString`` rendering. Mirrors
+        upstream ``PDICCBased.toString() : String`` (line 547 of
+        ``PDICCBased.java``).
+
+        Surfaced explicitly (not just as ``__str__``) so callers porting
+        from PDFBox can keep the literal ``.toString()`` invocation
+        spelled snake_case without going through Python's ``str()``.
+        """
+        return self.__str__()
 
 
 __all__ = [

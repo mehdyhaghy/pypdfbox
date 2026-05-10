@@ -25,7 +25,8 @@ def test_rich_text_accepts_cos_stream_wave299() -> None:
     field.set_rich_text(stream)
 
     assert field.has_rich_text()
-    assert field.get_rich_text() is stream
+    # Upstream FDFField.getRichText() decodes COSStream via toTextString().
+    assert field.get_rich_text() == "<body><p>Stream</p></body>"
     assert field.get_cos_object().get_dictionary_object(COSName.get_pdf_name("RV")) is stream
 
 

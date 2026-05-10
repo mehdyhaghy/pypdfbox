@@ -47,23 +47,25 @@ def test_fdf_options_accept_prebuilt_cos_values() -> None:
     assert field.get_options() == ["On", ["export", "display"]]
 
 
-def test_fdf_value_conversion_resolves_cos_object_and_integer() -> None:
+def test_fdf_value_conversion_resolves_cos_object_for_string() -> None:
     field = FDFField()
     field.get_cos_object().set_item(_V, COSObject(1, resolved=COSString("wrapped")))
 
     assert field.get_value() == "wrapped"
 
-    field.set_value(COSInteger.get(7))
-    assert field.get_value() == 7
 
-
-def test_fdf_value_conversion_returns_unknown_cos_base_verbatim() -> None:
+def test_fdf_value_rejects_unknown_cos_base() -> None:
+    """Upstream ``FDFField.getValue()`` raises ``IOException`` (mapped to
+    ``OSError``) when the ``/V`` entry is neither name/array/string/stream."""
     field = FDFField()
-    value = COSFloat(1.25)
+    field.set_value(COSFloat(1.25))
 
-    field.set_value(value)
+    with pytest.raises(OSError, match="Unknown type"):
+        field.get_value()
 
-    assert field.get_value() is value
+    field.set_value(COSInteger.get(7))
+    with pytest.raises(OSError, match="Unknown type"):
+        field.get_value()
 
 
 def test_outline_add_first_before_existing_child_links_chain() -> None:

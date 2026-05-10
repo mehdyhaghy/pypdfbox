@@ -31,6 +31,20 @@ _CFF_DEFAULT_FONT_MATRIX: tuple[float, float, float, float, float, float] = (
 )
 
 
+def _uni_name_of_code_point(code_point: int) -> str:
+    """Synthesise the ``uniXXXX`` glyph name for ``code_point``.
+
+    Mirrors upstream ``UniUtil.getUniNameOfCodePoint`` — uppercase hex,
+    minimum width four. Inlined here (rather than imported from the
+    sibling ``pd_true_type_font`` module) to keep the dependency graph
+    flat between ``PDCIDFontType0`` and ``PDTrueTypeFont``.
+    """
+    hex_str = format(code_point, "X")
+    if len(hex_str) < 4:
+        hex_str = hex_str.rjust(4, "0")
+    return "uni" + hex_str
+
+
 class PDCIDFontType0(PDCIDFont):
     """CIDFontType0 — CFF-based CIDFont. Mirrors PDFBox ``PDCIDFontType0``.
 
@@ -62,6 +76,10 @@ class PDCIDFontType0(PDCIDFont):
         # Per-CID glyph-height cache (computed from CFF outlines on
         # demand, mirroring PDFBox's ``glyphHeights`` map).
         self._glyph_heights: dict[int, float] = {}
+        # Lazily-computed font bounding box (mirrors upstream's
+        # ``fontBBox`` instance field; resolved by
+        # :meth:`generate_bounding_box`).
+        self._font_bbox: PDRectangle | None = None
 
     def get_subtype(self) -> str | None:
         return self.SUB_TYPE
@@ -209,6 +227,7 @@ class PDCIDFontType0(PDCIDFont):
         self._cff = font if font is not None else False
         # Reset derived caches.
         self._glyph_heights.clear()
+        self._font_bbox = None
 
     # ---------- glyph widths ----------
 
@@ -276,14 +295,30 @@ class PDCIDFontType0(PDCIDFont):
     def get_average_font_width(self) -> float:  # type: ignore[override]
         """Mean glyph advance for this CID font in 1/1000 em.
 
-        Lookup order, mirroring :meth:`PDCIDFont.get_average_font_width`
-        but with a CFF-program fallback inserted before ``/DW``:
+        Mirrors upstream ``PDCIDFontType0.getAverageFontWidth`` — routes
+        resolution through :meth:`get_average_character_width`. Upstream
+        caches the result once, but the Python port honours subsequent
+        ``/DW`` setter calls (the underlying cache is reset by the
+        :meth:`set_cff_font` injector and otherwise recomputed cheaply).
+        """
+        return self.get_average_character_width()
+
+    def get_average_character_width(self) -> float:
+        """Resolve the mean character advance from the available metadata.
+
+        Mirrors upstream private
+        ``PDCIDFontType0.getAverageCharacterWidth``. Resolution order:
 
         1. Mean of positive entries in ``/W``.
         2. CFF Private DICT ``defaultWidthX`` when an embedded CFF
            program is present (CFF spec §10).
-        3. ``/DW`` default (1000 per spec).
+        3. ``/DW`` default (1000 per spec) — falls through to the
+           hardcoded ``500`` upstream sentinel only when ``/DW`` is the
+           explicit zero a damaged font sometimes reports.
 
+        Exposed under the upstream name (without an underscore prefix)
+        because PDFBox treats it as a protected method; keeping the same
+        surface helps ports of upstream callers find what they expect.
         We deliberately diverge from upstream's ``PDCIDFontType0`` (which
         plumbs through to ``PDCIDFont.getAverageFontWidth``) by promoting
         the CFF default width: it is information actually present in the
@@ -301,7 +336,11 @@ class PDCIDFontType0(PDCIDFont):
                 upem = program.units_per_em
                 if upem > 0:
                     return default * 1000.0 / upem
-        return float(self.get_default_width())
+        dw = float(self.get_default_width())
+        # Upstream's ``getAverageCharacterWidth`` hardcodes ``500`` as
+        # the last-resort sentinel ("highly suspect" per the upstream
+        # comment). Surface that only when /DW is itself a useless zero.
+        return dw if dw > 0.0 else 500.0
 
     def get_height(self, cid: int) -> float:  # type: ignore[override]
         """Height of the glyph at ``cid`` in *font units*.
@@ -374,18 +413,50 @@ class PDCIDFontType0(PDCIDFont):
     def get_bounding_box(self) -> PDRectangle | None:  # type: ignore[override]
         """Return the font's bounding box as a :class:`PDRectangle`.
 
-        Mirrors upstream ``PDCIDFontType0.getBoundingBox``:
-
-        1. Prefer the embedded CFF program's Top DICT ``/FontBBox``.
-        2. Fall back to the descriptor's ``/FontBBox``.
-
-        Returns ``None`` when neither source provides a usable box.
+        Mirrors upstream ``PDCIDFontType0.getBoundingBox`` — caches the
+        result of :meth:`generate_bounding_box` on first call so repeated
+        renderer queries hit a single resolution path. The cache is keyed
+        only on the program's identity; callers that mutate the embedded
+        CFF program via :meth:`set_cff_font` reset it implicitly.
         """
+        if self._font_bbox is None:
+            self._font_bbox = self.generate_bounding_box()
+        return self._font_bbox
+
+    def generate_bounding_box(self) -> PDRectangle | None:
+        """Resolve the font's bounding box from the available metadata.
+
+        Mirrors upstream private ``PDCIDFontType0.generateBoundingBox``:
+
+        1. Prefer the descriptor's ``/FontBBox`` when at least one of its
+           four corners is non-zero (an all-zero box is the spec-default
+           sentinel and means "ask the font program instead").
+        2. Otherwise read the embedded CFF program's Top DICT
+           ``/FontBBox``.
+
+        Exposed under the upstream name (without an underscore prefix)
+        because PDFBox treats it as a protected method that subclasses
+        and tooling can override; keeping the same surface here keeps
+        ports of upstream callers honest. Returns ``None`` when neither
+        source provides a usable box.
+        """
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            bbox = descriptor.get_font_b_box()
+            if bbox is not None and bbox.size() >= 4:
+                rect = super().get_bounding_box()
+                if rect is not None and (
+                    rect.get_lower_left_x() != 0.0
+                    or rect.get_lower_left_y() != 0.0
+                    or rect.get_upper_right_x() != 0.0
+                    or rect.get_upper_right_y() != 0.0
+                ):
+                    return rect
         program = self.get_cff_font()
         if program is not None:
-            bbox = program.get_property("FontBBox")
-            if bbox is not None:
-                rect = self._coerce_bbox(bbox)
+            cff_bbox = program.get_property("FontBBox")
+            if cff_bbox is not None:
+                rect = self._coerce_bbox(cff_bbox)
                 if rect is not None:
                     return rect
         return super().get_bounding_box()
@@ -492,6 +563,112 @@ class PDCIDFontType0(PDCIDFont):
             return program.get_type2_char_string(gid)
         # Name-keyed CFF: CID is GID.
         return program.get_type2_char_string(int(cid))
+
+    # ---------- glyph name / path / hasGlyph (upstream-named) ----------
+
+    def get_glyph_name(self, code: int) -> str:
+        """Synthesise a glyph name for ``code`` via the parent's ToUnicode
+        mapping.
+
+        Mirrors upstream private ``PDCIDFontType0.getGlyphName``: looks up
+        the parent :class:`PDType0Font`'s ``toUnicode`` for the code,
+        then formats the resulting codepoint as ``uniXXXX`` via
+        ``UniUtil.getUniNameOfCodePoint``. Returns ``".notdef"`` when the
+        lookup fails — matches upstream behaviour for codes outside the
+        font's ToUnicode coverage. Used by name-keyed (Type 1-flavoured)
+        CFF fallbacks where the embedded program addresses glyphs by
+        PostScript name rather than by CID.
+
+        Exposed under the upstream name (without an underscore prefix)
+        despite being marked private upstream because the rendering /
+        text-extraction layer needs the same hook.
+        """
+        parent = self.get_parent()
+        if parent is None:
+            return ".notdef"
+        unicodes = parent.to_unicode(code)
+        if not unicodes:
+            return ".notdef"
+        return _uni_name_of_code_point(ord(unicodes[0]))
+
+    def get_path(self, code: int) -> list[tuple]:
+        """Glyph outline for ``code`` in *font units*.
+
+        Mirrors upstream ``PDCIDFontType0.getPath(int)``. Resolution
+        order:
+
+        1. Resolve ``code -> CID`` via :meth:`code_to_cid`.
+        2. If the descendant carries a ``/CIDToGIDMap`` stream and the
+           font is embedded (PDFBOX-4093: a CIDFontType0 may carry an
+           explicit CID→GID map despite the spec saying otherwise),
+           remap ``cid`` through it.
+        3. Ask the embedded CFF program for the Type 2 charstring's
+           outline (CIDFontType0C) or fall back to the CFFType1Font
+           branch when the embedded program is name-keyed.
+        4. Final fallback: ``.notdef`` empty path — matches upstream's
+           ``new GeneralPath()`` empty fallback.
+        """
+        cid = self.code_to_cid(code)
+        if self.is_embedded() and self.has_cid_to_gid_map_stream():
+            cid_to_gid = self.read_cid_to_gid_map()
+            if cid_to_gid is not None and 0 <= cid < len(cid_to_gid):
+                cid = cid_to_gid[cid]
+        program = self.get_cff_font()
+        if program is None:
+            return []
+        cs = self.get_type2_char_string(cid)
+        if cs is not None:
+            try:
+                return cs.get_path()
+            except Exception:  # noqa: BLE001
+                return []
+        return []
+
+    def has_glyph(self, code: int) -> bool:  # type: ignore[override]
+        """``True`` when ``code`` resolves to a non-``.notdef`` glyph.
+
+        Mirrors upstream ``PDCIDFontType0.hasGlyph(int)`` — when an
+        embedded CFF program is available we check that the CID's
+        Type 2 charstring resolves to a non-zero GID (upstream's
+        ``charstring.getGID() != 0``). For a name-keyed CFF embedded
+        under a CIDFontType0 wrapper the upstream implementation goes
+        through ``CFFType1Font`` directly; we collapse that branch into
+        the same charstring lookup since :meth:`get_type2_char_string`
+        already routes both polymorphic cases.
+
+        When no embedded program is present we fall back to the parent
+        :meth:`PDCIDFont.has_glyph` ``/W``/``/DW`` heuristic — upstream
+        always reaches a substitute font program in that branch
+        (``t1Font.hasGlyph(getGlyphName(code))``) but the Python port
+        deliberately stops at the metric-table answer rather than
+        synthesising a substitute.
+        """
+        program = self.get_cff_font()
+        if program is None:
+            return super().has_glyph(self.code_to_cid(code))
+        cid = self.code_to_cid(code)
+        cs = self.get_type2_char_string(cid)
+        if cs is None:
+            return False
+        try:
+            return cs.get_gid() != 0
+        except Exception:  # noqa: BLE001
+            return False
+
+    def encode(self, unicode_codepoint: int) -> bytes:  # type: ignore[override]
+        """Encoding by Unicode codepoint is unsupported for a CFF CIDFont.
+
+        Mirrors upstream ``PDCIDFontType0.encode(int unicode)`` which
+        throws ``UnsupportedOperationException``: the CIDFontType0 has
+        no ``/Encoding`` of its own and cannot synthesise a CID for a
+        unicode codepoint without going through the parent
+        :class:`PDType0Font`'s CMap. Callers that need encoding should
+        go through :meth:`PDType0Font.encode` instead.
+        """
+        raise NotImplementedError(
+            "PDCIDFontType0.encode is unsupported — encode through the "
+            "parent PDType0Font's CMap-driven encoder instead."
+        )
 
     # ---------- glyph-ID encoding ----------
 

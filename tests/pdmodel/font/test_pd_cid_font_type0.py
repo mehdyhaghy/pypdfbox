@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 
+import pytest
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -16,7 +18,6 @@ from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
-
 
 # ---------- CFF fixture builders ----------
 
@@ -349,3 +350,166 @@ def test_is_damaged_true_for_garbage_font_file3() -> None:
     assert font.is_damaged() is True
     # Repeated calls remain consistent.
     assert font.is_damaged() is True
+
+
+# ---------- has_glyph (Java line 348) ----------
+
+
+def test_has_glyph_falls_back_to_metric_heuristic_when_no_program() -> None:
+    """No embedded CFF program → fall back to the parent ``/W``/``/DW``
+    heuristic (upstream would defer to a substitute font's ``hasGlyph``,
+    but the Python port stops at the metric table answer instead)."""
+    font = PDCIDFontType0()
+    # /DW defaults to 1000 (positive) → heuristic answers True.
+    assert font.has_glyph(1) is True
+    # Explicit zero /DW reverts to "no glyph available".
+    font.set_dw(0)
+    assert font.has_glyph(1) is False
+
+
+def test_has_glyph_true_for_known_cid_with_program() -> None:
+    """A CID whose CharString resolves to a non-zero GID → ``True``."""
+    font = _make_font_with_descriptor()
+    program = font.get_cff_font()
+    assert program is not None
+    # Our fixture's CID 1 / cid00001 lives at GID 1.
+    assert font.has_glyph(1) is True
+
+
+def test_has_glyph_false_for_unmapped_cid() -> None:
+    font = _make_font_with_descriptor()
+    program = font.get_cff_font()
+    if isinstance(program, CFFCIDFont):
+        # CID-keyed branch returns GID 0 for an unmapped lookup.
+        assert font.has_glyph(9999) is False
+
+
+# ---------- get_path (Java line 318) ----------
+
+
+def test_get_path_empty_when_no_program() -> None:
+    font = PDCIDFontType0()
+    assert font.get_path(1) == []
+
+
+def test_get_path_returns_outline_for_known_code() -> None:
+    """``get_path`` mirrors upstream's renderer entry point: routes
+    through code → CID → CharString outline."""
+    font = _make_font_with_descriptor()
+    path = font.get_path(1)
+    assert len(path) >= 2
+    assert path[0][0] == "moveto"
+    assert path[-1] == ("closepath",)
+
+
+def test_get_path_empty_for_notdef() -> None:
+    font = _make_font_with_descriptor()
+    # .notdef in our fixture is a single endchar — no outline.
+    assert font.get_path(0) == []
+
+
+# ---------- get_glyph_name (Java line 307, private) ----------
+
+
+def test_get_glyph_name_returns_notdef_when_no_parent() -> None:
+    """Without a parent ``PDType0Font`` there is no ToUnicode source."""
+    font = PDCIDFontType0()
+    assert font.get_glyph_name(0x4E00) == ".notdef"
+
+
+# ---------- encode (Java line 396, throws UnsupportedOperationException) ----------
+
+
+def test_encode_raises_not_implemented() -> None:
+    """Mirrors upstream's ``UnsupportedOperationException`` — the
+    CIDFontType0 has no ``/Encoding`` of its own."""
+    font = PDCIDFontType0()
+    with pytest.raises(NotImplementedError):
+        font.encode(0x4E00)
+
+
+def test_encode_raises_even_when_embedded() -> None:
+    """The unsupported semantics hold whether or not a font program
+    is embedded."""
+    font = _make_font_with_descriptor()
+    with pytest.raises(NotImplementedError):
+        font.encode(0x41)
+
+
+# ---------- generate_bounding_box (Java line 216, private) ----------
+
+
+def test_generate_bounding_box_prefers_descriptor_when_non_zero() -> None:
+    """Upstream's ``generateBoundingBox`` prefers the descriptor's
+    ``/FontBBox`` when at least one corner is non-zero."""
+    descriptor = PDFontDescriptor()
+    bbox = COSArray(
+        [COSFloat(-50.0), COSFloat(-100.0), COSFloat(950.0), COSFloat(900.0)]
+    )
+    descriptor.get_cos_object().set_item(COSName.get_pdf_name("FontBBox"), bbox)
+    font_dict = COSDictionary()
+    font_dict.set_item(
+        COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
+    )
+    font = PDCIDFontType0(font_dict)
+    rect = font.generate_bounding_box()
+    assert rect is not None
+    assert rect.get_lower_left_x() == -50.0
+    assert rect.get_upper_right_y() == 900.0
+
+
+def test_generate_bounding_box_falls_through_when_descriptor_all_zero() -> None:
+    """All-zero descriptor /FontBBox is the spec sentinel for "ask the
+    font program instead"; the embedded CFF /FontBBox wins."""
+    descriptor = PDFontDescriptor()
+    bbox = COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(0.0), COSFloat(0.0)])
+    descriptor.get_cos_object().set_item(COSName.get_pdf_name("FontBBox"), bbox)
+    stream = COSStream()
+    stream.set_data(_build_cid_keyed_cff_bytes())
+    stream.set_name(COSName.SUBTYPE, "CIDFontType0C")  # type: ignore[attr-defined]
+    descriptor.set_font_file3(stream)
+    font_dict = COSDictionary()
+    font_dict.set_item(
+        COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
+    )
+    font = PDCIDFontType0(font_dict)
+    rect = font.generate_bounding_box()
+    assert isinstance(rect, PDRectangle)
+
+
+def test_get_bounding_box_caches_first_call() -> None:
+    """Upstream caches the resolved /FontBBox once; assert pointer
+    identity to catch accidental re-resolution."""
+    font = _make_font_with_descriptor()
+    first = font.get_bounding_box()
+    second = font.get_bounding_box()
+    assert first is second
+
+
+# ---------- get_average_character_width (Java line 473, private) ----------
+
+
+def test_get_average_character_width_uses_w() -> None:
+    font = PDCIDFontType0()
+    w = COSArray(
+        [
+            COSInteger.get(1),
+            COSArray([COSInteger.get(100), COSInteger.get(300), COSInteger.get(500)]),
+        ]
+    )
+    font.set_w(w)
+    assert font.get_average_character_width() == 300.0
+
+
+def test_get_average_character_width_falls_back_to_dw() -> None:
+    font = PDCIDFontType0()
+    font.set_dw(420)
+    assert font.get_average_character_width() == 420.0
+
+
+def test_get_average_character_width_zero_dw_uses_500_sentinel() -> None:
+    """Upstream hardcodes ``500`` as the last-resort sentinel — surface
+    that only when /DW is explicitly zero (a damaged-font signal)."""
+    font = PDCIDFontType0()
+    font.set_dw(0)
+    assert font.get_average_character_width() == 500.0
