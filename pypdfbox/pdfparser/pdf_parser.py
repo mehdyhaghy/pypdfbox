@@ -132,6 +132,35 @@ class PDFParser:
 
     # ---------- public entry point ----------
 
+    @staticmethod
+    def load(
+        source: Any,
+        password: str | bytes | None = None,
+    ) -> Any:
+        """Deprecated static factory mirroring upstream
+        ``PDFParser.load(File [, String password])`` (Java lines 212 / 231).
+
+        Upstream this is a thin delegate to ``Loader.loadPDF`` retained for
+        binary compatibility with PDFBox 1.x / 2.x call sites; pypdfbox
+        mirrors the surface for source-level parity. Prefer
+        :func:`pypdfbox.loader.Loader.load_pdf` (or :class:`PDDocument`
+        wrappers) in new code.
+
+        Accepts any source form :func:`Loader.load_pdf` accepts — paths,
+        ``bytes`` / ``bytearray`` / ``memoryview`` buffers, file-like
+        streams, or a pre-built :class:`RandomAccessRead`. Returns a
+        :class:`PDDocument` wrapping the parsed :class:`COSDocument` (the
+        upstream return type) so callers can drive page enumeration /
+        decryption directly.
+        """
+        # Local import — pdfparser must not depend on the loader / pdmodel
+        # layers at import time (both live one layer up).
+        from pypdfbox.loader import Loader  # noqa: PLC0415
+        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+
+        document = Loader.load_pdf(source, password)
+        return PDDocument(document)
+
     def parse(self, lenient: bool | None = None) -> COSDocument:
         """Parse the document end-to-end. Returns a populated COSDocument
         whose object pool is ready for lazy resolution.

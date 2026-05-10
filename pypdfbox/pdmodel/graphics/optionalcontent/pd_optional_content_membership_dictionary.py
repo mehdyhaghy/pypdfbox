@@ -149,6 +149,25 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
                 )
         self._dict.set_item(_OCGS, arr)
 
+    def get_oc_gs(self) -> list[PDOptionalContentGroup]:
+        """Alternate split of upstream ``getOCGs`` —
+        camelCase→snake_case splitting at every uppercase boundary
+        produces ``get_o_cgs``, splitting on word boundary produces
+        ``get_oc_gs``. Both spellings exist in the wild for ported call
+        sites; pypdfbox keeps both as aliases for :meth:`get_o_cgs` so
+        either form resolves.
+        """
+        return self.get_o_cgs()
+
+    def set_oc_gs(
+        self,
+        ocgs: list[PDOptionalContentGroup | COSDictionary],
+    ) -> None:
+        """Alternate split of upstream ``setOCGs``. Delegates to
+        :meth:`set_o_cgs`; see :meth:`get_oc_gs` for naming notes.
+        """
+        self.set_o_cgs(ocgs)
+
     # Upstream PDFBox spelling: ``getOCGs`` / ``setOCGs``. The auto
     # camelCase→snake_case rule splits at every uppercase boundary which
     # produces ``get_o_cgs``; PDFBox developers reach for ``get_ocgs`` first,

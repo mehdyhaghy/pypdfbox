@@ -431,6 +431,13 @@ class PDOptionalContentGroup(PDPropertyList):
         ``<PDPropertyList repr> (<name>)``. Used by Acrobat-style debug
         output where layer panels list "ColorLayer (Color)"-style entries.
         """
+        return self.to_string()
+
+    def to_string(self) -> str:
+        """Mirrors upstream ``PDOptionalContentGroup.toString()`` —
+        ``<super.toString> (<name>)``. Surfaced explicitly so callers
+        porting from PDFBox can keep the literal ``.toString()``
+        invocation spelled snake_case."""
         return f"{super().__repr__()} ({self.get_name()})"
 
 

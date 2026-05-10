@@ -93,8 +93,15 @@ class DimensionsType(AbstractStructuredType):
         return prop if isinstance(prop, TextType) else None
 
     def __repr__(self) -> str:
-        return f"DimensionsType{{{self.get_w()} x {self.get_h()} {self.get_unit()}}}"
+        return self.to_string()
 
     def __str__(self) -> str:
         # Mirrors upstream ``DimensionsType.toString()``.
+        return self.to_string()
+
+    def to_string(self) -> str:
+        """Mirrors upstream ``DimensionsType.toString()`` —
+        ``DimensionsType{<w> x <h> <unit>}``. Surfaced explicitly so
+        callers porting from PDFBox can keep the literal
+        ``.toString()`` invocation spelled snake_case."""
         return f"DimensionsType{{{self.get_w()} x {self.get_h()} {self.get_unit()}}}"

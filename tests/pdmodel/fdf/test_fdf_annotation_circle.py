@@ -33,3 +33,35 @@ def test_factory_dispatch_circle() -> None:
     d.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Circle"))
     obj = FDFAnnotation.create(d)
     assert isinstance(obj, FDFAnnotationCircle)
+
+
+# ---------- init_fringe (XFDF attribute helper) ----------
+
+
+def test_init_fringe_none_is_noop() -> None:
+    a = FDFAnnotationCircle()
+    a.init_fringe(None)
+    assert a.get_fringe() is None
+
+
+def test_init_fringe_empty_is_noop() -> None:
+    a = FDFAnnotationCircle()
+    a.init_fringe("")
+    assert a.get_fringe() is None
+
+
+def test_init_fringe_parses_four_floats() -> None:
+    a = FDFAnnotationCircle()
+    a.init_fringe("1.0,2.0,3.0,4.0")
+    fringe = a.get_fringe()
+    assert fringe is not None
+    assert fringe.get_lower_left_x() == pytest.approx(1.0)
+    assert fringe.get_lower_left_y() == pytest.approx(2.0)
+    assert fringe.get_upper_right_x() == pytest.approx(3.0)
+    assert fringe.get_upper_right_y() == pytest.approx(4.0)
+
+
+def test_init_fringe_wrong_count_raises_os_error() -> None:
+    a = FDFAnnotationCircle()
+    with pytest.raises(OSError):
+        a.init_fringe("1.0,2.0,3.0")

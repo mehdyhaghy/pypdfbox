@@ -125,3 +125,25 @@ def test_true_type_font_get_glyph_out_of_range_is_none(
 ) -> None:
     assert liberation_sans.get_glyph(-1) is None
     assert liberation_sans.get_glyph(liberation_sans.get_number_of_glyphs()) is None
+
+
+# ---------- get_glyph_data (alias mirroring upstream private accessor) -----
+
+
+def test_get_glyph_data_delegates_to_get_glyph(glyph_table: GlyphTable) -> None:
+    # Upstream ``getGlyphData(int, int)`` is the private worker reached
+    # through ``getGlyph``; the port exposes a public alias that returns
+    # the same cached :class:`GlyphData` instance.
+    a = glyph_table.get_glyph(0)
+    b = glyph_table.get_glyph_data(0)
+    assert b is not None
+    assert b is a
+    assert isinstance(b, GlyphData)
+
+
+def test_get_glyph_data_returns_none_for_out_of_range(
+    liberation_sans: TrueTypeFont, glyph_table: GlyphTable
+) -> None:
+    assert glyph_table.get_glyph_data(-1) is None
+    n = liberation_sans.get_number_of_glyphs()
+    assert glyph_table.get_glyph_data(n) is None

@@ -7,6 +7,9 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from .pd_annotation_markup import PDAnnotationMarkup
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
     from .pd_ink_list import PDInkList
 
 _INK_LIST: COSName = COSName.get_pdf_name("InkList")
@@ -24,6 +27,7 @@ class PDAnnotationInk(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
 
@@ -138,6 +142,44 @@ class PDAnnotationInk(PDAnnotationMarkup):
             value.clear()
             return
         self._dict.set_item(_INK_LIST, COSArray())
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``
+        (``PDAnnotationInk.java`` line 116). Pass ``None`` to clear the
+        custom handler and restore the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def get_custom_appearance_handler(self) -> PDAppearanceHandler | None:
+        """Return the custom appearance handler previously set via
+        :meth:`set_custom_appearance_handler`, or ``None`` when the default
+        construction path is in use. No upstream getter exists (the field is
+        private in Java); this is the Pythonic accessor used by tests and
+        downstream code that needs to inspect the wired handler.
+        """
+        return self._custom_appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate ink annotation appearances.
+
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (``PDAnnotationInk.java``
+        lines 122-138). A custom handler, when configured, is invoked
+        exactly as upstream does. The built-in ``PDInkAppearanceHandler``
+        is not ported yet, so the default path remains a no-op like the
+        base annotation implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 __all__ = ["PDAnnotationInk"]

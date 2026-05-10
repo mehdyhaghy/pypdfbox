@@ -96,6 +96,19 @@ class GlyphTable(TTFTable):
             self._cached += 1
         return glyph
 
+    def get_glyph_data(self, gid: int) -> GlyphData | None:
+        """Return the :class:`GlyphData` for ``gid`` (alias for :meth:`get_glyph`).
+
+        Upstream's private ``getGlyphData(int, int)`` performs the
+        actual outline parsing — work that fontTools handles for us
+        directly when :class:`GlyphData` materialises against the parsed
+        ``_g_l_y_f`` table. Callers porting upstream code that reaches
+        for the private accessor (e.g. composite-glyph resolvers) get a
+        thin public alias here that returns the same cached glyph as
+        :meth:`get_glyph`.
+        """
+        return self.get_glyph(gid)
+
     def get_glyphs(self) -> list[GlyphData]:
         """Return all glyphs in glyph-ID order.
 

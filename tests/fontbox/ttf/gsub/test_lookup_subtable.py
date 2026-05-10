@@ -244,3 +244,40 @@ def test_lookup_subtable_subst_format_alias() -> None:
     # Upstream Java accessor is ``getSubstFormat`` — kept as alias.
     sub = LookupTypeSingleSubstFormat1(delta_glyph_id=1, coverage_table=(1,))
     assert sub.get_subst_format() == sub.get_substitute_format() == 1
+
+
+def test_coverage_table_get_glyph_id_returns_entry() -> None:
+    cov = CoverageTable(glyph_array=(10, 20, 30))
+    assert cov.get_glyph_id(0) == 10
+    assert cov.get_glyph_id(1) == 20
+    assert cov.get_glyph_id(2) == 30
+
+
+def test_coverage_table_get_glyph_id_out_of_range() -> None:
+    cov = CoverageTable(glyph_array=(10, 20, 30))
+    assert cov.get_glyph_id(-1) == -1
+    assert cov.get_glyph_id(3) == -1
+    assert cov.get_glyph_id(99) == -1
+
+
+def test_coverage_table_get_glyph_id_on_empty_array() -> None:
+    cov = CoverageTable()
+    assert cov.get_glyph_id(0) == -1
+
+
+def test_ligature_table_get_component_glyph_i_ds_alias() -> None:
+    # Snake-case translation of upstream ``getComponentGlyphIDs`` —
+    # the ``IDs`` acronym splits into ``i_ds``.
+    lt = LigatureTable(ligature_glyph=42, component_glyph_ids=(1, 2, 3))
+    assert lt.get_component_glyph_i_ds() == (1, 2, 3)
+    assert lt.get_component_glyph_i_ds() == lt.get_component_glyph_ids()
+
+
+def test_ligature_table_to_string_format_matches_upstream() -> None:
+    lt = LigatureTable(ligature_glyph=42, component_glyph_ids=(1, 2))
+    # component_count defaults to len(trailing) + 1 implicit -> 3.
+    assert str(lt) == "LigatureTable[ligatureGlyph=42, componentCount=3]"
+    explicit = LigatureTable(
+        ligature_glyph=7, component_glyph_ids=(8,), component_count=5
+    )
+    assert str(explicit) == "LigatureTable[ligatureGlyph=7, componentCount=5]"

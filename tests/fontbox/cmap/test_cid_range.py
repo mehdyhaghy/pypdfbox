@@ -140,3 +140,44 @@ def test_cid_range_equality_against_other_types() -> None:
     assert rng != 42
     assert rng != None  # noqa: E711 — explicit equality, not identity
 
+
+# ---------- map() upstream overload dispatcher ----------
+
+
+def test_cid_range_map_dispatches_bytes() -> None:
+    """``map(bytes_like)`` overload mirrors upstream ``map(byte[])``."""
+    rng = CIDRange(0, 20, 65, 1)
+    assert rng.map(b"\x00") == 65
+    assert rng.map(b"\x14") == 85
+    assert rng.map(b"\x1e") == -1  # out of range
+    assert rng.map(b"\x00\x0a") == -1  # wrong byte length
+
+
+def test_cid_range_map_dispatches_bytearray_and_memoryview() -> None:
+    rng = CIDRange(0, 20, 65, 1)
+    assert rng.map(bytearray(b"\x05")) == 70
+    assert rng.map(memoryview(b"\x05")) == 70
+
+
+def test_cid_range_map_dispatches_int_with_length() -> None:
+    """``map(int, int)`` overload mirrors upstream ``map(int, int)``."""
+    rng = CIDRange(0, 20, 65, 1)
+    assert rng.map(0, 1) == 65
+    assert rng.map(20, 1) == 85
+    assert rng.map(21, 1) == -1  # out of range
+    assert rng.map(10, 2) == -1  # wrong code length
+
+
+def test_cid_range_map_requires_length_for_int() -> None:
+    rng = CIDRange(0, 20, 65, 1)
+    with pytest.raises(TypeError, match="length"):
+        rng.map(0)
+
+
+def test_cid_range_map_two_byte_codes() -> None:
+    rng = CIDRange(256, 280, 65, 2)
+    assert rng.map(b"\x01\x00") == 65
+    assert rng.map(256, 2) == 65
+    assert rng.map(280, 2) == 89
+    assert rng.map(b"\x01\x18") == 89
+

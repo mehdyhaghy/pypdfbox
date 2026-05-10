@@ -69,6 +69,32 @@ class CIDRange:
             return self._unicode + (code - self._from)
         return -1
 
+    def map(  # noqa: A003 — mirror upstream method name; collides with builtin
+        self,
+        code_or_bytes: int | bytes | bytearray | memoryview,
+        length: int | None = None,
+    ) -> int:
+        """
+        Map a code to its CID. Overload dispatcher mirroring the upstream
+        Java pair ``map(byte[])`` / ``map(int, int)``.
+
+        - ``map(bytes_like)`` — bytes input form. ``length`` is ignored
+          (the byte length is taken from the buffer).
+        - ``map(int, int)`` — integer code + explicit byte length. Both
+          arguments are required in this form.
+
+        Returns ``-1`` when the code falls outside this range or the
+        declared byte length does not match :attr:`_code_length`.
+        """
+        if isinstance(code_or_bytes, (bytes, bytearray, memoryview)):
+            return self.map_bytes(code_or_bytes)
+        if length is None:
+            raise TypeError(
+                "map(int, length) requires the second argument when the "
+                "first is an integer"
+            )
+        return self.map_int(int(code_or_bytes), length)
+
     def unmap(self, code: int) -> int:
         """
         Map a CID back to its source code value.

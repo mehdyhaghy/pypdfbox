@@ -92,6 +92,13 @@ class PDDeviceNProcess:
         ``<color-space>`` falls back to ``None`` when ``/ColorSpace`` is
         absent or unresolvable — keeps the lite-path behaviour of
         :meth:`get_color_space` visible through the string form."""
+        return self.to_string()
+
+    def to_string(self) -> str:
+        """Mirrors upstream ``PDDeviceNProcess.toString()`` —
+        ``Process{<color-space> "<comp0>" "<comp1>" ...}``. Surfaced
+        explicitly so callers porting from PDFBox can keep the literal
+        ``.toString()`` invocation spelled snake_case."""
         cs = self.get_color_space()
         cs_repr = "None" if cs is None else cs.get_name()
         parts = [f'Process{{{cs_repr}']

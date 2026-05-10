@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSNumber
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
@@ -7,6 +9,11 @@ from .pd_annotation_line import PDAnnotationLine
 from .pd_annotation_markup import PDAnnotationMarkup
 from .pd_border_effect_dictionary import PDBorderEffectDictionary
 from .pd_border_style_dictionary import PDBorderStyleDictionary
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
 
 _DA: COSName = COSName.get_pdf_name("DA")
 _Q: COSName = COSName.get_pdf_name("Q")
@@ -64,6 +71,7 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
 
@@ -339,6 +347,44 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
                 return
 
         raise TypeError("set_rect_differences expects 1 or 4 values")
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``
+        (``PDAnnotationFreeText.java`` line 292). Pass ``None`` to clear
+        the custom handler and restore the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def get_custom_appearance_handler(self) -> PDAppearanceHandler | None:
+        """Return the custom appearance handler previously set via
+        :meth:`set_custom_appearance_handler`, or ``None`` when the default
+        construction path is in use. No upstream getter exists (the field is
+        private in Java); this is the Pythonic accessor used by tests and
+        downstream code that needs to inspect the wired handler.
+        """
+        return self._custom_appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate free-text annotation appearances.
+
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (``PDAnnotationFreeText.java``
+        lines 298-314). A custom handler, when configured, is invoked
+        exactly as upstream does. The built-in
+        ``PDFreeTextAppearanceHandler`` is not ported yet, so the default
+        path remains a no-op like the base annotation implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 __all__ = ["PDAnnotationFreeText"]

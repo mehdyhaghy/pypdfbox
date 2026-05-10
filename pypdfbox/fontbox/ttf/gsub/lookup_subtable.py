@@ -40,6 +40,19 @@ class CoverageTable:
                 return idx
         return -1
 
+    def get_glyph_id(self, index: int) -> int:
+        """Return the GID stored at ``index`` in coverage.
+
+        Mirrors upstream ``CoverageTable.getGlyphId(int)`` — the abstract
+        format-1 / format-2 split in Java is collapsed in the Python port
+        because the parser already materialises both formats into a flat
+        ``glyph_array``. Returns ``-1`` for out-of-range indices to match
+        the defensive contract upstream concrete subclasses follow.
+        """
+        if index < 0 or index >= len(self.glyph_array):
+            return -1
+        return self.glyph_array[index]
+
 
 class LookupSubTable(ABC):
     """Abstract base for OpenType GSUB lookup subtables.
@@ -459,8 +472,30 @@ class LigatureTable:
     def get_component_glyph_ids(self) -> tuple[int, ...]:
         return self.component_glyph_ids
 
+    def get_component_glyph_i_ds(self) -> tuple[int, ...]:
+        """Snake-case mechanical translation of upstream ``getComponentGlyphIDs``.
+
+        Java keeps the trailing ``IDs`` capitalised as an acronym; the
+        deterministic camelCase-to-snake_case translation drops the
+        boundary between ``I`` and ``D`` and yields ``i_ds``. Kept as a
+        thin alias so tooling that mirrors upstream method names verbatim
+        still resolves.
+        """
+        return self.component_glyph_ids
+
     def get_component_count(self) -> int:
         return self.component_count
+
+    def __str__(self) -> str:
+        """Mirror upstream ``LigatureTable.toString()``.
+
+        Upstream format: ``LigatureTable[ligatureGlyph=<N>, componentCount=<M>]``.
+        Keep verbatim so log-scraping parity holds.
+        """
+        return (
+            f"LigatureTable[ligatureGlyph={self.ligature_glyph}, "
+            f"componentCount={self.component_count}]"
+        )
 
 
 @dataclass

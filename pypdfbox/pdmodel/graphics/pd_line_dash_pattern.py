@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import math
-from typing import Union
 
 from pypdfbox.cos import COSArray, COSFloat, COSInteger
 
-_Number = Union[int, float]
+_Number = int | float
 
 
 class PDLineDashPattern:
@@ -163,6 +162,13 @@ class PDLineDashPattern:
         # ``PDLineDashPattern{array=[...], phase=N}``. Java's
         # ``Arrays.toString(float[])`` formats with a leading space after
         # commas and no trailing zero stripping.
+        return self.to_string()
+
+    def to_string(self) -> str:
+        """Mirrors upstream ``PDLineDashPattern.toString()`` —
+        ``PDLineDashPattern{array=[...], phase=N}``. Surfaced
+        explicitly so callers porting from PDFBox can keep the literal
+        ``.toString()`` invocation spelled snake_case."""
         formatted = ", ".join(self._format_float(v) for v in self._array)
         return f"PDLineDashPattern{{array=[{formatted}], phase={self._phase}}}"
 

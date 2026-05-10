@@ -65,5 +65,21 @@ class FDFAnnotationCircle(FDFAnnotation):
             return
         self._annot.set_item(_RD, fringe.to_cos_array())
 
+    def init_fringe(self, fringe: str | None) -> None:
+        """Initialise /RD from an XFDF ``fringe`` attribute string.
+
+        Mirrors upstream ``initFringe(Element)`` (Java lines 81-90). Accepts
+        the attribute value directly (comma-separated 4-tuple); empty / None
+        is a no-op so callers can forward ``element.getAttribute("fringe")``.
+        Raises :class:`OSError` (Python equivalent of Java ``IOException``)
+        when the value is not exactly four floats.
+        """
+        if fringe is None or not fringe:
+            return
+        rect = self.create_rectangle_from_attributes(
+            fringe, "Error: wrong amount of numbers in attribute 'fringe'"
+        )
+        self.set_fringe(rect)
+
 
 __all__ = ["FDFAnnotationCircle"]

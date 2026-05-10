@@ -146,6 +146,30 @@ def get_char_code(character: str) -> int | None:
     return _UNI_TO_CODE.get(character)
 
 
+def set(code: int, unicode_char: str) -> None:  # noqa: A001 - mirror upstream name
+    """Register a code → Unicode mapping in the PDFDocEncoding tables.
+
+    Mirrors upstream ``PDFDocEncoding.set(int code, char unicode)`` —
+    private in Java but exposed here under the upstream snake_case
+    spelling for parity with code ported from PDFBox that calls it to
+    register custom deviations. Both directions of the
+    code↔Unicode mapping are updated.
+
+    ``code`` must be in ``0..255`` (the size of the PDFDocEncoding
+    table); ``unicode_char`` must be a single character.
+    """
+    if not (0 <= code < len(_CODE_TO_UNI)):
+        raise ValueError(
+            f"code must be in 0..{len(_CODE_TO_UNI) - 1}, got {code}"
+        )
+    if len(unicode_char) != 1:
+        raise ValueError(
+            f"unicode_char must be a single character, got len={len(unicode_char)}"
+        )
+    _CODE_TO_UNI[code] = unicode_char
+    _UNI_TO_CODE[unicode_char] = code
+
+
 class PDFDocEncoding:
     """Upstream-name parity wrapper around the module-level functions.
 
@@ -185,4 +209,5 @@ __all__ = [
     "decode_bytes",
     "encode_bytes",
     "get_char_code",
+    "set",
 ]

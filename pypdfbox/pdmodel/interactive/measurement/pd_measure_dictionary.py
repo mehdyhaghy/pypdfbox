@@ -87,6 +87,18 @@ class PDMeasureDictionary:
         """
         self._dict.set_name(_SUBTYPE, subtype)
 
+    def set_subtype(self, subtype: str) -> None:
+        """Set the ``/Subtype`` of the measure dictionary.
+
+        Mirrors upstream ``PDMeasureDictionary.setSubtype(String)`` (which
+        is declared ``protected`` in Java — Python has no language-level
+        access control, so we expose the same hook publicly under the
+        upstream snake_case spelling). Subclasses use this to stamp their
+        own subtype constant; external callers are free to pass any name
+        per PDF 32000-1 §12.7.5.5.
+        """
+        self._set_subtype(subtype)
+
     # ------------------------------------------------------------------ subtype predicates
     def is_rectlinear(self) -> bool:
         """Return ``True`` if this is a rectlinear measure dictionary.

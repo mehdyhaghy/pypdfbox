@@ -9,12 +9,13 @@ worker / parsing tests). We capture the same invariants here at
 subtable granularity so a regression in delta arithmetic, indexed
 substitution, or ligature shaping fails fast.
 
-Upstream Java references:
-- fontbox/src/main/java/org/apache/fontbox/ttf/table/gsub/LookupTypeSingleSubstFormat1.java
-- fontbox/src/main/java/org/apache/fontbox/ttf/table/gsub/LookupTypeSingleSubstFormat2.java
-- fontbox/src/main/java/org/apache/fontbox/ttf/table/gsub/LookupTypeMultipleSubstitutionFormat1.java
-- fontbox/src/main/java/org/apache/fontbox/ttf/table/gsub/LookupTypeAlternateSubstitutionFormat1.java
-- fontbox/src/main/java/org/apache/fontbox/ttf/table/gsub/LookupTypeLigatureSubstitutionSubstFormat1.java
+Upstream Java references (under
+``fontbox/src/main/java/org/apache/fontbox/ttf/table/gsub/``):
+- ``LookupTypeSingleSubstFormat1.java``
+- ``LookupTypeSingleSubstFormat2.java``
+- ``LookupTypeMultipleSubstitutionFormat1.java``
+- ``LookupTypeAlternateSubstitutionFormat1.java``
+- ``LookupTypeLigatureSubstitutionSubstFormat1.java``
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ import pytest
 
 from pypdfbox.fontbox.ttf.gsub import (
     AlternateSetTable,
+    CoverageTable,
     LigatureSetTable,
     LigatureTable,
     LookupTypeAlternateSubstitutionFormat1,
@@ -32,7 +34,6 @@ from pypdfbox.fontbox.ttf.gsub import (
     LookupTypeSingleSubstFormat2,
     SequenceTable,
 )
-
 
 # --- Type 1, Format 1 (LookupTypeSingleSubstFormat1) -----------------
 
@@ -158,3 +159,41 @@ def test_ligature_format1_set_accessors() -> None:
     )
     assert sub.get_ligature_set_tables() == (lst,)
     assert sub.get_ligature_set_tables()[0].get_ligature_count() == 1
+
+
+def test_ligature_table_component_glyph_i_ds_mirrors_java_accessor() -> None:
+    # Upstream Java method is ``getComponentGlyphIDs()``; snake-case
+    # translation drops ``IDs`` into ``i_ds``.
+    lt = LigatureTable(
+        ligature_glyph=600, component_glyph_ids=(70, 71), component_count=3
+    )
+    assert lt.get_component_glyph_i_ds() == (70, 71)
+
+
+def test_ligature_table_to_string_mirrors_java_format() -> None:
+    # Java: String.format("%s[ligatureGlyph=%d, componentCount=%d]",
+    #     LigatureTable.class.getSimpleName(), ligatureGlyph, componentCount);
+    lt = LigatureTable(
+        ligature_glyph=600, component_glyph_ids=(70, 71), component_count=3
+    )
+    assert str(lt) == "LigatureTable[ligatureGlyph=600, componentCount=3]"
+
+
+# --- CoverageTable ---------------------------------------------------
+
+
+def test_coverage_table_get_glyph_id_returns_glyph_at_index() -> None:
+    # Upstream Java method is ``CoverageTable.getGlyphId(int)``;
+    # returns the GID at the requested coverage index.
+    cov = CoverageTable(glyph_array=(7, 11, 13))
+    assert cov.get_glyph_id(0) == 7
+    assert cov.get_glyph_id(1) == 11
+    assert cov.get_glyph_id(2) == 13
+
+
+def test_coverage_table_get_glyph_id_inverse_of_get_coverage_index() -> None:
+    # The two accessors are inverses for any in-range GID.
+    cov = CoverageTable(glyph_array=(7, 11, 13))
+    for gid in cov.get_glyph_array():
+        idx = cov.get_coverage_index(gid)
+        assert cov.get_glyph_id(idx) == gid
