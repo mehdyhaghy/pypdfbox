@@ -99,6 +99,22 @@ def test_hash_code() -> None:
         assert hash(test3) is not hash(test1)
 
 
+def test_hash_code_method_long_recipe() -> None:
+    # Mirrors upstream ``COSInteger.hashCode()`` directly — the Long recipe
+    # ``(int)(value ^ (value >> 32))``. Distinct from Python's ``hash()``
+    # which can collapse small ints to themselves.
+    for i in range(-1000, 3000, 200):
+        test1 = COSInteger.get(i)
+        test2 = COSInteger.get(i)
+        assert test1.hash_code() == test2.hash_code()
+
+
+def test_to_string_matches_upstream() -> None:
+    # Upstream ``COSInteger.toString()`` returns ``"COSInt{<value>}"``.
+    for i in range(-1000, 3000, 200):
+        assert COSInteger.get(i).to_string() == f"COSInt{{{i}}}"
+
+
 def test_float_value() -> None:
     for i in range(-1000, 3000, 200):
         assert COSInteger.get(i).float_value() == float(i)

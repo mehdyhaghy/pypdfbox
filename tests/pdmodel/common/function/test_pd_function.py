@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.common.function import (
     PDFunctionTypeIdentity,
 )
 
-
 # ---------- subtype identification ----------
 
 
@@ -765,3 +764,112 @@ def test_set_range_values_alias_with_none_removes_entry() -> None:
     fn.set_range_values(arr)
     fn.set_range_values(None)
     assert fn.get_range() is None
+
+
+# ---------- upstream-style lazy caching (PDFunction.java:42-45) ----------
+
+
+def test_get_domain_caches_array_after_first_lookup() -> None:
+    """Mirror upstream private ``domain`` field — repeated ``get_domain``
+    calls return the same cached COSArray instance."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.set_float_array([0.0, 1.0])
+    raw.set_item("Domain", domain)
+    fn = PDFunction.create(raw)
+    assert fn.get_domain() is fn.get_domain()
+
+
+def test_get_range_caches_array_after_first_lookup() -> None:
+    """Mirror upstream private ``range`` field — repeated ``get_range``
+    calls return the same cached COSArray instance."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    rng = COSArray()
+    rng.set_float_array([-1.0, 1.0])
+    raw.set_item("Range", rng)
+    fn = PDFunction.create(raw)
+    assert fn.get_range() is fn.get_range()
+
+
+def test_set_domain_invalidates_input_count_cache() -> None:
+    """Upstream PDFunction caches ``numberOfInputValues`` on first read
+    (line 211-216) — the setter must update both the array reference
+    and the cached pair count so a follow-up ``getNumberOfInputParameters``
+    reflects the new shape."""
+    fn = PDFunctionType2()
+    first = COSArray()
+    first.set_float_array([0.0, 1.0])  # 1 dimension
+    fn.set_domain(first)
+    assert fn.get_number_of_input_parameters() == 1
+    second = COSArray()
+    second.set_float_array([0.0, 1.0, 0.0, 1.0])  # 2 dimensions
+    fn.set_domain(second)
+    assert fn.get_number_of_input_parameters() == 2
+
+
+def test_set_range_invalidates_output_count_cache() -> None:
+    """Upstream caches ``numberOfOutputValues`` (line 161-172) — the
+    setter must invalidate it so the new shape is observed."""
+    fn = PDFunctionType2()
+    first = COSArray()
+    first.set_float_array([0.0, 1.0])
+    fn.set_range(first)
+    assert fn.get_number_of_output_parameters() == 1
+    second = COSArray()
+    second.set_float_array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+    fn.set_range(second)
+    assert fn.get_number_of_output_parameters() == 3
+
+
+def test_number_of_input_parameters_caches_result() -> None:
+    """First call computes, second call reads from the cached field —
+    parity with upstream's ``numberOfInputValues`` sentinel-based cache."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.set_float_array([0.0, 1.0, 0.0, 1.0])
+    raw.set_item("Domain", domain)
+    fn = PDFunction.create(raw)
+    # Two consecutive reads — both must agree on the count.
+    assert fn.get_number_of_input_parameters() == 2
+    assert fn.get_number_of_input_parameters() == 2
+
+
+def test_number_of_output_parameters_caches_result() -> None:
+    """First call computes, second call reads from the cached field."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    rng = COSArray()
+    rng.set_float_array([0.0, 1.0])
+    raw.set_item("Range", rng)
+    fn = PDFunction.create(raw)
+    assert fn.get_number_of_output_parameters() == 1
+    assert fn.get_number_of_output_parameters() == 1
+
+
+def test_set_domain_values_alias_invalidates_cache() -> None:
+    """Both setter spellings (``set_domain``/``set_domain_values``) keep
+    the cache state consistent."""
+    fn = PDFunctionType2()
+    first = COSArray()
+    first.set_float_array([0.0, 1.0])
+    fn.set_domain_values(first)
+    assert fn.get_number_of_input_parameters() == 1
+    second = COSArray()
+    second.set_float_array([0.0, 1.0, 0.0, 1.0])
+    fn.set_domain_values(second)
+    assert fn.get_number_of_input_parameters() == 2
+
+
+def test_set_range_values_alias_invalidates_cache() -> None:
+    fn = PDFunctionType2()
+    first = COSArray()
+    first.set_float_array([0.0, 1.0])
+    fn.set_range_values(first)
+    assert fn.get_number_of_output_parameters() == 1
+    second = COSArray()
+    second.set_float_array([0.0, 1.0, 0.0, 1.0])
+    fn.set_range_values(second)
+    assert fn.get_number_of_output_parameters() == 2

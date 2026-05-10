@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import logging
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
@@ -256,6 +258,76 @@ class Filter(ABC):
         raise MissingImageReaderException(
             f"Cannot read {format_name} image: {error_cause}"
         )
+
+    # ------------------------------------------------------------------
+    # Static filter-chain decoder (mirrors upstream's
+    # ``static RandomAccessRead Filter.decode(InputStream, List<Filter>,
+    #     COSDictionary, DecodeOptions, List<DecodeResult>)``).
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def decode_chain(
+        encoded: BinaryIO,
+        filter_list: Sequence[Filter],
+        parameters: COSDictionary | None = None,
+        options: object | None = None,
+        results: list[DecodeResult] | None = None,
+    ) -> BinaryIO:
+        """Apply a chain of filters to ``encoded`` and return the decoded buffer.
+
+        Mirrors ``Filter.decode(InputStream, List<Filter>, COSDictionary,
+        DecodeOptions, List<DecodeResult>)`` (upstream Java lines 241-309).
+        Each filter in ``filter_list`` is invoked in turn; the output of
+        filter ``i`` becomes the input of filter ``i+1``. Duplicate filter
+        instances are deduplicated (preserving order) — upstream behaviour
+        for malformed streams that double-list a filter, e.g.
+        ``[/FlateDecode /FlateDecode]`` when only one application is
+        intended.
+
+        ``options`` is accepted for upstream signature parity. The
+        DecodeOptions value type is not yet ported, so this argument is
+        currently ignored — the four-arg :meth:`decode` of each filter is
+        called directly. Filters' single-shot ``decode`` already handles
+        the parameters dictionary it needs.
+
+        ``results``, if provided, is appended to with the per-filter
+        :class:`DecodeResult`. Returns a seekable buffer positioned at
+        offset 0 holding the fully-decoded bytes.
+
+        Raises :class:`ValueError` when ``filter_list`` is empty (upstream
+        raises ``IllegalArgumentException``).
+        """
+        if not filter_list:
+            raise ValueError("Empty filterList")
+        # Deduplicate while preserving order — upstream uses a HashSet
+        # round-trip and warns when duplicates are removed.
+        if len(filter_list) > 1 and len(set(filter_list)) != len(filter_list):
+            seen: list[Filter] = []
+            for filt in filter_list:
+                if filt not in seen:
+                    seen.append(filt)
+            filter_list = seen
+            _LOG.warning("Removed duplicated filter entries")
+        params = parameters if parameters is not None else COSDictionary()
+        current_input: BinaryIO = encoded
+        buffer = io.BytesIO()
+        for index, filt in enumerate(filter_list):
+            buffer = io.BytesIO()
+            try:
+                result = filt.decode(current_input, buffer, params, index)
+            finally:
+                # Mirror upstream's ``IOUtils.closeQuietly(input)`` —
+                # never propagate a close-time error. The original
+                # caller-supplied ``encoded`` stream is closed too, which
+                # matches Java behavior.
+                with contextlib.suppress(Exception):
+                    current_input.close()
+            if results is not None:
+                results.append(result)
+            buffer.seek(0)
+            current_input = buffer
+        buffer.seek(0)
+        return buffer
 
     @staticmethod
     def find_raster_reader(format_name: str, error_cause: str) -> Callable[..., object]:

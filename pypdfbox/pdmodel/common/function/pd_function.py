@@ -59,6 +59,14 @@ class PDFunction:
                 "PDFunction expects COSDictionary or COSStream, "
                 f"got {type(function).__name__}"
             )
+        # Mirror upstream private fields PDFunction.java:42-45 — cached
+        # ``/Domain`` / ``/Range`` arrays + lazily-computed pair counts.
+        # Upstream uses ``-1`` as the "not yet computed" sentinel for the
+        # parameter counts; we use ``None`` for the same effect.
+        self._cached_domain: COSArray | None = None
+        self._cached_range: COSArray | None = None
+        self._number_of_input_values: int | None = None
+        self._number_of_output_values: int | None = None
 
     # ---------- factory ----------
 
@@ -134,23 +142,37 @@ class PDFunction:
     # ---------- /Domain ----------
 
     def get_domain(self) -> COSArray | None:
-        item = self._function_dictionary.get_dictionary_object(_DOMAIN)
-        if isinstance(item, COSArray):
-            return item
-        return None
+        # Mirror upstream PDFunction.java:278-285 — cache the lookup so
+        # repeated callers don't re-resolve the dictionary entry. The
+        # cache is invalidated by ``set_domain`` / ``set_domain_values``.
+        if self._cached_domain is None:
+            item = self._function_dictionary.get_dictionary_object(_DOMAIN)
+            if isinstance(item, COSArray):
+                self._cached_domain = item
+        return self._cached_domain
 
     def set_domain(self, domain: COSArray | None) -> None:
         if domain is None:
             self._function_dictionary.remove_item(_DOMAIN)
         else:
             self._function_dictionary.set_item(_DOMAIN, domain)
+        # Update + invalidate the upstream cache state PDFunction.java:241.
+        self._cached_domain = domain
+        self._number_of_input_values = None
 
     def get_number_of_input_parameters(self) -> int:
-        """Pairs in ``/Domain`` — one (min, max) per input dimension."""
-        domain = self.get_domain()
-        if domain is None:
-            return 0
-        return domain.size() // 2
+        """Pairs in ``/Domain`` — one (min, max) per input dimension.
+
+        Mirrors PDFunction.java:209-217 with the upstream lazy-cache —
+        the pair count is computed on first call and stored on the
+        instance. Returns ``0`` when ``/Domain`` is absent."""
+        if self._number_of_input_values is None:
+            domain = self.get_domain()
+            if domain is None:
+                self._number_of_input_values = 0
+            else:
+                self._number_of_input_values = domain.size() // 2
+        return self._number_of_input_values
 
     def get_domain_for_input(self, n: int) -> tuple[float, float]:
         """Return the ``(min, max)`` ``/Domain`` pair for input dimension ``n``.
@@ -190,25 +212,40 @@ class PDFunction:
     # ---------- /Range ----------
 
     def get_range(self) -> COSArray | None:
-        item = self._function_dictionary.get_dictionary_object(_RANGE)
-        if isinstance(item, COSArray):
-            return item
-        return None
+        # Mirror upstream PDFunction.java:264-271 — cache the lookup so
+        # repeated callers don't re-resolve the dictionary entry. The
+        # cache is invalidated by ``set_range`` / ``set_range_values``.
+        if self._cached_range is None:
+            item = self._function_dictionary.get_dictionary_object(_RANGE)
+            if isinstance(item, COSArray):
+                self._cached_range = item
+        return self._cached_range
 
     def set_range(self, value: COSArray | None) -> None:
         if value is None:
             self._function_dictionary.remove_item(_RANGE)
         else:
             self._function_dictionary.set_item(_RANGE, value)
+        # Update + invalidate the upstream cache state PDFunction.java:198.
+        self._cached_range = value
+        self._number_of_output_values = None
 
     def get_number_of_output_parameters(self) -> int:
         """Pairs in ``/Range`` — one (min, max) per output dimension. Returns
         ``0`` when ``/Range`` is absent (legal for Type 2 / 3 per PDF 32000-1
-        §7.10.3)."""
-        rng = self.get_range()
-        if rng is None:
-            return 0
-        return rng.size() // 2
+        §7.10.3).
+
+        Mirrors PDFunction.java:159-174 with the upstream lazy-cache —
+        the pair count is computed on first call and stored on the
+        instance.
+        """
+        if self._number_of_output_values is None:
+            rng = self.get_range()
+            if rng is None:
+                self._number_of_output_values = 0
+            else:
+                self._number_of_output_values = rng.size() // 2
+        return self._number_of_output_values
 
     def get_range_for_output(self, n: int) -> tuple[float, float]:
         """Return the ``(min, max)`` ``/Range`` pair for output dimension ``n``.

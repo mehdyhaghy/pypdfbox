@@ -118,6 +118,54 @@ class Type1FontUtil:
         the font's ``Private`` dict (defaults to 4)."""
         return _decrypt(bytes(cipher), _CHARSTRING_SEED, len_iv)
 
+    # ---------- low-level cipher (mirror upstream private statics) ----------
+    #
+    # Upstream ``Type1FontUtil`` keeps ``encrypt(plaintextBytes, r, n)`` and
+    # ``decrypt(ciphertextBytes, r, n)`` as private static helpers (Java
+    # lines 95 and 140). We expose them as classmethods so callers that
+    # need a custom seed (e.g. interoperability shims, fuzzing harnesses)
+    # can drive the cipher directly without reaching into the module's
+    # underscored functions.
+    #
+    # NOTE: these mirror upstream byte-for-byte: the prefix slot is
+    # zero-padded (NOT random), so the output is fully deterministic.
+    # The high-level :meth:`eexec_encrypt` / :meth:`charstring_encrypt`
+    # entries diverge from upstream by using fresh random bytes for the
+    # prefix (Adobe Type 1 spec §7), which is recorded in CHANGES.md.
+
+    @classmethod
+    def encrypt(cls, plaintext_bytes: bytes | bytearray, r: int, n: int) -> bytes:
+        """Generic Adobe Type 1 encrypt with explicit seed ``r`` and
+        zero-prefix length ``n``.
+
+        Mirrors upstream ``encrypt(byte[], int, int)`` (Java line 95)
+        exactly: the leading ``n`` bytes of the buffer are zeros, not
+        random. Use :meth:`eexec_encrypt` / :meth:`charstring_encrypt`
+        for spec-correct random-prefix behaviour."""
+        if n < 0:
+            raise ValueError("n must be >= 0")
+        plain = bytes(plaintext_bytes)
+        # Upstream allocates length+n and copies plaintext starting at
+        # index n — leaving n leading zero bytes, then encrypts the lot.
+        buf = bytes(n) + plain
+        out = bytearray(len(buf))
+        rr = r & 0xFFFF
+        for i, b in enumerate(buf):
+            cipher = (b ^ (rr >> 8)) & 0xFF
+            out[i] = cipher
+            rr = ((cipher + rr) * _C1 + _C2) & 0xFFFF
+        return bytes(out)
+
+    @classmethod
+    def decrypt(cls, ciphertext_bytes: bytes | bytearray, r: int, n: int) -> bytes:
+        """Generic Adobe Type 1 decrypt with explicit seed ``r`` and
+        random-prefix length ``n``.
+
+        Mirrors upstream ``decrypt(byte[], int, int)`` (Java line 140).
+        The first ``n`` output bytes are the cipher's warm-up garbage
+        and are dropped before the result is returned."""
+        return _decrypt(bytes(ciphertext_bytes), r, n)
+
     # ---------- PostScript hex helpers ----------
     #
     # PFA (ASCII) Type 1 fonts present the eexec section as ASCII hex

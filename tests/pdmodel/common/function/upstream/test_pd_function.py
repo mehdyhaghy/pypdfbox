@@ -315,3 +315,94 @@ def test_eval_uses_clip_to_range_in_subclasses() -> None:
     fn = PDFunctionType2(raw)
     # Without /Range clip the un-clipped output would be 2.0.
     assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+# ---------- private cache fields — PDFunction.java:42-45 ----------
+# Upstream caches ``domain`` / ``range`` (resolved COSArray) and
+# ``numberOfInputValues`` / ``numberOfOutputValues`` (computed pair counts)
+# as private fields with a ``-1`` / ``null`` sentinel. The tests below assert
+# that pypdfbox's port has the same observable caching behaviour.
+
+
+def test_set_range_values_updates_cached_array_reference() -> None:
+    """Upstream ``setRangeValues`` (line 196-200) writes both the
+    dictionary entry AND the private ``range`` cache. Subsequent
+    ``getRangeValues`` must observe the new array without re-reading
+    the dictionary."""
+    fn = PDFunctionType2(COSDictionary())
+    rng = COSArray()
+    rng.set_float_array([0.0, 1.0])
+    fn.set_range_values(rng)
+    # First read primes the cache; second read returns the same instance.
+    first = fn.get_range_values()
+    second = fn.get_range_values()
+    assert first is second is rng
+
+
+def test_set_domain_values_updates_cached_array_reference() -> None:
+    """Same contract as range — ``setDomainValues`` (line 239-243)
+    primes the private ``domain`` cache."""
+    fn = PDFunctionType2(COSDictionary())
+    domain = COSArray()
+    domain.set_float_array([0.0, 1.0, 0.0, 1.0])
+    fn.set_domain_values(domain)
+    first = fn.get_domain_values()
+    second = fn.get_domain_values()
+    assert first is second is domain
+
+
+def test_input_parameter_count_uses_cached_value() -> None:
+    """Mirrors PDFunction.java:211-216 — the count is computed once
+    and stored in ``numberOfInputValues``. Two consecutive calls must
+    return the identical value."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.set_float_array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+    raw.set_item("Domain", domain)
+    fn = PDFunctionType2(raw)
+    assert fn.get_number_of_input_parameters() == 3
+    assert fn.get_number_of_input_parameters() == 3
+
+
+def test_output_parameter_count_uses_cached_value() -> None:
+    """Mirrors PDFunction.java:161-172 — the count is computed once
+    and stored in ``numberOfOutputValues``."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    rng = COSArray()
+    rng.set_float_array([0.0, 1.0, 0.0, 1.0])
+    raw.set_item("Range", rng)
+    fn = PDFunctionType2(raw)
+    assert fn.get_number_of_output_parameters() == 2
+    assert fn.get_number_of_output_parameters() == 2
+
+
+def test_set_domain_values_invalidates_input_count_cache() -> None:
+    """Upstream ``setDomainValues`` (line 241) updates the cached
+    ``domain`` reference; the next ``getNumberOfInputParameters``
+    call recomputes off the new array (its ``numberOfInputValues``
+    sentinel is reset implicitly via the upstream contract)."""
+    fn = PDFunctionType2(COSDictionary())
+    one_dim = COSArray()
+    one_dim.set_float_array([0.0, 1.0])
+    fn.set_domain_values(one_dim)
+    assert fn.get_number_of_input_parameters() == 1
+    two_dim = COSArray()
+    two_dim.set_float_array([0.0, 1.0, 0.0, 1.0])
+    fn.set_domain_values(two_dim)
+    assert fn.get_number_of_input_parameters() == 2
+
+
+def test_set_range_values_invalidates_output_count_cache() -> None:
+    """Same contract for ``/Range`` — replacing the array via
+    ``setRangeValues`` flushes the cached output-pair count."""
+    fn = PDFunctionType2(COSDictionary())
+    one_dim = COSArray()
+    one_dim.set_float_array([0.0, 1.0])
+    fn.set_range_values(one_dim)
+    assert fn.get_number_of_output_parameters() == 1
+    three_dim = COSArray()
+    three_dim.set_float_array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+    fn.set_range_values(three_dim)
+    assert fn.get_number_of_output_parameters() == 3

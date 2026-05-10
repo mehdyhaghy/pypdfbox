@@ -67,3 +67,40 @@ def test_visitor_dispatch() -> None:
     i = COSInteger(99)
     i.accept(v)
     assert v.calls == [("integer", i)]
+
+
+def test_to_string_matches_upstream_format() -> None:
+    # Upstream COSInteger.toString() returns "COSInt{<value>}".
+    assert COSInteger(42).to_string() == "COSInt{42}"
+    assert COSInteger(-1).to_string() == "COSInt{-1}"
+    assert COSInteger(0).to_string() == "COSInt{0}"
+
+
+def test_hash_code_matches_long_recipe() -> None:
+    # Java: (int)(value ^ (value >> 32)). For values that fit in 32 bits
+    # the high half is 0 (or -1 for negatives) so the bottom half dominates.
+    assert COSInteger(0).hash_code() == 0
+    assert COSInteger(1).hash_code() == 1
+    # 0xFFFFFFFF -> top half 0, bottom half 0xFFFFFFFF -> -1 (signed int32)
+    assert COSInteger(0xFFFFFFFF).hash_code() == -1
+    # Equal values yield equal hash codes.
+    assert COSInteger(12345).hash_code() == COSInteger(12345).hash_code()
+
+
+def test_get_invalid_factory() -> None:
+    sentinel_max = COSInteger.get_invalid(True)
+    sentinel_min = COSInteger.get_invalid(False)
+    assert sentinel_max.long_value() == 2**63 - 1
+    assert sentinel_min.long_value() == -(2**63)
+    assert sentinel_max.is_valid() is False
+    assert sentinel_min.is_valid() is False
+    # Each call returns a fresh instance (matches Java private factory).
+    assert COSInteger.get_invalid(True) is not COSInteger.get_invalid(True)
+
+
+def test_out_of_range_sentinels_built_via_get_invalid() -> None:
+    # Module-level sentinels carry the same shape as get_invalid output.
+    assert COSInteger.OUT_OF_RANGE_MAX.long_value() == 2**63 - 1  # type: ignore[attr-defined]
+    assert COSInteger.OUT_OF_RANGE_MIN.long_value() == -(2**63)  # type: ignore[attr-defined]
+    assert not COSInteger.OUT_OF_RANGE_MAX.is_valid()  # type: ignore[attr-defined]
+    assert not COSInteger.OUT_OF_RANGE_MIN.is_valid()  # type: ignore[attr-defined]

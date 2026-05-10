@@ -99,6 +99,43 @@ class COSInteger(COSNumber):
         """Java-style value-equality predicate. Mirrors ``COSInteger.equals``."""
         return isinstance(other, COSInteger) and self._value == other._value
 
+    def hash_code(self) -> int:
+        """Mirror Java's ``COSInteger.hashCode()``.
+
+        Upstream uses the ``java.lang.Long`` recipe ``(int)(value ^ (value >> 32))``
+        — XOR the high and low 32-bit halves of the 64-bit value and truncate
+        to a signed 32-bit int. We replicate the bit-level result here so two
+        ``COSInteger``s with the same numeric value yield equal hash codes
+        even when the underlying Python int range exceeds ``long``.
+        """
+        # Mask to unsigned 64-bit, arithmetic shift right 32 (preserves sign
+        # by using the original signed value), XOR, then truncate to int32.
+        v = self._value
+        # Java arithmetic >> 32 on a signed long.
+        high = v >> 32
+        low = v & 0xFFFFFFFF
+        xored = (high ^ low) & 0xFFFFFFFF
+        # Convert to signed 32-bit.
+        if xored >= 0x80000000:
+            xored -= 0x1_0000_0000
+        return xored
+
+    def to_string(self) -> str:
+        """Mirror Java's ``COSInteger.toString()`` — ``"COSInt{<value>}"``."""
+        return f"COSInt{{{self._value}}}"
+
+    @classmethod
+    def get_invalid(cls, max_value: bool) -> COSInteger:
+        """Mirror Java's private ``COSInteger.getInvalid(boolean)`` factory.
+
+        Returns a fresh ``COSInteger`` carrying ``Long.MAX_VALUE`` (or
+        ``Long.MIN_VALUE``) and flagged invalid — used by upstream to build
+        the ``OUT_OF_RANGE_MAX`` / ``OUT_OF_RANGE_MIN`` sentinels.
+        """
+        instance = cls(_LONG_MAX if max_value else _LONG_MIN)
+        instance.set_valid(False)
+        return instance
+
     def compare_to(self, other: COSInteger) -> int:
         """Numeric comparison returning -1, 0, or 1 — mirrors
         ``COSInteger.compareTo(COSInteger)`` (Java's ``Comparable`` contract).

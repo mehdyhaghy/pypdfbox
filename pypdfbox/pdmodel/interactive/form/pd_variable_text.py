@@ -131,7 +131,7 @@ class PDVariableText(PDTerminalField):
     # ---------- /RV ----------
 
     def get_rich_text_value(self) -> str | None:
-        return self._get_string_or_stream(self.get_inheritable_attribute(_RV))
+        return self.get_string_or_stream(self.get_inheritable_attribute(_RV))
 
     def set_rich_text_value(self, value: str | None) -> None:
         value = _require_text_or_none(value, "set_rich_text_value")
@@ -151,24 +151,32 @@ class PDVariableText(PDTerminalField):
 
     # ---------- /DA + /DS + /RV helper ----------
 
-    def _get_string_or_stream(self, base: COSBase | None) -> str | None:
+    def get_string_or_stream(self, base: COSBase | None) -> str | None:
         """Return a text-or-stream payload as a Python ``str``.
 
-        Mirrors upstream ``PDVariableText.getStringOrStream``: some
-        dictionary entries (``/V``, ``/DV``, ``/RV``) admit either a
-        ``COSString`` or a ``COSStream`` body. ``COSString`` returns its
-        decoded text, ``COSStream`` decodes through ``to_text_string``
-        (matching upstream ``COSStream.toTextString``). Returns ``None``
-        when the entry is missing or any other COS type — pypdfbox keeps
-        the explicit ``None`` for callers that want to distinguish "no
-        entry" from "empty payload" (upstream returns ``""`` in both
-        cases; see CHANGES.md).
+        Mirrors upstream ``PDVariableText.getStringOrStream`` (declared
+        ``protected final`` in Java; surfaced as a regular method in
+        pypdfbox following the project convention for ``protected``
+        members — see ``apply_change`` etc.). Some dictionary entries
+        (``/V``, ``/DV``, ``/RV``) admit either a ``COSString`` or a
+        ``COSStream`` body. ``COSString`` returns its decoded text,
+        ``COSStream`` decodes through ``to_text_string`` (matching
+        upstream ``COSStream.toTextString``). Returns ``None`` when the
+        entry is missing or any other COS type — pypdfbox keeps the
+        explicit ``None`` for callers that want to distinguish "no entry"
+        from "empty payload" (upstream returns ``""`` in both cases; see
+        CHANGES.md).
         """
         if isinstance(base, COSString):
             return base.get_string()
         if isinstance(base, COSStream):
             return base.to_text_string()
         return None
+
+    # Backwards-compatible alias for callers that used the underscore-
+    # prefixed name before ``get_string_or_stream`` was promoted to the
+    # public surface (Java ``protected final`` parity).
+    _get_string_or_stream = get_string_or_stream
 
 
 __all__ = ["PDVariableText"]
