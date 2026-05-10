@@ -365,3 +365,98 @@ def test_read_expected_mismatch_raises() -> None:
     p = parser(b"%PSF-1.7")
     with pytest.raises(PDFParseError):
         p.read_expected(b"%PDF-")
+
+
+# ---------- read_expected_string (upstream readExpectedString) ----------
+
+
+def test_read_expected_string_consumes_pattern() -> None:
+    p = parser(b"true rest")
+    p.read_expected_string(b"true")
+    assert p.read_byte() == ord(" ")
+
+
+def test_read_expected_string_skip_spaces_eats_surrounding_whitespace() -> None:
+    p = parser(b"   true   rest")
+    p.read_expected_string(b"true", skip_spaces=True)
+    assert p.read_byte() == ord("r")
+
+
+def test_read_expected_string_accepts_str() -> None:
+    parser(b"null").read_expected_string("null")
+
+
+def test_read_expected_string_mismatch_raises() -> None:
+    p = parser(b"truu")
+    with pytest.raises(PDFParseError):
+        p.read_expected_string(b"true")
+
+
+# ---------- read_string_with_length (upstream deprecated overload) ----------
+
+
+def test_read_string_with_length_caps_at_length() -> None:
+    assert parser(b"abcdef").read_string_with_length(3) == "abc"
+
+
+def test_read_string_with_length_stops_at_whitespace() -> None:
+    assert parser(b"hi rest").read_string_with_length(20) == "hi"
+
+
+def test_read_string_with_length_stops_at_delimiter_subset() -> None:
+    # Upstream stops at '[', '<', '(', '/'.
+    for marker in (b"[", b"<", b"(", b"/"):
+        p = parser(b"foo" + marker + b"bar")
+        assert p.read_string_with_length(20) == "foo"
+        assert p.read_byte() == marker[0]
+
+
+# ---------- decode_buffer (upstream decodeBuffer) ----------
+
+
+def test_decode_buffer_utf8_first() -> None:
+    assert BaseParser.decode_buffer("naïve".encode("utf-8")) == "naïve"
+
+
+def test_decode_buffer_falls_back_to_windows_1252() -> None:
+    # 0x80 is undefined in Latin-1 but maps to '€' (U+20AC) in Windows-1252.
+    assert BaseParser.decode_buffer(b"\x80") == "€"
+
+
+def test_decode_buffer_plain_ascii() -> None:
+    assert BaseParser.decode_buffer(b"hello") == "hello"
+
+
+# ---------- get_object_key (upstream getObjectKey) ----------
+
+
+def test_get_object_key_without_document_returns_fresh_key() -> None:
+    from pypdfbox.cos import COSObjectKey
+
+    p = parser(b"")
+    key = p.get_object_key(7, 0)
+    assert isinstance(key, COSObjectKey)
+    assert (key.object_number, key.generation_number) == (7, 0)
+
+
+def test_get_object_key_reuses_xref_table_instance() -> None:
+    from pypdfbox.cos import COSDocument, COSObjectKey
+
+    doc = COSDocument()
+    cached = COSObjectKey(7, 0)
+    doc._xref_table[cached] = 100  # noqa: SLF001 — populate xref directly for the test
+
+    p = parser(b"")
+    p._document = doc  # noqa: SLF001 — BaseParser exposes only the property publicly
+    found = p.get_object_key(7, 0)
+    assert found is cached
+
+    # Subsequent lookups for keys not in the xref still return a fresh
+    # instance with the right number/gen pair.
+    other = p.get_object_key(99, 0)
+    assert (other.object_number, other.generation_number) == (99, 0)
+    assert other is not cached
+
+
+def test_document_property_defaults_to_none() -> None:
+    assert parser(b"").document is None

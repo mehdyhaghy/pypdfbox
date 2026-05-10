@@ -63,3 +63,97 @@ def test_visitor_dispatch() -> None:
     n = COSName.get_pdf_name("Foo")
     n.accept(v)
     assert v.calls == [("name", n)]
+
+
+def test_is_empty_true_for_empty_string() -> None:
+    assert COSName.get_pdf_name("").is_empty() is True
+
+
+def test_is_empty_false_for_non_empty_string() -> None:
+    assert COSName.get_pdf_name("Type").is_empty() is False
+
+
+def test_is_empty_for_empty_bytes() -> None:
+    assert COSName.get_pdf_name(b"").is_empty() is True
+
+
+def test_compare_to_returns_zero_for_equal_names() -> None:
+    a = COSName.get_pdf_name("Type")
+    b = COSName.get_pdf_name("Type")
+    assert a.compare_to(b) == 0
+
+
+def test_compare_to_lexicographic_ordering() -> None:
+    a = COSName.get_pdf_name("AAA")
+    b = COSName.get_pdf_name("AAB")
+    assert a.compare_to(b) < 0
+    assert b.compare_to(a) > 0
+
+
+def test_compare_to_shorter_name_sorts_first() -> None:
+    a = COSName.get_pdf_name("A")
+    b = COSName.get_pdf_name("AA")
+    assert a.compare_to(b) < 0
+
+
+def test_compare_to_uses_unsigned_byte_comparison() -> None:
+    # 0x80 (high-bit set) must sort after 0x7F (ASCII), as in PDFBox's
+    # unsigned comparison.
+    high = COSName.get_pdf_name(b"\x80")
+    low = COSName.get_pdf_name(b"\x7f")
+    assert high.compare_to(low) > 0
+    assert low.compare_to(high) < 0
+
+
+def test_compare_to_with_none_returns_one() -> None:
+    assert COSName.get_pdf_name("Type").compare_to(None) == 1
+
+
+def test_ordering_with_lt_operator() -> None:
+    names = [
+        COSName.get_pdf_name("C"),
+        COSName.get_pdf_name("A"),
+        COSName.get_pdf_name("B"),
+    ]
+    sorted_names = sorted(names)
+    assert [n.get_name() for n in sorted_names] == ["A", "B", "C"]
+
+
+def test_ordering_operators_only_compare_cosnames() -> None:
+    n = COSName.get_pdf_name("Type")
+    # Comparing with non-COSName must raise TypeError, mirroring Java's
+    # generic Comparable<COSName> bound.
+    import pytest
+
+    with pytest.raises(TypeError):
+        _ = n < "Type"  # type: ignore[operator]
+
+
+def test_clear_resources_drops_dynamic_names() -> None:
+    # Dynamically interned names lose their slot after clear_resources().
+    # Snapshot/restore the dynamic map so we don't break interning identity
+    # for other tests that expect `COSName(x) is COSName(x)`.
+    saved = dict(COSName._name_map)
+    try:
+        before = COSName.get_pdf_name("ClearResourcesProbe")
+        COSName.clear_resources()
+        after = COSName.get_pdf_name("ClearResourcesProbe")
+        assert before is not after
+        assert before == after
+    finally:
+        COSName._name_map.clear()
+        COSName._name_map.update(saved)
+
+
+def test_clear_resources_preserves_predefined_constants() -> None:
+    # Predefined static constants live in the common-name map and survive
+    # clear_resources(), mirroring upstream PDFBox.
+    saved = dict(COSName._name_map)
+    try:
+        type_before = COSName.TYPE  # type: ignore[attr-defined]
+        COSName.clear_resources()
+        assert COSName.get_pdf_name("Type") is type_before
+        assert COSName.TYPE is type_before  # type: ignore[attr-defined]
+    finally:
+        COSName._name_map.clear()
+        COSName._name_map.update(saved)

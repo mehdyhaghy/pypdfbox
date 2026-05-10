@@ -175,3 +175,35 @@ def test_is_set_direct() -> None:
     assert s.is_direct()
     s.set_direct(False)
     assert not s.is_direct()
+
+
+def test_set_value_replaces_payload() -> None:
+    # Upstream ``COSString.setValue(byte[])`` — deprecated but still
+    # part of the published API in 3.0; mirrored 1:1.
+    s = COSString(b"old")
+    s.set_value(b"new")
+    assert s.get_bytes() == b"new"
+
+
+def test_constructor_force_hex_overload() -> None:
+    # Mirrors ``COSString(byte[], boolean)`` and
+    # ``COSString(String, boolean)`` constructors — set the hex flag at
+    # construction time without the post-init ``setForceHexForm`` call.
+    s_bytes = COSString(b"abc", force_hex=True)
+    assert s_bytes.is_force_hex_form()
+    s_str = COSString("abc", force_hex=True)
+    assert s_str.is_force_hex_form()
+
+
+def test_force_parsing_recovers_malformed_hex() -> None:
+    # Mirrors upstream ``FORCE_PARSING`` system-property branch in
+    # ``parseHex`` (lines 165-169 + 182-186 of COSString.java) — each
+    # malformed pair becomes ``?`` (0x3F) and a warning is logged.
+    saved = COSString.FORCE_PARSING
+    COSString.FORCE_PARSING = True
+    try:
+        # 'H' (0x48) + malformed pair "ZZ" + 'o' (0x6F).
+        s = COSString.parse_hex("48ZZ6F")
+        assert s.get_bytes() == b"H?o"
+    finally:
+        COSString.FORCE_PARSING = saved

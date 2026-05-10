@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from .cos_base import COSBase
 from .i_cos_visitor import ICOSVisitor
@@ -17,7 +17,19 @@ class COSString(COSBase):
     that live alongside the parser. Here we keep raw bytes only.
     """
 
-    def __init__(self, value: bytes | bytearray | memoryview | str) -> None:
+    # Mirrors upstream ``COSString.FORCE_PARSING`` — a JVM-level system
+    # property in Java (``Boolean.getBoolean("org.apache.pdfbox.forceParsing")``).
+    # When True, ``parse_hex`` substitutes ``?`` for malformed hex digits
+    # instead of raising; default is False (strict). Exposed as a class
+    # attribute so callers can flip it the same way upstream code does
+    # (``COSString.FORCE_PARSING = True``).
+    FORCE_PARSING: ClassVar[bool] = False
+
+    def __init__(
+        self,
+        value: bytes | bytearray | memoryview | str,
+        force_hex: bool = False,
+    ) -> None:
         super().__init__()
         if isinstance(value, str):
             # Mirrors PDFBox's ``new COSString(String)`` constructor: if
@@ -33,7 +45,7 @@ class COSString(COSBase):
             else:
                 value = b"\xfe\xff" + value.encode("utf-16-be")
         self._bytes = bytes(value)
-        self._force_hex_form = False
+        self._force_hex_form = force_hex
 
     @property
     def bytes_(self) -> bytes:
@@ -44,6 +56,16 @@ class COSString(COSBase):
 
     def getBytes(self) -> bytes:  # noqa: N802 - upstream Java name
         return self.get_bytes()
+
+    def set_value(self, value: bytes | bytearray | memoryview) -> None:
+        """Replace the raw byte payload.
+
+        Mirrors upstream ``COSString.setValue(byte[])`` (deprecated in
+        PDFBox 3.0 — kept for API parity; will be removed when upstream
+        removes it). Copies the input so callers can mutate their own
+        buffer without affecting this instance.
+        """
+        self._bytes = bytes(value)
 
     def get_string(self) -> str:
         """Decode using the same fallback PDFBox uses for text strings:
@@ -104,20 +126,51 @@ class COSString(COSBase):
     def parse_hex(cls, hex_text: str) -> COSString:
         """Construct from the body of a hex-string literal ``<...>``.
 
-        Whitespace is ignored; an odd number of digits is implicitly
-        padded with a trailing ``0`` per ISO 32000-1 §7.3.4.3.
+        Mirrors upstream ``COSString.parseHex(String)``:
+
+        * Only **leading and trailing** whitespace is skipped — internal
+          whitespace is treated as a malformed digit and raises
+          ``OSError`` (PDFBox throws ``IOException``) unless
+          :attr:`FORCE_PARSING` is True, in which case each malformed
+          digit becomes ``?`` (0x3F).
+        * An odd number of digits is implicitly padded with a trailing
+          ``0`` per ISO 32000-1 §7.3.4.3.
+        * The returned :class:`COSString` is **not** marked as hex-form;
+          upstream returns ``new COSString(bytes)`` with the default
+          (literal) form so the writer is free to choose.
         """
-        cleaned = "".join(c for c in hex_text if not c.isspace())
-        if len(cleaned) % 2 == 1:
-            cleaned += "0"
-        try:
-            data = bytes.fromhex(cleaned)
-        except ValueError as exc:
-            # Mirrors PDFBox's IOException — translates to OSError in pypdfbox.
-            raise OSError(f"invalid hex string: {hex_text!r}") from exc
-        s = cls(data)
-        s.set_force_hex_form(True)
-        return s
+        # Trim leading and trailing whitespace only (Java
+        # ``Character.isWhitespace`` is roughly Python ``str.isspace`` —
+        # both cover the ASCII whitespace set used in PDF hex strings).
+        end = len(hex_text)
+        while end > 0 and hex_text[end - 1].isspace():
+            end -= 1
+        start = 0
+        while start < end and hex_text[start].isspace():
+            start += 1
+        body = hex_text[start:end]
+
+        # Pad odd-length input with a trailing "0" (ISO 32000-1 §7.3.4.3).
+        if len(body) % 2 == 1:
+            body += "0"
+
+        # Walk in pairs so we can reject internal whitespace and other
+        # non-hex characters strictly (``bytes.fromhex`` is lenient about
+        # embedded whitespace, but upstream's ``Hex.getHexValue``
+        # returns -1 for anything outside ``0-9a-fA-F`` and raises).
+        # ``FORCE_PARSING`` substitutes ``?`` (0x3F) for malformed pairs
+        # and logs a warning, mirroring the Java behaviour.
+        _hex_digits = "0123456789abcdefABCDEF"
+        buf = bytearray(len(body) // 2)
+        for i in range(0, len(body), 2):
+            pair = body[i : i + 2]
+            if pair[0] in _hex_digits and pair[1] in _hex_digits:
+                buf[i // 2] = int(pair, 16)
+            elif cls.FORCE_PARSING:
+                buf[i // 2] = 0x3F
+            else:
+                raise OSError(f"Invalid hex string: {hex_text}")
+        return cls(bytes(buf))
 
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_string(self)

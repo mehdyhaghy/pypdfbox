@@ -16,10 +16,37 @@ def test_construct_from_str_uses_latin1() -> None:
     assert s.get_bytes() == b"hello"
 
 
+def test_construct_with_force_hex_flag() -> None:
+    # Mirrors upstream ``COSString(byte[], boolean)`` /
+    # ``COSString(String, boolean)`` constructors — flag set at
+    # construction time, no need to flip it afterwards.
+    s = COSString(b"hello", force_hex=True)
+    assert s.is_force_hex_form()
+    s2 = COSString("hello", force_hex=True)
+    assert s2.is_force_hex_form()
+
+
 def test_force_hex_form_flag() -> None:
     s = COSString(b"\x01\x02")
     s.set_force_hex_form(True)
     assert s.is_force_hex_form()
+
+
+def test_set_value_replaces_bytes() -> None:
+    # Mirrors upstream ``COSString.setValue(byte[])`` (deprecated).
+    s = COSString(b"old")
+    s.set_value(b"new")
+    assert s.get_bytes() == b"new"
+
+
+def test_set_value_copies_input() -> None:
+    # Upstream ``setValue`` does ``Arrays.copyOf(value, value.length)`` —
+    # mutating the caller's buffer afterwards must not leak through.
+    buf = bytearray(b"abc")
+    s = COSString(b"x")
+    s.set_value(buf)
+    buf[0] = 0x7A  # 'z'
+    assert s.get_bytes() == b"abc"
 
 
 def test_pdfbox_camelcase_aliases() -> None:
@@ -37,12 +64,23 @@ def test_pdfbox_camelcase_aliases() -> None:
 def test_parse_hex_basic() -> None:
     s = COSString.parse_hex("48656C6C6F")
     assert s.get_bytes() == b"Hello"
-    assert s.is_force_hex_form()
+    # Upstream ``parseHex`` returns a string in the *default* (literal)
+    # form — not hex-form — so writers can re-emit it as ``(...)``.
+    assert not s.is_force_hex_form()
 
 
-def test_parse_hex_ignores_whitespace() -> None:
-    s = COSString.parse_hex("48 65\t6C\n6C 6F")
+def test_parse_hex_strips_leading_and_trailing_whitespace_only() -> None:
+    # Upstream skips only leading/trailing whitespace (lines 138-148 of
+    # COSString.java); internal whitespace would feed Hex.getHexValue
+    # which returns -1, raising IOException.
+    s = COSString.parse_hex("  48656C6C6F\n")
     assert s.get_bytes() == b"Hello"
+
+
+def test_parse_hex_internal_whitespace_raises() -> None:
+    # Mirrors strict upstream behaviour — internal whitespace is invalid.
+    with pytest.raises(OSError):
+        COSString.parse_hex("48 65 6C 6C 6F")
 
 
 def test_parse_hex_pads_odd_digits() -> None:
@@ -56,6 +94,18 @@ def test_parse_hex_invalid_raises() -> None:
     # (translated to OSError in pypdfbox per the test-porting conventions).
     with pytest.raises(OSError):
         COSString.parse_hex("zz")
+
+
+def test_parse_hex_force_parsing_substitutes_question_mark() -> None:
+    # Toggling FORCE_PARSING (mirrors upstream's static system property)
+    # makes malformed pairs decode to '?' (0x3F) rather than raising.
+    saved = COSString.FORCE_PARSING
+    COSString.FORCE_PARSING = True
+    try:
+        s = COSString.parse_hex("48ZZ6F")  # 'H', '?', 'o'
+        assert s.get_bytes() == b"H?o"
+    finally:
+        COSString.FORCE_PARSING = saved
 
 
 def test_get_string_utf16_be_bom() -> None:

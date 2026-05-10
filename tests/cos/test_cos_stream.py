@@ -194,3 +194,40 @@ def test_to_text_string_decodes_through_filter_chain() -> None:
         with s.create_output_stream(COSName.FLATE_DECODE) as out:  # type: ignore[attr-defined]
             out.write(b"compressed payload")
         assert s.to_text_string() == "compressed payload"
+
+
+def test_create_view_no_filter_returns_decoded_buffer() -> None:
+    """``create_view`` over an unfiltered stream returns a
+    seekable/lengthable ``RandomAccessRead`` view over the raw body."""
+    with COSStream() as s:
+        s.set_raw_data(b"plain bytes")
+        view = s.create_view()
+        try:
+            assert view.length() == len(b"plain bytes")
+            buf = bytearray(view.length())
+            n = view.read_into(buf)
+            assert n == len(b"plain bytes")
+            assert bytes(buf) == b"plain bytes"
+        finally:
+            view.close()
+
+
+def test_create_view_with_filter_chain_returns_decoded_buffer() -> None:
+    """When ``/Filter`` is set, ``create_view`` runs the decode chain and
+    returns a buffer over the decoded payload (not raw)."""
+    payload = b"compressed view payload"
+    with COSStream() as s:
+        with s.create_output_stream(COSName.FLATE_DECODE) as out:  # type: ignore[attr-defined]
+            out.write(payload)
+        view = s.create_view()
+        try:
+            buf = bytearray(view.length())
+            view.read_into(buf)
+            assert bytes(buf) == payload
+        finally:
+            view.close()
+
+
+def test_create_view_no_data_raises() -> None:
+    with COSStream() as s, pytest.raises(OSError):
+        s.create_view()

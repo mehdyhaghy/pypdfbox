@@ -18,20 +18,41 @@ class COSName(COSBase):
     matching PDFBox's ``COSName.getName()`` behavior.
     """
 
-    _registry: dict[bytes, COSName] = {}
+    # Two-tier registry mirroring upstream PDFBox: ``_common_name_map`` holds
+    # the predefined static constants and survives ``clear_resources()``;
+    # ``_name_map`` holds dynamically-encountered names and is the only map
+    # cleared by ``clear_resources()``. See ``COSName.java``.
+    _common_name_map: dict[bytes, COSName] = {}
+    _name_map: dict[bytes, COSName] = {}
 
     __slots__ = ("_bytes", "_direct", "_needs_to_be_updated")
 
-    def __new__(cls, name: str | bytes | bytearray | memoryview) -> COSName:
+    def __new__(
+        cls,
+        name: str | bytes | bytearray | memoryview,
+        *,
+        _static: bool = False,
+    ) -> COSName:
         data = cls._coerce_name_bytes(name)
-        existing = cls._registry.get(data)
+        existing = cls._common_name_map.get(data)
+        if existing is not None:
+            return existing
+        existing = cls._name_map.get(data)
         if existing is not None:
             return existing
         inst = super().__new__(cls)
-        cls._registry[data] = inst
+        if _static:
+            cls._common_name_map[data] = inst
+        else:
+            cls._name_map[data] = inst
         return inst
 
-    def __init__(self, name: str | bytes | bytearray | memoryview) -> None:
+    def __init__(
+        self,
+        name: str | bytes | bytearray | memoryview,
+        *,
+        _static: bool = False,
+    ) -> None:
         # Re-init guard: __new__ may return an interned instance.
         if getattr(self, "_bytes", None) is not None:
             return
@@ -54,16 +75,22 @@ class COSName(COSBase):
         return self.get_name()
 
     def get_name(self) -> str:
-        try:
-            return self._bytes.decode("utf-8")
-        except UnicodeDecodeError:
+        # Match Java's ``new String(bytes, UTF_8)`` substitute behavior:
+        # invalid UTF-8 bytes are replaced with U+FFFD, then if any U+FFFD
+        # appears we fall back to ISO-8859-1 (Latin-1), which can decode any
+        # byte sequence without loss. This mirrors COSName.getName() exactly.
+        utf8_string = self._bytes.decode("utf-8", errors="replace")
+        if "�" in utf8_string:
             return self._bytes.decode("latin-1")
+        return utf8_string
 
     def get_bytes(self) -> bytes:
         return bytes(self._bytes)
 
-    def getBytes(self) -> bytes:  # noqa: N802
-        return self.get_bytes()
+    def is_empty(self) -> bool:
+        """``True`` if this name is the empty string. Mirrors
+        ``COSName.isEmpty()``."""
+        return len(self._bytes) == 0
 
     def write_pdf(self, output: BinaryIO) -> None:
         output.write(b"/")
@@ -74,11 +101,35 @@ class COSName(COSBase):
                 output.write(b"#")
                 output.write(f"{b:02X}".encode("ascii"))
 
-    def writePDF(self, output: BinaryIO) -> None:  # noqa: N802
-        self.write_pdf(output)
-
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_name(self)
+
+    def compare_to(self, other: COSName | None) -> int:
+        """Lexicographic ordering over unsigned byte values.
+
+        Mirrors ``COSName.compareTo(COSName)``. Unsigned comparison is used so
+        that bytes with the high bit set sort after all ASCII bytes, which
+        matches the natural PDF byte ordering.
+        """
+        if other is None:
+            return 1
+        if self._bytes is other._bytes:
+            return 0
+        a = self._bytes
+        b = other._bytes
+        n = min(len(a), len(b))
+        for i in range(n):
+            diff = a[i] - b[i]
+            if diff != 0:
+                return diff
+        return len(a) - len(b)
+
+    @classmethod
+    def clear_resources(cls) -> None:
+        """Clear the dynamic interned-name registry. Mirrors the deprecated
+        ``COSName.clearResources()``; only the document-specific name map is
+        cleared — predefined static constants survive."""
+        cls._name_map.clear()
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSName):
@@ -87,6 +138,26 @@ class COSName(COSBase):
 
     def __hash__(self) -> int:
         return hash(self._bytes)
+
+    def __lt__(self, other: object) -> bool:
+        if not isinstance(other, COSName):
+            return NotImplemented
+        return self.compare_to(other) < 0
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, COSName):
+            return NotImplemented
+        return self.compare_to(other) <= 0
+
+    def __gt__(self, other: object) -> bool:
+        if not isinstance(other, COSName):
+            return NotImplemented
+        return self.compare_to(other) > 0
+
+    def __ge__(self, other: object) -> bool:
+        if not isinstance(other, COSName):
+            return NotImplemented
+        return self.compare_to(other) >= 0
 
     def __repr__(self) -> str:
         return f"COSName({self.get_name()!r})"
@@ -104,47 +175,55 @@ def _is_printable_name_byte(b: int) -> bool:
     )
 
 
+def _static_name(value: str) -> COSName:
+    """Build and intern a predefined static-constant ``COSName`` whose
+    interned slot lives in ``_common_name_map`` so it survives
+    ``clear_resources()``. Mirrors upstream's ``new COSName(String)``
+    private constructor with ``staticValue=true``."""
+    return COSName(value, _static=True)
+
+
 # A small starter set of predefined names. The full PDFBox catalog has
 # hundreds; we'll grow this organically as each consuming module needs
 # them. Anything not predefined can be obtained via
 # ``COSName.get_pdf_name(...)`` — it is interned the first time it is seen.
-COSName.TYPE = COSName.get_pdf_name("Type")  # type: ignore[attr-defined]
-COSName.SUBTYPE = COSName.get_pdf_name("Subtype")  # type: ignore[attr-defined]
-COSName.LENGTH = COSName.get_pdf_name("Length")  # type: ignore[attr-defined]
-COSName.FILTER = COSName.get_pdf_name("Filter")  # type: ignore[attr-defined]
-COSName.ROOT = COSName.get_pdf_name("Root")  # type: ignore[attr-defined]
-COSName.INFO = COSName.get_pdf_name("Info")  # type: ignore[attr-defined]
-COSName.ENCRYPT = COSName.get_pdf_name("Encrypt")  # type: ignore[attr-defined]
-COSName.ID = COSName.get_pdf_name("ID")  # type: ignore[attr-defined]
-COSName.LINEARIZED = COSName.get_pdf_name("Linearized")  # type: ignore[attr-defined]
-COSName.SIZE = COSName.get_pdf_name("Size")  # type: ignore[attr-defined]
-COSName.PREV = COSName.get_pdf_name("Prev")  # type: ignore[attr-defined]
-COSName.PAGES = COSName.get_pdf_name("Pages")  # type: ignore[attr-defined]
-COSName.PAGE = COSName.get_pdf_name("Page")  # type: ignore[attr-defined]
-COSName.KIDS = COSName.get_pdf_name("Kids")  # type: ignore[attr-defined]
-COSName.COUNT = COSName.get_pdf_name("Count")  # type: ignore[attr-defined]
-COSName.PARENT = COSName.get_pdf_name("Parent")  # type: ignore[attr-defined]
-COSName.RESOURCES = COSName.get_pdf_name("Resources")  # type: ignore[attr-defined]
-COSName.MEDIA_BOX = COSName.get_pdf_name("MediaBox")  # type: ignore[attr-defined]
-COSName.CONTENTS = COSName.get_pdf_name("Contents")  # type: ignore[attr-defined]
-COSName.CATALOG = COSName.get_pdf_name("Catalog")  # type: ignore[attr-defined]
-COSName.STRUCT_TREE_ROOT = COSName.get_pdf_name("StructTreeRoot")  # type: ignore[attr-defined]
-COSName.METADATA = COSName.get_pdf_name("Metadata")  # type: ignore[attr-defined]
+COSName.TYPE = _static_name("Type")  # type: ignore[attr-defined]
+COSName.SUBTYPE = _static_name("Subtype")  # type: ignore[attr-defined]
+COSName.LENGTH = _static_name("Length")  # type: ignore[attr-defined]
+COSName.FILTER = _static_name("Filter")  # type: ignore[attr-defined]
+COSName.ROOT = _static_name("Root")  # type: ignore[attr-defined]
+COSName.INFO = _static_name("Info")  # type: ignore[attr-defined]
+COSName.ENCRYPT = _static_name("Encrypt")  # type: ignore[attr-defined]
+COSName.ID = _static_name("ID")  # type: ignore[attr-defined]
+COSName.LINEARIZED = _static_name("Linearized")  # type: ignore[attr-defined]
+COSName.SIZE = _static_name("Size")  # type: ignore[attr-defined]
+COSName.PREV = _static_name("Prev")  # type: ignore[attr-defined]
+COSName.PAGES = _static_name("Pages")  # type: ignore[attr-defined]
+COSName.PAGE = _static_name("Page")  # type: ignore[attr-defined]
+COSName.KIDS = _static_name("Kids")  # type: ignore[attr-defined]
+COSName.COUNT = _static_name("Count")  # type: ignore[attr-defined]
+COSName.PARENT = _static_name("Parent")  # type: ignore[attr-defined]
+COSName.RESOURCES = _static_name("Resources")  # type: ignore[attr-defined]
+COSName.MEDIA_BOX = _static_name("MediaBox")  # type: ignore[attr-defined]
+COSName.CONTENTS = _static_name("Contents")  # type: ignore[attr-defined]
+COSName.CATALOG = _static_name("Catalog")  # type: ignore[attr-defined]
+COSName.STRUCT_TREE_ROOT = _static_name("StructTreeRoot")  # type: ignore[attr-defined]
+COSName.METADATA = _static_name("Metadata")  # type: ignore[attr-defined]
 # Single-letter / short names referenced by upstream tests and a handful of
 # PDF spec-defined keys. Keep this list minimal — grow on demand.
-COSName.A = COSName.get_pdf_name("A")  # type: ignore[attr-defined]
-COSName.B = COSName.get_pdf_name("B")  # type: ignore[attr-defined]
-COSName.C = COSName.get_pdf_name("C")  # type: ignore[attr-defined]
-COSName.D = COSName.get_pdf_name("D")  # type: ignore[attr-defined]
-COSName.T = COSName.get_pdf_name("T")  # type: ignore[attr-defined]
-COSName.BE = COSName.get_pdf_name("BE")  # type: ignore[attr-defined]
-COSName.PARAMS = COSName.get_pdf_name("Params")  # type: ignore[attr-defined]
-COSName.FLATE_DECODE = COSName.get_pdf_name("FlateDecode")  # type: ignore[attr-defined]
-COSName.ASCII85_DECODE = COSName.get_pdf_name("ASCII85Decode")  # type: ignore[attr-defined]
-COSName.STANDARD_ENCODING = COSName.get_pdf_name("StandardEncoding")  # type: ignore[attr-defined]
-COSName.MAC_EXPERT_ENCODING = COSName.get_pdf_name("MacExpertEncoding")  # type: ignore[attr-defined]
-COSName.MAC_ROMAN_ENCODING = COSName.get_pdf_name("MacRomanEncoding")  # type: ignore[attr-defined]
-COSName.WIN_ANSI_ENCODING = COSName.get_pdf_name("WinAnsiEncoding")  # type: ignore[attr-defined]
-COSName.FIRST_CHAR = COSName.get_pdf_name("FirstChar")  # type: ignore[attr-defined]
-COSName.LAST_CHAR = COSName.get_pdf_name("LastChar")  # type: ignore[attr-defined]
-COSName.WIDTHS = COSName.get_pdf_name("Widths")  # type: ignore[attr-defined]
+COSName.A = _static_name("A")  # type: ignore[attr-defined]
+COSName.B = _static_name("B")  # type: ignore[attr-defined]
+COSName.C = _static_name("C")  # type: ignore[attr-defined]
+COSName.D = _static_name("D")  # type: ignore[attr-defined]
+COSName.T = _static_name("T")  # type: ignore[attr-defined]
+COSName.BE = _static_name("BE")  # type: ignore[attr-defined]
+COSName.PARAMS = _static_name("Params")  # type: ignore[attr-defined]
+COSName.FLATE_DECODE = _static_name("FlateDecode")  # type: ignore[attr-defined]
+COSName.ASCII85_DECODE = _static_name("ASCII85Decode")  # type: ignore[attr-defined]
+COSName.STANDARD_ENCODING = _static_name("StandardEncoding")  # type: ignore[attr-defined]
+COSName.MAC_EXPERT_ENCODING = _static_name("MacExpertEncoding")  # type: ignore[attr-defined]
+COSName.MAC_ROMAN_ENCODING = _static_name("MacRomanEncoding")  # type: ignore[attr-defined]
+COSName.WIN_ANSI_ENCODING = _static_name("WinAnsiEncoding")  # type: ignore[attr-defined]
+COSName.FIRST_CHAR = _static_name("FirstChar")  # type: ignore[attr-defined]
+COSName.LAST_CHAR = _static_name("LastChar")  # type: ignore[attr-defined]
+COSName.WIDTHS = _static_name("Widths")  # type: ignore[attr-defined]

@@ -1902,3 +1902,13 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/filter/lzw_decode.py`: `decode()` now stops cleanly when the stream ends before an explicit EOD code, matching PDFBox's missing-EOD leniency while preserving invalid-code errors.
 - `tests/filter/test_lzw_decode.py`: replaced truncated missing-EOD exception expectations with no-error output assertions and added a valid-prefix-without-EOD regression.
+
+## Wave 394 — cos + pdfparser 1:1 method-parity round-out
+
+- `pypdfbox/cos/cos_name.py`: added `is_empty()`, `compare_to()` (+ `__lt__/__le__/__gt__/__ge__`), and `clear_resources()`. Replaced the single name registry with a two-tier `_common_name_map` (predefined static constants) + `_name_map` (dynamic) so `clear_resources()` only wipes the dynamic map, mirroring upstream `COSName.clearResources()`. `get_name()` now decodes via `utf-8` substitute mode and falls back to ISO-8859-1 only when U+FFFD appears, matching `new String(bytes, UTF_8)` semantics.
+- `pypdfbox/cos/cos_string.py`: added deprecated `set_value(byte[])` shim, two-arg `__init__(value, force_hex=False)` constructor (mirrors `COSString(byte[], boolean)` / `COSString(String, boolean)`), and `FORCE_PARSING` class flag for malformed-hex tolerance. `parse_hex` now (a) returns a literal-form string so the writer emits `(...)` (was wrongly forcing `<...>`), (b) strict-rejects internal whitespace and non-hex characters per upstream `Hex.getHexValue()`, and (c) substitutes `?` (0x3F) for malformed pairs when `FORCE_PARSING` is set.
+- `pypdfbox/cos/cos_stream.py`: added `create_view()` returning a `RandomAccessRead` over the decoded body (raises `OSError` when no body is set), mirroring `COSStream.createView()`.
+- `pypdfbox/cos/cos_float.py`: split `_to_float32` (round + ±MAX clamp) from `_coerce` (±INF→±MAX, |x|<MIN_NORMAL→0, NaN passthrough), matching `COSFloat.coerce()`. `__eq__`/`__hash__` now follow `Float.floatToIntBits` semantics so two NaN `COSFloat`s compare equal and hash to the canonical 0x7FC00000.
+- `pypdfbox/pdfparser/base_parser.py`: lifted the `document` field from `COSParser` into `BaseParser` so `get_object_key` can consult it like upstream; added `get_object_key(num, gen)`, `read_expected_string(expected, skip_spaces=False)`, `read_string_with_length(length)` (deprecated upstream, still ported), and `decode_buffer(data)` (UTF-8 → Windows-1252 → Latin-1 fallback for PDFBOX-3347). `read_string` keeps the existing no-skip whitespace-termination behavior; documented as a divergence in the docstring.
+- `tests/cos/upstream/test_cos_number.py`: added (3 ports of `TestCOSNumber.java`).
+- `tests/cos/test_cos_number.py`: added (7 hand-written tests for `COSNumber.get` edge cases and abstract surface).

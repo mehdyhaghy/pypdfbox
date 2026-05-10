@@ -9,17 +9,38 @@ from .cos_number import COSNumber
 from .i_cos_visitor import ICOSVisitor
 
 _FLOAT_MAX = 3.4028234663852886e38  # Float.MAX_VALUE
+_FLOAT_MIN_NORMAL = 1.1754943508222875e-38  # Float.MIN_NORMAL (2**-126)
 
 
 def _to_float32(value: float) -> float:
-    """Round to IEEE-754 single precision; matches Java float conversion."""
+    """Round to IEEE-754 single precision and clamp out-of-range magnitudes
+    to ``±MAX_VALUE``. Used by the direct-float constructor and ``set_value``;
+    pypdfbox callers expect bounded output so signed infinities never leak
+    into the model. Subnormals are *not* flushed here — that's the additional
+    step ``COSFloat.coerce`` applies on the string-construction path."""
     if math.isnan(value):
         return value
-    if value > _FLOAT_MAX:
+    if value > _FLOAT_MAX or value == math.inf:
         return _FLOAT_MAX
-    if value < -_FLOAT_MAX:
+    if value < -_FLOAT_MAX or value == -math.inf:
         return -_FLOAT_MAX
     return float(struct.unpack(">f", struct.pack(">f", value))[0])
+
+
+def _coerce(value: float) -> float:
+    """Mirror upstream ``COSFloat.coerce``: ``+INF → MAX_VALUE``,
+    ``-INF → -MAX_VALUE``, ``|x| < MIN_NORMAL → 0`` (PDF spec, Appendix C
+    "Implementation Limits"). NaN passes through unchanged. Only invoked
+    from the string-construction path, matching upstream Java semantics."""
+    if math.isnan(value):
+        return value
+    if value == math.inf:
+        return _FLOAT_MAX
+    if value == -math.inf:
+        return -_FLOAT_MAX
+    if value != 0.0 and abs(value) < _FLOAT_MIN_NORMAL:
+        return 0.0
+    return value
 
 
 def _normalize_negatives(text: str) -> str:
@@ -90,12 +111,14 @@ class COSFloat(COSNumber):
                 parsed = float(normalized)
             except ValueError as exc:
                 raise OSError(f"not a number: {value!r}") from exc
-            self._original = value
-            # Mirror Java's ``float`` (IEEE-754 single precision). Both the
-            # string and direct-float constructors round the same way so two
-            # ``COSFloat`` values built from semantically equal inputs compare
-            # equal — matches PDFBox's hash/equals contract.
-            self._value = _to_float32(parsed)
+            # Mirror Java's ``float`` (IEEE-754 single precision) followed by
+            # ``COSFloat.coerce`` for the string-construction path: subnormals
+            # flush to 0 and ±infinity clamp to ±MAX_VALUE.
+            coerced = _coerce(_to_float32(parsed))
+            # Preserve the raw bytes only if the round-trip is faithful —
+            # mirrors upstream's ``f == parsedValue ? aFloat : null``.
+            self._original = value if _to_float32(parsed) == coerced else None
+            self._value = coerced
         else:
             self._value = _to_float32(float(value))
             self._original = None
@@ -164,11 +187,25 @@ class COSFloat(COSNumber):
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSFloat):
-            return self._value == other._value
+            # Mirror upstream ``Float.floatToIntBits(a) == Float.floatToIntBits(b)``:
+            # two NaN ``COSFloat`` values must compare equal (Python's ``==``
+            # would say ``False``), and ``+0.0 != -0.0`` on the bit level even
+            # though ``0.0 == -0.0`` numerically.
+            return self._float_bits() == other._float_bits()
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(self._value)
+        # ``Float.hashCode(value)`` in Java is the int-bits representation —
+        # match that so the equals/hashCode contract holds across NaN.
+        return self._float_bits()
+
+    def _float_bits(self) -> int:
+        """IEEE-754 single-precision bit pattern of ``self._value`` —
+        mirrors ``Float.floatToIntBits``."""
+        if math.isnan(self._value):
+            # Java collapses every NaN to the canonical 0x7fc00000.
+            return 0x7FC00000
+        return struct.unpack(">i", struct.pack(">f", self._value))[0]
 
     def __repr__(self) -> str:
         if self._original is not None:

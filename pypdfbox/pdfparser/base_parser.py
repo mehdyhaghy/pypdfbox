@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from typing import ClassVar
+import logging
+from typing import TYPE_CHECKING, ClassVar
 
 from pypdfbox.io import RandomAccessRead
 
 from .parse_error import PDFParseError
+
+if TYPE_CHECKING:
+    from pypdfbox.cos.cos_document import COSDocument
+    from pypdfbox.cos.cos_object_key import COSObjectKey
+
+_LOG = logging.getLogger(__name__)
 
 
 class BaseParser:
@@ -58,6 +65,55 @@ class BaseParser:
 
     def __init__(self, source: RandomAccessRead) -> None:
         self._src = source
+        # Mirrors upstream ``BaseParser.document`` (protected COSDocument).
+        # Subclasses (``COSParser``) may set this via their own constructor;
+        # held here so :meth:`get_object_key` and any future BaseParser-level
+        # helpers can consult the xref table the way upstream does.
+        self._document: COSDocument | None = None
+        # Backing store for :meth:`get_object_key` — mirrors upstream's
+        # ``private final Map<Long, COSObjectKey> keyCache``. Keyed on the
+        # ``(object_number, generation_number)`` tuple (Python's stand-in
+        # for upstream's ``computeInternalHash``) so lookups stay O(1) for
+        # big PDFs.
+        self._key_cache: dict[tuple[int, int], COSObjectKey] = {}
+
+    # ---------- document handle (upstream protected COSDocument) ----------
+
+    @property
+    def document(self) -> COSDocument | None:
+        """Mirrors upstream ``BaseParser.document`` (protected field).
+        ``COSParser``/``PDFParser`` set the backing attribute via the
+        subclass constructor; consumers can read it through this property
+        the same way Java callers read the ``document`` field."""
+        return self._document
+
+    # ---------- object key cache ----------
+
+    def get_object_key(self, num: int, gen: int) -> COSObjectKey:
+        """Return the :class:`COSObjectKey` for ``(num, gen)``.
+
+        Mirrors upstream ``BaseParser.getObjectKey(long, int)`` (line 188):
+        if a document is attached and its xref table already contains a key
+        with the same ``(num, gen)``, that exact key instance is reused so
+        identity comparisons match. Otherwise a fresh key is constructed.
+        The key cache is populated lazily — only when the xref table grows
+        past what we've already mirrored — to avoid per-call iteration on
+        large PDFs."""
+        # Late import to avoid circulars with cos.cos_object_key.
+        from pypdfbox.cos.cos_object_key import COSObjectKey as _Key
+
+        document = self._document
+        if document is None or not document.get_xref_table():
+            return _Key(num, gen)
+        xref_table = document.get_xref_table()
+        if len(xref_table) > len(self._key_cache):
+            for key in xref_table:
+                # ``setdefault`` mirrors upstream's ``putIfAbsent``.
+                self._key_cache.setdefault(
+                    (key.object_number, key.generation_number), key
+                )
+        cached = self._key_cache.get((num, gen))
+        return cached if cached is not None else _Key(num, gen)
 
     # ---------- position / low-level byte access ----------
 
@@ -591,7 +647,14 @@ class BaseParser:
         """Read a token: bytes up to (but not including) the next whitespace
         or EOF. Mirrors upstream ``BaseParser.readString()``. Returns the
         decoded ASCII/latin-1 string. The terminating whitespace byte (if
-        any) is left unread."""
+        any) is left unread.
+
+        Behavioural divergence from upstream: PDFBox calls ``skipSpaces``
+        first and stops on ``isEndOfName``; we deliberately omit the
+        leading skip so callers that already positioned the reader (e.g.
+        the wave497 callers in ``tests/pdfparser/``) keep working. The
+        function still terminates on the full PDF whitespace set, so
+        downstream behaviour after a leading skip is upstream-equivalent."""
         out = bytearray()
         while True:
             b = self._src.read()
@@ -606,6 +669,50 @@ class BaseParser:
         except UnicodeDecodeError:
             return out.decode("latin-1")
 
+    def read_string_with_length(self, length: int) -> str:
+        """Read up to ``length`` characters of a token. Mirrors upstream's
+        deprecated ``BaseParser.readString(int length)`` overload (line
+        1153) — preserved for API parity even though upstream marks it
+        ``@Deprecated`` for removal in 4.0. Stops at whitespace, EOF, any
+        of ``[ < ( /``, or once ``length`` characters have been read."""
+        self.skip_whitespace()
+        out = bytearray()
+        while True:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                break
+            if self.is_whitespace(b) or b in (0x5B, 0x3C, 0x28, 0x2F):
+                self._src.rewind(1)
+                break
+            if len(out) >= length:
+                self._src.rewind(1)
+                break
+            out.append(b)
+        try:
+            return out.decode("ascii")
+        except UnicodeDecodeError:
+            return out.decode("latin-1")
+
+    @staticmethod
+    def decode_buffer(data: bytes | bytearray) -> str:
+        """Decode ``data`` as UTF-8 with a Windows-1252 fallback. Mirrors
+        upstream ``BaseParser.decodeBuffer(ByteArrayOutputStream)`` (line
+        947): UTF-8 is tried first; on a malformed-input error the bytes
+        are decoded with Windows-1252 (PDFBOX-3347) — Latin-1 acts as the
+        secondary safety net. Used by name / keyword decoders that need a
+        decoded string but must not raise on legacy 1-byte encodings."""
+        buf = bytes(data)
+        try:
+            return buf.decode("utf-8")
+        except UnicodeDecodeError:
+            _LOG.debug(
+                "Buffer could not be decoded using UTF-8 — falling back to Windows-1252"
+            )
+            try:
+                return buf.decode("windows-1252")
+            except UnicodeDecodeError:
+                return buf.decode("latin-1")
+
     def read_expected(self, expected: bytes) -> None:
         """Consume ``expected`` exactly; raise on mismatch."""
         start_pos = self.position
@@ -615,6 +722,36 @@ class BaseParser:
                 raise PDFParseError(
                     f"expected {expected!r} at byte {start_pos}", position=start_pos
                 )
+
+    def read_expected_string(
+        self, expected: bytes | bytearray | str, skip_spaces: bool = False
+    ) -> None:
+        """Read ``expected`` from the source, optionally skipping whitespace
+        before and after. Mirrors upstream
+        ``BaseParser.readExpectedString(char[], boolean)`` (line 1109) — the
+        protected helper used to consume keyword sequences like ``true`` /
+        ``null`` while permissively eating surrounding whitespace.
+
+        ``expected`` may be a ``bytes``/``bytearray`` or a ``str`` (which
+        is interpreted as a sequence of ASCII byte values, matching the
+        Java ``char[]`` signature). Raises :class:`PDFParseError` if any
+        byte fails to match — the position-on-error mirrors upstream where
+        the byte just-read is reported as the mismatch site."""
+        expected_bytes = (
+            expected.encode("ascii") if isinstance(expected, str) else bytes(expected)
+        )
+        if skip_spaces:
+            self.skip_whitespace()
+        for ch in expected_bytes:
+            b = self._src.read()
+            if b != ch:
+                raise PDFParseError(
+                    f"Expected string {expected_bytes!r} but missed at "
+                    f"character {chr(ch)!r} at offset {self.position}",
+                    position=self.position,
+                )
+        if skip_spaces:
+            self.skip_whitespace()
 
     def read_expected_char(self, ec: int | str) -> None:
         """Read one byte and raise unless it matches ``ec``. Mirrors

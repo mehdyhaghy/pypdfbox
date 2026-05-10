@@ -308,6 +308,32 @@ class COSStream(COSDictionary):
         names = _coerce_filter_chain(filters)
         return _EncodingOutputStream(self, names)
 
+    def create_view(self) -> Any:
+        """Return a ``RandomAccessRead`` over the **decoded** stream body.
+
+        Mirrors upstream ``COSStream.createView()`` (line 181 of
+        ``COSStream.java``): when ``/Filter`` is empty the returned view
+        is a buffer over the raw bytes; when filters are present the
+        chain is decoded fully into memory and wrapped in a
+        ``RandomAccessReadBuffer``. Per upstream the result is seekable
+        and length-queryable, suitable for image XObjects and embedded
+        fonts that need random access to the decoded payload.
+
+        Raises ``OSError`` if the stream has no body — matches the
+        ``createRawInputStream`` precondition that upstream enforces
+        through ``createView`` when no filters are present."""
+        # Local import to keep cos free of a static io dep at module-load.
+        from pypdfbox.io import RandomAccessReadBuffer  # noqa: PLC0415
+
+        if self._buffer is None:
+            raise OSError("stream has no data")
+        # Encryption-aware path: reuse ``create_input_stream`` so the
+        # security-handler cipher pass runs exactly once before any
+        # filter chain is applied. This also lets ``create_view`` honour
+        # ``/Filter`` chains identically to ``create_input_stream``.
+        with self.create_input_stream() as src:
+            return RandomAccessReadBuffer(src.read())
+
     # ---------- decoded / raw bytes convenience ----------
 
     def to_byte_array(self) -> bytes:
