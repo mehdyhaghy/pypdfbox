@@ -594,6 +594,8 @@ PDFBox 3.0 does not provide focused unit-test classes for each lightweight actio
 | `tests/fontbox/ttf/upstream/test_kerning_subtable.py` | (no upstream `KerningSubtableTest.java` in PDFBox 3.0; tests model the public contract from `KerningSubtable.java`) |
 | `tests/fontbox/ttf/upstream/test_cmap_subtable.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/TestCMapSubtable.java` |
 | `tests/xmpbox/upstream/test_date_converter.py` | `xmpbox/src/test/java/org/apache/xmpbox/DateConverterTest.java` (folds in `pdfbox/src/test/java/org/apache/pdfbox/util/TestDateUtil.java`) |
+| `tests/xmpbox/upstream/test_type_mapping.py` | (no upstream `TypeMappingTest.java` in PDFBox 3.0; tests model the public surface from `TypeMapping.java`) |
+| `tests/pdmodel/graphics/image/upstream/test_ccitt_factory.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/CCITTFactoryTest.java` (partial: chess image + encode round-trip; fixture-dependent tests deferred until `ccittg3.tif`/`ccittg4.tif`/`ccittg4multi.tif` are vendored) |
 
 Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fontbox clusters #2+): `TestTTFParser`, `TestCMapSubtable`, `GlyfCompositeDescriptTest`, `TrueTypeFontCollectionTest`, `TTFSubsetterTest`, `GlyphSubstitutionTable*`.
 

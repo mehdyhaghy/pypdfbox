@@ -4,26 +4,36 @@ Mirrors ``org.apache.pdfbox.pdmodel.graphics.image.CCITTFactory``: a
 final class with a private constructor and three public static
 factories. Upstream supports two production paths:
 
-1. ``createFromImage(PDDocument, BufferedImage)`` — encode a 1-bit
+1. ``createFromImage(PDDocument, BufferedImage)`` -- encode a 1-bit
    ``BufferedImage`` raster as CCITT Group 4. We port this path here,
    substituting Pillow's ``"1"`` mode for the AWT
    ``TYPE_BYTE_BINARY``/pixel-size-1 dispatch.
 
-2. ``createFromFile`` / ``createFromByteArray`` — extract an existing
+2. ``createFromFile`` / ``createFromByteArray`` -- extract an existing
    single-strip CCITT T.4/T.6 TIFF payload and re-wrap it without
-   recompression.
+   recompression. Multi-page TIFFs are addressed by a zero-based
+   ``number`` argument (returns ``None`` past end-of-IFD chain).
+
+The TIFF parser follows upstream's byte-by-byte IFD walk in
+``CCITTFactory.extractFromTiff`` so we honour:
+
+* both endiannesses ("II" little-endian and "MM" big-endian);
+* byte/short tag values padded with garbage in the remaining bytes;
+* ``FillOrder=2`` (LSB-first) bit reversal via the upstream
+  ``fliptable``;
+* multi-page navigation through the next-IFD-offset chain.
 """
 from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO
 
 from PIL import Image
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.filter import CCITTFaxDecode
-from pypdfbox.pdmodel.graphics.color import PDDeviceGray
+from pypdfbox.pdmodel.graphics.color import PDColorSpace, PDDeviceGray
 from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
 
 if TYPE_CHECKING:
@@ -44,44 +54,218 @@ _DECODE_PARMS: COSName = COSName.get_pdf_name("DecodeParms")
 _CCITT_FAX_DECODE: COSName = COSName.get_pdf_name("CCITTFaxDecode")
 _DEVICE_GRAY: COSName = COSName.get_pdf_name("DeviceGray")
 
-_TIFF_IMAGE_WIDTH = 256
-_TIFF_IMAGE_LENGTH = 257
-_TIFF_BITS_PER_SAMPLE = 258
-_TIFF_COMPRESSION = 259
-_TIFF_PHOTOMETRIC = 262
-_TIFF_FILL_ORDER = 266
-_TIFF_STRIP_OFFSETS = 273
-_TIFF_STRIP_BYTE_COUNTS = 279
-_TIFF_COMPRESSION_T4 = 3
-_TIFF_COMPRESSION_T6 = 4
-_TIFF_PHOTOMETRIC_WHITE_IS_ZERO = 0
-_TIFF_FILL_LEFT_TO_RIGHT = 1
+
+# Bit-reversal table for FillOrder=2 (LSB-first) TIFFs. Identical to
+# upstream's ``CCITTFactory.fliptable``.
+_FLIP_TABLE: bytes = bytes(int(f"{b:08b}"[::-1], 2) for b in range(256))
 
 
-def _tag_scalar(value: object, tag: int) -> int:
-    if isinstance(value, tuple):
-        if len(value) != 1:
-            raise ValueError(f"CCITTFactory: TIFF tag {tag} must be single-valued")
-        value = value[0]
-    return int(value)
+def read_short(endianness: str, reader: BinaryIO) -> int:
+    """Read an unsigned 16-bit value honouring TIFF endianness.
+
+    Mirrors upstream ``CCITTFactory.readshort(char, RandomAccessRead)``
+    (line 470). ``endianness`` is ``"I"`` (little) or ``"M"`` (big).
+    """
+    b0 = reader.read(1)
+    b1 = reader.read(1)
+    if not b0 or not b1:
+        raise OSError("Not a valid tiff file")
+    lo = b0[0]
+    hi = b1[0]
+    if endianness == "I":
+        return lo | (hi << 8)
+    return (lo << 8) | hi
 
 
-def _single_strip_value(value: object, tag: int) -> int:
-    if isinstance(value, tuple):
-        if len(value) != 1:
-            raise ValueError("CCITTFactory: only single-strip TIFF images are supported")
-        value = value[0]
-    return int(value)
+def read_long(endianness: str, reader: BinaryIO) -> int:
+    """Read an unsigned 32-bit value honouring TIFF endianness.
+
+    Mirrors upstream ``CCITTFactory.readlong(char, RandomAccessRead)``
+    (line 479).
+    """
+    chunk = reader.read(4)
+    if len(chunk) != 4:
+        raise OSError("Not a valid tiff file")
+    b0, b1, b2, b3 = chunk[0], chunk[1], chunk[2], chunk[3]
+    if endianness == "I":
+        return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+    return (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 
 
-def _decode_parms(columns: int, rows: int, k: int, black_is_1: bool) -> COSDictionary:
+def extract_from_tiff(
+    reader: BinaryIO,
+    out_stream: BinaryIO,
+    params: COSDictionary,
+    number: int,
+) -> None:
+    """Extract the CCITT-fax strip for image ``number`` into ``out_stream``.
+
+    Mirrors upstream ``CCITTFactory.extractFromTiff`` (line 235). Walks
+    the TIFF header, advances ``number`` IFDs through the next-IFD-offset
+    chain, harvests the few CCITT-relevant tags (256/257/259/262/266/
+    273/274/279/292/324/325) into ``params``, then copies the strip into
+    ``out_stream``. ``out_stream`` is left empty when the requested IFD
+    is past the end of the chain (caller checks size).
+
+    :raises OSError: on malformed TIFF data or unsupported tag values
+        (matches upstream's ``IOException``).
+    """
+    reader.seek(0)
+    head = reader.read(2)
+    if len(head) != 2:
+        raise OSError("Not a valid tiff file")
+    endianness = chr(head[0])
+    if chr(head[1]) != endianness:
+        raise OSError("Not a valid tiff file")
+    if endianness not in ("M", "I"):
+        raise OSError("Not a valid tiff file")
+
+    magic_number = read_short(endianness, reader)
+    if magic_number != 42:
+        raise OSError("Not a valid tiff file")
+
+    address = read_long(endianness, reader)
+    reader.seek(address)
+
+    # Skip ``number`` IFDs by following the next-IFD-offset chain.
+    for _ in range(number):
+        numtags = read_short(endianness, reader)
+        if numtags > 50:
+            raise OSError("Not a valid tiff file")
+        reader.seek(address + 2 + numtags * 12)
+        address = read_long(endianness, reader)
+        if address == 0:
+            return
+        reader.seek(address)
+
+    numtags = read_short(endianness, reader)
+    # The number 50 is somewhat arbitrary; it just stops us loading up junk
+    # from somewhere and tramping on. Mirrors upstream comment.
+    if numtags > 50:
+        raise OSError("Not a valid tiff file")
+
+    # Default value to detect error.
+    k = -1000
+    dataoffset = 0
+    datalength = 0
+    fillorder = 1
+
+    for _ in range(numtags):
+        tag = read_short(endianness, reader)
+        type_ = read_short(endianness, reader)
+        count = read_long(endianness, reader)
+        # Note that when the type is shorter than 4 bytes, the rest can
+        # be garbage and must be ignored.
+        if type_ == 1:  # byte value
+            byte = reader.read(1)
+            if not byte:
+                raise OSError("Not a valid tiff file")
+            val = byte[0]
+            reader.read(3)  # discard padding
+        elif type_ == 3:  # short value
+            val = read_short(endianness, reader)
+            reader.read(2)  # discard padding
+        else:  # long and other types
+            val = read_long(endianness, reader)
+
+        if tag == 256:
+            params.set_int("Columns", val)
+        elif tag == 257:
+            params.set_int("Rows", val)
+        elif tag == 259:
+            # T6/T4 Compression
+            if val == 4:
+                k = -1
+            elif val == 3:
+                k = 0
+        elif tag == 262:
+            if val == 1:
+                params.set_boolean("BlackIs1", True)
+        elif tag == 266:
+            # http://www.awaresystems.be/imaging/tiff/tifftags/fillorder.html
+            if val not in (1, 2):
+                raise OSError(f"FillOrder {val} is not supported")
+            fillorder = val
+        elif tag == 273:
+            if count == 1:
+                dataoffset = val
+        elif tag == 274:
+            # http://www.awaresystems.be/imaging/tiff/tifftags/orientation.html
+            if val != 1:
+                raise OSError(f"Orientation {val} is not supported")
+        elif tag == 279:
+            if count == 1:
+                datalength = val
+        elif tag == 292:
+            if (val & 1) != 0:
+                # T4 2D - arbitrary positive K value
+                k = 50
+            # http://www.awaresystems.be/imaging/tiff/tifftags/t4options.html
+            if (val & 4) != 0:
+                raise OSError("CCITT Group 3 'uncompressed mode' is not supported")
+            if (val & 2) != 0:
+                raise OSError(
+                    "CCITT Group 3 'fill bits before EOL' is not supported"
+                )
+        elif tag == 324:  # noqa: SIM102 - mirrors upstream switch/if structure
+            if count == 1:
+                dataoffset = val
+        elif tag == 325:  # noqa: SIM102 - mirrors upstream switch/if structure
+            if count == 1:
+                datalength = val
+        # else: do nothing (unknown tag)
+
+    if k == -1000:
+        raise OSError("First image in tiff is not CCITT T4 or T6 compressed")
+    if dataoffset == 0:
+        raise OSError("First image in tiff is not a single tile/strip")
+
+    params.set_int("K", k)
+
+    reader.seek(dataoffset)
+    remaining = datalength
+    while remaining > 0:
+        chunk = reader.read(min(8192, remaining))
+        if not chunk:
+            break
+        if fillorder == 2:
+            chunk = chunk.translate(_FLIP_TABLE)
+        out_stream.write(chunk)
+        remaining -= len(chunk)
+
+
+def prepare_image_x_object(
+    document: PDDocument,
+    byte_array: bytes,
+    width: int,
+    height: int,
+    init_color_space: PDColorSpace,
+) -> PDImageXObject:
+    """Encode raw 1-bit packed bytes as CCITT Group 4 and wrap into an
+    :class:`PDImageXObject`.
+
+    Mirrors upstream ``CCITTFactory.prepareImageXObject`` (line 137):
+    runs the raw bitstream through ``FilterFactory.getFilter(CCITTFaxDecode).encode``
+    using a ``/DecodeParms`` carrying ``/Columns`` and ``/Rows``, then
+    stamps ``/K -1`` (Group 4) on the wrapped XObject's ``/DecodeParms``.
+    """
     decode_params = COSDictionary()
-    decode_params.set_int("K", k)
-    decode_params.set_int("Columns", int(columns))
-    decode_params.set_int("Rows", int(rows))
-    if black_is_1:
-        decode_params.set_boolean("BlackIs1", True)
-    return decode_params
+    decode_params.set_int("Columns", int(width))
+    decode_params.set_int("Rows", int(height))
+
+    stream_shell = COSDictionary()
+    stream_shell.set_item(_DECODE_PARMS, decode_params)
+
+    enc_buf = io.BytesIO()
+    CCITTFaxDecode().encode(io.BytesIO(byte_array), enc_buf, stream_shell)
+    encoded = enc_buf.getvalue()
+
+    # Upstream stamps K=-1 on the dict *after* encode.
+    decode_params.set_int("K", -1)
+
+    return _build_image_xobject(
+        document, encoded, int(width), int(height), decode_params, init_color_space
+    )
 
 
 def _build_image_xobject(
@@ -90,6 +274,7 @@ def _build_image_xobject(
     columns: int,
     rows: int,
     decode_params: COSDictionary,
+    color_space: PDColorSpace = PDDeviceGray.INSTANCE,
 ) -> PDImageXObject:
     cos_doc = document.get_document()
     stream = COSStream(cos_doc.scratch_file)
@@ -105,66 +290,33 @@ def _build_image_xobject(
     stream.set_raw_data(encoded)
 
     x_image = PDImageXObject(stream)
-    x_image.set_color_space(PDDeviceGray.INSTANCE)
+    x_image.set_color_space(color_space)
     return x_image
 
 
-def _extract_single_strip_tiff(tiff_bytes: bytes) -> tuple[bytes, int, int, COSDictionary]:
-    try:
-        with Image.open(io.BytesIO(tiff_bytes)) as parsed:
-            if parsed.format != "TIFF":
-                raise ValueError(f"expected TIFF image, got {parsed.format!r}")
-            tag_v2 = parsed.tag_v2
-            columns = _tag_scalar(tag_v2[_TIFF_IMAGE_WIDTH], _TIFF_IMAGE_WIDTH)
-            rows = _tag_scalar(tag_v2[_TIFF_IMAGE_LENGTH], _TIFF_IMAGE_LENGTH)
-            bits_per_sample = _tag_scalar(
-                tag_v2.get(_TIFF_BITS_PER_SAMPLE, 1), _TIFF_BITS_PER_SAMPLE
-            )
-            compression = _tag_scalar(tag_v2[_TIFF_COMPRESSION], _TIFF_COMPRESSION)
-            fill_order = _tag_scalar(
-                tag_v2.get(_TIFF_FILL_ORDER, _TIFF_FILL_LEFT_TO_RIGHT),
-                _TIFF_FILL_ORDER,
-            )
-            photometric = _tag_scalar(
-                tag_v2.get(_TIFF_PHOTOMETRIC, 1), _TIFF_PHOTOMETRIC
-            )
-            offset = _single_strip_value(
-                tag_v2[_TIFF_STRIP_OFFSETS], _TIFF_STRIP_OFFSETS
-            )
-            count = _single_strip_value(
-                tag_v2[_TIFF_STRIP_BYTE_COUNTS], _TIFF_STRIP_BYTE_COUNTS
-            )
-    except KeyError as exc:
-        raise ValueError(f"CCITTFactory: missing required TIFF tag {exc}") from exc
-    except Exception as exc:
-        if isinstance(exc, ValueError):
-            raise
-        raise ValueError(f"CCITTFactory: unreadable TIFF data: {exc}") from exc
+def create_from_random_access_impl(
+    document: PDDocument,
+    reader: BinaryIO,
+    number: int,
+) -> PDImageXObject | None:
+    """Build an Image XObject by extracting image ``number`` from the
+    TIFF data ``reader`` exposes.
 
-    if bits_per_sample != 1:
-        raise ValueError(
-            f"CCITTFactory: only 1-bit TIFF images are supported, got {bits_per_sample}"
-        )
-    if fill_order != _TIFF_FILL_LEFT_TO_RIGHT:
-        raise ValueError(
-            f"CCITTFactory: unsupported TIFF FillOrder {fill_order}"
-        )
-    if compression == _TIFF_COMPRESSION_T6:
-        k = -1
-    elif compression == _TIFF_COMPRESSION_T4:
-        k = 0
-    else:
-        raise ValueError(
-            f"CCITTFactory: unsupported TIFF compression {compression}"
-        )
-    if offset < 0 or count < 0 or offset + count > len(tiff_bytes):
-        raise ValueError("CCITTFactory: invalid TIFF strip offset/count")
-
-    strip = tiff_bytes[offset : offset + count]
-    decode_params = _decode_parms(
-        columns, rows, k, photometric == _TIFF_PHOTOMETRIC_WHITE_IS_ZERO
+    Mirrors upstream ``CCITTFactory.createFromRandomAccessImpl``
+    (line 209). Returns ``None`` when the requested IFD is past the end
+    of the TIFF's IFD chain.
+    """
+    decode_params = COSDictionary()
+    bos = io.BytesIO()
+    extract_from_tiff(reader, bos, decode_params, number)
+    if bos.tell() == 0:
+        return None
+    encoded = bos.getvalue()
+    columns = decode_params.get_int("Columns", 0)
+    rows = decode_params.get_int("Rows", 0)
+    return _build_image_xobject(
+        document, encoded, columns, rows, decode_params, PDDeviceGray.INSTANCE
     )
-    return strip, columns, rows, decode_params
 
 
 class CCITTFactory:
@@ -189,10 +341,10 @@ class CCITTFactory:
         """Encode a 1-bit b/w PIL image as a CCITT Group 4 image XObject.
 
         Mirrors upstream
-        ``CCITTFactory.createFromImage(PDDocument, BufferedImage)``.
-        Pillow's ``"1"`` mode already packs rows MSB-first to byte
-        boundaries (the ISO 32000-1 §8.9.5.1 convention) so we hand the
-        raster straight to :class:`CCITTFaxDecode`.
+        ``CCITTFactory.createFromImage(PDDocument, BufferedImage)``
+        (line 60). Pillow's ``"1"`` mode already packs rows MSB-first to
+        byte boundaries (the ISO 32000-1 §8.9.5.1 convention) so we hand
+        the raster straight to :func:`prepare_image_x_object`.
 
         :raises ValueError: if ``image`` is not a 1-bit (``"1"`` mode)
             PIL image. Mirrors upstream's ``IllegalArgumentException``
@@ -210,68 +362,58 @@ class CCITTFactory:
         # PIL "1": 1 = white (high value), 0 = black. Upstream flips bits
         # via ``writeBits(~rgb & 1)`` so the Group 4 stream encodes
         # without /BlackIs1. PIL's tobytes() already produces the same
-        # 1=white packing — no flip needed at the CCITT layer for
+        # 1=white packing -- no flip needed at the CCITT layer for
         # parity with upstream's stream payload polarity.
         raw = image.tobytes()
 
-        decode_params = _decode_parms(int(width), int(height), -1, False)
-
-        # Wrap in a one-element stream dict so CCITTFaxDecode.encode
-        # resolves /DecodeParms the same way the decoder does.
-        stream_shell = COSDictionary()
-        stream_shell.set_item(_DECODE_PARMS, decode_params)
-
-        enc_buf = io.BytesIO()
-        CCITTFaxDecode().encode(io.BytesIO(raw), enc_buf, stream_shell)
-        encoded = enc_buf.getvalue()
-
-        return _build_image_xobject(document, encoded, width, height, decode_params)
+        return prepare_image_x_object(
+            document, raw, int(width), int(height), PDDeviceGray.INSTANCE
+        )
 
     @staticmethod
     def create_from_byte_array(
         document: PDDocument,
         byte_array: bytes | bytearray | memoryview,
-    ) -> PDImageXObject:
-        """Extract a single-strip CCITT TIFF into an Image XObject."""
+        number: int = 0,
+    ) -> PDImageXObject | None:
+        """Extract image ``number`` (0-based) from a TIFF in memory.
+
+        Mirrors upstream ``CCITTFactory.createFromByteArray`` (lines 107
+        and 128). Returns ``None`` if ``number`` is past the end of the
+        TIFF's IFD chain.
+        """
         if not isinstance(byte_array, (bytes, bytearray, memoryview)):
             raise TypeError(
                 f"byte_array must be bytes-like, got {type(byte_array).__name__}"
             )
         tiff_bytes = bytes(byte_array)
-        encoded, columns, rows, decode_params = _extract_single_strip_tiff(tiff_bytes)
-        return _build_image_xobject(document, encoded, columns, rows, decode_params)
-
-    @staticmethod
-    def createFromByteArray(  # noqa: N802 - upstream Java alias
-        document: PDDocument,
-        byte_array: bytes | bytearray | memoryview,
-    ) -> PDImageXObject:
-        """Java-style alias for :meth:`create_from_byte_array`."""
-        return CCITTFactory.create_from_byte_array(document, byte_array)
+        return create_from_random_access_impl(
+            document, io.BytesIO(tiff_bytes), int(number)
+        )
 
     @staticmethod
     def create_from_file(
         document: PDDocument,
         path: str | Path,
-    ) -> PDImageXObject:
-        """Read ``path`` and delegate to :meth:`create_from_byte_array`."""
-        return CCITTFactory.create_from_byte_array(document, Path(path).read_bytes())
+        number: int = 0,
+    ) -> PDImageXObject | None:
+        """Read ``path`` and extract image ``number`` from the TIFF.
 
-    @staticmethod
-    def createFromFile(  # noqa: N802 - upstream Java alias
-        document: PDDocument,
-        path: str | Path,
-    ) -> PDImageXObject:
-        """Java-style alias for :meth:`create_from_file`."""
-        return CCITTFactory.create_from_file(document, path)
-
-    @staticmethod
-    def createFromImage(  # noqa: N802 - upstream Java alias
-        document: PDDocument,
-        image: Image.Image,
-    ) -> PDImageXObject:
-        """Java-style alias for :meth:`create_from_image`."""
-        return CCITTFactory.create_from_image(document, image)
+        Mirrors upstream ``CCITTFactory.createFromFile`` (lines 170 and
+        190). The file is fully read into memory then released, so
+        callers may delete the file immediately after the call returns
+        (see upstream ``testCreateFromFileLock``).
+        """
+        return CCITTFactory.create_from_byte_array(
+            document, Path(path).read_bytes(), int(number)
+        )
 
 
-__all__ = ["CCITTFactory"]
+__all__ = [
+    "CCITTFactory",
+    "create_from_random_access_impl",
+    "extract_from_tiff",
+    "prepare_image_x_object",
+    "read_long",
+    "read_short",
+]

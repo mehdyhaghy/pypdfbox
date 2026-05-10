@@ -256,3 +256,73 @@ def test_destination_inherits_source_info_dict() -> None:
         assert chunk_info.get_author() == "Test author"
         c.close()
     src.close()
+
+
+# ---------- public-name parity for upstream-private methods ----------
+
+
+def test_public_clone_helpers_match_underscore_aliases() -> None:
+    """Splitter exposes ``clone_structure_tree``, ``clone_id_tree``,
+    ``clone_role_map``, ``clone_tree_element`` and ``fix_destinations``
+    as public callables (mirrors upstream Java private method names).
+    The leading-underscore versions are kept as back-compat aliases.
+    """
+    splitter = Splitter()
+    pairs = [
+        ("clone_structure_tree", "_clone_structure_tree"),
+        ("clone_id_tree", "_clone_id_tree"),
+        ("clone_role_map", "_clone_role_map"),
+        ("clone_tree_element", "_clone_tree_element"),
+        ("fix_destinations", "_fix_destinations"),
+    ]
+    for public, private in pairs:
+        assert callable(getattr(splitter, public))
+        # Aliases resolve to the same underlying function object.
+        assert getattr(Splitter, public) is getattr(Splitter, private)
+
+
+def test_process_resources_handles_none_and_cycles() -> None:
+    """``process_resources`` is a no-op for ``None`` input and breaks
+    cycles via the ``visited`` set."""
+    splitter = Splitter()
+    # None resources is a no-op.
+    splitter.process_resources(None, {}, {}, set())
+
+    # Build a stub resources that returns itself when revisited; ensure
+    # the visited set short-circuits on the second visit.
+    class CyclicResources:
+        def __init__(self) -> None:
+            self._cos = object()
+            self.calls = 0
+
+        def get_cos_object(self) -> object:
+            return self._cos
+
+        def get_xobject_names(self) -> list[object]:
+            self.calls += 1
+            return []
+
+    resources = CyclicResources()
+    visited: set[int] = set()
+    splitter.process_resources(resources, {}, {}, visited)
+    splitter.process_resources(resources, {}, {}, visited)
+    assert resources.calls == 1
+
+
+def test_clone_structure_tree_overridable_via_underscore_alias() -> None:
+    """Subclass overrides on ``_clone_structure_tree`` (the upstream-
+    private name) flow through ``split()``'s post-pass dispatch."""
+    from pypdfbox.pdmodel.pd_document import PDDocument as _PDDoc
+
+    calls: list[_PDDoc] = []
+
+    class TrackingSplitter(Splitter):
+        def _clone_structure_tree(self, destination_document: _PDDoc) -> None:
+            calls.append(destination_document)
+
+    src = _make_doc(2)
+    chunks = TrackingSplitter().split(src)
+    assert len(calls) == len(chunks) == 2
+    for chunk in chunks:
+        chunk.close()
+    src.close()

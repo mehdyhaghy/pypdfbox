@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSNumber, COSStream
 
@@ -173,6 +173,66 @@ class PDShadingType7(PDShading):
             "set_function expects PDFunction, COSDictionary, COSStream, "
             f"or None; got {type(value).__name__}"
         )
+
+    # ---------- rendering hooks (lite-surface stubs) ----------
+
+    # Number of control points per tensor-product patch (PDF 32000-1 §8.7.4.5.8).
+    _CONTROL_POINTS: int = 16
+
+    def to_paint(self, matrix: Any = None) -> Any:
+        """Return a Paint-equivalent for this tensor-product-patch shading.
+        Mirrors upstream ``PDShadingType7.toPaint(Matrix)`` (line 50) which
+        returns a ``Type7ShadingPaint(this, matrix)``.
+
+        The pypdfbox renderer is Pillow / aggdraw-based, so the AWT Paint
+        contract does not apply. Returning ``None`` matches the lite-surface
+        convention used elsewhere in this package: callers in the rendering
+        cluster are expected to dispatch on ``get_shading_type()`` and
+        materialize patch geometry via ``generate_patch`` / the encoded
+        stream rather than via a Paint object."""
+        return None
+
+    def generate_patch(
+        self,
+        points: Sequence[tuple[float, float]],
+        color: Sequence[Sequence[float]],
+    ) -> dict[str, Any]:
+        """Build a single tensor-product-patch descriptor from 16 control
+        points and 4 corner colors. Mirrors upstream
+        ``PDShadingType7.generatePatch(Point2D[], float[][])`` (line 56)
+        which returns ``new TensorPatch(points, color)``.
+
+        Upstream ``TensorPatch`` is an internal rendering helper (package-
+        private). Until the rendering cluster lands, this method returns a
+        dict carrying the raw control-points and corner-color arrays
+        unchanged. Validates the 16-point arity per PDF 32000-1 §8.7.4.5.8."""
+        pts = list(points)
+        if len(pts) != self._CONTROL_POINTS:
+            raise ValueError(
+                f"Tensor-product patch requires {self._CONTROL_POINTS} "
+                f"control points, got {len(pts)}"
+            )
+        cols = [list(c) for c in color]
+        if len(cols) != 4:
+            raise ValueError(
+                f"Tensor-product patch requires 4 corner colors, "
+                f"got {len(cols)}"
+            )
+        return {"kind": "tensor", "points": pts, "color": cols}
+
+    def get_bounds(self, xform: Any = None, matrix: Any = None) -> Any:
+        """Return the bounding rectangle of this shading's mesh, or ``None``
+        when the bounds cannot be computed. Mirrors upstream
+        ``PDShadingType7.getBounds(AffineTransform, Matrix)`` (line 62)
+        which delegates to ``getBounds(xform, matrix, 16)`` on the abstract
+        ``PDMeshBasedShadingType`` parent.
+
+        Bounds computation requires walking the encoded patch stream and
+        triangulating each tensor-product patch — that work belongs to the
+        rendering cluster (Pillow / aggdraw-based). Returns ``None`` until
+        then, matching the base ``PDShading.get_bounds`` lite-surface
+        contract."""
+        return None
 
 
 __all__ = ["PDShadingType7"]

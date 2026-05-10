@@ -73,8 +73,8 @@ class Splitter:
 
     The structure-tree / parent-tree / id-tree / role-map cloning that
     upstream performs after the page walk is implemented here in full —
-    see :meth:`_clone_structure_tree`. Cross-chunk link-annotation
-    destinations are nulled out in :meth:`_fix_destinations` so the
+    see :meth:`clone_structure_tree`. Cross-chunk link-annotation
+    destinations are nulled out in :meth:`fix_destinations` so the
     chunk's `/Dest` payloads don't carry refs to pages that didn't
     follow the split.
     """
@@ -261,6 +261,10 @@ class Splitter:
             self._annot_dict_map = self._annot_dict_maps[index]
             self._dest_to_fix = self._dest_to_fix_per_chunk[index]
             try:
+                # Dispatch via the underscored alias so subclasses can
+                # override either the public ``clone_structure_tree`` or
+                # the upstream-private ``_clone_structure_tree`` and have
+                # the override picked up.
                 self._clone_structure_tree(destination_document)
             except Exception:  # noqa: BLE001
                 _LOG.exception(
@@ -602,7 +606,7 @@ class Splitter:
         self, link: Any, source_page_dict: COSDictionary
     ) -> None:
         """Clone the link's destination array, install the clone, and
-        remember it for the :meth:`_fix_destinations` post-pass.
+        remember it for the :meth:`fix_destinations` post-pass.
 
         Mirrors upstream's ``destToFixMap`` book-keeping. We don't try to
         resolve named destinations here — the catalog name-tree lookup
@@ -682,7 +686,7 @@ class Splitter:
 
     # ---------- destination fix-up post-pass ----------
 
-    def _fix_destinations(self, destination_document: PDDocument) -> None:
+    def fix_destinations(self, destination_document: PDDocument) -> None:
         """Rewrite or null out staged ``/Dest`` arrays per upstream's
         ``fixDestinations``. For each cloned destination array:
 
@@ -722,7 +726,7 @@ class Splitter:
 
     # ---------- structure-tree cloning ----------
 
-    def _clone_structure_tree(self, destination_document: PDDocument) -> None:
+    def clone_structure_tree(self, destination_document: PDDocument) -> None:
         """Clone the source ``/StructTreeRoot`` into ``destination_document``,
         keeping only structure elements that pertain to pages in this
         chunk. Mirrors upstream ``Splitter.cloneStructureTree``.
@@ -776,7 +780,7 @@ class Splitter:
             except Exception:  # noqa: BLE001
                 sp1 = -1
             if sp1 != -1:
-                self._clone_tree_element(src_numbers, dst_numbers, sp1)
+                self.clone_tree_element(src_numbers, dst_numbers, sp1)
             try:
                 annots = page.get_annotations()
             except Exception:  # noqa: BLE001
@@ -787,7 +791,31 @@ class Splitter:
                 except Exception:  # noqa: BLE001
                     sp2 = -1
                 if sp2 != -1:
-                    self._clone_tree_element(src_numbers, dst_numbers, sp2)
+                    self.clone_tree_element(src_numbers, dst_numbers, sp2)
+                # Mirrors upstream Splitter.cloneStructureTree (Java
+                # line 229-234): walk an annotation's normal appearance
+                # stream resources for /StructParent links.
+                try:
+                    normal_app = ann.get_normal_appearance_stream()
+                except Exception:  # noqa: BLE001
+                    normal_app = None
+                if normal_app is not None:
+                    try:
+                        app_resources = normal_app.get_resources()
+                    except Exception:  # noqa: BLE001
+                        app_resources = None
+                    self.process_resources(
+                        app_resources, src_numbers, dst_numbers, set()
+                    )
+            # Walk page resources for /StructParent / /StructParents
+            # references used by Form/Image XObjects (Java line 235).
+            try:
+                page_resources = page.get_resources()
+            except Exception:  # noqa: BLE001
+                page_resources = None
+            self.process_resources(
+                page_resources, src_numbers, dst_numbers, set()
+            )
 
         if dst_numbers:
             # Build a fresh number-tree leaf node from the filtered map.
@@ -812,11 +840,11 @@ class Splitter:
             dst_struct_root_cos.set_item(_CLASS_MAP, src_class_map)
 
         # /RoleMap — narrow to roles actually used by retained elements.
-        self._clone_role_map(src_struct_root, dst_struct_root)
+        self.clone_role_map(src_struct_root, dst_struct_root)
 
         # /IDTree — filter to ids actually referenced by retained
         # elements, mapped through _struct_dict_map.
-        self._clone_id_tree(
+        self.clone_id_tree(
             src_struct_root, dst_struct_root, PDStructureElementNameTreeNode
         )
 
@@ -1014,7 +1042,7 @@ class Splitter:
         )
         dst_dict.remove_item(_OBJ)
 
-    def _clone_tree_element(
+    def clone_tree_element(
         self,
         src_numbers: dict[int, COSBase],
         dst_numbers: dict[int, COSBase],
@@ -1049,7 +1077,7 @@ class Splitter:
                 type(src_obj).__name__,
             )
 
-    def _clone_role_map(self, src_root: Any, dst_root: Any) -> None:
+    def clone_role_map(self, src_root: Any, dst_root: Any) -> None:
         src_dict = src_root.get_cos_object().get_dictionary_object(_ROLE_MAP)
         if not isinstance(src_dict, COSDictionary):
             return
@@ -1059,7 +1087,7 @@ class Splitter:
                 dst_dict.set_item(key, value)
         dst_root.get_cos_object().set_item(_ROLE_MAP, dst_dict)
 
-    def _clone_id_tree(
+    def clone_id_tree(
         self, src_root: Any, dst_root: Any, name_tree_cls: type
     ) -> None:
         src_id_tree = src_root.get_id_tree()
@@ -1141,6 +1169,86 @@ class Splitter:
         if kids:
             for child in kids:
                 Splitter._walk_id_tree(child, out)
+
+    # ---------- resource walking ----------
+
+    def process_resources(
+        self,
+        resources: Any,
+        src_numbers: dict[int, COSBase],
+        dst_numbers: dict[int, COSBase],
+        visited: set[int],
+    ) -> None:
+        """Walk ``resources`` for Form/Image XObjects with ``/StructParent``
+        or ``/StructParents`` references, copying any retained entries
+        from ``src_numbers`` into ``dst_numbers`` (mirrors upstream
+        ``Splitter.processResources`` at Java line 586).
+
+        ``visited`` tracks resource dictionary identities to break cycles
+        — upstream PDFBox guards 002874.pdf this way.
+        """
+        if resources is None:
+            return
+        try:
+            resources_cos = resources.get_cos_object()
+        except AttributeError:
+            return
+        cos_id = id(resources_cos)
+        if cos_id in visited:
+            return
+        visited.add(cos_id)
+
+        try:
+            x_object_names = resources.get_xobject_names()
+        except Exception:  # noqa: BLE001
+            return
+        for name in x_object_names:
+            try:
+                x_object = resources.get_x_object(name)
+            except Exception:  # noqa: BLE001
+                continue
+            sp = -1
+            # Form XObjects carry /StructParents (note plural) and have
+            # nested /Resources of their own that need recursion.
+            from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
+                PDFormXObject,
+            )
+            from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
+                PDImageXObject,
+            )
+
+            if isinstance(x_object, PDFormXObject):
+                try:
+                    sp = x_object.get_struct_parents()
+                except Exception:  # noqa: BLE001
+                    sp = -1
+                try:
+                    nested = x_object.get_resources()
+                except Exception:  # noqa: BLE001
+                    nested = None
+                self.process_resources(nested, src_numbers, dst_numbers, visited)
+            elif isinstance(x_object, PDImageXObject):
+                try:
+                    sp = x_object.get_struct_parent()
+                except Exception:  # noqa: BLE001
+                    sp = -1
+            if sp != -1:
+                self.clone_tree_element(src_numbers, dst_numbers, sp)
+
+    # ---------- private-name aliases (back-compat) ----------
+    #
+    # Upstream Splitter exposes the structure-tree clone helpers as
+    # ``private``. We mirror them as public methods so the Java naming
+    # round-trips through the parity tracker and so subclasses can hook
+    # the same surface area as upstream subclasses do (e.g. via
+    # ``protected`` accessors). The leading-underscore aliases below
+    # preserve compatibility with internal callers and existing tests
+    # that exercise the implementation directly.
+    _clone_structure_tree = clone_structure_tree
+    _clone_tree_element = clone_tree_element
+    _clone_role_map = clone_role_map
+    _clone_id_tree = clone_id_tree
+    _fix_destinations = fix_destinations
 
 
 __all__ = ["Splitter"]

@@ -5,7 +5,7 @@ import io
 from PIL import Image
 
 from pypdfbox.cos import COSName
-from pypdfbox.pdmodel.graphics.image import CCITTFactory, JPEGFactory, LosslessFactory
+from pypdfbox.pdmodel.graphics.image import JPEGFactory, LosslessFactory
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 
@@ -29,18 +29,6 @@ def test_jpeg_factory_java_aliases_forward_to_snake_case() -> None:
     assert from_stream.get_height() == 7
     assert from_image.get_width() == 3
     assert from_image.get_height() == 4
-
-
-def test_ccitt_factory_create_from_image_java_alias() -> None:
-    document = PDDocument()
-    source = Image.new("1", (16, 8), color=1)
-
-    image = CCITTFactory.createFromImage(document, source)
-
-    assert image.get_width() == 16
-    assert image.get_height() == 8
-    assert image.get_bits_per_component() == 1
-    assert image.get_filter() == COSName.get_pdf_name("CCITTFaxDecode")
 
 
 def test_lossless_factory_create_from_image_java_alias() -> None:

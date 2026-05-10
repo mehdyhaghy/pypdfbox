@@ -21,7 +21,6 @@ from pypdfbox.pdmodel.graphics.shading import (
     PDShadingType7,
 )
 
-
 # ---------- helpers ----------
 
 
@@ -203,3 +202,88 @@ def test_metadata_lives_on_backing_stream(cls):
     assert backing.get_int("BitsPerCoordinate") == 16
     assert backing.get_int("BitsPerComponent") == 8
     assert backing.get_int("BitsPerFlag") == 4
+
+
+# ---------- to_paint / get_bounds (lite-surface rendering hooks) ----------
+
+
+@pytest.mark.parametrize("cls", [PDShadingType6, PDShadingType7])
+def test_to_paint_lite_surface_returns_none(cls):
+    # Mirrors upstream toPaint(Matrix) which returns a Type6/7ShadingPaint.
+    # The Pillow-based renderer doesn't use AWT Paint; lite surface returns None.
+    assert cls().to_paint() is None
+    assert cls().to_paint(matrix=object()) is None
+
+
+@pytest.mark.parametrize("cls", [PDShadingType6, PDShadingType7])
+def test_get_bounds_lite_surface_returns_none(cls):
+    # Mirrors upstream getBounds(AffineTransform, Matrix) → 12 / 16 control
+    # points; bounds requires patch decoding which belongs to rendering.
+    assert cls().get_bounds() is None
+    assert cls().get_bounds(None, None) is None
+    assert cls().get_bounds(object(), object()) is None
+
+
+# ---------- generate_patch (control-point arity validation) ----------
+
+
+def _make_points(n):
+    return [(float(i), float(i)) for i in range(n)]
+
+
+def _make_colors(n_components=1):
+    return [[0.5] * n_components for _ in range(4)]
+
+
+def test_type6_generate_patch_returns_coons_descriptor():
+    s = PDShadingType6()
+    out = s.generate_patch(_make_points(12), _make_colors(1))
+    assert out["kind"] == "coons"
+    assert len(out["points"]) == 12
+    assert len(out["color"]) == 4
+
+
+def test_type7_generate_patch_returns_tensor_descriptor():
+    s = PDShadingType7()
+    out = s.generate_patch(_make_points(16), _make_colors(3))
+    assert out["kind"] == "tensor"
+    assert len(out["points"]) == 16
+    assert len(out["color"]) == 4
+    assert all(len(c) == 3 for c in out["color"])
+
+
+@pytest.mark.parametrize(
+    "cls,expected_count",
+    [(PDShadingType6, 12), (PDShadingType7, 16)],
+)
+def test_generate_patch_rejects_wrong_control_point_count(cls, expected_count):
+    s = cls()
+    with pytest.raises(ValueError):
+        s.generate_patch(_make_points(expected_count - 1), _make_colors())
+    with pytest.raises(ValueError):
+        s.generate_patch(_make_points(expected_count + 1), _make_colors())
+
+
+@pytest.mark.parametrize(
+    "cls,n_points",
+    [(PDShadingType6, 12), (PDShadingType7, 16)],
+)
+def test_generate_patch_rejects_wrong_corner_color_count(cls, n_points):
+    s = cls()
+    with pytest.raises(ValueError):
+        s.generate_patch(_make_points(n_points), [[0.0]] * 3)
+    with pytest.raises(ValueError):
+        s.generate_patch(_make_points(n_points), [[0.0]] * 5)
+
+
+@pytest.mark.parametrize("cls", [PDShadingType6, PDShadingType7])
+def test_generate_patch_copies_input_sequences(cls):
+    # The descriptor's lists must not alias caller-mutable inputs.
+    n = 12 if cls is PDShadingType6 else 16
+    pts = _make_points(n)
+    colors = _make_colors(2)
+    out = cls().generate_patch(pts, colors)
+    out["points"].append((999.0, 999.0))
+    out["color"][0].append(123.0)
+    assert len(pts) == n
+    assert len(colors[0]) == 2

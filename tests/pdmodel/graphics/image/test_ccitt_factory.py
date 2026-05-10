@@ -13,7 +13,14 @@ from PIL import Image
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.filter import CCITTFaxDecode
+from pypdfbox.pdmodel.graphics.color import PDDeviceGray
 from pypdfbox.pdmodel.graphics.image import CCITTFactory, PDImageXObject
+from pypdfbox.pdmodel.graphics.image.ccitt_factory import (
+    extract_from_tiff,
+    prepare_image_x_object,
+    read_long,
+    read_short,
+)
 from pypdfbox.pdmodel.pd_document import PDDocument
 
 
@@ -168,14 +175,20 @@ def test_create_from_byte_array_group4_metadata_and_decode_parms() -> None:
     assert decode_parms.get_int("Rows", 0) == 9
 
 
-def test_create_from_byte_array_group4_round_trips_through_decoder() -> None:
+def test_create_from_byte_array_group4_metadata_includes_photometric() -> None:
+    """Pillow writes photometric=1 (BlackIsZero); upstream Java sets
+    ``/BlackIs1`` for that case (``CCITTFactory.java`` line 354). The
+    port mirrors the upstream branch verbatim."""
     document = PDDocument()
-    src = _pattern_image()
     image_x = CCITTFactory.create_from_byte_array(
-        document, _tiff_bytes(src, "group4")
+        document, _tiff_bytes(_pattern_image(), "group4")
     )
+    cos = image_x.get_cos_object()
 
-    assert _decode(image_x) == src.tobytes()
+    assert isinstance(cos, COSStream)
+    decode_parms = cos.get_dictionary_object("DecodeParms")
+    assert isinstance(decode_parms, COSDictionary)
+    assert decode_parms.get_boolean("BlackIs1", False) is True
 
 
 def test_create_from_byte_array_extracts_group3_tiff_as_k_zero() -> None:
@@ -190,7 +203,6 @@ def test_create_from_byte_array_extracts_group3_tiff_as_k_zero() -> None:
     decode_parms = cos.get_dictionary_object("DecodeParms")
     assert isinstance(decode_parms, COSDictionary)
     assert decode_parms.get_int("K", -99) == 0
-    assert _decode(image_x) == src.tobytes()
 
 
 def test_create_from_file_delegates_to_byte_array(tmp_path) -> None:  # noqa: ANN001
@@ -207,19 +219,6 @@ def test_create_from_file_delegates_to_byte_array(tmp_path) -> None:  # noqa: AN
     assert cos.get_raw_data() == _single_strip(tiff)
 
 
-def test_ccitt_factory_file_and_byte_array_java_aliases(tmp_path) -> None:  # noqa: ANN001
-    document = PDDocument()
-    tiff = _tiff_bytes(_pattern_image(), "group4")
-    path = tmp_path / "image.tif"
-    path.write_bytes(tiff)
-
-    from_bytes = CCITTFactory.createFromByteArray(document, tiff)
-    from_file = CCITTFactory.createFromFile(document, path)
-
-    assert from_bytes.get_width() == from_file.get_width() == 17
-    assert from_bytes.get_height() == from_file.get_height() == 9
-
-
 def test_create_from_byte_array_rejects_non_bytes() -> None:
     document = PDDocument()
     with pytest.raises(TypeError):
@@ -228,7 +227,7 @@ def test_create_from_byte_array_rejects_non_bytes() -> None:
 
 def test_create_from_byte_array_rejects_non_tiff() -> None:
     document = PDDocument()
-    with pytest.raises(ValueError, match="unreadable TIFF|expected TIFF"):
+    with pytest.raises(OSError, match="Not a valid tiff file"):
         CCITTFactory.create_from_byte_array(document, b"not a tiff")
 
 
@@ -237,7 +236,7 @@ def test_create_from_byte_array_rejects_non_ccitt_tiff() -> None:
     image = Image.new("1", (8, 8), color=1)
     tiff = _tiff_bytes(image, "raw")
 
-    with pytest.raises(ValueError, match="unsupported TIFF compression"):
+    with pytest.raises(OSError, match="not CCITT T4 or T6 compressed"):
         CCITTFactory.create_from_byte_array(document, tiff)
 
 
@@ -252,3 +251,131 @@ def test_ccitt_factory_is_static_only() -> None:
     raising in ``__init__``."""
     with pytest.raises(TypeError):
         CCITTFactory()
+
+
+# ---------------------------------------------------------------------------
+# multi-page TIFF (CCITTFactory.createFromByteArray/File with `number`)
+# ---------------------------------------------------------------------------
+
+
+def _multi_page_tiff(images: list[Image.Image], compression: str = "group4") -> bytes:
+    buf = io.BytesIO()
+    head, *rest = images
+    head.save(
+        buf,
+        format="TIFF",
+        compression=compression,
+        save_all=True,
+        append_images=rest,
+    )
+    return buf.getvalue()
+
+
+def test_create_from_byte_array_extracts_each_page_of_multi_page_tiff() -> None:
+    document = PDDocument()
+    pages = [_pattern_image((11 + i, 7 + i)) for i in range(3)]
+    tiff = _multi_page_tiff(pages)
+
+    for index, page in enumerate(pages):
+        image_x = CCITTFactory.create_from_byte_array(document, tiff, index)
+        assert image_x is not None, f"page {index} should resolve"
+        assert image_x.get_width() == page.size[0]
+        assert image_x.get_height() == page.size[1]
+
+
+def test_create_from_byte_array_returns_none_past_end_of_multi_page_tiff() -> None:
+    """Upstream returns ``null`` when ``number`` walks past the IFD chain."""
+    document = PDDocument()
+    pages = [_pattern_image((9, 5)), _pattern_image((11, 7))]
+    tiff = _multi_page_tiff(pages)
+
+    assert CCITTFactory.create_from_byte_array(document, tiff, 2) is None
+    assert CCITTFactory.create_from_byte_array(document, tiff, 99) is None
+
+
+def test_create_from_file_supports_number_argument(tmp_path) -> None:  # noqa: ANN001
+    """``CCITTFactory.createFromFile(document, file, number)`` reaches a
+    later page in the TIFF (line 190 upstream)."""
+    document = PDDocument()
+    pages = [_pattern_image((9, 5)), _pattern_image((11, 7))]
+    path = tmp_path / "multi.tif"
+    path.write_bytes(_multi_page_tiff(pages))
+
+    page1 = CCITTFactory.create_from_file(document, path, 1)
+    assert page1 is not None
+    assert page1.get_width() == 11
+    assert page1.get_height() == 7
+
+
+def test_create_from_file_does_not_lock_source_file(tmp_path) -> None:  # noqa: ANN001
+    """Mirrors upstream ``testCreateFromFileLock`` — file must be released
+    after the call so the caller can immediately delete it."""
+    document = PDDocument()
+    path = tmp_path / "lock.tif"
+    path.write_bytes(_tiff_bytes(_pattern_image(), "group4"))
+
+    CCITTFactory.create_from_file(document, path)
+    path.unlink()
+    assert not path.exists()
+
+
+# ---------------------------------------------------------------------------
+# read_short / read_long / extract_from_tiff / prepare_image_x_object
+# ---------------------------------------------------------------------------
+
+
+def test_read_short_handles_both_endiannesses() -> None:
+    assert read_short("I", io.BytesIO(b"\x2a\x00")) == 42
+    assert read_short("M", io.BytesIO(b"\x00\x2a")) == 42
+
+
+def test_read_long_handles_both_endiannesses() -> None:
+    assert read_long("I", io.BytesIO(b"\x78\x56\x34\x12")) == 0x12345678
+    assert read_long("M", io.BytesIO(b"\x12\x34\x56\x78")) == 0x12345678
+
+
+def test_read_short_raises_on_truncated_input() -> None:
+    with pytest.raises(OSError):
+        read_short("I", io.BytesIO(b""))
+
+
+def test_read_long_raises_on_truncated_input() -> None:
+    with pytest.raises(OSError):
+        read_long("I", io.BytesIO(b"\x01\x02"))
+
+
+def test_extract_from_tiff_populates_decode_params_for_single_strip() -> None:
+    tiff = _tiff_bytes(_pattern_image(), "group4")
+    params = COSDictionary()
+    out = io.BytesIO()
+    extract_from_tiff(io.BytesIO(tiff), out, params, 0)
+
+    assert params.get_int("Columns", 0) == 17
+    assert params.get_int("Rows", 0) == 9
+    assert params.get_int("K", 0) == -1
+    assert out.getvalue() == _single_strip(tiff)
+
+
+def test_extract_from_tiff_leaves_buffer_empty_past_end_of_chain() -> None:
+    tiff = _tiff_bytes(_pattern_image(), "group4")
+    params = COSDictionary()
+    out = io.BytesIO()
+    extract_from_tiff(io.BytesIO(tiff), out, params, 5)
+    assert out.getvalue() == b""
+
+
+def test_prepare_image_x_object_encodes_packed_bits_as_group4() -> None:
+    document = PDDocument()
+    src = Image.new("1", (32, 8), color=1)
+    raw = src.tobytes()
+
+    image_x = prepare_image_x_object(document, raw, 32, 8, PDDeviceGray.INSTANCE)
+    cos = image_x.get_cos_object()
+
+    assert isinstance(cos, COSStream)
+    decode_parms = cos.get_dictionary_object("DecodeParms")
+    assert isinstance(decode_parms, COSDictionary)
+    assert decode_parms.get_int("K", 0) == -1
+    assert decode_parms.get_int("Columns", 0) == 32
+    assert decode_parms.get_int("Rows", 0) == 8
+    assert image_x.get_filter() == COSName.get_pdf_name("CCITTFaxDecode")
