@@ -15,8 +15,15 @@ class PDDeviceColorSpace(PDColorSpace, ABC):
     def get_cos_object(self) -> COSBase:
         return COSName.get_pdf_name(self.get_name())
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``PDDeviceColorSpace.toString()``
+        (``PDDeviceColorSpace.java`` lines 29-33): returns the device
+        color space's PDF name (``DeviceGray`` / ``DeviceRGB`` /
+        ``DeviceCMYK``)."""
         return self.get_name()
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 __all__ = ["PDDeviceColorSpace"]

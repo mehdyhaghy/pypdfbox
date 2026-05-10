@@ -46,3 +46,21 @@ def test_str_delegates_to_underlying_dictionary() -> None:
     d.set_string("Name", "Foo")
     val = PDParentTreeValue(d)
     assert str(val) == str(d)
+
+
+def test_to_string_array() -> None:
+    """``to_string`` is the snake_case mirror of upstream
+    ``PDParentTreeValue.toString()`` (Java lines 53-57): delegates to
+    the underlying COSArray's string form."""
+    arr = COSArray()
+    arr.add(COSInteger.get(13))
+    val = PDParentTreeValue(arr)
+    assert val.to_string() == str(arr)
+    assert val.to_string() == str(val)
+
+
+def test_to_string_dictionary() -> None:
+    d = COSDictionary()
+    d.set_string("Name", "Bar")
+    val = PDParentTreeValue(d)
+    assert val.to_string() == str(d)

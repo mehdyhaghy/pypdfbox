@@ -202,3 +202,35 @@ def test_convert_cos_value_returns_none_for_invalid_entry() -> None:
 
     tree = PDDestinationNameTreeNode(node)
     assert tree.get_value("bad") is None
+
+
+# --------- (8) convert_cos_to_pd: snake_case mirror of upstream typed factory ---------
+
+
+def test_convert_cos_to_pd_returns_page_destination() -> None:
+    """``convert_cos_to_pd`` is the snake_case mirror of upstream
+    ``convertCOSToPD`` — typed-equivalent of ``convert_cos_to_value``."""
+    tree = PDDestinationNameTreeNode()
+    cos_dest = _xyz(4).get_cos_object()
+    resolved = tree.convert_cos_to_pd(cos_dest)
+    assert isinstance(resolved, PDPageXYZDestination)
+    assert resolved.get_page_number() == 4
+
+
+def test_convert_cos_to_pd_dereferences_d_wrapper() -> None:
+    """The ``/D``-indirection performed by ``convertCOSToPD`` must still
+    apply when callers use the snake_case alias."""
+    inner = _xyz(8).get_cos_object()
+    wrapper = COSDictionary()
+    wrapper.set_item(COSName.get_pdf_name("D"), inner)
+    tree = PDDestinationNameTreeNode()
+    resolved = tree.convert_cos_to_pd(wrapper)
+    assert isinstance(resolved, PDPageXYZDestination)
+    assert resolved.get_page_number() == 8
+
+
+def test_convert_cos_to_pd_returns_none_for_invalid() -> None:
+    """PDFBOX-5975 behaviour also reachable via ``convert_cos_to_pd``."""
+    tree = PDDestinationNameTreeNode()
+    # A dict without /D resolves to None upstream.
+    assert tree.convert_cos_to_pd(COSDictionary()) is None

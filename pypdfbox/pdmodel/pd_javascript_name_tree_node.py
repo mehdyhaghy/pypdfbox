@@ -39,6 +39,18 @@ class PDJavascriptNameTreeNode(PDNameTreeNode[str]):
             f"Expected /JS to be a string or stream, got {type(js).__name__}"
         )
 
+    def convert_cos_to_pd(self, base: COSBase) -> str:
+        """Mirror upstream ``PDJavascriptNameTreeNode.convertCOSToPD``.
+
+        Snake_case alias for upstream's typed factory
+        (``PDJavascriptNameTreeNode.java`` lines 50-58). The base class's
+        :meth:`convert_cos_to_pd` shim already delegates to
+        :meth:`convert_cos_to_value`, but we override here so PDFBox-trained
+        callers see the upstream return type pinned to the JavaScript body
+        (upstream returns ``PDActionJavaScript``; pypdfbox exposes the raw
+        ``str`` JS body per ``CHANGES.md``)."""
+        return self.convert_cos_to_value(base)
+
     def convert_value_to_cos(self, value: str) -> COSBase:
         action = COSDictionary()
         action.set_item(_TYPE, _ACTION)

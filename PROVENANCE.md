@@ -377,6 +377,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/interactive/form/pd_terminal_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDTerminalField.java` (also hosts `PDFieldStub` — generic concrete subclass returned by factory until typed dispatch lands) |
 | `pypdfbox/pdmodel/interactive/form/pd_field_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldFactory.java` (typed `/FT` dispatch wired for Tx/Btn/Ch/Sig) |
 | `pypdfbox/pdmodel/interactive/form/pd_variable_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDVariableText.java` |
+| `pypdfbox/pdmodel/interactive/form/pd_default_appearance_string.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDDefaultAppearanceString.java` |
 | `pypdfbox/pdmodel/interactive/form/pd_text_field.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDTextField.java` (lite — value handling does not regenerate widget appearance) |
 | `pypdfbox/pdmodel/interactive/form/pd_button.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDButton.java` (lite — `get_on_values` returns empty set) |
 | `pypdfbox/pdmodel/interactive/form/pd_push_button.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDPushButton.java` |
@@ -1107,6 +1108,7 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/pdmodel/fdf/upstream/test_fdf_document.py` | 3.0.x | placeholder — upstream has no dedicated `FDFDocumentTest.java`; surface inferred from `FDFDocument.java` (PDFBox 3.0.x) |
 | `tests/fontbox/ttf/upstream/test_glyph_data.py` | 3.0.x | placeholder — upstream has no dedicated `GlyphDataTest.java`; behaviour mirror anchored to `GlyphData.java` source line numbers |
 | `tests/pdmodel/interactive/form/upstream/test_pd_variable_text.py` | 3.0.x | placeholder — no upstream `PDVariableTextTest.java` (behaviour pinned via `PDTextField`/`PDListBox`/`PDComboBox` suites) |
+| `tests/pdmodel/interactive/form/upstream/test_pd_default_appearance_string.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDDefaultAppearanceStringTest.java` |
 | `tests/filter/upstream/test_filter.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/filter/TestFilters.java` (`testEmptyFilterList` plus chain semantics not directly testable in upstream's `TestFilters` surface) |
 | `tests/cos/upstream/test_cos_update_state.py` | 3.0.x | placeholder — upstream has no dedicated `COSUpdateStateTest.java`; behaviour pinned via contract tests against `COSUpdateState.java` (PDFBox 3.0.x) |
 | `tests/text/upstream/test_pdf_text_stripper.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/text/TestTextStripper.java` (helper-method extraction; not full corpus port — corpus tests need rendering-comparison fixtures) |
@@ -1409,7 +1411,24 @@ No new port files added. The wave only extended existing upstream-derived module
 | `tests/pdmodel/interactive/documentnavigation/destination/test_pd_page_destination_wave1275.py` | 3.0.x | hand-written coverage for `PDPageDestination.index_of_page_tree` |
 | `tests/pdmodel/interactive/form/test_pd_field_wave1275.py` | 3.0.x | hand-written coverage for `PDField.equals` / `hash_code` / `to_string` |
 | `tests/pdmodel/interactive/form/test_pd_variable_text_wave1275.py` | 3.0.x | hand-written coverage for `PDVariableText.get_default_appearance_string` |
+| `tests/pdmodel/interactive/form/test_pd_default_appearance_string.py` | 3.0.x | hand-written coverage for `PDDefaultAppearanceString` parser + accessors + writers |
 | `tests/pdmodel/test_pd_rectangle_wave1275.py` | 3.0.x | hand-written coverage for `PDRectangle.to_string` / `transform` |
 | `tests/xmpbox/test_xmp_metadata_wave1275.py` | 3.0.x | hand-written coverage for `XMPMetadata.get_end_x_packet` / `set_end_x_packet` / `get_type_mapping` |
 | `tests/xmpbox/type/test_abstract_simple_property_wave1275.py` | 3.0.x | hand-written coverage for `AbstractSimpleProperty.to_string` |
 | `tests/xmpbox/type/upstream/test_attribute_wave1275.py` | 3.0.x | hand-written coverage for `Attribute.to_string` |
+
+### Wave 1276 additions
+
+The wave reached 1:1 method parity (100.0%) across ported classes. New port files + tests:
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/fontbox/font_type.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDFontFactory.java` (private inner `FontType` enum lifted to a top-level Python module) |
+| `pypdfbox/cos/unmodifiable_cos_dictionary.py` | 3.0.x | re-export shim for the existing `UnmodifiableCOSDictionary` in `cos_dictionary.py`, mirroring the standalone Java class |
+| `tests/cos/test_unmodifiable_cos_dictionary_wave1276.py` | 3.0.x | hand-written coverage for `UnmodifiableCOSDictionary.set_need_to_be_updated` |
+| `tests/fontbox/test_font_box_font_wave1276.py` | 3.0.x | hand-written coverage for `FontBoxFont.get_font_b_box` Protocol method |
+| `tests/fontbox/test_font_type_wave1276.py` | 3.0.x | hand-written coverage for `FontType.get_subtype` / `is_cid_subtype` |
+| `tests/fontbox/cff/test_fd_select_to_string.py` | 3.0.x | hand-written coverage for `Format0FDSelect.to_string` / `Format3FDSelect.to_string` |
+| `tests/pdmodel/test_pd_javascript_name_tree_node.py` | 3.0.x | hand-written coverage for `PDJavascriptNameTreeNode.convert_cos_to_pd` |
+| `tests/pdmodel/documentinterchange/logicalstructure/test_pd_structure_element_name_tree_node.py` | 3.0.x | hand-written coverage for `PDStructureElementNameTreeNode.convert_cos_to_pd` |
+| `tests/pdmodel/graphics/color/test_pd_device_color_space_to_string.py` | 3.0.x | hand-written coverage for `PDDeviceColorSpace.to_string` |

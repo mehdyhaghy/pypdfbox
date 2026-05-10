@@ -23,6 +23,17 @@ class PDEmbeddedFilesNameTreeNode(PDNameTreeNode[PDComplexFileSpecification]):
             raise OSError(f"dictionary expected here, but got {base!r}")
         return PDComplexFileSpecification(base)  # type: ignore[arg-type]
 
+    def convert_cos_to_pd(self, base: COSBase) -> PDComplexFileSpecification:
+        """Mirror upstream ``PDEmbeddedFilesNameTreeNode.convertCOSToPD``.
+
+        Snake_case alias for upstream's typed factory
+        (``PDEmbeddedFilesNameTreeNode.java`` lines 49-57). The base class's
+        :meth:`convert_cos_to_pd` shim already delegates to
+        :meth:`convert_cos_to_value`, but we override here so PDFBox-trained
+        callers see the upstream return type pinned to
+        ``PDComplexFileSpecification`` rather than the generic ``T``."""
+        return self.convert_cos_to_value(base)
+
     def convert_value_to_cos(self, value: PDComplexFileSpecification) -> COSBase:
         return value.get_cos_object()
 

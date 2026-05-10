@@ -93,3 +93,21 @@ def test_round_trip_via_existing_cos_dictionary() -> None:
     assert isinstance(fetched, PDComplexFileSpecification)
     assert fetched.get_file() == "inline.txt"
     assert fetched.get_cos_object() is spec_dict
+
+
+def test_convert_cos_to_pd_returns_complex_file_spec() -> None:
+    """``convert_cos_to_pd`` is the snake_case alias of upstream
+    ``convertCOSToPD`` — typed-equivalent of ``convert_cos_to_value``."""
+    tree = PDEmbeddedFilesNameTreeNode()
+    spec_dict = _spec("alias.txt").get_cos_object()
+    resolved = tree.convert_cos_to_pd(spec_dict)
+    assert isinstance(resolved, PDComplexFileSpecification)
+    assert resolved.get_file() == "alias.txt"
+
+
+def test_convert_cos_to_pd_rejects_non_dictionary() -> None:
+    """Upstream contract: non-COSDictionary leaves raise IOException →
+    OSError in pypdfbox."""
+    tree = PDEmbeddedFilesNameTreeNode()
+    with pytest.raises(OSError):
+        tree.convert_cos_to_pd(COSString("nope"))

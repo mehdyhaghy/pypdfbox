@@ -546,6 +546,17 @@ class PDStructureElementNameTreeNode(PDNameTreeNode[PDStructureElement]):
             )
         return PDStructureElement(base)
 
+    def convert_cos_to_pd(self, base: COSBase) -> PDStructureElement:
+        """Mirror upstream ``PDStructureElementNameTreeNode.convertCOSToPD``.
+
+        Snake_case alias for upstream's typed factory
+        (``PDStructureElementNameTreeNode.java`` lines 51-59). The base
+        class's :meth:`convert_cos_to_pd` shim already delegates to
+        :meth:`convert_cos_to_value`, but we override here so PDFBox-trained
+        callers see the upstream return type pinned to
+        ``PDStructureElement`` rather than the generic ``T``."""
+        return self.convert_cos_to_value(base)
+
     def convert_value_to_cos(self, value: PDStructureElement) -> COSBase:
         return value.get_cos_object()
 

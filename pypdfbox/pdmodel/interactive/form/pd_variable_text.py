@@ -4,11 +4,10 @@ from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName, COSNumber, COSStream, COSString
 
+from .pd_default_appearance_string import PDDefaultAppearanceString
 from .pd_terminal_field import PDTerminalField
 
 if TYPE_CHECKING:
-    from pypdfbox.pdmodel.pd_resources import PDResources
-
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
 
@@ -17,47 +16,6 @@ _DS: COSName = COSName.get_pdf_name("DS")
 _Q: COSName = COSName.get_pdf_name("Q")
 _RV: COSName = COSName.get_pdf_name("RV")
 _KIDS: COSName = COSName.get_pdf_name("Kids")
-
-
-class PDDefaultAppearanceString:
-    """Lite data-only port of upstream ``PDDefaultAppearanceString``.
-
-    Mirrors the *constructor surface* of upstream
-    ``org.apache.pdfbox.pdmodel.interactive.form.PDDefaultAppearanceString``
-    (package-private upstream — surfaced here for parity with
-    :meth:`PDVariableText.get_default_appearance_string`). The upstream
-    class parses the ``/DA`` content-stream operators to recover the
-    selected font / size / colour; pypdfbox keeps the parser deferred and
-    just retains the raw ``/DA`` ``COSString`` and the ``PDResources``
-    reference for callers that want to perform the parsing themselves
-    (e.g. tests asserting round-trip identity).
-
-    Both ``/DA`` and ``/DR`` are required by upstream (which raises
-    ``IllegalArgumentException`` when either is ``None``); pypdfbox keeps
-    that contract via ``ValueError`` (Python's closest analogue).
-    """
-
-    def __init__(
-        self,
-        default_appearance: COSString | None,
-        default_resources: PDResources | None,
-    ) -> None:
-        if default_appearance is None:
-            raise ValueError(
-                "/DA is a required entry. Please set a default appearance first."
-            )
-        if default_resources is None:
-            raise ValueError("/DR is a required entry")
-        self._default_appearance: COSString = default_appearance
-        self._default_resources: PDResources = default_resources
-
-    def get_default_appearance(self) -> COSString:
-        """Return the raw ``/DA`` ``COSString`` operand."""
-        return self._default_appearance
-
-    def get_default_resources(self) -> PDResources:
-        """Return the ``/DR`` resources used to resolve fonts / colour spaces."""
-        return self._default_resources
 
 
 def _require_text_or_none(value: object, method: str) -> str | None:
@@ -70,9 +28,9 @@ class PDVariableText(PDTerminalField):
     """Abstract intermediate for fields with variable text. Mirrors PDFBox
     ``PDVariableText`` lite surface (``/DA``, ``/Q``, ``/DS``, ``/RV``).
 
-    Deferred upstream surface: ``getDefaultAppearanceString`` returns a typed
-    ``PDDefaultAppearanceString`` (not yet ported) — ``get_default_appearance``
-    returns the raw string instead.
+    ``get_default_appearance_string`` returns a fully-parsed
+    :class:`PDDefaultAppearanceString` (font / size / colour resolved
+    against the AcroForm ``/DR``).
     """
 
     QUADDING_LEFT = 0

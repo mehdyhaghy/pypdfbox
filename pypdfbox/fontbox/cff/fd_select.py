@@ -125,10 +125,10 @@ class Format0FDSelect(FDSelect):
         """
         return list(self._fds)
 
-    def __repr__(self) -> str:
+    def to_string(self) -> str:
         """PDFBox: ``Format0FDSelect.toString()``.
 
-        Mirrors upstream CFFParser.java line 1163:
+        Mirrors upstream ``CFFParser.java`` line 1161-1163:
         ``getClass().getName() + "[fds=" + Arrays.toString(fds) + "]"``.
         ``Arrays.toString(int[])`` renders as ``[1, 2, 3]`` (comma + space) —
         we match that formatting exactly so re-syncs are diff-clean.
@@ -136,6 +136,9 @@ class Format0FDSelect(FDSelect):
         cls = type(self).__name__
         joined = ", ".join(str(int(x)) for x in self._fds)
         return f"{cls}[fds=[{joined}]]"
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
 
 class Format3FDSelect(FDSelect):
@@ -212,14 +215,14 @@ class Format3FDSelect(FDSelect):
         the on-disk ``nRanges`` field of CFF Format 3 FDSelect."""
         return len(self._ranges)
 
-    def __repr__(self) -> str:
+    def to_string(self) -> str:
         """PDFBox: ``Format3FDSelect.toString()``.
 
-        Mirrors upstream CFFParser.java line 1112-1113:
+        Mirrors upstream ``CFFParser.java`` lines 1110-1113:
         ``getClass().getName() + "[nbRanges=" + range3.length + ", range3="
         + Arrays.toString(range3) + " sentinel=" + sentinel + "]"``.
 
-        The inner ``Range3.toString()`` (line 1134) renders as
+        The inner ``Range3.toString()`` (line 1132-1135) renders as
         ``Range3[first=<n>, fd=<n>]`` — we use a Pythonic ``Range3``
         label rather than the Java fully-qualified name to keep the
         output stable across re-syncs (upstream uses ``getClass().getName()``
@@ -234,6 +237,9 @@ class Format3FDSelect(FDSelect):
             f"{cls}[nbRanges={len(self._ranges)}, range3=[{ranges_str}]"
             f" sentinel={self._sentinel}]"
         )
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
 
 __all__ = ["FDSelect", "Format0FDSelect", "Format3FDSelect"]

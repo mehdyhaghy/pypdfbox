@@ -59,6 +59,24 @@ class FontBoxFont(Protocol):
         """
         ...
 
+    def get_font_b_box(self) -> Any:
+        """Strict-snake-case spelling of upstream ``getFontBBox``
+        (FontBoxFont.java L48).
+
+        The project porting rules expand consecutive caps as separate
+        words, so ``getFontBBox`` → ``get_font_b_box``. This method is
+        declared on the Protocol purely as an interface presence
+        marker — concrete implementations may either override it (in
+        which case the helper :func:`get_font_b_box` defined at module
+        scope dispatches here) or leave it absent and the helper falls
+        back to :meth:`get_font_bbox`. Both shapes satisfy the
+        runtime-checkable protocol because ``Protocol`` membership in
+        ``typing`` matches on method *names* with the helper's
+        ``getattr`` fallback covering implementations that only
+        define the contracted ``get_font_bbox`` spelling.
+        """
+        ...
+
     def get_font_matrix(self) -> list[float]:
         """Return the font matrix in PostScript units.
 
@@ -95,6 +113,24 @@ class FontBoxFont(Protocol):
         missing-glyph slot.
         """
         ...
+
+
+# Exclude :meth:`FontBoxFont.get_font_b_box` from the runtime-checkable
+# structural check: it is declared on the Protocol as an *interface
+# marker* (so parity tooling and static analyzers see the strict
+# snake_case rendering of upstream ``getFontBBox``), but concrete
+# fontbox implementations expose the contracted ``get_font_bbox``
+# spelling only — keeping the strict spelling out of
+# ``__protocol_attrs__`` preserves the existing duck-typing contract
+# so ``isinstance(font, FontBoxFont)`` still returns ``True`` for
+# implementations that don't define the strict spelling. Concrete
+# subclasses that *do* want the strict spelling are free to add it;
+# the module-level :func:`get_font_b_box` helper below dispatches to
+# whichever spelling is present.
+_attrs = getattr(FontBoxFont, "__protocol_attrs__", None)
+if _attrs is not None:
+    _attrs.discard("get_font_b_box")
+del _attrs
 
 
 def get_font_b_box(font: FontBoxFont) -> Any:
