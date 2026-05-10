@@ -1077,6 +1077,10 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `pypdfbox/pdmodel/interactive/annotation/pd_movie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDMovie.java` |
 | `pypdfbox/pdmodel/interactive/annotation/pd_movie_activation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDMovieActivation.java` |
 | `tests/pdmodel/graphics/shading/test_pd_shading_type4_type5_parity.py` | 3.0.x | hand-written parity coverage for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType4.java` and `PDShadingType5.java` |
+| `tests/pdmodel/graphics/shading/upstream/test_pd_shading_type_5.py` | 3.0.x | placeholder — upstream has no dedicated `PDShadingType5Test.java`; surface inferred from `PDShadingType5.java` (PDFBox 3.0.x) |
+| `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
+| `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
+| `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |
 
 ### Wave 47 additions
 

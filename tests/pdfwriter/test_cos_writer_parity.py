@@ -14,7 +14,7 @@ import io
 
 import pytest
 
-from pypdfbox.cos import COSObjectKey
+from pypdfbox.cos import COSName, COSObjectKey
 from pypdfbox.pdfwriter import COSWriter, COSWriterXRefEntry
 
 # ---------- helpers ---------------------------------------------------------
@@ -226,3 +226,201 @@ def test_get_generation_number_raises_for_unknown_object() -> None:
 
     with _make_writer() as w, pytest.raises(KeyError):
         w.get_generation_number(COSDictionary())
+
+
+# ---------- upstream protected/public dispatch surface ----------------------
+
+
+def test_add_x_ref_entry_aliases_add_xref_entry() -> None:
+    with _make_writer() as w:
+        entry = COSWriterXRefEntry(
+            offset=0, key=COSObjectKey(0, 65535), obj=None, free=True
+        )
+        w.add_x_ref_entry(entry)
+        assert w.get_xref_entries() == [entry]
+
+
+def test_get_object_key_assigns_and_caches_key() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    with _make_writer() as w:
+        d = COSDictionary()
+        first = w.get_object_key(d)
+        # Caching: a second lookup must return the same key (no fresh mint).
+        assert w.get_object_key(d) is first
+        assert isinstance(first, COSObjectKey)
+
+
+def test_is_need_to_be_updated_handles_none_and_plain_objects() -> None:
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.cos.cos_document_state import COSDocumentState
+
+    # ``None`` → ``False`` (matches upstream's null-tolerant signature).
+    assert COSWriter.is_need_to_be_updated(None) is False
+    d = COSDictionary()
+    # Fresh dictionary is clean.
+    assert COSWriter.is_need_to_be_updated(d) is False
+    # Wire a document state in "accepting updates" mode so the dirty
+    # flag actually flips. Mirrors how the parser links dictionaries
+    # post-load before incremental edits are accepted.
+    state = COSDocumentState()
+    state.set_parsing(False)  # closes the parser phase → accepting updates
+    d.get_update_state().set_origin_document_state(state)
+    d.set_needs_to_be_updated(True)
+    assert COSWriter.is_need_to_be_updated(d) is True
+
+
+def test_visit_from_int_aliases_visit_from_integer() -> None:
+    from pypdfbox.cos import COSInteger
+
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        w.visit_from_int(COSInteger.get(42))
+    assert sink.getvalue() == b"42"
+
+
+def test_write_xref_range_emits_first_count_pair() -> None:
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        w.write_xref_range(0, 5)
+    out = sink.getvalue()
+    assert out.startswith(b"0 5")
+    # Trailing EOL.
+    assert out.endswith(b"\n")
+
+
+def test_write_xref_entry_emits_20_byte_row_for_used_entry() -> None:
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        entry = COSWriterXRefEntry(
+            offset=12345,
+            key=COSObjectKey(1, 0),
+            obj=None,
+            free=False,
+        )
+        w.write_xref_entry(entry)
+    out = sink.getvalue()
+    # 10-digit offset + space + 5-digit gen + space + 'n' + CRLF = 20 bytes.
+    assert len(out) == 20
+    assert out[:10] == b"0000012345"
+    assert out[11:16] == b"00000"
+    assert out[17:18] == b"n"
+
+
+def test_write_xref_entry_emits_20_byte_row_for_free_entry() -> None:
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        entry = COSWriterXRefEntry(
+            offset=0,
+            key=COSObjectKey(0, 65535),
+            obj=None,
+            free=True,
+        )
+        w.write_xref_entry(entry)
+    out = sink.getvalue()
+    assert len(out) == 20
+    assert out[:10] == b"0000000000"
+    assert out[11:16] == b"65535"
+    assert out[17:18] == b"f"
+
+
+def test_get_data_to_sign_raises_when_not_prepared() -> None:
+    with _make_writer() as w, pytest.raises(RuntimeError, match="signing"):
+        w.get_data_to_sign()
+
+
+def test_write_external_signature_raises_when_not_prepared() -> None:
+    with _make_writer() as w, pytest.raises(RuntimeError, match="signature"):
+        w.write_external_signature(b"\x00" * 32)
+
+
+def test_write_external_signature_rejects_non_bytes() -> None:
+    with _make_writer() as w, pytest.raises(TypeError):
+        w.write_external_signature("not-bytes")  # type: ignore[arg-type]
+
+
+def test_do_write_signature_raises_when_not_prepared() -> None:
+    with _make_writer() as w, pytest.raises(RuntimeError):
+        w.do_write_signature()
+
+
+def test_detect_possible_signature_no_op_for_non_dictionary() -> None:
+    with _make_writer() as w:
+        # Non-dict input must not raise — matches the no-op upstream
+        # behaviour (the visitor never calls it with non-dicts but the
+        # method tolerates anything).
+        w.detect_possible_signature(None)  # type: ignore[arg-type]
+        assert w._reached_signature is False  # noqa: SLF001
+
+
+def test_detect_possible_signature_skips_non_signature_dicts() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    sink = io.BytesIO()
+    with COSWriter(sink, incremental=False) as w:
+        d = COSDictionary()
+        d.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
+        w.detect_possible_signature(d)
+        assert w._reached_signature is False  # noqa: SLF001
+
+
+def test_write_array_emits_inline_when_direct() -> None:
+    from pypdfbox.cos import COSArray, COSInteger
+
+    sink = io.BytesIO()
+    arr = COSArray()
+    arr.add(COSInteger.get(1))
+    arr.add(COSInteger.get(2))
+    arr.set_direct(True)
+    with COSWriter(sink) as w:
+        w.write_array(arr)
+    out = sink.getvalue()
+    assert out.startswith(b"[")
+    assert b"1" in out and b"2" in out
+    # Inline array end token.
+    assert b"]" in out
+
+
+def test_write_dictionary_emits_inline_when_direct() -> None:
+    from pypdfbox.cos import COSDictionary, COSInteger
+
+    sink = io.BytesIO()
+    d = COSDictionary()
+    d.set_item(COSName.SIZE, COSInteger.get(7))  # type: ignore[attr-defined]
+    d.set_direct(True)
+    with COSWriter(sink) as w:
+        w.write_dictionary(d)
+    out = sink.getvalue()
+    assert out.startswith(b"<<")
+    assert b"/Size" in out
+    assert b">>" in out
+
+
+def test_add_object_to_write_queues_object() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    with _make_writer() as w:
+        d = COSDictionary()
+        # In non-incremental mode `_add_object_to_write` queues unseen
+        # actuals directly. We verify via the underlying queue length.
+        before = len(w._objects_to_write)  # noqa: SLF001
+        w.add_object_to_write(d)
+        after = len(w._objects_to_write)  # noqa: SLF001
+        assert after == before + 1
+
+
+def test_do_write_objects_drains_queue() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    sink = io.BytesIO()
+    with COSWriter(sink) as w:
+        d = COSDictionary()
+        d.set_int(COSName.SIZE, 1)  # type: ignore[attr-defined]
+        w.add_object_to_write(d)
+        # Mint a key for the dict so the indirect-frame emit succeeds.
+        w.do_write_objects()
+        assert len(w._objects_to_write) == 0  # noqa: SLF001
+    out = sink.getvalue()
+    # Indirect-object frame markers must appear.
+    assert b"obj" in out
+    assert b"endobj" in out

@@ -313,6 +313,14 @@ class COSWriter(ICOSVisitor):
         # external callers may inspect the set, so we expose a stable
         # storage attribute and an accessor.
         self._started_streams: set[Any] = set()
+        # Signature-detection flag — set by ``detect_possible_signature``
+        # when ``visit_from_dictionary`` walks past a signature dict in
+        # incremental mode. Mirrors upstream's private
+        # ``reachedSignature`` field. The actual signing pipeline
+        # (offset capture, byte-range stamp) is coordinated at the
+        # pdmodel layer; the flag exists here for PDFBox-style
+        # subclasses that override the writer-level hook.
+        self._reached_signature: bool = False
 
     # ---------- public API ----------
 
@@ -604,6 +612,243 @@ class COSWriter(ICOSVisitor):
         hook exists so PDFBox-style callers don't ``AttributeError`` when
         probing for the symbol. Currently a no-op."""
         return None
+
+    # ---- upstream protected/public dispatch surface ----
+    # These thin wrappers expose the strict snake_case spellings used by
+    # upstream's protected/private layout (``doWriteBody`` etc.) so
+    # PDFBox-style subclasses and tests can drive the writer through the
+    # same names they would use against the Java class. Each forwards to
+    # the underscore-prefixed implementation that already does the work.
+
+    def add_object_to_write(self, obj: COSBase) -> None:
+        """Queue ``obj`` for emission as an indirect object. Mirrors
+        upstream ``COSWriter.addObjectToWrite(COSBase)``."""
+        self._add_object_to_write(obj)
+
+    def add_x_ref_entry(self, entry: COSWriterXRefEntry) -> None:
+        """Upstream-cased alias for :py:meth:`add_xref_entry` mirroring
+        ``COSWriter.addXRefEntry``."""
+        self.add_xref_entry(entry)
+
+    def prepare_increment(self, doc: COSDocument) -> None:
+        """Populate writer key tables from the source's object pool so
+        references emitted from dirty objects reuse existing keys.
+        Mirrors upstream ``COSWriter.prepareIncrement``."""
+        self._prepare_increment(doc)
+
+    def get_object_key(self, obj: COSBase) -> COSObjectKey:
+        """Return (and lazily assign) the indirect-object key for
+        ``obj``. Mirrors upstream ``COSWriter.getObjectKey(COSBase)``.
+
+        Note: collides spelling-wise with
+        :py:meth:`pypdfbox.pdfparser.base_parser.BaseParser.get_object_key`
+        which takes ``(num, gen)`` — different class, different role
+        (writer assigns; parser materialises by ``(num, gen)``)."""
+        return self._get_object_key(obj)
+
+    @staticmethod
+    def is_need_to_be_updated(base: COSBase | None) -> bool:
+        """Return ``True`` if ``base`` carries the dirty flag.
+
+        Mirrors upstream's private convenience method that returns
+        ``false`` for nullable / non-COSUpdateInfo arguments. Static so
+        callers don't need a writer instance to probe a candidate."""
+        if base is None:
+            return False
+        is_dirty = getattr(base, "is_needs_to_be_updated", None)
+        if not callable(is_dirty):
+            return False
+        try:
+            return bool(is_dirty())
+        except Exception:
+            return False
+
+    def detect_possible_signature(self, obj: COSDictionary) -> None:
+        """Set the writer's ``reached_signature`` flag when ``obj`` is a
+        signature dictionary in incremental-update mode.
+
+        Mirrors upstream ``COSWriter.detectPossibleSignature(COSDictionary)``.
+        We track the flag on ``self._reached_signature`` for parity with
+        the upstream private field; the regular emit pipeline doesn't
+        consult it yet (signing is coordinated at the pdmodel layer),
+        but exposing the hook lets PDFBox-style subclasses override the
+        decision the same way they would against Java upstream.
+
+        ``obj`` must be a ``COSDictionary``. Non-dictionary input is a
+        no-op rather than a hard error so callers can pass any
+        candidate without first type-checking."""
+        if not isinstance(obj, COSDictionary):
+            return
+        if not self._incremental_update:
+            return
+        if getattr(self, "_reached_signature", False):
+            return
+        type_name = obj.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
+        if not isinstance(type_name, COSName):
+            return
+        if type_name.name not in ("Sig", "DocTimeStamp"):
+            return
+        byte_range_name = COSName.get_pdf_name("ByteRange")
+        byte_range = obj.get_dictionary_object(byte_range_name)
+        if not isinstance(byte_range, COSArray) or byte_range.size() != 4:
+            return
+        third = byte_range.get(2) if byte_range.size() > 2 else None
+        if not isinstance(third, COSInteger):
+            return
+        # Upstream: ``br[2] > inputData.length()`` distinguishes "real"
+        # signatures from old residue. We don't always have an input
+        # source available here so we conservatively just record the
+        # flag — the actual signing pipeline handles offset arithmetic.
+        source_length = (
+            self._incremental_input.length()
+            if self._incremental_input is not None
+            else 0
+        )
+        if third.value > source_length:
+            self._reached_signature = True
+
+    def do_write_header(self, doc: COSDocument) -> None:
+        """Emit the ``%PDF-x.y`` header + binary marker. Mirrors upstream
+        ``COSWriter.doWriteHeader(COSDocument)``."""
+        self._do_write_header(doc)
+
+    def do_write_body(self, doc: COSDocument) -> None:
+        """Emit the document's body (root, info, encrypt, drained queue).
+        Mirrors upstream ``COSWriter.doWriteBody(COSDocument)``."""
+        self._do_write_body(doc)
+
+    def do_write_body_compressed(self, doc: COSDocument) -> None:
+        """Emit the body using object-stream compression. Mirrors
+        upstream ``COSWriter.doWriteBodyCompressed(COSDocument)`` —
+        delegates to the xref-stream body path which packs eligible
+        objects into ``/Type /ObjStm`` streams."""
+        self._do_write_body_xref_stream(doc)
+
+    def do_write_objects(self) -> None:
+        """Drain the object-write queue, emitting one indirect frame per
+        object. Mirrors upstream ``COSWriter.doWriteObjects()``."""
+        self._do_write_objects()
+
+    def do_write_trailer(self, doc: COSDocument) -> None:
+        """Emit the ``trailer`` keyword + dictionary. Mirrors upstream
+        ``COSWriter.doWriteTrailer(COSDocument)`` — does NOT emit
+        ``startxref``/``%%EOF``; that tail is the orchestration layer's
+        job (see :py:meth:`write_trailer` for the bundled helper)."""
+        self._do_write_trailer(doc)
+
+    def do_write_x_ref_table(self) -> None:
+        """Emit the traditional ``xref`` table. Mirrors upstream
+        ``COSWriter.doWriteXRefTable()``."""
+        self._do_write_xref_table()
+
+    def do_write_x_ref_inc(self, doc: COSDocument) -> None:
+        """Emit the incremental xref + trailer pair. Mirrors upstream
+        ``COSWriter.doWriteXRefInc(COSDocument)``.
+
+        Routes to the xref-stream path when the source uses xref
+        streams; otherwise emits a traditional ``xref`` table chained
+        via ``/Prev`` to the previous startxref."""
+        if (
+            getattr(doc, "is_xref_stream", lambda: False)()
+            and not getattr(doc, "has_hybrid_xref", lambda: False)()
+        ) or (
+            getattr(doc, "is_xref_stream", lambda: False)()
+            and not self._incremental_update
+        ):
+            self._do_write_xref_stream(doc)
+        else:
+            self._do_write_xref_increment()
+            self._do_write_trailer_increment(doc)
+
+    def fill_gaps_with_free_entries(self) -> None:
+        """Insert free-list entries for object numbers not covered by
+        the recorded normal entries. Mirrors upstream
+        ``COSWriter.fillGapsWithFreeEntries()``."""
+        self._fill_gaps_with_free_entries()
+
+    def do_write_increment(self, doc: COSDocument) -> None:
+        """Emit an append-only update on top of the source bytes.
+        Mirrors upstream ``COSWriter.doWriteIncrement()`` (which takes
+        no doc — pulls from instance state — but we accept the doc
+        here for symmetry with the rest of the ``do_write_*`` family)."""
+        self._do_write_increment(doc)
+
+    def write_xref_range(self, x: int, y: int) -> None:
+        """Emit a single ``first count`` xref-section header.
+        Mirrors upstream ``COSWriter.writeXrefRange(long, long)``."""
+        self._write_xref_range(x, y)
+
+    def write_xref_entry(self, entry: COSWriterXRefEntry) -> None:
+        """Emit a single 20-byte xref row. Mirrors upstream
+        ``COSWriter.writeXrefEntry(XReferenceEntry)``."""
+        self._write_xref_entry(entry)
+
+    def write_array(self, array: COSArray) -> None:
+        """Emit ``array`` either inline or as an indirect reference,
+        depending on its ``is_direct`` flag. Mirrors upstream
+        ``COSWriter.writeArray(COSArray)``."""
+        self._write_array(array)
+
+    def write_dictionary(self, dictionary: COSDictionary) -> None:
+        """Emit ``dictionary`` either inline or as an indirect reference,
+        depending on its ``is_direct`` flag. Mirrors upstream
+        ``COSWriter.writeDictionary(COSDictionary)``."""
+        self._write_dictionary(dictionary)
+
+    # ---- signature emission stubs (upstream COSWriter signing surface) ----
+    # Real signing is coordinated by ``PDDocument`` and the
+    # ``signature`` cluster; the writer-level hooks here exist so
+    # PDFBox-style callers can probe / override the symbols. They
+    # raise the same ``IllegalStateError`` upstream raises when the
+    # writer is not in a signing state, which keeps misuse loud.
+
+    def get_data_to_sign(self) -> Any:
+        """Return the byte stream to be hashed for an external
+        signature. Mirrors upstream ``COSWriter.getDataToSign()``.
+
+        Raises ``IllegalStateError`` (Python ``RuntimeError`` for
+        parity with upstream's ``IllegalStateException``) — pypdfbox's
+        signing pipeline is owned by ``PDDocument`` and does not
+        currently exercise this writer-level hook. Implementing it
+        requires the security cluster's digest path, which is tracked
+        separately."""
+        raise RuntimeError("PDF not prepared for signing")
+
+    def write_external_signature(self, cms_signature: bytes) -> None:
+        """Splice a CMS signature bytes blob into the reserved
+        placeholder. Mirrors upstream
+        ``COSWriter.writeExternalSignature(byte[])``.
+
+        Raises ``RuntimeError`` until the writer-level signing pipeline
+        is implemented (see :py:meth:`get_data_to_sign`)."""
+        if not isinstance(cms_signature, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                "write_external_signature expects bytes-like input; "
+                f"got {type(cms_signature).__name__}"
+            )
+        raise RuntimeError("PDF not prepared for setting signature")
+
+    def do_write_signature(self) -> None:
+        """Compute the signature ``/ByteRange`` and stamp it into the
+        reserved buffer slot. Mirrors upstream
+        ``COSWriter.doWriteSignature()``.
+
+        Raises ``RuntimeError`` until the writer-level signing pipeline
+        is implemented; callers should drive signing through
+        ``PDDocument.add_signature`` which owns the byte-range splice."""
+        raise RuntimeError("PDF not prepared for signing")
+
+    # ---- visitor: upstream alias ----
+
+    def visit_from_int(self, obj: COSInteger) -> Any:
+        """Upstream-spelled alias for :py:meth:`visit_from_integer`.
+
+        Java's ``visitFromInt`` snake-cases to ``visit_from_int``; we
+        normally use ``visit_from_integer`` to avoid shadowing Python's
+        built-in ``int`` keyword in the class scope, but keeping the
+        upstream spelling around as an alias lets PDFBox-style callers
+        dispatch under the original name."""
+        return self.visit_from_integer(obj)
 
     # ---- static helpers ----
 

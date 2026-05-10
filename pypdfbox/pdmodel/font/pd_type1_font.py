@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
 from pypdfbox.cos import COSDictionary
 from pypdfbox.fontbox.type1.type1_font import Type1Font
@@ -10,6 +10,11 @@ from pypdfbox.fontbox.type1.type1_font import Type1Font
 from .afm_loader import AfmMetrics
 from .pd_simple_font import PDSimpleFont
 from .standard14_fonts import Standard14Fonts
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    from .encoding.encoding import Encoding
 
 _LOG = logging.getLogger(__name__)
 
@@ -92,6 +97,11 @@ class PDType1Font(PDSimpleFont):
         # "not yet attempted", ``False`` means "tried, no /FontFile or
         # parse failed".
         self._t1: Type1Font | None | bool = None
+        # Caches mirroring upstream's ``fontBBox`` and ``fontMatrix``
+        # fields — populated on first access by :meth:`get_bounding_box`
+        # / :meth:`get_font_matrix`.
+        self._bbox_cache: PDRectangle | None = None
+        self._font_matrix_cache: list[float] | None = None
 
     # ---------- Type 1 program access ----------
 
@@ -581,6 +591,219 @@ class PDType1Font(PDSimpleFont):
         callers can match the upstream surface they were trained on.
         """
         return self._get_type1_font()
+
+    def get_font_box_font(self) -> Type1Font | None:
+        """Return the parsed Type 1 program for rendering. Mirrors
+        upstream ``PDType1Font.getFontBoxFont`` — Java's port returns the
+        ``FontBoxFont`` interface (an embedded Type 1 or a substitute);
+        in the Python port both code paths funnel through
+        :class:`Type1Font` so this is an alias of :meth:`get_type1_font`.
+        """
+        return self._get_type1_font()
+
+    # ---------- bounding box (PDFontLike override) ----------
+
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the font's bounding box.
+
+        Mirrors upstream ``PDType1Font.getBoundingBox``: when the font
+        descriptor carries a non-zero ``/FontBBox`` use it directly;
+        otherwise fall through to :meth:`generate_bounding_box` which
+        consults the embedded program. Result is cached for repeated
+        access (matches upstream's ``fontBBox`` field).
+        """
+        if self._bbox_cache is not None:
+            return self._bbox_cache
+        self._bbox_cache = self.generate_bounding_box()
+        return self._bbox_cache
+
+    def generate_bounding_box(self) -> PDRectangle | None:
+        """Compute the font bounding box from the descriptor or the
+        embedded program. Mirrors upstream
+        ``PDType1Font.generateBoundingBox``: prefer the
+        ``/FontDescriptor /FontBBox`` when non-zero, else read the
+        program's ``FontBBox``. Returns ``None`` when no source carries
+        a usable bbox.
+        """
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            bbox = descriptor.get_font_bounding_box()
+            if self.is_non_zero_bounding_box(bbox):
+                return bbox
+        program = self._get_type1_font()
+        if program is None:
+            return None
+        program_bbox = program.get_font_bbox()
+        if program_bbox is None:
+            return None
+        x0, y0, x1, y1 = program_bbox
+        return PDRectangle(float(x0), float(y0), float(x1), float(y1))
+
+    # ---------- font matrix (PDFontLike override) ----------
+
+    def get_font_matrix(self) -> list[float]:
+        """Return the 6-element font matrix from the embedded program,
+        falling back to the simple-font default ``[0.001, 0, 0, 0.001, 0, 0]``
+        when no program is loaded or its matrix is malformed.
+
+        Mirrors upstream ``PDType1Font.getFontMatrix``: PDF 32000-1
+        §9.2.4 specifies the 1000-upem default for Type 1, but some
+        fonts (e.g. PDFBOX-2298) carry a custom matrix in the program
+        which wins over the default.
+        """
+        if self._font_matrix_cache is not None:
+            return list(self._font_matrix_cache)
+        program = self._get_type1_font()
+        if program is not None:
+            matrix = program.get_font_matrix()
+            if matrix is not None and len(matrix) == 6:
+                self._font_matrix_cache = [float(v) for v in matrix]
+                return list(self._font_matrix_cache)
+        # Fall back to the simple-font default from PDFont.
+        self._font_matrix_cache = list(self.DEFAULT_FONT_MATRIX)
+        return list(self._font_matrix_cache)
+
+    # ---------- normalised path alias (code overload) ----------
+
+    def get_normalized_path(self, code: int) -> list[tuple]:
+        """Glyph outline for ``code``, falling back to ``.notdef`` when
+        the primary lookup yields an empty path. Mirrors upstream
+        ``PDType1Font.getNormalizedPath(int)`` — alias of
+        :meth:`get_normalized_path_for_code` so callers porting from
+        ``getNormalizedPath`` find the canonical name in addition to
+        the underscore-suffixed variant we already expose.
+        """
+        return self.get_normalized_path_for_code(code)
+
+    # ---------- embedded program length-field repair ----------
+
+    def repair_length1(self, data: bytes | bytearray, length1: int) -> int:
+        """Repair an invalid ``/Length1`` on a Type 1 ``/FontFile`` stream.
+
+        Some Type 1 fonts carry a truncated or otherwise wrong
+        ``/Length1`` such that the binary segment marker (``exec``) is
+        misplaced — see PDFBOX-2350, PDFBOX-3677. This scans backwards
+        from the declared boundary for the trailing ``exec`` token,
+        skipping any CR/LF/space/tab whitespace that follows it, and
+        returns the corrected offset. Returns ``length1`` unchanged when
+        the scan does not find a credible boundary.
+        """
+        buf = bytes(data)
+        offset = max(0, length1 - 4)
+        if offset <= 0 or offset > len(buf) - 4:
+            offset = max(0, len(buf) - 4)
+        offset = self.find_binary_offset_after_exec(buf, offset)
+        if offset == 0 and length1 > 0:
+            # Brute-force second pass — start from end of the buffer.
+            offset = self.find_binary_offset_after_exec(buf, len(buf) - 4)
+        if length1 - offset != 0 and offset > 0:
+            _LOG.warning(
+                "Ignored invalid Length1 %d for Type 1 font %s",
+                length1,
+                self.get_name(),
+            )
+            return offset
+        return length1
+
+    def repair_length2(
+        self, data: bytes | bytearray, length1: int, length2: int
+    ) -> int:
+        """Repair an invalid ``/Length2`` on a Type 1 ``/FontFile`` stream.
+
+        Mirrors upstream ``PDType1Font.repairLength2`` (PDFBOX-3475): a
+        negative ``/Length2`` would crash ``Arrays.copyOfRange``, a huge
+        value bloats memory with padding. When ``length2`` is out of
+        range, return ``len(data) - length1`` so the second segment runs
+        to end-of-buffer.
+        """
+        if length2 < 0 or length2 > len(data) - length1:
+            _LOG.warning(
+                "Ignored invalid Length2 %d for Type 1 font %s",
+                length2,
+                self.get_name(),
+            )
+            return len(data) - length1
+        return length2
+
+    @staticmethod
+    def find_binary_offset_after_exec(
+        data: bytes | bytearray, start_offset: int
+    ) -> int:
+        """Scan backwards from ``start_offset`` for ``b"exec"`` and
+        return the offset of the first non-whitespace byte after it.
+
+        Mirrors upstream ``PDType1Font.findBinaryOffsetAfterExec`` — the
+        helper that powers :meth:`repair_length1`. Returns ``0`` when no
+        ``exec`` token is found between offset 0 and ``start_offset``.
+        """
+        buf = bytes(data)
+        offset = start_offset
+        while offset > 0:
+            if (
+                offset + 3 < len(buf)
+                and buf[offset] == 0x65  # 'e'
+                and buf[offset + 1] == 0x78  # 'x'
+                and buf[offset + 2] == 0x65  # 'e'
+                and buf[offset + 3] == 0x63  # 'c'
+            ):
+                offset += 4
+                # Skip trailing CR / LF / space / tab.
+                while offset < len(buf) and buf[offset] in (
+                    0x0D,
+                    0x0A,
+                    0x20,
+                    0x09,
+                ):
+                    offset += 1
+                return offset
+            offset -= 1
+        return 0
+
+    # ---------- encoding synthesis from the font program ----------
+
+    def read_encoding_from_font(self) -> Encoding | None:
+        """Synthesise an :class:`Encoding` from the embedded program or
+        the bundled Standard 14 AFM.
+
+        Mirrors upstream ``PDType1Font.readEncodingFromFont``:
+
+        * Non-embedded Standard 14 fonts read the encoding from their
+          AFM (built-in Type 1 encoding) — represented here as the
+          font's PostScript default encoding (Standard / Symbol / Zapf).
+        * Embedded fonts surface their program's built-in encoding when
+          available.
+        * Otherwise we fall back to :class:`StandardEncoding`.
+
+        Returns ``None`` only when nothing is resolvable.
+        """
+        from .encoding.standard_encoding import StandardEncoding
+        from .encoding.symbol_encoding import SymbolEncoding
+        from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
+
+        # Non-embedded Standard 14: pick the family-default encoding
+        # which is what the bundled AFM carries.
+        afm = self.get_standard_14_font_metrics()
+        if not self.is_embedded() and afm is not None:
+            base = self.get_name() or ""
+            canonical = Standard14Fonts.get_mapped_font_name(base)
+            if canonical == "Symbol":
+                return SymbolEncoding.INSTANCE
+            if canonical == "ZapfDingbats":
+                return ZapfDingbatsEncoding.INSTANCE
+            return StandardEncoding.INSTANCE
+
+        # Embedded program: surface its built-in encoding when present.
+        program = self._get_type1_font()
+        if program is not None:
+            encoding_map = program.get_encoding()
+            if encoding_map:
+                # Build a lightweight Encoding wrapper.
+                from .encoding.built_in_encoding import BuiltInEncoding
+
+                return BuiltInEncoding(dict(encoding_map))
+        return StandardEncoding.INSTANCE
 
 
 __all__ = ["PDType1Font"]

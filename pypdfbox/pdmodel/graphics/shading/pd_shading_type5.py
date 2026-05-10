@@ -133,5 +133,96 @@ class PDShadingType5(PDShading):
             f"or None; got {type(value).__name__}"
         )
 
+    # ---------- rendering hooks (lite-surface stubs) ----------
+
+    def to_paint(self, matrix: Any = None) -> Any:
+        """Return a Paint-equivalent for this lattice-form Gouraud-shaded
+        triangle-mesh shading. Mirrors upstream
+        ``PDShadingType5.toPaint(Matrix)`` (line 81), which constructs a
+        ``Type5ShadingPaint(this, matrix)``.
+
+        The pypdfbox renderer is Pillow-based, so the AWT ``Paint`` contract
+        does not apply. Returning ``None`` matches the lite-surface
+        convention used by the other shading types in this package: callers
+        in the rendering cluster are expected to dispatch on
+        ``get_shading_type()`` and materialize triangles via
+        ``collect_triangles`` rather than via a Paint object."""
+        return None
+
+    def collect_triangles(
+        self, xform: Any = None, matrix: Any = None
+    ) -> list[Any]:
+        """Decode the lattice mesh stream into a list of shaded triangles.
+        Mirrors upstream ``PDShadingType5.collectTriangles`` (line 88).
+
+        Lattice form (PDF 32000-1 §8.7.4.5.6): vertices are encoded in
+        row-major order with ``/VerticesPerRow`` columns. Each pair of
+        adjacent rows produces ``2 * (verticesPerRow - 1)`` triangles
+        connecting the lattice cells.
+
+        The pypdfbox renderer is Pillow-based, so this lite-surface stub
+        validates the prerequisite ``/Decode`` and ``/VerticesPerRow``
+        entries and returns an empty list — full mesh decoding is deferred
+        until the rendering cluster lands. Returning an empty list is the
+        same fallback upstream uses for missing/degenerate input."""
+        # Backing object must be a stream — upstream returns
+        # Collections.emptyList() when the dictionary isn't a COSStream.
+        if not isinstance(self._dict, COSStream):
+            return []
+        range_x = self.get_decode_for_parameter(0)
+        range_y = self.get_decode_for_parameter(1)
+        if range_x is None or range_y is None:
+            return []
+        if range_x[0] == range_x[1] or range_y[0] == range_y[1]:
+            return []
+        if self.get_vertices_per_row() < 2:
+            return []
+        n = self.get_number_of_color_components()
+        for i in range(n):
+            if self.get_decode_for_parameter(2 + i) is None:
+                # Upstream raises IOException("Range missing in shading
+                # /Decode entry") at line 110; we mirror that contract by
+                # raising OSError per the project's IOException -> OSError
+                # convention.
+                raise OSError("Range missing in shading /Decode entry")
+        # Mesh decoding deferred to rendering cluster.
+        return []
+
+    def create_shaded_triangle_list(
+        self,
+        row_num: int,
+        num_per_row: int,
+        lattice_array: Any,
+    ) -> list[Any]:
+        """Stitch a 2-D lattice of vertices into a triangle list. Mirrors
+        upstream ``PDShadingType5.createShadedTriangleList`` (line 157).
+
+        Each lattice cell ``(i, j) → (i, j+1) → (i+1, j) → (i+1, j+1)`` is
+        split into two triangles, yielding ``2 * (rowNum - 1) *
+        (numPerRow - 1)`` triangles. The upstream implementation builds
+        ``ShadedTriangle`` instances; pypdfbox defers the rendering-side
+        triangle type to the rendering cluster, so this lite-surface stub
+        returns vertex-tuple triples. Each entry is
+        ``((p1, p2, p3), (c1, c2, c3))`` where ``p`` is a ``(x, y)`` point
+        and ``c`` is a tuple of color components."""
+        triangles: list[Any] = []
+        if row_num < 2 or num_per_row < 2:
+            return triangles
+        for i in range(row_num - 1):
+            for j in range(num_per_row - 1):
+                v1 = lattice_array[i][j]
+                v2 = lattice_array[i][j + 1]
+                v3 = lattice_array[i + 1][j]
+                v4 = lattice_array[i + 1][j + 1]
+                # Triangle (v1, v2, v3)
+                triangles.append(
+                    ((v1[0], v2[0], v3[0]), (v1[1], v2[1], v3[1]))
+                )
+                # Triangle (v2, v3, v4)
+                triangles.append(
+                    ((v2[0], v3[0], v4[0]), (v2[1], v3[1], v4[1]))
+                )
+        return triangles
+
 
 __all__ = ["PDShadingType5"]

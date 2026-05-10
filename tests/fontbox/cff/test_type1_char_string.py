@@ -12,10 +12,11 @@ We exercise:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from pypdfbox.fontbox.cff.type1_char_string import Type1CharString
-
 
 # ---------------------------------------------------------------------------
 # Bare constructor — no fontTools state required
@@ -496,3 +497,288 @@ def test_flex_setcurrentpoint_runs() -> None:
     # preserved across the flex sequence.
     cs.get_path()
     assert cs.get_width() == 500.0
+
+
+# ---------------------------------------------------------------------------
+# Private helpers (parity with upstream Java private methods)
+# ---------------------------------------------------------------------------
+
+
+def test_render_returns_cached_path() -> None:
+    """``render()`` is the upstream-shaped private renderer; it must
+    populate the cached path / width and be idempotent on re-entry."""
+    program = [0, 500, "hsbw", 10, 20, "rmoveto", 30, 40, "rlineto", "endchar"]
+    cs = Type1CharString(None, "F", "A", program)
+    p1 = cs.render()
+    p2 = cs.render()
+    assert p1 == p2
+    assert cs.get_width() == 500.0
+
+
+def test_rmove_to_appends_moveto() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.rmove_to(ctx, 10, 20)
+    assert ctx.path == [("moveto", 10.0, 20.0)]
+    assert ctx.current == (10.0, 20.0)
+
+
+def test_rline_to_appends_lineto_after_moveto() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.rmove_to(ctx, 0, 0)
+    cs.rline_to(ctx, 100, 0)
+    assert ctx.path[-1] == ("lineto", 100.0, 0.0)
+    assert ctx.current == (100.0, 0.0)
+
+
+def test_rline_to_falls_back_to_moveto_without_initial_moveto() -> None:
+    """Upstream's rlineTo warns and falls back to moveTo when there's no
+    current point — verify the same for our port."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.rline_to(ctx, 50, 50)
+    assert ctx.path == [("moveto", 50.0, 50.0)]
+
+
+def test_rrcurve_to_emits_curveto() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.rmove_to(ctx, 0, 0)
+    cs.rrcurve_to(ctx, 10, 20, 30, 40, 50, 60)
+    assert ctx.path[-1] == ("curveto", 10.0, 20.0, 40.0, 60.0, 90.0, 120.0)
+    assert ctx.current == (90.0, 120.0)
+
+
+def test_rrcurve_to_falls_back_to_moveto_without_initial_moveto() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.rrcurve_to(ctx, 1, 1, 2, 2, 3, 3)
+    # End point is (1+2+3, 1+2+3) = (6, 6).
+    assert ctx.path == [("moveto", 6.0, 6.0)]
+
+
+def test_close_char_string1_path_appends_closepath_then_moveto() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.rmove_to(ctx, 5, 5)
+    cs.close_char_string1_path(ctx)
+    # Trailing moveto re-anchors at the current point — matches upstream
+    # GeneralPath.moveTo(current.getX(), current.getY()).
+    assert ctx.path[-2] == ("closepath",)
+    assert ctx.path[-1] == ("moveto", 5.0, 5.0)
+
+
+def test_close_char_string1_path_without_current_point_only_moveto() -> None:
+    """When the path is empty, closepath is a warn-and-skip; only the
+    trailing moveto is emitted."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.close_char_string1_path(ctx)
+    assert ctx.path == [("moveto", 0.0, 0.0)]
+
+
+def test_set_current_point_updates_current() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.set_current_point(ctx, 42, 7)
+    assert ctx.current == (42.0, 7.0)
+    # No path commands are emitted.
+    assert ctx.path == []
+
+
+def test_call_other_subr_begin_flex_sets_flag() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.call_other_subr(ctx, 1)
+    assert ctx.is_flex is True
+
+
+def test_call_other_subr_end_flex_with_too_few_points_clears() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext(is_flex=True, flex_points=[(0.0, 0.0)])
+    cs.call_other_subr(ctx, 0)
+    assert ctx.is_flex is False
+    assert ctx.flex_points == []
+
+
+def test_call_other_subr_end_flex_emits_two_curves() -> None:
+    """End-flex with seven points must emit two ``rrcurveto`` segments."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext(is_flex=True)
+    # Seed with an initial moveto so rrcurve_to emits curveto, not moveto.
+    cs.rmove_to(ctx, 0, 0)
+    ctx.flex_points = [
+        (0.0, 0.0),  # reference point
+        (10.0, 0.0),  # first
+        (10.0, 10.0),  # p2
+        (10.0, 10.0),  # p3
+        (10.0, 0.0),  # p4
+        (10.0, -10.0),  # p5
+        (10.0, -10.0),  # p6
+    ]
+    cs.call_other_subr(ctx, 0)
+    curves = [c for c in ctx.path if c[0] == "curveto"]
+    assert len(curves) == 2
+    assert ctx.flex_points == []
+    assert ctx.is_flex is False
+
+
+def test_handle_type1_command_dispatches_rmoveto() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    nums: list[Any] = [10, 20]
+    cs.handle_type1_command(ctx, nums, "rmoveto")
+    assert ctx.path == [("moveto", 10.0, 20.0)]
+    assert nums == []
+
+
+def test_handle_type1_command_hsbw_records_width() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.handle_type1_command(ctx, [10, 750], "hsbw")
+    assert ctx.width == 750
+    assert ctx.left_side_bearing == (10.0, 0.0)
+    assert ctx.current == (10.0, 0.0)
+
+
+def test_handle_type1_command_sbw_records_full_prologue() -> None:
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.handle_type1_command(ctx, [5, 7, 600], "sbw")
+    assert ctx.width == 600
+    assert ctx.left_side_bearing == (5.0, 7.0)
+    assert ctx.current == (5.0, 7.0)
+
+
+def test_handle_type1_command_div_pushes_quotient() -> None:
+    """``div`` must replace the top two operands with their quotient
+    (without clearing the rest of the operand stack — upstream returns
+    early)."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    nums: list[Any] = [100, 4]
+    cs.handle_type1_command(ctx, nums, "div")
+    # 100 / 4 = 25.
+    assert nums == [25.0]
+
+
+def test_handle_type1_command_hints_are_silent() -> None:
+    """``hstem`` / ``vstem`` / ``hstem3`` / ``vstem3`` / ``dotsection``
+    consume operands but never modify the path."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    for op in ("hstem", "vstem", "hstem3", "vstem3", "dotsection"):
+        nums: list[Any] = [0, 100]
+        cs.handle_type1_command(ctx, nums, op)
+    assert ctx.path == []
+
+
+def test_handle_type1_command_accepts_charstringcommand_token() -> None:
+    """Tokens with a ``.name`` attribute (the ``CharStringCommand``
+    shape) must be dispatched the same as plain string mnemonics."""
+
+    class FakeCmd:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.handle_type1_command(ctx, [10, 0], FakeCmd("hsbw"))
+    assert ctx.width == 0
+
+
+def test_to_string_matches_str() -> None:
+    """``to_string()`` (explicit upstream-shaped accessor) must return
+    the same value as ``str(cs)``."""
+    cs = Type1CharString(None, "F", "A", [0, 500, "hsbw"])
+    assert cs.to_string() == str(cs)
+
+
+def test_seac_with_no_parent_font_is_noop() -> None:
+    """``seac`` requires a parent ``Type1CharStringReader`` exposing
+    ``get_type1_char_string``; without one it must degrade silently
+    (no exception, no path mutation)."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    cs = Type1CharString(None, "F", "A", None)
+    ctx = _RenderContext()
+    cs.seac(ctx, 0, 0, 0, 65, 65)
+    assert ctx.path == []
+
+
+def test_seac_appends_base_and_translated_accent() -> None:
+    """With a fake parent that returns canned base + accent paths, seac
+    must append the base path verbatim and the accent path translated
+    by ``(lsb.x + adx - asb, lsb.y + ady)``."""
+    from pypdfbox.fontbox.cff.type1_char_string import _RenderContext
+
+    base_path = [("moveto", 0.0, 0.0), ("lineto", 100.0, 0.0)]
+    accent_path = [("moveto", 0.0, 0.0), ("lineto", 50.0, 50.0)]
+
+    class FakeChar:
+        def __init__(self, path: list[tuple]) -> None:
+            self._path = path
+
+        def get_path(self) -> list[tuple]:
+            return list(self._path)
+
+    class FakeFont:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def get_type1_char_string(self, name: str) -> FakeChar:
+            self.calls.append(name)
+            if name == "A":
+                return FakeChar(base_path)
+            return FakeChar(accent_path)
+
+    font = FakeFont()
+    cs = Type1CharString(font, "F", "Aacute", None)
+    ctx = _RenderContext()
+    ctx.left_side_bearing = (10.0, 0.0)
+    # Use codes that resolve via StandardEncoding to known names; if the
+    # encoding lookup yields names the FakeFont doesn't recognise it
+    # still falls through cleanly — but we additionally assert the base
+    # path was concatenated unchanged.
+    cs.seac(ctx, asb=0, adx=20, ady=5, bchar=65, achar=66)  # 65=A 66=B
+    # Two glyphs requested.
+    assert font.calls  # at least one lookup happened
+    # Base path appended verbatim.
+    assert base_path[0] in ctx.path
+    # Accent path translated by (10 + 20 - 0, 0 + 5) = (30, 5).
+    assert ("lineto", 80.0, 55.0) in ctx.path
