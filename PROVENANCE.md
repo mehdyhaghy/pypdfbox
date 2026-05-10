@@ -590,6 +590,10 @@ PDFBox 3.0 does not provide focused unit-test classes for each lightweight actio
 | `tests/fontbox/ttf/upstream/test_wgl4_names.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/WGL4NamesTest.java` |
 | `tests/fontbox/ttf/upstream/test_random_access_read_buffer_data_stream.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/RandomAccessReadBufferDataStreamTest.java` |
 | `tests/fontbox/ttf/upstream/test_ttf_parser.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/TestTTFParser.java` |
+| `tests/fontbox/ttf/upstream/test_otf_parser.py` | (no upstream `OTFParserTest.java` in PDFBox 3.0; tests model the public surface from `OTFParser.java`) |
+| `tests/fontbox/ttf/upstream/test_kerning_subtable.py` | (no upstream `KerningSubtableTest.java` in PDFBox 3.0; tests model the public contract from `KerningSubtable.java`) |
+| `tests/fontbox/ttf/upstream/test_cmap_subtable.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/TestCMapSubtable.java` |
+| `tests/xmpbox/upstream/test_date_converter.py` | `xmpbox/src/test/java/org/apache/xmpbox/DateConverterTest.java` (folds in `pdfbox/src/test/java/org/apache/pdfbox/util/TestDateUtil.java`) |
 
 Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fontbox clusters #2+): `TestTTFParser`, `TestCMapSubtable`, `GlyfCompositeDescriptTest`, `TrueTypeFontCollectionTest`, `TTFSubsetterTest`, `GlyphSubstitutionTable*`.
 

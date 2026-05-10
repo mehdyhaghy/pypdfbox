@@ -87,3 +87,81 @@ def test_unsupported_subtable_returns_zero_per_upstream_contract() -> None:
     upstream's ``getKerning(l, r)`` logs a warning and returns 0."""
     sub = KerningSubtable()
     assert sub.get_kerning(1, 2) == 0
+
+
+def test_is_bits_set_matches_upstream_helper() -> None:
+    """Upstream ``isBitsSet(int bits, int mask, int shift)`` returns true
+    when the masked & shifted value is non-zero."""
+    # Coverage = 0x0005 → horizontal (bit 0) + cross-stream (bit 2) set,
+    # minimums (bit 1) clear.
+    coverage = 0x0005
+    assert KerningSubtable.is_bits_set(
+        coverage,
+        KerningSubtable.COVERAGE_HORIZONTAL,
+        KerningSubtable.COVERAGE_HORIZONTAL_SHIFT,
+    ) is True
+    assert KerningSubtable.is_bits_set(
+        coverage,
+        KerningSubtable.COVERAGE_MINIMUMS,
+        KerningSubtable.COVERAGE_MINIMUMS_SHIFT,
+    ) is False
+    assert KerningSubtable.is_bits_set(
+        coverage,
+        KerningSubtable.COVERAGE_CROSS_STREAM,
+        KerningSubtable.COVERAGE_CROSS_STREAM_SHIFT,
+    ) is True
+
+
+def test_get_bits_extracts_field_per_upstream_helper() -> None:
+    """Upstream ``getBits(int bits, int mask, int shift)`` masks then
+    right-shifts to recover the bit-field's low-order representation."""
+    # Coverage 0x0201 → format byte (high) = 2, flag byte (low) = 1.
+    coverage = 0x0201
+    assert KerningSubtable.get_bits(
+        coverage,
+        KerningSubtable.COVERAGE_FORMAT,
+        KerningSubtable.COVERAGE_FORMAT_SHIFT,
+    ) == 2
+    assert KerningSubtable.get_bits(
+        coverage,
+        KerningSubtable.COVERAGE_HORIZONTAL,
+        KerningSubtable.COVERAGE_HORIZONTAL_SHIFT,
+    ) == 1
+
+
+def test_read_subtable0_dispatches_to_format_0_body() -> None:
+    """Upstream ``readSubtable0`` reads the OpenType header (version,
+    length, coverage) and dispatches on the format byte. Format 0 ends
+    up populating the pair table."""
+    blob = _make_format_0([(10, 20, -42)], coverage=0x0001)
+    sub = KerningSubtable()
+    sub.read_subtable0(MemoryTTFDataStream(blob))
+    assert sub.get_kerning(10, 20) == -42
+    assert sub.get_kerning(20, 10) == 0
+
+
+def test_read_subtable1_is_unsupported_no_pair_data() -> None:
+    """Upstream ``readSubtable1`` logs "not yet supported" and leaves
+    pair data unset; subsequent ``getKerning`` returns 0."""
+    sub = KerningSubtable()
+    sub.read_subtable1(MemoryTTFDataStream(b""))
+    assert sub.get_kerning(1, 2) == 0
+
+
+def test_read_subtable0_format0_reads_pair_body() -> None:
+    """Upstream ``readSubtable0Format0`` body reader: nPairs (uint16),
+    searchRange (uint16), entrySelector (uint16), rangeShift (uint16),
+    then nPairs * (left, right, value) entries."""
+    body = struct.pack(">HHHH", 1, 0, 0, 0) + struct.pack(">HHh", 7, 8, -33)
+    sub = KerningSubtable()
+    sub.read_subtable0_format0(MemoryTTFDataStream(body))
+    assert sub.get_kerning(7, 8) == -33
+
+
+def test_read_subtable0_format2_is_log_only_helper() -> None:
+    """Upstream ``readSubtable0Format2`` is a no-op log helper; the
+    real Format 2 decoder runs from the buffered length-aware path."""
+    sub = KerningSubtable()
+    # Stream content is irrelevant — the helper logs and returns.
+    sub.read_subtable0_format2(MemoryTTFDataStream(b"\x00\x00\x00\x00"))
+    assert sub.get_kerning(1, 2) == 0

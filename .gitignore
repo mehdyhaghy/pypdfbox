@@ -41,3 +41,6 @@ oracle/cache/
 
 # Upstream Java source — local clone for parity tooling (see scripts/parity.py)
 pdfbox/
+
+# Shared parity / wave checkpoint (project-local, untracked by design — see .parity/README.md)
+.parity/

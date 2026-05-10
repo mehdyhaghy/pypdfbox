@@ -125,6 +125,18 @@ class Format0FDSelect(FDSelect):
         """
         return list(self._fds)
 
+    def __repr__(self) -> str:
+        """PDFBox: ``Format0FDSelect.toString()``.
+
+        Mirrors upstream CFFParser.java line 1163:
+        ``getClass().getName() + "[fds=" + Arrays.toString(fds) + "]"``.
+        ``Arrays.toString(int[])`` renders as ``[1, 2, 3]`` (comma + space) —
+        we match that formatting exactly so re-syncs are diff-clean.
+        """
+        cls = type(self).__name__
+        joined = ", ".join(str(int(x)) for x in self._fds)
+        return f"{cls}[fds=[{joined}]]"
+
 
 class Format3FDSelect(FDSelect):
     """Format 3 FDSelect — run-length ranges of ``[first, fd]`` pairs
@@ -199,6 +211,29 @@ class Format3FDSelect(FDSelect):
         """Number of ``(first_gid, fd_index)`` ranges. Equivalent to
         the on-disk ``nRanges`` field of CFF Format 3 FDSelect."""
         return len(self._ranges)
+
+    def __repr__(self) -> str:
+        """PDFBox: ``Format3FDSelect.toString()``.
+
+        Mirrors upstream CFFParser.java line 1112-1113:
+        ``getClass().getName() + "[nbRanges=" + range3.length + ", range3="
+        + Arrays.toString(range3) + " sentinel=" + sentinel + "]"``.
+
+        The inner ``Range3.toString()`` (line 1134) renders as
+        ``Range3[first=<n>, fd=<n>]`` — we use a Pythonic ``Range3``
+        label rather than the Java fully-qualified name to keep the
+        output stable across re-syncs (upstream uses ``getClass().getName()``
+        which embeds the outer ``CFFParser$`` prefix).
+        """
+        cls = type(self).__name__
+        ranges_str = ", ".join(
+            f"Range3[first={int(first)}, fd={int(fd)}]"
+            for first, fd in self._ranges
+        )
+        return (
+            f"{cls}[nbRanges={len(self._ranges)}, range3=[{ranges_str}]"
+            f" sentinel={self._sentinel}]"
+        )
 
 
 __all__ = ["FDSelect", "Format0FDSelect", "Format3FDSelect"]

@@ -22,15 +22,15 @@ class CmapSubtable(CmapLookup):
 
     Implements all OpenType ``cmap`` subtable formats:
 
-    * Format 0  — byte encoding table
-    * Format 2  — high-byte mapping (DBCS / legacy CJK)
-    * Format 4  — segment mapping to delta values (BMP)
-    * Format 6  — trimmed table mapping
-    * Format 8  — mixed 16/32-bit coverage (legacy)
-    * Format 10 — trimmed array
-    * Format 12 — segmented coverage (full Unicode)
-    * Format 13 — many-to-one mappings (Last Resort font)
-    * Format 14 — Unicode Variation Sequences (UVS) — parsed but not
+    * Format 0  - byte encoding table
+    * Format 2  - high-byte mapping (DBCS / legacy CJK)
+    * Format 4  - segment mapping to delta values (BMP)
+    * Format 6  - trimmed table mapping
+    * Format 8  - mixed 16/32-bit coverage (legacy)
+    * Format 10 - trimmed array
+    * Format 12 - segmented coverage (full Unicode)
+    * Format 13 - many-to-one mappings (Last Resort font)
+    * Format 14 - Unicode Variation Sequences (UVS) - parsed but not
       surfaced through ``get_glyph_id`` (UVS lookup uses a separate
       ``get_glyph_id_uvs`` helper because a base codepoint plus a variation
       selector together resolve to a glyph).
@@ -43,8 +43,8 @@ class CmapSubtable(CmapLookup):
         self._glyph_id_to_character_code: list[int] | None = None
         self._glyph_id_to_character_code_multiple: dict[int, list[int]] = {}
         self._character_code_to_glyph_id: dict[int, int] = {}
-        # Format 14 (UVS) state — keyed by (base_codepoint, variation_selector)
-        # → glyph_id. ``_default_uvs`` lists (selector, start, end) ranges for
+        # Format 14 (UVS) state - keyed by (base_codepoint, variation_selector)
+        # -> glyph_id. ``_default_uvs`` lists (selector, start, end) ranges for
         # which the variation defaults to the underlying base glyph.
         self._uvs_mapping: dict[tuple[int, int], int] = {}
         self._default_uvs: list[tuple[int, int, int]] = []
@@ -59,55 +59,59 @@ class CmapSubtable(CmapLookup):
         subtable_format = data.read_unsigned_short()
         # Header bytes after the format word vary across formats:
         # * formats < 8           : length(uint16), version(uint16)
-        # * format 14             : length(uint32) — and numVarSelectorRecords
+        # * format 14             : length(uint32) - and numVarSelectorRecords
         #                           (uint32) is consumed by the format-14 reader
         #                           itself (it needs the value).
         # * other formats >= 8    : reserved(uint16), length(uint32), language(uint32)
         if subtable_format < 8:
-            length = data.read_unsigned_short()  # noqa: F841
-            version = data.read_unsigned_short()  # noqa: F841
+            data.read_unsigned_short()  # length
+            data.read_unsigned_short()  # version
         elif subtable_format == 14:
-            length = data.read_unsigned_int()  # noqa: F841
+            data.read_unsigned_int()  # length
         else:
-            data.read_unsigned_short()
-            length = data.read_unsigned_int()  # noqa: F841
-            version = data.read_unsigned_int()  # noqa: F841
+            data.read_unsigned_short()  # reserved
+            data.read_unsigned_int()  # length
+            data.read_unsigned_int()  # version
 
         if subtable_format == 0:
-            self._process_subtype_0(data)
+            self.process_subtype0(data)
         elif subtable_format == 2:
-            self._process_subtype_2(data, num_glyphs)
+            self.process_subtype2(data, num_glyphs)
         elif subtable_format == 4:
-            self._process_subtype_4(data, num_glyphs)
+            self.process_subtype4(data, num_glyphs)
         elif subtable_format == 6:
-            self._process_subtype_6(data, num_glyphs)
+            self.process_subtype6(data, num_glyphs)
         elif subtable_format == 8:
-            self._process_subtype_8(data, num_glyphs)
+            self.process_subtype8(data, num_glyphs)
         elif subtable_format == 10:
-            self._process_subtype_10(data, num_glyphs)
+            self.process_subtype10(data, num_glyphs)
         elif subtable_format == 12:
-            self._process_subtype_12(data, num_glyphs)
+            self.process_subtype12(data, num_glyphs)
         elif subtable_format == 13:
-            self._process_subtype_13(data, num_glyphs)
+            self.process_subtype13(data, num_glyphs)
         elif subtable_format == 14:
-            self._process_subtype_14(data)
+            self.process_subtype14(data)
         else:
             raise OSError(f"Unknown cmap format:{subtable_format}")
 
     # ----- format 0 (byte encoding) -----
 
-    def _process_subtype_0(self, data: TTFDataStream) -> None:
+    def process_subtype0(self, data: TTFDataStream) -> None:
         glyph_mapping = data.read_bytes(256)
-        self._glyph_id_to_character_code = self._new_glyph_id_to_character_code(256)
+        self._glyph_id_to_character_code = self.new_glyph_id_to_character_code(256)
         self._character_code_to_glyph_id = {}
         for i, gb in enumerate(glyph_mapping):
             glyph_index = gb & 0xFF
             self._glyph_id_to_character_code[glyph_index] = i
             self._character_code_to_glyph_id[i] = glyph_index
 
+    # Backwards-compat alias used by other tests in this repo.
+    def _process_subtype_0(self, data: TTFDataStream) -> None:
+        self.process_subtype0(data)
+
     # ----- format 4 (segmented mapping for BMP) -----
 
-    def _process_subtype_4(self, data: TTFDataStream, num_glyphs: int) -> None:
+    def process_subtype4(self, data: TTFDataStream, num_glyphs: int) -> None:
         seg_count_x2 = data.read_unsigned_short()
         seg_count = seg_count_x2 // 2
         data.read_unsigned_short()  # searchRange
@@ -155,11 +159,14 @@ class CmapSubtable(CmapLookup):
         if not self._character_code_to_glyph_id:
             _LOG.warning("cmap format 4 subtable is empty")
             return
-        self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+        self.build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    def _process_subtype_4(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype4(data, num_glyphs)
 
     # ----- format 6 (trimmed table mapping) -----
 
-    def _process_subtype_6(self, data: TTFDataStream, num_glyphs: int) -> None:
+    def process_subtype6(self, data: TTFDataStream, num_glyphs: int) -> None:
         first_code = data.read_unsigned_short()
         entry_count = data.read_unsigned_short()
         if entry_count == 0:
@@ -176,11 +183,14 @@ class CmapSubtable(CmapLookup):
                 max_glyph_id = glyph_id
             self._character_code_to_glyph_id[first_code + i] = glyph_id
         if self._character_code_to_glyph_id:
-            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+            self.build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    def _process_subtype_6(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype6(data, num_glyphs)
 
     # ----- format 8 (mixed 16-/32-bit coverage) -----
 
-    def _process_subtype_8(self, data: TTFDataStream, num_glyphs: int) -> None:
+    def process_subtype8(self, data: TTFDataStream, num_glyphs: int) -> None:
         # is32: 8192 bytes (= 65536 bits), one bit per BMP code unit indicating
         # whether that unit is the high half of a surrogate pair. We read but do
         # not need to interpret it: groups carry full 32-bit start/end codes.
@@ -209,11 +219,14 @@ class CmapSubtable(CmapLookup):
                     max_glyph_id = glyph_index
                 self._character_code_to_glyph_id[first_code + j] = glyph_index
         if self._character_code_to_glyph_id:
-            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+            self.build_glyph_id_to_character_code_lookup(max_glyph_id)
 
-    # ----- format 10 (trimmed array — UCS-4) -----
+    def _process_subtype_8(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype8(data, num_glyphs)
 
-    def _process_subtype_10(self, data: TTFDataStream, num_glyphs: int) -> None:
+    # ----- format 10 (trimmed array - UCS-4) -----
+
+    def process_subtype10(self, data: TTFDataStream, num_glyphs: int) -> None:
         start_char_code = data.read_unsigned_int()
         num_chars = data.read_unsigned_int()
         if num_chars == 0:
@@ -231,14 +244,17 @@ class CmapSubtable(CmapLookup):
                 max_glyph_id = glyph_id
             self._character_code_to_glyph_id[start_char_code + i] = glyph_id
         if self._character_code_to_glyph_id:
-            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+            self.build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    def _process_subtype_10(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype10(data, num_glyphs)
 
     # ----- format 12 (segmented coverage UCS-4) -----
 
-    def _process_subtype_12(self, data: TTFDataStream, num_glyphs: int) -> None:
+    def process_subtype12(self, data: TTFDataStream, num_glyphs: int) -> None:
         max_glyph_id = 0
         nb_groups = data.read_unsigned_int()
-        self._glyph_id_to_character_code = self._new_glyph_id_to_character_code(num_glyphs)
+        self._glyph_id_to_character_code = self.new_glyph_id_to_character_code(num_glyphs)
         self._character_code_to_glyph_id = {}
         if num_glyphs == 0:
             _LOG.warning("subtable has no glyphs")
@@ -267,11 +283,14 @@ class CmapSubtable(CmapLookup):
                 if glyph_index > max_glyph_id:
                     max_glyph_id = glyph_index
                 self._character_code_to_glyph_id[first_code + j] = glyph_index
-        self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+        self.build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    def _process_subtype_12(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype12(data, num_glyphs)
 
     # ----- format 13 (many-to-one mappings) -----
 
-    def _process_subtype_13(self, data: TTFDataStream, num_glyphs: int) -> None:
+    def process_subtype13(self, data: TTFDataStream, num_glyphs: int) -> None:
         nb_groups = data.read_unsigned_int()
         self._character_code_to_glyph_id = {}
         if num_glyphs == 0:
@@ -299,11 +318,14 @@ class CmapSubtable(CmapLookup):
             for code in range(first_code, end_code + 1):
                 self._character_code_to_glyph_id[code] = glyph_id
         if self._character_code_to_glyph_id:
-            self._build_glyph_id_to_character_code_lookup(max_glyph_id)
+            self.build_glyph_id_to_character_code_lookup(max_glyph_id)
+
+    def _process_subtype_13(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype13(data, num_glyphs)
 
     # ----- format 14 (Unicode Variation Sequences) -----
 
-    def _process_subtype_14(self, data: TTFDataStream) -> None:
+    def process_subtype14(self, data: TTFDataStream) -> None:
         # Subtable layout (see OpenType spec 'cmap' format 14):
         #   uint32  numVarSelectorRecords
         #   N times:
@@ -314,9 +336,6 @@ class CmapSubtable(CmapLookup):
         # begins at the format word*. We've already consumed the 6-byte header
         # (format uint16 + length uint32), so the subtable start is six bytes
         # before our current position.
-        # The numVarSelectorRecords field has been consumed by init_subtable
-        # — wait, no: format-14 path reads only ``length`` in init_subtable, so
-        # the next read here is ``numVarSelectorRecords``.
         subtable_start = data.get_current_position() - 6
         num_records = data.read_unsigned_int()
 
@@ -348,6 +367,9 @@ class CmapSubtable(CmapLookup):
                     glyph_id = data.read_unsigned_short()
                     self._uvs_mapping[(unicode_value, var_selector)] = glyph_id
 
+    def _process_subtype_14(self, data: TTFDataStream) -> None:
+        self.process_subtype14(data)
+
     @staticmethod
     def _read_uint24(data: TTFDataStream) -> int:
         b1 = data.read_unsigned_byte()
@@ -371,19 +393,13 @@ class CmapSubtable(CmapLookup):
                 return 0
         return 0
 
-    def getGlyphIdUVS(self, code_point: int, variation_selector: int) -> int:  # noqa: N802
-        return self.get_glyph_id_uvs(code_point, variation_selector)
-
     def has_uvs(self) -> bool:
         """Return ``True`` if this subtable carries UVS (format-14) data."""
         return bool(self._uvs_mapping) or bool(self._default_uvs)
 
-    def hasUVS(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.has_uvs()
+    # ----- format 2 (high-byte mapping through table - DBCS) -----
 
-    # ----- format 2 (high-byte mapping through table — DBCS) -----
-
-    def _process_subtype_2(self, data: TTFDataStream, num_glyphs: int) -> None:
+    def process_subtype2(self, data: TTFDataStream, num_glyphs: int) -> None:
         sub_header_keys = [0] * 256
         max_sub_header_index = 0
         for i in range(256):
@@ -405,7 +421,7 @@ class CmapSubtable(CmapLookup):
             sub_headers.append((first_code, entry_count, id_delta, id_range_offset))
 
         start_glyph_index_offset = data.get_current_position()
-        self._glyph_id_to_character_code = self._new_glyph_id_to_character_code(num_glyphs)
+        self._glyph_id_to_character_code = self.new_glyph_id_to_character_code(num_glyphs)
         self._character_code_to_glyph_id = {}
         if num_glyphs == 0:
             _LOG.warning("subtable has no glyphs")
@@ -435,14 +451,35 @@ class CmapSubtable(CmapLookup):
                 self._glyph_id_to_character_code[p] = char_code
                 self._character_code_to_glyph_id[char_code] = p
 
+    def _process_subtype_2(self, data: TTFDataStream, num_glyphs: int) -> None:
+        self.process_subtype2(data, num_glyphs)
+
     # ----- helpers -----
 
     @staticmethod
-    def _new_glyph_id_to_character_code(size: int) -> list[int]:
+    def new_glyph_id_to_character_code(size: int) -> list[int]:
+        """Return a freshly-allocated ``glyph_id -> char_code`` lookup list.
+
+        The list is filled with ``-1`` so callers can distinguish "no mapping"
+        from "mapped to character code 0".
+        """
         return [-1] * size
 
-    def _build_glyph_id_to_character_code_lookup(self, max_glyph_id: int) -> None:
-        self._glyph_id_to_character_code = self._new_glyph_id_to_character_code(max_glyph_id + 1)
+    # Backwards-compat alias.
+    @staticmethod
+    def _new_glyph_id_to_character_code(size: int) -> list[int]:
+        return CmapSubtable.new_glyph_id_to_character_code(size)
+
+    def build_glyph_id_to_character_code_lookup(self, max_glyph_id: int) -> None:
+        """Populate ``glyph_id -> char_code`` reverse-lookup from the forward map.
+
+        When multiple character codes map to the same glyph, the first wins in
+        the array slot and the rest are tracked in
+        ``_glyph_id_to_character_code_multiple``; the sentinel
+        ``-2_147_483_648`` (Java ``Integer.MIN_VALUE``) is written into the
+        array slot to signal "look in the multimap".
+        """
+        self._glyph_id_to_character_code = self.new_glyph_id_to_character_code(max_glyph_id + 1)
         for code, gid in self._character_code_to_glyph_id.items():
             if self._glyph_id_to_character_code[gid] == -1:
                 self._glyph_id_to_character_code[gid] = code
@@ -455,38 +492,34 @@ class CmapSubtable(CmapLookup):
                     self._glyph_id_to_character_code[gid] = -2_147_483_648
                 mapped.append(code)
 
+    # Backwards-compat alias used by other tests in this repo.
+    def _build_glyph_id_to_character_code_lookup(self, max_glyph_id: int) -> None:
+        self.build_glyph_id_to_character_code_lookup(max_glyph_id)
+
     # ---- public ----
     def get_platform_id(self) -> int:
         return self._platform_id
 
-    def getPlatformId(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_platform_id()
-
     def set_platform_id(self, value: int) -> None:
         self._platform_id = value
-
-    def setPlatformId(self, value: int) -> None:  # noqa: N802 - upstream Java name
-        self.set_platform_id(value)
 
     def get_platform_encoding_id(self) -> int:
         return self._platform_encoding_id
 
-    def getPlatformEncodingId(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_platform_encoding_id()
-
     def set_platform_encoding_id(self, value: int) -> None:
         self._platform_encoding_id = value
-
-    def setPlatformEncodingId(self, value: int) -> None:  # noqa: N802
-        self.set_platform_encoding_id(value)
 
     def get_glyph_id(self, code_point_at: int) -> int:
         return self._character_code_to_glyph_id.get(code_point_at, 0)
 
-    def getGlyphId(self, code_point_at: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_glyph_id(code_point_at)
+    def get_char_code(self, gid: int) -> int:
+        """Return the primary character code for ``gid``, or ``-1``.
 
-    def _get_char_code(self, gid: int) -> int:
+        Mirrors upstream ``CmapSubtable#getCharCode(int)``. When the gid maps
+        to multiple codes, the array slot holds the sentinel
+        ``-2_147_483_648`` (use :meth:`get_char_codes` to retrieve the full
+        list).
+        """
         if (
             gid < 0
             or self._glyph_id_to_character_code is None
@@ -495,11 +528,12 @@ class CmapSubtable(CmapLookup):
             return -1
         return self._glyph_id_to_character_code[gid]
 
-    def getCharCode(self, gid: int) -> int:  # noqa: N802 - upstream Java name
-        return self._get_char_code(gid)
+    # Backwards-compat alias used by some callers.
+    def _get_char_code(self, gid: int) -> int:
+        return self.get_char_code(gid)
 
     def get_char_codes(self, gid: int) -> list[int] | None:
-        code = self._get_char_code(gid)
+        code = self.get_char_code(gid)
         if code == -1:
             return None
         if code == -2_147_483_648:
@@ -509,8 +543,9 @@ class CmapSubtable(CmapLookup):
             return None
         return [code]
 
-    def getCharCodes(self, gid: int) -> list[int] | None:  # noqa: N802
-        return self.get_char_codes(gid)
+    def to_string(self) -> str:
+        """Return ``"{platformId platformEncodingId}"`` - mirrors upstream ``toString()``."""
+        return f"{{{self._platform_id} {self._platform_encoding_id}}}"
 
     def __repr__(self) -> str:
-        return f"{{{self._platform_id} {self._platform_encoding_id}}}"
+        return self.to_string()

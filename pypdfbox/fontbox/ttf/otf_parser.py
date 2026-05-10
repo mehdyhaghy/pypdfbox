@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+import os
+from typing import TYPE_CHECKING, BinaryIO
+
 from .open_type_font import OpenTypeFont
 from .true_type_font import TrueTypeFont
 from .ttf_data_stream import TTFDataStream
 from .ttf_parser import _TAG_OPEN_TYPE_CFF, _TAG_TRUE_TYPE, TTFParser
+from .ttf_table import TTFTable
+
+if TYPE_CHECKING:
+    from pypdfbox.io.random_access_read import RandomAccessRead
+
+
+# Tags handled by OTFParser.read_table — mirror the upstream switch in
+# OTFParser.java L66-L82. CFF and the OpenType Layout (OTL) tags are
+# detected here so the directory walker can produce the right placeholder
+# table type. fontTools handles the actual decode internally; these tags
+# exist to keep the read_table override observable for parity.
+_OTF_OTL_TAGS: tuple[str, ...] = ("BASE", "GDEF", "GPOS", "GSUB", "JSTF")
+_OTF_CFF_TAG: str = "CFF "
 
 
 class OTFParser(TTFParser):
@@ -19,16 +35,91 @@ class OTFParser(TTFParser):
     The constructor flags carry the same meaning as in :class:`TTFParser`.
     """
 
-    def _new_font(self, data: TTFDataStream) -> TrueTypeFont:
-        """Return an :class:`OpenTypeFont` instead of a plain TTF."""
+    # ---------- parse(...) overloads ----------------------------------
+    # Upstream OTFParser overrides ``parse`` only to narrow the return
+    # type from ``TrueTypeFont`` → ``OpenTypeFont`` (Java covariant
+    # return). Python doesn't need that for type-checkers (the value
+    # already is an OpenTypeFont via :meth:`new_font`), but the override
+    # is preserved on the OTFParser class so parity tooling sees the
+    # same surface. Mirrors OTFParser.java L48-L57.
+
+    def parse(  # type: ignore[override]
+        self,
+        source: bytes
+        | bytearray
+        | memoryview
+        | str
+        | os.PathLike[str]
+        | BinaryIO
+        | TTFDataStream
+        | RandomAccessRead,
+    ) -> OpenTypeFont:
+        """Parse ``source`` and return an :class:`OpenTypeFont`.
+
+        Mirrors ``OpenTypeFont parse(RandomAccessRead)`` /
+        ``OpenTypeFont parse(TTFDataStream)`` (OTFParser.java L48, L54).
+        Upstream's two Java overloads collapse to one in Python — both
+        delegate to ``super().parse`` and downcast to ``OpenTypeFont``.
+        """
+        font = super().parse(source)
+        # ``new_font`` already returned an OpenTypeFont, so this assert
+        # documents the invariant rather than coercing.
+        assert isinstance(font, OpenTypeFont)
+        return font
+
+    # ---------- factory hooks (public on OTFParser, mirroring upstream) ----
+
+    def new_font(self, data: TTFDataStream) -> OpenTypeFont:
+        """Produce an :class:`OpenTypeFont` for the given data stream.
+
+        Mirrors ``OpenTypeFont newFont(TTFDataStream)`` (OTFParser.java
+        L60-L63). Package-private in Java; exposed as snake_case here so
+        the override is observable to PDFBox-shaped callers and parity
+        tooling.
+        """
         return OpenTypeFont(data)
 
-    def _allow_cff(self) -> bool:
+    def read_table(self, tag: str) -> TTFTable:
+        """Resolve a table tag to the right :class:`TTFTable` subclass.
+
+        Mirrors ``TTFTable readTable(String)`` (OTFParser.java L66-L82).
+        The upstream switch returns ``OTLTable`` for the OpenType Layout
+        tags (``BASE``, ``GDEF``, ``GPOS``, ``GSUB``, ``JSTF``) and
+        ``CFFTable`` for ``CFF ``. We do not (yet) ship dedicated
+        ``OTLTable`` / ``CFFTable`` subclasses — fontTools handles the
+        per-table decode for us — so the placeholders fall back to the
+        generic :class:`TTFTable` with the tag prefilled. Behaviour
+        observable to PDFBox-shaped callers (``getTag()`` returns the
+        right tag string) is preserved.
+        """
+        if tag in _OTF_OTL_TAGS or tag == _OTF_CFF_TAG:
+            table = TTFTable()
+            table._tag = tag  # noqa: SLF001 — mirrors upstream constructor
+            return table
+        return super()._read_table(tag)
+
+    def allow_cff(self) -> bool:
         """OTF parsers accept CFF outlines (``OTTO`` scaler type).
 
-        Mirrors upstream ``OTFParser.allowCFF()``.
+        Mirrors ``boolean allowCFF()`` (OTFParser.java L85-L88).
         """
         return True
+
+    # ---------- legacy private hooks (kept for back-compat in this repo) ----
+    # The leading-underscore variants pre-date the wave that surfaced
+    # the public names above. They simply forward; callers in this
+    # codebase that already imported them keep working.
+
+    def _new_font(self, data: TTFDataStream) -> TrueTypeFont:
+        return self.new_font(data)
+
+    def _allow_cff(self) -> bool:
+        return self.allow_cff()
+
+    def _read_table(self, tag: str) -> TTFTable:
+        return self.read_table(tag)
+
+    # ---------- scaler-type / table-presence overrides --------------------
 
     def _check_scaler_type(self, scaler: int) -> None:
         """Accept ``OTTO`` (and tolerate a TrueType-flavoured stream).

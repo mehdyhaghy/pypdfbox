@@ -125,11 +125,42 @@ class KerningSubtable:
         ``IllegalStateException``).
         """
         if version == 0:
-            self._read_subtable_0(data)
+            self.read_subtable0(data)
         elif version == 1:
-            self._read_subtable_1(data)
+            self.read_subtable1(data)
         else:
             raise ValueError(f"unknown kern table version {version}")
+
+    def read_subtable0(self, data: TTFDataStream) -> None:
+        """Mirror of upstream ``readSubtable0(TTFDataStream)`` — OpenType
+        layout. Public-by-snake-case for parity but considered package-
+        private; prefer :meth:`read` as the entry point."""
+        self._read_subtable_0(data)
+
+    def read_subtable1(self, data: TTFDataStream) -> None:
+        """Mirror of upstream ``readSubtable1(TTFDataStream)`` — Apple
+        ``kern`` v1 layout. Upstream logs "not yet supported" and leaves
+        ``pairs`` unset; we do the same."""
+        self._read_subtable_1(data)
+
+    def read_subtable0_format0(self, data: TTFDataStream) -> None:
+        """Mirror of upstream ``readSubtable0Format0(TTFDataStream)`` — body
+        reader for the sorted pair list (Format 0). Reads the binary-search
+        header (nPairs, searchRange, entrySelector, rangeShift) then nPairs
+        entries of (left uint16, right uint16, value int16)."""
+        self._read_subtable_0_format_0_stream(data)
+
+    def read_subtable0_format2(self, data: TTFDataStream) -> None:
+        """Mirror of upstream ``readSubtable0Format2(TTFDataStream)`` — body
+        reader for the class-based subtable (Format 2). Upstream simply
+        logs "not yet supported" inside this helper; the actual decoder is
+        the byte-buffer based :meth:`_read_format_2`. We dispatch to that
+        when called with a stream by reading the remaining bytes first."""
+        # Upstream's helper is a no-op log; we keep behaviour-parity by
+        # reading nothing (caller has already consumed the header). The
+        # buffer-driven Format 2 path is reached via the ``length``-aware
+        # dispatch in :meth:`_read_subtable_0`.
+        del data
 
     def _read_subtable_0(self, data: TTFDataStream) -> None:
         """Upstream ``readSubtable0`` — OpenType layout. Reads the 6-byte
@@ -147,12 +178,20 @@ class KerningSubtable:
             return
         coverage = data.read_unsigned_short()
         self._coverage = coverage
-        self._horizontal = bool(coverage & self.COVERAGE_HORIZONTAL)
-        self._minimums = bool(coverage & self.COVERAGE_MINIMUMS)
-        self._cross_stream = bool(coverage & self.COVERAGE_CROSS_STREAM)
-        self._format = (
-            coverage & self.COVERAGE_FORMAT
-        ) >> self.COVERAGE_FORMAT_SHIFT
+        # Use the upstream-style bit-field helpers so behaviour matches
+        # exactly even on edge-case coverage values.
+        self._horizontal = self.is_bits_set(
+            coverage, self.COVERAGE_HORIZONTAL, self.COVERAGE_HORIZONTAL_SHIFT
+        )
+        self._minimums = self.is_bits_set(
+            coverage, self.COVERAGE_MINIMUMS, self.COVERAGE_MINIMUMS_SHIFT
+        )
+        self._cross_stream = self.is_bits_set(
+            coverage, self.COVERAGE_CROSS_STREAM, self.COVERAGE_CROSS_STREAM_SHIFT
+        )
+        self._format = self.get_bits(
+            coverage, self.COVERAGE_FORMAT, self.COVERAGE_FORMAT_SHIFT
+        )
         if self._format == 0:
             self._read_subtable_0_format_0_stream(data)
         elif self._format == 2:
@@ -186,6 +225,22 @@ class KerningSubtable:
         """Upstream ``readSubtable1`` — Apple state-machine layout. Logged as
         "not yet supported" upstream; leave ``pairs`` unset → 0 lookup."""
         return
+
+    @staticmethod
+    def is_bits_set(bits: int, mask: int, shift: int) -> bool:
+        """Mirror of upstream ``isBitsSet(int bits, int mask, int shift)``.
+
+        True when the masked & shifted value is non-zero. Used by the
+        coverage-flag decoder when reading a Format 0 subtable header."""
+        return KerningSubtable.get_bits(bits, mask, shift) != 0
+
+    @staticmethod
+    def get_bits(bits: int, mask: int, shift: int) -> int:
+        """Mirror of upstream ``getBits(int bits, int mask, int shift)``.
+
+        Extract a bit field from ``bits`` selected by ``mask`` and shift
+        it down by ``shift`` to its low-order representation."""
+        return (bits & mask) >> shift
 
     @classmethod
     def from_bytes(

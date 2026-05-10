@@ -45,15 +45,6 @@ def test_cmap_subtable_setters() -> None:
     assert sub.get_platform_encoding_id() == 10
 
 
-def test_pdfbox_camelcase_metadata_aliases() -> None:
-    sub = CmapSubtable()
-    sub.setPlatformId(3)
-    sub.setPlatformEncodingId(10)
-
-    assert sub.getPlatformId() == 3
-    assert sub.getPlatformEncodingId() == 10
-
-
 def test_cmap_subtable_repr() -> None:
     sub = CmapSubtable()
     sub.set_platform_id(3)
@@ -208,19 +199,20 @@ def test_format_6_invalid_glyph_index_skipped() -> None:
     assert sub.get_char_codes(99) is None
 
 
-def test_pdfbox_camelcase_lookup_aliases() -> None:
+def test_cmap_subtable_snake_case_lookup_methods() -> None:
     blob = _build_format6(0x30, [10, 11, 12])
     data = MemoryTTFDataStream(blob)
     sub = CmapSubtable()
     sub.init_subtable(_CmapStub(), num_glyphs=20, data=data)
 
-    assert sub.getGlyphId(0x30) == 10
-    assert sub.getGlyphId(0x31) == 11
-    assert sub.getCharCode(10) == 0x30
-    assert sub.getCharCodes(12) == [0x32]
-    assert sub.getCharCodes(99) is None
-    assert sub.hasUVS() is False
-    assert sub.getGlyphIdUVS(0x30, 0xFE0F) == 0
+    assert sub.get_glyph_id(0x30) == 10
+    assert sub.get_glyph_id(0x31) == 11
+    assert sub.get_char_code(10) == 0x30
+    assert sub.get_char_codes(12) == [0x32]
+    assert sub.get_char_codes(99) is None
+    assert sub.has_uvs() is False
+    assert sub.get_glyph_id_uvs(0x30, 0xFE0F) == 0
+    assert sub.to_string() == "{0 0}"
 
 
 def test_format_6_zero_entries_does_not_crash() -> None:
