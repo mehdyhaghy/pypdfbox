@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import re
 from typing import TYPE_CHECKING
 
@@ -8,8 +9,13 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName,
 from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
-    from pypdfbox.fontbox.cmap.cmap import CMap
+    from typing import BinaryIO
 
+    from pypdfbox.fontbox.cmap.cmap import CMap
+    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    from .afm_loader import AfmMetrics
     from .pd_font_descriptor import PDFontDescriptor
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -20,10 +26,14 @@ _FONT_DESCRIPTOR: COSName = COSName.get_pdf_name("FontDescriptor")
 _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
 _LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
 _WIDTHS: COSName = COSName.get_pdf_name("Widths")
+_MISSING_WIDTH: COSName = COSName.get_pdf_name("MissingWidth")
 _FONT_FILE: COSName = COSName.get_pdf_name("FontFile")
 _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
 _TO_UNICODE: COSName = COSName.get_pdf_name("ToUnicode")
+_ENCODING: COSName = COSName.get_pdf_name("Encoding")
+_IDENTITY_H: COSName = COSName.get_pdf_name("Identity-H")
+_IDENTITY_V: COSName = COSName.get_pdf_name("Identity-V")
 
 # PDF subset marker: six uppercase letters + '+' prefix on /BaseFont
 # (PDF 32000-1 §9.6.4 — "tagged" subset font names).
@@ -63,6 +73,19 @@ class PDFont:
         # :meth:`get_to_unicode_cmap`.
         self._to_unicode_cmap: CMap | None = None
         self._to_unicode_cmap_loaded: bool = False
+        # Per-code width cache — mirrors upstream's ``codeToWidthMap``.
+        # Populated on first call to :meth:`get_width` per code.
+        self._code_to_width: dict[int, float] = {}
+        # Memoised average font width (mirrors upstream ``avgFontWidth``).
+        self._avg_font_width_cached: float | None = None
+        # Memoised space width (mirrors upstream ``fontWidthOfSpace``).
+        # Sentinel ``None`` means "not yet computed".
+        self._font_width_of_space: float | None = None
+        # Memoised AFM lookup for Standard 14 fonts. Lazily populated by
+        # :meth:`get_standard14_afm` so unused fonts do not pay for the
+        # AFM parse.
+        self._standard14_afm_loaded: bool = False
+        self._standard14_afm: AfmMetrics | None = None
 
     # ---------- COS surface ----------
 
@@ -162,30 +185,83 @@ class PDFont:
         Computed as the arithmetic mean of the positive entries in
         ``/Widths``; zero-width entries (typically ``.notdef`` slots) are
         skipped to avoid dragging the mean toward zero. Returns ``0.0``
-        when the font has no usable width entries.
+        when the font has no usable width entries. Memoised after first
+        call, mirroring upstream ``PDFont.getAverageFontWidth``.
         """
+        if self._avg_font_width_cached is not None:
+            return self._avg_font_width_cached
         widths = self.get_widths()
         non_zero = [w for w in widths if w > 0.0]
         if not non_zero:
-            return 0.0
-        return sum(non_zero) / len(non_zero)
+            self._avg_font_width_cached = 0.0
+        else:
+            self._avg_font_width_cached = sum(non_zero) / len(non_zero)
+        return self._avg_font_width_cached
 
     def get_space_width(self) -> float:
         """Return the advance width of the space glyph (character code 32).
 
-        Looks up code 32 in ``/Widths`` (offset by ``/FirstChar``). When
-        unavailable, falls back to 250 (the upstream PDFBox default).
+        Mirrors upstream ``PDFont.getSpaceWidth``: tries the ``/ToUnicode``
+        CMap's recorded space mapping first, then ``getStringWidth(" ")``
+        (so encoded fonts get the right code), then a direct ``/Widths``
+        lookup at offset ``32 - /FirstChar``, then ``getWidthFromFont(32)``,
+        finally falling back to ``getAverageFontWidth`` and 250 as the
+        ultimate default. Cached on first call.
         """
-        widths = self.get_widths()
-        if widths:
-            first = self.get_first_char()
-            if first < 0:
-                first = 0
-            index = 32 - first
-            if 0 <= index < len(widths):
-                width = widths[index]
-                if width > 0.0:
+        if self._font_width_of_space is not None:
+            return self._font_width_of_space
+        # 1) Use /ToUnicode CMap space mapping when present.
+        try:
+            if self.has_to_unicode():
+                cmap = self.get_to_unicode_cmap()
+                if cmap is not None:
+                    space_mapping = cmap.get_space_mapping()
+                    if space_mapping > -1:
+                        try:
+                            width = self.get_width(space_mapping)
+                            if width > 0:
+                                self._font_width_of_space = width
+                                return width
+                        except (NotImplementedError, OSError, ValueError):
+                            pass
+            # 2) Try get_string_width(" ") so encoded fonts hit the right code.
+            try:
+                width = self.get_string_width(" ")
+                if width > 0:
+                    self._font_width_of_space = width
                     return width
+            except (NotImplementedError, OSError, ValueError):
+                pass
+            # 3) Direct /Widths lookup at code 32.
+            widths = self.get_widths()
+            if widths:
+                first = self.get_first_char()
+                if first < 0:
+                    first = 0
+                index = 32 - first
+                if 0 <= index < len(widths):
+                    width = widths[index]
+                    if width > 0.0:
+                        self._font_width_of_space = width
+                        return width
+            # 4) Ask the embedded font program directly.
+            try:
+                width = self.get_width_from_font(32)
+                if width > 0:
+                    self._font_width_of_space = width
+                    return width
+            except (NotImplementedError, OSError, ValueError):
+                pass
+            # 5) Average font width fallback.
+            avg = self.get_average_font_width()
+            if avg > 0:
+                self._font_width_of_space = avg
+                return avg
+        except Exception:
+            # Mirrors upstream's broad catch — never let space-width
+            # calculation propagate; fall through to the 250 default.
+            pass
+        self._font_width_of_space = _DEFAULT_SPACE_WIDTH
         return _DEFAULT_SPACE_WIDTH
 
     # ---------- font matrix ----------
@@ -281,6 +357,318 @@ class PDFont:
         if not name:
             return False
         return _SUBSET_RE.match(name) is not None
+
+    # ---------- Standard 14 AFM ----------
+
+    def get_standard14_afm(self) -> AfmMetrics | None:
+        """Return the AFM for this font when it is one of the Standard 14.
+
+        Mirrors upstream ``PDFont.getStandard14AFM`` (``protected final``):
+        a non-``None`` return guarantees AFM-driven width / metrics
+        lookups are usable. Result is cached on first call.
+        """
+        if self._standard14_afm_loaded:
+            return self._standard14_afm
+        self._standard14_afm_loaded = True
+        name = self.get_name()
+        if name is None:
+            self._standard14_afm = None
+            return None
+        # Be permissive — only load when the name resolves to a Standard 14
+        # canonical name. ``Standard14Fonts.contains_name`` accepts aliases.
+        if not Standard14Fonts.contains_name(name):
+            self._standard14_afm = None
+            return None
+        try:
+            self._standard14_afm = Standard14Fonts.get_afm(name)
+        except (KeyError, OSError, ValueError):
+            self._standard14_afm = None
+        return self._standard14_afm
+
+    def get_standard14_width(self, code: int) -> float:
+        """Glyph advance for ``code`` taken from the Standard 14 AFM.
+
+        Mirrors upstream ``protected abstract float getStandard14Width(int)``.
+        The base implementation raises :class:`NotImplementedError`;
+        concrete subclasses (``PDType1Font``, ``PDTrueTypeFont``) override
+        with subtype-specific glyph-name resolution.
+        """
+        raise NotImplementedError(
+            "get_standard14_width must be implemented by a concrete subclass"
+        )
+
+    # ---------- bounding box / position / displacement ----------
+
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the font's bounding box.
+
+        Mirrors upstream ``PDFontLike.getBoundingBox``. The base
+        implementation pulls ``/FontBBox`` from the font descriptor when
+        present; subclasses override to read the embedded font program
+        directly when more accurate bounds are available.
+        """
+        fd = self.get_font_descriptor()
+        if fd is None:
+            return None
+        return fd.get_font_bounding_box()
+
+    def get_position_vector(self, code: int) -> tuple[float, float]:
+        """Return the position vector ``(x, y)`` for ``code``.
+
+        Mirrors upstream ``PDFont.getPositionVector`` which raises
+        ``UnsupportedOperationException`` — horizontal-only fonts have no
+        position vector. Vertical-writing subclasses (``PDType0Font`` /
+        ``PDCIDFont``) override.
+        """
+        raise NotImplementedError(
+            "Horizontal fonts have no position vector"
+        )
+
+    def get_displacement(self, code: int) -> tuple[float, float]:
+        """Return the displacement vector ``(w0, w1)`` for ``code`` in
+        text space.
+
+        Mirrors upstream ``PDFont.getDisplacement``: horizontal text uses
+        only the x component, vertical only the y. The base implementation
+        returns ``(get_width(code) / 1000, 0)``; vertical fonts override.
+        """
+        return (self.get_width(code) / 1000.0, 0.0)
+
+    # ---------- writing-mode / damage / subset ----------
+
+    def is_vertical(self) -> bool:
+        """``True`` when the font uses vertical writing mode.
+
+        Mirrors upstream ``abstract boolean isVertical()``. Default
+        ``False``; ``PDType0Font`` overrides based on the CMap's writing
+        mode entry.
+        """
+        return False
+
+    def will_be_subset(self) -> bool:
+        """``True`` iff this font will be subset when embedded.
+
+        Mirrors upstream ``abstract boolean willBeSubset()``. Base default
+        ``False``; ``PDTrueTypeFont`` / ``PDType0Font`` override when
+        subsetting is enabled.
+        """
+        return False
+
+    def add_to_subset(self, code_point: int) -> None:
+        """Register ``code_point`` for inclusion in the subsetted font.
+
+        Mirrors upstream ``abstract void addToSubset(int)``. The base
+        implementation raises :class:`NotImplementedError`; subclasses
+        that support subsetting override.
+        """
+        raise NotImplementedError(
+            "subsetting is not supported for this font subtype"
+        )
+
+    def subset(self) -> None:
+        """Replace this font with a subset containing the registered codepoints.
+
+        Mirrors upstream ``abstract void subset()``. The base
+        implementation raises :class:`NotImplementedError`; subclasses
+        that support subsetting override.
+        """
+        raise NotImplementedError(
+            "subsetting is not supported for this font subtype"
+        )
+
+    # ---------- widths ----------
+
+    def get_width(self, code: int) -> float:
+        """Return the advance width of ``code`` in 1/1000 text-space units.
+
+        Mirrors upstream ``PDFont.getWidth(int)``: tries (in order) the
+        per-code cache, the dictionary's ``/Widths`` array offset by
+        ``/FirstChar``, the descriptor's ``/MissingWidth``, the Standard
+        14 AFM, and finally the embedded font program via
+        :meth:`get_width_from_font`. Result is cached per code.
+
+        Note: Acrobat (and PDFBOX-427) prefer the dictionary widths even
+        when a font program is embedded, so this method consults the
+        dictionary first.
+        """
+        cached = self._code_to_width.get(code)
+        if cached is not None:
+            return cached
+
+        # Dictionary-driven widths first (Type 1 / Type 1C / Type 3, and
+        # also embedded TrueType per PDFBOX-427).
+        if (
+            self._dict.get_dictionary_object(_WIDTHS) is not None
+            or self._dict.contains_key(_MISSING_WIDTH)
+        ):
+            first_char = self._dict.get_int(_FIRST_CHAR, -1)
+            last_char = self._dict.get_int(_LAST_CHAR, -1)
+            widths = self.get_widths()
+            idx = code - first_char
+            if (
+                widths
+                and code >= first_char
+                and code <= last_char
+                and 0 <= idx < len(widths)
+            ):
+                width = float(widths[idx])
+                self._code_to_width[code] = width
+                return width
+            fd = self.get_font_descriptor()
+            if fd is not None:
+                width = float(fd.get_missing_width())
+                self._code_to_width[code] = width
+                return width
+
+        # Standard 14 fonts ship widths via their AFM.
+        if self.is_standard14():
+            try:
+                width = float(self.get_standard14_width(code))
+            except NotImplementedError:
+                width = 0.0
+            self._code_to_width[code] = width
+            return width
+
+        # Last resort: ask the embedded font program directly.
+        width = float(self.get_width_from_font(code))
+        self._code_to_width[code] = width
+        return width
+
+    def get_width_from_font(self, code: int) -> float:
+        """Return the advance of ``code`` as read from the embedded font program.
+
+        Mirrors upstream ``PDFontLike.getWidthFromFont``. Base
+        implementation raises :class:`NotImplementedError`; subclasses
+        bound to a concrete font program override.
+        """
+        raise NotImplementedError(
+            "get_width_from_font must be implemented by a concrete subclass"
+        )
+
+    def get_height(self, code: int) -> float:
+        """Return the height of the glyph at ``code`` in glyph space.
+
+        Mirrors upstream ``PDFontLike.getHeight``. The method is
+        deprecated upstream because no consistent value can be returned;
+        callers should prefer the bounding-box height. Base
+        implementation raises :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(
+            "get_height must be implemented by a concrete subclass"
+        )
+
+    def has_explicit_width(self, code: int) -> bool:
+        """``True`` iff the dictionary specifies an explicit width for ``code``.
+
+        Mirrors upstream ``PDFontLike.hasExplicitWidth``: the font
+        dictionary must carry ``/Widths`` and ``code`` must fall within
+        ``[/FirstChar, /FirstChar + len(Widths))``. Default-width
+        fallbacks (``/MissingWidth``, ``/DW``) do **not** count.
+        """
+        if self._dict.get_dictionary_object(_WIDTHS) is None:
+            return False
+        first_char = self._dict.get_int(_FIRST_CHAR, -1)
+        if code < first_char:
+            return False
+        return code - first_char < len(self.get_widths())
+
+    # ---------- encode / decode / read_code ----------
+
+    def encode(self, text: str) -> bytes:
+        """Encode ``text`` to its raw PDF content-stream byte form.
+
+        Mirrors upstream ``public final byte[] encode(String)``: walks the
+        codepoints (so surrogate pairs collapse into a single codepoint)
+        and concatenates per-codepoint encodings produced by
+        :meth:`encode_codepoint`. The base implementation is intended to
+        be inherited; subclasses (``PDSimpleFont``, ``PDType0Font``)
+        override the whole method when they have a faster bulk path.
+        """
+        out = bytearray()
+        for ch in text:
+            out.extend(self.encode_codepoint(ord(ch)))
+        return bytes(out)
+
+    def encode_codepoint(self, unicode: int) -> bytes:
+        """Encode a single Unicode codepoint to PDF content-stream bytes.
+
+        Mirrors upstream ``protected abstract byte[] encode(int unicode)``
+        — renamed in the Python port to avoid colliding with
+        :meth:`encode` (the public string-level entry point). Base
+        implementation raises :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(
+            "encode_codepoint must be implemented by a concrete subclass"
+        )
+
+    def read_code(self, input_stream: BinaryIO) -> int:
+        """Read the next character code from ``input_stream``.
+
+        Mirrors upstream ``abstract int readCode(InputStream)``. Codes
+        may be 1–4 bytes long depending on the font subtype's CMap. Base
+        implementation raises :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(
+            "read_code must be implemented by a concrete subclass"
+        )
+
+    def get_string_width(self, text: str) -> float:
+        """Return the total advance of ``text`` in 1/1000 text-space units.
+
+        Mirrors upstream ``PDFont.getStringWidth``: encodes ``text`` to
+        bytes, then iterates ``read_code`` + ``get_width``. Subclasses
+        that have a tight string-level shortcut may override.
+        """
+        data = self.encode(text)
+        stream = io.BytesIO(data)
+        total = 0.0
+        while stream.tell() < len(data):
+            code = self.read_code(stream)
+            total += self.get_width(code)
+        return total
+
+    # ---------- to_unicode ----------
+
+    def to_unicode(
+        self, code: int, custom_glyph_list: GlyphList | None = None
+    ) -> str | None:
+        """Resolve ``code`` to its Unicode string via the ``/ToUnicode`` CMap.
+
+        Mirrors upstream ``PDFont.toUnicode(int, GlyphList)``: when the
+        font carries a ``/ToUnicode`` entry, the CMap drives the mapping;
+        otherwise returns ``None`` so subclasses can plug in encoding-based
+        glyph-list resolution. ``custom_glyph_list`` is accepted for
+        signature parity with the Java overload — it is unused at this
+        level (subclasses such as ``PDSimpleFont`` consume it).
+
+        The Identity-H/V special case from upstream is preserved:
+        when the CMap is named ``Identity-*`` the code is returned as a
+        single ``chr(code)`` so the undocumented "Identity as ToUnicode"
+        pattern keeps working (PDFBOX-3123 / PDFBOX-4322).
+        """
+        del custom_glyph_list  # base impl ignores; subclasses use it
+        cmap = self.get_to_unicode_cmap()
+        if cmap is None:
+            return None
+        cmap_name = cmap.get_name() if hasattr(cmap, "get_name") else None
+        encoding = self._dict.get_dictionary_object(_ENCODING)
+        identity_encoded = encoding in (_IDENTITY_H, _IDENTITY_V)
+        if (
+            cmap_name is not None
+            and cmap_name.startswith("Identity-")
+            and (
+                isinstance(self._dict.get_dictionary_object(_TO_UNICODE), COSName)
+                or not cmap.has_unicode_mappings()
+                or identity_encoded
+            )
+        ):
+            # Treat the code as a raw UTF-16 code unit — matches upstream's
+            # ``new String(new char[] { (char) code })``.
+            try:
+                return chr(code)
+            except ValueError:
+                return None
+        return cmap.to_unicode(code)
 
     # ---------- identity / repr ----------
 

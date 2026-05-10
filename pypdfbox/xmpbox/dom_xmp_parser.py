@@ -483,6 +483,454 @@ class DomXmpParser:
         else:
             schema.set_text_property_value(local_name, str(value))
 
+    # ------------------------------------------------------------------
+    # Upstream-named helpers (snake_case ports of DomXmpParser private
+    # methods). These mirror the upstream method surface so callers and
+    # ports of upstream tests can reach the same semantic hooks. They
+    # delegate to existing private helpers where possible and add the
+    # strict / lenient validation logic that upstream concentrates in
+    # these helpers.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def is_schema_extension_property(element: ET.Element | None) -> bool:
+        """Mirror of upstream ``isSchemaExtensionProperty`` (line 261).
+
+        Returns True if the element's prefix is ``pdfaExtension``. ElementTree
+        does not retain element prefixes, so we instead check the namespace URI
+        of the PDF/A extension namespace.
+        """
+        if element is None:
+            return False
+        ns, _local = _strip_qname(element.tag)
+        return ns == "http://www.aiim.org/pdfa/ns/extension/"
+
+    def expect_naming(
+        self,
+        element: ET.Element,
+        ns: str | None,
+        prefix: str | None,  # noqa: ARG002 - prefix info dropped by ElementTree
+        local_name: str | None,
+    ) -> None:
+        """Mirror of upstream ``expectNaming`` (line 996).
+
+        Validates that the element matches the expected namespace, prefix, and
+        local name. Raises :class:`XmpParsingException` (FORMAT) on mismatch.
+        ElementTree does not preserve prefixes on Element nodes, so the
+        ``prefix`` argument is accepted for upstream-API parity but only the
+        namespace and local name are enforced here.
+        """
+        actual_ns, actual_local = _strip_qname(element.tag)
+        if ns is not None and ns != actual_ns:
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.FORMAT,
+                f"Expecting namespace '{ns}' and found '{actual_ns}'",
+            )
+        if local_name is not None and local_name != actual_local:
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.FORMAT,
+                f"Expecting local name '{local_name}' and found '{actual_local}'",
+            )
+
+    def find_descriptions_parent(self, root: ET.Element) -> ET.Element:
+        """Mirror of upstream ``findDescriptionsParent`` (line 949).
+
+        Locates the ``rdf:RDF`` element. If ``root`` is already
+        ``rdf:RDF`` it is returned; otherwise it must be ``x:xmpmeta``
+        (or ``x:xapmeta`` in lenient mode) wrapping a single ``rdf:RDF``
+        child.
+        """
+        ns, local = _strip_qname(root.tag)
+        if ns == _RDF_NS and local == "RDF":
+            return root
+        # x:xmpmeta wrapper
+        wrapper_ns = "adobe:ns:meta/"
+        if not self._strict_parsing and local == "xapmeta":
+            self.expect_naming(root, wrapper_ns, "x", "xapmeta")
+        else:
+            self.expect_naming(root, wrapper_ns, "x", "xmpmeta")
+        children = [c for c in root if isinstance(c.tag, str)]
+        if not children:
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.FORMAT,
+                "No rdf description found in xmp",
+            )
+        if len(children) > 1:
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.FORMAT,
+                "More than one element found in x:xmpmeta",
+            )
+        rdf = children[0]
+        self.expect_naming(rdf, _RDF_NS, "rdf", "RDF")
+        return rdf
+
+    @staticmethod
+    def remove_comments_and_blanks(root: ET.Element) -> None:
+        """Mirror of upstream ``removeCommentsAndBlanks`` (line 1020).
+
+        ElementTree by default drops XML comments and trims surrounding
+        whitespace itself, so this is mostly a no-op kept for upstream-API
+        parity. Any text-only-whitespace siblings are normalised to ``None``
+        so downstream walkers that look at ``Element.text`` or ``.tail``
+        observe the same shape upstream produces after the cleanup pass.
+        """
+        for elem in root.iter():
+            if elem.text is not None and not elem.text.strip():
+                elem.text = None
+            if elem.tail is not None and not elem.tail.strip():
+                elem.tail = None
+
+    def parse_initial_xpacket(self, data: str) -> dict[str, str | None]:
+        """Mirror of upstream ``parseInitialXpacket`` (line 864).
+
+        Tokenises the inner data of the leading ``<?xpacket ...?>``
+        processing instruction. Recognises ``begin``, ``id``, ``bytes``,
+        ``encoding``; rejects unknown attributes. Returns a dict suitable
+        for :meth:`XMPMetadata.create_xmp_metadata`.
+
+        Raises :class:`XmpParsingException` with
+        :attr:`XmpParsingException.ErrorType.XPACKET_BAD_START` for malformed
+        attribute syntax or unrecognised attribute names.
+        """
+        result: dict[str, str | None] = {
+            "begin": None,
+            "id": None,
+            "bytes": None,
+            "encoding": None,
+        }
+        for token in data.split():
+            if not token.endswith('"') and not token.endswith("'"):
+                raise XmpParsingException(
+                    XmpParsingException.ErrorType.XPACKET_BAD_START,
+                    f"Cannot understand PI data part : '{token}' in '{data}'",
+                )
+            quote = token[-1]
+            pos = token.find(f"={quote}")
+            if pos <= 0:
+                raise XmpParsingException(
+                    XmpParsingException.ErrorType.XPACKET_BAD_START,
+                    f"Cannot understand PI data part : '{token}' in '{data}'",
+                )
+            name = token[:pos]
+            if len(token) - 1 < pos + 2:
+                raise XmpParsingException(
+                    XmpParsingException.ErrorType.XPACKET_BAD_START,
+                    f"Cannot understand PI data part : '{token}' in '{data}'",
+                )
+            value = token[pos + 2 : -1]
+            if name not in result:
+                raise XmpParsingException(
+                    XmpParsingException.ErrorType.XPACKET_BAD_START,
+                    f"Unknown attribute in xpacket PI : '{token}'",
+                )
+            result[name] = value
+        return result
+
+    def parse_end_packet(self, data: str) -> str:
+        """Mirror of upstream ``parseEndPacket`` (line 921).
+
+        Validates the trailing ``<?xpacket end='r|w'?>`` processing
+        instruction and returns the single-character marker. Raises
+        :class:`XmpParsingException` (XPACKET_BAD_END) on malformed input.
+        """
+        if not data.startswith("end="):
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.XPACKET_BAD_END,
+                "Expected xpacket 'end' attribute (must be present and placed in first)",
+            )
+        if len(data) <= 5:
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.XPACKET_BAD_END,
+                "Expected xpacket 'end' attribute (must be present and placed in first)",
+            )
+        end_char = data[5]
+        if end_char not in ("r", "w"):
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.XPACKET_BAD_END,
+                "Expected xpacket 'end' attribute with value 'r' or 'w' ",
+            )
+        return end_char
+
+    def maybe_add_non_standard_namespace(
+        self,
+        metadata: XMPMetadata,  # noqa: ARG002 - placeholder for TypeMapping integration
+        prefix: str,
+        namespace: str,
+    ) -> None:
+        """Mirror of upstream ``maybeAddNonStandardNamespace`` (line 244).
+
+        Upstream registers non-standard namespaces with ``TypeMapping`` so
+        unknown schemas survive a parse / re-serialise round-trip. pypdfbox
+        currently records the mapping on the parser instance for visibility
+        until the full ``TypeMapping`` port lands; the existing
+        ``_collect_namespace_prefixes`` path already preserves prefixes for
+        unknown namespaces.
+        """
+        if namespace == _RDF_NS:
+            return
+        if not hasattr(self, "_non_standard_namespaces"):
+            self._non_standard_namespaces: dict[str, str] = {}
+        self._non_standard_namespaces[prefix] = namespace
+
+    def load_attributes(self, schema: XMPSchema, element: ET.Element) -> None:
+        """Mirror of upstream ``loadAttributes`` (line 721).
+
+        Copies ``rdf:about`` and ``xml:*`` qualifiers from ``element`` onto
+        ``schema``. Other attributes are left to the regular property-walk
+        path (handled by :meth:`_merge_description`).
+        """
+        for qname, value in element.attrib.items():
+            ns, local = _strip_qname(qname)
+            if ns == _RDF_NS and local == "about":
+                schema.set_about(value)
+            elif ns == _XML_NS:
+                # xml:lang and friends round-trip as namespace-bound attributes
+                schema._namespaces.setdefault(local, value)
+
+    def check_property_definition(
+        self,
+        schema: XMPSchema,
+        ns: str,
+        local: str,
+    ) -> None:
+        """Mirror of upstream ``checkPropertyDefinition`` (line 1084).
+
+        Strict mode: raises :class:`XmpParsingException` (INVALID_TYPE) when
+        ``local`` is not in the schema's ``KNOWN_PROPERTIES`` allow-list.
+        Lenient mode: no-op (caller falls back to a Text type).
+        """
+        self._validate_strict_property(schema, ns, local)
+
+    def create_property(
+        self,
+        metadata: XMPMetadata,
+        element: ET.Element,
+        schema: XMPSchema,
+    ) -> None:
+        """Mirror of upstream ``createProperty`` (line 436).
+
+        Dispatches an element to the correct ``manage_*`` helper based on
+        its inferred shape. pypdfbox stores properties as plain Python
+        primitives at this layer, so ``manage_simple_type`` /
+        ``manage_array`` / ``manage_lang_alt`` collapse into the existing
+        ``_assign`` path.
+        """
+        ns, local = _strip_qname(element.tag)
+        del metadata, ns  # unused: schema already knows its namespace
+        parsed_value = self._parse_property_value(element)
+        self._assign(schema, local, parsed_value)
+
+    def manage_simple_type(self, schema: XMPSchema, local: str, value: str) -> None:
+        """Mirror of upstream ``manageSimpleType`` (line 557)."""
+        schema.set_text_property_value(local, value)
+
+    def manage_array(self, schema: XMPSchema, local: str, items: list[str]) -> None:
+        """Mirror of upstream ``manageArray`` (line 569)."""
+        for item in items:
+            schema.add_qualified_bag_value(local, item)
+
+    def manage_lang_alt(
+        self, schema: XMPSchema, local: str, lang_map: dict[str, str]
+    ) -> None:
+        """Mirror of upstream ``manageLangAlt`` (line 628)."""
+        for lang, v in lang_map.items():
+            schema.set_unqualified_language_property_value(local, lang, v)
+
+    def manage_structured_type(
+        self,
+        schema: XMPSchema,  # noqa: ARG002 - rich-type system not yet ported
+        local: str,  # noqa: ARG002
+        element: ET.Element,  # noqa: ARG002
+    ) -> None:
+        """Mirror of upstream ``manageStructuredType`` (line 520).
+
+        Rich structured types (``DimensionsType``, ``ResourceEventType``,
+        etc.) are not yet ported; this is a placeholder so callers can hook
+        the same surface name when the type system lands.
+        """
+        return None
+
+    def manage_defined_type(
+        self,
+        schema: XMPSchema,  # noqa: ARG002
+        local: str,  # noqa: ARG002
+        element: ET.Element,  # noqa: ARG002
+    ) -> None:
+        """Mirror of upstream ``manageDefinedType`` (line 487).
+
+        Defined types (extension-schema-declared structured properties)
+        require the ``TypeMapping`` infrastructure that has not yet been
+        ported.
+        """
+        return None
+
+    def parse_description_root(
+        self,
+        metadata: XMPMetadata,
+        description: ET.Element,
+        per_ns: dict[str, XMPSchema] | None = None,
+        namespace_prefixes: dict[str, str] | None = None,
+    ) -> dict[str, XMPSchema]:
+        """Mirror of upstream ``parseDescriptionRoot`` (line 305)."""
+        if per_ns is None:
+            per_ns = {}
+        if namespace_prefixes is None:
+            namespace_prefixes = {}
+        self._merge_description(description, metadata, per_ns, namespace_prefixes)
+        return per_ns
+
+    def parse_description_root_attr(
+        self,
+        metadata: XMPMetadata,
+        description: ET.Element,
+        attr_qname: str,
+        attr_value: str,
+        per_ns: dict[str, XMPSchema],
+        namespace_prefixes: dict[str, str] | None = None,
+    ) -> None:
+        """Mirror of upstream ``parseDescriptionRootAttr`` (line 346).
+
+        Resolves the schema for the attribute's namespace and stores the
+        attribute's value as a simple text property on that schema.
+        """
+        if namespace_prefixes is None:
+            namespace_prefixes = {}
+        ns, local = _strip_qname(attr_qname)
+        if ns in ("", _RDF_NS, _XML_NS):
+            return
+        about = description.get(f"{{{_RDF_NS}}}about", "")
+        schema = self._schema_for(
+            ns, local, description, metadata, per_ns, about, namespace_prefixes
+        )
+        self._validate_strict_property(schema, ns, local)
+        schema.set_text_property_value(local, attr_value)
+
+    def parse_children_as_properties(
+        self,
+        metadata: XMPMetadata,
+        description: ET.Element,
+        per_ns: dict[str, XMPSchema],
+        namespace_prefixes: dict[str, str] | None = None,
+    ) -> None:
+        """Mirror of upstream ``parseChildrenAsProperties`` (line 404)."""
+        if namespace_prefixes is None:
+            namespace_prefixes = {}
+        about = description.get(f"{{{_RDF_NS}}}about", "")
+        for child in description:
+            ns, local = _strip_qname(child.tag)
+            if ns == _RDF_NS:
+                continue
+            schema = self._schema_for(
+                ns, local, description, metadata, per_ns, about, namespace_prefixes
+            )
+            self._validate_strict_property(schema, ns, local)
+            parsed_value = self._parse_property_value(child)
+            self._assign(schema, local, parsed_value)
+
+    def parse_schema_extensions(
+        self,
+        metadata: XMPMetadata,  # noqa: ARG002 - PDF/A extension type system not ported
+        description: ET.Element,
+    ) -> list[ET.Element]:
+        """Mirror of upstream ``parseSchemaExtensions`` (line 266).
+
+        Returns the list of ``pdfaExtension:*`` child elements so callers
+        can inspect them. Full extension-schema construction depends on
+        ``PdfaExtensionHelper`` which is out of scope for this cluster.
+        """
+        return [
+            child
+            for child in description
+            if self.is_schema_extension_property(child)
+        ]
+
+    def parse_description_inner(
+        self,
+        metadata: XMPMetadata,  # noqa: ARG002
+        description: ET.Element,  # noqa: ARG002
+    ) -> None:
+        """Mirror of upstream ``parseDescriptionInner`` (line 634).
+
+        Inner-description parsing depends on ``TypeMapping`` /
+        ``PropertiesDescription`` which are part of the rich type system
+        that hasn't been ported yet.
+        """
+        return None
+
+    def parse_li_element(
+        self,
+        metadata: XMPMetadata,  # noqa: ARG002
+        descriptor: tuple[str, str],  # noqa: ARG002 - (ns, local)
+        li_element: ET.Element,
+    ) -> object:
+        """Mirror of upstream ``parseLiElement`` (line 657).
+
+        Returns the simple text content of an ``rdf:li`` element. Structured
+        ``rdf:li`` items (``rdf:parseType="Resource"``) require the typed
+        property system and are returned as-is.
+        """
+        if not list(li_element):
+            return (li_element.text or "").strip()
+        # Structured li: surface raw element until rich-type port lands.
+        return li_element
+
+    def parse_li_description(
+        self,
+        metadata: XMPMetadata,  # noqa: ARG002
+        parent_descriptor: tuple[str, str],  # noqa: ARG002
+        li_description_element: ET.Element,  # noqa: ARG002
+    ) -> None:
+        """Mirror of upstream ``parseLiDescription`` (line 751).
+
+        Builds an ``AbstractStructuredType`` from an ``rdf:li`` /
+        ``rdf:Description`` pair. Depends on the typed-property system not
+        yet ported in this cluster.
+        """
+        return None
+
+    def instanciate_structured(
+        self,
+        type_name: str,  # noqa: ARG002
+        name: str,  # noqa: ARG002
+        structured_namespace: str | None = None,  # noqa: ARG002
+    ) -> None:
+        """Mirror of upstream ``instanciateStructured`` (line 1060).
+
+        Note the upstream Java spelling (``instanciate`` rather than
+        ``instantiate``) is preserved for parity. Returns ``None`` until
+        the structured type infrastructure is ported.
+        """
+        return None
+
+    def try_parse_attributes_as_properties(
+        self,
+        metadata: XMPMetadata,
+        li_element: ET.Element,
+        per_ns: dict[str, XMPSchema] | None = None,
+        namespace_prefixes: dict[str, str] | None = None,
+    ) -> dict[str, XMPSchema]:
+        """Mirror of upstream ``tryParseAttributesAsProperties`` (line 1124).
+
+        Walks the attributes of an ``rdf:li`` (or ``rdf:Description``) and
+        treats each non-RDF / non-XML attribute as a simple text property
+        on the schema for its namespace. Mirrors PDFBOX-3882.
+        """
+        if per_ns is None:
+            per_ns = {}
+        if namespace_prefixes is None:
+            namespace_prefixes = {}
+        about = li_element.get(f"{{{_RDF_NS}}}about", "")
+        for qname, value in li_element.attrib.items():
+            ns, local = _strip_qname(qname)
+            if ns in ("", _RDF_NS, _XML_NS):
+                continue
+            schema = self._schema_for(
+                ns, local, li_element, metadata, per_ns, about, namespace_prefixes
+            )
+            self._validate_strict_property(schema, ns, local)
+            schema.set_text_property_value(local, value)
+        return per_ns
+
 
 # Convenience module-level wrapper to mirror upstream usage patterns.
 def parse(source: bytes | bytearray | memoryview | str | IO[bytes]) -> XMPMetadata:

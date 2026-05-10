@@ -250,6 +250,160 @@ def test_multiple_descriptions_for_same_namespace_merge() -> None:
     assert dc.get_identifier() == "id-1"
 
 
+# ---------------------------------------------------------------------------
+# Upstream-named helper coverage (parity round-out: protected ports of
+# DomXmpParser private methods kept in their snake_case form for parity).
+# ---------------------------------------------------------------------------
+
+
+def test_parse_initial_xpacket_recognises_known_attributes() -> None:
+    parser = DomXmpParser()
+    result = parser.parse_initial_xpacket(
+        "begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\" bytes=\"647\" encoding=\"UTF-8\""
+    )
+    assert result == {
+        "begin": "",
+        "id": "W5M0MpCehiHzreSzNTczkc9d",
+        "bytes": "647",
+        "encoding": "UTF-8",
+    }
+
+
+def test_parse_initial_xpacket_rejects_unknown_attribute() -> None:
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_initial_xpacket("foo=\"bar\"")
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.XPACKET_BAD_START
+
+
+def test_parse_initial_xpacket_rejects_unquoted_value() -> None:
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_initial_xpacket("begin=oops")
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.XPACKET_BAD_START
+
+
+def test_parse_end_packet_returns_marker() -> None:
+    parser = DomXmpParser()
+    assert parser.parse_end_packet("end=\"w\"") == "w"
+    assert parser.parse_end_packet("end='r'") == "r"
+
+
+def test_parse_end_packet_rejects_missing_end_attribute() -> None:
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_end_packet("ends=\"w\"")
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.XPACKET_BAD_END
+    assert str(info.value) == (
+        "Expected xpacket 'end' attribute (must be present and placed in first)"
+    )
+
+
+def test_parse_end_packet_rejects_invalid_marker_value() -> None:
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_end_packet("end=\"k\"")
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.XPACKET_BAD_END
+    assert "'r' or 'w'" in str(info.value)
+
+
+def test_is_schema_extension_property_detects_pdfa_extension_namespace() -> None:
+    import xml.etree.ElementTree as ET
+
+    elem = ET.Element("{http://www.aiim.org/pdfa/ns/extension/}schemas")
+    other = ET.Element("{http://purl.org/dc/elements/1.1/}title")
+    assert DomXmpParser.is_schema_extension_property(elem) is True
+    assert DomXmpParser.is_schema_extension_property(other) is False
+    assert DomXmpParser.is_schema_extension_property(None) is False
+
+
+def test_expect_naming_passes_for_matching_namespace_and_local() -> None:
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    rdf = ET.Element("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF")
+    # Should not raise.
+    parser.expect_naming(
+        rdf, "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rdf", "RDF"
+    )
+
+
+def test_expect_naming_rejects_namespace_mismatch() -> None:
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    elem = ET.Element("{https://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF")
+    with pytest.raises(XmpParsingException) as info:
+        parser.expect_naming(
+            elem, "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rdf", "RDF"
+        )
+    assert "Expecting namespace" in str(info.value)
+
+
+def test_expect_naming_rejects_local_name_mismatch() -> None:
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    elem = ET.Element("{adobe:ns:meta/}xapmeta")
+    with pytest.raises(XmpParsingException) as info:
+        parser.expect_naming(elem, "adobe:ns:meta/", "x", "xmpmeta")
+    assert "Expecting local name 'xmpmeta'" in str(info.value)
+
+
+def test_find_descriptions_parent_returns_rdf_root_directly() -> None:
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    rdf = ET.Element("{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF")
+    assert parser.find_descriptions_parent(rdf) is rdf
+
+
+def test_find_descriptions_parent_unwraps_x_xmpmeta() -> None:
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    wrapper = ET.Element("{adobe:ns:meta/}xmpmeta")
+    rdf = ET.SubElement(wrapper, "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF")
+    assert parser.find_descriptions_parent(wrapper) is rdf
+
+
+def test_find_descriptions_parent_rejects_empty_xmpmeta() -> None:
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    wrapper = ET.Element("{adobe:ns:meta/}xmpmeta")
+    with pytest.raises(XmpParsingException) as info:
+        parser.find_descriptions_parent(wrapper)
+    assert str(info.value) == "No rdf description found in xmp"
+
+
+def test_manage_simple_type_writes_text_property() -> None:
+    parser = DomXmpParser()
+    meta = parser.parse(SIMPLE_PACKET)
+    schema = meta.get_dublin_core_schema()
+    parser.manage_simple_type(schema, "format", "application/pdf")
+    assert schema.get_unqualified_text_property_value("format") == "application/pdf"
+
+
+def test_manage_array_appends_items() -> None:
+    parser = DomXmpParser()
+    meta = parser.parse(SIMPLE_PACKET)
+    schema = meta.get_dublin_core_schema()
+    parser.manage_array(schema, "subject", ["new-1", "new-2"])
+    subjects = schema.get_subjects()
+    assert "new-1" in subjects
+    assert "new-2" in subjects
+
+
+def test_manage_lang_alt_writes_language_keyed_values() -> None:
+    parser = DomXmpParser()
+    meta = parser.parse(SIMPLE_PACKET)
+    schema = meta.get_dublin_core_schema()
+    parser.manage_lang_alt(schema, "title", {"x-default": "Hi", "fr": "Salut"})
+    assert schema.get_title() == "Hi"
+    assert schema.get_title("fr") == "Salut"
+
+
 def test_strict_parsing_rejects_unknown_adobe_pdf_element_form_property() -> None:
     packet = (
         b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'

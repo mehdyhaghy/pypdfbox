@@ -284,3 +284,127 @@ def test_parse_pdf_header_returns_false_on_missing_header() -> None:
 def test_parse_pdf_header_returns_false_on_malformed_version() -> None:
     p = _parser(b"%PDF-bad\nrest")
     assert p.parse_pdf_header() is False
+
+
+# ---------- constructor with decryption_password (Java line 58) ----------
+
+
+def test_constructor_stages_decryption_password_str() -> None:
+    """Mirrors ``PDFParser(RandomAccessRead, String)`` (Java line 58):
+    the password is staged identically to ``set_password``."""
+    p = PDFParser(RandomAccessReadBuffer(_minimal_pdf_bytes()), "hunter2")
+    assert p.get_password() == "hunter2"
+
+
+def test_constructor_stages_decryption_password_bytes() -> None:
+    p = PDFParser(RandomAccessReadBuffer(_minimal_pdf_bytes()), b"\x00secret")
+    assert p.get_password() == b"\x00secret"
+
+
+def test_constructor_default_password_is_none() -> None:
+    p = PDFParser(RandomAccessReadBuffer(_minimal_pdf_bytes()))
+    assert p.get_password() is None
+
+
+# ---------- parse(lenient) overload (Java line 149) ----------
+
+
+def test_parse_with_lenient_true_keeps_lenient_flag() -> None:
+    """Mirrors ``PDFParser.parse(boolean)`` whose first line is
+    ``setLenient(lenient)`` (Java line 151)."""
+    p = _parser(_minimal_pdf_bytes())
+    p.set_lenient(False)
+    p.parse(lenient=True)
+    assert p.is_lenient() is True
+
+
+def test_parse_with_lenient_false_toggles_lenient_off() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    assert p.is_lenient() is True
+    p.parse(lenient=False)
+    assert p.is_lenient() is False
+
+
+def test_parse_no_arg_preserves_existing_lenient_flag() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    p.set_lenient(False)
+    # Note: with strict mode the minimal PDF still parses (header is
+    # well-formed), so the parse itself succeeds; we just verify the
+    # flag was not silently changed.
+    p.parse()
+    assert p.is_lenient() is False
+
+
+# ---------- initial_parse (Java line 105) ----------
+
+
+def test_initial_parse_marks_initial_parse_done_flag() -> None:
+    """Calling ``initial_parse()`` flips the cos_parser's
+    ``initial_parse_done`` flag — mirrors the upstream
+    ``initialParseDone = true`` line at the end of ``initialParse()``
+    (Java line 122)."""
+    p = _parser(_minimal_pdf_bytes())
+    p.parse()
+    cos = p._cos_parser  # type: ignore[attr-defined]
+    assert cos is not None
+    # Not auto-set by pypdfbox's parse() (kept lazy); explicit call flips.
+    p.initial_parse()
+    assert cos.is_initial_parse_done() is True
+
+
+def test_initial_parse_raises_when_root_missing() -> None:
+    """Mirrors upstream ``Missing root object specification in trailer.``
+    error (Java line 112). pypdfbox's :meth:`parse` does not auto-call
+    ``initial_parse`` (kept lazy for compat with synthetic fixtures);
+    the public hook surfaces the missing-root error explicitly."""
+    pdf = _build_pdf(
+        [b"1 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj"],
+        b"<< /Size 2 >>",  # no /Root
+    )
+    p = _parser(pdf)
+    p.parse()  # parse() itself does not validate /Root
+    with pytest.raises(PDFParseError, match="Missing root"):
+        p.initial_parse()
+
+
+def test_initial_parse_lenient_repairs_missing_catalog_type() -> None:
+    """Mirrors the upstream ``isLenient() && !root.containsKey(TYPE)``
+    branch (Java lines 115-118)."""
+    # Build a PDF whose root dict omits /Type. The minimal builder always
+    # writes /Type /Catalog, so synthesize the bytes manually.
+    pdf = _build_pdf(
+        [
+            b"1 0 obj\n<< /Pages 2 0 R >>\nendobj",  # no /Type
+            b"2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj",
+        ],
+        b"<< /Size 3 /Root 1 0 R >>",
+    )
+    p = _parser(pdf)
+    # Lenient by default; running initial_parse explicitly should
+    # inject the missing /Type /Catalog (parse() leaves the resolver
+    # untouched per pypdfbox's lazy contract).
+    p.parse()
+    p.initial_parse()
+    root = p.get_root()
+    assert isinstance(root, COSDictionary)
+    assert root.get_name("Type") == "Catalog"
+
+
+# ---------- create_document (Java line 194) ----------
+
+
+def test_create_document_returns_pd_document() -> None:
+    """Mirrors upstream ``PDFParser.createDocument()`` (Java line 194)."""
+    p = _parser(_minimal_pdf_bytes())
+    p.parse()
+    pd = p.create_document()
+    assert pd is not None
+    # Same wrapper as ``get_pd_document`` — upstream's ``createDocument``
+    # is the construction point that ``parse`` ultimately returns.
+    assert pd is p.get_pd_document()
+
+
+def test_create_document_before_parse_raises() -> None:
+    p = _parser(_minimal_pdf_bytes())
+    with pytest.raises(PDFParseError):
+        p.create_document()

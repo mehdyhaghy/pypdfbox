@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import ClassVar
 
 from pypdfbox.cos import (
@@ -1399,6 +1400,279 @@ class COSParser(BaseParser):
                 xref_table[COSObjectKey(first_obj_num + object_index, 0)] = body_offset
                 body_offset += entry_size
         return xref_table
+
+    # ---------- trailer-resolver hook (org.apache.pdfbox.pdfparser.COSParser:322) ----------
+
+    def reset_trailer_resolver(self) -> bool:
+        """Indicate whether the xref-trailer-resolver should be reset
+        once :meth:`retrieve_trailer` finishes. Subclasses that need the
+        resolver state preserved (typically because they perform their
+        own additional walks afterwards) override this to return
+        ``False``. Mirrors upstream
+        ``COSParser.resetTrailerResolver()`` (Java line 322)."""
+        return True
+
+    # ---------- trailer retrieval (org.apache.pdfbox.pdfparser.COSParser:252) ----------
+
+    def retrieve_trailer(self) -> COSDictionary | None:
+        """Read the trailer dictionary from the source. The default
+        pypdfbox flow drives the full xref chain through ``PDFParser``;
+        this method is the upstream-named entry point. Mirrors upstream
+        ``COSParser.retrieveTrailer()`` (Java line 252).
+
+        When a bound document already carries a trailer (because
+        ``PDFParser.parse`` ran), that trailer is returned directly.
+        Otherwise this falls back to :meth:`rebuild_trailer` in lenient
+        mode and raises ``PDFParseError`` in strict mode — matching the
+        upstream branch where ``isLenient`` toggles the brute-force
+        recovery path."""
+        if self._document is not None:
+            existing = self._document.get_trailer()
+            if existing is not None:
+                return existing
+        if not self._lenient:
+            raise PDFParseError(
+                "retrieve_trailer requires PDFParser-driven xref walk in "
+                "strict mode; bind a document or run PDFParser.parse() first"
+            )
+        rebuilt = self.rebuild_trailer()
+        self._trailer_was_rebuild = True
+        return rebuilt
+
+    # ---------- COSObject dereference (org.apache.pdfbox.pdfparser.COSParser:621) ----------
+
+    def dereference_cos_object(self, obj: COSObject) -> COSBase | None:
+        """Resolve ``obj`` (a ``COSObject`` placeholder) to its underlying
+        ``COSBase`` value. The source position is preserved across the
+        call. Mirrors upstream ``COSParser.dereferenceCOSObject(COSObject)``
+        (Java line 621) — the protected override of
+        ``ICOSParser.dereferenceCOSObject``.
+
+        With a bound document the resolution routes through the pool's
+        installed loader; without one the call returns the placeholder's
+        currently-attached payload (or ``None``)."""
+        current_pos = self.position
+        try:
+            key = COSObjectKey(obj.object_number, obj.generation_number)
+            parsed = self.parse_object_dynamically(
+                key.object_number, key.generation_number, False
+            )
+            if parsed is not None:
+                # Match upstream's setDirect(false) + setKey(key) on the
+                # resolved payload — only `set_direct` exists today.
+                if hasattr(parsed, "set_direct"):
+                    with contextlib.suppress(Exception):
+                        parsed.set_direct(False)
+                if hasattr(parsed, "set_key"):
+                    with contextlib.suppress(Exception):
+                        parsed.set_key(key)
+            return parsed
+        finally:
+            if current_pos > 0:
+                with contextlib.suppress(Exception):
+                    self.seek(current_pos)
+
+    # ---------- random-access view (org.apache.pdfbox.pdfparser.COSParser:639) ----------
+
+    def create_random_access_read_view(
+        self, start_position: int, stream_length: int
+    ) -> RandomAccessRead:
+        """Return a ``RandomAccessReadView`` over ``[start_position,
+        start_position + stream_length)`` of this parser's source. Mirrors
+        upstream ``COSParser.createRandomAccessReadView(long, long)``
+        (Java line 639) — used by stream-body code that wants a sliced
+        view without loading bytes into memory."""
+        return self._src.create_view(int(start_position), int(stream_length))
+
+    # ---------- compressed-object loader (org.apache.pdfbox.pdfparser.COSParser:812) ----------
+
+    def parse_object_stream_object(
+        self, objstm_obj_nr: int, key: COSObjectKey
+    ) -> COSBase | None:
+        """Parse one specific compressed object identified by ``key`` from
+        the object stream whose container has number ``objstm_obj_nr``.
+        Mirrors upstream ``COSParser.parseObjectStreamObject(long,
+        COSObjectKey)`` (Java line 812).
+
+        Implementation walks the same code path as :meth:`parse_object_stream`
+        but returns only the requested object (and registers all its
+        siblings in the document pool as a side-effect). Returns ``None``
+        when the object is not present in the stream."""
+        if self._document is None:
+            raise PDFParseError(
+                f"parse_object_stream_object({objstm_obj_nr}, {key}): "
+                "no document bound to parser"
+            )
+        # parse_object_stream populates the pool and returns a list in
+        # storage order; the resolved object is then read out of the pool.
+        self.parse_object_stream(int(objstm_obj_nr))
+        if not self._document.has_object(key):
+            return None
+        return self._document.get_object_from_pool(key).get_object()
+
+    # ---------- COSStream parsing (org.apache.pdfbox.pdfparser.COSParser:904) ----------
+
+    def parse_cos_stream(self, dic: COSDictionary) -> COSStream:
+        """Read a stream body (``stream ... endstream``) immediately
+        following the dictionary ``dic`` and return the resulting
+        ``COSStream`` (with ``dic``'s entries copied onto it). The
+        ``stream`` keyword must already be the next token. Mirrors
+        upstream ``COSParser.parseCOSStream(COSDictionary)`` (Java line
+        904).
+
+        Direct integer ``/Length`` is required by this implementation —
+        an indirect-reference ``/Length`` raises ``NotImplementedError``
+        and the resolution lives in ``PDFParser`` (which has full xref
+        access). Trailing whitespace before ``endstream`` is tolerated."""
+        # Consume the 'stream' keyword (mirrors upstream's leading
+        # readString() — already validated by the caller in upstream).
+        self.skip_whitespace()
+        kw = self.read_keyword()
+        if kw != b"stream":
+            raise PDFParseError(
+                f"expected 'stream' keyword, got {kw!r}", position=self.position
+            )
+        stream = self._build_stream_from_dict(dic)
+        self._read_stream_body_into(stream)
+        return stream
+
+    # ---------- page-tree validation (org.apache.pdfbox.pdfparser.COSParser:1403) ----------
+
+    def check_pages(self, root: COSDictionary) -> None:
+        """Validate that the document's page tree (``root[/Pages]``) is
+        a dictionary. When the trailer was rebuilt by the brute-force
+        recovery path, also walk every ``/Kids`` entry and prune those
+        whose targets are missing or invalid. Mirrors upstream
+        ``COSParser.checkPages(COSDictionary)`` (Java line 1403).
+
+        Raises ``PDFParseError`` (upstream's ``IOException``) when the
+        page-tree root is not a dictionary."""
+        pages_name = COSName.get_pdf_name("Pages")
+        if self._trailer_was_rebuild:
+            pages = root.get_dictionary_object(pages_name)
+            if isinstance(pages, COSDictionary):
+                self._check_pages_dictionary(pages, set())
+        if not isinstance(root.get_dictionary_object(pages_name), COSDictionary):
+            raise PDFParseError("Page tree root must be a dictionary")
+
+    def _check_pages_dictionary(
+        self, pages_dict: COSDictionary, seen: set
+    ) -> int:
+        """Recursive worker for :meth:`check_pages`. Mirrors the private
+        upstream ``checkPagesDictionary`` (Java line 1420) — kept private
+        here too (single underscore) since callers should drive the walk
+        through ``check_pages``."""
+        kids_name = COSName.get_pdf_name("Kids")
+        type_name = COSName.get_pdf_name("Type")
+        count_name = COSName.get_pdf_name("Count")
+        kids = pages_dict.get_dictionary_object(kids_name)
+        number_of_pages = 0
+        if isinstance(kids, COSArray):
+            removals: list[COSBase] = []
+            for kid in list(kids):
+                if not isinstance(kid, COSObject) or kid in seen:
+                    removals.append(kid)
+                    continue
+                kid_obj = kid.get_object()
+                if kid_obj is None or kid_obj is COSNull.NULL:
+                    removals.append(kid)
+                    continue
+                if isinstance(kid_obj, COSDictionary):
+                    type_obj = kid_obj.get_dictionary_object(type_name)
+                    if isinstance(type_obj, COSName) and type_obj.name == "Pages":
+                        seen.add(kid)
+                        number_of_pages += self._check_pages_dictionary(
+                            kid_obj, seen
+                        )
+                    elif isinstance(type_obj, COSName) and type_obj.name == "Page":
+                        number_of_pages += 1
+            for victim in removals:
+                with contextlib.suppress(Exception):
+                    kids.remove(victim)
+        pages_dict.set_item(count_name, COSInteger.get(number_of_pages))
+        return number_of_pages
+
+    # ---------- encryption surface (org.apache.pdfbox.pdfparser.COSParser:1829) ----------
+
+    def get_encryption(self):  # type: ignore[no-untyped-def]
+        """Return the ``PDEncryption`` instance bound to this parser, or
+        ``None`` when the document is not encrypted. The document must
+        have been parsed first. Mirrors upstream
+        ``COSParser.getEncryption()`` (Java line 1829).
+
+        pypdfbox stores the encryption metadata at the ``PDFParser``
+        layer — when the parser is unbound this returns ``None``; when a
+        document is bound, the trailer's ``/Encrypt`` dictionary is wrapped
+        as a ``PDEncryption`` if available (matches the upstream
+        accessor's read-only contract)."""
+        if self._document is None:
+            raise PDFParseError(
+                "You must parse the document first before calling get_encryption()"
+            )
+        enc_dict = self._document.get_encryption_dictionary()
+        if enc_dict is None:
+            return None
+        # Local import to avoid a cos_parser → pdmodel.encryption cycle at
+        # module load.
+        try:
+            from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
+        except ImportError:
+            return enc_dict
+        return PDEncryption(enc_dict)
+
+    def get_access_permission(self):  # type: ignore[no-untyped-def]
+        """Return the ``AccessPermission`` derived from the security
+        handler attached during decryption preparation, or ``None`` when
+        the document is unencrypted / not yet decrypted. Mirrors upstream
+        ``COSParser.getAccessPermission()`` (Java line 1846).
+
+        Requires a bound document — without one this raises
+        ``PDFParseError`` (upstream throws ``IOException``)."""
+        if self._document is None:
+            raise PDFParseError(
+                "You must parse the document first before calling "
+                "get_access_permission()"
+            )
+        # pypdfbox surfaces AccessPermission off the security handler at
+        # the PDFParser layer. Without a handler bound to the parser we
+        # return None (the document is either unencrypted, or decryption
+        # hasn't been prepared yet).
+        handler = getattr(self, "_security_handler", None)
+        if handler is None:
+            return None
+        if hasattr(handler, "get_current_access_permission"):
+            return handler.get_current_access_permission()
+        return None
+
+    def prepare_decryption(self) -> None:
+        """Stage the security handler for the bound document so subsequent
+        object reads go through decryption. Mirrors upstream
+        ``COSParser.prepareDecryption()`` (Java line 1862).
+
+        pypdfbox does the heavy lifting in
+        ``PDFParser._prepare_security_handler_if_needed`` — this entry
+        point exists to make the upstream call surface available on
+        ``COSParser`` itself for downstream callers driving an
+        already-loaded document."""
+        if self._document is None:
+            return
+        enc_dict = self._document.get_encryption_dictionary()
+        if enc_dict is None:
+            return
+        # Idempotent: do nothing if a handler is already attached.
+        if getattr(self, "_security_handler", None) is not None:
+            return
+        # We don't pull in the standard security handler here — that
+        # binding lives in ``PDFParser._prepare_security_handler_if_needed``
+        # (which has access to the password). Subclasses (PDFParser) call
+        # super().prepare_decryption() then perform the heavy work.
+
+    # ---------- Java alias: createRandomAccessReadView (parity-only) ----------
+    #
+    # Upstream uses camelCase here — we keep the snake_case canonical
+    # ``create_random_access_read_view`` above and rely on PDFBox-style
+    # callers using the snake_case form (no camelCase aliases per
+    # project convention).
 
 
 def _validate_xref_index_pair(first_obj_num: int, count: int) -> None:

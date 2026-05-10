@@ -64,7 +64,20 @@ class PDFParser:
     the populated ``COSDocument``.
     """
 
-    def __init__(self, source: RandomAccessRead) -> None:
+    def __init__(
+        self,
+        source: RandomAccessRead,
+        decryption_password: str | bytes | None = None,
+    ) -> None:
+        """Construct a parser around ``source``.
+
+        ``decryption_password`` mirrors the upstream
+        ``PDFParser(RandomAccessRead, String)`` constructor overload (Java
+        line 58): when supplied, the password is staged the same way
+        :meth:`set_password` does, so the eager-decrypt path can stand up
+        a security handler before encrypted xref-stream bodies are
+        decoded. ``None`` preserves the lazy post-load decryption flow
+        driven by ``PDDocument.decrypt``."""
         self._src = source
         self._base = BaseParser(source)
         self._resolver = XrefTrailerResolver()
@@ -78,7 +91,7 @@ class PDFParser:
         # decoded. Mirrors the upstream ``PDFParser(source, password, …)``
         # ctor overload. ``None`` (the default) preserves the lazy
         # post-load decryption flow driven by ``PDDocument.decrypt``.
-        self._password: str | bytes | None = None
+        self._password: str | bytes | None = decryption_password
         # Populated by ``_prepare_security_handler_if_needed`` once the
         # trailer's ``/Encrypt`` is in scope. Reused for every subsequent
         # xref-stream object in the chain.
@@ -119,9 +132,19 @@ class PDFParser:
 
     # ---------- public entry point ----------
 
-    def parse(self) -> COSDocument:
+    def parse(self, lenient: bool | None = None) -> COSDocument:
         """Parse the document end-to-end. Returns a populated COSDocument
-        whose object pool is ready for lazy resolution."""
+        whose object pool is ready for lazy resolution.
+
+        ``lenient`` mirrors upstream ``PDFParser.parse(boolean)`` (Java
+        line 149): when supplied, the lenient flag is toggled before the
+        body of the parse runs (matches the upstream
+        ``setLenient(lenient)`` first line). ``None`` (the default)
+        preserves whatever value ``set_lenient`` last recorded — which
+        starts at ``True`` per upstream's "Lenient mode is active by
+        default" note on the no-arg overload."""
+        if lenient is not None:
+            self.set_lenient(lenient)
         self._document = COSDocument()
         self._cos_parser = COSParser(self._src, document=self._document)
         self._version = self.parse_header()
@@ -144,8 +167,50 @@ class PDFParser:
         if trailer is not None:
             self._document.set_trailer(trailer)
         self.populate_document()
+        # ``initial_parse()`` is intentionally **not** auto-invoked here.
+        # Upstream PDFBox does call it from ``parse()``, but pypdfbox's
+        # historical contract has been that ``parse()`` returns the
+        # populated COSDocument and lazy resolution of ``/Root`` /
+        # streams happens on demand — eagerly resolving the catalog
+        # would force every stream-typed indirect on the /Root path to
+        # be parsed at load time, breaking lazy-error fixtures. Strict
+        # callers should invoke :meth:`initial_parse` explicitly to
+        # surface ``Missing root`` / catalog-type repairs.
         self._document.get_document_state().set_parsing(False)
         return self._document
+
+    def initial_parse(self) -> None:
+        """Validate the trailer's ``/Root`` pointer and (in lenient mode)
+        ensure the catalog dictionary advertises ``/Type /Catalog``.
+        Mirrors upstream ``PDFParser.initialParse`` (Java line 105).
+
+        Raises :class:`PDFParseError` when ``/Root`` is missing — matches
+        the upstream "Missing root object specification in trailer."
+        message. The cos_parser's ``initial_parse_done`` flag is flipped
+        to ``True`` on success so callers introspecting parse state can
+        distinguish "trailer loaded but root not validated" from "fully
+        bootstrapped"."""
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            raise PDFParseError("Missing trailer; cannot run initial_parse")
+        root = trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
+        if not isinstance(root, COSDictionary):
+            raise PDFParseError("Missing root object specification in trailer.")
+        # In some pdfs the type value "Catalog" is missing in the root
+        # object — repair it when lenient (matches upstream PDFBox).
+        if self._lenient and not root.contains_key(COSName.TYPE):
+            root.set_item(COSName.TYPE, COSName.CATALOG)
+        if self._cos_parser is not None:
+            self._cos_parser.set_initial_parse_done(True)
+
+    def create_document(self) -> Any:
+        """Build the resulting :class:`PDDocument` wrapper around the
+        parsed :class:`COSDocument`. Mirrors upstream
+        ``PDFParser.createDocument()`` (Java line 194) — exposed as a
+        public hook so subclasses (and tests) can override the wrapper
+        type. The default implementation returns the same instance
+        cached by :meth:`get_pd_document`."""
+        return self.get_pd_document()
 
     # ---------- document accessors ----------
 

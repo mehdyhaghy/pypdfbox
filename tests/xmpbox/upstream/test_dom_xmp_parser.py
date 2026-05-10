@@ -117,6 +117,127 @@ def test_pdfbox6106_lenient_mode_accepts_unknown_adobe_pdf_properties() -> None:
     )
 
 
+# ----------------------------------------------------------------------------
+# Translated upstream tests that cover the parser's protected helper surface
+# (xpacket PI parsing, expectNaming, findDescriptionsParent). These do not
+# require the rich type system and exercise behaviour upstream verifies in
+# DomXmpParserTest.
+# ----------------------------------------------------------------------------
+
+
+def test_no_xpacket() -> None:
+    """Translated from upstream ``testNoXPacket`` (DomXmpParserTest line 1122).
+
+    Upstream rejects packets whose leading PI is named ``packet`` instead of
+    ``xpacket``. pypdfbox's high-level parser tolerates a missing xpacket
+    wrapper, so we exercise the equivalent check on the helper directly.
+    """
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_initial_xpacket("foo='bar'")
+    assert (
+        info.value.get_error_type()
+        is XmpParsingException.ErrorType.XPACKET_BAD_START
+    )
+
+
+def test_bad_x_packet_end1() -> None:
+    """Translated from upstream ``testBadXPacketEnd1`` (line 677).
+
+    The trailing PI uses ``ends=`` (typo) instead of ``end=``. Upstream
+    raises ``XmpParsingException`` with that exact message.
+    """
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_end_packet("ends=\"w\"")
+    assert str(info.value) == (
+        "Expected xpacket 'end' attribute (must be present and placed in first)"
+    )
+
+
+def test_bad_x_packet_end2() -> None:
+    """Translated from upstream ``testBadXPacketEnd2`` (line 695).
+
+    The trailing PI carries ``end='k'`` which isn't ``r`` or ``w``. Upstream
+    raises with that exact message (note the trailing space, mirrored from
+    upstream).
+    """
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as info:
+        parser.parse_end_packet("end=\"k\"")
+    assert str(info.value) == (
+        "Expected xpacket 'end' attribute with value 'r' or 'w' "
+    )
+
+
+def test_bad_local_name_strict_mode() -> None:
+    """Translated subset of upstream ``testBadLocalName`` (line 657).
+
+    Upstream rejects ``x:xapmeta`` in strict mode with the exact message
+    ``Expecting local name 'xmpmeta' and found 'xapmeta'``. We exercise the
+    helper directly because the high-level parser doesn't yet enforce the
+    x:xmpmeta wrapper at top level (it accepts bare rdf:RDF too).
+    """
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    elem = ET.Element("{adobe:ns:meta/}xapmeta")
+    with pytest.raises(XmpParsingException) as info:
+        parser.expect_naming(elem, "adobe:ns:meta/", "x", "xmpmeta")
+    assert str(info.value) == (
+        "Expecting local name 'xmpmeta' and found 'xapmeta'"
+    )
+
+
+def test_bad_rdf_namespace() -> None:
+    """Translated from upstream ``testBadRdfNameSpace`` (line 1181).
+
+    Upstream rejects an rdf:RDF whose namespace is ``https://`` instead of
+    ``http://``. The expectNaming helper is the canonical check.
+    """
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    elem = ET.Element("{https://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF")
+    with pytest.raises(XmpParsingException) as info:
+        parser.expect_naming(
+            elem, "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rdf", "RDF"
+        )
+    assert str(info.value) == (
+        "Expecting namespace 'http://www.w3.org/1999/02/22-rdf-syntax-ns#' "
+        "and found 'https://www.w3.org/1999/02/22-rdf-syntax-ns#'"
+    )
+
+
+def test_no_rdf_children() -> None:
+    """Translated from upstream ``testNoRdfChildren`` (line 713).
+
+    Upstream rejects a bare ``<x:xmpmeta/>`` with ``"No rdf description
+    found in xmp"``. Use the helper directly since the top-level parser
+    permits non-rdf roots.
+    """
+    import xml.etree.ElementTree as ET
+
+    parser = DomXmpParser()
+    wrapper = ET.Element("{adobe:ns:meta/}xmpmeta")
+    with pytest.raises(XmpParsingException) as info:
+        parser.find_descriptions_parent(wrapper)
+    assert str(info.value) == "No rdf description found in xmp"
+
+
+def test_is_strict_parsing_round_trip() -> None:
+    """Translated from upstream assertions inside ``testLenientPdfaExtension``
+    (line 1302) which call ``isStrictParsing`` / ``setStrictParsing`` to verify
+    the toggle round-trips.
+    """
+    parser = DomXmpParser()
+    assert parser.is_strict_parsing() is True
+    parser.set_strict_parsing(False)
+    assert parser.is_strict_parsing() is False
+    parser.set_strict_parsing(True)
+    assert parser.is_strict_parsing() is True
+
+
 # --- skipped placeholders for parity with upstream test list ----------------
 
 

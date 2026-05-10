@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_ITALIC,
 )
 
-
 # ---------- subtype scaffolding ----------
 
 

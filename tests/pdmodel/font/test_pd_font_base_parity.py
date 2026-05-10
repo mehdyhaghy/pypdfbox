@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.fontbox.cmap.cmap import CMap
 from pypdfbox.pdmodel.font import PDFont, PDFontDescriptor
+from pypdfbox.pdmodel.font.pd_font import _DEFAULT_SPACE_WIDTH
 
 
 # PDFont is conceptually abstract — concrete subclasses set ``SUB_TYPE`` and
@@ -156,13 +157,23 @@ def test_get_space_width_uses_widths_offset_by_first_char() -> None:
     assert font.get_space_width() == 600.0
 
 
-def test_get_space_width_falls_back_to_250_when_index_out_of_range() -> None:
-    # /FirstChar = 100 puts code 32 below the start of /Widths → fallback.
+def test_get_space_width_falls_back_to_average_when_index_out_of_range() -> None:
+    # /FirstChar = 100 puts code 32 below the start of /Widths so the
+    # direct lookup fails. Mirroring upstream PDFBox ``getSpaceWidth``,
+    # the chain then reaches ``getAverageFontWidth`` (the only positive
+    # entry is 500 → avg 500) before falling through to 250.
     font = _BarePDFont()
     cos = font.get_cos_object()
     cos.set_int(COSName.get_pdf_name("FirstChar"), 100)
     cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(500)]))
-    assert font.get_space_width() == 250.0
+    assert font.get_space_width() == 500.0
+
+
+def test_get_space_width_falls_back_to_250_with_no_signal() -> None:
+    # Bare font with no /Widths, no /ToUnicode, no descriptor — every
+    # upstream lookup path returns nothing usable, so the ultimate
+    # PDFBox fallback (250 = 1/4 em) wins.
+    assert _BarePDFont().get_space_width() == _DEFAULT_SPACE_WIDTH
 
 
 # ---------- wrapping a pre-built dict preserves base behaviour ----------
@@ -374,3 +385,298 @@ def test_get_to_unicode_cmap_caches_negative_result() -> None:
         COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
     )
     assert font.get_to_unicode_cmap() is None
+
+
+# ---------- get_width / get_widths-driven cache (new in this round) ----------
+
+
+def test_get_width_uses_dict_widths_offset_by_first_char() -> None:
+    # /FirstChar = 32, /LastChar = 34 → code 33 is widths[1] = 333.
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_int(COSName.get_pdf_name("LastChar"), 34)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(250), COSInteger.get(333), COSInteger.get(408)]),
+    )
+    assert font.get_width(32) == 250.0
+    assert font.get_width(33) == 333.0
+    assert font.get_width(34) == 408.0
+
+
+def test_get_width_falls_back_to_missing_width_when_outside_range() -> None:
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_int(COSName.get_pdf_name("LastChar"), 34)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(250), COSInteger.get(333), COSInteger.get(408)]),
+    )
+    fd = PDFontDescriptor()
+    fd.set_missing_width(777.0)
+    font.set_font_descriptor(fd)
+    # Code 50 is outside [32..34] so the widths array is skipped — the
+    # descriptor's /MissingWidth wins.
+    assert font.get_width(50) == 777.0
+
+
+def test_get_width_caches_per_code_lookup() -> None:
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_int(COSName.get_pdf_name("LastChar"), 32)
+    cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(250)]))
+    # First lookup populates cache; mutate the array — cached value wins.
+    assert font.get_width(32) == 250.0
+    cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(999)]))
+    assert font.get_width(32) == 250.0
+
+
+def test_get_width_raises_when_no_dict_widths_and_no_font_program() -> None:
+    # No /Widths, no /MissingWidth, not Standard 14 → falls through to the
+    # abstract get_width_from_font hook which the bare base raises.
+    import pytest
+
+    font = _BarePDFont()
+    with pytest.raises(NotImplementedError):
+        font.get_width(65)
+
+
+def test_has_explicit_width_true_inside_range() -> None:
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(250), COSInteger.get(333)]),
+    )
+    assert font.has_explicit_width(32) is True
+    assert font.has_explicit_width(33) is True
+    # Outside the array — no explicit width.
+    assert font.has_explicit_width(34) is False
+    # Below /FirstChar — no explicit width.
+    assert font.has_explicit_width(31) is False
+
+
+def test_has_explicit_width_false_when_widths_missing() -> None:
+    assert _BarePDFont().has_explicit_width(32) is False
+
+
+# ---------- abstract method placeholders raise on bare base ----------
+
+
+def test_encode_codepoint_raises_not_implemented_on_bare_base() -> None:
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().encode_codepoint(65)
+
+
+def test_encode_string_raises_via_encode_codepoint_on_bare_base() -> None:
+    # encode(text) walks codepoints and asks encode_codepoint per char,
+    # so a non-empty string also raises.
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().encode("A")
+
+
+def test_encode_empty_string_returns_empty_bytes_on_bare_base() -> None:
+    # Empty string never visits encode_codepoint, so it must succeed.
+    assert _BarePDFont().encode("") == b""
+
+
+def test_read_code_raises_not_implemented_on_bare_base() -> None:
+    import io as _io
+
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().read_code(_io.BytesIO(b"\x41"))
+
+
+def test_get_width_from_font_raises_not_implemented_on_bare_base() -> None:
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().get_width_from_font(65)
+
+
+def test_get_height_raises_not_implemented_on_bare_base() -> None:
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().get_height(65)
+
+
+def test_get_string_width_propagates_when_subclass_unimplemented() -> None:
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().get_string_width("Hi")
+
+
+def test_get_string_width_empty_string_is_zero() -> None:
+    # Empty input never reaches encode_codepoint/read_code so it must
+    # succeed and return 0.0 even on the bare base.
+    assert _BarePDFont().get_string_width("") == 0.0
+
+
+def test_get_standard14_width_raises_on_bare_base() -> None:
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().get_standard14_width(65)
+
+
+def test_subset_methods_raise_not_implemented_on_bare_base() -> None:
+    import pytest
+
+    font = _BarePDFont()
+    with pytest.raises(NotImplementedError):
+        font.add_to_subset(65)
+    with pytest.raises(NotImplementedError):
+        font.subset()
+
+
+def test_will_be_subset_default_false() -> None:
+    assert _BarePDFont().will_be_subset() is False
+
+
+def test_is_vertical_default_false() -> None:
+    assert _BarePDFont().is_vertical() is False
+
+
+# ---------- get_position_vector / get_displacement ----------
+
+
+def test_get_position_vector_raises_for_horizontal_default() -> None:
+    # Mirrors upstream: base PDFont rejects position-vector lookups
+    # because horizontal-only fonts have no such concept.
+    import pytest
+
+    with pytest.raises(NotImplementedError):
+        _BarePDFont().get_position_vector(65)
+
+
+def test_get_displacement_returns_width_over_1000_x_zero_y() -> None:
+    # Code 65 → width 500 → displacement (0.5, 0.0).
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 65)
+    cos.set_int(COSName.get_pdf_name("LastChar"), 65)
+    cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(500)]))
+    assert font.get_displacement(65) == (0.5, 0.0)
+
+
+# ---------- get_bounding_box ----------
+
+
+def test_get_bounding_box_returns_none_when_no_descriptor() -> None:
+    assert _BarePDFont().get_bounding_box() is None
+
+
+def test_get_bounding_box_reads_descriptor_font_bbox() -> None:
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    font = _BarePDFont()
+    fd = PDFontDescriptor()
+    bbox = COSArray(
+        [
+            COSInteger.get(-170),
+            COSInteger.get(-228),
+            COSInteger.get(1003),
+            COSInteger.get(962),
+        ]
+    )
+    fd.set_font_b_box(bbox)
+    font.set_font_descriptor(fd)
+    out = font.get_bounding_box()
+    assert isinstance(out, PDRectangle)
+    assert out.get_lower_left_x() == -170.0
+    assert out.get_upper_right_y() == 962.0
+
+
+# ---------- to_unicode (base impl) ----------
+
+
+def test_to_unicode_returns_none_when_no_to_unicode_cmap() -> None:
+    # Base impl deliberately returns None so subclasses can plug in
+    # encoding-based glyph-list resolution.
+    assert _BarePDFont().to_unicode(65) is None
+
+
+def test_to_unicode_returns_chr_for_identity_named_to_unicode() -> None:
+    # Mirrors PDFBOX-3123: when /ToUnicode is the literal name
+    # /Identity-H, the code is returned as ``chr(code)`` even though
+    # Identity-H has no real unicode mappings.
+    font = _BarePDFont()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
+    )
+    assert font.to_unicode(0x41) == "A"
+    assert font.to_unicode(0x4E2D) == "中"
+
+
+# ---------- get_standard14_afm ----------
+
+
+def test_get_standard14_afm_returns_afm_for_canonical_name() -> None:
+    from pypdfbox.pdmodel.font.afm_loader import AfmMetrics
+
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    afm = font.get_standard14_afm()
+    assert isinstance(afm, AfmMetrics)
+    assert afm.get_font_name() == "Helvetica"
+
+
+def test_get_standard14_afm_returns_none_for_unknown_name() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "MyCustomFont")
+    assert font.get_standard14_afm() is None
+
+
+def test_get_standard14_afm_returns_none_when_base_font_missing() -> None:
+    assert _BarePDFont().get_standard14_afm() is None
+
+
+def test_get_standard14_afm_caches_lookup() -> None:
+    font = _BarePDFont()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Times-Roman")
+    first = font.get_standard14_afm()
+    assert first is not None
+    # Same instance on second access — no re-parse.
+    assert font.get_standard14_afm() is first
+
+
+# ---------- get_average_font_width / get_space_width memoisation ----------
+
+
+def test_get_average_font_width_cached_after_first_call() -> None:
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(250), COSInteger.get(750)]),
+    )
+    assert font.get_average_font_width() == 500.0
+    # Mutate /Widths — cached value must hold.
+    cos.set_item(
+        COSName.get_pdf_name("Widths"),
+        COSArray([COSInteger.get(100)]),
+    )
+    assert font.get_average_font_width() == 500.0
+
+
+def test_get_space_width_cached_after_first_call() -> None:
+    font = _BarePDFont()
+    cos = font.get_cos_object()
+    cos.set_int(COSName.get_pdf_name("FirstChar"), 32)
+    cos.set_item(COSName.get_pdf_name("Widths"), COSArray([COSInteger.get(600)]))
+    assert font.get_space_width() == 600.0
+    # Drop /Widths — cached value still wins.
+    cos.remove_item(COSName.get_pdf_name("Widths"))
+    assert font.get_space_width() == 600.0

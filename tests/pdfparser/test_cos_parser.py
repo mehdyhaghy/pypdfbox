@@ -515,3 +515,182 @@ def test_parse_object_stream_missing_n_or_first_raises() -> None:
     p2 = parser(b"", document=doc)
     with pytest.raises(PDFParseError):
         p2.parse_object_stream(5)
+
+
+# ---------- reset_trailer_resolver / retrieve_trailer ----------
+
+
+def test_reset_trailer_resolver_default_true() -> None:
+    assert parser(b"").reset_trailer_resolver() is True
+
+
+def test_retrieve_trailer_returns_existing_document_trailer() -> None:
+    doc = COSDocument()
+    expected = COSDictionary()
+    expected.set_item(COSName.get_pdf_name("Root"), COSObject(1, 0))
+    doc.set_trailer(expected)
+    assert parser(b"", document=doc).retrieve_trailer() is expected
+
+
+def test_retrieve_trailer_strict_without_document_raises() -> None:
+    p = parser(b"")
+    p.set_lenient(False)
+    with pytest.raises(PDFParseError):
+        p.retrieve_trailer()
+
+
+def test_retrieve_trailer_lenient_falls_through_to_rebuild() -> None:
+    # Brute-force rebuild on a tiny empty source produces an empty
+    # trailer, but the latch should flip.
+    p = parser(b"")
+    assert p.is_lenient() is True
+    trailer = p.retrieve_trailer()
+    assert isinstance(trailer, COSDictionary)
+    assert p.is_trailer_was_rebuild() is True
+
+
+# ---------- dereference_cos_object ----------
+
+
+def test_dereference_cos_object_resolves_via_pool() -> None:
+    doc = COSDocument()
+    pdf = b"5 0 obj\n42\nendobj\n"
+    p = parser(pdf, document=doc)
+    p.parse_indirect_object_definition()
+    obj = COSObject(5, 0)
+    # Position parser somewhere — dereference should preserve cursor.
+    p.seek(3)
+    pre = p.position
+    resolved = p.dereference_cos_object(obj)
+    assert isinstance(resolved, COSInteger)
+    assert resolved.value == 42
+    assert p.position == pre
+
+
+# ---------- create_random_access_read_view ----------
+
+
+def test_create_random_access_read_view_returns_sliced_view() -> None:
+    p = parser(b"abcdef")
+    view = p.create_random_access_read_view(2, 3)
+    try:
+        buf = bytearray(3)
+        n = view.read_into(buf)
+        assert n == 3
+        assert bytes(buf) == b"cde"
+    finally:
+        view.close()
+
+
+# ---------- parse_object_stream_object ----------
+
+
+def test_parse_object_stream_object_returns_specific_entry() -> None:
+    body = b"10 0 11 3\n42  99"
+    doc = COSDocument()
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /ObjStm /N 2 /First 10 /Length 16 >>\n"
+        b"stream\n" + body + b"\nendstream\nendobj\n"
+    )
+    p = parser(pdf, document=doc)
+    p.parse_indirect_object_definition()
+    p2 = parser(b"", document=doc)
+    obj = p2.parse_object_stream_object(5, COSObjectKey(11, 0))
+    assert isinstance(obj, COSInteger)
+    assert obj.value == 99
+
+
+def test_parse_object_stream_object_missing_key_returns_none() -> None:
+    body = b"10 0\n42"
+    doc = COSDocument()
+    pdf = (
+        b"5 0 obj\n"
+        b"<< /Type /ObjStm /N 1 /First 5 /Length 7 >>\n"
+        b"stream\n" + body + b"\nendstream\nendobj\n"
+    )
+    p = parser(pdf, document=doc)
+    p.parse_indirect_object_definition()
+    p2 = parser(b"", document=doc)
+    assert p2.parse_object_stream_object(5, COSObjectKey(99, 0)) is None
+
+
+def test_parse_object_stream_object_without_document_raises() -> None:
+    with pytest.raises(PDFParseError):
+        parser(b"").parse_object_stream_object(5, COSObjectKey(1, 0))
+
+
+# ---------- parse_cos_stream ----------
+
+
+def test_parse_cos_stream_reads_body_with_direct_length() -> None:
+    body_bytes = b"DATA"
+    pdf = b"stream\n" + body_bytes + b"\nendstream\n"
+    doc = COSDocument()
+    p = parser(pdf, document=doc)
+    dic = COSDictionary()
+    dic.set_item(COSName.LENGTH, COSInteger.get(len(body_bytes)))
+    stream = p.parse_cos_stream(dic)
+    with stream.create_input_stream() as src:
+        assert src.read() == body_bytes
+
+
+def test_parse_cos_stream_requires_stream_keyword() -> None:
+    p = parser(b"endobj")
+    dic = COSDictionary()
+    dic.set_item(COSName.LENGTH, COSInteger.get(0))
+    with pytest.raises(PDFParseError):
+        p.parse_cos_stream(dic)
+
+
+# ---------- check_pages ----------
+
+
+def test_check_pages_rejects_non_dictionary_pages() -> None:
+    root = COSDictionary()
+    # No /Pages at all.
+    p = parser(b"")
+    with pytest.raises(PDFParseError):
+        p.check_pages(root)
+
+
+def test_check_pages_accepts_dictionary_pages() -> None:
+    pages = COSDictionary()
+    pages.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Pages"))
+    pages.set_item(COSName.get_pdf_name("Count"), COSInteger.get(0))
+    pages.set_item(COSName.get_pdf_name("Kids"), COSArray())
+    root = COSDictionary()
+    root.set_item(COSName.get_pdf_name("Pages"), pages)
+    parser(b"").check_pages(root)  # no raise
+
+
+# ---------- get_encryption / get_access_permission / prepare_decryption ----------
+
+
+def test_get_encryption_without_document_raises() -> None:
+    with pytest.raises(PDFParseError):
+        parser(b"").get_encryption()
+
+
+def test_get_encryption_returns_none_when_unencrypted() -> None:
+    doc = COSDocument()
+    assert parser(b"", document=doc).get_encryption() is None
+
+
+def test_get_access_permission_without_document_raises() -> None:
+    with pytest.raises(PDFParseError):
+        parser(b"").get_access_permission()
+
+
+def test_get_access_permission_returns_none_when_no_handler() -> None:
+    doc = COSDocument()
+    assert parser(b"", document=doc).get_access_permission() is None
+
+
+def test_prepare_decryption_no_document_is_noop() -> None:
+    parser(b"").prepare_decryption()  # no raise
+
+
+def test_prepare_decryption_unencrypted_document_is_noop() -> None:
+    doc = COSDocument()
+    parser(b"", document=doc).prepare_decryption()  # no raise
