@@ -58,6 +58,23 @@ class PythonClass:
 _CAMEL_BOUNDARY = re.compile(r"(?<!^)(?=[A-Z])")
 
 
+# Python-keyword class name impedance: when a Java class name is a Python
+# keyword (e.g. PostScript `True` / `False` operators), the port suffixes
+# the class with `Func` (Python forbids `class False:`). The parity matcher
+# applies the same remap so the Java→Python lookup succeeds.
+_JAVA_TO_PY_CLASS_REMAP = {
+    "False": "FalseFunc",
+    "True": "TrueFunc",
+    "None": "NoneFunc",
+}
+
+
+def remap_java_class_name(java_name: str) -> str:
+    """Remap Java class names that collide with Python keywords to the
+    port's `+Func` convention."""
+    return _JAVA_TO_PY_CLASS_REMAP.get(java_name, java_name)
+
+
 def camel_to_snake(name: str) -> str:
     """Java-style camelCase / PascalCase → Python snake_case.
 
@@ -455,6 +472,8 @@ def build_report(
         if module_filter and module_filter not in jcls.module:
             continue
         pcls = python.get(name)
+        if pcls is None:
+            pcls = python.get(remap_java_class_name(name))
         if pcls is None:
             java_only.append(jcls.fqn)
             continue

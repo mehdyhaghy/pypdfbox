@@ -1432,3 +1432,28 @@ The wave reached 1:1 method parity (100.0%) across ported classes. New port file
 | `tests/pdmodel/test_pd_javascript_name_tree_node.py` | 3.0.x | hand-written coverage for `PDJavascriptNameTreeNode.convert_cos_to_pd` |
 | `tests/pdmodel/documentinterchange/logicalstructure/test_pd_structure_element_name_tree_node.py` | 3.0.x | hand-written coverage for `PDStructureElementNameTreeNode.convert_cos_to_pd` |
 | `tests/pdmodel/graphics/color/test_pd_device_color_space_to_string.py` | 3.0.x | hand-written coverage for `PDDeviceColorSpace.to_string` |
+
+### Wave 1277 additions
+
+New `type4` subpackage ported from upstream `org.apache.pdfbox.pdmodel.common.function.type4`:
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/common/function/type4/__init__.py` | 3.0.x | (package init mirroring upstream Java package layout) |
+| `pypdfbox/pdmodel/common/function/type4/operator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/Operator.java` |
+| `pypdfbox/pdmodel/common/function/type4/operators.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/Operators.java` |
+| `pypdfbox/pdmodel/common/function/type4/execution_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/ExecutionContext.java` |
+| `pypdfbox/pdmodel/common/function/type4/instruction_sequence.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/InstructionSequence.java` |
+| `pypdfbox/pdmodel/common/function/type4/instruction_sequence_builder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/InstructionSequenceBuilder.java` |
+| `pypdfbox/pdmodel/common/function/type4/parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/Parser.java` (incl. nested `SyntaxHandler`, `AbstractSyntaxHandler`, `Tokenizer`) |
+| `pypdfbox/pdmodel/common/function/type4/arithmetic_operators.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/ArithmeticOperators.java` |
+| `pypdfbox/pdmodel/common/function/type4/bitwise_operators.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/BitwiseOperators.java` |
+| `pypdfbox/pdmodel/common/function/type4/conditional_operators.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/ConditionalOperators.java` |
+| `pypdfbox/pdmodel/common/function/type4/relational_operators.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/RelationalOperators.java` |
+| `pypdfbox/pdmodel/common/function/type4/stack_operators.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/type4/StackOperators.java` |
+| `tests/pdmodel/common/function/type4/upstream/test_parser.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/type4/TestParser.java` |
+| `tests/pdmodel/common/function/type4/upstream/test_arithmetic_operators.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/type4/TestOperators.java` (arithmetic subset) |
+| `tests/pdmodel/common/function/type4/upstream/test_bitwise_operators.py` | 3.0.x | derived from `TestOperators.java` (bitwise subset: testAnd / Bitshift / Not / Or / Xor) |
+| `tests/pdmodel/common/function/type4/upstream/test_conditional_operators.py` | 3.0.x | derived from `TestOperators.java` (testIf / testIfElse) |
+| `tests/pdmodel/common/function/type4/upstream/test_relational_operators.py` | 3.0.x | derived from `TestOperators.java` (testEq / Ne / Lt / Le / Gt / Ge) |
+| `tests/pdmodel/common/function/type4/upstream/test_stack_operators.py` | 3.0.x | derived from `TestOperators.java` (testCopy / Dup / Exch / Index / Pop / Roll) |
