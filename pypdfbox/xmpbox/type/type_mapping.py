@@ -122,6 +122,11 @@ class PropertyType:
         # Mirrors upstream anonymous-implementation ``toString()`` (line 555).
         return f"{{type: {self.type}, card: {self.card.name}}}"
 
+    def to_string(self) -> str:
+        """Explicit alias for :meth:`__str__` (mirror of upstream anonymous
+        ``toString()`` at line 553)."""
+        return self.__str__()
+
 
 class PropertiesDescription:
     """Mirror of upstream ``org.apache.xmpbox.type.PropertiesDescription``.
@@ -234,6 +239,16 @@ class TypeMapping:
 
     def __init__(self, metadata: XMPMetadata) -> None:
         self._metadata = metadata
+        self.initialize()
+
+    def initialize(self) -> None:
+        """Build the structured / schema lookup tables.
+
+        Mirrors upstream ``initialize()`` at line 92, which is invoked from
+        the constructor. Calling it again resets the per-instance state to
+        the as-constructed configuration — handy in tests and matches
+        upstream's ability to rebuild from scratch.
+        """
         # ns -> typeName for namespaces registered via
         # ``add_to_defined_structured_types`` (mirrors upstream
         # ``definedStructuredNamespaces``, the deprecated single-name map).
@@ -250,7 +265,7 @@ class TypeMapping:
         ] = {}
         # typeName -> PropertiesDescription (upstream ``definedStructuredMappings``).
         self._defined_structured_mappings: dict[str, PropertiesDescription] = {}
-        # Namespaces registered through ``add_new_namespace`` (deferred-schema
+        # Namespaces registered through ``add_new_name_space`` (deferred-schema
         # equivalent of upstream ``schemaMap`` entries created via
         # ``addNewNameSpace``).
         self._defined_namespaces: dict[str, str | None] = {}
@@ -272,7 +287,7 @@ class TypeMapping:
                 continue
             self._structured_namespaces2.setdefault(ns, []).append(type_name)
         # ns -> _SchemaFactory (upstream ``schemaMap``). Populated lazily
-        # for namespaces added via ``add_new_namespace``.
+        # for namespaces added via ``add_new_name_space``.
         self._schema_factories: dict[str, _SchemaFactory] = {}
 
     # --- accessors ----------------------------------------------------
@@ -323,17 +338,41 @@ class TypeMapping:
 
     # --- registration -------------------------------------------------
 
-    def add_new_namespace(
+    def add_name_space(self, schema_class: type) -> None:
+        """Register an :class:`XMPSchema` subclass under its declared
+        ``NAMESPACE`` (upstream private ``addNameSpace(Class)`` at line 267).
+
+        Mirrors the upstream initializer's per-class loop: the schema's
+        ``PropertiesDescription`` is harvested from the class via
+        :meth:`initialize_prop_mapping`, and a :class:`_SchemaFactory` is
+        registered for the namespace. Idempotent — re-registering the same
+        class replaces the previously stored factory (matching upstream's
+        ``HashMap.put`` semantics).
+        """
+        ns = getattr(schema_class, "NAMESPACE", None)
+        if ns is None:
+            raise ValueError(
+                f"{schema_class.__name__} has no NAMESPACE class attribute"
+            )
+        properties = TypeMapping.initialize_prop_mapping(schema_class)
+        self._schema_factories[ns] = _SchemaFactory(ns, properties)
+
+    def add_new_name_space(
         self, namespace: str, preferred_prefix: str | None = None
     ) -> None:
-        """Register an extra schema namespace (upstream ``addNewNameSpace``).
-        Creates an empty :class:`PropertiesDescription` so subsequent property
-        lookups have a backing factory entry."""
+        """Register an extra schema namespace (upstream ``addNewNameSpace``
+        at line 274). Creates an empty :class:`PropertiesDescription` so
+        subsequent property lookups have a backing factory entry."""
         self._defined_namespaces[namespace] = preferred_prefix
         if namespace not in self._schema_factories:
             self._schema_factories[namespace] = _SchemaFactory(
                 namespace, PropertiesDescription()
             )
+
+    # Backwards-compatible alias retained for callers that adopted the
+    # earlier "Namespace" tokenization. ``add_new_name_space`` is the
+    # canonical name (matches upstream's ``addNewNameSpace`` casing).
+    add_new_namespace = add_new_name_space
 
     def add_to_defined_structured_types(
         self,
@@ -496,6 +535,67 @@ class TypeMapping:
         annotation; here it is just a constructor call)."""
         return PropertyType(type=type_name, card=cardinality)
 
+    # The next three helpers expose the methods declared on the anonymous
+    # ``PropertyType`` implementation returned by upstream's
+    # ``createPropertyType`` (lines 535-555). On the Python side they read
+    # the equivalent fields on the dataclass record.
+
+    @staticmethod
+    def type(prop_type: PropertyType) -> str:
+        """Return the declared type-name of ``prop_type`` (upstream
+        anonymous ``type()`` at line 541)."""
+        return prop_type.type
+
+    @staticmethod
+    def card(prop_type: PropertyType) -> Cardinality:
+        """Return the declared cardinality of ``prop_type`` (upstream
+        anonymous ``card()`` at line 547)."""
+        return prop_type.card
+
+    @staticmethod
+    def to_string(prop_type: PropertyType) -> str:
+        """Return the textual form of ``prop_type`` (upstream anonymous
+        ``toString()`` at line 553)."""
+        return str(prop_type)
+
+    # --- associated-schema lookup -----------------------------------
+
+    def get_associated_schema_object(
+        self,
+        metadata: XMPMetadata,
+        namespace: str,
+        prefix: str,
+    ):
+        """Return the specialized schema instance for ``namespace`` if
+        known, otherwise ``None`` (upstream deprecated
+        ``getAssociatedSchemaObject`` at line 301).
+
+        Upstream consults ``schemaMap`` first, then falls back to
+        :meth:`get_schema_factory`. Both branches end up calling
+        ``XMPSchemaFactory.createXMPSchema(metadata, prefix)``. The
+        Python schema-factory record is intentionally minimal (it does
+        not own a backing schema class), so this method delegates to
+        :meth:`XMPMetadata.create_and_add_default_schema_for_namespace`,
+        which mirrors the upstream "create and add to metadata"
+        contract noted in the upstream Javadoc.
+        """
+        if not self.is_defined_schema(namespace):
+            return None
+        # Late import to avoid the package-level cycle that motivated
+        # ``_BUILTIN_SCHEMA_NAMESPACES`` in the first place.
+        from ..xmp_metadata import XMPMetadata as _XMPMetadata
+
+        creator = getattr(
+            _XMPMetadata,
+            "create_and_add_default_schema_for_namespace",
+            None,
+        )
+        if creator is not None:
+            return creator(metadata, namespace, prefix)
+        # Fall back to the schema-factory record (carries the namespace
+        # only — caller can build the schema themselves).
+        return self.get_schema_factory(namespace)
+
     # --- instantiation -----------------------------------------------
 
     def instanciate_simple_property(
@@ -650,10 +750,19 @@ class TypeMapping:
     ) -> LocaleType:
         return LocaleType(self._metadata, ns_uri, prefix, name, value)
 
-    def create_xpath(
+    def create_x_path(
         self, ns_uri: str | None, prefix: str | None, name: str, value: str
     ) -> XPathType:
+        """Create an :class:`XPathType` (upstream ``createXPath`` at line 519).
+
+        Canonical name follows upstream's ``createXPath`` tokenization
+        (``X`` and ``Path`` as separate words). ``create_xpath`` remains
+        as a backwards-compatible alias.
+        """
         return XPathType(self._metadata, ns_uri, prefix, name, value)
+
+    # Alias kept for callers using the earlier "XPath as one word" spelling.
+    create_xpath = create_x_path
 
     def create_part(
         self, ns_uri: str | None, prefix: str | None, name: str, value: str

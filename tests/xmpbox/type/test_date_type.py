@@ -186,3 +186,70 @@ def test_date_set_value_replaces_with_string(metadata: XMPMetadata) -> None:
     val = field.get_value()
     assert (val.year, val.month, val.day) == (2024, 6, 15)
     assert (val.hour, val.minute) == (8, 30)
+
+
+def test_is_good_type_accepts_datetime(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    assert field.is_good_type(datetime(2024, 1, 1, tzinfo=UTC)) is True
+
+
+def test_is_good_type_accepts_date(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    assert field.is_good_type(date(2024, 1, 1)) is True
+
+
+def test_is_good_type_accepts_parseable_string(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    assert field.is_good_type("2010-03-22T14:33:11+01:00") is True
+
+
+def test_is_good_type_rejects_unparseable_string(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    assert field.is_good_type("not a date") is False
+
+
+def test_is_good_type_rejects_empty_string(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    # to_calendar returns None for empty/whitespace; isGoodType therefore False.
+    assert field.is_good_type("") is False
+
+
+def test_is_good_type_rejects_other_types(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    assert field.is_good_type(12345) is False
+    assert field.is_good_type(None) is False
+    assert field.is_good_type([]) is False
+
+
+def test_set_value_from_calendar_with_datetime(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    new_val = datetime(2030, 6, 15, 12, 0, 0, tzinfo=UTC)
+    field.set_value_from_calendar(new_val)
+    assert field.get_value() == new_val
+
+
+def test_set_value_from_calendar_with_date_promotes_to_midnight_utc(
+    metadata: XMPMetadata,
+) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    field.set_value_from_calendar(date(2030, 6, 15))
+    assert field.get_value() == datetime(2030, 6, 15, tzinfo=UTC)
+
+
+def test_set_value_from_string_parses_iso(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    field.set_value_from_string("2024-06-15T08:30:00Z")
+    val = field.get_value()
+    assert (val.year, val.month, val.day) == (2024, 6, 15)
+
+
+def test_set_value_from_string_rejects_garbage(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    with pytest.raises(ValueError):
+        field.set_value_from_string("not a date")
+
+
+def test_set_value_from_string_rejects_empty(metadata: XMPMetadata) -> None:
+    field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
+    with pytest.raises(ValueError):
+        field.set_value_from_string("")

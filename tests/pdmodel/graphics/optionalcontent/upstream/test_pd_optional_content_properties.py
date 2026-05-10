@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     BaseState,
     PDOptionalContentGroup,
@@ -80,3 +81,57 @@ def test_remove_group() -> None:
     assert props.remove_group("Drop") is True
     assert [g.get_name() for g in props.get_groups()] == ["Keep"]
     assert props.remove_group("Missing") is False
+
+
+# Mirrors upstream private getOCGs() — see
+# PDOptionalContentProperties.java line 120.
+def test_get_oc_gs_returns_underlying_array_and_seeds_when_missing() -> None:
+    props = PDOptionalContentProperties()
+    ocgs = props.get_oc_gs()
+    assert isinstance(ocgs, COSArray)
+    # Same identity on subsequent calls — no rebuild.
+    assert props.get_oc_gs() is ocgs
+    # Seeded into /OCProperties when previously absent.
+    raw = COSDictionary()
+    bare = PDOptionalContentProperties(raw)
+    seeded = bare.get_oc_gs()
+    assert isinstance(seeded, COSArray)
+    assert raw.get_dictionary_object(COSName.get_pdf_name("OCGs")) is seeded
+
+
+# Mirrors upstream private getD() — see
+# PDOptionalContentProperties.java line 136.
+def test_get_d_returns_default_configuration_dict() -> None:
+    props = PDOptionalContentProperties()
+    d = props.get_d()
+    assert isinstance(d, COSDictionary)
+    assert d.get_string(COSName.get_pdf_name("Name")) == "Top"
+    # Seeded into a bare /OCProperties wrapper.
+    raw = COSDictionary()
+    bare = PDOptionalContentProperties(raw)
+    seeded = bare.get_d()
+    assert isinstance(seeded, COSDictionary)
+    assert raw.get_dictionary_object(COSName.D) is seeded
+    assert seeded.get_string(COSName.get_pdf_name("Name")) == "Top"
+
+
+# Mirrors upstream private toDictionary(COSBase) — see
+# PDOptionalContentProperties.java line 358.
+def test_to_dictionary_unwraps_and_filters() -> None:
+    inner = COSDictionary()
+    # Direct dictionary input round-trips.
+    assert PDOptionalContentProperties.to_dictionary(inner) is inner
+    # Non-dictionary input → None.
+    assert PDOptionalContentProperties.to_dictionary(COSArray()) is None
+    assert PDOptionalContentProperties.to_dictionary(None) is None
+
+
+@pytest.mark.parametrize(
+    "method_name",
+    ["get_oc_gs", "get_d", "to_dictionary"],
+)
+def test_upstream_private_helpers_exposed(method_name: str) -> None:
+    """Upstream PDOptionalContentProperties has package-private helpers
+    ``getOCGs``, ``getD``, ``toDictionary``. pypdfbox exposes them with the
+    snake-cased upstream spellings for porting parity."""
+    assert hasattr(PDOptionalContentProperties, method_name)

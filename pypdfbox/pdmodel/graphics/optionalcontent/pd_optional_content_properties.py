@@ -97,14 +97,31 @@ class PDOptionalContentProperties:
 
     # ---------- internal helpers ----------
 
-    def _get_ocgs(self) -> COSArray:
+    def get_oc_gs(self) -> COSArray:
+        """Return the ``/OCGs`` array, creating it when missing.
+
+        Mirrors upstream private ``getOCGs()`` (PDOptionalContentProperties.java
+        line 120). Upstream is package-private; pypdfbox exposes it (along with
+        the underscore-prefixed alias :meth:`_get_ocgs`) so callers porting
+        Java code can find it via the snake-cased upstream name."""
         ocgs = self._dict.get_dictionary_object(_OCGS)
         if not isinstance(ocgs, COSArray):
             ocgs = COSArray()
             self._dict.set_item(_OCGS, ocgs)
         return ocgs
 
-    def _get_d(self) -> COSDictionary:
+    # Underscore-prefixed alias retained for prior internal callers.
+    _get_ocgs = get_oc_gs
+
+    def get_d(self) -> COSDictionary:
+        """Return the ``/D`` (default configuration) dictionary, creating it
+        with the ``/Name "Top"`` seed when missing.
+
+        Mirrors upstream private ``getD()``
+        (PDOptionalContentProperties.java line 136). Upstream is
+        package-private; pypdfbox exposes it (along with the
+        underscore-prefixed alias :meth:`_get_d`) so callers porting Java code
+        can find it via the snake-cased upstream name."""
         d = self._dict.get_dictionary_object(_D)
         if not isinstance(d, COSDictionary):
             d = COSDictionary()
@@ -112,13 +129,28 @@ class PDOptionalContentProperties:
             self._dict.set_item(_D, d)
         return d
 
+    # Underscore-prefixed alias retained for prior internal callers.
+    _get_d = get_d
+
     @staticmethod
-    def _to_dictionary(value: COSBase | None) -> COSDictionary | None:
+    def to_dictionary(value: COSBase | None) -> COSDictionary | None:
+        """Resolve ``value`` to a ``COSDictionary``, unwrapping ``COSObject``
+        indirections. Returns ``None`` when the resolved value is not a
+        dictionary.
+
+        Mirrors upstream private ``toDictionary(COSBase)``
+        (PDOptionalContentProperties.java line 358). Upstream is
+        package-private; pypdfbox exposes it (along with the
+        underscore-prefixed alias :meth:`_to_dictionary`) so callers porting
+        Java code can find it via the snake-cased upstream name."""
         if isinstance(value, COSObject):
             value = value.get_object()
         if isinstance(value, COSDictionary):
             return value
         return None
+
+    # Underscore-prefixed alias retained for prior internal callers.
+    _to_dictionary = to_dictionary
 
     # ---------- group enumeration ----------
 

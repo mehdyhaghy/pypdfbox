@@ -149,17 +149,23 @@ def test_is_defined_schema_recognizes_builtin_namespaces(
     assert mapping.is_defined_schema("http://example.com/unknown/") is False
 
 
-def test_add_new_namespace_marks_namespace_as_schema(mapping: TypeMapping) -> None:
+def test_add_new_name_space_marks_namespace_as_schema(mapping: TypeMapping) -> None:
     ns = "http://example.com/custom/"
     assert mapping.is_defined_schema(ns) is False
-    mapping.add_new_namespace(ns, "cust")
+    mapping.add_new_name_space(ns, "cust")
     assert mapping.is_defined_schema(ns) is True
     assert mapping.is_defined_namespace(ns) is True
 
 
-def test_add_new_namespace_optional_prefix(mapping: TypeMapping) -> None:
+def test_add_new_name_space_optional_prefix(mapping: TypeMapping) -> None:
     ns = "http://example.com/np/"
-    mapping.add_new_namespace(ns)
+    mapping.add_new_name_space(ns)
+    assert mapping.is_defined_schema(ns) is True
+
+
+def test_add_new_namespace_alias_still_works(mapping: TypeMapping) -> None:
+    ns = "http://example.com/legacy/"
+    mapping.add_new_namespace(ns, "leg")
     assert mapping.is_defined_schema(ns) is True
 
 
@@ -190,8 +196,79 @@ def test_defined_state_is_per_instance(metadata: XMPMetadata) -> None:
     """Mappings registered on one TypeMapping must not bleed into another."""
     a = TypeMapping(metadata)
     b = TypeMapping(metadata)
-    a.add_new_namespace("http://example.com/iso/", "iso")
+    a.add_new_name_space("http://example.com/iso/", "iso")
     a.add_to_defined_structured_types("Iso", "http://example.com/iso-t/")
     assert b.is_defined_schema("http://example.com/iso/") is False
     assert b.is_defined_type("Iso") is False
     assert b.is_defined_type_namespace("http://example.com/iso-t/") is False
+
+
+def test_create_x_path_factory(mapping: TypeMapping) -> None:
+    from pypdfbox.xmpbox.type.xpath_type import XPathType
+
+    inst = mapping.create_x_path("http://x/", "x", "Path", "//foo")
+    assert isinstance(inst, XPathType)
+
+
+def test_create_xpath_alias_returns_same(mapping: TypeMapping) -> None:
+    from pypdfbox.xmpbox.type.xpath_type import XPathType
+
+    inst = mapping.create_xpath("http://x/", "x", "Path", "//bar")
+    assert isinstance(inst, XPathType)
+
+
+def test_initialize_resets_defined_state(mapping: TypeMapping) -> None:
+    """``initialize`` rebuilds the lookup tables (mirrors upstream
+    private ``initialize()`` behaviour at line 92)."""
+    ns = "http://example.com/willbecleared/"
+    mapping.add_new_name_space(ns, "x")
+    mapping.add_to_defined_structured_types("X", "http://example.com/xt/")
+    assert mapping.is_defined_schema(ns) is True
+    mapping.initialize()
+    assert mapping.is_defined_schema(ns) is False
+    assert mapping.is_defined_type("X") is False
+    # Built-in structured-type namespaces survive the reinit.
+    assert mapping.is_structured_type_namespace(
+        "http://ns.adobe.com/xap/1.0/sType/Job#"
+    ) is True
+
+
+def test_type_card_to_string_static_helpers() -> None:
+    pt = TypeMapping.create_property_type("Text", Cardinality.Bag)
+    assert TypeMapping.type(pt) == "Text"
+    assert TypeMapping.card(pt) is Cardinality.Bag
+    s = TypeMapping.to_string(pt)
+    assert "Text" in s and "Bag" in s
+
+
+def test_add_name_space_registers_schema_class(mapping: TypeMapping) -> None:
+    """Use a synthesised schema class — built-in schemas would create
+    an import cycle, so we declare a small one inline that mirrors the
+    minimal ``NAMESPACE`` contract upstream's ``addNameSpace`` reads."""
+
+    class _FakeSchema:
+        NAMESPACE = "http://example.com/added-via-add-name-space/"
+        _FIELD_TYPES: dict[str, str] = {}
+
+    mapping.add_name_space(_FakeSchema)
+    assert mapping.is_defined_schema(_FakeSchema.NAMESPACE) is True
+    assert mapping.get_schema_factory(_FakeSchema.NAMESPACE) is not None
+
+
+def test_add_name_space_requires_namespace_attribute(mapping: TypeMapping) -> None:
+    class _NoNs:
+        pass
+
+    with pytest.raises(ValueError):
+        mapping.add_name_space(_NoNs)
+
+
+def test_get_associated_schema_object_unknown_returns_none(
+    mapping: TypeMapping, metadata: XMPMetadata,
+) -> None:
+    assert (
+        mapping.get_associated_schema_object(
+            metadata, "http://example.com/unknown/", "x"
+        )
+        is None
+    )

@@ -297,6 +297,12 @@ class PDPage:
         if isinstance(stream, COSStream):
             self._page.set_item(_CONTENTS, stream)
             return
+        # COSArray check precedes the wrapper-via-`get_cos_object` branch
+        # because COSBase now provides ``get_cos_object`` returning ``self``,
+        # so COSArray would otherwise be misidentified as a stream wrapper.
+        if isinstance(stream, COSArray):
+            self._page.set_item(_CONTENTS, stream)
+            return
         if hasattr(stream, "get_cos_object"):
             cos = stream.get_cos_object()
             if isinstance(cos, COSStream):
@@ -306,9 +312,6 @@ class PDPage:
                 "PDPage.set_contents expected stream wrapper to wrap a "
                 f"COSStream; got {type(cos).__name__}"
             )
-        if isinstance(stream, COSArray):
-            self._page.set_item(_CONTENTS, stream)
-            return
         if isinstance(stream, list):
             arr = COSArray()
             for entry in stream:

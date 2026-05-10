@@ -185,6 +185,31 @@ class COSFloat(COSNumber):
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_float(self)
 
+    def coerce(self, value: float) -> float:
+        """Public alias for the module-level ``_coerce`` helper. Mirrors
+        upstream ``COSFloat.coerce`` (Java line 120) — clamps ``±INF`` to
+        ``±MAX_VALUE`` and flushes subnormals to ``0``."""
+        return _coerce(value)
+
+    def equals(self, other: object) -> bool:
+        """Mirrors upstream ``COSFloat.equals`` (Java line 176). Delegates
+        to ``__eq__``; returns ``False`` for incomparable types instead of
+        ``NotImplemented``."""
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return False
+        return result
+
+    def hash_code(self) -> int:
+        """Mirrors upstream ``COSFloat.hashCode`` (Java line 186) — IEEE-754
+        single-precision bit pattern."""
+        return self.__hash__()
+
+    def to_string(self) -> str:
+        """Mirrors upstream ``COSFloat.toString`` (Java line 195) —
+        ``"COSFloat{<formatted-value>}"``."""
+        return f"COSFloat{{{self.format_string()}}}"
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSFloat):
             # Mirror upstream ``Float.floatToIntBits(a) == Float.floatToIntBits(b)``:

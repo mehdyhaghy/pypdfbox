@@ -33,42 +33,83 @@ class DateType(AbstractSimpleProperty):
     ) -> None:
         super().__init__(metadata, namespace_uri, prefix, property_name, value)
 
-    def set_value(self, value: Any) -> None:
-        if value is None:
-            # Upstream's setValue rejects null with IllegalArgumentException
-            # before ever reaching the field; we mirror that with ValueError.
-            raise ValueError("Value null is not allowed for the Date type")
-        if isinstance(value, datetime):
-            self._date_value = value
-            return
-        if isinstance(value, date):
-            self._date_value = datetime(value.year, value.month, value.day, tzinfo=UTC)
-            return
+    def is_good_type(self, value: Any) -> bool:
+        """Check if the value has a type which can be understood.
+
+        Mirrors upstream ``DateType#isGoodType`` (DateType.java L88-107):
+        returns True for ``Calendar`` (here: :class:`datetime`/:class:`date`)
+        and for any string that :func:`to_calendar` can parse without raising.
+        """
+        if isinstance(value, datetime | date):
+            return True
         if isinstance(value, str):
-            # Delegate to DateConverter so we accept the same string surface as
-            # upstream Java's DateType (which calls DateConverter.toCalendar).
             try:
                 parsed = to_calendar(value)
-            except OSError as exc:
-                raise ValueError(
-                    f"Value given is not allowed for the Date type: {value!r}"
-                ) from exc
-            if parsed is None:
-                # to_calendar returns None for empty / whitespace strings;
-                # upstream rejects those at isGoodType.
-                raise ValueError(
-                    f"Value given is not allowed for the Date type: {value!r}"
-                )
-            self._date_value = parsed
-            return
-        raise ValueError(
-            f"Value given is not allowed for the Date type: {type(value).__name__},"
-            f" value: {value!r}"
-        )
+            except OSError:
+                return False
+            # Upstream's DateConverter.toCalendar throws on unparseable strings;
+            # the port returns None for empty/whitespace, which upstream's
+            # isGoodType also rejects (the empty string would have thrown there).
+            return parsed is not None
+        return False
+
+    def set_value_from_calendar(self, value: datetime | date) -> None:
+        """Set the property value from a Python equivalent of ``Calendar``.
+
+        Mirrors upstream ``DateType#setValueFromCalendar``
+        (DateType.java L65-68). ``date`` (without time) is promoted to UTC
+        midnight, matching upstream Calendar behavior with a date-only input.
+        """
+        if isinstance(value, datetime):
+            self._date_value = value
+        else:
+            # plain date -> midnight UTC
+            self._date_value = datetime(
+                value.year, value.month, value.day, tzinfo=UTC
+            )
+
+    def set_value_from_string(self, value: str) -> None:
+        """Set the property value from a string.
+
+        Mirrors upstream ``DateType#setValueFromString``
+        (DateType.java L162-175): delegates to :func:`to_calendar` and
+        raises if the string is unparseable. Upstream's comment says this
+        "SHOULD NEVER HAPPEN" because :meth:`set_value` pre-validates via
+        :meth:`is_good_type`; we still surface the error as ``ValueError``.
+        """
+        try:
+            parsed = to_calendar(value)
+        except OSError as exc:
+            raise ValueError(
+                f"Value given is not allowed for the Date type: {value!r}"
+            ) from exc
+        if parsed is None:
+            raise ValueError(
+                f"Value given is not allowed for the Date type: {value!r}"
+            )
+        self.set_value_from_calendar(parsed)
+
+    def set_value(self, value: Any) -> None:
+        # Mirror upstream DateType#setValue (DateType.java L116-144): null
+        # rejection first, then is_good_type check, then dispatch to the
+        # appropriate typed setter.
+        if not self.is_good_type(value):
+            if value is None:
+                raise ValueError("Value null is not allowed for the Date type")
+            raise ValueError(
+                f"Value given is not allowed for the Date type:"
+                f" {type(value).__name__}, value: {value!r}"
+            )
+        if isinstance(value, str):
+            self.set_value_from_string(value)
+        else:
+            self.set_value_from_calendar(value)
 
     def get_value(self) -> datetime:
         return self._date_value
 
     def get_string_value(self) -> str:
         # Mirror DateConverter.toISO8601 used by upstream DateType.getStringValue.
+        if self._date_value is None:
+            return None
         return to_iso8601(self._date_value)

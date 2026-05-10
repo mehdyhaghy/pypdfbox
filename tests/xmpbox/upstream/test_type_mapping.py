@@ -135,9 +135,9 @@ def test_get_structured_prop_mapping_for_unknown_returns_none(
 # --- getSchemaFactory + addNewNameSpace (lines 274, 316) -------------
 
 
-def test_get_schema_factory_after_add_new_namespace(mapping: TypeMapping) -> None:
+def test_get_schema_factory_after_add_new_name_space(mapping: TypeMapping) -> None:
     ns = "http://example.com/iso/"
-    mapping.add_new_namespace(ns, "iso")
+    mapping.add_new_name_space(ns, "iso")
     factory = mapping.get_schema_factory(ns)
     assert factory is not None
     assert factory.get_namespace() == ns
@@ -258,7 +258,7 @@ def test_get_specified_property_type_resolves_known_schema(
     # An empty schema factory for a custom namespace; lookups should fall
     # through to the structured / defined paths.
     ns = "http://example.com/empty-schema/"
-    mapping.add_new_namespace(ns, "es")
+    mapping.add_new_name_space(ns, "es")
     # Empty factory -> property unknown -> not structured/defined ->
     # return None (pre PDFBOX-6133 behaviour) instead of raising.
     assert (
@@ -333,3 +333,81 @@ def test_instanciate_simple_property_integer_via_property_type(
     prop = mapping.instanciate_simple_property("ns", "p", "n", 42, pt.type)
     assert isinstance(prop, IntegerType)
     assert prop.get_value() == 42
+
+
+# --- addNameSpace / addNewNameSpace (lines 267, 274) -----------------
+
+
+def test_add_name_space_registers_factory_for_schema_class(
+    mapping: TypeMapping,
+) -> None:
+    class _FakeSchema:
+        NAMESPACE = "http://example.com/added-via-add-name-space/"
+        _FIELD_TYPES: dict[str, str] = {"foo": "Text"}
+
+    mapping.add_name_space(_FakeSchema)
+    factory = mapping.get_schema_factory(_FakeSchema.NAMESPACE)
+    assert factory is not None
+    assert factory.get_namespace() == _FakeSchema.NAMESPACE
+    # The properties description gathered from the class is queryable.
+    assert factory.get_property_type("foo") is not None
+
+
+# --- initialize (line 92) -------------------------------------------
+
+
+def test_initialize_clears_user_added_state(mapping: TypeMapping) -> None:
+    mapping.add_new_name_space("http://example.com/x/", "x")
+    mapping.add_to_defined_structured_types("Foo", "http://example.com/foo/")
+    mapping.initialize()
+    assert mapping.is_defined_schema("http://example.com/x/") is False
+    assert mapping.is_defined_type("Foo") is False
+
+
+# --- anonymous PropertyType accessors (lines 541-555) ---------------
+
+
+def test_property_type_static_accessors() -> None:
+    pt = TypeMapping.create_property_type("Real", Cardinality.Bag)
+    assert TypeMapping.type(pt) == "Real"
+    assert TypeMapping.card(pt) is Cardinality.Bag
+    assert "Real" in TypeMapping.to_string(pt)
+    assert "Bag" in TypeMapping.to_string(pt)
+
+
+# --- createXPath (line 519) -----------------------------------------
+
+
+def test_create_x_path_returns_xpath_type(mapping: TypeMapping) -> None:
+    from pypdfbox.xmpbox.type.xpath_type import XPathType
+
+    inst = mapping.create_x_path("http://x/", "x", "P", "//e")
+    assert isinstance(inst, XPathType)
+
+
+# --- getAssociatedSchemaObject (line 301) ---------------------------
+
+
+def test_get_associated_schema_object_for_unknown_namespace_returns_none(
+    mapping: TypeMapping, metadata: XMPMetadata,
+) -> None:
+    assert (
+        mapping.get_associated_schema_object(
+            metadata, "http://example.com/unknown-ns/", "p"
+        )
+        is None
+    )
+
+
+def test_get_associated_schema_object_after_add_new_name_space(
+    mapping: TypeMapping, metadata: XMPMetadata,
+) -> None:
+    """When the namespace is registered (even if as an empty schema)
+    the method must return something non-``None`` — upstream returns
+    a freshly constructed ``XMPSchema`` instance; the Python port may
+    return either a schema or the schema-factory record (both convey
+    that the namespace is recognised)."""
+    ns = "http://example.com/registered-ns/"
+    mapping.add_new_name_space(ns, "rg")
+    result = mapping.get_associated_schema_object(metadata, ns, "rg")
+    assert result is not None
