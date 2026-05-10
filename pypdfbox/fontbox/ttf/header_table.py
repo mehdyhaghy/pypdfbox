@@ -8,6 +8,7 @@ from .ttf_table import TTFTable
 if TYPE_CHECKING:
     from .true_type_font import TrueTypeFont
     from .ttf_data_stream import TTFDataStream
+    from .ttf_parser import FontHeaders
 
 
 class HeaderTable(TTFTable):
@@ -39,6 +40,30 @@ class HeaderTable(TTFTable):
         self._font_direction_hint: int = 0
         self._index_to_loc_format: int = 0
         self._glyph_data_format: int = 0
+
+    def read_headers(
+        self,
+        ttf: TrueTypeFont,  # noqa: ARG002
+        data: TTFDataStream,
+        out_headers: FontHeaders,
+    ) -> None:
+        """Fast-path header read for ``FileSystemFontProvider``.
+
+        Mirrors upstream ``HeaderTable.readHeaders`` (HeaderTable.java
+        L69-L75): seek 44 bytes past the current position to skip the
+        version / fontRevision / checksum / magic / flags / unitsPerEm /
+        created / modified / xMin / yMin / xMax / yMax fields, then read
+        ``macStyle`` (an unsigned short) and forward it to
+        ``out_headers.set_header_mac_style(...)``. The class field
+        ``_mac_style`` is also populated as a side-effect — same as
+        upstream — so a follow-up :meth:`get_mac_style` call returns the
+        right value without re-reading.
+        """
+        # 44 == 4 + 4 + 4 + 4 + 2 + 2 + 2*8 + 4*2, matching the field
+        # layout in :meth:`read` above.
+        data.seek(data.get_current_position() + 44)
+        self._mac_style = data.read_unsigned_short()
+        out_headers.set_header_mac_style(self._mac_style)
 
     def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         self._version = data.read_32_fixed()

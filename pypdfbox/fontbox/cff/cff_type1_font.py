@@ -30,6 +30,16 @@ class CFFType1Font(CFFFont):
         # ``CFFType1Font.addToPrivateDict``). Layered on top of the
         # parsed Top.Private rawDict by :meth:`get_private_dict`.
         self._private_overlay: dict[str, Any] = {}
+        # Lazily created Type 2 charstring parser, populated on first
+        # :meth:`get_parser` call (mirror of upstream package-private
+        # ``CFFType1Font.charStringParser``).
+        self._char_string_parser: Any | None = None
+        # Encoding override populated by :meth:`set_encoding`. When
+        # populated this takes precedence over the encoding stored on the
+        # parsed Top DICT — mirror of upstream package-private field
+        # ``CFFType1Font.encoding`` which is set by ``CFFParser`` after
+        # construction.
+        self._encoding_override: Any = None
 
     # ---------- factories ----------
 
@@ -79,6 +89,34 @@ class CFFType1Font(CFFFont):
 
     # ---------- encoding ----------
 
+    def get_parser(self) -> Any:
+        """Return the (lazily-created) Type 2 charstring parser.
+
+        Mirrors upstream package-private ``CFFType1Font.getParser()``
+        (CFFType1Font.java L148-L155). Upstream caches a single
+        :class:`Type2CharStringParser` keyed off the font name; we mirror
+        the same cache so each charstring decode reuses the parser
+        instead of re-instantiating per glyph.
+        """
+        if self._char_string_parser is None:
+            from pypdfbox.fontbox.cff.cff_cid_font import (  # noqa: PLC0415
+                _Type2CharStringParser,
+            )
+
+            self._char_string_parser = _Type2CharStringParser(self.get_name())
+        return self._char_string_parser
+
+    def set_encoding(self, encoding: Any) -> None:
+        """Override the font's CFF /Encoding.
+
+        Mirrors upstream package-private ``CFFType1Font.setEncoding(
+        CFFEncoding)`` (CFFType1Font.java L197-L200) — invoked by the
+        CFF parser after construction to attach the parsed encoding to
+        the font. Once set, :meth:`get_encoding` returns the override
+        instead of falling back to the Top DICT entry.
+        """
+        self._encoding_override = encoding
+
     def get_encoding(self) -> Any:
         """The CFF /Encoding for this font.
 
@@ -93,6 +131,8 @@ class CFFType1Font(CFFFont):
         is StandardEncoding, but a missing attribute is reported as
         ``None`` to let callers detect the absence explicitly).
         """
+        if self._encoding_override is not None:
+            return self._encoding_override
         if self._top is None:
             return None
         return getattr(self._top, "Encoding", None)

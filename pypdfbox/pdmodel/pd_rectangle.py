@@ -202,6 +202,31 @@ class PDRectangle:
         y2 = self._upper_right_y
         return [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
 
+    def transform(self, matrix: Any) -> list[tuple[float, float]]:
+        """Return the four transformed corners of this rectangle.
+
+        Mirrors upstream ``PDRectangle.transform(Matrix)``: each of the
+        four corners is mapped through ``matrix.transform_point(x, y)``
+        in upstream order — ``(llx, lly), (urx, lly), (urx, ury),
+        (llx, ury)``. Upstream returns a Java ``GeneralPath``; we return
+        the same corners as a ``list[tuple[float, float]]`` for the same
+        reason :meth:`to_general_path` does — there is no standard-library
+        Python ``GeneralPath`` equivalent.
+
+        ``matrix`` is duck-typed: any object exposing a
+        ``transform_point(x, y)`` method (e.g. :class:`PDMatrix`) works.
+        """
+        x1 = self._lower_left_x
+        y1 = self._lower_left_y
+        x2 = self._upper_right_x
+        y2 = self._upper_right_y
+        return [
+            tuple(matrix.transform_point(x1, y1)),
+            tuple(matrix.transform_point(x2, y1)),
+            tuple(matrix.transform_point(x2, y2)),
+            tuple(matrix.transform_point(x1, y2)),
+        ]
+
     # ---------- COS round-trip ----------
 
     def to_cos_array(self) -> COSArray:
@@ -254,11 +279,21 @@ class PDRectangle:
             f"{self._upper_right_x}, {self._upper_right_y})"
         )
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``PDRectangle.toString()``.
+
+        Upstream format (Java lines 375-376):
+        ``"[" + getLowerLeftX() + "," + getLowerLeftY() + "," +
+        getUpperRightX() + "," + getUpperRightY() + "]"``. Note: no
+        spaces between the comma-separated values, matching upstream.
+        """
         return (
-            f"[{self._lower_left_x}, {self._lower_left_y}, "
-            f"{self._upper_right_x}, {self._upper_right_y}]"
+            f"[{self._lower_left_x},{self._lower_left_y},"
+            f"{self._upper_right_x},{self._upper_right_y}]"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 # Module-level paper-size constants. Match upstream PDFBox naming.

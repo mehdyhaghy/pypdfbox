@@ -265,6 +265,14 @@ class PDDeviceNAttributes:
         parts.append("}")
         return "".join(parts)
 
+    def to_string(self) -> str:
+        """Snake-case wrapper around :meth:`__str__` mirroring upstream
+        ``PDDeviceNAttributes.toString`` (``PDDeviceNAttributes.java``
+        line 150). Lets callers porting Java code keep the
+        ``attrs.toString()`` shape.
+        """
+        return self.__str__()
+
 
 # ---------- PDDeviceN ----------
 

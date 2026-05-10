@@ -191,5 +191,13 @@ class PDMarkedContentReference:
         """
         return f"mcid={self.get_mcid()}"
 
+    def to_string(self) -> str:
+        """Snake-case wrapper around :meth:`__str__` mirroring upstream
+        ``PDMarkedContentReference.toString()``
+        (``PDMarkedContentReference.java`` line 110). Lets callers
+        porting Java code keep the ``mcr.toString()`` shape.
+        """
+        return self.__str__()
+
 
 __all__ = ["PDMarkedContentReference"]

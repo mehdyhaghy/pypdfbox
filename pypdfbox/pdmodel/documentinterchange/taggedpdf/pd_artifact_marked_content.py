@@ -59,6 +59,19 @@ class PDArtifactMarkedContent(PDMarkedContent):
         """
         return self.get_b_box()
 
+    def is_attached(self, edge: str) -> bool:
+        """Public counterpart to upstream private
+        ``PDArtifactMarkedContent.isAttached(String)`` (lines 123-137).
+
+        Returns ``True`` iff ``/Attached`` lists ``edge`` (case-sensitive
+        per spec — typically ``"Top"`` / ``"Bottom"`` / ``"Left"`` /
+        ``"Right"``). Surfaced publicly here because pypdfbox does not
+        have Java's package-private visibility — callers occasionally
+        need to query an arbitrary edge string without going through the
+        four convenience predicates.
+        """
+        return self._is_attached(edge)
+
     def is_top_attached(self) -> bool:
         """``True`` iff ``/Attached`` lists ``Top``."""
         return self._is_attached("Top")

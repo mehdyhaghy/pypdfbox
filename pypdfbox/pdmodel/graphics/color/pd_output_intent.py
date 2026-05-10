@@ -427,6 +427,49 @@ class PDOutputIntent:
         cos_stream.set_raw_data(profile_bytes)
         cos_stream.set_int(_N, int(num_components))
 
+    # ---------- public: replicate upstream's configureOutputProfile ----------
+
+    def configure_output_profile(
+        self,
+        document: PDDocument,
+        color_profile: _ColorProfileLike,
+        *,
+        num_components: int | None = None,
+    ) -> PDStream:
+        """Mirror upstream private ``PDOutputIntent.configureOutputProfile``
+        (lines 116-123 in PDOutputIntent.java).
+
+        Builds a flate-compressed :class:`PDStream` owned by ``document``
+        from the ICC ``color_profile`` bytes (or an open
+        ``InputStream``-like object), records ``/N`` (number of colour
+        components) on the stream's dictionary, and stores the result
+        under ``/DestOutputProfile`` on this intent. Returns the
+        constructed :class:`PDStream` so callers can inspect or further
+        decorate it.
+
+        Pass ``num_components=...`` to override the value inferred from
+        the ICC header colour-space signature (matching upstream's
+        ``ICC_Profile.getNumComponents`` lookup).
+
+        Surfaced publicly here because pypdfbox does not have Java's
+        package-private visibility — callers re-using an existing
+        ``PDOutputIntent`` (e.g. swapping the ICC profile after
+        construction) need the same configuration step that the
+        ``(PDDocument, InputStream)`` constructor performs internally.
+        """
+        self._configure_output_profile(
+            document, color_profile, num_components=num_components
+        )
+        cos = self._dictionary.get_dictionary_object(_DEST_OUTPUT_PROFILE)
+        # _configure_output_profile always writes a fresh COSStream — the
+        # isinstance guard is a defensive paranoia check matching the
+        # rest of the file's casts.
+        if not isinstance(cos, COSStream):  # pragma: no cover — defensive
+            raise OSError(
+                "configure_output_profile failed to embed /DestOutputProfile"
+            )
+        return PDStream(cos)
+
     # ---------- internal: replicate upstream's configureOutputProfile ----------
 
     def _configure_output_profile(

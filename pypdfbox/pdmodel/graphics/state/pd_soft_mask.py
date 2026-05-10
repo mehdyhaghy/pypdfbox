@@ -103,6 +103,16 @@ class PDSoftMask:
         v = self._dict.get_dictionary_object(_S)
         return v if isinstance(v, COSName) else None
 
+    def get_sub_type(self) -> COSName | None:
+        """Mirror upstream ``PDSoftMask.getSubType()`` (line 134 in
+        PDSoftMask.java) — Java's mechanical case-conversion would yield
+        ``get_sub_type``, but pypdfbox sibling wrappers (e.g.
+        :class:`PDArtifactMarkedContent`) consistently use ``get_subtype``.
+        Both spellings are exposed so PDFBox developers porting code
+        verbatim find the upstream-shaped name.
+        """
+        return self.get_subtype()
+
     def set_subtype(self, subtype: COSName) -> None:
         self._dict.set_item(_S, subtype)
 

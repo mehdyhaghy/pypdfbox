@@ -77,6 +77,14 @@ class FontHeaders:
     def get_non_otf_table_gcid_142(self) -> bytes | None:
         return self._non_otf_gcid_142
 
+    def get_non_otf_table_gcid142(self) -> bytes | None:
+        """Mirror upstream ``getNonOtfTableGCID142`` (FontHeaders.java
+        L89-L92) — Adobe ``gcid`` table bytes for non-OTF CID-keyed
+        fonts. The numeric suffix renders without a leading underscore
+        per the project porting rules (camelCase ``GCID142`` collapses
+        to ``gcid142``)."""
+        return self._non_otf_gcid_142
+
     def get_otf_registry(self) -> str | None:
         return self._otf_registry
 
@@ -109,6 +117,13 @@ class FontHeaders:
         self._font_sub_family = font_sub_family
 
     def set_non_otf_gcid_142(self, value: bytes | None) -> None:
+        self._non_otf_gcid_142 = value
+
+    def set_non_otf_gcid142(self, value: bytes | None) -> None:
+        """Mirror upstream ``setNonOtfGcid142`` (FontHeaders.java
+        L135-L138) — store ``gcid`` table bytes for non-OTF CID-keyed
+        fonts. Numeric suffix renders without a leading underscore per
+        the project porting rules."""
         self._non_otf_gcid_142 = value
 
     def set_is_otf_and_post_script(self, value: bool) -> None:  # noqa: FBT001

@@ -334,6 +334,24 @@ class PDStandardAttributeObject(PDAttributeObject):
             return four
         return None
 
+    # ---- four-colours public helper ----
+
+    def set_four_colors(
+        self, name: str, value: PDFourColours | None
+    ) -> None:
+        """Mirror upstream ``PDStandardAttributeObject.setFourColors`` (lines
+        439-445 in PDStandardAttributeObject.java).
+
+        Writes the ``PDFourColours`` envelope into the underlying
+        dictionary (or removes the entry when ``value`` is ``None``).
+        Public counterpart to the existing ``_set_four_colours`` helper —
+        named with the upstream American "Colors" spelling.
+        """
+        if value is None:
+            self._dictionary.remove_item(name)
+        else:
+            self._dictionary.set_item(name, value.get_cos_object())
+
     # ---- polymorphic name/number combinators ----
 
     def get_name_or_array_of_name(

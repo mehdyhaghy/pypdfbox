@@ -109,6 +109,20 @@ class PDIndexed(PDColorSpace):
         self._array.set(2, COSInteger.get(hival))
         self._invalidate_caches()
 
+    def set_high_value(self, high: int) -> None:
+        """Replace the highest allowed lookup index. Mirrors upstream
+        ``PDIndexed.setHighValue`` (``PDIndexed.java`` line 330) — the
+        cannot-exceed-255 contract is enforced by :meth:`get_hival`'s
+        clamp on the read side, matching upstream's ``array.set(2, ...)``
+        with no setter-side guard.
+
+        Upstream marks ``setHighValue`` ``@Deprecated`` and slates it for
+        removal in 4.0; pypdfbox carries it as a snake-case alias of
+        :meth:`set_hival` so PDFBox-3.x ports keep compiling without
+        renaming the call site.
+        """
+        self.set_hival(int(high))
+
     def get_lookup_data(self) -> bytes | None:
         """Return the lookup-table bytes for this Indexed color space.
 

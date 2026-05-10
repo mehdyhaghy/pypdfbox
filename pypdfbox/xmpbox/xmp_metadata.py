@@ -66,6 +66,11 @@ class XMPMetadata:
         # and keeps :attr:`_xpacket_end_data` as the source of truth for the
         # serialised form; see :meth:`is_read_only` / :meth:`set_read_only`.
         self._read_only: bool = xpacket_end == "r"
+        # Lazy ``TypeMapping`` instance. Mirrors upstream's eagerly-constructed
+        # ``private final TypeMapping typeMapping`` on ``XMPMetadata`` (line 67).
+        # Built lazily here to avoid an import cycle at module load time —
+        # ``TypeMapping`` lives under ``pypdfbox.xmpbox.type``.
+        self._type_mapping: object | None = None
 
     # --- factory --------------------------------------------------------
 
@@ -116,6 +121,37 @@ class XMPMetadata:
 
     def get_end_xpacket(self) -> str:
         return self._xpacket_end_data
+
+    def set_end_x_packet(self, data: str) -> None:
+        """Mirror of upstream ``XMPMetadata.setEndXPacket(String)`` (line
+        187). Snake-cased letter-by-letter from the PDFBox name
+        (``EndXPacket`` → ``end_x_packet``); delegates to
+        :meth:`set_end_xpacket` which is the canonical pypdfbox spelling.
+        """
+        self.set_end_xpacket(data)
+
+    def get_end_x_packet(self) -> str:
+        """Mirror of upstream ``XMPMetadata.getEndXPacket()`` (line 197).
+        Snake-cased letter-by-letter from the PDFBox name
+        (``EndXPacket`` → ``end_x_packet``); delegates to
+        :meth:`get_end_xpacket`.
+        """
+        return self.get_end_xpacket()
+
+    # --- type mapping --------------------------------------------------
+
+    def get_type_mapping(self) -> object:
+        """Return this packet's :class:`TypeMapping` instance.
+
+        Mirror of upstream ``XMPMetadata.getTypeMapping()`` (line 127).
+        Constructed lazily on first access to avoid an import cycle —
+        upstream allocates eagerly in the constructor (line 90).
+        """
+        if self._type_mapping is None:
+            from .type.type_mapping import TypeMapping
+
+            self._type_mapping = TypeMapping(self)
+        return self._type_mapping
 
     # --- read-only flag (xpacket end="r"/"w") --------------------------
 

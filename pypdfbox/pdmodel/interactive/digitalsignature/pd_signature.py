@@ -282,6 +282,38 @@ class PDSignature:
             return
         self._dict.set_item(_PROP_BUILD, prop_build.get_cos_object())
 
+    def get_converted_contents(self, raw: bytes | None) -> bytes:
+        """Mirror upstream private ``PDSignature.getConvertedContents``
+        (lines 363-388 in PDSignature.java).
+
+        Strips the optional PDF-string delimiters (``<`` / ``(`` at the
+        start, ``>`` / ``)`` at the end) from the raw bytes and decodes
+        the resulting hex pairs into the binary PKCS#7 SignedData blob.
+
+        Surfaced publicly here because pypdfbox does not have Java's
+        package-private visibility — callers reading the encoded
+        ``/Contents`` form (e.g. from a custom ``ByteRange`` extractor)
+        need the same hex-strip + parse step. Returns ``b""`` for an
+        empty / ``None`` input.
+        """
+        if not raw:
+            return b""
+        start = 0
+        end = len(raw)
+        # Strip leading "<" or "(" (Java PDF-string delimiters).
+        if raw[0:1] in (b"<", b"("):
+            start = 1
+        # Strip trailing ">" or ")".
+        if end > start and raw[end - 1 : end] in (b">", b")"):
+            end -= 1
+        body = raw[start:end]
+        # Java decodes via COSString.parseHex on a Latin-1 string — pypdfbox
+        # ports that helper as :meth:`COSString.parse_hex` which expects a
+        # ``str``. Decode the body as ISO-8859-1 (matching upstream's
+        # ``new String(buffer, ISO_8859_1)``) and let parse_hex do the
+        # hex-pair-to-bytes conversion.
+        return COSString.parse_hex(body.decode("iso-8859-1")).get_bytes()
+
     # ---------- convenience: raw /Contents and signed bytes ----------
 
     def get_contents_bytes(self) -> bytes | None:

@@ -327,6 +327,22 @@ class COSWriter(ICOSVisitor):
     def get_standard_output(self) -> COSStandardOutputStream:
         return self._standard_output
 
+    def set_standard_output(
+        self, new_standard_output: COSStandardOutputStream
+    ) -> None:
+        """Replace the ``COSStandardOutputStream`` framing layer.
+
+        Mirror of upstream private
+        ``COSWriter.setStandardOutput(COSStandardOutputStream)``
+        (line 410 of ``COSWriter.java``). Surfaced for parity with
+        callers / subclasses that want to swap the formatted-output
+        sink mid-construction (e.g. to wrap it in a counting stream
+        for diagnostics). Most callers should leave this alone — the
+        constructor wires the standard output up to the raw output
+        already.
+        """
+        self._standard_output = new_standard_output
+
     def get_output(self) -> Any:
         """Return the raw output sink the writer was constructed with.
 
@@ -334,6 +350,20 @@ class COSWriter(ICOSVisitor):
         to bypass the ``COSStandardOutputStream`` framing layer (e.g. to
         splice external bytes verbatim into the file)."""
         return self._output
+
+    def set_output(self, new_output: Any) -> None:
+        """Replace the raw output sink.
+
+        Mirror of upstream private
+        ``COSWriter.setOutput(OutputStream)`` (line 400 of
+        ``COSWriter.java``). Surfaced for parity with callers /
+        subclasses that need to redirect the underlying byte sink. Note
+        that this only updates the raw-output reference — the
+        standard-output framing layer keeps writing through whatever
+        adapter it was constructed with. Most callers should swap the
+        full writer instead.
+        """
+        self._output = new_output
 
     def get_startxref(self) -> int:
         return self._startxref

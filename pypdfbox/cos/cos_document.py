@@ -94,6 +94,22 @@ class COSDocument(COSBase):
     def scratch_file(self) -> ScratchFile:
         return self._scratch_file
 
+    def get_stream_cache(self) -> ScratchFile:
+        """Return the shared ``ScratchFile`` used by every ``COSStream``
+        in the graph.
+
+        Mirrors upstream private
+        ``COSDocument.getStreamCache(StreamCacheCreateFunction)``
+        (line 140 of ``COSDocument.java``) which constructs the
+        ``RandomAccessStreamCache`` once at parser-init time. The
+        Python port owns the scratch file as a ready-to-use instance
+        rather than a factory function, so this accessor returns the
+        instance directly. Equivalent to the :attr:`scratch_file`
+        property; surfaced as a verb-shaped helper so PDFBox-trained
+        callers can use the upstream-letter-for-letter snake_case name.
+        """
+        return self._scratch_file
+
     def get_object_from_pool(self, key: COSObjectKey) -> COSObject:
         """Return the existing ``COSObject`` for ``key``, creating an
         unresolved placeholder if none exists yet. Used by the parser

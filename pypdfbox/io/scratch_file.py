@@ -362,6 +362,16 @@ class ScratchFile:
         # Intentional no-op: lazy data structures self-initialise.
         return None
 
+    def init_pages(self) -> None:
+        """Public-named alias for :meth:`_init_pages`.
+
+        Mirrors upstream's private ``initPages`` (line 134) at the
+        snake_case Python parity surface. Concrete behaviour is the
+        no-op described on :meth:`_init_pages` — lazy data structures
+        self-initialise.
+        """
+        self._init_pages()
+
     def _enlarge(self) -> None:
         """
         Hook to grow the page pool when no free page is available.
@@ -377,6 +387,16 @@ class ScratchFile:
         """
         # Intentional no-op: _allocate_new_page() grows storage on demand.
         return None
+
+    def enlarge(self) -> None:
+        """Public-named alias for :meth:`_enlarge`.
+
+        Mirrors upstream's private ``enlarge`` (line 236) at the
+        snake_case Python parity surface. Concrete behaviour is the
+        no-op described on :meth:`_enlarge` — :meth:`_allocate_new_page`
+        grows storage on demand.
+        """
+        self._enlarge()
 
     def check_closed(self) -> None:
         """

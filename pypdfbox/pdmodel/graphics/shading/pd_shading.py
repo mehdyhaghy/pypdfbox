@@ -469,6 +469,27 @@ class PDShading:
             clamped.append(f)
         return clamped
 
+    # ---------- paint (rendering hook) ----------
+
+    def to_paint(self, matrix: Any = None) -> Any:
+        """Return a renderer-side ``Paint`` for this shading.
+
+        Mirrors upstream abstract ``PDShading.toPaint(Matrix)`` (line
+        445 of ``PDShading.java``). Concrete subclasses (Types 1–7) wrap
+        themselves in a type-specific ``ShadingPaint`` instance — see
+        ``Type1ShadingPaint``, ``Type2ShadingPaint``, etc.
+
+        pypdfbox does not yet expose a Java-AWT-equivalent ``Paint``
+        interface (the rendering surface lands in a later wave). Until
+        then this base method raises :class:`NotImplementedError`,
+        matching the abstract upstream contract — subclasses override
+        once their paint hook is wired through.
+        """
+        raise NotImplementedError(
+            "PDShading.to_paint requires the rendering cluster; "
+            "no paint hook is wired through yet"
+        )
+
     # ---------- bounds (rendering hook) ----------
 
     def get_bounds(self, xform=None, matrix=None):  # type: ignore[no-untyped-def]

@@ -135,8 +135,13 @@ class MemoryUsageSetting:
         object.__setattr__(self, "temp_dir", temp_dir)
         return self
 
-    def __str__(self) -> str:
-        # Match upstream toString() phrasing for diagnostics parity.
+    def to_string(self) -> str:
+        """Mirror upstream ``MemoryUsageSetting.toString()``.
+
+        Upstream nested ternary (Java lines 271-278) expanded into
+        readable Python branches; the produced strings are byte-for-byte
+        identical to upstream's output.
+        """
         if self.use_main_memory():
             if self.use_temp_file():
                 tail = (
@@ -156,3 +161,6 @@ class MemoryUsageSetting:
         if self.is_storage_restricted():
             return f"Scratch file only with max. of {self.max_storage_bytes} bytes"
         return "Scratch file only with no size restriction"
+
+    def __str__(self) -> str:
+        return self.to_string()

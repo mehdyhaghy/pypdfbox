@@ -388,6 +388,21 @@ class PDNameTreeNode[T](ABC):
             return False
         return self.get_value(name) is not None
 
+    def calculate_limits(self) -> None:
+        """Recompute this node's ``/Limits`` from its current
+        ``/Names`` or ``/Kids`` content.
+
+        Mirrors upstream private
+        ``PDNameTreeNode.calculateLimits()`` (line 171 of
+        ``PDNameTreeNode.java``). Public-named alias for
+        :meth:`_calculate_limits` so PDFBox-trained callers can invoke
+        the upstream-letter-for-letter snake_case name verbatim. Root
+        nodes drop ``/Limits`` (per PDF Reference 1.7 §7.9.6); leaf and
+        intermediate nodes derive their limits from the first/last
+        entries of their populated arm.
+        """
+        self._calculate_limits()
+
     # ---------- internal ----------
 
     def _calculate_limits(self) -> None:

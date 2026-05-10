@@ -7,6 +7,8 @@ from pypdfbox.cos import COSBase, COSDictionary, COSName, COSNumber, COSStream, 
 from .pd_terminal_field import PDTerminalField
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
 
@@ -15,6 +17,47 @@ _DS: COSName = COSName.get_pdf_name("DS")
 _Q: COSName = COSName.get_pdf_name("Q")
 _RV: COSName = COSName.get_pdf_name("RV")
 _KIDS: COSName = COSName.get_pdf_name("Kids")
+
+
+class PDDefaultAppearanceString:
+    """Lite data-only port of upstream ``PDDefaultAppearanceString``.
+
+    Mirrors the *constructor surface* of upstream
+    ``org.apache.pdfbox.pdmodel.interactive.form.PDDefaultAppearanceString``
+    (package-private upstream — surfaced here for parity with
+    :meth:`PDVariableText.get_default_appearance_string`). The upstream
+    class parses the ``/DA`` content-stream operators to recover the
+    selected font / size / colour; pypdfbox keeps the parser deferred and
+    just retains the raw ``/DA`` ``COSString`` and the ``PDResources``
+    reference for callers that want to perform the parsing themselves
+    (e.g. tests asserting round-trip identity).
+
+    Both ``/DA`` and ``/DR`` are required by upstream (which raises
+    ``IllegalArgumentException`` when either is ``None``); pypdfbox keeps
+    that contract via ``ValueError`` (Python's closest analogue).
+    """
+
+    def __init__(
+        self,
+        default_appearance: COSString | None,
+        default_resources: PDResources | None,
+    ) -> None:
+        if default_appearance is None:
+            raise ValueError(
+                "/DA is a required entry. Please set a default appearance first."
+            )
+        if default_resources is None:
+            raise ValueError("/DR is a required entry")
+        self._default_appearance: COSString = default_appearance
+        self._default_resources: PDResources = default_resources
+
+    def get_default_appearance(self) -> COSString:
+        """Return the raw ``/DA`` ``COSString`` operand."""
+        return self._default_appearance
+
+    def get_default_resources(self) -> PDResources:
+        """Return the ``/DR`` resources used to resolve fonts / colour spaces."""
+        return self._default_resources
 
 
 def _require_text_or_none(value: object, method: str) -> str | None:
@@ -60,6 +103,32 @@ class PDVariableText(PDTerminalField):
                 widget_cos = widget.get_cos_object()
                 if widget_cos.contains_key(_DA):
                     widget_cos.set_string(_DA, da_value)
+
+    def get_default_appearance_string(self) -> PDDefaultAppearanceString | None:
+        """Return ``/DA`` as a typed :class:`PDDefaultAppearanceString`.
+
+        Mirrors upstream ``PDVariableText.getDefaultAppearanceString`` (lines
+        96-106 in PDVariableText.java). The upstream method walks
+        ``getInheritableAttribute(COSName.DA)`` to find the ``COSString``
+        operand, then constructs a ``PDDefaultAppearanceString(da, dr)``
+        using the AcroForm's default resources (``/DR``).
+
+        Returns ``None`` when ``/DA`` is absent across the inheritance
+        chain — upstream lets the ``ValueError`` ("required entry")
+        bubble out, but pypdfbox prefers an early ``None`` so callers can
+        distinguish "no DA configured" from "malformed DA" without
+        catching exceptions. Callers that want upstream parity can do
+        ``self.get_default_appearance_string()`` and treat ``None`` as
+        the upstream error case themselves.
+        """
+        base = self.get_inheritable_attribute(_DA)
+        da: COSString | None = base if isinstance(base, COSString) else None
+        if da is None:
+            return None
+        dr = self.get_acro_form().get_default_resources()
+        if dr is None:
+            return None
+        return PDDefaultAppearanceString(da, dr)
 
     def has_default_appearance(self) -> bool:
         """Predicate — return ``True`` when ``/DA`` is set on this field's own
@@ -179,4 +248,4 @@ class PDVariableText(PDTerminalField):
     _get_string_or_stream = get_string_or_stream
 
 
-__all__ = ["PDVariableText"]
+__all__ = ["PDDefaultAppearanceString", "PDVariableText"]

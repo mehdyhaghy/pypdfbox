@@ -57,8 +57,19 @@ class Attribute:
     def setValue(self, value: str) -> None:  # noqa: N802 - upstream Java name
         self.set_value(value)
 
-    def __repr__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``Attribute.toString()``.
+
+        Upstream format (Java line 121):
+        ``"[attr:{" + nsURI + "}" + name + "=" + value + "]"``.
+        """
         return f"[attr:{{{self._ns_uri}}}{self._name}={self._value}]"
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Attribute):

@@ -33,6 +33,14 @@ class ICOSVisitor(ABC):
     @abstractmethod
     def visit_from_integer(self, obj: Any) -> Any: ...
 
+    def visit_from_int(self, obj: Any) -> Any:
+        """Strict snake-case rendering of upstream ``visitFromInt``
+        (ICOSVisitor.java L74). Defaults to delegating to
+        :meth:`visit_from_integer` so existing implementations that
+        only override the more-Pythonic spelling continue to work.
+        """
+        return self.visit_from_integer(obj)
+
     @abstractmethod
     def visit_from_name(self, obj: Any) -> Any: ...
 

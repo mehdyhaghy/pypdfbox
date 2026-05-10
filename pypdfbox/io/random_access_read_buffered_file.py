@@ -91,6 +91,44 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
     def is_eof(self) -> bool:
         return self.peek() == self.EOF
 
+    # Upstream parity: Java RandomAccessReadBufferedFile uses a LinkedHashMap
+    # LRU page cache (PAGE_SIZE = 4096, MAX_CACHED_PAGES = 1000). The Python
+    # port relies on stdlib ``io.BufferedReader`` for lazy/buffered reads, so
+    # we don't need an explicit page cache. The two helpers below mirror the
+    # upstream method names so callers / parity scripts that look for them
+    # find a stable surface.
+
+    # Mirrors upstream private ``RandomAccessReadBufferedFile.readPage`` (line 160).
+    # Allocates a fresh ``PAGE_SIZE`` (4096) byte page from the current file
+    # position. Used only as a parity-named helper — pypdfbox's normal read
+    # path goes through ``io.BufferedReader``.
+    PAGE_SIZE: int = 1 << 12  # 4096
+    MAX_CACHED_PAGES: int = 1000
+
+    def read_page(self) -> bytes:
+        """Read up to ``PAGE_SIZE`` bytes from the current position.
+
+        Mirrors upstream private ``RandomAccessReadBufferedFile.readPage``
+        which fills a 4 KiB ``ByteBuffer`` from the file channel. Returns
+        the bytes actually read (may be shorter than ``PAGE_SIZE`` near
+        EOF). The Python port reuses ``io.BufferedReader`` for buffering
+        in normal operation; this helper is exposed for parity.
+        """
+        self._check_open()
+        return self._buf.read(self.PAGE_SIZE)
+
+    def remove_eldest_entry(self, eldest: object | None = None) -> bool:
+        """LRU page-cache eviction predicate.
+
+        Mirrors upstream ``LinkedHashMap.removeEldestEntry`` override at
+        line 57: returns ``True`` once the cache has more than
+        ``MAX_CACHED_PAGES`` (1000) entries. The Python port doesn't keep
+        an explicit page cache (``io.BufferedReader`` handles buffering)
+        so this always returns ``False`` — the predicate is provided for
+        parity-named call sites.
+        """
+        return False
+
     def create_view(self, start_position: int, length: int) -> RandomAccessRead:
         """
         Return a read-only slice view onto this file.

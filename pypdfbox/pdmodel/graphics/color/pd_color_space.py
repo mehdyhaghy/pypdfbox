@@ -177,6 +177,21 @@ class PDColorSpace(ABC):
         return None
 
     @staticmethod
+    def create_from_cos_object(
+        color_space: Any, resources: PDResources | None = None
+    ) -> PDColorSpace | None:
+        """Resolve a ``COSObject`` reference to its typed color space.
+
+        Public-named static factory mirroring upstream
+        ``PDColorSpace.createFromCOSObject(COSObject, PDResources)``
+        (line 244 of ``PDColorSpace.java``). Delegates to
+        :meth:`_create_from_cos_object`. ``resources`` is optional —
+        when ``None`` the resource cache is bypassed and the object is
+        unwrapped through :meth:`create` directly.
+        """
+        return PDColorSpace._create_from_cos_object(color_space, resources)
+
+    @staticmethod
     def _create_from_cos_object(
         color_space: Any, resources: PDResources | None
     ) -> PDColorSpace | None:
@@ -186,7 +201,8 @@ class PDColorSpace(ABC):
         (line 244 of ``PDColorSpace.java``).
 
         Private helper — pypdfbox callers should always use
-        :meth:`create`, which routes ``COSObject`` arguments here.
+        :meth:`create` (or the public :meth:`create_from_cos_object`
+        alias), which routes ``COSObject`` arguments here.
         """
         if resources is not None:
             cache = resources.get_resource_cache()

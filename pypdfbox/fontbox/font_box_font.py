@@ -97,4 +97,27 @@ class FontBoxFont(Protocol):
         ...
 
 
-__all__ = ["FontBoxFont"]
+def get_font_b_box(font: FontBoxFont) -> Any:
+    """Strict snake-case rendering of upstream ``getFontBBox`` exposed
+    as a free function rather than a protocol method.
+
+    The project porting rules expand consecutive caps as separate
+    words, so ``getFontBBox`` lowercases to ``get_font_b_box``. Adding
+    that method directly to the :class:`FontBoxFont` protocol would
+    force every duck-typed implementer to define a second method;
+    instead this free function delegates to whichever contracted
+    accessor (``get_font_b_box`` if the concrete class chose to expose
+    the strict spelling, otherwise the familiar ``get_font_bbox``) the
+    font implements.
+
+    Mirrors upstream ``FontBoxFont.getFontBBox`` (FontBoxFont.java
+    L48) — kept as a helper so PDFBox-shaped callers can dispatch
+    through either spelling without per-call branching.
+    """
+    strict = getattr(font, "get_font_b_box", None)
+    if callable(strict):
+        return strict()
+    return font.get_font_bbox()
+
+
+__all__ = ["FontBoxFont", "get_font_b_box"]

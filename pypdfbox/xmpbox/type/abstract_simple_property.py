@@ -57,13 +57,23 @@ class AbstractSimpleProperty(AbstractField):
     def getRawValue(self) -> Any:  # noqa: N802 - upstream Java name
         return self.get_raw_value()
 
-    def __repr__(self) -> str:
-        # Mirrors upstream AbstractSimpleProperty#toString:
-        # "[" + propertyName + "=" + simpleClassName + ":" + stringValue + "]"
+    def to_string(self) -> str:
+        """Mirror upstream ``AbstractSimpleProperty.toString()``.
+
+        Upstream format (Java line 102):
+        ``"[" + getPropertyName() + "=" + getClass().getSimpleName() +
+        ":" + getStringValue() + "]"``.
+        """
         return (
             f"[{self.get_property_name()}="
             f"{type(self).__name__}:{self.get_string_value()}]"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()
 
     def get_namespace(self) -> str | None:
         return self._namespace

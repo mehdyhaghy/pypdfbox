@@ -226,6 +226,13 @@ class PDRange:
         """Match upstream ``toString()``: ``PDRange{min, max}``."""
         return "PDRange{" + str(self.get_min()) + ", " + str(self.get_max()) + "}"
 
+    def to_string(self) -> str:
+        """Snake-case wrapper around :meth:`__str__` mirroring upstream
+        ``PDRange.toString()`` (``PDRange.java`` line 137). Lets callers
+        porting Java code keep the ``range.toString()`` shape.
+        """
+        return self.__str__()
+
     def __repr__(self) -> str:
         return (
             f"PDRange(min={self.get_min()!r}, max={self.get_max()!r}, "

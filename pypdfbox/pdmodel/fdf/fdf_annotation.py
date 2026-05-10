@@ -406,6 +406,57 @@ class FDFAnnotation:
 
     # ---------- /RC rich contents ----------
 
+    @staticmethod
+    def rich_contents_to_string(node: object, root: bool = False) -> str:
+        """Serialise an XML ``rich-text`` element back to a string.
+
+        Mirrors upstream private
+        ``FDFAnnotation.richContentsToString(Node, boolean)`` (line 998
+        of ``FDFAnnotation.java``). Walks the node's children and
+        re-emits Element / CDATA / Text nodes as XML, escaping ``&`` /
+        ``<`` in text and ``"`` in attributes. When ``root`` is ``True``
+        only the inner text is returned (matches the upstream contract
+        where the outer ``<body>`` wrapper is stripped). Surfaced as a
+        public static helper because pypdfbox callers occasionally
+        round-trip RC payloads outside of the FDF parser pipeline.
+
+        Accepts any ``xml.dom.minidom`` Node; returns ``""`` when the
+        node has no children.
+        """
+        # Local imports keep the optional dependency on stdlib's xml.dom
+        # confined to the call site.
+        from xml.dom.minidom import CDATASection, Element, Text  # noqa: PLC0415
+
+        parts: list[str] = []
+        children = getattr(node, "childNodes", None) or []
+        for child in children:
+            if isinstance(child, Element):
+                parts.append(FDFAnnotation.rich_contents_to_string(child, False))
+            elif isinstance(child, CDATASection):
+                parts.append("<![CDATA[")
+                parts.append(child.data or "")
+                parts.append("]]>")
+            elif isinstance(child, Text):
+                cdata = child.data
+                if cdata is not None:
+                    cdata = cdata.replace("&", "&amp;").replace("<", "&lt;")
+                    parts.append(cdata)
+        body = "".join(parts)
+        if root:
+            return body
+        # Non-root: emit ``<tag attr="…">body</tag>``.
+        attrs_text: list[str] = []
+        attributes = getattr(node, "attributes", None)
+        if attributes is not None:
+            for i in range(attributes.length):
+                attribute = attributes.item(i)
+                value = attribute.nodeValue
+                if value is not None:
+                    value = value.replace('"', "&quot;")
+                attrs_text.append(f' {attribute.nodeName}="{value}"')
+        tag = node.nodeName
+        return f"<{tag}{''.join(attrs_text)}>{body}</{tag}>"
+
     def get_rich_contents(self) -> str:
         """Return the rich-text contents stream, or an empty string.
 

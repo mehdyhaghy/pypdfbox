@@ -162,15 +162,24 @@ class FontInfo(ABC):
 
     # ---------- repr ----------
 
-    def __str__(self) -> str:
-        # Same shape as upstream ``FontInfo.toString()``:
-        #   "<psname> (<format>, mac: 0x<hex>, os/2: 0x<hex>, cid: <ros>)"
+    def to_string(self) -> str:
+        """Mirror upstream ``FontInfo.toString()``.
+
+        Upstream format (Java lines 143-146):
+        ``getPostScriptName() + " (" + getFormat() +
+        ", mac: 0x" + Integer.toHexString(getMacStyle()) +
+        ", os/2: 0x" + Integer.toHexString(getFamilyClass()) +
+        ", cid: " + getCIDSystemInfo() + ")"``.
+        """
         return (
             f"{self.get_post_script_name()} ({self.get_format()}, "
             f"mac: 0x{self.get_mac_style():x}, "
             f"os/2: 0x{self.get_family_class():x}, "
             f"cid: {self.get_cid_system_info()})"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 __all__ = ["FontInfo"]

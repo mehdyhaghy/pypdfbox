@@ -53,6 +53,17 @@ class PDContentStream(ABC):
     def get_bbox(self) -> PDRectangle:
         """Bounding box for the stream's graphics."""
 
+    def get_b_box(self) -> PDRectangle:
+        """Upstream-named alias of :meth:`get_bbox`.
+
+        Mirrors upstream ``PDContentStream.getBBox()`` snake-cased one
+        capital at a time (PDFBox's ``BBox`` → ``b_box``). Concrete
+        subclasses override :meth:`get_bbox`; this alias delegates to it
+        so callers using the upstream-letter-for-letter snake_case name
+        get the same value without each subclass needing two overrides.
+        """
+        return self.get_bbox()
+
     @abstractmethod
     def get_matrix(self) -> Any:
         """Transformation matrix applied to the stream. See class

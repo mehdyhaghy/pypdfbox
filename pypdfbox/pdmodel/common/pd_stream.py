@@ -343,6 +343,52 @@ class PDStream:
             return out
         raise TypeError(f"unexpected /DecodeParms type: {type(parms).__name__}")
 
+    def internal_get_decode_params(
+        self, name1: COSName, name2: COSName | None = None
+    ) -> list[COSDictionary] | None:
+        """Mirror upstream ``PDStream.internalGetDecodeParams`` (lines
+        296-326 in PDStream.java).
+
+        Looks up ``name1`` in the underlying dictionary, falling back to
+        ``name2`` (legacy spelling alias — typically ``/DP`` for
+        ``/DecodeParms``). When the entry is a ``COSDictionary`` it is
+        returned as a single-element list; when it is a ``COSArray``,
+        each ``COSDictionary`` member is collected (``COSNull`` /
+        ``None`` placeholders are kept as empty dicts so list-index
+        alignment with the filter chain is preserved). Returns ``None``
+        when the entry is absent.
+
+        Public counterpart to the upstream private helper — surfaced for
+        callers that need the same lookup against an arbitrary key pair
+        (e.g. inline-image filter inspection or non-standard decode
+        parameter aliases).
+        """
+        from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
+
+        parms = self._stream.get_dictionary_object(name1)
+        if parms is None and name2 is not None:
+            parms = self._stream.get_dictionary_object(name2)
+        if parms is None:
+            return None
+        if isinstance(parms, COSDictionary):
+            return [parms]
+        if isinstance(parms, COSArray):
+            out: list[COSDictionary] = []
+            for entry in parms:
+                if isinstance(entry, COSDictionary):
+                    out.append(entry)
+                elif entry is None or isinstance(entry, COSNull):
+                    out.append(COSDictionary())
+                else:
+                    raise TypeError(
+                        f"unexpected decode-params entry type: "
+                        f"{type(entry).__name__}"
+                    )
+            return out
+        raise TypeError(
+            f"unexpected {name1.name} type: {type(parms).__name__}"
+        )
+
     def set_decode_parms(
         self,
         parms: COSDictionary | Sequence[COSDictionary] | None,

@@ -156,3 +156,11 @@ class PDMarkedContent:
     # string. Upstream body is literally
     # ``"tag=" + tag + ", properties=" + properties + ", contents=" + contents``.
     __str__ = __repr__
+
+    def to_string(self) -> str:
+        """Snake-case wrapper around :meth:`__str__` mirroring upstream
+        ``PDMarkedContent.toString()`` (``PDMarkedContent.java`` line
+        194). Lets callers porting Java code keep the ``mc.toString()``
+        shape.
+        """
+        return self.__str__()

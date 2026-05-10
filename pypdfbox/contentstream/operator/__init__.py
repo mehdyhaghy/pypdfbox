@@ -234,6 +234,33 @@ class Operator:
     def image_parameters(self) -> COSDictionary | None:
         return self._image_parameters
 
+    # ---------- dispatch ----------
+
+    def execute(
+        self,
+        processor: OperatorProcessor,
+        operands: list[COSBase] | None = None,
+    ) -> None:
+        """Dispatch this operator through ``processor``.
+
+        Mirrors the upstream pattern where a parser holds an operator
+        and a list of operands and calls
+        ``processor.process(operator, operands)`` to drive the rendering
+        / text-extraction state machine. Java spells this dispatch
+        inline at the engine layer (``PDFStreamEngine.processOperator``);
+        the equivalent helper lives on :class:`Operator` here so callers
+        with a populated operator instance can dispatch directly without
+        re-fetching the operand window.
+
+        ``operands`` defaults to the operator's attached operand list
+        (populated by :meth:`with_operands` / the parser); pass an
+        explicit list to dispatch with an alternative window. Any
+        :class:`MissingOperandException` raised by the processor is
+        propagated unchanged.
+        """
+        chosen = self._operands if operands is None else operands
+        processor.process(self, chosen)
+
     # ---------- copy ----------
 
     def __copy__(self) -> Operator:

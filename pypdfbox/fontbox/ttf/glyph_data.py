@@ -258,13 +258,20 @@ class BoundingBox:
             self._upper_right_y,
         )
 
-    def __str__(self) -> str:
-        # Mirrors upstream ``BoundingBox.toString()`` —
-        # "[lowerLeftX,lowerLeftY,upperRightX,upperRightY]".
+    def to_string(self) -> str:
+        """Mirror upstream ``BoundingBox.toString()``.
+
+        Upstream format (Java lines 195-196):
+        ``"[" + getLowerLeftX() + "," + getLowerLeftY() + "," +
+        getUpperRightX() + "," + getUpperRightY() + "]"``.
+        """
         return (
             f"[{self._lower_left_x},{self._lower_left_y},"
             f"{self._upper_right_x},{self._upper_right_y}]"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
     def __repr__(self) -> str:
         return (

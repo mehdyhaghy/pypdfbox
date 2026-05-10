@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .true_type_font import TrueTypeFont
     from .ttf_data_stream import TTFDataStream
+    from .ttf_parser import FontHeaders
 
 
 class TTFTable:
@@ -82,3 +83,18 @@ class TTFTable:
         """Read this table from the data stream. Default: no-op (unknown tag)."""
         # do not flip ``initialized`` for the unknown-table base implementation;
         # the field is intentionally not set so callers know the body wasn't read.
+
+    def read_headers(
+        self,
+        ttf: TrueTypeFont,  # noqa: ARG002
+        data: TTFDataStream,  # noqa: ARG002
+        out_headers: FontHeaders,  # noqa: ARG002
+    ) -> None:
+        """Read the minimum metadata required by ``FontHeaders``.
+
+        Mirrors upstream ``TTFTable.readHeaders(TrueTypeFont, TTFDataStream,
+        FontHeaders)`` (TTFTable.java L138). The base class' implementation
+        is a no-op; subclasses (``HeaderTable``, ``OS2WindowsMetricsTable``,
+        ``NamingTable``, ``CFFTable``) override it to populate the relevant
+        fields on ``out_headers`` without paying for full table decode.
+        """

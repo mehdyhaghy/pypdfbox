@@ -720,7 +720,17 @@ class PDPanoseClassification:
         """Number of bytes actually stored (typically :attr:`LENGTH` == 10)."""
         return len(self._bytes)
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``PDPanoseClassification.toString()``.
+
+        Upstream format (Java lines 98-107):
+        ``"{ FamilyKind = " + getFamilyKind() + ", SerifStyle = " +
+        getSerifStyle() + ", Weight = " + getWeight() + ", Proportion = " +
+        getProportion() + ", Contrast = " + getContrast() +
+        ", StrokeVariation = " + getStrokeVariation() + ", ArmStyle = " +
+        getArmStyle() + ", Letterform = " + getLetterform() + ", Midline = " +
+        getMidline() + ", XHeight = " + getXHeight() + "}"``.
+        """
         return (
             "{ FamilyKind = "
             + str(self.get_family_kind())
@@ -744,6 +754,9 @@ class PDPanoseClassification:
             + str(self.get_x_height())
             + "}"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
     def __repr__(self) -> str:
         return f"PDPanoseClassification({self._bytes!r})"

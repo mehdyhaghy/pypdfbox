@@ -359,15 +359,41 @@ class PDField:
             return False
         return self._field == other.get_cos_object()
 
+    def equals(self, other: object) -> bool:
+        """Mirror upstream ``PDField.equals(Object)`` (lines 484-498).
+
+        Java-named delegate to :meth:`__eq__` for callers porting code
+        verbatim from PDFBox. Two fields are equal iff their backing
+        ``COSDictionary`` objects compare equal — identity-via-dict.
+        """
+        return self.__eq__(other)
+
     def __hash__(self) -> int:
         # Hash on the dictionary identity so equal fields hash equal.
         return hash(id(self._field))
+
+    def hash_code(self) -> int:
+        """Mirror upstream ``PDField.hashCode()`` (lines 503-507).
+
+        Java-named delegate to :meth:`__hash__`. Returns ``Objects.hash``
+        of the backing dictionary; in pypdfbox this is the dictionary's
+        Python-side identity hash so equal fields hash equal.
+        """
+        return self.__hash__()
 
     def __str__(self) -> str:
         # Mirrors upstream PDField.toString: "<fqn>{type: <Class> value: <V>}".
         fqn = self.get_fully_qualified_name() or ""
         value = self.get_inheritable_attribute(COSName.get_pdf_name("V"))
         return f"{fqn}{{type: {type(self).__name__} value: {value}}}"
+
+    def to_string(self) -> str:
+        """Mirror upstream ``PDField.toString()`` (lines 473-478).
+
+        Java-named delegate to :meth:`__str__` returning
+        ``"<fqn>{type: <Class> value: <V>}"``.
+        """
+        return self.__str__()
 
     def __repr__(self) -> str:
         return self.__str__()

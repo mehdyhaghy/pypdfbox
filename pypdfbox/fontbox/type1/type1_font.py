@@ -109,6 +109,11 @@ class Type1Font:
         # cleartext / eexec halves).
         self._segment1: bytes = b""
         self._segment2: bytes = b""
+        # Lazily created Type 1 charstring parser, populated on first
+        # :meth:`get_parser` call (mirror of upstream package-private
+        # ``Type1Font.charStringParser``).
+        self._char_string_parser: Any | None = None
+        self._char_string_parser_font_name: str | None = None
 
     # ---------- factory ----------
 
@@ -164,6 +169,88 @@ class Type1Font:
         instance._segment1 = bytesjoin(seg1_parts)
         instance._segment2 = bytesjoin(seg2_parts)
         return instance
+
+    @classmethod
+    def create_with_pfb(cls, pfb: bytes | bytearray | memoryview) -> Type1Font:
+        """Build a ``Type1Font`` from a .pfb byte stream.
+
+        Mirrors upstream ``Type1Font.createWithPFB(byte[])`` /
+        ``createWithPFB(InputStream)`` (Type1Font.java L52-L72) — splits
+        the .pfb container into segment 1 (cleartext PostScript header)
+        and segment 2 (encrypted eexec body) and forwards them to
+        :meth:`create_with_segments`.
+
+        Accepts raw bytes, bytearray, or memoryview. Callers handing in
+        an open binary stream should ``.read()`` it first (Java's
+        ``InputStream`` overload is folded into this single entry point).
+
+        The .pfb container is the simple Adobe-defined record stream of
+        ``0x80, type, size_le32, payload`` records, with type ``1``
+        (ASCII) feeding segment 1 and type ``2`` (binary) feeding
+        segment 2. Type ``3`` is the EOF marker.
+        """
+        raw = bytes(pfb)
+        if len(raw) < 18:
+            msg = "PFB header missing"
+            raise OSError(msg)
+
+        seg1_parts: list[bytes] = []
+        seg2_parts: list[bytes] = []
+        cleartomark: bytes | None = None
+        ascii_segments: list[bytes] = []
+
+        pos = 0
+        while pos < len(raw):
+            if raw[pos] != 0x80:
+                msg = "Start marker missing"
+                raise OSError(msg)
+            pos += 1
+            if pos >= len(raw):
+                break
+            record_type = raw[pos]
+            pos += 1
+            if record_type == 0x03:  # EOF marker
+                break
+            if record_type not in (0x01, 0x02):
+                msg = f"Incorrect record type: {record_type}"
+                raise OSError(msg)
+            if pos + 4 > len(raw):
+                msg = "EOF while reading PFB font"
+                raise OSError(msg)
+            size = int.from_bytes(raw[pos : pos + 4], "little", signed=True)
+            pos += 4
+            if size < 0:
+                msg = f"record size {size} is negative"
+                raise OSError(msg)
+            if size > len(raw):
+                msg = f"record size {size} would be larger than the input"
+                raise OSError(msg)
+            if pos + size > len(raw):
+                msg = "EOF while reading PFB font"
+                raise OSError(msg)
+            payload = raw[pos : pos + size]
+            pos += size
+            if record_type == 0x02:
+                seg2_parts.append(payload)
+            else:
+                ascii_segments.append(payload)
+
+        # Upstream ``PfbParser.getSegment1()`` returns only the leading
+        # ASCII bytes — the trailing ``cleartomark`` ASCII record is
+        # excluded from both segment 1 and segment 2 (PfbParser.java
+        # L295-L310; ``lengths[2]`` is recorded separately).
+        for idx, seg in enumerate(ascii_segments):
+            if (
+                idx == len(ascii_segments) - 1
+                and len(seg) < 600
+                and b"cleartomark" in seg
+            ):
+                cleartomark = seg
+                continue
+            seg1_parts.append(seg)
+        del cleartomark  # tracked but not folded into segment 1
+
+        return cls.create_with_segments(b"".join(seg1_parts), b"".join(seg2_parts))
 
     @classmethod
     def create_with_segments(
@@ -495,6 +582,16 @@ class Type1Font:
                 )
                 self._meta_cache["ulthick"] = 0.0
         return self._meta_cache["ulthick"]  # type: ignore[no-any-return]
+
+    def get_font_b_box(self) -> tuple[float, float, float, float] | None:
+        """Strict snake-case rendering of upstream ``getFontBBox``.
+
+        Mirrors :meth:`get_font_bbox` — kept for parity with the
+        :class:`~pypdfbox.fontbox.font_box_font.FontBoxFont` protocol
+        which exposes both spellings (the project porting rules expand
+        consecutive caps as separate words: ``BBox`` → ``b_box``).
+        """
+        return self.get_font_bbox()
 
     def get_font_bbox(self) -> tuple[float, float, float, float] | None:
         """Top-level ``/FontBBox`` as ``(llx, lly, urx, ury)`` in font units.
@@ -905,6 +1002,36 @@ class Type1Font:
         # Side-effect: the draw populates cs.width — cache it while we're here.
         self._widths.setdefault(name, float(getattr(cs, "width", 0.0) or 0.0))
         return list(pen.commands)
+
+    def get_parser(self) -> Any:
+        """Return the (lazily-created) Type 1 charstring parser.
+
+        Mirrors upstream package-private ``Type1Font.getParser()``
+        (Type1Font.java L213-L220). Upstream caches a single
+        :class:`Type1CharStringParser` keyed off the font name; we mirror
+        the same cache so each charstring decode reuses the parser. The
+        parser itself is provided by :class:`Type1Parser` which already
+        wraps the eexec → PostScript-subset interpreter in our setup.
+        """
+        if self._char_string_parser is None:
+            from .type1_parser import Type1Parser  # noqa: PLC0415
+
+            self._char_string_parser = Type1Parser()
+            # Track the font name so the cache miss is keyed off the
+            # same identity as upstream's ``new Type1CharStringParser(
+            # fontName)`` constructor.
+            self._char_string_parser_font_name = self.get_name()
+        return self._char_string_parser
+
+    def to_string(self) -> str:
+        """Strict snake-case rendering of upstream ``toString()``.
+
+        Mirrors :meth:`__str__` — Java exposes ``toString()`` as a
+        public method and pypdfbox-shaped callers may invoke it directly
+        rather than coerce through ``str(font)``. Mirrors upstream
+        ``Type1Font.toString()`` (Type1Font.java L571-L575).
+        """
+        return self.__str__()
 
     def get_type1_char_string(self, name: str) -> Any:
         """PDFBox: ``Type1Font.getType1CharString(String name)`` —

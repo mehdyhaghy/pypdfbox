@@ -136,3 +136,17 @@ class COSObject(COSBase):
 
     def __repr__(self) -> str:
         return f"COSObject({self._object_number} {self._generation_number} R)"
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``COSObject.toString`` (``COSObject.java``
+        line 149): ``COSObject{<num> <gen> R}``. The inner ``<num> <gen>
+        R`` payload matches ``COSObjectKey.toString``.
+        """
+        return f"COSObject{{{self._object_number} {self._generation_number} R}}"
+
+    def to_string(self) -> str:
+        """Snake-case wrapper around :meth:`__str__` mirroring
+        upstream ``COSObject.toString`` (``COSObject.java`` line 149).
+        Lets callers porting Java code keep the ``obj.toString()`` shape.
+        """
+        return self.__str__()

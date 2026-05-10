@@ -152,6 +152,26 @@ class PDAppearanceCharacteristicsDictionary:
     def get_cos_object(self) -> COSDictionary:
         return self._dict
 
+    # ---------- generic colour getter ----------
+
+    def get_color(self, item_name: COSName) -> PDColor | None:
+        """Return the colour at ``item_name`` (typically ``/BC`` or
+        ``/BG``) as a typed :class:`PDColor`.
+
+        Mirrors upstream private
+        ``PDAppearanceCharacteristicsDictionary.getColor(COSName)``
+        (line 214 of
+        ``PDAppearanceCharacteristicsDictionary.java``). Surfaced as a
+        public Python parity helper so callers can read MK colour
+        entries beyond ``/BC`` and ``/BG`` (e.g. forms-cluster code
+        that walks the dictionary generically).
+
+        Dispatches on the array arity to ``DeviceGray`` (1),
+        ``DeviceRGB`` (3) or ``DeviceCMYK`` (4); ``None`` for any
+        other length and when the entry is absent.
+        """
+        return _read_color(self._dict, item_name)
+
     # ---------- /R (rotation) ----------
 
     def get_rotation(self) -> int:

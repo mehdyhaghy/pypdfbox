@@ -101,10 +101,9 @@ class PDPageDestination(PDDestination):
         Mirrors upstream ``PDPageDestination#retrievePageNumber()``: when
         ``document`` is ``None`` and ``/D[0]`` is a page dictionary, walks
         the page's ``/Parent`` (or ``/P``) chain up to the page-tree root
-        and uses :class:`PDPageTree` to compute the index. When no chain
-        is found or the resolved root isn't a ``/Type /Pages`` node,
-        returns ``-1``. When ``document`` is supplied, delegates to
-        :meth:`find_page_number` for the document-rooted lookup.
+        via :meth:`index_of_page_tree`. When ``document`` is supplied,
+        delegates to :meth:`find_page_number` for the document-rooted
+        lookup.
         """
         if document is not None:
             return self.find_page_number(document)
@@ -114,14 +113,28 @@ class PDPageDestination(PDDestination):
             return page_number
         if not isinstance(page, COSDictionary):
             return -1
-        # Walk /Parent (or /P) until we find a /Type /Pages root.
+        return self.index_of_page_tree(page)
+
+    @staticmethod
+    def index_of_page_tree(page_dict: COSDictionary) -> int:
+        """Climb the ``/Parent`` (or ``/P``) chain up to the highest
+        ``/Type /Pages`` node and return ``page_dict``'s 0-based index
+        within that page tree, or ``-1`` when no valid root is found.
+
+        Mirrors upstream private
+        ``PDPageDestination.indexOfPageTree(COSDictionary)`` (line 138 of
+        ``PDPageDestination.java``). Surfaced as a public static helper
+        because pypdfbox callers occasionally need the same walk for
+        outline / link annotations that hold a page reference without an
+        owning ``PDDocument``.
+        """
         parent_key = COSName.PARENT  # type: ignore[attr-defined]
         p_key = COSName.get_pdf_name("P")
         type_key = COSName.TYPE  # type: ignore[attr-defined]
         kids_key = COSName.KIDS  # type: ignore[attr-defined]
         pages_name = COSName.PAGES  # type: ignore[attr-defined]
         seen: set[int] = set()
-        current = page
+        current = page_dict
         while True:
             if id(current) in seen:
                 # Cycle guard — bail safely.
@@ -141,7 +154,7 @@ class PDPageDestination(PDDestination):
             return -1
         from pypdfbox.pdmodel.pd_page_tree import PDPageTree
 
-        return PDPageTree(current).index_of(page)
+        return PDPageTree(current).index_of(page_dict)
 
     @staticmethod
     def _resolve_page_tree(context: Any) -> Any:

@@ -1361,3 +1361,55 @@ No new port files added. The wave only extended existing upstream-derived module
 | `tests/fontbox/ttf/gsub/upstream/test_feature_record.py` | 3.0.x | upstream-shaped synthetic tests for `FeatureRecord.to_string` (no standalone JUnit upstream — exercised through GSUB parsing tests) |
 | `tests/fontbox/ttf/gsub/upstream/test_lookup_table.py` | 3.0.x | upstream-shaped synthetic tests for `LookupTable.to_string` |
 | `tests/fontbox/ttf/gsub/upstream/test_script_table.py` | 3.0.x | upstream-shaped synthetic tests for `ScriptTable.to_string` |
+
+### Wave 1275 additions
+
+No new port files added. The wave only extended existing upstream-derived modules with explicit `to_string()` mirrors and missing public methods/aliases against PDFBox 3.0.x. New hand-written coverage tests:
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `tests/contentstream/test_operator_wave1275.py` | 3.0.x | hand-written coverage for `Operator.execute` |
+| `tests/contentstream/test_pd_content_stream_wave1275.py` | 3.0.x | hand-written coverage for `PDContentStream.get_b_box` |
+| `tests/cos/test_cos_document_wave1275.py` | 3.0.x | hand-written coverage for `COSDocument.get_stream_cache` |
+| `tests/cos/test_cos_object_wave1275.py` | 3.0.x | hand-written coverage for `COSObject.to_string` |
+| `tests/cos/test_cos_stream_wave1275.py` | 3.0.x | hand-written coverage for `COSStream.write` |
+| `tests/cos/test_i_cos_visitor_wave1275.py` | 3.0.x | hand-written coverage for `ICOSVisitor.visit_from_int` |
+| `tests/fontbox/cff/test_cff_type1_font_wave1275.py` | 3.0.x | hand-written coverage for `CFFType1Font.get_parser` / `set_encoding` |
+| `tests/fontbox/test_font_box_font_wave1275.py` | 3.0.x | hand-written coverage for `get_font_b_box` helper |
+| `tests/fontbox/test_font_info_wave1275.py` | 3.0.x | hand-written coverage for `FontInfo.to_string` |
+| `tests/fontbox/ttf/test_bounding_box_wave1275.py` | 3.0.x | hand-written coverage for `BoundingBox.to_string` (in `glyph_data.py`) |
+| `tests/fontbox/ttf/test_font_headers_wave1275.py` | 3.0.x | hand-written coverage for `FontHeaders.get_non_otf_table_gcid142` / `set_non_otf_gcid142` |
+| `tests/fontbox/ttf/test_header_table_wave1275.py` | 3.0.x | hand-written coverage for `HeaderTable.read_headers` |
+| `tests/fontbox/ttf/test_name_record_wave1275.py` | 3.0.x | hand-written coverage for `NameRecord.to_string` |
+| `tests/fontbox/ttf/test_ttf_table_wave1275.py` | 3.0.x | hand-written coverage for `TTFTable.read_headers` no-op base |
+| `tests/fontbox/type1/test_type1_font_wave1275.py` | 3.0.x | hand-written coverage for `Type1Font.create_with_pfb` / `get_font_b_box` / `get_parser` / `to_string` |
+| `tests/io/test_memory_usage_setting_wave1275.py` | 3.0.x | hand-written coverage for `MemoryUsageSetting.to_string` |
+| `tests/io/test_random_access_read_buffered_file_wave1275.py` | 3.0.x | hand-written coverage for `RandomAccessReadBufferedFile.read_page` / `remove_eldest_entry` |
+| `tests/io/test_scratch_file_wave1275.py` | 3.0.x | hand-written coverage for `ScratchFile.init_pages` / `enlarge` |
+| `tests/pdfwriter/test_cos_writer_setters_wave1275.py` | 3.0.x | hand-written coverage for `COSWriter.set_output` / `set_standard_output` |
+| `tests/pdmodel/common/test_pd_name_tree_node_wave1275.py` | 3.0.x | hand-written coverage for `PDNameTreeNode.calculate_limits` |
+| `tests/pdmodel/common/test_pd_range_wave1275.py` | 3.0.x | hand-written coverage for `PDRange.to_string` |
+| `tests/pdmodel/common/test_pd_stream_wave1275.py` | 3.0.x | hand-written coverage for `PDStream.internal_get_decode_params` |
+| `tests/pdmodel/documentinterchange/logicalstructure/test_pd_marked_content_reference_to_string_wave1275.py` | 3.0.x | hand-written coverage for `PDMarkedContentReference.to_string` |
+| `tests/pdmodel/documentinterchange/markedcontent/test_pd_marked_content_to_string_wave1275.py` | 3.0.x | hand-written coverage for `PDMarkedContent.to_string` |
+| `tests/pdmodel/documentinterchange/taggedpdf/test_pd_artifact_marked_content_wave1275.py` | 3.0.x | hand-written coverage for `PDArtifactMarkedContent.is_attached` |
+| `tests/pdmodel/documentinterchange/taggedpdf/test_pd_standard_attribute_object_wave1275.py` | 3.0.x | hand-written coverage for `PDStandardAttributeObject.set_four_colors` |
+| `tests/pdmodel/encryption/test_security_handler_aes_other_wave1275.py` | 3.0.x | hand-written coverage for `SecurityHandler.encrypt_data_ae_sother` |
+| `tests/pdmodel/fdf/test_fdf_annotation_rich_contents_wave1275.py` | 3.0.x | hand-written coverage for `FDFAnnotation.rich_contents_to_string` |
+| `tests/pdmodel/fdf/test_fdf_field_escape_xml_wave1275.py` | 3.0.x | hand-written coverage for `FDFField.escape_xml` |
+| `tests/pdmodel/font/test_pd_panose_wave1275.py` | 3.0.x | hand-written coverage for `PDPanoseClassification.to_string` |
+| `tests/pdmodel/graphics/color/test_pd_color_space_wave1275.py` | 3.0.x | hand-written coverage for `PDColorSpace.create_from_cos_object` |
+| `tests/pdmodel/graphics/color/test_pd_device_n_attributes_wave1275.py` | 3.0.x | hand-written coverage for `PDDeviceNAttributes.to_string` |
+| `tests/pdmodel/graphics/color/test_pd_indexed_wave1275.py` | 3.0.x | hand-written coverage for `PDIndexed.set_high_value` |
+| `tests/pdmodel/graphics/color/test_pd_output_intent_wave1275.py` | 3.0.x | hand-written coverage for `PDOutputIntent.configure_output_profile` |
+| `tests/pdmodel/graphics/shading/test_pd_shading_to_paint_wave1275.py` | 3.0.x | hand-written coverage for `PDShading.to_paint` / Type1 / Type2 |
+| `tests/pdmodel/graphics/state/test_pd_soft_mask_wave1275.py` | 3.0.x | hand-written coverage for `PDSoftMask.get_sub_type` |
+| `tests/pdmodel/interactive/annotation/test_pd_appearance_characteristics_dictionary_wave1275.py` | 3.0.x | hand-written coverage for `PDAppearanceCharacteristicsDictionary.get_color` |
+| `tests/pdmodel/interactive/digitalsignature/test_pd_signature_wave1275.py` | 3.0.x | hand-written coverage for `PDSignature.get_converted_contents` |
+| `tests/pdmodel/interactive/documentnavigation/destination/test_pd_page_destination_wave1275.py` | 3.0.x | hand-written coverage for `PDPageDestination.index_of_page_tree` |
+| `tests/pdmodel/interactive/form/test_pd_field_wave1275.py` | 3.0.x | hand-written coverage for `PDField.equals` / `hash_code` / `to_string` |
+| `tests/pdmodel/interactive/form/test_pd_variable_text_wave1275.py` | 3.0.x | hand-written coverage for `PDVariableText.get_default_appearance_string` |
+| `tests/pdmodel/test_pd_rectangle_wave1275.py` | 3.0.x | hand-written coverage for `PDRectangle.to_string` / `transform` |
+| `tests/xmpbox/test_xmp_metadata_wave1275.py` | 3.0.x | hand-written coverage for `XMPMetadata.get_end_x_packet` / `set_end_x_packet` / `get_type_mapping` |
+| `tests/xmpbox/type/test_abstract_simple_property_wave1275.py` | 3.0.x | hand-written coverage for `AbstractSimpleProperty.to_string` |
+| `tests/xmpbox/type/upstream/test_attribute_wave1275.py` | 3.0.x | hand-written coverage for `Attribute.to_string` |

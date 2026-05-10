@@ -675,6 +675,45 @@ class SecurityHandler(ABC):
                 write(result)
         return result
 
+    def encrypt_data_ae_sother(
+        self,
+        final_key: bytes,
+        data: bytes | object,
+        output: object | None = None,
+        decrypt: bool = False,
+    ) -> bytes:
+        """Encrypt or decrypt ``data`` with AES-128 / per-object key.
+
+        Mirror of upstream private
+        ``SecurityHandler.encryptDataAESother(byte[] finalKey,
+        InputStream data, OutputStream output, boolean decrypt)``
+        (line 318 of ``SecurityHandler.java``). The "other" suffix in
+        the upstream name distinguishes the per-object AES variant
+        from the AES-256 file-key variant in
+        :meth:`encrypt_data_aes256`.
+
+        Snake-cased letter-by-letter from the PDFBox name
+        (``encryptDataAESother`` → ``encrypt_data_ae_sother``).
+        Returns the produced bytes; writes them to ``output`` if
+        provided.
+        """
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            payload = bytes(data)
+        else:
+            read = getattr(data, "read", None)
+            if not callable(read):
+                raise TypeError("data must be bytes-like or expose .read()")
+            payload = bytes(read())
+        if decrypt:
+            result = _aes_cbc_decrypt(final_key, payload)
+        else:
+            result = _aes_cbc_encrypt(final_key, payload)
+        if output is not None:
+            write = getattr(output, "write", None)
+            if callable(write):
+                write(result)
+        return result
+
     def encrypt_data_aes256(
         self,
         data: bytes | object,

@@ -550,6 +550,30 @@ class COSStream(COSDictionary):
             return ""
         return COSString(data).get_string()
 
+    # ---------- bulk output ----------
+
+    def write(self, output: BinaryIO) -> int:
+        """Write the raw (encoded) body to ``output`` and return the
+        number of bytes written.
+
+        pypdfbox addition — upstream's ``COSStream`` has no public
+        ``write`` method; ``COSWriter`` instead opens
+        :meth:`create_raw_input_stream` and copies through. Surfacing
+        the bulk-copy helper here lets callers serialise a stream's
+        body without juggling the input-stream resource themselves and
+        keeps the call site a one-liner: ``stream.write(out_target)``.
+
+        Honours the ``isWriting`` guard for parity with the rest of the
+        I/O surface — a concurrent open writer would let the read race
+        with an unflushed encode.
+        """
+        self.check_closed()
+        if self._is_writing:
+            raise RuntimeError("Cannot read while there is an open stream writer")
+        data = self.get_raw_data()
+        output.write(data)
+        return len(data)
+
     # ---------- lifecycle ----------
 
     def close(self) -> None:

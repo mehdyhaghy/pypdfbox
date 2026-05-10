@@ -161,10 +161,22 @@ class NameRecord:
     def setString(self, value: str | None) -> None:  # noqa: N802
         self.set_string(value)
 
-    def __repr__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``NameRecord.toString()``.
+
+        Upstream format (Java lines 186-191):
+        ``"platform=" + platformId + " pEncoding=" + platformEncodingId +
+        " language=" + languageId + " name=" + nameId + " " + string``.
+        """
         return (
             f"platform={self._platform_id} "
             f"pEncoding={self._platform_encoding_id} "
             f"language={self._language_id} "
             f"name={self._name_id} {self._string}"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
+
+    def __repr__(self) -> str:
+        return self.to_string()

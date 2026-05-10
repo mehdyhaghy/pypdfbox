@@ -531,26 +531,40 @@ class FDFField:
                 kid.write_xml(output)
         output.write("</field>\n")
 
+    @staticmethod
+    def escape_xml(text: str) -> str:
+        """Escape ``text`` for embedding in an XFDF XML element value.
+
+        Mirrors upstream private ``FDFField.escapeXML(String)`` (line
+        787 of ``FDFField.java``). Surfaced as a public ``@staticmethod``
+        on the class so PDFBox-trained callers can reach it via
+        ``FDFField.escape_xml(...)``; the existing
+        :func:`_escape_xml` module-level helper continues to delegate
+        to this implementation.
+        """
+        out: list[str] = []
+        for ch in text:
+            if ch == "<":
+                out.append("&lt;")
+            elif ch == ">":
+                out.append("&gt;")
+            elif ch == '"':
+                out.append("&quot;")
+            elif ch == "&":
+                out.append("&amp;")
+            elif ch == "'":
+                out.append("&apos;")
+            elif ord(ch) > 0x7E:
+                out.append(f"&#{ord(ch)};")
+            else:
+                out.append(ch)
+        return "".join(out)
+
 
 def _escape_xml(text: str) -> str:
-    """Mirrors upstream ``FDFField.escapeXML(String)``."""
-    out: list[str] = []
-    for ch in text:
-        if ch == "<":
-            out.append("&lt;")
-        elif ch == ">":
-            out.append("&gt;")
-        elif ch == '"':
-            out.append("&quot;")
-        elif ch == "&":
-            out.append("&amp;")
-        elif ch == "'":
-            out.append("&apos;")
-        elif ord(ch) > 0x7E:
-            out.append(f"&#{ord(ch)};")
-        else:
-            out.append(ch)
-    return "".join(out)
+    """Mirrors upstream ``FDFField.escapeXML(String)``. Module-level
+    legacy alias — delegates to :meth:`FDFField.escape_xml`."""
+    return FDFField.escape_xml(text)
 
 
 def _cos_value_to_python(v: COSBase | None) -> object | None:
