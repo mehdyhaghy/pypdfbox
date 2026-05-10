@@ -18,7 +18,6 @@ from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser
 from pypdfbox.pdfparser.parse_error import PDFParseError
 
-
 # --------------------------------------------------------------- helpers
 
 

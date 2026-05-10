@@ -4,9 +4,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream, 
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_caret import (
     PDAnnotationCaret,
 )
-from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
-    PDBorderStyleDictionary,
-)
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_highlight import (
     PDAnnotationHighlight,
 )
@@ -36,6 +33,9 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text_markup import (
 )
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_underline import (
     PDAnnotationUnderline,
+)
+from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
+    PDBorderStyleDictionary,
 )
 
 # ---------- subtype constants — note non-trivial caps ----------

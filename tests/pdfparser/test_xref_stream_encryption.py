@@ -46,7 +46,6 @@ from tests.pdmodel.encryption.test_encryption_integration import (  # noqa: E402
     _build_encrypted_document,
 )
 
-
 # --------------------------------------------------------------- API surface
 
 

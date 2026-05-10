@@ -16,7 +16,6 @@ import pytest
 
 from pypdfbox.fontbox.cmap import CMap, CMapMappingError, CodespaceRange
 
-
 # ---------- has_unicode_mapping ----------
 
 

@@ -12,7 +12,6 @@ from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.multipdf import Splitter
 
-
 _TYPE = COSName.get_pdf_name("Type")
 _SUBTYPE = COSName.get_pdf_name("Subtype")
 _FT = COSName.get_pdf_name("FT")

@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification impo
 from pypdfbox.pdmodel.interactive.action.pd_action_submit_form import (
     PDActionSubmitForm,
 )
-from pypdfbox.pdmodel.interactive.form.pd_field import PDField
 from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 

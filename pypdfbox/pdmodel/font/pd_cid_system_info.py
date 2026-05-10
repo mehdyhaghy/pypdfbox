@@ -156,6 +156,14 @@ class PDCIDSystemInfo:
             f"{self.get_supplement()}"
         )
 
+    def to_string(self) -> str:
+        """Mirror upstream ``PDCIDSystemInfo.toString()`` —
+        ``"<registry>-<ordering>-<supplement>"``. Delegates to
+        :meth:`__str__` so the two stay in lock-step; kept as an explicit
+        method so callers porting Java code that calls ``info.toString()``
+        get byte-identical output."""
+        return str(self)
+
     # ---------- value-equality / hashing ----------
 
     def __eq__(self, other: object) -> bool:

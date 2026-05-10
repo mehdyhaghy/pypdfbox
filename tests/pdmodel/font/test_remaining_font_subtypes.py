@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 from pypdfbox.pdmodel.pd_resources import PDResources
-
 
 # ---------- PDType3Font ----------
 

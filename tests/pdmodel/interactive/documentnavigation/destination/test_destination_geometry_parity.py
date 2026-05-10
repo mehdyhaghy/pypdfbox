@@ -20,7 +20,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
 )
 
-
 # ---------------------------------------------------------------------------
 # PDPageXYZDestination
 # ---------------------------------------------------------------------------

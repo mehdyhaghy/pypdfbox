@@ -483,7 +483,7 @@ def test_key_usage_constants() -> None:
     assert PDSeedValueCertificate.KEY_USAGE_INDEX_CRL_SIGN == 6
     assert PDSeedValueCertificate.KEY_USAGE_INDEX_ENCIPHER_ONLY == 7
     assert PDSeedValueCertificate.KEY_USAGE_INDEX_DECIPHER_ONLY == 8
-    assert PDSeedValueCertificate.KEY_USAGE_ALLOWED_CHARS == frozenset("01X")
+    assert frozenset("01X") == PDSeedValueCertificate.KEY_USAGE_ALLOWED_CHARS
 
 
 def test_validate_key_usage_string_accepts_well_formed() -> None:

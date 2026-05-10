@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_hide import PDActionHide
-from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
     PDAnnotationLink,
 )
@@ -18,7 +17,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
     PDAnnotationWidget,
 )
-
 
 _H: COSName = COSName.get_pdf_name("H")
 _S: COSName = COSName.get_pdf_name("S")

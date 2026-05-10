@@ -15,7 +15,6 @@ from PIL import Image
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 from pypdfbox.rendering.pdf_renderer import PDFRenderer
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

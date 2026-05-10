@@ -14,7 +14,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
     PDAnnotationWidget,
 )
 
-
 # ---------- /A action predicates ----------
 
 

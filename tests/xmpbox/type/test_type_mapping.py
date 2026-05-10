@@ -272,3 +272,23 @@ def test_get_associated_schema_object_unknown_returns_none(
         )
         is None
     )
+
+
+def test_properties_description_to_string_matches_upstream_format() -> None:
+    """Mirror of upstream ``PropertiesDescription.toString()`` (Java
+    lines 99-103). The textual form is the upstream
+    ``PropertiesDescription{types=...}`` shape."""
+    from pypdfbox.xmpbox.type.type_mapping import (
+        PropertiesDescription,
+        PropertyType,
+    )
+
+    desc = PropertiesDescription()
+    assert desc.to_string() == "PropertiesDescription{types={}}"
+    desc.add_new_property("Title", PropertyType(type="Text"))
+    s = desc.to_string()
+    assert s.startswith("PropertiesDescription{types=")
+    assert "Title" in s
+    # Stays consistent with __repr__ (upstream toString is also the only
+    # textual rendering).
+    assert s == repr(desc)

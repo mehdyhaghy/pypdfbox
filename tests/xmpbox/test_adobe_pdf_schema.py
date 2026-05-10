@@ -250,9 +250,9 @@ def test_set_text_property_value_as_simple_round_trip_for_pdf_fields() -> None:
 
 
 def test_known_properties_constant_lists_all_three_local_names() -> None:
-    assert AdobePDFSchema.KNOWN_PROPERTIES == frozenset(
+    assert frozenset(
         {"Keywords", "PDFVersion", "Producer"}
-    )
+    ) == AdobePDFSchema.KNOWN_PROPERTIES
     # frozenset so callers can rely on hashability / no accidental mutation.
     assert isinstance(AdobePDFSchema.KNOWN_PROPERTIES, frozenset)
 

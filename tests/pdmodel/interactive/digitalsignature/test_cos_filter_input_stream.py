@@ -9,7 +9,6 @@ from pypdfbox.pdmodel.interactive.digitalsignature.cos_filter_input_stream impor
     COSFilterInputStream,
 )
 
-
 # A simulated signed-PDF buffer: 100 bytes, with a 10-byte placeholder
 # that /Contents would occupy, bracketed by two ranges.
 PAYLOAD = bytes(range(100))

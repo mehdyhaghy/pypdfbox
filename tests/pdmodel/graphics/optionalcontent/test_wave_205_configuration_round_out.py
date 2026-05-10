@@ -20,7 +20,6 @@ from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,
 )
 
-
 # ----- /BaseState typed-enum overload -------------------------------------
 
 

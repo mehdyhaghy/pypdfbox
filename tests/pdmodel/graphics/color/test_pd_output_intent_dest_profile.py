@@ -6,7 +6,6 @@ from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
 
-
 _DEST_OUTPUT_PROFILE = COSName.get_pdf_name("DestOutputProfile")
 _N = COSName.get_pdf_name("N")
 

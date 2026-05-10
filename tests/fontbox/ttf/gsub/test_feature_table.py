@@ -35,3 +35,11 @@ def test_to_string_format_matches_upstream() -> None:
     assert str(FeatureTable()) == "FeatureTable[lookupListIndicesCount=0]"
     ft = FeatureTable(lookup_list_indices=(1, 2, 3, 4))
     assert str(ft) == "FeatureTable[lookupListIndicesCount=4]"
+
+
+def test_to_string_method_matches_dunder() -> None:
+    # Explicit ``to_string`` mirrors upstream Java naming and must be
+    # equal to ``__str__`` (which delegates to it).
+    ft = FeatureTable(lookup_list_indices=(1, 2, 3, 4))
+    assert ft.to_string() == "FeatureTable[lookupListIndicesCount=4]"
+    assert ft.to_string() == str(ft)

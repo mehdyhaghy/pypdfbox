@@ -19,7 +19,6 @@ of raw equals, which matches what upstream's equals actually evaluates.
 
 from pypdfbox.cos import COSString
 
-
 # All deviations (based on the table in ISO 32000-1:2008).
 _DEVIATIONS: tuple[str, ...] = (
     # block 1

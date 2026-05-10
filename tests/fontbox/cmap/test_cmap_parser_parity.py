@@ -4,7 +4,6 @@ import pytest
 
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 
-
 # ---------- parse_predefined ----------
 
 

@@ -23,7 +23,6 @@ from typing import Any
 from pypdfbox.fontbox.encoding.standard_encoding import StandardEncoding
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 
-
 # ---------- helpers ----------
 
 

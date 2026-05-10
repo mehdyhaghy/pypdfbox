@@ -5,7 +5,6 @@ import pytest
 from pypdfbox.pdmodel.encryption import AccessPermission
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission as AP
 
-
 # ---------- construction ----------
 
 

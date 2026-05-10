@@ -29,5 +29,22 @@ class ScriptTable:
     def get_lang_sys_tables(self) -> dict[str, LangSysTable]:
         return self.lang_sys_tables
 
+    def to_string(self) -> str:
+        """Mirror upstream ``ScriptTable.toString()``.
+
+        Upstream format:
+        ``ScriptTable[hasDefault=<true|false>,langSysRecordsCount=<N>]``.
+        The boolean is emitted lowercase (Java ``Boolean.toString``).
+        """
+        has_default = "true" if self.default_lang_sys_table is not None else "false"
+        return (
+            "ScriptTable["
+            f"hasDefault={has_default},"
+            f"langSysRecordsCount={len(self.lang_sys_tables)}]"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
+
 
 __all__ = ["ScriptTable"]

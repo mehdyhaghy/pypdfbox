@@ -5,7 +5,6 @@ from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.interactive.action.pd_action_sound import PDActionSound
 from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 
-
 _SOUND: COSName = COSName.get_pdf_name("Sound")
 
 

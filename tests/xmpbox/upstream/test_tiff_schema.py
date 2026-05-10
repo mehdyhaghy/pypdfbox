@@ -19,7 +19,6 @@ import pytest
 
 from pypdfbox.xmpbox import TiffSchema, XMPMetadata
 
-
 # Upstream @PropertyType declarations for every TIFF schema property.
 # Format: (FIELD_NAME, type_token, cardinality).
 _PARAMETERS: tuple[tuple[str, str, str], ...] = (

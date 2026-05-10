@@ -25,7 +25,6 @@ from pathlib import Path
 import pytest
 
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSName
 
 
 def _save_full(doc: PDDocument) -> bytes:

@@ -17,7 +17,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_screen import (
     PDAnnotationScreen,
 )
 
-
 _AN: COSName = COSName.get_pdf_name("AN")
 _OP: COSName = COSName.get_pdf_name("OP")
 _JS: COSName = COSName.get_pdf_name("JS")

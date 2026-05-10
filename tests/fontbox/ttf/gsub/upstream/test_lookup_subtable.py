@@ -197,3 +197,81 @@ def test_coverage_table_get_glyph_id_inverse_of_get_coverage_index() -> None:
     for gid in cov.get_glyph_array():
         idx = cov.get_coverage_index(gid)
         assert cov.get_glyph_id(idx) == gid
+
+
+# --- to_string() parity ---------------------------------------------
+
+
+def test_single_format1_to_string_mirrors_java_format() -> None:
+    # Java: String.format(
+    #   "LookupTypeSingleSubstFormat1[substFormat=%d,deltaGlyphID=%d]",
+    #   getSubstFormat(), deltaGlyphID);
+    sub = LookupTypeSingleSubstFormat1(delta_glyph_id=7, coverage_table=(1,))
+    assert (
+        sub.to_string()
+        == "LookupTypeSingleSubstFormat1[substFormat=1,deltaGlyphID=7]"
+    )
+
+
+def test_single_format2_to_string_mirrors_java_format() -> None:
+    # Java: String.format(
+    #   "LookupTypeSingleSubstFormat2[substFormat=%d,substituteGlyphIDs=%s]",
+    #   getSubstFormat(), Arrays.toString(substituteGlyphIDs));
+    sub = LookupTypeSingleSubstFormat2(
+        coverage_table=(1, 2, 3), substitute_glyph_ids=(100, 200, 300)
+    )
+    assert sub.to_string() == (
+        "LookupTypeSingleSubstFormat2[substFormat=2,"
+        "substituteGlyphIDs=[100, 200, 300]]"
+    )
+
+
+def test_single_format2_get_substitute_glyph_i_ds_mirrors_java_accessor() -> None:
+    # Upstream Java method is ``getSubstituteGlyphIDs()``; snake-case
+    # translation drops ``IDs`` into ``i_ds``.
+    sub = LookupTypeSingleSubstFormat2(
+        coverage_table=(1, 2), substitute_glyph_ids=(100, 200)
+    )
+    assert sub.get_substitute_glyph_i_ds() == (100, 200)
+
+
+def test_sequence_table_to_string_mirrors_java_format() -> None:
+    # Java: "SequenceTable{glyphCount=" + glyphCount
+    #     + ", substituteGlyphIDs=" + Arrays.toString(substituteGlyphIDs) + '}'
+    st = SequenceTable(glyph_count=3, substitute_glyph_ids=(60, 61, 62))
+    assert (
+        st.to_string()
+        == "SequenceTable{glyphCount=3, substituteGlyphIDs=[60, 61, 62]}"
+    )
+
+
+def test_alternate_set_table_to_string_mirrors_java_format() -> None:
+    # Java: "AlternateSetTable{glyphCount=" + glyphCount
+    #     + ", alternateGlyphIDs=" + Arrays.toString(alternateGlyphIDs) + '}'
+    ast = AlternateSetTable(glyph_count=2, alternate_glyph_ids=(900, 901))
+    assert (
+        ast.to_string()
+        == "AlternateSetTable{glyphCount=2, alternateGlyphIDs=[900, 901]}"
+    )
+
+
+def test_ligature_set_table_to_string_mirrors_java_format() -> None:
+    # Java: String.format("%s[ligatureCount=%d]",
+    #     LigatureSetTable.class.getSimpleName(), ligatureCount);
+    lst = LigatureSetTable(
+        ligature_tables=(
+            LigatureTable(ligature_glyph=1, component_glyph_ids=(2,)),
+        )
+    )
+    assert lst.to_string() == "LigatureSetTable[ligatureCount=1]"
+
+
+def test_lookup_type_ligature_subst_format1_to_string_mirrors_java_format() -> None:
+    # Java: String.format("%s[substFormat=%d]",
+    #     LookupTypeLigatureSubstitutionSubstFormat1.class.getSimpleName(),
+    #     getSubstFormat());
+    sub = LookupTypeLigatureSubstitutionSubstFormat1()
+    assert (
+        sub.to_string()
+        == "LookupTypeLigatureSubstitutionSubstFormat1[substFormat=1]"
+    )

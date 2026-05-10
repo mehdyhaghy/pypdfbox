@@ -4,7 +4,6 @@ import pytest
 
 from pypdfbox.pdmodel.interactive.pagenavigation import PDTransitionStyle
 
-
 # ---------- values() ----------
 
 

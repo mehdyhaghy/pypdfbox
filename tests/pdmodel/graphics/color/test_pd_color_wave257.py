@@ -31,7 +31,6 @@ from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 
-
 # ---------- get_components: PDFBOX-4279 Arrays.copyOf parity ----------
 
 

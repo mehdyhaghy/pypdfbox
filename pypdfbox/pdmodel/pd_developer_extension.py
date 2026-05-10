@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName, COSString
 
-
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _DEVELOPER_EXTENSIONS: COSName = COSName.get_pdf_name("DeveloperExtensions")
 _BASE_VERSION: COSName = COSName.get_pdf_name("BaseVersion")

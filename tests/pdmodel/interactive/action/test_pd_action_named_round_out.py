@@ -21,9 +21,9 @@ _N: COSName = COSName.get_pdf_name("N")
 def test_standard_named_actions_contains_exactly_the_four_table_211_names() -> None:
     """The constant must hold exactly the four spec-required names — no
     more (extension names belong to viewers, not the spec) and no less."""
-    assert PDActionNamed.STANDARD_NAMED_ACTIONS == frozenset(
+    assert frozenset(
         {"NextPage", "PrevPage", "FirstPage", "LastPage"}
-    )
+    ) == PDActionNamed.STANDARD_NAMED_ACTIONS
 
 
 def test_standard_named_actions_is_immutable_frozenset() -> None:

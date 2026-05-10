@@ -10,7 +10,6 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_movie import PDActionMovie
 
-
 # ---------- /Operation constants ----------
 
 

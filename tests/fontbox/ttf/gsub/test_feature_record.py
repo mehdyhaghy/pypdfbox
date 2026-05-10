@@ -24,3 +24,15 @@ def test_padded_tag_preserved_verbatim() -> None:
     fr = FeatureRecord(feature_tag="cv1 ", feature_table=FeatureTable())
     assert fr.get_feature_tag() == "cv1 "
     assert fr.get_feature_tag().strip() == "cv1"
+
+
+def test_to_string_matches_upstream_format() -> None:
+    # Mirrors upstream ``FeatureRecord[featureTag=<tag>]``.
+    fr = FeatureRecord(feature_tag="liga", feature_table=FeatureTable())
+    assert fr.to_string() == "FeatureRecord[featureTag=liga]"
+    assert str(fr) == fr.to_string()
+
+
+def test_to_string_includes_padded_tag_verbatim() -> None:
+    fr = FeatureRecord(feature_tag="cv1 ", feature_table=FeatureTable())
+    assert fr.to_string() == "FeatureRecord[featureTag=cv1 ]"

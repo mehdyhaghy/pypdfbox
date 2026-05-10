@@ -2,7 +2,6 @@ from __future__ import annotations
 
 # Ported from
 # fontbox/src/test/java/org/apache/fontbox/encoding/EncodingTest.java
-
 from pypdfbox.fontbox.encoding import MacRomanEncoding, StandardEncoding
 
 

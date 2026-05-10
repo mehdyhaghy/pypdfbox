@@ -113,17 +113,15 @@ def test_set_stroking_color_with_pdcolor_devicecmyk() -> None:
 def test_set_stroking_color_rejects_two_args() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.set_stroking_color(0.5, 0.5)
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.set_stroking_color(0.5, 0.5)
 
 
 def test_set_stroking_color_rejects_non_numeric_single_arg() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.set_stroking_color("nope")
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.set_stroking_color("nope")
 
 
 # ----------------------------------------------------------------------

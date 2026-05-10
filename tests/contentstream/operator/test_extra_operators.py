@@ -122,7 +122,6 @@ from pypdfbox.contentstream.operator.text.set_word_spacing import (
     SetWordSpacing,
 )
 
-
 # (operator-name, expected handler class) for every new stub we ship.
 _NEW_OPERATORS: list[tuple[str, type[OperatorProcessor]]] = [
     # path construction
@@ -183,7 +182,7 @@ def test_each_handler_class_advertises_correct_operator_name() -> None:
     """Every new stub class must set ``OPERATOR_NAME`` to the token it
     handles. The registry depends on this contract for default wiring."""
     for name, cls in _NEW_OPERATORS:
-        assert cls.OPERATOR_NAME == name, (
+        assert name == cls.OPERATOR_NAME, (
             f"{cls.__name__}.OPERATOR_NAME={cls.OPERATOR_NAME!r}, "
             f"expected {name!r}"
         )

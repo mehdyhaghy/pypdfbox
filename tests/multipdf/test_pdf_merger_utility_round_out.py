@@ -34,7 +34,6 @@ from pypdfbox.multipdf import (
 )
 from pypdfbox.pdmodel import PDDocument, PDPage
 
-
 # ---------- helpers ----------
 
 

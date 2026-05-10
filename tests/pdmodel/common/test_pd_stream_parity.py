@@ -8,7 +8,6 @@ from pypdfbox.pdmodel.common.filespecification import (
     PDSimpleFileSpecification,
 )
 
-
 # ---------- alias accessors ----------
 
 

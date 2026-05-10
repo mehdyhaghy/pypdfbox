@@ -18,7 +18,6 @@ from pypdfbox.pdmodel.font.encoding import (
     WinAnsiEncoding,
 )
 
-
 # -- writer / embedding path -----------------------------------------------
 
 

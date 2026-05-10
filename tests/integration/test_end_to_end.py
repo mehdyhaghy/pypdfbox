@@ -16,12 +16,11 @@ import pytest
 
 from pypdfbox import Loader, PDDocument
 from pypdfbox.cos import COSArray, COSName, COSStream
+from pypdfbox.pdfwriter import COSWriter
 from pypdfbox.pdmodel import PDPage, PDRectangle
 from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
-from pypdfbox.pdfwriter import COSWriter
 from pypdfbox.text import PDFTextStripper
-
 
 # ---------------------------------------------------------------- helpers
 

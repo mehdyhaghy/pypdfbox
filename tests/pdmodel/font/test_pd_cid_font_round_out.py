@@ -12,7 +12,7 @@ Covers:
 """
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSFloat, COSStream
+from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 

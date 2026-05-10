@@ -10,7 +10,6 @@ from pypdfbox.pdmodel.common import (
     get_char_code,
 )
 
-
 # The 41 deviations from ISO-8859-1 listed in ISO 32000-1:2008 §D.3
 # table D.2. Each tuple is (byte_code, unicode_char).
 _DEVIATIONS: tuple[tuple[int, str], ...] = (
@@ -181,6 +180,31 @@ def test_class_facade_matches_module_functions() -> None:
     assert PDFDocEncoding.contains_char("A") is True
     assert PDFDocEncoding.contains_char("中") is False
     assert PDFDocEncoding.get_char_code("€") == 0xA0
+
+
+def test_class_set_updates_both_directions() -> None:
+    # Mirrors upstream private ``PDFDocEncoding.set(int, char)``: the class
+    # facade should expose the same registration entry-point so ported
+    # code can call ``PDFDocEncoding.set(...)`` directly.
+    private_char = ""  # Unicode Private Use Area
+    original_char = decode_bytes(bytes([0x7F]))
+    assert get_char_code(private_char) is None
+    try:
+        PDFDocEncoding.set(0x7F, private_char)
+        assert decode_bytes(bytes([0x7F])) == private_char
+        assert get_char_code(private_char) == 0x7F
+        assert encode_bytes(private_char) == bytes([0x7F])
+    finally:
+        PDFDocEncoding.set(0x7F, original_char)
+
+
+def test_class_set_rejects_invalid_input() -> None:
+    with pytest.raises(ValueError):
+        PDFDocEncoding.set(-1, "A")
+    with pytest.raises(ValueError):
+        PDFDocEncoding.set(256, "A")
+    with pytest.raises(ValueError):
+        PDFDocEncoding.set(0x7F, "ab")
 
 
 def test_round_trip_every_pdfdocencoding_byte() -> None:

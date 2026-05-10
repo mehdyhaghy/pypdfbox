@@ -9,7 +9,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-
 # ---------- construction ----------
 
 

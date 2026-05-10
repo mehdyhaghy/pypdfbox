@@ -25,7 +25,6 @@ from pypdfbox.pdmodel.graphics.color.pd_device_n import (
 )
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 
-
 # ---------- helpers ----------
 
 

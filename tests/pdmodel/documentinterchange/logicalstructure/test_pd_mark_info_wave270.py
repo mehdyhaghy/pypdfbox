@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_mark_info import (
     PDMarkInfo,
 )
 
-
 # ---------- has_* presence predicates ----------
 
 

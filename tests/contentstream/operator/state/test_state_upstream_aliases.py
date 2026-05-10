@@ -20,8 +20,10 @@ from pypdfbox.contentstream.operator.graphics.concatenate_matrix import (
 )
 from pypdfbox.contentstream.operator.state import (
     Concatenate,
-    ConcatenateMatrix as StateConcatenateMatrix,
     SetMatrix,
+)
+from pypdfbox.contentstream.operator.state import (
+    ConcatenateMatrix as StateConcatenateMatrix,
 )
 from pypdfbox.contentstream.operator.text.set_matrix import (
     SetMatrix as TextSetMatrix,

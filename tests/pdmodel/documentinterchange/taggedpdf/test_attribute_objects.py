@@ -12,7 +12,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDUserAttributeObject,
 )
 
-
 # ---------- owner identity ----------
 
 

@@ -11,7 +11,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_redact import (
     PDAnnotationRedact,
 )
 
-
 # ---------- subtype + construction ----------
 
 

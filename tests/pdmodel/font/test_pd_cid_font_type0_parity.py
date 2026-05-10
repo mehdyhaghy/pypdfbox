@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
-
 
 # ---------- helpers ----------
 

@@ -23,7 +23,6 @@ from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 from pypdfbox.fontbox.cff.fd_array import FDArray
 from pypdfbox.fontbox.cff.fd_select import Format0FDSelect
 
-
 # ---------- spec constants ----------
 
 

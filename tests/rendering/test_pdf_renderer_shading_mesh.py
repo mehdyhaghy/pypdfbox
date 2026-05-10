@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from pypdfbox.cos import (
     COSArray,
-    COSDictionary,
     COSFloat,
     COSName,
     COSStream,

@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_appearance_characteristics_dicti
     PDAppearanceCharacteristicsDictionary,
 )
 
-
 # ---------- /R rotation ----------
 
 

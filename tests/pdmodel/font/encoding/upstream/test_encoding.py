@@ -20,7 +20,6 @@ from pypdfbox.pdmodel.font.encoding import (
     ZapfDingbatsEncoding,
 )
 
-
 # -- factory ---------------------------------------------------------------
 
 

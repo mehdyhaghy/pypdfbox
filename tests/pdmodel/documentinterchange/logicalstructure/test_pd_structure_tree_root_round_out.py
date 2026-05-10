@@ -9,14 +9,11 @@ Wave 41 covers:
 """
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDAttributeObject,
     PDMarkedContentReference,
     PDObjectReference,
-    PDStructureClassMap,
     PDStructureElement,
     PDStructureTreeRoot,
 )

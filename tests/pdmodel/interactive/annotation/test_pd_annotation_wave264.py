@@ -34,7 +34,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
     PDAppearanceDictionary,
 )
 
-
 # ---------- get_appearance / set_appearance aliases ----------
 
 

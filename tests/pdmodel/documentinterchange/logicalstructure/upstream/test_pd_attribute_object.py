@@ -10,7 +10,6 @@ from __future__ import annotations
 # Behavior parity is covered by ``test_pd_attribute_object_parity.py``;
 # this stub keeps the upstream-test directory layout aligned with PRD
 # §12 conventions.
-
 import pytest
 
 pytest.skip(

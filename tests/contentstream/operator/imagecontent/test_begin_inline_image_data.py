@@ -7,11 +7,11 @@ from pypdfbox.contentstream.operator.imagecontent import (
 from pypdfbox.contentstream.operator.imagecontent.begin_inline_image_data import (
     BeginInlineImageData,
 )
-from pypdfbox.contentstream.operator_name import OperatorName
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
 from pypdfbox.contentstream.operator.operator_registry import OperatorRegistry
+from pypdfbox.contentstream.operator_name import OperatorName
 
 
 def test_class_attribute_operator_name() -> None:

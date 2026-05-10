@@ -186,6 +186,34 @@ class AccessPermission:
         else:
             self._bytes &= ~mask
 
+    # ---------- 1-based bit-level accessors (mirror upstream privates) ----------
+
+    def is_permission_bit_on(self, bit: int) -> bool:
+        """Test the 1-based ``bit`` in the permission integer.
+
+        Mirrors upstream private ``isPermissionBitOn(int)`` — exposed at
+        module scope here for callers (e.g. ``getPermissionBytesForPublicKey``)
+        that need raw 1-based bit access without going through the typed
+        per-permission accessors.
+        """
+        return (self._bytes & (1 << (bit - 1))) != 0
+
+    def set_permission_bit(self, bit: int, value: bool) -> bool:
+        """Set or clear the 1-based ``bit`` and return the new state.
+
+        Mirrors upstream private ``setPermissionBit(int, boolean)``.
+        Unlike :py:meth:`_set_bit`, this method bypasses the read-only
+        gate to match upstream behaviour: the Java implementation likewise
+        ignores ``readOnly`` for this private helper (it is used internally
+        by ``getPermissionBytesForPublicKey`` after read-only has been
+        applied).
+        """
+        if value:
+            self._bytes |= 1 << (bit - 1)
+        else:
+            self._bytes &= ~(1 << (bit - 1))
+        return (self._bytes & (1 << (bit - 1))) != 0
+
     # ---------- per-permission accessors (mirror PDFBox names) ----------
 
     def can_print(self) -> bool:

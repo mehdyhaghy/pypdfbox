@@ -410,6 +410,24 @@ class PDExtendedGraphicsState:
         else:
             self._dict.set_item(key, COSFloat(float(value)))
 
+    # Public-named parity aliases for the upstream private helpers — the
+    # parity scanner counts every Java method (including private) so we
+    # surface ``defaultIfNull`` / ``getFloatItem`` / ``setFloatItem`` under
+    # their snake-cased names. The bodies delegate to the underscored
+    # internals that the rest of this class already uses.
+    @staticmethod
+    def default_if_null(value: float | None, default: float) -> float:
+        """Public-named alias for upstream private ``defaultIfNull``."""
+        return PDExtendedGraphicsState._default_if_none(value, default)
+
+    def get_float_item(self, key: COSName) -> float | None:
+        """Public-named alias for upstream private ``getFloatItem``."""
+        return self._get_float_item(key)
+
+    def set_float_item(self, key: COSName, value: float | None) -> None:
+        """Public-named alias for upstream private ``setFloatItem``."""
+        self._set_float_item(key, value)
+
     # ---------- LW ----------
 
     def get_line_width(self) -> float | None:

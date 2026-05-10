@@ -18,7 +18,6 @@ from pypdfbox.pdmodel import PDDocument, PDPage
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.tools import cli
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -104,8 +103,8 @@ def test_info_txt_prints_full_metadata(
         keywords="alpha beta",
         creator="Creator App",
         producer="Producer App",
-        creation_date=_dt.datetime(2024, 1, 2, 3, 4, 5, tzinfo=_dt.timezone.utc),
-        modification_date=_dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.timezone.utc),
+        creation_date=_dt.datetime(2024, 1, 2, 3, 4, 5, tzinfo=_dt.UTC),
+        modification_date=_dt.datetime(2025, 1, 2, 3, 4, 5, tzinfo=_dt.UTC),
         trapped="True",
     )
     rc = cli.run_cli(["info", str(pdf)])

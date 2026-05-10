@@ -11,7 +11,6 @@ from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 
-
 # ---------- device singletons ----------
 
 

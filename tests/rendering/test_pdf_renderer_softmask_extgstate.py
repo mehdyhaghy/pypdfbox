@@ -28,7 +28,6 @@ from pypdfbox.pdmodel.graphics.state.pd_soft_mask import PDSoftMask
 from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.rendering import PDFRenderer
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

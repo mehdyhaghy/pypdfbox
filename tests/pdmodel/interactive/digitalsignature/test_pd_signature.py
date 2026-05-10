@@ -524,7 +524,7 @@ def test_pd_signature_set_sign_date_as_datetime_round_trip_utc() -> None:
     import datetime as dt
 
     sig = PDSignature()
-    when = dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.timezone.utc)
+    when = dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.UTC)
     sig.set_sign_date_as_datetime(when)
     # Stored as PDF date string.
     assert sig.get_sign_date() == "D:20260501123000Z00'00'"
@@ -551,7 +551,7 @@ def test_pd_signature_set_sign_date_as_datetime_none_removes_entry() -> None:
     import datetime as dt
 
     sig = PDSignature()
-    sig.set_sign_date_as_datetime(dt.datetime(2026, 5, 1, tzinfo=dt.timezone.utc))
+    sig.set_sign_date_as_datetime(dt.datetime(2026, 5, 1, tzinfo=dt.UTC))
     sig.set_sign_date_as_datetime(None)
     assert sig.has_sign_date() is False
     assert sig.get_sign_date_as_datetime() is None
@@ -573,4 +573,4 @@ def test_pd_signature_get_sign_date_as_datetime_parses_existing_string() -> None
     sig = PDSignature()
     sig.set_sign_date("D:20260501123000Z")
     got = sig.get_sign_date_as_datetime()
-    assert got == dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.timezone.utc)
+    assert got == dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.UTC)

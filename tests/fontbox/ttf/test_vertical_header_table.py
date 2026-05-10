@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 from pypdfbox.fontbox.ttf.true_type_font import TrueTypeFont
+from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 from pypdfbox.fontbox.ttf.vertical_header_table import VerticalHeaderTable
 
 FIXTURE = (

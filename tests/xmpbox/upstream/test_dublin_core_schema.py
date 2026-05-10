@@ -41,7 +41,6 @@ from pypdfbox.xmpbox import (
     XMPMetadata,
 )
 
-
 # ---------------------------------------------------------------------------
 # Parameter table — direct lift of upstream ``initializeParameters``.
 # ``cardinality_token`` matches upstream ``Cardinality`` ("Simple"/"Bag"/...).

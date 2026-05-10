@@ -5,7 +5,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_reset_form import (
     PDActionResetForm,
 )
 
-
 _FIELDS: COSName = COSName.get_pdf_name("Fields")
 _FLAGS: COSName = COSName.get_pdf_name("Flags")
 _S: COSName = COSName.get_pdf_name("S")

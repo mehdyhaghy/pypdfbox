@@ -9,7 +9,6 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_movie import PDActionMovie
 
-
 _OPERATION: COSName = COSName.get_pdf_name("Operation")
 _ANNOTATION: COSName = COSName.get_pdf_name("Annotation")
 _T: COSName = COSName.get_pdf_name("T")

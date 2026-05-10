@@ -20,7 +20,6 @@ from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
-
 # ---------- helpers (mirror the in-tree minimal Type1 program) ----------
 
 

@@ -26,7 +26,6 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 from pypdfbox.rendering import PDFRenderer
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

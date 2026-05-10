@@ -8,7 +8,6 @@ from pypdfbox.pdmodel.font.encoding import (
     WinAnsiEncoding,
 )
 
-
 # ---------- Encoding base parity ------------------------------------------
 
 

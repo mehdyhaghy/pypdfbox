@@ -18,7 +18,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDLayoutAttributeObject,
 )
 
-
 # ---------- /BBox ----------
 
 

@@ -20,7 +20,6 @@ from pypdfbox.xmpbox import (
     XMPMetadata,
 )
 
-
 # ---------- PDFAIdentificationOthersTest ----------
 
 

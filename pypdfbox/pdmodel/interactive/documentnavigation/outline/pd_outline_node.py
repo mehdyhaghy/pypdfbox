@@ -439,6 +439,17 @@ class PDOutlineItemIterator:
         self._cursor = current.get_next_sibling()
         return current
 
+    def next(self) -> PDOutlineItem:
+        """Mirror Java ``Iterator.next()`` — alias for :meth:`__next__`.
+
+        Upstream ``PDOutlineItemIterator`` implements
+        ``java.util.Iterator<PDOutlineItem>``; the JVM contract throws
+        ``NoSuchElementException`` when the chain is exhausted. In Python
+        the protocol is :meth:`__next__` + ``StopIteration``, so we keep
+        the existing implementation as the source of truth and surface
+        ``next`` as an alias for ported callers."""
+        return self.__next__()
+
     def remove(self) -> None:
         """Java ``Iterator.remove()`` parity — unsupported."""
         raise NotImplementedError("remove is not supported by PDOutlineItemIterator")

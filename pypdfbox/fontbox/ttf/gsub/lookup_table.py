@@ -45,5 +45,21 @@ class LookupTable:
     def get_sub_tables(self) -> tuple[LookupSubTable, ...]:
         return self.sub_tables
 
+    def to_string(self) -> str:
+        """Mirror upstream ``LookupTable.toString()``.
+
+        Upstream format:
+        ``LookupTable[lookupType=<T>,lookupFlag=<F>,markFilteringSet=<M>]``.
+        """
+        return (
+            "LookupTable["
+            f"lookupType={self.lookup_type},"
+            f"lookupFlag={self.lookup_flag},"
+            f"markFilteringSet={self.mark_filtering_set}]"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
+
 
 __all__ = ["LookupTable"]

@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destin
     PDNamedDestination,
 )
 
-
 # ---------------------------------------------------------------------------
 # is_name_form / is_string_form / is_empty predicates
 # ---------------------------------------------------------------------------

@@ -23,7 +23,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDOutlineItemIterator,
 )
 
-
 # ---------- PDOutlineNode.__eq__ / __hash__ ----------
 
 

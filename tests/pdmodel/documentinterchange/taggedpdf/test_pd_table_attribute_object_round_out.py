@@ -15,7 +15,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDTableAttributeObject,
 )
 
-
 # ---------- __str__ / toString parity ----------
 
 

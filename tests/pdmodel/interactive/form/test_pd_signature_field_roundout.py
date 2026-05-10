@@ -12,7 +12,6 @@ import logging
 
 import pytest
 
-from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSeedValue,
     PDSignature,
@@ -20,6 +19,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
 )
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 @pytest.fixture

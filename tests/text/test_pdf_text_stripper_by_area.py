@@ -4,8 +4,7 @@ import pytest
 
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
-from pypdfbox.text import PDFTextStripperByArea, PDFTextStripper
-
+from pypdfbox.text import PDFTextStripper, PDFTextStripperByArea
 
 # ---------------------------------------------------------------------------
 # helpers

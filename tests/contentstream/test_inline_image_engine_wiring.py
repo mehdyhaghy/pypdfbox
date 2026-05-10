@@ -18,7 +18,6 @@ from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
 from pypdfbox.cos import COSBase, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
 
-
 # 2x2 grayscale raster — 4 bytes (one per pixel) in DeviceGray @ 8 bpc.
 _RASTER_2x2_GRAY: bytes = bytes([0x10, 0x20, 0x30, 0x40])
 

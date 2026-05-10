@@ -17,7 +17,6 @@ from pypdfbox.pdmodel.documentinterchange.markedcontent import (
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-
 # ---------- import path identity ----------
 
 

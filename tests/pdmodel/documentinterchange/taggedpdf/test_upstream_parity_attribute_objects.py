@@ -22,7 +22,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDTableAttributeObject,
 )
 
-
 # ---------- upstream-parity owner constants ----------
 
 

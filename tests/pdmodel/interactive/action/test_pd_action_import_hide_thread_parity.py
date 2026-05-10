@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_import_data import (
 )
 from pypdfbox.pdmodel.interactive.action.pd_action_thread import PDActionThread
 
-
 _S: COSName = COSName.get_pdf_name("S")
 
 

@@ -6,7 +6,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 
-
 # ---------- construction ----------
 
 

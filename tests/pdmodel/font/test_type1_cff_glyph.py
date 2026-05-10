@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
 
-
 # ---------- helpers ----------
 
 

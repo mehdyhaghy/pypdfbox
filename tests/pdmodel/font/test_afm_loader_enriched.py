@@ -9,7 +9,6 @@ from __future__ import annotations
 from pypdfbox.fontbox.afm import CharMetric, FontMetrics, KernPair, Ligature
 from pypdfbox.pdmodel.font.afm_loader import load_standard14
 
-
 # ---------- header parity round-out -----------------------------------------
 
 

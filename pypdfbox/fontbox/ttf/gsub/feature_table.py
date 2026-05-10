@@ -32,7 +32,7 @@ class FeatureTable:
         """
         return len(self.lookup_list_indices)
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
         """Mirror upstream ``FeatureTable.toString()``.
 
         Upstream formats as ``FeatureTable[lookupListIndicesCount=<N>]``;
@@ -40,6 +40,9 @@ class FeatureTable:
         PDFBox logs continues to work against the Python port.
         """
         return f"FeatureTable[lookupListIndicesCount={len(self.lookup_list_indices)}]"
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 __all__ = ["FeatureTable"]

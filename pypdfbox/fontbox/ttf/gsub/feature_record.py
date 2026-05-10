@@ -25,5 +25,17 @@ class FeatureRecord:
     def get_feature_table(self) -> FeatureTable | None:
         return self.feature_table
 
+    def to_string(self) -> str:
+        """Mirror upstream ``FeatureRecord.toString()``.
+
+        Upstream format: ``FeatureRecord[featureTag=<tag>]`` (no padding
+        adjustment — the raw 4-byte tag is emitted as stored, trailing
+        spaces and all).
+        """
+        return f"FeatureRecord[featureTag={self.feature_tag}]"
+
+    def __str__(self) -> str:
+        return self.to_string()
+
 
 __all__ = ["FeatureRecord"]

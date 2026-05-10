@@ -174,7 +174,7 @@ def test_points_per_inch_constant() -> None:
 
 
 def test_points_per_mm_constant() -> None:
-    assert PDRectangle.POINTS_PER_MM == pytest.approx(72.0 / 25.4)
+    assert pytest.approx(72.0 / 25.4) == PDRectangle.POINTS_PER_MM
 
 
 def test_tabloid_constant() -> None:

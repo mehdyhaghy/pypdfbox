@@ -15,7 +15,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
     PDAnnotationWidget,
 )
 
-
 _H: COSName = COSName.get_pdf_name("H")
 _S: COSName = COSName.get_pdf_name("S")
 _SUBTYPE: COSName = COSName.get_pdf_name("Subtype")

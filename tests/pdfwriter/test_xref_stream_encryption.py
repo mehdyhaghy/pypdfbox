@@ -31,7 +31,6 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E4
     StandardProtectionPolicy,
 )
 
-
 _CONTENT_PAYLOAD = b"BT /F1 12 Tf 50 700 Td (Hello xref-stream) Tj ET"
 
 

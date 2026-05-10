@@ -10,7 +10,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_remote_go_to import (
     PDActionRemoteGoTo,
 )
 
-
 _NEW_WINDOW = COSName.get_pdf_name("NewWindow")
 
 

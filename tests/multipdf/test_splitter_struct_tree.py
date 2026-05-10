@@ -9,10 +9,8 @@ indices.
 
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.multipdf import Splitter
 from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
     PDStructureElement,
@@ -21,7 +19,6 @@ from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_tree_root import (  # noqa: E501
     PDStructureElementNumberTreeNode,
 )
-
 
 # ---------- helpers ----------
 

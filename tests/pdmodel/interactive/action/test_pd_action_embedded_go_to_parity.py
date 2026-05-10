@@ -22,7 +22,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_des
     PDPageFitDestination,
 )
 
-
 _NEW_WINDOW = COSName.get_pdf_name("NewWindow")
 _D = COSName.get_pdf_name("D")
 _T = COSName.get_pdf_name("T")

@@ -7,7 +7,6 @@ from pypdfbox.pdmodel.font.afm_loader import AfmMetrics, load_standard14, standa
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
 
-
 # ---- canonical AFM values --------------------------------------------------
 
 

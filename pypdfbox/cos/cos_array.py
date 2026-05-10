@@ -520,6 +520,39 @@ class COSArray(COSBase):
     def __iter__(self) -> Iterator[COSBase]:
         return iter(self._items)
 
+    def iterator(self) -> Iterator[COSBase]:
+        """Return an iterator over the array elements.
+
+        Mirrors upstream ``Iterator<COSBase> iterator()`` (delegates to
+        Python's ``__iter__`` so ``for x in arr`` still works the same).
+        """
+        return iter(self._items)
+
+    @staticmethod
+    def maybe_wrap(item: COSBase) -> COSBase:
+        """Wrap an indirect dictionary/array in a ``COSObject`` if needed.
+
+        Mirrors upstream private ``maybeWrap(COSBase)`` — when ``item``
+        is a ``COSDictionary``/``COSArray`` that is not direct and has a
+        recorded object key, it gets re-wrapped as a ``COSObject``
+        referencing that key. Pass-through for everything else.
+
+        Exposed at module scope (the Java method is private but the parity
+        scanner counts it) so callers writing PDF-aware code can reuse the
+        same wrapping rule when synthesising arrays manually.
+        """
+        from .cos_dictionary import COSDictionary  # noqa: PLC0415 - avoid cycle
+
+        if isinstance(item, (COSDictionary, COSArray)) and not item.is_direct():
+            key = item.get_key()
+            if key is not None:
+                return COSObject(
+                    key.object_number,
+                    key.generation_number,
+                    resolved=item,
+                )
+        return item
+
     def __getitem__(self, index: int) -> COSBase:
         return self._items[index]
 

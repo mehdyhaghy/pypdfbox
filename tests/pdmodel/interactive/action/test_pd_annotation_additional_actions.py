@@ -8,7 +8,6 @@ from pypdfbox.pdmodel.interactive.action.pd_annotation_additional_actions import
     PDAnnotationAdditionalActions,
 )
 
-
 _TRIGGERS: list[tuple[str, str]] = [
     ("e", "E"),
     ("x", "X"),

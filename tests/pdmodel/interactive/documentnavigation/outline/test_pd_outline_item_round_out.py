@@ -33,7 +33,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDOutlineItem,
 )
 
-
 # ---------- set_destination(PDPage) convenience overload ----------
 
 

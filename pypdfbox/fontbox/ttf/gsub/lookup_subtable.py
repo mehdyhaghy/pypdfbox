@@ -100,6 +100,18 @@ class LookupSubTable(ABC):
         """
         return self._coverage_object
 
+    def get_coverage_table(self) -> CoverageTable:
+        """Return the :class:`CoverageTable` wrapper (upstream-shaped).
+
+        Mirrors ``LookupSubTable.getCoverageTable()`` upstream which
+        returns the ``CoverageTable`` reference held on the abstract
+        base. Concrete subclasses in this port override this accessor
+        and return their flat ``tuple[int, ...]`` Coverage instead, so
+        this base implementation only handles the abstract-base contract
+        used by callers holding a generic :class:`LookupSubTable`.
+        """
+        return self._coverage_object
+
     @abstractmethod
     def do_substitution(self, original_glyph_id: int, coverage_index: int) -> int:
         """Apply this subtable's substitution to ``original_glyph_id``.
@@ -154,6 +166,21 @@ class LookupTypeSingleSubstFormat1(LookupSubTable):
         # Per spec: substituted GID is computed mod 65536.
         return (original_glyph_id + self.delta_glyph_id) & 0xFFFF
 
+    def to_string(self) -> str:
+        """Mirror upstream ``LookupTypeSingleSubstFormat1.toString()``.
+
+        Upstream format:
+        ``LookupTypeSingleSubstFormat1[substFormat=<F>,deltaGlyphID=<D>]``.
+        """
+        return (
+            "LookupTypeSingleSubstFormat1["
+            f"substFormat={self.substitute_format},"
+            f"deltaGlyphID={self.delta_glyph_id}]"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
+
 
 @dataclass
 class LookupTypeSingleSubstFormat2(LookupSubTable):
@@ -180,6 +207,17 @@ class LookupTypeSingleSubstFormat2(LookupSubTable):
     def get_substitute_glyph_ids(self) -> tuple[int, ...]:
         return self.substitute_glyph_ids
 
+    def get_substitute_glyph_i_ds(self) -> tuple[int, ...]:
+        """Snake-case mechanical translation of upstream ``getSubstituteGlyphIDs``.
+
+        Java keeps the trailing ``IDs`` capitalised as an acronym; the
+        deterministic camelCase-to-snake_case translation splits the
+        boundary between ``I`` and ``D`` and yields ``i_ds``. Kept as a
+        thin alias so tooling that mirrors upstream method names verbatim
+        still resolves.
+        """
+        return self.substitute_glyph_ids
+
     def get_coverage_table(self) -> tuple[int, ...]:
         return self.coverage_table
 
@@ -189,6 +227,24 @@ class LookupTypeSingleSubstFormat2(LookupSubTable):
         if coverage_index >= len(self.substitute_glyph_ids):
             return original_glyph_id
         return int(self.substitute_glyph_ids[coverage_index])
+
+    def to_string(self) -> str:
+        """Mirror upstream ``LookupTypeSingleSubstFormat2.toString()``.
+
+        Upstream format (uses ``Arrays.toString(int[])`` for the GID
+        array, which renders as ``[a, b, c]`` with a space after each
+        comma):
+        ``LookupTypeSingleSubstFormat2[substFormat=<F>,substituteGlyphIDs=[<...>]]``.
+        """
+        gids = "[" + ", ".join(str(g) for g in self.substitute_glyph_ids) + "]"
+        return (
+            "LookupTypeSingleSubstFormat2["
+            f"substFormat={self.substitute_format},"
+            f"substituteGlyphIDs={gids}]"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 @dataclass
@@ -210,6 +266,31 @@ class SequenceTable:
 
     def get_substitute_glyph_ids(self) -> tuple[int, ...]:
         return self.substitute_glyph_ids
+
+    def get_substitute_glyph_i_ds(self) -> tuple[int, ...]:
+        """Snake-case mechanical translation of upstream ``getSubstituteGlyphIDs``.
+
+        Mirrors the same ``IDs`` acronym split rule as
+        :meth:`LigatureTable.get_component_glyph_i_ds`.
+        """
+        return self.substitute_glyph_ids
+
+    def to_string(self) -> str:
+        """Mirror upstream ``SequenceTable.toString()``.
+
+        Upstream format:
+        ``SequenceTable{glyphCount=<N>, substituteGlyphIDs=[<...>]}``.
+        """
+        gids = "[" + ", ".join(str(g) for g in self.substitute_glyph_ids) + "]"
+        return (
+            "SequenceTable{"
+            f"glyphCount={self.glyph_count}, "
+            f"substituteGlyphIDs={gids}"
+            "}"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 @dataclass
@@ -289,6 +370,31 @@ class AlternateSetTable:
 
     def get_alternate_glyph_ids(self) -> tuple[int, ...]:
         return self.alternate_glyph_ids
+
+    def get_alternate_glyph_i_ds(self) -> tuple[int, ...]:
+        """Snake-case mechanical translation of upstream ``getAlternateGlyphIDs``.
+
+        Mirrors the same ``IDs`` acronym split rule as
+        :meth:`LigatureTable.get_component_glyph_i_ds`.
+        """
+        return self.alternate_glyph_ids
+
+    def to_string(self) -> str:
+        """Mirror upstream ``AlternateSetTable.toString()``.
+
+        Upstream format:
+        ``AlternateSetTable{glyphCount=<N>, alternateGlyphIDs=[<...>]}``.
+        """
+        gids = "[" + ", ".join(str(g) for g in self.alternate_glyph_ids) + "]"
+        return (
+            "AlternateSetTable{"
+            f"glyphCount={self.glyph_count}, "
+            f"alternateGlyphIDs={gids}"
+            "}"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 @dataclass
@@ -440,6 +546,21 @@ class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
                 i += 1 + best_len
         return out
 
+    def to_string(self) -> str:
+        """Mirror upstream ``LookupTypeLigatureSubstitutionSubstFormat1.toString()``.
+
+        Upstream format (uses ``getClass().getSimpleName()`` for the
+        prefix, which resolves to the class name):
+        ``LookupTypeLigatureSubstitutionSubstFormat1[substFormat=<F>]``.
+        """
+        return (
+            "LookupTypeLigatureSubstitutionSubstFormat1["
+            f"substFormat={self.substitute_format}]"
+        )
+
+    def __str__(self) -> str:
+        return self.to_string()
+
 
 @dataclass
 class LigatureTable:
@@ -486,7 +607,7 @@ class LigatureTable:
     def get_component_count(self) -> int:
         return self.component_count
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
         """Mirror upstream ``LigatureTable.toString()``.
 
         Upstream format: ``LigatureTable[ligatureGlyph=<N>, componentCount=<M>]``.
@@ -496,6 +617,9 @@ class LigatureTable:
             f"LigatureTable[ligatureGlyph={self.ligature_glyph}, "
             f"componentCount={self.component_count}]"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 @dataclass
@@ -520,6 +644,17 @@ class LigatureSetTable:
 
     def get_ligature_count(self) -> int:
         return self.ligature_count
+
+    def to_string(self) -> str:
+        """Mirror upstream ``LigatureSetTable.toString()``.
+
+        Upstream format (uses ``getClass().getSimpleName()`` for the
+        prefix): ``LigatureSetTable[ligatureCount=<N>]``.
+        """
+        return f"LigatureSetTable[ligatureCount={self.ligature_count}]"
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 __all__ = [

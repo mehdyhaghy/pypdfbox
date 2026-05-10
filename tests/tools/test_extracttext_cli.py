@@ -14,7 +14,6 @@ PDFs are built in-test (no fixture round-trip needed).
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest

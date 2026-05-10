@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+    PDSimpleFileSpecification,
+)
 from pypdfbox.pdmodel.interactive.action import (
     PDAction,
     PDActionGoTo,
@@ -15,9 +18,6 @@ from pypdfbox.pdmodel.interactive.action import (
     PDActionThread,
     PDActionUnknown,
     PDActionURI,
-)
-from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
-    PDSimpleFileSpecification,
 )
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
@@ -102,11 +102,11 @@ def test_submit_reset_import_hide_and_thread_accessors_round_trip_cos() -> None:
     submit.set_flags(4)
     # PDActionSubmitForm.get_file() now returns a typed PDFileSpecification
     # (mirrors upstream PDFBox); the raw COS form is reachable on the dict.
-    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
-        PDSimpleFileSpecification,
-    )
     from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
         PDComplexFileSpecification,
+    )
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
     )
     assert isinstance(submit.get_file(), PDSimpleFileSpecification)
     assert submit.get_url() == "submit.fdf"

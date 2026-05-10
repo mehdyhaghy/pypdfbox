@@ -17,7 +17,6 @@ import pytest
 from pypdfbox.cos import COSArray, COSFloat, COSStream
 from pypdfbox.pdmodel.common.function import PDFunctionType0
 
-
 # ---------- helpers ----------
 
 

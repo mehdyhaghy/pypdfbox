@@ -89,9 +89,48 @@ class PDEncryption:
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict: COSDictionary = dictionary if dictionary is not None else COSDictionary()
+        # ``security_handler`` mirrors upstream's ``private SecurityHandler``
+        # field. The factory dispatch by /Filter lives in
+        # ``SecurityHandlerFactory`` (not yet ported); leave the slot
+        # ``None`` so ``get_security_handler()`` raises in the same way as
+        # upstream when no handler has been installed.
+        self._security_handler: object | None = None
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict
+
+    # ---------- security-handler dispatch ----------
+
+    def get_security_handler(self) -> object:
+        """Return the security handler associated with this encryption dict.
+
+        Mirrors upstream ``getSecurityHandler`` — raises ``OSError`` (Java
+        ``IOException``) when no handler has been installed for the
+        current /Filter. The exact message is copied verbatim from upstream
+        because Apache Tika (TIKA-4082) matches against it.
+        """
+        if self._security_handler is None:
+            msg = f"No security handler for filter {self.get_filter()}"
+            raise OSError(msg)
+        return self._security_handler
+
+    def set_security_handler(self, security_handler: object) -> None:
+        """Install ``security_handler`` for subsequent dispatch.
+
+        Mirrors upstream ``setSecurityHandler`` — note that upstream does
+        not also touch /Filter (a TODO comment in the Java); we preserve
+        that quirk so the existing /Filter wins.
+        """
+        self._security_handler = security_handler
+
+    def has_security_handler(self) -> bool:
+        """Mirror upstream ``hasSecurityHandler`` — **note** the upstream
+        method returns ``true`` when the handler is *missing* (the Java
+        body is ``return securityHandler == null;``). Replicated exactly
+        for parity; callers expecting "has a handler installed" should
+        invert the result.
+        """
+        return self._security_handler is None
 
     def get_cos_dictionary(self) -> COSDictionary:
         """Return the wrapped encryption dictionary.
@@ -486,6 +525,17 @@ class PDEncryption:
         self._dict.remove_item(_STM_F)
         self._dict.remove_item(_STR_F)
         self._dict.remove_item(_EFF)
+
+    def remove_v45filters(self) -> None:
+        """Parity alias for :py:meth:`remove_v45_filters`.
+
+        Upstream's method name is ``removeV45filters`` (one underscore
+        between ``remove`` and ``v45``, none between ``v45`` and
+        ``filters``). The snake-cased name matches that token boundary
+        exactly so this alias exists purely for naming parity; the body
+        delegates.
+        """
+        self.remove_v45_filters()
 
 
 __all__ = [

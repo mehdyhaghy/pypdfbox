@@ -33,15 +33,14 @@ from pypdfbox.pdmodel.font.encoding import (
     ZapfDingbatsEncoding,
 )
 
-
 # ---------- FONT_SPECIFIC_NAMES constant ----------------------------------
 
 
 def test_font_specific_names_is_frozenset_of_two():
     assert isinstance(Encoding.FONT_SPECIFIC_NAMES, frozenset)
-    assert Encoding.FONT_SPECIFIC_NAMES == frozenset(
+    assert frozenset(
         {"SymbolEncoding", "ZapfDingbatsEncoding"}
-    )
+    ) == Encoding.FONT_SPECIFIC_NAMES
 
 
 def test_font_specific_names_immutable():

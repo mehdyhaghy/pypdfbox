@@ -171,7 +171,7 @@ def test_last_modified_round_trip() -> None:
     form = _new_form()
     assert form.get_last_modified() is None
 
-    when = _dt.datetime(2024, 6, 15, 12, 34, 56, tzinfo=_dt.timezone.utc)
+    when = _dt.datetime(2024, 6, 15, 12, 34, 56, tzinfo=_dt.UTC)
     form.set_last_modified(when)
 
     got = form.get_last_modified()

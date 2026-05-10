@@ -23,7 +23,6 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.interactive.pagenavigation import PDThreadBead
 from pypdfbox.text import PDFTextStripper, TextPosition
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

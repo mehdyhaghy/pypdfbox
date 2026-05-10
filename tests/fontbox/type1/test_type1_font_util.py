@@ -14,7 +14,6 @@ import pytest
 
 from pypdfbox.fontbox.type1.type1_font_util import Type1FontUtil
 
-
 # ---------- eexec round-trip ----------
 
 

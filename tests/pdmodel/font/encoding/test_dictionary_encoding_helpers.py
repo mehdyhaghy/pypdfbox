@@ -15,7 +15,6 @@ from pypdfbox.pdmodel.font.encoding import (
     WinAnsiEncoding,
 )
 
-
 # ---------- has_base_encoding / is_type3 ----------------------------------
 
 

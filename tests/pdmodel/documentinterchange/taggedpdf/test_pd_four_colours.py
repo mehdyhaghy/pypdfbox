@@ -5,7 +5,6 @@ import pytest
 from pypdfbox.cos import COSArray
 from pypdfbox.pdmodel.documentinterchange.taggedpdf import PDFourColours
 
-
 # ---------- British-spelled (upstream-parity) named accessors ----------
 
 

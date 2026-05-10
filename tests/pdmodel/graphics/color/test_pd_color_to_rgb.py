@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.graphics.color.pd_icc_based import PDICCBased
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
-
 # ---------- Type 2 tint transform builder ----------
 
 

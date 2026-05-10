@@ -37,3 +37,21 @@ def test_lookup_flag_bits() -> None:
     lt = LookupTable(lookup_type=1, lookup_flag=0x0009)
     assert lt.get_lookup_flag() & 0x0001 == 0x0001
     assert lt.get_lookup_flag() & 0x0008 == 0x0008
+
+
+def test_to_string_matches_upstream_format() -> None:
+    # Mirrors upstream
+    # `LookupTable[lookupType=<T>,lookupFlag=<F>,markFilteringSet=<M>]`.
+    lt = LookupTable(lookup_type=4, lookup_flag=0x0010, mark_filtering_set=2)
+    assert (
+        lt.to_string()
+        == "LookupTable[lookupType=4,lookupFlag=16,markFilteringSet=2]"
+    )
+    assert str(lt) == lt.to_string()
+
+
+def test_to_string_default_construction() -> None:
+    assert (
+        LookupTable().to_string()
+        == "LookupTable[lookupType=0,lookupFlag=0,markFilteringSet=0]"
+    )

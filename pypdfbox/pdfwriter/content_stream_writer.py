@@ -119,6 +119,32 @@ class ContentStreamWriter:
         """Java-style alias for :meth:`write_tokens`."""
         self.write_tokens(*tokens)
 
+    def write_object(self, o: Any) -> None:
+        """Dispatch ``o`` to the appropriate serializer.
+
+        Mirrors upstream's three private ``writeObject`` overloads —
+        ``writeObject(Object)``, ``writeObject(Operator)`` and
+        ``writeObject(COSBase)`` — by routing on Python type:
+
+        * an :class:`Operator` (either canonical
+          :class:`pypdfbox.contentstream.operator.Operator` or the
+          parser-local value type) goes to the operator serializer
+          (handles the ``BI`` / ``ID`` / ``EI`` inline-image block);
+        * a :class:`COSBase` operand goes through the COS serializer
+          (string, float, integer, boolean, name, array, dict, null);
+        * anything else raises :class:`OSError` with the same message
+          upstream emits (``Error:Unknown type in content stream:``).
+
+        Upstream marks the dispatch private because Java's overload
+        resolution picks the right variant at the call site. Python
+        lacks overload resolution, so pypdfbox surfaces a single public
+        ``write_object`` that performs the same runtime dispatch — used
+        by callers that want the writer's COS serializer without
+        committing to the ``write_token`` / ``write_tokens`` framing
+        (e.g. emitting inline-image parameter values one at a time).
+        """
+        self._write_object(o)
+
     @staticmethod
     def _is_list_overload(arg: Any) -> bool:
         """Return ``True`` if ``arg`` should trigger the ``List<?>``

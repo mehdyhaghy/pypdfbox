@@ -96,6 +96,23 @@ class PDComplexFileSpecification(PDFileSpecification):
             return ef.get_dictionary_object(key)
         return None
 
+    def get_ef_dictionary(self) -> COSDictionary | None:
+        """Return the ``/EF`` sub-dictionary, or ``None`` when absent.
+
+        Mirrors upstream private ``getEFDictionary``. Caches the
+        resolved dictionary on the instance so repeated lookups don't
+        re-resolve through the parent.
+        """
+        return self._get_ef_dictionary()
+
+    def get_object_from_ef_dictionary(self, key: COSName) -> COSBase | None:
+        """Return the entry stored under ``key`` inside ``/EF``.
+
+        Mirrors upstream private ``getObjectFromEFDictionary``. Returns
+        ``None`` when ``/EF`` is absent or the named key is missing.
+        """
+        return self._get_object_from_ef_dictionary(key)
+
     def _has_embedded(self, key: COSName) -> bool:
         return isinstance(self._get_object_from_ef_dictionary(key), COSStream)
 

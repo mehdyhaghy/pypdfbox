@@ -20,7 +20,6 @@ from pypdfbox.pdmodel.common.filespecification import (
     PDEmbeddedFile,
 )
 
-
 # ---------- AFRelationship constants ----------
 
 

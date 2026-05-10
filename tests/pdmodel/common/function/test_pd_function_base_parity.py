@@ -12,7 +12,6 @@ from pypdfbox.pdmodel.common.function import (
 )
 from pypdfbox.pdmodel.common.pd_range import PDRange
 
-
 # ---------- get_domain_for_input / get_range_for_input ----------
 
 

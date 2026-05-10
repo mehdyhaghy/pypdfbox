@@ -161,6 +161,16 @@ class PropertiesDescription:
     def __repr__(self) -> str:
         return f"PropertiesDescription{{types={self._types}}}"
 
+    def to_string(self) -> str:
+        """Return the textual form of this description.
+
+        Mirrors upstream ``PropertiesDescription.toString()`` (Java
+        lines 99-103) which returns ``PropertiesDescription{types=...}``.
+        Exposed under the snake_case name for parity with code ported
+        from PDFBox that calls ``toString()`` directly.
+        """
+        return self.__repr__()
+
 
 class DefinedStructuredType(AbstractStructuredType):
     """Mirror of upstream ``org.apache.xmpbox.type.DefinedStructuredType``.

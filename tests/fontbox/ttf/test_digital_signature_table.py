@@ -16,7 +16,6 @@ import pytest
 from pypdfbox.fontbox.ttf.digital_signature_table import DigitalSignatureTable
 from pypdfbox.fontbox.ttf.true_type_font import TrueTypeFont
 
-
 _FIXTURE = (
     Path(__file__).resolve().parents[2]
     / "fixtures"

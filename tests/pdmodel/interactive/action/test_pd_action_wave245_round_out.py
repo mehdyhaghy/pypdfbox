@@ -17,7 +17,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_submit_form import (
 from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 
-
 _F = COSName.get_pdf_name("F")
 _FT = COSName.get_pdf_name("FT")
 _T = COSName.get_pdf_name("T")

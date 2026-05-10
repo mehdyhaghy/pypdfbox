@@ -14,7 +14,6 @@ import pytest
 
 from pypdfbox.fontbox.ttf.kerning_subtable import KerningSubtable
 
-
 # ---------- Format 0 -------------------------------------------------------
 
 

@@ -18,10 +18,9 @@ Covers:
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo, PDActionURI
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationLink
-
 
 # ---------- STANDARD_HIGHLIGHT_MODES ----------
 
@@ -35,7 +34,7 @@ def test_standard_highlight_modes_size_and_contents() -> None:
         PDAnnotationLink.HIGHLIGHT_MODE_OUTLINE,
         PDAnnotationLink.HIGHLIGHT_MODE_PUSH,
     }
-    assert PDAnnotationLink.STANDARD_HIGHLIGHT_MODES == expected
+    assert expected == PDAnnotationLink.STANDARD_HIGHLIGHT_MODES
 
 
 def test_standard_highlight_modes_is_frozenset() -> None:

@@ -331,9 +331,8 @@ def test_draw_image_matrix_overload_rejects_wrong_arity() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     img = _make_image()
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(ValueError):
-            cs.draw_image(img, (1, 0, 0, 1, 0))  # only 5 components
+    with PDPageContentStream(doc, page) as cs, pytest.raises(ValueError):
+        cs.draw_image(img, (1, 0, 0, 1, 0))  # only 5 components
 
 
 def test_draw_image_inside_text_block_raises() -> None:
@@ -354,9 +353,8 @@ def test_draw_image_requires_x_or_matrix() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     img = _make_image()
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.draw_image(img)  # type: ignore[call-arg]
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.draw_image(img)  # type: ignore[call-arg]
 
 
 def test_draw_image_path_without_factories_raises_not_implemented(
@@ -886,25 +884,22 @@ def test_show_text_with_positioning_accepts_tuple() -> None:
 def test_show_text_with_positioning_rejects_non_sequence() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.show_text_with_positioning("not a list")  # type: ignore[arg-type]
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.show_text_with_positioning("not a list")  # type: ignore[arg-type]
 
 
 def test_show_text_with_positioning_rejects_invalid_item_type() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.show_text_with_positioning(["ok", object()])  # type: ignore[list-item]
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.show_text_with_positioning(["ok", object()])  # type: ignore[list-item]
 
 
 def test_show_text_with_positioning_rejects_bool_item() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.show_text_with_positioning(["ok", True])  # type: ignore[list-item]
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.show_text_with_positioning(["ok", True])  # type: ignore[list-item]
 
 
 def test_show_text_with_positioning_non_ascii_uses_hex_form() -> None:
@@ -1192,9 +1187,8 @@ def test_two_distinct_patterns_get_separate_keys() -> None:
 def test_set_stroking_pattern_rejects_non_pattern() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.set_stroking_pattern("not a pattern")  # type: ignore[arg-type]
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.set_stroking_pattern("not a pattern")  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------------------
@@ -1264,9 +1258,8 @@ def test_two_distinct_shadings_get_separate_keys() -> None:
 def test_shading_fill_rejects_non_shading() -> None:
     doc = PDDocument()
     page = _make_page(doc)
-    with PDPageContentStream(doc, page) as cs:
-        with pytest.raises(TypeError):
-            cs.shading_fill(42)  # type: ignore[arg-type]
+    with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.shading_fill(42)  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------------------

@@ -14,7 +14,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDOutlineItem,
 )
 
-
 # ---------- append_child ----------
 
 

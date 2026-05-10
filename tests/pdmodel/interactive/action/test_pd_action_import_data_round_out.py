@@ -15,7 +15,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_import_data import (
     PDActionImportData,
 )
 
-
 _F = COSName.get_pdf_name("F")
 _S = COSName.get_pdf_name("S")
 

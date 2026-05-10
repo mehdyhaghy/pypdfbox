@@ -1344,3 +1344,20 @@ non-`_wave<N>` sibling file in the same directory.
 | `tests/pdmodel/font/upstream/test_pd_type0_font_wave1127.py` | 3.0.x | (none — coverage augmentation around `tests/pdmodel/font/upstream/test_pd_type0_font.py`) |
 | `tests/text/upstream/test_pdf_text_stripper_by_area_wave1029.py` | 3.0.x | (none — coverage augmentation around `tests/text/upstream/test_pdf_text_stripper_by_area.py`) |
 | `tests/xmpbox/type/upstream/test_structured_type_wave1020.py` | 3.0.x | (none — coverage augmentation around `tests/xmpbox/type/upstream/test_structured_type.py`) |
+
+
+### Wave 1274 additions
+
+No new port files added. The wave only extended existing upstream-derived modules with explicit `to_string()` mirrors and missing public methods/aliases against PDFBox 3.0.x. New hand-written coverage tests:
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `tests/cos/test_cos_null_wave1274.py` | 3.0.x | (hand-written coverage for `COSNull.to_string`) |
+| `tests/pdfwriter/test_content_stream_writer_wave1274.py` | 3.0.x | (hand-written coverage for `ContentStreamWriter.write_object` dispatcher) |
+| `tests/pdmodel/font/test_pd_cid_system_info_wave1274.py` | 3.0.x | (hand-written coverage for `PDCIDSystemInfo.to_string`) |
+| `tests/pdmodel/interactive/documentnavigation/outline/test_pd_outline_item_iterator_wave1274.py` | 3.0.x | (hand-written coverage for `PDOutlineItemIterator.next` Java-iterator alias) |
+| `tests/pdmodel/font/test_pd_true_type_font.py` | 3.0.x | hand-written coverage for `PDTrueTypeFont.generate_bounding_box` / `get_parser` / `get_path_from_outlines` / `load` |
+| `tests/pdmodel/font/upstream/test_pd_true_type_font.py` | 3.0.x | placeholder — upstream PDFBox 3.0.x has no `PDTrueTypeFontTest.java` to port |
+| `tests/fontbox/ttf/gsub/upstream/test_feature_record.py` | 3.0.x | upstream-shaped synthetic tests for `FeatureRecord.to_string` (no standalone JUnit upstream — exercised through GSUB parsing tests) |
+| `tests/fontbox/ttf/gsub/upstream/test_lookup_table.py` | 3.0.x | upstream-shaped synthetic tests for `LookupTable.to_string` |
+| `tests/fontbox/ttf/gsub/upstream/test_script_table.py` | 3.0.x | upstream-shaped synthetic tests for `ScriptTable.to_string` |

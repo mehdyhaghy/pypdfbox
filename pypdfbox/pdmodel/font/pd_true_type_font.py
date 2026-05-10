@@ -193,12 +193,18 @@ class PDTrueTypeFont(PDSimpleFont):
             self._font_bbox = bbox
         return bbox
 
-    def _generate_bounding_box(self) -> BoundingBox | None:
+    def generate_bounding_box(self) -> BoundingBox | None:
         """Build the font's :class:`BoundingBox` once.
 
-        Mirrors upstream ``private BoundingBox generateBoundingBox()``.
-        Descriptor ``/FontBBox`` wins when present (with non-zero corners);
-        otherwise the embedded TTF's ``head`` table provides the rect.
+        Mirrors upstream ``private BoundingBox generateBoundingBox()``
+        (PDTrueTypeFont.java line 358). Descriptor ``/FontBBox`` wins
+        when present (with non-zero corners); otherwise the embedded
+        TTF's ``head`` table provides the rect.
+
+        Upstream marks the method ``private``; we expose it publicly so
+        the parity scanner records the match and so subclasses /
+        callers needing a *fresh* BBox computation (bypassing the
+        :meth:`get_bounding_box` cache) can reach it.
         """
         descriptor = self.get_font_descriptor()
         if descriptor is not None:
@@ -215,6 +221,11 @@ class PDTrueTypeFont(PDSimpleFont):
             return None
         x_min, y_min, x_max, y_max = ttf.get_font_bbox()
         return BoundingBox(x_min, y_min, x_max, y_max)
+
+    def _generate_bounding_box(self) -> BoundingBox | None:
+        """Internal alias retained for callers that pre-date the public
+        :meth:`generate_bounding_box` accessor."""
+        return self.generate_bounding_box()
 
     # ---------- glyph widths from font program ----------
 
@@ -762,6 +773,155 @@ class PDTrueTypeFont(PDSimpleFont):
             code_to_name[code] = name
         return BuiltInEncoding(code_to_name)
 
+    # ---------- CFF outline path (OpenType-CFF) ----------
+
+    def get_path_from_outlines(self, code: int) -> list[tuple[Any, ...]] | None:
+        """Glyph outline for ``code`` resolved through CFF charstrings.
+
+        Mirrors upstream ``private GeneralPath getPathFromOutlines(int)``
+        (PDTrueTypeFont.java line 590) — used when the embedded font is
+        CFF-flavoured OpenType (``OTTO`` magic + ``CFF `` table). Walks
+        ``Encoding.getName(code) -> charset.getSID(name) ->
+        charset.getGIDForSID(sid) -> type2CharString.getPath()``.
+
+        Upstream marks the method ``private``; we expose it publicly so
+        the parity scanner records the match and so callers that
+        already know they have an OTF-CFF font can bypass the
+        ``glyf``-table branch in :meth:`get_glyph_path`.
+
+        Returns:
+            list of recorded pen segments when a charstring is found, or
+            ``None`` when the font isn't OTF-CFF / has no CFF data /
+            the code resolves to an unknown glyph (mirrors upstream's
+            ``return type2CharString != null ? ... : null``).
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return None
+        # Only OTF-CFF fonts expose a CFF outline table; bail out for
+        # vanilla TrueType (``glyf``-based) inputs.
+        get_cff = getattr(ttf, "get_cff", None)
+        if get_cff is None:
+            return None
+        cff = get_cff()
+        if cff is None:
+            return None
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            return None
+        name = encoding.get_name(code)
+        if not name or name == ".notdef":
+            return None
+        # ``cff.get_path(name)`` mirrors upstream's
+        # ``type2CharString.getPath()`` after the sid/gid round trip —
+        # CFFFont's :meth:`get_path` already performs the lookup
+        # internally and returns ``None`` for unknown names.
+        try:
+            path = cff.get_path(name)
+        except Exception:  # noqa: BLE001 — malformed charstring should not crash callers
+            _LOG.exception("CFF charstring draw failed for glyph %s", name)
+            return None
+        if not path:
+            return None
+        return path
+
+    # ---------- parser factory ----------
+
+    @staticmethod
+    def get_parser(
+        random_access_read: bytes
+        | bytearray
+        | memoryview
+        | BinaryIO,
+        is_embedded: bool = True,  # noqa: FBT001, FBT002 — mirror upstream signature
+    ) -> Any:
+        """Return a :class:`TTFParser` (or :class:`OTFParser`) suited to
+        the SFNT flavour of ``random_access_read``.
+
+        Mirrors upstream ``private TTFParser getParser(RandomAccessRead,
+        boolean)`` (PDTrueTypeFont.java line 781). Sniffs the first four
+        bytes for the ASCII tag ``OTTO`` — present on CFF-flavoured
+        OpenType — and returns an :class:`OTFParser` in that case,
+        otherwise a :class:`TTFParser`. The cursor is rewound after the
+        sniff for stream-like inputs.
+
+        Upstream marks the method ``private``; we expose it as a
+        ``@staticmethod`` so the parity scanner records the match and
+        so embedder code that already has TTF bytes in hand can pick
+        the right parser without duplicating the sniffing logic.
+
+        Accepts:
+            * raw bytes / bytearray / memoryview — the leading four
+              bytes are read directly.
+            * file-like object with ``.read`` / ``.seek`` / ``.tell`` —
+              the four bytes are read and the position restored.
+        """
+        from pypdfbox.fontbox.ttf.otf_parser import OTFParser  # noqa: PLC0415
+        from pypdfbox.fontbox.ttf.ttf_parser import TTFParser  # noqa: PLC0415
+
+        if isinstance(random_access_read, (bytes, bytearray, memoryview)):
+            head = bytes(random_access_read[:4])
+        else:
+            # File-like: snapshot position, peek four bytes, rewind.
+            try:
+                start = random_access_read.tell()
+            except (AttributeError, OSError):
+                start = None
+            head_bytes = random_access_read.read(4) or b""
+            if start is not None:
+                import contextlib  # noqa: PLC0415
+
+                with contextlib.suppress(AttributeError, OSError):
+                    random_access_read.seek(start)
+            head = bytes(head_bytes)
+        if head == b"OTTO":
+            return OTFParser(is_embedded)
+        return TTFParser(is_embedded)
+
+    # ---------- load (static factory for embedding) ----------
+
+    @staticmethod
+    def load(
+        doc: Any,
+        source: str | bytes | bytearray | memoryview | BinaryIO,
+        encoding: Encoding | None = None,
+    ) -> PDTrueTypeFont:
+        """Load a TTF to be embedded into a document as a simple font.
+
+        Mirrors upstream ``static PDTrueTypeFont load(PDDocument, File,
+        Encoding)`` / ``load(PDDocument, InputStream, Encoding)`` /
+        ``load(PDDocument, RandomAccessRead, Encoding)`` /
+        ``load(PDDocument, TrueTypeFont, Encoding)``
+        (PDTrueTypeFont.java lines 206, 226, 246, 266). Upstream's four
+        overloads collapse to one Python entry point because we dispatch
+        on the concrete ``source`` type — path string, raw bytes, file-
+        like, or a pre-parsed :class:`TrueTypeFont`.
+
+        Simple fonts only support 256 character codes; upstream's
+        docstring tells callers to switch to :meth:`PDType0Font.load`
+        for full Unicode support, and we preserve the same advice.
+
+        ``doc`` is accepted for upstream signature parity; the returned
+        font dictionary is *not* automatically registered with the
+        document — callers attach it via :class:`PDResources` or direct
+        dictionary manipulation, matching :meth:`PDType0Font.load`.
+
+        Returns:
+            A freshly-constructed :class:`PDTrueTypeFont` with the TTF
+            embedded in the descriptor's ``/FontFile2`` stream, the
+            supplied (or :class:`WinAnsiEncoding`-default) encoding
+            wired into ``/Encoding``, and ``/Widths`` populated from
+            the TTF's ``hmtx`` table.
+        """
+        del doc  # signature parity only; unused.
+        from .encoding import WinAnsiEncoding  # noqa: PLC0415
+
+        ttf, ttf_bytes = _resolve_ttf_source(source)
+        active_encoding: Encoding = (
+            encoding if encoding is not None else WinAnsiEncoding.INSTANCE
+        )
+        return _build_simple_ttf_font(ttf, ttf_bytes, active_encoding)
+
     # ---------- encode (codepoint -> bytes) ----------
 
     def encode_codepoint(self, unicode: int) -> bytes:  # type: ignore[override]
@@ -1063,6 +1223,211 @@ def _embed_subset_bytes(
         else:
             new_font_name = f"{tag}+{current_font_name}"
         descriptor.set_font_name(new_font_name)
+
+
+def _resolve_ttf_source(
+    source: str | bytes | bytearray | memoryview | Any,
+) -> tuple[TrueTypeFont, bytes]:
+    """Coerce :meth:`PDTrueTypeFont.load`'s polymorphic ``source`` to a
+    ``(TrueTypeFont, bytes)`` pair.
+
+    Handles the four upstream overloads in one place:
+
+    * ``str`` / ``os.PathLike`` — read the file and parse.
+    * raw bytes / bytearray / memoryview — parse directly.
+    * file-like binary stream — read to EOF, parse.
+    * an already-parsed :class:`TrueTypeFont` — use as-is; the raw bytes
+      come from :meth:`TrueTypeFont.get_original_data` so downstream
+      embedding still has the on-wire SFNT.
+    """
+    import os  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    if isinstance(source, TrueTypeFont):
+        raw_bytes = source.get_original_data()
+        return source, bytes(raw_bytes)
+    if isinstance(source, (bytes, bytearray, memoryview)):
+        raw = bytes(source)
+        return TrueTypeFont.from_bytes(raw), raw
+    if isinstance(source, (str, os.PathLike)):
+        raw = Path(os.fspath(source)).read_bytes()
+        return TrueTypeFont.from_bytes(raw), raw
+    if hasattr(source, "read"):
+        data = source.read()
+        if isinstance(data, str):
+            raise TypeError(
+                "PDTrueTypeFont.load source must yield bytes, not str — "
+                "open in binary mode"
+            )
+        raw = bytes(data)
+        return TrueTypeFont.from_bytes(raw), raw
+    raise TypeError(
+        f"PDTrueTypeFont.load cannot read font bytes from {type(source).__name__}"
+    )
+
+
+def _build_simple_ttf_font(
+    ttf: TrueTypeFont, ttf_bytes: bytes, encoding: Encoding
+) -> PDTrueTypeFont:
+    """Construct a fully-wired :class:`PDTrueTypeFont` simple font.
+
+    Mirrors the bookkeeping upstream's ``PDTrueTypeFontEmbedder``
+    performs when building a /Subtype /TrueType dictionary for embedding:
+
+    * /BaseFont, /Subtype /TrueType, /Encoding.
+    * /FontDescriptor with metric fields populated from the TTF.
+    * /FontFile2 carrying the unmodified TTF bytes.
+    * /FirstChar 0, /LastChar 255 and a /Widths table built from
+      the encoding's code-to-name map (codes with no glyph fall back
+      to 0).
+    """
+    from pypdfbox.cos import COSArray, COSFloat  # noqa: PLC0415
+
+    from .pd_font_descriptor import (  # noqa: PLC0415
+        FLAG_NON_SYMBOLIC,
+        PDFontDescriptor,
+    )
+
+    base_font = _ps_name_from_ttf_local(ttf, "EmbeddedTTF")
+
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Font"))
+    font_dict.set_name(COSName.get_pdf_name("Subtype"), "TrueType")
+    font_dict.set_name(_BASE_FONT, base_font)
+    # Wire /Encoding so the round-trip is observable on the COS layer
+    # (upstream sets this through the embedder, but the resulting dict
+    # carries a /Encoding entry regardless).
+    enc_obj = encoding.get_cos_object()
+    if enc_obj is not None:
+        font_dict.set_item(COSName.get_pdf_name("Encoding"), enc_obj)
+
+    # /FontDescriptor with the bare-minimum metric fields.
+    descriptor = PDFontDescriptor()
+    descriptor.set_font_name(base_font)
+    # Simple TrueType embeds default to non-symbolic; upstream lets the
+    # caller adjust this for symbolic fonts.
+    descriptor.set_flags(FLAG_NON_SYMBOLIC)
+    _populate_simple_descriptor_from_ttf(descriptor, ttf)
+    font_file2 = COSStream()
+    font_file2.set_raw_data(ttf_bytes)
+    descriptor.set_font_file2(font_file2)
+    font_dict.set_item(
+        COSName.get_pdf_name("FontDescriptor"), descriptor.get_cos_object()
+    )
+
+    # /FirstChar /LastChar /Widths — width per code through the encoding.
+    widths = _build_simple_widths(ttf, encoding)
+    font_dict.set_int(COSName.get_pdf_name("FirstChar"), 0)
+    font_dict.set_int(COSName.get_pdf_name("LastChar"), 255)
+    widths_array = COSArray()
+    for w in widths:
+        widths_array.add(COSFloat(float(w)))
+    font_dict.set_item(COSName.get_pdf_name("Widths"), widths_array)
+
+    font = PDTrueTypeFont(font_dict)
+    # Cache the parsed TTF so subsequent metric / cmap calls don't
+    # re-parse the embedded /FontFile2.
+    font.set_true_type_font(ttf)
+    return font
+
+
+def _ps_name_from_ttf_local(ttf: TrueTypeFont, fallback: str) -> str:
+    """Best-effort PostScript name from a parsed TTF. Mirrors the helper
+    in :mod:`pd_type0_font` but kept local to avoid a cross-module import
+    cycle."""
+    inner = getattr(ttf, "_tt", None)
+    if inner is None:
+        return fallback
+    try:
+        name_table = inner["name"]
+    except (KeyError, AttributeError):
+        return fallback
+    record = (
+        name_table.getName(6, 3, 1, 0x409)
+        or name_table.getName(6, 1, 0, 0)
+        or name_table.getName(6, 0, 3, 0)
+    )
+    if record is None:
+        return fallback
+    try:
+        text = record.toUnicode()
+    except Exception:  # noqa: BLE001
+        return fallback
+    text = text.strip()
+    return text if text else fallback
+
+
+def _populate_simple_descriptor_from_ttf(
+    descriptor: Any, ttf: TrueTypeFont
+) -> None:
+    """Populate a simple-font /FontDescriptor with metric fields read
+    from ``ttf``. Mirrors the upstream ``TrueTypeEmbedder`` field copy
+    used by ``PDTrueTypeFont.load``; values are scaled to 1/1000 em."""
+    from pypdfbox.cos import COSArray, COSFloat  # noqa: PLC0415
+
+    head = ttf.get_header()
+    units_per_em = head.get_units_per_em() if head is not None else 1000
+    if units_per_em <= 0:
+        units_per_em = 1000
+    scale = 1000.0 / units_per_em
+
+    if head is not None:
+        bbox = COSArray()
+        bbox.add(COSFloat(float(head.get_x_min()) * scale))
+        bbox.add(COSFloat(float(head.get_y_min()) * scale))
+        bbox.add(COSFloat(float(head.get_x_max()) * scale))
+        bbox.add(COSFloat(float(head.get_y_max()) * scale))
+        descriptor.set_font_b_box(bbox)
+
+    hhea = ttf.get_horizontal_header()
+    if hhea is not None:
+        descriptor.get_cos_object().set_int(
+            COSName.get_pdf_name("Ascent"), int(hhea.get_ascender() * scale)
+        )
+        descriptor.get_cos_object().set_int(
+            COSName.get_pdf_name("Descent"), int(hhea.get_descender() * scale)
+        )
+        descriptor.get_cos_object().set_int(
+            COSName.get_pdf_name("CapHeight"), int(hhea.get_ascender() * scale)
+        )
+
+    descriptor.get_cos_object().set_int(COSName.get_pdf_name("ItalicAngle"), 0)
+    descriptor.get_cos_object().set_int(COSName.get_pdf_name("StemV"), 80)
+
+
+def _build_simple_widths(ttf: TrueTypeFont, encoding: Encoding) -> list[float]:
+    """Return 256 advance widths (one per simple-font code) in 1/1000 em.
+
+    Walks codes 0..255 through ``encoding.get_name`` to find the glyph
+    name, looks the name up via the TTF's cmap to get a GID, then reads
+    ``hmtx`` for the advance width. Unmapped codes get 0.
+    """
+    units_per_em = ttf.get_units_per_em()
+    if units_per_em <= 0:
+        units_per_em = 1000
+    scale = 1000.0 / units_per_em
+    widths: list[float] = []
+    for code in range(256):
+        try:
+            name = encoding.get_name(code)
+        except Exception:  # noqa: BLE001
+            name = None
+        if not name or name == ".notdef":
+            widths.append(0.0)
+            continue
+        try:
+            gid = ttf.name_to_gid(name)
+        except Exception:  # noqa: BLE001
+            gid = 0
+        if gid <= 0:
+            widths.append(0.0)
+            continue
+        try:
+            advance = ttf.get_advance_width(gid)
+        except Exception:  # noqa: BLE001
+            advance = 0
+        widths.append(float(advance) * scale)
+    return widths
 
 
 __all__ = ["PDTrueTypeFont"]

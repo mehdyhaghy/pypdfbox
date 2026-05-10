@@ -11,7 +11,6 @@ from pypdfbox.pdmodel.interactive.annotation.pd_border_style_dictionary import (
     PDBorderStyleDictionary,
 )
 
-
 # ---------- /IC (interior color) — both subtypes ----------
 
 

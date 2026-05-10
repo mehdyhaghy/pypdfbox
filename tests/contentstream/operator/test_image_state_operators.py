@@ -34,7 +34,6 @@ from pypdfbox.contentstream.operator.state.set_rendering_intent import (
 )
 from pypdfbox.cos import COSArray, COSBase, COSFloat, COSInteger, COSName
 
-
 # (operator-name, expected handler class) for every cluster-#3 stub.
 _NEW_OPERATORS: list[tuple[str, type[OperatorProcessor]]] = [
     # inline image
@@ -59,7 +58,7 @@ def test_each_handler_class_advertises_correct_operator_name() -> None:
     """Every new stub class must set ``OPERATOR_NAME`` to the token it
     handles. The registry depends on this contract for default wiring."""
     for name, cls in _NEW_OPERATORS:
-        assert cls.OPERATOR_NAME == name, (
+        assert name == cls.OPERATOR_NAME, (
             f"{cls.__name__}.OPERATOR_NAME={cls.OPERATOR_NAME!r}, "
             f"expected {name!r}"
         )

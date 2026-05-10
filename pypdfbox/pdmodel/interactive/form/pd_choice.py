@@ -306,6 +306,42 @@ class PDChoice(PDVariableText):
         indices.sort()
         return indices
 
+    def get_value_for(self, name: COSName) -> list[str]:
+        """Read the selected/default value list for ``name`` (/V or /DV).
+
+        Mirrors upstream private ``getValueFor(COSName)`` — returns
+        ``[]`` when the named entry is absent, ``[value]`` for a single
+        COSString, or the list of strings for a COSArray. Exposed so
+        callers can read /V and /DV through the same parsed pathway as
+        :py:meth:`get_value` / :py:meth:`get_default_value` without
+        re-implementing the dispatch.
+        """
+        item = self._field.get_dictionary_object(name)
+        return self._read_string_or_array(item)
+
+    def update_selected_options_index(
+        self, values: list[str], options: list[str]
+    ) -> None:
+        """Recompute /I from ``values`` against ``options``.
+
+        Mirrors upstream private ``updateSelectedOptionsIndex`` — looks
+        up each ``value``'s position in ``options`` (using ``-1`` for
+        misses, the same as Java ``List.indexOf``), sorts the resulting
+        indices in ascending order (PDF 32000-1 §12.7.4.4) and writes
+        /I via :py:meth:`set_selected_options_indices`.
+        """
+        indices: list[int] = []
+        for value in values:
+            try:
+                indices.append(options.index(value))
+            except ValueError:
+                # Java's List.indexOf returns -1 for absent values; we
+                # preserve that quirk because the upstream caller in
+                # PDChoice.setValue(List) explicitly tolerates it.
+                indices.append(-1)
+        indices.sort()
+        self.set_selected_options_indices(indices)
+
     def _normalize_value_for_set(self, value: list[str] | str) -> list[str]:
         values = [value] if isinstance(value, str) else list(value)
         if len(values) > 1 and not self.is_multi_select():

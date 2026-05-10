@@ -33,7 +33,6 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-
 # ---------- constructors ----------
 
 

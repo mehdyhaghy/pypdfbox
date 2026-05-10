@@ -23,7 +23,6 @@ from pypdfbox.pdmodel.font.encoding import (
     WinAnsiEncoding,
 )
 
-
 # ---------- DictionaryEncoding.get_encoding_name parity -------------------
 
 

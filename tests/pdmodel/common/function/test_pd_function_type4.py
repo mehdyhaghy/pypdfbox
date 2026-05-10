@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSFloat, COSStream
+from pypdfbox.cos import COSArray, COSStream
 from pypdfbox.pdmodel.common.function import PDFunctionType4
 from pypdfbox.pdmodel.common.function import pd_function_type4 as ps_module
 

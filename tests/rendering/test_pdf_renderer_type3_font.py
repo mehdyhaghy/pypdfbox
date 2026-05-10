@@ -27,7 +27,6 @@ from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 from pypdfbox.rendering import PDFRenderer
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

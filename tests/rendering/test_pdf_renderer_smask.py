@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.rendering import PDFRenderer
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

@@ -18,7 +18,6 @@ import pytest
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName
 from pypdfbox.pdmodel.common import PDMatrix
 
-
 # ---------- construction ----------
 
 

@@ -13,7 +13,6 @@ from pypdfbox.fontbox.font_box_font import FontBoxFont
 from pypdfbox.fontbox.font_mapper import DefaultFontMapper
 from pypdfbox.fontbox.font_mapping import FontMapping
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

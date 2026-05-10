@@ -8,7 +8,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics import BlendMode
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode as BlendModeDirect
 
-
 # ---------------------------------------------------------------------------
 # Re-export & singleton identity
 # ---------------------------------------------------------------------------
@@ -120,7 +119,7 @@ def test_standard_names_has_all_16_modes():
         "Color",
         "Luminosity",
     }
-    assert BlendMode.STANDARD_NAMES == expected
+    assert expected == BlendMode.STANDARD_NAMES
 
 
 def test_standard_names_is_frozenset():

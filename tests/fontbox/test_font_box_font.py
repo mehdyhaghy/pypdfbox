@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pypdfbox.fontbox import EncodedFont, FontBoxFont
 
-
 # ---------- FontBoxFont protocol ------------------------------------------
 
 

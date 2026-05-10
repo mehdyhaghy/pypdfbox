@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName
-from pypdfbox.pdmodel.pd_document_information import PDDocumentInformation
 from pypdfbox.pdmodel.interactive.pagenavigation import (
     PDThread,
     PDThreadBead,
 )
+from pypdfbox.pdmodel.pd_document_information import PDDocumentInformation
 
 
 def test_default_thread_has_type_thread() -> None:

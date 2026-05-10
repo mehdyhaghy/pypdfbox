@@ -29,7 +29,6 @@ from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_di
 )
 from pypdfbox.rendering.render_destination import RenderDestination
 
-
 # ---------- get_render_state / set_render_state accept RenderDestination ----
 
 

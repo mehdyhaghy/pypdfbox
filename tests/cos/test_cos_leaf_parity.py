@@ -6,7 +6,6 @@ import struct
 from pypdfbox.cos import COSBoolean, COSFloat, COSInteger, COSName, COSString
 from pypdfbox.cos.cos_number import COSNumber
 
-
 # ---------------------------------------------------------------------------
 # COSBoolean — get_value / is_true / is_false / __bool__ round-trip
 # ---------------------------------------------------------------------------

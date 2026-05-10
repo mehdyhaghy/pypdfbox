@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName
-from pypdfbox.pdmodel.pd_page import PDPage
-from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.interactive.pagenavigation import (
     PDThread,
     PDThreadBead,
 )
+from pypdfbox.pdmodel.pd_page import PDPage
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 def test_default_bead_has_type_bead_and_circular_links() -> None:

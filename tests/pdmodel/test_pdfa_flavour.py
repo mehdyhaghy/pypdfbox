@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.common import PDMetadata
 from pypdfbox.pdmodel.pdfa_flavour import KNOWN_FLAVOURS, PDFAFlavour
 from pypdfbox.xmpbox import PDFAIdentificationSchema, XMPMetadata
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -89,7 +88,7 @@ def test_known_flavours_covers_all_canonical_combinations() -> None:
         PDFAFlavour(4, "E"),
         PDFAFlavour(4, "F"),
     }
-    assert KNOWN_FLAVOURS == expected
+    assert expected == KNOWN_FLAVOURS
 
 
 def test_is_known_for_canonical_and_invalid_flavours() -> None:

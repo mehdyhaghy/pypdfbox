@@ -93,7 +93,9 @@ def metadata() -> XMPMetadata:
 
 
 @pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
-def test_initialized_to_null(metadata: XMPMetadata, field_name: str, type_token: str, card: str) -> None:
+def test_initialized_to_null(
+    metadata: XMPMetadata, field_name: str, type_token: str, card: str
+) -> None:
     """
     Translated from upstream ``testInitializedToNull``: a freshly-built schema
     must report ``None`` for every typed accessor.
@@ -122,7 +124,9 @@ def test_setting_value(metadata: XMPMetadata, field_name: str, type_token: str, 
 
 
 @pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
-def test_random_setting_value(metadata: XMPMetadata, field_name: str, type_token: str, card: str) -> None:
+def test_random_setting_value(
+    metadata: XMPMetadata, field_name: str, type_token: str, card: str
+) -> None:
     """
     Translated from upstream ``testRandomSettingValue``: upstream draws a
     random value of the right type. Cluster #1 substitutes a deterministic
@@ -141,7 +145,9 @@ def test_random_setting_value(metadata: XMPMetadata, field_name: str, type_token
 
 
 @pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
-def test_property_setter_simple(metadata: XMPMetadata, field_name: str, type_token: str, card: str) -> None:
+def test_property_setter_simple(
+    metadata: XMPMetadata, field_name: str, type_token: str, card: str
+) -> None:
     """
     Translated subset of upstream ``testPropertySetterSimple``: upstream verifies
     that ``setXxxProperty(field)`` (via ``addProperty(AbstractField)``) produces

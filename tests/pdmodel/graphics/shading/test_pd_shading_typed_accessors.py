@@ -36,7 +36,6 @@ from pypdfbox.pdmodel.graphics.shading import (
 )
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-
 # ---------- get_b_box_rect / set_b_box_rect ----------
 
 

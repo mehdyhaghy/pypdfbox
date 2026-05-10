@@ -281,3 +281,111 @@ def test_ligature_table_to_string_format_matches_upstream() -> None:
         ligature_glyph=7, component_glyph_ids=(8,), component_count=5
     )
     assert str(explicit) == "LigatureTable[ligatureGlyph=7, componentCount=5]"
+
+
+# --- to_string() parity for the remaining subtable / set classes ----
+
+
+def test_ligature_table_to_string_method_delegates_to_dunder() -> None:
+    lt = LigatureTable(ligature_glyph=42, component_glyph_ids=(1, 2))
+    assert lt.to_string() == str(lt)
+
+
+def test_ligature_set_table_to_string_format_matches_upstream() -> None:
+    lst = LigatureSetTable(
+        ligature_tables=(
+            LigatureTable(ligature_glyph=1, component_glyph_ids=(2,)),
+            LigatureTable(ligature_glyph=3, component_glyph_ids=(4,)),
+        )
+    )
+    assert lst.to_string() == "LigatureSetTable[ligatureCount=2]"
+    assert str(lst) == lst.to_string()
+
+
+def test_lookup_type_single_subst_format1_to_string() -> None:
+    sub = LookupTypeSingleSubstFormat1(delta_glyph_id=5, coverage_table=(10, 11))
+    assert (
+        sub.to_string()
+        == "LookupTypeSingleSubstFormat1[substFormat=1,deltaGlyphID=5]"
+    )
+    assert str(sub) == sub.to_string()
+
+
+def test_lookup_type_single_subst_format2_to_string() -> None:
+    sub = LookupTypeSingleSubstFormat2(
+        coverage_table=(20, 21, 22), substitute_glyph_ids=(200, 210, 220)
+    )
+    assert sub.to_string() == (
+        "LookupTypeSingleSubstFormat2[substFormat=2,"
+        "substituteGlyphIDs=[200, 210, 220]]"
+    )
+    assert str(sub) == sub.to_string()
+
+
+def test_lookup_type_single_subst_format2_get_substitute_glyph_i_ds_alias() -> None:
+    sub = LookupTypeSingleSubstFormat2(
+        coverage_table=(20,), substitute_glyph_ids=(200,)
+    )
+    assert sub.get_substitute_glyph_i_ds() == (200,)
+    assert sub.get_substitute_glyph_i_ds() == sub.get_substitute_glyph_ids()
+
+
+def test_lookup_type_ligature_subst_format1_to_string() -> None:
+    sub = LookupTypeLigatureSubstitutionSubstFormat1(
+        coverage_table=(70,),
+        ligature_set_tables=(
+            LigatureSetTable(
+                ligature_tables=(
+                    LigatureTable(ligature_glyph=500, component_glyph_ids=(70,)),
+                ),
+            ),
+        ),
+    )
+    assert (
+        sub.to_string()
+        == "LookupTypeLigatureSubstitutionSubstFormat1[substFormat=1]"
+    )
+    assert str(sub) == sub.to_string()
+
+
+def test_sequence_table_to_string() -> None:
+    st = SequenceTable(glyph_count=3, substitute_glyph_ids=(60, 61, 62))
+    assert (
+        st.to_string()
+        == "SequenceTable{glyphCount=3, substituteGlyphIDs=[60, 61, 62]}"
+    )
+    assert str(st) == st.to_string()
+
+
+def test_sequence_table_get_substitute_glyph_i_ds_alias() -> None:
+    st = SequenceTable(glyph_count=2, substitute_glyph_ids=(10, 20))
+    assert st.get_substitute_glyph_i_ds() == (10, 20)
+    assert st.get_substitute_glyph_i_ds() == st.get_substitute_glyph_ids()
+
+
+def test_alternate_set_table_to_string() -> None:
+    ast = AlternateSetTable(glyph_count=2, alternate_glyph_ids=(11, 22))
+    assert (
+        ast.to_string()
+        == "AlternateSetTable{glyphCount=2, alternateGlyphIDs=[11, 22]}"
+    )
+    assert str(ast) == ast.to_string()
+
+
+def test_alternate_set_table_get_alternate_glyph_i_ds_alias() -> None:
+    ast = AlternateSetTable(glyph_count=2, alternate_glyph_ids=(11, 22))
+    assert ast.get_alternate_glyph_i_ds() == (11, 22)
+    assert ast.get_alternate_glyph_i_ds() == ast.get_alternate_glyph_ids()
+
+
+def test_lookup_subtable_get_coverage_table_returns_wrapper_on_base() -> None:
+    # The abstract-base ``get_coverage_table`` mirrors upstream's
+    # ``LookupSubTable.getCoverageTable`` (which returns the
+    # ``CoverageTable`` instance). Concrete subclasses in this port
+    # override it to return the flat tuple.
+    sub = LookupTypeSingleSubstFormat1(delta_glyph_id=1, coverage_table=(7,))
+    # On the concrete subclass the override wins (tuple shape).
+    assert sub.get_coverage_table() == (7,)
+    # The wrapper is still reachable via the upstream-shaped accessor.
+    assert isinstance(sub.get_coverage_object(), CoverageTable)
+    assert sub.get_coverage_object().get_glyph_array() == (7,)

@@ -3,7 +3,7 @@ helpers, payload-form classification, and clear-action surface."""
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
+from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.action import PDActionJavaScript
 
 _JS: COSName = COSName.get_pdf_name("JS")

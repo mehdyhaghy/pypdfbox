@@ -22,7 +22,6 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_SYMBOLIC,
 )
 
-
 # ---------- get_glyph_list ----------
 
 

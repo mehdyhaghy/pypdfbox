@@ -34,7 +34,6 @@ from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E40
     PDInvalidPasswordException,
 )
 
-
 # ---------------------------------------------------------------- helpers
 
 

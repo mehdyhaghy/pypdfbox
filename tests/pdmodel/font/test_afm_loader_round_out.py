@@ -17,7 +17,6 @@ from pypdfbox.fontbox.afm import CharMetric
 from pypdfbox.fontbox.ttf.glyph_data import BoundingBox
 from pypdfbox.pdmodel.font.afm_loader import load_standard14
 
-
 # ---------- get_character_width -------------------------------------------
 
 

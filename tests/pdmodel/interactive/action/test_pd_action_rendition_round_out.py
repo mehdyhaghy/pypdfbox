@@ -5,11 +5,10 @@ Covers the Wave 244 additions: ``/OP`` operation constants and predicates,
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream, COSString
+from pypdfbox.cos import COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.action.pd_action_rendition import (
     PDActionRendition,
 )
-
 
 _JS: COSName = COSName.get_pdf_name("JS")
 _OP: COSName = COSName.get_pdf_name("OP")

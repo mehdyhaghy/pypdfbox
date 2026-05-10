@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.common.function import (
 from pypdfbox.pdmodel.graphics.shading import PDShadingType2
 from pypdfbox.pdmodel.graphics.shading.pd_shading import PDShading
 
-
 # ---------- helpers ----------
 
 

@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
 )
 from pypdfbox.pdmodel.pd_document import PDDocument
 
-
 # ---------------------------------------------------------- cert factory
 
 
@@ -41,7 +40,7 @@ def _make_cert(
 
     private_key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
-    now = dt.datetime.now(dt.timezone.utc)
+    now = dt.datetime.now(dt.UTC)
     builder = (
         x509.CertificateBuilder()
         .subject_name(name)

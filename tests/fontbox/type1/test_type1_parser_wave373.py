@@ -8,7 +8,6 @@ from pypdfbox.fontbox.type1.type1_parser import (
     Type1Parser,
 )
 
-
 _HEADER = b"""
 %!PS-AdobeFont-1.0: Wave373 001.000
 12 dict begin

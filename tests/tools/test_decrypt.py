@@ -20,7 +20,6 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
 from pypdfbox.tools import cli
 from pypdfbox.tools.decrypt import decrypt_pdf
 
-
 # ----------------------------------------------------------------- helpers
 
 

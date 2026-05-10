@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.font.encoding.mac_os_roman_encoding import (
     _MAC_OS_ROMAN_DIFFERENCES,
 )
 
-
 # ---------- singleton + identity ----------
 
 

@@ -14,7 +14,6 @@ from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
-
 # ---------- /FontMatrix ----------
 
 

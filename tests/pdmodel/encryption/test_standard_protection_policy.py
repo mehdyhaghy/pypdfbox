@@ -17,7 +17,6 @@ from pypdfbox.pdmodel.encryption import (
     StandardProtectionPolicy,
 )
 
-
 # ---------- is_owner_password_set ----------
 
 

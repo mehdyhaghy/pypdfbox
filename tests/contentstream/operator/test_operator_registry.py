@@ -44,7 +44,6 @@ from pypdfbox.contentstream.operator.text.show_text_with_word_and_char_spacing i
 )
 from pypdfbox.cos import COSBase, COSString
 
-
 # ---------- registry contents ----------
 
 

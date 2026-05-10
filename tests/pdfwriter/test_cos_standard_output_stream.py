@@ -211,10 +211,9 @@ def test_context_manager_closes_even_when_body_raises() -> None:
             super().close()
 
     sink = _Tracker()
-    with pytest.raises(RuntimeError):
-        with COSStandardOutputStream(sink) as out:
-            out.write(b"x")
-            raise RuntimeError("boom")
+    with pytest.raises(RuntimeError), COSStandardOutputStream(sink) as out:
+        out.write(b"x")
+        raise RuntimeError("boom")
     assert sink.closed_calls == 1
 
 

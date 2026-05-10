@@ -9,7 +9,6 @@ from pypdfbox.pdmodel.graphics.form import (
 )
 from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 
-
 _TYPE = COSName.get_pdf_name("Type")
 _SUBTYPE = COSName.get_pdf_name("Subtype")
 _GROUP = COSName.get_pdf_name("Group")

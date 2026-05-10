@@ -6,7 +6,6 @@ from __future__ import annotations
 from pypdfbox.contentstream import PDFStreamEngine
 from pypdfbox.cos import COSDictionary, COSName
 
-
 # ---------- get_initial_matrix / set_initial_matrix ----------
 
 

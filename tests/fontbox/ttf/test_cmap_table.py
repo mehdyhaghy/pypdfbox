@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import struct
 
-import pytest
-
 from pypdfbox.fontbox.ttf.cmap_subtable import CmapSubtable
 from pypdfbox.fontbox.ttf.cmap_table import CmapTable
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 from pypdfbox.fontbox.ttf.ttf_table import TTFTable
-
 
 # ---------------------------------------------------------------------------
 # Class-level basics

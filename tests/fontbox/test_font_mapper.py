@@ -26,7 +26,6 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import (
     PDFontDescriptor,
 )
 
-
 # ---------------------------------------------------------------------------
 # FontBoxFont protocol
 # ---------------------------------------------------------------------------

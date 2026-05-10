@@ -202,6 +202,17 @@ class PDFDocEncoding:
         """Pythonic accessor for the byte code of a given character."""
         return get_char_code(character)
 
+    @staticmethod
+    def set(code: int, unicode_char: str) -> None:  # noqa: A003 - mirror upstream name
+        """Register a code → Unicode mapping in the PDFDocEncoding tables.
+
+        Mirrors upstream ``PDFDocEncoding.set(int, char)`` (private static
+        in Java, used internally by the table initializer). Exposed here
+        under the same name so ported code can call ``PDFDocEncoding.set``
+        directly without needing the module-level alias.
+        """
+        set(code, unicode_char)
+
 
 __all__ = [
     "PDFDocEncoding",

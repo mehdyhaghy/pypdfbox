@@ -5,9 +5,9 @@ import pytest
 from pypdfbox.contentstream import (
     MissingOperandException,
     Operator,
+    OperatorName,
     PDFStreamEngine,
 )
-from pypdfbox.contentstream import OperatorName
 from pypdfbox.contentstream.operator.text import (
     MoveText,
     MoveTextSetLeading,

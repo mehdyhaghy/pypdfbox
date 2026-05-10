@@ -11,7 +11,6 @@ from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.tools import cli
 from pypdfbox.tools.extracttext import extract_text
 
-
 # ----------------------------------------------------------------- helpers
 
 

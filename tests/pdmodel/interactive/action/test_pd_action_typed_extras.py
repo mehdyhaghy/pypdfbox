@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_rendition import PDActionRend
 from pypdfbox.pdmodel.interactive.action.pd_action_sound import PDActionSound
 from pypdfbox.pdmodel.interactive.action.pd_action_transition import PDActionTransition
 from pypdfbox.pdmodel.interactive.action.pd_target_directory import PDTargetDirectory
-from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageXYZDestination,
 )
@@ -27,7 +26,7 @@ from pypdfbox.pdmodel.interactive.pagenavigation.pd_transition import PDTransiti
 from pypdfbox.pdmodel.interactive.pagenavigation.pd_transition_style import (
     PDTransitionStyle,
 )
-
+from pypdfbox.pdmodel.interactive.sound.pd_sound_stream import PDSoundStream
 
 _S: COSName = COSName.get_pdf_name("S")
 

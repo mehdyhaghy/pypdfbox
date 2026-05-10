@@ -12,7 +12,6 @@ from pypdfbox.pdmodel.font.encoding import (
     ZapfDingbatsEncoding,
 )
 
-
 # ---------- predefined singletons -----------------------------------------
 
 

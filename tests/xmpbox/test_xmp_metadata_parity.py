@@ -10,7 +10,6 @@ from pypdfbox.xmpbox import (
     XMPSchema,
 )
 
-
 # --- get_schema(namespace) -----------------------------------------------
 
 

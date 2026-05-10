@@ -19,7 +19,6 @@ from pypdfbox.pdmodel.graphics.color.pd_device_n import (
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
-
 # ---------- helpers ----------
 
 

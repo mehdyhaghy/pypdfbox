@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
     PDOutlineItem,
 )
 
-
 # ---------- linked-list navigation ----------
 
 

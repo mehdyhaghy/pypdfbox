@@ -32,3 +32,10 @@ def test_to_string_mirrors_java_format() -> None:
     #     lookupListIndices.length);
     ft = FeatureTable(lookup_list_indices=(1, 2, 3, 4, 5))
     assert str(ft) == "FeatureTable[lookupListIndicesCount=5]"
+
+
+def test_to_string_method_equivalent_to_dunder() -> None:
+    # Explicit ``to_string`` is the upstream-name-mirroring entry point;
+    # ``__str__`` delegates to it.
+    ft = FeatureTable(lookup_list_indices=(1, 2, 3, 4, 5))
+    assert ft.to_string() == str(ft)

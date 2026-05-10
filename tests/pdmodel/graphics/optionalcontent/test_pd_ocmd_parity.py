@@ -8,7 +8,6 @@ from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_di
     PDOptionalContentMembershipDictionary,
 )
 
-
 # ---------- /OCGs (upstream-named accessors) ----------
 
 

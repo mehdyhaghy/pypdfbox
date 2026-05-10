@@ -11,7 +11,6 @@ from pypdfbox.pdmodel import PDDocument, PDRectangle
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
 from pypdfbox.tools import cli, imagetopdf
 
-
 # ----------------------------------------------------------------- helpers
 
 

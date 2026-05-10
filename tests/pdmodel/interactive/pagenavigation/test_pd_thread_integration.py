@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
-from pypdfbox.pdmodel.pd_document import PDDocument
-from pypdfbox.pdmodel.pd_page import PDPage
-from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.interactive.pagenavigation import (
     PDThread,
     PDThreadBead,
 )
+from pypdfbox.pdmodel.pd_document import PDDocument
+from pypdfbox.pdmodel.pd_page import PDPage
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 def test_document_catalog_get_threads_empty_when_absent() -> None:

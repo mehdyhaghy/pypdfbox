@@ -31,7 +31,6 @@ from pypdfbox.pdmodel.graphics.color.pd_indexed import PDIndexed
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
 
-
 # ---------- helpers ----------
 
 

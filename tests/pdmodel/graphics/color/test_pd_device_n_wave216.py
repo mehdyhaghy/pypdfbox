@@ -24,7 +24,6 @@ from pypdfbox.pdmodel.graphics.color.pd_device_n import (
     PDDeviceNProcess,
 )
 
-
 # ---------- helpers ----------
 
 

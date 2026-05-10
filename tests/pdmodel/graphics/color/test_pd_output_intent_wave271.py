@@ -19,7 +19,6 @@ import pytest
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
 
-
 # ---------- clear_* symmetric to has_* ----------
 
 

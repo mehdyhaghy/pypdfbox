@@ -25,7 +25,6 @@ import pytest
 
 from pypdfbox.xmpbox import ExifSchema, XMPMetadata
 
-
 # Upstream @PropertyType declarations for the simple-typed properties we ship.
 # Format: (FIELD_NAME, type_token, cardinality).
 _PARAMETERS: tuple[tuple[str, str, str], ...] = (
@@ -153,7 +152,10 @@ _ACCESSORS: dict[str, tuple[str, str]] = {
     "ExposureProgram": ("get_exposure_program", "set_exposure_program"),
     "MeteringMode": ("get_metering_mode", "set_metering_mode"),
     "LightSource": ("get_light_source", "set_light_source"),
-    "FocalPlaneResolutionUnit": ("get_focal_plane_resolution_unit", "set_focal_plane_resolution_unit"),
+    "FocalPlaneResolutionUnit": (
+        "get_focal_plane_resolution_unit",
+        "set_focal_plane_resolution_unit",
+    ),
     "SensingMethod": ("get_sensing_method", "set_sensing_method"),
     "FileSource": ("get_file_source", "set_file_source"),
     "SceneType": ("get_scene_type", "set_scene_type"),

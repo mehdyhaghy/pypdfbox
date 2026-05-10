@@ -454,6 +454,26 @@ class PDSeedValueCertificate:
     def __repr__(self) -> str:
         return self.__str__()
 
+    # ---------- COSArray ↔ list[bytes] conversion (mirror upstream privates) ----------
+
+    @staticmethod
+    def convert_list_of_byte_arrays_to_cos_array(byte_arrays: list[bytes]) -> COSArray:
+        """Pack a list of byte arrays into a ``COSArray`` of ``COSString``.
+
+        Mirrors upstream private static ``convertListOfByteArraysToCOSArray``.
+        """
+        return _byte_arrays_to_cos_array(byte_arrays)
+
+    @staticmethod
+    def get_list_of_byte_arrays_from_cos_array(array: COSArray) -> list[bytes]:
+        """Unpack a ``COSArray`` of ``COSString`` into a list of byte arrays.
+
+        Mirrors upstream private static ``getListOfByteArraysFromCOSArray``.
+        Non-string entries are silently skipped (matches upstream's
+        ``instanceof COSString`` filter).
+        """
+        return _byte_arrays_from_cos_array(array)
+
 
 def _byte_arrays_from_cos_array(array: COSArray) -> list[bytes]:
     out: list[bytes] = []

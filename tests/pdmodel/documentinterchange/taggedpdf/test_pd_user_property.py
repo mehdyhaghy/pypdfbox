@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDUserProperty,
 )
 
-
 # ---------- construction ----------
 
 

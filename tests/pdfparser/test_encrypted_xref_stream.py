@@ -55,8 +55,8 @@ def _build_encrypted_xref_stream_pdf(
         StandardProtectionPolicy,
     )
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     pd = PDDocument()
     page = PDPage(PDRectangle.LETTER)

@@ -13,7 +13,6 @@ from pypdfbox.pdmodel.common import PDMetadata
 from pypdfbox.pdmodel.pdfua_flavour import KNOWN_PARTS, PDFUAFlavour
 from pypdfbox.xmpbox import PDFUAIdentificationSchema, XMPMetadata
 
-
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -83,7 +82,7 @@ def test_flavour_equality() -> None:
 
 def test_known_parts_covers_published_iso_parts() -> None:
     # ISO 14289-1 (2014) and ISO 14289-2 (2024) — both published.
-    assert KNOWN_PARTS == frozenset({1, 2})
+    assert frozenset({1, 2}) == KNOWN_PARTS
 
 
 def test_is_known_for_canonical_and_invalid_parts() -> None:

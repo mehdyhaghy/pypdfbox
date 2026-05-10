@@ -304,6 +304,17 @@ class Splitter:
                     break
                 self._current_page_number += 1
 
+    def process_pages(self) -> None:
+        """Public-named hook for the pagination loop.
+
+        Mirrors upstream ``processPages`` (protected in Java). Subclasses
+        can override either this method or the underscored
+        :py:meth:`_process_pages`; the default :py:meth:`split` driver
+        always calls the underscored variant so internal callers do not
+        accidentally pick up a subclass override they didn't ask for.
+        """
+        self._process_pages()
+
     # ---------- subclass hooks (mirror upstream protected methods) ----------
 
     def split_at_page(self, page_number: int) -> bool:
@@ -428,6 +439,28 @@ class Splitter:
             self._annot_dict_maps.append(self._annot_dict_map)
             self._dest_to_fix = []
             self._dest_to_fix_per_chunk.append(self._dest_to_fix)
+
+    def create_new_document_if_necessary(self) -> None:
+        """Public-named hook mirroring upstream ``createNewDocumentIfNecessary``.
+
+        Allocates the next destination document when :py:meth:`split_at_page`
+        signals a chunk boundary (or when no destination has been
+        created yet). Delegates to :py:meth:`_create_new_document_if_necessary`.
+        """
+        self._create_new_document_if_necessary()
+
+    def process_annotations(self, imported: PDPage) -> None:
+        """Public-named hook for annotation handling.
+
+        Mirrors upstream protected ``processAnnotations(PDPage)`` —
+        accepts the imported page only (upstream signature) and delegates
+        to the underscored impl with a ``None`` source page. Most
+        subclasses will simply override this entry point; the internal
+        :py:meth:`_process_annotations` retains its richer signature so
+        the default link-destination plumbing still has access to the
+        original source page.
+        """
+        self._process_annotations(imported, imported)
 
     def _process_annotations(self, source_page: PDPage, imported: PDPage) -> None:
         """Shallow-clone every annotation on ``imported`` so structure-tree

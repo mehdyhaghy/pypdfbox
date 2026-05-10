@@ -68,6 +68,15 @@ class COSNull(COSBase):
     def __repr__(self) -> str:
         return "COSNull.NULL"
 
+    def to_string(self) -> str:
+        """Mirror upstream ``COSNull.toString()`` — returns the literal
+        ``"COSNull{}"`` string. Distinct from Python's :meth:`__str__`
+        (which inherits the default ``repr``-style format from
+        :class:`COSBase`); kept as an explicit method so callers porting
+        Java code that calls ``cosNull.toString()`` get byte-identical
+        output."""
+        return "COSNull{}"
+
 
 COSNull.NULL = COSNull()
 COSNull._initialized = True

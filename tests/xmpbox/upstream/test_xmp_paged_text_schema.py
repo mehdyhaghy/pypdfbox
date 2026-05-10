@@ -12,8 +12,8 @@ upstream files use: confirm the structured-type contract upstream's
 from __future__ import annotations
 
 from pypdfbox.xmpbox import (
-    XMPMetadata,
     XMPageTextSchema,
+    XMPMetadata,
 )
 
 

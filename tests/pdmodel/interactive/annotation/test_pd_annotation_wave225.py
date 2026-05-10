@@ -198,7 +198,7 @@ def test_rubber_stamp_standard_names_set_size_and_contents() -> None:
         "Sold",
         "TopSecret",
     }
-    assert PDAnnotationRubberStamp.STANDARD_NAMES == expected
+    assert expected == PDAnnotationRubberStamp.STANDARD_NAMES
 
 
 def test_rubber_stamp_standard_names_is_frozenset() -> None:

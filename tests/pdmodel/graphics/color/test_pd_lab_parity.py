@@ -5,7 +5,6 @@ import pytest
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 
-
 # ---------- defaults (PDF 32000-1 §8.6.5.4) ----------
 
 

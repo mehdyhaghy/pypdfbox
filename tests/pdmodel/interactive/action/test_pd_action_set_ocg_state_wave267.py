@@ -15,7 +15,6 @@ from pypdfbox.pdmodel.interactive.action import (
     PDActionSetOCGState,
 )
 
-
 _S: COSName = COSName.get_pdf_name("S")
 _STATE: COSName = COSName.get_pdf_name("State")
 _PRESERVE_RB: COSName = COSName.get_pdf_name("PreserveRB")

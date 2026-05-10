@@ -26,7 +26,6 @@ from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
 
-
 # ---------- colored-pattern constructor (PDColor(COSName, PDColorSpace)) ----------
 
 

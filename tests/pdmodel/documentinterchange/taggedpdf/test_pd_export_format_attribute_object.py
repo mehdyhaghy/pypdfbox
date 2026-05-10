@@ -5,7 +5,6 @@ from pypdfbox.pdmodel.documentinterchange.taggedpdf import (
     PDExportFormatAttributeObject,
 )
 
-
 # ---------- defaults ----------
 
 

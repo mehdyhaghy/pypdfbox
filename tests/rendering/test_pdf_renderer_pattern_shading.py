@@ -11,7 +11,6 @@ from pypdfbox.cos import (
     COSArray,
     COSDictionary,
     COSFloat,
-    COSInteger,
     COSName,
     COSStream,
 )
@@ -23,7 +22,6 @@ from pypdfbox.pdmodel.graphics.shading import (
 )
 from pypdfbox.pdmodel.pd_resources import PDResources
 from pypdfbox.rendering import PDFRenderer
-
 
 # ---------------------------------------------------------------------------
 # helpers

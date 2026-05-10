@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.graphics.color.pd_cal_gray import PDCalGray
 from pypdfbox.pdmodel.graphics.color.pd_cal_rgb import PDCalRGB
 from pypdfbox.pdmodel.graphics.color.pd_lab import PDLab
 
-
 # ---------- defaults: empty dictionary => unity white point => True ----------
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import io
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
@@ -36,7 +36,6 @@ from pypdfbox.pdmodel.pd_embedded_files_name_tree_node import (
     PDEmbeddedFilesNameTreeNode,
 )
 from pypdfbox.pdmodel.pd_page import PDPage
-
 
 # ---------- helpers ----------
 

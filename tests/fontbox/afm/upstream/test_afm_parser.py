@@ -17,7 +17,6 @@ import pytest
 
 from pypdfbox.fontbox.afm import AFMParser, FontMetrics, KernPair
 
-
 _HELVETICA_AFM = (
     Path(__file__).resolve().parents[4]
     / "pypdfbox"

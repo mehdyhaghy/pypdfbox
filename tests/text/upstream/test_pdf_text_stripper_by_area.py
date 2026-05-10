@@ -28,7 +28,6 @@ import pytest
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.text import PDFTextStripperByArea
 
-
 # Fixture lives under ``tests/fixtures/text/input/eu-001.pdf`` — copied
 # from upstream's ``pdfbox/src/test/resources/input/eu-001.pdf``.
 _FIXTURE = (

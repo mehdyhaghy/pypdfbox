@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
@@ -68,7 +68,7 @@ def test_get_contents_bytes_alias_returns_decoded_contents() -> None:
 
 
 def test_signature_validation_result_round_trips_fields() -> None:
-    when = datetime(2026, 4, 26, 12, 0, 0, tzinfo=timezone.utc)
+    when = datetime(2026, 4, 26, 12, 0, 0, tzinfo=UTC)
     r = SignatureValidationResult(
         is_valid=True,
         signer_certificate=object(),
@@ -257,7 +257,7 @@ def _make_self_signed_signer():
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "verify-test")])
-    now = _dt.datetime.now(_dt.timezone.utc)
+    now = _dt.datetime.now(_dt.UTC)
     cert = (
         x509.CertificateBuilder()
         .subject_name(name)

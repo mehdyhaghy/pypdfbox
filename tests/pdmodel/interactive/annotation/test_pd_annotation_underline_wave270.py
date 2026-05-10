@@ -12,11 +12,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from pypdfbox.cos import COSDictionary, COSName
-from pypdfbox.pdmodel.interactive.annotation.pd_annotation_underline import (
-    PDAnnotationUnderline,
-)
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text_markup import (
     PDAnnotationTextMarkup,
+)
+from pypdfbox.pdmodel.interactive.annotation.pd_annotation_underline import (
+    PDAnnotationUnderline,
 )
 
 
