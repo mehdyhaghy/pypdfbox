@@ -43,25 +43,44 @@ class PDXFAResource:
         """
         xfa = self._xfa
         if isinstance(xfa, COSArray):
-            return self._bytes_from_packet(xfa)
+            return self.get_bytes_from_packet(xfa)
         if isinstance(xfa, COSStream):
-            return self._bytes_from_stream(xfa)
+            return self.get_bytes_from_stream(xfa)
         return b""
 
     @staticmethod
-    def _bytes_from_packet(arr: COSArray) -> bytes:
+    def get_bytes_from_packet(arr: COSArray) -> bytes:
+        """Return the concatenated bytes from a tagged-stream packet array.
+
+        Mirrors upstream ``PDXFAResource.getBytesFromPacket`` (a
+        ``private static`` helper). XFA payloads stored as a ``COSArray``
+        alternate ``[name, stream, name, stream, ...]``; this concatenates
+        every stream half (odd indices) into a single byte buffer.
+        """
         out = bytearray()
         # Upstream loops i = 1, 3, 5, ... reading the stream half of each pair.
         for i in range(1, arr.size(), 2):
             entry = arr.get_object(i)
             if isinstance(entry, COSStream):
-                out.extend(PDXFAResource._bytes_from_stream(entry))
+                out.extend(PDXFAResource.get_bytes_from_stream(entry))
         return bytes(out)
 
     @staticmethod
-    def _bytes_from_stream(stream: COSStream) -> bytes:
+    def get_bytes_from_stream(stream: COSStream) -> bytes:
+        """Return the raw decoded body of a single XFA ``COSStream``.
+
+        Mirrors upstream ``PDXFAResource.getBytesFromStream`` (a
+        ``private static`` helper). Promoted to a public static here so
+        porters can call it directly when slicing a single packet out of
+        an XFA array without going through the higher-level helpers.
+        """
         with stream.create_input_stream() as src:
             return src.read()
+
+    # Underscore-prefixed aliases retained for callers built before the
+    # upstream-named promotion landed; they delegate to the public spelling.
+    _bytes_from_packet = get_bytes_from_packet
+    _bytes_from_stream = get_bytes_from_stream
 
     def get_xfa_packet(self, name: str) -> bytes | None:
         """Return the bytes of a single XFA packet by name.
@@ -98,7 +117,7 @@ class PDXFAResource:
                 continue
             entry = xfa.get_object(i + 1)
             if isinstance(entry, COSStream):
-                return self._bytes_from_stream(entry)
+                return self.get_bytes_from_stream(entry)
             return None
         return None
 

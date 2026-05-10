@@ -327,3 +327,32 @@ def test_has_no_following_bin_data_detects_binary_payload() -> None:
     # A high-bit byte mid-probe must trip the heuristic.
     p = parser(b"\xff\xfe\xfd\xfc\xfb\xfa\xf9\xf8\xf7\xf6")
     assert p.has_no_following_bin_data() is False
+
+
+# ---------- Operator.to_string parity ----------
+
+
+def test_operator_to_string_matches_repr_and_str() -> None:
+    # Java's ``toString()`` is the canonical string form. ``to_string``
+    # is a snake_case alias exposed for ports of upstream callers that
+    # spell the call explicitly; it must agree with both ``str`` and
+    # ``repr`` on the ``"PDFOperator{<name>}"`` shape.
+    op = Operator.get_operator("Tj")
+    assert op.to_string() == "PDFOperator{Tj}"
+    assert op.to_string() == str(op)
+    assert op.to_string() == repr(op)
+
+
+def test_operator_to_string_for_inline_image_operators() -> None:
+    bi = Operator.get_operator("BI")
+    id_op = Operator.get_operator("ID")
+    assert bi.to_string() == "PDFOperator{BI}"
+    assert id_op.to_string() == "PDFOperator{ID}"
+
+
+def test_operator_to_string_after_image_data_attached() -> None:
+    # Image bytes participate in equality but never in ``toString`` —
+    # mirror upstream which prints the keyword only.
+    op = Operator("ID")
+    op.set_image_data(b"\x00\x01\x02")
+    assert op.to_string() == "PDFOperator{ID}"

@@ -591,3 +591,179 @@ def test_get_parent_returns_none_when_parent_is_not_dictionary() -> None:
     # Set /Parent to a non-dict value (a name) to simulate malformed input.
     child.set_item(COSName.PARENT, COSName.PAGE)  # type: ignore[attr-defined]
     assert PDPageTree.get_parent(child) is None
+
+
+# ---------- Wave 1272: sanitize_type, find_page, increase_parents ----------
+
+
+def test_sanitize_type_sets_missing_type_to_page() -> None:
+    """``sanitize_type`` mirrors upstream's private static helper:
+    a dict with no ``/Type`` is repaired in place to ``/Type /Page``."""
+    dictionary = COSDictionary()
+    PDPageTree.sanitize_type(dictionary)
+    assert dictionary.get_name(COSName.TYPE) == "Page"  # type: ignore[attr-defined]
+
+
+def test_sanitize_type_accepts_existing_page_type() -> None:
+    """A dict that already carries ``/Type /Page`` is left untouched."""
+    dictionary = COSDictionary()
+    dictionary.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    PDPageTree.sanitize_type(dictionary)
+    assert dictionary.get_name(COSName.TYPE) == "Page"  # type: ignore[attr-defined]
+
+
+def test_sanitize_type_rejects_other_type() -> None:
+    """A non-/Page ``/Type`` raises ``ValueError`` (upstream throws
+    ``IllegalStateException`` from the same code path)."""
+    dictionary = COSDictionary()
+    dictionary.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    with pytest.raises(ValueError, match="Expected 'Page'"):
+        PDPageTree.sanitize_type(dictionary)
+
+
+def test_sanitize_type_repairs_non_name_type() -> None:
+    """A malformed non-name ``/Type`` is treated as missing — upstream
+    reads the value with ``getCOSName`` which returns ``null`` for
+    non-name entries, so the repair branch fires."""
+    dictionary = COSDictionary()
+    # Use an integer where a name is expected.
+    dictionary.set_int(COSName.TYPE, 42)  # type: ignore[attr-defined]
+    PDPageTree.sanitize_type(dictionary)
+    assert dictionary.get_name(COSName.TYPE) == "Page"  # type: ignore[attr-defined]
+
+
+def test_find_page_locates_direct_kid() -> None:
+    """``find_page`` walks the kid tree and stops on the first identity
+    match, leaving ``context.index`` at the page's 0-based position."""
+    from pypdfbox.pdmodel.pd_page_tree import _SearchContext
+
+    tree = PDPageTree()
+    a = _make_page("a")
+    b = _make_page("b")
+    c = _make_page("c")
+    tree.add(a)
+    tree.add(b)
+    tree.add(c)
+
+    context = _SearchContext(b)
+    assert tree.find_page(context, tree.get_cos_object()) is True
+    assert context.index == 1
+    assert context.found is True
+
+
+def test_find_page_recurses_into_intermediate_pages() -> None:
+    """``find_page`` recurses into nested ``/Pages`` nodes and reports
+    the document-order index of the leaf, not the position within the
+    immediate ``/Kids`` array."""
+    from pypdfbox.pdmodel.pd_page_tree import _SearchContext
+
+    inner = COSDictionary()
+    inner.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    inner_kids = COSArray()
+    inner.set_item(COSName.KIDS, inner_kids)  # type: ignore[attr-defined]
+    leaf_a = _make_page("a")
+    leaf_b = _make_page("b")
+    leaf_a.get_cos_object().set_item(COSName.PARENT, inner)  # type: ignore[attr-defined]
+    leaf_b.get_cos_object().set_item(COSName.PARENT, inner)  # type: ignore[attr-defined]
+    inner_kids.add(leaf_a.get_cos_object())
+    inner_kids.add(leaf_b.get_cos_object())
+    inner.set_int(COSName.COUNT, 2)  # type: ignore[attr-defined]
+
+    root = COSDictionary()
+    root.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    root_kids = COSArray()
+    root.set_item(COSName.KIDS, root_kids)  # type: ignore[attr-defined]
+    root_kids.add(inner)
+    inner.set_item(COSName.PARENT, root)  # type: ignore[attr-defined]
+    leaf_c = _make_page("c")
+    leaf_c.get_cos_object().set_item(COSName.PARENT, root)  # type: ignore[attr-defined]
+    root_kids.add(leaf_c.get_cos_object())
+    root.set_int(COSName.COUNT, 3)  # type: ignore[attr-defined]
+
+    tree = PDPageTree(root)
+    context = _SearchContext(leaf_c)
+    assert tree.find_page(context, root) is True
+    assert context.index == 2
+
+
+def test_find_page_returns_false_when_page_absent() -> None:
+    """``find_page`` returns ``False`` and leaves ``found`` unset when the
+    target page isn't reachable — the contract upstream's ``indexOf``
+    relies on to return ``-1``."""
+    from pypdfbox.pdmodel.pd_page_tree import _SearchContext
+
+    tree = PDPageTree()
+    tree.add(_make_page("present"))
+    orphan = _make_page("orphan")
+
+    context = _SearchContext(orphan)
+    assert tree.find_page(context, tree.get_cos_object()) is False
+    assert context.found is False
+
+
+def test_increase_parents_walks_chain() -> None:
+    """``increase_parents`` bumps ``/Count`` on every ancestor reachable
+    via ``/Parent`` (and the legacy ``/P`` fallback). Mirrors upstream's
+    private ``increaseParents``."""
+    grandparent = COSDictionary()
+    grandparent.set_int(COSName.COUNT, 5)  # type: ignore[attr-defined]
+    parent = COSDictionary()
+    parent.set_int(COSName.COUNT, 3)  # type: ignore[attr-defined]
+    parent.set_item(COSName.PARENT, grandparent)  # type: ignore[attr-defined]
+
+    PDPageTree.increase_parents(parent)
+
+    assert parent.get_int(COSName.COUNT) == 4  # type: ignore[attr-defined]
+    assert grandparent.get_int(COSName.COUNT) == 6  # type: ignore[attr-defined]
+
+
+def test_increase_parents_handles_missing_count() -> None:
+    """A node without an existing ``/Count`` starts from 0 and ends at 1
+    — upstream's ``getInt(COUNT)`` returns 0 for missing entries."""
+    parent = COSDictionary()
+    PDPageTree.increase_parents(parent)
+    assert parent.get_int(COSName.COUNT) == 1  # type: ignore[attr-defined]
+
+
+def test_increase_parents_breaks_cycle() -> None:
+    """Pathological ``/Parent`` cycle must not loop forever — pypdfbox
+    hardens the walk with an identity-set guard (upstream relies on
+    well-formed input but pypdfbox already cycle-protects equivalents)."""
+    a = COSDictionary()
+    b = COSDictionary()
+    a.set_item(COSName.PARENT, b)  # type: ignore[attr-defined]
+    b.set_item(COSName.PARENT, a)  # type: ignore[attr-defined]
+
+    PDPageTree.increase_parents(a)
+
+    assert a.get_int(COSName.COUNT) == 1  # type: ignore[attr-defined]
+    assert b.get_int(COSName.COUNT) == 1  # type: ignore[attr-defined]
+
+
+def test_insert_before_walks_count_chain() -> None:
+    """After ``insert_before`` the entire ``/Parent`` chain — not just the
+    immediate parent — must have its ``/Count`` bumped (matches upstream's
+    ``increaseParents`` walk after the splice)."""
+    inner = COSDictionary()
+    inner.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    inner_kids = COSArray()
+    inner.set_item(COSName.KIDS, inner_kids)  # type: ignore[attr-defined]
+    leaf = _make_page("a")
+    leaf.get_cos_object().set_item(COSName.PARENT, inner)  # type: ignore[attr-defined]
+    inner_kids.add(leaf.get_cos_object())
+    inner.set_int(COSName.COUNT, 1)  # type: ignore[attr-defined]
+
+    root = COSDictionary()
+    root.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
+    root_kids = COSArray()
+    root.set_item(COSName.KIDS, root_kids)  # type: ignore[attr-defined]
+    root_kids.add(inner)
+    inner.set_item(COSName.PARENT, root)  # type: ignore[attr-defined]
+    root.set_int(COSName.COUNT, 1)  # type: ignore[attr-defined]
+
+    tree = PDPageTree(root)
+    new_page = _make_page("new")
+    tree.insert_before(new_page, leaf)
+
+    assert inner.get_int(COSName.COUNT) == 2  # type: ignore[attr-defined]
+    assert root.get_int(COSName.COUNT) == 2  # type: ignore[attr-defined]

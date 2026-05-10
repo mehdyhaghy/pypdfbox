@@ -2222,3 +2222,21 @@ Also includes wave 1267 carry-over additions (PDAnnotationLink, PDAnnotationPoly
 - `pypdfbox/xmpbox/type/date_type.py`: added `is_good_type(value)` (Java 88), `set_value_from_calendar(value)` (65), `set_value_from_string(value)` (162). `set_value` refactored to dispatch through `is_good_type` + the two typed setters matching upstream's flow. Small fix: `get_string_value` now returns `None` when no value (matches upstream's null guard). Parity 50% → 100%.
 - `pypdfbox/xmpbox/type/type_mapping.py`: added `add_name_space(schema_class)` (Java 267), `add_new_name_space(ns, prefix)` (274) — canonical names; `add_namespace` and `add_new_namespace` retained as class-level aliases. Added `create_x_path(...)` (519, with `create_xpath` alias), `get_associated_schema_object(metadata, ns, prefix)` (301, returns `None` for unknown namespaces; for known ones delegates to `XMPMetadata.create_and_add_default_schema_for_namespace` if available else returns the schema-factory record), `initialize()` (92, exposed publicly; constructor calls it), static `type(prop_type)` / `card(prop_type)` / `to_string(prop_type)` anonymous-class accessors (541 / 547 / 553), `PropertyType.to_string()` instance method. Parity 80% → 100%.
 - `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_properties.py`: added `get_oc_gs()` (Java 120), `get_d()` (136), static `to_dictionary(value)` (358) — all upstream package-private, exposed under snake-cased upstream spellings (`getOCGs` → `get_oc_gs` matches the parity script's camel→snake conversion). Underscore aliases retained. Parity 76.9% → 100%.
+
+## Wave 1272 — LangSysTable + PDPageTree + Operator + PDPageLabels + 8 small classes 1:1 parity
+
+12 classes brought to 100% parity by promoting underscored helpers and adding upstream-named public methods:
+
+- `pypdfbox/fontbox/ttf/gsub/lang_sys_table.py`: added `get_feature_index_count()`, `to_string()` mirroring upstream `LangSysTable[requiredFeatureIndex=%d]` shape; `__str__` delegates. Parity 60% → 100%.
+- `pypdfbox/pdmodel/pd_page_tree.py`: added `sanitize_type` (Java 284, promoted from `_sanitize_type`), `find_page` (409, depth-first kid-tree walk with private `_SearchContext` helper mirroring upstream's `SearchContext`), `increase_parents` (599, walks the `/Parent` chain bumping `/Count`). **Bug fix:** `insert_before` / `insert_after` now call `increase_parents` instead of single-level `_increment_count`, fixing a previously latent bug where a splice into a nested intermediate `/Pages` node only updated the immediate parent. Cycle-safe via identity-set guard. Parity 80% → 100%.
+- `pypdfbox/pdfparser/pdf_stream_parser.py` (`Operator` class): added `to_string()` returning `"PDFOperator{<name>}"` mirroring upstream's `Operator.toString()`. Skipped `execute(...)` — parity-script entry was a name-collision false positive with `org.apache.pdfbox.pdmodel.common.function.type4.Operator` (PostScript Type 4 operator interface, unrelated; pypdfbox implements Type 4 as flat dispatch in `pd_function_type4.py`). Parity 75% → 87.5% (only false positive remains).
+- `pypdfbox/pdmodel/pd_page_labels.py`: added public `find_labels(node)` (Java 100) and `compute_labels(handler, number_of_pages)` (257) — upstream privates promoted to public for parity. Parity 77.8% → 100%.
+- 8 small-class sweeps:
+  - `PDXFAResource`: `get_bytes_from_packet`, `get_bytes_from_stream` (private statics promoted).
+  - `DecodeResult`: `get_jpxs_mask` / `set_jpxs_mask` aliases for the parity-script's snake-case split of `getJPXSMask`.
+  - `Revisions`: `get_object(index)`, `to_string()`.
+  - `COSStandardOutputStream`: `is_on_new_line` / `set_on_new_line` (matches upstream's three-word boundary `isOnNewLine`); `is_on_newline` aliases retained.
+  - `LZWFilter`: public `create_initial_code_table()` and `do_lzw_decode(encoded, decoded, early_change)` mirroring upstream private statics.
+  - `PDCryptFilterDictionary`: `is_encrypt_meta_data` / `set_encrypt_meta_data` (three-word boundary); `get_encrypt_metadata` aliases retained.
+  - `COSNumber`: public static `is_float(number: str)` (preserves upstream's lowercase-only `e` quirk).
+  - `DictionaryEncoding`: public `apply_differences()` for writers mutating `/Differences` directly.

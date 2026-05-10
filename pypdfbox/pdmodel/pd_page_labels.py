@@ -113,6 +113,18 @@ class PDPageLabels:
 
     # ---------- number-tree traversal ----------
 
+    def find_labels(self, node: COSDictionary) -> None:
+        """Public name for the recursive number-tree walker.
+
+        Mirrors upstream's private ``findLabels(PDNumberTreeNode)`` (Java
+        line 100) — exposed publicly here so callers that already have a
+        parsed number-tree dictionary can populate this :class:`PDPageLabels`
+        without going through ``__init__``. Accepts the raw ``COSDictionary``
+        for the number-tree node (with ``/Kids`` or ``/Nums``) and walks it
+        recursively, populating ``self._labels`` in place.
+        """
+        self._find_labels(node)
+
     def _find_labels(self, node: COSDictionary) -> None:
         kids = node.get_dictionary_object(_KIDS)
         if isinstance(kids, COSArray):
@@ -487,6 +499,22 @@ class PDPageLabels:
         return out
 
     # ---------- internal computation ----------
+
+    def compute_labels(
+        self,
+        handler: Callable[[int, str], object],
+        number_of_pages: int,
+    ) -> None:
+        """Public name for the label-computing walker.
+
+        Mirrors upstream's private ``computeLabels(LabelHandler, int)`` (Java
+        line 257). Iterates each defined range in start-page order, generates
+        the labels via :class:`_LabelGenerator`, and invokes ``handler(page_index,
+        label)`` for every produced label up to ``number_of_pages``. Useful
+        when callers want streaming label emission rather than materialising
+        a full ``list[str]`` / ``dict[str, int]``.
+        """
+        self._compute_labels(handler, number_of_pages)
 
     def _compute_labels(
         self,

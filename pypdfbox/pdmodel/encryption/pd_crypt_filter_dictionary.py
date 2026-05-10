@@ -147,6 +147,26 @@ class PDCryptFilterDictionary:
     def set_encrypt_metadata(self, encrypt_metadata: bool) -> None:
         self._dict.set_boolean(_ENCRYPT_METADATA, encrypt_metadata)
 
+    def is_encrypt_meta_data(self) -> bool:
+        """Snake-case alias matching upstream ``isEncryptMetaData``.
+
+        Upstream camelCase ``EncryptMetaData`` splits as three words —
+        Encrypt, Meta, Data — so the strict snake_case rendering is
+        ``is_encrypt_meta_data``. The older :meth:`get_encrypt_metadata`
+        spelling treats ``Metadata`` as one word; both are kept so
+        existing callers keep working while ports reading PDFBox source
+        land on the upstream word boundary.
+        """
+        return self.get_encrypt_metadata()
+
+    def set_encrypt_meta_data(self, encrypt_meta_data: bool) -> None:
+        """Snake-case alias matching upstream ``setEncryptMetaData``.
+
+        Companion to :meth:`is_encrypt_meta_data`. See that method's
+        docstring for the word-boundary rationale.
+        """
+        self.set_encrypt_metadata(encrypt_meta_data)
+
     def has_encrypt_metadata(self) -> bool:
         return isinstance(self._dict.get_dictionary_object(_ENCRYPT_METADATA), COSBoolean)
 

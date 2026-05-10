@@ -105,6 +105,26 @@ class DictionaryEncoding(Encoding):
                 self._differences[code] = entry.name
                 code += 1
 
+    def apply_differences(self) -> None:
+        """Re-apply the ``/Differences`` array on top of the current
+        base-encoding mapping.
+
+        Mirrors ``org.apache.pdfbox.pdmodel.font.encoding.DictionaryEncoding
+        #applyDifferences`` (a ``private`` no-arg helper invoked by every
+        upstream constructor). Promoted to a public no-arg method here so
+        callers that mutate the underlying ``/Differences`` array directly
+        (e.g. through ``get_differences_array().add(...)``) can refresh
+        the cached ``code -> name`` view without rebuilding the entire
+        encoding from scratch.
+        """
+        # Reset the differences view but preserve the base-encoding seed
+        # to match upstream semantics: ``applyDifferences`` overlays the
+        # array on top of whatever was already in ``codeToName``.
+        self._differences = {}
+        diffs = self.get_differences_array()
+        if diffs is not None:
+            self._apply_differences(diffs)
+
     def _rebuild_mappings(self) -> None:
         self._code_to_name.clear()
         self._name_to_code.clear()

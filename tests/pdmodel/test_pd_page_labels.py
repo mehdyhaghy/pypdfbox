@@ -333,3 +333,55 @@ def test_to_letters_basic() -> None:
     assert to_letters(26) == "Z"
     assert to_letters(27) == "AA"
     assert to_letters(28) == "BB"
+
+
+# ---------- public compute_labels / find_labels parity ----------
+
+
+def test_compute_labels_public_streams_handler_calls() -> None:
+    """``compute_labels`` is the public name for upstream's private
+    ``computeLabels(LabelHandler, int)``. It should hand each (index,
+    label) pair to the supplied callback in page-index order."""
+    doc = _doc_with_pages(5)
+    labels = PDPageLabels(doc)
+    roman = PDPageLabelRange()
+    roman.set_style(PDPageLabelRange.STYLE_ROMAN_LOWER)
+    labels.set_label_item(2, roman)
+    received: list[tuple[int, str]] = []
+    labels.compute_labels(lambda idx, lbl: received.append((idx, lbl)), 5)
+    assert received == [(0, "1"), (1, "2"), (2, "i"), (3, "ii"), (4, "iii")]
+
+
+def test_find_labels_public_walks_number_tree() -> None:
+    """``find_labels`` is the public name for upstream's private
+    ``findLabels(PDNumberTreeNode)``. Called on a /Kids+/Nums dictionary,
+    it should populate ``_labels`` with every range encountered."""
+    doc = _doc_with_pages(3)
+    labels = PDPageLabels(doc)
+    # Throw away the implicit default so we observe only what find_labels adds.
+    labels.clear_label_ranges()
+    inner_nums = COSArray()
+    inner_nums.add(COSInteger.get(0))
+    inner = COSDictionary()
+    inner.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("R"))
+    inner_nums.add(inner)
+    inner_nums.add(COSInteger.get(2))
+    second = COSDictionary()
+    second.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("D"))
+    inner_nums.add(second)
+    leaf = COSDictionary()
+    leaf.set_item(COSName.get_pdf_name("Nums"), inner_nums)
+    kids = COSArray()
+    kids.add(leaf)
+    root = COSDictionary()
+    root.set_item(COSName.get_pdf_name("Kids"), kids)
+    labels.find_labels(root)
+    assert sorted(labels.get_page_indices()) == [0, 2]
+    assert (
+        labels.get_page_label_range(0).get_style()
+        == PDPageLabelRange.STYLE_ROMAN_UPPER
+    )
+    assert (
+        labels.get_page_label_range(2).get_style()
+        == PDPageLabelRange.STYLE_DECIMAL
+    )

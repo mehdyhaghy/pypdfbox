@@ -72,6 +72,27 @@ def _kids_array(node: COSDictionary) -> COSArray | None:
     return kids if isinstance(kids, COSArray) else None
 
 
+class _SearchContext:
+    """State holder threaded through :meth:`PDPageTree.find_page`.
+
+    Mirrors upstream's private ``SearchContext`` inner class (PDPageTree.java
+    L429-L445): tracks the running 0-based page index and flips ``found``
+    when the dictionary identity matches the page being searched for.
+    """
+
+    __slots__ = ("searched", "index", "found")
+
+    def __init__(self, page: PDPage | COSDictionary) -> None:
+        self.searched: COSDictionary = _unwrap_page_dict(page)
+        self.index: int = -1
+        self.found: bool = False
+
+    def visit_page(self, current: COSDictionary) -> None:
+        self.index += 1
+        if self.searched is current:
+            self.found = True
+
+
 class PDPageTree:
     """
     Iterable view of the document's page tree rooted at ``/Pages``.
@@ -242,22 +263,32 @@ class PDPageTree:
         return self.index_of(page) >= 0
 
     @staticmethod
-    def _sanitize_type(dictionary: COSDictionary) -> None:
+    def sanitize_type(dictionary: COSDictionary) -> None:
         """Normalize the ``/Type`` entry of a leaf page dictionary.
 
-        Mirrors upstream ``PDPageTree.sanitizeType``:
+        Mirrors upstream ``PDPageTree.sanitizeType`` (PDPageTree.java
+        L284-L296):
         - missing ``/Type`` is set to ``/Page`` (defensive against
           malformed PDFs that omit the entry on otherwise-valid pages);
         - malformed non-name ``/Type`` values are also replaced with
           ``/Page`` because upstream reads the value with ``getCOSName``;
         - any ``/Type`` other than ``/Page`` raises ``ValueError`` (upstream
-          throws ``IllegalStateException``)."""
+          throws ``IllegalStateException``).
+
+        Upstream keeps this private; pypdfbox publicises it because the
+        ``/Type`` repair is useful to callers that synthesise pages from
+        raw COS dictionaries before handing them to the tree.
+        """
         type_name = dictionary.get_dictionary_object(_TYPE)
         if type_name is None or not isinstance(type_name, COSName):
             dictionary.set_item(_TYPE, _PAGE)
             return
         if type_name != _PAGE:
             raise ValueError(f"Expected 'Page' but found {type_name}")
+
+    # Legacy private alias retained for backwards compatibility with the
+    # internal call sites that predate the public ``sanitize_type``.
+    _sanitize_type = sanitize_type
 
     def get(self, index: int) -> PDPage:
         """0-based accessor — matches upstream's ``get(int)``."""
@@ -269,13 +300,38 @@ class PDPageTree:
         Mirrors upstream ``indexOf(PDPage)``: returns ``-1`` when the page
         is not part of this page tree. Comparison is by the underlying
         ``COSDictionary`` identity so callers can pass a fresh ``PDPage``
-        wrapper around an existing page dictionary.
+        wrapper around an existing page dictionary. Delegates to
+        :meth:`find_page` to reuse the upstream depth-first search.
         """
         page_dict = _unwrap_page_dict(page)
-        for index, candidate in enumerate(self):
-            if candidate.get_cos_object() is page_dict:
-                return index
+        context = _SearchContext(page_dict)
+        if self.find_page(context, self._root):
+            return context.index
         return -1
+
+    @classmethod
+    def find_page(
+        cls, context: _SearchContext, node: COSDictionary
+    ) -> bool:
+        """Depth-first search the kid tree rooted at ``node`` for the
+        page recorded on ``context.searched``.
+
+        Mirrors upstream's private ``findPage`` (PDPageTree.java L409-L427):
+        recurses into intermediate ``/Pages`` children and increments the
+        context index on each leaf page until ``context.found`` flips true.
+        Returns ``context.found`` so callers can distinguish "ran out of
+        kids" from "located the page". Pypdfbox publicises this helper so
+        callers porting upstream's ``indexOf`` plumbing have a named entry
+        point alongside :class:`_SearchContext`.
+        """
+        for kid in cls.get_kids(node):
+            if context.found:
+                break
+            if _is_page_tree_node(kid):
+                cls.find_page(context, kid)
+            else:
+                context.visit_page(kid)
+        return context.found
 
     def index_of_page(self, page: PDPage | COSDictionary) -> int:
         """Alias for ``index_of`` for callers porting page-index helpers."""
@@ -356,7 +412,7 @@ class PDPageTree:
             raise ValueError("target page is not in its declared parent's /Kids")
         kids.add_at(index, new_dict)
         new_dict.set_item(_PARENT, parent)
-        self._increment_count(parent, +1)
+        self.increase_parents(parent)
 
     def insert_after(
         self, new_page: PDPage | COSDictionary, target: PDPage | COSDictionary
@@ -374,7 +430,29 @@ class PDPageTree:
             raise ValueError("target page is not in its declared parent's /Kids")
         kids.add_at(index + 1, new_dict)
         new_dict.set_item(_PARENT, parent)
-        self._increment_count(parent, +1)
+        self.increase_parents(parent)
+
+    @staticmethod
+    def increase_parents(parent_dict: COSDictionary | None) -> None:
+        """Walk up the ``/Parent`` chain starting at ``parent_dict`` and
+        increment each ancestor's ``/Count`` by one.
+
+        Mirrors upstream's private ``increaseParents`` (PDPageTree.java
+        L599-L608): used by ``insert_before``/``insert_after`` after a
+        ``/Kids`` splice so every ancestor's stored page count stays in
+        sync with the actual tree size. Cycle-safe via an identity-set
+        guard (upstream's loop just trusts the chain to be acyclic, but
+        pypdfbox already hardens equivalent walks elsewhere — see
+        ``get_inheritable_attribute``).
+        """
+        cursor = parent_dict
+        seen: set[int] = set()
+        while cursor is not None and id(cursor) not in seen:
+            seen.add(id(cursor))
+            current = cursor.get_dictionary_object(_COUNT)
+            base = current.value if isinstance(current, COSInteger) else 0
+            cursor.set_int(_COUNT, base + 1)
+            cursor = _resolve_parent(cursor)
 
     # ---------- node classification ----------
 

@@ -32,8 +32,17 @@ class LangSysTable:
     def get_required_feature_index(self) -> int:
         return self.required_feature_index
 
+    def get_feature_index_count(self) -> int:
+        return len(self.feature_indices)
+
     def get_feature_indices(self) -> tuple[int, ...]:
         return self.feature_indices
+
+    def to_string(self) -> str:
+        return f"LangSysTable[requiredFeatureIndex={self.required_feature_index}]"
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 __all__ = ["LangSysTable"]

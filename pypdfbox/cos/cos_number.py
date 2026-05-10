@@ -23,6 +23,21 @@ class COSNumber(COSBase):
         raise NotImplementedError
 
     @staticmethod
+    def is_float(number: str) -> bool:
+        """Return ``True`` when ``number`` looks like a PDF real literal.
+
+        Mirrors ``org.apache.pdfbox.cos.COSNumber#isFloat`` (a ``private
+        static`` upstream helper). Detection is intentionally narrow:
+        the literal contains either ``.`` or ``e``. Upstream does not
+        check for ``E``; this port preserves that surface area so a
+        round-trip through ``COSNumber.get`` yields the same dispatch
+        decision as upstream when fed the same input.
+        """
+        if number is None:
+            raise TypeError("number is None")
+        return any(ch in (".", "e") for ch in number)
+
+    @staticmethod
     def get(value: str) -> COSNumber:
         """Parse a PDF number literal — mirrors ``COSNumber.get(String)``.
 

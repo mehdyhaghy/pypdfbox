@@ -83,3 +83,18 @@ class DecodeResult:
         upstream.
         """
         self.jpx_smask = smask
+
+    def get_jpxs_mask(self) -> Any:
+        """Alternate snake-case spelling of :meth:`get_jpx_smask`.
+
+        Upstream ``getJPXSMask`` is ambiguous when split into snake_case —
+        ``jpx_smask`` (JPX + SMask) and ``jpxs_mask`` (JPXS + Mask) both
+        appear in the wild. This alias keeps callers that picked the
+        latter spelling working without forcing a rename.
+        """
+        return self.get_jpx_smask()
+
+    def set_jpxs_mask(self, smask: Any) -> None:
+        """Alternate snake-case spelling of :meth:`set_jpx_smask`. See
+        :meth:`get_jpxs_mask` for the rationale."""
+        self.set_jpx_smask(smask)

@@ -148,6 +148,15 @@ class Operator:
     def __str__(self) -> str:
         return self.__repr__()
 
+    def to_string(self) -> str:
+        """Return the canonical string form ``"PDFOperator{<name>}"``.
+        Mirrors upstream's explicit ``toString()`` accessor — exposed by
+        name so ports of upstream callers that spell the call as
+        ``op.toString()`` (rather than relying on implicit conversion) keep
+        the same shape after the camelCase → snake_case rewrite. Equivalent
+        to ``str(op)`` and ``repr(op)``."""
+        return self.__repr__()
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Operator):
             return NotImplemented

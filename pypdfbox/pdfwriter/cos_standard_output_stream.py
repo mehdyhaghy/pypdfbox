@@ -162,12 +162,31 @@ class COSStandardOutputStream:
     def is_on_newline(self) -> bool:
         return self._on_new_line
 
+    def is_on_new_line(self) -> bool:
+        """Snake-case alias matching upstream ``isOnNewLine``.
+
+        Upstream's camelCase splits as ``is_on_new_line`` (three words —
+        On, New, Line); the older :meth:`is_on_newline` spelling treats
+        ``newline`` as one word. Both are kept so existing callers keep
+        working while ports reading PDFBox source land on the upstream
+        word boundary.
+        """
+        return self.is_on_newline()
+
     def isOnNewLine(self) -> bool:
         """PDFBox-name alias for :meth:`is_on_newline`."""
         return self.is_on_newline()
 
     def set_on_newline(self, value: bool) -> None:
         self._on_new_line = value
+
+    def set_on_new_line(self, value: bool) -> None:
+        """Snake-case alias matching upstream ``setOnNewLine``.
+
+        Companion to :meth:`is_on_new_line`. See that method's docstring
+        for the word-boundary rationale.
+        """
+        self.set_on_newline(value)
 
     def setOnNewLine(self, value: bool) -> None:
         """PDFBox-name alias for :meth:`set_on_newline`."""

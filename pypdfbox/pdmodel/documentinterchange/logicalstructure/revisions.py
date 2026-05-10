@@ -30,6 +30,15 @@ class Revisions[T]:
     def get_object_at(self, index: int) -> Any:
         return self._array.get_object(self._entry_offset(index))
 
+    def get_object(self, index: int) -> Any:
+        """Return the object at ``index``.
+
+        Mirrors upstream ``Revisions.getObject(int index)``. ``get_object_at``
+        is the older spelling kept for callers that already use it; this
+        alias matches the upstream signature directly.
+        """
+        return self.get_object_at(index)
+
     def get_revision_number_at(self, index: int) -> int:
         revision_offset = self._revision_offset(index)
         if revision_offset is None:
@@ -140,6 +149,16 @@ class Revisions[T]:
         return self.size()
 
     def __repr__(self) -> str:
+        return self.to_string()
+
+    def to_string(self) -> str:
+        """Return the upstream ``toString()`` rendering.
+
+        Mirrors ``Revisions.toString`` — ``"{object=<obj>, revisionNumber=<n>;
+        ...}"``. ``__repr__`` delegates here so ``repr()`` and ``to_string()``
+        stay byte-identical (porters reading PDFBox tests rely on the exact
+        format).
+        """
         parts = [
             f"object={self.get_object_at(i)}, revisionNumber={self.get_revision_number_at(i)}"
             for i in range(self.size())
