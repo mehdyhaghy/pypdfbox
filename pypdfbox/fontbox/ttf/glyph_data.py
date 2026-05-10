@@ -2,38 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from .glyf_descript import GlyfDescript
+
 if TYPE_CHECKING:
     from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
-
-
-class GlyfDescript:
-    """Glyph-flag constants from the TrueType ``glyf`` table.
-
-    Mirrors ``org.apache.fontbox.ttf.GlyfDescript`` at the constant
-    level. The full upstream class is an abstract base for
-    :class:`GlyfSimpleDescript` and :class:`GlyfCompositeDescript`; we
-    don't port those because pypdfbox parses ``glyf`` via fontTools.
-    What callers do still want is the public outline-flag values, so
-    the bit constants are surfaced here verbatim.
-
-    See "Outline flags" in the
-    `'glyf' table <https://developer.apple.com/fonts/TrueType-Reference-Manual/RM06/Chap6glyf.html>`_
-    of the TrueType reference manual.
-    """
-
-    #: If set, the point is on the curve.
-    ON_CURVE = 0x01
-    #: If set, the x-coordinate is 1 byte long.
-    X_SHORT_VECTOR = 0x02
-    #: If set, the y-coordinate is 1 byte long.
-    Y_SHORT_VECTOR = 0x04
-    #: If set, the next byte specifies the number of additional times
-    #: this set of flags is to be repeated.
-    REPEAT = 0x08
-    #: Sign / delta indicator for the x-coordinate (see upstream doc).
-    X_DUAL = 0x10
-    #: Sign / delta indicator for the y-coordinate (see upstream doc).
-    Y_DUAL = 0x20
 
 
 class GlyphDescription:

@@ -3,8 +3,13 @@ from __future__ import annotations
 from .cmap_lookup import CmapLookup
 from .cmap_subtable import CmapSubtable
 from .digital_signature_table import DigitalSignatureTable
-from .glyph_data import BoundingBox, GlyfDescript, GlyphData, GlyphDescription
+from .glyf_composite_comp import GlyfCompositeComp
+from .glyf_composite_descript import GlyfCompositeDescript
+from .glyf_descript import GlyfDescript
+from .glyf_simple_descript import GlyfSimpleDescript
+from .glyph_data import BoundingBox, GlyphData, GlyphDescription
 from .glyph_positioning_table import GlyphPositioningTable
+from .glyph_renderer import GlyphRenderer
 from .glyph_substitution_table import GlyphSubstitutionTable
 from .glyph_table import GlyphTable
 from .header_table import HeaderTable
@@ -37,10 +42,14 @@ __all__ = [
     "CmapLookup",
     "CmapSubtable",
     "DigitalSignatureTable",
+    "GlyfCompositeComp",
+    "GlyfCompositeDescript",
     "GlyfDescript",
+    "GlyfSimpleDescript",
     "GlyphData",
     "GlyphDescription",
     "GlyphPositioningTable",
+    "GlyphRenderer",
     "GlyphSubstitutionTable",
     "GlyphTable",
     "HeaderTable",

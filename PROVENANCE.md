@@ -1504,3 +1504,55 @@ New `type4` subpackage ported from upstream `org.apache.pdfbox.pdmodel.common.fu
 | `tests/fontbox/cff/upstream/test_data_input_random_access.py` | `DataInputRandomAccessTest.java` |
 | `tests/fontbox/cff/upstream/test_cff_parser.py` | `CFFParserTest.java` |
 | `tests/fontbox/cff/upstream/test_char_string_command.py` | `CharStringCommandTest.java` |
+
+### Wave 1279 additions
+
+`fontbox.ttf` package + subpackages ported in 42 new modules. fontTools-backed for TTC / glyf / OT lookups; per-script Indic shaping hand-ported (no Python library provides this). Upstream PDFBox 3.0.x; paths under `fontbox/src/main/java/org/apache/fontbox/ttf/`:
+
+| pypdfbox path | upstream Java path |
+|---|---|
+| `pypdfbox/fontbox/ttf/point.py` | `GlyphRenderer.java` (private nested `Point`) |
+| `pypdfbox/fontbox/ttf/glyf_descript.py` | `GlyfDescript.java` |
+| `pypdfbox/fontbox/ttf/glyf_simple_descript.py` | `GlyfSimpleDescript.java` |
+| `pypdfbox/fontbox/ttf/glyf_composite_descript.py` | `GlyfCompositeDescript.java` |
+| `pypdfbox/fontbox/ttf/glyf_composite_comp.py` | `GlyfCompositeComp.java` |
+| `pypdfbox/fontbox/ttf/glyph_renderer.py` | `GlyphRenderer.java` |
+| `pypdfbox/fontbox/ttf/ttc_data_stream.py` | `TTCDataStream.java` |
+| `pypdfbox/fontbox/ttf/true_type_collection.py` | `TrueTypeCollection.java` |
+| `pypdfbox/fontbox/ttf/random_access_read_non_closing_input_stream.py` | `RandomAccessReadUnbufferedDataStream.java` (private nested) |
+| `pypdfbox/fontbox/ttf/random_access_read_unbuffered_data_stream.py` | `RandomAccessReadUnbufferedDataStream.java` |
+| `pypdfbox/fontbox/ttf/true_type_font_headers_processor.py` | `TrueTypeCollection.java` (inner `TrueTypeFontHeadersProcessor` interface) |
+| `pypdfbox/fontbox/ttf/true_type_font_processor.py` | `TrueTypeCollection.java` (inner `TrueTypeFontProcessor` interface) |
+| `pypdfbox/fontbox/ttf/cff_table.py` | `CFFTable.java` |
+| `pypdfbox/fontbox/ttf/sub_header.py` | `CmapSubtable.java` (private nested `SubHeader`) |
+| `pypdfbox/fontbox/ttf/substituting_cmap_lookup.py` | `SubstitutingCmapLookup.java` |
+| `pypdfbox/fontbox/ttf/open_type_script.py` | `OpenTypeScript.java` |
+| `pypdfbox/fontbox/ttf/vertical_origin_table.py` | `VerticalOriginTable.java` |
+| `pypdfbox/fontbox/ttf/pair_data.py` | `KerningSubtable.java` (private nested `PairData` ABC) |
+| `pypdfbox/fontbox/ttf/pair_data0_format0.py` | `KerningSubtable.java` (private nested `PairData0Format0`) |
+| `pypdfbox/fontbox/ttf/table/common/range_record.py` | `table/common/RangeRecord.java` |
+| `pypdfbox/fontbox/ttf/table/common/coverage_table_format1.py` | `table/common/CoverageTableFormat1.java` |
+| `pypdfbox/fontbox/ttf/table/common/coverage_table_format2.py` | `table/common/CoverageTableFormat2.java` |
+| `pypdfbox/fontbox/ttf/table/common/feature_list_table.py` | `table/common/FeatureListTable.java` |
+| `pypdfbox/fontbox/ttf/table/common/lookup_list_table.py` | `table/common/LookupListTable.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker.py` | `gsub/GsubWorker.java` |
+| `pypdfbox/fontbox/ttf/gsub/default_gsub_worker.py` | `gsub/DefaultGsubWorker.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker_factory.py` | `gsub/GsubWorkerFactory.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_dflt.py` | `gsub/GsubWorkerForDflt.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_latin.py` | `gsub/GsubWorkerForLatin.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_bengali.py` | `gsub/GsubWorkerForBengali.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_devanagari.py` | `gsub/GsubWorkerForDevanagari.java` |
+| `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_gujarati.py` | `gsub/GsubWorkerForGujarati.java` |
+| `pypdfbox/fontbox/ttf/gsub/compound_character_tokenizer.py` | `gsub/CompoundCharacterTokenizer.java` |
+| `pypdfbox/fontbox/ttf/gsub/glyph_array_splitter.py` | `gsub/GlyphArraySplitter.java` |
+| `pypdfbox/fontbox/ttf/gsub/glyph_array_splitter_regex_impl.py` | `gsub/GlyphArraySplitterRegexImpl.java` |
+| `pypdfbox/fontbox/ttf/gsub/glyph_substitution_data_extractor.py` | `gsub/GlyphSubstitutionDataExtractor.java` |
+| `pypdfbox/fontbox/ttf/gsub/script_table_details.py` | `gsub/GlyphSubstitutionDataExtractor.java` (private nested `ScriptTableDetails`) |
+| `pypdfbox/fontbox/ttf/model/language.py` | `model/Language.java` (enum) |
+| `pypdfbox/fontbox/ttf/model/map_backed_gsub_data.py` | `model/MapBackedGsubData.java` |
+| `pypdfbox/fontbox/ttf/model/map_backed_script_feature.py` | `model/MapBackedScriptFeature.java` |
+| `pypdfbox/fontbox/ttf/model/script_feature.py` | `model/ScriptFeature.java` (interface) |
+| `tests/fontbox/ttf/upstream/test_glyf_composite_descript.py` | `GlyfCompositeDescriptTest.java` |
+| `tests/fontbox/ttf/upstream/test_true_type_font_collection.py` | `TrueTypeFontCollectionTest.java` |
+| `tests/fontbox/ttf/gsub/upstream/test_compound_character_tokenizer.py` | `gsub/CompoundCharacterTokenizerTest.java` |
+| `tests/fontbox/ttf/gsub/upstream/test_glyph_array_splitter_regex_impl.py` | `gsub/GlyphArraySplitterRegexImplTest.java` |

@@ -72,3 +72,40 @@ def get_glyph_name(index: int) -> str | None:
 def get_all_names() -> list[str]:
     """Return a fresh list of all 258 names."""
     return list(_MAC_GLYPH_NAMES)
+
+
+class WGL4Names:
+    """Static container mirroring upstream's all-static ``WGL4Names`` API.
+
+    Mirrors ``org.apache.fontbox.ttf.WGL4Names`` from upstream Apache
+    PDFBox 3.0.x. Upstream is a final class with a private constructor
+    and only static accessors. We expose the same surface as
+    staticmethods so call sites that read like
+    ``WGL4Names.getGlyphIndex(name)`` translate cleanly.
+    """
+
+    NUMBER_OF_MAC_GLYPHS = NUMBER_OF_MAC_GLYPHS
+
+    @staticmethod
+    def get_glyph_index(name: str) -> int | None:
+        """Module-level alias of :func:`get_glyph_index`."""
+        return get_glyph_index(name)
+
+    @staticmethod
+    def get_glyph_name(index: int) -> str | None:
+        """Module-level alias of :func:`get_glyph_name`."""
+        return get_glyph_name(index)
+
+    @staticmethod
+    def get_all_names() -> list[str]:
+        """Module-level alias of :func:`get_all_names`."""
+        return get_all_names()
+
+
+__all__ = [
+    "NUMBER_OF_MAC_GLYPHS",
+    "WGL4Names",
+    "get_all_names",
+    "get_glyph_index",
+    "get_glyph_name",
+]
