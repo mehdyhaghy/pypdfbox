@@ -250,9 +250,6 @@ class PDStructureNode:
         """
         from pypdfbox.cos import COSObject
 
-        from .pd_marked_content_reference import PDMarkedContentReference
-        from .pd_object_reference import PDObjectReference
-
         kid_dic: COSDictionary | None = None
         if isinstance(kid, COSDictionary):
             kid_dic = kid
@@ -261,24 +258,41 @@ class PDStructureNode:
             if isinstance(base, COSDictionary):
                 kid_dic = base
         if kid_dic is not None:
-            type_name = kid_dic.get_name(_TYPE)
-            if type_name is None or type_name == _STRUCT_ELEM_NAME:
-                from .pd_structure_element import PDStructureElement
-
-                return PDStructureElement(kid_dic)
-            if type_name == "MCR":
-                return PDMarkedContentReference(kid_dic)
-            if type_name == "OBJR":
-                return PDObjectReference(kid_dic)
-            return None
+            return self.create_object_from_dic(kid_dic)
         if isinstance(kid, COSInteger):
             return kid.value
         return None
 
-    def _append_objectable_kid(self, objectable: Any) -> None:
+    def create_object_from_dic(self, kid_dic: COSDictionary) -> Any:
+        """Convert a ``/K`` dictionary kid to its typed wrapper.
+
+        Mirrors upstream private ``PDStructureNode.createObjectFromDic``
+        (Java line 395). Returns ``PDStructureElement`` for missing
+        ``/Type`` or ``StructElem``, ``PDMarkedContentReference`` for
+        ``MCR``, ``PDObjectReference`` for ``OBJR``, and ``None`` for any
+        other ``/Type``. Unlike upstream this is exposed as a regular
+        method so subclasses can override the dispatch (Python's
+        ``protected`` convention).
+        """
+        from .pd_marked_content_reference import PDMarkedContentReference
+        from .pd_object_reference import PDObjectReference
+
+        type_name = kid_dic.get_name(_TYPE)
+        if type_name is None or type_name == _STRUCT_ELEM_NAME:
+            from .pd_structure_element import PDStructureElement
+
+            return PDStructureElement(kid_dic)
+        if type_name == "MCR":
+            return PDMarkedContentReference(kid_dic)
+        if type_name == "OBJR":
+            return PDObjectReference(kid_dic)
+        return None
+
+    def append_objectable_kid(self, objectable: Any) -> None:
         """Append a ``COSObjectable``-style kid (anything exposing
         ``get_cos_object``). Mirrors upstream protected
-        ``PDStructureNode.appendObjectableKid``; ``None`` is a no-op."""
+        ``PDStructureNode.appendObjectableKid`` (Java line 161); ``None``
+        is a no-op."""
         if objectable is None:
             return
         if hasattr(objectable, "get_cos_object"):
@@ -286,23 +300,23 @@ class PDStructureNode:
         else:
             self.append_kid(objectable)
 
-    def _remove_objectable_kid(self, objectable: Any) -> bool:
+    def remove_objectable_kid(self, objectable: Any) -> bool:
         """Remove a ``COSObjectable``-style kid. Mirrors upstream protected
-        ``PDStructureNode.removeObjectableKid``; returns ``False`` when the
-        argument is ``None`` or the kid is absent."""
+        ``PDStructureNode.removeObjectableKid`` (Java line 297); returns
+        ``False`` when the argument is ``None`` or the kid is absent."""
         if objectable is None:
             return False
         if hasattr(objectable, "get_cos_object"):
             return self.remove_kid(objectable.get_cos_object())
         return self.remove_kid(objectable)
 
-    def _insert_objectable_before(self, new_kid: Any, ref_kid: Any) -> bool:
+    def insert_objectable_before(self, new_kid: Any, ref_kid: Any) -> bool:
         """Insert a ``COSObjectable``-style ``new_kid`` before ``ref_kid``.
 
-        Mirrors upstream protected ``PDStructureNode.insertObjectableBefore``:
-        ``new_kid`` is unwrapped via ``get_cos_object`` when present, then
-        the call is delegated to :meth:`insert_before`. ``None`` ``new_kid``
-        is a silent no-op (returns ``False``).
+        Mirrors upstream protected ``PDStructureNode.insertObjectableBefore``
+        (Java line 220): ``new_kid`` is unwrapped via ``get_cos_object``
+        when present, then the call is delegated to :meth:`insert_before`.
+        ``None`` ``new_kid`` is a silent no-op (returns ``False``).
         """
         if new_kid is None:
             return False

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,8 @@ _LAST: COSName = COSName.get_pdf_name("Last")
 _NEXT: COSName = COSName.get_pdf_name("Next")
 _PREV: COSName = COSName.PREV  # type: ignore[attr-defined]
 _OUTLINES: COSName = COSName.get_pdf_name("Outlines")
+
+_LOG = logging.getLogger(__name__)
 
 
 class PDOutlineNode:
@@ -67,7 +70,8 @@ class PDOutlineNode:
 
         Outline roots carry ``/Type /Outlines`` and become
         :class:`PDDocumentOutline` wrappers; everything else is a
-        :class:`PDOutlineItem`.
+        :class:`PDOutlineItem`. Mirrors upstream
+        ``PDOutlineNode#getParent`` (package-private in Java).
         """
         from .pd_document_outline import PDDocumentOutline
         from .pd_outline_item import PDOutlineItem
@@ -80,11 +84,18 @@ class PDOutlineNode:
             return PDDocumentOutline(parent)
         return PDOutlineItem(parent)
 
-    def _set_parent(self, parent: PDOutlineNode | None) -> None:
+    def set_parent(self, parent: PDOutlineNode | None) -> None:
+        """Set ``/Parent`` to point at ``parent`` (or remove it when
+        ``parent`` is ``None``). Mirrors upstream
+        ``PDOutlineNode#setParent`` (package-private in Java)."""
         self._dictionary.set_item(
             _PARENT,
             parent.get_cos_object() if parent is not None else None,
         )
+
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _set_parent = set_parent
 
     # ---------- children: first / last ----------
 
@@ -93,7 +104,11 @@ class PDOutlineNode:
             self._dictionary.get_dictionary_object(_FIRST), COSDictionary
         )
 
-    def _get_outline_item(self, key: COSName) -> PDOutlineItem | None:
+    def get_outline_item(self, key: COSName) -> PDOutlineItem | None:
+        """Return the typed :class:`PDOutlineItem` wrapper for ``key`` (a
+        ``/First``/``/Last``/``/Next``/``/Prev`` name) or ``None`` when
+        absent. Mirrors upstream ``PDOutlineNode#getOutlineItem``
+        (package-private in Java)."""
         from .pd_outline_item import PDOutlineItem
 
         value = self._dictionary.get_dictionary_object(key)
@@ -101,17 +116,30 @@ class PDOutlineNode:
             return PDOutlineItem(value)
         return None
 
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _get_outline_item = get_outline_item
+
     def get_first_child(self) -> PDOutlineItem | None:
-        return self._get_outline_item(_FIRST)
+        return self.get_outline_item(_FIRST)
 
     def get_last_child(self) -> PDOutlineItem | None:
-        return self._get_outline_item(_LAST)
+        return self.get_outline_item(_LAST)
 
-    def _set_first_child(self, node: PDOutlineNode) -> None:
+    def set_first_child(self, node: PDOutlineNode) -> None:
+        """Set ``/First`` to point at ``node``. Mirrors upstream
+        ``PDOutlineNode#setFirstChild`` (package-private in Java)."""
         self._dictionary.set_item(_FIRST, node.get_cos_object())
 
-    def _set_last_child(self, node: PDOutlineNode) -> None:
+    def set_last_child(self, node: PDOutlineNode) -> None:
+        """Set ``/Last`` to point at ``node``. Mirrors upstream
+        ``PDOutlineNode#setLastChild`` (package-private in Java)."""
         self._dictionary.set_item(_LAST, node.get_cos_object())
+
+    # Internal aliases kept for in-tree callers that already use the
+    # underscore form.
+    _set_first_child = set_first_child
+    _set_last_child = set_last_child
 
     # ---------- count / open / close ----------
 
@@ -123,12 +151,14 @@ class PDOutlineNode:
         return self._dictionary.get_int(_COUNT, 0)
 
     def set_open_count(self, count: int) -> None:
-        """Public setter for ``/Count``. Mirrors upstream
-        ``PDOutlineNode#setOpenCount``."""
+        """Set ``/Count``. Mirrors upstream ``PDOutlineNode#setOpenCount``
+        (package-private in Java) — pypdfbox keeps it public so callers can
+        pre-seed counts on hand-built fixtures."""
         self._dictionary.set_int(_COUNT, count)
 
-    def _set_open_count(self, count: int) -> None:
-        self._dictionary.set_int(_COUNT, count)
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _set_open_count = set_open_count
 
     def is_node_open(self) -> bool:
         return self.get_open_count() > 0
@@ -136,95 +166,147 @@ class PDOutlineNode:
     def open_node(self) -> None:
         """Open this node. No-op if already open."""
         if not self.is_node_open():
-            self._switch_node_count()
+            self.switch_node_count()
 
     def close_node(self) -> None:
         """Close this node. No-op if already closed."""
         if self.is_node_open():
-            self._switch_node_count()
+            self.switch_node_count()
 
-    def _switch_node_count(self) -> None:
+    def switch_node_count(self) -> None:
+        """Flip the sign of ``/Count`` and propagate the swing into the
+        parent chain. Mirrors upstream ``PDOutlineNode#switchNodeCount``
+        (private in Java) — pypdfbox keeps it accessible because subclasses
+        such as :class:`PDDocumentOutline` need to override the open/close
+        behaviour."""
         open_count = self.get_open_count()
-        self._set_open_count(-open_count)
-        self._update_parent_open_count(-open_count)
+        self.set_open_count(-open_count)
+        self.update_parent_open_count(-open_count)
 
-    def _update_parent_open_count(self, delta: int) -> None:
-        """Propagate a count change up the parent chain. Mirrors upstream:
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _switch_node_count = switch_node_count
+
+    def update_parent_open_count(self, delta: int) -> None:
+        """Propagate a count change up the parent chain. Mirrors upstream
+        ``PDOutlineNode#updateParentOpenCount`` (package-private in Java):
         when the parent is open, contributions land directly in the
         parent's count and bubble higher; when closed, the parent's
-        (negative) count widens but propagation stops."""
+        (negative) count widens but propagation stops.
+
+        Defends against the self-referencing-parent case fixed in
+        PDFBOX-5939 by detecting parent identity equality with this node's
+        dictionary and bailing out (logged at WARNING level)."""
         parent = self.get_parent()
         if parent is None:
             return
         if parent.get_cos_object() is self._dictionary:
             # Self-referencing parent — see PDFBOX-5939. Bail rather than recurse.
+            _LOG.warning("Outline parent points to itself")
             return
         if parent.is_node_open():
-            parent._set_open_count(parent.get_open_count() + delta)
-            parent._update_parent_open_count(delta)
+            parent.set_open_count(parent.get_open_count() + delta)
+            parent.update_parent_open_count(delta)
         else:
-            parent._set_open_count(parent.get_open_count() - delta)
+            parent.set_open_count(parent.get_open_count() - delta)
+
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _update_parent_open_count = update_parent_open_count
 
     # ---------- internal: linked-list mutation ----------
 
     @staticmethod
-    def _require_single_node(node: PDOutlineItem) -> None:
+    def require_single_node(node: PDOutlineItem) -> None:
+        """Assert ``node`` is unattached (no ``/Next`` or ``/Prev``).
+
+        Raises ``ValueError`` (Python's stand-in for upstream's
+        ``IllegalArgumentException``) when ``node`` is part of a chain.
+        Mirrors upstream ``PDOutlineNode#requireSingleNode``
+        (package-private in Java)."""
         if node.get_next_sibling() is not None or node.get_previous_sibling() is not None:
             raise ValueError("A single node with no siblings is required")
 
-    def _append(self, new_child: PDOutlineItem) -> None:
-        new_child._set_parent(self)
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _require_single_node = require_single_node
+
+    def append(self, new_child: PDOutlineItem) -> None:
+        """Append ``new_child`` to the linked list of children. Mirrors
+        upstream ``PDOutlineNode#append`` (private in Java) — adjusts
+        ``/First``/``/Last``/``/Next``/``/Prev`` pointers but does **not**
+        update the parent chain ``/Count``. Use :meth:`add_last` for the
+        full bookkeeping."""
+        new_child.set_parent(self)
         if not self.has_children():
-            self._set_first_child(new_child)
+            self.set_first_child(new_child)
         else:
             previous_last = self.get_last_child()
             assert previous_last is not None
             previous_last._set_next_sibling(new_child)
             new_child._set_previous_sibling(previous_last)
-        self._set_last_child(new_child)
+        self.set_last_child(new_child)
 
-    def _prepend(self, new_child: PDOutlineItem) -> None:
-        new_child._set_parent(self)
+    def prepend(self, new_child: PDOutlineItem) -> None:
+        """Prepend ``new_child`` to the linked list of children. Mirrors
+        upstream ``PDOutlineNode#prepend`` (private in Java) — adjusts
+        ``/First``/``/Last``/``/Next``/``/Prev`` pointers but does **not**
+        update the parent chain ``/Count``. Use :meth:`add_first` for the
+        full bookkeeping."""
+        new_child.set_parent(self)
         if not self.has_children():
-            self._set_last_child(new_child)
+            self.set_last_child(new_child)
         else:
             previous_first = self.get_first_child()
             assert previous_first is not None
             new_child._set_next_sibling(previous_first)
             previous_first._set_previous_sibling(new_child)
-        self._set_first_child(new_child)
+        self.set_first_child(new_child)
 
-    def _update_parent_open_count_for_added_child(self, new_child: PDOutlineItem) -> None:
+    # Internal aliases kept for in-tree callers that already use the
+    # underscore form.
+    _append = append
+    _prepend = prepend
+
+    def update_parent_open_count_for_added_child(self, new_child: PDOutlineItem) -> None:
+        """Bubble the count contribution from a newly attached
+        ``new_child`` up the parent chain. Mirrors upstream
+        ``PDOutlineNode#updateParentOpenCountForAddedChild``
+        (package-private in Java)."""
         delta = 1
         if new_child.is_node_open():
             delta += new_child.get_open_count()
-        new_child._update_parent_open_count(delta)
+        new_child.update_parent_open_count(delta)
+
+    # Internal alias kept for in-tree callers that already use the
+    # underscore form.
+    _update_parent_open_count_for_added_child = update_parent_open_count_for_added_child
 
     def _update_parent_open_count_for_removed_child(self, child: PDOutlineItem) -> None:
         delta = -1
         if child.is_node_open():
             delta -= child.get_open_count()
         if self.is_node_open():
-            self._set_open_count(self.get_open_count() + delta)
-            self._update_parent_open_count(delta)
+            self.set_open_count(self.get_open_count() + delta)
+            self.update_parent_open_count(delta)
         else:
-            self._set_open_count(self.get_open_count() - delta)
+            self.set_open_count(self.get_open_count() - delta)
 
     # ---------- public mutation ----------
 
     def add_last(self, new_child: PDOutlineItem) -> None:
         """Append ``new_child`` as the last child. ``new_child`` must be a
         single node (no siblings)."""
-        self._require_single_node(new_child)
-        self._append(new_child)
-        self._update_parent_open_count_for_added_child(new_child)
+        self.require_single_node(new_child)
+        self.append(new_child)
+        self.update_parent_open_count_for_added_child(new_child)
 
     def add_first(self, new_child: PDOutlineItem) -> None:
         """Prepend ``new_child`` as the first child. ``new_child`` must be a
         single node (no siblings)."""
-        self._require_single_node(new_child)
-        self._prepend(new_child)
-        self._update_parent_open_count_for_added_child(new_child)
+        self.require_single_node(new_child)
+        self.prepend(new_child)
+        self.update_parent_open_count_for_added_child(new_child)
 
     def append_child(self, new_child: PDOutlineItem) -> None:
         """Upstream-compatibility alias for :meth:`add_last`. Mirrors
@@ -271,7 +353,7 @@ class PDOutlineNode:
             if next_sibling is None:
                 self._dictionary.remove_item(_FIRST)
             else:
-                self._set_first_child(next_sibling)
+                self.set_first_child(next_sibling)
 
         last_child = self.get_last_child()
         if last_child is not None and last_child.get_cos_object() is child_dict:
@@ -279,7 +361,7 @@ class PDOutlineNode:
             if previous_sibling is None:
                 self._dictionary.remove_item(_LAST)
             else:
-                self._set_last_child(previous_sibling)
+                self.set_last_child(previous_sibling)
 
         if previous_sibling is not None:
             if next_sibling is None:

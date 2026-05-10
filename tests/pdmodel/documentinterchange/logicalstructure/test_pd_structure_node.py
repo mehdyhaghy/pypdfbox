@@ -156,45 +156,45 @@ def test_structure_node_append_and_remove_typed_kids() -> None:
 # ---------- PDStructureNode protected objectable kid helpers ----------
 
 
-def test_structure_node_append_objectable_kid_unwraps_cos_object() -> None:
+def test_structure_nodeappend_objectable_kid_unwraps_cos_object() -> None:
     node = PDStructureNode("StructElem")
     elem = PDStructureElement(structure_type="P")
-    node._append_objectable_kid(elem)
+    node.append_objectable_kid(elem)
     raw_k = node.get_cos_object().get_dictionary_object(_K)
     assert raw_k is elem.get_cos_object()
 
 
-def test_structure_node_append_objectable_kid_none_is_noop() -> None:
+def test_structure_nodeappend_objectable_kid_none_is_noop() -> None:
     node = PDStructureNode("StructElem")
-    node._append_objectable_kid(None)
+    node.append_objectable_kid(None)
     assert node.get_cos_object().get_dictionary_object(_K) is None
 
 
-def test_structure_node_append_objectable_kid_accepts_cos_dictionary() -> None:
+def test_structure_nodeappend_objectable_kid_accepts_cos_dictionary() -> None:
     node = PDStructureNode("StructElem")
     raw = COSDictionary()
-    node._append_objectable_kid(raw)
+    node.append_objectable_kid(raw)
     assert node.get_cos_object().get_dictionary_object(_K) is raw
 
 
-def test_structure_node_remove_objectable_kid_returns_true_on_success() -> None:
+def test_structure_noderemove_objectable_kid_returns_true_on_success() -> None:
     node = PDStructureNode("StructElem")
     elem = PDStructureElement(structure_type="P")
-    node._append_objectable_kid(elem)
-    assert node._remove_objectable_kid(elem) is True
+    node.append_objectable_kid(elem)
+    assert node.remove_objectable_kid(elem) is True
     assert node.get_kids() == []
 
 
-def test_structure_node_remove_objectable_kid_none_returns_false() -> None:
+def test_structure_noderemove_objectable_kid_none_returns_false() -> None:
     node = PDStructureNode("StructElem")
-    assert node._remove_objectable_kid(None) is False
+    assert node.remove_objectable_kid(None) is False
 
 
-def test_structure_node_remove_objectable_kid_unknown_returns_false() -> None:
+def test_structure_noderemove_objectable_kid_unknown_returns_false() -> None:
     node = PDStructureNode("StructElem")
     node.append_kid(COSDictionary())
     other = PDStructureElement(structure_type="P")
-    assert node._remove_objectable_kid(other) is False
+    assert node.remove_objectable_kid(other) is False
 
 
 # ---------- PDStructureNode.insert_before ----------
@@ -386,17 +386,17 @@ def test_structure_node_create_object_none_returns_none() -> None:
     assert node.create_object(None) is None
 
 
-# ---------- PDStructureNode._insert_objectable_before ----------
+# ---------- PDStructureNode.insert_objectable_before ----------
 
 
-def test_structure_node_insert_objectable_before_unwraps_cos_object() -> None:
+def test_structure_nodeinsert_objectable_before_unwraps_cos_object() -> None:
     node = PDStructureNode("StructElem")
     head = PDStructureElement(structure_type="P")
     tail = PDStructureElement(structure_type="P")
     middle = PDStructureElement(structure_type="P")
     node.set_kids([head, tail])
 
-    assert node._insert_objectable_before(middle, tail) is True
+    assert node.insert_objectable_before(middle, tail) is True
     raw_k = node.get_cos_object().get_dictionary_object(_K)
     assert isinstance(raw_k, COSArray)
     assert raw_k.get_object(0) is head.get_cos_object()
@@ -404,21 +404,21 @@ def test_structure_node_insert_objectable_before_unwraps_cos_object() -> None:
     assert raw_k.get_object(2) is tail.get_cos_object()
 
 
-def test_structure_node_insert_objectable_before_none_is_noop() -> None:
+def test_structure_nodeinsert_objectable_before_none_is_noop() -> None:
     node = PDStructureNode("StructElem")
     only = COSDictionary()
     node.append_kid(only)
-    assert node._insert_objectable_before(None, only) is False
+    assert node.insert_objectable_before(None, only) is False
     # /K untouched
     assert node.get_cos_object().get_dictionary_object(_K) is only
 
 
-def test_structure_node_insert_objectable_before_accepts_raw_cos_dictionary() -> None:
+def test_structure_nodeinsert_objectable_before_accepts_raw_cos_dictionary() -> None:
     node = PDStructureNode("StructElem")
     a, b = COSDictionary(), COSDictionary()
     node.set_kids([a, b])
     new_kid = COSDictionary()  # no get_cos_object — passed through
-    assert node._insert_objectable_before(new_kid, b) is True
+    assert node.insert_objectable_before(new_kid, b) is True
     raw_k = node.get_cos_object().get_dictionary_object(_K)
     assert isinstance(raw_k, COSArray)
     assert raw_k.get_object(0) is a

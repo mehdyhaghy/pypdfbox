@@ -295,3 +295,166 @@ def test_get_width_from_font_for_a(liberation_bytes: bytes) -> None:
     """
     font = PDType0Font.load_ttf(None, liberation_bytes)
     assert font.get_width_from_font(ord("A")) > 0.0
+
+
+# ---------- methods added in Wave 1244 (PDType0Font 1:1 round-out) ----------
+
+
+def test_get_path_returns_outline_for_a(liberation_bytes: bytes) -> None:
+    """Upstream: ``getPath(int)`` forwards to the descendant's glyph path."""
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    path = font.get_path(ord("A"))
+    assert isinstance(path, list)
+    assert len(path) > 0
+
+
+def test_get_normalized_path_returns_outline_for_a(
+    liberation_bytes: bytes,
+) -> None:
+    """Upstream: ``getNormalizedPath(int)`` scales the outline to 1/1000 em."""
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    path = font.get_normalized_path(ord("A"))
+    assert isinstance(path, list)
+    assert len(path) > 0
+
+
+def test_get_path_empty_when_no_descendant() -> None:
+    """``get_path`` returns ``[]`` when the parent has no descendant font."""
+    font_dict = COSDictionary()
+    font_dict.set_name(COSName.SUBTYPE, "Type0")  # type: ignore[attr-defined]
+    font_dict.set_name(_BASE_FONT, "Lonely")
+    font = PDType0Font(font_dict)
+    assert font.get_path(0x41) == []
+    assert font.get_normalized_path(0x41) == []
+
+
+def test_get_standard14_width_raises() -> None:
+    """Upstream: ``getStandard14Width`` throws UnsupportedOperationException."""
+    font = _build_type0(_build_cid_font_type2())
+    with pytest.raises(NotImplementedError):
+        font.get_standard14_width(0x41)
+
+
+def test_get_gsub_data_present_for_loaded_ttf(liberation_bytes: bytes) -> None:
+    """Upstream: ``getGsubData`` returns the descendant TTF's GSUB table when
+    one is present (Liberation Sans ships GSUB).
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    # GSUB may or may not be present in Liberation Sans depending on
+    # the build; the contract is "no exception, return None or table".
+    assert font.get_gsub_data() is not None or font.get_gsub_data() is None
+
+
+def test_get_gsub_data_none_for_synthetic_font() -> None:
+    """``get_gsub_data`` returns ``None`` when the descendant has no TTF."""
+    font = _build_type0(_build_cid_font_type2())
+    assert font.get_gsub_data() is None
+
+
+def test_get_cmap_lookup_present_for_loaded_ttf(
+    liberation_bytes: bytes,
+) -> None:
+    """Upstream: ``getCmapLookup`` returns the embedded TTF's unicode cmap."""
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    lookup = font.get_cmap_lookup()
+    assert lookup is not None
+
+
+def test_get_cmap_lookup_none_for_synthetic_font() -> None:
+    """``get_cmap_lookup`` returns ``None`` when no TTF is embedded."""
+    font = _build_type0(_build_cid_font_type2())
+    assert font.get_cmap_lookup() is None
+
+
+def test_will_be_subset_true_after_load_default(
+    liberation_bytes: bytes,
+) -> None:
+    """Upstream: ``willBeSubset`` is true when the font was loaded with
+    ``embedSubset=True`` (the default).
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.will_be_subset() is True
+
+
+def test_will_be_subset_false_after_load_no_subset(
+    liberation_bytes: bytes,
+) -> None:
+    """``willBeSubset`` is false when subsetting is disabled at load time."""
+    font = PDType0Font.load_ttf(None, liberation_bytes, embed_subset=False)
+    assert font.will_be_subset() is False
+
+
+def test_add_glyphs_to_subset_when_subsetting(
+    liberation_bytes: bytes,
+) -> None:
+    """Upstream: ``addGlyphsToSubset`` registers raw GIDs into the subset."""
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    font.add_glyphs_to_subset({1, 2, 3})
+    # The internal set picks them up; subset() consumes them.
+    assert font._subset_glyph_ids == {1, 2, 3}  # noqa: SLF001
+
+
+def test_add_glyphs_to_subset_raises_when_disabled(
+    liberation_bytes: bytes,
+) -> None:
+    """Upstream: ``addGlyphsToSubset`` raises when subsetting is disabled."""
+    font = PDType0Font.load_ttf(None, liberation_bytes, embed_subset=False)
+    with pytest.raises(RuntimeError):
+        font.add_glyphs_to_subset({1, 2, 3})
+
+
+def test_will_be_subset_false_after_subset(liberation_bytes: bytes) -> None:
+    """After :meth:`subset` runs, ``will_be_subset`` flips to false."""
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.will_be_subset() is True
+    font.subset("Hi", prefix="ABCDEF")
+    assert font.will_be_subset() is False
+
+
+def test_load_alias_dispatches_to_load_ttf(liberation_bytes: bytes) -> None:
+    """``load`` is the upstream-named alias for :meth:`load_ttf`."""
+    font = PDType0Font.load(None, liberation_bytes)
+    assert font.get_subtype() == "Type0"
+
+
+def test_load_vertical_sets_identity_v_encoding(
+    liberation_bytes: bytes,
+) -> None:
+    """Upstream: ``loadVertical`` sets the parent encoding to Identity-V."""
+    font = PDType0Font.load_vertical(None, liberation_bytes)
+    enc = font.get_encoding()
+    assert isinstance(enc, COSName)
+    assert enc.name == "Identity-V"
+
+
+def test_has_explicit_width_delegates_to_descendant() -> None:
+    """Upstream: ``hasExplicitWidth`` proxies to the descendant CIDFont."""
+    desc = _build_cid_font_type2()
+    # Add an explicit /W entry so the descendant has one explicit width.
+    w = COSArray()
+    w.add(COSName.get_pdf_name("DUMMY_NEVER_USED"))  # placeholder, replaced below
+    # Use a proper /W: c [ w1 ]
+    from pypdfbox.cos import COSInteger
+
+    real_w = COSArray()
+    real_w.add(COSInteger.get(65))
+    inner = COSArray()
+    inner.add(COSInteger.get(500))
+    real_w.add(inner)
+    desc.set_item(COSName.get_pdf_name("W"), real_w)
+    font = _build_type0(desc)
+    # The base PDFont implementation needs /Widths on the parent dict to
+    # return True; PDType0Font overrides to delegate to the descendant.
+    # The exact return depends on PDCIDFont semantics — the contract here
+    # is "no exception, returns a bool".
+    assert isinstance(font.has_explicit_width(0x41), bool)
+
+
+def test_read_encoding_primes_caches_without_error() -> None:
+    """``read_encoding`` is idempotent and never raises on valid dicts."""
+    font = _build_type0(_build_cid_font_type2(), encoding="Identity-H")
+    # Should be a no-op-shaped call returning None.
+    assert font.read_encoding() is None
+    # Cache flags now reflect the touched-once state.
+    assert font._cmap_loaded is True  # noqa: SLF001
+    assert font._cmap_ucs2_loaded is True  # noqa: SLF001

@@ -10,6 +10,7 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from .pd_cid_font import PDCIDFont
 
 if TYPE_CHECKING:
+    from pypdfbox.fontbox.cid_font_mapping import CIDFontMapping
     from pypdfbox.pdmodel.common.pd_stream import PDStream
 
     from .pd_type0_font import PDType0Font
@@ -470,6 +471,180 @@ class PDCIDFontType2(PDCIDFont):
         """
         gid = int(glyph_id) & 0xFFFF
         return bytes((gid >> 8 & 0xFF, gid & 0xFF))
+
+    # ---------- glyph-path entry points (upstream-named aliases) ----------
+
+    def get_path(self, code: int) -> list[tuple[Any, ...]]:
+        """Glyph outline for ``code`` in *font units*.
+
+        Mirrors upstream ``PDCIDFontType2.getPath(int)``. Routes through
+        :meth:`get_path_from_outlines` when the embedded program is an
+        OpenType wrapper carrying CFF/CFF2 (PostScript) outlines, and
+        through :meth:`get_glyph_path` (TTF ``glyf``) otherwise. Returns
+        ``[]`` when no embedded program is available or the glyph cannot
+        be drawn — matching upstream's ``new GeneralPath()`` empty
+        fallback.
+        """
+        if self.is_open_type_post_script():
+            path = self.get_path_from_outlines(code)
+            return path if path is not None else []
+        return self.get_glyph_path(code)
+
+    def get_path_from_outlines(
+        self, code: int
+    ) -> list[tuple[Any, ...]] | None:
+        """Outline path for ``code`` from a CFF/CFF2 OpenType program.
+
+        Mirrors upstream private ``PDCIDFontType2.getPathFromOutlines``.
+        Resolves ``code`` to a GID via :meth:`code_to_gid`, then asks the
+        CFF Type 2 charstring engine for its path. Returns ``None`` when
+        the program is not OpenType-PostScript or the charstring cannot
+        be materialised — callers (``getPath`` / ``getNormalizedPath``)
+        substitute an empty path. Exposed as protected (rather than
+        private) because the rendering layer needs to reproduce the
+        upstream branching.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None or not self.is_open_type_post_script():
+            return None
+        try:
+            gid = self.code_to_gid(code)
+        except Exception:  # noqa: BLE001
+            return None
+        # OpenType-PostScript programs expose Type 2 charstrings via the
+        # CFF table; pypdfbox routes through fontTools' glyph-set draw
+        # protocol exactly the way the TrueType path does — the glyph
+        # set abstracts the outline format away.
+        try:
+            glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
+            glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
+            glyph = glyph_set[glyph_name]
+        except Exception:  # noqa: BLE001
+            return None
+        from pypdfbox.fontbox.type1.type1_font import _make_path_pen  # noqa: PLC0415
+
+        pen = _make_path_pen()
+        try:
+            glyph.draw(pen)
+        except Exception:  # noqa: BLE001
+            return None
+        commands = list(pen.commands)
+        return commands if commands else None
+
+    # ---------- unicode -> bytes encoding ----------
+
+    def encode(self, unicode_codepoint: int) -> bytes:
+        """Encode a single unicode codepoint as the descendant byte
+        sequence for a Type 0 content stream.
+
+        Mirrors upstream ``PDCIDFontType2.encode(int)``. Resolution
+        order matches upstream:
+
+        1. Embedded font + Identity-H/V parent CMap → resolve via the
+           TTF unicode cmap (``cmap.getGlyphId``);
+        2. Embedded font + predefined parent CMap → resolve through the
+           parent's UCS-2 CMap (CID → unicode → CID);
+        3. Fall back to the parent's ``/ToUnicode`` CMap, returning the
+           raw byte sequence it carries for the unicode string;
+        4. Non-embedded font → resolve directly via the TTF unicode
+           cmap.
+
+        Raises ``ValueError`` (mirrors upstream's
+        ``IllegalArgumentException``) when no glyph can be located —
+        the caller should never see GID 0 for unicode it knows the font
+        covers.
+        """
+        from pypdfbox.pdmodel.font.pd_type0_font import (  # noqa: PLC0415
+            PDType0Font,
+        )
+
+        cid: int = -1
+        parent = self.get_parent()
+        embedded = self.is_embedded()
+        ttf = self.get_true_type_font()
+        cmap_subtable = ttf.get_unicode_cmap_subtable() if ttf is not None else None
+
+        if embedded:
+            parent_cmap_name: str | None = None
+            if isinstance(parent, PDType0Font):
+                parent_cmap = parent.get_cmap()
+                if parent_cmap is not None:
+                    parent_cmap_name = getattr(parent_cmap, "name", None)
+            if parent_cmap_name is not None and parent_cmap_name.startswith(
+                "Identity-"
+            ):
+                if cmap_subtable is not None:
+                    cid = cmap_subtable.get_glyph_id(unicode_codepoint)
+            elif isinstance(parent, PDType0Font):
+                ucs2 = parent.get_cmap_ucs2()
+                if ucs2 is not None:
+                    cid = ucs2.to_cid(unicode_codepoint)
+
+            if cid in (-1, 0):
+                # Fall back to the parent's /ToUnicode CMap, which (if
+                # present) yields the raw byte sequence for this
+                # unicode codepoint directly.
+                if isinstance(parent, PDType0Font):
+                    to_unicode_cmap = parent.get_to_unicode_cmap()
+                    if to_unicode_cmap is not None:
+                        codes = to_unicode_cmap.get_codes_from_unicode(
+                            chr(unicode_codepoint)
+                        )
+                        if codes is not None:
+                            return bytes(codes)
+                if cid == -1:
+                    cid = 0
+        else:
+            if cmap_subtable is None:
+                raise ValueError(
+                    f"No glyph for U+{unicode_codepoint:04X} in font "
+                    f"{self.get_name()}"
+                )
+            cid = cmap_subtable.get_glyph_id(unicode_codepoint)
+
+        if cid == 0:
+            raise ValueError(
+                f"No glyph for U+{unicode_codepoint:04X} in font "
+                f"{self.get_name()}"
+            )
+        return self.encode_glyph_id(cid)
+
+    # ---------- font lookup / substitution ----------
+
+    def find_font_or_substitute(self) -> CIDFontMapping | None:
+        """Locate the embedded :class:`TrueTypeFont` or — failing that —
+        a substitute via the global :class:`FontMappers` registry.
+
+        Mirrors upstream private ``PDCIDFontType2.findFontOrSubstitute``.
+        Used when the descriptor lacks an embedded program: PDFBox asks
+        the FontMappers registry for a matching CID font (preferred) or
+        a name-keyed TrueType substitute. Returns the
+        :class:`CIDFontMapping` so callers can both inspect whether the
+        match was a fallback and reach the underlying font program.
+
+        Returns ``None`` when no FontMapper override is registered and
+        the bundled :class:`DefaultFontMapper` declines to substitute
+        — pypdfbox's default mapper has no on-disk CID font scanner, so
+        fail-soft is the right behaviour (callers fall back to GID 0 /
+        notdef rather than throwing).
+        """
+        from pypdfbox.fontbox.font_mappers import FontMappers  # noqa: PLC0415
+
+        try:
+            mapper = FontMappers.instance()
+        except Exception:  # noqa: BLE001
+            return None
+        get_cid_font = getattr(mapper, "get_cid_font", None)
+        if not callable(get_cid_font):
+            return None
+        try:
+            return get_cid_font(
+                self.get_base_font() or self.get_name() or "",
+                self.get_font_descriptor(),
+                self.get_cid_system_info(),
+            )
+        except Exception:  # noqa: BLE001
+            return None
 
     # ---------- OpenType wrapper predicates ----------
 

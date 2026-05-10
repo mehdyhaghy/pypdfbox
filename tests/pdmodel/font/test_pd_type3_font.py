@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+import io
+
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.font import PDFontLike
 from pypdfbox.pdmodel.font.encoding import WinAnsiEncoding
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
@@ -174,17 +176,28 @@ def test_is_damaged_default_false() -> None:
     assert font.is_damaged() is False
 
 
-# ---------- get_name (inherited /BaseFont) ----------
+# ---------- get_name — Type 3 reads /Name, NOT /BaseFont ----------
 
 
-def test_get_name_returns_basefont_when_set() -> None:
+def test_get_name_returns_name_entry_when_set() -> None:
+    # Mirrors upstream PDType3Font.getName() ->
+    # dict.getNameAsString(COSName.NAME): Type 3 fonts use the legacy
+    # /Name entry, not /BaseFont.
     font = PDType3Font()
-    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "MyType3")
+    font.get_cos_object().set_name(COSName.get_pdf_name("Name"), "MyType3")
     assert font.get_name() == "MyType3"
 
 
-def test_get_name_returns_none_when_basefont_absent() -> None:
+def test_get_name_returns_none_when_name_absent() -> None:
     font = PDType3Font()
+    assert font.get_name() is None
+
+
+def test_get_name_ignores_basefont_for_type3() -> None:
+    # /BaseFont must not leak into Type 3's get_name (upstream-divergent
+    # historically; this asserts the corrected upstream-matching behavior).
+    font = PDType3Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     assert font.get_name() is None
 
 
@@ -415,3 +428,205 @@ def test_get_displacement_zero_for_unmapped_code() -> None:
     # get_width(code) is 0 -> displacement is (0, 0).
     font = PDType3Font()
     assert font.get_displacement(0x41) == (0.0, 0.0)
+
+
+# ---------- read_code (single-byte) ----------
+
+
+def test_read_code_returns_single_byte() -> None:
+    # Mirrors upstream PDType3Font.readCode -> in.read().
+    font = PDType3Font()
+    assert font.read_code(io.BytesIO(b"\x41")) == 0x41
+
+
+def test_read_code_consumes_one_byte_of_stream() -> None:
+    font = PDType3Font()
+    stream = io.BytesIO(b"\x41\x42")
+    assert font.read_code(stream) == 0x41
+    assert font.read_code(stream) == 0x42
+
+
+def test_read_code_raises_at_eof() -> None:
+    font = PDType3Font()
+    with pytest.raises(EOFError):
+        font.read_code(io.BytesIO(b""))
+
+
+# ---------- get_path / get_font_box_font / encode_codepoint / read_encoding_from_font ----------
+
+
+def test_get_path_raises_not_implemented() -> None:
+    # Mirrors upstream UnsupportedOperationException.
+    font = PDType3Font()
+    with pytest.raises(NotImplementedError):
+        font.get_path("A")
+
+
+def test_get_font_box_font_raises_not_implemented() -> None:
+    font = PDType3Font()
+    with pytest.raises(NotImplementedError):
+        font.get_font_box_font()
+
+
+def test_encode_codepoint_raises_not_implemented() -> None:
+    font = PDType3Font()
+    with pytest.raises(NotImplementedError):
+        font.encode_codepoint(0x41)
+
+
+def test_read_encoding_from_font_raises_not_implemented() -> None:
+    font = PDType3Font()
+    with pytest.raises(NotImplementedError):
+        font.read_encoding_from_font()
+
+
+# ---------- read_encoding (resolves /Encoding + GlyphList) ----------
+
+
+def test_read_encoding_resolves_predefined_name() -> None:
+    font, _ = _make_font_with_glyph(0x41, "A")
+    # Should not raise and should prime the typed encoding cache.
+    font.read_encoding()
+    assert isinstance(font.get_encoding_typed(), WinAnsiEncoding)
+
+
+def test_read_encoding_no_op_when_encoding_absent() -> None:
+    font = PDType3Font()
+    font.read_encoding()
+    # No /Encoding -> typed encoding stays None; no exception.
+    assert font.get_encoding_typed() is None
+
+
+# ---------- is_standard14 (Java-cased alias) ----------
+
+
+def test_is_standard14_alias_returns_false() -> None:
+    # Mirrors upstream PDType3Font.isStandard14() == false directly.
+    font = PDType3Font()
+    assert font.is_standard14() is False
+
+
+def test_is_standard14_false_even_with_basefont_helvetica() -> None:
+    # Type 3 with a Standard 14-looking /BaseFont still returns False.
+    font = PDType3Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert font.is_standard14() is False
+
+
+# ---------- _check_font_matrix_values ----------
+
+
+def test_check_font_matrix_values_accepts_six_numerics() -> None:
+    arr = COSArray(
+        [
+            COSFloat(0.001),
+            COSFloat(0.0),
+            COSFloat(0.0),
+            COSFloat(0.001),
+            COSFloat(0.0),
+            COSFloat(0.0),
+        ]
+    )
+    assert PDType3Font._check_font_matrix_values(arr) is True
+
+
+def test_check_font_matrix_values_rejects_wrong_size() -> None:
+    arr = COSArray([COSFloat(1.0), COSFloat(0.0)])
+    assert PDType3Font._check_font_matrix_values(arr) is False
+
+
+def test_check_font_matrix_values_rejects_none() -> None:
+    assert PDType3Font._check_font_matrix_values(None) is False
+
+
+def test_check_font_matrix_values_rejects_non_numeric_entry() -> None:
+    arr = COSArray(
+        [
+            COSFloat(1.0),
+            COSFloat(0.0),
+            COSName.get_pdf_name("not-a-number"),
+            COSFloat(1.0),
+            COSFloat(0.0),
+            COSFloat(0.0),
+        ]
+    )
+    assert PDType3Font._check_font_matrix_values(arr) is False
+
+
+# ---------- generate_bounding_box (CharProcs union plan-B) ----------
+
+
+def test_get_bounding_box_returns_font_bbox_when_non_zero() -> None:
+    font = PDType3Font()
+    rect = PDRectangle(0.0, -200.0, 750.0, 900.0)
+    font.set_font_bbox(rect)
+    out = font.get_bounding_box()
+    assert out is not None
+    assert out == rect
+
+
+def test_get_bounding_box_unions_charproc_bboxes_when_font_bbox_zero() -> None:
+    # Mirrors upstream generateBoundingBox plan-B: when /FontBBox is the
+    # all-zero default, expand by unioning every /CharProcs glyph bbox
+    # (d1 operands).
+    font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 0.0, 0.0))
+
+    char_procs = COSDictionary()
+    glyph_a = COSStream()
+    # "wx wy llx lly urx ury d1" -> bbox = [-10, -20, 700, 900]
+    glyph_a.set_raw_data(b"600 0 -10 -20 700 900 d1\n")
+    char_procs.set_item(COSName.get_pdf_name("A"), glyph_a)
+
+    glyph_b = COSStream()
+    # bbox = [50, -50, 800, 1000]; union -> [-10, -50, 800, 1000]
+    glyph_b.set_raw_data(b"600 0 50 -50 800 1000 d1\n")
+    char_procs.set_item(COSName.get_pdf_name("B"), glyph_b)
+    font.set_char_procs(char_procs)
+
+    out = font.get_bounding_box()
+    assert out is not None
+    assert out.get_lower_left_x() == pytest.approx(-10.0)
+    assert out.get_lower_left_y() == pytest.approx(-50.0)
+    assert out.get_upper_right_x() == pytest.approx(800.0)
+    assert out.get_upper_right_y() == pytest.approx(1000.0)
+
+
+def test_get_bounding_box_returns_zero_rect_when_charprocs_missing() -> None:
+    # /FontBBox present but zero, no /CharProcs -> upstream returns the
+    # zero rect itself (no union to apply).
+    font = PDType3Font()
+    rect = PDRectangle(0.0, 0.0, 0.0, 0.0)
+    font.set_font_bbox(rect)
+    out = font.get_bounding_box()
+    assert out is not None
+    assert out == rect
+
+
+def test_get_bounding_box_caches_result() -> None:
+    # Second call must return the same object (memoised, like upstream's
+    # ``fontBBox`` field).
+    font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 100.0, 200.0))
+    first = font.get_bounding_box()
+    second = font.get_bounding_box()
+    assert first is second
+
+
+def test_get_bounding_box_skips_d0_charprocs_in_union() -> None:
+    # d0 declares no bbox -> get_glyph_bbox returns None -> upstream
+    # continues without expanding the rect.
+    font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 0.0, 0.0))
+
+    char_procs = COSDictionary()
+    glyph = COSStream()
+    glyph.set_raw_data(b"600 0 d0\n")  # d0, no bbox
+    char_procs.set_item(COSName.get_pdf_name("A"), glyph)
+    font.set_char_procs(char_procs)
+
+    out = font.get_bounding_box()
+    assert out is not None
+    # All-zero in -> all-zero out (no glyph bbox to absorb).
+    assert out.get_lower_left_x() == 0.0
+    assert out.get_upper_right_x() == 0.0

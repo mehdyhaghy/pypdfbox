@@ -171,6 +171,52 @@ def test_get_width_from_font_zero_when_no_program() -> None:
     assert font.get_width_from_font(65) == 0.0
 
 
+# ---------- glyph-path entry points (no embedded program) ----------
+
+
+def test_get_path_empty_when_no_program() -> None:
+    # Upstream getPath() returns an empty GeneralPath when the embedded
+    # program cannot be located — pypdfbox returns the equivalent empty
+    # command list.
+    font = PDCIDFontType2()
+    assert font.get_path(65) == []
+
+
+def test_get_path_from_outlines_none_when_not_open_type_post_script() -> None:
+    # The CFF charstring branch only fires when otf != null && isPostScript().
+    # No embedded program → no OTF → guard returns None.
+    font = PDCIDFontType2()
+    assert font.get_path_from_outlines(65) is None
+
+
+# ---------- find_font_or_substitute ----------
+
+
+def test_find_font_or_substitute_falls_through_when_no_mapper_override() -> None:
+    # Upstream consults FontMappers.instance().getCIDFont(...). pypdfbox's
+    # bundled DefaultFontMapper has no on-disk CID font scanner so the
+    # default response is a None CIDFontMapping — we surface that without
+    # raising. (Real CID-aware mappers override get_cid_font.)
+    font = PDCIDFontType2()
+    # With no FontMapper override registered the call should not raise
+    # and should return either None or a CIDFontMapping object — the
+    # exact class depends on whether a host-system mapper is wired up.
+    result = font.find_font_or_substitute()
+    assert result is None or hasattr(result, "is_cid_font")
+
+
+# ---------- encode (unicode -> bytes) ----------
+
+
+def test_encode_raises_when_no_glyph_available() -> None:
+    # Upstream throws IllegalArgumentException("No glyph for U+%04X ...");
+    # pypdfbox surfaces ValueError. Here the font has no embedded program
+    # and no parent / cmap, so no glyph can be located for any codepoint.
+    font = PDCIDFontType2()
+    with pytest.raises(ValueError, match=r"No glyph for U\+0041"):
+        font.encode(0x41)
+
+
 # ---------- skipped: SFNT-fixture-bound tests ----------
 
 

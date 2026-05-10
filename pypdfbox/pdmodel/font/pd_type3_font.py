@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, overload
+from typing import IO, TYPE_CHECKING, Any, overload
 
 from pypdfbox.cos import (
     COSArray,
@@ -24,6 +24,7 @@ _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
 _FONT_BBOX: COSName = COSName.get_pdf_name("FontBBox")
 _FONT_MATRIX: COSName = COSName.get_pdf_name("FontMatrix")
 _LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
+_NAME: COSName = COSName.get_pdf_name("Name")
 _RESOURCES: COSName = COSName.get_pdf_name("Resources")
 _WIDTHS: COSName = COSName.get_pdf_name("Widths")
 
@@ -47,6 +48,8 @@ class PDType3Font(PDSimpleFont):
 
     def __init__(self, font_dict: COSDictionary | None = None) -> None:
         super().__init__(font_dict)
+        # Memoised generated bbox — upstream's ``fontBBox`` field.
+        self._font_bbox_cache: PDRectangle | None = None
 
     # ---------- /CharProcs (raw — typed PDType3CharProc deferred) ----------
 
@@ -201,13 +204,9 @@ class PDType3Font(PDSimpleFont):
             return
         self._dict.set_item(_FONT_BBOX, bbox)
 
-    def get_bounding_box(self) -> PDRectangle | None:
-        """Return the font bounding box.
-
-        Mirrors upstream ``PDType3Font.getBoundingBox()``, which exposes
-        the same Type 3 ``/FontBBox`` used by :meth:`get_font_bbox`.
-        """
-        return self.get_font_bbox()
+    # The Type-3 ``get_bounding_box`` lives below alongside the
+    # ``_generate_bounding_box`` helper to keep the upstream pairing
+    # ``getBoundingBox`` / ``generateBoundingBox`` colocated.
 
     # ---------- /FirstChar /LastChar /Widths ----------
     #
@@ -394,6 +393,194 @@ class PDType3Font(PDSimpleFont):
         encoding-resolution purposes.
         """
         return False
+
+    # ---------- /Name (Type 3-specific identity) ----------
+
+    def get_name(self) -> str | None:
+        """Return ``/Name`` from the font dictionary.
+
+        Mirrors upstream ``PDType3Font.getName()`` — Type 3 fonts use the
+        legacy ``/Name`` entry (PDF 32000-1 §9.6.5 Table 113), *not*
+        ``/BaseFont`` like the other simple subtypes. Returns ``None``
+        when ``/Name`` is missing or not a name.
+        """
+        return self._dict.get_name(_NAME)
+
+    # ---------- font-program escape hatches (Type 3 has no font program) ----------
+
+    def get_font_box_font(self) -> Any:  # noqa: ANN401  (mirrors upstream FontBoxFont return)
+        """Type 3 fonts do not carry a FontBox font program.
+
+        Mirrors upstream ``PDType3Font.getFontBoxFont()`` which throws
+        ``UnsupportedOperationException("not supported for Type 3 fonts")``.
+        Raises :class:`NotImplementedError` (the closest stdlib analog —
+        the operation is structurally unavailable for this subtype).
+        """
+        raise NotImplementedError("not supported for Type 3 fonts")
+
+    def get_path(self, name: str) -> Any:  # noqa: ANN401  (upstream returns GeneralPath)
+        """Type 3 fonts do not expose vector paths by glyph name.
+
+        Mirrors upstream ``PDType3Font.getPath(String)`` which throws
+        ``UnsupportedOperationException("not supported for Type 3 fonts")``.
+        Glyph shapes are inline content streams in ``/CharProcs`` — use
+        :meth:`get_char_proc` and walk the content stream instead.
+        """
+        del name
+        raise NotImplementedError("not supported for Type 3 fonts")
+
+    def encode_codepoint(self, unicode: int) -> bytes:
+        """Type 3 fonts have no canonical text-to-byte encoding path.
+
+        Mirrors upstream protected ``encode(int unicode)`` which throws
+        ``UnsupportedOperationException("Not implemented: Type3")``. The
+        PDFBox text-extraction pipeline does not synthesise Type 3 byte
+        streams — Type 3 is a *display* subtype only, written by the
+        producer with hand-rolled ``/CharProcs`` and ``/Encoding``.
+        """
+        del unicode
+        raise NotImplementedError("Not implemented: Type3")
+
+    # ---------- read_code — single byte ----------
+
+    def read_code(self, input_stream: IO[bytes]) -> int:
+        """Read the next character code as a single byte.
+
+        Mirrors upstream ``PDType3Font.readCode(InputStream) → in.read()``.
+        Type 3 fonts use 1-byte codes (simple-font convention). Raises
+        :class:`EOFError` when the stream is exhausted (parallels Java's
+        ``read()`` returning ``-1``, which the upstream callers treat as
+        end-of-stream).
+        """
+        b = input_stream.read(1)
+        if not b:
+            raise EOFError("unexpected end of stream while reading Type 3 code")
+        return b[0]
+
+    # ---------- /Encoding parsing helpers ----------
+
+    def read_encoding(self) -> None:
+        """Eagerly resolve ``/Encoding`` and the Adobe glyph list.
+
+        Mirrors upstream protected ``PDType3Font.readEncoding()`` which
+        runs in the constructor; in the Python port the typed encoding
+        is resolved lazily inside :meth:`get_encoding_typed`, but exposing
+        this method preserves the upstream surface (parity testing relies
+        on it). Calling it primes the cache.
+        """
+        # Touching the typed encoding triggers PDSimpleFont's resolver,
+        # which mirrors upstream readEncoding's COSName / COSDictionary
+        # branching plus the Adobe glyph list wiring.
+        self.get_encoding_typed()
+        self.get_glyph_list()
+
+    def read_encoding_from_font(self) -> Any:  # noqa: ANN401  (upstream returns Encoding)
+        """Type 3 fonts do not have a built-in encoding.
+
+        Mirrors upstream protected ``PDType3Font.readEncodingFromFont()``
+        which throws ``UnsupportedOperationException("not supported for
+        Type 3 fonts")``. Type 3 fonts always rely on the explicit
+        ``/Encoding`` dictionary entry.
+        """
+        raise NotImplementedError("not supported for Type 3 fonts")
+
+    # ---------- is_standard14 (Java-cased alias) ----------
+
+    def is_standard14(self) -> bool:
+        """Mirrors upstream ``PDType3Font.isStandard14()`` — always
+        ``False``. Provided as a Java-cased alias of
+        :meth:`is_standard_14` so parity tooling matches the upstream
+        method directly."""
+        return False
+
+    # ---------- bounding-box generation (CharProcs scan fallback) ----------
+
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the font bounding box.
+
+        Mirrors upstream ``PDType3Font.getBoundingBox()`` /
+        ``generateBoundingBox()``: returns the dictionary ``/FontBBox``
+        when present and non-zero; falls back to the union of all
+        ``/CharProcs`` glyph bboxes (``d1`` operands) when ``/FontBBox``
+        is the all-zero default. Returns ``None`` only when the
+        dictionary lacks ``/FontBBox`` entirely (matches upstream's
+        warning + empty-bbox path: we surface ``None`` so callers can
+        decide whether to use an empty rectangle).
+        """
+        if self._font_bbox_cache is not None:
+            return self._font_bbox_cache
+        self._font_bbox_cache = self._generate_bounding_box()
+        return self._font_bbox_cache
+
+    def _generate_bounding_box(self) -> PDRectangle | None:
+        """Compute the effective ``/FontBBox`` for this font.
+
+        Mirrors upstream private ``generateBoundingBox()``: when the
+        dictionary ``/FontBBox`` is the all-zero default, expand it by
+        unioning every ``/CharProcs`` glyph bbox carried by a ``d1``
+        operator (PDFBox plan-B; covers fonts that ship a degenerate
+        ``/FontBBox`` placeholder).
+        """
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+        rect = self.get_font_bbox()
+        if rect is None:
+            return None
+        if PDSimpleFont.is_non_zero_bounding_box(rect):
+            # Already informative; upstream returns BoundingBox(rect.*).
+            return PDRectangle(
+                rect.get_lower_left_x(),
+                rect.get_lower_left_y(),
+                rect.get_upper_right_x(),
+                rect.get_upper_right_y(),
+            )
+
+        # Plan B: union of glyph bboxes from /CharProcs.
+        char_procs = self.get_char_procs()
+        if char_procs is None:
+            return rect
+
+        from .pd_type3_char_proc import PDType3CharProc  # noqa: PLC0415
+
+        llx = rect.get_lower_left_x()
+        lly = rect.get_lower_left_y()
+        urx = rect.get_upper_right_x()
+        ury = rect.get_upper_right_y()
+        for key in char_procs.key_set():
+            entry = char_procs.get_dictionary_object(key)
+            if not isinstance(entry, COSStream):
+                continue
+            char_proc = PDType3CharProc(self, entry)
+            try:
+                glyph_bbox = char_proc.get_glyph_bbox()
+            except (OSError, ValueError):
+                # Malformed d1 header — upstream logs and continues.
+                continue
+            if glyph_bbox is None:
+                continue
+            llx = min(llx, glyph_bbox.get_lower_left_x())
+            lly = min(lly, glyph_bbox.get_lower_left_y())
+            urx = max(urx, glyph_bbox.get_upper_right_x())
+            ury = max(ury, glyph_bbox.get_upper_right_y())
+        return PDRectangle(llx, lly, urx, ury)
+
+    @staticmethod
+    def _check_font_matrix_values(matrix: COSArray | None) -> bool:
+        """``True`` iff ``matrix`` is a 6-entry array of numeric items.
+
+        Mirrors upstream private
+        ``checkFontMatrixValues(COSArray) : boolean`` — used by
+        :meth:`get_font_matrix` to decide whether the dictionary entry
+        is well-formed enough to honour, vs. falling back to the spec
+        default ``[0.001, 0, 0, 0.001, 0, 0]``.
+        """
+        if matrix is None or matrix.size() != 6:
+            return False
+        for i in range(6):
+            item = matrix.get_object(i)
+            if not isinstance(item, (COSInteger, COSFloat)):
+                return False
+        return True
 
 
 __all__ = ["PDType3Font"]

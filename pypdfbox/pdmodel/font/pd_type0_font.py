@@ -89,6 +89,20 @@ class PDType0Font(PDFont):
         # :meth:`subset` on save. Type 0 fonts subset the descendant
         # CIDFontType2's embedded TrueType program.
         self._subset_codepoints: set[int] = set()
+        # Raw GIDs accumulated by :meth:`add_glyphs_to_subset` — these
+        # bypass codepoint -> GID resolution and pin the listed glyph
+        # indices into the subset directly. Mirrors upstream
+        # ``PDType0Font.addGlyphsToSubset(Set<Integer>)`` which forwards
+        # to ``PDCIDFontType2Embedder.addGlyphIds``.
+        self._subset_glyph_ids: set[int] = set()
+        # Marker tracking whether subsetting was requested at construction
+        # / load time. ``True`` when this font was built via
+        # :meth:`load_ttf` / :meth:`load_otf` with ``embed_subset=True``;
+        # ``False`` when subsetting was disabled at load time. Mirrors
+        # upstream ``PDType0Font.willBeSubset`` which checks the
+        # ``embedder.needsSubset()`` flag rather than the raw codepoint
+        # set (a load-time decision, not a per-call lookup).
+        self._will_be_subset: bool = False
         # GSUB feature gating — :meth:`set_gsub_features` overrides;
         # :meth:`get_gsub_features` returns the resolved set (defaults to
         # ``["liga"]`` for latin per upstream's ``PDType0Font.applyGsub``
@@ -822,6 +836,142 @@ class PDType0Font(PDFont):
             return False
         return ordering in _CJK_ORDERINGS
 
+    # ---------- glyph paths ----------
+
+    def get_path(self, code: int) -> list[tuple[Any, ...]]:
+        """Return the glyph outline for ``code`` in *font units*.
+
+        Mirrors upstream ``PDType0Font.getPath(int code)`` which forwards
+        to the descendant CIDFont after resolving ``code -> CID``. The
+        descendant's ``getGlyphPath(cid)`` consults the embedded program
+        (TrueType ``glyf`` for :class:`PDCIDFontType2`, CFF ``CharString``
+        for :class:`PDCIDFontType0`) and returns an empty list when no
+        program is available.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return []
+        get_glyph_path = getattr(descendant, "get_glyph_path", None)
+        if not callable(get_glyph_path):
+            return []
+        return list(get_glyph_path(self.code_to_cid(code)))
+
+    def get_normalized_path(self, code: int) -> list[tuple[Any, ...]]:
+        """Return the glyph outline for ``code`` normalized to 1/1000 em.
+
+        Mirrors upstream ``PDType0Font.getNormalizedPath(int)`` which
+        forwards to the descendant CIDFont. The descendant scales the
+        embedded program's outline by ``1000 / unitsPerEm`` so downstream
+        consumers see a single unit system regardless of the font's
+        native upem.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return []
+        get_normalized = getattr(descendant, "get_normalized_path", None)
+        if not callable(get_normalized):
+            return []
+        return list(get_normalized(self.code_to_cid(code)))
+
+    # ---------- GSUB / cmap-lookup accessors ----------
+
+    def get_gsub_data(self) -> Any | None:
+        """Return the descendant TTF's parsed GSUB table, or ``None``.
+
+        Mirrors upstream ``PDType0Font.getGsubData`` which exposes the
+        per-font ``GsubData`` populated at embed time. For read-only
+        Type 0 fonts (no embedder) we fall back to the descendant TTF's
+        parsed GSUB so callers can still inspect feature lists.
+        """
+        return self._get_gsub_table()
+
+    def get_cmap_lookup(self) -> Any | None:
+        """Return the descendant TTF's unicode-cmap lookup, or ``None``.
+
+        Mirrors upstream ``PDType0Font.getCmapLookup`` which surfaces the
+        :class:`CmapLookup` the embedder used to resolve codepoints.
+        For read-only Type 0 fonts the lookup is derived from the
+        descendant's embedded TrueType program.
+        """
+        from .pd_cid_font_type2 import PDCIDFontType2
+
+        descendant = self.get_descendant_font()
+        if not isinstance(descendant, PDCIDFontType2):
+            return None
+        ttf = descendant.get_true_type_font()
+        if ttf is None:
+            return None
+        get_unicode = getattr(ttf, "get_unicode_cmap_lookup", None)
+        if callable(get_unicode):
+            try:
+                return get_unicode()
+            except Exception:  # noqa: BLE001 — defensive: malformed cmap
+                return None
+        # Fall back to fontTools' best cmap. Reverse map glyph-name -> cp.
+        inner = getattr(ttf, "_tt", None)
+        if inner is None or "cmap" not in inner:
+            return None
+        try:
+            return inner["cmap"].getBestCmap()
+        except (KeyError, AttributeError):
+            return None
+
+    # ---------- /Standard14 width override ----------
+
+    def get_standard14_width(self, code: int) -> float:
+        """Type 0 fonts have no Standard14 width table.
+
+        Mirrors upstream ``PDType0Font.getStandard14Width`` which throws
+        :class:`UnsupportedOperationException`. Composite fonts derive
+        widths from the descendant's ``/W`` array or embedded program,
+        not from the AFM-backed Standard14 width path used by
+        :class:`PDType1Font`.
+        """
+        del code
+        raise NotImplementedError(
+            "PDType0Font does not support Standard14 widths"
+        )
+
+    # ---------- has_explicit_width override ----------
+
+    def has_explicit_width(self, code: int) -> bool:
+        """``True`` when the descendant CIDFont specifies an explicit
+        width for ``code``.
+
+        Overrides :meth:`PDFont.has_explicit_width` — Type 0 fonts carry
+        no ``/Widths`` of their own; the lookup goes through the
+        descendant's ``/W`` array. Mirrors upstream
+        ``PDType0Font.hasExplicitWidth`` which forwards to the
+        descendant.
+        """
+        descendant = self.get_descendant_font()
+        if descendant is None:
+            return False
+        has = getattr(descendant, "has_explicit_width", None)
+        if not callable(has):
+            return False
+        return bool(has(code))
+
+    # ---------- read_encoding (parsing trigger) ----------
+
+    def read_encoding(self) -> None:
+        """Force-parse ``/Encoding`` and prime the UCS2 fallback cache.
+
+        Mirrors upstream's private ``PDType0Font.readEncoding()`` /
+        ``fetchCMapUCS2()`` which run from the constructor. pypdfbox is
+        lazy by default — calling this method is equivalent to touching
+        :meth:`get_cmap` and :meth:`get_cmap_ucs2` once, and exists so
+        upstream-style call sites that *expect* the parsing side-effect
+        remain straightforward to port.
+        """
+        # Touching the lazy accessors performs the same work upstream's
+        # constructor does eagerly. Errors are swallowed: upstream logs
+        # a warning rather than raising on bad encodings.
+        with suppress(Exception):
+            self.get_cmap()
+        with suppress(Exception):
+            self.get_cmap_ucs2()
+
     # ---------- diagnostics ----------
 
     def __repr__(self) -> str:
@@ -1172,6 +1322,35 @@ class PDType0Font(PDFont):
         for ch in text:
             self._subset_codepoints.add(ord(ch))
 
+    def add_glyphs_to_subset(self, glyph_ids: Iterable[int]) -> None:
+        """Register raw glyph IDs to keep when :meth:`subset` runs.
+
+        Mirrors upstream ``PDType0Font.addGlyphsToSubset(Set<Integer>)``
+        which forwards to ``PDCIDFontType2Embedder.addGlyphIds``. Unlike
+        :meth:`add_to_subset`, the IDs are *glyph indices* (after CMap
+        and ``/CIDToGIDMap`` resolution) and are pinned into the subset
+        directly without going through codepoint -> GID resolution.
+
+        Raises :class:`RuntimeError` when this font was not constructed
+        with subsetting enabled — matches upstream's
+        ``IllegalStateException("This font was created with subsetting
+        disabled")``.
+        """
+        if not self.will_be_subset():
+            raise RuntimeError("This font was created with subsetting disabled")
+        for gid in glyph_ids:
+            self._subset_glyph_ids.add(int(gid))
+
+    def will_be_subset(self) -> bool:
+        """``True`` when this font will be subset on save.
+
+        Mirrors upstream ``PDType0Font.willBeSubset`` which checks the
+        embedder's ``needsSubset()`` flag. We track the equivalent state
+        as a boolean set by :meth:`load_ttf` / :meth:`load_otf` and
+        cleared by :meth:`subset` after the subset bytes are emitted.
+        """
+        return self._will_be_subset
+
     def subset(
         self,
         text_or_codepoints: str | Iterable[int] | None = None,
@@ -1227,6 +1406,9 @@ class PDType0Font(PDFont):
 
         subsetter = TTFSubsetter(ttf)
         subsetter.add_all(codepoints)
+        if self._subset_glyph_ids:
+            # Pin raw glyph IDs registered via add_glyphs_to_subset.
+            subsetter.add_glyph_ids(self._subset_glyph_ids)
         subsetter.set_prefix(tag)
         subset_bytes = subsetter.to_bytes()
 
@@ -1253,6 +1435,11 @@ class PDType0Font(PDFont):
         # lookups re-read the subset bytes.
         descendant._ttf = None  # noqa: SLF001
         self._subset_codepoints.clear()
+        self._subset_glyph_ids.clear()
+        # Subset has been emitted — clear the flag so a second call
+        # (without a new add_to_subset / add_glyphs_to_subset) becomes a
+        # no-op rather than re-subsetting the already-subsetted bytes.
+        self._will_be_subset = False
         return subset_bytes
 
     def _collect_subset_codepoints(
@@ -1306,9 +1493,62 @@ class PDType0Font(PDFont):
         appropriate to their use case).
         """
         del doc  # signature parity only; unused.
-        del embed_subset  # marker only; subsetting is opt-in via subset()
         ttf_bytes = _read_font_bytes(source)
-        return _build_type0_from_ttf(ttf_bytes, fallback_name="EmbeddedTTF")
+        font = _build_type0_from_ttf(ttf_bytes, fallback_name="EmbeddedTTF")
+        font._will_be_subset = bool(embed_subset)
+        return font
+
+    @classmethod
+    def load(
+        cls,
+        doc: PDDocument | None,
+        source: str | os.PathLike[str] | bytes | bytearray | BinaryIO,
+        embed_subset: bool = True,
+    ) -> PDType0Font:
+        """Load a TTF / OTF as a Type 0 font.
+
+        Mirrors upstream ``PDType0Font.load(PDDocument, File)`` and its
+        ``InputStream`` / ``boolean embedSubset`` overloads. Dispatches
+        to :meth:`load_ttf` for the TrueType path; CFF-flavoured OTF
+        callers should use :meth:`load_otf` directly (the upstream
+        ``load`` overload narrows to ``File`` / ``InputStream`` and the
+        OTF distinction is encoded in the file extension upstream).
+        """
+        return cls.load_ttf(doc, source, embed_subset=embed_subset)
+
+    @classmethod
+    def load_vertical(
+        cls,
+        doc: PDDocument | None,
+        source: str | os.PathLike[str] | bytes | bytearray | BinaryIO,
+        embed_subset: bool = True,
+    ) -> PDType0Font:
+        """Load a TTF / OTF as a vertical-writing Type 0 font.
+
+        Mirrors upstream ``PDType0Font.loadVertical(PDDocument, File)``:
+        the resulting parent dictionary advertises ``/Encoding
+        /Identity-V`` and the descendant's ``vrt2`` / ``vert`` GSUB
+        substitutions are activated for vertical metric resolution.
+
+        For pypdfbox the encoding-name swap is the user-visible part;
+        per-glyph vertical-substitution lookups are handled by the
+        descendant's :meth:`PDCIDFontType2.get_height` path which
+        already consults ``/W2`` and the embedded ``vmtx`` (mirrors
+        upstream's substitution behaviour).
+        """
+        del doc  # signature parity only; unused.
+        ttf_bytes = _read_font_bytes(source)
+        font = _build_type0_from_ttf(ttf_bytes, fallback_name="EmbeddedTTF")
+        font._will_be_subset = bool(embed_subset)
+        # Upgrade the encoding to Identity-V so ``is_vertical`` reports
+        # the correct writing mode and downstream get_displacement /
+        # get_position_vector consult the descendant's vertical metrics.
+        font.get_cos_object().set_name(_ENCODING, "Identity-V")
+        # Re-prime the lazy CMap cache so subsequent get_cmap() calls
+        # see the swapped encoding.
+        font._cmap_loaded = False
+        font._cmap = None
+        return font
 
     @classmethod
     def load_otf(
@@ -1331,9 +1571,10 @@ class PDType0Font(PDFont):
         ``doc`` is accepted for upstream signature parity (currently unused).
         """
         del doc  # signature parity only; unused.
-        del embed_subset  # marker only; subsetting is opt-in via subset()
         otf_bytes = _read_font_bytes(source)
-        return _build_type0_from_ttf(otf_bytes, fallback_name="EmbeddedOTF")
+        font = _build_type0_from_ttf(otf_bytes, fallback_name="EmbeddedOTF")
+        font._will_be_subset = bool(embed_subset)
+        return font
 
 
 # ---------- module-level helpers ----------

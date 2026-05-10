@@ -25,7 +25,6 @@ from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
-
 # ---------- shape: a fresh PDType3Font carries the right /Type and /Subtype ----------
 
 

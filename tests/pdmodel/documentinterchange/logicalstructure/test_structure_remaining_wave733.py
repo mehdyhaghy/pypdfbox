@@ -71,7 +71,7 @@ def test_node_objectable_and_insert_null_edges_preserve_kids() -> None:
     second = COSDictionary()
     node.set_kids([first, second])
 
-    assert node._remove_objectable_kid(first) is True
+    assert node.remove_objectable_kid(first) is True
     assert node.insert_before(COSDictionary(), None) is False
     assert node.insert_before(None, second) is False
     assert node.get_kids() == [second]
