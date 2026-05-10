@@ -121,7 +121,7 @@ class LayerUtility:
         # Best-effort propagate hidden-layer config from the source doc to
         # the target's /OCProperties so visibility round-trips. Quietly
         # no-ops when the source has no /OCProperties.
-        self._import_oc_properties(source_doc)
+        self.import_oc_properties(source_doc)
 
         # Build the form-body stream by re-encoding the source page's
         # decoded contents through /FlateDecode. Mirrors upstream's
@@ -140,7 +140,7 @@ class LayerUtility:
 
         # Carry over the small set of page-level dict entries upstream
         # transfers to the form XObject (Group, LastModified, Metadata).
-        self._transfer_dict(
+        self.transfer_dict(
             page.get_cos_object(), form.get_cos_object(), _PAGE_TO_FORM_FILTER
         )
 
@@ -332,22 +332,27 @@ class LayerUtility:
 
     # ---------- internal helpers ----------
 
-    def _transfer_dict(
+    def transfer_dict(
         self,
         org_dict: COSDictionary,
         target_dict: COSDictionary,
-        keys: frozenset[str],
+        keys: frozenset[str] | set[str],
     ) -> None:
+        """Copy entries whose key name is in ``keys`` from ``org_dict``
+        into ``target_dict``, cloning each value through the bound
+        :class:`PDFCloneUtility`. Mirrors upstream's private
+        ``transferDict`` (LayerUtility.java:288)."""
         for key, value in list(org_dict.entry_set()):
             if key.name in keys:
                 cloned = self._cloner.clone_for_new_document(value)
                 if cloned is not None:
                     target_dict.set_item(key, cloned)
 
-    def _import_oc_properties(self, src_doc: PDDocument) -> None:
+    def import_oc_properties(self, src_doc: PDDocument) -> None:
         """Copy ``/OCProperties`` from ``src_doc`` into the target catalog
         so hidden layers stay hidden after import. No-op when the source
-        has no ``/OCProperties``."""
+        has no ``/OCProperties``. Mirrors upstream's private
+        ``importOcProperties`` (LayerUtility.java:308)."""
         src_catalog = src_doc.get_document_catalog()
         src_oc = src_catalog.get_oc_properties()
         if src_oc is None:

@@ -118,14 +118,19 @@ def test_parse_from_bytesio(otf_bytes: bytes) -> None:
 
 def test_parse_lenient_accepts_truetype_magic() -> None:
     """OTFParser is lenient about scaler type — a TTF-magic stream is
-    also accepted (mirrors upstream tolerance)."""
+    also accepted (mirrors upstream tolerance).
+
+    Per upstream ``OpenTypeFont.isSupportedOTF()`` only the
+    ``OTTO``+``CFF2``-without-``CFF `` triple is rejected; TrueType
+    outlines in an OTF wrapper are reported as supported. ``getCFF()``
+    still returns ``None`` because no CFF table is present.
+    """
     if not FIXTURE_TTF.exists():
         pytest.skip("TTF fixture not present")
     parser = OTFParser()
     font = parser.parse(FIXTURE_TTF.read_bytes())
     assert isinstance(font, OpenTypeFont)
-    # No CFF table — `is_supported_otf()` is False, `get_cff()` is None.
-    assert font.is_supported_otf() is False
+    assert font.is_supported_otf() is True
     assert font.get_cff() is None
 
 

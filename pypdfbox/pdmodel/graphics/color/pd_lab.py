@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 
+from .pd_cal_gray import _xyz_to_srgb
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 
@@ -205,6 +208,153 @@ class PDLab(PDColorSpace):
         if len(rng) >= 4:
             return [0.0, 100.0, float(rng[0]), float(rng[1]), float(rng[2]), float(rng[3])]
         return [0.0, 100.0, -100.0, 100.0, -100.0, 100.0]
+
+    # ---------- private upstream parity helpers ----------
+
+    @staticmethod
+    def get_default_range_array() -> COSArray:
+        """Return a fresh ``/Range`` array filled with the default
+        ``[-100, 100, -100, 100]``. Mirrors the private upstream
+        ``PDLab.getDefaultRangeArray()`` (PDLab.java line 184); kept
+        package-private in Java but exposed as a static helper here so
+        callers that want the raw COS array (e.g. when initialising
+        sparse Lab dictionaries) don't have to re-create the literals.
+        """
+        minus100 = COSFloat(-100.0)
+        plus100 = COSFloat(100.0)
+        out = COSArray()
+        out.add(minus100)
+        out.add(plus100)
+        out.add(minus100)
+        out.add(plus100)
+        return out
+
+    @staticmethod
+    def inverse(x: float) -> float:
+        """Inverse of the CIE ``f`` companding function used by Lab to
+        XYZ. Mirrors private upstream ``PDLab.inverse(float)`` (PDLab.java
+        line 140). Outside the test surface this is only used by
+        :meth:`to_rgb`; exposed here so direct upstream-style callers can
+        replicate the per-channel transform if they want to.
+
+        Threshold and constants come straight from upstream: ``x > 6/29``
+        cubes; otherwise affine ``(108/841) * (x - 4/29)``.
+        """
+        if x > 6.0 / 29.0:
+            return x * x * x
+        return (108.0 / 841.0) * (x - (4.0 / 29.0))
+
+    def set_component_range_array(
+        self, low_high: tuple[float, float] | None, index: int
+    ) -> None:
+        """Underlying setter for ``setARange`` / ``setBRange``. Mirrors
+        the private upstream ``PDLab.setComponentRangeArray(PDRange, int)``
+        (PDLab.java line 246). ``index`` is 0 for the ``a*`` slot and
+        2 for the ``b*`` slot — same convention upstream uses.
+
+        Public here for parity-tracking parity; production callers
+        should still prefer :meth:`set_a_range` / :meth:`set_b_range`.
+        """
+        self._set_component_range(low_high, index)
+
+    # ---------- conversion ----------
+
+    def to_rgb(self, value: list[float]) -> tuple[float, float, float]:
+        """Convert a single Lab triple ``[L*, a*, b*]`` to clamped sRGB.
+
+        Mirrors upstream ``PDLab.toRGB(float[])`` (PDLab.java line 122).
+        Uses the dictionary's ``/WhitePoint`` (defaulting to ``[1, 1, 1]``)
+        as the XYZ reference instead of the hardcoded D65 used by
+        :meth:`PDColor._lab_to_rgb`, matching upstream's
+        ``wpX / wpY / wpZ`` cache exactly. Black-point compensation is
+        skipped — upstream notes the same TODO at line 129.
+        """
+        if len(value) < 3:
+            raise ValueError(
+                f"Lab.to_rgb requires three components, got {len(value)}"
+            )
+        l_star = float(value[0])
+        a_star = float(value[1])
+        b_star = float(value[2])
+
+        # L*
+        lstar = (l_star + 16.0) * (1.0 / 116.0)
+
+        wp = self.get_white_point()
+        wp_x = float(wp[0]) if len(wp) >= 1 else 1.0
+        wp_y = float(wp[1]) if len(wp) >= 2 else 1.0
+        wp_z = float(wp[2]) if len(wp) >= 3 else 1.0
+
+        x = wp_x * self.inverse(lstar + a_star * (1.0 / 500.0))
+        y = wp_y * self.inverse(lstar)
+        z = wp_z * self.inverse(lstar - b_star * (1.0 / 200.0))
+
+        # Upstream's convXYZtoRGB clamps negatives to 0.
+        if x < 0.0:
+            x = 0.0
+        if y < 0.0:
+            y = 0.0
+        if z < 0.0:
+            z = 0.0
+
+        return _xyz_to_srgb(x, y, z)
+
+    # ---------- rendering ----------
+
+    def to_rgb_image(self, raster: bytes, width: int, height: int) -> Any:
+        """Convert a Lab-encoded raster of 8-bit samples to a Pillow sRGB
+        image. Mirrors upstream ``PDLab.toRGBImage(WritableRaster)``
+        (PDLab.java line 65); the per-pixel scaling matches the upstream
+        loop:
+
+        - ``abc[0]``: 0..255 → 0..1 → 0..100 (L*)
+        - ``abc[1]``: 0..255 → 0..1 → ``minA + t*deltaA`` (a*)
+        - ``abc[2]``: 0..255 → 0..1 → ``minB + t*deltaB`` (b*)
+
+        Each transformed triple is forwarded to :meth:`to_rgb` and
+        encoded as 8-bit sRGB. ``raster`` is interpreted as a tightly
+        packed ``width * height * 3`` byte buffer.
+        """
+        from PIL import Image
+
+        a_min, a_max = self.get_a_range()
+        b_min, b_max = self.get_b_range()
+        delta_a = a_max - a_min
+        delta_b = b_max - b_min
+
+        n = 3
+        expected = int(width) * int(height) * n
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+
+        out = bytearray(int(width) * int(height) * 3)
+        for pixel_index in range(int(width) * int(height)):
+            offset = pixel_index * n
+            l_byte = data[offset]
+            a_byte = data[offset + 1]
+            b_byte = data[offset + 2]
+
+            l_star = (l_byte / 255.0) * 100.0
+            a_star = a_min + (a_byte / 255.0) * delta_a
+            b_star = b_min + (b_byte / 255.0) * delta_b
+
+            r, g, b = self.to_rgb([l_star, a_star, b_star])
+            base = pixel_index * 3
+            out[base] = max(0, min(255, int(round(r * 255.0))))
+            out[base + 1] = max(0, min(255, int(round(g * 255.0))))
+            out[base + 2] = max(0, min(255, int(round(b * 255.0))))
+        return Image.frombytes(
+            "RGB", (int(width), int(height)), bytes(out)
+        )
+
+    def to_raw_image(self, raster: bytes, width: int, height: int) -> Any:
+        """Return ``None`` to mirror upstream ``PDLab.toRawImage`` —
+        Lab has no native Pillow analogue (Pillow's ``LAB`` mode uses a
+        different range convention, and upstream notes "Not handled at
+        the moment" at PDLab.java line 116).
+        """
+        return None
 
 
 __all__ = ["PDLab"]

@@ -182,12 +182,18 @@ def test_parse_random_access_read(otf_bytes: bytes) -> None:
 def test_parse_lenient_accepts_truetype_magic() -> None:
     """OTFParser is lenient about scaler type — TTF magic is also
     accepted (mirrors upstream tolerance — see GlyfCompositeDescriptTest
-    which feeds a Glyf-bearing font through OTFParser)."""
+    which feeds a Glyf-bearing font through OTFParser).
+
+    Per upstream ``OpenTypeFont.isSupportedOTF()`` (OpenTypeFont.java
+    line 108), TrueType outlines in an OTF wrapper count as a supported
+    flavour; only ``OTTO`` + ``CFF2`` without a ``CFF `` fallback is
+    rejected.
+    """
     if not _FIXTURE_TTF.exists():
         pytest.skip(f"TTF fixture not present: {_FIXTURE_TTF}")
     font = OTFParser().parse(_FIXTURE_TTF.read_bytes())
     assert isinstance(font, OpenTypeFont)
-    assert font.is_supported_otf() is False
+    assert font.is_supported_otf() is True
     assert font.get_cff() is None
 
 

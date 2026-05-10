@@ -26,10 +26,11 @@ operations:
 from __future__ import annotations
 
 from pypdfbox import PDDocument, PDPage
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.multipdf import LayerUtility
 from pypdfbox.pdmodel.graphics.optionalcontent import (
     PDOptionalContentGroup,
+    PDOptionalContentProperties,
 )
 
 
@@ -113,3 +114,97 @@ def test_layer_import() -> None:
 
     target_doc.close()
     overlay_doc.close()
+
+
+def test_get_document_returns_target() -> None:
+    """``getDocument()`` returns the same ``PDDocument`` passed to the
+    constructor. Mirrors upstream LayerUtility.java:77.
+    """
+    doc = PDDocument()
+    layer_util = LayerUtility(doc)
+    assert layer_util.get_document() is doc
+    doc.close()
+
+
+def test_wrap_in_save_restore_with_array_contents() -> None:
+    """``wrapInSaveRestore`` prepends ``q`` and appends ``Q`` when the
+    page's ``/Contents`` is already a ``COSArray``. Mirrors upstream
+    LayerUtility.java:118-124.
+    """
+    doc = PDDocument()
+    page = PDPage()
+    arr = COSArray()
+    s1 = COSStream()
+    s1.set_raw_data(b"% body 1\n")
+    s2 = COSStream()
+    s2.set_raw_data(b"% body 2\n")
+    arr.add(s1)
+    arr.add(s2)
+    page.get_cos_object().set_item(COSName.CONTENTS, arr)
+    doc.add_page(page)
+
+    LayerUtility(doc).wrap_in_save_restore(page)
+    contents = page.get_cos_object().get_dictionary_object(COSName.CONTENTS)
+    assert isinstance(contents, COSArray)
+    # Original two streams flanked by q + Q streams = 4 entries.
+    assert contents.size() == 4
+    doc.close()
+
+
+def test_transfer_dict_copies_filtered_keys() -> None:
+    """``transferDict`` (private upstream, public on the port) copies
+    the listed keys from one dict to another, cloning values through
+    the bound ``PDFCloneUtility``. Mirrors LayerUtility.java:288-299.
+    """
+    doc = PDDocument()
+    layer_util = LayerUtility(doc)
+
+    src = COSDictionary()
+    last_modified = COSName.get_pdf_name("LastModified")
+    metadata_key = COSName.get_pdf_name("Metadata")
+    skipped = COSName.get_pdf_name("Resources")
+    metadata_stream = COSStream()
+    metadata_stream.set_raw_data(b"<rdf:RDF/>")
+    src.set_item(last_modified, COSName.get_pdf_name("D:20240101"))
+    src.set_item(metadata_key, metadata_stream)
+    src.set_item(skipped, COSName.get_pdf_name("dont-copy"))
+
+    dst = COSDictionary()
+    layer_util.transfer_dict(src, dst, frozenset({"LastModified", "Metadata"}))
+
+    assert dst.get_dictionary_object(last_modified) is not None
+    assert dst.get_dictionary_object(metadata_key) is not None
+    assert dst.get_dictionary_object(skipped) is None
+    doc.close()
+
+
+def test_import_oc_properties_noop_when_source_empty() -> None:
+    """``importOcProperties`` is a no-op when the source has no
+    ``/OCProperties``. Mirrors LayerUtility.java:312-315.
+    """
+    src = PDDocument()
+    dst = PDDocument()
+    LayerUtility(dst).import_oc_properties(src)
+    assert dst.get_document_catalog().get_oc_properties() is None
+    src.close()
+    dst.close()
+
+
+def test_import_oc_properties_clones_from_source() -> None:
+    """``importOcProperties`` clones the source ``/OCProperties`` into
+    the target catalog when the target has none of its own. Mirrors
+    LayerUtility.java:317-324.
+    """
+    src = PDDocument()
+    src_oc = PDOptionalContentProperties()
+    src_oc.add_group(PDOptionalContentGroup("layer-from-src"))
+    src.get_document_catalog().set_oc_properties(src_oc)
+
+    dst = PDDocument()
+    LayerUtility(dst).import_oc_properties(src)
+
+    dst_oc = dst.get_document_catalog().get_oc_properties()
+    assert dst_oc is not None
+    assert dst_oc.has_group("layer-from-src")
+    src.close()
+    dst.close()

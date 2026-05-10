@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream
@@ -185,6 +186,52 @@ class PDCIDFont(PDFont):
         if w is not None:
             return w
         return self.get_default_width()
+
+    def get_width_for_cid(self, cid: int) -> float:
+        """Mirrors upstream ``PDCIDFont.getWidthForCID(int cid)`` — returns
+        the parsed ``/W`` advance for ``cid`` (1/1000 em), falling back to
+        ``/DW`` when ``/W`` does not cover the CID. Direct counterpart to
+        :meth:`get_width`'s pre-CMap input variant; functionally identical
+        to :meth:`get_glyph_width` and provided for upstream-call-site
+        compatibility.
+        """
+        return self.get_glyph_width(cid)
+
+    def read_widths(self) -> dict[int, float]:
+        """Force-parse ``/W`` and refresh the cached ``CID -> width`` map.
+
+        Mirrors upstream ``PDCIDFont.readWidths()`` (private — invoked from
+        the constructor) but exposes a snake_case method on the Python
+        side so callers that mutate ``/W`` directly on the dictionary can
+        re-prime the lazy width cache without going through the
+        :meth:`set_w` setter. Returns the freshly-parsed map.
+        """
+        widths: dict[int, float] = {}
+        w = self.get_w()
+        if w is not None:
+            self._parse_w_array(w, widths)
+        self._widths = widths
+        return widths
+
+    def read_vertical_displacements(
+        self,
+    ) -> dict[int, tuple[float, float, float]]:
+        """Force-parse ``/W2`` and refresh the cached ``CID -> (w1y, v_x, v_y)``
+        map. Mirrors upstream ``PDCIDFont.readVerticalDisplacements()``.
+
+        As with :meth:`read_widths`, exposes the upstream parser so callers
+        that mutate ``/W2`` directly on the dictionary can rebuild the
+        cache without going through :meth:`set_w2`. Returns the
+        freshly-parsed map.
+        """
+        widths: dict[int, tuple[float, float, float]] = {}
+        ranges: list[tuple[int, int, tuple[float, float, float]]] = []
+        w2 = self.get_w2()
+        if w2 is not None:
+            self._parse_w2_array(w2, widths, ranges)
+        self._widths2 = widths
+        self._w2_ranges = ranges
+        return widths
 
     def clear_widths_cache(self) -> None:
         """Drop cached parsed ``/W`` and ``/W2`` tables."""
@@ -552,15 +599,67 @@ class PDCIDFont(PDFont):
 
     # ---------- code -> CID ----------
 
+    @abstractmethod
     def code_to_cid(self, code: int) -> int:
         """Map a character code to a CID.
 
-        For a bare ``PDCIDFont`` outside a Type0 parent, the code is the CID
-        — there is no CMap to consult. Subclasses or the parent
-        :class:`PDType0Font` perform the real mapping; this default keeps
-        the upstream signature usable on either subtype.
+        Mirrors upstream ``PDCIDFont.codeToCID`` — declared abstract on
+        the Java side and overridden by :class:`PDCIDFontType0` and
+        :class:`PDCIDFontType2`. The base implementation here is an
+        identity fallback (the code is the CID) used when an
+        un-subtyped :class:`PDCIDFont` is wrapped directly for tests.
         """
         return int(code)
+
+    # ---------- code -> GID (abstract) ----------
+
+    @abstractmethod
+    def code_to_gid(self, code: int) -> int:
+        """Map a character code to a glyph index.
+
+        Mirrors upstream ``PDCIDFont.codeToGID`` (Java ``abstract``).
+        Subclasses (:class:`PDCIDFontType0` via the CFF charset,
+        :class:`PDCIDFontType2` via ``/CIDToGIDMap`` or a TrueType
+        ``cmap``) override. Bare ``PDCIDFont`` instances raise
+        ``NotImplementedError`` — the upstream is ``abstract`` so the
+        Java compiler enforces the same.
+        """
+        raise NotImplementedError(
+            "PDCIDFont.code_to_gid is abstract; "
+            "subclasses (PDCIDFontType0 / PDCIDFontType2) must override."
+        )
+
+    # ---------- encoding (abstract) ----------
+
+    @abstractmethod
+    def encode_glyph_id(self, glyph_id: int) -> bytes:
+        """Encode a glyph index as its content-stream byte representation.
+
+        Mirrors upstream ``PDCIDFont.encodeGlyphId(int glyphId)`` (Java
+        ``abstract``). For composite fonts the caller emits these bytes
+        directly into a ``Tj`` / ``TJ`` operand; the encoding is the
+        big-endian 16-bit GID for :class:`PDCIDFontType2` and is
+        unsupported for :class:`PDCIDFontType0` (which encodes through
+        the parent :class:`PDType0Font`).
+        """
+        raise NotImplementedError(
+            "PDCIDFont.encode_glyph_id is abstract; "
+            "subclasses must override."
+        )
+
+    @abstractmethod
+    def encode(self, unicode_codepoint: int) -> bytes:
+        """Encode a Unicode codepoint as PDF content-stream bytes.
+
+        Mirrors upstream ``PDCIDFont.encode(int unicode)`` (Java
+        ``protected abstract``). Used during embedding / form-field
+        filling to convert text runs to multi-byte CID-keyed sequences;
+        :class:`PDCIDFontType2` overrides via the parent
+        :class:`PDType0Font`'s ``ToUnicode`` CMap.
+        """
+        raise NotImplementedError(
+            "PDCIDFont.encode is abstract; subclasses must override."
+        )
 
     # ---------- code -> width (PDFontLike contract) ----------
 

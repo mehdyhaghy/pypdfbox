@@ -94,13 +94,24 @@ def test_is_supported_otf_true_when_cff_present(
 
 
 def test_is_supported_otf_false_when_no_cff() -> None:
+    """A TTF-flavoured stream parsed by OTFParser is still a supported
+    OpenType font.
+
+    Mirrors upstream ``OpenTypeFont.isSupportedOTF()`` (OpenTypeFont.java
+    line 108): only the ``OTTO`` + missing ``CFF `` + present ``CFF2``
+    triple is rejected. A plain TTF (no OTTO magic, no CFF tables) keeps
+    its TrueType outlines and is supported. (Test name preserved for
+    backwards compatibility with wave883's parametrise list.)
+    """
     if not FIXTURE_TTF.exists():
         pytest.skip("TTF fixture not present")
     parser = OTFParser()
     font = parser.parse(FIXTURE_TTF.read_bytes())
-    # The TTF fixture has no CFF table.
     assert isinstance(font, OpenTypeFont)
-    assert font.is_supported_otf() is False
+    assert font.is_supported_otf() is True
+    # Same predicate also returns False for ``is_post_script`` since the
+    # font has no CFF/CFF2 table and no OTTO SFNT-version tag.
+    assert font.is_post_script() is False
 
 
 # ---------- get_cff() ------------------------------------------------------
