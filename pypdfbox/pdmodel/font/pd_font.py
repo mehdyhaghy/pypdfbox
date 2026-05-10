@@ -98,9 +98,22 @@ class PDFont:
         """``/BaseFont`` — the PostScript / lookup name of the font."""
         return self._dict.get_name(_BASE_FONT)
 
-    def get_subtype(self) -> str | None:
-        """``/Subtype`` — e.g. ``Type1``, ``TrueType``, ``Type0``."""
+    def get_sub_type(self) -> str | None:
+        """``/Subtype`` — e.g. ``Type1``, ``TrueType``, ``Type0``.
+
+        Mirrors PDFBox ``PDFont.getSubType`` (note the capital ``T`` in the
+        upstream Java spelling, which snake-cases to ``get_sub_type``).
+        :meth:`get_subtype` is the older codebase-internal name and now
+        delegates here.
+        """
         return self._dict.get_name(_SUBTYPE)
+
+    def get_subtype(self) -> str | None:
+        """Codebase-internal alias for :meth:`get_sub_type`. Kept for
+        backward compatibility with existing call sites that adopted the
+        single-token snake-case form before the upstream-faithful
+        ``get_sub_type`` was available."""
+        return self.get_sub_type()
 
     def get_type(self) -> str | None:
         """``/Type`` — always ``"Font"`` for a well-formed font dictionary.
@@ -114,6 +127,19 @@ class PDFont:
     # ---------- font descriptor ----------
 
     def get_font_descriptor(self) -> PDFontDescriptor | None:
+        return self.load_font_descriptor()
+
+    def load_font_descriptor(self) -> PDFontDescriptor | None:
+        """Read ``/FontDescriptor`` and wrap it as a :class:`PDFontDescriptor`.
+
+        Mirrors upstream ``PDFont.loadFontDescriptor`` (private in Java).
+        Returns ``None`` when the entry is absent or not a dictionary.
+        Unlike upstream, the wrapper is constructed on each call rather
+        than eagerly cached at construction time — pypdfbox's font
+        descriptor objects are stateless wrappers, so a fresh instance is
+        cheap and avoids stale caching when callers mutate the underlying
+        ``COSDictionary``.
+        """
         from .pd_font_descriptor import PDFontDescriptor
 
         fd = self._dict.get_dictionary_object(_FONT_DESCRIPTOR)
@@ -295,34 +321,65 @@ class PDFont:
         Mirrors PDFBox ``PDFont.getToUnicodeCMap``. Per PDF 32000-1 §9.10.3
         the entry is either an embedded CMap stream or a predefined CMap
         name (e.g. ``/Identity-H``). Cached on first successful parse so
-        repeat calls are O(1).
+        repeat calls are O(1). The actual parse is delegated to
+        :meth:`load_unicode_cmap` so the cached path stays trivial.
         """
         if self._to_unicode_cmap_loaded:
             return self._to_unicode_cmap
         self._to_unicode_cmap_loaded = True
+        self._to_unicode_cmap = self.load_unicode_cmap()
+        return self._to_unicode_cmap
 
+    def get_to_unicode_c_map(self) -> CMap | None:
+        """Upstream-faithful spelling of :meth:`get_to_unicode_cmap`.
+
+        Mirrors PDFBox ``PDFont.getToUnicodeCMap`` (snake-cased per the
+        parity script's run-of-uppercase rule, ``CMap`` → ``c_map``).
+        Delegates to :meth:`get_to_unicode_cmap`; both return the same
+        cached instance.
+        """
+        return self.get_to_unicode_cmap()
+
+    def load_unicode_cmap(self) -> CMap | None:
+        """Parse the ``/ToUnicode`` entry and return the resulting CMap.
+
+        Mirrors upstream ``PDFont.loadUnicodeCmap`` (private in Java) but
+        without the verbose Identity-H/V fixup logging — pypdfbox surfaces
+        broken ``/ToUnicode`` CMaps as ``None`` and lets :meth:`to_unicode`
+        fall back to the encoding-driven resolver. Returns ``None`` when
+        ``/ToUnicode`` is absent, unparseable, or of an unsupported COS
+        type.
+        """
         raw = self._dict.get_dictionary_object(_TO_UNICODE)
         if raw is None:
-            self._to_unicode_cmap = None
             return None
+        if isinstance(raw, (COSStream, COSName)):
+            try:
+                return self.read_c_map(raw)
+            except (OSError, ValueError):
+                return None
+        return None
 
+    def read_c_map(self, base: object) -> CMap | None:
+        """Parse a ``/ToUnicode`` source — either a ``COSStream`` carrying
+        the CMap text or a ``COSName`` naming a predefined CMap.
+
+        Mirrors upstream ``protected final CMap readCMap(COSBase)``. Raises
+        :class:`OSError` when ``base`` is neither a stream nor a name (the
+        upstream ``IOException("Expected Name or Stream")`` analogue) so
+        callers can distinguish "no CMap" from "wrong COS type". Snake
+        case follows the parity script's run-of-uppercase rule:
+        ``readCMap`` → ``read_c_map``.
+        """
         # Defer the CMap import — keeps the font module's import graph
         # light for callers that never reach for /ToUnicode.
         from pypdfbox.fontbox.cmap import CMapParser
 
-        if isinstance(raw, COSStream):
-            try:
-                self._to_unicode_cmap = CMapParser().parse(raw.to_byte_array())
-            except (OSError, ValueError):
-                self._to_unicode_cmap = None
-        elif isinstance(raw, COSName):
-            try:
-                self._to_unicode_cmap = CMapParser.parse_predefined(raw.name)
-            except OSError:
-                self._to_unicode_cmap = None
-        else:
-            self._to_unicode_cmap = None
-        return self._to_unicode_cmap
+        if isinstance(base, COSStream):
+            return CMapParser().parse(base.to_byte_array())
+        if isinstance(base, COSName):
+            return CMapParser.parse_predefined(base.name)
+        raise OSError("Expected Name or Stream")
 
     # ---------- Standard 14 ----------
 

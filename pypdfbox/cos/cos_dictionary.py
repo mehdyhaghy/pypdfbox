@@ -1,7 +1,16 @@
 from __future__ import annotations
 
 import datetime as _dt
-from collections.abc import ItemsView, Iterable, Iterator, KeysView, ValuesView
+import re as _re
+from collections.abc import (
+    Callable,
+    Collection,
+    ItemsView,
+    Iterable,
+    Iterator,
+    KeysView,
+    ValuesView,
+)
 from typing import Any
 
 from .cos_array import COSArray
@@ -12,12 +21,36 @@ from .cos_integer import COSInteger
 from .cos_name import COSName
 from .cos_null import COSNull
 from .cos_object import COSObject
+from .cos_object_key import COSObjectKey
 from .cos_string import COSString
 from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
 # Sentinel for "no default supplied" — distinguishes from a caller-passed None.
 _MISSING: Any = object()
+
+# Lenient PDF-date string parser used by ``get_date`` / ``get_embedded_date``.
+# Mirrors the subset accepted by ``org.apache.pdfbox.util.DateConverter``.
+_PDF_DATE_RE = _re.compile(
+    r"""
+    ^D?:?
+    (?P<year>\d{4})
+    (?P<month>\d{2})?
+    (?P<day>\d{2})?
+    (?P<hour>\d{2})?
+    (?P<minute>\d{2})?
+    (?P<second>\d{2})?
+    (?:
+        (?P<offsign>Z|[+\-])
+        (?P<offhour>\d{2})?
+        '?
+        (?P<offminute>\d{2})?
+        '?
+    )?
+    $
+    """,
+    _re.VERBOSE,
+)
 
 
 def _as_name(key: COSName | str) -> COSName:
@@ -27,6 +60,45 @@ def _as_name(key: COSName | str) -> COSName:
     if isinstance(key, str):
         return COSName.get_pdf_name(key)
     raise TypeError(f"key must be COSName or str, got {type(key).__name__}")
+
+
+def _parse_pdf_date(value: str) -> _dt.datetime | None:
+    """Best-effort parse of a PDF date string ``D:YYYYMMDDHHmmSSOHH'mm'``.
+
+    Returns ``None`` if the string is unparseable. Mirrors the lenient
+    behavior of ``DateConverter.toCalendar`` for the common subset.
+    """
+    if not value:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    m = _PDF_DATE_RE.match(stripped)
+    if m is None:
+        return None
+    year = int(m.group("year"))
+    month = int(m.group("month") or 1)
+    day = int(m.group("day") or 1)
+    hour = int(m.group("hour") or 0)
+    minute = int(m.group("minute") or 0)
+    second = int(m.group("second") or 0)
+    if second == 60:
+        # Python's ``datetime`` does not represent leap seconds; clamp.
+        second = 59
+    sign = m.group("offsign")
+    if sign is None or sign == "Z":
+        tz: _dt.tzinfo = _dt.UTC
+    else:
+        off_hour = int(m.group("offhour") or 0)
+        off_minute = int(m.group("offminute") or 0)
+        delta = _dt.timedelta(hours=off_hour, minutes=off_minute)
+        if sign == "-":
+            delta = -delta
+        tz = _dt.timezone(delta)
+    try:
+        return _dt.datetime(year, month, day, hour, minute, second, tzinfo=tz)
+    except ValueError:
+        return None
 
 
 def _format_pdf_date(value: _dt.date | _dt.datetime | str | None) -> str | None:
@@ -49,6 +121,105 @@ def _format_pdf_date(value: _dt.date | _dt.datetime | str | None) -> str | None:
     if hasattr(value, "strftime"):
         return value.strftime("D:%Y%m%d%H%M%S")
     raise TypeError(f"date must be date, datetime, str, or None, got {type(value).__name__}")
+
+
+def _add_to_collection(collection: Collection[Any], item: Any) -> None:
+    """Append ``item`` to ``collection`` using whichever mutator is
+    available (``add`` for sets, ``append`` for lists). Mirrors
+    upstream's ``Collection.add`` polymorphism."""
+    add = getattr(collection, "add", None)
+    if add is not None:
+        add(item)
+        return
+    append = getattr(collection, "append", None)
+    if append is not None:
+        append(item)
+
+
+def _array_get_indirect_object_keys(
+    array: COSArray, indirect_objects: Collection[COSObjectKey]
+) -> None:
+    """Inline traversal of a ``COSArray`` for ``get_indirect_object_keys``.
+
+    Lives here (not on ``COSArray``) because ``cos_array.py`` is
+    wave-locked and we cannot extend it in this slice.
+    """
+    for value in array:
+        child: COSBase | None = value
+        indirect_key: COSObjectKey | None = None
+        if isinstance(child, COSObject):
+            indirect_key = COSObjectKey(child.object_number, child.generation_number)
+            if indirect_key in indirect_objects:
+                continue
+            child = child.get_object()
+        if isinstance(child, COSDictionary):
+            child.get_indirect_object_keys(indirect_objects)
+        elif isinstance(child, COSArray):
+            _array_get_indirect_object_keys(child, indirect_objects)
+        elif indirect_key is not None:
+            _add_to_collection(indirect_objects, indirect_key)
+
+
+def _array_reset_object_keys(
+    array: COSArray, indirect_objects: Collection[COSObjectKey]
+) -> None:
+    """Inline traversal of a ``COSArray`` for ``reset_object_keys``."""
+    for value in array:
+        child: COSBase | None = value
+        indirect_key: COSObjectKey | None = None
+        if isinstance(child, COSObject):
+            indirect_key = COSObjectKey(child.object_number, child.generation_number)
+            if indirect_key in indirect_objects:
+                continue
+            child = child.get_object()
+        if isinstance(child, COSDictionary):
+            child.reset_object_keys(indirect_objects)
+        elif isinstance(child, COSArray):
+            _array_reset_object_keys(child, indirect_objects)
+        elif indirect_key is not None:
+            _add_to_collection(indirect_objects, indirect_key)
+
+
+def _get_dictionary_string(base: COSBase | None, objs: list[COSBase]) -> str:
+    """Format ``base`` for ``COSDictionary.to_string``.
+
+    Mirrors the upstream private static helper of the same name (Java
+    line 1361). Tracks visited bases in ``objs`` to break cycles.
+    """
+    # Local import to avoid a hard cos_dictionary→cos_stream cycle at
+    # module load (COSStream subclasses COSDictionary).
+    from .cos_stream import COSStream  # noqa: PLC0415
+
+    if base is None:
+        return "null"
+    if any(b is base for b in objs):
+        return f"hash:{id(base)}"
+    if isinstance(base, COSDictionary):
+        objs.append(base)
+        parts = ["COSDictionary{"]
+        for k, v in base.entry_set():
+            parts.append(f"{k!s}:{_get_dictionary_string(v, objs)};")
+        parts.append("}")
+        if isinstance(base, COSStream):
+            try:
+                with base.create_raw_input_stream() as raw:
+                    data = raw.read()
+                parts.append(f"COSStream{{{hash(bytes(data))}}}")
+            except Exception:  # pragma: no cover - defensive parity
+                pass
+        return "".join(parts)
+    if isinstance(base, COSArray):
+        objs.append(base)
+        parts = ["COSArray{"]
+        for v in base:
+            parts.append(f"{_get_dictionary_string(v, objs)};")
+        parts.append("}")
+        return "".join(parts)
+    if isinstance(base, COSObject):
+        objs.append(base)
+        inner: COSBase | None = COSNull.NULL if base.is_object_null() else base.get_object()
+        return f"COSObject{{{_get_dictionary_string(inner, objs)}}}"
+    return repr(base)
 
 
 class COSDictionary(COSBase):
@@ -616,6 +787,259 @@ class COSDictionary(COSBase):
 
     def asUnmodifiableDictionary(self) -> COSDictionary:  # noqa: N802
         return self.as_unmodifiable_dictionary()
+
+    # ---------- typed COS-object accessors ----------
+
+    def get_cos_name(
+        self, key: COSName | str, default: COSName | None = None
+    ) -> COSName | None:
+        """Return the resolved value as a ``COSName`` when present.
+
+        Mirrors PDFBox ``COSDictionary.getCOSName`` (Java lines 522, 626):
+        the two-arg overload returns ``default`` when the entry is absent
+        or not a name.
+        """
+        v = self.get_dictionary_object(key)
+        if isinstance(v, COSName):
+            return v
+        return default
+
+    def get_cos_object(
+        self, key: COSName | str | None = None
+    ) -> COSObject | COSDictionary | None:
+        """Two-mode accessor (Java overload collapse).
+
+        * ``get_cos_object()`` — return ``self``, satisfying the
+          ``COSObjectable`` contract (Java's inherited
+          ``COSObjectable.getCOSObject()``).
+        * ``get_cos_object(key)`` — return the raw entry as a
+          ``COSObject`` indirect reference (Java line 539). Unlike
+          ``get_dictionary_object``, this does **not** dereference — it
+          exposes the indirect-reference holder itself.
+        """
+        if key is None:
+            return self
+        item = self.get_item(key)
+        if isinstance(item, COSObject):
+            return item
+        return None
+
+    def get_cos_stream(self, key: COSName | str) -> Any:
+        """Return the resolved value as a ``COSStream`` when present.
+
+        Mirrors PDFBox ``COSDictionary.getCOSStream`` (Java line 591).
+        """
+        # Local import to avoid a hard cos_dictionary→cos_stream cycle at
+        # module load (COSStream subclasses COSDictionary).
+        from .cos_stream import COSStream  # noqa: PLC0415
+
+        v = self.get_dictionary_object(key)
+        if isinstance(v, COSStream):
+            return v
+        return None
+
+    # ---------- date / embedded helpers ----------
+
+    def get_date(
+        self,
+        key: COSName | str,
+        default: _dt.datetime | None = None,
+    ) -> _dt.datetime | None:
+        """Return the entry parsed as a ``datetime`` or ``default``.
+
+        Mirrors PDFBox ``COSDictionary.getDate`` (Java lines 797, 826).
+        Returns ``default`` if the entry is absent, not a ``COSString``,
+        or is not a parseable PDF date.
+        """
+        v = self.get_dictionary_object(key)
+        if isinstance(v, COSString):
+            parsed = _parse_pdf_date(v.get_string())
+            if parsed is not None:
+                return parsed
+        return default
+
+    def get_embedded_string(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        default: str | None = None,
+    ) -> str | None:
+        """Lookup ``key`` inside the dictionary stored under ``embedded``.
+
+        Mirrors PDFBox ``COSDictionary.getEmbeddedString`` (Java lines
+        770, 784).
+        """
+        dictionary = self.get_cos_dictionary(embedded)
+        return dictionary.get_string(key, default) if dictionary is not None else default
+
+    def get_embedded_int(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        default: int = -1,
+    ) -> int:
+        """Lookup ``key`` inside the dictionary stored under ``embedded``.
+
+        Mirrors PDFBox ``COSDictionary.getEmbeddedInt`` (Java lines 933,
+        947).
+        """
+        dictionary = self.get_cos_dictionary(embedded)
+        return dictionary.get_int(key, default) if dictionary is not None else default
+
+    def get_embedded_date(
+        self,
+        embedded: COSName | str,
+        key: COSName | str,
+        default: _dt.datetime | None = None,
+    ) -> _dt.datetime | None:
+        """Lookup a date entry inside the dictionary stored under
+        ``embedded``. Mirrors PDFBox ``COSDictionary.getEmbeddedDate``
+        (Java lines 856, 870).
+        """
+        dictionary = self.get_cos_dictionary(embedded)
+        return dictionary.get_date(key, default) if dictionary is not None else default
+
+    # ---------- iteration / paths / indirect-key bookkeeping ----------
+
+    def for_each(
+        self, action: Callable[[COSName, COSBase], None]
+    ) -> None:
+        """Apply ``action(name, value)`` to each entry in insertion order.
+
+        Mirrors PDFBox ``COSDictionary.forEach`` (Java line 1248).
+        """
+        for k, v in self._items.items():
+            action(k, v)
+
+    def get_values(self) -> ValuesView[COSBase]:
+        """Return all values in this dictionary.
+
+        Mirrors PDFBox ``COSDictionary.getValues`` (Java line 1258).
+        """
+        return self._items.values()
+
+    def get_object_from_path(self, obj_path: str) -> COSBase | None:
+        """Walk a ``/``-separated path through nested dictionaries and
+        arrays. Array indices appear as bare ``[k]`` segments where ``k``
+        is the integer index. Mirrors PDFBox
+        ``COSDictionary.getObjectFromPath`` (Java line 1315).
+        """
+        retval: COSBase | None = self
+        for segment in obj_path.split("/"):
+            if isinstance(retval, COSArray):
+                idx = int(segment.replace("[", "").replace("]", ""))
+                retval = retval.get_object(idx)
+            elif isinstance(retval, COSDictionary):
+                retval = retval.get_dictionary_object(segment)
+            else:
+                return None
+        return retval
+
+    def get_indirect_object_keys(
+        self, indirect_objects: Collection[COSObjectKey] | None
+    ) -> None:
+        """Collect ``COSObjectKey``s for every indirect object reachable
+        from this dictionary into ``indirect_objects``. Mirrors PDFBox
+        ``COSDictionary.getIndirectObjectKeys`` (Java line 1454). Pass an
+        already-populated collection to short-circuit on revisits.
+
+        ``indirect_objects`` must support both ``__contains__`` and an
+        ``add`` method (e.g. a ``set`` or PDFBox-compatible
+        ``Collection`` proxy). ``None`` is a no-op for parity with
+        upstream.
+        """
+        if indirect_objects is None:
+            return
+        # ``COSDictionary`` itself does not carry an indirect-object key
+        # in pypdfbox (only ``COSObject`` does); the upstream short-circuit
+        # on ``getKey() != null`` therefore reduces to the per-entry walk.
+        parent_skip = (COSName.PARENT, COSName.get_pdf_name("P"))
+        for entry_key, value in self._items.items():
+            child: COSBase | None = value
+            indirect_key: COSObjectKey | None = None
+            if isinstance(child, COSObject):
+                indirect_key = COSObjectKey(child.object_number, child.generation_number)
+                if indirect_key in indirect_objects:
+                    continue
+                child = child.get_object()
+            if isinstance(child, COSDictionary):
+                # Skip /Parent and /P references to avoid infinite recursion.
+                if entry_key not in parent_skip:
+                    child.get_indirect_object_keys(indirect_objects)
+            elif isinstance(child, COSArray):
+                _array_get_indirect_object_keys(child, indirect_objects)
+            elif indirect_key is not None:
+                _add_to_collection(indirect_objects, indirect_key)
+
+    def reset_imported_object_keys(self) -> None:
+        """Reset all indirect-object keys reachable from this dictionary.
+
+        Mirrors PDFBox ``COSDictionary.resetImportedObjectKeys`` (Java
+        line 1514). Used when importing a page into another document to
+        avoid colliding object numbers.
+        """
+        seen: set[COSObjectKey] = set()
+        self.reset_object_keys(seen)
+        seen.clear()
+
+    def reset_object_keys(
+        self, indirect_objects: Collection[COSObjectKey] | None
+    ) -> Collection[COSObjectKey] | None:
+        """Walk the dictionary graph clearing indirect-object keys.
+
+        Mirrors PDFBox ``COSDictionary.resetObjectKeys`` (Java line 1529).
+        Returns ``indirect_objects`` (the same collection that was passed
+        in) so callers can chain ``.clear()``.
+
+        Note: pypdfbox's ``COSObject`` does not currently expose a public
+        ``set_key(None)`` mutator (its identity is constructor-set), so
+        this implementation walks the graph and records each visited
+        ``COSObjectKey`` for accounting, but the underlying
+        ``object_number/generation_number`` pairs are not cleared. See
+        ``CHANGES.md`` for the divergence note.
+        """
+        if indirect_objects is None:
+            return None
+        parent_skip = (COSName.PARENT, COSName.get_pdf_name("P"))
+        for entry_key, value in self._items.items():
+            child: COSBase | None = value
+            indirect_key: COSObjectKey | None = None
+            if isinstance(child, COSObject):
+                indirect_key = COSObjectKey(child.object_number, child.generation_number)
+                if indirect_key in indirect_objects:
+                    continue
+                child = child.get_object()
+            if isinstance(child, COSDictionary):
+                if entry_key not in parent_skip:
+                    child.reset_object_keys(indirect_objects)
+            elif isinstance(child, COSArray):
+                _array_reset_object_keys(child, indirect_objects)
+            elif indirect_key is not None:
+                _add_to_collection(indirect_objects, indirect_key)
+        return indirect_objects
+
+    def to_string(self) -> str:
+        """Return a deterministic structural string of this dictionary.
+
+        Mirrors PDFBox ``COSDictionary.toString`` (Java line 1348).
+        Detects cycles via the ``hash:`` placeholder. Aliased to
+        ``__str__``.
+        """
+        try:
+            return COSDictionary.get_dictionary_string(self, [])
+        except Exception as exc:  # pragma: no cover - defensive parity
+            return f"COSDictionary{{{exc!s}}}"
+
+    @staticmethod
+    def get_dictionary_string(base: COSBase | None, objs: list[COSBase]) -> str:
+        """Internal helper used by :meth:`to_string` (mirrors the upstream
+        ``private static getDictionaryString`` at Java line 1361). Tracks
+        visited bases in ``objs`` to break cycles.
+        """
+        return _get_dictionary_string(base, objs)
+
+    def __str__(self) -> str:
+        return self.to_string()
 
     # ---------- visitor / Python protocols ----------
 

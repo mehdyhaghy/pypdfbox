@@ -105,10 +105,10 @@ def test_wave628_construct_appearances_uses_off_for_non_name_value() -> None:
     assert widget.get_cos_object().get_name(_AS) == "Off"
 
 
-def test_wave628_on_value_for_widget_returns_none_for_non_dictionary_normal_appearance() -> None:
+def test_wave628_on_value_for_widget_returns_empty_for_non_dictionary_normal_appearance() -> None:
     widget = PDAnnotationWidget()
     ap = COSDictionary()
     ap.set_item(_N, COSString("not-a-dictionary"))
     widget.get_cos_object().set_item(_AP, ap)
 
-    assert PDButton._on_value_for_widget(widget) is None
+    assert PDButton.get_on_value_for_widget(widget) == ""

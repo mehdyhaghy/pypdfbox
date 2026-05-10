@@ -249,28 +249,134 @@ class PDButton(PDTerminalField):
             return set(seen)
         out: set[str] = set()
         for widget in self.get_widgets():
-            on_value = self._on_value_for_widget(widget)
-            if on_value is not None:
+            on_value = self.get_on_value_for_widget(widget)
+            if on_value:
                 out.add(on_value)
         return out
 
     @staticmethod
-    def _on_value_for_widget(widget: PDAnnotationWidget) -> str | None:
+    def get_on_value_for_widget(widget: PDAnnotationWidget) -> str:
         """Return the first non-``/Off`` key in this widget's ``/AP /N``
-        subdictionary, or ``None`` if no normal-appearance subdictionary
-        exists. Used by :meth:`get_on_values`."""
+        subdictionary, or ``""`` if no normal-appearance subdictionary
+        exists.
+
+        Mirrors upstream private helper ``PDButton.getOnValueForWidget``
+        (PDButton.java line 353).
+        """
         cos = widget.get_cos_object()
         ap = cos.get_dictionary_object(COSName.get_pdf_name("AP"))
         if not isinstance(ap, COSDictionary):
-            return None
+            return ""
         n = ap.get_dictionary_object(COSName.get_pdf_name("N"))
         if not isinstance(n, COSDictionary):
-            return None
+            return ""
         off = COSName.get_pdf_name("Off")
         for key in n.key_set():
             if key != off:
                 return key.name
+        return ""
+
+    def get_on_value_at_index(self, index: int) -> str:
+        """Return the on-value of the widget at ``index``, or ``""``.
+
+        Mirrors upstream private helper ``PDButton.getOnValue(int)``
+        (PDButton.java line 340). Renamed in pypdfbox to disambiguate from
+        :meth:`PDCheckBox.get_on_value` which is a different upstream
+        overload (Java distinguishes by signature; Python cannot).
+        """
+        widgets = self.get_widgets()
+        if index < len(widgets):
+            return self.get_on_value_for_widget(widgets[index])
+        return ""
+
+    # Upstream private ``getOnValue(int)`` parity alias. Single-dispatch
+    # forward to :meth:`get_on_value_at_index`. Subclasses such as
+    # :class:`PDCheckBox` override ``get_on_value()`` (zero-arg) — the
+    # subclass binding shadows this, which is fine because the parent only
+    # uses :meth:`get_on_value_at_index` internally.
+    def get_on_value(self, index: int) -> str:
+        return self.get_on_value_at_index(index)
+
+    def update_by_value(self, value: str) -> None:
+        """Update each widget's ``/AS`` and the field's ``/V`` to ``value``.
+
+        Mirrors upstream private helper ``PDButton.updateByValue``
+        (PDButton.java line 391). Walks each widget's normal-appearance
+        subdictionary, finds an entry matching ``value`` (handling encoding
+        differences via :meth:`find_matching_appearance_key`), and sets
+        ``/AS`` to that key — falling back to ``/Off`` per widget when no
+        match. Writes ``/V`` to the first matched key, or to a fresh
+        ``COSName(value)`` if no widget had a match.
+        """
+        matching_key: COSName | None = None
+
+        for widget in self.get_widgets():
+            cos = widget.get_cos_object()
+            ap = cos.get_dictionary_object(COSName.get_pdf_name("AP"))
+            if not isinstance(ap, COSDictionary):
+                continue
+            normal = ap.get_dictionary_object(COSName.get_pdf_name("N"))
+            if not isinstance(normal, COSDictionary):
+                continue
+
+            widget_match = self.find_matching_appearance_key(normal, value)
+            if widget_match is not None and matching_key is None:
+                matching_key = widget_match
+
+            if widget_match is not None:
+                widget.set_appearance_state(widget_match.name)
+            else:
+                widget.set_appearance_state("Off")
+
+        if matching_key is not None:
+            self._field.set_item(_V, matching_key)
+        else:
+            self._field.set_name(_V, value)
+
+    @staticmethod
+    def find_matching_appearance_key(
+        appearance_dict: COSDictionary, value: str
+    ) -> COSName | None:
+        """Return the appearance dictionary key whose decoded name equals
+        ``value``, or ``None``.
+
+        Mirrors upstream private helper
+        ``PDButton.findMatchingAppearanceKey`` (PDButton.java line 452).
+        Handles encoding differences between PDF-stored ISO-8859-1 keys
+        and UTF-8 incoming values.
+        """
+        for key in appearance_dict.key_set():
+            if isinstance(key, COSName) and key.name == value:
+                return key
         return None
+
+    def update_by_option(self, value: str) -> None:
+        """Update appearance/value through the export-values (``/Opt``) path.
+
+        Mirrors upstream private helper ``PDButton.updateByOption``
+        (PDButton.java line 466). Requires the number of widgets to equal
+        the number of options; ``"Off"`` short-circuits to the by-value
+        path; otherwise the option's index becomes the on-value of the
+        widget at that index.
+        """
+        widgets = self.get_widgets()
+        options = self.get_export_values()
+
+        if len(widgets) != len(options):
+            raise ValueError(
+                "The number of options doesn't match the number of widgets"
+            )
+
+        if value == "Off":
+            self.update_by_value(value)
+            return
+
+        try:
+            options_index = options.index(value)
+        except ValueError:
+            return
+        on_value = self.get_on_value_at_index(options_index)
+        self.update_by_value(on_value)
 
     def construct_appearances(self) -> None:
         """Sync widget appearance states against existing normal appearances.

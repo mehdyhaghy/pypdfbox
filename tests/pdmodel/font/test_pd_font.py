@@ -408,3 +408,114 @@ def test_inheritance_chain() -> None:
     assert issubclass(PDTrueTypeFont, PDSimpleFont)
     assert issubclass(PDType0Font, PDFont)
     assert not issubclass(PDType0Font, PDSimpleFont)
+
+
+# ---------- upstream-faithful name parity (Wave 1251) ----------
+
+
+def test_get_sub_type_matches_get_subtype() -> None:
+    """``getSubType`` snake-cases to ``get_sub_type`` per parity rules."""
+    font = PDType1Font()
+    assert font.get_sub_type() == font.get_subtype()
+    assert font.get_sub_type() == "Type1"
+
+
+def test_get_sub_type_returns_none_when_subtype_absent() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.TYPE, "Font")  # type: ignore[attr-defined]
+    font = PDType1Font(raw)
+    # PDType1Font's __init__ writes /Subtype only on a fresh dict — wrapping
+    # an existing dict without /Subtype leaves it absent.
+    raw.remove_item(COSName.SUBTYPE)  # type: ignore[attr-defined]
+    assert font.get_sub_type() is None
+
+
+def test_get_to_unicode_c_map_alias_returns_same_instance() -> None:
+    """``getToUnicodeCMap`` snake-cases to ``get_to_unicode_c_map``."""
+    font = PDType1Font()
+    raw_cmap = COSName.get_pdf_name("Identity-H")
+    font.get_cos_object().set_item(COSName.get_pdf_name("ToUnicode"), raw_cmap)
+    first = font.get_to_unicode_c_map()
+    second = font.get_to_unicode_cmap()
+    assert first is second  # both spellings share the cache
+
+
+def test_get_to_unicode_c_map_returns_none_when_absent() -> None:
+    assert PDType1Font().get_to_unicode_c_map() is None
+
+
+def test_load_font_descriptor_returns_wrapper_when_present() -> None:
+    font = PDType1Font()
+    fd = PDFontDescriptor()
+    fd.set_font_name("Helvetica-Bold")
+    font.set_font_descriptor(fd)
+    out = font.load_font_descriptor()
+    assert isinstance(out, PDFontDescriptor)
+    assert out.get_cos_object() is fd.get_cos_object()
+
+
+def test_load_font_descriptor_returns_none_when_absent() -> None:
+    assert PDType1Font().load_font_descriptor() is None
+
+
+def test_load_unicode_cmap_returns_none_when_absent() -> None:
+    assert PDType1Font().load_unicode_cmap() is None
+
+
+def test_load_unicode_cmap_parses_predefined_name() -> None:
+    font = PDType1Font()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSName.get_pdf_name("Identity-H")
+    )
+    cmap = font.load_unicode_cmap()
+    assert cmap is not None
+    # Each call returns a freshly parsed CMap (no caching at this layer);
+    # callers wanting cached access use get_to_unicode_cmap.
+    cmap2 = font.load_unicode_cmap()
+    assert cmap2 is not None
+
+
+def test_load_unicode_cmap_returns_none_for_non_name_non_stream_entry() -> None:
+    font = PDType1Font()
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("ToUnicode"), COSInteger.get(42)
+    )
+    assert font.load_unicode_cmap() is None
+
+
+def test_read_c_map_resolves_predefined_name() -> None:
+    font = PDType1Font()
+    cmap = font.read_c_map(COSName.get_pdf_name("Identity-H"))
+    assert cmap is not None
+
+
+def test_read_c_map_raises_on_unsupported_cos_type() -> None:
+    import pytest
+
+    font = PDType1Font()
+    with pytest.raises(OSError, match="Expected Name or Stream"):
+        font.read_c_map(COSInteger.get(42))
+
+
+def test_read_c_map_parses_embedded_stream() -> None:
+    cmap_text = (
+        b"/CIDInit /ProcSet findresource begin\n"
+        b"12 dict begin\n"
+        b"begincmap\n"
+        b"/CMapName /TestCMap def\n"
+        b"/CMapType 2 def\n"
+        b"1 begincodespacerange\n"
+        b"<00> <FF>\n"
+        b"endcodespacerange\n"
+        b"1 beginbfchar\n"
+        b"<41> <0041>\n"
+        b"endbfchar\n"
+        b"endcmap\n"
+    )
+    stream = COSStream()
+    stream.set_raw_data(cmap_text)
+    font = PDType1Font()
+    out = font.read_c_map(stream)
+    assert out is not None
+    # 'A' (0x41) → 'A' (U+0041)
+    assert out.to_unicode(0x41) == "A"

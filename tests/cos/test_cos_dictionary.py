@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 
 from pypdfbox.cos import (
@@ -11,6 +13,8 @@ from pypdfbox.cos import (
     COSName,
     COSNull,
     COSObject,
+    COSObjectKey,
+    COSStream,
     COSString,
 )
 
@@ -351,3 +355,154 @@ def test_visitor_dispatch() -> None:
     d = COSDictionary()
     d.accept(v)
     assert v.calls == [("dictionary", d)]
+
+
+def test_for_each_visits_entries_in_insertion_order() -> None:
+    d = COSDictionary([("A", COSInteger(1)), ("B", COSInteger(2)), ("C", COSInteger(3))])
+    seen: list[tuple[str, int]] = []
+    d.for_each(lambda k, v: seen.append((k.name, v.value)))  # type: ignore[attr-defined]
+    assert seen == [("A", 1), ("B", 2), ("C", 3)]
+
+
+def test_get_values_returns_live_view() -> None:
+    d = COSDictionary([("A", COSInteger(1)), ("B", COSInteger(2))])
+    values = d.get_values()
+    assert list(values) == [COSInteger(1), COSInteger(2)]
+    d.set_item("C", COSInteger(3))
+    assert list(values) == [COSInteger(1), COSInteger(2), COSInteger(3)]
+
+
+def test_get_cos_name_returns_resolved_name_or_default() -> None:
+    page_name = COSName.get_pdf_name("Page")
+    d = COSDictionary([("Type", page_name), ("Wrong", COSInteger(1))])
+    assert d.get_cos_name("Type") is page_name
+    assert d.get_cos_name("Wrong") is None
+    assert d.get_cos_name("Missing") is None
+    fallback = COSName.get_pdf_name("XObject")
+    assert d.get_cos_name("Missing", fallback) is fallback
+
+
+def test_get_cos_object_no_arg_returns_self() -> None:
+    d = COSDictionary([("A", COSInteger(1))])
+    assert d.get_cos_object() is d
+
+
+def test_get_cos_object_key_returns_indirect_or_none() -> None:
+    inner = COSInteger(5)
+    indirect = COSObject(11, 0, resolved=inner)
+    d = COSDictionary([("Ref", indirect), ("Direct", inner)])
+    assert d.get_cos_object("Ref") is indirect
+    assert d.get_cos_object("Direct") is None
+    assert d.get_cos_object("Missing") is None
+
+
+def test_get_cos_stream_returns_resolved_stream_or_none() -> None:
+    stream = COSStream()
+    direct = COSDictionary([("S", stream), ("Wrong", COSInteger(1))])
+    assert direct.get_cos_stream("S") is stream
+    assert direct.get_cos_stream("Wrong") is None
+
+    indirect = COSDictionary([("S", COSObject(13, 0, resolved=stream))])
+    assert indirect.get_cos_stream("S") is stream
+    stream.close()
+
+
+def test_get_date_parses_pdf_date_string() -> None:
+    d = COSDictionary([("CreationDate", COSString("D:20260509120000Z"))])
+    parsed = d.get_date("CreationDate")
+    assert parsed is not None
+    assert parsed.year == 2026
+    assert parsed.month == 5
+    assert parsed.day == 9
+    assert parsed.tzinfo is not None
+    assert parsed.utcoffset() == dt.timedelta(0)
+
+
+def test_get_date_returns_default_for_missing_or_unparseable() -> None:
+    fallback = dt.datetime(2000, 1, 1, tzinfo=dt.UTC)
+    d = COSDictionary([("Bad", COSString("not a date"))])
+    assert d.get_date("Missing") is None
+    assert d.get_date("Missing", fallback) is fallback
+    assert d.get_date("Bad", fallback) is fallback
+
+
+def test_embedded_string_int_date_round_trip() -> None:
+    d = COSDictionary()
+    d.set_embedded_string("Sub", "Title", "hello")
+    d.set_embedded_int("Sub", "Count", 42)
+    d.set_embedded_date("Sub", "When", dt.datetime(2026, 5, 9, tzinfo=dt.UTC))
+
+    assert d.get_embedded_string("Sub", "Title") == "hello"
+    assert d.get_embedded_int("Sub", "Count") == 42
+    parsed = d.get_embedded_date("Sub", "When")
+    assert parsed is not None
+    assert parsed.year == 2026
+
+    # Defaults bubble through when the embedded dict is absent.
+    assert d.get_embedded_string("Other", "Title", "fallback") == "fallback"
+    assert d.get_embedded_int("Other", "Count", 99) == 99
+    assert d.get_embedded_date("Other", "When") is None
+
+
+def test_get_object_from_path_walks_dicts_and_arrays() -> None:
+    rect = COSArray([COSInteger(0), COSInteger(0), COSInteger(100), COSInteger(200)])
+    annot = COSDictionary([("Rect", rect)])
+    annots = COSArray([annot])
+    page = COSDictionary([("Annots", annots)])
+
+    assert page.get_object_from_path("Annots") is annots
+    assert page.get_object_from_path("Annots/[0]") is annot
+    assert page.get_object_from_path("Annots/[0]/Rect") is rect
+    # Path beyond a leaf returns None.
+    leaf = page.get_object_from_path("Annots/[0]/Rect/[3]")
+    assert leaf == COSInteger(200)
+
+
+def test_get_indirect_object_keys_collects_references() -> None:
+    leaf = COSInteger(7)
+    leaf_ref = COSObject(20, 0, resolved=leaf)
+    nested = COSDictionary([("Leaf", leaf_ref)])
+    nested_ref = COSObject(21, 0, resolved=nested)
+    arr = COSArray([COSObject(22, 0, resolved=COSInteger(8))])
+    root = COSDictionary([("Inner", nested_ref), ("Arr", arr)])
+
+    keys: set[COSObjectKey] = set()
+    root.get_indirect_object_keys(keys)
+    assert COSObjectKey(20, 0) in keys
+    assert COSObjectKey(22, 0) in keys
+
+
+def test_get_indirect_object_keys_skips_parent_recursion() -> None:
+    parent = COSDictionary()
+    child = COSDictionary([("Parent", COSObject(30, 0, resolved=parent))])
+    parent.set_item("Kids", child)
+    keys: set[COSObjectKey] = set()
+    # Should not blow the recursion stack — /Parent and /P entries skip
+    # descent into the referenced dictionary (matches upstream behavior:
+    # the parent dict is neither recursed into nor recorded as a leaf
+    # since its branch already ended in the dictionary case).
+    child.get_indirect_object_keys(keys)
+
+
+def test_reset_imported_object_keys_walks_without_error() -> None:
+    leaf = COSInteger(1)
+    inner = COSDictionary([("X", COSObject(40, 0, resolved=leaf))])
+    root = COSDictionary([("Inner", COSObject(41, 0, resolved=inner))])
+    # Should not raise; pypdfbox cannot mutate the COSObject keys.
+    root.reset_imported_object_keys()
+
+
+def test_to_string_emits_structural_form() -> None:
+    d = COSDictionary([("Type", COSName.get_pdf_name("Page")), ("Count", COSInteger(2))])
+    rendered = d.to_string()
+    assert rendered.startswith("COSDictionary{")
+    assert "Type" in rendered
+    assert "Count" in rendered
+    assert str(d) == rendered
+
+
+def test_to_string_breaks_self_recursion() -> None:
+    d = COSDictionary()
+    d.set_item("Self", d)
+    out = d.to_string()
+    assert "hash:" in out
