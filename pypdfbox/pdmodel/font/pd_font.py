@@ -757,5 +757,39 @@ class PDFont:
 
     __str__ = __repr__
 
+    # ---------- upstream-faithful Java spellings ----------
+
+    def equals(self, other: object) -> bool:
+        """Snake_case mirror of upstream ``PDFont.equals(Object)`` — see
+        ``PDFont.java`` lines 672-676.
+
+        Delegates to :meth:`__eq__`, so ``font.equals(other)`` and
+        ``font == other`` always agree. Provided so callers porting from
+        PDFBox can use the upstream spelling directly without reaching for
+        the Python ``==`` operator.
+        """
+        return self.__eq__(other) is True
+
+    def hash_code(self) -> int:
+        """Snake_case mirror of upstream ``PDFont.hashCode()`` — see
+        ``PDFont.java`` lines 678-682.
+
+        Delegates to :meth:`__hash__`. Upstream returns
+        ``getCOSObject().hashCode()`` which keys off the dictionary's Java
+        reference identity; we key off ``id(self._dict)`` so the same
+        identity-based equality is preserved.
+        """
+        return self.__hash__()
+
+    def to_string(self) -> str:
+        """Snake_case mirror of upstream ``PDFont.toString()`` — see
+        ``PDFont.java`` lines 684-688.
+
+        Delegates to :meth:`__repr__` so ``font.to_string()`` matches
+        ``str(font)``. Format: ``"<ClassName> <BaseFont>"``, falling back
+        to the bare class name when ``/BaseFont`` is absent.
+        """
+        return self.__repr__()
+
 
 __all__ = ["PDFont"]

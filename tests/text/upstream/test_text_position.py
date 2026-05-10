@@ -91,3 +91,62 @@ def test_font_size_in_pt_default_falls_back():
 # Invariant: getRotation defaults to 0 and is preserved.
 def test_rotation_round_trips():
     assert _tp(rotation=270.0).get_rotation() == 270.0
+
+
+# Invariant (upstream TextPosition.java line 840): toString returns
+# the decoded characters.
+def test_to_string_returns_decoded_text():
+    assert _tp(text="hello").to_string() == "hello"
+
+
+# Invariant (upstream TextPosition.java line 972): hashCode is stable
+# while the equals-comparable subset is unchanged.
+def test_hash_code_stable_across_text_mutation():
+    tp = _tp(text="a", x=10.0, y=20.0)
+    h_before = tp.hash_code()
+    tp.text = "z"
+    assert tp.hash_code() == h_before
+
+
+# Invariant (upstream getXRot, line 293): 0/90/180/270 cases.
+def test_get_x_rot_axes():
+    tp = _tp(x=10.0, y=20.0, page_width=500.0, page_height=800.0)
+    assert tp._get_x_rot(0.0) == 10.0
+    assert tp._get_x_rot(90.0) == 20.0
+    assert tp._get_x_rot(180.0) == 490.0
+    assert tp._get_x_rot(270.0) == 780.0
+
+
+# Invariant (upstream getYLowerLeftRot, line 356): 0/90/180/270 cases.
+def test_get_y_lower_left_rot_axes():
+    tp = _tp(x=10.0, y=20.0, page_width=500.0, page_height=800.0)
+    assert tp._get_y_lower_left_rot(0.0) == 20.0
+    assert tp._get_y_lower_left_rot(90.0) == 490.0
+    assert tp._get_y_lower_left_rot(180.0) == 780.0
+    assert tp._get_y_lower_left_rot(270.0) == 10.0
+
+
+# Invariant (upstream combineDiacritic, line 793): non-combining
+# diacritic → combining counterpart via the static map.
+def test_combine_diacritic_apostrophe_maps_to_acute():
+    # 0x0027 (APOSTROPHE) → U+0301 (combining acute).
+    assert TextPosition._combine_diacritic("'") == "́"
+
+
+# Invariant (upstream combineDiacritic, line 793): characters not in
+# the static map go through NFKC normalisation + trim.
+def test_combine_diacritic_nfkc_fallback():
+    # Diaeresis (U+00A8) NFKC-decomposes to "<space><U+0308>"; the
+    # trim() upstream applies leaves the combining diaeresis only.
+    assert TextPosition._combine_diacritic("¨") == "̈"
+
+
+# Invariant (upstream insertDiacritic, line 753): inserts the combined
+# diacritic immediately after the base character at the given index.
+def test_insert_diacritic_appends_to_base_glyph():
+    base = _tp(text="e", width=8.0)
+    base._insert_diacritic(0, _tp(text="'"))  # apostrophe maps to combining acute
+    # Result is the decomposed form: base char followed by U+0301.
+    assert base.text == "e\u0301"
+    # NFC-composing yields the precomposed character U+00E9.
+    assert unicodedata.normalize("NFC", base.text) == "\u00e9"

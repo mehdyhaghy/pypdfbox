@@ -497,6 +497,56 @@ def test_read_c_map_raises_on_unsupported_cos_type() -> None:
         font.read_c_map(COSInteger.get(42))
 
 
+def test_equals_method_delegates_to_eq() -> None:
+    """``equals`` mirrors upstream ``PDFont.equals(Object)`` — same dict ⇒ equal."""
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    a = PDType1Font(raw)
+    b = PDType1Font(raw)
+    assert a.equals(b) is True
+    assert a.equals(a) is True
+
+
+def test_equals_method_returns_false_for_distinct_dicts() -> None:
+    a = PDType1Font()
+    b = PDType1Font()
+    # Each PDType1Font default-constructs a fresh dict, so they differ.
+    assert a.equals(b) is False
+    assert a.equals(None) is False
+    assert a.equals("not a font") is False
+
+
+def test_hash_code_method_matches_builtin_hash() -> None:
+    """``hash_code`` mirrors upstream ``PDFont.hashCode`` — must match ``hash(self)``."""
+    font = PDType1Font()
+    assert font.hash_code() == hash(font)
+
+
+def test_hash_code_method_consistent_with_equals() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    a = PDType1Font(raw)
+    b = PDType1Font(raw)
+    assert a.equals(b) is True
+    assert a.hash_code() == b.hash_code()
+
+
+def test_to_string_method_matches_repr() -> None:
+    """``to_string`` mirrors upstream ``PDFont.toString`` — same as ``str(font)``."""
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert font.to_string() == "PDType1Font Helvetica"
+    assert font.to_string() == str(font)
+
+
+def test_to_string_method_falls_back_to_class_name_when_basefont_absent() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    font = PDType1Font(raw)
+    # /BaseFont is absent, so to_string is just the class name.
+    assert font.to_string() == "PDType1Font"
+
+
 def test_read_c_map_parses_embedded_stream() -> None:
     cmap_text = (
         b"/CIDInit /ProcSet findresource begin\n"

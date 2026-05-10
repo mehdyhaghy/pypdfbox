@@ -527,3 +527,145 @@ def test_hash_with_text_matrix_is_stable():
     a = _make(text_matrix=[1.0, 0.0, 0.0, 1.0, 5.0, 6.0])
     b = _make(text_matrix=[1.0, 0.0, 0.0, 1.0, 5.0, 6.0])
     assert hash(a) == hash(b)
+
+
+# ---------------------------------------------------------------------------
+# Wave 1260: private rotation helpers + diacritic helpers + Java-name aliases
+# ---------------------------------------------------------------------------
+
+
+def test_get_x_rot_zero_returns_x():
+    tp = _make(x=42.0)
+    assert tp._get_x_rot(0.0) == 42.0
+
+
+def test_get_x_rot_90_returns_y():
+    tp = _make(x=10.0, y=33.0)
+    assert tp._get_x_rot(90.0) == 33.0
+
+
+def test_get_x_rot_180_uses_page_width():
+    tp = _make(x=100.0, page_width=500.0)
+    assert tp._get_x_rot(180.0) == 400.0
+
+
+def test_get_x_rot_270_uses_page_height():
+    tp = _make(y=200.0, page_height=792.0)
+    assert tp._get_x_rot(270.0) == 592.0
+
+
+def test_get_x_rot_unsupported_returns_zero():
+    # Upstream returns 0 for any rotation that isn't 0/90/180/270.
+    tp = _make(x=42.0)
+    assert tp._get_x_rot(45.0) == 0.0
+
+
+def test_get_y_lower_left_rot_zero_returns_y():
+    tp = _make(y=42.0)
+    assert tp._get_y_lower_left_rot(0.0) == 42.0
+
+
+def test_get_y_lower_left_rot_90_uses_page_width():
+    tp = _make(x=100.0, page_width=500.0)
+    assert tp._get_y_lower_left_rot(90.0) == 400.0
+
+
+def test_get_y_lower_left_rot_180_uses_page_height():
+    tp = _make(y=100.0, page_height=792.0)
+    assert tp._get_y_lower_left_rot(180.0) == 692.0
+
+
+def test_get_y_lower_left_rot_270_returns_x():
+    tp = _make(x=42.0)
+    assert tp._get_y_lower_left_rot(270.0) == 42.0
+
+
+def test_get_y_lower_left_rot_unsupported_returns_zero():
+    tp = _make(y=42.0)
+    assert tp._get_y_lower_left_rot(45.0) == 0.0
+
+
+def test_get_width_rot_returns_width_for_horizontal():
+    tp = _make(width=37.5)
+    assert tp._get_width_rot(0.0) == 37.5
+    assert tp._get_width_rot(180.0) == 37.5
+
+
+def test_get_width_rot_returns_width_for_vertical():
+    tp = _make(width=37.5)
+    assert tp._get_width_rot(90.0) == 37.5
+    assert tp._get_width_rot(270.0) == 37.5
+
+
+def test_combine_diacritic_remaps_apostrophe_to_acute():
+    # 0x0027 (APOSTROPHE) is one of upstream's non-decomposing
+    # diacritic remaps — combining acute (U+0301).
+    assert TextPosition._combine_diacritic("'") == "́"
+
+
+def test_combine_diacritic_remaps_grave_accent():
+    # 0x0060 (GRAVE ACCENT) → combining grave (U+0300).
+    assert TextPosition._combine_diacritic("`") == "̀"
+
+
+def test_combine_diacritic_falls_back_to_nfkc_strip():
+    # Characters not in the remap table go through NFKC + trim. The
+    # diaeresis (U+00A8) NFKC-decomposes to space + U+0308; trim()
+    # leaves only the combining diaeresis.
+    assert TextPosition._combine_diacritic("¨") == "̈"
+
+
+def test_combine_diacritic_empty_string_returns_empty():
+    assert TextPosition._combine_diacritic("") == ""
+
+
+def test_insert_diacritic_appends_after_base():
+    base = _make(text="e", width=8.0)
+    diacritic = _make(text="́", width=0.0)  # combining acute
+    base._insert_diacritic(0, diacritic)
+    assert base.text == "é"
+
+
+def test_insert_diacritic_remaps_non_combining_apostrophe():
+    base = _make(text="e", width=8.0)
+    # Apostrophe is in the remap table → combining acute (U+0301).
+    diacritic = _make(text="'", width=0.0)
+    base._insert_diacritic(0, diacritic)
+    assert base.text == "é"
+
+
+def test_insert_diacritic_clamps_negative_index():
+    base = _make(text="abc")
+    diacritic = _make(text="́")
+    base._insert_diacritic(-1, diacritic)
+    assert base.text == "ábc"
+
+
+def test_insert_diacritic_clamps_overlong_index():
+    base = _make(text="abc")
+    diacritic = _make(text="́")
+    base._insert_diacritic(99, diacritic)
+    assert base.text == "abć"
+
+
+def test_to_string_returns_unicode():
+    tp = _make(text="hello")
+    assert tp.to_string() == "hello"
+    assert tp.to_string() == tp.get_unicode()
+
+
+def test_hash_code_matches_python_hash():
+    tp = _make()
+    assert tp.hash_code() == hash(tp)
+
+
+def test_diacritics_table_is_populated():
+    # Upstream defines 31 entries in DIACRITICS; we mirror the same
+    # set for diff-friendly re-syncs.
+    from pypdfbox.text.text_position import _DIACRITICS
+
+    assert len(_DIACRITICS) == 31
+    # A handful of well-known mappings.
+    assert _DIACRITICS[0x0027] == "́"
+    assert _DIACRITICS[0x0060] == "̀"
+    assert _DIACRITICS[0x005F] == "̲"

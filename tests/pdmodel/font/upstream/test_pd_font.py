@@ -98,3 +98,38 @@ def test_pd_font_read_c_map_predefined_name() -> None:
     font = PDType1Font()
     cmap = font.read_c_map(COSName.get_pdf_name("Identity-H"))
     assert cmap is not None
+
+
+def test_pd_font_equals_java_spelling_matches_dict_identity() -> None:
+    """Upstream ``PDFont.equals(Object)`` (PDFont.java lines 672-676) is
+    Java reference identity over ``getCOSObject()``. Snake_case mirror
+    ``equals(...)`` must match this contract."""
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    a = PDType1Font(raw)
+    b = PDType1Font(raw)
+    assert a.equals(b) is True
+    other = COSDictionary()
+    other.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
+    c = PDType1Font(other)
+    assert a.equals(c) is False
+    # Non-PDFont arguments must return False, not raise.
+    assert a.equals("not a font") is False
+
+
+def test_pd_font_hash_code_java_spelling_matches_hash_builtin() -> None:
+    """Upstream ``PDFont.hashCode()`` (PDFont.java lines 678-682) returns
+    ``getCOSObject().hashCode()``. The snake_case ``hash_code()`` mirror
+    must agree with the Python ``hash(font)`` builtin."""
+    font = PDType1Font()
+    assert font.hash_code() == hash(font)
+
+
+def test_pd_font_to_string_java_spelling_matches_str() -> None:
+    """Upstream ``PDFont.toString()`` (PDFont.java lines 684-688) returns
+    ``getClass().getSimpleName() + " " + getName()``. Snake_case mirror
+    ``to_string()`` must agree with ``str(font)``."""
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    assert font.to_string() == "PDType1Font Helvetica"
+    assert font.to_string() == str(font)

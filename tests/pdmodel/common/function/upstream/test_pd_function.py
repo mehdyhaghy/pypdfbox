@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSObject, COSStream
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel.common.function import (
     PDFunction,
@@ -406,3 +406,195 @@ def test_set_range_values_invalidates_output_count_cache() -> None:
     three_dim.set_float_array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
     fn.set_range_values(three_dim)
     assert fn.get_number_of_output_parameters() == 3
+
+
+# ---------- create() unwraps COSObject indirect references ----------
+# Mirrors PDFunction.java:122-126 — when a COSObject is passed in, it
+# is dereferenced first; the inner value drives the type dispatch.
+
+
+def test_create_unwraps_cos_object_indirect_reference_to_type2() -> None:
+    """An indirect-reference object (``COSObject``) wrapping a Type-2
+    dictionary must dispatch via the resolved underlying object — not
+    raise on the wrapper type. Mirrors the ``base = ((COSObject) function)
+    .getObject()`` line in upstream ``create``."""
+    inner = COSDictionary()
+    inner.set_int("FunctionType", 2)
+    indirect = COSObject(1, 0, resolved=inner)
+    fn = PDFunction.create(indirect)
+    assert isinstance(fn, PDFunctionType2)
+
+
+def test_create_unwraps_cos_object_indirect_reference_to_type3() -> None:
+    """Same indirection as Type-2 — verifies the unwrap path is not
+    branched on subtype."""
+    inner = COSDictionary()
+    inner.set_int("FunctionType", 3)
+    indirect = COSObject(2, 0, resolved=inner)
+    fn = PDFunction.create(indirect)
+    assert isinstance(fn, PDFunctionType3)
+
+
+def test_create_unwraps_cos_object_with_unresolved_reference_returns_none() -> None:
+    """A ``COSObject`` whose ``getObject()`` resolves to ``None`` mirrors
+    upstream's branch where the unwrap yields ``null`` and the
+    ``IOException`` is thrown for "must be a Dictionary, but is (null)".
+    pypdfbox treats the ``None`` resolution as the same case as
+    ``create(None)`` — it returns ``None`` rather than raising, so the
+    caller can distinguish missing from invalid."""
+    indirect = COSObject(3, 0, resolved=None)
+    indirect.set_object(None)  # explicit dereference, no inner value
+    assert PDFunction.create(indirect) is None
+
+
+# ---------- get_function_type abstract — PDFunction.java:78 ----------
+
+
+def test_function_type_for_each_concrete_subtype_matches_upstream() -> None:
+    """Mirrors the upstream ``getFunctionType()`` overrides in each
+    concrete subclass — the int returned must match the spec values
+    listed in PDFunction.java:67-77 (0, 2, 3, 4)."""
+    assert PDFunctionType0(COSStream()).get_function_type() == 0
+    assert PDFunctionType2(COSDictionary()).get_function_type() == 2
+    assert PDFunctionType3(COSDictionary()).get_function_type() == 3
+    assert PDFunctionType4(COSStream()).get_function_type() == 4
+
+
+# ---------- stream constructor sets /Type /Function — PDFunction.java:55-58 ----------
+
+
+def test_stream_constructor_sets_type_function_when_absent() -> None:
+    """Mirrors ``functionStream.getCOSObject().setItem(COSName.TYPE,
+    COSName.FUNCTION)`` — the stream variant always advertises
+    ``/Type /Function`` so external introspection can recognise it
+    without having to load the full PD wrapper."""
+    raw = COSStream()
+    raw.set_int("FunctionType", 4)
+    PDFunctionType4(raw)
+    type_name = raw.get_dictionary_object("Type")
+    assert isinstance(type_name, COSName)
+    assert type_name.get_name() == "Function"
+
+
+def test_stream_constructor_overwrites_existing_type_entry() -> None:
+    """If the stream dictionary already carried a ``/Type`` value (rare
+    but legal — e.g. a copy from an unrelated dictionary), upstream
+    unconditionally overwrites it. Verify pypdfbox does the same."""
+    raw = COSStream()
+    raw.set_item("Type", COSName.get_pdf_name("XObject"))  # foreign value
+    raw.set_int("FunctionType", 0)
+    PDFunctionType0(raw)
+    type_name = raw.get_dictionary_object("Type")
+    assert isinstance(type_name, COSName)
+    assert type_name.get_name() == "Function"
+
+
+def test_dictionary_constructor_does_not_set_type_entry() -> None:
+    """Mirrors PDFunction.java:60-63 — dictionary-backed functions go
+    through the ``functionDictionary = (COSDictionary) function`` branch
+    which deliberately does NOT touch ``/Type``."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    PDFunctionType2(raw)
+    assert raw.get_dictionary_object("Type") is None
+
+
+# ---------- get_pd_stream identity — PDFunction.java:101-104 ----------
+
+
+def test_get_pd_stream_wraps_underlying_cos_stream() -> None:
+    """Mirrors the upstream ``functionStream`` field — the stored
+    ``PDStream`` references the same backing ``COSStream`` so changes
+    flow through both views."""
+    raw = COSStream()
+    raw.set_int("FunctionType", 0)
+    fn = PDFunctionType0(raw)
+    pd_stream = fn.get_pd_stream()
+    assert pd_stream is not None
+    # The wrapper exposes the same dictionary as the function itself.
+    assert pd_stream.get_cos_object() is raw
+
+
+# ---------- range values absent for Type 2 — PDFunction.java:264-271 ----------
+
+
+def test_get_range_values_returns_none_for_dictionary_without_range() -> None:
+    """``/Range`` is optional for Type 2 / 3 (legal per PDF 32000-1
+    §7.10.3). Upstream returns ``null``; pypdfbox returns ``None``."""
+    fn = PDFunctionType2(COSDictionary())
+    assert fn.get_range_values() is None
+
+
+# ---------- clipToRange empty array short-circuit — PDFunction.java:297 ----------
+
+
+def test_clip_to_range_passes_through_when_range_array_is_empty() -> None:
+    """Upstream guards ``rangesArray != null && rangesArray.size() > 0``
+    — a present-but-empty ``/Range`` short-circuits the same as a
+    missing one, returning the input vector unchanged."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    raw.set_item("Range", COSArray())  # present but empty
+    fn = PDFunctionType2(raw)
+    assert fn.clip_to_range([3.14, -7.0]) == pytest.approx([3.14, -7.0])
+
+
+# ---------- create() rejects non-dictionary base — PDFunction.java:127-131 ----------
+
+
+def test_create_rejects_non_dictionary_cos_base_with_typed_error() -> None:
+    """Mirrors ``throw new IOException("Error: Function must be a
+    Dictionary, but is " + ...)``. pypdfbox surfaces ``TypeError`` so
+    the call site can distinguish the malformed-input case from a
+    missing function (``None`` input)."""
+    with pytest.raises(TypeError):
+        PDFunction.create(COSInteger.get(2))
+
+
+# ---------- interpolate is callable on instances — PDFunction.java:349 ----------
+
+
+def test_interpolate_callable_on_instance() -> None:
+    """Upstream ``interpolate`` is a ``protected`` instance method, so
+    subclasses dispatch via ``this.interpolate(...)``. pypdfbox exposes
+    it as a static helper but must remain reachable through an instance
+    so call sites translated from Java keep compiling."""
+    fn = PDFunctionType2(COSDictionary())
+    assert fn.interpolate(0.5, 0.0, 1.0, 10.0, 20.0) == pytest.approx(15.0)
+
+
+# ---------- /Type /Function pre-existing — PDFunction.java:58 ----------
+
+
+def test_stream_constructor_idempotent_when_type_already_function() -> None:
+    """Constructing a stream-backed function over a stream that already
+    has ``/Type /Function`` is a no-op — the value remains the same
+    PDF name object."""
+    raw = COSStream()
+    raw.set_item("Type", COSName.get_pdf_name("Function"))
+    raw.set_int("FunctionType", 0)
+    PDFunctionType0(raw)
+    type_name = raw.get_dictionary_object("Type")
+    assert isinstance(type_name, COSName)
+    assert type_name.get_name() == "Function"
+
+
+# ---------- get_cos_object identity for stream — PDFunction.java:85-94 ----------
+
+
+def test_get_cos_object_round_trip_returns_same_stream_dictionary() -> None:
+    """Two calls to ``get_cos_object`` return the same dictionary
+    instance — upstream returns ``functionStream.getCOSObject()`` which
+    is a stable reference, not a fresh copy."""
+    raw = COSStream()
+    raw.set_int("FunctionType", 4)
+    fn = PDFunctionType4(raw)
+    assert fn.get_cos_object() is fn.get_cos_object() is raw
+
+
+def test_get_cos_object_round_trip_returns_same_dictionary() -> None:
+    """Same identity guarantee for the dictionary-backed branch."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    fn = PDFunctionType2(raw)
+    assert fn.get_cos_object() is fn.get_cos_object() is raw

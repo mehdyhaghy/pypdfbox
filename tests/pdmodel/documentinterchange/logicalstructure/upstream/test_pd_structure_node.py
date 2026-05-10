@@ -288,3 +288,173 @@ def test_insert_before_through_cos_object_indirection_single_kid() -> None:
     raw_k = node.get_cos_object().get_dictionary_object(_K)
     assert isinstance(raw_k, COSArray)
     assert raw_k.get_object(0) is new_kid
+
+
+# ---------- PDStructureNode.appendKid(PDStructureElement) parent contract (Java 150-154) ----------
+
+
+def test_append_kid_structure_element_sets_parent_to_node() -> None:
+    """Mirrors upstream ``appendKid(PDStructureElement)`` (Java line 150-154):
+    after ``appendObjectableKid`` returns, the structure element's parent
+    is set to ``this`` unconditionally.
+    """
+    parent = PDStructureNode("StructElem")
+    child = PDStructureElement(structure_type="P")
+    parent.append_kid(child)
+    # ``/P`` should now point at the parent's backing dictionary.
+    assert child.get_parent() is parent.get_cos_object()
+
+
+def test_append_two_structure_element_kids_each_have_parent_set() -> None:
+    """Each appended structure element gets its parent set, even after the
+    single-kid → array promotion path (Java appendKid via appendObjectableKid).
+    """
+    parent = PDStructureNode("StructElem")
+    first = PDStructureElement(structure_type="P")
+    second = PDStructureElement(structure_type="P")
+    parent.append_kid(first)
+    parent.append_kid(second)
+    assert first.get_parent() is parent.get_cos_object()
+    assert second.get_parent() is parent.get_cos_object()
+
+
+# ---------- PDStructureNode.removeKid(PDStructureElement) parent contract (Java 281-289) ----------
+
+
+def test_remove_kid_structure_element_clears_parent_on_success() -> None:
+    """Mirrors upstream ``removeKid(PDStructureElement)`` (Java line 281-289):
+    when ``removeObjectableKid`` returns ``true``, the structure element's
+    parent is set to ``null``.
+    """
+    parent = PDStructureNode("StructElem")
+    child = PDStructureElement(structure_type="P")
+    parent.append_kid(child)
+    assert child.get_parent() is parent.get_cos_object()
+    assert parent.remove_kid(child) is True
+    assert child.get_parent() is None
+
+
+def test_remove_kid_unknown_structure_element_does_not_clear_parent() -> None:
+    """Upstream only clears the parent when removal succeeds (Java line
+    285-287's ``if (removed)`` guard). A no-op remove must leave the
+    element's existing parent untouched.
+    """
+    parent_a = PDStructureNode("StructElem")
+    parent_b = PDStructureNode("StructElem")
+    child = PDStructureElement(structure_type="P")
+    parent_a.append_kid(child)
+    # child belongs to parent_a, not parent_b, so parent_b can't remove it.
+    assert parent_b.remove_kid(child) is False
+    # Parent must still point at parent_a's backing dictionary.
+    assert child.get_parent() is parent_a.get_cos_object()
+
+
+# ---------- PDStructureNode.removeKid array → single demotion (Java line 329-333) ----------
+
+
+def test_remove_kid_demotes_array_to_single_then_remove_again_clears_k() -> None:
+    """After array-shrink demotes ``/K`` back to a single dict (Java line
+    329-333), a follow-up remove of that last kid must clear ``/K`` entirely.
+    """
+    node = PDStructureNode("StructElem")
+    a, b = COSDictionary(), COSDictionary()
+    node.set_kids([a, b])
+    assert node.remove_kid(a) is True
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert raw_k is b
+    assert node.remove_kid(b) is True
+    assert node.get_cos_object().get_dictionary_object(_K) is None
+
+
+# ---------- PDStructureNode.getKids on single (non-array) kid (Java line 122-130) ----------
+
+
+def test_get_kids_with_single_non_array_kid_returns_list_of_one() -> None:
+    """Mirrors upstream ``getKids`` (Java line 122-130) — the ``else`` branch
+    that wraps a single non-array ``/K`` into a one-element list.
+    """
+    node = PDStructureNode("StructElem")
+    only = COSDictionary()
+    only.set_name(_TYPE, PDStructureElement.TYPE)
+    node.get_cos_object().set_item(_K, only)
+    kids = node.get_kids()
+    assert len(kids) == 1
+    assert isinstance(kids[0], PDStructureElement)
+    assert kids[0].get_cos_object() is only
+
+
+def test_get_kids_with_single_int_mcid_returns_list_of_int() -> None:
+    """Single integer MCID under ``/K`` (no array) — Java's ``getKids`` runs
+    the ``else`` branch through ``createObject(COSInteger)`` returning an
+    ``Integer`` per line 386-391.
+    """
+    node = PDStructureNode("StructElem")
+    node.get_cos_object().set_item(_K, COSInteger.get(42))
+    kids = node.get_kids()
+    assert kids == [42]
+
+
+# ---------- PDStructureNode.getCOSObject identity (Java line 88-91) ----------
+
+
+def test_get_cos_object_returns_same_dictionary_instance() -> None:
+    """Mirrors ``getCOSObject`` returning the exact backing dictionary
+    (Java line 88-91 — ``return dictionary`` on a final field). The
+    constructor that wraps an existing dictionary must hand the same
+    instance back.
+    """
+    backing = COSDictionary()
+    backing.set_name(_TYPE, PDStructureElement.TYPE)
+    node = PDStructureNode(backing)
+    assert node.get_cos_object() is backing
+
+
+# ---------- PDStructureNode.getType (Java line 98-101) ----------
+
+
+def test_get_type_returns_none_when_type_absent() -> None:
+    """Mirrors ``getType`` (Java line 98-101) — the underlying call to
+    ``getNameAsString(COSName.TYPE)`` returns ``null`` when the entry is
+    absent, which the Python port surfaces as ``None``.
+    """
+    node = PDStructureNode()
+    assert node.get_type() is None
+
+
+# ---------- PDStructureNode.setKids null/empty (Java 139-143 via converterToCOSArray) ----------
+
+
+def test_set_kids_none_removes_k_entry() -> None:
+    """Mirrors upstream ``setKids(null)`` — ``COSArrayList.converterToCOSArray
+    (null)`` returns ``null``, then ``setItem(K, null)`` removes ``/K``.
+    """
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    node.set_kids(None)
+    assert node.get_cos_object().get_dictionary_object(_K) is None
+
+
+# ---------- PDStructureNode.appendKid null guard (Java line 163-166) ----------
+
+
+def test_append_kid_none_is_silent_noop() -> None:
+    """Upstream protected ``appendKid(COSBase)`` returns early when the
+    object is ``null`` (Java line 163-166). The public ``appendKid
+    (PDStructureElement)`` first calls ``appendObjectableKid`` (also a
+    null-guard) so a null kid is a silent no-op rather than an exception.
+    """
+    node = PDStructureNode("StructElem")
+    node.append_kid(None)
+    assert node.get_cos_object().get_dictionary_object(_K) is None
+
+
+# ---------- PDStructureNode.removeKid null guard (Java line 314-317) ----------
+
+
+def test_remove_kid_none_returns_false() -> None:
+    """Upstream ``removeKid(COSBase)`` (Java line 312-317) returns ``false``
+    immediately when given ``null``.
+    """
+    node = PDStructureNode("StructElem")
+    node.append_kid(COSDictionary())
+    assert node.remove_kid(None) is False

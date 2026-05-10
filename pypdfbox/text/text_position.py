@@ -10,6 +10,56 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.font import PDFont
 
 
+def _create_diacritics() -> dict[int, str]:
+    """Build the non-decomposing diacritic remap table.
+
+    Mirrors upstream's private static ``createDiacritics()`` helper
+    (``TextPosition.java`` line 125). These code points are visually
+    diacritic-like characters that Unicode NFKC normalisation does not
+    map to a combining mark — so the text-stripper has to remap them
+    explicitly when merging a diacritic onto its base glyph.
+
+    Identical key set to upstream; preserved here so any future
+    re-syncs stay diffable.
+    """
+    return {
+        0x0060: "̀",
+        0x02CB: "̀",
+        0x0027: "́",
+        0x02B9: "́",
+        0x02CA: "́",
+        0x005E: "̂",
+        0x02C6: "̂",
+        0x007E: "̃",
+        0x02C9: "̄",
+        0x00B0: "̊",
+        0x02BA: "̋",
+        0x02C7: "̌",
+        0x02C8: "̍",
+        0x0022: "̎",
+        0x02BB: "̒",
+        0x02BC: "̓",
+        0x0486: "̓",
+        0x055A: "̓",
+        0x02BD: "̔",
+        0x0485: "̔",
+        0x0559: "̔",
+        0x02D4: "̝",
+        0x02D5: "̞",
+        0x02D6: "̟",
+        0x02D7: "̠",
+        0x02B2: "̡",
+        0x02CC: "̩",
+        0x02B7: "̫",
+        0x02CD: "̱",
+        0x005F: "̲",
+        0x204E: "͙",
+    }
+
+
+_DIACRITICS: dict[int, str] = _create_diacritics()
+
+
 @dataclass
 class TextPosition:
     """A single decoded text run with its origin in user space.
@@ -225,6 +275,63 @@ class TextPosition:
         """Page height in user-space units."""
         return self.page_height
 
+    def _get_x_rot(self, rotation: float) -> float:
+        """Return the X starting coordinate adjusted by ``rotation``.
+
+        Mirrors upstream's private ``getXRot(float)`` helper
+        (``TextPosition.java`` line 293). Only 0 / 90 / 180 / 270 are
+        supported by upstream — any other angle returns ``0`` to match.
+
+        In the lite port we don't carry a full ``Matrix``; we use
+        ``self.x`` / ``self.y`` as the translate components (the values a
+        ``Tm`` operator would store in slots 4/5 of the text matrix) so
+        the helper can be exercised in isolation.
+        """
+        if rotation == 0.0:
+            return self.x
+        if rotation == 90.0:
+            return self.y
+        if rotation == 180.0:
+            return self.page_width - self.x
+        if rotation == 270.0:
+            return self.page_height - self.y
+        return 0.0
+
+    def _get_y_lower_left_rot(self, rotation: float) -> float:
+        """Return the Y position with origin in the lower-left,
+        adjusted by ``rotation``.
+
+        Mirrors upstream's private ``getYLowerLeftRot(float)`` helper
+        (``TextPosition.java`` line 356). Returns ``0`` for unsupported
+        angles to match upstream behavior.
+        """
+        if rotation == 0.0:
+            return self.y
+        if rotation == 90.0:
+            return self.page_width - self.x
+        if rotation == 180.0:
+            return self.page_height - self.y
+        if rotation == 270.0:
+            return self.x
+        return 0.0
+
+    def _get_width_rot(self, rotation: float) -> float:
+        """Return the run width along the axis implied by ``rotation``.
+
+        Mirrors upstream's private ``getWidthRot(float)`` helper
+        (``TextPosition.java`` line 426). Upstream computes
+        ``|endX - tx|`` for 0/180 and ``|endY - ty|`` for 90/270 — in
+        the lite port the run is anchored at ``(self.x, self.y)`` and
+        :attr:`width` already represents the magnitude along the
+        text-direction axis, so the helper returns ``self.width``
+        regardless of axis.
+        """
+        # Mirrors upstream's branch on rotation; the lite port's width
+        # is already direction-agnostic so both axes resolve the same.
+        if rotation in (90.0, 270.0):
+            return self.width
+        return self.width
+
     def get_x_dir_adj(self) -> float:
         """Direction-adjusted X.
 
@@ -395,6 +502,48 @@ class TextPosition:
         self.text = merged
         self.width = self.width + diacritic.width
 
+    def _insert_diacritic(self, i: int, diacritic: TextPosition) -> None:
+        """Insert ``diacritic`` after the character at index ``i``.
+
+        Mirrors upstream's private ``insertDiacritic(int, TextPosition)``
+        helper (``TextPosition.java`` line 753). Upstream maintains
+        per-glyph widths in a parallel array and inserts the diacritic
+        with width ``0`` immediately after the base glyph; the lite port
+        doesn't track per-glyph widths but exposes the same hook so
+        ported callers (e.g. ``PDFTextStripper.handleDiacritic``) keep
+        the same call shape.
+
+        The inserted character is run through :meth:`_combine_diacritic`
+        first so non-combining presentation forms are mapped to their
+        combining counterparts before being attached.
+        """
+        if i < 0:
+            i = 0
+        if i > len(self.text):
+            i = len(self.text)
+        combined = self._combine_diacritic(diacritic.text)
+        # Unicode combining diacritics always go after the base
+        # character, regardless of logical / presentation order.
+        self.text = self.text[: i + 1] + combined + self.text[i + 1 :]
+
+    @staticmethod
+    def _combine_diacritic(s: str) -> str:
+        """Map a diacritic character to its combining form.
+
+        Mirrors upstream's private ``combineDiacritic(String)`` helper
+        (``TextPosition.java`` line 793). When the first code point is
+        listed in the non-decomposing remap table we substitute the
+        combining counterpart directly; otherwise we fall back to NFKC
+        normalisation and strip any leading/trailing whitespace, exactly
+        as upstream's ``Normalizer.normalize(str, NFKC).trim()`` does.
+        """
+        if not s:
+            return s
+        cp = ord(s[0])
+        if cp in _DIACRITICS:
+            return _DIACRITICS[cp]
+        return unicodedata.normalize("NFKC", s).strip()
+
     # ------------------------------------------------------------------
     # Matrix
     # ------------------------------------------------------------------
@@ -485,9 +634,29 @@ class TextPosition:
             )
         )
 
+    def hash_code(self) -> int:
+        """Return ``hash(self)``.
+
+        Mirrors upstream's ``hashCode()`` (``TextPosition.java`` line 972).
+        Python uses :py:meth:`__hash__` for the same role; this method
+        is the explicit upstream-named entry point for ported code that
+        calls ``textPosition.hashCode()``.
+        """
+        return self.__hash__()
+
     # ------------------------------------------------------------------
     # String representation
     # ------------------------------------------------------------------
+
+    def to_string(self) -> str:
+        """Return the human-readable form of this position.
+
+        Mirrors upstream's ``toString()`` (``TextPosition.java`` line 840),
+        which returns the decoded characters. Python prefers
+        :py:meth:`__str__`; this method is exposed so direct ports of
+        Java callers continue to read naturally.
+        """
+        return self.get_unicode()
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.text
