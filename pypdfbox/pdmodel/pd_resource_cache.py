@@ -333,6 +333,12 @@ class DefaultResourceCache(PDResourceCache):
     ) -> None:
         self._property_lists[indirect] = property_list
 
+    def get_properties(self, indirect: COSObject) -> PDPropertyList | None:
+        """Return the cached :class:`PDPropertyList` for ``indirect``, or
+        ``None``. Mirrors upstream ``DefaultResourceCache.getProperties``
+        (line 311)."""
+        return self._property_lists.get(indirect)
+
     # ---------- CID fonts ----------
 
     def get_cid_font(self, indirect: COSObject) -> PDCIDFont | None:
@@ -415,6 +421,34 @@ class DefaultResourceCache(PDResourceCache):
             indirect,
         )
 
+    def remove_properties(
+        self, indirect: COSObject
+    ) -> PDPropertyList | None:
+        """Remove and return the cached :class:`PDPropertyList` for
+        ``indirect``, or ``None``. Mirrors upstream
+        ``DefaultResourceCache.removeProperties`` (line 327) — applies the
+        stable-cache eviction guard (``MAX_REMOVALS``)."""
+        return self._remove_stable(
+            self._property_lists,
+            self._removed_property_lists,
+            self._stable_property_lists,
+            indirect,
+        )
+
+    def remove_ext_state(
+        self, indirect: COSObject
+    ) -> PDExtendedGraphicsState | None:
+        """Remove and return the cached :class:`PDExtendedGraphicsState` for
+        ``indirect``, or ``None``. Mirrors upstream
+        ``DefaultResourceCache.removeExtState`` (line 252) — applies the
+        stable-cache eviction guard (``MAX_REMOVALS``)."""
+        return self._remove_stable(
+            self._ext_g_states,
+            self._removed_ext_g_states,
+            self._stable_ext_g_states,
+            indirect,
+        )
+
     def remove_x_object(self, indirect: COSObject) -> PDXObject | None:
         return self._remove_stable(
             self._xobjects,
@@ -422,6 +456,58 @@ class DefaultResourceCache(PDResourceCache):
             self._stable_xobjects,
             indirect,
         )
+
+    # ---------- upstream-overload dispatch ----------
+
+    def put(self, indirect: COSObject, resource: object) -> None:
+        """Type-dispatching mirror of upstream's nine ``put(COSObject, ...)``
+        overloads (lines 119, 137, 154, 173, 198, 230, 263, 289, 318). Routes
+        to the appropriate ``put_*`` method based on the runtime type of
+        ``resource``. Raises :class:`TypeError` for unsupported types so
+        callers don't silently drop resources."""
+        # Imports kept lazy so the cache module stays import-light — pulling
+        # in all nine wrappers eagerly would balloon the dependency graph for
+        # a callsite most pypdfbox code never touches.
+        from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
+        from pypdfbox.pdmodel.font.pd_font import PDFont
+        from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+        from pypdfbox.pdmodel.graphics.pattern.pd_abstract_pattern import (
+            PDAbstractPattern,
+        )
+        from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
+        from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
+        from pypdfbox.pdmodel.graphics.shading.pd_shading import PDShading
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
+            PDExtendedGraphicsState,
+        )
+
+        # Order matters: PDCIDFont and PDFontDescriptor must be checked
+        # before PDFont when they subclass it (or vice versa) — Java picks
+        # the most specific overload at compile time.
+        if isinstance(resource, PDCIDFont):
+            self.put_cid_font(indirect, resource)
+        elif isinstance(resource, PDFont):
+            self.put_font(indirect, resource)
+        elif isinstance(resource, PDFontDescriptor):
+            self.put_font_descriptor(indirect, resource)
+        elif isinstance(resource, PDColorSpace):
+            self.put_color_space(indirect, resource)
+        elif isinstance(resource, PDExtendedGraphicsState):
+            self.put_ext_g_state(indirect, resource)
+        elif isinstance(resource, PDShading):
+            self.put_shading(indirect, resource)
+        elif isinstance(resource, PDAbstractPattern):
+            self.put_pattern(indirect, resource)
+        elif isinstance(resource, PDXObject):
+            self.put_x_object(indirect, resource)
+        elif isinstance(resource, PDPropertyList):
+            self.put_property_list(indirect, resource)
+        else:
+            raise TypeError(
+                f"DefaultResourceCache.put: unsupported resource type "
+                f"{type(resource).__name__!r}"
+            )
 
     # ---------- maintenance ----------
 

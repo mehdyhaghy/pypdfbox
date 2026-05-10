@@ -458,3 +458,88 @@ def test_read_encoding_primes_caches_without_error() -> None:
     # Cache flags now reflect the touched-once state.
     assert font._cmap_loaded is True  # noqa: SLF001
     assert font._cmap_ucs2_loaded is True  # noqa: SLF001
+
+
+# ---------- methods added in Wave 1261 (PDType0Font 1:1 round-out) ----------
+
+
+def test_get_name_returns_base_font(liberation_bytes: bytes) -> None:
+    """Upstream ``PDType0Font.getName()`` (Java line 651-655) overrides
+    :meth:`PDFont.getName` to forward to ``getBaseFont()``.
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert font.get_name() == font.get_base_font()
+    assert font.get_name() == "LiberationSans"
+
+
+def test_get_name_synthetic_returns_base_font_entry() -> None:
+    """``get_name`` returns the dictionary's ``/BaseFont`` entry verbatim
+    even when no descendant program is available.
+    """
+    font = _build_type0(_build_cid_font_type2(), encoding="Identity-H")
+    assert font.get_name() == "TestType0"
+
+
+def test_to_string_format_matches_upstream(liberation_bytes: bytes) -> None:
+    """Upstream ``PDType0Font.toString()`` (Java line 710-719) emits
+    ``PDType0Font/<DescendantClass>, PostScript name: <BaseFont>``.
+    """
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    s = font.to_string()
+    assert s.startswith("PDType0Font/PDCIDFontType2,")
+    assert "PostScript name: LiberationSans" in s
+
+
+def test_to_string_descendant_none_when_descendant_absent() -> None:
+    """``to_string`` includes ``None`` in the descendant slot when the
+    parent dict has no /DescendantFonts entry.
+    """
+    font_dict = COSDictionary()
+    font_dict.set_name(COSName.SUBTYPE, "Type0")  # type: ignore[attr-defined]
+    font_dict.set_name(_BASE_FONT, "Lonely")
+    font = PDType0Font(font_dict)
+    s = font.to_string()
+    assert "PDType0Font/None" in s
+    assert "PostScript name: Lonely" in s
+
+
+def test_repr_delegates_to_to_string(liberation_bytes: bytes) -> None:
+    """``__repr__`` is a thin wrapper around :meth:`to_string`."""
+    font = PDType0Font.load_ttf(None, liberation_bytes)
+    assert repr(font) == font.to_string()
+
+
+def test_get_c_map_alias_matches_get_cmap() -> None:
+    """``get_c_map`` is the literal-conversion alias for :meth:`get_cmap`."""
+    font = _build_type0(_build_cid_font_type2(), encoding="Identity-H")
+    assert font.get_c_map() is font.get_cmap()
+
+
+def test_get_c_map_ucs2_alias_matches_get_cmap_ucs2() -> None:
+    """``get_c_map_ucs2`` is the literal-conversion alias for
+    :meth:`get_cmap_ucs2`.
+    """
+    desc = _build_cid_font_type2(registry="Adobe", ordering="Japan1")
+    font = _build_type0(desc)
+    assert font.get_c_map_ucs2() is font.get_cmap_ucs2()
+
+
+def test_fetch_c_map_ucs2_primes_cache() -> None:
+    """``fetch_c_map_ucs2`` mirrors upstream's private
+    ``fetchCMapUCS2()`` (Java line 398) — primes the lazy cache.
+    """
+    desc = _build_cid_font_type2(registry="Adobe", ordering="GB1")
+    font = _build_type0(desc)
+    assert font._cmap_ucs2_loaded is False  # noqa: SLF001
+    font.fetch_c_map_ucs2()
+    assert font._cmap_ucs2_loaded is True  # noqa: SLF001
+
+
+def test_fetch_c_map_ucs2_swallows_parse_errors() -> None:
+    """``fetch_c_map_ucs2`` is silent on malformed encodings, matching
+    upstream's warn-and-continue behaviour.
+    """
+    font = _build_type0(_build_cid_font_type2(), encoding="Identity-H")
+    # Should not raise even though Identity is not a UCS2-mappable
+    # registry/ordering.
+    assert font.fetch_c_map_ucs2() is None

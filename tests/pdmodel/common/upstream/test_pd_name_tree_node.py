@@ -140,3 +140,110 @@ def test_set_lower_upper_limit_at_root_does_not_leak() -> None:
     root.set_kids([leaf])
 
     assert root.get_cos_object().get_dictionary_object(_LIMITS) is None
+
+
+# ---------- TestPDNameTreeNode (Java) port: 3-level limits propagation ----------
+# Ported from
+# ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/TestPDNameTreeNode.java``
+# (PDFBox 3.0.x). The upstream fixture builds a 3-level tree mirroring the
+# typical name-tree shape — root with two intermediate kids, each pointing
+# at a populated leaf — and asserts that ``/Limits`` are calculated bottom
+# up while staying suppressed at the root.
+
+
+def _populate(node: PDStringNameTreeNode, names: dict[str, str]) -> None:
+    node.set_names(names)
+
+
+@pytest.fixture
+def three_level_tree() -> dict[str, PDStringNameTreeNode]:
+    """Builds the same five-node tree as upstream's ``setUp``.
+
+    Layout::
+
+        node1 (root)
+        ├── node2
+        │   └── node5  {"Actinium" .. "Astatine"}
+        └── node4
+            └── node24 {"Xenon" .. "Zirconium"}
+    """
+    node5 = PDStringNameTreeNode()
+    _populate(
+        node5,
+        {
+            "Actinium": "89",
+            "Aluminum": "13",
+            "Americium": "95",
+            "Antimony": "51",
+            "Argon": "18",
+            "Arsenic": "33",
+            "Astatine": "85",
+        },
+    )
+
+    node24 = PDStringNameTreeNode()
+    _populate(
+        node24,
+        {
+            "Xenon": "54",
+            "Ytterbium": "70",
+            "Yttrium": "39",
+            "Zinc": "30",
+            "Zirconium": "40",
+        },
+    )
+
+    node2 = PDStringNameTreeNode()
+    node2.set_kids([node5])
+
+    node4 = PDStringNameTreeNode()
+    node4.set_kids([node24])
+
+    node1 = PDStringNameTreeNode()
+    node1.set_kids([node2, node4])
+
+    return {
+        "node1": node1,
+        "node2": node2,
+        "node4": node4,
+        "node5": node5,
+        "node24": node24,
+    }
+
+
+def test_three_level_upper_limit(
+    three_level_tree: dict[str, PDStringNameTreeNode],
+) -> None:
+    """Port of ``testUpperLimit``: per-level upper limits propagate from
+    populated leaves into intermediate nodes; root has none."""
+    assert three_level_tree["node5"].get_upper_limit() == "Astatine"
+    assert three_level_tree["node2"].get_upper_limit() == "Astatine"
+
+    assert three_level_tree["node24"].get_upper_limit() == "Zirconium"
+    assert three_level_tree["node4"].get_upper_limit() == "Zirconium"
+
+    assert three_level_tree["node1"].get_upper_limit() is None
+
+
+def test_three_level_lower_limit(
+    three_level_tree: dict[str, PDStringNameTreeNode],
+) -> None:
+    """Port of ``testLowerLimit``: symmetric to ``testUpperLimit``."""
+    assert three_level_tree["node5"].get_lower_limit() == "Actinium"
+    assert three_level_tree["node2"].get_lower_limit() == "Actinium"
+
+    assert three_level_tree["node24"].get_lower_limit() == "Xenon"
+    assert three_level_tree["node4"].get_lower_limit() == "Xenon"
+
+    assert three_level_tree["node1"].get_lower_limit() is None
+
+
+def test_convert_cos_to_pd_alias_matches_convert_cos_to_value() -> None:
+    """``convert_cos_to_pd`` is the upstream-named hook (``convertCOSToPD``
+    at ``PDNameTreeNode.java`` line 303) and must default to the same
+    behaviour as :meth:`convert_cos_to_value` — exercised here against the
+    string-leaf concrete subclass."""
+    tree = PDStringNameTreeNode()
+    base = COSString("payload")
+    assert tree.convert_cos_to_pd(base) == tree.convert_cos_to_value(base)
+    assert tree.convert_cos_to_pd(base) == "payload"

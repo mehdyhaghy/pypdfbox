@@ -972,15 +972,62 @@ class PDType0Font(PDFont):
         with suppress(Exception):
             self.get_cmap_ucs2()
 
+    def fetch_c_map_ucs2(self) -> None:
+        """Force-parse the predefined UCS2 fallback CMap.
+
+        Mirrors upstream's private ``PDType0Font.fetchCMapUCS2()``
+        (Java line 398) which runs from the constructor when
+        ``/Encoding`` is a predefined CMap name (excluding Identity-H/V)
+        or the descendant font uses one of the Adobe CJK character
+        collections. pypdfbox is lazy by default — this method primes
+        :meth:`get_cmap_ucs2`'s cache without surfacing parse errors
+        (upstream logs a warning rather than raising).
+        """
+        with suppress(Exception):
+            self.get_cmap_ucs2()
+
+    # ---------- upstream-named accessors (literal camelCase → snake) ----------
+
+    def get_c_map(self) -> CMap | None:
+        """Alias for :meth:`get_cmap`. Mirrors upstream
+        ``PDType0Font.getCMap()`` (Java line 471) under the literal
+        camelCase → snake_case conversion (``getCMap`` → ``get_c_map``).
+        Behaviorally identical to :meth:`get_cmap`.
+        """
+        return self.get_cmap()
+
+    def get_c_map_ucs2(self) -> CMap | None:
+        """Alias for :meth:`get_cmap_ucs2`. Mirrors upstream
+        ``PDType0Font.getCMapUCS2()`` (Java line 482) under the literal
+        camelCase → snake_case conversion. Behaviorally identical.
+        """
+        return self.get_cmap_ucs2()
+
+    # ---------- /BaseFont (PDFont override) ----------
+
+    def get_name(self) -> str | None:
+        """Return the font's PostScript name.
+
+        Overrides :meth:`PDFont.get_name` to mirror upstream
+        ``PDType0Font.getName()`` (Java line 651-655) which forwards to
+        ``getBaseFont()`` — both return the ``/BaseFont`` entry, so the
+        observable behaviour is unchanged. The override exists so callers
+        that look up the method on the concrete class find it directly.
+        """
+        return self.get_base_font()
+
     # ---------- diagnostics ----------
 
-    def __repr__(self) -> str:
-        """Mirror upstream ``PDType0Font.toString`` formatting:
+    def to_string(self) -> str:
+        """Return the upstream ``PDType0Font.toString`` representation.
+
+        Mirrors Java line 710-719:
 
             ``PDType0Font/<DescendantClass>, PostScript name: <BaseFont>``
 
-        Surfaces enough identity for log lines and debugger inspection
-        without dragging in the full dictionary state.
+        Surfaced as a public method (rather than only via :meth:`__repr__`)
+        so call sites ported from upstream Java keep their explicit
+        ``font.toString()`` invocations.
         """
         descendant = self.get_descendant_font()
         descendant_name = type(descendant).__name__ if descendant is not None else None
@@ -988,6 +1035,12 @@ class PDType0Font(PDFont):
             f"{type(self).__name__}/{descendant_name},"
             f" PostScript name: {self.get_base_font()}"
         )
+
+    def __repr__(self) -> str:
+        """Delegates to :meth:`to_string` so REPL / log output matches
+        the upstream ``toString`` formatting verbatim.
+        """
+        return self.to_string()
 
     # ---------- glyph / metric delegators ----------
 

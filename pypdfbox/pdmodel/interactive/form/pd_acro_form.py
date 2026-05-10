@@ -1104,6 +1104,193 @@ class PDAcroForm:
         catalog = document.get_document_catalog()
         catalog.get_cos_object().remove_item(_ACRO_FORM)
 
+    # ---------- upstream-named internal helpers (PDFBox parity) ----------
+    #
+    # These mirror the package-private helpers used by upstream's
+    # ``flatten`` implementation. They are not part of the public API but
+    # are exposed under their upstream snake-case names so writers driving
+    # the same algorithm step-by-step (oracle/parity tests, downstream
+    # subclasses) can rely on the same building blocks.
+
+    @staticmethod
+    def is_visible_annotation(widget: COSDictionary) -> bool:
+        """Return ``True`` when ``widget`` has a non-empty normal appearance.
+
+        Mirrors upstream ``PDAcroForm.isVisibleAnnotation`` (line 319): a
+        widget is "visible" for flattening purposes when it is neither
+        invisible nor hidden (``/F`` flag bits 1 / 2) and its ``/AP /N``
+        resolves to a stream with a positive-area ``/BBox``.
+
+        On the lite surface we don't yet carry the ``PDAnnotation`` class,
+        so this operates directly on the widget COS dictionary — same
+        observable contract."""
+        from pypdfbox.cos import COSFloat, COSInteger
+
+        flags = widget.get_int(COSName.get_pdf_name("F"), 0)
+        # /F flag bit 1 = Invisible, bit 2 = Hidden (PDF 32000-1 §12.5.3).
+        if flags & (1 << 0) or flags & (1 << 1):
+            return False
+        ap = widget.get_dictionary_object(_AP)
+        if not isinstance(ap, COSDictionary):
+            return False
+        normal = ap.get_dictionary_object(_N)
+        if not isinstance(normal, COSStream):
+            return False
+        bbox = normal.get_dictionary_object(_BBOX)
+        if not isinstance(bbox, COSArray) or bbox.size() < 4:
+            return False
+        try:
+            vals = []
+            for i in range(4):
+                entry = bbox.get_object(i)
+                if not isinstance(entry, (COSInteger, COSFloat)):
+                    return False
+                vals.append(float(entry.value))
+        except (AttributeError, TypeError):
+            return False
+        width = abs(vals[2] - vals[0])
+        height = abs(vals[3] - vals[1])
+        return width > 0 and height > 0
+
+    @staticmethod
+    def get_transformed_appearance_b_box(
+        appearance_stream: COSStream,
+    ) -> tuple[float, float, float, float] | None:
+        """Apply the appearance stream's ``/Matrix`` to its ``/BBox`` and
+        return the axis-aligned bounding box of the transformed shape.
+
+        Mirrors upstream ``PDAcroForm.getTransformedAppearanceBBox`` (line
+        755). Returns ``None`` when the form lacks a usable ``/BBox`` —
+        upstream throws ``NullPointerException`` on this path; we prefer
+        a clean ``None`` so callers can short-circuit.
+
+        The pypdfbox ``flatten`` path uses :meth:`_read_form_geometry` for
+        the same job — this method is the upstream-named entry point."""
+        bbox, matrix = PDAcroForm._read_form_geometry(appearance_stream)
+        if bbox is None:
+            return None
+        bx0, by0, bx1, by1 = bbox
+        a, b, c, d, e, f = matrix
+        corners = [
+            (a * bx0 + c * by0 + e, b * bx0 + d * by0 + f),
+            (a * bx1 + c * by0 + e, b * bx1 + d * by0 + f),
+            (a * bx1 + c * by1 + e, b * bx1 + d * by1 + f),
+            (a * bx0 + c * by1 + e, b * bx0 + d * by1 + f),
+        ]
+        xs = [pt[0] for pt in corners]
+        ys = [pt[1] for pt in corners]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def resolve_transformation_matrix(
+        self, widget: COSDictionary, appearance_stream: COSStream
+    ) -> tuple[float, float, float, float, float, float] | None:
+        """Compute the placement CTM that maps ``appearance_stream`` onto
+        ``widget``'s ``/Rect``.
+
+        Mirrors upstream ``PDAcroForm.resolveTransformationMatrix`` (line
+        733). Returns ``None`` when either the widget rectangle or the
+        appearance bounding box can't be resolved — upstream throws on
+        these paths; we prefer a soft ``None`` so flatten can skip the
+        widget cleanly.
+
+        The 6-tuple is ``(a, b, c, d, e, f)`` per PDF 32000-1 §8.3.4 —
+        compatible with :class:`Matrix` and the ``cm`` operator."""
+        rect = widget.get_dictionary_object(_RECT)
+        if not isinstance(rect, COSArray) or rect.size() < 4:
+            return None
+        rect_values = self._read_rect(rect)
+        if rect_values is None:
+            return None
+        bbox_values, matrix_values = self._read_form_geometry(appearance_stream)
+        if bbox_values is None:
+            return None
+        return self._compute_ctm(rect_values, bbox_values, matrix_values)
+
+    def build_pages_widgets_map(
+        self,
+        fields: list[PDField],
+        pages: object | None = None,
+    ) -> dict[int, set[int]]:
+        """Build a ``{page id → {widget id, ...}}`` map for ``fields``.
+
+        Mirrors upstream ``PDAcroForm.buildPagesWidgetsMap`` (line 770).
+        Page lookup prefers each widget's ``/P`` back-pointer; widgets
+        with no resolvable ``/P`` fall back to scanning every page's
+        ``/Annots``. Identity is keyed by Python ``id()`` so the result
+        round-trips object identity (the upstream version uses
+        ``COSDictionary`` reference equality — same shape).
+
+        ``pages`` is accepted for upstream signature parity; when
+        ``None`` we fall back to the document's page tree. Returns an
+        empty map when no widgets resolve."""
+        out: dict[int, set[int]] = {}
+        has_missing_page_ref = False
+
+        for field in fields:
+            for widget in field.get_widgets():
+                widget_dict = widget.get_cos_object()
+                page_dict = self._resolve_widget_page(widget_dict)
+                if page_dict is not None:
+                    self.fill_pages_annotation_map(out, page_dict, widget_dict)
+                else:
+                    has_missing_page_ref = True
+
+        if not has_missing_page_ref:
+            return out
+
+        # Reverse-walk fallback when at least one widget has no /P.
+        document = self._document if pages is None else pages
+        if document is None:
+            return out
+        from pypdfbox.pdmodel.pd_document import PDDocument
+
+        if not isinstance(document, PDDocument):
+            return out
+        widget_set = self.create_widget_dictionary_set(fields)
+        for page in document.get_pages():
+            page_dict = page.get_cos_object()
+            annots = page_dict.get_dictionary_object(_ANNOTS)
+            if not isinstance(annots, COSArray):
+                continue
+            for i in range(annots.size()):
+                entry = annots.get_object(i)
+                if isinstance(entry, COSDictionary) and id(entry) in widget_set:
+                    self.fill_pages_annotation_map(out, page_dict, entry)
+        return out
+
+    @staticmethod
+    def create_widget_dictionary_set(fields: list[PDField]) -> set[int]:
+        """Return the set of widget COS-dictionary identities referenced
+        by ``fields``.
+
+        Mirrors upstream ``PDAcroForm.createWidgetDictionarySet`` (line
+        823) — used by :meth:`build_pages_widgets_map` when at least one
+        widget lacks a ``/P`` back-pointer. Identity is keyed by Python
+        ``id()`` for parity with upstream's reference equality."""
+        out: set[int] = set()
+        for field in fields:
+            for widget in field.get_widgets():
+                out.add(id(widget.get_cos_object()))
+        return out
+
+    @staticmethod
+    def fill_pages_annotation_map(
+        pages_map: dict[int, set[int]],
+        page: COSDictionary,
+        widget: COSDictionary,
+    ) -> None:
+        """Add ``widget`` to ``pages_map[id(page)]``, creating the bucket
+        when absent.
+
+        Mirrors upstream ``PDAcroForm.fillPagesAnnotationMap`` (line 837)
+        — small helper kept separate so :meth:`build_pages_widgets_map`
+        and the reverse-walk fallback share a single insertion path."""
+        bucket = pages_map.get(id(page))
+        if bucket is None:
+            pages_map[id(page)] = {id(widget)}
+        else:
+            bucket.add(id(widget))
+
 
 def _fmt(value: float) -> str:
     """Format a CTM operand the same way :class:`PDPageContentStream`

@@ -118,6 +118,18 @@ class PDNameTreeNode[T](ABC):
     def create_child_node(self, dic: COSDictionary) -> PDNameTreeNode[T]:
         """Create a child node of the same concrete subclass type."""
 
+    def convert_cos_to_pd(self, base: COSBase) -> T:
+        """Upstream-named hook for COS-to-PD conversion.
+
+        Mirrors PDFBox's ``protected abstract T convertCOSToPD(COSBase)``
+        (``PDNameTreeNode.java`` line 303). pypdfbox's primary extension
+        point is :meth:`convert_cos_to_value` — both names address the
+        same operation; this thin shim is provided so PDFBox-trained
+        callers can use the upstream snake_case name verbatim and so
+        subclasses may override either hook without surprise.
+        """
+        return self.convert_cos_to_value(base)
+
     # ---------- /Kids ----------
 
     def get_kids(self) -> list[PDNameTreeNode[T]] | None:

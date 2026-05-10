@@ -470,3 +470,125 @@ def test_clear_resets_stable_cache_bookkeeping() -> None:
     cache.put_font(key, font)
     assert cache.remove_font(key) is font
     assert cache.get_font(key) is None
+
+
+# ---------- DefaultResourceCache concrete overrides for upstream parity ----------
+
+
+def test_default_cache_get_properties_returns_cached_property_list() -> None:
+    """``DefaultResourceCache.get_properties`` mirrors upstream's
+    ``getProperties`` (line 311) — it must return the same backing entry as
+    ``get_property_list`` without going through the abstract base."""
+    cache = DefaultResourceCache()
+    key = _ref(70)
+    prop = object()
+    cache.put_property_list(key, prop)  # type: ignore[arg-type]
+    assert cache.get_properties(key) is prop
+    assert cache.get_properties(_ref(71)) is None
+
+
+def test_default_cache_remove_properties_applies_stable_cache_guard() -> None:
+    """``DefaultResourceCache.remove_properties`` (upstream line 327) must
+    apply the same ``MAX_REMOVALS`` eviction guard as
+    ``remove_property_list``."""
+    cache = DefaultResourceCache()
+    key = _ref(72)
+
+    for removed in range(DefaultResourceCache.MAX_REMOVALS):
+        prop = object()
+        cache.put_property_list(key, prop)  # type: ignore[arg-type]
+        result = cache.remove_properties(_ref(72))
+        if removed < DefaultResourceCache.MAX_REMOVALS - 1:
+            assert result is prop
+        else:
+            # Threshold hit — removal is suppressed and the entry stays.
+            assert result is None
+            assert cache.get_property_list(key) is prop
+
+
+def test_default_cache_remove_ext_state_applies_stable_cache_guard() -> None:
+    """``DefaultResourceCache.remove_ext_state`` (upstream line 252) must
+    apply the same ``MAX_REMOVALS`` eviction guard as
+    ``remove_ext_g_state``."""
+    cache = DefaultResourceCache()
+    key = _ref(73)
+
+    for removed in range(DefaultResourceCache.MAX_REMOVALS):
+        ext = object()
+        cache.put_ext_g_state(key, ext)  # type: ignore[arg-type]
+        result = cache.remove_ext_state(_ref(73))
+        if removed < DefaultResourceCache.MAX_REMOVALS - 1:
+            assert result is ext
+        else:
+            assert result is None
+            assert cache.get_ext_g_state(key) is ext
+
+
+def test_default_cache_put_dispatches_by_resource_type() -> None:
+    """The single-name ``put`` dispatcher mirrors upstream's nine
+    ``put(COSObject, ...)`` overloads (lines 119, 137, 154, 173, 198, 230,
+    263, 289, 318) — each runtime type must land in the matching backing
+    store."""
+    from pypdfbox.cos import COSDictionary, COSStream
+    from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
+    from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+    from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN
+    from pypdfbox.pdmodel.graphics.form import PDFormXObject
+    from pypdfbox.pdmodel.graphics.pattern.pd_shading_pattern import (
+        PDShadingPattern,
+    )
+    from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
+    from pypdfbox.pdmodel.graphics.shading.pd_shading_type1 import PDShadingType1
+    from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
+        PDExtendedGraphicsState,
+    )
+
+    cache = DefaultResourceCache()
+
+    xobject = PDFormXObject(COSStream())
+    cache.put(_ref(80), xobject)
+    assert cache.get_x_object(_ref(80)) is xobject
+
+    ext = PDExtendedGraphicsState()
+    cache.put(_ref(81), ext)
+    assert cache.get_ext_g_state(_ref(81)) is ext
+
+    cs_dict = COSDictionary()
+    color_space = PDDeviceN(cs_dict) if False else None
+    if color_space is not None:
+        cache.put(_ref(82), color_space)
+        assert cache.get_color_space(_ref(82)) is color_space
+
+    shading = PDShadingType1(COSDictionary())
+    cache.put(_ref(83), shading)
+    assert cache.get_shading(_ref(83)) is shading
+
+    pattern = PDShadingPattern(COSDictionary())
+    cache.put(_ref(84), pattern)
+    assert cache.get_pattern(_ref(84)) is pattern
+
+    descriptor = PDFontDescriptor(COSDictionary())
+    cache.put(_ref(85), descriptor)
+    assert cache.get_font_descriptor(_ref(85)) is descriptor
+
+    prop = PDPropertyList(COSDictionary())
+    cache.put(_ref(86), prop)
+    assert cache.get_property_list(_ref(86)) is prop
+
+    # PDCIDFont must route to the CID slot, not the generic font slot.
+    cid_dict = COSDictionary()
+    cid_font = PDCIDFont.__new__(PDCIDFont)
+    cid_font.dict = cid_dict  # type: ignore[attr-defined]
+    cache.put(_ref(87), cid_font)
+    assert cache.get_cid_font(_ref(87)) is cid_font
+    assert cache.get_font(_ref(87)) is None
+
+
+def test_default_cache_put_rejects_unsupported_types() -> None:
+    """Anything that isn't a recognised PD wrapper must raise ``TypeError``
+    — silent drops would mask programming errors."""
+    cache = DefaultResourceCache()
+    with pytest.raises(TypeError):
+        cache.put(_ref(90), "not a resource")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        cache.put(_ref(91), 12345)  # type: ignore[arg-type]

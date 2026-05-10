@@ -1112,6 +1112,8 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/text/upstream/test_pdf_text_stripper.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/text/TestTextStripper.java` (helper-method extraction; not full corpus port — corpus tests need rendering-comparison fixtures) |
 | `tests/pdmodel/font/upstream/test_pd_type3_char_proc.py` | 3.0.x | placeholder — upstream has no dedicated `PDType3CharProcTest.java`; behaviour anchored to `PDType3CharProc.java` source line ranges |
 | `tests/pdmodel/upstream/test_pd_resources.py` | 3.0.x | synthesised from PDResources resource patterns in `COSWriterTest`, `TestLayerUtility`, `TestOptionalContentGroups` (no dedicated `PDResourcesTest.java` upstream) |
+| `tests/fontbox/cmap/upstream/test_cmap.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/cmap/TestCMap.java` |
+| `tests/pdmodel/common/upstream/test_pd_name_tree_node.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/TestPDNameTreeNode.java` |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |

@@ -839,3 +839,179 @@ def test_get_q_if_exists_returns_explicit_value() -> None:
         form.set_q(q)
         assert form.get_q_if_exists() == q
         assert form.get_q() == q
+
+
+# ---------- Wave 1261 — upstream-named internal helper parity
+# (is_visible_annotation, get_transformed_appearance_b_box,
+# resolve_transformation_matrix, build_pages_widgets_map,
+# create_widget_dictionary_set, fill_pages_annotation_map).
+
+
+def test_is_visible_annotation_requires_normal_appearance_with_positive_bbox() -> None:
+    """``is_visible_annotation`` matches upstream's flatten visibility
+    guard — widget needs a non-invisible/non-hidden /F flag, an /AP /N
+    stream, and a positive-area /BBox."""
+    from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
+
+    widget = COSDictionary()
+    # No /AP at all → not visible.
+    assert PDAcroForm.is_visible_annotation(widget) is False
+
+    # Build a minimal /AP /N stream with a 100x50 BBox.
+    stream = COSStream()
+    bbox = COSArray()
+    for v in (0, 0, 100, 50):
+        bbox.add(COSInteger(v))
+    stream.set_item(COSName.get_pdf_name("BBox"), bbox)
+    ap = COSDictionary()
+    ap.set_item(COSName.get_pdf_name("N"), stream)
+    widget.set_item(COSName.get_pdf_name("AP"), ap)
+    assert PDAcroForm.is_visible_annotation(widget) is True
+
+    # /F flag bit 1 = Invisible.
+    widget.set_int(COSName.get_pdf_name("F"), 0b01)
+    assert PDAcroForm.is_visible_annotation(widget) is False
+    # /F flag bit 2 = Hidden.
+    widget.set_int(COSName.get_pdf_name("F"), 0b10)
+    assert PDAcroForm.is_visible_annotation(widget) is False
+    # Neither bit set → visible again.
+    widget.set_int(COSName.get_pdf_name("F"), 0)
+    assert PDAcroForm.is_visible_annotation(widget) is True
+
+    # Zero-area BBox → not visible.
+    zero_bbox = COSArray()
+    for v in (0, 0, 0, 0):
+        zero_bbox.add(COSInteger(v))
+    stream.set_item(COSName.get_pdf_name("BBox"), zero_bbox)
+    assert PDAcroForm.is_visible_annotation(widget) is False
+
+
+def test_get_transformed_appearance_b_box_applies_form_matrix() -> None:
+    """``get_transformed_appearance_b_box`` applies the form's /Matrix
+    to its /BBox and returns the axis-aligned rectangle."""
+    from pypdfbox.cos import COSArray, COSInteger, COSName, COSStream
+
+    stream = COSStream()
+    bbox = COSArray()
+    for v in (0, 0, 10, 20):
+        bbox.add(COSInteger(v))
+    stream.set_item(COSName.get_pdf_name("BBox"), bbox)
+    # Identity matrix → bbox unchanged.
+    result = PDAcroForm.get_transformed_appearance_b_box(stream)
+    assert result == (0.0, 0.0, 10.0, 20.0)
+
+    # Translate-by-(5, 7) matrix.
+    matrix = COSArray()
+    for v in (1, 0, 0, 1, 5, 7):
+        matrix.add(COSInteger(v))
+    stream.set_item(COSName.get_pdf_name("Matrix"), matrix)
+    result = PDAcroForm.get_transformed_appearance_b_box(stream)
+    assert result == (5.0, 7.0, 15.0, 27.0)
+
+
+def test_get_transformed_appearance_b_box_returns_none_without_bbox() -> None:
+    """No /BBox → returns ``None`` (upstream throws NPE on this path)."""
+    from pypdfbox.cos import COSStream
+
+    stream = COSStream()
+    assert PDAcroForm.get_transformed_appearance_b_box(stream) is None
+
+
+def test_resolve_transformation_matrix_maps_form_onto_widget_rect() -> None:
+    """``resolve_transformation_matrix`` returns the placement CTM that
+    maps the form's transformed /BBox onto the widget's /Rect."""
+    from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
+
+    form = PDAcroForm()
+    widget = COSDictionary()
+    rect = COSArray()
+    # Widget at (10, 20) sized 100x50.
+    for v in (10, 20, 110, 70):
+        rect.add(COSInteger(v))
+    widget.set_item(COSName.get_pdf_name("Rect"), rect)
+
+    appearance = COSStream()
+    bbox = COSArray()
+    for v in (0, 0, 100, 50):
+        bbox.add(COSInteger(v))
+    appearance.set_item(COSName.get_pdf_name("BBox"), bbox)
+
+    cm = form.resolve_transformation_matrix(widget, appearance)
+    assert cm is not None
+    # Identity matrix → 1:1 scale, translate to lower-left of rect.
+    assert cm == (1.0, 0.0, 0.0, 1.0, 10.0, 20.0)
+
+
+def test_resolve_transformation_matrix_returns_none_without_rect() -> None:
+    """Widget without /Rect → returns ``None``."""
+    from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
+
+    form = PDAcroForm()
+    widget = COSDictionary()
+    appearance = COSStream()
+    bbox = COSArray()
+    for v in (0, 0, 100, 50):
+        bbox.add(COSInteger(v))
+    appearance.set_item(COSName.get_pdf_name("BBox"), bbox)
+    assert form.resolve_transformation_matrix(widget, appearance) is None
+
+
+def test_create_widget_dictionary_set_collects_widget_identities() -> None:
+    """``create_widget_dictionary_set`` returns the id-set of widget COS
+    dicts referenced by ``fields`` — used by build_pages_widgets_map's
+    fallback path."""
+    from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+
+    form = PDAcroForm()
+    text_field = PDTextField(form)
+    text_field.set_partial_name("name")
+    form.set_fields([text_field])
+
+    # PDTextField synthesises one widget by default — its dict is in
+    # the returned set.
+    widgets = text_field.get_widgets()
+    expected = {id(w.get_cos_object()) for w in widgets}
+    assert PDAcroForm.create_widget_dictionary_set([text_field]) == expected
+
+
+def test_fill_pages_annotation_map_creates_and_extends_buckets() -> None:
+    """``fill_pages_annotation_map`` lazily creates the per-page bucket
+    on first insert and extends it on subsequent inserts."""
+    from pypdfbox.cos import COSDictionary
+
+    page = COSDictionary()
+    widget_a = COSDictionary()
+    widget_b = COSDictionary()
+    out: dict[int, set[int]] = {}
+
+    PDAcroForm.fill_pages_annotation_map(out, page, widget_a)
+    assert out == {id(page): {id(widget_a)}}
+
+    PDAcroForm.fill_pages_annotation_map(out, page, widget_b)
+    assert out == {id(page): {id(widget_a), id(widget_b)}}
+
+
+def test_build_pages_widgets_map_uses_p_back_pointer() -> None:
+    """``build_pages_widgets_map`` keys each widget by its host page,
+    preferring the widget's /P back-pointer when present."""
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+
+    form = PDAcroForm()
+    text_field = PDTextField(form)
+    text_field.set_partial_name("name")
+    form.set_fields([text_field])
+
+    page = COSDictionary()
+    for widget in text_field.get_widgets():
+        widget.get_cos_object().set_item(COSName.get_pdf_name("P"), page)
+
+    out = form.build_pages_widgets_map([text_field])
+    expected_widget_ids = {id(w.get_cos_object()) for w in text_field.get_widgets()}
+    assert out == {id(page): expected_widget_ids}
+
+
+def test_build_pages_widgets_map_returns_empty_for_no_fields() -> None:
+    """An empty fields list yields an empty map — no widgets, no buckets."""
+    form = PDAcroForm()
+    assert form.build_pages_widgets_map([]) == {}

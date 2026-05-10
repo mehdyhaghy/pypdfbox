@@ -433,6 +433,33 @@ class CMap:
                 return ch
         return 0
 
+    def to_cid_from_ranges(
+        self,
+        code: bytes | bytearray | memoryview | int,
+        length: int | None = None,
+    ) -> int:
+        """Look up a CID solely against the registered CID ranges, ignoring
+        the per-length ``codeToCid`` direct-mapping dicts.
+
+        Direct port of the two private upstream overloads
+        ``toCIDFromRanges(int, int)`` and ``toCIDFromRanges(byte[])``
+        (CMap.java lines 310 and 330). pypdfbox makes the entry public so
+        differential tests can probe range lookup in isolation; production
+        callers should prefer :meth:`to_cid` or :meth:`to_cid_bytes` which
+        also consult the direct mappings.
+
+        Returns ``0`` (the standard "no mapping" sentinel) when no range
+        covers the code.
+        """
+        if isinstance(code, int):
+            if length is None:
+                raise TypeError(
+                    "to_cid_from_ranges(code, length) requires length when "
+                    "code is an int"
+                )
+            return self._to_cid_from_ranges_int(code, length)
+        return self._to_cid_from_ranges_bytes(bytes(code))
+
     # ---------- mutators (used by parser; public for tests) ----------
 
     def add_codespace_range(
@@ -531,6 +558,19 @@ class CMap:
         if unicode_str == _SPACE:
             self._space_mapping = _to_int(codes)
 
+    def add_char_mapping(
+        self, codes: bytes | bytearray | memoryview, unicode_str: str
+    ) -> None:
+        """Direct port of upstream ``CMap.addCharMapping(byte[], String)``
+        (CMap.java line 349). Adds a character-code-to-Unicode mapping
+        keyed by the input byte length (1, 2, 3, or 4).
+
+        This is the canonical name; :meth:`add_base_font_character` is
+        retained as a synonym for callers that prefer the descriptive
+        spelling derived from the ``beginbfchar`` PostScript operator.
+        """
+        self.add_base_font_character(codes, unicode_str)
+
     def get_codes_from_unicode(self, unicode_str: str) -> bytes | None:
         return self._unicode_to_byte_codes.get(unicode_str)
 
@@ -573,6 +613,17 @@ class CMap:
 
     def set_wmode(self, new_wmode: int) -> None:
         self._wmode = new_wmode
+
+    # Strict camel-to-snake mapping of upstream ``getWMode``/``setWMode``
+    # (CMap.java lines 502, 512). PDFBox treats ``WMode`` as a single token.
+    # ``get_wmode``/``set_wmode`` above are retained as ergonomic synonyms
+    # used throughout the existing pypdfbox call sites; both spellings are
+    # kept in lockstep so callers can pick whichever reads better.
+    def get_w_mode(self) -> int:
+        return self._wmode
+
+    def set_w_mode(self, new_w_mode: int) -> None:
+        self._wmode = new_w_mode
 
     def get_name(self) -> str | None:
         return self._cmap_name
@@ -711,6 +762,29 @@ class CMap:
         if not self._registry or not self._ordering:
             return None
         return f"{self._registry}-{self._ordering}-{self._supplement}"
+
+    @staticmethod
+    def to_int(
+        data: bytes | bytearray | memoryview, data_len: int | None = None
+    ) -> int:
+        """Big-endian byte sequence to int.
+
+        Direct port of upstream ``CMap.toInt(byte[])`` and the private
+        two-arg overload ``toInt(byte[], int)`` (CMap.java lines 214 / 222).
+        pypdfbox exposes both via a single static method with an optional
+        ``data_len`` argument — when omitted the full buffer is consumed,
+        matching the package-private upstream entry point.
+        """
+        return _to_int(data, data_len)
+
+    def to_string(self) -> str:
+        """Return the CMap name, or an empty string if unset.
+
+        Direct port of upstream ``CMap.toString()`` (CMap.java line 648).
+        Equivalent to ``str(cmap)`` — kept as a separate method so the Java
+        idiom ``cmap.toString()`` translates one-to-one into ``cmap.to_string()``.
+        """
+        return self._cmap_name or ""
 
     def __str__(self) -> str:
         return self._cmap_name or ""
