@@ -764,5 +764,327 @@ class GlyphSubstitutionTable(TTFTable):
             return gid
         return self._apply_single_lookup_in_gid_space(lookup_table, gid)
 
+    # ------------------------------------------------------------------
+    # FeatureRecord list helpers (mirror upstream private utilities)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def contains_feature(feature_records: list[Any], feature_tag: str) -> bool:
+        """Return ``True`` if any record in ``feature_records`` has
+        ``FeatureTag == feature_tag``.
+
+        Mirrors upstream's private
+        ``containsFeature(List<FeatureRecord>, String)`` (Java line 793).
+        Surfaced as a static helper so the same predicate can be used
+        against fontTools ``FeatureRecord`` objects pulled out of
+        :meth:`get_feature_list` without re-deriving it.
+        """
+        for fr in feature_records:
+            tag = str(getattr(fr, "FeatureTag", "")).strip()
+            if tag == feature_tag:
+                return True
+        return False
+
+    @staticmethod
+    def remove_feature(feature_records: list[Any], feature_tag: str) -> None:
+        """Remove every entry from ``feature_records`` whose
+        ``FeatureTag == feature_tag`` (in-place mutation).
+
+        Mirrors upstream's private
+        ``removeFeature(List<FeatureRecord>, String)`` (Java line 799).
+        Used together with :meth:`contains_feature` to implement the
+        ``vrt2`` supersedes ``vert`` rule when consumers build their own
+        feature lists.
+        """
+        i = 0
+        while i < len(feature_records):
+            tag = str(getattr(feature_records[i], "FeatureTag", "")).strip()
+            if tag == feature_tag:
+                feature_records.pop(i)
+            else:
+                i += 1
+
+    # ------------------------------------------------------------------
+    # Upstream private SFNT-table readers (fontTools-delegated)
+    # ------------------------------------------------------------------
+    #
+    # Upstream PDFBox implements GSUB by walking the SFNT byte stream
+    # itself: ``readScriptList`` parses the ScriptList block at a given
+    # offset, ``readCoverageTable`` decodes Coverage formats 1 and 2 from
+    # the same stream, and so on. We delegate that decoding to
+    # ``fontTools.ttLib`` (MIT) per the class docstring — the ``GSUB``
+    # table arrives already parsed via ``populate_from_fonttools`` —
+    # which means there is no ``TTFDataStream`` byte position to read
+    # from when these methods are invoked.
+    #
+    # The methods below preserve the upstream public surface (so parity
+    # tooling can detect them) but raise :class:`NotImplementedError` to
+    # signal the deviation to any caller that strays into the byte-level
+    # parsing path. Callers that want structured access should use the
+    # snake_case structural accessors (:meth:`get_script_list`,
+    # :meth:`get_feature_list`, :meth:`get_lookup_list`,
+    # :meth:`get_lookup`, :meth:`get_lookup_subtables`,
+    # :meth:`get_lang_sys_tables`, :meth:`get_feature_records`) which
+    # return the equivalent fontTools structures.
+
+    def read_script_list(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readScriptList(TTFDataStream, long)``
+        (Java line 132) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_script_list` for the equivalent already-decoded
+        structure.
+        """
+        raise NotImplementedError(
+            "read_script_list: GSUB byte-stream parsing is delegated to "
+            "fontTools; use get_script_list() for the decoded structure"
+        )
+
+    def read_script_table(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readScriptTable(TTFDataStream, long)``
+        (Java line 166) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_script_list` and walk ``ScriptRecord[i].Script``
+        for the equivalent already-decoded structure.
+        """
+        raise NotImplementedError(
+            "read_script_table: GSUB byte-stream parsing is delegated to "
+            "fontTools; walk get_script_list().ScriptRecord instead"
+        )
+
+    def read_lang_sys_table(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLangSysTable(TTFDataStream, long)``
+        (Java line 210) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_lang_sys_tables` for the equivalent already-decoded
+        ``LangSys`` list.
+        """
+        raise NotImplementedError(
+            "read_lang_sys_table: GSUB byte-stream parsing is delegated "
+            "to fontTools; use get_lang_sys_tables() instead"
+        )
+
+    def read_feature_list(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readFeatureList(TTFDataStream, long)``
+        (Java line 225) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_feature_list` for the equivalent already-decoded
+        structure.
+        """
+        raise NotImplementedError(
+            "read_feature_list: GSUB byte-stream parsing is delegated to "
+            "fontTools; use get_feature_list() for the decoded structure"
+        )
+
+    def read_feature_table(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readFeatureTable(TTFDataStream, long)``
+        (Java line 264) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_feature_record` and read
+        ``FeatureRecord.Feature`` for the equivalent already-decoded
+        structure.
+        """
+        raise NotImplementedError(
+            "read_feature_table: GSUB byte-stream parsing is delegated "
+            "to fontTools; read get_feature_record(i).Feature instead"
+        )
+
+    def read_lookup_list(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLookupList(TTFDataStream, long)``
+        (Java line 277) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_lookup_list` for the equivalent already-decoded
+        structure.
+        """
+        raise NotImplementedError(
+            "read_lookup_list: GSUB byte-stream parsing is delegated to "
+            "fontTools; use get_lookup_list() for the decoded structure"
+        )
+
+    def read_lookup_subtable(
+        self,
+        data: TTFDataStream,  # noqa: ARG002
+        offset: int,  # noqa: ARG002
+        lookup_type: int,  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLookupSubtable(TTFDataStream, long, int)``
+        (Java line 309) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_lookup_subtables` for the equivalent
+        already-decoded list.
+        """
+        raise NotImplementedError(
+            "read_lookup_subtable: GSUB byte-stream parsing is delegated "
+            "to fontTools; use get_lookup_subtables() instead"
+        )
+
+    def read_lookup_table(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLookupTable(TTFDataStream, long)``
+        (Java line 347) — not implemented; fontTools owns GSUB parsing.
+
+        Use :meth:`get_lookup` for the equivalent already-decoded
+        structure (including the transparent unwrap of LookupType 7
+        Extension Substitution subtables that upstream does inline).
+        """
+        raise NotImplementedError(
+            "read_lookup_table: GSUB byte-stream parsing is delegated to "
+            "fontTools; use get_lookup(i) for the decoded structure"
+        )
+
+    def read_single_lookup_sub_table(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readSingleLookupSubTable(TTFDataStream,
+        long)`` (Java line 426) — not implemented; fontTools owns GSUB
+        parsing.
+
+        fontTools merges Format 1 (``DeltaGlyphID``) and Format 2
+        (explicit substitute array) into a single ``mapping`` dict; reach
+        for that via :meth:`get_lookup_subtables` to read either format.
+        """
+        raise NotImplementedError(
+            "read_single_lookup_sub_table: GSUB byte-stream parsing is "
+            "delegated to fontTools; read .mapping on a SingleSubst "
+            "subtable from get_lookup_subtables() instead"
+        )
+
+    def read_multiple_substitution_subtable(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readMultipleSubstitutionSubtable(TTFDataStream,
+        long)`` (Java line 461) — not implemented; fontTools owns GSUB
+        parsing.
+
+        fontTools exposes the equivalent on
+        ``MultipleSubst.mapping`` (a ``{src_glyph: [dst_glyph, ...]}``
+        dict) — reach it via :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_multiple_substitution_subtable: GSUB byte-stream "
+            "parsing is delegated to fontTools; read .mapping on a "
+            "MultipleSubst subtable from get_lookup_subtables() instead"
+        )
+
+    def read_alternate_substitution_subtable(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readAlternateSubstitutionSubtable(TTFDataStream,
+        long)`` (Java line 501) — not implemented; fontTools owns GSUB
+        parsing.
+
+        fontTools exposes the equivalent on
+        ``AlternateSubst.alternates`` (a ``{src_glyph: [alt_glyph, ...]}``
+        dict) — reach it via :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_alternate_substitution_subtable: GSUB byte-stream "
+            "parsing is delegated to fontTools; read .alternates on an "
+            "AlternateSubst subtable from get_lookup_subtables() instead"
+        )
+
+    def read_ligature_substitution_subtable(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLigatureSubstitutionSubtable(TTFDataStream,
+        long)`` (Java line 544) — not implemented; fontTools owns GSUB
+        parsing.
+
+        fontTools exposes the equivalent on ``LigatureSubst.ligatures``
+        (a ``{first_glyph: [Ligature, ...]}`` dict whose ``Ligature``
+        entries carry ``LigGlyph`` and ``Component[]``) — reach it via
+        :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_ligature_substitution_subtable: GSUB byte-stream "
+            "parsing is delegated to fontTools; read .ligatures on a "
+            "LigatureSubst subtable from get_lookup_subtables() instead"
+        )
+
+    def read_ligature_set_table(
+        self,
+        data: TTFDataStream,  # noqa: ARG002
+        ligature_set_table_location: int,  # noqa: ARG002
+        coverage_glyph_id: int,  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLigatureSetTable(TTFDataStream, long,
+        int)`` (Java line 589) — not implemented; fontTools owns GSUB
+        parsing.
+
+        fontTools doesn't materialise a separate ``LigatureSetTable``
+        layer — its ``LigatureSubst.ligatures[<first_glyph>]`` list is
+        the equivalent flattened structure. Reach it via
+        :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_ligature_set_table: GSUB byte-stream parsing is "
+            "delegated to fontTools; LigatureSubst.ligatures[k] is the "
+            "equivalent flattened structure"
+        )
+
+    def read_ligature_table(
+        self,
+        data: TTFDataStream,  # noqa: ARG002
+        ligature_table_location: int,  # noqa: ARG002
+        coverage_glyph_id: int,  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readLigatureTable(TTFDataStream, long, int)``
+        (Java line 614) — not implemented; fontTools owns GSUB parsing.
+
+        Each entry in ``LigatureSubst.ligatures[<first_glyph>]`` is a
+        fontTools ``Ligature`` object carrying ``LigGlyph`` and the
+        component glyph list; that's the equivalent of upstream's
+        ``LigatureTable``. Reach it via :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_ligature_table: GSUB byte-stream parsing is delegated "
+            "to fontTools; each Ligature in LigatureSubst.ligatures[k] "
+            "is the equivalent decoded structure"
+        )
+
+    def read_coverage_table(
+        self, data: TTFDataStream, offset: int  # noqa: ARG002
+    ) -> Any:
+        """Mirror upstream ``readCoverageTable(TTFDataStream, long)``
+        (Java line 644) — not implemented; fontTools owns GSUB parsing.
+
+        fontTools' ``Coverage`` objects expose the same data via
+        ``Coverage.glyphs`` (an explicit list of glyph names — both
+        Format 1 and Format 2 are normalised to that shape on read).
+        Reach it via the subtable's ``Coverage`` attribute pulled from
+        :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_coverage_table: GSUB byte-stream parsing is delegated "
+            "to fontTools; read .Coverage.glyphs on a subtable instead"
+        )
+
+    def read_range_record(self, data: TTFDataStream) -> Any:  # noqa: ARG002
+        """Mirror upstream ``readRangeRecord(TTFDataStream)`` (Java line
+        956) — not implemented; fontTools owns GSUB parsing.
+
+        Coverage Format 2 ``RangeRecord`` entries are not surfaced by
+        fontTools; the entire coverage is normalised to a flat
+        ``Coverage.glyphs`` list. Read that via the subtable's
+        ``Coverage`` attribute pulled from :meth:`get_lookup_subtables`.
+        """
+        raise NotImplementedError(
+            "read_range_record: GSUB byte-stream parsing is delegated "
+            "to fontTools; the equivalent data is flattened into "
+            ".Coverage.glyphs"
+        )
+
 
 __all__ = ["GlyphSubstitutionTable"]

@@ -18,7 +18,6 @@ from pypdfbox.multipdf import (
 )
 from pypdfbox.pdmodel import PDDocument, PDPage
 
-
 # ---------- helpers ----------
 
 
@@ -429,3 +428,196 @@ def test_merge_documents_random_access_read_kwargs_stage_setter_values(
     assert util.get_stream_cache_create_function() is sc_fn
     assert util.get_compress_parameters() is compress_sentinel
     assert out.exists()
+
+
+# ---------- public-named upstream-parity helpers ----------
+
+
+def test_public_merge_into_proxies_underscore_helper() -> None:
+    """``merge_into`` is the public-named mirror of ``_merge_into`` and
+    must produce identical state on the destination dict."""
+    from pypdfbox.cos import COSInteger
+    from pypdfbox.multipdf.pdf_clone_utility import PDFCloneUtility
+
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    cloner = PDFCloneUtility(dest)
+    src = COSDictionary()
+    src.set_item(COSName.get_pdf_name("X"), COSInteger.get(1))
+    dst = COSDictionary()
+    util.merge_into(src, dst, cloner, frozenset())
+    assert dst.contains_key(COSName.get_pdf_name("X"))
+    dest.close()
+
+
+def test_public_is_dynamic_xfa_proxy() -> None:
+    class Form:
+        def xfa_is_dynamic(self) -> bool:
+            return True
+
+    util = PDFMergerUtility()
+    assert util.is_dynamic_xfa(Form()) is True
+    assert util.is_dynamic_xfa(None) is False
+
+
+def test_public_has_only_documents_or_parts_proxy() -> None:
+    util = PDFMergerUtility()
+    arr = COSArray()
+    doc = COSDictionary()
+    doc.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Document"))
+    arr.add(doc)
+    assert util.has_only_documents_or_parts(arr) is True
+
+
+def test_public_update_struct_parent_entries_proxy() -> None:
+    """The public proxy must shift /StructParents by the offset, exactly
+    like the underscore-prefixed helper."""
+    from pypdfbox.cos import COSInteger
+
+    util = PDFMergerUtility()
+    page = COSDictionary()
+    page.set_item(COSName.get_pdf_name("StructParents"), COSInteger.get(2))
+    util.update_struct_parent_entries(page, 5)
+    sp = page.get_dictionary_object(COSName.get_pdf_name("StructParents"))
+    assert sp.int_value() == 7
+
+
+def test_public_update_parent_entry_proxy() -> None:
+    util = PDFMergerUtility()
+    parent = COSDictionary()
+    child = COSDictionary()
+    child.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Document"))
+    arr = COSArray()
+    arr.add(child)
+    util.update_parent_entry(arr, parent, COSName.get_pdf_name("Part"))
+    assert child.get_dictionary_object(COSName.get_pdf_name("P")) is parent
+    assert child.get_name(COSName.get_pdf_name("S")) == "Part"
+
+
+def test_update_page_references_dispatch_dict_array_and_map() -> None:
+    """``update_page_references`` is the public unified dispatcher for
+    upstream's three ``updatePageReferences`` overloads."""
+    from pypdfbox.multipdf.pdf_clone_utility import PDFCloneUtility
+
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    cloner = PDFCloneUtility(dest)
+
+    old_page = COSDictionary()
+    new_page = COSDictionary()
+    obj_map = {id(old_page): new_page}
+
+    leaf = COSDictionary()
+    leaf.set_item(COSName.get_pdf_name("Pg"), old_page)
+    util.update_page_references(cloner, leaf, obj_map)
+    assert leaf.get_dictionary_object(COSName.get_pdf_name("Pg")) is new_page
+
+    arr_leaf = COSDictionary()
+    arr_leaf.set_item(COSName.get_pdf_name("Pg"), old_page)
+    arr = COSArray()
+    arr.add(arr_leaf)
+    util.update_page_references(cloner, arr, obj_map)
+    assert arr_leaf.get_dictionary_object(COSName.get_pdf_name("Pg")) is new_page
+
+    map_leaf = COSDictionary()
+    map_leaf.set_item(COSName.get_pdf_name("Pg"), old_page)
+    util.update_page_references(cloner, {1: map_leaf}, obj_map)
+    assert map_leaf.get_dictionary_object(COSName.get_pdf_name("Pg")) is new_page
+
+    with pytest.raises(TypeError):
+        util.update_page_references(cloner, 42, obj_map)
+    dest.close()
+
+
+def test_merge_language_carries_when_dest_blank() -> None:
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    src = PDDocument()
+    src.get_document_catalog().set_language("fr-CA")
+    util.merge_language(dest.get_document_catalog(), src.get_document_catalog())
+    assert dest.get_document_catalog().get_language() == "fr-CA"
+    dest.close()
+    src.close()
+
+
+def test_merge_language_preserves_dest_when_set() -> None:
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    src = PDDocument()
+    dest.get_document_catalog().set_language("en-US")
+    src.get_document_catalog().set_language("fr-CA")
+    util.merge_language(dest.get_document_catalog(), src.get_document_catalog())
+    assert dest.get_document_catalog().get_language() == "en-US"
+    dest.close()
+    src.close()
+
+
+def test_merge_mark_info_marks_destination() -> None:
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    src = PDDocument()
+    util.merge_mark_info(dest.get_document_catalog(), src.get_document_catalog())
+    info = dest.get_document_catalog().get_mark_info()
+    assert info is not None
+    assert info.is_marked() is True
+    dest.close()
+    src.close()
+
+
+def test_merge_viewer_preferences_or_merges_booleans() -> None:
+    from pypdfbox.multipdf.pdf_clone_utility import PDFCloneUtility
+    from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
+
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    src = PDDocument()
+    src_prefs = PDViewerPreferences()
+    src_prefs.set_hide_toolbar(True)
+    src_prefs.set_center_window(True)
+    src.get_document_catalog().set_viewer_preferences(src_prefs)
+    util.merge_viewer_preferences(
+        dest.get_document_catalog(),
+        src.get_document_catalog(),
+        PDFCloneUtility(dest),
+    )
+    dest_prefs = dest.get_document_catalog().get_viewer_preferences()
+    assert dest_prefs is not None
+    assert dest_prefs.get_hide_toolbar() is True
+    assert dest_prefs.get_center_window() is True
+    dest.close()
+    src.close()
+
+
+def test_optimized_merge_documents_falls_back_to_legacy(tmp_path: Path) -> None:
+    """``optimized_merge_documents`` records params via setters and runs
+    the legacy merge path."""
+    a = tmp_path / "a.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(1), a)
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.set_destination_file_name(str(out))
+    sentinel_sc = object()
+    sentinel_cp = object()
+    util.optimized_merge_documents(sentinel_sc, sentinel_cp)
+    assert out.exists()
+    assert util.get_stream_cache_create_function() is sentinel_sc
+    assert util.get_compress_parameters() is sentinel_cp
+
+
+def test_legacy_merge_documents_records_params(tmp_path: Path) -> None:
+    """The public ``legacy_merge_documents`` mirrors upstream's
+    ``legacyMergeDocuments(StreamCacheCreateFunction, CompressParameters)``
+    signature and stages params via setters."""
+    a = tmp_path / "a.pdf"
+    out = tmp_path / "out.pdf"
+    _save_to_path(_build_doc(2), a)
+    util = PDFMergerUtility()
+    util.add_source(str(a))
+    util.set_destination_file_name(str(out))
+    sentinel_sc = object()
+    sentinel_cp = object()
+    util.legacy_merge_documents(sentinel_sc, sentinel_cp)
+    assert out.exists()
+    assert util.get_stream_cache_create_function() is sentinel_sc
+    assert util.get_compress_parameters() is sentinel_cp

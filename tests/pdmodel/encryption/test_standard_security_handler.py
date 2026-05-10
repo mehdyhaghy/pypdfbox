@@ -782,3 +782,217 @@ def test_compute_revision_number_consistent_with_round_trip() -> None:
         doc = _DocStub()
         handler.prepare_document(doc)
         assert handler.get_revision() == expected_revision
+
+
+# --------------------------------------------------------------- upstream API
+# Smoke tests for the upstream-named parity aliases — each delegates to an
+# existing implementation so we mainly check (a) the alias resolves and (b)
+# it produces output identical to its private/snake-renamed counterpart.
+
+
+def test_truncate127_alias_matches_truncate_127() -> None:
+    payload = bytes(range(200))
+    assert StandardSecurityHandler.truncate127(payload) == (
+        StandardSecurityHandler.truncate_127(payload)
+    )
+    assert len(StandardSecurityHandler.truncate127(payload)) == 127
+
+
+def test_compute_sha256_alias_matches_compute_sha_256() -> None:
+    pw, salt = b"password", b"saltsalt"
+    assert StandardSecurityHandler.compute_sha256(pw, salt, b"") == (
+        StandardSecurityHandler.compute_sha_256(pw, salt, b"")
+    )
+
+
+def test_compute_hash2_a_and_2_b_aliases_match_underscore_forms() -> None:
+    pw, salt = b"x" * 8, b"y" * 8
+    assert StandardSecurityHandler.compute_hash2_a(pw, salt, b"") == (
+        StandardSecurityHandler.compute_hash_2a(pw, salt, b"")
+    )
+    inp = b"a" * 16
+    assert StandardSecurityHandler.compute_hash2_b(inp, pw, b"") == (
+        StandardSecurityHandler.compute_hash_2b(inp, pw, b"")
+    )
+
+
+def test_compute_rc4key_alias_matches_compute_rc_4_key() -> None:
+    pw = b"owner-password"
+    for rev in (2, 3, 4):
+        length = 5 if rev == 2 else 16
+        assert StandardSecurityHandler.compute_rc4key(pw, rev, length) == (
+            StandardSecurityHandler.compute_rc_4_key(pw, rev, length)
+        )
+
+
+def test_compute_encrypted_key_rev234_matches_internal_helper() -> None:
+    pw, o, perms, doc_id = b"user", b"O" * 32, -3904, b"\x00" * 16
+    expected = StandardSecurityHandler._compute_encryption_key(
+        pw, o, perms, doc_id, 3, 16, True
+    )
+    assert StandardSecurityHandler.compute_encrypted_key_rev234(
+        pw, o, perms, doc_id, True, 16, 3
+    ) == expected
+
+
+def test_get_user_password234_round_trips_owner_to_user_padding() -> None:
+    user_pw = b"u" * 6
+    owner_pw = b"o" * 6
+    o = StandardSecurityHandler._compute_owner_password_r2_r4(
+        owner_pw, user_pw, 3, 16
+    )
+    recovered = StandardSecurityHandler.get_user_password234(owner_pw, o, 3, 16)
+    # First 32 bytes should be the padded user password.
+    assert recovered[:32] == StandardSecurityHandler.truncate_or_pad(user_pw)
+
+
+def test_is_user_password234_and_56_aliases_match_underscore_forms() -> None:
+    user_pw = b"u" * 6
+    owner_pw = b"o" * 6
+    doc_id = b"\x00" * 16
+    o = StandardSecurityHandler._compute_owner_password_r2_r4(
+        owner_pw, user_pw, 3, 16
+    )
+    u = StandardSecurityHandler._compute_user_password_r2_r4(
+        user_pw, o, -3904, doc_id, 3, 16
+    )
+    assert StandardSecurityHandler.is_user_password234(
+        user_pw, u, o, -3904, doc_id, 3, 16, True
+    )
+    assert not StandardSecurityHandler.is_user_password234(
+        b"wrong", u, o, -3904, doc_id, 3, 16, True
+    )
+
+
+def test_is_owner_password234_recognises_owner_pw() -> None:
+    user_pw = b"user-pw"
+    owner_pw = b"owner-pw"
+    doc_id = b"\x00" * 16
+    o = StandardSecurityHandler._compute_owner_password_r2_r4(
+        owner_pw, user_pw, 3, 16
+    )
+    u = StandardSecurityHandler._compute_user_password_r2_r4(
+        user_pw, o, -3904, doc_id, 3, 16
+    )
+    assert StandardSecurityHandler.is_owner_password234(
+        owner_pw, u, o, -3904, doc_id, 3, 16, True
+    )
+
+
+def test_concat_two_and_three_arg_match_upstream_overloads() -> None:
+    assert StandardSecurityHandler.concat(b"ab", b"cd") == b"abcd"
+    assert StandardSecurityHandler.concat(b"ab", b"cd", b"ef") == b"abcdef"
+    # No args — empty bytes (mirrors Java's zero-length output).
+    assert StandardSecurityHandler.concat() == b""
+
+
+def test_get_document_id_bytes_alias_handles_none_and_bytes() -> None:
+    assert StandardSecurityHandler.get_document_id_bytes(None) == b""
+    assert StandardSecurityHandler.get_document_id_bytes(b"abc") == b"abc"
+
+
+def test_log_if_strong_encryption_missing_is_a_safe_noop() -> None:
+    # Python's cryptography backend always supports full key lengths, so this
+    # mirror is a no-op. The contract is "doesn't raise".
+    assert StandardSecurityHandler.log_if_strong_encryption_missing() is None
+
+
+def test_prepare_encryption_dict_aes_installs_aesv2_filter() -> None:
+    handler = StandardSecurityHandler()
+    handler.set_key_length(128)
+    encryption = PDEncryption()
+    handler.prepare_encryption_dict_aes(encryption, "AESV2")
+    assert handler.is_aes() is True
+    assert encryption.get_stm_f() == "StdCF"
+    assert encryption.get_str_f() == "StdCF"
+    std_cf = encryption.get_crypt_filter_dictionary("StdCF")
+    assert std_cf is not None
+    assert std_cf.get_cfm() == "AESV2"
+
+
+def test_prepare_encryption_dict_rev234_round_trip_r3() -> None:
+    handler = StandardSecurityHandler()
+    handler.set_revision(3)
+    handler.set_version(2)
+    handler.set_key_length(128)
+    encryption = PDEncryption()
+    encryption.set_filter("Standard")
+
+    class _Doc:
+        pass
+
+    handler.prepare_encryption_dict_rev234(
+        owner_password="owner",
+        user_password="user",
+        encryption_dictionary=encryption,
+        permission_int=-3904,
+        document=_Doc(),
+        revision=3,
+        length=16,
+    )
+    assert encryption.get_o() is not None and len(encryption.get_o()) == 32
+    assert encryption.get_u() is not None and len(encryption.get_u()) == 32
+    assert handler.get_encryption_key() is not None
+    assert len(handler.get_encryption_key()) == 16
+
+
+def test_prepare_encryption_dict_rev6_writes_full_r6_dict() -> None:
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    encryption = PDEncryption()
+    encryption.set_filter("Standard")
+    handler.prepare_encryption_dict_rev6(
+        owner_password="owner",
+        user_password="user",
+        encryption_dictionary=encryption,
+        permission_int=-3904,
+    )
+    # /U, /UE, /O, /OE all exactly 48 / 32 bytes per the spec.
+    assert encryption.get_u() is not None and len(encryption.get_u()) == 48
+    assert encryption.get_o() is not None and len(encryption.get_o()) == 48
+    assert encryption.get_ue() is not None and len(encryption.get_ue()) == 32
+    assert encryption.get_oe() is not None and len(encryption.get_oe()) == 32
+    assert encryption.get_perms() is not None and len(encryption.get_perms()) == 16
+    # AESV3 crypt filter wired up.
+    std_cf = encryption.get_crypt_filter_dictionary("StdCF")
+    assert std_cf is not None and std_cf.get_cfm() == "AESV3"
+
+
+def test_compute_encrypted_key_rev56_round_trips_user_password() -> None:
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    encryption = PDEncryption()
+    handler.prepare_encryption_dict_rev6(
+        owner_password="owner",
+        user_password="user",
+        encryption_dictionary=encryption,
+        permission_int=-3904,
+    )
+    expected_key = handler.get_encryption_key()
+    recovered = StandardSecurityHandler.compute_encrypted_key_rev56(
+        b"user",
+        False,
+        encryption.get_o(),
+        encryption.get_u(),
+        encryption.get_oe(),
+        encryption.get_ue(),
+        6,
+    )
+    assert recovered == expected_key
+
+
+def test_compute_encrypted_key_rev56_owner_missing_oe_raises() -> None:
+    with pytest.raises(OSError):
+        StandardSecurityHandler.compute_encrypted_key_rev56(
+            b"owner",
+            True,
+            b"O" * 48,
+            b"U" * 48,
+            None,
+            b"\x00" * 32,
+            6,
+        )

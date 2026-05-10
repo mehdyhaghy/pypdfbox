@@ -408,3 +408,63 @@ def test_get_gid_returns_constructor_value() -> None:
     """getGID parity (Type2CharString.java:66)."""
     cs = Type2CharString(None, "F", "A", 42, None)
     assert cs.get_gid() == 42
+
+
+# ---------------------------------------------------------------------------
+# Wave 1269 — public charstring conversion helpers (parity with upstream
+# private methods on Type2CharString)
+# ---------------------------------------------------------------------------
+
+
+def test_public_helpers_match_underscored_aliases() -> None:
+    """Wave 1269 promoted the wave-397 ``_foo`` helpers to public ``foo``
+    names (matching upstream Java methods). The old underscored names
+    remain as back-compat aliases — verify both are bound to the same
+    callable."""
+    cs = _fresh()
+    pairs = [
+        ("clear_stack", "_clear_stack"),
+        ("close_char_string2_path", "_close_char_string2_path"),
+        ("mark_path", "_mark_path"),
+        ("expand_stem_hints", "_expand_stem_hints"),
+        ("add_alternating_line", "_add_alternating_line"),
+        ("add_alternating_curve", "_add_alternating_curve"),
+        ("add_curve", "_add_curve"),
+        ("add_command_list", "_add_command_list"),
+        ("convert_type2_command", "_convert_type2_command"),
+    ]
+    for public, private in pairs:
+        assert getattr(cs, public).__func__ is getattr(cs, private).__func__
+
+
+def test_public_clear_stack_emits_default_width_hsbw() -> None:
+    """``clear_stack`` (public) drains an even-arg-count first operator
+    into a synthetic ``hsbw 0 defaultWidthX``. Upstream Type2CharString.java:264."""
+    cs = _fresh()
+    out = cs.clear_stack([10, 20, 30, 40], False)
+    assert out == [10, 20, 30, 40]
+    assert cs._type1_sequence[:3] == [0, 500.0, "hsbw"]
+
+
+def test_public_split_chunks_list() -> None:
+    """``split`` (public, static) carves a flat list into N-sized chunks,
+    dropping any trailing partial chunk. Type2CharString.java:375."""
+    assert Type2CharString.split([1, 2, 3, 4, 5, 6], 2) == [[1, 2], [3, 4], [5, 6]]
+    # Trailing partial chunk dropped.
+    assert Type2CharString.split([1, 2, 3, 4, 5], 2) == [[1, 2], [3, 4]]
+
+
+def test_public_add_alternating_line_via_public_helper() -> None:
+    """Drive ``add_alternating_line`` directly with the public name."""
+    cs = _fresh()
+    cs.add_alternating_line([10, 20, 30], True)
+    ops = [t for t in cs._type1_sequence if isinstance(t, str)]
+    assert ops == ["hlineto", "vlineto", "hlineto"]
+
+
+def test_public_close_char_string2_path_no_op_without_path() -> None:
+    """When ``path_count`` is 0, ``close_char_string2_path`` must not
+    emit anything. Type2CharString.java:300."""
+    cs = _fresh()
+    cs.close_char_string2_path()
+    assert cs.is_sequence_empty()

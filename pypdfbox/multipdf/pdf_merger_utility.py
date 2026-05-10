@@ -354,7 +354,13 @@ class PDFMergerUtility:
                 "OPTIMIZE_RESOURCES_MODE not yet implemented; "
                 "falling back to PDFBOX_LEGACY_MODE."
             )
-        self._legacy_merge_documents()
+            self.optimized_merge_documents(
+                self._stream_cache_create_function, self._compress_parameters
+            )
+            return
+        self.legacy_merge_documents(
+            self._stream_cache_create_function, self._compress_parameters
+        )
 
     def merge_documents_random_access_read(
         self,
@@ -394,7 +400,39 @@ class PDFMergerUtility:
             compress_parameters=compress_parameters,
         )
 
-    def _legacy_merge_documents(self) -> None:
+    def legacy_merge_documents(
+        self,
+        stream_cache_create_function: Any = None,
+        compress_parameters: Any = None,
+    ) -> None:
+        """Legacy merge implementation. Mirrors upstream
+        ``legacyMergeDocuments(StreamCacheCreateFunction, CompressParameters)``
+        — both arguments are advisory in this port (recorded via setters
+        but not threaded through ``PDDocument`` construction or ``save``;
+        see ``CHANGES.md``)."""
+        if stream_cache_create_function is not None:
+            self.set_stream_cache_create_function(stream_cache_create_function)
+        if compress_parameters is not None:
+            self.set_compress_parameters(compress_parameters)
+        self._legacy_merge_documents_impl()
+
+    def optimized_merge_documents(
+        self,
+        stream_cache_create_function: Any = None,
+        compress_parameters: Any = None,
+    ) -> None:
+        """Mirror of upstream ``optimizedMergeDocuments``. Real cross-document
+        resource deduplication is deferred — this port forwards to
+        :meth:`legacy_merge_documents` and records the parameters via
+        the matching setters so callers reading them back see what was
+        staged. See ``CHANGES.md``."""
+        if stream_cache_create_function is not None:
+            self.set_stream_cache_create_function(stream_cache_create_function)
+        if compress_parameters is not None:
+            self.set_compress_parameters(compress_parameters)
+        self._legacy_merge_documents_impl()
+
+    def _legacy_merge_documents_impl(self) -> None:
         if not self._sources:
             return
         if self._destination_file_name is None and self._destination_stream is None:
@@ -1500,6 +1538,230 @@ class PDFMergerUtility:
                 wrapped[key] = PDStructureElement(value)
         new_id_tree.set_names(wrapped)
         dest_struct_tree.set_id_tree(new_id_tree)
+
+    # ---------- catalog scalar / wrapper helpers (upstream parity) ----------
+
+    def merge_language(self, dest_catalog: Any, src_catalog: Any) -> None:
+        """Carry ``/Lang`` from ``src_catalog`` to ``dest_catalog`` when the
+        destination has none. Mirrors upstream ``mergeLanguage`` (Java
+        line 943)."""
+        getter = getattr(dest_catalog, "get_language", None)
+        setter = getattr(dest_catalog, "set_language", None)
+        src_getter = getattr(src_catalog, "get_language", None)
+        if not (callable(getter) and callable(setter) and callable(src_getter)):
+            return
+        if getter() is None:
+            src_lang = src_getter()
+            if src_lang is not None:
+                setter(src_lang)
+
+    def merge_mark_info(self, dest_catalog: Any, src_catalog: Any) -> None:
+        """Merge ``/MarkInfo``. Mirrors upstream ``mergeMarkInfo`` (Java
+        line 955): the destination is marked, ``Suspect`` is the OR of
+        both inputs, and ``UseUserProperties`` is folded in following
+        upstream's (PDFBOX-quirky) overwrite-into-Suspect ordering."""
+        from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_mark_info import (
+            PDMarkInfo,
+        )
+
+        dest_get = getattr(dest_catalog, "get_mark_info", None)
+        dest_set = getattr(dest_catalog, "set_mark_info", None)
+        src_get = getattr(src_catalog, "get_mark_info", None)
+        if not (callable(dest_get) and callable(dest_set) and callable(src_get)):
+            return
+        dest_mark = dest_get() or PDMarkInfo()
+        src_mark = src_get() or PDMarkInfo()
+        dest_mark.set_marked(True)
+        dest_mark.set_suspect(bool(src_mark.is_suspect()) or bool(dest_mark.is_suspect()))
+        # Upstream sets Suspect a second time using UsesUserProperties — we
+        # mirror that bug-for-bug so behaviour stays identical.
+        dest_mark.set_suspect(
+            bool(src_mark.uses_user_properties())
+            or bool(dest_mark.uses_user_properties())
+        )
+        dest_set(dest_mark)
+
+    def merge_viewer_preferences(
+        self,
+        dest_catalog: Any,
+        src_catalog: Any,
+        cloner: PDFCloneUtility,
+    ) -> None:
+        """Merge ``/ViewerPreferences``. Mirrors upstream
+        ``mergeViewerPreferences`` (Java line 899): when source has a
+        ``/ViewerPreferences``, ensure destination has one too, fold the
+        dictionaries together, and OR-merge the boolean toggles
+        (``HideToolbar``, ``HideMenubar``, ``HideWindowUI``, ``FitWindow``,
+        ``CenterWindow``, ``DisplayDocTitle``)."""
+        from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
+
+        src_getter = getattr(src_catalog, "get_viewer_preferences", None)
+        if not callable(src_getter):
+            return
+        src_vp = src_getter()
+        if src_vp is None:
+            return
+        dest_getter = getattr(dest_catalog, "get_viewer_preferences", None)
+        dest_setter = getattr(dest_catalog, "set_viewer_preferences", None)
+        if not (callable(dest_getter) and callable(dest_setter)):
+            return
+        dest_vp = dest_getter()
+        if dest_vp is None:
+            dest_vp = PDViewerPreferences()
+            dest_setter(dest_vp)
+        self.merge_into(
+            src_vp.get_cos_object(),
+            dest_vp.get_cos_object(),
+            cloner,
+            frozenset(),
+        )
+
+        def _maybe(get_name: str, set_name: str) -> None:
+            getter = getattr(src_vp, get_name, None) or getattr(
+                src_vp, get_name.replace("get_", ""), None
+            )
+            d_getter = getattr(dest_vp, get_name, None) or getattr(
+                dest_vp, get_name.replace("get_", ""), None
+            )
+            d_setter = getattr(dest_vp, set_name, None)
+            if not (callable(getter) and callable(d_getter) and callable(d_setter)):
+                return
+            try:
+                if bool(getter()) or bool(d_getter()):
+                    d_setter(True)
+            except Exception:  # noqa: BLE001
+                _LOG.debug("viewer-prefs toggle merge skipped", exc_info=True)
+
+        _maybe("get_hide_toolbar", "set_hide_toolbar")
+        _maybe("get_hide_menubar", "set_hide_menubar")
+        _maybe("get_hide_window_ui", "set_hide_window_ui")
+        _maybe("get_fit_window", "set_fit_window")
+        _maybe("get_center_window", "set_center_window")
+        _maybe("get_display_doc_title", "set_display_doc_title")
+
+    def update_page_references(
+        self,
+        cloner: PDFCloneUtility,
+        target: Any,
+        obj_mapping: dict[int, COSDictionary],
+    ) -> None:
+        """Dispatch over upstream's three overloads of ``updatePageReferences``
+        (Java lines 1403, 1432, 1482).
+
+        - ``Map<Integer, COSObjectable>`` -> :meth:`_update_page_references_map`
+        - ``COSDictionary``               -> :meth:`_update_page_references_dict`
+        - ``COSArray``                    -> :meth:`_update_page_references_array`
+        """
+        if isinstance(target, dict):
+            self._update_page_references_map(cloner, target, obj_mapping)
+        elif isinstance(target, COSArray):
+            self._update_page_references_array(cloner, target, obj_mapping)
+        elif isinstance(target, COSDictionary):
+            self._update_page_references_dict(cloner, target, obj_mapping)
+        else:
+            raise TypeError(
+                "update_page_references: target must be a Mapping, COSArray, "
+                f"or COSDictionary; got {type(target).__name__}"
+            )
+
+    # ---------- public-named aliases (upstream parity) ----------
+    #
+    # The implementations above keep the underscore-prefixed names because
+    # existing wave tests bind to them with the SLF001-suppression marker.
+    # Mirror each under its upstream-Java snake_case name so an external
+    # port can call ``util.merge_acro_form(...)`` directly.
+
+    def is_dynamic_xfa(self, acro_form: Any) -> bool:
+        return self._is_dynamic_xfa(acro_form)
+
+    def merge_into(
+        self,
+        src: COSDictionary,
+        dst: COSDictionary,
+        cloner: PDFCloneUtility,
+        exclude: frozenset[COSName] | set[COSName],
+    ) -> None:
+        return self._merge_into(src, dst, cloner, exclude)
+
+    def merge_acro_form(
+        self,
+        cloner: PDFCloneUtility,
+        dest_catalog: Any,
+        src_catalog: Any,
+    ) -> None:
+        return self._merge_acro_form(cloner, dest_catalog, src_catalog)
+
+    def acro_form_legacy_mode(
+        self,
+        cloner: PDFCloneUtility,
+        dest_form: Any,
+        src_form: Any,
+    ) -> None:
+        return self._acro_form_legacy_mode(cloner, dest_form, src_form)
+
+    def acro_form_join_fields_mode(
+        self,
+        cloner: PDFCloneUtility,
+        dest_form: Any,
+        src_form: Any,
+    ) -> None:
+        return self._acro_form_join_fields_mode(cloner, dest_form, src_form)
+
+    def merge_open_action(
+        self,
+        cloner: PDFCloneUtility,
+        src_catalog: Any,
+        dest_catalog: Any,
+    ) -> None:
+        return self._merge_open_action(cloner, src_catalog, dest_catalog)
+
+    def merge_role_map(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+    ) -> None:
+        return self._merge_role_map(cloner, src_struct_tree, dest_struct_tree)
+
+    def merge_id_tree(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+    ) -> None:
+        return self._merge_id_tree(cloner, src_struct_tree, dest_struct_tree)
+
+    def merge_k_entries(
+        self,
+        cloner: PDFCloneUtility,
+        src_struct_tree: Any,
+        dest_struct_tree: Any,
+    ) -> None:
+        return self._merge_k_entries(cloner, src_struct_tree, dest_struct_tree)
+
+    def merge_output_intents(
+        self,
+        cloner: PDFCloneUtility,
+        src_catalog: Any,
+        dest_catalog: Any,
+    ) -> None:
+        return self._merge_output_intents(cloner, src_catalog, dest_catalog)
+
+    def has_only_documents_or_parts(self, k_array: COSArray) -> bool:
+        return self._has_only_documents_or_parts(k_array)
+
+    def update_parent_entry(
+        self,
+        k_array: COSArray,
+        new_parent: COSDictionary,
+        new_structure_type: COSName | None,
+    ) -> None:
+        return self._update_parent_entry(k_array, new_parent, new_structure_type)
+
+    def update_struct_parent_entries(
+        self, page_dict: COSDictionary, struct_parent_offset: int
+    ) -> None:
+        return self._update_struct_parent_entries(page_dict, struct_parent_offset)
 
 
 __all__ = [

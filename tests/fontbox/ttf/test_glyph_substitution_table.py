@@ -482,3 +482,176 @@ def test_do_lookup_with_real_type_1(liberation_sans: TrueTypeFont) -> None:
     sups_lookup = table.get_lookup(5)
     assert sups_lookup is not None
     assert table.do_lookup(sups_lookup, src) == expected
+
+
+# ---------- contains_feature / remove_feature ------------------------------
+
+
+class _FakeFR:
+    """Stand-in for fontTools ``FeatureRecord`` in pure-data tests."""
+
+    def __init__(self, tag: str) -> None:
+        self.FeatureTag = tag
+
+
+def test_contains_feature_true_and_false() -> None:
+    records = [_FakeFR("liga"), _FakeFR("sups"), _FakeFR("vert")]
+    assert GlyphSubstitutionTable.contains_feature(records, "sups") is True
+    assert GlyphSubstitutionTable.contains_feature(records, "zzzz") is False
+    assert GlyphSubstitutionTable.contains_feature([], "anything") is False
+
+
+def test_contains_feature_strips_whitespace() -> None:
+    """fontTools tags are 4-byte strings — sometimes carry trailing
+    space ('vert' vs 'vert '). The helper must normalise."""
+    records = [_FakeFR("vert ")]
+    assert GlyphSubstitutionTable.contains_feature(records, "vert") is True
+
+
+def test_remove_feature_drops_matching_entries() -> None:
+    records = [_FakeFR("liga"), _FakeFR("vert"), _FakeFR("sups"), _FakeFR("vert")]
+    GlyphSubstitutionTable.remove_feature(records, "vert")
+    assert [str(r.FeatureTag) for r in records] == ["liga", "sups"]
+
+
+def test_remove_feature_no_match_is_noop() -> None:
+    records = [_FakeFR("liga"), _FakeFR("sups")]
+    GlyphSubstitutionTable.remove_feature(records, "zzzz")
+    assert [str(r.FeatureTag) for r in records] == ["liga", "sups"]
+
+
+def test_remove_feature_empty_list() -> None:
+    records: list[object] = []
+    GlyphSubstitutionTable.remove_feature(records, "vert")
+    assert records == []
+
+
+# ---------- read_* upstream-private parsers (delegate to fontTools) --------
+
+
+def test_read_script_list_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_script_list(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_script_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_script_table(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_lang_sys_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_lang_sys_table(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_feature_list_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_feature_list(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_feature_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_feature_table(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_lookup_list_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_lookup_list(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_lookup_subtable_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_lookup_subtable(MemoryTTFDataStream(b""), 0, 1)
+
+
+def test_read_lookup_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_lookup_table(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_single_lookup_sub_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_single_lookup_sub_table(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_multiple_substitution_subtable_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_multiple_substitution_subtable(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_alternate_substitution_subtable_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_alternate_substitution_subtable(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_ligature_substitution_subtable_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_ligature_substitution_subtable(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_ligature_set_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_ligature_set_table(MemoryTTFDataStream(b""), 0, 0)
+
+
+def test_read_ligature_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_ligature_table(MemoryTTFDataStream(b""), 0, 0)
+
+
+def test_read_coverage_table_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_coverage_table(MemoryTTFDataStream(b""), 0)
+
+
+def test_read_range_record_raises_notimplemented() -> None:
+    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
+
+    table = GlyphSubstitutionTable()
+    with pytest.raises(NotImplementedError, match="fontTools"):
+        table.read_range_record(MemoryTTFDataStream(b""))

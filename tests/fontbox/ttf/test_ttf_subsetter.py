@@ -267,3 +267,205 @@ def test_force_invisible_unmapped_codepoint_silently_skipped(
     # 'A' must still render normally — force_invisible on PUA must not
     # accidentally taint the subset.
     assert sub_ttf.get_advance_width(gid_a) > 0
+
+
+# ---------- byte-stream helpers (upstream parity surface) -----------------
+
+
+def test_log2_matches_upstream_formula() -> None:
+    # log2 is "highest bit index" — same value as floor(Math.log(n)/log(2)).
+    assert TTFSubsetter.log2(1) == 0
+    assert TTFSubsetter.log2(2) == 1
+    assert TTFSubsetter.log2(8) == 3
+    assert TTFSubsetter.log2(15) == 3
+    assert TTFSubsetter.log2(16) == 4
+
+
+def test_to_u_int32_combines_two_uint16() -> None:
+    assert TTFSubsetter.to_u_int32(0x1234, 0x5678) == 0x12345678
+    assert TTFSubsetter.to_u_int32(0xFFFF, 0xFFFF) == 0xFFFFFFFF
+
+
+def test_to_u_int32_unpacks_big_endian_bytes() -> None:
+    assert TTFSubsetter.to_u_int32(b"\x12\x34\x56\x78") == 0x12345678
+
+
+def test_write_uint16_writes_two_bytes_big_endian() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_uint16(buf, 0x1234)
+    assert buf.getvalue() == b"\x12\x34"
+
+
+def test_write_uint32_writes_four_bytes_big_endian() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_uint32(buf, 0xDEADBEEF)
+    assert buf.getvalue() == b"\xde\xad\xbe\xef"
+
+
+def test_write_s_int16_handles_negative_values() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_s_int16(buf, -1)
+    assert buf.getvalue() == b"\xff\xff"
+
+
+def test_write_uint8_writes_single_byte() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_uint8(buf, 0xAB)
+    assert buf.getvalue() == b"\xab"
+
+
+def test_write_fixed_packs_16_16() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_fixed(buf, 1.0)
+    # 1.0 in 16.16 fixed = 0x00010000.
+    assert buf.getvalue() == b"\x00\x01\x00\x00"
+
+
+def test_write_long_date_time_accepts_seconds_int() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_long_date_time(buf, 0)
+    assert buf.getvalue() == b"\x00\x00\x00\x00\x00\x00\x00\x00"
+
+
+def test_write_table_body_pads_to_4_byte_boundary() -> None:
+    buf = io.BytesIO()
+    TTFSubsetter.write_table_body(buf, b"abc")
+    # 3 bytes + 1 pad byte.
+    assert buf.getvalue() == b"abc\x00"
+
+
+def test_write_file_header_emits_12_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    buf = io.BytesIO()
+    sub.write_file_header(buf, 4)
+    # SFNT version (4) + numTables (2) + searchRange (2) + entrySelector (2) + rangeShift (2)
+    assert len(buf.getvalue()) == 12
+    assert buf.getvalue()[:4] == b"\x00\x01\x00\x00"
+
+
+def test_write_table_header_emits_16_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    buf = io.BytesIO()
+    sub.write_table_header(buf, "head", 0x100, b"\x00" * 4)
+    # tag (4) + checksum (4) + offset (4) + length (4) = 16.
+    assert len(buf.getvalue()) == 16
+    assert buf.getvalue()[:4] == b"head"
+
+
+def test_copy_bytes_round_trips_a_window() -> None:
+    src = io.BytesIO(b"0123456789")
+    dst = io.BytesIO()
+    new_offset = TTFSubsetter.copy_bytes(src, dst, 4, 0, 3)
+    assert dst.getvalue() == b"456"
+    assert new_offset == 7
+
+
+# ---------- build_*_table wrappers ---------------------------------------
+
+
+def test_build_head_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_head_table()
+    assert out is not None
+    assert isinstance(out, bytes)
+    # ``head`` is a fixed 54-byte table.
+    assert len(out) == 54
+
+
+def test_build_hhea_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_hhea_table()
+    assert out is not None
+    assert len(out) == 36
+
+
+def test_build_maxp_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_maxp_table()
+    assert out is not None
+    assert len(out) >= 6
+
+
+def test_build_glyf_loca_consistency(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add_all(ord(c) for c in "Hi")
+    glyf = sub.build_glyf_table()
+    loca = sub.build_loca_table()
+    assert glyf is not None
+    assert loca is not None
+    # ``loca`` entries are uint16 (short format) or uint32 (long format).
+    # Either way: at least (numGlyphs + 1) * 2 bytes.
+    assert len(loca) >= 4
+
+
+def test_build_hmtx_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_hmtx_table()
+    assert out is not None
+    # 4 bytes per HMetric entry, at least one entry.
+    assert len(out) >= 4
+
+
+def test_build_cmap_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_cmap_table()
+    assert out is not None
+
+
+def test_build_name_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_name_table()
+    assert out is not None
+
+
+def test_build_post_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_post_table()
+    assert out is not None
+
+
+def test_build_os2_table_returns_bytes(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    out = sub.build_os2_table()
+    assert out is not None
+
+
+def test_build_table_returns_none_when_excluded(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """When the constructor's ``tables`` allow-list excludes a tag,
+    the corresponding ``build_*_table`` returns ``None`` — matches
+    upstream's pattern of returning ``null`` for excluded tags."""
+    # Allow-list omits ``post`` deliberately.
+    sub = TTFSubsetter(liberation_sans, ["head", "hhea", "maxp", "glyf", "loca", "hmtx"])
+    sub.add(ord("A"))
+    assert sub.build_post_table() is None
+
+
+# ---------- add_compound_references / get_new_glyph_id -------------------
+
+
+def test_add_compound_references_does_not_shrink_glyph_set(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add_all(ord(c) for c in "Hello")
+    before = set(sub._glyph_ids)  # noqa: SLF001
+    sub.add_compound_references()
+    after = set(sub._glyph_ids)  # noqa: SLF001
+    assert before <= after
+
+
+def test_get_new_glyph_id_zero_for_notdef(liberation_sans: TrueTypeFont) -> None:
+    sub = TTFSubsetter(liberation_sans)
+    sub.add(ord("A"))
+    # GID 0 (.notdef) is always the lowest old GID, so its new GID is 0.
+    assert sub.get_new_glyph_id(0) == 0
