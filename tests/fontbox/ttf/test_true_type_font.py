@@ -649,3 +649,135 @@ def test_get_gsub_data_when_no_gsub_table() -> None:
 
 def test_str_returns_post_script_name(liberation_sans: TrueTypeFont) -> None:
     assert str(liberation_sans) == "LiberationSans"
+
+
+# ---------- wave 1259: parity round-out ---------------------------------
+
+
+def test_to_string_matches_dunder_str(liberation_sans: TrueTypeFont) -> None:
+    """``to_string`` is the public spelling of ``__str__`` — both must
+    return the identical PostScript name (mirrors upstream
+    ``toString()``).
+    """
+    assert liberation_sans.to_string() == str(liberation_sans)
+
+
+def test_get_font_b_box_equivalent_to_get_font_bbox(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """``get_font_b_box`` is the spelled-out alias for the camelCase
+    ``getFontBBox()`` projection.
+    """
+    assert liberation_sans.get_font_b_box() == liberation_sans.get_font_bbox()
+
+
+def test_parse_uni_name_static_matches_private_helper() -> None:
+    """The public ``parse_uni_name`` static method must agree with the
+    private ``_parse_uni_name`` for both valid and invalid input.
+    """
+    assert TrueTypeFont.parse_uni_name("uni0041") == 0x41
+    assert TrueTypeFont.parse_uni_name("notuni") == -1
+    assert TrueTypeFont.parse_uni_name("uniD800") == -1  # surrogate area
+
+
+def test_read_post_script_names_warms_lookup_cache(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """``read_post_script_names`` is the public spelling of the cache
+    warmer — calling it once must populate ``_post_script_names``.
+    """
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    assert f._post_script_names is None  # noqa: SLF001
+    f.read_post_script_names()
+    assert f._post_script_names is not None  # noqa: SLF001
+    # Idempotent — calling a second time leaves the cache untouched.
+    cache_before = f._post_script_names  # noqa: SLF001
+    f.read_post_script_names()
+    assert f._post_script_names is cache_before  # noqa: SLF001
+
+
+def test_get_unicode_cmap_impl_strict_matches_subtable(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """``get_unicode_cmap_impl`` is the public spelling of the private
+    helper — strict mode returns the same Unicode subtable as
+    :meth:`get_unicode_cmap_subtable` for fonts that have one.
+    """
+    impl = liberation_sans.get_unicode_cmap_impl(is_strict=True)
+    direct = liberation_sans.get_unicode_cmap_subtable()
+    assert impl is direct
+
+
+def test_get_vertical_origin_returns_none_when_absent(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """LiberationSans has no ``VORG`` table — accessor must return
+    ``None`` (mirrors upstream ``getVerticalOrigin()``'s null contract).
+    """
+    assert liberation_sans.get_vertical_origin() is None
+
+
+def test_add_table_registers_directory_entry(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """``add_table`` is the package-private parser hook — adding a
+    synthetic entry must make it visible through the directory accessors.
+    """
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    custom = TTFTable()
+    custom.set_tag("XXXX")
+    custom.set_offset(0)
+    custom.set_length(0)
+    custom.set_check_sum(0)
+    f.add_table(custom)
+    assert f.get_table("XXXX") is custom
+    assert custom in f.get_tables()
+
+
+def test_read_table_marks_entry_initialized(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """``read_table`` is the package-private parser hook for lazily
+    faulting a table in — calling it must flip ``initialized`` on the
+    directory entry.
+    """
+    f = TrueTypeFont.from_bytes(FIXTURE.read_bytes())
+    head = f.get_table("head")
+    assert head is not None
+    head.initialized = False
+    f.read_table(head)
+    assert head.initialized is True
+
+
+def test_read_table_headers_unknown_tag_is_noop(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """``read_table_headers`` must silently skip when the requested
+    tag is absent (matches upstream's ``if (table != null)`` guard).
+    """
+
+    class _Bag:
+        pass
+
+    bag = _Bag()
+    liberation_sans.read_table_headers("ZZZZ", bag)
+    # Bag must remain empty — no attributes assigned.
+    assert not vars(bag)
+
+
+def test_read_table_headers_populates_head_fields(
+    liberation_sans: TrueTypeFont,
+) -> None:
+    """When the tag is ``head``, the supplied DTO receives the
+    bounding-box / units-per-em fields the embedded-font header
+    reader cares about.
+    """
+
+    class _Bag:
+        pass
+
+    bag = _Bag()
+    liberation_sans.read_table_headers("head", bag)
+    assert bag.units_per_em > 0  # type: ignore[attr-defined]
+    assert bag.x_min <= bag.x_max  # type: ignore[attr-defined]
+    assert bag.y_min <= bag.y_max  # type: ignore[attr-defined]

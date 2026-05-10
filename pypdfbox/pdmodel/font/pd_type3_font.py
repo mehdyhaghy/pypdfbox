@@ -205,7 +205,7 @@ class PDType3Font(PDSimpleFont):
         self._dict.set_item(_FONT_BBOX, bbox)
 
     # The Type-3 ``get_bounding_box`` lives below alongside the
-    # ``_generate_bounding_box`` helper to keep the upstream pairing
+    # ``generate_bounding_box`` helper to keep the upstream pairing
     # ``getBoundingBox`` / ``generateBoundingBox`` colocated.
 
     # ---------- /FirstChar /LastChar /Widths ----------
@@ -384,6 +384,18 @@ class PDType3Font(PDSimpleFont):
         """
         return False
 
+    def is_damaged(self) -> bool:
+        """Mirrors upstream ``PDType3Font.isDamaged() → false``.
+
+        Type 3 fonts have no external font program to load, so there is
+        no parse step that could fail — upstream's comment says
+        verbatim: *"there's no font file to load"*. The base
+        :class:`PDFont` already returns ``False``; we override here
+        explicitly so the upstream method appears on this concrete
+        subclass.
+        """
+        return False
+
     def is_font_symbolic(self) -> bool:
         """Type 3 fonts are never symbolic in the PDFBox sense.
 
@@ -437,6 +449,12 @@ class PDType3Font(PDSimpleFont):
         PDFBox text-extraction pipeline does not synthesise Type 3 byte
         streams — Type 3 is a *display* subtype only, written by the
         producer with hand-rolled ``/CharProcs`` and ``/Encoding``.
+
+        Upstream's method is named ``encode(int unicode)`` but pypdfbox
+        already binds ``encode(text: str)`` on :class:`PDFont` /
+        :class:`PDSimpleFont` for the high-level text-to-byte surface,
+        so the codepoint-flavoured override lives under
+        ``encode_codepoint`` to avoid clobbering the parent contract.
         """
         del unicode
         raise NotImplementedError("Not implemented: Type3")
@@ -509,16 +527,18 @@ class PDType3Font(PDSimpleFont):
         """
         if self._font_bbox_cache is not None:
             return self._font_bbox_cache
-        self._font_bbox_cache = self._generate_bounding_box()
+        self._font_bbox_cache = self.generate_bounding_box()
         return self._font_bbox_cache
 
-    def _generate_bounding_box(self) -> PDRectangle | None:
+    def generate_bounding_box(self) -> PDRectangle | None:
         """Compute the effective ``/FontBBox`` for this font.
 
-        Mirrors upstream private ``generateBoundingBox()``: when the
-        dictionary ``/FontBBox`` is the all-zero default, expand it by
-        unioning every ``/CharProcs`` glyph bbox carried by a ``d1``
-        operator (PDFBox plan-B; covers fonts that ship a degenerate
+        Mirrors upstream ``generateBoundingBox()`` (private in Java; we
+        expose the snake-cased name on the class so direct callers and
+        the parity scorer can find it). When the dictionary
+        ``/FontBBox`` is the all-zero default, expand it by unioning
+        every ``/CharProcs`` glyph bbox carried by a ``d1`` operator
+        (PDFBox plan-B; covers fonts that ship a degenerate
         ``/FontBBox`` placeholder).
         """
         from pypdfbox.pdmodel.pd_rectangle import PDRectangle
@@ -565,14 +585,15 @@ class PDType3Font(PDSimpleFont):
         return PDRectangle(llx, lly, urx, ury)
 
     @staticmethod
-    def _check_font_matrix_values(matrix: COSArray | None) -> bool:
+    def check_font_matrix_values(matrix: COSArray | None) -> bool:
         """``True`` iff ``matrix`` is a 6-entry array of numeric items.
 
-        Mirrors upstream private
-        ``checkFontMatrixValues(COSArray) : boolean`` — used by
-        :meth:`get_font_matrix` to decide whether the dictionary entry
-        is well-formed enough to honour, vs. falling back to the spec
-        default ``[0.001, 0, 0, 0.001, 0, 0]``.
+        Mirrors upstream ``checkFontMatrixValues(COSArray) : boolean``
+        (private in Java; we expose the snake-cased name on the class
+        for parity scoring and so callers porting Java code can reach
+        it directly). Used by :meth:`get_font_matrix` to decide whether
+        the dictionary entry is well-formed enough to honour, vs.
+        falling back to the spec default ``[0.001, 0, 0, 0.001, 0, 0]``.
         """
         if matrix is None or matrix.size() != 6:
             return False

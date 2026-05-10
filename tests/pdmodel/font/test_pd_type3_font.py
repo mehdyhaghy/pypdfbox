@@ -513,7 +513,7 @@ def test_is_standard14_false_even_with_basefont_helvetica() -> None:
     assert font.is_standard14() is False
 
 
-# ---------- _check_font_matrix_values ----------
+# ---------- check_font_matrix_values ----------
 
 
 def test_check_font_matrix_values_accepts_six_numerics() -> None:
@@ -527,16 +527,16 @@ def test_check_font_matrix_values_accepts_six_numerics() -> None:
             COSFloat(0.0),
         ]
     )
-    assert PDType3Font._check_font_matrix_values(arr) is True
+    assert PDType3Font.check_font_matrix_values(arr) is True
 
 
 def test_check_font_matrix_values_rejects_wrong_size() -> None:
     arr = COSArray([COSFloat(1.0), COSFloat(0.0)])
-    assert PDType3Font._check_font_matrix_values(arr) is False
+    assert PDType3Font.check_font_matrix_values(arr) is False
 
 
 def test_check_font_matrix_values_rejects_none() -> None:
-    assert PDType3Font._check_font_matrix_values(None) is False
+    assert PDType3Font.check_font_matrix_values(None) is False
 
 
 def test_check_font_matrix_values_rejects_non_numeric_entry() -> None:
@@ -550,7 +550,7 @@ def test_check_font_matrix_values_rejects_non_numeric_entry() -> None:
             COSFloat(0.0),
         ]
     )
-    assert PDType3Font._check_font_matrix_values(arr) is False
+    assert PDType3Font.check_font_matrix_values(arr) is False
 
 
 # ---------- generate_bounding_box (CharProcs union plan-B) ----------
@@ -630,3 +630,39 @@ def test_get_bounding_box_skips_d0_charprocs_in_union() -> None:
     # All-zero in -> all-zero out (no glyph bbox to absorb).
     assert out.get_lower_left_x() == 0.0
     assert out.get_upper_right_x() == 0.0
+
+
+# ---------- generate_bounding_box (public, bypasses cache) ----------
+
+
+def test_generate_bounding_box_returns_none_when_font_bbox_missing() -> None:
+    # Mirrors upstream private generateBoundingBox: with no /FontBBox at
+    # all the helper returns None (caller's "warning + empty bbox" path).
+    font = PDType3Font()
+    assert font.generate_bounding_box() is None
+
+
+def test_generate_bounding_box_does_not_consult_cache() -> None:
+    # The public helper is the cache miss path — every call recomputes.
+    font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 100.0, 200.0))
+    a = font.generate_bounding_box()
+    b = font.generate_bounding_box()
+    assert a == b
+    # And distinct instances (not memoised).
+    assert a is not b
+
+
+# ---------- is_damaged override ----------
+
+
+def test_is_damaged_explicit_override_returns_false() -> None:
+    # Mirrors upstream PDType3Font.isDamaged(): no font program to load,
+    # so no parse step that could fail. The override is declared on the
+    # subclass for parity with upstream's explicit override.
+    font = PDType3Font()
+    assert font.is_damaged() is False
+    # Method must be defined on PDType3Font itself, not just inherited.
+    assert "is_damaged" in PDType3Font.__dict__
+
+

@@ -75,6 +75,30 @@ class _SubstitutingCmapLookup:
         return self._cmap.get_char_codes(gid)
 
 
+class _VerticalOriginView:
+    """Minimal projection of the ``VORG`` (vertical origin) table.
+
+    The standalone :class:`VerticalOriginTable` port is a future-wave
+    item — the table is rare (only CFF / OTF CJK fonts and a handful of
+    Latin fonts ship one), so we surface enough of the upstream shape
+    here to keep :meth:`TrueTypeFont.get_vertical_origin` returning a
+    real object when ``VORG`` is present without expanding the typed-
+    table inventory in this wave. The accessor names (``get_origin_y``,
+    etc.) match upstream's ``VerticalOriginTable`` so callers porting
+    from PDFBox find them.
+    """
+
+    def __init__(self) -> None:
+        self.major_version: int = 1
+        self.minor_version: int = 0
+        self.default_vertical_origin: int = 0
+        self.origins: dict[int, int] = {}
+
+    def get_origin_y(self, gid: int) -> int:
+        """Vertical origin (Y, in design units) for ``gid``."""
+        return self.origins.get(int(gid), self.default_vertical_origin)
+
+
 class TrueTypeFont:
     """TrueType / OpenType font wrapper.
 
@@ -220,6 +244,84 @@ class TrueTypeFont:
         return vmtx.get_advance_height(gid)
 
     # ---------- typed-table accessors (legacy surface) ------------------
+
+    def add_table(self, table: TTFTable) -> None:
+        """Register a directory entry under its tag.
+
+        Mirrors upstream ``addTable(TTFTable)`` (TrueTypeFont.java line
+        114) — package-private on the Java side, called by
+        :class:`TTFParser` while seeding the directory. Python has no
+        package visibility, so it is exposed here too; callers outside
+        the parser should not invoke it directly. The supplied table
+        replaces any existing entry with the same tag.
+        """
+        # Materialise the directory cache so subsequent ``get_table_map``
+        # calls see the new entry without re-walking ``self._tt.reader``.
+        table_map = self.get_table_map()
+        tag = table.get_tag()
+        if tag is None:
+            return
+        table_map[tag] = table
+
+    def read_table(self, table: TTFTable) -> None:
+        """Initialise a directory entry by re-reading its bytes.
+
+        Mirrors upstream ``readTable(TTFTable)`` (TrueTypeFont.java line
+        404) — package-private parser hook used to lazily fault tables
+        in. fontTools already eagerly parses the recognised tables once
+        :class:`TTFFont` is constructed, so the work this method does on
+        the Java side is mostly already complete by the time it would
+        be called here. We still flip the entry's ``initialized`` bit
+        and re-attach the on-disk byte slice so callers walking the
+        directory observe the upstream contract.
+        """
+        if table is None:
+            return
+        raw = self.get_table_bytes(table)
+        if raw is not None:
+            # ``TTFTable.set_data`` was added in an earlier wave for the
+            # raw-bytes accessor path; if the field is absent (legacy
+            # TTFTable subclasses) just record the initialisation flag.
+            setter = getattr(table, "set_data", None)
+            if setter is not None:
+                setter(raw)
+        table.initialized = True
+
+    def read_table_headers(self, tag: str, out_headers: Any) -> None:
+        """Populate ``out_headers`` with the header fields of ``tag``.
+
+        Mirrors upstream ``readTableHeaders(String, FontHeaders)``
+        (TrueTypeFont.java line 422) — package-private parser hook used
+        by the embedded-font header reader. ``FontHeaders`` is a thin
+        DTO that has not been ported separately; we accept any object
+        and assign a small set of well-known attributes onto it. The
+        call is a no-op when the font lacks ``tag``.
+        """
+        if tag not in self.get_table_map():
+            return
+        # Best-effort projection: surface the most-frequently-consumed
+        # head / hhea / OS-2 / post fields onto the supplied DTO. The
+        # caller decides which subset to inspect.
+        if tag == "head":
+            head = self.get_header()
+            if head is not None and out_headers is not None:
+                out_headers.units_per_em = head.get_units_per_em()
+                out_headers.x_min = head.get_x_min()
+                out_headers.y_min = head.get_y_min()
+                out_headers.x_max = head.get_x_max()
+                out_headers.y_max = head.get_y_max()
+        elif tag == "hhea":
+            hhea = self.get_horizontal_header()
+            if hhea is not None and out_headers is not None:
+                out_headers.number_of_h_metrics = hhea.get_number_of_h_metrics()
+        elif tag == "OS/2":
+            os2 = self.get_os2_windows()
+            if os2 is not None and out_headers is not None:
+                out_headers.weight_class = os2.get_weight_class()
+        elif tag == "post":
+            post = self.get_post_script()
+            if post is not None and out_headers is not None:
+                out_headers.italic_angle = post.get_italic_angle()
 
     def get_table_map(self) -> dict[str, TTFTable]:
         """Return a {tag: TTFTable} map reflecting the SFNT directory.
@@ -1289,6 +1391,39 @@ class TrueTypeFont:
         self._loca = t
         return t
 
+    def get_vertical_origin(self) -> _VerticalOriginView | None:
+        """Return the populated ``VORG`` table view, or ``None`` if absent.
+
+        Mirrors upstream ``getVerticalOrigin()`` (TrueTypeFont.java line
+        345). The ``VORG`` table is rare — it carries explicit vertical
+        origins for CJK CFF fonts and a handful of OpenType-flavoured
+        Latin fonts. fontTools decodes it lazily; we project the parsed
+        values onto a small in-module view (``_VerticalOriginView``) so
+        the upstream accessor surface stays available without expanding
+        the typed-table inventory in this wave.
+        """
+        if "VORG" not in self._tt:
+            return None
+        ft = self._tt["VORG"]
+        view = _VerticalOriginView()
+        view.major_version = int(getattr(ft, "majorVersion", 1))
+        view.minor_version = int(getattr(ft, "minorVersion", 0))
+        view.default_vertical_origin = int(
+            getattr(ft, "defaultVertOriginY", 0)
+        )
+        # fontTools exposes the per-glyph entries as ``VOriginRecords``
+        # keyed by glyph name; project to a {gid: origin} dict for parity
+        # with upstream's ``getOriginY(int gid)`` lookup shape.
+        glyph_order = self._tt.getGlyphOrder()
+        name_to_gid = {n: i for i, n in enumerate(glyph_order)}
+        records = getattr(ft, "VOriginRecords", None) or {}
+        view.origins = {
+            name_to_gid[name]: int(record.vOrigY)
+            for name, record in records.items()
+            if name in name_to_gid
+        }
+        return view
+
     # ---------- aliases for upstream-shaped accessor names ---------------
 
     def get_kerning(self) -> KerningTable | None:
@@ -1345,8 +1480,12 @@ class TrueTypeFont:
         scale = 1.0 / units_per_em if units_per_em else 0.001
         return [scale, 0.0, 0.0, scale, 0.0, 0.0]
 
-    # Human-readable alias matching the CFF helper spelling.
-    get_font_b_box = get_font_bbox
+    def get_font_b_box(self) -> tuple[int, int, int, int]:
+        """Spelled-out alias for :meth:`get_font_bbox` matching the
+        CFF helper spelling and the camelCase-snake_case projection of
+        upstream's ``getFontBBox()``.
+        """
+        return self.get_font_bbox()
 
     # ---------- font-level metadata --------------------------------------
 
@@ -1408,6 +1547,14 @@ class TrueTypeFont:
         name from the ``name`` table, or ``"(null)"`` if the font lacks
         one (or fails to read it).
         """
+        return self.to_string()
+
+    def to_string(self) -> str:
+        """Mirrors upstream's ``toString()`` — returns the PostScript
+        name from the ``name`` table, or ``"(null)"`` if the font lacks
+        one (or fails to read it). Exposed under the snake_case spelling
+        so the parity matcher recognises it; ``__str__`` defers to it.
+        """
         try:
             naming_table = self.get_naming()
             if naming_table is not None:
@@ -1417,6 +1564,41 @@ class TrueTypeFont:
             return "(null)"
         except OSError as exc:
             return f"(null - {exc})"
+
+    # ---------- public spellings for upstream parity matchers --------------
+
+    def read_post_script_names(self) -> None:
+        """Public spelling of :meth:`_read_post_script_names`.
+
+        Mirrors upstream's package-private ``readPostScriptNames``
+        (TrueTypeFont.java line 540) — Python has no package
+        visibility, so this is exposed as a public method for the parity
+        matcher and any direct caller that wants to force-warm the
+        PostScript-name cache. The leading-underscore variant remains
+        the canonical implementation.
+        """
+        self._read_post_script_names()
+
+    @staticmethod
+    def parse_uni_name(name: str) -> int:
+        """Public spelling of :meth:`_parse_uni_name`.
+
+        Mirrors upstream's private ``parseUniName`` (TrueTypeFont.java
+        line 736) — exposed under the upstream snake_case shape for the
+        parity matcher; the leading-underscore variant remains the
+        canonical implementation.
+        """
+        return TrueTypeFont._parse_uni_name(name)
+
+    def get_unicode_cmap_impl(self, is_strict: bool = True) -> CmapSubtable | None:  # noqa: FBT001, FBT002
+        """Public spelling of :meth:`_get_unicode_cmap_impl`.
+
+        Mirrors upstream's private ``getUnicodeCmapImpl(boolean)``
+        (TrueTypeFont.java line 612) — exposed under the upstream
+        snake_case shape for the parity matcher. The leading-underscore
+        variant remains the canonical implementation.
+        """
+        return self._get_unicode_cmap_impl(is_strict=is_strict)
 
     # ---------- helpers -------------------------------------------------
 

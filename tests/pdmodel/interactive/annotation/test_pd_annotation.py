@@ -161,6 +161,36 @@ def test_rectangle_returns_none_when_array_too_short() -> None:
     assert ann.get_rectangle() is None
 
 
+def test_rectangle_returns_none_when_array_is_not_array() -> None:
+    """A /Rect entry that's not a COSArray at all — return None."""
+    ann = PDAnnotationText()
+    ann.get_cos_object().set_item(
+        COSName.get_pdf_name("Rect"),
+        COSName.get_pdf_name("not_an_array"),
+    )
+    assert ann.get_rectangle() is None
+
+
+def test_rectangle_accepts_mixed_numeric_types() -> None:
+    """Integer + float entries should both be accepted as numeric."""
+    ann = PDAnnotationText()
+    ann.get_cos_object().set_item(
+        COSName.get_pdf_name("Rect"),
+        COSArray(
+            [
+                COSInteger.get(0),
+                COSInteger.get(0),
+                COSFloat(100.5),
+                COSFloat(200.5),
+            ]
+        ),
+    )
+    rt = ann.get_rectangle()
+    assert rt is not None
+    assert rt.lower_left_x == 0.0
+    assert rt.upper_right_x == 100.5
+
+
 # ---------- /Contents round-trip ----------
 
 
@@ -660,6 +690,195 @@ def test_hash_code_stable_across_calls() -> None:
     first = ann.hash_code()
     second = ann.hash_code()
     assert first == second
+
+
+# ---------- /AS appearance state overloads ----------
+
+
+def test_appearance_state_string_overload() -> None:
+    """Mirrors upstream ``setAppearanceState(String)`` (Java line 333)."""
+    ann = PDAnnotationText()
+    ann.set_appearance_state("On")
+    assert ann.get_appearance_state() == "On"
+
+
+def test_appearance_state_cosname_overload() -> None:
+    """Mirrors upstream ``setAppearanceState(COSName)`` (Java line 347)."""
+    ann = PDAnnotationText()
+    ann.set_appearance_state(COSName.get_pdf_name("Off"))
+    assert ann.get_appearance_state() == "Off"
+
+
+def test_appearance_state_clear() -> None:
+    ann = PDAnnotationText()
+    ann.set_appearance_state("On")
+    ann.set_appearance_state(None)
+    assert ann.get_appearance_state() is None
+
+
+# ---------- /StructParent ----------
+
+
+def test_struct_parent_default_minus_one() -> None:
+    """Upstream ``getStructParent()`` returns -1 when /StructParent is
+    absent (Java line 695)."""
+    ann = PDAnnotationText()
+    assert ann.get_struct_parent() == -1
+
+
+def test_struct_parent_round_trip() -> None:
+    ann = PDAnnotationText()
+    ann.set_struct_parent(42)
+    assert ann.get_struct_parent() == 42
+
+
+# ---------- _set_subtype (protected upstream) ----------
+
+
+def test_protected_set_subtype_writes_subtype_name() -> None:
+    """Mirrors upstream ``protected final void setSubtype(String)``
+    (Java line 233). Subclass constructors call this to fix /Subtype."""
+    ann = PDAnnotationText()
+    ann._set_subtype("Highlight")
+    assert ann.get_subtype() == "Highlight"
+
+
+# ---------- construct_appearances (overrides) ----------
+
+
+def test_construct_appearances_no_arg_is_noop() -> None:
+    """Upstream's no-arg ``constructAppearances()`` (Java line 877) is a
+    no-op on the base class — overrides happen in subclasses."""
+    ann = PDAnnotationText()
+    # Calling the no-arg overload must not raise nor mutate the dict.
+    ann.construct_appearances()
+    assert ann.get_appearance_dictionary() is None
+
+
+def test_construct_appearances_with_document_is_noop() -> None:
+    """Upstream's ``constructAppearances(PDDocument)`` (Java line 867) is
+    a no-op on the base class. We accept ``None`` as the document, which
+    matches the contract for the no-arg case."""
+    ann = PDAnnotationText()
+    ann.construct_appearances(None)
+    assert ann.get_appearance_dictionary() is None
+
+
+# ---------- get_appearance / set_appearance (upstream-named aliases) ----------
+
+
+def test_get_appearance_alias_returns_dictionary() -> None:
+    """``getAppearance()`` is the upstream-canonical spelling — must
+    behave identically to the historical ``get_appearance_dictionary``."""
+    ann = PDAnnotationText()
+    ap = PDAppearanceDictionary()
+    ann.set_appearance(ap)
+    rt = ann.get_appearance()
+    assert rt is not None
+    assert rt.get_cos_object() is ap.get_cos_object()
+
+
+def test_set_appearance_alias_clears_with_none() -> None:
+    ann = PDAnnotationText()
+    ann.set_appearance(PDAppearanceDictionary())
+    ann.set_appearance(None)
+    assert ann.get_appearance() is None
+
+
+# ---------- /Border setter clears with None ----------
+
+
+def test_set_border_none_clears_entry() -> None:
+    """``set_border(None)`` removes /Border. Subsequent reads return the
+    spec default — mirrors upstream where ``setBorder(null)`` deletes
+    the key and ``getBorder()`` synthesises [0 0 1]."""
+    ann = PDAnnotationText()
+    ann.set_border(
+        COSArray([COSInteger.get(2), COSInteger.get(2), COSInteger.get(2)])
+    )
+    ann.set_border(None)
+    rt = ann.get_border()
+    # Default is [0 0 1] per spec.
+    assert rt.size() == 3
+    assert rt.get_int(2) == 1
+
+
+# ---------- set_color via PDColor-like duck ----------
+
+
+def test_set_color_accepts_pd_color_duck() -> None:
+    """Upstream's ``setColor(PDColor)`` calls ``c.toCOSArray()``. Any
+    object that exposes ``to_cos_array()`` returning a COSArray is
+    accepted — mirrors that contract without pulling in the rendering
+    cluster."""
+
+    class FakePDColor:
+        def to_cos_array(self) -> COSArray:
+            return COSArray([COSFloat(0.1), COSFloat(0.2), COSFloat(0.3)])
+
+    ann = PDAnnotationText()
+    ann.set_color(FakePDColor())
+    rt = ann.get_color()
+    assert rt is not None
+    assert rt.size() == 3
+    assert rt.to_float_array() == [
+        pytest.approx(0.1),
+        pytest.approx(0.2),
+        pytest.approx(0.3),
+    ]
+
+
+def test_set_color_rejects_unrecognised_type() -> None:
+    ann = PDAnnotationText()
+    with pytest.raises(TypeError):
+        ann.set_color(object())  # type: ignore[arg-type]
+
+
+# ---------- /Type defaulting on existing dict ----------
+
+
+def test_constructor_does_not_overwrite_existing_annot_type() -> None:
+    """If /Type is already /Annot, leave it alone."""
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot"))
+    raw.set_name(COSName.SUBTYPE, "Square")  # type: ignore[attr-defined]
+    ann = PDAnnotationSquare(raw)
+    assert ann.get_cos_object().get_name(COSName.TYPE) == "Annot"  # type: ignore[attr-defined]
+
+
+# ---------- has_appearance / has_color / has_contents predicates ----------
+
+
+def test_has_appearance_false_by_default() -> None:
+    ann = PDAnnotationText()
+    assert ann.has_appearance() is False
+
+
+def test_has_appearance_true_when_ap_present() -> None:
+    ann = PDAnnotationText()
+    ann.set_appearance_dictionary(PDAppearanceDictionary())
+    assert ann.has_appearance() is True
+
+
+def test_has_color_false_by_default() -> None:
+    ann = PDAnnotationText()
+    assert ann.has_color() is False
+
+
+def test_has_color_true_when_c_present() -> None:
+    ann = PDAnnotationText()
+    ann.set_color_components([0.0, 0.0, 0.0])
+    assert ann.has_color() is True
+
+
+# ---------- repr for debugging ----------
+
+
+def test_repr_contains_subtype() -> None:
+    ann = PDAnnotationText()
+    rep = repr(ann)
+    assert "PDAnnotationText" in rep
+    assert "Text" in rep
 
 
 # Ensure unused imports stay referenced (suppresses linter chatter).

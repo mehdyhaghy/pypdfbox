@@ -149,6 +149,30 @@ class PDResources:
             return raw, raw.get_object()
         return raw, raw
 
+    def get_indirect(self, kind: COSName, name: COSName) -> COSObject | None:
+        """Return the resource entry as an indirect ``COSObject`` reference,
+        or ``None`` when the category sub-dictionary is missing or the entry
+        is a direct (inline) value. Mirrors upstream private
+        ``getIndirect(COSName, COSName)`` (line 485) — used by typed
+        accessors to drive the resource cache."""
+        sub = self._get_subdict(kind)
+        if sub is None:
+            return None
+        raw = sub.get_item(name)
+        if isinstance(raw, COSObject):
+            return raw
+        return None
+
+    def get(self, kind: COSName, name: COSName) -> COSBase | None:
+        """Return the dereferenced resource entry under ``kind``/``name``, or
+        ``None``. Mirrors upstream private ``get(COSName, COSName)``
+        (line 504) — the inner accessor that resolves indirect references
+        through the category sub-dictionary."""
+        sub = self._get_subdict(kind)
+        if sub is None:
+            return None
+        return sub.get_dictionary_object(name)
+
     def _cache(self) -> PDResourceCache | None:
         if self._document is not None:
             return cast("PDResourceCache", self._document.get_resource_cache())
@@ -338,54 +362,39 @@ class PDResources:
     def get_xobject_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_X_OBJECT))
 
-    def getXObjectNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
-        return self.get_xobject_names()
-
     def get_font_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_FONT))
-
-    def getFontNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
-        return self.get_font_names()
 
     def get_color_space_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_COLOR_SPACE))
 
-    def getColorSpaceNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
-        return self.get_color_space_names()
-
     def get_pattern_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_PATTERN))
 
-    def getPatternNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
-        return self.get_pattern_names()
-
     def get_shading_names(self) -> list[COSName]:
         return self._names_in(self._get_subdict(_SHADING))
-
-    def getShadingNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
-        return self.get_shading_names()
 
     def get_extgstate_names(self) -> list[COSName]:
         """``/ExtGState`` keys. Upstream method name is ``getExtGStateNames``."""
         return self._names_in(self._get_subdict(_EXT_GSTATE))
 
-    def getExtGStateNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
-        return self.get_extgstate_names()
-
     def get_ext_g_state_names(self) -> list[COSName]:
-        """Upstream-spelled alias for ``get_extgstate_names``."""
+        """Upstream-spelled mirror of ``get_extgstate_names``."""
         return self.get_extgstate_names()
 
     def get_property_list_names(self) -> list[COSName]:
         """``/Properties`` keys. Upstream method name is ``getPropertiesNames``."""
         return self._names_in(self._get_subdict(_PROPERTIES))
 
-    def getPropertiesNames(self) -> list[COSName]:  # noqa: N802 - upstream Java name
+    def get_properties_names(self) -> list[COSName]:
+        """Upstream-spelled mirror of ``get_property_list_names``."""
         return self.get_property_list_names()
 
-    def get_properties_names(self) -> list[COSName]:
-        """Upstream-spelled alias for ``get_property_list_names``."""
-        return self.get_property_list_names()
+    def get_names(self, kind: COSName) -> list[COSName]:
+        """Return the resource names of the given category, or ``[]`` when
+        the category sub-dictionary is absent. Mirrors upstream private
+        ``getNames(COSName)`` (line 583)."""
+        return self._names_in(self._get_subdict(kind))
 
     # ---------- typed-accessor surface ----------
 
@@ -823,6 +832,51 @@ class PDResources:
             if not sub.contains_key(candidate):
                 return candidate
             n += 1
+
+    def create_key(self, kind: COSName, prefix: str) -> COSName:
+        """Allocate a fresh resource key for ``kind``/``prefix``. Mirrors
+        upstream private ``createKey(COSName, String)`` (line 740) — the
+        kind-aware wrapper that picks the next free ``<prefix><n>`` slot in
+        the category sub-dictionary, creating the sub-dictionary lazily if
+        absent."""
+        sub = self._get_or_create_subdict(kind)
+        return self._create_key(sub, prefix)
+
+    def is_allowed_cache(self, xobject: Any) -> bool:
+        """Return ``True`` if ``xobject`` may be stored in the resource
+        cache. Mirrors upstream private ``isAllowedCache(PDXObject)``
+        (line 453) — image XObjects whose colour space could be overridden
+        by a ``Default*`` entry on the page must not be cached, because the
+        cache is shared across pages with potentially different defaults
+        (PDFBOX-2370 / PDFBOX-3484)."""
+        # Local import — keeps the cluster boundary explicit.
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            PDImageXObject,
+        )
+
+        if not isinstance(xobject, PDImageXObject):
+            return True
+        cos = xobject.get_cos_object()
+        get_name = getattr(cos, "get_name", None)
+        if not callable(get_name):
+            return True
+        cs_name_str = get_name(_COLOR_SPACE)  # type: ignore[attr-defined]
+        if cs_name_str is None:
+            return True
+        cs_name = COSName.get_pdf_name(cs_name_str)
+        if cs_name is COSName.get_pdf_name("DeviceCMYK") and self.has_color_space(
+            COSName.get_pdf_name("DefaultCMYK")
+        ):
+            return False
+        if cs_name is COSName.get_pdf_name("DeviceRGB") and self.has_color_space(
+            COSName.get_pdf_name("DefaultRGB")
+        ):
+            return False
+        if cs_name is COSName.get_pdf_name("DeviceGray") and self.has_color_space(
+            COSName.get_pdf_name("DefaultGray")
+        ):
+            return False
+        return not self.has_color_space(cs_name)
 
 
 def _to_cos_name(name: COSName | str) -> COSName:

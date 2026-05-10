@@ -224,6 +224,62 @@ def test_char_proc_matrix_delegates_to_font():
     assert matrix == pytest.approx([0.002, 0.0, 0.0, 0.002, 0.0, 0.0], rel=1e-6)
 
 
+# ---------- isDamaged — Type 3 has no font program to load ----------
+
+
+def test_is_damaged_returns_false():
+    # Mirrors upstream PDType3Font.isDamaged() — returns false because
+    # there's no font file to load, so no parse step that could fail.
+    font = PDType3Font()
+    assert font.is_damaged() is False
+
+
+# ---------- isStandard14 — Type 3 is never one of the Standard 14 ----------
+
+
+def test_is_standard14_returns_false():
+    # Mirrors upstream PDType3Font.isStandard14() — always false even if
+    # /BaseFont collides with a Standard 14 name.
+    font = PDType3Font()
+    assert font.is_standard14() is False
+
+
+# ---------- generateBoundingBox / checkFontMatrixValues (private upstream) ----------
+
+
+def test_check_font_matrix_values_six_floats():
+    # Mirrors the gating logic in upstream getFontMatrix():
+    # checkFontMatrixValues accepts a 6-entry numeric array.
+    from pypdfbox.cos import COSArray, COSFloat
+
+    arr = COSArray(
+        [
+            COSFloat(0.001),
+            COSFloat(0.0),
+            COSFloat(0.0),
+            COSFloat(0.001),
+            COSFloat(0.0),
+            COSFloat(0.0),
+        ]
+    )
+    assert PDType3Font.check_font_matrix_values(arr) is True
+
+
+def test_check_font_matrix_values_rejects_short_array():
+    from pypdfbox.cos import COSArray, COSFloat
+
+    arr = COSArray([COSFloat(0.001)])
+    assert PDType3Font.check_font_matrix_values(arr) is False
+
+
+def test_generate_bounding_box_no_font_bbox_returns_none():
+    # Upstream's generateBoundingBox returns an empty BoundingBox when
+    # /FontBBox is missing entirely; pypdfbox surfaces None so callers
+    # can distinguish "no bbox" from "explicit zero bbox".
+    font = PDType3Font()
+    assert font.generate_bounding_box() is None
+
+
 # Skipped (require parser / open-document pipeline beyond this cluster):
 #   - testType3FontWithEmptyCharProc — needs PDFParser + PDDocument.load
 #   - testPDFBox4071EmptyType3       — needs PDFParser + content-stream engine

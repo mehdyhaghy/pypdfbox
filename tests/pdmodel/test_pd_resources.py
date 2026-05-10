@@ -177,7 +177,9 @@ def test_upstream_name_aliases_return_cos_names() -> None:
     assert [name.get_name() for name in res.get_properties_names()] == ["Prop0"]
 
 
-def test_pdfbox_camelcase_name_aliases_return_cos_names() -> None:
+def test_get_names_returns_keys_for_arbitrary_category() -> None:
+    """Upstream ``getNames(COSName)`` (private) is exposed as
+    ``get_names`` and must dispatch to the right sub-dictionary."""
     res = PDResources()
     entries = [
         ("XObject", "Im0", COSStream()),
@@ -191,13 +193,21 @@ def test_pdfbox_camelcase_name_aliases_return_cos_names() -> None:
     for category, name, value in entries:
         res.put(COSName.get_pdf_name(category), COSName.get_pdf_name(name), value)
 
-    assert [name.get_name() for name in res.getXObjectNames()] == ["Im0"]
-    assert [name.get_name() for name in res.getFontNames()] == ["F0"]
-    assert [name.get_name() for name in res.getColorSpaceNames()] == ["CS0"]
-    assert [name.get_name() for name in res.getPatternNames()] == ["P0"]
-    assert [name.get_name() for name in res.getShadingNames()] == ["Sh0"]
-    assert [name.get_name() for name in res.getExtGStateNames()] == ["GS0"]
-    assert [name.get_name() for name in res.getPropertiesNames()] == ["Prop0"]
+    assert [n.get_name() for n in res.get_names(PDResources.XOBJECT)] == ["Im0"]
+    assert [n.get_name() for n in res.get_names(PDResources.FONT)] == ["F0"]
+    assert [n.get_name() for n in res.get_names(PDResources.COLOR_SPACE)] == ["CS0"]
+    assert [n.get_name() for n in res.get_names(PDResources.PATTERN)] == ["P0"]
+    assert [n.get_name() for n in res.get_names(PDResources.SHADING)] == ["Sh0"]
+    assert [n.get_name() for n in res.get_names(PDResources.EXT_G_STATE)] == ["GS0"]
+    assert [n.get_name() for n in res.get_names(PDResources.PROPERTIES)] == ["Prop0"]
+
+
+def test_get_names_missing_category_returns_empty_list() -> None:
+    """``get_names`` on an empty resources should return ``[]`` rather than
+    raising, mirroring upstream's ``Collections.emptySet()`` fallback."""
+    res = PDResources()
+    assert res.get_names(PDResources.XOBJECT) == []
+    assert res.get_names(COSName.get_pdf_name("Pattern")) == []
 
 
 def test_get_resource_cache_returns_constructor_cache() -> None:
