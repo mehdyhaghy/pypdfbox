@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import io
 import logging
 import re
+from collections.abc import Iterable
 from threading import Lock
+from typing import IO
 
 logger = logging.getLogger(__name__)
 
@@ -4547,6 +4550,124 @@ class GlyphList:
     @classmethod
     def get_zapf_dingbats(cls) -> GlyphList:
         return cls.ZAPF_DINGBATS
+
+    # -- loaders -----------------------------------------------------------
+
+    @classmethod
+    def load(
+        cls,
+        source: str | bytes | IO[bytes] | Iterable[str],
+        number_of_entries: int | None = None,
+        *,
+        base: GlyphList | None = None,
+    ) -> GlyphList:
+        """Load a glyph list from a file path, byte stream, or text iterable.
+
+        Mirrors the upstream private ``GlyphList.load(filename, count)``
+        helper plus the two-argument constructor
+        ``GlyphList(GlyphList existing, InputStream input)``.
+
+        Parameters
+        ----------
+        source:
+            Either a filesystem path (``str``), raw bytes, a binary
+            file-like object, or any iterable of decoded text lines.
+        number_of_entries:
+            Hint for the expected number of entries. Accepted for
+            upstream-parity but ignored — Python ``dict`` resizes
+            automatically.
+        base:
+            If given, the returned :class:`GlyphList` starts as a copy of
+            ``base`` and is augmented with the entries parsed from
+            ``source`` — equivalent to the upstream
+            ``GlyphList(GlyphList, InputStream)`` constructor.
+        """
+        del number_of_entries  # accepted for parity, unused (dicts auto-grow)
+
+        if isinstance(source, str):
+            with open(source, "rb") as fh:
+                data = fh.read()
+            lines = io.StringIO(data.decode("iso-8859-1"))
+        elif isinstance(source, (bytes, bytearray)):
+            lines = io.StringIO(bytes(source).decode("iso-8859-1"))
+        elif hasattr(source, "read"):
+            data = source.read()
+            if isinstance(data, bytes):
+                lines = io.StringIO(data.decode("iso-8859-1"))
+            else:
+                lines = io.StringIO(data)
+        else:
+            lines = iter(source)
+
+        mapping: dict[str, str] = (
+            dict(base._name_to_unicode) if base is not None else {}
+        )
+        cls._load_list_into(lines, mapping)
+        return cls(mapping)
+
+    @classmethod
+    def load_list(
+        cls,
+        source: str | bytes | IO[bytes] | Iterable[str],
+    ) -> dict[str, str]:
+        """Parse an Adobe-format glyph list and return its name -> unicode dict.
+
+        Mirrors upstream ``GlyphList.loadList(InputStream)`` — exposed as a
+        classmethod that returns the parsed mapping rather than mutating an
+        instance, since pypdfbox builds :class:`GlyphList` from a dict.
+        """
+        if isinstance(source, str):
+            with open(source, "rb") as fh:
+                data = fh.read()
+            lines = io.StringIO(data.decode("iso-8859-1"))
+        elif isinstance(source, (bytes, bytearray)):
+            lines = io.StringIO(bytes(source).decode("iso-8859-1"))
+        elif hasattr(source, "read"):
+            data = source.read()
+            if isinstance(data, bytes):
+                lines = io.StringIO(data.decode("iso-8859-1"))
+            else:
+                lines = io.StringIO(data)
+        else:
+            lines = iter(source)
+
+        mapping: dict[str, str] = {}
+        cls._load_list_into(lines, mapping)
+        return mapping
+
+    @staticmethod
+    def _load_list_into(
+        lines: Iterable[str], mapping: dict[str, str]
+    ) -> None:
+        """Parse Adobe glyph-list lines into ``mapping`` in place.
+
+        Mirrors the inner loop of upstream ``GlyphList.loadList`` —
+        ``#``-prefixed comment lines are skipped, each ``name;hex hex...``
+        row is decoded via ``int(part, 16)`` and appended/overridden.
+        """
+        for raw in lines:
+            line = raw.rstrip("\r\n")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(";")
+            if len(parts) < 2:
+                raise OSError(f"Invalid glyph list entry: {line}")
+            name = parts[0]
+            hex_codes = parts[1].split(" ")
+            try:
+                code_points = [int(h, 16) for h in hex_codes if h]
+            except ValueError as exc:
+                raise OSError(f"Invalid glyph list entry: {line}") from exc
+            unicode_str = "".join(chr(cp) for cp in code_points)
+            old = mapping.get(name)
+            if old is not None and old != unicode_str:
+                logger.warning(
+                    "duplicate value for %s -> %s %s",
+                    name,
+                    parts[1],
+                    old,
+                )
+            mapping[name] = unicode_str
 
     # -- public API --------------------------------------------------------
 

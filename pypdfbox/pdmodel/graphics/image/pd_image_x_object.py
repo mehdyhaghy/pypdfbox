@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
 from PIL import Image
@@ -17,6 +19,7 @@ _LOG = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
+    from pypdfbox.pdmodel.pd_document import PDDocument
 
 _IMAGE: COSName = COSName.get_pdf_name("Image")
 _WIDTH: COSName = COSName.get_pdf_name("Width")
@@ -86,6 +89,140 @@ class PDImageXObject(PDXObject):
         XObject directly. The construction stamps ``/Type /XObject`` and
         ``/Subtype /Image`` on the underlying dictionary."""
         return PDImageXObject(PDStream(cos_stream))
+
+    @staticmethod
+    def create_from_file(image_path: str | os.PathLike[str], doc: PDDocument) -> PDImageXObject:
+        """Create a ``PDImageXObject`` from an image file path. Mirrors
+        upstream ``PDImageXObject.createFromFile(String, PDDocument)``
+        (Java line 191), which delegates to
+        :meth:`create_from_file_by_extension`."""
+        return PDImageXObject.create_from_file_by_extension(Path(image_path), doc)
+
+    @staticmethod
+    def create_from_file_by_extension(
+        file: str | os.PathLike[str], doc: PDDocument
+    ) -> PDImageXObject:
+        """Create a ``PDImageXObject`` from an image file. Format is
+        determined from the file-name suffix. Mirrors upstream
+        ``PDImageXObject.createFromFileByExtension(File, PDDocument)``
+        (Java line 217). Supported suffixes: ``jpg``/``jpeg``,
+        ``tif``/``tiff``, ``gif``, ``bmp``, ``png``.
+
+        Library-first: PNG/GIF/BMP route through Pillow + the lossless
+        factory; TIFF routes through CCITTFactory (with PNG fallback);
+        JPEG routes through JPEGFactory.
+        """
+        from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.lossless_factory import (
+            LosslessFactory,  # noqa: PLC0415
+        )
+
+        path = Path(file)
+        name = path.name
+        if "." not in name:
+            raise ValueError(f"Image type not supported: {name}")
+        ext = name.rsplit(".", 1)[1].lower()
+        if ext in ("jpg", "jpeg"):
+            with path.open("rb") as fh:
+                return JPEGFactory.create_from_stream(doc, fh)
+        if ext in ("tif", "tiff"):
+            try:
+                return CCITTFactory.create_from_file(doc, path)
+            except OSError as ex:
+                _LOG.debug("Reading as TIFF failed, setting fileType to PNG: %s", ex)
+                ext = "png"
+        if ext in ("gif", "bmp", "png"):
+            with Image.open(path) as bim:
+                bim.load()
+                return LosslessFactory.create_from_image(doc, bim)
+        raise ValueError(f"Image type not supported: {name}")
+
+    @staticmethod
+    def create_from_file_by_content(
+        file: str | os.PathLike[str], doc: PDDocument
+    ) -> PDImageXObject:
+        """Create a ``PDImageXObject`` from an image file. Format is
+        determined from the file's content (magic bytes), not its
+        extension. Mirrors upstream
+        ``PDImageXObject.createFromFileByContent(File, PDDocument)``
+        (Java line 277). Supported types: JPEG, TIFF, GIF, BMP, PNG.
+        """
+        path = Path(file)
+        try:
+            with path.open("rb") as fh:
+                head = fh.read(16)
+        except OSError as exc:
+            raise OSError(f"Could not determine file type: {path.name}") from exc
+        file_type = _detect_file_type(head)
+        if file_type is None:
+            raise ValueError(f"Image type not supported: {path.name}")
+        with path.open("rb") as fh:
+            data = fh.read()
+        return PDImageXObject.create_from_byte_array(doc, data, path.name)
+
+    @staticmethod
+    def create_from_byte_array(
+        document: PDDocument,
+        byte_array: bytes | bytearray | memoryview,
+        name: str | None = None,
+        custom_factory: object | None = None,
+    ) -> PDImageXObject:
+        """Create a ``PDImageXObject`` from raw image bytes. Format is
+        determined from the file content. Mirrors upstream
+        ``PDImageXObject.createFromByteArray(PDDocument, byte[], String)``
+        and the four-arg overload accepting a ``CustomFactory``
+        (Java lines 345 and 366).
+
+        ``custom_factory`` is accepted for upstream signature parity. If
+        non-null and supplied for BMP/GIF/PNG inputs, it must expose
+        ``create_from_byte_array(document, byte_array)`` and is preferred
+        over the default Pillow + ``LosslessFactory`` path.
+        """
+        from pypdfbox.pdmodel.graphics.image.ccitt_factory import CCITTFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.jpeg_factory import JPEGFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.image.lossless_factory import (
+            LosslessFactory,  # noqa: PLC0415
+        )
+
+        if not isinstance(byte_array, (bytes, bytearray, memoryview)):
+            raise TypeError(
+                f"byte_array must be bytes-like; got {type(byte_array).__name__}"
+            )
+        data = bytes(byte_array)
+        file_type = _detect_file_type(data)
+        if file_type is None:
+            raise ValueError(f"Image type not supported: {name}")
+
+        if file_type == "JPEG":
+            return JPEGFactory.create_from_byte_array(document, data)
+        if file_type == "TIFF":
+            try:
+                return CCITTFactory.create_from_byte_array(document, data)
+            except OSError as ex:
+                _LOG.debug("Reading as TIFF failed, setting fileType to PNG: %s", ex)
+                file_type = "PNG"
+        if file_type in ("BMP", "GIF", "PNG"):
+            if custom_factory is not None:
+                return custom_factory.create_from_byte_array(document, data)  # type: ignore[union-attr]
+            with Image.open(io.BytesIO(data)) as bim:
+                bim.load()
+                return LosslessFactory.create_from_image(document, bim)
+        raise ValueError(f"Image type {file_type} not supported: {name}")
+
+    @staticmethod
+    def create_raw_stream(document: PDDocument, raw_input: BinaryIO) -> COSStream:
+        """Create a ``COSStream`` from already-encoded (raw) bytes.
+        Mirrors upstream's private static
+        ``PDImageXObject.createRawStream(PDDocument, InputStream)``
+        (Java line 170)."""
+        cos_doc = document.get_document()
+        stream = cos_doc.create_cos_stream()
+        with stream.create_raw_output_stream() as output:
+            chunk = raw_input.read()
+            if isinstance(chunk, (bytes, bytearray, memoryview)):
+                output.write(bytes(chunk))
+        return stream
 
     # ---------- /Width, /Height ----------
 
@@ -611,6 +748,195 @@ class PDImageXObject(PDXObject):
             return False
         return _has_named_filter(cos.get_filter_list(), _CCITTFAX_DECODE, _CCF)
 
+    # ---------- rendering surface (mirrors upstream getImage / opaque /
+    # stencil / raw raster) ----------
+
+    def get_image(
+        self,
+        region: tuple[int, int, int, int] | None = None,
+        subsampling: int = 1,
+    ) -> Image.Image | None:
+        """Return a fully-decoded image. Mirrors upstream
+        ``PDImageXObject.getImage()`` and the parameterised overload
+        ``getImage(Rectangle, int)`` (Java lines 463 and 472).
+
+        Library-first: Pillow handles the actual sample decoding via
+        :meth:`to_pil_image`. ``region`` is a ``(x, y, w, h)`` tuple and
+        is applied via :meth:`PIL.Image.Image.crop`. ``subsampling`` is
+        applied via :meth:`PIL.Image.Image.resize` with nearest-neighbour
+        sampling (matches upstream's per-pixel-row-skip semantics for the
+        common case ``subsampling >= 1``).
+
+        Mask compositing (``/SMask``, ``/Mask`` stencil, ``/Matte``)
+        is rendering-cluster work and not yet folded in here — callers
+        currently get the opaque raster regardless.
+        """
+        image = self.to_pil_image()
+        if image is None:
+            return None
+        if region is not None:
+            x, y, w, h = region
+            image = image.crop((x, y, x + w, y + h))
+        if subsampling > 1:
+            image = image.resize(
+                (max(1, image.width // subsampling), max(1, image.height // subsampling)),
+                Image.NEAREST,
+            )
+        return image
+
+    def get_opaque_image(
+        self,
+        region: tuple[int, int, int, int] | None = None,
+        subsampling: int = 1,
+    ) -> Image.Image | None:
+        """Return the opaque image (raster without any mask applied). If
+        this Image XObject is itself a mask, the buffered image carries
+        the raw mask. Mirrors upstream ``PDImageXObject.getOpaqueImage()``
+        and the parameterised overload (Java lines 585 and 603).
+
+        Today this is identical to :meth:`get_image` — pypdfbox does not
+        composite ``/SMask`` or stencil ``/Mask`` into the returned
+        raster, so the "opaque" and "with masks applied" forms coincide
+        until the rendering cluster lands."""
+        return self.get_image(region=region, subsampling=subsampling)
+
+    def get_stencil_image(self, paint: object) -> Image.Image | None:
+        """Return a stencil-painted image. Mirrors upstream
+        ``PDImageXObject.getStencilImage(Paint)`` (Java line 569).
+
+        Stencil painting (mapping the 1-bit mask onto an arbitrary
+        ``Paint``) is rendering-cluster territory. We honour upstream's
+        type contract — raises if not actually a stencil — and otherwise
+        return the underlying 1-bit mask via :meth:`to_pil_image` so
+        callers get something usable."""
+        if not self.is_stencil():
+            raise ValueError("Image is not a stencil")
+        del paint  # paint compositing is rendering-cluster work
+        return self.to_pil_image()
+
+    def get_raw_image(self) -> Image.Image | None:
+        """Return the *raw* image without colour-space conversion to
+        sRGB. Mirrors upstream ``PDImageXObject.getRawImage()`` (Java
+        line 526). Today's implementation reuses :meth:`to_pil_image`
+        and returns ``None`` when raw-raster decoding is not yet
+        supported for the image's colour space."""
+        return self.to_pil_image()
+
+    def get_raw_raster(self) -> bytes | None:
+        """Return the *raw* sample bytes for this image (no colour-space
+        conversion). Mirrors upstream
+        ``PDImageXObject.getRawRaster()`` (Java line 532) which returns
+        a ``WritableRaster``; we expose the byte array directly because
+        Python has no equivalent to ``java.awt.image.WritableRaster``.
+        ``None`` when the underlying COS object is not a stream."""
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return None
+        with self.create_input_stream() as src:
+            return src.read()
+
+    def extract_matte(self, soft_mask: PDImageXObject) -> list[float] | None:
+        """Extract the matte color from a softmask, converted to sRGB.
+        Mirrors upstream's private
+        ``PDImageXObject.extractMatte(PDImageXObject)`` (Java line 544).
+
+        Returns ``None`` when ``/Matte`` is absent or shorter than the
+        image's colour-space component count. Otherwise the matte values
+        are forwarded through this image's colour space's
+        ``to_rgb(components)`` transform when one is available; when the
+        colour space cannot be resolved or carries no ``to_rgb``, the
+        raw matte values are returned untouched."""
+        matte = soft_mask.get_matte()
+        if matte is None:
+            return None
+        color_space = self.get_color_space()
+        if color_space is None:
+            return matte
+        n = color_space.get_number_of_components()
+        if len(matte) < n:
+            _LOG.error("Image /Matte entry not long enough for colorspace, skipped")
+            return None
+        cs_to_rgb = getattr(color_space, "to_rgb", None)
+        if cs_to_rgb is None:
+            return matte
+        try:
+            rgb = cs_to_rgb(list(matte[:n]))
+        except Exception:  # noqa: BLE001
+            return matte
+        if rgb is None:
+            return matte
+        return [float(c) for c in rgb]
+
+    def init_jpx_values(self) -> None:
+        """Refresh ``/Width``, ``/Height``, ``/BitsPerComponent``, and
+        ``/ColorSpace`` from a JPX-decoded payload's intrinsic values.
+        Mirrors upstream's private ``PDImageXObject.initJPXValues()``
+        (Java line 736).
+
+        The JPX-decoder integration this requires (returning a
+        ``DecodeResult`` with embedded colour-space and SMask metadata)
+        is rendering-cluster work that has not yet been ported. The
+        method is provided as an API-parity stub so callers that wire
+        their own JPX decoder do not have to subclass to add it."""
+        return None
+
+    def apply_mask(
+        self,
+        image: Image.Image,
+        mask: Image.Image | None,
+        interpolate_mask: bool,
+        is_soft: bool,
+        matte: Sequence[float] | None,
+    ) -> Image.Image:
+        """Composite ``mask`` into ``image`` as alpha. Mirrors upstream's
+        private ``PDImageXObject.applyMask`` (Java line 619).
+
+        Library-first: when ``mask`` is ``None`` we return ``image``
+        unmodified (matches upstream's first branch). The full Q16.15
+        matte fixed-point compositing path is rendering-cluster work and
+        is not exercised here — the simple mask path uses Pillow's
+        ``putalpha`` (or alpha inversion for stencil masks)."""
+        del interpolate_mask, matte  # rendering-cluster fidelity, not yet exercised
+        if mask is None:
+            return image
+        target = image.convert("RGBA")
+        alpha = mask.convert("L").resize(target.size, Image.NEAREST)
+        if not is_soft:
+            alpha = Image.eval(alpha, lambda v: 255 - v)
+        target.putalpha(alpha)
+        return target
+
+    @staticmethod
+    def scale_image(
+        image: Image.Image,
+        width: int,
+        height: int,
+        mode: str,
+        interpolate: bool,
+    ) -> Image.Image:
+        """High-quality image scaling. Mirrors upstream's private static
+        ``PDImageXObject.scaleImage`` (Java line 768). Pillow handles
+        the actual resampling — bicubic when ``interpolate`` is set,
+        nearest-neighbour otherwise. ``mode`` is a PIL mode string
+        (``"L"``, ``"RGBA"``, …)."""
+        scaled = image.resize(
+            (int(width), int(height)),
+            Image.BICUBIC if interpolate else Image.NEAREST,
+        )
+        if scaled.mode != mode:
+            scaled = scaled.convert(mode)
+        return scaled
+
+    @staticmethod
+    def clamp_color(color: int) -> int:
+        """Clamp a colour component to ``[0, 255]``. Mirrors upstream's
+        private static ``PDImageXObject.clampColor`` (Java line 731)."""
+        if color < 0:
+            return 0
+        if color > 255:
+            return 255
+        return color
+
     # ---------- PIL image helper ----------
 
     def to_pil_image(self) -> Image.Image | None:
@@ -966,3 +1292,27 @@ def _clamp(value: float, low: float, high: float) -> float:
     if value > high:
         return high
     return value
+
+
+def _detect_file_type(head: bytes) -> str | None:
+    """Sniff the image format from the leading bytes. Mirrors upstream's
+    ``FileTypeDetector.detectFileType`` for the subset of formats
+    ``PDImageXObject.createFromByteArray`` supports.
+
+    Returns the upstream ``FileType`` name (``"JPEG"``, ``"TIFF"``,
+    ``"PNG"``, ``"GIF"``, ``"BMP"``) or ``None`` when no match is
+    found.
+    """
+    if len(head) < 4:
+        return None
+    if head[:3] == b"\xff\xd8\xff":
+        return "JPEG"
+    if head[:8] == b"\x89PNG\r\n\x1a\n":
+        return "PNG"
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return "GIF"
+    if head[:2] == b"BM":
+        return "BMP"
+    if head[:4] in (b"II*\x00", b"MM\x00*"):
+        return "TIFF"
+    return None

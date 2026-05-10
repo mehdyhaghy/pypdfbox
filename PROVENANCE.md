@@ -1085,6 +1085,11 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/fontbox/ttf/upstream/test_open_type_font.py` | 3.0.x | placeholder — upstream has no dedicated `OpenTypeFontTest.java`; surface inferred from `OpenTypeFont.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/graphics/color/upstream/test_pd_lab.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDLabTest.java` |
 | `tests/pdmodel/font/upstream/test_pd_cid_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDCIDFontTest.java`; surface inferred from `PDCIDFont.java` (PDFBox 3.0.x) |
+| `tests/xmpbox/upstream/test_xmp_media_management_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPMediaManagementTest.java` |
+| `tests/fontbox/encoding/upstream/test_glyph_list.py` | 3.0.x | placeholder — upstream has no dedicated `GlyphListTest.java` in PDFBox 3.0.x; surface ports the documented `GlyphList.java` contract |
+| `tests/pdmodel/graphics/color/upstream/test_pd_pattern.py` | 3.0.x | placeholder — upstream has no dedicated `PDPatternTest.java`; surface inferred from `PDPattern.java` (PDFBox 3.0.x) |
+| `tests/pdmodel/graphics/image/upstream/test_pd_image_x_object.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObjectTest.java` |
+| `tests/pdmodel/font/upstream/test_pd_simple_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDSimpleFontTest.java`; surface inferred from `PDSimpleFont.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |

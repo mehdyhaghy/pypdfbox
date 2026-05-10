@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSName
 
@@ -207,6 +207,37 @@ class PDPattern(PDColorSpace):
 
     # ---------- conversion ----------
 
+    def to_rgb_image(
+        self, raster: bytes, width: int = 0, height: int = 0
+    ) -> Any:
+        """Pattern color spaces cannot be rasterised directly — paint
+        comes from the pattern's content stream / shading function or
+        (for uncolored tiling) from the *underlying* color space, neither
+        of which the bare ``raster`` exposes. Mirrors upstream
+        ``PDPattern.toRGBImage(WritableRaster)`` (PDPattern.java line 99)
+        which throws ``UnsupportedOperationException``; we surface the
+        same intent as :class:`NotImplementedError` per the project's
+        Java→Python exception convention.
+        """
+        raise NotImplementedError(
+            "PDPattern.to_rgb_image is unsupported — render the pattern's "
+            "content stream / shading instead, or recurse into the "
+            "underlying color space for uncolored tiling."
+        )
+
+    def to_raw_image(
+        self, raster: bytes, width: int = 0, height: int = 0
+    ) -> Any:
+        """Pattern color spaces have no native raster form. Mirrors
+        upstream ``PDPattern.toRawImage(WritableRaster)`` (PDPattern.java
+        line 105) which throws ``UnsupportedOperationException``; we
+        surface the same intent as :class:`NotImplementedError`.
+        """
+        raise NotImplementedError(
+            "PDPattern.to_raw_image is unsupported — Pattern color spaces "
+            "have no native raster form."
+        )
+
     def to_rgb(
         self, components: list[float]
     ) -> tuple[float, float, float] | None:
@@ -235,7 +266,14 @@ class PDPattern(PDColorSpace):
         return PDColor(components, self._underlying).to_rgb()
 
     def __str__(self) -> str:
-        return self.NAME
+        """Return the literal ``"Pattern"``. Mirrors upstream
+        ``PDPattern.toString()`` (PDPattern.java line 141) which returns
+        the constant string ``"Pattern"`` rather than delegating to
+        :meth:`get_name`. The two happen to coincide for this color
+        space, but we keep the override explicit for parity-scanner
+        matching against ``toString``.
+        """
+        return "Pattern"
 
 
 __all__ = ["PDPattern"]

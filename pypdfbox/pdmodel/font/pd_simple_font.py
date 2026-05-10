@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSInteger, COSName
 from pypdfbox.fontbox.encoding.glyph_list import GlyphList
@@ -33,6 +35,9 @@ _FIRST_CHAR: COSName = COSName.get_pdf_name("FirstChar")
 _LAST_CHAR: COSName = COSName.get_pdf_name("LastChar")
 _WIDTHS: COSName = COSName.get_pdf_name("Widths")
 _ENCODING: COSName = COSName.get_pdf_name("Encoding")
+_BASE_ENCODING: COSName = COSName.get_pdf_name("BaseEncoding")
+
+_LOG = logging.getLogger(__name__)
 
 # Per-encoding (unicode -> code) reverse cache. Keyed by the typed Encoding
 # instance identity so the same singleton is shared across PDSimpleFont
@@ -83,6 +88,14 @@ class PDSimpleFont(PDFont):
         super().__init__(font_dict)
         self._encoding_typed: Encoding | None = None
         self._encoding_resolved: bool = False
+        # Track codes we have already warned about — avoids spamming the
+        # log when the same unmapped code is seen many times. Mirrors
+        # upstream's ``noUnicode`` set in ``PDSimpleFont``.
+        self._no_unicode: set[int] = set()
+        # Glyph-list flavour used by ``to_unicode``; populated by
+        # ``read_encoding`` / ``assign_glyph_list`` (mirrors upstream's
+        # protected ``glyphList`` field).
+        self._glyph_list: GlyphList | None = None
 
     # ---------- char-range / widths ----------
 
@@ -252,6 +265,166 @@ class PDSimpleFont(PDFont):
         self._encoding_resolved = True
         return self._encoding_typed
 
+    def assign_glyph_list(self, font_name: str | None) -> None:
+        """Pick the glyph-list flavour for ``font_name``.
+
+        Mirrors upstream ``PDSimpleFont.assignGlyphList(FontName)``: a
+        Standard 14 ``ZapfDingbats`` (after canonical-name mapping)
+        selects the Zapf glyph list, anything else uses the Adobe Glyph
+        List (AGL). Stores the result on the instance so subsequent
+        ``to_unicode`` / ``get_glyph_list`` calls reuse it.
+        """
+        mapped = Standard14Fonts.get_mapped_font_name(font_name) if font_name else None
+        if mapped == Standard14Fonts.ZAPF_DINGBATS:
+            self._glyph_list = GlyphList.ZAPF_DINGBATS
+        else:
+            self._glyph_list = GlyphList.DEFAULT
+
+    def read_encoding(self) -> None:
+        """Resolve ``/Encoding`` from the dict, the embedded program, or
+        a synthetic fallback.
+
+        Mirrors upstream ``PDSimpleFont.readEncoding``: subclass
+        constructors call this at the end of their init so that
+        ``getName()`` / ``isEmbedded()`` are already populated. The
+        method:
+
+        * Resolves a name-only ``/Encoding`` via :class:`Encoding` (with
+          the ZapfDingbats-when-not-embedded carve-out from PDFBOX issue
+          16464 / PDF.js 16464).
+        * Resolves a dictionary ``/Encoding`` to a
+          :class:`DictionaryEncoding`, asking the embedded program for a
+          built-in encoding when the descriptor is symbolic and the
+          ``/BaseEncoding`` is missing or unknown.
+        * Falls back to ``read_encoding_from_font`` when no ``/Encoding``
+          entry is present.
+        * Always finishes by calling :meth:`assign_glyph_list` with the
+          canonical Standard 14 name (e.g. ``"Symbol,Italic"`` →
+          ``"Symbol"``).
+        """
+        encoding_base = self._dict.get_dictionary_object(_ENCODING)
+        if isinstance(encoding_base, COSName):
+            if (
+                self.get_name() == Standard14Fonts.ZAPF_DINGBATS
+                and not self.is_embedded()
+            ):
+                # PDFBOX-/PDF.js issue 16464: ignore the declared encoding
+                # for a non-embedded ZapfDingbats and use the built-in.
+                self._encoding_typed = ZapfDingbatsEncoding.INSTANCE
+            else:
+                resolved = Encoding.get_instance(encoding_base)
+                if resolved is None:
+                    _LOG.warning("Unknown encoding: %s", encoding_base.name)
+                    resolved = self.read_encoding_from_font()
+                self._encoding_typed = resolved
+        elif isinstance(encoding_base, COSDictionary):
+            built_in: Encoding | None = None
+            symbolic = self.get_symbolic_flag()
+            base_encoding_raw = encoding_base.get_dictionary_object(_BASE_ENCODING)
+            base_encoding = (
+                base_encoding_raw if isinstance(base_encoding_raw, COSName) else None
+            )
+            has_valid_base = (
+                base_encoding is not None
+                and Encoding.get_instance(base_encoding) is not None
+            )
+            if not has_valid_base and symbolic is True:
+                built_in = self.read_encoding_from_font()
+            is_non_symbolic = not bool(symbolic) if symbolic is not None else True
+            self._encoding_typed = DictionaryEncoding(
+                font_encoding=encoding_base,
+                is_non_symbolic=is_non_symbolic,
+                built_in=built_in,
+            )
+        else:
+            self._encoding_typed = self.read_encoding_from_font()
+        self._encoding_resolved = True
+        # Normalise the Standard 14 name and pick the glyph list.
+        standard14_name = Standard14Fonts.get_mapped_font_name(self.get_name())
+        self.assign_glyph_list(standard14_name)
+
+    @abstractmethod
+    def read_encoding_from_font(self) -> Encoding | None:
+        """Synthesise an :class:`Encoding` from the embedded font program.
+
+        Mirrors upstream ``protected abstract Encoding
+        readEncodingFromFont()``: called by :meth:`read_encoding` when
+        the font dict has no ``/Encoding`` entry, an unknown encoding
+        name, or a symbolic-with-no-base-encoding ``/Differences`` dict.
+        Concrete subclasses (Type1 / TrueType / Type3) override.
+        """
+        raise NotImplementedError(
+            "read_encoding_from_font must be implemented by a concrete subclass"
+        )
+
+    @abstractmethod
+    def get_path(self, name: str) -> Any:  # noqa: ANN401  (upstream returns GeneralPath)
+        """Return the glyph outline for ``name``.
+
+        Mirrors upstream ``public abstract GeneralPath getPath(String)``.
+        Concrete subclasses return a list of contour tuples (Type1),
+        TrueType glyph paths, or a Type3 ``PDType3CharProc`` rendering
+        — see each subclass for the concrete return type.
+        """
+        raise NotImplementedError(
+            "get_path must be implemented by a concrete subclass"
+        )
+
+    @abstractmethod
+    def has_glyph(self, name: str) -> bool:
+        """Return ``True`` when the font program contains ``name``.
+
+        Mirrors upstream ``public abstract boolean hasGlyph(String)``.
+        Subclasses may also accept an integer code (Type 3 keys glyphs by
+        code, TrueType keys by GID); the canonical signature mirrored
+        here uses the glyph name.
+        """
+        raise NotImplementedError(
+            "has_glyph must be implemented by a concrete subclass"
+        )
+
+    @abstractmethod
+    def get_font_box_font(self) -> Any:  # noqa: ANN401  (upstream returns FontBoxFont)
+        """Return the embedded or system font used for rendering.
+
+        Mirrors upstream ``public abstract FontBoxFont getFontBoxFont()``.
+        Concrete subclasses surface the parsed ``Type1Font`` /
+        ``CFFFont`` / ``TrueTypeFont`` for the program backing this PDF
+        font. Never ``None`` upstream — callers that need a tri-state
+        should use the subclass-typed accessors.
+        """
+        raise NotImplementedError(
+            "get_font_box_font must be implemented by a concrete subclass"
+        )
+
+    def get_standard14_width(self, code: int) -> float:
+        """Glyph advance for ``code`` taken from the Standard 14 AFM.
+
+        Mirrors upstream ``protected final float getStandard14Width(int)``:
+
+        * Looks up the glyph name for ``code`` via :meth:`get_encoding`.
+        * Maps PDFBox-2334's ``.notdef`` to the Acrobat-observed 250 (the
+          Adobe AFMs do not declare ``.notdef``).
+        * Maps PDFBox-4944 ``nbspace`` → ``space`` and PDFBox-5115
+          ``sfthyphen`` → ``hyphen`` (both glyphs have the typographic
+          width of their counterparts but are missing from the AFMs).
+
+        Raises :class:`RuntimeError` when the font is not Standard 14
+        (mirrors upstream's ``IllegalStateException``).
+        """
+        afm = self.get_standard14_afm()
+        if afm is None:
+            raise RuntimeError("No AFM")
+        encoding = self.get_encoding_typed()
+        name = encoding.get_name(code) if encoding is not None else ".notdef"
+        if name == ".notdef":
+            return 250.0
+        if name == "nbspace":
+            name = "space"
+        elif name == "sfthyphen":
+            name = "hyphen"
+        return float(afm.get_character_width(name))
+
     def get_glyph_list(self) -> GlyphList:
         """Return the glyph-list flavour the font should use.
 
@@ -262,6 +435,10 @@ class PDSimpleFont(PDFont):
         public AGL singleton when no encoding is resolved keeps callers
         from having to test for ``None``.
         """
+        # Honour an explicit ``assign_glyph_list`` call (upstream stores
+        # the result on the instance and never recomputes).
+        if self._glyph_list is not None:
+            return self._glyph_list
         # Standard 14 ZapfDingbats wins regardless of /Encoding (matches
         # upstream's name-based ``assignGlyphList``).
         mapped = Standard14Fonts.get_mapped_font_name(self.get_name())
