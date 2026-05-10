@@ -68,6 +68,28 @@ class COSBoolean(COSBase):
         """
         output.write(_TRUE_BYTES if self._value else _FALSE_BYTES)
 
+    def equals(self, other: object) -> bool:
+        """Java-style equality predicate. Mirrors ``COSBoolean.equals(Object)``.
+
+        Upstream uses ``this == obj`` (reference equality) since only the two
+        canonical singletons ever exist; we do the same with ``is``.
+        """
+        return self is other
+
+    def hash_code(self) -> int:
+        """Mirror Java's ``COSBoolean.hashCode()``.
+
+        PDFBox copies the ``java.lang.Boolean`` recipe verbatim — ``1231`` for
+        ``true`` and ``1237`` for ``false``.
+        """
+        return 1231 if self._value else 1237
+
+    def to_string(self) -> str:
+        """Mirror Java's ``COSBoolean.toString()`` — ``String.valueOf(value)``,
+        i.e. the lowercase ``"true"`` / ``"false"`` literal.
+        """
+        return "true" if self._value else "false"
+
     def __bool__(self) -> bool:
         return self._value
 

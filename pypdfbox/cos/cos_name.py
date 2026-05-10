@@ -131,6 +131,41 @@ class COSName(COSBase):
         cleared — predefined static constants survive."""
         cls._name_map.clear()
 
+    def equals(self, other: object) -> bool:
+        """Mirror Java's ``COSName.equals(Object)`` — byte-array equality
+        (PDFBox COSName.java:824-827).
+
+        Two ``COSName`` instances are equal iff their underlying byte
+        sequences match. Provided alongside ``__eq__`` so PDFBox-style
+        Java callers can keep using the explicit predicate when porting.
+        """
+        if not isinstance(other, COSName):
+            return False
+        return self._bytes == other._bytes
+
+    def hash_code(self) -> int:
+        """Mirror Java's ``COSName.hashCode()`` — ``Arrays.hashCode(byte[])``
+        (PDFBox COSName.java:830-833).
+
+        The Java contract: ``int h = 1; for (byte b : nameBytes) h = 31 * h + b;``
+        with ``b`` widened as a *signed* 8-bit value, and the running total
+        kept as a signed 32-bit ``int`` (overflow wraps).
+        """
+        h = 1
+        for b in self._bytes:
+            # Java widens byte → int as signed (-128..127), so re-sign here.
+            signed = b - 256 if b >= 128 else b
+            h = (31 * h + signed) & 0xFFFFFFFF
+        # Re-sign the 32-bit result, matching Java's signed int return.
+        if h >= 0x80000000:
+            h -= 0x1_0000_0000
+        return h
+
+    def to_string(self) -> str:
+        """Mirror Java's ``COSName.toString()`` —
+        ``"COSName{" + getName() + "}"`` (PDFBox COSName.java:817-821)."""
+        return f"COSName{{{self.get_name()}}}"
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSName):
             return self._bytes == other._bytes

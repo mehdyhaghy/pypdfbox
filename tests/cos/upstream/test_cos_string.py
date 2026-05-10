@@ -195,6 +195,41 @@ def test_constructor_force_hex_overload() -> None:
     assert s_str.is_force_hex_form()
 
 
+def test_equals_method() -> None:
+    # Mirrors upstream ``equals(Object)`` (COSString.java line 301).
+    x1 = COSString("Test")
+    y1 = COSString("Test")
+    assert x1.equals(y1)
+    assert y1.equals(x1)
+    x2 = COSString("Test")
+    x2.set_force_hex_form(True)
+    assert not x1.equals(x2)
+    assert not x2.equals(x1)
+    # Non-COSString returns False (no NotImplemented surfacing).
+    assert not x1.equals("Test")
+    assert not x1.equals(None)
+
+
+def test_hash_code_method() -> None:
+    # Mirrors upstream ``hashCode()`` (COSString.java line 313).
+    str1 = COSString("Test1")
+    str2 = COSString("Test2")
+    assert str1.hash_code() != str2.hash_code()
+    str3 = COSString("Test1")
+    assert str1.hash_code() == str3.hash_code()
+    str3.set_force_hex_form(True)
+    assert str1.hash_code() != str3.hash_code()
+
+
+def test_to_string_method() -> None:
+    # Mirrors upstream ``toString()`` (COSString.java line 320) — returns
+    # ``"COSString{" + getString() + "}"``.
+    assert COSString("Test").to_string() == "COSString{Test}"
+    # Bytes-with-BOM round-trips via getString first.
+    raw = b"\xfe\xff" + "Hi".encode("utf-16-be")
+    assert COSString(raw).to_string() == "COSString{Hi}"
+
+
 def test_force_parsing_recovers_malformed_hex() -> None:
     # Mirrors upstream ``FORCE_PARSING`` system-property branch in
     # ``parseHex`` (lines 165-169 + 182-186 of COSString.java) — each

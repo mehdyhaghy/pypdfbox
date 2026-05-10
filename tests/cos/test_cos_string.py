@@ -143,3 +143,32 @@ def test_visitor_dispatch() -> None:
     s = COSString(b"x")
     s.accept(v)
     assert v.calls == [("string", s)]
+
+
+def test_equals_method_mirrors_upstream() -> None:
+    # Upstream ``equals`` compares the *decoded* text and the hex flag —
+    # two COSStrings whose payloads decode to the same Unicode text are
+    # equal regardless of underlying encoding (PDFDocEncoding vs UTF-16BE
+    # BOM, for instance).
+    a = COSString("Hello")
+    b = COSString("Hello")
+    assert a.equals(b)
+    assert not a.equals(COSString("Hello", force_hex=True))
+    assert not a.equals("Hello")  # non-COSString
+    assert not a.equals(None)
+
+
+def test_hash_code_method_mirrors_upstream() -> None:
+    # Upstream ``hashCode`` = Arrays.hashCode(bytes) + (forceHexForm ? 17 : 0).
+    s1 = COSString("Test1")
+    s2 = COSString("Test1")
+    assert s1.hash_code() == s2.hash_code()
+    s3 = COSString("Test1", force_hex=True)
+    assert s1.hash_code() != s3.hash_code()
+    assert s3.hash_code() - s1.hash_code() == 17
+
+
+def test_to_string_method_mirrors_upstream() -> None:
+    # Upstream ``toString`` returns ``"COSString{<decoded>}"``.
+    assert COSString("hello").to_string() == "COSString{hello}"
+    assert COSString(b"abc").to_string() == "COSString{abc}"

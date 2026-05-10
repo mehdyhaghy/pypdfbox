@@ -32,16 +32,41 @@ def test_get_value() -> None:
 
 def test_get_value_as_object() -> None:
     # Upstream ``getValueAsObject`` returns the boxed Boolean. The Python
-    # ``get_value`` already returns the underlying ``bool``.
-    assert isinstance(COSBoolean.TRUE.get_value(), bool)
-    assert COSBoolean.TRUE.get_value() is True
-    assert isinstance(COSBoolean.FALSE.get_value(), bool)
-    assert COSBoolean.FALSE.get_value() is False
+    # ``get_value_as_object`` returns a plain ``bool`` — same value.
+    assert isinstance(COSBoolean.TRUE.get_value_as_object(), bool)
+    assert COSBoolean.TRUE.get_value_as_object() is True
+    assert isinstance(COSBoolean.FALSE.get_value_as_object(), bool)
+    assert COSBoolean.FALSE.get_value_as_object() is False
 
 
 def test_get_boolean() -> None:
+    assert COSBoolean.get_boolean(True) is COSBoolean.TRUE
+    assert COSBoolean.get_boolean(False) is COSBoolean.FALSE
+    # ``COSBoolean.get`` is the pypdfbox-native alias.
     assert COSBoolean.get(True) is COSBoolean.TRUE
     assert COSBoolean.get(False) is COSBoolean.FALSE
+
+
+def test_hash_code() -> None:
+    # Upstream copies ``java.lang.Boolean``'s constants: 1231 / 1237.
+    assert COSBoolean.TRUE.hash_code() == 1231
+    assert COSBoolean.FALSE.hash_code() == 1237
+
+
+def test_to_string() -> None:
+    # ``String.valueOf(boolean)`` -> "true" / "false".
+    assert COSBoolean.TRUE.to_string() == "true"
+    assert COSBoolean.FALSE.to_string() == "false"
+
+
+def test_equals_method() -> None:
+    # Upstream ``equals`` is reference identity since only two singletons exist.
+    assert COSBoolean.TRUE.equals(COSBoolean.TRUE)
+    assert COSBoolean.FALSE.equals(COSBoolean.FALSE)
+    assert not COSBoolean.TRUE.equals(COSBoolean.FALSE)
+    assert not COSBoolean.TRUE.equals(True)
+    assert not COSBoolean.FALSE.equals(False)
+    assert not COSBoolean.TRUE.equals(None)
 
 
 def test_equals() -> None:

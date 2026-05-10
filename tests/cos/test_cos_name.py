@@ -145,6 +145,56 @@ def test_clear_resources_drops_dynamic_names() -> None:
         COSName._name_map.update(saved)
 
 
+def test_equals_byte_array_equality() -> None:
+    a = COSName.get_pdf_name("Type")
+    b = COSName.get_pdf_name("Type")
+    c = COSName.get_pdf_name("Pages")
+    assert a.equals(b) is True
+    assert a.equals(c) is False
+
+
+def test_equals_returns_false_for_non_cosname() -> None:
+    n = COSName.get_pdf_name("Type")
+    assert n.equals("Type") is False
+    assert n.equals(None) is False
+    assert n.equals(b"Type") is False
+
+
+def test_hash_code_matches_java_arrays_hashcode_recipe() -> None:
+    # Java's Arrays.hashCode(new byte[]{}) is 1.
+    assert COSName.get_pdf_name(b"").hash_code() == 1
+    # Java's Arrays.hashCode("A".getBytes(UTF_8)) ==
+    #   31*1 + (int)'A' == 31 + 65 == 96
+    assert COSName.get_pdf_name("A").hash_code() == 96
+    # Java's Arrays.hashCode("AB".getBytes(UTF_8)) ==
+    #   31*96 + (int)'B' == 2976 + 66 == 3042
+    assert COSName.get_pdf_name("AB").hash_code() == 3042
+
+
+def test_hash_code_signed_byte_widening_for_high_bit() -> None:
+    # Java widens bytes as signed: 0x80 → -128. Arrays.hashCode({0x80}) ==
+    #   31*1 + (-128) == -97
+    assert COSName.get_pdf_name(b"\x80").hash_code() == -97
+
+
+def test_hash_code_equal_names_have_equal_hash() -> None:
+    assert COSName.get_pdf_name("Pages").hash_code() == COSName.get_pdf_name("Pages").hash_code()
+
+
+def test_to_string_format() -> None:
+    # COSName.toString() == "COSName{" + getName() + "}"
+    assert COSName.get_pdf_name("Type").to_string() == "COSName{Type}"
+    assert COSName.get_pdf_name("").to_string() == "COSName{}"
+
+
+def test_to_string_distinct_from_str() -> None:
+    # Java-style ``to_string()`` returns the COSName{...} form, while Python
+    # ``__str__`` keeps the leading-slash convention used in repr/print.
+    n = COSName.get_pdf_name("Length")
+    assert n.to_string() == "COSName{Length}"
+    assert str(n) == "/Length"
+
+
 def test_clear_resources_preserves_predefined_constants() -> None:
     # Predefined static constants live in the common-name map and survive
     # clear_resources(), mirroring upstream PDFBox.

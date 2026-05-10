@@ -295,3 +295,40 @@ def test_check_closed_after_owns_scratch_close() -> None:
     s.close()
     with pytest.raises(OSError):
         s.check_closed()
+
+
+def test_get_stream_cache_returns_internal_scratch() -> None:
+    """``get_stream_cache`` returns the ``ScratchFile`` backing this
+    stream — mirrors upstream ``getStreamCache()`` (lines 116–124)."""
+    s = COSStream()
+    cache = s.get_stream_cache()
+    assert cache is s._scratch  # noqa: SLF001 — testing the contract
+
+
+def test_get_stream_cache_returns_supplied_scratch() -> None:
+    """When the caller passes a ``ScratchFile`` to the ctor,
+    ``get_stream_cache`` returns that same instance — same identity
+    invariant upstream ``getStreamCache`` provides for the cached
+    ``RandomAccessStreamCache``."""
+    sf = ScratchFile(MemoryUsageSetting.setup_main_memory_only())
+    try:
+        s = COSStream(scratch_file=sf)
+        try:
+            assert s.get_stream_cache() is sf
+        finally:
+            s.close()
+    finally:
+        sf.close()
+
+
+def test_length_dict_uses_cached_integer_zero() -> None:
+    """The internal ``_sync_length_entry`` must route through
+    ``COSInteger.get`` so a length of 0 lands as the cached singleton —
+    matches upstream ``setInt(COSName.LENGTH, 0)`` semantics where Java
+    auto-boxing returns the cached ``Integer`` for values in the small-int
+    cache range."""
+    with COSStream() as s:
+        with s.create_raw_output_stream():
+            pass
+        length_entry = s.get_dictionary_object(COSName.LENGTH)  # type: ignore[attr-defined]
+        assert length_entry is COSInteger.get(0)

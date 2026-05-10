@@ -229,11 +229,35 @@ class PDAttributeObject:
     # ---------- string formatting helpers (PDFBox parity) ----------
 
     @staticmethod
+    def _java_float_repr(value: float) -> str:
+        """Mirror Java's ``Float.toString(float)`` for non-finite values.
+
+        Java prints ``NaN`` / ``Infinity`` / ``-Infinity`` for the three
+        special IEEE-754 cases; Python's ``str(float)`` prints lowercase
+        ``nan`` / ``inf`` / ``-inf``. For finite floats both Python (3.x)
+        and Java emit the minimal round-tripping decimal — so within the
+        normal float ranges PDFs use, ``str(value)`` already matches
+        ``Float.toString``.
+        """
+        if value != value:  # NaN — only value that isn't equal to itself.
+            return "NaN"
+        if value == float("inf"):
+            return "Infinity"
+        if value == float("-inf"):
+            return "-Infinity"
+        return str(value)
+
+    @staticmethod
     def array_to_string(array: object) -> str:
         """Format a sequence as ``"[a, b, c]"``. Mirrors upstream
-        ``PDAttributeObject.arrayToString(Object[])`` /
-        ``arrayToString(float[])`` which both delegate to
-        ``StringJoiner(", ", "[", "]")``."""
+        ``PDAttributeObject.arrayToString(Object[])`` (line 205) /
+        ``arrayToString(float[])`` (line 221) which both delegate to
+        ``StringJoiner(", ", "[", "]")``.
+
+        Floats are formatted via :meth:`_java_float_repr` so non-finite
+        values match Java's ``Float.toString`` (``NaN`` / ``Infinity`` /
+        ``-Infinity``) rather than Python's lowercase forms.
+        """
         if array is None:
             raise TypeError("array_to_string requires a sequence, got None")
         if not isinstance(array, Iterable):
@@ -241,7 +265,13 @@ class PDAttributeObject:
                 "array_to_string requires a sequence, got "
                 f"{type(array).__name__}"
             )
-        return "[" + ", ".join(str(item) for item in array) + "]"
+        parts: list[str] = []
+        for item in array:
+            if isinstance(item, float):
+                parts.append(PDAttributeObject._java_float_repr(item))
+            else:
+                parts.append(str(item))
+        return "[" + ", ".join(parts) + "]"
 
     def to_string(self) -> str:
         """Return the upstream ``toString()`` representation. Mirrors

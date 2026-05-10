@@ -159,6 +159,21 @@ class COSStream(COSDictionary):
                 "Perhaps its enclosing PDDocument has been closed?"
             )
 
+    def get_stream_cache(self) -> ScratchFile:
+        """Return the ``ScratchFile`` backing this stream's body bytes.
+
+        Mirrors upstream ``getStreamCache()`` (lines 116–124 of
+        ``COSStream.java``) which lazily materialises a memory-only cache
+        the first time a writer is opened. In pypdfbox the cache is
+        attached at construction (either supplied by the caller via
+        ``scratch_file=`` or created internally), so this is a thin
+        accessor — but the contract matches: the return value is the
+        same ``ScratchFile`` instance used by every subsequent
+        ``create_*output_stream``/``set_raw_data`` call, and it lives
+        until :meth:`close` runs.
+        """
+        return self._scratch
+
     def has_data(self) -> bool:
         return self._buffer is not None
 
@@ -174,9 +189,12 @@ class COSStream(COSDictionary):
         """Write the current body length into the ``/Length`` dict entry.
         Called by the inner output-stream ``close()`` callbacks so the
         dictionary stays consistent with the body, matching upstream
-        ``setInt(COSName.LENGTH, randomAccess.length())``."""
+        ``setInt(COSName.LENGTH, randomAccess.length())``. Uses the
+        cached ``COSInteger.get`` factory so small values (notably 0)
+        share the singleton instance — matches what
+        ``COSDictionary.set_int`` does upstream."""
         length = self._buffer.length() if self._buffer is not None else 0
-        super().set_item(_LENGTH, COSInteger(length))
+        super().set_item(_LENGTH, COSInteger.get(length))
 
     def get_raw_data(self) -> bytes:
         """Snapshot of the current raw (encoded) bytes."""

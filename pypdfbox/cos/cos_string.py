@@ -175,6 +175,41 @@ class COSString(COSBase):
     def accept(self, visitor: ICOSVisitor) -> Any:
         return visitor.visit_from_string(self)
 
+    def equals(self, other: object) -> bool:
+        """Mirror upstream ``COSString.equals(Object)`` (line 301).
+
+        Upstream compares the *decoded* string and the ``forceHexForm``
+        flag — two COSStrings whose byte payloads decode to the same
+        text are considered equal even if one is PDFDocEncoded and the
+        other is UTF-16BE-with-BOM. We match that behaviour here.
+        """
+        if isinstance(other, COSString):
+            return (
+                self.get_string() == other.get_string()
+                and self._force_hex_form == other._force_hex_form
+            )
+        return False
+
+    def hash_code(self) -> int:
+        """Mirror upstream ``COSString.hashCode()`` (line 313).
+
+        Upstream uses ``Arrays.hashCode(bytes) + (forceHexForm ? 17 : 0)``
+        — we use Python's ``hash`` on the raw byte tuple and add 17 when
+        the hex flag is set so the contract ``equals → hash_code`` is
+        preserved (note: Java's ``equals`` compares decoded strings while
+        ``hashCode`` hashes raw bytes; we keep the upstream asymmetry).
+        """
+        return hash(self._bytes) + (17 if self._force_hex_form else 0)
+
+    def to_string(self) -> str:
+        """Mirror upstream ``COSString.toString()`` (line 320).
+
+        Returns ``"COSString{<decoded text>}"``. Used by upstream for
+        debug/logging; kept for parity so callers porting Java code
+        relying on ``toString()`` continue to compile.
+        """
+        return f"COSString{{{self.get_string()}}}"
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, COSString):
             return self._bytes == other._bytes and self._force_hex_form == other._force_hex_form

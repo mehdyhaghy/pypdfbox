@@ -79,3 +79,36 @@ def test_dictionary_key_preserves_raw_name_bytes_when_written() -> None:
 
     assert b"/m#E4nnlich" in out.getvalue()
     assert b"/m#C3#A4nnlich" not in out.getvalue()
+
+
+def test_equals_mirrors_arrays_equals() -> None:
+    # COSName.java:823-827: equality is Arrays.equals(nameBytes, ...).
+    # Two distinct interns of the same parsed bytes must compare equal.
+    a = _name_from_bytes(b"/Type")
+    b = COSName.get_pdf_name("Type")
+    assert a.equals(b) is True
+    assert COSName.get_pdf_name("Pages").equals(b) is False
+    # Anything that isn't a COSName never equals (Java's instanceof guard).
+    assert a.equals("Type") is False
+
+
+def test_hash_code_mirrors_arrays_hash_code() -> None:
+    # COSName.java:829-833 uses Arrays.hashCode(byte[]).
+    # The recipe: int h = 1; for (byte b : nameBytes) h = 31 * h + b;
+    # with `b` widened as signed int. Verified against a few short names.
+    assert COSName.get_pdf_name(b"").hash_code() == 1
+    assert COSName.get_pdf_name("A").hash_code() == 96
+    assert COSName.get_pdf_name("AB").hash_code() == 3042
+    # Equal names produce equal hashes.
+    assert (
+        COSName.get_pdf_name("Type").hash_code()
+        == COSName.get_pdf_name("Type").hash_code()
+    )
+
+
+def test_to_string_uses_cosname_braces() -> None:
+    # COSName.java:817-821: toString() returns "COSName{" + getName() + "}".
+    assert COSName.get_pdf_name("Type").to_string() == "COSName{Type}"
+    assert COSName.get_pdf_name("").to_string() == "COSName{}"
+    # Round-tripped via getName(), so unicode names appear decoded.
+    assert COSName.get_pdf_name("中").to_string() == "COSName{中}"
