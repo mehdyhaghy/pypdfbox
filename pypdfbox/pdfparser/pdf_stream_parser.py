@@ -531,6 +531,15 @@ class PDFStreamParser(COSParser):
         ``hasNextSpaceOrReturn()``."""
         return self.is_space_or_return(self.peek_byte())
 
+    def has_no_following_bin_data(self) -> bool:
+        """Public alias for :meth:`_has_no_following_bin_data`. Mirrors
+        upstream's private ``hasNoFollowingBinData`` — exposed at
+        module-public scope so callers porting upstream diagnostic
+        tooling (e.g. inline-image recovery scaffolding) can invoke it
+        without a leading underscore. Position is preserved across the
+        call."""
+        return self._has_no_following_bin_data()
+
     def _has_no_following_bin_data(self) -> bool:
         """Probe up to ``MAX_BIN_CHAR_TEST_LENGTH`` bytes ahead for binary
         garbage. If what follows looks like control bytes (other than the
@@ -581,7 +590,16 @@ class PDFStreamParser(COSParser):
     # ---------- generic operator reader ----------
 
     def _read_operator_token(self) -> Operator:
-        return Operator.get_operator(self._read_operator_string())
+        return Operator.get_operator(self.read_operator())
+
+    def read_operator(self) -> str:
+        """Read an operator keyword and return the keyword text. Mirrors
+        upstream's private ``readOperator()`` — exposed publicly so
+        ports that reach in for direct keyword reads (without singleton
+        ``Operator`` wrapping) keep the same name. Delegates to
+        :meth:`_read_operator_string`, which carries the parsing logic.
+        """
+        return self._read_operator_string()
 
     def _read_operator_string(self) -> str:
         """Read an operator keyword. PDF operators are short alphabetic

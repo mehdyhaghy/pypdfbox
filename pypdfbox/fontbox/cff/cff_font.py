@@ -98,6 +98,15 @@ class CFFFont:
         # upstream package-private ``CFFFont.setName``). When ``None`` the
         # primary fontset name is used.
         self._name_override: str | None = None
+        # Charset override populated by :meth:`set_charset` (mirrors
+        # upstream package-private ``CFFFont.setCharset``). When ``None``
+        # the parsed fontset charset is used.
+        self._charset_override: list[str] | None = None
+        # Global subroutine index override populated by
+        # :meth:`set_global_subr_index` (mirrors upstream package-private
+        # ``CFFFont.setGlobalSubrIndex``). When ``None`` fontTools'
+        # parsed GSubrs are used.
+        self._global_subr_index_override: list[bytes] | None = None
 
     # ---------- factory ----------
 
@@ -161,6 +170,16 @@ class CFFFont:
         self._data = base._data
         self._top_overlay = dict(base._top_overlay)
         self._name_override = base._name_override
+        self._charset_override = (
+            list(base._charset_override)
+            if base._charset_override is not None
+            else None
+        )
+        self._global_subr_index_override = (
+            list(base._global_subr_index_override)
+            if base._global_subr_index_override is not None
+            else None
+        )
 
     def set_name(self, name: str | None) -> None:
         """PDFBox: ``CFFFont.setName(String)`` — override the PostScript
@@ -171,6 +190,45 @@ class CFFFont:
         callers (and tests) that synthesise a :class:`CFFFont` outside
         the parser path."""
         self._name_override = name
+
+    def set_charset(self, charset: list[str] | None) -> None:
+        """PDFBox: ``CFFFont.setCharset(CFFCharset)`` (upstream Java line 128)
+        — install/override the GID-ordered glyph-name list used by
+        :meth:`get_charset`. Upstream this is package-private (called
+        only from ``CFFParser``); we expose it for parity so callers
+        synthesising a CFFFont outside the parser path can install a
+        charset directly. Pass ``None`` to clear the override and fall
+        back to fontTools' parsed charset."""
+        self._charset_override = list(charset) if charset is not None else None
+
+    def set_data(self, source: bytes | bytearray | memoryview | None) -> None:
+        """PDFBox: ``CFFFont.setData(CFFParser.ByteSource)`` (upstream Java
+        line 146) — set the raw CFF byte payload returned by
+        :meth:`get_data`. Upstream stores a ``ByteSource`` callback; we
+        accept the bytes directly since fontTools has already parsed
+        the font set by the time this is called. Pass ``None`` to clear."""
+        self._data = bytes(source) if source is not None else None
+
+    def set_global_subr_index(
+        self, global_subr_index_value: list[bytes] | None
+    ) -> None:
+        """PDFBox: ``CFFFont.setGlobalSubrIndex(byte[][])`` (upstream Java
+        line 178) — override the global subroutine bytecodes returned by
+        :meth:`get_global_subr_index`. Upstream this is package-private
+        (called only from ``CFFParser``); we expose it for parity. Pass
+        ``None`` to clear and fall back to fontTools' parsed GSubrs."""
+        self._global_subr_index_override = (
+            [bytes(entry) for entry in global_subr_index_value]
+            if global_subr_index_value is not None
+            else None
+        )
+
+    def to_string(self) -> str:
+        """PDFBox: ``CFFFont.toString()`` (upstream Java line 205) — the
+        Java-style string representation. Identical to ``str(self)`` /
+        ``repr(self)`` in pypdfbox; provided as an explicit method for
+        parity with code ported verbatim from upstream."""
+        return self.__repr__()
 
     def get_top_dict(self) -> dict[str, Any]:
         """PDFBox: ``CFFFont.getTopDict()`` — Top DICT entries as a plain
@@ -210,7 +268,12 @@ class CFFFont:
     def get_charset(self) -> list[str]:
         """PDFBox: ``CFFFont.getCharset()`` — ordered glyph names in
         CharStrings order (index = GID). For CID fonts the entries are
-        ``cid<NNNNN>`` strings as fontTools synthesises them."""
+        ``cid<NNNNN>`` strings as fontTools synthesises them.
+
+        When :meth:`set_charset` has installed an override list, that
+        list is returned instead of the parsed fontset charset."""
+        if self._charset_override is not None:
+            return list(self._charset_override)
         if self._top is None:
             return []
         charset = getattr(self._top, "charset", None)
@@ -324,7 +387,12 @@ class CFFFont:
     def get_global_subr_index(self) -> list[bytes]:
         """PDFBox: ``CFFFont.getGlobalSubrIndex()`` — global subroutine
         bytecodes as a list of ``bytes``. Empty list when the font has
-        no /GSubrs."""
+        no /GSubrs.
+
+        When :meth:`set_global_subr_index` has installed an override
+        list, that list is returned instead of fontTools' parsed GSubrs."""
+        if self._global_subr_index_override is not None:
+            return list(self._global_subr_index_override)
         if self._top is None:
             return []
         gsubrs = getattr(self._top, "GlobalSubrs", None)

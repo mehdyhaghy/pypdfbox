@@ -304,3 +304,66 @@ def test_wave325_negative_hival_is_clamped_to_zero() -> None:
 
     assert cs.get_hival() == 0
     assert cs.get_lookup_data() == b"\x01\x02\x03"
+
+
+# ---------- wave 1250 — public mirrors of upstream private helpers ----------
+
+
+def test_wave1250_read_lookup_data_returns_raw_bytes_for_cos_string() -> None:
+    """``read_lookup_data`` mirrors upstream ``readLookupData``: pull
+    raw bytes out of the /Lookup slot — no clamp, no padding (those
+    belong to the caller-facing :meth:`get_lookup_data`)."""
+    payload = b"\x10\x20\x30"
+    cs = _make_indexed(0, COSString(payload))
+    assert cs.read_lookup_data() == payload
+
+
+def test_wave1250_read_lookup_data_returns_empty_bytes_for_unknown_slot() -> None:
+    """Upstream raises ``IOException`` for unsupported slot types;
+    pypdfbox stays lenient and returns ``b""`` (consistent with the
+    permissive contract on :meth:`get_lookup_data`)."""
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(2))
+    arr.add(COSInteger.get(42))  # unsupported slot type
+    cs = PDIndexed(arr)
+    assert cs.read_lookup_data() == b""
+
+
+def test_wave1250_read_color_table_decodes_palette_to_floats() -> None:
+    """``read_color_table`` returns ``([entries], actual_max_index)``
+    with each component scaled to ``[0, 1]``."""
+    palette = b"\x00\x00\x00\xff\x00\x00\x00\xff\x00"  # black, red, green
+    cs = _make_indexed(2, COSString(palette))
+    table, max_index = cs.read_color_table()
+    assert max_index == 2
+    assert table[0] == [0.0, 0.0, 0.0]
+    assert table[1] == [1.0, 0.0, 0.0]
+    assert table[2] == [0.0, 1.0, 0.0]
+
+
+def test_wave1250_read_color_table_shrinks_max_index_for_short_lookup() -> None:
+    """Upstream: when ``lookupData.length / numComponents < hival+1``,
+    shrink ``actualMaxIndex`` to keep the decode in-bounds."""
+    cs = _make_indexed(5, COSString(b"\xff\xff\xff\x00\x80\x80"))  # 2 entries
+    table, max_index = cs.read_color_table()
+    assert max_index == 1
+    assert len(table) == 2
+
+
+def test_wave1250_init_rgb_color_table_returns_int_triples() -> None:
+    """``init_rgb_color_table`` returns ``[(r, g, b), ...]`` with each
+    channel an int in ``[0, 255]``."""
+    palette = b"\x00\x00\x00\xff\x00\x00\x00\xff\x00"
+    cs = _make_indexed(2, COSString(palette))
+    rgb = cs.init_rgb_color_table()
+    assert rgb == [(0, 0, 0), (255, 0, 0), (0, 255, 0)]
+
+
+def test_wave1250_to_string_matches_dunder_str() -> None:
+    """``to_string`` mirrors upstream ``PDIndexed.toString`` and
+    matches the Python ``__str__`` payload byte-for-byte."""
+    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
+    assert cs.to_string() == str(cs)
+    assert cs.to_string() == "Indexed{base:DeviceRGB hival:2 lookup:(3 entries)}"

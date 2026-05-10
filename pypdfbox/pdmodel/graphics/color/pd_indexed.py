@@ -152,21 +152,24 @@ class PDIndexed(PDColorSpace):
         """Clear ``/Lookup`` by writing the Indexed null placeholder."""
         self.set_lookup_data(None)
 
-    # ---------- private helpers (port of upstream private methods) ----------
+    # ---------- helpers (port of upstream private methods) ----------
     #
     # Upstream caches `lookupData`, `colorTable`, `actualMaxIndex`, and
     # `rgbColorTable` in fields populated by `readLookupData()`,
     # `readColorTable()`, and `initRgbColorTable()`. We mirror those
     # helpers so the behavior — read /Lookup, build the [n][k] palette,
     # convert each entry through the base CS to RGB once — has the same
-    # shape on the Python side. They stay private (leading underscore)
-    # to match upstream's `private` access.
+    # shape on the Python side. Names match upstream (no leading
+    # underscore) so the parity tracker pairs them 1:1; these are still
+    # treated as internal — public callers should use
+    # :meth:`get_lookup_data`, :meth:`to_rgb`, and :meth:`to_rgb_image`.
 
-    def _read_lookup_data(self) -> bytes:
-        """Port of upstream ``readLookupData``: pull the /Lookup bytes
-        out of either ``COSString`` or ``COSStream``; ``b""`` for any
-        unsupported slot type (upstream raises ``IOException`` here, but
-        pypdfbox stays lenient as documented in :meth:`get_lookup_data`).
+    def read_lookup_data(self) -> bytes:
+        """Port of upstream ``readLookupData`` (``PDIndexed.java`` line
+        258): pull the /Lookup bytes out of either ``COSString`` or
+        ``COSStream``; ``b""`` for any unsupported slot type (upstream
+        raises ``IOException`` here, but pypdfbox stays lenient as
+        documented in :meth:`get_lookup_data`).
         """
         assert self._array is not None
         entry = self._get_array_object(3)
@@ -177,12 +180,13 @@ class PDIndexed(PDColorSpace):
                 return src.read()
         return b""
 
-    def _read_color_table(self) -> tuple[list[list[float]], int]:
-        """Port of upstream ``readColorTable``: return the ``[n][k]``
-        palette as floats in ``[0, 1]`` and the actual max index after
-        clamping ``hival`` against the available lookup data length.
+    def read_color_table(self) -> tuple[list[list[float]], int]:
+        """Port of upstream ``readColorTable`` (``PDIndexed.java`` line
+        285): return the ``[n][k]`` palette as floats in ``[0, 1]`` and
+        the actual max index after clamping ``hival`` against the
+        available lookup data length.
         """
-        lookup = self._read_lookup_data()
+        lookup = self.read_lookup_data()
         max_index = min(self.get_hival(), 255)
         base = self.get_base_color_space()
         n = base.get_number_of_components() if base is not None else 3
@@ -203,10 +207,10 @@ class PDIndexed(PDColorSpace):
                 offset += 1
         return table, max_index
 
-    def _init_rgb_color_table(self) -> list[tuple[int, int, int]]:
-        """Port of upstream ``initRgbColorTable``: convert each palette
-        entry through the base color space to an ``(r, g, b)`` triple of
-        ``int`` in ``[0, 255]``.
+    def init_rgb_color_table(self) -> list[tuple[int, int, int]]:
+        """Port of upstream ``initRgbColorTable`` (``PDIndexed.java``
+        line 128): convert each palette entry through the base color
+        space to an ``(r, g, b)`` triple of ``int`` in ``[0, 255]``.
 
         Upstream builds a 1-row ``BufferedImage`` and lets the base
         color space's ``toRGBImage`` do the conversion. We achieve the
@@ -216,7 +220,7 @@ class PDIndexed(PDColorSpace):
         ICCBased / Separation / DeviceN). Result is stable per call —
         callers that need caching should hold onto the list.
         """
-        table, max_index = self._read_color_table()
+        table, max_index = self.read_color_table()
         if max_index < 0:
             return []
         base = self.get_base_color_space()
@@ -259,7 +263,7 @@ class PDIndexed(PDColorSpace):
             raise ValueError(
                 "Indexed color spaces must have one color value"
             )
-        rgb_table = self._init_rgb_color_table()
+        rgb_table = self.init_rgb_color_table()
         if not rgb_table:
             return [0.0, 0.0, 0.0]
         index = int(round(value[0]))
@@ -287,7 +291,7 @@ class PDIndexed(PDColorSpace):
 
         w = int(width)
         h = int(height)
-        rgb_table = self._init_rgb_color_table()
+        rgb_table = self.init_rgb_color_table()
         if not rgb_table:
             return Image.new("RGB", (w, h), (0, 0, 0))
         max_index = len(rgb_table) - 1
@@ -346,6 +350,14 @@ class PDIndexed(PDColorSpace):
         return [0.0, upper]
 
     # ---------- string form ----------
+
+    def to_string(self) -> str:
+        """Mirrors upstream ``PDIndexed.toString`` (``PDIndexed.java``
+        line 336). Same payload as :meth:`__str__`; provided as an
+        explicit method so callers porting Java code can keep the
+        ``cs.toString()`` shape via snake_case.
+        """
+        return self.__str__()
 
     def __str__(self) -> str:
         """Mirrors upstream ``PDIndexed.toString``:

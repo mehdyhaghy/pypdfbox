@@ -14,7 +14,6 @@ _LL: COSName = COSName.get_pdf_name("LL")
 _LLE: COSName = COSName.get_pdf_name("LLE")
 _LLO: COSName = COSName.get_pdf_name("LLO")
 _CAP: COSName = COSName.get_pdf_name("Cap")
-_IT: COSName = COSName.get_pdf_name("IT")
 _CP: COSName = COSName.get_pdf_name("CP")
 _CO: COSName = COSName.get_pdf_name("CO")
 
@@ -173,27 +172,51 @@ class FDFAnnotationLine(FDFAnnotation):
 
     # ---------- /LL leader line length ----------
 
-    def get_leader_line(self) -> float:
+    def get_leader_length(self) -> float:
+        """Length of the leader line (``/LL``).
+
+        Mirrors upstream ``getLeaderLength()`` (Java line 289).
+        """
         return self._annot.get_float(_LL, 0.0)
 
-    def set_leader_line(self, length: float) -> None:
-        self._annot.set_float(_LL, float(length))
+    def set_leader_length(self, leader_length: float) -> None:
+        """Set the leader line length (``/LL``).
+
+        Mirrors upstream ``setLeaderLength(float)`` (Java line 299).
+        """
+        self._annot.set_float(_LL, float(leader_length))
 
     # ---------- /LLE leader line extension ----------
 
-    def get_leader_line_extension(self) -> float:
+    def get_leader_extend(self) -> float:
+        """Length of the leader line extensions (``/LLE``).
+
+        Mirrors upstream ``getLeaderExtend()`` (Java line 309).
+        """
         return self._annot.get_float(_LLE, 0.0)
 
-    def set_leader_line_extension(self, length: float) -> None:
-        self._annot.set_float(_LLE, float(length))
+    def set_leader_extend(self, leader_extend: float) -> None:
+        """Set the leader line extensions length (``/LLE``).
+
+        Mirrors upstream ``setLeaderExtend(float)`` (Java line 319).
+        """
+        self._annot.set_float(_LLE, float(leader_extend))
 
     # ---------- /LLO leader line offset ----------
 
-    def get_leader_line_offset(self) -> float:
+    def get_leader_offset(self) -> float:
+        """Length of the leader line offset (``/LLO``).
+
+        Mirrors upstream ``getLeaderOffset()`` (Java line 329).
+        """
         return self._annot.get_float(_LLO, 0.0)
 
-    def set_leader_line_offset(self, length: float) -> None:
-        self._annot.set_float(_LLO, float(length))
+    def set_leader_offset(self, leader_offset: float) -> None:
+        """Set the leader line offset length (``/LLO``).
+
+        Mirrors upstream ``setLeaderOffset(float)`` (Java line 339).
+        """
+        self._annot.set_float(_LLO, float(leader_offset))
 
     # ---------- /Cap caption flag ----------
 
@@ -203,33 +226,32 @@ class FDFAnnotationLine(FDFAnnotation):
     def set_caption(self, value: bool) -> None:
         self._annot.set_boolean(_CAP, bool(value))
 
-    # ---------- /IT intent (LineArrow / LineDimension) ----------
+    # ---------- /CP caption positioning ("Inline" / "Top") ----------
 
-    def get_intent(self) -> str | None:
-        v = self._annot.get_dictionary_object(_IT)
-        if isinstance(v, COSName):
-            return v.name
-        return None
+    def get_caption_style(self) -> str | None:
+        """Caption positioning string (``/CP``).
 
-    def set_intent(self, intent: str | None) -> None:
-        if intent is None:
-            self._annot.remove_item(_IT)
-        else:
-            self._annot.set_item(_IT, COSName.get_pdf_name(intent))
-
-    # ---------- /CP caption position (Inline / Top) ----------
-
-    def get_caption_position(self) -> str | None:
+        Mirrors upstream ``getCaptionStyle()`` (Java line 349) which uses
+        ``getString``; pypdfbox returns ``None`` for the absent case rather
+        than the Java ``null``.
+        """
         v = self._annot.get_dictionary_object(_CP)
         if isinstance(v, COSName):
             return v.name
-        return None
+        return self._annot.get_string(_CP)
 
-    def set_caption_position(self, position: str | None) -> None:
-        if position is None:
+    def set_caption_style(self, caption_style: str | None) -> None:
+        """Set caption positioning (``/CP``). Allowed values: ``Inline``, ``Top``.
+
+        Mirrors upstream ``setCaptionStyle(String)`` (Java line 359). Upstream
+        uses ``setString``; pypdfbox writes a ``COSName`` to keep round-trip
+        parity with prior pypdfbox releases (PDF readers accept either form).
+        ``None`` removes the entry.
+        """
+        if caption_style is None:
             self._annot.remove_item(_CP)
         else:
-            self._annot.set_item(_CP, COSName.get_pdf_name(position))
+            self._annot.set_item(_CP, COSName.get_pdf_name(caption_style))
 
     # ---------- /CO caption offset (h, v) ----------
 

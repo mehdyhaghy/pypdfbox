@@ -624,6 +624,246 @@ class PDFRenderer(PDFStreamEngine):
         return bool(oc_properties.is_group_enabled(group))
 
     # ------------------------------------------------------------------
+    # rendering-pipeline hooks (mirror upstream private/protected methods)
+    # ------------------------------------------------------------------
+
+    def has_blend_mode(self, page: PDPage) -> bool:
+        """Return True when any ``/ExtGState`` on the page declares a
+        non-Normal blend mode. Mirrors upstream
+        ``PDFRenderer.hasBlendMode(PDPage)`` (Java 559–582).
+
+        Used by the upstream renderer to flip an RGB target to ARGB so
+        top-level blends composite against a transparent backdrop
+        (PDFBOX-4095). The lite renderer already handles blend
+        compositing inline; this accessor is provided so subclasses /
+        downstream tooling can mirror upstream's branch."""
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
+        resources = page.get_resources()
+        if resources is None:
+            return False
+        try:
+            names = resources.get_ext_g_state_names()
+        except Exception:  # noqa: BLE001
+            return False
+        normal = BlendMode.NORMAL
+        for name in names:
+            try:
+                ext_gstate = resources.get_ext_gstate(name)
+            except Exception:  # noqa: BLE001
+                continue
+            # extGState null can happen if the key exists but has no value
+            # (see PDFBOX-3950-23EGDHXSBBYQLKYOKGZUOVYVNE675PRD.pdf).
+            if ext_gstate is None:
+                continue
+            blend_mode = ext_gstate.get_blend_mode()
+            if blend_mode is not None and blend_mode is not normal:
+                return True
+        return False
+
+    def is_bitonal(self, graphics: Any) -> bool:
+        """Return True when the target graphics device is 1-bit-deep.
+        Mirrors upstream ``PDFRenderer.isBitonal(Graphics2D)`` (Java
+        510–528).
+
+        Upstream walks ``Graphics2D.getDeviceConfiguration().getDevice()
+        .getDisplayMode().getBitDepth() == 1``. We don't have AWT, so
+        this lite mirror duck-types: a target reporting ``mode == "1"``
+        (a Pillow 1-bit ``Image``) or exposing a ``get_bit_depth()`` /
+        ``bit_depth`` of 1 is bitonal. Anything else (including
+        ``None``) is treated as non-bitonal — same as upstream when
+        any link in the chain is null."""
+        if graphics is None:
+            return False
+        # Pillow Image / ImageDraw.Draw — both surface ``mode``.
+        mode = getattr(graphics, "mode", None)
+        if mode is None:
+            image = getattr(graphics, "image", None)
+            if image is not None:
+                mode = getattr(image, "mode", None)
+        if mode == "1":
+            return True
+        # Generic duck-type for anything mimicking AWT's GraphicsDevice.
+        get_bit_depth = getattr(graphics, "get_bit_depth", None)
+        if callable(get_bit_depth):
+            try:
+                return int(get_bit_depth()) == 1
+            except Exception:  # noqa: BLE001
+                return False
+        bit_depth = getattr(graphics, "bit_depth", None)
+        if isinstance(bit_depth, int):
+            return bit_depth == 1
+        return False
+
+    def create_default_rendering_hints(self, graphics: Any) -> dict[str, str]:
+        """Return the default rendering-hint dict used when the caller
+        didn't provide one. Mirrors upstream
+        ``PDFRenderer.createDefaultRenderingHints(Graphics2D)`` (Java
+        530–542).
+
+        Upstream returns an AWT ``RenderingHints`` keyed by AWT
+        constants (``KEY_INTERPOLATION``, ``KEY_RENDERING``,
+        ``KEY_ANTIALIASING``). The lite renderer doesn't consult AWT
+        hints, so we emit a dict keyed by the upstream string names —
+        good enough for parity tests and downstream tooling that just
+        wants to round-trip the value."""
+        bitonal = self.is_bitonal(graphics)
+        return {
+            "KEY_INTERPOLATION": (
+                "VALUE_INTERPOLATION_NEAREST_NEIGHBOR"
+                if bitonal
+                else "VALUE_INTERPOLATION_BICUBIC"
+            ),
+            "KEY_RENDERING": "VALUE_RENDER_QUALITY",
+            "KEY_ANTIALIASING": (
+                "VALUE_ANTIALIAS_OFF" if bitonal else "VALUE_ANTIALIAS_ON"
+            ),
+        }
+
+    def create_page_drawer(self, parameters: Any) -> Any:
+        """Return a page-drawer for the given parameters. Mirrors
+        upstream ``PDFRenderer.createPageDrawer(PageDrawerParameters)``
+        (Java 552–557) — overridable by subclasses that want to plug in
+        a custom drawer.
+
+        The lite renderer folds upstream's ``PageDrawer`` inline (this
+        same ``PDFRenderer`` subclass walks the operators), so the hook
+        returns ``self`` after stamping the active annotation filter
+        onto ``parameters`` if it accepts one. Subclasses that mirror
+        upstream's split (separate ``PageDrawer`` class) should
+        override this method to return their own instance."""
+        # Upstream stamps the renderer's annotation filter onto the
+        # newly-created PageDrawer. We surface the same filter on the
+        # parameters object when it has a writable slot, so a downstream
+        # custom drawer derived from ``parameters`` sees the right
+        # filter without having to call ``set_annotation_filter`` itself.
+        if parameters is not None and hasattr(parameters, "set_annotation_filter"):
+            with contextlib.suppress(Exception):
+                parameters.set_annotation_filter(self._annotation_filter)
+        return self
+
+    def transform(
+        self,
+        graphics: Any,
+        rotation_angle: int,
+        crop_box: Any,
+        scale_x: float,
+        scale_y: float,
+    ) -> _Matrix:
+        """Apply the page rotation + scaling transform to ``graphics``
+        and return the equivalent 6-tuple PDF matrix. Mirrors upstream
+        ``PDFRenderer.transform`` (Java 481–508): scale, then translate
+        + rotate so the page's lower-left lands at (0, 0) post-rotation.
+
+        Upstream operates on ``java.awt.Graphics2D``. We duck-type:
+        when ``graphics`` exposes ``scale`` / ``translate`` / ``rotate``
+        methods (as e.g. ``aggdraw.Draw`` does for some affine ops, or
+        a downstream subclass might) they're called with the matching
+        arguments; otherwise we just compute the matrix and return it.
+        Returning the matrix lets test code assert the exact transform
+        without poking at Java2D state."""
+        # Always build the matrix so the caller has the equivalent CTM.
+        translate_x = 0.0
+        translate_y = 0.0
+        if rotation_angle == 90:
+            translate_x = float(crop_box.get_height())
+        elif rotation_angle == 270:
+            translate_y = float(crop_box.get_width())
+        elif rotation_angle == 180:
+            translate_x = float(crop_box.get_width())
+            translate_y = float(crop_box.get_height())
+
+        matrix: _Matrix = (float(scale_x), 0.0, 0.0, float(scale_y), 0.0, 0.0)
+        if rotation_angle:
+            radians = math.radians(rotation_angle)
+            cos_r = math.cos(radians)
+            sin_r = math.sin(radians)
+            translate: _Matrix = (1.0, 0.0, 0.0, 1.0, translate_x, translate_y)
+            rotate: _Matrix = (cos_r, sin_r, -sin_r, cos_r, 0.0, 0.0)
+            # PDF post-multiplication: device = scale ∘ translate ∘ rotate
+            matrix = _matmul(_matmul(rotate, translate), matrix)
+
+        # Best-effort: if the caller passed a graphics target with an
+        # AWT-style imperative API, replay scale/translate/rotate on it.
+        scale_fn = getattr(graphics, "scale", None)
+        if callable(scale_fn):
+            with contextlib.suppress(Exception):
+                scale_fn(scale_x, scale_y)
+        if rotation_angle:
+            translate_fn = getattr(graphics, "translate", None)
+            if callable(translate_fn):
+                with contextlib.suppress(Exception):
+                    translate_fn(translate_x, translate_y)
+            rotate_fn = getattr(graphics, "rotate", None)
+            if callable(rotate_fn):
+                with contextlib.suppress(Exception):
+                    rotate_fn(math.radians(rotation_angle))
+        return matrix
+
+    def render_page_to_graphics(
+        self,
+        page_index: int,
+        graphics: Any,
+        scale_x: float = 1.0,
+        scale_y: float | None = None,
+        destination: Any | None = None,
+    ) -> None:
+        """Render a page onto an existing graphics target. Mirrors
+        upstream ``PDFRenderer.renderPageToGraphics`` (Java 383–467) —
+        the four overloads collapse into one call with optional
+        ``scale_y`` (defaults to ``scale_x``) and optional
+        ``destination`` (defaults to
+        ``self.get_default_destination()`` or
+        :attr:`RenderDestination.VIEW`).
+
+        Upstream draws into a Java2D ``Graphics2D``. The lite renderer
+        accepts a ``PIL.Image.Image`` instead: we render the page to a
+        fresh image at the requested scale and paste it into the target
+        at (0, 0). Callers that need a different blit point should
+        crop / paste themselves. ``destination`` is stored only — the
+        lite renderer doesn't yet branch on VIEW/PRINT/EXPORT (tracked
+        in ``CHANGES.md``)."""
+        if scale_y is None:
+            scale_y = scale_x
+        scale_x = _require_positive_finite(scale_x, "scale_x")
+        scale_y = _require_positive_finite(scale_y, "scale_y")
+        # Resolve destination — only stored, but track it so subclasses
+        # that override can read self._default_destination consistently
+        # with upstream's behaviour (see Java 449–451).
+        if destination is None:
+            destination = self._default_destination or RenderDestination.VIEW
+        # Render at the maximum of the two axes so we don't lose detail,
+        # then let the caller's target absorb anisotropic scaling via
+        # PIL's resize. Upstream lets Java2D handle anisotropic scale
+        # natively; we approximate by rendering once and resampling.
+        scale = max(scale_x, scale_y)
+        rendered = self.render_image(page_index, scale=scale)
+        if scale_x != scale_y:
+            page = self._get_page_for_render(page_index)
+            crop_box = page.get_crop_box()
+            target_w = max(1, int(round(crop_box.get_width() * scale_x)))
+            target_h = max(1, int(round(crop_box.get_height() * scale_y)))
+            rendered = rendered.resize((target_w, target_h), Image.BICUBIC)
+        if isinstance(graphics, Image.Image):
+            graphics.paste(rendered, (0, 0))
+            return
+        # Anything else — e.g. an aggdraw.Draw or a custom target — try
+        # the duck-typed ``draw_image`` / ``paste`` API; fall back to a
+        # silent no-op so a downstream caller's custom hook can pick up
+        # the rendered image via ``get_page_image()``.
+        for attr in ("paste", "draw_image", "drawImage"):  # noqa: N802
+            fn = getattr(graphics, attr, None)
+            if callable(fn):
+                try:
+                    fn(rendered, (0, 0))
+                except TypeError:
+                    with contextlib.suppress(Exception):
+                        fn(rendered, 0, 0)
+                return
+
+    # ------------------------------------------------------------------
     # graphics-state helpers
     # ------------------------------------------------------------------
 

@@ -110,15 +110,15 @@ def test_interior_color_round_trip() -> None:
 
 def test_leader_lines_round_trip() -> None:
     a = FDFAnnotationLine()
-    assert a.get_leader_line() == 0.0
-    assert a.get_leader_line_extension() == 0.0
-    assert a.get_leader_line_offset() == 0.0
-    a.set_leader_line(5.0)
-    a.set_leader_line_extension(3.5)
-    a.set_leader_line_offset(1.25)
-    assert a.get_leader_line() == 5.0
-    assert a.get_leader_line_extension() == 3.5
-    assert a.get_leader_line_offset() == 1.25
+    assert a.get_leader_length() == 0.0
+    assert a.get_leader_extend() == 0.0
+    assert a.get_leader_offset() == 0.0
+    a.set_leader_length(5.0)
+    a.set_leader_extend(3.5)
+    a.set_leader_offset(1.25)
+    assert a.get_leader_length() == 5.0
+    assert a.get_leader_extend() == 3.5
+    assert a.get_leader_offset() == 1.25
 
 
 def test_caption_flag_default_false() -> None:
@@ -137,13 +137,13 @@ def test_intent_round_trip() -> None:
     assert a.get_intent() is None
 
 
-def test_caption_position_round_trip() -> None:
+def test_caption_style_round_trip() -> None:
     a = FDFAnnotationLine()
-    assert a.get_caption_position() is None
-    a.set_caption_position("Inline")
-    assert a.get_caption_position() == "Inline"
-    a.set_caption_position(None)
-    assert a.get_caption_position() is None
+    assert a.get_caption_style() is None
+    a.set_caption_style("Inline")
+    assert a.get_caption_style() == "Inline"
+    a.set_caption_style(None)
+    assert a.get_caption_style() is None
 
 
 def test_caption_offset_round_trip() -> None:

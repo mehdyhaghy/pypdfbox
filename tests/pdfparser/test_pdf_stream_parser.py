@@ -290,3 +290,40 @@ def test_close_is_idempotent_and_marks_closed() -> None:
 def test_is_closed_initially_false_after_construction() -> None:
     p = parser(b"q Q")
     assert p.is_closed() is False
+
+
+# ---------- public wrappers for upstream private helpers ----------
+
+
+def test_read_operator_returns_keyword_string() -> None:
+    # Public mirror of upstream's private ``readOperator()`` — returns the
+    # raw keyword text without singleton-wrapping it as an Operator.
+    p = parser(b"  cm 1 0 0 1 0 0")
+    kw = p.read_operator()
+    assert kw == "cm"
+
+
+def test_read_operator_picks_up_d0_type3_quirk() -> None:
+    # Type 3 glyph operator ``d0`` carries the embedded digit per the
+    # PDFBox readOperator quirk — the public wrapper preserves that.
+    p = parser(b"d0 100 0 d1")
+    assert p.read_operator() == "d0"
+
+
+def test_has_no_following_bin_data_public_alias_matches_private() -> None:
+    # The public wrapper must behave identically to the private helper
+    # and must preserve the read cursor (PDFBox's heuristic rewinds).
+    p = parser(b"      Q     ")
+    pos_before = p.get_position()
+    public = p.has_no_following_bin_data()
+    pos_after = p.get_position()
+    assert pos_before == pos_after
+    # ``Q`` followed by whitespace is one of the recognised operator
+    # tokens, so the probe must report "no binary follows".
+    assert public is True
+
+
+def test_has_no_following_bin_data_detects_binary_payload() -> None:
+    # A high-bit byte mid-probe must trip the heuristic.
+    p = parser(b"\xff\xfe\xfd\xfc\xfb\xfa\xf9\xf8\xf7\xf6")
+    assert p.has_no_following_bin_data() is False
