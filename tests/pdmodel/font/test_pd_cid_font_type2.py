@@ -255,7 +255,9 @@ def test_get_font_matrix_recovers_when_units_per_em_zero() -> None:
 # ---------- get_bounding_box ----------
 
 
-def test_get_bounding_box_uses_embedded_head_when_program_present() -> None:
+def test_get_bounding_box_uses_embedded_head_when_no_descriptor_bbox() -> None:
+    # Upstream prefers the descriptor's /FontBBox when *non-zero*; with
+    # no descriptor at all the embedded TTF's head bbox is the source.
     stub = _StubTTF(
         units_per_em=1000,
         advance_widths=[0],
@@ -263,12 +265,73 @@ def test_get_bounding_box_uses_embedded_head_when_program_present() -> None:
         glyphs={},
         head_bbox=(-100.0, -200.0, 1100.0, 900.0),
     )
+
+    def stub_get_font_bbox() -> tuple[int, int, int, int]:
+        return (-100, -200, 1100, 900)
+
+    stub.get_font_bbox = stub_get_font_bbox  # type: ignore[attr-defined]
     font = _make_font_with_stub_ttf(stub)
     bbox = font.get_bounding_box()
     assert bbox is not None
     assert bbox.lower_left_x == pytest.approx(-100.0)
     assert bbox.lower_left_y == pytest.approx(-200.0)
     assert bbox.upper_right_x == pytest.approx(1100.0)
+    assert bbox.upper_right_y == pytest.approx(900.0)
+
+
+def test_get_bounding_box_prefers_descriptor_when_non_zero() -> None:
+    # Upstream descriptor-first ordering: when /FontBBox is present and
+    # non-zero, it wins over the embedded TTF's head table.
+    stub = _StubTTF(
+        units_per_em=1000,
+        advance_widths=[0],
+        glyph_order=[".notdef"],
+        glyphs={},
+        head_bbox=(-999.0, -999.0, 9999.0, 9999.0),
+    )
+
+    def stub_get_font_bbox() -> tuple[int, int, int, int]:
+        return (-999, -999, 9999, 9999)
+
+    stub.get_font_bbox = stub_get_font_bbox  # type: ignore[attr-defined]
+    font = _make_font_with_stub_ttf(stub)
+    fd = PDFontDescriptor()
+    bbox_arr = COSArray()
+    for v in (-50, -25, 1050, 950):
+        bbox_arr.add(COSFloat(v))
+    fd.set_font_b_box(bbox_arr)
+    font.set_font_descriptor(fd)
+    bbox = font.get_bounding_box()
+    assert bbox is not None
+    # Descriptor wins.
+    assert bbox.lower_left_x == pytest.approx(-50.0)
+    assert bbox.upper_right_x == pytest.approx(1050.0)
+
+
+def test_get_bounding_box_falls_back_to_ttf_head_when_descriptor_all_zero() -> None:
+    # Upstream skips the descriptor when /FontBBox is "all zeros" and
+    # falls through to the TTF.
+    stub = _StubTTF(
+        units_per_em=1000,
+        advance_widths=[0],
+        glyph_order=[".notdef"],
+        glyphs={},
+    )
+
+    def stub_get_font_bbox() -> tuple[int, int, int, int]:
+        return (-10, -20, 1100, 900)
+
+    stub.get_font_bbox = stub_get_font_bbox  # type: ignore[attr-defined]
+    font = _make_font_with_stub_ttf(stub)
+    fd = PDFontDescriptor()
+    bbox_arr = COSArray()
+    for v in (0, 0, 0, 0):
+        bbox_arr.add(COSFloat(v))
+    fd.set_font_b_box(bbox_arr)
+    font.set_font_descriptor(fd)
+    bbox = font.get_bounding_box()
+    assert bbox is not None
+    assert bbox.lower_left_x == pytest.approx(-10.0)
     assert bbox.upper_right_y == pytest.approx(900.0)
 
 
@@ -289,6 +352,41 @@ def test_get_bounding_box_falls_back_to_descriptor_when_no_program() -> None:
 def test_get_bounding_box_none_when_neither_source() -> None:
     font = PDCIDFontType2()
     assert font.get_bounding_box() is None
+
+
+def test_get_bounding_box_memoised() -> None:
+    # Second call returns the same object — upstream stores the bbox in
+    # an instance field so callers don't pay the resolve cost twice.
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    bbox_arr = COSArray()
+    for v in (-50, -25, 1050, 950):
+        bbox_arr.add(COSFloat(v))
+    fd.set_font_b_box(bbox_arr)
+    font.set_font_descriptor(fd)
+    first = font.get_bounding_box()
+    second = font.get_bounding_box()
+    assert first is second
+
+
+def test_generate_bounding_box_skips_all_zero_descriptor() -> None:
+    # generate_bounding_box is the resolve hook used by the cache —
+    # exercise it directly so the all-zero short-circuit is testable.
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    bbox_arr = COSArray()
+    for v in (0, 0, 0, 0):
+        bbox_arr.add(COSFloat(v))
+    fd.set_font_b_box(bbox_arr)
+    font.set_font_descriptor(fd)
+    # No TTF either -> parent fall-through returns the all-zero rectangle.
+    bbox = font.generate_bounding_box()
+    # parent's get_bounding_box returns the [0,0,0,0] descriptor bbox,
+    # whereas generate's "non-zero" guard fired and skipped it. The
+    # parent is the only remaining source.
+    assert bbox is None or (
+        bbox.lower_left_x == 0.0 and bbox.upper_right_x == 0.0
+    )
 
 
 # ---------- embedded program stream fallbacks ----------

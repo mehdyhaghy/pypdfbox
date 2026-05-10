@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSName, COSStream
+from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
+from pypdfbox.fontbox.ttf import OTFParser, TTFParser
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 
@@ -215,6 +216,62 @@ def test_encode_raises_when_no_glyph_available() -> None:
     font = PDCIDFontType2()
     with pytest.raises(ValueError, match=r"No glyph for U\+0041"):
         font.encode(0x41)
+
+
+# ---------- get_parser (TTF vs OTF SFNT-magic dispatch) ----------
+
+
+def test_get_parser_returns_otf_for_otto_magic() -> None:
+    # Upstream sniffs the first four bytes of the embedded program for
+    # the OpenType OTTO sfnt-version tag and dispatches to OTFParser.
+    parser = PDCIDFontType2.get_parser(b"OTTO\x00\x10\x00\x00")
+    assert isinstance(parser, OTFParser)
+
+
+def test_get_parser_returns_ttf_for_truetype_magic() -> None:
+    # TrueType programs use \x00\x01\x00\x00 (alongside legacy 'true' /
+    # 'typ1' tags) — anything that isn't OTTO falls through to TTFParser.
+    parser = PDCIDFontType2.get_parser(b"\x00\x01\x00\x00")
+    assert isinstance(parser, TTFParser)
+    # OTFParser inherits TTFParser so the identity check matters.
+    assert not isinstance(parser, OTFParser)
+
+
+def test_get_parser_returns_ttf_for_short_or_empty_data() -> None:
+    parser = PDCIDFontType2.get_parser(b"")
+    assert isinstance(parser, TTFParser)
+    assert not isinstance(parser, OTFParser)
+
+
+def test_get_parser_propagates_is_embedded_flag() -> None:
+    embedded = PDCIDFontType2.get_parser(b"\x00\x01\x00\x00", is_embedded=True)
+    standalone = PDCIDFontType2.get_parser(
+        b"\x00\x01\x00\x00", is_embedded=False
+    )
+    assert embedded.is_embedded is True
+    assert standalone.is_embedded is False
+
+
+# ---------- generate_bounding_box (descriptor-first, non-zero only) ----------
+
+
+def test_generate_bounding_box_uses_descriptor_when_non_zero() -> None:
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    bbox_arr = COSArray()
+    for v in (-50, -25, 1050, 950):
+        bbox_arr.add(COSFloat(v))
+    fd.set_font_b_box(bbox_arr)
+    font.set_font_descriptor(fd)
+    bbox = font.generate_bounding_box()
+    assert bbox is not None
+    assert bbox.lower_left_x == pytest.approx(-50.0)
+    assert bbox.upper_right_y == pytest.approx(950.0)
+
+
+def test_generate_bounding_box_none_when_no_sources() -> None:
+    font = PDCIDFontType2()
+    assert font.generate_bounding_box() is None
 
 
 # ---------- skipped: SFNT-fixture-bound tests ----------

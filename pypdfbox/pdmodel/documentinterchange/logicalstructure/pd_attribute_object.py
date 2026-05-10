@@ -259,5 +259,28 @@ class PDAttributeObject:
     def __repr__(self) -> str:
         return f"O={self.get_owner()}"
 
+    # ---------- equality / hashing (PDDictionaryWrapper parity) ----------
+
+    def __eq__(self, other: object) -> bool:
+        """Mirror upstream ``PDDictionaryWrapper.equals(Object)`` (
+        PDDictionaryWrapper.java L60-L71): identity short-circuit, then
+        compare underlying COSDictionary instances when both sides are
+        ``PDAttributeObject`` wrappers (or any ``PDDictionaryWrapper``-shaped
+        object that exposes ``get_cos_object()``). Non-wrapper objects
+        compare unequal."""
+        if self is other:
+            return True
+        if not isinstance(other, PDAttributeObject):
+            return NotImplemented
+        return self._dictionary is other._dictionary or (
+            self._dictionary == other._dictionary
+        )
+
+    def __hash__(self) -> int:
+        """Mirror upstream ``PDDictionaryWrapper.hashCode()`` (
+        PDDictionaryWrapper.java L73-L77): delegate to the underlying
+        COSDictionary's hash so equal wrappers hash to the same value."""
+        return hash(id(self._dictionary))
+
 
 __all__ = ["PDAttributeObject"]

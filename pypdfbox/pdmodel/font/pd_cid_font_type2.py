@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
-from pypdfbox.fontbox.ttf import TrueTypeFont
+from pypdfbox.fontbox.ttf import OTFParser, TrueTypeFont, TTFParser
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 from .pd_cid_font import PDCIDFont
@@ -51,6 +51,10 @@ class PDCIDFontType2(PDCIDFont):
         # ``None`` means "not yet attempted"; ``False`` means "tried,
         # no /FontFile2 or parse failed".
         self._ttf: TrueTypeFont | None | bool = None
+        # Memoised bounding box — mirrors upstream's ``fontBBox`` field
+        # so a single resolve runs once per instance even when callers
+        # ask for the bbox repeatedly.
+        self._font_bbox: PDRectangle | None | bool = False
 
     def get_subtype(self) -> str | None:
         return self.SUB_TYPE
@@ -210,6 +214,31 @@ class PDCIDFontType2(PDCIDFont):
         that already have the font program in hand (avoids a redundant
         re-parse) and by tests that bypass ``/FontFile2``."""
         self._ttf = ttf if ttf is not None else False
+        # Bounding box is derived from the TTF head table — invalidate
+        # the memoised value when the program changes.
+        self._font_bbox = False
+
+    @staticmethod
+    def get_parser(
+        data: bytes | bytearray, is_embedded: bool = True
+    ) -> TTFParser:
+        """Return the parser to use for an embedded font program.
+
+        Mirrors upstream private ``PDCIDFontType2.getParser`` — peeks the
+        first four bytes of ``data`` and returns an :class:`OTFParser`
+        for the OpenType ``OTTO`` magic, otherwise a :class:`TTFParser`.
+        The PDF descriptor doesn't disambiguate ``/FontFile2`` payloads
+        between TrueType and OpenType-with-CFF, so we sniff the SFNT
+        version tag the way fontTools' SFNT loader does.
+
+        ``is_embedded`` is forwarded to the parser so it can apply the
+        relaxed checks PDFBox enables for embedded SFNTs (missing
+        ``hhea``/``hmtx`` etc. become warnings instead of errors).
+        """
+        tag = bytes(data[:4]) if data else b""
+        if tag == b"OTTO":
+            return OTFParser(is_embedded=is_embedded)
+        return TTFParser(is_embedded=is_embedded)
 
     def is_embedded(self) -> bool:
         """``True`` when the descriptor carries an embedded font program
@@ -346,26 +375,56 @@ class PDCIDFontType2(PDCIDFont):
     def get_bounding_box(self) -> PDRectangle | None:
         """Return the font's bounding box.
 
-        Mirrors upstream ``PDCIDFontType2.getBoundingBox``. Prefers the
-        embedded TTF ``head`` table's ``[xMin yMin xMax yMax]`` (the
-        true glyph-space bbox), falling back to the descriptor's
-        ``/FontBBox`` when no program is available — matching the
-        upstream lookup order.
+        Mirrors upstream ``PDCIDFontType2.getBoundingBox``. Memoises the
+        result on first call (matching upstream's ``fontBBox`` field),
+        delegating the actual resolve to :meth:`generate_bounding_box`
+        which encodes the descriptor-first / TTF-fallback ordering.
         """
+        if self._font_bbox is not False:
+            return self._font_bbox  # type: ignore[return-value]
+        bbox = self.generate_bounding_box()
+        self._font_bbox = bbox
+        return bbox
+
+    def generate_bounding_box(self) -> PDRectangle | None:
+        """Resolve the font's bounding box from the descriptor or
+        embedded TTF.
+
+        Mirrors upstream private ``PDCIDFontType2.generateBoundingBox``:
+        prefer the descriptor's ``/FontBBox`` when present and *not*
+        all-zero, otherwise fall back to the embedded TTF's ``head``
+        table. Returns ``None`` when neither source is available — the
+        upstream signature throws ``IOException`` on a missing program,
+        but pypdfbox treats absent metrics as soft-null (callers know to
+        skip layout for bbox-less fonts).
+        """
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            bbox = descriptor.get_font_bounding_box()
+            if bbox is not None and (
+                float(bbox.lower_left_x) != 0.0
+                or float(bbox.lower_left_y) != 0.0
+                or float(bbox.upper_right_x) != 0.0
+                or float(bbox.upper_right_y) != 0.0
+            ):
+                return PDRectangle(
+                    float(bbox.lower_left_x),
+                    float(bbox.lower_left_y),
+                    float(bbox.upper_right_x),
+                    float(bbox.upper_right_y),
+                )
         ttf = self.get_true_type_font()
         if ttf is not None:
-            inner = getattr(ttf, "_tt", None)
-            if inner is not None and "head" in inner:
-                try:
-                    head = inner["head"]
-                    return PDRectangle(
-                        float(head.xMin),
-                        float(head.yMin),
-                        float(head.xMax),
-                        float(head.yMax),
-                    )
-                except (KeyError, AttributeError):
-                    pass
+            try:
+                x_min, y_min, x_max, y_max = ttf.get_font_bbox()
+            except Exception:  # noqa: BLE001
+                return super().get_bounding_box()
+            return PDRectangle(
+                float(x_min),
+                float(y_min),
+                float(x_max),
+                float(y_max),
+            )
         return super().get_bounding_box()
 
     def has_glyph(self, cid: int) -> bool:

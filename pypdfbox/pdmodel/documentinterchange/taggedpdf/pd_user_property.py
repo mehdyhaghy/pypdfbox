@@ -67,7 +67,7 @@ class PDUserProperty:
         return self._dictionary.get_string(_N)
 
     def set_name(self, name: str) -> None:
-        self._potentially_notify_changed(self.get_name(), name)
+        self.potentially_notify_changed(self.get_name(), name)
         # Diverges from upstream ``setName`` (which writes ``COSName``):
         # pypdfbox stores ``/N`` as ``COSString`` to match the value type
         # required by ISO 32000-1 §14.8.5 (user-property name shall be a
@@ -81,7 +81,7 @@ class PDUserProperty:
         return self._dictionary.get_dictionary_object(_V)
 
     def set_value(self, value: COSBase | None) -> None:
-        self._potentially_notify_changed(self.get_value(), value)
+        self.potentially_notify_changed(self.get_value(), value)
         if value is None:
             self._dictionary.remove_item(_V)
         else:
@@ -93,7 +93,7 @@ class PDUserProperty:
         return self._dictionary.get_string(_F)
 
     def set_formatted_value(self, formatted_value: str | None) -> None:
-        self._potentially_notify_changed(
+        self.potentially_notify_changed(
             self.get_formatted_value(), formatted_value
         )
         self._dictionary.set_string(_F, formatted_value)
@@ -104,29 +104,77 @@ class PDUserProperty:
         return self._dictionary.get_boolean(_H, False)
 
     def set_hidden(self, hidden: bool) -> None:
-        self._potentially_notify_changed(self.is_hidden(), hidden)
+        self.potentially_notify_changed(self.is_hidden(), hidden)
         self._dictionary.set_boolean(_H, hidden)
 
     # ---------- change notification ----------
 
-    def _potentially_notify_changed(self, old_entry: object, new_entry: object) -> None:
+    def potentially_notify_changed(
+        self, old_entry: object, new_entry: object
+    ) -> None:
         """Forward a change to the owning ``PDUserAttributeObject``.
 
-        Mirrors upstream ``potentiallyNotifyChanged``. Notification is
-        suppressed when the value is unchanged (``oldEntry.equals(newEntry)``).
+        Mirrors upstream ``potentiallyNotifyChanged`` (PDUserProperty.java
+        L161-L167). Notification is suppressed when the value is unchanged
+        (``oldEntry.equals(newEntry)``).
         """
         if self._user_attribute_object is None:
             return
-        if self._is_entry_changed(old_entry, new_entry):
+        if self.is_entry_changed(old_entry, new_entry):
             self._user_attribute_object.user_property_changed(self)
 
     @staticmethod
-    def _is_entry_changed(old_entry: object, new_entry: object) -> bool:
+    def is_entry_changed(old_entry: object, new_entry: object) -> bool:
+        """Return ``True`` when ``old_entry`` and ``new_entry`` differ.
+
+        Mirrors upstream private helper ``isEntryChanged``
+        (PDUserProperty.java L177-L184): when ``old_entry`` is ``None`` the
+        result is ``new_entry is not None``; otherwise compare via equality.
+        Promoted to public/static so tests can call it without an instance.
+        """
         if old_entry is None:
             return new_entry is not None
         return old_entry != new_entry
 
+    # Backward-compatible aliases for the original protected names.
+    _potentially_notify_changed = potentially_notify_changed
+    _is_entry_changed = staticmethod(is_entry_changed)
+
     # ---------- equality / hash / repr (upstream parity) ----------
+
+    def equals(self, other: object) -> bool:
+        """Mirror upstream ``equals(Object)`` (PDUserProperty.java
+        L196-L224). Delegates to :meth:`__eq__` so Python ``==`` and the
+        Java-named accessor agree."""
+        return self.__eq__(other)
+
+    def hash_code(self) -> int:
+        """Mirror upstream ``hashCode()`` (PDUserProperty.java L186-L194).
+
+        Combines the dictionary hash with the owning attribute object's
+        hash using upstream's ``31 * result + entry.hashCode()`` recurrence.
+        Provided so callers porting Java code can call ``hash_code()``
+        directly; Python ``hash()`` is intentionally not enabled because
+        ``__eq__`` compares mutable state.
+        """
+        prime = 31
+        # ``COSDictionary`` is mutable; use ``id`` as a stable surrogate
+        # for ``super().hashCode()`` (object identity) so we don't trip
+        # the unhashable-type guard while still mirroring upstream's
+        # combine pattern.
+        result = id(self._dictionary)
+        owner = self._user_attribute_object
+        result = prime * result + (0 if owner is None else id(owner))
+        return result
+
+    def to_string(self) -> str:
+        """Mirror upstream ``toString()`` (PDUserProperty.java L146-L152).
+
+        Returns ``"Name=..., Value=..., FormattedValue=..., Hidden=..."``.
+        Delegates to :meth:`__repr__` so Python ``repr()`` and the
+        Java-named accessor stay in lock-step.
+        """
+        return repr(self)
 
     def __eq__(self, other: object) -> bool:
         if self is other:

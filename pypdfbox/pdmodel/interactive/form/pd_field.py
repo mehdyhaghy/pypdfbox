@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.fdf.fdf_field import FDFField
     from pypdfbox.pdmodel.interactive.action import PDFormFieldAdditionalActions
+    from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
@@ -234,6 +236,85 @@ class PDField:
 
     def is_terminal(self) -> bool:
         raise NotImplementedError
+
+    def get_value_as_string(self) -> str:
+        """Return a string representation of ``/V`` (or empty string).
+
+        Mirrors upstream ``PDField.getValueAsString`` (line 119) — abstract
+        in Java; concrete subclasses (text / button / choice / signature /
+        non-terminal) override.
+        """
+        raise NotImplementedError
+
+    def set_value(self, value: object | None) -> None:
+        """Set the field value.
+
+        Mirrors upstream ``PDField.setValue(String)`` (line 128) — abstract
+        in Java. Subclasses accept their own typed value (string for text,
+        list[str] for choice, etc.). Upstream throws ``IOException`` when
+        the value cannot be set; pypdfbox subclasses raise ``OSError`` /
+        ``ValueError`` to match.
+        """
+        raise NotImplementedError
+
+    def get_widgets(self) -> list[PDAnnotationWidget]:
+        """Return widget annotations associated with this field.
+
+        Mirrors upstream ``PDField.getWidgets`` (line 142) — abstract in
+        Java. :class:`PDNonTerminalField` returns an empty list (no visual
+        representation); :class:`PDTerminalField` returns one widget per
+        ``/Kids`` entry, falling back to a single widget wrapping the field
+        dictionary itself when ``/Kids`` is absent (single-widget shortcut).
+        """
+        raise NotImplementedError
+
+    def export_fdf(self) -> FDFField:
+        """Export this field (and its children) as an :class:`FDFField`.
+
+        Mirrors upstream ``PDField.exportFDF`` (line 311) — abstract /
+        package-private in Java. Concrete subclasses
+        (:class:`PDTerminalField`, :class:`PDNonTerminalField`) override.
+        """
+        raise NotImplementedError
+
+    # ---------- FDF import (delegates to typed subclass) ----------
+
+    def import_fdf(self, fdf_field: FDFField) -> None:
+        """Import a value and flags from an :class:`FDFField`.
+
+        Mirrors upstream ``PDField.importFDF(FDFField)`` (lines 237-306) —
+        package-private in Java. The base implementation handles the
+        non-terminal-field branch (raw COS write under ``/V``) plus the
+        ``/Ff`` / ``/SetFf`` / ``/ClrFf`` bit-mutation pair. Terminal
+        subclasses override to apply typed value coercion via ``set_value``;
+        see :meth:`PDTerminalField.import_fdf`.
+        """
+        from pypdfbox.cos import COSInteger as _COSInt
+
+        field_value = fdf_field.get_cos_value()
+        if field_value is not None:
+            # Non-terminal branch: write the raw COS entry under /V. Terminal
+            # subclasses override import_fdf and never reach this leg.
+            self._field.set_item(COSName.get_pdf_name("V"), field_value)
+
+        cos = fdf_field.get_cos_object()
+        ff_key = COSName.get_pdf_name("Ff")
+        if isinstance(cos.get_dictionary_object(ff_key), _COSInt):
+            self.set_field_flags(fdf_field.get_field_flags())
+            return
+
+        field_flags = self.get_field_flags()
+        set_ff_key = COSName.get_pdf_name("SetFf")
+        clr_ff_key = COSName.get_pdf_name("ClrFf")
+        if isinstance(cos.get_dictionary_object(set_ff_key), _COSInt):
+            field_flags = field_flags | fdf_field.get_set_field_flags()
+            self.set_field_flags(field_flags)
+        if isinstance(cos.get_dictionary_object(clr_ff_key), _COSInt):
+            # See upstream PDField.importFDF (lines 295-303): clear the bits
+            # that are set in /ClrFf using a 32-bit complement-and-AND.
+            clr_value = fdf_field.get_clear_field_flags() ^ 0xFFFFFFFF
+            field_flags = field_flags & clr_value
+            self.set_field_flags(field_flags)
 
     # ---------- /Kids descent ----------
 

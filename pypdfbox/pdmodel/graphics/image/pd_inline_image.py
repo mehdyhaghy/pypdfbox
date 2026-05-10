@@ -207,11 +207,12 @@ class PDInlineImage:
 
     # ---------- /CS /ColorSpace ----------
 
-    def _to_long_name(self, cs: COSBase) -> COSBase:
+    def to_long_name(self, cs: COSBase) -> COSBase:
         """Expand single-letter inline color-space abbreviations
         (``/G`` → ``/DeviceGray``, ``/RGB`` → ``/DeviceRGB``,
         ``/CMYK`` → ``/DeviceCMYK``); other values pass through. Mirrors
-        upstream ``PDInlineImage#toLongName``.
+        upstream ``PDInlineImage#toLongName`` (Java line 151) — package-private
+        in upstream, exposed here as protected for parity-test introspection.
         """
         if isinstance(cs, COSName):
             if cs == _RGB:
@@ -221,6 +222,10 @@ class PDInlineImage:
             if cs == _G:
                 return _DEVICEGRAY
         return cs
+
+    # Private alias retained for backward compatibility with existing
+    # call sites; ``to_long_name`` is the parity-matched public surface.
+    _to_long_name = to_long_name
 
     def get_color_space_cos_object(self) -> COSBase | None:
         """Raw ``/CS`` (or long-form ``/ColorSpace`` fallback) value —
@@ -236,7 +241,7 @@ class PDInlineImage:
     def get_color_space(self) -> PDColorSpace:
         cs = _two_key_object(self._parameters, _CS, _COLORSPACE)
         if cs is not None:
-            return self._create_color_space(cs)
+            return self.create_color_space(cs)
         if self.is_stencil():
             # Stencil-mask color space must be gray; it is often missing.
             from pypdfbox.pdmodel.graphics.color import PDDeviceGray  # noqa: PLC0415
@@ -245,7 +250,12 @@ class PDInlineImage:
         # An image without a color space is always broken.
         raise OSError("could not determine inline image color space")
 
-    def _create_color_space(self, cs: COSBase) -> PDColorSpace:
+    def create_color_space(self, cs: COSBase) -> PDColorSpace:
+        """Resolve an inline-image ``/CS`` value into a :class:`PDColorSpace`.
+        Mirrors upstream ``PDInlineImage#createColorSpace`` (Java line 168) —
+        package-private in upstream, exposed here as protected for parity
+        with the test surface.
+        """
         if isinstance(cs, COSName):
             resolved = PDColorSpace.create(self._to_long_name(cs), self._resources)
             if resolved is None:
@@ -295,6 +305,10 @@ class PDInlineImage:
             )
 
         raise OSError(f"Illegal type of object for inline image color space: {cs!r}")
+
+    # Private alias retained for backward compatibility with existing
+    # call sites; ``create_color_space`` is the parity-matched public surface.
+    _create_color_space = create_color_space
 
     def set_color_space(self, color_space: PDColorSpace | None) -> None:
         if color_space is None:
@@ -597,6 +611,77 @@ class PDInlineImage:
 
             return _decode_devicen_to_rgb(color_space, data, width, height)
         return None
+
+    # ---------- rendering surface (mirrors upstream getImage / stencil /
+    # raw raster — Java lines 353, 359, 365, 371, 377) ----------
+
+    def get_image(
+        self,
+        region: tuple[int, int, int, int] | None = None,
+        subsampling: int = 1,
+    ) -> Image.Image | None:
+        """Return a fully-decoded image. Mirrors upstream
+        ``PDInlineImage#getImage()`` and the parameterised overload
+        ``getImage(Rectangle, int)`` (Java lines 353 and 359).
+
+        Library-first: Pillow handles sample decoding via
+        :meth:`to_pil_image`. ``region`` is a ``(x, y, w, h)`` tuple and
+        is applied via :meth:`PIL.Image.Image.crop`. ``subsampling`` is
+        applied via :meth:`PIL.Image.Image.resize` with nearest-neighbour
+        sampling (matches upstream's per-pixel-row-skip semantics for the
+        common case ``subsampling >= 1``).
+
+        Stencil masks, decode-array inversion and non-8bpc rasters are
+        rendering-cluster work and currently fall through to ``None`` —
+        same scope as :meth:`PDImageXObject.get_image`.
+        """
+        image = self.to_pil_image()
+        if image is None:
+            return None
+        if region is not None:
+            x, y, w, h = region
+            image = image.crop((x, y, x + w, y + h))
+        if subsampling > 1:
+            image = image.resize(
+                (
+                    max(1, image.width // subsampling),
+                    max(1, image.height // subsampling),
+                ),
+                Image.NEAREST,
+            )
+        return image
+
+    def get_stencil_image(self, paint: object) -> Image.Image | None:
+        """Return a stencil-painted image. Mirrors upstream
+        ``PDInlineImage#getStencilImage(Paint)`` (Java line 377).
+
+        Honours upstream's contract — raises ``ValueError`` (the Pythonic
+        analogue of ``IllegalStateException``) when the inline image is
+        not actually a stencil. The underlying 1-bit mask is returned via
+        :meth:`to_pil_image`; mapping the stencil onto an arbitrary
+        ``paint`` is rendering-cluster territory."""
+        if not self.is_stencil():
+            raise ValueError("Image is not a stencil")
+        del paint  # paint compositing is rendering-cluster work
+        return self.to_pil_image()
+
+    def get_raw_image(self) -> Image.Image | None:
+        """Return the *raw* image without colour-space conversion to
+        sRGB. Mirrors upstream ``PDInlineImage#getRawImage()`` (Java
+        line 371). Today's implementation reuses :meth:`to_pil_image`
+        and returns ``None`` when raw-raster decoding is not yet
+        supported for the image's colour space."""
+        return self.to_pil_image()
+
+    def get_raw_raster(self) -> bytes:
+        """Return the *raw* sample bytes for this inline image (no
+        colour-space conversion). Mirrors upstream
+        ``PDInlineImage#getRawRaster()`` (Java line 365), which returns
+        a ``WritableRaster``; we expose the byte array directly because
+        Python has no equivalent to ``java.awt.image.WritableRaster``.
+        For inline images the decoded payload is already buffered, so
+        this aliases :meth:`get_data`."""
+        return self._decoded_data
 
 
 __all__ = ["PDInlineImage"]
