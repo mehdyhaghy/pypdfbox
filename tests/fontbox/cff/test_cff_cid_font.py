@@ -740,3 +740,86 @@ class TestFDArrayIndexForFontName:
 
         arr = FDArray.from_fonttools([_Font()])
         assert arr.index_for_font_name("FromRawDict") == 0
+
+
+# ---------- Wave 1262 parity round-out: selector_to_cid / get_parser /
+# ---------- get_local_subr_index alias ----------
+
+
+class TestSelectorToCID:
+    """``CFFCIDFont.selector_to_cid`` — strict mirror of upstream
+    ``selectorToCID(String)`` (Java line 280). Accepts only ``"\\NNN"``
+    form; rejects anything else with :class:`ValueError` (upstream
+    ``IllegalArgumentException`` → :class:`ValueError`)."""
+
+    def test_basic_decimal(self) -> None:
+        assert CFFCIDFont.selector_to_cid("\\1") == 1
+        assert CFFCIDFont.selector_to_cid("\\42") == 42
+        assert CFFCIDFont.selector_to_cid("\\00007") == 7
+
+    def test_zero_is_valid(self) -> None:
+        assert CFFCIDFont.selector_to_cid("\\0") == 0
+
+    def test_missing_backslash_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid selector"):
+            CFFCIDFont.selector_to_cid("42")
+
+    def test_empty_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid selector"):
+            CFFCIDFont.selector_to_cid("")
+
+    def test_just_backslash_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid selector"):
+            CFFCIDFont.selector_to_cid("\\")
+
+    def test_non_digit_tail_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid selector"):
+            CFFCIDFont.selector_to_cid("\\abc")
+
+    def test_non_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid selector"):
+            CFFCIDFont.selector_to_cid(42)  # type: ignore[arg-type]
+
+
+class TestGetParser:
+    """``CFFCIDFont.get_parser`` — lazy accessor mirroring upstream's
+    private ``getParser()`` (Java line 247). The returned adapter is a
+    minimal stand-in (fontTools does the heavy lifting); callers may
+    only read its ``font_name``. We assert lazy-creation + caching."""
+
+    def test_returns_adapter_with_font_name(self) -> None:
+        cf = CFFCIDFont()
+        parser = cf.get_parser()
+        assert parser is not None
+        assert hasattr(parser, "font_name")
+        # Empty font name on an unparsed CFFCIDFont is fine.
+        assert parser.font_name == cf.get_name()
+
+    def test_parser_is_cached(self) -> None:
+        cf = CFFCIDFont()
+        first = cf.get_parser()
+        second = cf.get_parser()
+        assert first is second
+
+    def test_parser_has_parse_method(self) -> None:
+        # Adapter exposes ``parse(...)`` for upstream-shape parity but
+        # raises NotImplementedError — fontTools does the real work
+        # via :meth:`CFFCIDFont.get_type2_char_string`.
+        parser = CFFCIDFont().get_parser()
+        with pytest.raises(NotImplementedError):
+            parser.parse(b"\x0e", [], None, "0001")
+
+
+class TestGetLocalSubrIndexAlias:
+    """``CFFCIDFont.get_local_subr_index(gid)`` — strict-name alias for
+    :meth:`get_local_subr_index_for_gid`. Upstream uses the unqualified
+    name; we keep both for downstream callers used to either flavour."""
+
+    def test_alias_matches_per_gid_form(self) -> None:
+        cf = CFFCIDFont()
+        # Empty CFF: both forms must agree (likely empty list).
+        assert cf.get_local_subr_index(0) == cf.get_local_subr_index_for_gid(0)
+
+    def test_alias_negative_gid(self) -> None:
+        cf = CFFCIDFont()
+        assert cf.get_local_subr_index(-1) == cf.get_local_subr_index_for_gid(-1)

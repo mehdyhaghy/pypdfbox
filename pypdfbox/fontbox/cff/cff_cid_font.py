@@ -34,6 +34,9 @@ class CFFCIDFont(CFFFont):
         self._supplement_override: int | None = None
         self._font_dicts_override: list[dict[str, Any]] | None = None
         self._priv_dicts_override: list[dict[str, Any]] | None = None
+        # Lazy Type 2 charstring parser handle (upstream
+        # ``charStringParser`` / ``getParser()``); see :meth:`get_parser`.
+        self._char_string_parser: Any = None
 
     # ---------- factories ----------
 
@@ -206,6 +209,16 @@ class CFFCIDFont(CFFFont):
             self.get_fd_index_for_gid(gid)
         )
 
+    def get_local_subr_index(self, gid: int) -> list[bytes]:
+        """PDFBox: ``CFFCIDFont.getLocalSubrIndex(int gid)`` — strict
+        snake_case parity alias for :meth:`get_local_subr_index_for_gid`.
+
+        Upstream this is package-private; we expose it as a public method
+        because charstring decoders sit in a separate module and cannot
+        rely on Java's package-visibility scoping.
+        """
+        return self.get_local_subr_index_for_gid(gid)
+
     # PDFBox-named per-FD width overrides (upstream override)
 
     def get_default_width_x(self, gid: int = -1) -> float:  # noqa: D401
@@ -278,6 +291,30 @@ class CFFCIDFont(CFFFont):
                 return int(selector)
         return -1
 
+    @staticmethod
+    def selector_to_cid(selector: str) -> int:
+        """PDFBox: private ``CFFCIDFont.selectorToCID(String)`` —
+        strict-form parser for the CID selector syntax used in PDFBox
+        rendering paths (``"\\NNN"`` where ``NNN`` is the CID in
+        decimal). Raises :class:`ValueError` for malformed input
+        (upstream raises ``IllegalArgumentException``).
+
+        We expose this publicly because Python lacks Java's package-
+        private scoping; downstream charstring code may need the same
+        strict parse for parity with rendering tests. The looser
+        :meth:`_coerce_to_cid` (which also accepts bare digits and the
+        ``"cidNNNNN"`` charset-name form) is preferred for general
+        glyph access.
+        """
+        if not isinstance(selector, str) or not selector.startswith("\\"):
+            msg = "Invalid selector"
+            raise ValueError(msg)
+        tail = selector[1:]
+        if not tail or not tail.lstrip("-").isdigit():
+            msg = "Invalid selector"
+            raise ValueError(msg)
+        return int(tail)
+
     def has_glyph(self, selector: int | str) -> bool:
         """PDFBox: ``CFFCIDFont.hasGlyph(int|String)`` — whether the
         font carries a glyph for the given CID."""
@@ -322,6 +359,22 @@ class CFFCIDFont(CFFFont):
         gid = self.gid_for_cid(cid_or_gid)
         return super().get_type2_char_string(gid)
 
+    def get_parser(self) -> Any:
+        """PDFBox: private ``CFFCIDFont.getParser()`` — lazy accessor
+        for the per-font Type 2 charstring parser.
+
+        Upstream this returns a ``Type2CharStringParser`` keyed by the
+        font name. We do not have a hand-rolled Type2 parser (fontTools
+        does the heavy lifting in :meth:`get_type2_char_string`); the
+        returned object is a small adapter exposing a ``parse(bytes,
+        global_subrs, local_subrs, glyph_id)`` shim that matches the
+        upstream signature. Most callers only need this to interrogate
+        the parser's ``font_name`` attribute.
+        """
+        if self._char_string_parser is None:
+            self._char_string_parser = _Type2CharStringParser(self.get_name())
+        return self._char_string_parser
+
     def gid_for_cid(self, cid: int) -> int:
         """Resolve a CID to a GID via the parsed charset.
 
@@ -344,6 +397,40 @@ class CFFCIDFont(CFFFont):
     def is_cid_font(self) -> bool:  # noqa: D401 — overrides base
         """A :class:`CFFCIDFont` is, by definition, a CIDKeyed font."""
         return True
+
+
+class _Type2CharStringParser:
+    """Minimal stand-in for upstream ``Type2CharStringParser``.
+
+    Upstream's parser interprets raw Type 2 bytecode against global +
+    local subroutines and emits a token sequence consumable by
+    :class:`Type2CharString`. fontTools already does this end-to-end
+    when it decompiles ``CharStrings``, so the stand-in only exists to
+    give :meth:`CFFCIDFont.get_parser` something whose ``font_name``
+    attribute callers can read for parity. The :meth:`parse` shim
+    raises ``NotImplementedError`` — callers that hit it should switch
+    to :meth:`CFFCIDFont.get_type2_char_string` (which uses fontTools).
+    """
+
+    def __init__(self, font_name: str) -> None:
+        self.font_name = font_name
+
+    def parse(
+        self,
+        bytecode: bytes,
+        global_subrs: list[bytes],
+        local_subrs: list[bytes] | None,
+        glyph_id: str,
+    ) -> list[Any]:
+        msg = (
+            "Standalone Type2CharStringParser is not implemented; use "
+            "CFFCIDFont.get_type2_char_string(cid) which delegates to "
+            "fontTools."
+        )
+        raise NotImplementedError(msg)
+
+    def __repr__(self) -> str:
+        return f"_Type2CharStringParser(font_name={self.font_name!r})"
 
 
 __all__ = ["CFFCIDFont"]

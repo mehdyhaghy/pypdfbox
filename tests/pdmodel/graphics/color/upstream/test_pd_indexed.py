@@ -237,3 +237,38 @@ def test_pd_color_to_rgb_matches_pd_indexed_to_rgb() -> None:
         from_pd_color = PDColor([float(i)], cs).to_rgb()
         from_pd_indexed = cs.to_rgb([float(i)])
         assert tuple(from_pd_indexed) == from_pd_color
+
+
+# ---------- cached fields (PDIndexed.java lines 51-55) ----------
+
+
+def test_actual_max_index_clamps_against_short_lookup() -> None:
+    # Upstream: `actualMaxIndex = lookupData.length / numComponents - 1`
+    # (line 295) when the lookup is shorter than `(hival + 1) * n`.
+    palette = b"\xff\xff\xff\x00\x80\x80"  # 2 RGB entries
+    cs = _indexed_rgb(5, palette)
+    assert cs.get_actual_max_index() == 1
+
+
+def test_color_table_field_layout_matches_upstream_n_by_k() -> None:
+    # Upstream: `colorTable = new float[maxIndex + 1][numComponents]`
+    # (line 299). We mirror as `list[list[float]]`.
+    palette = b"\x00\x80\xff" * 4  # 4 entries, 3 components each
+    cs = _indexed_rgb(3, palette)
+    table = cs.get_color_table()
+    assert len(table) == 4
+    assert all(len(row) == 3 for row in table)
+
+
+def test_rgb_color_table_field_layout_matches_upstream_n_by_3() -> None:
+    # Upstream: `rgbColorTable = new int[actualMaxIndex + 1][3]`
+    # (line 161). Each row is exactly 3 ints regardless of base CS arity.
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceGray.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(2))
+    arr.add(COSString(b"\x00\x80\xff"))
+    cs = PDIndexed(arr)
+    rgb = cs.get_rgb_color_table()
+    assert len(rgb) == 3
+    assert all(len(row) == 3 for row in rgb)

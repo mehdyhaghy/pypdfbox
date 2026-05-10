@@ -367,3 +367,101 @@ def test_wave1250_to_string_matches_dunder_str() -> None:
     cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
     assert cs.to_string() == str(cs)
     assert cs.to_string() == "Indexed{base:DeviceRGB hival:2 lookup:(3 entries)}"
+
+
+# ---------- wave 1262 — cache fidelity + upstream-shape accessors ----------
+
+
+def test_wave1262_get_color_table_returns_floats_in_unit_range() -> None:
+    """``get_color_table`` mirrors upstream's ``colorTable`` field
+    (PDIndexed.java line 53) — floats in ``[0, 1]`` per channel."""
+    palette = b"\x00\x00\x00\xff\x00\x00\x00\xff\x00"
+    cs = _make_indexed(2, COSString(palette))
+    table = cs.get_color_table()
+    assert table[0] == [0.0, 0.0, 0.0]
+    assert table[1] == [1.0, 0.0, 0.0]
+    assert table[2] == [0.0, 1.0, 0.0]
+
+
+def test_wave1262_get_rgb_color_table_returns_int_triples() -> None:
+    """``get_rgb_color_table`` mirrors upstream's ``rgbColorTable``
+    field (PDIndexed.java line 55) — ``[(r, g, b), ...]`` with each
+    channel an ``int`` in ``[0, 255]``."""
+    palette = b"\x00\x00\x00\xff\x00\x00\x00\xff\x00"
+    cs = _make_indexed(2, COSString(palette))
+    rgb = cs.get_rgb_color_table()
+    assert rgb == [(0, 0, 0), (255, 0, 0), (0, 255, 0)]
+
+
+def test_wave1262_get_actual_max_index_after_clamp() -> None:
+    """``get_actual_max_index`` mirrors upstream's ``actualMaxIndex``
+    field (PDIndexed.java line 297). Lookup carries 2 entries but
+    hival=5 — clamp shrinks the index to 1."""
+    cs = _make_indexed(5, COSString(b"\xff\xff\xff\x00\x80\x80"))
+    assert cs.get_actual_max_index() == 1
+
+
+def test_wave1262_color_table_cache_is_reused_across_calls() -> None:
+    """Same list object on every call — upstream caches the field
+    (line 53) and we mirror the identity."""
+    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
+    assert cs.get_color_table() is cs.get_color_table()
+
+
+def test_wave1262_rgb_color_table_cache_is_reused_across_calls() -> None:
+    """Same list object on every call — upstream caches the field
+    (line 55) and we mirror the identity."""
+    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
+    assert cs.get_rgb_color_table() is cs.get_rgb_color_table()
+
+
+def test_wave1262_set_hival_invalidates_cached_palette() -> None:
+    """Mutating /Hival drops the memoised palette so the next read
+    decodes against the new clamp."""
+    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
+    first = cs.get_rgb_color_table()
+    cs.set_hival(1)
+    second = cs.get_rgb_color_table()
+    # Different cache identity AND different effective length.
+    assert second is not first
+    assert len(second) == 2
+
+
+def test_wave1262_set_lookup_data_invalidates_cached_palette() -> None:
+    """Mutating /Lookup drops the memoised palette so the next read
+    sees the new bytes."""
+    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
+    first = cs.get_rgb_color_table()
+    cs.set_lookup_data(b"\x10\x20\x30\x40\x50\x60\x70\x80\x90")
+    second = cs.get_rgb_color_table()
+    assert second is not first
+    assert second[0] == (0x10, 0x20, 0x30)
+
+
+def test_wave1262_set_base_color_space_invalidates_cached_palette() -> None:
+    """Switching the base CS drops the memoised palette so the new
+    component count drives the next decode."""
+    from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+
+    cs = _make_indexed(2, COSString(b"\xff\x00\x00\x00\xff\x00\x00\x00\xff"))
+    first = cs.get_color_table()
+    cs.set_base_color_space(PDDeviceGray.INSTANCE)
+    second = cs.get_color_table()
+    assert second is not first
+    # DeviceGray has 1 component, so the same 9 bytes now read as
+    # 9 single-channel entries (not 3 RGB entries).
+    assert len(second[0]) == 1
+
+
+def test_wave1262_actual_max_index_negative_for_empty_lookup() -> None:
+    """Empty /Lookup → ``actual_max_index == -1`` (signals no decode
+    is possible). Mirrors upstream's ``maxIndex < 0`` short-circuit."""
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("Indexed"))
+    arr.add(PDDeviceRGB.INSTANCE.get_cos_object())
+    arr.add(COSInteger.get(255))
+    arr.add(COSNull.NULL)  # no /Lookup payload
+    cs = PDIndexed(arr)
+    assert cs.get_actual_max_index() == -1
+    assert cs.get_color_table() == []
+    assert cs.get_rgb_color_table() == []

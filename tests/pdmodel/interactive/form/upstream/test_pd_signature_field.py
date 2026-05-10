@@ -4,15 +4,13 @@ Source:
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDSignatureFieldTest.java``
 
 Skipped upstream cases:
-- ``setValueForAbstractedSignatureField`` — upstream throws
-  ``UnsupportedOperationException`` when ``setValue(String)`` is called.
-  This lite port keeps the permissive ``set_value`` signature intact (it
-  just round-trips the value without type-checking strings); the strict
-  upstream contract is recorded in ``CHANGES.md`` and may be revisited
-  once the typed dispatch layer lands.
 - ``testGetContents`` (PDFBOX-4822) — exercises low-level signed
-  byte-range extraction; covered separately under the digital-signature
-  test cluster.
+  byte-range extraction over the raw document byte stream
+  (``PDSignature.getContents(byte[])`` and ``getContents(InputStream)``).
+  pypdfbox's :class:`PDSignature` exposes ``get_contents()`` which reads
+  ``/Contents`` from the COS dictionary directly, plus
+  ``get_signed_data(document_bytes)`` for the byte-range slice — the
+  upstream test belongs in the digital-signature test cluster, not here.
 """
 from __future__ import annotations
 
@@ -28,6 +26,20 @@ _FT: COSName = COSName.get_pdf_name("FT")
 @pytest.fixture
 def acro_form() -> PDAcroForm:
     return PDAcroForm()
+
+
+def test_set_value_for_abstracted_signature_field(acro_form: PDAcroForm) -> None:
+    """Upstream: ``setValueForAbstractedSignatureField`` — calling
+    ``setValue(String)`` on a signature field throws
+    ``UnsupportedOperationException``. The lite port surfaces the same
+    contract via :class:`NotImplementedError` — strings are explicitly
+    rejected at the Python boundary because ``/V`` must be a signature
+    dictionary, not free text.
+    """
+    sig_field = PDSignatureField(acro_form)
+    sig_field.set_partial_name("SignatureField")
+    with pytest.raises(NotImplementedError):
+        sig_field.set_value("Can't set value using String")
 
 
 def test_create_default_signature_field(acro_form: PDAcroForm) -> None:
@@ -260,10 +272,10 @@ def test_has_visible_widget_zero_rect_is_invisible(
     """A widget with an explicitly zero-width-and-height rectangle is
     still considered invisible (PDF 32000-1 convention for invisible
     signatures)."""
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
         PDSignatureField,
     )
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     sig = PDSignatureField(acro_form)
     widget = sig.get_widgets()[0]
@@ -275,10 +287,10 @@ def test_has_visible_widget_non_zero_rect_is_visible(
     acro_form: PDAcroForm,
 ) -> None:
     """Non-zero rectangle and neither hidden nor no-view → visible."""
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
         PDSignatureField,
     )
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     sig = PDSignatureField(acro_form)
     widget = sig.get_widgets()[0]
@@ -291,10 +303,10 @@ def test_has_visible_widget_hidden_flag_overrides_rect(
 ) -> None:
     """A widget with non-zero rectangle but ``/F`` hidden bit set is
     still considered invisible."""
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
         PDSignatureField,
     )
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     sig = PDSignatureField(acro_form)
     widget = sig.get_widgets()[0]
@@ -307,10 +319,10 @@ def test_has_visible_widget_no_view_flag_overrides_rect(
     acro_form: PDAcroForm,
 ) -> None:
     """``/F`` no-view bit also overrides a non-zero rectangle."""
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
         PDSignatureField,
     )
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     sig = PDSignatureField(acro_form)
     widget = sig.get_widgets()[0]
@@ -328,10 +340,10 @@ def test_has_visible_widget_matches_construct_appearances_warning(
     visibility tests."""
     import logging
 
-    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
         PDSignatureField,
     )
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     sig = PDSignatureField(acro_form)
     widget = sig.get_widgets()[0]
@@ -343,3 +355,48 @@ def test_has_visible_widget_matches_construct_appearances_warning(
     assert any(
         "PDFBOX-3524" in record.getMessage() for record in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# Wave 1262 round-out — explicit `generate_partial_name` exposure.
+# ---------------------------------------------------------------------------
+
+
+def test_generate_partial_name_returns_first_unused_signature_slot(
+    acro_form: PDAcroForm,
+) -> None:
+    """Mirrors upstream ``PDSignatureField.generatePartialName`` — when the
+    AcroForm carries no other signature fields, the generator returns
+    ``"Signature1"``. Subsequent fields walk to the next unused index.
+    """
+    sig_a = PDSignatureField(acro_form)
+    acro_form.set_fields([sig_a])
+    assert sig_a.get_partial_name() == "Signature1"
+
+    sig_b = PDSignatureField(acro_form)
+    acro_form.set_fields([sig_a, sig_b])
+    assert sig_b.get_partial_name() == "Signature2"
+
+    # Direct invocation skips the lowest used index.
+    assert sig_b.generate_partial_name() == "Signature3"
+
+
+def test_generate_partial_name_only_considers_signature_fields(
+    acro_form: PDAcroForm,
+) -> None:
+    """Upstream walks the entire field tree but the lite port narrows the
+    candidate set to ``PDSignatureField`` instances — a non-signature
+    field happening to be named ``Signature1`` should not bump the next
+    signature's index off ``Signature1``.
+    """
+    from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+
+    text = PDTextField(acro_form)
+    text.set_partial_name("Signature1")
+    acro_form.set_fields([text])
+
+    sig = PDSignatureField(acro_form)
+    # Generator was invoked at construction; the suggested name is still
+    # "Signature1" because the existing PDTextField with that name is not
+    # a signature field.
+    assert sig.get_partial_name() == "Signature1"

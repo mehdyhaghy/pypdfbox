@@ -182,6 +182,75 @@ def test_set_decode_values_alias_round_trips() -> None:
     assert fn.get_decode() is None
 
 
+# ---------- get_encode_values / get_decode_values (resolved arrays) ----------
+
+
+def test_get_encode_values_returns_explicit_array() -> None:
+    """When ``/Encode`` is set explicitly, ``get_encode_values`` returns
+    that array as-is."""
+    fn = _build(
+        domain=[0.0, 1.0, 0.0, 1.0],
+        range_=[0.0, 1.0],
+        size=[4, 4],
+        bits=8,
+        samples=[0] * 16,
+        encode=[0.0, 3.0, 1.0, 2.0],
+    )
+    encode = fn.get_encode_values()
+    assert encode is not None
+    assert encode.to_float_array() == [0.0, 3.0, 1.0, 2.0]
+
+
+def test_get_encode_values_defaults_to_size_minus_one_per_dim() -> None:
+    """When ``/Encode`` is absent the default per PDF 32000-1 Table 38 is
+    ``[0 (Size[0]-1) 0 (Size[1]-1) ...]`` — mirrors PDFBox
+    ``getEncodeValues`` (PDFunctionType0.java:144-163)."""
+    fn = _build(
+        domain=[0.0, 1.0, 0.0, 1.0],
+        range_=[0.0, 1.0],
+        size=[4, 8],
+        bits=8,
+        samples=[0] * 32,
+    )
+    encode = fn.get_encode_values()
+    assert encode is not None
+    assert encode.to_float_array() == [0.0, 3.0, 0.0, 7.0]
+
+
+def test_get_encode_values_returns_none_when_size_absent() -> None:
+    fn = PDFunctionType0()
+    assert fn.get_encode_values() is None
+
+
+def test_get_decode_values_returns_explicit_array() -> None:
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[0.0, 1.0, 0.0, 1.0],
+        size=[2],
+        bits=8,
+        samples=[0, 0],
+        decode=[-2.0, 2.0, -3.0, 3.0],
+    )
+    decode = fn.get_decode_values()
+    assert decode is not None
+    assert decode.to_float_array() == [-2.0, 2.0, -3.0, 3.0]
+
+
+def test_get_decode_values_defaults_to_range_array() -> None:
+    """When ``/Decode`` is absent, ``get_decode_values`` falls back to the
+    function's ``/Range`` array (PDFunctionType0.java:170-182)."""
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[-5.0, 5.0, -10.0, 10.0],
+        size=[2],
+        bits=8,
+        samples=[0, 0],
+    )
+    decode = fn.get_decode_values()
+    assert decode is not None
+    assert decode.to_float_array() == [-5.0, 5.0, -10.0, 10.0]
+
+
 # ---------- get_encode_for_parameter / get_decode_for_parameter ----------
 
 

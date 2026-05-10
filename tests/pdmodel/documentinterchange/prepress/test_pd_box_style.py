@@ -6,7 +6,6 @@ from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
 from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 
-
 # ---------- constructors / COS surface ----------
 
 

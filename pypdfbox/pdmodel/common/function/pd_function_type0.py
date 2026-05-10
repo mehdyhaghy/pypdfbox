@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from pypdfbox.cos import COSArray, COSBase, COSNumber, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSInteger, COSNumber, COSStream
 
 from .pd_function import PDFunction
 
@@ -90,6 +90,32 @@ class PDFunctionType0(PDFunction):
             return item
         return None
 
+    def get_encode_values(self) -> COSArray | None:
+        """Return the ``/Encode`` array, defaulting to ``[0 (Size[0]-1)
+        0 (Size[1]-1) ...]`` when the entry is absent.
+
+        Mirrors PDFBox ``getEncodeValues()`` (PDFunctionType0.java:144-163).
+        Upstream the method is private and used by ``getEncodeForParameter``
+        and ``eval``; pypdfbox exposes it for parity / diagnostic callers
+        that want the resolved array including the spec-default fill-in.
+        Returns ``None`` only when ``/Size`` is also absent (no shape to
+        synthesise defaults from).
+        """
+        encode = self.get_encode()
+        if encode is not None:
+            return encode
+        size = self.get_size()
+        if size is None:
+            return None
+        # Default per PDF 32000-1 Table 38: (0, Size[i] - 1) per dim.
+        synthesised = COSArray()
+        for i in range(size.size()):
+            item = size.get(i)
+            upper = int(item.float_value()) - 1 if isinstance(item, COSNumber) else -1
+            synthesised.add(COSInteger.ZERO)
+            synthesised.add(COSInteger.get(upper))
+        return synthesised
+
     def set_encode(self, encode: COSArray | None) -> None:
         """Set ``/Encode`` — paired ``(min, max)`` per input dimension.
         ``None`` removes the entry; eval then defaults each dimension to
@@ -104,6 +130,22 @@ class PDFunctionType0(PDFunction):
         if isinstance(item, COSArray):
             return item
         return None
+
+    def get_decode_values(self) -> COSArray | None:
+        """Return the ``/Decode`` array, defaulting to the function's
+        ``/Range`` array when the entry is absent.
+
+        Mirrors PDFBox ``getDecodeValues()`` (PDFunctionType0.java:170-182).
+        Upstream the method is private and used by
+        ``getDecodeForParameter`` and ``eval``; pypdfbox exposes it for
+        parity / diagnostic callers that want the resolved array including
+        the spec-default fall-through to ``/Range``.
+        """
+        decode = self.get_decode()
+        if decode is not None:
+            return decode
+        # Default per PDF 32000-1 Table 38: same as /Range.
+        return self.get_range()
 
     def set_decode(self, decode: COSArray | None) -> None:
         """Set ``/Decode`` — paired ``(min, max)`` per output dimension.

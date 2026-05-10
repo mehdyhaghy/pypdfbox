@@ -48,7 +48,7 @@ class PDSignatureField(PDTerminalField):
             field.set_name(_FT_KEY, self.FT)
         super().__init__(form, field, parent)
         if new_field:
-            self.set_partial_name(self._generate_partial_name())
+            self.set_partial_name(self.generate_partial_name())
             widget = self.get_widgets()[0]
             widget.set_printed(True)
             widget.set_locked(True)
@@ -66,7 +66,15 @@ class PDSignatureField(PDTerminalField):
         """
         return self.get_field_type() == self.FT_SIG
 
-    def _generate_partial_name(self) -> str:
+    def generate_partial_name(self) -> str:
+        """Generate a unique ``Signature<N>`` partial name for this field.
+
+        Mirrors upstream ``PDSignatureField.generatePartialName`` (private in
+        Java, exposed here without the ``_`` prefix so parity tooling can
+        match it by name). Walks the AcroForm field tree, collects existing
+        ``PDSignatureField`` partial names, and returns the lowest unused
+        ``Signature<N>`` slot.
+        """
         field_name = "Signature"
         sig_names = {
             field.get_partial_name()

@@ -41,6 +41,15 @@ class PDIndexed(PDColorSpace):
             array.add(COSNull.NULL)
         super().__init__(array)
         self._initial_color = PDColor([0.0], self)
+        # Upstream caches `lookupData`, `colorTable`, `actualMaxIndex` and
+        # `rgbColorTable` as private fields populated once at construction
+        # (PDIndexed.java lines 97-98). Mirror that here so `to_rgb` and
+        # `to_rgb_image` don't re-decode the palette on every call. Lazy
+        # invalidation: setters (`set_hival`, `set_base_color_space`,
+        # `set_lookup_data`) clear these via :meth:`_invalidate_caches`.
+        self._color_table_cache: list[list[float]] | None = None
+        self._actual_max_index_cache: int | None = None
+        self._rgb_color_table_cache: list[tuple[int, int, int]] | None = None
 
     # ---------- abstract surface ----------
 
@@ -82,6 +91,7 @@ class PDIndexed(PDColorSpace):
                 "set_base_color_space requires a color space with a COS form"
             )
         self._array.set(1, cos)
+        self._invalidate_caches()
 
     def has_base_color_space(self) -> bool:
         """Return ``True`` when the base color-space slot resolves."""
@@ -97,6 +107,7 @@ class PDIndexed(PDColorSpace):
         assert self._array is not None
         self._ensure_array_size(3)
         self._array.set(2, COSInteger.get(hival))
+        self._invalidate_caches()
 
     def get_lookup_data(self) -> bytes | None:
         """Return the lookup-table bytes for this Indexed color space.
@@ -141,6 +152,7 @@ class PDIndexed(PDColorSpace):
             self._array.set(3, COSNull.NULL)
         else:
             self._array.set(3, COSString(data))
+        self._invalidate_caches()
 
     def has_lookup_data(self) -> bool:
         """Return ``True`` when ``/Lookup`` is present as a string or stream."""
@@ -185,7 +197,16 @@ class PDIndexed(PDColorSpace):
         285): return the ``[n][k]`` palette as floats in ``[0, 1]`` and
         the actual max index after clamping ``hival`` against the
         available lookup data length.
+
+        Result is memoised on ``self._color_table_cache`` /
+        ``self._actual_max_index_cache`` to mirror upstream's
+        ``colorTable`` / ``actualMaxIndex`` field caching.
         """
+        if (
+            self._color_table_cache is not None
+            and self._actual_max_index_cache is not None
+        ):
+            return self._color_table_cache, self._actual_max_index_cache
         lookup = self.read_lookup_data()
         max_index = min(self.get_hival(), 255)
         base = self.get_base_color_space()
@@ -198,6 +219,8 @@ class PDIndexed(PDColorSpace):
         if len(lookup) // n < max_index + 1:
             max_index = len(lookup) // n - 1
         if max_index < 0:
+            self._color_table_cache = []
+            self._actual_max_index_cache = -1
             return [], -1
         table: list[list[float]] = [[0.0] * n for _ in range(max_index + 1)]
         offset = 0
@@ -205,6 +228,8 @@ class PDIndexed(PDColorSpace):
             for c in range(n):
                 table[i][c] = (lookup[offset] & 0xFF) / 255.0
                 offset += 1
+        self._color_table_cache = table
+        self._actual_max_index_cache = max_index
         return table, max_index
 
     def init_rgb_color_table(self) -> list[tuple[int, int, int]]:
@@ -217,11 +242,18 @@ class PDIndexed(PDColorSpace):
         same outcome by routing each entry through
         :meth:`PDColor.to_rgb`, which dispatches on the base color
         space's name (DeviceRGB / DeviceGray / DeviceCMYK / Cal* / Lab /
-        ICCBased / Separation / DeviceN). Result is stable per call —
-        callers that need caching should hold onto the list.
+        ICCBased / Separation / DeviceN).
+
+        Result is memoised on ``self._rgb_color_table_cache`` to mirror
+        upstream's one-shot ``rgbColorTable`` field initialisation
+        (PDIndexed.java line 161). Setters that mutate the underlying
+        array clear the cache via :meth:`_invalidate_caches`.
         """
+        if self._rgb_color_table_cache is not None:
+            return self._rgb_color_table_cache
         table, max_index = self.read_color_table()
         if max_index < 0:
+            self._rgb_color_table_cache = []
             return []
         base = self.get_base_color_space()
         rgb_table: list[tuple[int, int, int]] = []
@@ -245,7 +277,53 @@ class PDIndexed(PDColorSpace):
                     max(0, min(255, int(round(b * 255.0)))),
                 )
             )
+        self._rgb_color_table_cache = rgb_table
         return rgb_table
+
+    # ---------- upstream-shape cache accessors ----------
+    #
+    # Upstream tracks ``colorTable``, ``rgbColorTable`` and
+    # ``actualMaxIndex`` as private fields populated once by the
+    # constructor (PDIndexed.java lines 51-55). Python ports expose
+    # these via lightweight getters so callers can introspect the
+    # decoded palette without re-running the (potentially expensive)
+    # base-color-space conversion in :meth:`init_rgb_color_table`.
+
+    def get_color_table(self) -> list[list[float]]:
+        """Return the cached float-component palette (``[n][k]`` layout
+        in ``[0, 1]``). Mirrors upstream's ``colorTable`` field — first
+        access triggers the lazy decode, subsequent calls reuse the
+        cached list.
+        """
+        table, _ = self.read_color_table()
+        return table
+
+    def get_rgb_color_table(self) -> list[tuple[int, int, int]]:
+        """Return the cached RGB palette (``[(r, g, b), ...]``, each
+        channel an ``int`` in ``[0, 255]``). Mirrors upstream's
+        ``rgbColorTable`` field. First access populates the cache via
+        :meth:`init_rgb_color_table`.
+        """
+        return self.init_rgb_color_table()
+
+    def get_actual_max_index(self) -> int:
+        """Return the highest index that resolves to a real palette
+        entry, after clamping :meth:`get_hival` against the available
+        lookup-data length. Mirrors upstream's ``actualMaxIndex`` field
+        (PDIndexed.java line 297). Returns ``-1`` when the palette is
+        empty (no lookup data, or unresolvable base CS arity).
+        """
+        _, max_index = self.read_color_table()
+        return max_index
+
+    def _invalidate_caches(self) -> None:
+        """Drop memoised palette / RGB-table state. Called by every
+        setter that mutates the underlying ``COSArray`` so the next read
+        re-decodes against the updated /Lookup, /Hival, or base CS.
+        """
+        self._color_table_cache = None
+        self._actual_max_index_cache = None
+        self._rgb_color_table_cache = None
 
     # ---------- conversion ----------
 
