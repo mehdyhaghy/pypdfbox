@@ -25,7 +25,6 @@ from pypdfbox.fontbox.type1.type1_parser import (
     Type1Parser,
 )
 
-
 # ---------- Type1Lexer ----------
 
 
@@ -238,3 +237,134 @@ def test_parser_handles_missing_font_info() -> None:
     parser.parse(src, Type1FontUtil.eexec_encrypt(b""))
     assert parser.font_dict["FontName"] == "A"
     assert "FontInfo" not in parser.font_dict
+
+
+# ---------- public parity helpers (parse_ascii / parse_binary / ...) ----------
+
+
+def test_parse_ascii_rejects_empty_segment() -> None:
+    import pytest
+
+    parser = Type1Parser()
+    with pytest.raises(OSError, match="empty"):
+        parser.parse_ascii(b"")
+
+
+def test_parse_ascii_rejects_invalid_header() -> None:
+    import pytest
+
+    parser = Type1Parser()
+    with pytest.raises(OSError, match="Invalid start"):
+        parser.parse_ascii(b"XXnot postscript")
+
+
+def test_parse_ascii_walks_full_dict() -> None:
+    """``parse_ascii`` should populate the same top-level keys as the
+    streaming ``parse`` path when fed a well-formed cleartext segment."""
+    src = (
+        b"%!PS-AdobeFont-1.0: ParseAsciiFont 001.000\n"
+        b"12 dict begin\n"
+        b"/FontInfo 1 dict dup begin\n"
+        b"  /FullName (Parse Ascii Font) readonly def\n"
+        b"end readonly def\n"
+        b"/FontName /ParseAsciiFont def\n"
+        b"/PaintType 0 def\n"
+        b"/FontType 1 def\n"
+        b"/FontMatrix [ 0.001 0 0 0.001 0 0 ] readonly def\n"
+        b"/Encoding StandardEncoding def\n"
+        b"/FontBBox { -50 -200 1000 800 } readonly def\n"
+        b"/UniqueID 99 def\n"
+        b"currentdict end\n"
+        b"currentfile eexec\n"
+    )
+    parser = Type1Parser()
+    parser.parse_ascii(src)
+
+    assert parser.font_dict["FontName"] == "ParseAsciiFont"
+    assert parser.font_dict["FontType"] == 1
+    assert parser.font_dict["UniqueID"] == 99
+    assert parser.font_dict["Encoding"] == "StandardEncoding"
+    assert parser.font_dict["FontInfo"]["FullName"] == "Parse Ascii Font"
+
+
+def test_parse_binary_round_trips_through_eexec() -> None:
+    """``parse_binary`` should detect raw eexec, decrypt it, and harvest
+    Private/Subrs/CharStrings just like the streaming ``parse``."""
+    # Charstring payload must already be encrypted in the source bytes
+    # because ``parse_binary`` re-applies the charstring cipher on its way
+    # out. With ``lenIV = 0`` the cipher is a self-inverse stream, so we
+    # encrypt the desired plaintext glyph (``WORLD``) once with len_iv=0
+    # before splicing it into the PostScript body.
+    glyph_plain = b"WORLD"
+    glyph_cipher = Type1FontUtil.charstring_encrypt(glyph_plain, len_iv=0)
+    plain = (
+        b"dup /Private 5 dict dup begin\n"
+        b"/lenIV 0 def\n"
+        b"/BlueValues [ -20 0 800 820 ] def\n"
+        b"/ForceBold false def\n"
+        b"2 index\n"
+        b"/CharStrings 1 dict dup begin\n"
+        b"/A " + str(len(glyph_cipher)).encode() + b" RD " + glyph_cipher + b" ND\n"
+        b"end\n"
+    )
+    cipher = Type1FontUtil.eexec_encrypt(plain)
+
+    parser = Type1Parser()
+    parser.parse_binary(cipher)
+
+    assert parser.decrypted_binary.startswith(b"dup /Private")
+    assert parser.font_dict["Private"]["BlueValues"] == [-20, 0, 800, 820]
+    assert parser.font_dict["Private"]["ForceBold"] is False
+    assert parser.font_dict["Private"]["lenIV"] == 0
+    assert parser.font_dict["CharStrings"]["A"] == glyph_plain
+
+
+def test_parse_binary_rejects_segment_without_private() -> None:
+    import pytest
+
+    plain = b"dup /NotPrivate 5 dict dup begin\nend\n"
+    cipher = Type1FontUtil.eexec_encrypt(plain)
+    parser = Type1Parser()
+    with pytest.raises(OSError, match="/Private token not found"):
+        parser.parse_binary(cipher)
+
+
+def test_read_subrs_populates_indexed_array() -> None:
+    """``read_subrs`` should slot decrypted charstrings into
+    ``font_dict["Private"]["Subrs"]`` at their declared indexes."""
+    # The lexer hands the parser the *raw* charstring bytes; the parser
+    # then runs the charstring cipher to recover plaintext. Pre-encrypt
+    # the desired plaintext payloads with len_iv=0 so the round-trip is
+    # observable as the original ASCII strings.
+    cipher_a = Type1FontUtil.charstring_encrypt(b"AAA", len_iv=0)
+    cipher_b = Type1FontUtil.charstring_encrypt(b"BBBB", len_iv=0)
+    src = (
+        b"2 array\n"
+        b"dup 0 " + str(len(cipher_a)).encode() + b" RD " + cipher_a + b" NP\n"
+        b"dup 1 " + str(len(cipher_b)).encode() + b" RD " + cipher_b + b" NP\n"
+        b"def\n"
+    )
+    parser = Type1Parser()
+    parser._lexer = Type1Lexer(src)
+    parser.read_subrs(len_iv=0)
+    subrs = parser.font_dict["Private"]["Subrs"]
+    assert subrs[0] == b"AAA"
+    assert subrs[1] == b"BBBB"
+
+
+def test_read_char_strings_populates_glyph_map() -> None:
+    """``read_char_strings`` should read the dict body into
+    ``font_dict["CharStrings"]`` keyed by glyph name."""
+    cipher_a = Type1FontUtil.charstring_encrypt(b"AAA", len_iv=0)
+    cipher_b = Type1FontUtil.charstring_encrypt(b"BB", len_iv=0)
+    src = (
+        b"2 dict dup begin\n"
+        b"/A " + str(len(cipher_a)).encode() + b" RD " + cipher_a + b" ND\n"
+        b"/B " + str(len(cipher_b)).encode() + b" RD " + cipher_b + b" ND\n"
+        b"end\n"
+    )
+    parser = Type1Parser()
+    parser._lexer = Type1Lexer(src)
+    parser.read_char_strings(len_iv=0)
+    cs = parser.font_dict["CharStrings"]
+    assert cs == {"A": b"AAA", "B": b"BB"}

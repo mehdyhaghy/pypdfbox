@@ -1526,5 +1526,220 @@ class Type1Parser:
             self.read_put()
         self.read_def()
 
+    def parse_ascii(self, data: bytes | bytearray) -> None:
+        """Parse the cleartext (segment 1) of a Type 1 font.
+
+        Mirrors ``Type1Parser.parseASCII`` (Type1Parser.java line 79).
+        Walks the cleartext header: top-level dict opener, optional
+        ``FontDirectory`` synthetic-font wrapper, then a length-bounded
+        loop over ``/Key value def`` triples. ``FontInfo`` / ``Metrics``
+        are read via :meth:`read_simple_dict`; ``Encoding`` via
+        :meth:`read_encoding`; everything else through
+        :meth:`read_simple_value`.
+        """
+        if len(data) == 0:
+            raise OSError("ASCII segment of type 1 font is empty")
+        if len(data) < 2 or (data[0] != ord("%") and data[1] != ord("!")):
+            raise OSError("Invalid start of ASCII segment of type 1 font")
+
+        lex = Type1Lexer(bytes(data))
+        self._lexer = lex
+
+        # Optional synthetic-font preamble (corrupt? PDFBOX): a leading
+        # ``FontDirectory /name known { ... } { ... } ifelse`` guard.
+        peek = lex.peek_token()
+        if peek is not None and peek[0] == TOKEN_NAME and peek[1] == "FontDirectory":
+            self.read(TOKEN_NAME, "FontDirectory")
+            self.read(TOKEN_LITERAL)  # font name
+            self.read(TOKEN_NAME, "known")
+            self.read(TOKEN_START_PROC)
+            self.read_proc_void()
+            self.read(TOKEN_START_PROC)
+            self.read_proc_void()
+            self.read(TOKEN_NAME, "ifelse")
+
+        # Outer font dict opener: ``<N> dict [dup] begin``.
+        length = int(self.read(TOKEN_INTEGER)[1])
+        self.read(TOKEN_NAME, "dict")
+        self.read_maybe(TOKEN_NAME, "dup")
+        self.read(TOKEN_NAME, "begin")
+
+        for _ in range(length):
+            tok = lex.peek_token()
+            if tok is None:
+                break
+            if tok[0] == TOKEN_NAME and tok[1] in ("currentdict", "end"):
+                break
+
+            key = self.read(TOKEN_LITERAL)[1]
+            if key in ("FontInfo", "Fontinfo"):
+                self.read_font_info(self.read_simple_dict())
+            elif key == "Metrics":
+                self.read_simple_dict()
+            elif key == "Encoding":
+                self.read_encoding()
+            else:
+                self.read_simple_value(key)
+
+        self.read_maybe(TOKEN_NAME, "currentdict")
+        self.read(TOKEN_NAME, "end")
+        self.read(TOKEN_NAME, "currentfile")
+        self.read(TOKEN_NAME, "eexec")
+
+    def parse_binary(self, data: bytes | bytearray) -> None:
+        """Parse the eexec-encrypted binary (segment 2) of a Type 1 font.
+
+        Mirrors ``Type1Parser.parseBinary`` (Type1Parser.java line 544).
+        Detects ASCII-hex vs raw-binary eexec, decrypts via
+        :meth:`decrypt`, then walks the recovered PostScript:
+
+        - skip until ``/Private`` is found,
+        - read the Private dict body (``/Subrs``, ``/OtherSubrs``,
+          ``/lenIV``, ``ND`` / ``NP`` / ``RD`` macro definitions, plus
+          known scalar/array entries via :meth:`read_private`),
+        - skip stray ``2 index`` / ``end noaccess put`` operators until
+          ``/CharStrings`` appears,
+        - read the CharStrings dict via :meth:`read_char_strings`.
+        """
+        raw = bytes(data)
+        if self.is_binary(raw):
+            decrypted = self.decrypt(raw, self.EEXEC_KEY, 4)
+        else:
+            decrypted = self.decrypt(self.hex_to_binary(raw), self.EEXEC_KEY, 4)
+        self.decrypted_binary = decrypted
+
+        lex = Type1Lexer(decrypted)
+        self._lexer = lex
+
+        # Find ``/Private``.
+        peek = lex.peek_token()
+        while peek is not None and peek[1] != "Private":
+            lex.next_token()
+            peek = lex.peek_token()
+        if peek is None:
+            raise OSError("/Private token not found")
+
+        self.read(TOKEN_LITERAL, "Private")
+        length = int(self.read(TOKEN_INTEGER)[1])
+        self.read(TOKEN_NAME, "dict")
+        self.read_maybe(TOKEN_NAME, "dup")
+        self.read(TOKEN_NAME, "begin")
+
+        len_iv = 4
+        for _ in range(length):
+            if not (lex.peek_token() is not None and lex.peek_token()[0] == TOKEN_LITERAL):
+                break
+            key = self.read(TOKEN_LITERAL)[1]
+            if key == "Subrs":
+                self.read_subrs(len_iv)
+            elif key == "OtherSubrs":
+                self.read_other_subrs()
+            elif key == "lenIV":
+                value = self.read_dict_value()
+                len_iv = int(value[0][1]) if value else len_iv
+                # Surface lenIV under Private so accessors see it.
+                self.font_dict.setdefault("Private", {})["lenIV"] = len_iv
+            elif key == "ND":
+                self.read(TOKEN_START_PROC)
+                self.read_maybe(TOKEN_NAME, "noaccess")
+                self.read(TOKEN_NAME, "def")
+                self.read(TOKEN_END_PROC)
+                self.read_maybe(TOKEN_NAME, "executeonly")
+                self.read_maybe(TOKEN_NAME, "readonly")
+                self.read(TOKEN_NAME, "def")
+            elif key == "NP":
+                self.read(TOKEN_START_PROC)
+                self.read_maybe(TOKEN_NAME, "noaccess")
+                self.read(TOKEN_NAME)
+                self.read(TOKEN_END_PROC)
+                self.read_maybe(TOKEN_NAME, "executeonly")
+                self.read_maybe(TOKEN_NAME, "readonly")
+                self.read(TOKEN_NAME, "def")
+            elif key == "RD":
+                # ``/RD {string currentfile exch readstring pop} bind executeonly def``
+                self.read(TOKEN_START_PROC)
+                self.read_proc_void()
+                self.read_maybe(TOKEN_NAME, "bind")
+                self.read_maybe(TOKEN_NAME, "executeonly")
+                self.read_maybe(TOKEN_NAME, "readonly")
+                self.read(TOKEN_NAME, "def")
+            else:
+                self.read_private(key, self.read_dict_value())
+
+        # Skip until ``/CharStrings`` appears.
+        while True:
+            peek = lex.peek_token()
+            if peek is not None and peek[0] == TOKEN_LITERAL and peek[1] == "CharStrings":
+                break
+            if lex.next_token() is None:
+                raise OSError("Missing 'CharStrings' dictionary in type 1 font")
+
+        self.read(TOKEN_LITERAL, "CharStrings")
+        self.read_char_strings(len_iv)
+
+    def read_subrs(self, len_iv: int) -> None:
+        """Read the ``/Subrs N array dup K M RD <bytes> NP …`` block.
+
+        Mirrors ``Type1Parser.readSubrs`` (Type1Parser.java line 712).
+        Each entry's payload is charstring-decrypted with ``len_iv`` and
+        slotted into ``font_dict["Private"]["Subrs"]`` at its declared
+        index. Indexes need not be in-order; missing slots are kept as
+        empty bytes (upstream keeps them as ``null``).
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        length = int(self.read(TOKEN_INTEGER)[1])
+        private = self.font_dict.setdefault("Private", {})
+        subrs: list[bytes] = private.setdefault("Subrs", [])
+        # Pre-size with empty slots — upstream uses null; we use b"".
+        while len(subrs) < length:
+            subrs.append(b"")
+        self.read(TOKEN_NAME, "array")
+
+        for _ in range(length):
+            peek = self._lexer.peek_token()
+            if peek is None:
+                break
+            if not (peek[0] == TOKEN_NAME and peek[1] == "dup"):
+                break
+            self.read(TOKEN_NAME, "dup")
+            index = int(self.read(TOKEN_INTEGER)[1])
+            self.read(TOKEN_INTEGER)  # length, not used (lexer captures bytes)
+            cs_tok = self.read(TOKEN_CHARSTRING)
+            if 0 <= index < len(subrs):
+                subrs[index] = self.decrypt(cs_tok[1], self.CHARSTRING_KEY, len_iv)
+            self.read_put()
+        self.read_def()
+
+    def read_char_strings(self, len_iv: int) -> None:
+        """Read the ``/CharStrings N dict dup begin /name M RD <bytes> ND …`` block.
+
+        Mirrors ``Type1Parser.readCharStrings`` (Type1Parser.java line 783).
+        Each glyph's charstring is decrypted with ``len_iv`` and stored
+        under its name in ``font_dict["CharStrings"]``.
+        """
+        if self._lexer is None:
+            raise OSError("Type1Parser has no active lexer")
+        length = int(self.read(TOKEN_INTEGER)[1])
+        self.read(TOKEN_NAME, "dict")
+        self.read(TOKEN_NAME, "dup")
+        self.read(TOKEN_NAME, "begin")
+
+        charstrings: dict[str, bytes] = self.font_dict.setdefault("CharStrings", {})
+        for _ in range(length):
+            peek = self._lexer.peek_token()
+            if peek is None:
+                break
+            if peek[0] == TOKEN_NAME and peek[1] == "end":
+                break
+            name = self.read(TOKEN_LITERAL)[1]
+            self.read(TOKEN_INTEGER)  # length, lexer-captured
+            cs_tok = self.read(TOKEN_CHARSTRING)
+            charstrings[str(name)] = self.decrypt(
+                cs_tok[1], self.CHARSTRING_KEY, len_iv
+            )
+            self.read_def()
+        self.read(TOKEN_NAME, "end")
+
 
 __all__ = ["Type1Parser", "Type1Lexer"]

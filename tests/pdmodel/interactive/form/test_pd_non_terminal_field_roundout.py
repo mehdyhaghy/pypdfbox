@@ -9,6 +9,7 @@ from pypdfbox.cos import (
     COSStream,
     COSString,
 )
+from pypdfbox.pdmodel.fdf.fdf_field import FDFField
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_field import PDField
 from pypdfbox.pdmodel.interactive.form.pd_field_factory import PDFieldFactory
@@ -392,3 +393,195 @@ def test_from_dictionary_propagates_parent_argument() -> None:
     result = PDField.from_dictionary(form, child_dict, parent)
     assert result is not None
     assert result.get_parent() is parent
+
+
+# ---------- export_fdf ----------
+
+
+def _build_non_terminal_with_text_child(
+    form: PDAcroForm,
+    parent_name: str = "parent",
+    child_name: str = "child",
+    parent_value: str | None = None,
+    child_value: str | None = None,
+) -> PDNonTerminalField:
+    """Helper — assemble a non-terminal node with one text-field child."""
+    parent_dict = COSDictionary()
+    parent_dict.set_string(COSName.get_pdf_name("T"), parent_name)
+    if parent_value is not None:
+        parent_dict.set_string(_V, parent_value)
+    kids = COSArray()
+    child_dict = COSDictionary()
+    child_dict.set_name(_FT, "Tx")
+    child_dict.set_string(COSName.get_pdf_name("T"), child_name)
+    if child_value is not None:
+        child_dict.set_string(_V, child_value)
+    kids.add(child_dict)
+    parent_dict.set_item(COSName.get_pdf_name("Kids"), kids)
+    return PDNonTerminalField(form, parent_dict)
+
+
+def test_export_fdf_copies_partial_name_and_value() -> None:
+    """``export_fdf`` mirrors upstream — copy /T and /V into the FDF node."""
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(
+        form, parent_name="container", parent_value="local"
+    )
+    fdf = nt.export_fdf()
+    assert isinstance(fdf, FDFField)
+    assert fdf.get_partial_field_name() == "container"
+    # /V is stored raw on the FDF dictionary (not via the Object overload)
+    v_entry = fdf.get_cos_object().get_dictionary_object(_V)
+    assert isinstance(v_entry, COSString)
+    assert v_entry.get_string() == "local"
+
+
+def test_export_fdf_no_value_omits_v() -> None:
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(form)
+    fdf = nt.export_fdf()
+    assert fdf.get_cos_object().get_dictionary_object(_V) is None
+
+
+def test_export_fdf_includes_children() -> None:
+    """``export_fdf`` recurses — child FDFFields appear under /Kids."""
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(
+        form, child_name="leaf", child_value="x"
+    )
+    fdf = nt.export_fdf()
+    fdf_kids = fdf.get_kids()
+    assert fdf_kids is not None
+    assert len(fdf_kids) == 1
+    assert fdf_kids[0].get_partial_field_name() == "leaf"
+
+
+def test_export_fdf_no_children_emits_empty_kids_array() -> None:
+    """Mirrors upstream ``setKids(new ArrayList<>(0))`` — kids is set even
+    when there are no children, just empty."""
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    nt.get_cos_object().set_string(COSName.get_pdf_name("T"), "empty")
+    fdf = nt.export_fdf()
+    fdf_kids = fdf.get_kids()
+    # set_kids([]) writes an empty COSArray, so get_kids() returns []
+    assert fdf_kids == []
+
+
+# ---------- import_fdf ----------
+
+
+def test_import_fdf_applies_local_value() -> None:
+    """Local ``/V`` from the FDF root is written onto this node."""
+    form = PDAcroForm()
+    nt = PDNonTerminalField(form)
+    nt.get_cos_object().set_string(COSName.get_pdf_name("T"), "container")
+    fdf = FDFField()
+    fdf.set_partial_field_name("container")
+    fdf.set_value("hello")
+    nt.import_fdf(fdf)
+    v = nt.get_cos_object().get_dictionary_object(_V)
+    assert isinstance(v, COSString)
+    assert v.get_string() == "hello"
+
+
+def test_import_fdf_no_kids_returns_early() -> None:
+    """When the FDF has no /Kids the call is a no-op past the local fields."""
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(form, child_value="original")
+    fdf = FDFField()
+    fdf.set_partial_field_name("parent")
+    nt.import_fdf(fdf)
+    # Child unchanged
+    children = nt.get_children()
+    assert len(children) == 1
+    leaf_v = children[0].get_cos_object().get_dictionary_object(_V)
+    assert isinstance(leaf_v, COSString)
+    assert leaf_v.get_string() == "original"
+
+
+def test_import_fdf_recurses_into_matching_child() -> None:
+    """An FDF /Kid whose /T matches the pypdfbox child gets recursively
+    imported (the child's /V is updated)."""
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(
+        form, child_name="leaf", child_value="old"
+    )
+    fdf = FDFField()
+    fdf.set_partial_field_name("parent")
+    leaf_fdf = FDFField()
+    leaf_fdf.set_partial_field_name("leaf")
+    leaf_fdf.set_value("new")
+    fdf.set_kids([leaf_fdf])
+    nt.import_fdf(fdf)
+    children = nt.get_children()
+    assert len(children) == 1
+    leaf_v = children[0].get_cos_object().get_dictionary_object(_V)
+    assert isinstance(leaf_v, COSString)
+    assert leaf_v.get_string() == "new"
+
+
+def test_import_fdf_skips_kid_with_no_partial_name() -> None:
+    """Upstream guards on ``fdfName != null`` — FDF kids with no /T are
+    silently skipped."""
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(
+        form, child_name="leaf", child_value="kept"
+    )
+    fdf = FDFField()
+    fdf.set_partial_field_name("parent")
+    anonymous_kid = FDFField()  # no partial name
+    anonymous_kid.set_value("ignored")
+    fdf.set_kids([anonymous_kid])
+    nt.import_fdf(fdf)
+    children = nt.get_children()
+    leaf_v = children[0].get_cos_object().get_dictionary_object(_V)
+    assert isinstance(leaf_v, COSString)
+    assert leaf_v.get_string() == "kept"
+
+
+def test_import_fdf_skips_kid_with_unmatched_name() -> None:
+    """An FDF kid whose /T doesn't match any pypdfbox child is silently
+    discarded (mirrors upstream's name-based pairing)."""
+    form = PDAcroForm()
+    nt = _build_non_terminal_with_text_child(
+        form, child_name="leaf", child_value="kept"
+    )
+    fdf = FDFField()
+    fdf.set_partial_field_name("parent")
+    other_kid = FDFField()
+    other_kid.set_partial_field_name("other")
+    other_kid.set_value("ignored")
+    fdf.set_kids([other_kid])
+    nt.import_fdf(fdf)
+    children = nt.get_children()
+    leaf_v = children[0].get_cos_object().get_dictionary_object(_V)
+    assert isinstance(leaf_v, COSString)
+    assert leaf_v.get_string() == "kept"
+
+
+def test_export_then_import_round_trip_preserves_values() -> None:
+    """End-to-end round-trip — export_fdf followed by import_fdf into a
+    twin tree restores the original values."""
+    form = PDAcroForm()
+    src = _build_non_terminal_with_text_child(
+        form,
+        parent_name="root",
+        child_name="leaf",
+        parent_value="P",
+        child_value="C",
+    )
+    fdf = src.export_fdf()
+
+    dst = _build_non_terminal_with_text_child(
+        form,
+        parent_name="root",
+        child_name="leaf",
+        parent_value=None,
+        child_value=None,
+    )
+    dst.import_fdf(fdf)
+    assert dst.get_value_as_string() == "P"
+    leaf_v = dst.get_children()[0].get_cos_object().get_dictionary_object(_V)
+    assert isinstance(leaf_v, COSString)
+    assert leaf_v.get_string() == "C"

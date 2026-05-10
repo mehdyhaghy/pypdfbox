@@ -179,6 +179,54 @@ def test_remove_buffer_unknown_is_noop() -> None:
     sf.close()
 
 
+def test_get_main_memory_only_instance_no_arg() -> None:
+    # Upstream ``ScratchFile.getMainMemoryOnlyInstance()`` (line 150): no cap.
+    sf = ScratchFile.get_main_memory_only_instance()
+    try:
+        assert sf.setting.is_main_memory_only()
+        assert sf.get_main_memory_max_pages() == -1  # UNLIMITED sentinel
+    finally:
+        sf.close()
+
+
+def test_get_main_memory_only_instance_with_cap() -> None:
+    # Upstream overload ``ScratchFile.getMainMemoryOnlyInstance(long)``
+    # (line 173): explicit max-main-memory cap.
+    sf = ScratchFile.get_main_memory_only_instance(max_main_memory_bytes=4096)
+    try:
+        assert sf.setting.is_main_memory_only()
+        assert sf.setting.max_main_memory_bytes == 4096
+    finally:
+        sf.close()
+
+
+def test_get_main_memory_only_instance_zero_means_no_restriction() -> None:
+    # Upstream comment on line 167-168: "0 will also be interpreted here as
+    # no restriction" (same as -1).
+    sf_zero = ScratchFile.get_main_memory_only_instance(max_main_memory_bytes=0)
+    sf_neg = ScratchFile.get_main_memory_only_instance(max_main_memory_bytes=-1)
+    try:
+        assert sf_zero.get_main_memory_max_pages() == -1
+        assert sf_neg.get_main_memory_max_pages() == -1
+    finally:
+        sf_zero.close()
+        sf_neg.close()
+
+
+def test_init_pages_and_enlarge_are_parity_no_ops() -> None:
+    # Upstream private ``initPages`` (line 134) and ``enlarge`` (line 236)
+    # are page-pool plumbing; the Python port grows storage lazily, so the
+    # parity-named hooks exist as documented no-ops. Calling them must not
+    # raise and must not perturb observable state.
+    with ScratchFile(page_size=8) as sf:
+        sf._init_pages()
+        sf._enlarge()
+        # Allocation still works after both no-op calls.
+        idx = sf.get_new_page()
+        assert idx == 0
+        assert sf.get_page_count() == 1
+
+
 # Skipped: upstream tests that poke at private free-page-list mechanics
 # (``ScratchFile.freePages`` field) are not reproducible without the same
 # internal layout; observable behavior is covered above.

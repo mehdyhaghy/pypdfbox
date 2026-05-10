@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSBoolean, COSDictionary, COSName
 
 from .pd_annotation_markup import PDAnnotationMarkup
+
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
 
 _OPEN: COSName = COSName.get_pdf_name("Open")
 _NAME: COSName = COSName.get_pdf_name("Name")
@@ -62,6 +69,7 @@ class PDAnnotationText(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
 
@@ -78,12 +86,6 @@ class PDAnnotationText(PDAnnotationMarkup):
     def set_open(self, value: bool) -> None:
         self._dict.set_item(_OPEN, COSBoolean.get(value))
 
-    def getOpen(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.get_open()
-
-    def setOpen(self, value: bool) -> None:  # noqa: N802 - upstream Java name
-        self.set_open(value)
-
     # ---------- /Name (icon) ----------
 
     def get_name(self) -> str:
@@ -96,12 +98,6 @@ class PDAnnotationText(PDAnnotationMarkup):
             self._dict.remove_item(_NAME)
             return
         self._dict.set_name(_NAME, name)
-
-    def getName(self) -> str:  # noqa: N802 - upstream Java name
-        return self.get_name()
-
-    def setName(self, name: str | None) -> None:  # noqa: N802 - upstream Java name
-        self.set_name(name)
 
     # ---------- icon predicates ----------
 
@@ -120,12 +116,6 @@ class PDAnnotationText(PDAnnotationMarkup):
     def set_state(self, state: str | None) -> None:
         self._dict.set_string(_STATE, state)
 
-    def getState(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_state()
-
-    def setState(self, state: str | None) -> None:  # noqa: N802 - upstream Java name
-        self.set_state(state)
-
     # ---------- /StateModel ----------
 
     def get_state_model(self) -> str | None:
@@ -134,11 +124,43 @@ class PDAnnotationText(PDAnnotationMarkup):
     def set_state_model(self, model: str | None) -> None:
         self._dict.set_string(_STATE_MODEL, model)
 
-    def getStateModel(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_state_model()
+    # ---------- appearance construction ----------
 
-    def setStateModel(self, model: str | None) -> None:  # noqa: N802 - upstream Java name
-        self.set_state_model(model)
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler`` (PDAnnotationText.java
+        line 228). Pass ``None`` to clear the custom handler and restore the
+        default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def get_custom_appearance_handler(self) -> PDAppearanceHandler | None:
+        """Return the custom appearance handler previously set via
+        :meth:`set_custom_appearance_handler`, or ``None`` when the default
+        construction path is in use. No upstream getter exists (the field is
+        private in Java); this is the Pythonic accessor used by tests and
+        downstream code that needs to inspect the wired handler.
+        """
+        return self._custom_appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate text annotation appearances.
+
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (PDAnnotationText.java lines
+        233-251). A custom handler, when configured, is invoked exactly as
+        upstream does. The built-in ``PDTextAppearanceHandler`` is not ported
+        yet, so the default path remains a no-op like the base annotation
+        implementation.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 __all__ = ["PDAnnotationText"]

@@ -359,6 +359,23 @@ def test_setting_property_exposed() -> None:
         assert sf.setting.mode is StorageMode.MAIN_MEMORY_ONLY
 
 
+def test_get_main_memory_only_instance_factory_no_arg() -> None:
+    sf = ScratchFile.get_main_memory_only_instance()
+    try:
+        assert sf.setting.is_main_memory_only()
+    finally:
+        sf.close()
+
+
+def test_get_main_memory_only_instance_factory_with_explicit_cap() -> None:
+    sf = ScratchFile.get_main_memory_only_instance(max_main_memory_bytes=8192)
+    try:
+        assert sf.setting.is_main_memory_only()
+        assert sf.setting.max_main_memory_bytes == 8192
+    finally:
+        sf.close()
+
+
 def test_close_releases_pages_and_buffers() -> None:
     sf = ScratchFile(page_size=8)
     sf.get_new_page()

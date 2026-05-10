@@ -27,26 +27,26 @@ def test_open_round_trip() -> None:
     assert ann.get_open() is False
 
 
-def test_pdfbox_camelcase_accessors_round_trip() -> None:
+def test_snake_case_accessors_round_trip() -> None:
     ann = PDAnnotationText()
 
-    ann.setOpen(True)
-    assert ann.getOpen() is True
+    ann.set_open(True)
+    assert ann.get_open() is True
 
-    ann.setName(PDAnnotationText.NAME_COMMENT)
-    assert ann.getName() == PDAnnotationText.NAME_COMMENT
-    ann.setName(None)
-    assert ann.getName() == PDAnnotationText.NAME_NOTE
+    ann.set_name(PDAnnotationText.NAME_COMMENT)
+    assert ann.get_name() == PDAnnotationText.NAME_COMMENT
+    ann.set_name(None)
+    assert ann.get_name() == PDAnnotationText.NAME_NOTE
 
-    ann.setState(PDAnnotationText.STATE_ACCEPTED)
-    assert ann.getState() == PDAnnotationText.STATE_ACCEPTED
-    ann.setState(None)
-    assert ann.getState() is None
+    ann.set_state(PDAnnotationText.STATE_ACCEPTED)
+    assert ann.get_state() == PDAnnotationText.STATE_ACCEPTED
+    ann.set_state(None)
+    assert ann.get_state() is None
 
-    ann.setStateModel(PDAnnotationText.STATE_MODEL_REVIEW)
-    assert ann.getStateModel() == PDAnnotationText.STATE_MODEL_REVIEW
-    ann.setStateModel(None)
-    assert ann.getStateModel() is None
+    ann.set_state_model(PDAnnotationText.STATE_MODEL_REVIEW)
+    assert ann.get_state_model() == PDAnnotationText.STATE_MODEL_REVIEW
+    ann.set_state_model(None)
+    assert ann.get_state_model() is None
 
 
 def test_name_default_note() -> None:

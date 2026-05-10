@@ -15,6 +15,7 @@ from pypdfbox.cos import (
 from .pd_field import PDField
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.fdf.fdf_field import FDFField
     from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 
     from .pd_acro_form import PDAcroForm
@@ -195,6 +196,54 @@ class PDNonTerminalField(PDField):
         ``Collections.emptyList()``.
         """
         return []
+
+    # ---------- FDF import / export ----------
+
+    def import_fdf(self, fdf_field: FDFField) -> None:
+        """Import an :class:`FDFField` subtree into this non-terminal node.
+
+        Mirrors upstream ``PDNonTerminalField.importFDF`` (lines 76-96):
+        delegate the local ``/V`` / ``/Ff`` mutation to the base class, then
+        walk the FDF ``/Kids`` and recurse into matching pypdfbox children
+        (matched by partial-field-name).
+        """
+        super().import_fdf(fdf_field)
+
+        fdf_kids = fdf_field.get_kids()
+        if fdf_kids is None:
+            return
+        children = self.get_children()
+        # Upstream uses an O(n*m) double loop and we mirror it exactly so the
+        # match semantics (first-name-wins, repeated FDF kids re-applied)
+        # stay identical.
+        for fdf_child in fdf_kids:
+            for pd_child in children:
+                fdf_name = fdf_child.get_partial_field_name()
+                if fdf_name is not None and fdf_name == pd_child.get_partial_name():
+                    pd_child.import_fdf(fdf_child)
+
+    def export_fdf(self) -> FDFField:
+        """Export this non-terminal subtree as an :class:`FDFField`.
+
+        Mirrors upstream ``PDNonTerminalField.exportFDF`` (lines 99-114):
+        copy the partial-name and the local ``/V``, then recursively export
+        each child as the FDF ``/Kids`` array.
+        """
+        from pypdfbox.pdmodel.fdf.fdf_field import FDFField  # noqa: PLC0415
+
+        fdf_field = FDFField()
+        fdf_field.set_partial_field_name(self.get_partial_name())
+        v = self.get_value()
+        if v is not None:
+            # Upstream calls FDFField.setValue(Object); the COSBase overload
+            # writes the raw entry under /V. We mirror that with a direct
+            # COS-level write to avoid the type-coercion overload.
+            fdf_field.get_cos_object().set_item(_V, v)
+
+        children = self.get_children()
+        fdf_children: list[FDFField] = [child.export_fdf() for child in children]
+        fdf_field.set_kids(fdf_children)
+        return fdf_field
 
 
 __all__ = ["PDNonTerminalField"]

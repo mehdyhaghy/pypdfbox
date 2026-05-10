@@ -54,6 +54,16 @@ class PDCalRGB(PDColorSpace):
     def get_number_of_components(self) -> int:
         return 3
 
+    def get_default_decode(self, bits_per_component: int) -> list[float]:
+        """Return ``[0, 1, 0, 1, 0, 1]`` regardless of bits-per-component.
+
+        Mirrors upstream ``PDCalRGB.getDefaultDecode(int)``: a CalRGB
+        image's default decode array spans the full ``[0, 1]`` range
+        for each of the three components (PDF 32000-1 §8.9.5.1, Table
+        90).
+        """
+        return [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]
+
     def get_initial_color(self) -> PDColor:
         return self._initial_color
 
@@ -160,6 +170,13 @@ class PDCalRGB(PDColorSpace):
 
         Then XYZ → sRGB (IEC 61966-2-1).
 
+        Mirrors upstream ``PDCalRGB.toRGB`` (PDFBox 3.0.x): when
+        ``isWhitePoint()`` is ``True`` (whitepoint is the unit
+        tristimulus) the full calibration runs; otherwise CIE
+        calibration is skipped and the input components are returned
+        directly — a hack documented as PDFBOX-2553 working only with
+        whitepoint D65 ``(0.9505, 1.0, 1.089)``.
+
         ``values`` must contain exactly three components in ``[0, 1]``.
         """
         if len(values) < 3:
@@ -169,6 +186,10 @@ class PDCalRGB(PDColorSpace):
         a = float(values[0])
         b = float(values[1])
         c = float(values[2])
+        if not self.is_white_point():
+            # Upstream PDFBox shortcut (PDFBOX-2553): skip CIE
+            # calibration, return the components verbatim.
+            return (a, b, c)
         # Clamp
         a = 0.0 if a < 0.0 else (1.0 if a > 1.0 else a)
         b = 0.0 if b < 0.0 else (1.0 if b > 1.0 else b)

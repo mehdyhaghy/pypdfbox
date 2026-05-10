@@ -87,15 +87,25 @@ class ScratchFile:
             self._ensure_tmp()
 
     @classmethod
-    def get_main_memory_only_instance(cls) -> ScratchFile:
+    def get_main_memory_only_instance(
+        cls, max_main_memory_bytes: int | None = None
+    ) -> ScratchFile:
         """
-        Return a scratch file configured for unrestricted main-memory storage.
+        Return a scratch file configured for main-memory-only storage.
 
-        Mirrors upstream ``ScratchFile.getMainMemoryOnlyInstance()``.
+        Mirrors upstream ``ScratchFile.getMainMemoryOnlyInstance()`` (line 150)
+        and the overload ``ScratchFile.getMainMemoryOnlyInstance(long)`` (line
+        173). When ``max_main_memory_bytes`` is ``None`` (or 0 / -1, matching
+        upstream's "no restriction" sentinels) the returned instance has no
+        main-memory cap. Otherwise the cap is honoured.
         """
-        return cls(MemoryUsageSetting.setup_main_memory_only())
-
-    getMainMemoryOnlyInstance = get_main_memory_only_instance  # noqa: N815
+        if max_main_memory_bytes is None or max_main_memory_bytes <= 0:
+            return cls(MemoryUsageSetting.setup_main_memory_only())
+        return cls(
+            MemoryUsageSetting.setup_main_memory_only(
+                max_main_memory_bytes=max_main_memory_bytes,
+            )
+        )
 
     # ----- properties -----
 
@@ -337,6 +347,36 @@ class ScratchFile:
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("operation on closed ScratchFile")
+
+    def _init_pages(self) -> None:
+        """
+        Lazy page-pool initialisation hook.
+
+        Mirrors upstream private ``ScratchFile.initPages`` (line 134) which
+        allocates the ``inMemoryPages`` ``byte[][]`` and primes the
+        ``freePages`` ``BitSet`` once on first use. The Python port already
+        backs both pools with lazy lists/dicts that grow on demand
+        (:attr:`_mem_pages`, :attr:`_file_pages`, :attr:`_free_pages`), so
+        this is a no-op kept for parity-named call sites.
+        """
+        # Intentional no-op: lazy data structures self-initialise.
+        return None
+
+    def _enlarge(self) -> None:
+        """
+        Hook to grow the page pool when no free page is available.
+
+        Mirrors upstream private ``ScratchFile.enlarge`` (line 236) which
+        either extends the temp file by ``ENLARGE_PAGE_COUNT`` pages (when
+        scratch-file usage is allowed) or doubles the in-memory ``byte[][]``
+        and updates the ``freePages`` ``BitSet``. The Python port grows
+        :attr:`_mem_pages` / :attr:`_file_pages` on each
+        :meth:`_allocate_new_page` call, so the equivalent work happens
+        inline; this method exists for parity-named call sites and is a
+        no-op.
+        """
+        # Intentional no-op: _allocate_new_page() grows storage on demand.
+        return None
 
     def check_closed(self) -> None:
         """

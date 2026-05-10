@@ -36,12 +36,6 @@ def test_get_main_memory_only_instance_factory() -> None:
         assert sf.get_main_memory_max_pages() == -1
 
 
-def test_get_main_memory_only_instance_camelcase_alias() -> None:
-    with ScratchFile.getMainMemoryOnlyInstance() as sf:
-        assert sf.setting.is_main_memory_only()
-        assert sf.get_main_memory_max_pages() == -1
-
-
 def test_is_closed_false_after_construction() -> None:
     sf = ScratchFile()
     try:
