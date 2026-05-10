@@ -97,3 +97,44 @@ def test_has_stream_data() -> None:
         out.write(_TEST_STRING)
     assert stream.has_data()
     stream.close()
+
+
+def test_compressed_stream1_decode_via_raw_output_stream() -> None:
+    """Mirrors upstream ``testCompressedStream1Decode`` (lines 82–96 of
+    ``TestCOSStream.java``): when the raw bytes are pre-encoded, the
+    consumer writes them through ``createRawOutputStream`` and sets
+    ``/Filter`` after the fact — ``createInputStream`` must still decode
+    them correctly."""
+    import zlib
+
+    encoded = zlib.compress(_TEST_STRING)
+    stream = COSStream()
+    with stream.create_raw_output_stream() as out:
+        out.write(encoded)
+    stream.set_item(COSName.FILTER, COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    decoded = stream.create_input_stream().read()
+    stream.close()
+    assert decoded == _TEST_STRING
+
+
+def test_compressed_stream2_decode_via_raw_output_stream() -> None:
+    """Mirrors upstream ``testCompressedStream2Decode`` (lines 124–141 of
+    ``TestCOSStream.java``): two-filter chain, raw bytes pre-encoded then
+    written via ``createRawOutputStream`` with ``/Filter`` applied
+    separately."""
+    import base64
+    import zlib
+
+    inner = zlib.compress(_TEST_STRING)
+    encoded = base64.a85encode(inner) + b"~>"
+
+    from pypdfbox.cos import COSArray
+
+    stream = COSStream()
+    chain = COSArray([COSName.ASCII85_DECODE, COSName.FLATE_DECODE])  # type: ignore[attr-defined]
+    stream.set_item(COSName.FILTER, chain)  # type: ignore[attr-defined]
+    with stream.create_raw_output_stream() as out:
+        out.write(encoded)
+    decoded = stream.create_input_stream().read()
+    stream.close()
+    assert decoded == _TEST_STRING

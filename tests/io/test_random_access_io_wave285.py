@@ -32,11 +32,17 @@ def test_available_is_never_negative_after_seek_past_logical_end(
 
 
 def test_scratch_file_buffer_available_is_never_negative_after_sparse_seek() -> None:
+    # PDFBOX-4756: ScratchFileBuffer.seek raises EOFException past length.
+    # Verify strict-mode behavior + that seeking exactly to length() yields EOF
+    # and zero ``available()`` (the "EOF cursor" position).
     with ScratchFile(page_size=8) as scratch:
         buf = scratch.create_buffer()
         buf.write_bytes(b"abc")
-        buf.seek(99)
 
+        with pytest.raises(EOFError):
+            buf.seek(99)
+
+        buf.seek(buf.length())
         assert buf.available() == 0
         assert buf.is_eof()
 

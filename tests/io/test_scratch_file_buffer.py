@@ -124,26 +124,100 @@ def test_close_idempotent() -> None:
 
 
 def test_operations_after_close_raise() -> None:
+    # Upstream raises IOException on every method when the buffer is closed.
+    # We map IOException → OSError (per CLAUDE.md test-porting conventions).
     with ScratchFile() as sf:
         buf = sf.create_buffer()
         buf.close()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError):
             buf.write(0x00)
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError):
             buf.write_bytes(b"x")
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError):
             buf.seek(0)
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError):
             buf.read()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError):
             buf.read_into(bytearray(1))
 
 
 def test_negative_seek_raises() -> None:
+    # Upstream throws IOException("Negative seek offset: ...") → OSError.
     with ScratchFile() as sf:
         buf = sf.create_buffer()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError):
             buf.seek(-1)
+
+
+def test_seek_past_length_raises_eof_error() -> None:
+    # Upstream throws EOFException when seeking past length() (PDFBOX-4756).
+    with ScratchFile(page_size=8) as sf:
+        buf = sf.create_buffer()
+        buf.write_bytes(b"hello")
+        # Seeking exactly to length is allowed (it's the EOF cursor position).
+        buf.seek(buf.length())
+        with pytest.raises(EOFError):
+            buf.seek(buf.length() + 1)
+
+
+def test_seek_to_length_then_read_returns_eof() -> None:
+    with ScratchFile(page_size=8) as sf:
+        buf = sf.create_buffer()
+        buf.write_bytes(b"abc")
+        buf.seek(buf.length())
+        assert buf.is_eof()
+        assert buf.read() == buf.EOF
+
+
+def test_buffer_starts_with_one_page_eagerly_allocated() -> None:
+    # Upstream ctor calls addPage(); our buffer mirrors that so a fresh
+    # buffer already owns one page from the parent ScratchFile.
+    with ScratchFile(page_size=16) as sf:
+        before = sf.get_page_count()
+        sf.create_buffer()
+        assert sf.get_page_count() == before + 1
+
+
+def test_clear_keeps_one_page_allocated() -> None:
+    # Upstream's clear() frees all pages except the first; we mirror that
+    # by freeing everything and re-allocating one page on top of the freed pool.
+    with ScratchFile(page_size=8) as sf:
+        buf = sf.create_buffer()
+        buf.write_bytes(b"y" * 24)  # 3 pages
+        buf.clear()
+        # length/position reset, and the buffer still has one (reused) page.
+        assert buf.length() == 0
+        assert buf.get_position() == 0
+        assert len(buf._page_indices) == 1
+
+
+def test_check_closed_raises_after_close() -> None:
+    with ScratchFile() as sf:
+        buf = sf.create_buffer()
+        buf.close()
+        with pytest.raises(OSError, match="closed"):
+            buf.check_closed()
+
+
+def test_check_closed_raises_when_owner_closed() -> None:
+    sf = ScratchFile()
+    buf = sf.create_buffer()
+    sf.close()
+    with pytest.raises(OSError, match="closed"):
+        buf.check_closed()
+
+
+def test_ensure_available_bytes_in_page_grows_chain_when_allowed() -> None:
+    with ScratchFile(page_size=8) as sf:
+        buf = sf.create_buffer()
+        # Position at the boundary of the (only) eagerly-allocated page.
+        buf._position = 8
+        # Without permission to grow, return False (we'd be at end-of-chain).
+        assert buf.ensure_available_bytes_in_page(False) is False
+        # With permission, a new page is appended.
+        before = len(buf._page_indices)
+        assert buf.ensure_available_bytes_in_page(True) is True
+        assert len(buf._page_indices) == before + 1
 
 
 def test_negative_byte_value_raises() -> None:

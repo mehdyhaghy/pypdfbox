@@ -9,11 +9,13 @@ from pypdfbox.io import ScratchFile, ScratchFileBuffer
 from .cos_array import COSArray
 from .cos_base import COSBase
 from .cos_dictionary import COSDictionary
+from .cos_integer import COSInteger
 from .cos_name import COSName
 from .i_cos_visitor import ICOSVisitor
 
 _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
+_LENGTH: COSName = COSName.LENGTH  # type: ignore[attr-defined]
 _DECODE_PARMS = COSName.get_pdf_name("DecodeParms")
 _DP = COSName.get_pdf_name("DP")
 _FILTER_NAME_ALIASES: dict[str, str] = {
@@ -30,7 +32,10 @@ _FILTER_NAME_ALIASES: dict[str, str] = {
 
 class _CommittingOutputStream(io.BytesIO):
     """``BytesIO`` subclass whose ``close()`` commits the buffered bytes
-    back into the owning ``COSStream``."""
+    back into the owning ``COSStream``. Mirrors the inner anonymous
+    ``FilterOutputStream`` upstream returns from
+    ``createRawOutputStream``: on ``close()`` it syncs ``/Length`` and
+    clears the owner's writing flag (parity for ``isWriting``)."""
 
     def __init__(self, owner: COSStream) -> None:
         super().__init__()
@@ -41,6 +46,8 @@ class _CommittingOutputStream(io.BytesIO):
         if not self._committed:
             self._committed = True
             self._owner._set_raw_data_internal(self.getvalue())
+            self._owner._is_writing = False
+            self._owner._sync_length_entry()
         super().close()
 
 
@@ -78,6 +85,8 @@ class _EncodingOutputStream(io.BytesIO):
             # Record the filter chain on /Filter so future readers can
             # decode the bytes we just wrote.
             self._owner.set_filters(self._filters)
+            self._owner._is_writing = False
+            self._owner._sync_length_entry()
         super().close()
 
 
@@ -112,6 +121,11 @@ class COSStream(COSDictionary):
             self._owns_scratch = False
         self._buffer: ScratchFileBuffer | None = None
         self._closed = False
+        # Mirrors upstream ``isWriting``: while an output stream returned
+        # by ``create_*output_stream`` is open, reading/length queries and
+        # opening additional writers must raise. The committing close
+        # callbacks on the inner output streams clear this back to False.
+        self._is_writing = False
         # Encryption-aware decode: when populated, ``create_input_stream``
         # passes the raw bytes through ``handler.decrypt_stream`` BEFORE
         # running the /Filter chain. Mirrors PDFBox where the security
@@ -133,11 +147,36 @@ class COSStream(COSDictionary):
 
     # ---------- raw bytes I/O ----------
 
+    def check_closed(self) -> None:
+        """Raise ``OSError`` if this stream's backing scratch file has
+        been closed. Mirrors upstream ``checkClosed()`` (lines 105–114 of
+        ``COSStream.java``): catches the case where a caller holds onto a
+        ``COSStream`` whose enclosing ``PDDocument`` was closed.
+        """
+        if self._closed or (self._owns_scratch and self._scratch.is_closed()):
+            raise OSError(
+                "COSStream has been closed and cannot be read. "
+                "Perhaps its enclosing PDDocument has been closed?"
+            )
+
     def has_data(self) -> bool:
         return self._buffer is not None
 
     def get_length(self) -> int:
+        if self._is_writing:
+            raise RuntimeError(
+                "There is an open OutputStream associated with this COSStream. "
+                "It must be closed before querying the length of this COSStream."
+            )
         return self._buffer.length() if self._buffer is not None else 0
+
+    def _sync_length_entry(self) -> None:
+        """Write the current body length into the ``/Length`` dict entry.
+        Called by the inner output-stream ``close()`` callbacks so the
+        dictionary stays consistent with the body, matching upstream
+        ``setInt(COSName.LENGTH, randomAccess.length())``."""
+        length = self._buffer.length() if self._buffer is not None else 0
+        super().set_item(_LENGTH, COSInteger(length))
 
     def get_raw_data(self) -> bytes:
         """Snapshot of the current raw (encoded) bytes."""
@@ -167,16 +206,28 @@ class COSStream(COSDictionary):
     def create_raw_input_stream(self) -> BinaryIO:
         """Return a fresh ``BytesIO`` snapshot of the current raw bytes.
 
-        Raises ``OSError`` if the stream has no data (PDFBox parity)."""
+        Raises ``OSError`` if the stream has no data (PDFBox parity).
+        Raises ``RuntimeError`` while an output stream is open on this
+        COSStream — mirrors upstream ``IllegalStateException`` from the
+        ``isWriting`` guard in ``createRawInputStream``.
+        """
+        self.check_closed()
+        if self._is_writing:
+            raise RuntimeError("Cannot read while there is an open stream writer")
         if self._buffer is None:
             raise OSError("stream has no data")
         return io.BytesIO(self.get_raw_data())
 
     def create_raw_output_stream(self) -> BinaryIO:
         """Return a writable stream; on ``close()`` its contents replace
-        this stream's raw body."""
+        this stream's raw body. Raises ``RuntimeError`` if another writer
+        is already open (mirrors upstream ``isWriting`` guard)."""
         if self._closed:
             raise ValueError("operation on closed COSStream")
+        self.check_closed()
+        if self._is_writing:
+            raise RuntimeError("Cannot have more than one open stream writer.")
+        self._is_writing = True
         return _CommittingOutputStream(self)
 
     def set_security_handler(
@@ -251,6 +302,9 @@ class COSStream(COSDictionary):
         in-place (and re-stored as the new raw body) so subsequent calls
         skip the cipher pass — ``_decrypted`` guards against double-undo.
         """
+        self.check_closed()
+        if self._is_writing:
+            raise RuntimeError("Cannot read while there is an open stream writer")
         if self._buffer is None:
             raise OSError("stream has no data")
 
@@ -298,14 +352,20 @@ class COSStream(COSDictionary):
         - ``filters`` is a ``COSArray`` of names *or* a Python sequence
           of ``COSName`` / ``str`` → each filter is applied in reverse on
           ``close()`` so reading back through ``create_input_stream``
-          recovers the bytes you wrote. ``/Filter`` is set accordingly."""
+          recovers the bytes you wrote. ``/Filter`` is set accordingly.
+
+        Raises ``RuntimeError`` if another writer is already open."""
         if self._closed:
             raise ValueError("operation on closed COSStream")
+        self.check_closed()
+        if self._is_writing:
+            raise RuntimeError("Cannot have more than one open stream writer.")
         if filters is None:
             self.clear_filters()
             return self.create_raw_output_stream()
 
         names = _coerce_filter_chain(filters)
+        self._is_writing = True
         return _EncodingOutputStream(self, names)
 
     def create_view(self) -> Any:

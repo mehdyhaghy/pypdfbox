@@ -41,6 +41,8 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         # Lazy single-page scratch used to amortise byte-granular reads.
         self._scratch: bytearray = bytearray(self._page_size)
         self._closed = False
+        # Eagerly allocate the first page (matches upstream ctor calling addPage()).
+        self.add_page()
 
     # Resolve the diamond between RandomAccessRead and RandomAccessWrite.
     def __enter__(self) -> ScratchFileBuffer:
@@ -49,15 +51,61 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
 
-    def _check_open(self) -> None:
+    # ----- upstream-named internal helpers (parity with Java ScratchFileBuffer) -----
+
+    def check_closed(self) -> None:
+        """
+        Raise ``OSError`` if this buffer (or its parent ScratchFile) is closed.
+
+        Mirrors upstream private ``checkClosed()`` (line 87). Kept under the
+        upstream-equivalent name so Java porters can find it; it is *not*
+        considered part of the public API.
+        """
         if self._closed:
-            raise ValueError("operation on closed ScratchFileBuffer")
+            raise OSError("Buffer already closed")
+        if self._owner.is_closed():
+            raise OSError("Scratch file already closed")
+
+    # Backward-compat alias for the old internal name used by this module.
+    _check_closed = check_closed
+    _check_open = check_closed
+
+    def add_page(self) -> None:
+        """
+        Allocate a new page from the parent ScratchFile and append it to
+        this buffer's page chain.
+
+        Mirrors upstream private ``addPage()`` (line 101).
+        """
+        self._page_indices.append(self._owner.get_new_page())
+
+    def ensure_available_bytes_in_page(self, add_new_page_if_needed: bool) -> bool:
+        """
+        Ensure the current logical position has at least one writable / readable
+        byte in its page. If the position lands exactly on a page boundary
+        and we are at the end of the chain, allocate a new page when
+        ``add_new_page_if_needed`` is True; otherwise return ``False``.
+
+        Mirrors upstream private ``ensureAvailableBytesInPage(boolean)`` (line
+        156). pypdfbox's read/write paths use random-access page lookups via
+        :meth:`ScratchFile.read_page` / :meth:`write_page`, so this helper
+        only needs to grow the page chain when writing past the tail.
+        """
+        page_idx_in_chain, off = divmod(self._position, self._page_size)
+        if off == 0 and page_idx_in_chain >= len(self._page_indices):
+            if add_new_page_if_needed:
+                # Catch up with however many pages are needed (typically just one).
+                while len(self._page_indices) <= page_idx_in_chain:
+                    self.add_page()
+                return True
+            return False
+        return True
 
     # ----- helpers -----
 
     def _ensure_capacity(self, needed_pages: int) -> None:
         while len(self._page_indices) < needed_pages:
-            self._page_indices.append(self._owner.get_new_page())
+            self.add_page()
 
     def _read_into_view(self, view: memoryview, length: int) -> int:
         """
@@ -105,7 +153,7 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     # ----- RandomAccessRead -----
 
     def read(self) -> int:
-        self._check_open()
+        self.check_closed()
         if self._position >= self._length:
             return self.EOF
         out = bytearray(1)
@@ -115,7 +163,7 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     def read_into(
         self, buf: bytearray, offset: int = 0, length: int | None = None
     ) -> int:
-        self._check_open()
+        self.check_closed()
         if length is None:
             length = len(buf) - offset
         if length < 0:
@@ -128,39 +176,68 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         return self._read_into_view(view, length)
 
     def get_position(self) -> int:
-        self._check_open()
+        self.check_closed()
         return self._position
 
     def seek(self, position: int) -> None:
-        self._check_open()
+        """
+        Seek to ``position``.
+
+        Mirrors upstream ``seek(long)`` (line 287):
+
+        * Raises ``OSError`` (Java ``IOException``) on negative offsets.
+        * Raises ``EOFError`` (Java ``EOFException``) when seeking past
+          ``length()``. Matches PDFBOX-4756.
+        * Raises ``OSError`` if the buffer (or its scratch file) is closed.
+        """
+        self.check_closed()
         if position < 0:
-            raise ValueError("position must be non-negative")
-        # Mirror BytesIO permissiveness: seeking past end is allowed and
-        # leaves length unchanged until a subsequent write.
+            raise OSError(f"Negative seek offset: {position}")
+        if position > self._length:
+            raise EOFError(
+                f"seek({position}) past end of buffer (length={self._length})"
+            )
         self._position = position
 
     def length(self) -> int:
-        self._check_open()
+        self.check_closed()
         return self._length
+
+    def is_eof(self) -> bool:
+        """
+        ``True`` when the read position is at or past the end of the buffer.
+
+        Mirrors upstream ``isEOF()`` (line 346). Overrides the cursor-peeking
+        default in :class:`RandomAccessRead` so closed-buffer access raises
+        the upstream-equivalent ``OSError`` instead of silently returning
+        ``True`` via a swallowed read.
+        """
+        self.check_closed()
+        return self._position >= self._length
 
     def is_empty(self) -> bool:
         """True when no bytes are stored (or after :meth:`clear`)."""
-        self._check_open()
+        self.check_closed()
         return self._length == 0
 
     def is_closed(self) -> bool:
         return self._closed
 
     def create_view(self, start_position: int, length: int) -> RandomAccessRead:
-        # Upstream: ScratchFileBuffer does not support views.
-        raise NotImplementedError("createView() not supported on ScratchFileBuffer")
+        # Upstream: ScratchFileBuffer.createView throws UnsupportedOperationException.
+        raise NotImplementedError(
+            f"{type(self).__name__}.create_view isn't supported."
+        )
 
     # ----- RandomAccessWrite -----
 
     def write(self, b: int) -> None:
-        self._check_open()
+        self.check_closed()
         if not 0 <= b <= 0xFF:
             raise ValueError("byte value must be in 0..255")
+        # _write_from_view already grows the page chain via _ensure_capacity;
+        # ensure_available_bytes_in_page exists for parity with upstream's
+        # private helper, not as a precondition gate.
         self._write_from_view(memoryview(bytes((b,))), 1)
 
     def write_bytes(
@@ -169,7 +246,7 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         offset: int = 0,
         length: int | None = None,
     ) -> None:
-        self._check_open()
+        self.check_closed()
         view = _as_byte_view(data)
         if length is None:
             length = view.nbytes - offset
@@ -180,13 +257,15 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         self._write_from_view(view[offset : offset + length], length)
 
     def clear(self) -> None:
-        self._check_open()
+        self.check_closed()
         # Return owned pages; callers expect a fresh, empty buffer afterwards.
         if self._page_indices:
             self._owner.mark_pages_as_free(self._page_indices)
             self._page_indices.clear()
         self._position = 0
         self._length = 0
+        # Upstream keeps the first page allocated after clear(); mirror that.
+        self.add_page()
 
     def close(self) -> None:
         if self._closed:

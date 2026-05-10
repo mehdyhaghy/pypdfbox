@@ -107,3 +107,53 @@ def test_to_rgb_pipes_through_tint_transform_then_alternate() -> None:
     assert abs(r - 1.0) < 1e-6
     assert abs(g - 0.0) < 1e-6
     assert abs(b - 0.0) < 1e-6
+
+
+def test_tint_transform_helper_scales_to_0_255() -> None:
+    """Upstream ``tintTransform(samples, alt)`` (PDSeparation.java line
+    246): mutate ``samples`` from 0..255 to 0..1, eval the tint, scale
+    each output back to 0..255 and write into ``alt``.
+    """
+    cs = _build("X", "DeviceCMYK", _type2([0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 0.0]))
+    samples = [255.0]  # max tint in 8-bit raster space
+    alt = [0, 0, 0, 0]
+    cs.tint_transform(samples, alt)
+    # tint_transform scales samples in-place to 0..1 first
+    assert samples[0] == 1.0
+    # Type 2 N=1: result is C1 = (0, 1, 1, 0); scaled to (0, 255, 255, 0)
+    assert alt == [0, 255, 255, 0]
+
+
+def test_to_rgb_image_renders_separation_to_rgb() -> None:
+    """Upstream ``toRGBImage(WritableRaster)`` (PDSeparation.java line
+    159) — full-tint pixel renders to red over the SpotRed/CMYK
+    separation.
+    """
+    cs = _build("SpotRed", "DeviceCMYK", _type2([0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 1.0, 0.0]))
+    image = cs.to_rgb_image(b"\xff", 1, 1)
+    assert image.size == (1, 1)
+    assert image.mode == "RGB"
+    assert image.getpixel((0, 0)) == (255, 0, 0)
+
+
+def test_to_raw_image_returns_grayscale_pillow_image() -> None:
+    """Upstream ``toRawImage`` (PDSeparation.java line 258) wraps the
+    raster with ``ColorSpace.CS_GRAY`` — single-band tint ramp.
+    """
+    cs = _build("X", "DeviceCMYK", _type2([0.0], [1.0]))
+    image = cs.to_raw_image(b"\x00\x80\xff", 3, 1)
+    assert image.size == (3, 1)
+    assert image.mode == "L"
+    assert image.getpixel((0, 0)) == 0
+    assert image.getpixel((1, 0)) == 0x80
+    assert image.getpixel((2, 0)) == 0xFF
+
+
+def test_to_string_includes_colorant_alternate_and_tint() -> None:
+    """Upstream ``toString`` (PDSeparation.java line 317):
+    ``Separation{"<colorant>" <alt name> <tint>}``.
+    """
+    cs = _build("PANTONE 185 C", "DeviceRGB", _type2([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]))
+    rendered = cs.to_string()
+    assert rendered.startswith('Separation{"PANTONE 185 C" DeviceRGB ')
+    assert rendered.endswith("}")

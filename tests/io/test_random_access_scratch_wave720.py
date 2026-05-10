@@ -55,7 +55,9 @@ def test_wave720_scratch_file_buffer_internal_empty_read_returns_eof() -> None:
     with ScratchFile(page_size=8) as scratch:
         buffer = scratch.create_buffer()
         buffer.write_bytes(b"abc")
-        buffer.seek(4)
+        # Seek to exactly length (PDFBOX-4756: seeking past length raises EOFError;
+        # seeking to length is the EOF cursor position).
+        buffer.seek(buffer.length())
 
         assert buffer._read_into_view(memoryview(bytearray(1)), 1) == buffer.EOF
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+import io
+
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.common.filespecification import (
     PDComplexFileSpecification,
     PDSimpleFileSpecification,
@@ -115,3 +117,89 @@ def test_embedded_fdfs_round_trip() -> None:
     arr = COSArray()
     fdf.set_embedded_fdfs(arr)
     assert fdf.get_embedded_fdfs() is arr
+
+
+def test_embedded_fd_fs_strict_alias() -> None:
+    """``get_embedded_fd_fs`` is the strict mechanical translation of
+    upstream ``getEmbeddedFDFs`` and must round-trip with the pythonic
+    ``get_embedded_fdfs`` form.
+    """
+    fdf = FDFDictionary()
+    arr = COSArray()
+    fdf.set_embedded_fd_fs(arr)
+    assert fdf.get_embedded_fd_fs() is arr
+    assert fdf.get_embedded_fdfs() is arr
+    fdf.set_embedded_fd_fs(None)
+    assert fdf.get_embedded_fd_fs() is None
+    assert fdf.get_embedded_fdfs() is None
+
+
+def test_pages_round_trip() -> None:
+    fdf = FDFDictionary()
+    assert fdf.get_pages() is None
+    arr = COSArray()
+    arr.add(COSDictionary())
+    arr.add(COSDictionary())
+    fdf.set_pages(arr)
+    assert fdf.get_pages() is arr
+    fdf.set_pages(None)
+    assert fdf.get_pages() is None
+
+
+def test_differences_round_trip() -> None:
+    fdf = FDFDictionary()
+    assert fdf.get_differences() is None
+    diff = COSStream()
+    fdf.set_differences(diff)
+    assert fdf.get_differences() is diff
+    fdf.set_differences(None)
+    assert fdf.get_differences() is None
+
+
+def test_javascript_round_trip() -> None:
+    fdf = FDFDictionary()
+    assert fdf.get_javascript() is None
+    js = COSDictionary()
+    fdf.set_javascript(js)
+    assert fdf.get_javascript() is js
+    fdf.set_javascript(None)
+    assert fdf.get_javascript() is None
+
+
+def test_java_script_strict_alias() -> None:
+    """``get_java_script`` is the strict mechanical translation of upstream
+    ``getJavaScript`` and must round-trip with the pythonic
+    ``get_javascript`` form."""
+    fdf = FDFDictionary()
+    js = COSDictionary()
+    fdf.set_java_script(js)
+    assert fdf.get_java_script() is js
+    assert fdf.get_javascript() is js
+
+
+def test_write_xml_empty_dictionary_emits_nothing() -> None:
+    fdf = FDFDictionary()
+    out = io.StringIO()
+    fdf.write_xml(out)
+    assert out.getvalue() == ""
+
+
+def test_write_xml_with_file_id_and_fields() -> None:
+    fdf = FDFDictionary()
+    fdf.set_file("source.pdf")
+    ids = COSArray()
+    ids.add(COSString(b"\x01\x02"))
+    ids.add(COSString(b"\x03\x04"))
+    fdf.set_id(ids)
+    field = FDFField()
+    field.set_partial_field_name("alpha")
+    fdf.set_fields([field])
+
+    out = io.StringIO()
+    fdf.write_xml(out)
+    text = out.getvalue()
+    assert '<f href="source.pdf" />' in text
+    # Hex emission is uppercase per COSString.to_hex_string.
+    assert '<ids original="0102" modified="0304" />' in text
+    assert "<fields>" in text and "</fields>" in text
+    assert 'name="alpha"' in text

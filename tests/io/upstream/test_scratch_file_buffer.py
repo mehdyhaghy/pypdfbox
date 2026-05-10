@@ -3,11 +3,12 @@ Ported from
 io/src/test/java/org/apache/pdfbox/io/ScratchFileBufferTest.java
 (Apache PDFBox 3.0).
 
-pypdfbox's ``ScratchFileBuffer`` is backed by ``io.BytesIO`` (memory-only) /
-``tempfile.SpooledTemporaryFile`` (mixed) / ``tempfile.TemporaryFile``
-(temp-file-only) — see CHANGES.md. The page-list internals upstream tests
-poke at do not exist in pypdfbox; observable seek/length/read/write behavior
-is the same.
+pypdfbox's ``ScratchFileBuffer`` mirrors upstream's page-backed semantics
+1:1: the buffer owns a chain of fixed-size pages drawn from the parent
+``ScratchFile``, and ``seek`` raises ``EOFError`` (mapped from upstream
+``EOFException``) when the target is past ``length()``.
+
+IOException → OSError per CLAUDE.md test-porting conventions.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ NUM_ITERATIONS = 3
 
 
 def test_eof_bug_in_seek() -> None:
-    # PDFBOX-4756: positions after seeking + writing across "page" boundaries.
+    # PDFBOX-4756: positions after seeking + writing across page boundaries.
     with ScratchFile(MemoryUsageSetting.setup_main_memory_only()) as scratch_file:
         buf = scratch_file.create_buffer()
         bytes_data = bytes(PAGE_SIZE)
@@ -46,15 +47,18 @@ def test_buffer_length() -> None:
 
 
 def test_buffer_seek() -> None:
+    # Upstream:
+    #   assertThrows(IOException.class,    () -> b1.seek(-1));
+    #   assertThrows(EOFException.class,   () -> b1.seek(PAGE_SIZE + 1));
+    # IOException → OSError, EOFException → EOFError.
     with ScratchFile(MemoryUsageSetting.setup_main_memory_only()) as scratch_file:
         bytes_data = bytes(PAGE_SIZE)
         b1 = scratch_file.create_buffer()
         b1.write_bytes(bytes_data)
-        with pytest.raises((OSError, ValueError)):
+        with pytest.raises(OSError):
             b1.seek(-1)
-        # skipped: upstream asserts EOFException for seek beyond a single
-        # 4 KiB "page"; pypdfbox's BytesIO/SpooledTemporaryFile backing has no
-        # page concept — seeking past end is allowed and clamps to length.
+        with pytest.raises(EOFError):
+            b1.seek(PAGE_SIZE + 1)
 
 
 def test_buffer_eof() -> None:
@@ -74,7 +78,7 @@ def test_already_close() -> None:
         buf = scratch_file.create_buffer()
         buf.write_bytes(bytes_data)
         buf.close()
-        with pytest.raises((OSError, ValueError)):
+        with pytest.raises(OSError):
             buf.seek(0)
 
 
@@ -104,11 +108,10 @@ def test_buffers_closed() -> None:
 
 
 def test_view() -> None:
+    # Upstream: ScratchFileBuffer.createView throws UnsupportedOperationException.
+    # In Python we surface that as NotImplementedError.
     with ScratchFile(MemoryUsageSetting.setup_main_memory_only()) as scratch_file:
         buf = scratch_file.create_buffer()
         buf.write_bytes(bytes([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]))
-        # ScratchFileBuffer does not support views in upstream; pypdfbox
-        # inherits ``create_view`` from RandomAccessRead but the contract is
-        # not implemented for scratch buffers.
-        with pytest.raises((NotImplementedError, OSError, ValueError, TypeError)):
+        with pytest.raises(NotImplementedError):
             buf.create_view(0, 10)

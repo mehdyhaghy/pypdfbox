@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSObject, COSString
+from typing import IO
+
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSName,
+    COSObject,
+    COSStream,
+    COSString,
+)
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
@@ -18,6 +28,7 @@ _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 _DIFFERENCES: COSName = COSName.get_pdf_name("Differences")
 _TARGET: COSName = COSName.get_pdf_name("Target")
 _EMBEDDED_FDFS: COSName = COSName.get_pdf_name("EmbeddedFDFs")
+_JAVA_SCRIPT: COSName = COSName.get_pdf_name("JavaScript")
 
 
 class FDFDictionary:
@@ -229,3 +240,121 @@ class FDFDictionary:
             self._fdf.remove_item(_EMBEDDED_FDFS)
         else:
             self._fdf.set_item(_EMBEDDED_FDFS, arr)
+
+    # Strict mechanical-snake_case aliases for upstream ``getEmbeddedFDFs``
+    # / ``setEmbeddedFDFs``. The pythonic spelling (``get_embedded_fdfs``)
+    # remains the primary form; these aliases exist only so the parity
+    # report matches upstream method names exactly.
+    def get_embedded_fd_fs(self) -> COSArray | None:
+        return self.get_embedded_fdfs()
+
+    def set_embedded_fd_fs(self, arr: COSArray | None) -> None:
+        self.set_embedded_fdfs(arr)
+
+    # ---------- /Pages (FDFPage list — surfaced as raw COSArray) ----------
+
+    def get_pages(self) -> COSArray | None:
+        """Return the raw ``/Pages`` array, or ``None`` when unset.
+
+        Upstream ``FDFDictionary.getPages`` returns ``List<FDFPage>`` wrapped
+        in a ``COSArrayList``. pypdfbox has not yet ported ``FDFPage``, so
+        we surface the underlying ``COSArray`` directly. The accessor name
+        and "missing entry returns ``None``" semantics still match upstream.
+        """
+        v = self._fdf.get_dictionary_object(_PAGES)
+        if isinstance(v, COSArray):
+            return v
+        return None
+
+    def set_pages(self, pages: COSArray | None) -> None:
+        """Set the ``/Pages`` array. Pass ``None`` to drop the entry.
+
+        Accepts a ``COSArray`` directly (since ``FDFPage`` is not yet
+        ported). Mirrors upstream ``FDFDictionary.setPages``.
+        """
+        if pages is None:
+            self._fdf.remove_item(_PAGES)
+        else:
+            self._fdf.set_item(_PAGES, pages)
+
+    # ---------- /Differences (incremental updates stream) ----------
+
+    def get_differences(self) -> COSStream | None:
+        """Return the ``/Differences`` stream entry, or ``None`` when unset.
+
+        Mirrors upstream ``FDFDictionary.getDifferences``.
+        """
+        v = self._fdf.get_dictionary_object(_DIFFERENCES)
+        if isinstance(v, COSStream):
+            return v
+        return None
+
+    def set_differences(self, diff: COSStream | None) -> None:
+        """Set the ``/Differences`` stream entry; pass ``None`` to drop it.
+
+        Mirrors upstream ``FDFDictionary.setDifferences``.
+        """
+        if diff is None:
+            self._fdf.remove_item(_DIFFERENCES)
+        else:
+            self._fdf.set_item(_DIFFERENCES, diff)
+
+    # ---------- /JavaScript (FDFJavaScript sub-dict — surfaced as raw COSDictionary) ----------
+
+    def get_javascript(self) -> COSDictionary | None:
+        """Return the raw ``/JavaScript`` sub-dictionary, or ``None``.
+
+        Upstream ``FDFDictionary.getJavaScript`` returns ``FDFJavaScript``;
+        pypdfbox has not yet ported that class, so we surface the underlying
+        ``COSDictionary`` directly. Accessor name matches upstream.
+        """
+        v = self._fdf.get_dictionary_object(_JAVA_SCRIPT)
+        if isinstance(v, COSDictionary):
+            return v
+        return None
+
+    def set_javascript(self, js: COSDictionary | None) -> None:
+        """Set the ``/JavaScript`` sub-dictionary; ``None`` removes the entry.
+
+        Mirrors upstream ``FDFDictionary.setJavaScript``.
+        """
+        if js is None:
+            self._fdf.remove_item(_JAVA_SCRIPT)
+        else:
+            self._fdf.set_item(_JAVA_SCRIPT, js)
+
+    # Strict mechanical-snake_case aliases for upstream ``getJavaScript`` /
+    # ``setJavaScript``. The pythonic ``get_javascript`` / ``set_javascript``
+    # remain primary.
+    def get_java_script(self) -> COSDictionary | None:
+        return self.get_javascript()
+
+    def set_java_script(self, js: COSDictionary | None) -> None:
+        self.set_javascript(js)
+
+    # ---------- XFDF XML serialisation ----------
+
+    def write_xml(self, output: IO[str]) -> None:
+        """Serialise this dictionary as XFDF XML to ``output``.
+
+        Mirrors upstream ``FDFDictionary.writeXML(Writer)``: emits the
+        ``<f>``, ``<ids>``, and ``<fields>`` sub-elements when the
+        corresponding entries are present. Annotations are not emitted by
+        upstream ``writeXML`` either.
+        """
+        fs = self.get_file()
+        if fs is not None:
+            output.write('<f href="' + (fs.get_file() or "") + '" />\n')
+        ids = self.get_id()
+        if ids is not None:
+            original = ids.get_object(0)
+            modified = ids.get_object(1)
+            if isinstance(original, COSString) and isinstance(modified, COSString):
+                output.write('<ids original="' + original.to_hex_string() + '" ')
+                output.write('modified="' + modified.to_hex_string() + '" />\n')
+        fields = self.get_fields()
+        if fields:
+            output.write("<fields>\n")
+            for field in fields:
+                field.write_xml(output)
+            output.write("</fields>\n")

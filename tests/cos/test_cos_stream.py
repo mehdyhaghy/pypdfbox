@@ -231,3 +231,67 @@ def test_create_view_with_filter_chain_returns_decoded_buffer() -> None:
 def test_create_view_no_data_raises() -> None:
     with COSStream() as s, pytest.raises(OSError):
         s.create_view()
+
+
+def test_length_entry_synced_after_raw_output_close() -> None:
+    """Mirrors upstream inner ``close()`` (line 249) which calls
+    ``setInt(COSName.LENGTH, randomAccess.length())`` so the dictionary
+    stays consistent with the body length on commit."""
+    with COSStream() as s:
+        with s.create_raw_output_stream() as out:
+            out.write(b"twelve bytes")
+        assert s.get_int(COSName.LENGTH) == 12  # type: ignore[attr-defined]
+        assert s.get_length() == 12
+
+
+def test_length_entry_synced_after_filtered_output_close() -> None:
+    """Filtered writer also commits ``/Length`` to the dict on close —
+    the encoded raw size, mirroring upstream parity for ``isWriting`` +
+    ``setInt(COSName.LENGTH, ...)``."""
+    with COSStream() as s:
+        with s.create_output_stream(COSName.FLATE_DECODE) as out:  # type: ignore[attr-defined]
+            out.write(b"compressed body")
+        # Whatever the encoded length is, dictionary entry must equal it.
+        assert s.get_int(COSName.LENGTH) == s.get_length()  # type: ignore[attr-defined]
+        assert s.get_length() > 0
+
+
+def test_open_writer_blocks_second_writer() -> None:
+    """Upstream guard at lines 222 and 266: opening a second output
+    stream while one is already open must raise."""
+    with COSStream() as s:
+        out = s.create_output_stream()
+        try:
+            with pytest.raises(RuntimeError):
+                s.create_output_stream()
+            with pytest.raises(RuntimeError):
+                s.create_raw_output_stream()
+        finally:
+            out.close()
+
+
+def test_open_writer_blocks_reads_and_length() -> None:
+    """Upstream ``isWriting`` guard at lines 137, 333: while a writer is
+    open, reading and querying length must raise."""
+    with COSStream() as s:
+        s.set_raw_data(b"existing")
+        out = s.create_raw_output_stream()
+        try:
+            with pytest.raises(RuntimeError):
+                s.create_input_stream()
+            with pytest.raises(RuntimeError):
+                s.create_raw_input_stream()
+            with pytest.raises(RuntimeError):
+                s.get_length()
+        finally:
+            out.close()
+
+
+def test_check_closed_after_owns_scratch_close() -> None:
+    """``check_closed`` raises once the backing scratch file is gone —
+    mirrors upstream ``checkClosed()`` (line 105)."""
+    s = COSStream()
+    s.set_raw_data(b"x")
+    s.close()
+    with pytest.raises(OSError):
+        s.check_closed()

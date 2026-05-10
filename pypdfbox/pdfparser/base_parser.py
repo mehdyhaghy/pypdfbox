@@ -8,8 +8,15 @@ from pypdfbox.io import RandomAccessRead
 from .parse_error import PDFParseError
 
 if TYPE_CHECKING:
+    from pypdfbox.cos.cos_array import COSArray
+    from pypdfbox.cos.cos_base import COSBase
+    from pypdfbox.cos.cos_dictionary import COSDictionary
     from pypdfbox.cos.cos_document import COSDocument
+    from pypdfbox.cos.cos_name import COSName
+    from pypdfbox.cos.cos_number import COSNumber
+    from pypdfbox.cos.cos_object import COSObject
     from pypdfbox.cos.cos_object_key import COSObjectKey
+    from pypdfbox.cos.cos_string import COSString
 
 _LOG = logging.getLogger(__name__)
 
@@ -115,6 +122,21 @@ class BaseParser:
         cached = self._key_cache.get((num, gen))
         return cached if cached is not None else _Key(num, gen)
 
+    def get_object_from_pool(self, key: COSObjectKey) -> COSObject:
+        """Return the (lazy) ``COSObject`` placeholder for ``key`` from the
+        bound document's object pool. Mirrors upstream
+        ``BaseParser.getObjectFromPool(COSObjectKey)`` (line 257) — without
+        a bound document the upstream method raises ``IOException`` because
+        a content-stream reference can't be resolved; we mirror that with a
+        :class:`PDFParseError`."""
+        if self._document is None:
+            raise PDFParseError(
+                f"object reference {key} at offset {self.position} "
+                "in content stream",
+                position=self.position,
+            )
+        return self._document.get_object_from_pool(key)
+
     # ---------- position / low-level byte access ----------
 
     @property
@@ -174,6 +196,18 @@ class BaseParser:
     @classmethod
     def is_eol(cls, b: int) -> bool:
         return b in (0x0A, 0x0D)
+
+    @classmethod
+    def is_lf(cls, b: int) -> bool:
+        """Mirrors upstream ``BaseParser.isLF(int)`` (line 1274) — true iff
+        ``b`` is the ASCII LF byte (0x0A)."""
+        return b == cls.ASCII_LF
+
+    @classmethod
+    def is_cr(cls, b: int) -> bool:
+        """Mirrors upstream ``BaseParser.isCR(int)`` (line 1279) — true iff
+        ``b`` is the ASCII CR byte (0x0D)."""
+        return b == cls.ASCII_CR
 
     @classmethod
     def is_delimiter(cls, b: int) -> bool:
@@ -536,15 +570,23 @@ class BaseParser:
             else:
                 out.append(b)
 
-    def _check_for_end_of_string(self, depth: int) -> int:
-        if depth == 0:
+    def check_for_end_of_string(self, braces_parameter: int) -> int:
+        """Patch for malformed literal strings — see PDFBOX-276 / 1217.
+        Mirrors upstream ``BaseParser.checkForEndOfString(int)`` (line 494).
+
+        Looks ahead up to three bytes; if they form one of the documented
+        end-of-string sequences (``CR/LF/CRLF`` followed by ``/`` or ``>``)
+        the brace count is forced to 0 so the caller stops accumulating
+        bytes into the literal string. Otherwise ``braces_parameter`` is
+        returned unchanged."""
+        if braces_parameter == 0:
             return 0
         next_three = bytearray(3)
         amount_read = self._src.read_into(next_three)
         if amount_read > 0:
             self._src.rewind(amount_read)
         if amount_read < 3:
-            return depth
+            return braces_parameter
         if self.is_eol(next_three[0]) and next_three[1] in (0x2F, 0x3E):  # '/', '>'
             return 0
         if (
@@ -553,7 +595,13 @@ class BaseParser:
             and next_three[2] in (0x2F, 0x3E)  # '/', '>'
         ):
             return 0
-        return depth
+        return braces_parameter
+
+    def _check_for_end_of_string(self, depth: int) -> int:
+        """Back-compat alias for :meth:`check_for_end_of_string` — kept for
+        any internal callers that still reference the leading-underscore
+        spelling. Prefer the upstream-name method in new code."""
+        return self.check_for_end_of_string(depth)
 
     def _consume_escape(self, out: bytearray, depth: int) -> int:
         b = self._src.read()
@@ -798,3 +846,391 @@ class BaseParser:
                 position=self.position,
             )
         return value
+
+    # ---------- COS-object parse helpers (upstream BaseParser parity) ----------
+    #
+    # The upstream Java BaseParser is concrete and includes the parse_cos_*
+    # / parse_dir_object methods directly. Our pypdfbox layout splits the
+    # higher-level ``COSParser`` overrides off into ``cos_parser.py`` for
+    # readability, but the upstream surface is mirrored here so:
+    #
+    #   * BaseParser-only callers (and parity tooling) see the same
+    #     methods on the same class as upstream;
+    #   * COSParser's overrides — kept for tighter integration with its
+    #     recursion-guard and stream-body machinery — replace these at the
+    #     subclass boundary without breaking any caller.
+
+    def parse_dir_object(self) -> COSBase | None:
+        """Parse one direct object per upstream
+        ``BaseParser.parseDirObject()`` (line 969). Returns ``None`` at EOF
+        or for unknown content the parser cannot recover from."""
+        # Late imports — cos types are not safe to import at module level
+        # for the subclass chain, but the cos package itself does not import
+        # from pypdfbox.pdfparser so a runtime import here is safe.
+        from pypdfbox.cos.cos_boolean import COSBoolean
+        from pypdfbox.cos.cos_null import COSNull
+        from pypdfbox.cos.cos_object import COSObject
+
+        self.skip_whitespace()
+        c = self._src.peek()
+        if c == RandomAccessRead.EOF:
+            return None
+        if c == 0x3C:  # '<'
+            self._src.read()
+            second = self._src.peek()
+            self._src.rewind(1)
+            if second == 0x3C:
+                return self.parse_cos_dictionary(is_direct=True)
+            return self.parse_cos_string()
+        if c == 0x5B:  # '['
+            return self.parse_cos_array()
+        if c == 0x28:  # '('
+            return self.parse_cos_string()
+        if c == 0x2F:  # '/'
+            return self.parse_cos_name()
+        if c == 0x6E:  # 'n' — null
+            self.read_expected_string(b"null", skip_spaces=False)
+            return COSNull.NULL
+        if c == 0x74:  # 't' — true
+            self.read_expected_string(b"true", skip_spaces=False)
+            return COSBoolean.TRUE
+        if c == 0x66:  # 'f' — false
+            self.read_expected_string(b"false", skip_spaces=False)
+            return COSBoolean.FALSE
+        if c == 0x52:  # 'R' — bare-reference recovery placeholder
+            self._src.read()
+            # Upstream returns ``new COSObject(null)`` as a sentinel; the
+            # caller (``parse_cos_array``) only checks ``isinstance``,
+            # never reads object_number. ``(0, 0)`` keeps the construction
+            # valid under our non-negative-number invariant.
+            return COSObject(0, 0)
+        if self.is_digit(c) or c in (0x2B, 0x2D, 0x2E):  # '+', '-', '.'
+            return self.parse_cos_number()
+        # Recovery branch: read the unknown token and decide whether to
+        # rewind it (for endobj/endstream) or warn-and-skip (PDFNull).
+        start_offset = self.position
+        bad_string = self.read_string()
+        if not bad_string:
+            peek = self._src.peek()
+            raise PDFParseError(
+                f"Unknown dir object c={chr(c)!r} cInt={c} peek="
+                f"{chr(peek) if peek != -1 else '-1'!r} peekInt={peek} at offset "
+                f"{self.position} (start offset: {start_offset})",
+                position=start_offset,
+            )
+        if bad_string in (self.ENDOBJ_STRING, self.ENDSTREAM_STRING):
+            # Put it back so the outer caller sees the terminator.
+            self._src.rewind(len(bad_string.encode("latin-1")))
+            return None
+        _LOG.warning(
+            "Skipped unexpected dir object = %r at offset %d (start offset: %d)",
+            bad_string,
+            self.position,
+            start_offset,
+        )
+        return COSNull.NULL
+
+    def parse_cos_array(self) -> COSArray:
+        """Parse a PDF ``[ ... ]`` array per upstream
+        ``BaseParser.parseCOSArray()`` (line 764). Permissive on bad
+        elements: a corrupt entry is logged and the array continues until
+        the closing ``]`` or an ``endobj`` / ``endstream`` keyword is
+        encountered."""
+        from pypdfbox.cos.cos_array import COSArray
+        from pypdfbox.cos.cos_integer import COSInteger
+        from pypdfbox.cos.cos_object import COSObject
+
+        start_position = self.position
+        self.read_expected_char("[")
+        po = COSArray()
+        self.skip_whitespace()
+        while True:
+            i = self._src.peek()
+            if i <= 0 or i == 0x5D:  # ']' or EOF
+                break
+            pbo = self.parse_dir_object()
+            if isinstance(pbo, COSObject):
+                # Replace the placeholder with a resolved indirect reference
+                # using the two preceding integers as ``num gen R`` (PDFBOX-385).
+                pbo = None
+                if len(po) > 1 and isinstance(po.get(len(po) - 1), COSInteger):
+                    gen_number = po.remove_at(len(po) - 1)
+                    if len(po) > 0 and isinstance(po.get(len(po) - 1), COSInteger):
+                        number = po.remove_at(len(po) - 1)
+                        num_value = number.value
+                        gen_value = gen_number.value
+                        if num_value >= 0 and gen_value >= 0:
+                            key = self.get_object_key(num_value, gen_value)
+                            pbo = self.get_object_from_pool(key)
+                        else:
+                            _LOG.warning(
+                                "Invalid value(s) for an object key %d %d",
+                                num_value,
+                                gen_value,
+                            )
+            if pbo is None:
+                _LOG.warning(
+                    "Corrupt array element at offset %d, start offset: %d",
+                    self.position,
+                    start_position,
+                )
+                is_this_the_end = self.read_string()
+                if not is_this_the_end and self._src.peek() == 0x5B:  # '['
+                    return po
+                self._src.rewind(len(is_this_the_end.encode("latin-1")))
+                if is_this_the_end in (self.ENDOBJ_STRING, self.ENDSTREAM_STRING):
+                    return po
+            else:
+                po.add(pbo)
+            self.skip_whitespace()
+        # consume ']'
+        self._src.read()
+        self.skip_whitespace()
+        return po
+
+    def parse_cos_dictionary(self, is_direct: bool = False) -> COSDictionary:
+        """Parse a PDF ``<< ... >>`` dictionary per upstream
+        ``BaseParser.parseCOSDictionary(boolean)`` (line 276). Permissive on
+        malformed input: a stray non-``/`` byte triggers
+        :meth:`read_until_end_of_cos_dictionary` for recovery."""
+        from pypdfbox.cos.cos_dictionary import COSDictionary
+
+        self.read_expected_char("<")
+        self.read_expected_char("<")
+        self.skip_whitespace()
+        obj = COSDictionary()
+        obj.set_direct(is_direct)
+        while True:
+            self.skip_whitespace()
+            c = self._src.peek()
+            if c == 0x3E:  # '>'
+                break
+            if c == 0x2F:  # '/'
+                if not self.parse_cos_dictionary_name_value_pair(obj):
+                    return obj
+            else:
+                _LOG.warning(
+                    "Invalid dictionary, found: %r but expected: '/' at offset %d",
+                    chr(c) if c >= 0 else "",
+                    self.position,
+                )
+                if self.read_until_end_of_cos_dictionary():
+                    return obj
+        try:
+            self.read_expected_char(">")
+            self.read_expected_char(">")
+        except PDFParseError:
+            _LOG.warning(
+                "Invalid dictionary, can't find end of dictionary at offset %d",
+                self.position,
+            )
+        return obj
+
+    def parse_cos_dictionary_name_value_pair(self, obj: COSDictionary) -> bool:
+        """Parse one ``/Name value`` entry into ``obj``. Returns ``False``
+        if the dictionary is corrupt (caller bails). Mirrors upstream
+        ``BaseParser.parseCOSDictionaryNameValuePair`` (line 384)."""
+        from pypdfbox.cos.cos_integer import COSInteger
+
+        key = self.parse_cos_name()
+        if key is None or not key.get_name():
+            _LOG.warning("Empty COSName at offset %d", self.position)
+        value = self.parse_cos_dictionary_value()
+        self.skip_whitespace()
+        if value is None:
+            _LOG.warning("Bad dictionary declaration at offset %d", self.position)
+            return False
+        if isinstance(value, COSInteger) and not value.is_valid():
+            _LOG.warning(
+                "Skipped out of range number value at offset %d", self.position
+            )
+        else:
+            value.set_direct(True)
+            obj.set_item(key, value)
+        return True
+
+    def parse_cos_dictionary_value(self) -> COSBase | None:
+        """Parse a dictionary value, including the special ``num gen R``
+        indirect-reference recovery. Mirrors upstream
+        ``BaseParser.parseCOSDictionaryValue`` (line 216)."""
+        from pypdfbox.cos.cos_integer import COSInteger
+        from pypdfbox.cos.cos_null import COSNull
+        from pypdfbox.cos.cos_number import COSNumber
+
+        num_offset = self.position
+        value = self.parse_dir_object()
+        self.skip_whitespace()
+        if not isinstance(value, COSNumber) or not self.is_digit_at():
+            return value
+        gen_offset = self.position
+        generation_number = self.parse_dir_object()
+        self.skip_whitespace()
+        self.read_expected_char("R")
+        if not isinstance(value, COSInteger):
+            _LOG.error(
+                "expected number, actual=%r at offset %d", value, num_offset
+            )
+            return COSNull.NULL
+        if not isinstance(generation_number, COSInteger):
+            _LOG.error(
+                "expected number, actual=%r at offset %d",
+                generation_number,
+                gen_offset,
+            )
+            return COSNull.NULL
+        obj_number = value.value
+        if obj_number <= 0:
+            _LOG.warning(
+                "invalid object number value =%d at offset %d",
+                obj_number,
+                num_offset,
+            )
+            return COSNull.NULL
+        gen_number = generation_number.value
+        if gen_number < 0:
+            _LOG.error(
+                "invalid generation number value =%d at offset %d",
+                gen_number,
+                num_offset,
+            )
+            return COSNull.NULL
+        return self.get_object_from_pool(self.get_object_key(obj_number, gen_number))
+
+    def read_until_end_of_cos_dictionary(self) -> bool:
+        """Skip bytes until a ``/``, ``>``, ``endstream``, ``endobj``, or
+        EOF is reached — recovery for malformed dictionaries. Returns
+        ``True`` if the object/file ended (caller stops parsing); returns
+        ``False`` if a ``/`` was found and parsing can continue. Mirrors
+        upstream ``BaseParser.readUntilEndOfCOSDictionary`` (line 346)."""
+        # Match upstream byte-by-byte: peek 'e n d' then 's t r e a m' or
+        # 'o b j' to detect early end-of-object markers.
+        c = self._src.read()
+        EOF = RandomAccessRead.EOF
+        while c != EOF and c != 0x2F and c != 0x3E:
+            if c == 0x65:  # 'e'
+                c = self._src.read()
+                if c == 0x6E:  # 'n'
+                    c = self._src.read()
+                    if c == 0x64:  # 'd'
+                        c = self._src.read()
+                        is_stream = (
+                            c == 0x73  # 's'
+                            and self._src.read() == 0x74  # 't'
+                            and self._src.read() == 0x72  # 'r'
+                            and self._src.read() == 0x65  # 'e'
+                            and self._src.read() == 0x61  # 'a'
+                            and self._src.read() == 0x6D  # 'm'
+                        )
+                        is_obj = (
+                            not is_stream
+                            and c == 0x6F  # 'o'
+                            and self._src.read() == 0x62  # 'b'
+                            and self._src.read() == 0x6A  # 'j'
+                        )
+                        if is_stream or is_obj:
+                            return True
+            c = self._src.read()
+        if c == EOF:
+            return True
+        self._src.rewind(1)
+        return False
+
+    def parse_cos_name(self) -> COSName:
+        """Parse a name object ``/Foo`` and return a :class:`COSName`.
+        Mirrors upstream ``BaseParser.parseCOSName()`` (line 882)."""
+        from pypdfbox.cos.cos_name import COSName
+
+        return COSName.get_pdf_name(self.read_name_bytes())
+
+    def parse_cos_number(self) -> COSNumber:
+        """Parse a numeric token and return a :class:`COSNumber` (either
+        :class:`COSInteger` or :class:`COSFloat`). Mirrors upstream
+        ``BaseParser.parseCOSNumber()`` (line 1051) — including the
+        ``74191endobj`` recovery where a trailing ``e``/``E`` is rewound."""
+        from pypdfbox.cos.cos_float import COSFloat
+        from pypdfbox.cos.cos_integer import COSInteger
+
+        buf = bytearray()
+        ic = self._src.read()
+        while ic != RandomAccessRead.EOF:
+            c = ic
+            if (
+                self.is_digit(c)
+                or c in (0x2B, 0x2D, 0x2E, 0x45, 0x65)  # '+ - . E e'
+            ):
+                buf.append(c)
+                ic = self._src.read()
+            else:
+                break
+        if ic != RandomAccessRead.EOF:
+            self._src.rewind(1)
+        if not buf:
+            raise PDFParseError("expected number", position=self.position)
+        # Upstream PDFBOX-5025: drop a stray trailing 'e'/'E' and rewind so
+        # 'endobj' / 'endstream' tokens are not consumed as part of a real.
+        last = buf[-1]
+        if last in (0x65, 0x45):  # 'e' or 'E'
+            buf.pop()
+            self._src.rewind(1)
+        text = bytes(buf).decode("ascii")
+        if any(ch in text for ch in (".", "e", "E")):
+            return COSFloat(text)
+        return COSInteger.get(int(text))
+
+    def parse_cos_string(self) -> COSString:
+        """Parse a literal ``( ... )`` or hex ``< ... >`` string per upstream
+        ``BaseParser.parseCOSString()`` (line 537). Includes balanced-paren
+        handling, octal escapes, and EOL-continuation escape support — all
+        delegated to :meth:`read_literal_string` / :meth:`parse_cos_hex_string`."""
+        from pypdfbox.cos.cos_string import COSString
+
+        next_char = self._src.read()
+        if next_char == 0x3C:  # '<'
+            return self.parse_cos_hex_string()
+        if next_char != 0x28:  # '('
+            raise PDFParseError(
+                "parseCOSString string should start with '(' or '<' and not "
+                f"{chr(next_char) if next_char >= 0 else ''!r} at offset "
+                f"{self.position}",
+                position=self.position,
+            )
+        # Reuse the byte-level literal-string reader; it expects to be
+        # positioned at '(' so rewind first.
+        self._src.rewind(1)
+        return COSString(self.read_literal_string())
+
+    def parse_cos_hex_string(self) -> COSString:
+        """Parse a hex string ``< ... >`` with the upstream fail-fast /
+        skip-to-close recovery semantic. Assumes the leading ``<`` was
+        already consumed by the caller (matching upstream contract).
+        Mirrors ``BaseParser.parseCOSHexString()`` (line 702)."""
+        from pypdfbox.cos.cos_string import COSString
+
+        s_buf = bytearray()
+        while True:
+            c = self._src.read()
+            if c >= 0 and self.is_hex_digit(c):
+                s_buf.append(c)
+            elif c == 0x3E:  # '>'
+                break
+            elif c < 0:
+                raise PDFParseError(
+                    "Missing closing bracket for hex string. Reached EOS.",
+                    position=self.position,
+                )
+            elif c in (0x20, 0x0A, 0x09, 0x0D, 0x08, 0x0C):
+                continue
+            else:
+                # Skip past invalid input until ``>`` — drop a dangling
+                # half-pair first so the resulting hex decodes cleanly.
+                if len(s_buf) % 2:
+                    s_buf.pop()
+                while c != 0x3E and c >= 0:
+                    c = self._src.read()
+                if c < 0:
+                    raise PDFParseError(
+                        "Missing closing bracket for hex string. Reached EOS.",
+                        position=self.position,
+                    )
+                break
+        return COSString.parse_hex(s_buf.decode("ascii"))

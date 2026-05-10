@@ -460,3 +460,187 @@ def test_get_object_key_reuses_xref_table_instance() -> None:
 
 def test_document_property_defaults_to_none() -> None:
     assert parser(b"").document is None
+
+
+# ---------- is_lf / is_cr / check_for_end_of_string (wave 1248) ----------
+
+
+def test_is_lf_only_lf() -> None:
+    assert BaseParser.is_lf(0x0A)
+    assert not BaseParser.is_lf(0x0D)
+    assert not BaseParser.is_lf(0x20)
+
+
+def test_is_cr_only_cr() -> None:
+    assert BaseParser.is_cr(0x0D)
+    assert not BaseParser.is_cr(0x0A)
+    assert not BaseParser.is_cr(0x20)
+
+
+def test_check_for_end_of_string_zero_passes_through() -> None:
+    p = parser(b"\n/abc")
+    assert p.check_for_end_of_string(0) == 0
+
+
+def test_check_for_end_of_string_lf_slash_resets_to_zero() -> None:
+    p = parser(b"\n/abc")
+    # Three-byte lookahead: LF + '/' is a valid end-of-string sequence.
+    assert p.check_for_end_of_string(2) == 0
+    # Lookahead is non-destructive — the bytes are still there.
+    assert p.peek_byte() == 0x0A
+
+
+def test_check_for_end_of_string_crlf_gt_resets_to_zero() -> None:
+    p = parser(b"\r\n>")
+    assert p.check_for_end_of_string(1) == 0
+
+
+def test_check_for_end_of_string_no_match_keeps_braces() -> None:
+    p = parser(b"abc")
+    # No CR/LF at index 0 — caller should keep its original brace count.
+    assert p.check_for_end_of_string(3) == 3
+
+
+# ---------- get_object_from_pool ----------
+
+
+def test_get_object_from_pool_without_document_raises() -> None:
+    from pypdfbox.cos import COSObjectKey
+
+    p = parser(b"")
+    with pytest.raises(PDFParseError):
+        p.get_object_from_pool(COSObjectKey(7, 0))
+
+
+def test_get_object_from_pool_returns_pool_object() -> None:
+    from pypdfbox.cos import COSDocument, COSObjectKey
+
+    doc = COSDocument()
+    p = parser(b"")
+    p._document = doc  # noqa: SLF001 — set protected field directly for the test
+    obj = p.get_object_from_pool(COSObjectKey(3, 0))
+    # Same key returns the same placeholder.
+    assert p.get_object_from_pool(COSObjectKey(3, 0)) is obj
+
+
+# ---------- parse_dir_object / parse_cos_* on BaseParser directly ----------
+#
+# These mirror the upstream BaseParser surface and are also overridden
+# (with the same names) by COSParser. The tests below exercise them on a
+# raw BaseParser to confirm the BaseParser-level surface is sound.
+
+
+def test_parse_cos_name_basic() -> None:
+    from pypdfbox.cos import COSName
+
+    p = parser(b"/Name1 ")
+    name = p.parse_cos_name()
+    assert isinstance(name, COSName)
+    assert name.get_name() == "Name1"
+
+
+def test_parse_cos_number_integer() -> None:
+    from pypdfbox.cos import COSInteger
+
+    p = parser(b"42 ")
+    num = p.parse_cos_number()
+    assert isinstance(num, COSInteger)
+    assert num.value == 42
+
+
+def test_parse_cos_number_real() -> None:
+    from pypdfbox.cos import COSFloat
+
+    p = parser(b"3.14 ")
+    num = p.parse_cos_number()
+    assert isinstance(num, COSFloat)
+
+
+def test_parse_cos_number_pdfbox_5025_trailing_e_recovery() -> None:
+    # ``74191endobj`` — the 'e' from 'endobj' must be rewound so the keyword
+    # remains parseable.
+    from pypdfbox.cos import COSInteger
+
+    p = parser(b"74191endobj")
+    num = p.parse_cos_number()
+    assert isinstance(num, COSInteger)
+    assert num.value == 74191
+    # 'e' was rewound; the remaining bytes still spell 'endobj'.
+    assert p.read_string() == "endobj"
+
+
+def test_parse_cos_string_literal() -> None:
+    from pypdfbox.cos import COSString
+
+    p = parser(b"(Hello)")
+    s = p.parse_cos_string()
+    assert isinstance(s, COSString)
+    assert s.get_string() == "Hello"
+
+
+def test_parse_cos_string_hex() -> None:
+    from pypdfbox.cos import COSString
+
+    p = parser(b"<48656C6C6F>")
+    s = p.parse_cos_string()
+    assert isinstance(s, COSString)
+    assert s.get_string() == "Hello"
+
+
+def test_parse_cos_array_of_integers() -> None:
+    from pypdfbox.cos import COSArray, COSInteger
+
+    p = parser(b"[ 1 2 3 ]")
+    a = p.parse_cos_array()
+    assert isinstance(a, COSArray)
+    assert len(a) == 3
+    assert all(isinstance(x, COSInteger) for x in a)
+    assert [x.value for x in a] == [1, 2, 3]
+
+
+def test_parse_cos_dictionary_simple() -> None:
+    from pypdfbox.cos import COSDictionary, COSInteger, COSName
+
+    p = parser(b"<< /Length 42 >>")
+    d = p.parse_cos_dictionary()
+    assert isinstance(d, COSDictionary)
+    length = d.get_item(COSName.get_pdf_name("Length"))
+    assert isinstance(length, COSInteger)
+    assert length.value == 42
+
+
+def test_parse_dir_object_dispatches_to_dictionary() -> None:
+    from pypdfbox.cos import COSDictionary
+
+    p = parser(b"<< /A 1 >>")
+    obj = p.parse_dir_object()
+    assert isinstance(obj, COSDictionary)
+
+
+def test_parse_dir_object_dispatches_to_array() -> None:
+    from pypdfbox.cos import COSArray
+
+    p = parser(b"[ 1 2 ]")
+    obj = p.parse_dir_object()
+    assert isinstance(obj, COSArray)
+
+
+def test_parse_dir_object_keywords() -> None:
+    from pypdfbox.cos import COSBoolean, COSNull
+
+    assert parser(b"true ").parse_dir_object() is COSBoolean.TRUE
+    assert parser(b"false ").parse_dir_object() is COSBoolean.FALSE
+    assert parser(b"null ").parse_dir_object() is COSNull.NULL
+
+
+def test_read_until_end_of_cos_dictionary_recovers_on_endobj() -> None:
+    # Scanner stops at 'endobj' keyword sequence.
+    p = parser(b"junk endobj rest")
+    assert p.read_until_end_of_cos_dictionary() is True
+
+
+def test_read_until_end_of_cos_dictionary_finds_slash() -> None:
+    # Slash means the caller can resume parsing — return False, leave '/'.
+    p = parser(b"junk /Key")
+    assert p.read_until_end_of_cos_dictionary() is False
+    assert p.peek_byte() == 0x2F

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSName
 
@@ -38,6 +38,10 @@ class PDSeparation(PDColorSpace):
         # Initial color per upstream is a single component at 1.0 (full
         # tint).
         self._initial_color = PDColor([1.0], self)
+        # Mirror upstream ``toRGBMap`` (PDSeparation.java line 64) — the
+        # quantised tint -> RGB cache shared by ``toRGB`` / ``toRGBImage``.
+        # ``None`` until the first call so the empty-init case stays cheap.
+        self._to_rgb_map: dict[int, tuple[float, float, float]] | None = None
 
     # ---------- abstract surface ----------
 
@@ -186,7 +190,10 @@ class PDSeparation(PDColorSpace):
         Per PDF 32000-1 §8.6.6.4, ``components`` is the single tint
         value in ``[0, 1]``. The tint transform (a PDF function) maps
         it to coordinates in the alternate color space, which then
-        produces the RGB output.
+        produces the RGB output. Mirrors upstream
+        ``PDSeparation.toRGB(float[])`` (PDSeparation.java line 137),
+        including the ``toRGBMap`` quantised cache keyed on
+        ``(int)(tint * 255)``.
         """
         alternate = self.get_alternate_color_space()
         if alternate is None:
@@ -194,8 +201,190 @@ class PDSeparation(PDColorSpace):
         function = self.get_tint_transform()
         if function is None:
             return None
+        if self._to_rgb_map is None:
+            self._to_rgb_map = {}
+        key = int(components[0] * 255)
+        cached = self._to_rgb_map.get(key)
+        if cached is not None:
+            return cached
         alt_components = function.eval(list(components))
-        return PDColor(alt_components, alternate).to_rgb()
+        result = PDColor(alt_components, alternate).to_rgb()
+        if result is None:
+            return None
+        self._to_rgb_map[key] = result
+        return result
+
+    # ---------- raster conversion ----------
+
+    def tint_transform(
+        self, samples: list[float], alt: list[int]
+    ) -> list[int]:
+        """Map a single 8-bit tint sample through the tint-transform
+        function into integer alternate-CS components in ``[0, 255]``.
+        Mirrors upstream protected helper
+        ``PDSeparation.tintTransform(float[] samples, int[] alt)``
+        (PDSeparation.java line 246)::
+
+            samples[0] /= 255;            // 0..1
+            float[] result = tintTransform.eval(samples);
+            for (int s = 0; s < alt.length; s++)
+                alt[s] = (int)(result[s] * 255);
+
+        The Python signature returns the populated ``alt`` list for
+        idiomatic use; ``samples`` and ``alt`` are mutated in place to
+        preserve upstream's by-reference contract.
+        """
+        function = self.get_tint_transform()
+        if function is None:
+            raise ValueError(
+                "PDSeparation.tint_transform requires a tint-transform function"
+            )
+        samples[0] = samples[0] / 255.0  # scale 0..255 -> 0..1
+        result = function.eval(list(samples))
+        for s in range(len(alt)):
+            alt[s] = int(result[s] * 255)
+        return alt
+
+    def to_rgb_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Render an 8-bit-per-component Separation raster to a Pillow
+        sRGB image. Mirrors upstream
+        ``PDSeparation.toRGBImage(WritableRaster)`` (PDSeparation.java
+        line 159):
+
+        - When the alternate is :class:`PDLab` (PDFBOX-3622) or an
+          ICCBased that ultimately wraps a Lab profile (PDFBOX-5778),
+          short-circuit to :meth:`to_rgb_image2`.
+        - Otherwise iterate every pixel, fan out the tint into the
+          alternate CS via :meth:`tint_transform`, and forward the
+          resulting alternate-CS raster to ``alternateColorSpace.to_rgb_image``.
+
+        The per-tint cache (``calculatedValues`` upstream) avoids
+        re-evaluating the tint transform for repeated samples.
+        """
+        from .pd_icc_based import PDICCBased
+        from .pd_lab import PDLab
+
+        alternate = self.get_alternate_color_space()
+        if alternate is None:
+            return super().to_rgb_image(raster, width, height)
+
+        if isinstance(alternate, PDLab):
+            return self.to_rgb_image2(raster, width, height)
+        if isinstance(alternate, PDICCBased):
+            inner = alternate.get_alternate_color_space()
+            if isinstance(inner, PDLab):
+                return self.to_rgb_image2(raster, width, height)
+
+        num_alt = alternate.get_number_of_components()
+        w = int(width)
+        h = int(height)
+        expected = w * h
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+
+        # Pre-compute the tint-transform output for each unique sample
+        # value (mirrors upstream ``calculatedValues`` map keyed on the
+        # bit pattern of the float sample).
+        cache: dict[int, list[int]] = {}
+        out = bytearray(w * h * num_alt)
+        for pixel_index in range(w * h):
+            sample = data[pixel_index]
+            alt_components = cache.get(sample)
+            if alt_components is None:
+                alt_components = [0] * num_alt
+                self.tint_transform([float(sample)], alt_components)
+                cache[sample] = alt_components
+            base = pixel_index * num_alt
+            for c in range(num_alt):
+                out[base + c] = max(0, min(255, alt_components[c]))
+
+        return alternate.to_rgb_image(bytes(out), w, h)
+
+    def to_rgb_image2(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Lab-friendly converter that bypasses the alternate's raster
+        path. Mirrors private upstream helper
+        ``PDSeparation.toRGBImage2(WritableRaster)`` (PDSeparation.java
+        line 212): for each tint sample, scale to ``[0, 1]``, evaluate
+        the tint transform, route through ``alternateColorSpace.toRGB``,
+        and pack the resulting RGB triple.
+
+        Surfaced as public-named for snake_case mirror compatibility —
+        upstream marks it ``private`` but parity scanners track it as
+        a method on the class surface.
+        """
+        from PIL import Image
+
+        alternate = self.get_alternate_color_space()
+        if alternate is None:
+            return super().to_rgb_image(raster, width, height)
+        function = self.get_tint_transform()
+        if function is None:
+            return super().to_rgb_image(raster, width, height)
+
+        w = int(width)
+        h = int(height)
+        expected = w * h
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+
+        cache: dict[int, tuple[int, int, int]] = {}
+        out = bytearray(w * h * 3)
+        for pixel_index in range(w * h):
+            sample = data[pixel_index]
+            rgb = cache.get(sample)
+            if rgb is None:
+                scaled = sample / 255.0
+                alt_components = function.eval([scaled])
+                fltab = alternate.to_rgb(alt_components)
+                if fltab is None:
+                    rgb = (0, 0, 0)
+                else:
+                    rgb = (
+                        int(fltab[0] * 255),
+                        int(fltab[1] * 255),
+                        int(fltab[2] * 255),
+                    )
+                cache[sample] = rgb
+            base = pixel_index * 3
+            out[base] = max(0, min(255, rgb[0]))
+            out[base + 1] = max(0, min(255, rgb[1]))
+            out[base + 2] = max(0, min(255, rgb[2]))
+        return Image.frombytes("RGB", (w, h), bytes(out))
+
+    def to_raw_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Wrap a Separation raster as a single-band Pillow ``L`` image.
+        Mirrors upstream ``PDSeparation.toRawImage(WritableRaster)``
+        (PDSeparation.java line 258), which calls the protected overload
+        with ``ColorSpace.getInstance(ColorSpace.CS_GRAY)`` — the tint
+        ramp is treated as 8-bit grayscale.
+        """
+        from PIL import Image
+
+        w = int(width)
+        h = int(height)
+        expected = w * h
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+        return Image.frombytes("L", (w, h), data[:expected])
+
+    # ---------- string form ----------
+
+    def to_string(self) -> str:
+        """Return the upstream-style ``toString`` rendering. Mirrors
+        upstream ``PDSeparation.toString()`` (PDSeparation.java line
+        317). Surfaced explicitly so callers porting from PDFBox can
+        keep the literal ``.toString()`` invocation spelled snake_case.
+        """
+        return self.__str__()
 
 
 __all__ = ["PDSeparation"]
