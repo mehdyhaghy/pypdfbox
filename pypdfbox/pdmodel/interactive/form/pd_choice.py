@@ -412,5 +412,25 @@ class PDChoice(PDVariableText):
         :meth:`set_selected_options_indices`."""
         self.set_selected_options_indices(indices)
 
+    # ---------- appearance ----------
+
+    def construct_appearances(self) -> None:
+        """Mirror of upstream ``PDChoice.constructAppearances`` (line 501):
+        an abstract declaration concrete subclasses (``PDComboBox`` /
+        ``PDListBox``) override.
+
+        Pypdfbox keeps the contract explicit on ``PDChoice`` for
+        symmetry with upstream; the concrete subclass implementations
+        rebuild ``/AP`` streams via the appearance generator. Calling
+        this on ``PDChoice`` directly raises ``NotImplementedError`` —
+        matching the upstream abstract semantics — rather than silently
+        falling through to the no-op inherited from
+        :class:`PDTerminalField`.
+        """
+        raise NotImplementedError(
+            "PDChoice.construct_appearances is abstract; "
+            "use PDComboBox or PDListBox"
+        )
+
 
 __all__ = ["PDChoice"]

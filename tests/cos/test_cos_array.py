@@ -178,3 +178,70 @@ def test_visitor_dispatch() -> None:
     a = COSArray()
     a.accept(v)
     assert v.calls == [("array", a)]
+
+
+def test_to_string_produces_cosarray_prefix() -> None:
+    a = COSArray([COSInteger.get(1), COSInteger.get(2)])
+    s = a.to_string()
+    assert s.startswith("COSArray{")
+    assert s.endswith("}")
+    assert str(a) == s
+
+
+def test_get_indirect_object_keys_collects_indirect_refs() -> None:
+    from pypdfbox.cos.cos_object_key import COSObjectKey
+
+    inner = COSInteger.get(7)
+    indirect = COSObject(11, 0, resolved=inner)
+    a = COSArray([COSInteger.get(1), indirect])
+
+    seen: set[COSObjectKey] = set()
+    a.get_indirect_object_keys(seen)
+    assert COSObjectKey(11, 0) in seen
+
+
+def test_get_indirect_object_keys_short_circuits_on_already_seen() -> None:
+    from pypdfbox.cos.cos_object_key import COSObjectKey
+
+    indirect = COSObject(11, 0, resolved=COSInteger.get(7))
+    a = COSArray([indirect])
+
+    pre = {COSObjectKey(11, 0)}
+    a.get_indirect_object_keys(pre)
+    assert pre == {COSObjectKey(11, 0)}
+
+
+def test_get_indirect_object_keys_none_is_noop() -> None:
+    a = COSArray([COSObject(11, 0, resolved=COSInteger.get(7))])
+    # Must not raise.
+    a.get_indirect_object_keys(None)
+
+
+def test_get_indirect_object_keys_descends_nested_array() -> None:
+    from pypdfbox.cos.cos_object_key import COSObjectKey
+
+    nested_target = COSInteger.get(99)
+    nested_indirect = COSObject(42, 0, resolved=nested_target)
+    nested = COSArray([nested_indirect])
+    outer = COSArray([nested])
+
+    seen: set[COSObjectKey] = set()
+    outer.get_indirect_object_keys(seen)
+    assert COSObjectKey(42, 0) in seen
+
+
+def test_reset_object_keys_returns_passed_collection() -> None:
+    from pypdfbox.cos.cos_object_key import COSObjectKey
+
+    indirect = COSObject(11, 0, resolved=COSInteger.get(7))
+    a = COSArray([indirect])
+
+    seen: set[COSObjectKey] = set()
+    out = a.reset_object_keys(seen)
+    assert out is seen
+    assert COSObjectKey(11, 0) in seen
+
+
+def test_reset_object_keys_none_returns_none() -> None:
+    a = COSArray()
+    assert a.reset_object_keys(None) is None

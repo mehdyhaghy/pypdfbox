@@ -140,11 +140,22 @@ class TTFDataStream(ABC):
             )
         return (b1 << 24) | (b2 << 16) | (b3 << 8) | b4
 
-    def read_32_fixed(self) -> float:
-        """Read a 16.16 fixed-point value as a float."""
+    def read32_fixed(self) -> float:
+        """Read a 16.16 fixed-point value as a float.
+
+        Mirrors upstream ``TTFDataStream.read32Fixed`` (Java line 48). The
+        first 16 bits are the integer part, the last 16 bits the fraction.
+        """
         whole = self.read_signed_short()
         frac = self.read_unsigned_short()
         return whole + frac / 65536.0
+
+    # Snake-snake alias for callers that pre-date the ``read32_fixed`` rename;
+    # both spellings forward to the same implementation. Upstream Java spells
+    # this ``read32Fixed`` (no underscore between ``read`` and ``32``), so
+    # ``read32_fixed`` is the parity-canonical name.
+    def read_32_fixed(self) -> float:
+        return self.read32_fixed()
 
     def read_tag(self) -> str:
         """Read a 4-byte ASCII tag."""
@@ -255,10 +266,38 @@ class RandomAccessReadDataStream(TTFDataStream):
         return b
 
     def read_long(self) -> int:
+        # Mirrors upstream ``RandomAccessReadDataStream.readLong`` (Java line
+        # 124): two ``readInt`` calls combined as a signed 64-bit big-endian
+        # integer (high-order int signed-extends, low-order int masked).
+        # Java's ``readInt`` silently returns garbage at EOF; we keep the
+        # explicit short-read check to preserve our pre-existing
+        # EOFError-raising contract (callers and tests rely on it).
         if self._pos + 8 > len(self._data):
             raise EOFError("premature EOF reading long")
-        v = int.from_bytes(self._data[self._pos : self._pos + 8], "big", signed=True)
-        self._pos += 8
+        high = self.read_int()
+        low = self.read_int() & 0xFFFFFFFF
+        return (high << 32) + low
+
+    def read_int(self) -> int:
+        """Read a signed 32-bit big-endian integer.
+
+        Mirrors upstream ``RandomAccessReadDataStream.readInt`` (Java line
+        135). The Java method is ``private``; we expose it as a regular
+        method (Python has no enforced access control) so subclasses and
+        parity tooling can reach it.
+        """
+        b1 = self.read()
+        b2 = self.read()
+        b3 = self.read()
+        b4 = self.read()
+        # Match Java's silent-on-EOF semantics: ``read()`` returns -1 which
+        # propagates through the shifts. Caller is expected to rely on
+        # ``read_long``'s 8-byte budget check via the underlying ``read_into``
+        # in tighter contexts.
+        v = ((b1 & 0xFF) << 24) | ((b2 & 0xFF) << 16) | ((b3 & 0xFF) << 8) | (b4 & 0xFF)
+        # Sign-extend if the high bit of b1 is set, mirroring Java's signed int.
+        if v >= 0x80000000:
+            v -= 0x1_0000_0000
         return v
 
     def read_into(self, buf: bytearray, offset: int, length: int) -> int:

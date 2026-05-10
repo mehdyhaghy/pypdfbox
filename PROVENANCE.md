@@ -1117,6 +1117,8 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/fontbox/type1/upstream/test_type1_parser.py` | 3.0.x | placeholder — upstream has no dedicated `Type1ParserTest.java`; behaviour mirrored against `Type1Parser.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/graphics/color/upstream/test_pd_cal_rgb.py` | 3.0.x | placeholder — upstream has no dedicated `PDCalRGBTest.java`; behaviour mirrored against `PDCalRGB.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_text.py` | 3.0.x | placeholder — upstream has no standalone `PDAnnotationTextTest.java`; API mirror against `PDAnnotationText.java` (PDFBox 3.0.x) |
+| `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_polyline.py` | 3.0.x | placeholder — upstream has no `PDAnnotationPolylineTest.java`; tests anchored to `PDAnnotationPolyline.java` source line refs |
+| `tests/pdmodel/common/upstream/test_pd_number_tree_node.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/TestPDNumberTreeNode.java` |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |

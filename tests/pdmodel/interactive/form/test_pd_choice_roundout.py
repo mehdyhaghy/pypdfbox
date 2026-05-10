@@ -429,3 +429,36 @@ def test_set_top_index_negative_value_round_trip() -> None:
     lb.set_top_index(-1)
     assert lb.get_top_index() == -1
     assert lb.has_top_index() is True
+
+
+# ---------- Wave 1264: abstract construct_appearances ----------
+
+
+def test_pd_choice_construct_appearances_is_abstract() -> None:
+    """``PDChoice.construct_appearances`` mirrors upstream's
+    ``abstract void constructAppearances()`` (PDChoice.java line 501).
+    Calling it on a bare ``PDChoice`` (bypassing concrete subclasses)
+    must raise ``NotImplementedError``.
+    """
+    from pypdfbox.pdmodel.interactive.form.pd_choice import PDChoice
+
+    form = PDAcroForm()
+    cb = PDComboBox(form)
+
+    with pytest.raises(NotImplementedError):
+        # Bypass the subclass override to reach the abstract base method.
+        PDChoice.construct_appearances(cb)
+
+
+def test_pd_choice_subclasses_override_construct_appearances() -> None:
+    """``PDComboBox`` and ``PDListBox`` both provide concrete
+    ``construct_appearances`` overrides, so the abstract base
+    is never invoked through the normal MRO."""
+    form = PDAcroForm()
+    cb = PDComboBox(form)
+    lb = PDListBox(form)
+
+    # Should not raise — both subclasses dispatch into the appearance
+    # generator, which is a no-op when there are no widgets.
+    cb.construct_appearances()
+    lb.construct_appearances()

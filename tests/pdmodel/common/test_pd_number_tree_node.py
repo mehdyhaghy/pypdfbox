@@ -492,6 +492,28 @@ def test_merge_into_empty_node() -> None:
     assert tree.get_numbers() == {1: 10, 2: 20}
 
 
+def test_convert_cos_to_pd_delegates_to_convert_cos_to_value() -> None:
+    """Java parity hook ``convert_cos_to_pd`` must yield the same result
+    as the pypdfbox-native ``convert_cos_to_value`` extension point."""
+    tree = _IntNumberTreeNode()
+    base = COSInteger.get(42)
+    assert tree.convert_cos_to_pd(base) == 42
+    assert tree.convert_cos_to_pd(base) == tree.convert_cos_to_value(base)
+
+
+def test_convert_cos_to_pd_subclass_override_wins() -> None:
+    """Subclasses overriding ``convert_cos_to_value`` change both names."""
+
+    class _ScalingNode(_IntNumberTreeNode):
+        def convert_cos_to_value(self, base: COSBase) -> int:
+            return super().convert_cos_to_value(base) * 10
+
+    tree = _ScalingNode()
+    base = COSInteger.get(7)
+    assert tree.convert_cos_to_value(base) == 70
+    assert tree.convert_cos_to_pd(base) == 70
+
+
 def test_merge_rebalances_into_kids_above_threshold() -> None:
     # Merging in enough entries to cross _MAX_NUMS (64) flips the root
     # from leaf-shape to kids-shape, mirroring set_numbers behaviour.

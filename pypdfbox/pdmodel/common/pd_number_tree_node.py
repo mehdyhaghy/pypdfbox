@@ -126,6 +126,21 @@ class PDNumberTreeNode[T](ABC):
     def convert_value_to_cos(self, value: T) -> COSBase:
         """Convert a subclass value into its COS representation."""
 
+    def convert_cos_to_pd(self, base: COSBase) -> T:
+        """Convert the COS value in the number tree to the PD-Model object.
+
+        Mirrors Java ``protected COSObjectable convertCOSToPD(COSBase base)``
+        from PDFBox ``PDNumberTreeNode`` (Java line 226). Upstream's default
+        uses reflection on the value class passed to the constructor; in
+        Python we delegate to the abstract :meth:`convert_cos_to_value`,
+        which concrete subclasses already implement. Subclasses that need
+        a different code path may override either hook — the pypdfbox-native
+        name (``convert_cos_to_value``) is the one called from internal
+        plumbing, while this name preserves Java parity for ports that hand
+        it the upstream symbol.
+        """
+        return self.convert_cos_to_value(base)
+
     @abstractmethod
     def create_child_node(self, dic: COSDictionary) -> PDNumberTreeNode[T]:
         """Create a child node of the same concrete subclass type."""

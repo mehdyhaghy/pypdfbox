@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
         PDMeasureDictionary,
     )
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
 
 _VERTICES: COSName = COSName.get_pdf_name("Vertices")
 _IC: COSName = COSName.get_pdf_name("IC")
@@ -43,6 +46,7 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
 
@@ -225,6 +229,44 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
             _MEASURE,
             measure.get_cos_object() if hasattr(measure, "get_cos_object") else measure,
         )
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``
+        (``PDAnnotationPolyline.java`` line 182). Pass ``None`` to clear
+        the custom handler and restore the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def get_custom_appearance_handler(self) -> PDAppearanceHandler | None:
+        """Return the custom appearance handler previously set via
+        :meth:`set_custom_appearance_handler`, or ``None`` when the default
+        construction path is in use. No upstream getter exists (the field is
+        package-private in Java); this is the Pythonic accessor used by
+        tests and downstream code that needs to inspect the wired handler.
+        """
+        return self._custom_appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate polyline annotation appearances.
+
+        Mirrors upstream ``constructAppearances()`` /
+        ``constructAppearances(PDDocument)``
+        (``PDAnnotationPolyline.java`` lines 188-205): a custom handler,
+        when configured, is invoked exactly as upstream does. The built-in
+        ``PDPolylineAppearanceHandler`` is not ported yet, so the default
+        path falls through to the base no-op.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 __all__ = ["PDAnnotationPolyline"]

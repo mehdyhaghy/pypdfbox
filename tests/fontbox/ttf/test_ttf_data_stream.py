@@ -316,6 +316,50 @@ def test_read_32_fixed_negative() -> None:
     assert s.read_32_fixed() == pytest.approx(-1.0)
 
 
+def test_wave1264_read32_fixed_canonical_name_matches_alias() -> None:
+    # Upstream Java spells this ``read32Fixed`` (parity-canonical name is
+    # ``read32_fixed``); ``read_32_fixed`` is a back-compat alias. Both must
+    # return identical values on identical input.
+    s1 = MemoryTTFDataStream(b"\x00\x01\x80\x00")  # 1.5
+    s2 = MemoryTTFDataStream(b"\x00\x01\x80\x00")
+    assert s1.read32_fixed() == pytest.approx(1.5)
+    assert s2.read_32_fixed() == pytest.approx(1.5)
+
+
+def test_wave1264_read_int_random_access_roundtrip() -> None:
+    # ``RandomAccessReadDataStream.read_int`` mirrors upstream private
+    # ``readInt`` (Java line 135). Verify positive, zero, and negative
+    # signed-32-bit values.
+    s = RandomAccessReadDataStream(RandomAccessReadBuffer(
+        b"\x00\x00\x00\x00"      # 0
+        b"\x00\x00\x00\x2a"      # 42
+        b"\x7f\xff\xff\xff"      # max int
+        b"\x80\x00\x00\x00"      # min int
+        b"\xff\xff\xff\xff"      # -1
+    ))
+    assert s.read_int() == 0
+    assert s.read_int() == 42
+    assert s.read_int() == 0x7FFFFFFF
+    assert s.read_int() == -0x80000000
+    assert s.read_int() == -1
+
+
+def test_wave1264_read_long_uses_signed_high_unsigned_low() -> None:
+    # Upstream ``read_long`` is ``((long)readInt() << 32) + (readInt() &
+    # 0xFFFFFFFFL)``: high int is signed-extended, low int is masked.
+    # 0x80000000_00000000 → most-negative signed 64; 0xFFFFFFFF_00000001 →
+    # exposes the unsigned-low requirement (Python ``read_int`` returns -1
+    # for low; without the mask we'd lose 0x100000000 worth of range).
+    s = RandomAccessReadDataStream(RandomAccessReadBuffer(
+        b"\x80\x00\x00\x00\x00\x00\x00\x00"  # most negative
+        b"\xff\xff\xff\xff\x00\x00\x00\x01"  # high=-1, low=1 → -((1<<32)) + 1
+        b"\x00\x00\x00\x01\xff\xff\xff\xff"  # high=1, low=-1 (unsigned 0xFFFFFFFF)
+    ))
+    assert s.read_long() == -(1 << 63)
+    assert s.read_long() == -(1 << 32) + 1
+    assert s.read_long() == (1 << 32) + 0xFFFFFFFF
+
+
 def test_read_tag_ascii_four_bytes() -> None:
     s = MemoryTTFDataStream(b"cmap")
     assert s.read_tag() == "cmap"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Collection, Iterable, Iterator
 from typing import Any
 
 from .cos_base import COSBase
@@ -10,9 +10,23 @@ from .cos_integer import COSInteger
 from .cos_name import COSName
 from .cos_null import COSNull
 from .cos_object import COSObject
+from .cos_object_key import COSObjectKey
 from .cos_string import COSString
 from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
+
+
+def _add_to_collection(collection: Collection[Any], item: Any) -> None:
+    """Append ``item`` to ``collection`` using whichever mutator is available
+    (``add`` for sets, ``append`` for lists). Mirrors upstream's
+    ``Collection.add`` polymorphism."""
+    add = getattr(collection, "add", None)
+    if add is not None:
+        add(item)
+        return
+    append = getattr(collection, "append", None)
+    if append is not None:
+        append(item)
 
 
 class COSArray(COSBase):
@@ -417,6 +431,84 @@ class COSArray(COSBase):
     def of_cos_floats(cls, floats: Iterable[float]) -> COSArray:
         return cls([COSFloat(f) for f in floats])
 
+    # ---------- indirect-object key traversal ----------
+
+    def get_indirect_object_keys(
+        self, indirect_objects: Collection[COSObjectKey] | None
+    ) -> None:
+        """Collect ``COSObjectKey``s for every indirect object reachable from
+        this array into ``indirect_objects``. Mirrors PDFBox
+        ``COSArray.getIndirectObjectKeys`` (Java line 760/775). Pass an
+        already-populated collection to short-circuit on revisits.
+
+        ``indirect_objects`` must support both ``__contains__`` and an ``add``
+        (set) or ``append`` (list) mutator. ``None`` is a no-op for parity with
+        upstream.
+        """
+        if indirect_objects is None:
+            return
+        # COSArray itself does not carry an indirect-object key in pypdfbox
+        # (only COSObject does); the upstream short-circuit on
+        # ``getKey() != null`` therefore reduces to the per-entry walk.
+        # Local import to avoid a hard cos_array <-> cos_dictionary cycle at
+        # module load.
+        from .cos_dictionary import COSDictionary  # noqa: PLC0415
+
+        for value in self._items:
+            child: COSBase | None = value
+            indirect_key: COSObjectKey | None = None
+            if isinstance(child, COSObject):
+                indirect_key = COSObjectKey(child.object_number, child.generation_number)
+                if indirect_key in indirect_objects:
+                    continue
+                child = child.get_object()
+            if isinstance(child, (COSDictionary, COSArray)):
+                child.get_indirect_object_keys(indirect_objects)
+            elif indirect_key is not None:
+                _add_to_collection(indirect_objects, indirect_key)
+
+    def reset_object_keys(
+        self, indirect_objects: Collection[COSObjectKey] | None
+    ) -> Collection[COSObjectKey] | None:
+        """Walk the array graph clearing indirect-object keys.
+
+        Mirrors PDFBox ``COSArray.resetObjectKeys`` (Java line 835). Returns
+        ``indirect_objects`` (the same collection that was passed in) so
+        callers can chain ``.clear()``.
+
+        Note: pypdfbox's ``COSObject`` does not currently expose a public
+        ``set_key(None)`` mutator (its identity is constructor-set), so this
+        implementation walks the graph and records each visited
+        ``COSObjectKey`` for accounting, but the underlying
+        ``object_number/generation_number`` pairs are not cleared. See
+        ``CHANGES.md`` for the divergence note.
+        """
+        if indirect_objects is None:
+            return None
+        from .cos_dictionary import COSDictionary  # noqa: PLC0415
+
+        for value in self._items:
+            child: COSBase | None = value
+            indirect_key: COSObjectKey | None = None
+            if isinstance(child, COSObject):
+                indirect_key = COSObjectKey(child.object_number, child.generation_number)
+                if indirect_key in indirect_objects:
+                    continue
+                child = child.get_object()
+            if isinstance(child, (COSDictionary, COSArray)):
+                child.reset_object_keys(indirect_objects)
+            elif indirect_key is not None:
+                _add_to_collection(indirect_objects, indirect_key)
+        return indirect_objects
+
+    # ---------- string formatting ----------
+
+    def to_string(self) -> str:
+        """Return ``"COSArray{[...]}"`` mirroring PDFBox ``COSArray.toString``
+        (Java line 467). Uses ``repr`` of the underlying list to match
+        ``ArrayList.toString`` formatting."""
+        return f"COSArray{{{self._items}}}"
+
     # ---------- visitor / Python protocols ----------
 
     def accept(self, visitor: ICOSVisitor) -> Any:
@@ -436,3 +528,6 @@ class COSArray(COSBase):
 
     def __repr__(self) -> str:
         return f"COSArray({self._items!r})"
+
+    def __str__(self) -> str:
+        return self.to_string()
