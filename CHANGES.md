@@ -2175,3 +2175,14 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 
 - `pypdfbox/pdmodel/pd_page.py`: `__init__` now accepts an optional `resource_cache` kwarg, mirroring upstream's package-private `PDPage(COSDictionary, ResourceCache)` constructor (Java 116) used by `PDPageTree` to thread the cache during page enumeration. `_resource_cache` is now always initialised (no more `getattr(..., None)` fallback) — symmetric with upstream's instance field.
 - `pypdfbox/pdmodel/font/pd_cid_font.py`, `pypdfbox/pdmodel/interactive/form/pd_field.py`, `pypdfbox/pdmodel/font/pd_type1c_font.py`, `pypdfbox/pdmodel/graphics/color/pd_indexed.py`: full audits confirmed all classes are at 100% real method parity. The remaining `missing_methods` reported by the scanner are scanner false positives (Java exception class names from `throws`/`throw new`, type names from `return new TypeName(...)` / `new BufferedImage(...)` / `new GeneralPath(...)` constructor expressions, parameter names from inner-class signatures, MRO-inherited methods the scanner doesn't traverse) plus the deprecated `setHighValue` (PDFBox 4.0 removal, intentionally skipped per CLAUDE.md).
+
+## Wave 1267 — `scripts/parity.py` hardened (no pypdfbox source changes)
+
+The parity script was tightened to remove the false-positive ceiling identified in wave 1266:
+
+- **Java type tokens from `return new TypeName(...)` / `throw new TypeName(...)`** — previously matched as method declarations because the non-greedy return-type regex accepts multi-token returns like `"return new"`. The fix token-splits the return-type capture and rejects if any token is a Java keyword.
+- **Java method names starting with uppercase** — real Java methods are camelCase (lowercase first character); names like `IOException`, `BufferedImage`, `StringBuilder`, `Vector` captured from `new XXX(...)` are now skipped.
+- **Inner classes/enums attributed methods of their outer class** — the previous body-delimiter (`stripped[decl_end : next_decl_start_or_EOF]`) gave inner enums like `AcroFormMergeMode` the entire rest of the file when nothing followed them. The fix uses brace-balanced body extraction (`{ ... }` matching) and excludes nested class spans from the outer class's method search; methods are counted only at the immediate body of each class (depth-1, just inside its `{`).
+- **Python MRO not walked** — Python subclasses inherit; the scanner only saw declared methods. The fix builds a base-class graph (resolving by simple name) and accumulates methods up the MRO before matching against the Java surface.
+
+**Result:** measured parity jumped from 85.9% → 93.8% (matched methods 5,015 → 5,228) with **zero pypdfbox source changes**. The previous gap was structurally measurement artifacts. Suite remained green throughout (26,447 passed).

@@ -49,6 +49,7 @@ class PythonClass:
     simple_name: str  # e.g. "COSName"
     file: Path
     methods: set[str] = field(default_factory=set)  # snake_case names
+    bases: list[str] = field(default_factory=list)  # base class simple names
 
 
 # ---------- name normalisation ----------
@@ -110,6 +111,99 @@ _JAVA_KEYWORDS = {
 }
 
 
+_RET_TOKEN = re.compile(r"\w+")
+
+
+def _find_class_body_end(stripped: str, decl_end: int) -> tuple[int, int]:
+    """Return ``(body_start, body_end)`` for the class declaration ending at
+    ``decl_end``. ``body_start`` is the position of the opening ``{``;
+    ``body_end`` is the position of the matching closing ``}``. If neither
+    is found, both default to ``len(stripped)``.
+
+    Comments + string literals are already replaced with spaces by
+    :func:`_strip_java_comments_and_strings`, so brace counting is safe.
+    """
+    n = len(stripped)
+    open_brace = stripped.find("{", decl_end)
+    if open_brace == -1:
+        return n, n
+    depth = 1
+    i = open_brace + 1
+    while i < n and depth > 0:
+        c = stripped[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return open_brace, i
+        i += 1
+    return open_brace, n
+
+
+def _scan_methods_at_depth_one(
+    stripped: str,
+    body_start: int,
+    body_end: int,
+    nested_decls: list[tuple[int, int]],
+) -> set[str]:
+    """Scan ``stripped[body_start:body_end]`` for method declarations that
+    occur at the **immediate** body of the class — i.e. at the brace depth
+    just inside the class's opening ``{``. ``nested_decls`` is a list of
+    ``(start, end)`` spans for inner class/enum/interface bodies that should
+    be skipped. Linear in the body size; no string copying.
+    """
+    methods: set[str] = set()
+    # Build a sorted list of nested-span start positions so we can fast-skip
+    # entire inner-class bodies in one jump.
+    nested_decls = sorted(nested_decls, key=lambda s: s[0])
+    nest_idx = 0
+
+    # We start one position after the body's opening `{`, at depth 1.
+    i = body_start + 1
+    n = body_end
+    while i < n:
+        # If we're at the start of a nested span, jump past it.
+        if nest_idx < len(nested_decls):
+            ns_start, ns_end = nested_decls[nest_idx]
+            if i >= ns_end:
+                nest_idx += 1
+                continue
+            if i == ns_start:
+                i = ns_end
+                nest_idx += 1
+                continue
+        # Try to match a method declaration starting from `i`. The regex is
+        # multiline but anchored at ``^[ \t]*``, so we match only when ``i``
+        # is at a line start or after whitespace.
+        if stripped[i] == "\n":
+            i += 1
+            continue
+        m = _JAVA_METHOD.match(stripped, i, n)
+        if m is None:
+            # Skip to next line.
+            nl = stripped.find("\n", i, n)
+            i = nl + 1 if nl != -1 else n
+            continue
+        # We have a candidate. Validate it before adding.
+        mname = m.group("name")
+        ret = m.group("ret").strip()
+        if (
+            mname in _JAVA_KEYWORDS
+            or ret == ""
+            or mname[0].isupper()
+        ):
+            i = m.end()
+            continue
+        ret_tokens = _RET_TOKEN.findall(ret)
+        if not ret_tokens or any(t in _JAVA_KEYWORDS for t in ret_tokens):
+            i = m.end()
+            continue
+        methods.add(camel_to_snake(mname))
+        i = m.end()
+    return methods
+
+
 def parse_java_file(path: Path) -> list[JavaClass]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -129,11 +223,27 @@ def parse_java_file(path: Path) -> list[JavaClass]:
     if not class_decls:
         return []
 
+    # Compute body spans for every class declaration once.
+    bodies: list[tuple[int, int, int]] = []  # (decl_idx, body_open_brace, body_close_brace)
     for i, decl in enumerate(class_decls):
+        open_brace, close_brace = _find_class_body_end(stripped, decl.end())
+        bodies.append((i, open_brace, close_brace))
+
+    # For each class, collect the spans of any nested classes contained
+    # *strictly* within its body so the method scanner can skip them.
+    for idx, open_b, close_b in bodies:
+        decl = class_decls[idx]
         name = decl.group(1)
-        start = decl.end()
-        end = class_decls[i + 1].start() if i + 1 < len(class_decls) else len(stripped)
-        body = stripped[start:end]
+        if name in _JAVA_KEYWORDS:
+            continue
+        nested: list[tuple[int, int]] = []
+        for j_idx, j_open, j_close in bodies:
+            if j_idx == idx:
+                continue
+            # Nested if its declaration sits between this class's open and close.
+            j_decl_start = class_decls[j_idx].start()
+            if open_b < j_decl_start < close_b and j_close <= close_b:
+                nested.append((j_decl_start, j_close + 1))
 
         cls = JavaClass(
             fqn=f"{package}.{name}" if package else name,
@@ -141,19 +251,10 @@ def parse_java_file(path: Path) -> list[JavaClass]:
             simple_name=name,
             file=path,
         )
-
-        # Extract method names from the body of this class.
-        for m in _JAVA_METHOD.finditer(body):
-            mname = m.group("name")
-            ret = m.group("ret").strip()
-            # Skip constructors (return == name == constructor token == class name)
-            # and skip cases where 'name' is actually a Java keyword (control flow).
-            if mname in _JAVA_KEYWORDS or mname == name:
-                continue
-            # Heuristic: ret token mustn't be a Java keyword used in flow.
-            if ret in _JAVA_KEYWORDS or ret == "":
-                continue
-            cls.methods.add(camel_to_snake(mname))
+        for mname in _scan_methods_at_depth_one(stripped, open_b, close_b, nested):
+            if mname == camel_to_snake(name):
+                continue  # constructor
+            cls.methods.add(mname)
 
         if cls.methods:
             classes.append(cls)
@@ -236,12 +337,20 @@ def parse_python_file(path: Path, package_root: Path) -> list[PythonClass]:
             simple_name=node.name,
             file=path,
         )
+        # Capture base class simple names so the matcher can walk the MRO and
+        # credit inherited methods. We only need the trailing identifier
+        # (`PDDictionaryWrapper`, not `pypdfbox.pdmodel.common.PDDictionaryWrapper`).
+        for base in node.bases:
+            if isinstance(base, ast.Name):
+                cls.bases.append(base.id)
+            elif isinstance(base, ast.Attribute):
+                cls.bases.append(base.attr)
         for item in node.body:
             if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if _DUNDER.match(item.name):
                     continue
                 cls.methods.add(item.name)
-        if cls.methods:
+        if cls.methods or cls.bases:
             classes.append(cls)
     return classes
 
@@ -312,6 +421,28 @@ class ClassReport:
         return self.matched_methods / self.java_methods
 
 
+def _collect_methods_with_mro(
+    pcls: PythonClass,
+    python: dict[str, PythonClass],
+    seen: set[str] | None = None,
+) -> set[str]:
+    """Collect a Python class's methods including those inherited from any
+    indexed base class (recursively). The base graph is keyed on simple names,
+    so we can resolve cross-file inheritance even without import resolution.
+    """
+    if seen is None:
+        seen = set()
+    if pcls.simple_name in seen:
+        return set()
+    seen.add(pcls.simple_name)
+    out = set(pcls.methods)
+    for base_name in pcls.bases:
+        base = python.get(base_name)
+        if base is not None:
+            out |= _collect_methods_with_mro(base, python, seen)
+    return out
+
+
 def build_report(
     java: dict[str, JavaClass],
     python: dict[str, PythonClass],
@@ -327,8 +458,15 @@ def build_report(
         if pcls is None:
             java_only.append(jcls.fqn)
             continue
-        matched = jcls.methods & pcls.methods
-        missing = sorted(jcls.methods - pcls.methods)
+        # Walk the Python MRO so a subclass gets credit for methods defined on
+        # its bases — Java's parity scanner counts methods declared on each
+        # class regardless of inheritance, but Python conventionally relies on
+        # inherited dispatch.
+        py_methods = _collect_methods_with_mro(pcls, python)
+        matched = jcls.methods & py_methods
+        missing = sorted(jcls.methods - py_methods)
+        # Extra methods are still reported relative to the *declared* set so
+        # callers can spot unique additions, not the full MRO surface.
         extra = sorted(pcls.methods - jcls.methods)
         reports.append(
             ClassReport(
