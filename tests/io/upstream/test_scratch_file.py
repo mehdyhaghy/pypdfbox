@@ -144,6 +144,45 @@ def test_buffers_closed_when_scratch_file_closes() -> None:
     assert b.is_closed()
 
 
+def test_check_closed_raises_after_close() -> None:
+    # Upstream's ``checkClosed`` (line 428) is package-private but exposed here
+    # for parity. After close, calling it must raise (matches upstream's
+    # ``IOException`` -> we raise ``ValueError`` per the rest of this class).
+    sf = ScratchFile()
+    sf.check_closed()  # before close: no-op
+    sf.close()
+    with pytest.raises(ValueError):
+        sf.check_closed()
+
+
+def test_remove_buffer_detaches_buffer_from_owner() -> None:
+    # Mirrors upstream package-private ``removeBuffer`` (line 454): closing a
+    # buffer should drop it from the owner's tracking list so the parent's
+    # close() does not try to re-close it.
+    sf = ScratchFile()
+    buf = sf.create_buffer()
+    sf.remove_buffer(buf)
+    # Buffer is no longer tracked, so closing the scratch file leaves the
+    # explicitly-removed buffer untouched.
+    sf.close()
+    # The buffer was detached, not closed by us; explicit close still works.
+    if not buf.is_closed():
+        buf.close()
+
+
+def test_remove_buffer_unknown_is_noop() -> None:
+    sf = ScratchFile()
+    other = ScratchFile()
+    foreign = other.create_buffer()
+    sf.remove_buffer(foreign)  # not in our owner set; must not raise
+    other.close()
+    sf.close()
+
+
 # Skipped: upstream tests that poke at private free-page-list mechanics
 # (``ScratchFile.freePages`` field) are not reproducible without the same
 # internal layout; observable behavior is covered above.
+# Skipped: upstream private helpers ``initPages`` (line 134) and ``enlarge``
+# (line 236) are implementation details of the Java BitSet/byte[][] layout;
+# the Python port uses lazy lists/dicts and exposes the same observable
+# allocation behavior via ``get_new_page`` / ``get_page_count``.

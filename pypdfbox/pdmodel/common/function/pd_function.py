@@ -421,12 +421,25 @@ class PDFunction:
             return hi
         return x
 
-    def __str__(self) -> str:
-        """Mirror upstream ``toString()`` — ``"FunctionType<n>"``."""
+    def to_string(self) -> str:
+        """Direct port of upstream ``PDFunction.toString()`` —
+        ``"FunctionType<n>"`` where ``<n>`` is :meth:`get_function_type`.
+
+        Both this method and :meth:`__str__` exist so that call sites
+        translated from Java (``fn.toString()``) and Pythonic call sites
+        (``str(fn)``) hit the same string. Returns ``"FunctionType?"``
+        when the subtype is unknown (abstract base, identity sentinel) so
+        callers do not see an exception leaking out of a debug print —
+        upstream's ``toString()`` is non-throwing by convention.
+        """
         try:
             return f"FunctionType{self.get_function_type()}"
         except (NotImplementedError, Exception):  # pragma: no cover - defensive
             return "FunctionType?"
+
+    def __str__(self) -> str:
+        """Mirror upstream ``toString()`` — ``"FunctionType<n>"``."""
+        return self.to_string()
 
 
 class PDFunctionTypeIdentity(PDFunction):
@@ -463,8 +476,16 @@ class PDFunctionTypeIdentity(PDFunction):
         ``null`` so that the base ``clipToRange`` short-circuits."""
         return None
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``PDFunctionTypeIdentity.toString()`` — the
+        upstream class does not override ``toString``, but the base class
+        version would dereference an undefined function type. Override
+        explicitly so the return is the stable string ``"FunctionTypeIdentity"``
+        without the ``"?"`` fallback the base would otherwise emit."""
         return "FunctionTypeIdentity"
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 __all__ = ["PDFunction", "PDFunctionTypeIdentity"]

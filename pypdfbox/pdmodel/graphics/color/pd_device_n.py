@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
@@ -294,6 +294,14 @@ class PDDeviceN(PDColorSpace):
         # — upstream constructs this lazily once colorant names are set.
         n = self.get_number_of_components()
         self._initial_color = PDColor([1.0] * n, self)
+        # Color-conversion cache (mirrors upstream private fields populated
+        # by initColorConversionCache). Lazily filled by
+        # :meth:`init_color_conversion_cache` — left empty when the space
+        # has no /Attributes (the tint-transform path doesn't need it).
+        self._num_colorants: int = 0
+        self._colorant_to_component: list[int] = []
+        self._process_color_space: PDColorSpace | None = None
+        self._spot_color_spaces: list[PDColorSpace | None] = []
 
     # ---------- abstract surface ----------
 
@@ -529,22 +537,158 @@ class PDDeviceN(PDColorSpace):
             out.append(1.0)
         return out
 
+    # ---------- color conversion cache ----------
+
+    def init_color_conversion_cache(self, resources: Any = None) -> None:
+        """Populate the per-colorant attribute cache used by the
+        attribute-driven RGB path. Mirrors upstream private
+        ``initColorConversionCache(PDResources)`` (PDDeviceN.java line
+        126) and is invoked automatically the first time
+        :meth:`to_rgb_with_attributes` is called.
+
+        For each colorant name we record:
+
+        - which process-component slot it maps onto (``-1`` if none), and
+        - the spot color space, when the ``/Attributes /Colorants`` map
+          declares one. For non-NChannel subtypes a spot colorant
+          masks any same-named process component (PDF 32000-1
+          §8.6.6.5).
+
+        ``resources`` is accepted for surface compatibility — pypdfbox's
+        :meth:`PDDeviceNAttributes.get_colorants` does not require a
+        :class:`PDResources` because color spaces are eagerly resolved.
+        """
+        attrs = self.get_attributes()
+        # Reset cache fields whether or not we have attributes — keeps
+        # the contract that calling this method clears prior state.
+        self._num_colorants = 0
+        self._colorant_to_component = []
+        self._process_color_space = None
+        self._spot_color_spaces = []
+        if attrs is None:
+            return
+        del resources  # accepted for parity, not consumed (see docstring)
+        colorant_names = self.get_colorant_names()
+        self._num_colorants = len(colorant_names)
+        self._colorant_to_component = [-1] * self._num_colorants
+        process = attrs.get_process()
+        if process is not None:
+            components = process.get_components()
+            for c in range(self._num_colorants):
+                try:
+                    self._colorant_to_component[c] = components.index(
+                        colorant_names[c]
+                    )
+                except ValueError:
+                    self._colorant_to_component[c] = -1
+            self._process_color_space = process.get_color_space()
+        self._spot_color_spaces = [None] * self._num_colorants
+        spot_colorants = attrs.get_colorants()
+        is_nchannel = self.is_n_channel()
+        for c in range(self._num_colorants):
+            name = colorant_names[c]
+            spot = spot_colorants.get(name)
+            if spot is None:
+                continue
+            self._spot_color_spaces[c] = spot
+            # spot colors may replace process colors with same name
+            # providing that the subtype is not NChannel (PDF 32000-1
+            # §8.6.6.5).
+            if not is_nchannel:
+                self._colorant_to_component[c] = -1
+
     # ---------- conversion ----------
 
     def to_rgb(
         self, components: list[float]
     ) -> tuple[float, float, float] | None:
-        """Evaluate the tint transform on the multi-component tint
-        vector and forward to the alternate CS. Per PDF 32000-1
-        §8.6.6.5, ``components`` is one value per colorant."""
+        """Evaluate the tint vector to sRGB. Mirrors upstream
+        ``PDDeviceN.toRGB(float[])`` — dispatches to
+        :meth:`to_rgb_with_attributes` when ``/Attributes`` is present,
+        else :meth:`to_rgb_with_tint_transform`."""
+        if self.has_attributes():
+            return self.to_rgb_with_attributes(components)
+        return self.to_rgb_with_tint_transform(components)
+
+    def to_rgb_with_tint_transform(
+        self, value: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Evaluate the tint transform and route through the alternate
+        color space. Mirrors upstream private
+        ``toRGBWithTintTransform(float[])`` (PDDeviceN.java line 432)."""
         alternate = self.get_alternate_color_space()
         if alternate is None:
             return None
         function = self.get_tint_transform()
         if function is None:
             return None
-        alt_components = function.eval(list(components))
-        return PDColor(alt_components, alternate).to_rgb()
+        alt_value = function.eval(list(value))
+        return PDColor(alt_value, alternate).to_rgb()
+
+    def to_rgb_with_attributes(
+        self, value: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Compose the per-colorant tint contributions through the
+        ``/Attributes`` ``/Process`` and ``/Colorants`` color spaces by
+        multiply-blending each colorant's RGB output. Mirrors upstream
+        private ``toRGBWithAttributes(float[])`` (PDDeviceN.java line
+        377). Falls back to :meth:`to_rgb_with_tint_transform` when a
+        spot colorant has no entry in ``/Colorants`` — the same Altona
+        Visual workaround the upstream method takes."""
+        # Lazily build the attribute cache (upstream does this in its
+        # constructor; we do it on first use to keep the cheap default
+        # ctor path allocation-free).
+        if not self._spot_color_spaces and self.has_attributes():
+            self.init_color_conversion_cache()
+        rgb_value = [1.0, 1.0, 1.0]
+        for c in range(self._num_colorants):
+            is_process_colorant = self._colorant_to_component[c] >= 0
+            if is_process_colorant:
+                component_color_space = self._process_color_space
+            elif self._spot_color_spaces[c] is None:
+                # Missing spot color, fall back to tint-transform path.
+                return self.to_rgb_with_tint_transform(value)
+            else:
+                component_color_space = self._spot_color_spaces[c]
+            if component_color_space is None:
+                return self.to_rgb_with_tint_transform(value)
+            n_components = component_color_space.get_number_of_components()
+            component_samples = [0.0] * n_components
+            if is_process_colorant:
+                component_samples[self._colorant_to_component[c]] = value[c]
+            else:
+                component_samples[0] = value[c]
+            rgb_component = component_color_space.to_rgb(component_samples)
+            if rgb_component is None:
+                return self.to_rgb_with_tint_transform(value)
+            # multiply (blend mode)
+            rgb_value[0] *= rgb_component[0]
+            rgb_value[1] *= rgb_component[1]
+            rgb_value[2] *= rgb_component[2]
+        return (rgb_value[0], rgb_value[1], rgb_value[2])
+
+    # ---------- raster-level conversion ----------
+
+    def to_rgb_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Render an 8-bit-per-component DeviceN raster to a Pillow sRGB
+        image. Mirrors upstream ``PDDeviceN.toRGBImage(WritableRaster)``
+        (PDDeviceN.java line 193) — dispatches to the attribute-driven
+        path when ``/Attributes`` is present, else the tint-transform
+        path. Both end up walking each pixel through :meth:`to_rgb`,
+        which already encodes the upstream branching logic."""
+        return super().to_rgb_image(raster, width, height)
+
+    def to_raw_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any:
+        """Mirrors upstream ``PDDeviceN.toRawImage(WritableRaster)``
+        (PDDeviceN.java line 442) — DeviceN has no raw raster form
+        (the channel set is unbounded), so the upstream method
+        unconditionally returns ``null``. We match that contract."""
+        del raster, width, height
+        return None
 
     # ---------- string form ----------
 
@@ -572,6 +716,13 @@ class PDDeviceN(PDColorSpace):
             parts.append(str(attrs))
         parts.append("}")
         return "".join(parts)
+
+    def to_string(self) -> str:
+        """Return the upstream-style ``toString`` rendering. Mirrors
+        upstream ``PDDeviceN.toString()`` (PDDeviceN.java line 600).
+        Surfaced explicitly so callers porting from PDFBox can keep the
+        literal ``.toString()`` invocation spelled snake_case."""
+        return self.__str__()
 
 
 __all__ = ["PDDeviceN", "PDDeviceNAttributes", "PDDeviceNProcess"]

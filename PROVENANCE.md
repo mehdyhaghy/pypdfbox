@@ -1091,6 +1091,8 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/pdmodel/graphics/image/upstream/test_pd_image_x_object.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObjectTest.java` |
 | `tests/pdmodel/font/upstream/test_pd_simple_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDSimpleFontTest.java`; surface inferred from `PDSimpleFont.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/fdf/upstream/test_fdf_field.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/fdf/FDFFieldTest.java` |
+| `tests/pdmodel/common/function/upstream/test_pd_function.py` | 3.0.x | placeholder — upstream has no dedicated `PDFunctionTest.java`; surface inferred from `PDFunction.java` (PDFBox 3.0.x) |
+| `tests/pdmodel/graphics/color/upstream/test_pd_device_n.py` | 3.0.x | placeholder — upstream has no dedicated `PDDeviceNTest.java`; surface inferred from `PDDeviceN.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |

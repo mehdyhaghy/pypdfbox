@@ -117,6 +117,23 @@ class PDAnnotation:
     # ---------- factory ----------
 
     @staticmethod
+    def create_annotation(base: COSBase) -> PDAnnotation:
+        """Upstream-named factory mirroring Java's static
+        :code:`createAnnotation(COSBase)`.
+
+        Identical behaviour to :meth:`create` except it raises
+        :class:`OSError` (the mapping for upstream :code:`IOException`)
+        when ``base`` is not a :class:`COSDictionary`. Upstream throws
+        ``IOException("Error: Unknown annotation type ...")`` in that
+        case; we follow the same shape so call-sites that check for
+        I/O-style failures still work."""
+        if not isinstance(base, COSDictionary):
+            raise OSError(
+                f"Error: Unknown annotation type {type(base).__name__}"
+            )
+        return PDAnnotation.create(base)
+
+    @staticmethod
     def create(cos_dict: COSBase) -> PDAnnotation:
         """Dispatch a raw annotation dict to the appropriate subclass.
 
@@ -692,6 +709,28 @@ class PDAnnotation:
         return None
 
     # ---------- equality / repr ----------
+
+    def equals(self, other: object) -> bool:
+        """Upstream-named equality.
+
+        Mirrors Java :code:`PDAnnotation.equals(Object)`: two annotations
+        are equal when they wrap the same backing :class:`COSDictionary`
+        (upstream invokes :code:`COSDictionary.equals` which falls back
+        to ``Object.equals``, i.e. reference identity, since we don't
+        override dict equality)."""
+        if other is self:
+            return True
+        if not isinstance(other, PDAnnotation):
+            return False
+        return other._dict is self._dict
+
+    def hash_code(self) -> int:
+        """Upstream-named hash mirror of :meth:`__hash__`.
+
+        Java :code:`PDAnnotation.hashCode()` returns
+        :code:`Objects.hash(dictionary)`; we hash the dict identity
+        for the same one-bucket-per-instance behaviour."""
+        return self.__hash__()
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, PDAnnotation):

@@ -291,6 +291,17 @@ class ScratchFile:
         with self._lock:
             self._open_buffers.discard(buf)
 
+    def remove_buffer(self, buf: ScratchFileBuffer) -> None:
+        """
+        Detach a buffer from this scratch file's owner set without closing it.
+
+        Mirrors upstream package-private ``ScratchFile.removeBuffer`` (line 454)
+        which is called by ``ScratchFileBuffer.close`` to drop itself from the
+        owner's buffer list. Idempotent: removing an unknown buffer is a no-op.
+        """
+        with self._lock:
+            self._open_buffers.discard(buf)
+
     # ----- lifecycle -----
 
     def close(self) -> None:
@@ -326,6 +337,17 @@ class ScratchFile:
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("operation on closed ScratchFile")
+
+    def check_closed(self) -> None:
+        """
+        Raise if this scratch file has already been closed.
+
+        Mirrors upstream package-private ``ScratchFile.checkClosed`` (line 428).
+        Provided as a parity-named helper; internal call sites use
+        :meth:`_check_open` (which is the same predicate, kept for back-compat
+        with the old internal name used elsewhere in this module).
+        """
+        self._check_open()
 
     def _validate_page_io(
         self,

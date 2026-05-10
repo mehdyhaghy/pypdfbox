@@ -59,7 +59,7 @@ def test_seek_eof() -> None:
     assert view.read_into(bytearray(1), 0, 1) == -1
     view.close()
     parent.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError):
         view.read()
 
 

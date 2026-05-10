@@ -563,5 +563,69 @@ def test_normal_appearance_stream_state_keyed_no_state_set() -> None:
     assert ann.get_normal_appearance_stream() is None
 
 
+# ---------- create_annotation (upstream-named factory) ----------
+
+
+def test_create_annotation_dispatches_link() -> None:
+    d = COSDictionary()
+    d.set_name(COSName.SUBTYPE, "Link")  # type: ignore[attr-defined]
+    ann = PDAnnotation.create_annotation(d)
+    assert isinstance(ann, PDAnnotationLink)
+
+
+def test_create_annotation_unknown_for_missing_subtype() -> None:
+    d = COSDictionary()
+    ann = PDAnnotation.create_annotation(d)
+    assert isinstance(ann, PDAnnotationUnknown)
+
+
+def test_create_annotation_raises_oserror_for_non_dict() -> None:
+    """Upstream throws ``IOException("Error: Unknown annotation type …")``
+    when the input is not a COSDictionary; we surface that as
+    :class:`OSError` per the CLAUDE.md mapping."""
+    with pytest.raises(OSError):
+        PDAnnotation.create_annotation(COSName.get_pdf_name("Annot"))
+
+
+# ---------- equals / hash_code (upstream-named aliases) ----------
+
+
+def test_equals_true_on_shared_dict() -> None:
+    raw = COSDictionary()
+    raw.set_name(COSName.SUBTYPE, "Text")  # type: ignore[attr-defined]
+    a = PDAnnotation.create(raw)
+    b = PDAnnotation.create(raw)
+    assert a.equals(b)
+
+
+def test_equals_self() -> None:
+    ann = PDAnnotationText()
+    assert ann.equals(ann)
+
+
+def test_equals_false_on_distinct_dicts() -> None:
+    a = PDAnnotationText()
+    b = PDAnnotationText()
+    assert not a.equals(b)
+
+
+def test_equals_false_on_non_annotation() -> None:
+    ann = PDAnnotationText()
+    assert not ann.equals("not an annotation")
+    assert not ann.equals(None)
+
+
+def test_hash_code_matches_dunder_hash() -> None:
+    ann = PDAnnotationText()
+    assert ann.hash_code() == hash(ann)
+
+
+def test_hash_code_stable_across_calls() -> None:
+    ann = PDAnnotationText()
+    first = ann.hash_code()
+    second = ann.hash_code()
+    assert first == second
+
+
 # Ensure unused imports stay referenced (suppresses linter chatter).
 _ = COSString
