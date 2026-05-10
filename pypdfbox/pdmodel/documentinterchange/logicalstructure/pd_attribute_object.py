@@ -4,7 +4,7 @@ import logging
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSBase, COSDictionary, COSName
 
 _LOG = logging.getLogger(__name__)
 
@@ -170,9 +170,10 @@ class PDAttributeObject:
 
     # ---------- change notification ----------
 
-    def notify_change(self) -> None:
+    def notify_changed(self) -> None:
         """Notify the owning structure element that this attribute object
-        changed.
+        changed. Mirrors upstream ``notifyChanged()`` (PDAttributeObject.java
+        L185-L191).
 
         When :meth:`set_structure_element` has been called, delegates to
         ``PDStructureElement.attribute_changed(self)`` so the parent can
@@ -180,11 +181,50 @@ class PDAttributeObject:
         the call is a debug-logged no-op."""
         if self._structure_element is None:
             _LOG.debug(
+                "PDAttributeObject.notify_changed() called with no "
+                "structure-element back-pointer; ignoring"
+            )
+            return
+        self._structure_element.attribute_changed(self)
+
+    def notify_change(self) -> None:
+        """Compatibility alias for :meth:`notify_changed`.
+
+        ``notify_change`` predates the upstream-faithful ``notify_changed``
+        snake_case form (which mirrors Java ``notifyChanged``). Existing
+        call sites use this spelling — both names route through the same
+        delegation path."""
+        if self._structure_element is None:
+            _LOG.debug(
                 "PDAttributeObject.notify_change() called with no "
                 "structure-element back-pointer; ignoring"
             )
             return
         self._structure_element.attribute_changed(self)
+
+    def potentially_notify_changed(
+        self, old_base: COSBase | None, new_base: COSBase | None
+    ) -> None:
+        """Fire :meth:`notify_changed` only when ``old_base`` differs from
+        ``new_base``. Mirrors upstream ``potentiallyNotifyChanged`` (
+        PDAttributeObject.java L156-L162) — guards the structure-element
+        notification behind an equality check so no-op writes don't trigger
+        spurious revisions."""
+        if self.is_value_changed(old_base, new_base):
+            self.notify_changed()
+
+    @staticmethod
+    def is_value_changed(
+        old_value: COSBase | None, new_value: COSBase | None
+    ) -> bool:
+        """Return ``True`` when ``old_value`` and ``new_value`` differ.
+        Mirrors upstream private helper ``isValueChanged`` (
+        PDAttributeObject.java L172-L179): when ``old_value`` is ``None``
+        the result is ``new_value is not None``; otherwise compare via
+        equality."""
+        if old_value is None:
+            return new_value is not None
+        return old_value != new_value
 
     # ---------- string formatting helpers (PDFBox parity) ----------
 
@@ -202,6 +242,13 @@ class PDAttributeObject:
                 f"{type(array).__name__}"
             )
         return "[" + ", ".join(str(item) for item in array) + "]"
+
+    def to_string(self) -> str:
+        """Return the upstream ``toString()`` representation. Mirrors
+        ``PDAttributeObject.toString()`` (PDAttributeObject.java L194-L197)
+        which returns ``"O=" + owner``. Subclasses override ``__str__``
+        to extend this with their typed attribute payload."""
+        return str(self)
 
     def __str__(self) -> str:
         """Mirror upstream ``PDAttributeObject.toString()`` which returns

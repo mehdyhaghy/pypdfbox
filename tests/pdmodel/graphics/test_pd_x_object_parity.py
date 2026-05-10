@@ -118,10 +118,10 @@ def test_repr_includes_subtype() -> None:
 
 
 def test_init_rejects_non_stream_input() -> None:
-    """The protected constructor accepts only ``PDStream`` or ``COSStream`` —
-    anything else (e.g. a raw ``COSDictionary`` or a Python ``str``) must
-    raise ``TypeError`` rather than silently mis-typing the wrapper.
-    Mirrors upstream Java's compile-time overload disambiguation.
+    """The protected constructor accepts only ``PDStream``, ``COSStream``,
+    or ``PDDocument`` — anything else (e.g. a raw ``COSDictionary`` or a
+    Python ``str``) must raise ``TypeError`` rather than silently mis-typing
+    the wrapper. Mirrors upstream Java's compile-time overload disambiguation.
     """
     import pytest
 

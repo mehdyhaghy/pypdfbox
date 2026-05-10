@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
 from pypdfbox.pdmodel.common.pd_stream import PDStream
@@ -7,10 +9,28 @@ from pypdfbox.pdmodel.common.pd_stream import PDStream
 from .pd_color import PDColor, _clamp_unit
 from .pd_color_space import PDColorSpace
 
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
 _N: COSName = COSName.get_pdf_name("N")
 _ALTERNATE: COSName = COSName.get_pdf_name("Alternate")
 _RANGE: COSName = COSName.get_pdf_name("Range")
 _METADATA: COSName = COSName.get_pdf_name("Metadata")
+
+# Java ``java.awt.color.ColorSpace`` numeric constants — kept here so
+# :meth:`PDICCBased.get_color_space_type` returns the same integer
+# values as upstream's ``getColorSpaceType()`` without pulling in AWT.
+TYPE_XYZ = 0
+TYPE_LAB = 1
+TYPE_LUV = 2
+TYPE_YCBCR = 3
+TYPE_YXY = 4
+TYPE_RGB = 5
+TYPE_GRAY = 6
+TYPE_HSV = 7
+TYPE_HLS = 8
+TYPE_CMYK = 9
+TYPE_CMY = 11
 
 
 class PDICCBased(PDColorSpace):
@@ -38,6 +58,53 @@ class PDICCBased(PDColorSpace):
         super().__init__(array)
         n = self.get_n()
         self._initial_color = PDColor([0.0] * n, self)
+
+    # ---------- factory ----------
+
+    @staticmethod
+    def create(
+        icc_array: COSArray, resources: PDResources | None = None
+    ) -> PDICCBased:
+        """Build a ``PDICCBased`` from an ``[/ICCBased <stream>]`` array,
+        consulting the supplied resources' cache when the stream slot is
+        an indirect reference. Mirrors upstream
+        ``PDICCBased.create(COSArray, PDResources) : PDICCBased``.
+
+        ``icc_array`` must have at least two entries with a ``COSStream``
+        in slot 1; otherwise :class:`OSError` is raised (upstream throws
+        ``IOException``). When ``resources`` is provided and slot 1 is a
+        ``COSObject`` (indirect reference), the resources' resource cache
+        is checked first and a hit is returned directly; a miss is
+        constructed and stored back in the cache.
+        """
+        from pypdfbox.cos.cos_object import COSObject
+
+        PDICCBased._check_array(icc_array)
+        base = icc_array.get(1)
+        if isinstance(base, COSObject) and resources is not None:
+            cache = resources.get_resource_cache()
+            if cache is not None:
+                cached = cache.get_color_space(base)
+                if isinstance(cached, PDICCBased):
+                    return cached
+                new_space = PDICCBased(icc_array)
+                cache.put_color_space(base, new_space)
+                return new_space
+        return PDICCBased(icc_array)
+
+    @staticmethod
+    def _check_array(icc_array: COSArray) -> None:
+        """Validate the shape of an ICCBased ``COSArray``. Mirrors the
+        private ``checkArray`` helper from upstream — raises ``OSError``
+        (PDFBox throws ``IOException``) when the array is too short or
+        the second slot is not a ``COSStream``.
+        """
+        if icc_array.size() < 2:
+            raise OSError("ICCBased colorspace array must have two elements")
+        if not isinstance(icc_array.get_object(1), COSStream):
+            raise OSError(
+                "ICCBased colorspace array must have a stream as second element"
+            )
 
     # ---------- abstract surface ----------
 
@@ -145,6 +212,29 @@ class PDICCBased(PDColorSpace):
     def set_alternate_color_space(self, alternate: PDColorSpace | None) -> None:
         """Upstream-named alias of :meth:`set_alternate`."""
         self.set_alternate(alternate)
+
+    def set_alternate_color_spaces(
+        self, alternates: list[PDColorSpace] | None
+    ) -> None:
+        """Set ``/Alternate`` from a list of color spaces. Mirrors
+        upstream ``PDICCBased.setAlternateColorSpaces(List<PDColorSpace>)``.
+
+        ``None`` clears the entry (writes a ``None`` slot — matches
+        upstream's ``setItem(ALTERNATE, null)``). An empty list still
+        writes an empty ``COSArray`` so the entry stays canonical.
+        """
+        stream = self._get_stream()
+        if stream is None:
+            return
+        if alternates is None:
+            stream.set_item(_ALTERNATE, None)
+            return
+        alt_array = COSArray()
+        for cs in alternates:
+            cos = cs.get_cos_object() if cs is not None else None
+            if cos is not None:
+                alt_array.add(cos)
+        stream.set_item(_ALTERNATE, alt_array)
 
     def get_range(self) -> COSArray | None:
         stream = self._get_stream()
@@ -259,6 +349,90 @@ class PDICCBased(PDColorSpace):
             return b""
         with pd_stream.create_input_stream() as src:
             return src.read()
+
+    # ---------- profile inspection ----------
+
+    def is_srgb(self) -> bool:
+        """Return ``True`` when this ICCBased color space carries the
+        embedded sRGB profile or its alternate resolves to DeviceRGB.
+        Mirrors upstream ``PDICCBased.isSRGB() : boolean``.
+
+        Detection mirrors upstream's ``is_sRGB`` private helper: the
+        ICC profile header's ``deviceModel`` (bytes 84..91 of the
+        128-byte profile header) is read as US-ASCII and compared to
+        the literal string ``"sRGB"`` after trimming whitespace. When
+        the embedded profile is unreadable, the alternate color space
+        is consulted and a DeviceRGB alternate is treated as sRGB
+        (matches upstream's fallback in ``loadICCProfile``).
+        """
+        profile = self.get_iccprofile_bytes()
+        # Profile header is 128 bytes, deviceModel signature occupies
+        # bytes 84..91 (icHdrModel). Need at least 91 bytes to read it.
+        if len(profile) >= 91:
+            try:
+                device_model = profile[84:91].decode(
+                    "ascii", errors="replace"
+                ).strip("\x00 \t\r\n")
+            except UnicodeDecodeError:
+                device_model = ""
+            if device_model == "sRGB":
+                return True
+        # Fallback: when the profile is unreadable but the alternate
+        # color space is DeviceRGB, upstream's loadICCProfile flips
+        # the ``isRGB`` flag — mirror that here.
+        from .pd_device_rgb import PDDeviceRGB
+
+        alternate = self.get_alternate()
+        if alternate is PDDeviceRGB.INSTANCE:
+            return True
+        return alternate is not None and alternate.get_name() == "DeviceRGB"
+
+    def get_color_space_type(self) -> int:
+        """Return the ``java.awt.color.ColorSpace`` type integer for
+        this ICCBased color space. Mirrors upstream
+        ``PDICCBased.getColorSpaceType() : int``.
+
+        When the embedded profile is readable we inspect bytes 16..19
+        of the profile header (``icHdrColorSpace`` signature) to map
+        common ICC color-space tags onto AWT's numeric type. Otherwise
+        we fall back to ``/N``-based inference (1→GRAY, 3→RGB, 4→CMYK,
+        anything else → ``-1``) — matches upstream's alternate-CS
+        fallback path.
+        """
+        profile = self.get_iccprofile_bytes()
+        # Profile header is 128 bytes; ``icHdrColorSpace`` signature
+        # occupies bytes 16..19 (4-byte ASCII). Need at least 20.
+        if len(profile) >= 20:
+            try:
+                signature = profile[16:20].decode(
+                    "ascii", errors="replace"
+                )
+            except UnicodeDecodeError:
+                signature = ""
+            mapping = {
+                "XYZ ": TYPE_XYZ,
+                "Lab ": TYPE_LAB,
+                "Luv ": TYPE_LUV,
+                "YCbr": TYPE_YCBCR,
+                "Yxy ": TYPE_YXY,
+                "RGB ": TYPE_RGB,
+                "GRAY": TYPE_GRAY,
+                "HSV ": TYPE_HSV,
+                "HLS ": TYPE_HLS,
+                "CMYK": TYPE_CMYK,
+                "CMY ": TYPE_CMY,
+            }
+            mapped = mapping.get(signature)
+            if mapped is not None:
+                return mapped
+        n = self.get_n()
+        if n == 1:
+            return TYPE_GRAY
+        if n == 3:
+            return TYPE_RGB
+        if n == 4:
+            return TYPE_CMYK
+        return -1
 
     # ---------- conversion ----------
 
@@ -376,4 +550,26 @@ class PDICCBased(PDColorSpace):
         return (r / 255.0, g / 255.0, b / 255.0)
 
 
-__all__ = ["PDICCBased"]
+    # ---------- string form ----------
+
+    def __str__(self) -> str:
+        """Mirrors upstream ``PDICCBased.toString``:
+        ``ICCBased{numberOfComponents: <n>}``.
+        """
+        return f"{self.get_name()}{{numberOfComponents: {self.get_n()}}}"
+
+
+__all__ = [
+    "PDICCBased",
+    "TYPE_CMY",
+    "TYPE_CMYK",
+    "TYPE_GRAY",
+    "TYPE_HLS",
+    "TYPE_HSV",
+    "TYPE_LAB",
+    "TYPE_LUV",
+    "TYPE_RGB",
+    "TYPE_XYZ",
+    "TYPE_YCBCR",
+    "TYPE_YXY",
+]

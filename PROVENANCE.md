@@ -961,6 +961,10 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/pdmodel/upstream/test_pd_page_content_stream.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageContentStreamTest.java` |
 | `tests/pdmodel/graphics/color/upstream/test_pd_color.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorTest.java` |
 | `tests/pdmodel/graphics/color/upstream/test_pd_color_space_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDColorSpaceTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_color_space.py` | 3.0.x | placeholder — upstream has no dedicated `PDColorSpaceTest.java` covering the abstract base; surface inferred from `PDColorSpace.java` (PDFBox 3.0.x) |
+| `tests/pdmodel/graphics/color/upstream/test_pd_icc_based.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/color/PDICCBasedTest.java` |
+| `tests/pdmodel/graphics/color/upstream/test_pd_indexed.py` | 3.0.x | placeholder — upstream has no dedicated `PDIndexedTest.java`; surface inferred from `PDIndexed.java` (PDFBox 3.0.x) |
+| `tests/pdmodel/graphics/upstream/test_pd_x_object.py` | 3.0.x | placeholder — upstream has no dedicated `PDXObjectTest.java`; surface inferred from `PDXObject.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/graphics/image/upstream/test_pd_image_x_object_masks.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObjectTest.java` (mask coverage subset) |
 | `pypdfbox/fontbox/type1/type1_font_util.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1FontUtil.java` |
 | `pypdfbox/fontbox/type1/type1_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Parser.java` + `Type1Lexer.java` (lite — top-level keys + FontInfo only) |

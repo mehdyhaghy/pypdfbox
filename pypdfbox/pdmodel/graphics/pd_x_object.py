@@ -7,6 +7,7 @@ from pypdfbox.pdmodel.common.pd_stream import PDStream
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
+    from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.pd_resources import PDResources
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -109,16 +110,27 @@ class PDXObject:
 
     def __init__(
         self,
-        stream: PDStream | COSStream,
+        stream: PDStream | COSStream | PDDocument,
         subtype: COSName,
     ) -> None:
+        # Local import — PDDocument transitively imports the graphics
+        # cluster, so importing it at module load creates a cycle.
+        from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+
         if isinstance(stream, COSStream):
             self._stream = PDStream(stream)
         elif isinstance(stream, PDStream):
             self._stream = stream
+        elif isinstance(stream, PDDocument):
+            # Mirrors upstream's protected constructor
+            # ``PDXObject(PDDocument, COSName)`` — create a new empty
+            # ``PDStream`` owned by the document for *writing* a new
+            # XObject. The document's scratch file backs the body.
+            self._stream = PDStream(stream)
         else:
             raise TypeError(
-                f"PDXObject expects PDStream or COSStream; got {type(stream).__name__}"
+                f"PDXObject expects PDStream, COSStream, or PDDocument; "
+                f"got {type(stream).__name__}"
             )
         # Mirror upstream: stamp /Type /XObject and /Subtype on the underlying dict.
         cos = self._stream.get_cos_object()

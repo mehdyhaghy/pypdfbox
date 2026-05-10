@@ -93,12 +93,11 @@ class PDColorSpace(ABC):
         if base is None:
             return None
 
-        # Unwrap indirect references — upstream calls
-        # ``COSObject.getObject()`` before the type dispatch.
+        # Unwrap indirect references — upstream routes ``COSObject``
+        # inputs through :meth:`_create_from_cos_object` so the resource
+        # cache (when present) can short-circuit repeated dispatches.
         if isinstance(base, COSObject):
-            base = base.get_object()
-            if base is None:
-                return None
+            return PDColorSpace._create_from_cos_object(base, resources)
 
         if isinstance(base, COSName):
             cs_name = base.get_name()
@@ -177,6 +176,30 @@ class PDColorSpace(ABC):
             )
         return None
 
+    @staticmethod
+    def _create_from_cos_object(
+        color_space: Any, resources: PDResources | None
+    ) -> PDColorSpace | None:
+        """Resolve a ``COSObject`` reference to its typed color space,
+        consulting the resource cache when available. Mirrors upstream
+        ``PDColorSpace.createFromCOSObject(COSObject, PDResources)``
+        (line 244 of ``PDColorSpace.java``).
+
+        Private helper — pypdfbox callers should always use
+        :meth:`create`, which routes ``COSObject`` arguments here.
+        """
+        if resources is not None:
+            cache = resources.get_resource_cache()
+            if cache is not None:
+                cached = cache.get_color_space(color_space)
+                if cached is not None:
+                    return cached
+            cs = PDColorSpace.create(color_space.get_object(), resources)
+            if cache is not None and cs is not None:
+                cache.put_color_space(color_space, cs)
+            return cs
+        return PDColorSpace.create(color_space.get_object())
+
     # ---------- COS surface ----------
 
     def get_cos_object(self) -> COSBase | None:
@@ -200,6 +223,24 @@ class PDColorSpace(ABC):
     @abstractmethod
     def get_initial_color(self) -> PDColor:
         """Return the initial (default) color value for this color space."""
+
+    def to_rgb(self, value: list[float]) -> list[float]:
+        """Return the sRGB equivalent of ``value`` as a 3-component
+        ``[r, g, b]`` list with each channel in ``[0, 1]``. Mirrors
+        upstream ``PDColorSpace.toRGB(float[])`` (line 306 of
+        ``PDColorSpace.java``, abstract).
+
+        Concrete subclasses (Device*, Cal*, ICCBased, Separation,
+        DeviceN, Pattern) override this directly. ``PDIndexed`` and
+        ``PDLab`` route through :class:`PDColor` for parity with the
+        broader pypdfbox color pipeline; the default implementation
+        below does the same delegation so callers can rely on a
+        ``to_rgb`` slot on every color space.
+        """
+        from .pd_color import PDColor
+
+        r, g, b = PDColor(list(value), self).to_rgb()
+        return [r, g, b]
 
     def get_default_decode(self, bits_per_component: int) -> list[float]:
         """Return the default ``/Decode`` array for image XObjects in this
@@ -305,6 +346,38 @@ class PDColorSpace(ABC):
         compatibility with PDFBox callers.
         """
         return None
+
+    def to_rgb_image_awt(
+        self, raster: bytes, awt_color_space: Any, width: int = 0, height: int = 0
+    ) -> Any:
+        """Render ``raster`` to an sRGB Pillow image via the supplied
+        AWT color-space adapter. Mirrors upstream
+        ``PDColorSpace.toRGBImageAWT(WritableRaster, java.awt.color.ColorSpace)``
+        (line 353 of ``PDColorSpace.java``).
+
+        Java AWT has no direct Python analogue — the upstream method
+        wraps a ``ColorConvertOp`` against the supplied ``ColorSpace``.
+        In pypdfbox we delegate to :meth:`to_rgb_image`, which already
+        performs the equivalent per-pixel conversion through this
+        color space's :meth:`to_rgb`. ``awt_color_space`` is accepted
+        for surface compatibility and ignored.
+        """
+        return self.to_rgb_image(raster, width, height)
+
+    def to_raw_image_awt(
+        self, raster: bytes, awt_color_space: Any, width: int = 0, height: int = 0
+    ) -> Any:
+        """Wrap ``raster`` as a Pillow image in this color space using
+        the supplied AWT color-space adapter. Mirrors upstream
+        ``PDColorSpace.toRawImage(WritableRaster, java.awt.color.ColorSpace)``
+        (line 339 of ``PDColorSpace.java``, the protected overload).
+
+        Like :meth:`to_rgb_image_awt`, ``awt_color_space`` has no
+        Python analogue and is ignored — we delegate to
+        :meth:`to_raw_image` which already returns the native Pillow
+        mode for Device* spaces and falls through to RGB otherwise.
+        """
+        return self.to_raw_image(raster, width, height)
 
     # ---------- type predicates ----------
 
