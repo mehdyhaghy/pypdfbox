@@ -288,6 +288,17 @@ def test_set_resource_cache_round_trip() -> None:
     assert page.get_resource_cache() is None
 
 
+def test_constructor_accepts_resource_cache() -> None:
+    """Mirrors upstream's package-private ``PDPage(COSDictionary,
+    ResourceCache)`` constructor used by ``PDPageTree`` to thread the
+    cache through page enumeration without a separate setter call."""
+    page_dict = COSDictionary()
+    cache = object()
+    page = PDPage(page_dict, resource_cache=cache)
+    assert page.get_cos_object() is page_dict
+    assert page.get_resource_cache() is cache
+
+
 def test_get_resources_threads_page_resource_cache() -> None:
     """PDFBox constructs PDResources with the page resource cache so typed
     indirect resource wrappers can be reused."""

@@ -75,11 +75,16 @@ class PDPage:
     def __init__(
         self,
         page: COSDictionary | PDRectangle | None = None,
+        resource_cache: Any = None,
     ) -> None:
-        # Three constructor shapes matching upstream:
-        #   PDPage()                -> blank Letter page
-        #   PDPage(media_box)       -> blank page with custom MediaBox
-        #   PDPage(cos_dictionary)  -> wrap an existing page dict
+        # Constructor shapes matching upstream:
+        #   PDPage()                       -> blank Letter page
+        #   PDPage(media_box)              -> blank page with custom MediaBox
+        #   PDPage(cos_dictionary)         -> wrap an existing page dict
+        #   PDPage(cos_dictionary, cache)  -> wrap with resource cache
+        #     (mirrors upstream's package-private constructor used by
+        #     ``PDPageTree`` to thread the cache during page enumeration —
+        #     see PDPage.java line 116).
         if page is None:
             self._page = COSDictionary()
             self._page.set_item(_TYPE, _PAGE)
@@ -95,6 +100,10 @@ class PDPage:
                 f"PDPage requires None, PDRectangle, or COSDictionary; got "
                 f"{type(page).__name__}"
             )
+        # Always set the attribute so :meth:`get_resource_cache` doesn't have
+        # to fall back to ``getattr`` with a default — keeps the read path
+        # symmetric with upstream's instance field.
+        self._resource_cache = resource_cache
 
     # ---------- COS surface ----------
 
@@ -895,11 +904,10 @@ class PDPage:
         """Return the resource cache associated with this page, or ``None``
         if there is none. Mirrors upstream ``PDPage.getResourceCache()``.
 
-        This wrapper does not yet wire the ResourceCache through the page
-        constructor; the accessor exists so callers porting from PDFBox
-        can rely on the method being present and getting ``None`` until a
-        cache is attached via :meth:`set_resource_cache`."""
-        return getattr(self, "_resource_cache", None)
+        The cache is set either via the ``resource_cache`` constructor arg
+        (mirroring upstream's package-private ``PDPage(COSDictionary,
+        ResourceCache)``) or explicitly via :meth:`set_resource_cache`."""
+        return self._resource_cache
 
     def set_resource_cache(self, cache: Any) -> None:
         """Attach a :class:`PDResourceCache` to this page. Pass ``None`` to
@@ -918,7 +926,7 @@ class PDPage:
         objects from the cache. Direct resources (those stored inline)
         are not cached so we skip them.
         """
-        cache = getattr(self, "_resource_cache", None)
+        cache = self._resource_cache
         if cache is None:
             return
         # Limit purge to *this page's* resources — never remove inherited
@@ -945,7 +953,7 @@ class PDPage:
         """
         if resources is None or not isinstance(resources, COSDictionary):
             return
-        cache = getattr(self, "_resource_cache", None)
+        cache = self._resource_cache
         if cache is None:
             return
         kinds_with_remover = (
