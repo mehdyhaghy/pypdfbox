@@ -33,6 +33,12 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
         if self._closed:
             raise ValueError("operation on closed RandomAccessReadBufferedFile")
 
+    # Upstream parity: Java RandomAccessReadBufferedFile#checkClosed (line 265)
+    # is package-private and raises IOException. We surface a same-named
+    # snake_case wrapper so the API mirrors upstream; semantics unchanged.
+    def check_closed(self) -> None:
+        self._check_open()
+
     def read(self) -> int:
         self._check_open()
         b = self._buf.read(1)
@@ -77,6 +83,13 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
 
     def is_closed(self) -> bool:
         return self._closed
+
+    # Upstream parity: Java RandomAccessReadBufferedFile#isEOF (line 274)
+    # explicitly overrides RandomAccessRead.isEOF; mirror that here so the
+    # method shows up on this class, not just on the base. Semantics match
+    # the base via peek().
+    def is_eof(self) -> bool:
+        return self.peek() == self.EOF
 
     def create_view(self, start_position: int, length: int) -> RandomAccessRead:
         """

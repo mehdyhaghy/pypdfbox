@@ -161,6 +161,206 @@ class Type1Lexer:
         """Slice of the buffer that has not yet been tokenised."""
         return self._buf[self._pos :]
 
+    def peek_kind(self, kind: str) -> bool:
+        """Check whether the next token's kind matches ``kind`` without consuming it.
+
+        Mirrors upstream ``Type1Lexer.peekKind(Token.Kind)``
+        (Type1Lexer.java:94). Returns ``False`` at EOF.
+        """
+        tok = self.peek_token()
+        return tok is not None and tok[0] == kind
+
+    # ---------- upstream-shaped read helpers ----------
+
+    def get_char(self) -> str:
+        """Read one ASCII char from the buffer and advance.
+
+        Mirrors upstream ``Type1Lexer.getChar()`` (Type1Lexer.java:102).
+        Raises :class:`OSError` on premature EOF (upstream wraps
+        ``BufferUnderflowException`` as ``IOException``).
+        """
+        if self._pos >= len(self._buf):
+            raise OSError("Premature end of buffer reached")
+        ch = self._buf[self._pos]
+        self._pos += 1
+        return ch
+
+    def read_token(
+        self, prev_token: tuple[str, Any] | None = None
+    ) -> tuple[str, Any] | None:
+        """Read a single token, honouring the ``<INT> RD`` charstring rule.
+
+        Mirrors upstream ``Type1Lexer.readToken(Token prevToken)``
+        (Type1Lexer.java:118). The ``prev_token`` argument biases binary
+        CHARSTRING capture: when the prior token was an integer literal
+        and the current bareword is ``RD`` / ``-|`` we return a
+        ``(TOKEN_CHARSTRING, bytes)`` tuple of the integer's length.
+        """
+        # Plug ``prev_token`` into the existing bareword recogniser by
+        # priming ``_prev_token`` so :meth:`_next_token_inner` sees it.
+        saved_prev = self._prev_token
+        self._prev_token = prev_token
+        try:
+            tok = self._next_token_inner()
+        finally:
+            self._prev_token = saved_prev
+        # Track our own prev_token state so subsequent next_token() calls
+        # remain consistent.
+        if tok is not None:
+            self._prev_token = tok
+        return tok
+
+    def try_read_number(self) -> tuple[str, Any] | None:
+        """Try to read a number token (integer or real) from the current
+        position. Returns ``None`` and rewinds if the input does not
+        match a number. Mirrors upstream ``Type1Lexer.tryReadNumber()``
+        (Type1Lexer.java:255). Also accepts PostScript radix-form
+        ``base#digits``.
+        """
+        saved = self._pos
+        if self._pos >= len(self._buf):
+            return None
+        # Lift the existing bareword recogniser, but only commit on
+        # numeric classifications.
+        start = self._pos
+        while self._pos < len(self._buf):
+            ch = self._buf[self._pos]
+            if ch in " \t\r\n\f\x00[]{}/<>()%":
+                break
+            self._pos += 1
+        word = self._buf[start : self._pos]
+        if _INT_RE.match(word):
+            return (TOKEN_INTEGER, int(word))
+        if _NUMBER_RE.match(word):
+            return (TOKEN_REAL, float(word))
+        m = _RADIX_RE.match(word)
+        if m:
+            base = int(m.group(1))
+            if 2 <= base <= 36:
+                try:
+                    return (TOKEN_INTEGER, int(m.group(2), base))
+                except ValueError:
+                    pass
+        # Not a number: rewind.
+        self._pos = saved
+        return None
+
+    def read_regular(self) -> str | None:
+        """Read a run of regular (non-delimiter, non-whitespace) chars.
+
+        Mirrors upstream ``Type1Lexer.readRegular()``
+        (Type1Lexer.java:380). Returns ``None`` if no chars were
+        consumed (upstream signals "stream is corrupt"). Does NOT
+        consume a leading ``/`` — the caller (e.g. :meth:`read_token`)
+        peels the literal-name prefix off first.
+        """
+        start = self._pos
+        while self._pos < len(self._buf):
+            ch = self._buf[self._pos]
+            if ch in " \t\r\n\f\x00()<>[]{}/%":
+                break
+            self._pos += 1
+        if self._pos == start:
+            return None
+        return self._buf[start : self._pos]
+
+    def read_comment(self) -> str:
+        """Consume a ``%`` line comment up to (but not including) EOL.
+
+        Mirrors upstream ``Type1Lexer.readComment()``
+        (Type1Lexer.java:412). Caller must have already consumed the
+        leading ``%``.
+        """
+        start = self._pos
+        while self._pos < len(self._buf):
+            ch = self._buf[self._pos]
+            if ch in "\r\n":
+                break
+            self._pos += 1
+        return self._buf[start : self._pos]
+
+    def read_string(self) -> tuple[str, Any] | None:
+        """Read a balanced ``( ... )`` PostScript literal string.
+
+        Mirrors upstream ``Type1Lexer.readString()``
+        (Type1Lexer.java:433). Caller must have already consumed the
+        opening ``(``. Handles ``\\n \\r \\t \\b \\f \\\\ \\( \\)``
+        escapes and three-digit octal escapes, plus nested balanced
+        parentheses. Returns ``None`` at premature EOF (upstream
+        returns ``null``).
+        """
+        depth = 0
+        out: list[str] = []
+        while self._pos < len(self._buf):
+            ch = self._buf[self._pos]
+            self._pos += 1
+            if ch == "(":
+                depth += 1
+                out.append("(")
+            elif ch == ")":
+                if depth == 0:
+                    return (TOKEN_STRING, "".join(out))
+                out.append(")")
+                depth -= 1
+            elif ch == "\\":
+                if self._pos >= len(self._buf):
+                    break
+                c1 = self._buf[self._pos]
+                self._pos += 1
+                mapping = {
+                    "n": "\n",
+                    "r": "\n",
+                    "t": "\t",
+                    "b": "\b",
+                    "f": "\f",
+                    "\\": "\\",
+                    "(": "(",
+                    ")": ")",
+                }
+                if c1 in mapping:
+                    out.append(mapping[c1])
+                # Octal \ddd: upstream consumes two further chars
+                # unconditionally when the first char was a digit.
+                if c1.isdigit():
+                    if self._pos + 1 >= len(self._buf):
+                        break
+                    digits = c1 + self._buf[self._pos] + self._buf[self._pos + 1]
+                    self._pos += 2
+                    try:
+                        out.append(chr(int(digits, 8) & 0xFF))
+                    except ValueError as exc:
+                        raise OSError(f"Invalid octal escape '\\{digits}'") from exc
+            elif ch in "\r\n":
+                out.append("\n")
+            else:
+                out.append(ch)
+        return None
+
+    def read_char_string(self, length: int) -> tuple[str, bytes]:
+        """Read a binary CHARSTRING payload of ``length`` bytes.
+
+        Mirrors upstream ``Type1Lexer.readCharString(int length)``
+        (Type1Lexer.java:503). Skips one delimiter byte (typically a
+        space) then captures exactly ``length`` raw bytes from the
+        underlying byte buffer (high bytes survive losslessly).
+        Raises :class:`OSError` on premature EOF or when the requested
+        length exceeds the input size.
+        """
+        if length > len(self._raw):
+            raise OSError(f"String length {length} is larger than input")
+        # Consume one delimiter byte (the space after RD / -|).
+        if self._pos >= len(self._buf):
+            raise OSError("Premature end of buffer reached")
+        self._pos += 1
+        if length < 0:
+            return (TOKEN_CHARSTRING, b"")
+        end = self._pos + length
+        if end > len(self._raw):
+            raise OSError("Premature end of buffer reached")
+        payload = bytes(self._raw[self._pos : end])
+        self._pos = end
+        return (TOKEN_CHARSTRING, payload)
+
     # ---------- internals ----------
 
     def _peek(self, offset: int = 0) -> str:

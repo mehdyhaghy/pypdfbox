@@ -13,6 +13,9 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
         PDMeasureDictionary,
     )
+    from pypdfbox.pdmodel.pd_document import PDDocument
+
+    from .handlers.pd_appearance_handler import PDAppearanceHandler
 
 _VERTICES: COSName = COSName.get_pdf_name("Vertices")
 _IC: COSName = COSName.get_pdf_name("IC")
@@ -41,6 +44,7 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
 
     def __init__(self, annotation_dict: COSDictionary | None = None) -> None:
         super().__init__(annotation_dict)
+        self._custom_appearance_handler: PDAppearanceHandler | None = None
         if annotation_dict is None:
             self._set_subtype(self.SUB_TYPE)
 
@@ -245,6 +249,44 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
     def has_measure(self) -> bool:
         """``True`` when the ``/Measure`` dictionary is present."""
         return self._dict.get_dictionary_object(_MEASURE) is not None
+
+    # ---------- appearance construction ----------
+
+    def set_custom_appearance_handler(
+        self, appearance_handler: PDAppearanceHandler | None
+    ) -> None:
+        """Set the custom appearance handler used by
+        :meth:`construct_appearances`.
+
+        Mirrors upstream ``setCustomAppearanceHandler``
+        (``PDAnnotationPolygon.java`` line 161-164). Pass ``None`` to clear
+        the custom handler and restore the default construction path.
+        """
+        self._custom_appearance_handler = appearance_handler
+
+    def get_custom_appearance_handler(self) -> PDAppearanceHandler | None:
+        """Return the custom appearance handler previously set via
+        :meth:`set_custom_appearance_handler`, or ``None`` when the default
+        construction path is in use. No upstream getter exists (the field is
+        private in Java); this is the Pythonic accessor used by tests and
+        downstream code that needs to inspect the wired handler.
+        """
+        return self._custom_appearance_handler
+
+    def construct_appearances(self, document: PDDocument | None = None) -> None:
+        """Generate polygon annotation appearances.
+
+        Mirrors upstream ``constructAppearances()`` /
+        ``constructAppearances(PDDocument)``
+        (``PDAnnotationPolygon.java`` lines 167-181): a custom handler,
+        when configured, is invoked exactly as upstream does. The built-in
+        ``PDPolygonAppearanceHandler`` is not ported yet, so the default
+        path falls through to the base no-op.
+        """
+        if self._custom_appearance_handler is not None:
+            self._custom_appearance_handler.generate_appearance_streams()
+            return None
+        return super().construct_appearances(document)
 
 
 __all__ = ["PDAnnotationPolygon"]

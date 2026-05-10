@@ -51,6 +51,52 @@ _KIND_TYPE1: str = "Type1"
 _KIND_PFB: str = "PFB"
 _KIND_CFF: str = "CFF"
 
+
+class _FontType:
+    """Tiny port of upstream's private inner ``PDFontFactory.FontType``
+    helper — pairs a top-level /Type COSName with an optional /Subtype
+    so :meth:`PDFontFactory.get_font_type_from_font` can answer the
+    ``isCIDSubtype`` question against the descendant /Subtype that
+    routing later in ``createFont`` actually compares.
+
+    Mirrors PDFBox ``PDFontFactory$FontType`` (java lines 64-114).
+    """
+
+    _CID_TYPE0_TYPES: frozenset[str] = frozenset(
+        {"Type1", "Type1C"}
+    )
+    _CID_TYPE2_TYPES: frozenset[str] = frozenset(
+        {"TrueType", "OpenType"}
+    )
+
+    __slots__ = ("type", "subtype")
+
+    def __init__(
+        self,
+        type_: COSName,
+        subtype: COSName | str | None = None,
+    ) -> None:
+        self.type = type_
+        if isinstance(subtype, str):
+            if subtype in self._CID_TYPE0_TYPES:
+                self.subtype: COSName | None = COSName.get_pdf_name(
+                    "CIDFontType0"
+                )
+            elif subtype in self._CID_TYPE2_TYPES:
+                self.subtype = COSName.get_pdf_name("CIDFontType2")
+            else:
+                self.subtype = None
+        else:
+            self.subtype = subtype
+
+    def get_subtype(self) -> COSName | None:
+        return self.subtype
+
+    def is_cid_subtype(self, cid_subtype: COSName) -> bool:
+        if self.type != COSName.get_pdf_name("Type0"):
+            return False
+        return self.subtype is not None and self.subtype == cid_subtype
+
 # Set of /Subtype name strings the factory dispatches on. Mirrors the
 # upstream ``PDFontFactory.createFont`` switch (Type1 / Type1C / MMType1
 # / TrueType / Type3 / Type0 / CIDFontType0 / CIDFontType2). ``Type1C``
@@ -679,6 +725,159 @@ class PDFontFactory:
             )
             font_descriptor.remove_item(_FONT_FILE3)
         descendant_font.set_name(_SUBTYPE, new_subtype_str)
+
+    # ---------- 1:1 upstream-named ports (snake_case) ----------
+    #
+    # These mirror the upstream private helpers exactly (Java method →
+    # snake_case), so callers porting code from PDFBox can find the same
+    # name. The pypdfbox-native names (``is_*_header`` /
+    # ``get_descendant_font_dict`` / ``get_font_descriptor_dict`` /
+    # ``get_font_program_header``) remain the recommended public surface;
+    # these aliases exist for parity with upstream.
+
+    @staticmethod
+    def is_true_type_file(header: bytes | bytearray | memoryview) -> bool:
+        """Snake_case port of upstream
+        ``PDFontFactory.isTrueTypeFile`` (java line 260). Delegates to
+        :meth:`is_true_type_header`.
+        """
+        return PDFontFactory.is_true_type_header(header)
+
+    @staticmethod
+    def is_true_type_collection_file(
+        header: bytes | bytearray | memoryview,
+    ) -> bool:
+        """Snake_case port of upstream
+        ``PDFontFactory.isTrueTypeCollectionFile`` (java line 266).
+        Delegates to :meth:`is_true_type_collection_header`.
+        """
+        return PDFontFactory.is_true_type_collection_header(header)
+
+    @staticmethod
+    def is_open_type_file(header: bytes | bytearray | memoryview) -> bool:
+        """Snake_case port of upstream
+        ``PDFontFactory.isOpenTypeFile`` (java line 271). Delegates to
+        :meth:`is_open_type_header`.
+        """
+        return PDFontFactory.is_open_type_header(header)
+
+    @staticmethod
+    def is_type1_file(header: bytes | bytearray | memoryview) -> bool:
+        """Snake_case port of upstream
+        ``PDFontFactory.isType1File`` (java line 276). Delegates to
+        :meth:`is_type1_header`.
+        """
+        return PDFontFactory.is_type1_header(header)
+
+    @staticmethod
+    def is_pfb_file(header: bytes | bytearray | memoryview) -> bool:
+        """Snake_case port of upstream
+        ``PDFontFactory.isPfbFile`` (java line 282). Delegates to
+        :meth:`is_pfb_header`.
+        """
+        return PDFontFactory.is_pfb_header(header)
+
+    @staticmethod
+    def is_cff_file(header: bytes | bytearray | memoryview) -> bool:
+        """Snake_case port of upstream
+        ``PDFontFactory.isCFFFile`` (java line 288). Delegates to
+        :meth:`is_cff_header`.
+        """
+        return PDFontFactory.is_cff_header(header)
+
+    @staticmethod
+    def get_descendant_font(
+        font_dict: COSDictionary,
+    ) -> COSDictionary | None:
+        """Snake_case port of upstream
+        ``PDFontFactory.getDescendantFont`` (java line 310). Delegates
+        to :meth:`get_descendant_font_dict`.
+        """
+        return PDFontFactory.get_descendant_font_dict(font_dict)
+
+    @staticmethod
+    def get_font_descriptor(
+        font_dict: COSDictionary,
+    ) -> COSDictionary | None:
+        """Snake_case port of upstream
+        ``PDFontFactory.getFontDescriptor`` (java line 296). Delegates
+        to :meth:`get_font_descriptor_dict`.
+        """
+        return PDFontFactory.get_font_descriptor_dict(font_dict)
+
+    @staticmethod
+    def get_font_header(
+        font_descriptor: COSDictionary | None,
+    ) -> bytes | None:
+        """Snake_case port of upstream
+        ``PDFontFactory.getFontHeader`` (java line 324). Delegates to
+        :meth:`get_font_program_header`.
+        """
+        return PDFontFactory.get_font_program_header(font_descriptor)
+
+    @staticmethod
+    def get_font_type_from_font(
+        font_descriptor: COSDictionary | None,
+        font_type: COSName,
+    ) -> _FontType | None:
+        """Snake_case port of upstream
+        ``PDFontFactory.getFontTypeFromFont`` (java line 214).
+
+        Reads the first four bytes of the font program reachable from
+        ``font_descriptor`` (via :meth:`get_font_program_header`) and
+        classifies it as TrueType / TTC / OpenType / Type 1 / PFB / CFF.
+        Returns a :class:`_FontType` capturing the routing /Type and any
+        derived /Subtype, or ``None`` when no font program is reachable
+        / classifiable.
+
+        ``font_type`` is the /Subtype of the *parent* font dict — used
+        to decide whether the font is composite (``/Type0``) and to
+        preserve ``MMType1`` routing for raw / CFF Type 1 programs.
+        """
+        font_header = PDFontFactory.get_font_program_header(font_descriptor)
+        if font_header is None:
+            return None
+        type0_name = COSName.get_pdf_name("Type0")
+        true_type_name = COSName.get_pdf_name("TrueType")
+        open_type_name = COSName.get_pdf_name("OpenType")
+        type1_name = COSName.get_pdf_name("Type1")
+        mm_type1_name = COSName.get_pdf_name("MMType1")
+        is_composite = font_type == type0_name
+        if PDFontFactory.is_true_type_file(
+            font_header
+        ) or PDFontFactory.is_true_type_collection_file(font_header):
+            return (
+                _FontType(type0_name, "TrueType")
+                if is_composite
+                else _FontType(true_type_name)
+            )
+        if PDFontFactory.is_open_type_file(font_header):
+            return (
+                _FontType(type0_name, "OpenType")
+                if is_composite
+                else _FontType(open_type_name)
+            )
+        if PDFontFactory.is_type1_file(
+            font_header
+        ) or PDFontFactory.is_pfb_file(font_header):
+            if is_composite:
+                return _FontType(type0_name, "Type1")
+            return (
+                _FontType(mm_type1_name, "Type1")
+                if font_type == mm_type1_name
+                else _FontType(type1_name)
+            )
+        # CFF goes last — its header check is permissive enough to false-
+        # positive on an sfnt-tagged TrueType program if checked earlier.
+        if PDFontFactory.is_cff_file(font_header):
+            if is_composite:
+                return _FontType(type0_name, _TYPE1C)
+            return (
+                _FontType(mm_type1_name, _TYPE1C)
+                if font_type == mm_type1_name
+                else _FontType(type1_name, _TYPE1C)
+            )
+        return None
 
 
 __all__ = ["PDFontFactory"]

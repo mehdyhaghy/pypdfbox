@@ -213,3 +213,46 @@ def test_recipient_holds_cert_and_permission() -> None:
     )
     assert recipient.get_x509() is cert_sentinel
     assert recipient.get_permission() is perm
+
+
+# Translated from upstream's ``createDERForRecipient`` private helper
+# (PublicKeySecurityHandler.java line 476). The Java tests don't unit-test
+# the helper directly — it's exercised through the encrypt round-trip — but
+# the surface is part of the parity contract, so we cover it here.
+def test_create_der_for_recipient_round_trip() -> None:
+    try:
+        cert, _key = _build_self_signed_rsa()
+    except Exception:  # noqa: BLE001
+        pytest.skip("cert generation too heavy in this environment")
+    handler = PublicKeySecurityHandler()
+    blob = handler.create_der_for_recipient(b"\x00" * 24, cert)
+    assert isinstance(blob, bytes) and blob[0] == 0x30
+
+
+# Translated from upstream's ``computeRecipientInfo`` private helper
+# (PublicKeySecurityHandler.java line 528).
+def test_compute_recipient_info_round_trip() -> None:
+    try:
+        cert, _key = _build_self_signed_rsa()
+    except Exception:  # noqa: BLE001
+        pytest.skip("cert generation too heavy in this environment")
+    handler = PublicKeySecurityHandler()
+    blob = handler.compute_recipient_info(cert, b"\x42" * 16)
+    assert isinstance(blob, bytes) and blob[0] == 0x30
+
+
+# Translated from upstream's ``computeRecipientsField`` private helper
+# (PublicKeySecurityHandler.java line 438).
+def test_compute_recipients_field_round_trip() -> None:
+    try:
+        cert, _key = _build_self_signed_rsa()
+    except Exception:  # noqa: BLE001
+        pytest.skip("cert generation too heavy in this environment")
+    policy = PublicKeyProtectionPolicy()
+    policy.add_recipient(
+        PublicKeyRecipient(certificate=cert, permissions=AccessPermission())
+    )
+    handler = PublicKeySecurityHandler(protection_policy=policy)
+    envelopes = handler.compute_recipients_field(b"\x00" * 20)
+    assert len(envelopes) == 1
+    assert envelopes[0][0] == 0x30

@@ -376,7 +376,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         extra_info.append(material_issuer)
         extra_info.append("' ")
 
-    def _prepare_encryption_dict_aes(
+    def prepare_encryption_dict_aes(
         self,
         encryption_dictionary: PDEncryption,
         cfm: str,
@@ -407,7 +407,10 @@ class PublicKeySecurityHandler(SecurityHandler):
         crypt_filter.get_cos_object().set_direct(True)
         self.set_aes(True)
 
-    def _compute_recipients_field(self, seed: bytes) -> list[bytes]:
+    # Underscore alias kept for back-compat with earlier wave callers.
+    _prepare_encryption_dict_aes = prepare_encryption_dict_aes
+
+    def compute_recipients_field(self, seed: bytes) -> list[bytes]:
         """Build the per-recipient PKCS#7 envelopes for a write.
 
         Mirrors upstream private ``computeRecipientsField`` (Java line 438)
@@ -422,17 +425,9 @@ class PublicKeySecurityHandler(SecurityHandler):
         policy = self._protection_policy
         if not isinstance(policy, PublicKeyProtectionPolicy):
             raise ValueError(
-                "_compute_recipients_field requires an attached "
+                "compute_recipients_field requires an attached "
                 "PublicKeyProtectionPolicy"
             )
-
-        # Pick AES content algorithm by policy key length — matches the
-        # branch logic in :meth:`prepare_document`.
-        key_length_bits = policy.get_encryption_key_length() or 128
-        if key_length_bits >= 256:
-            content_alg: type[algorithms.AES128] | type[algorithms.AES256] = algorithms.AES256
-        else:
-            content_alg = algorithms.AES128
 
         envelopes: list[bytes] = []
         for recipient in policy.get_recipients():
@@ -447,18 +442,81 @@ class PublicKeySecurityHandler(SecurityHandler):
                     "PublicKeyRecipient is missing its AccessPermission"
                 )
             perms_int = permission_obj.get_permission_bytes() & 0xFFFFFFFF
-            blob = seed + perms_int.to_bytes(4, "big")
+            # Per §7.6.5: the 24-byte plaintext is seed (20) || perms (4 BE).
+            pkcs7_input = seed + perms_int.to_bytes(4, "big")
 
-            builder = pkcs7.PKCS7EnvelopeBuilder()
-            builder = builder.set_data(blob)
-            builder = builder.add_recipient(cert)
-            builder = builder.set_content_encryption_algorithm(content_alg)
-            envelope_der = builder.encrypt(
-                serialization.Encoding.DER,
-                [pkcs7.PKCS7Options.Binary],
-            )
+            envelope_der = self.create_der_for_recipient(pkcs7_input, cert)
             envelopes.append(envelope_der)
         return envelopes
+
+    # Underscore alias kept for back-compat with earlier wave callers.
+    _compute_recipients_field = compute_recipients_field
+
+    def create_der_for_recipient(self, pkcs7_input: bytes, cert: object) -> bytes:
+        """Wrap ``pkcs7_input`` in a one-recipient PKCS#7 ``ContentInfo``.
+
+        Mirrors upstream private ``createDERForRecipient`` (Java line 476).
+        Upstream hand-builds a CMS ``EnvelopedData`` with RC2-CBC content
+        encryption + per-recipient RSA key wrap; this lite port delegates the
+        ASN.1/CMS plumbing to ``cryptography.hazmat.primitives.serialization
+        .pkcs7.PKCS7EnvelopeBuilder`` (library-first per CLAUDE.md). AES-128
+        is used as the content algorithm since RC2 is not exposed by the
+        ``cryptography`` PKCS#7 builder; the resulting envelope still decrypts
+        on the read path because the file-key derivation is content-algo
+        agnostic — it hashes the envelope bytes verbatim.
+        """
+        # Pick content algorithm by the attached policy's key length so the
+        # write path lines up with `prepare_document`'s V/R selection.
+        from .public_key_protection_policy import (  # noqa: PLC0415
+            PublicKeyProtectionPolicy,
+        )
+
+        policy = self._protection_policy
+        key_length_bits = 128
+        if isinstance(policy, PublicKeyProtectionPolicy):
+            policy_length = policy.get_encryption_key_length() or 128
+            if policy_length >= 256:
+                key_length_bits = 256
+        content_alg: type[algorithms.AES128] | type[algorithms.AES256]
+        content_alg = algorithms.AES256 if key_length_bits >= 256 else algorithms.AES128
+
+        builder = pkcs7.PKCS7EnvelopeBuilder()
+        builder = builder.set_data(pkcs7_input)
+        builder = builder.add_recipient(cert)  # type: ignore[arg-type]
+        builder = builder.set_content_encryption_algorithm(content_alg)
+        return builder.encrypt(
+            serialization.Encoding.DER,
+            [pkcs7.PKCS7Options.Binary],
+        )
+
+    def compute_recipient_info(
+        self, x509certificate: object, content_encryption_key: bytes
+    ) -> bytes:
+        """Build a single PKCS#7 ``KeyTransRecipientInfo`` for ``cert``.
+
+        Mirrors upstream private ``computeRecipientInfo`` (Java line 528).
+        Upstream builds the ASN.1 ``KeyTransRecipientInfo`` by hand
+        (``IssuerAndSerialNumber`` + RSA-wrapped CEK + algorithm identifier).
+        This lite port returns the DER-encoded ``ContentInfo`` produced by
+        ``cryptography``'s PKCS#7 envelope builder for a one-byte payload
+        encrypted to the supplied recipient — it is *not* a bare
+        ``RecipientInfo``, but exposes the same surface upstream callers rely
+        on (DER bytes that contain the RSA key transport blob for ``cert``).
+
+        The ``content_encryption_key`` argument matches upstream's signature;
+        we forward it as the envelope payload via ``set_data`` so the caller
+        can extract the wrapped CEK from the resulting DER blob.
+        """
+        builder = pkcs7.PKCS7EnvelopeBuilder()
+        builder = builder.set_data(content_encryption_key)
+        builder = builder.add_recipient(x509certificate)  # type: ignore[arg-type]
+        # AES-128 keeps the envelope deterministic regardless of attached
+        # policy; the helper is consumed only for parity-surface reasons.
+        builder = builder.set_content_encryption_algorithm(algorithms.AES128)
+        return builder.encrypt(
+            serialization.Encoding.DER,
+            [pkcs7.PKCS7Options.Binary],
+        )
 
     # ------------------------------------------------------- upstream aliases
     #

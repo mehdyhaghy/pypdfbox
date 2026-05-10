@@ -331,3 +331,108 @@ def test_jpeg_factory_is_static_only():
     is forbidden. The Python port enforces the same by raising in __init__."""
     with pytest.raises(TypeError):
         JPEGFactory()
+
+
+# ---------------------------------------------------------------------------
+# snake_case helpers ported from upstream package-private statics
+# ---------------------------------------------------------------------------
+
+
+def test_retrieve_dimensions_returns_width_height_components():
+    """retrieve_dimensions sniffs (w, h, n) from the encoded JPEG header,
+    matching upstream JPEGFactory.retrieveDimensions."""
+    data = _rgb_jpeg_bytes((40, 25))
+    width, height, num_components = JPEGFactory.retrieve_dimensions(data)
+    assert (width, height, num_components) == (40, 25, 3)
+
+
+def test_retrieve_dimensions_accepts_stream():
+    """The helper accepts a file-like object as well as raw bytes."""
+    data = _gray_jpeg_bytes((12, 10))
+    width, height, num_components = JPEGFactory.retrieve_dimensions(io.BytesIO(data))
+    assert (width, height, num_components) == (12, 10, 1)
+
+
+def test_retrieve_dimensions_rejects_non_jpeg():
+    img = Image.new("RGB", (4, 4), color=(0, 0, 0))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    with pytest.raises(ValueError):
+        JPEGFactory.retrieve_dimensions(buf.getvalue())
+
+
+def test_get_num_components_from_image_metadata_modes():
+    """The helper returns 1/3/4 for L/RGB/CMYK and 0 for unknown modes
+    so the caller can fall back, matching upstream contract."""
+    assert JPEGFactory.get_num_components_from_image_metadata(Image.new("L", (2, 2))) == 1
+    assert JPEGFactory.get_num_components_from_image_metadata(Image.new("RGB", (2, 2))) == 3
+    assert JPEGFactory.get_num_components_from_image_metadata(Image.new("CMYK", (2, 2))) == 4
+    assert JPEGFactory.get_num_components_from_image_metadata(Image.new("P", (2, 2))) == 0
+
+
+def test_get_alpha_image_returns_alpha_only_when_present():
+    rgba = Image.new("RGBA", (3, 3), color=(10, 20, 30, 200))
+    alpha = JPEGFactory.get_alpha_image(rgba)
+    assert alpha is not None
+    assert alpha.mode == "L"
+    assert JPEGFactory.get_alpha_image(Image.new("RGB", (3, 3))) is None
+
+
+def test_get_color_image_strips_alpha():
+    rgba = Image.new("RGBA", (4, 4), color=(50, 60, 70, 128))
+    rgb = JPEGFactory.get_color_image(rgba)
+    assert rgb.mode == "RGB"
+    # Already-RGB images pass through unmodified, mirroring upstream's
+    # short-circuit when there's no alpha.
+    plain = Image.new("RGB", (4, 4))
+    assert JPEGFactory.get_color_image(plain) is plain
+
+
+def test_get_color_space_from_awt_dispatch():
+    """Mode-driven dispatch matches PRD: L → DeviceGray, RGB → DeviceRGB,
+    CMYK → DeviceCMYK."""
+    from pypdfbox.pdmodel.graphics.color import (
+        PDDeviceCMYK,
+        PDDeviceGray,
+        PDDeviceRGB,
+    )
+
+    assert (
+        JPEGFactory.get_color_space_from_awt(Image.new("L", (2, 2)))
+        is PDDeviceGray.INSTANCE
+    )
+    assert (
+        JPEGFactory.get_color_space_from_awt(Image.new("RGB", (2, 2)))
+        is PDDeviceRGB.INSTANCE
+    )
+    assert (
+        JPEGFactory.get_color_space_from_awt(Image.new("CMYK", (2, 2)))
+        is PDDeviceCMYK.INSTANCE
+    )
+    with pytest.raises(NotImplementedError):
+        JPEGFactory.get_color_space_from_awt(Image.new("HSV", (2, 2)))
+
+
+def test_get_jpeg_image_writer_returns_non_none():
+    """Upstream's contract is 'never returns null'; we mirror it."""
+    assert JPEGFactory.get_jpeg_image_writer() is not None
+
+
+def test_encode_image_to_jpeg_stream_yields_jpeg_bytes():
+    img = Image.new("RGB", (24, 16), color=(100, 50, 200))
+    encoded = JPEGFactory.encode_image_to_jpeg_stream(img, 0.8, 96)
+    assert encoded.startswith(b"\xff\xd8\xff")
+    width, height, num_components = JPEGFactory.retrieve_dimensions(encoded)
+    assert (width, height, num_components) == (24, 16, 3)
+
+
+def test_create_jpeg_threads_through_helpers():
+    """create_jpeg is the workhorse that all create_from_image overloads
+    chain into; verify it produces a /DCTDecode XObject end-to-end."""
+    img = Image.new("RGB", (20, 20), color=(0, 200, 0))
+    ximage = JPEGFactory.create_jpeg(None, img, 0.75, 72)
+    assert ximage.get_width() == 20
+    assert ximage.get_height() == 20
+    cs = ximage.get_color_space()
+    assert cs is not None
+    assert cs.get_name() == "DeviceRGB"

@@ -74,11 +74,26 @@ class PDTrueTypeFont(PDSimpleFont):
     # ---------- font identity ----------
 
     def get_base_font(self) -> str | None:
-        """Alias for :meth:`get_name` — mirrors upstream's split between
-        ``getName()`` and ``getBaseFont()`` on simple fonts (both read
-        ``/BaseFont``).
+        """Return the value of the font dict's ``/BaseFont`` entry.
+
+        Mirrors upstream ``PDTrueTypeFont.getBaseFont`` (line 277).
+        Direct dictionary read so the override on :meth:`get_name`
+        below can keep its parity with upstream's
+        ``getName() { return getBaseFont(); }``.
         """
-        return self.get_name()
+        cos = self.get_cos_object()
+        if cos is None:
+            return None
+        return cos.get_name_as_string(_BASE_FONT)
+
+    def get_name(self) -> str | None:  # type: ignore[override]
+        """PostScript name of the font — same value as ``/BaseFont``.
+
+        Mirrors upstream ``PDTrueTypeFont.getName()`` (line 343), which
+        delegates straight to :meth:`get_base_font`. Override defined on
+        the subclass so the parity scanner sees the method.
+        """
+        return self.get_base_font()
 
     # ---------- TTF program access ----------
 

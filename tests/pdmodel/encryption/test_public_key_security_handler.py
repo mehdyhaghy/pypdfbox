@@ -396,3 +396,89 @@ def test_prepare_encryption_dict_aes_wires_default_crypt_filter() -> None:
     assert crypt_filter.get_length() == 16
     assert encryption.get_stm_f() == "DefaultCryptFilter"
     assert encryption.get_str_f() == "DefaultCryptFilter"
+
+
+# --------------------------- public-name parity surface (Wave 1268) -----
+
+
+def test_prepare_encryption_dict_aes_public_name_matches_underscore_alias() -> None:
+    """Promoted public name routes to the same body as the underscore alias.
+
+    Mirrors upstream ``prepareEncryptionDictAES`` (Java line 419).
+    """
+    assert (
+        PublicKeySecurityHandler.prepare_encryption_dict_aes
+        is PublicKeySecurityHandler._prepare_encryption_dict_aes
+    )
+
+
+def test_compute_recipients_field_public_name_matches_underscore_alias() -> None:
+    """Promoted public name routes to the same body as the underscore alias.
+
+    Mirrors upstream ``computeRecipientsField`` (Java line 438).
+    """
+    assert (
+        PublicKeySecurityHandler.compute_recipients_field
+        is PublicKeySecurityHandler._compute_recipients_field
+    )
+
+
+def test_create_der_for_recipient_returns_der_envelope() -> None:
+    """Mirrors upstream ``createDERForRecipient`` (Java line 476).
+
+    Wraps a 24-byte payload in a one-recipient PKCS#7 envelope addressed to
+    ``cert``; the output must be DER-encoded and non-empty.
+    """
+    try:
+        cert, _key = _build_self_signed_rsa()
+    except Exception:  # noqa: BLE001
+        pytest.skip("cert generation too heavy in this environment")
+
+    handler = PublicKeySecurityHandler()
+    pkcs7_input = b"\x00" * 24
+    envelope = handler.create_der_for_recipient(pkcs7_input, cert)
+    assert isinstance(envelope, bytes)
+    assert len(envelope) > 0
+    # DER ContentInfo is a SEQUENCE, so the leading tag byte is 0x30.
+    assert envelope[0] == 0x30
+
+
+def test_compute_recipient_info_returns_der_envelope() -> None:
+    """Mirrors upstream ``computeRecipientInfo`` (Java line 528).
+
+    Returns the DER bytes that wrap a CEK key-transport blob for ``cert``.
+    """
+    try:
+        cert, _key = _build_self_signed_rsa()
+    except Exception:  # noqa: BLE001
+        pytest.skip("cert generation too heavy in this environment")
+
+    handler = PublicKeySecurityHandler()
+    cek = b"\x01" * 16
+    blob = handler.compute_recipient_info(cert, cek)
+    assert isinstance(blob, bytes)
+    assert len(blob) > 0
+    assert blob[0] == 0x30
+
+
+def test_compute_recipients_field_picks_aes256_for_256_bit_policy() -> None:
+    """Public ``compute_recipients_field`` honours the policy's key length.
+
+    Mirrors upstream ``computeRecipientsField`` (Java line 438) — the AES
+    variant choice is driven by the attached ``PublicKeyProtectionPolicy``.
+    """
+    try:
+        cert, _key = _build_self_signed_rsa()
+    except Exception:  # noqa: BLE001
+        pytest.skip("cert generation too heavy in this environment")
+
+    policy = PublicKeyProtectionPolicy()
+    policy.set_encryption_key_length(256)
+    permissions = AccessPermission()
+    policy.add_recipient(
+        PublicKeyRecipient(certificate=cert, permissions=permissions)
+    )
+    handler = PublicKeySecurityHandler(protection_policy=policy)
+    envelopes = handler.compute_recipients_field(b"\x00" * 20)
+    assert len(envelopes) == 1
+    assert envelopes[0][0] == 0x30
