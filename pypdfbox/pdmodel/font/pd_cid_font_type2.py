@@ -55,6 +55,11 @@ class PDCIDFontType2(PDCIDFont):
         # so a single resolve runs once per instance even when callers
         # ask for the bbox repeatedly.
         self._font_bbox: PDRectangle | None | bool = False
+        # Cache of CIDs for which we already issued a "no mapping" warning
+        # so repeated codeToGID calls don't spam the log. Mirrors upstream
+        # ``noMapping`` (line 61): ``Set<Integer>`` initialised in the
+        # constructor and consulted on the non-embedded /ToUnicode fallback.
+        self._no_mapping: set[int] = set()
 
     def get_subtype(self) -> str | None:
         return self.SUB_TYPE
@@ -208,6 +213,73 @@ class PDCIDFontType2(PDCIDFont):
             self._ttf = False
             return None
         return self._ttf
+
+    def get_open_type_font(self) -> TrueTypeFont | None:
+        """Return the embedded program as an :class:`OpenTypeFont` when
+        the parsed program *is* one and its outlines are supported,
+        otherwise ``None``.
+
+        Mirrors upstream's private ``otf`` field (PDCIDFontType2.java
+        line 54) and the constructor logic that populates it (lines
+        91-93 / 148-149): ``otf`` is non-null only when the parsed font
+        is an :class:`OpenTypeFont` *and* its outlines are supported
+        (CFF/CFF2-without-CFF1 is rejected upstream as unsupported).
+        Pypdfbox lacks a public Java accessor for this field, but the
+        rendering layer needs the same probe to decide between the
+        ``glyf`` and CFF outline paths — exposing it as a getter keeps
+        callers from re-implementing the upstream selection.
+        """
+        from pypdfbox.fontbox.ttf.open_type_font import (  # noqa: PLC0415
+            OpenTypeFont,
+        )
+
+        ttf = self.get_true_type_font()
+        if ttf is None or not isinstance(ttf, OpenTypeFont):
+            return None
+        try:
+            if not ttf.is_supported_otf():
+                return None
+        except Exception:  # noqa: BLE001
+            return None
+        return ttf
+
+    def get_cmap_lookup(self) -> Any:
+        """Return the embedded program's unicode cmap lookup, or ``None``.
+
+        Mirrors upstream's private ``cmap`` field (PDCIDFontType2.java
+        line 58) populated by ``ttf.getUnicodeCmapLookup(false)`` in the
+        constructor (line 152). Used by upstream's :meth:`encode` and the
+        non-embedded ``codeToGID`` fallback to translate unicode
+        codepoints into TrueType glyph IDs. The lookup is the
+        non-strict variant — Acrobat tolerates Mac/Roman or symbol cmaps
+        so we follow the same liberal probing.
+
+        Result is *not* cached on the instance — :class:`TrueTypeFont`
+        already memoises the chosen subtable, and re-asking is cheap.
+        """
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            return None
+        getter = getattr(ttf, "get_unicode_cmap_lookup", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter(False)  # noqa: FBT003 — mirror Java boolean
+        except Exception:  # noqa: BLE001
+            return None
+
+    def get_no_mapping(self) -> set[int]:
+        """Return the mutable set of character codes for which no
+        unicode-to-GID mapping was found.
+
+        Mirrors upstream's private ``noMapping`` field (PDCIDFontType2.java
+        line 61) — a deduplication set that prevents the
+        ``codeToGID`` non-embedded fallback from logging the same
+        "Failed to find a character mapping" warning multiple times for
+        the same code. Exposed so test harnesses (and the rendering
+        layer's own logging path) can inspect / reset it.
+        """
+        return self._no_mapping
 
     def set_true_type_font(self, ttf: TrueTypeFont | None) -> None:
         """Inject a pre-parsed :class:`TrueTypeFont`. Used by callers

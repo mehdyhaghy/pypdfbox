@@ -150,3 +150,58 @@ def test_insert_diacritic_appends_to_base_glyph():
     assert base.text == "e\u0301"
     # NFC-composing yields the precomposed character U+00E9.
     assert unicodedata.normalize("NFC", base.text) == "\u00e9"
+
+
+# Invariant (upstream insertDiacritic, line 753): the public-named
+# helper is identical to the underscored alias.
+def test_insert_diacritic_public_alias_matches():
+    base_a = _tp(text="e")
+    base_b = _tp(text="e")
+    base_a.insert_diacritic(0, _tp(text="'"))
+    base_b._insert_diacritic(0, _tp(text="'"))
+    assert base_a.text == base_b.text
+
+
+# Invariant (upstream combineDiacritic, line 793): the public-named
+# static helper is identical to the underscored alias.
+def test_combine_diacritic_public_alias_matches():
+    assert TextPosition.combine_diacritic("'") == TextPosition._combine_diacritic("'")
+    assert TextPosition.combine_diacritic("\u00a8") == TextPosition._combine_diacritic("\u00a8")
+
+
+# Invariant (upstream createDiacritics, line 125): factory returns the
+# canonical 31-entry remap table (a fresh copy each call).
+def test_create_diacritics_factory_returns_31_entries():
+    table = TextPosition.create_diacritics()
+    assert len(table) == 31
+    assert table[0x0027] == "\u0301"  # APOSTROPHE \u2192 combining acute
+    assert table[0x0060] == "\u0300"  # GRAVE ACCENT \u2192 combining grave
+
+
+def test_create_diacritics_returns_fresh_copy():
+    a = TextPosition.create_diacritics()
+    b = TextPosition.create_diacritics()
+    assert a == b
+    a[0x9999] = "x"
+    assert 0x9999 not in TextPosition.create_diacritics()
+
+
+# Invariant (upstream getXRot, line 293): public-named helper matches.
+def test_get_x_rot_public_alias_matches():
+    tp = _tp(x=10.0, y=20.0, page_width=500.0, page_height=800.0)
+    for r in (0.0, 90.0, 180.0, 270.0, 45.0):
+        assert tp.get_x_rot(r) == tp._get_x_rot(r)
+
+
+# Invariant (upstream getYLowerLeftRot, line 356): public alias matches.
+def test_get_y_lower_left_rot_public_alias_matches():
+    tp = _tp(x=10.0, y=20.0, page_width=500.0, page_height=800.0)
+    for r in (0.0, 90.0, 180.0, 270.0, 45.0):
+        assert tp.get_y_lower_left_rot(r) == tp._get_y_lower_left_rot(r)
+
+
+# Invariant (upstream getWidthRot, line 426): public alias matches.
+def test_get_width_rot_public_alias_matches():
+    tp = _tp(width=37.5)
+    for r in (0.0, 90.0, 180.0, 270.0):
+        assert tp.get_width_rot(r) == tp._get_width_rot(r)

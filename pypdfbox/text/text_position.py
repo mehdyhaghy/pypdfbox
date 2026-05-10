@@ -275,7 +275,7 @@ class TextPosition:
         """Page height in user-space units."""
         return self.page_height
 
-    def _get_x_rot(self, rotation: float) -> float:
+    def get_x_rot(self, rotation: float) -> float:
         """Return the X starting coordinate adjusted by ``rotation``.
 
         Mirrors upstream's private ``getXRot(float)`` helper
@@ -297,7 +297,11 @@ class TextPosition:
             return self.page_height - self.y
         return 0.0
 
-    def _get_y_lower_left_rot(self, rotation: float) -> float:
+    # Underscored private alias retained for callers that adopted the
+    # wave-1260 spelling. Both names dispatch to the same body.
+    _get_x_rot = get_x_rot
+
+    def get_y_lower_left_rot(self, rotation: float) -> float:
         """Return the Y position with origin in the lower-left,
         adjusted by ``rotation``.
 
@@ -315,7 +319,9 @@ class TextPosition:
             return self.x
         return 0.0
 
-    def _get_width_rot(self, rotation: float) -> float:
+    _get_y_lower_left_rot = get_y_lower_left_rot
+
+    def get_width_rot(self, rotation: float) -> float:
         """Return the run width along the axis implied by ``rotation``.
 
         Mirrors upstream's private ``getWidthRot(float)`` helper
@@ -331,6 +337,8 @@ class TextPosition:
         if rotation in (90.0, 270.0):
             return self.width
         return self.width
+
+    _get_width_rot = get_width_rot
 
     def get_x_dir_adj(self) -> float:
         """Direction-adjusted X.
@@ -502,7 +510,7 @@ class TextPosition:
         self.text = merged
         self.width = self.width + diacritic.width
 
-    def _insert_diacritic(self, i: int, diacritic: TextPosition) -> None:
+    def insert_diacritic(self, i: int, diacritic: TextPosition) -> None:
         """Insert ``diacritic`` after the character at index ``i``.
 
         Mirrors upstream's private ``insertDiacritic(int, TextPosition)``
@@ -513,7 +521,7 @@ class TextPosition:
         ported callers (e.g. ``PDFTextStripper.handleDiacritic``) keep
         the same call shape.
 
-        The inserted character is run through :meth:`_combine_diacritic`
+        The inserted character is run through :meth:`combine_diacritic`
         first so non-combining presentation forms are mapped to their
         combining counterparts before being attached.
         """
@@ -521,13 +529,17 @@ class TextPosition:
             i = 0
         if i > len(self.text):
             i = len(self.text)
-        combined = self._combine_diacritic(diacritic.text)
+        combined = self.combine_diacritic(diacritic.text)
         # Unicode combining diacritics always go after the base
         # character, regardless of logical / presentation order.
         self.text = self.text[: i + 1] + combined + self.text[i + 1 :]
 
+    # Underscored alias kept for callers that adopted the wave-1260
+    # spelling. Both names dispatch to the same body.
+    _insert_diacritic = insert_diacritic
+
     @staticmethod
-    def _combine_diacritic(s: str) -> str:
+    def combine_diacritic(s: str) -> str:
         """Map a diacritic character to its combining form.
 
         Mirrors upstream's private ``combineDiacritic(String)`` helper
@@ -543,6 +555,21 @@ class TextPosition:
         if cp in _DIACRITICS:
             return _DIACRITICS[cp]
         return unicodedata.normalize("NFKC", s).strip()
+
+    # Underscored alias preserved for prior wave callers.
+    _combine_diacritic = combine_diacritic
+
+    @staticmethod
+    def create_diacritics() -> dict[int, str]:
+        """Return the non-decomposing diacritic remap table.
+
+        Mirrors upstream's private static ``createDiacritics()`` factory
+        (``TextPosition.java`` line 125). Returns a fresh copy of the
+        same set of code-point → combining-mark mappings used for
+        ``combine_diacritic``; callers may mutate the returned dict
+        without affecting the module-level cache.
+        """
+        return dict(_DIACRITICS)
 
     # ------------------------------------------------------------------
     # Matrix

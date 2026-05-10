@@ -517,3 +517,98 @@ def test_has_glyph_true_for_non_zero_gid_when_embedded() -> None:
     # Identity map -> cid 1 -> gid 1 -> True; cid 0 -> gid 0 -> False.
     assert font.has_glyph(1) is True
     assert font.has_glyph(0) is False
+
+
+# ---------- get_no_mapping (warning-dedup set) ----------
+
+
+def test_get_no_mapping_returns_empty_set_for_fresh_font() -> None:
+    # Mirrors upstream's noMapping field initialised to an empty HashSet
+    # in the constructor (PDCIDFontType2.java line 61).
+    font = PDCIDFontType2()
+    assert font.get_no_mapping() == set()
+
+
+def test_get_no_mapping_is_mutable() -> None:
+    # Upstream warning-dedup uses ``noMapping.add(code)``; the equivalent
+    # Python surface is a real set the caller can mutate.
+    font = PDCIDFontType2()
+    no_mapping = font.get_no_mapping()
+    no_mapping.add(0x42)
+    no_mapping.add(0x43)
+    # Same set is returned on repeat access (not a defensive copy).
+    assert font.get_no_mapping() == {0x42, 0x43}
+
+
+def test_no_mapping_is_per_instance() -> None:
+    # Two instances must not share the dedup set — upstream creates a
+    # fresh HashSet per-font in the constructor.
+    a = PDCIDFontType2()
+    b = PDCIDFontType2()
+    a.get_no_mapping().add(7)
+    assert 7 not in b.get_no_mapping()
+
+
+# ---------- get_open_type_font ----------
+
+
+def test_get_open_type_font_none_for_plain_truetype_stub() -> None:
+    # Stand-in TTF is not an OpenTypeFont — the otf accessor must
+    # return ``None`` even though the program parses.
+    stub = _StubTTF(
+        units_per_em=1000,
+        advance_widths=[0],
+        glyph_order=[".notdef"],
+        glyphs={},
+    )
+    font = _make_font_with_stub_ttf(stub)
+    assert font.get_open_type_font() is None
+
+
+def test_get_open_type_font_none_when_no_program() -> None:
+    font = PDCIDFontType2()
+    assert font.get_open_type_font() is None
+
+
+# ---------- get_cmap_lookup ----------
+
+
+def test_get_cmap_lookup_none_when_no_program() -> None:
+    font = PDCIDFontType2()
+    assert font.get_cmap_lookup() is None
+
+
+def test_get_cmap_lookup_none_when_program_lacks_unicode_cmap() -> None:
+    # The stub TTF has no get_unicode_cmap_lookup method — the accessor
+    # tolerates that and returns ``None``.
+    stub = _StubTTF(
+        units_per_em=1000,
+        advance_widths=[0],
+        glyph_order=[".notdef"],
+        glyphs={},
+    )
+    font = _make_font_with_stub_ttf(stub)
+    assert font.get_cmap_lookup() is None
+
+
+def test_get_cmap_lookup_calls_through_to_program() -> None:
+    # When the program advertises the upstream-shaped accessor, our
+    # wrapper forwards (with the non-strict flag) and returns the
+    # result.
+    sentinel: list[bool] = []
+
+    def fake_lookup(is_strict: bool) -> str:
+        sentinel.append(is_strict)
+        return "lookup-object"
+
+    stub = _StubTTF(
+        units_per_em=1000,
+        advance_widths=[0],
+        glyph_order=[".notdef"],
+        glyphs={},
+    )
+    stub.get_unicode_cmap_lookup = fake_lookup  # type: ignore[attr-defined]
+    font = _make_font_with_stub_ttf(stub)
+    assert font.get_cmap_lookup() == "lookup-object"
+    # Upstream calls getUnicodeCmapLookup(false) — non-strict.
+    assert sentinel == [False]

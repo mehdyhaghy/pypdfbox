@@ -291,3 +291,37 @@ def test_horizontal_metrics_via_cmap() -> None:  # pragma: no cover
 )
 def test_cid_to_gid_map_with_glyphs_through_load() -> None:  # pragma: no cover
     pass
+
+
+# ---------- noMapping field (warning-dedup set) ----------
+
+
+def test_no_mapping_set_initialised_empty() -> None:
+    # Upstream PDCIDFontType2.java line 61 initialises ``noMapping`` to
+    # ``new HashSet<>()`` so the codeToGID warning path can dedupe.
+    font = PDCIDFontType2()
+    assert font.get_no_mapping() == set()
+
+
+# ---------- otf accessor (private upstream field) ----------
+
+
+def test_get_open_type_font_none_without_embedded_program() -> None:
+    # Upstream's ``otf`` field stays null when no embedded program is
+    # available — pypdfbox's accessor surfaces the same.
+    font = PDCIDFontType2()
+    assert font.get_open_type_font() is None
+
+
+# ---------- read_cid_to_gid_map (constructor-equivalent) ----------
+
+
+def test_read_cid_to_gid_map_round_trips_explicit_stream() -> None:
+    # Upstream constructor (line 153) calls readCIDToGIDMap() and
+    # stashes the resulting int[] in cid2gid; pypdfbox inherits the
+    # implementation from PDCIDFont and exposes the same parsed list.
+    font = PDCIDFontType2()
+    stream = COSStream()
+    stream.set_data(b"\x00\x05\x00\x06\x00\x07")
+    font.set_cid_to_gid_map(stream)
+    assert font.read_cid_to_gid_map() == [5, 6, 7]

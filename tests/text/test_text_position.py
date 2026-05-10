@@ -669,3 +669,62 @@ def test_diacritics_table_is_populated():
     assert _DIACRITICS[0x0027] == "́"
     assert _DIACRITICS[0x0060] == "̀"
     assert _DIACRITICS[0x005F] == "̲"
+
+
+# ---------------------------------------------------------------------------
+# Wave 1265: public-named (no underscore prefix) helpers
+# ---------------------------------------------------------------------------
+
+
+def test_get_x_rot_public_name():
+    tp = _make(x=10.0, y=20.0, page_width=500.0, page_height=800.0)
+    assert tp.get_x_rot(0.0) == 10.0
+    assert tp.get_x_rot(90.0) == 20.0
+    assert tp.get_x_rot(180.0) == 490.0
+    assert tp.get_x_rot(270.0) == 780.0
+    assert tp.get_x_rot(45.0) == 0.0
+
+
+def test_get_y_lower_left_rot_public_name():
+    tp = _make(x=10.0, y=20.0, page_width=500.0, page_height=800.0)
+    assert tp.get_y_lower_left_rot(0.0) == 20.0
+    assert tp.get_y_lower_left_rot(90.0) == 490.0
+    assert tp.get_y_lower_left_rot(180.0) == 780.0
+    assert tp.get_y_lower_left_rot(270.0) == 10.0
+    assert tp.get_y_lower_left_rot(45.0) == 0.0
+
+
+def test_get_width_rot_public_name():
+    tp = _make(width=37.5)
+    assert tp.get_width_rot(0.0) == 37.5
+    assert tp.get_width_rot(90.0) == 37.5
+    assert tp.get_width_rot(180.0) == 37.5
+    assert tp.get_width_rot(270.0) == 37.5
+
+
+def test_combine_diacritic_public_name():
+    assert TextPosition.combine_diacritic("'") == "́"
+    assert TextPosition.combine_diacritic("`") == "̀"
+    assert TextPosition.combine_diacritic("") == ""
+
+
+def test_insert_diacritic_public_name():
+    base = _make(text="e", width=8.0)
+    diacritic = _make(text="'", width=0.0)
+    base.insert_diacritic(0, diacritic)
+    # Decomposed (NFD) form: base + combining acute (U+0301).
+    assert base.text == "é"
+    assert unicodedata.normalize("NFC", base.text) == "é"
+
+
+def test_create_diacritics_classmethod():
+    table = TextPosition.create_diacritics()
+    assert len(table) == 31
+    assert table[0x0027] == "́"
+
+
+def test_create_diacritics_returns_fresh_dict():
+    a = TextPosition.create_diacritics()
+    a[0xFFFF] = "z"
+    b = TextPosition.create_diacritics()
+    assert 0xFFFF not in b

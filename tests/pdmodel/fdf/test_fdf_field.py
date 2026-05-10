@@ -6,6 +6,7 @@ import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.fdf import FDFField
+from pypdfbox.pdmodel.fdf.fdf_field import FDFIconFit, FDFNamedPageReference
 from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
 from pypdfbox.pdmodel.interactive.action.pd_action_named import PDActionNamed
 from pypdfbox.pdmodel.interactive.action.pd_additional_actions import (
@@ -330,6 +331,75 @@ def test_write_xml_emits_list_values_and_richtext() -> None:
     assert "<value>a</value>" in out
     assert "<value>b</value>" in out
     assert "<value-richtext>&lt;b&gt;rt&lt;/b&gt;</value-richtext>" in out
+
+
+# ---------- /APRef appearance stream reference ----------
+
+
+def test_appearance_stream_reference_round_trip() -> None:
+    f = FDFField()
+    assert f.get_appearance_stream_reference() is None
+
+    ref = FDFNamedPageReference()
+    ref.set_name("page-42")
+    f.set_appearance_stream_reference(ref)
+
+    got = f.get_appearance_stream_reference()
+    assert isinstance(got, FDFNamedPageReference)
+    assert got.get_cos_object() is ref.get_cos_object()
+    assert got.get_name() == "page-42"
+
+
+def test_appearance_stream_reference_set_none_removes_entry() -> None:
+    f = FDFField()
+    f.set_appearance_stream_reference(FDFNamedPageReference())
+    f.set_appearance_stream_reference(None)
+    assert f.get_appearance_stream_reference() is None
+    assert not f.get_cos_object().contains_key(COSName.get_pdf_name("APRef"))
+
+
+# ---------- /IF icon fit ----------
+
+
+def test_icon_fit_round_trip() -> None:
+    f = FDFField()
+    assert f.get_icon_fit() is None
+
+    fit = FDFIconFit()
+    fit.set_scale_option(FDFIconFit.SCALE_OPTION_NEVER)
+    fit.set_scale_type(FDFIconFit.SCALE_TYPE_ANAMORPHIC)
+    fit.set_scale_to_fit_annotation(True)
+    f.set_icon_fit(fit)
+
+    got = f.get_icon_fit()
+    assert isinstance(got, FDFIconFit)
+    assert got.get_cos_object() is fit.get_cos_object()
+    assert got.get_scale_option() == FDFIconFit.SCALE_OPTION_NEVER
+    assert got.get_scale_type() == FDFIconFit.SCALE_TYPE_ANAMORPHIC
+    assert got.should_scale_to_fit_annotation() is True
+
+
+def test_icon_fit_set_none_removes_entry() -> None:
+    f = FDFField()
+    f.set_icon_fit(FDFIconFit())
+    f.set_icon_fit(None)
+    assert f.get_icon_fit() is None
+    assert not f.get_cos_object().contains_key(COSName.get_pdf_name("IF"))
+
+
+def test_icon_fit_defaults_match_upstream() -> None:
+    """Mirrors upstream defaults: scale option ``A``, scale type ``P``,
+    fit-annotation flag ``False``, and ``[0.5 0.5]`` fractional space."""
+    fit = FDFIconFit()
+    assert fit.get_scale_option() == FDFIconFit.SCALE_OPTION_ALWAYS
+    assert fit.get_scale_type() == FDFIconFit.SCALE_TYPE_PROPORTIONAL
+    assert fit.should_scale_to_fit_annotation() is False
+
+    space = fit.get_fractional_space_to_allocate()
+    assert space.get_min() == 0.5
+    assert space.get_max() == 0.5
+    # Once read with the default, the entry is materialised in the dict.
+    assert fit.get_cos_object().contains_key(COSName.get_pdf_name("A"))
 
 
 def test_action_passthrough_creates_pdaction_subclass() -> None:

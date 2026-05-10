@@ -15,6 +15,10 @@ from pypdfbox.cos import (
 )
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
+        PDFileSpecification,
+    )
+    from pypdfbox.pdmodel.common.pd_range import PDRange
     from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
     from pypdfbox.pdmodel.interactive.action.pd_additional_actions import (
         PDAdditionalActions,
@@ -35,10 +39,18 @@ _F: COSName = COSName.get_pdf_name("F")
 _SET_F: COSName = COSName.get_pdf_name("SetF")
 _CLR_F: COSName = COSName.get_pdf_name("ClrF")
 _AP: COSName = COSName.get_pdf_name("AP")
+_AP_REF: COSName = COSName.get_pdf_name("APRef")
+_IF: COSName = COSName.get_pdf_name("IF")
 _OPT: COSName = COSName.get_pdf_name("Opt")
 _AA: COSName = COSName.get_pdf_name("AA")
 _A: COSName = COSName.get_pdf_name("A")
 _RV: COSName = COSName.get_pdf_name("RV")
+_NAME: COSName = COSName.get_pdf_name("Name")
+_FILE_F: COSName = COSName.get_pdf_name("F")
+_SW: COSName = COSName.get_pdf_name("SW")
+_S: COSName = COSName.get_pdf_name("S")
+_FB: COSName = COSName.get_pdf_name("FB")
+_FRAC_A: COSName = COSName.get_pdf_name("A")
 
 
 class FDFField:
@@ -384,6 +396,51 @@ class FDFField:
             return
         self._field.set_item(_AP, ap.get_cos_object())
 
+    # ---------- /APRef appearance stream reference ----------
+
+    def get_appearance_stream_reference(self) -> FDFNamedPageReference | None:
+        """Return the ``/APRef`` named page reference or ``None`` if absent.
+
+        Mirrors upstream ``FDFField.getAppearanceStreamReference()`` (Java
+        line 615).
+        """
+        d = self._field.get_cos_dictionary(_AP_REF)
+        return FDFNamedPageReference(d) if d is not None else None
+
+    def set_appearance_stream_reference(
+        self, ref: FDFNamedPageReference | None
+    ) -> None:
+        """Set the ``/APRef`` named page reference.
+
+        Mirrors upstream ``FDFField.setAppearanceStreamReference(...)`` (Java
+        line 626). Passing ``None`` removes the entry.
+        """
+        if ref is None:
+            self._field.remove_item(_AP_REF)
+            return
+        self._field.set_item(_AP_REF, ref.get_cos_object())
+
+    # ---------- /IF icon fit ----------
+
+    def get_icon_fit(self) -> FDFIconFit | None:
+        """Return the ``/IF`` icon-fit dictionary wrapper or ``None``.
+
+        Mirrors upstream ``FDFField.getIconFit()`` (Java line 636).
+        """
+        d = self._field.get_cos_dictionary(_IF)
+        return FDFIconFit(d) if d is not None else None
+
+    def set_icon_fit(self, fit: FDFIconFit | None) -> None:
+        """Set the ``/IF`` icon-fit dictionary.
+
+        Mirrors upstream ``FDFField.setIconFit(FDFIconFit)`` (Java line 647).
+        Passing ``None`` removes the entry.
+        """
+        if fit is None:
+            self._field.remove_item(_IF)
+            return
+        self._field.set_item(_IF, fit.get_cos_object())
+
     # ---------- /A action ----------
 
     def get_action(self) -> PDAction | None:
@@ -512,6 +569,107 @@ def _cos_value_to_python(v: COSBase | None) -> object | None:
     if isinstance(v, COSStream):
         return v
     return v
+
+
+class FDFNamedPageReference:
+    """A named page reference attached to an FDF field via ``/APRef``.
+
+    Mirrors ``org.apache.pdfbox.pdmodel.fdf.FDFNamedPageReference`` — a
+    simple two-entry dictionary holding the referenced page ``/Name`` and
+    an optional ``/F`` file specification.
+    """
+
+    def __init__(self, ref: COSDictionary | None = None) -> None:
+        self._ref: COSDictionary = ref if ref is not None else COSDictionary()
+
+    def get_cos_object(self) -> COSDictionary:
+        return self._ref
+
+    def get_name(self) -> str | None:
+        """Return the ``/Name`` entry — the referenced page name."""
+        return self._ref.get_string(_NAME)
+
+    def set_name(self, name: str | None) -> None:
+        """Set the ``/Name`` entry."""
+        self._ref.set_string(_NAME, name)
+
+    def get_file_specification(self) -> PDFileSpecification | None:
+        """Return the ``/F`` entry as a ``PDFileSpecification`` (or None)."""
+        from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
+            PDFileSpecification,
+        )
+
+        return PDFileSpecification.create_fs(self._ref.get_dictionary_object(_FILE_F))
+
+    def set_file_specification(self, fs: PDFileSpecification | None) -> None:
+        """Set the ``/F`` file specification."""
+        if fs is None:
+            self._ref.remove_item(_FILE_F)
+            return
+        self._ref.set_item(_FILE_F, fs.get_cos_object())
+
+
+class FDFIconFit:
+    """Icon-fit dictionary attached to an FDF field via ``/IF``.
+
+    Mirrors ``org.apache.pdfbox.pdmodel.fdf.FDFIconFit``.
+    """
+
+    SCALE_OPTION_ALWAYS: str = "A"
+    SCALE_OPTION_ONLY_WHEN_ICON_IS_BIGGER: str = "B"
+    SCALE_OPTION_ONLY_WHEN_ICON_IS_SMALLER: str = "S"
+    SCALE_OPTION_NEVER: str = "N"
+
+    SCALE_TYPE_ANAMORPHIC: str = "A"
+    SCALE_TYPE_PROPORTIONAL: str = "P"
+
+    def __init__(self, fit: COSDictionary | None = None) -> None:
+        self._fit: COSDictionary = fit if fit is not None else COSDictionary()
+
+    def get_cos_object(self) -> COSDictionary:
+        return self._fit
+
+    def get_scale_option(self) -> str:
+        """Return the ``/SW`` scale option, defaulting to ``"A"`` (Always)."""
+        retval = self._fit.get_name_as_string(_SW)
+        return retval if retval is not None else self.SCALE_OPTION_ALWAYS
+
+    def set_scale_option(self, option: str) -> None:
+        self._fit.set_name(_SW, option)
+
+    def get_scale_type(self) -> str:
+        """Return the ``/S`` scale type, defaulting to ``"P"`` (Proportional)."""
+        retval = self._fit.get_name_as_string(_S)
+        return retval if retval is not None else self.SCALE_TYPE_PROPORTIONAL
+
+    def set_scale_type(self, scale: str) -> None:
+        self._fit.set_name(_S, scale)
+
+    def get_fractional_space_to_allocate(self) -> PDRange:
+        """Return the ``/A`` fractional space ``PDRange``.
+
+        Defaults to ``[0.5, 0.5]`` and writes the default back when missing —
+        matches upstream ``FDFIconFit.getFractionalSpaceToAllocate()``.
+        """
+        from pypdfbox.pdmodel.common.pd_range import PDRange
+
+        array = self._fit.get_cos_array(_FRAC_A)
+        if array is None:
+            retval = PDRange()
+            retval.set_min(0.5)
+            retval.set_max(0.5)
+            self.set_fractional_space_to_allocate(retval)
+            return retval
+        return PDRange(array)
+
+    def set_fractional_space_to_allocate(self, space: PDRange) -> None:
+        self._fit.set_item(_FRAC_A, space.get_cos_object())
+
+    def should_scale_to_fit_annotation(self) -> bool:
+        return self._fit.get_boolean(_FB, False)
+
+    def set_scale_to_fit_annotation(self, value: bool) -> None:
+        self._fit.set_boolean(_FB, value)
 
 
 def _option_pair_to_cos_array(option: Sequence[object]) -> COSArray:
