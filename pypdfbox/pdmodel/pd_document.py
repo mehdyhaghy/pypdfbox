@@ -1194,6 +1194,205 @@ class PDDocument:
         self._pending_signature_options = options
         self._signature_added = True
 
+    # ---------- private signing helpers (1:1 with upstream PDDocument) ----------
+
+    @staticmethod
+    def find_signature_field(
+        field_iterator: Any, sig_object: PDSignature
+    ) -> Any | None:
+        """Search ``field_iterator`` (an iterable of :class:`PDField`) for the
+        :class:`PDSignatureField` whose ``/V`` is the COS object backing
+        ``sig_object``. Returns the matching field, or ``None`` if none is
+        present. Mirrors upstream private
+        ``PDDocument.findSignatureField`` (PDDocument.java:476-493)."""
+        from .interactive.form.pd_signature_field import PDSignatureField
+
+        target = sig_object.get_cos_object()
+        for pd_field in field_iterator:
+            if isinstance(pd_field, PDSignatureField):
+                signature = pd_field.get_signature()
+                if signature is not None and signature.get_cos_object() == target:
+                    return pd_field
+        return None
+
+    @staticmethod
+    def check_signature_field(field_iterator: Any, signature_field: Any) -> bool:
+        """Return ``True`` when ``signature_field`` already appears in
+        ``field_iterator`` (membership keyed off the underlying COS dict).
+        Mirrors upstream private
+        ``PDDocument.checkSignatureField`` (PDDocument.java:502-514)."""
+        from .interactive.form.pd_signature_field import PDSignatureField
+
+        target = signature_field.get_cos_object()
+        for field in field_iterator:
+            if isinstance(field, PDSignatureField) and field.get_cos_object() == target:
+                return True
+        return False
+
+    @staticmethod
+    def check_signature_annotation(annotations: Any, widget: Any) -> bool:
+        """Return ``True`` when ``widget`` (a ``PDAnnotationWidget``) is
+        already present in ``annotations`` (membership keyed off the
+        underlying COS dict). Mirrors upstream private
+        ``PDDocument.checkSignatureAnnotation`` (PDDocument.java:523-533)."""
+        target = widget.get_cos_object()
+        for annotation in annotations:
+            cos = (
+                annotation.get_cos_object()
+                if hasattr(annotation, "get_cos_object")
+                else annotation
+            )
+            if cos == target:
+                return True
+        return False
+
+    def prepare_non_visible_signature(self, first_widget: Any) -> None:
+        """Wire an invisible signature widget — zero-area /Rect plus an
+        empty appearance stream — so the signature dictionary is
+        well-formed even when the field is not meant to be rendered.
+        Mirrors upstream private
+        ``PDDocument.prepareNonVisibleSignature`` (PDDocument.java:535-548)."""
+        from pypdfbox.cos import COSInteger, COSStream
+        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
+            PDAppearanceDictionary,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
+            PDAppearanceStream,
+        )
+
+        # Zero-area /Rect [0 0 0 0] — invisible per ISO 32000-1 §12.7.4.5.
+        rect = COSArray()
+        for v in (0, 0, 0, 0):
+            rect.add(COSInteger.get(v))
+        first_widget.get_cos_object().set_item(COSName.get_pdf_name("Rect"), rect)
+
+        # Empty but well-formed /AP /N appearance. Pypdfbox's
+        # PDAppearanceStream wraps a COSStream directly (upstream takes a
+        # PDDocument and synthesises one) — we build a minimal empty stream.
+        empty_stream = COSStream()
+        empty_bbox = COSArray()
+        for v in (0, 0, 0, 0):
+            empty_bbox.add(COSInteger.get(v))
+        empty_stream.set_item(COSName.get_pdf_name("BBox"), empty_bbox)
+        empty_stream.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject"))
+        empty_stream.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Form"))
+        appearance_dict = PDAppearanceDictionary()
+        appearance_dict.set_normal_appearance(PDAppearanceStream(empty_stream))
+        first_widget.set_appearance(appearance_dict)
+
+    def prepare_visible_signature(
+        self, first_widget: Any, acro_form: Any, visual_signature: COSDocument
+    ) -> None:
+        """Lift the visual-signature template out of ``visual_signature``
+        and wire the widget's /Rect, /AP, and the AcroForm /DR resources
+        from it. Mirrors upstream private
+        ``PDDocument.prepareVisibleSignature`` (PDDocument.java:550-591).
+
+        Raises :class:`ValueError` (≈ Java ``IllegalArgumentException``)
+        when the template lacks either a signature annotation or a
+        signature field."""
+        annot_found = False
+        sig_field_found = False
+
+        _ANNOT = COSName.get_pdf_name("Annot")
+        _SIG = COSName.get_pdf_name("Sig")
+        _AP = COSName.get_pdf_name("AP")
+        _FT = COSName.get_pdf_name("FT")
+
+        for cos_object in visual_signature.get_objects():
+            base = cos_object.get_object()
+            if not isinstance(base, COSDictionary):
+                continue
+            # Search for signature annotation.
+            if not annot_found and base.get_cos_name(_TYPE) == _ANNOT:
+                self.assign_signature_rectangle(first_widget, base)
+                annot_found = True
+            # Search for signature field.
+            ap_dict = base.get_dictionary_object(_AP)
+            if (
+                isinstance(ap_dict, COSDictionary)
+                and not sig_field_found
+                and base.get_cos_name(_FT) == _SIG
+            ):
+                self.assign_appearance_dictionary(first_widget, ap_dict)
+                self.assign_acro_form_default_resource(acro_form, base)
+                sig_field_found = True
+            if annot_found and sig_field_found:
+                break
+        if not annot_found or not sig_field_found:
+            raise ValueError("Template is missing required objects")
+
+    @staticmethod
+    def assign_signature_rectangle(first_widget: Any, annot_dict: COSDictionary) -> None:
+        """Copy ``annot_dict``'s ``/Rect`` onto ``first_widget`` unless the
+        widget already carries a 4-element rectangle (preserves caller-
+        supplied geometry on existing fields). Mirrors upstream private
+        ``PDDocument.assignSignatureRectangle`` (PDDocument.java:593-605)."""
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+        existing = first_widget.get_rectangle()
+        if existing is None or existing.get_cos_array().size() != 4:
+            rect_array = annot_dict.get_dictionary_object(COSName.get_pdf_name("Rect"))
+            if isinstance(rect_array, COSArray):
+                first_widget.set_rectangle(PDRectangle.from_cos_array(rect_array))
+
+    @staticmethod
+    def assign_appearance_dictionary(first_widget: Any, ap_dict: COSDictionary) -> None:
+        """Wrap ``ap_dict`` as a :class:`PDAppearanceDictionary`, force it
+        direct so it round-trips inside the widget, and attach it to
+        ``first_widget``. Mirrors upstream private
+        ``PDDocument.assignAppearanceDictionary`` (PDDocument.java:607-613)."""
+        from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
+            PDAppearanceDictionary,
+        )
+
+        ap = PDAppearanceDictionary(ap_dict)
+        ap_dict.set_direct(True)
+        first_widget.set_appearance(ap)
+
+    @staticmethod
+    def assign_acro_form_default_resource(
+        acro_form: Any, new_dict: COSDictionary
+    ) -> None:
+        """Merge the template's ``/DR`` (default resources) into the
+        AcroForm's, preferring an outright install when the AcroForm has no
+        existing default-resources dict. Mirrors upstream private
+        ``PDDocument.assignAcroFormDefaultResource`` (PDDocument.java:615-640)."""
+        _DR = COSName.get_pdf_name("DR")
+        _XOBJECT = COSName.get_pdf_name("XObject")
+
+        new_dr = new_dict.get_dictionary_object(_DR)
+        if not isinstance(new_dr, COSDictionary):
+            return
+        default_resources = acro_form.get_default_resources()
+        if default_resources is None:
+            acro_form.get_cos_object().set_item(_DR, new_dr)
+            new_dr.set_direct(True)
+            new_dr.set_needs_to_be_updated(True)
+            return
+        old_dr = default_resources.get_cos_object()
+        new_xobject = new_dr.get_dictionary_object(_XOBJECT)
+        old_xobject = old_dr.get_dictionary_object(_XOBJECT)
+        if isinstance(new_xobject, COSDictionary) and isinstance(
+            old_xobject, COSDictionary
+        ):
+            old_xobject.add_all(new_xobject)
+            old_dr.set_needs_to_be_updated(True)
+
+    def subset_designated_fonts(self) -> None:
+        """Drain the document's ``fontsToSubset`` set, calling ``subset()``
+        on each registered font, and clear the set. Mirrors upstream private
+        ``PDDocument.subsetDesignatedFonts`` (PDDocument.java:1040-1048).
+
+        Pypdfbox keeps the API public for symmetry with the rest of the
+        port; the writer cluster invokes it from :meth:`save` /
+        :meth:`save_incremental` once font subsetting lands."""
+        for font in list(self._fonts_to_subset):
+            subset = getattr(font, "subset", None)
+            if callable(subset):
+                subset()
+        self._fonts_to_subset.clear()
+
     def get_pending_signature(self) -> PDSignature | None:
         """Return the :class:`PDSignature` staged by the most recent
         :meth:`add_signature` call, or ``None`` when no signature is

@@ -76,15 +76,78 @@ def test_save_after_close_raises() -> None:
         fdf.save(io.BytesIO())
 
 
-def test_xfdf_methods_raise_not_implemented() -> None:
+def test_set_xfdf_still_unsupported() -> None:
+    """XFDF ingest still requires a SAX/DOM front-end (deferred wave)."""
     fdf = FDFDocument()
     try:
         with pytest.raises(NotImplementedError):
             fdf.set_xfdf(b"<xfdf/>")
-        with pytest.raises(NotImplementedError):
-            fdf.save_xfdf(io.BytesIO())
     finally:
         fdf.close()
+
+
+def test_save_xfdf_writes_xml_to_text_stream() -> None:
+    fdf = FDFDocument()
+    captured: list[str] = []
+
+    class _CapturingWriter(io.StringIO):
+        def close(self) -> None:  # type: ignore[override]
+            captured.append(self.getvalue())
+            super().close()
+
+    buf = _CapturingWriter()
+    fdf.save_xfdf(buf)
+    # save_xfdf must close the writer to mirror upstream behaviour.
+    assert buf.closed
+    text = captured[0]
+    assert text.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    assert "<xfdf" in text
+    assert text.rstrip().endswith("</xfdf>")
+    fdf.close()
+
+
+def test_save_xfdf_writes_xml_to_path(tmp_path: Path) -> None:
+    fdf = FDFDocument()
+    out = tmp_path / "out.xfdf"
+    fdf.save_xfdf(out)
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith('<?xml version="1.0" encoding="UTF-8"?>')
+    assert "<xfdf" in text
+    fdf.close()
+
+
+def test_write_xml_emits_xfdf_envelope() -> None:
+    fdf = FDFDocument()
+    buf = io.StringIO()
+    fdf.write_xml(buf)
+    text = buf.getvalue()
+    assert text.startswith('<?xml version="1.0" encoding="UTF-8"?>\n')
+    assert '<xfdf xmlns="http://ns.adobe.com/xfdf/" xml:space="preserve">' in text
+    assert text.rstrip().endswith("</xfdf>")
+    fdf.close()
+
+
+def test_set_catalog_replaces_root() -> None:
+    fdf = FDFDocument()
+    new_cat = FDFCatalog()
+    fdf.set_catalog(new_cat)
+    assert fdf.get_catalog() is new_cat
+    # And the trailer's /Root must now point at the new catalog's COS dict.
+    from pypdfbox.cos import COSName
+
+    trailer = fdf.get_document().get_trailer()
+    assert trailer is not None
+    assert trailer.get_dictionary_object(COSName.get_pdf_name("Root")) is (
+        new_cat.get_cos_object()
+    )
+    fdf.close()
+
+
+def test_save_xfdf_after_close_raises() -> None:
+    fdf = FDFDocument()
+    fdf.close()
+    with pytest.raises(ValueError):
+        fdf.save_xfdf(io.StringIO())
 
 
 def test_constructor_rejects_unknown_type() -> None:

@@ -443,19 +443,106 @@ class GlyphData:
         For empty / no-outline glyphs the returned pen has an empty
         ``value`` list.
         """
-        from fontTools.pens.recordingPen import RecordingPen  # noqa: PLC0415
-
-        pen = RecordingPen()
-        if self._empty or self._glyf_table is None or self._glyph_name is None:
-            return pen
-        glyph = self._glyf_table[self._glyph_name]
-        # ``Glyph.draw`` needs the full ``glyf`` table so it can resolve
-        # composite component references back to their base glyphs.
-        glyph.draw(pen, self._glyf_table)
-        return pen
+        return self.glyph_renderer().get_path()
 
     def getPath(self) -> RecordingPen:  # noqa: N802 - upstream Java name
         return self.get_path()
+
+    # ---- upstream package-private initialisers --------------------------
+
+    def init_data(
+        self,
+        glyph_table: Any,
+        data: Any,  # noqa: ARG002 - upstream signature parity
+        left_side_bearing: int,  # noqa: ARG002 - upstream signature parity
+        level: int,  # noqa: ARG002 - upstream signature parity
+    ) -> None:
+        """Bind this record to a parent ``glyf`` table and re-resolve.
+
+        Mirrors upstream ``GlyphData.initData(GlyphTable, TTFDataStream,
+        int, int)`` (GlyphData.java line 47). Upstream consumes the
+        on-disk bytes via ``TTFDataStream`` and then dispatches to a
+        simple- or composite-descript constructor based on
+        ``numberOfContours``. pypdfbox decodes the ``glyf`` table via
+        fontTools long before this method is called, so the ``data`` /
+        ``leftSideBearing`` / ``level`` arguments are accepted for
+        signature parity but ignored — re-binding the parent ``glyf``
+        table is the substantive part. After ``init_data`` returns, the
+        next accessor call materialises the bbox and contour count from
+        fontTools as usual.
+
+        Accepts either the ported :class:`GlyphTable` (whose internal
+        ``_glyf_table`` we read) or a fontTools ``_g_l_y_f`` object
+        directly, matching how callers pass parents in tests.
+        """
+        glyf = getattr(glyph_table, "_glyf_table", glyph_table)
+        self._glyf_table = glyf
+        self._empty = glyf is None or self._glyph_name is None
+        # Force re-resolution on next accessor call.
+        self._initialised = False
+        self._bounding_box = None
+
+    def init_empty_data(self) -> None:
+        """Reset this record to an empty (no-outline) glyph.
+
+        Mirrors upstream ``GlyphData.initEmptyData()`` (GlyphData.java
+        line 75) which constructs an empty ``GlyfSimpleDescript`` and a
+        zero-rect ``BoundingBox``. Accessors thereafter return zero for
+        every dimension and an empty :class:`GlyphDescription`.
+        """
+        self._glyf_table = None
+        self._glyph_name = None
+        self._empty = True
+        self._x_min = 0
+        self._y_min = 0
+        self._x_max = 0
+        self._y_max = 0
+        self._number_of_contours = 0
+        self._bounding_box = BoundingBox()
+        self._initialised = True
+
+    # ---- renderer factory ------------------------------------------------
+
+    def glyph_renderer(self) -> _GlyphRenderer:
+        """Return a renderer that turns this glyph's description into a path.
+
+        Mirrors the role of ``new GlyphRenderer(glyphDescription)`` in
+        upstream's ``GlyphData.getPath()`` (GlyphData.java line 111).
+        Upstream's ``GlyphRenderer`` is a package-private helper that
+        walks ``GlyphDescription`` points and emits a Java
+        ``GeneralPath``; pypdfbox delegates the same job to fontTools'
+        ``RecordingPen`` driven by ``Glyph.draw`` and exposes a
+        compatible ``get_path()`` accessor on the returned object.
+        """
+        return _GlyphRenderer(self)
+
+
+class _GlyphRenderer:
+    """Minimal port of upstream ``org.apache.fontbox.ttf.GlyphRenderer``.
+
+    Upstream's renderer walks point arrays and builds a
+    ``java.awt.geom.GeneralPath``. pypdfbox does the same job via
+    fontTools' ``RecordingPen``, so this class is a thin adapter:
+    construct it from a :class:`GlyphData` (or a :class:`GlyphDescription`
+    plus its parent ``glyf`` table) and call :meth:`get_path` to obtain
+    the recorded outline.
+    """
+
+    def __init__(self, glyph_data: GlyphData) -> None:
+        self._glyph_data = glyph_data
+
+    def get_path(self) -> RecordingPen:
+        from fontTools.pens.recordingPen import RecordingPen  # noqa: PLC0415
+
+        pen = RecordingPen()
+        gd = self._glyph_data
+        if gd._empty or gd._glyf_table is None or gd._glyph_name is None:
+            return pen
+        glyph = gd._glyf_table[gd._glyph_name]
+        # ``Glyph.draw`` needs the full ``glyf`` table so it can resolve
+        # composite component references back to their base glyphs.
+        glyph.draw(pen, gd._glyf_table)
+        return pen
 
 
 __all__ = ["BoundingBox", "GlyfDescript", "GlyphData", "GlyphDescription"]

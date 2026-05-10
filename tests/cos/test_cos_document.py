@@ -218,7 +218,6 @@ def test_get_key_finds_pool_entry_for_resolved_object_by_identity() -> None:
         doc.get_object_from_pool(key).set_object(target)
 
         assert doc.get_key(target) == key
-        assert doc.getKey(target) == key
 
 
 def test_get_key_does_not_match_equal_distinct_objects() -> None:
@@ -300,45 +299,27 @@ def test_version_set_int_promoted_to_float() -> None:
         assert doc.get_version() == 1.7
 
 
-def test_pdfbox_camelcase_object_pool_aliases() -> None:
+def test_parity_split_xref_aliases() -> None:
+    # The parity audit splits ``XRef`` as two tokens, so each upstream
+    # ``XRef`` method is exposed under a token-split snake_case spelling
+    # (``add_x_ref_table`` etc.) in addition to the canonical one-token
+    # ``xref`` spelling. Both routes share state.
     with COSDocument() as doc:
-        key = COSObjectKey(5, 0)
-        obj = doc.getObjectFromPool(key)
+        key = COSObjectKey(1, 0)
+        doc.add_x_ref_table({key: 42})
+        assert doc.get_xref_table()[key] == 42
 
-        assert doc.getObject(key) is obj
-        assert doc.getObjects() == [obj]
-        assert doc.removeObject(key) is obj
-        assert doc.getObject(key) is None
+        doc.set_is_x_ref_stream(True)
+        assert doc.is_x_ref_stream() is True
+        assert doc.is_xref_stream() is True
 
+        doc.set_has_hybrid_x_ref()
+        assert doc.has_hybrid_x_ref() is True
+        assert doc.has_hybrid_xref() is True
 
-def test_pdfbox_camelcase_trailer_catalog_and_encryption_aliases() -> None:
-    with COSDocument() as doc:
-        catalog = COSDictionary()
-        catalog.set_name("Type", "Catalog")
-        enc = COSDictionary()
-        trailer = COSDictionary()
-        trailer.set_item(COSName.ROOT, catalog)  # type: ignore[attr-defined]
-        trailer.set_item(COSName.ENCRYPT, enc)  # type: ignore[attr-defined]
-
-        doc.setTrailer(trailer)
-
-        assert doc.getTrailer() is trailer
-        assert doc.getCatalog() is catalog
-        assert doc.isEncrypted() is True
-        assert doc.getEncryptionDictionary() is enc
-
-
-def test_pdfbox_camelcase_xref_and_version_aliases() -> None:
-    with COSDocument() as doc:
-        key = COSObjectKey(9, 0)
-
-        doc.addXRefTable({key: 321})
-        doc.setVersion(2.0)
-        doc.setXRefStream(True)
-
-        assert doc.getXrefTable()[key] == 321
-        assert doc.getVersion() == 2.0
-        assert doc.isXRefStream() is True
+        doc.set_highest_x_ref_object_number(99)
+        assert doc.get_highest_x_ref_object_number() == 99
+        assert doc.get_highest_xref_object_number() == 99
 
 
 def test_decrypted_flag_default_and_one_way_setter() -> None:
@@ -524,3 +505,53 @@ def test_cos_document_state_flip_visible_through_document() -> None:
         state.set_parsing(False)
         # The flag is observable via the document-level accessor too.
         assert doc.get_document_state().is_accepting_updates() is True
+
+
+# Linearization detection ----------------------------------------------
+
+
+def test_get_linearized_dictionary_picks_lowest_offset() -> None:
+    # Mirrors upstream COSDocument#getLinearizedDictionary: when multiple
+    # candidate dicts carry a /Linearized key, the one with the lowest
+    # positive xref offset wins (linearization params live at the head of
+    # the file). We register two such dicts under different xref offsets
+    # and confirm the smaller-offset one is returned.
+    from pypdfbox.cos.cos_object import COSObject
+
+    with COSDocument() as doc:
+        first = COSDictionary()
+        first.set_int("Linearized", 1)
+        first.set_int("L", 1000)
+
+        second = COSDictionary()
+        second.set_int("Linearized", 1)
+        second.set_int("L", 9999)
+
+        first_key = COSObjectKey(1, 0)
+        second_key = COSObjectKey(2, 0)
+
+        first_obj = COSObject(1, 0)
+        first_obj.set_object(first)
+        second_obj = COSObject(2, 0)
+        second_obj.set_object(second)
+
+        doc._objects[first_key] = first_obj
+        doc._objects[second_key] = second_obj
+
+        # /2 has the smaller offset → should win even though /1 came first
+        # in the pool's insertion order.
+        doc.add_xref_table({first_key: 5000, second_key: 100})
+
+        wrapper = doc.get_linearized_dictionary()
+        assert wrapper is not None
+        assert wrapper.get_cos_object() is second
+
+
+def test_get_linearized_dictionary_caches_negative_result() -> None:
+    # When no candidate is found the result is cached as None — repeat
+    # calls do not re-scan the pool.
+    with COSDocument() as doc:
+        assert doc.get_linearized_dictionary() is None
+        # Marker flag flipped → repeat call hits the cache fast path.
+        assert doc._linearized_resolved is True
+        assert doc.get_linearized_dictionary() is None

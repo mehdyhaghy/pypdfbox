@@ -493,6 +493,26 @@ class PDAnnotation:
         ``get_color() is not None`` boilerplate."""
         return self.get_color() is not None
 
+    def _get_color(self, item_name: COSName) -> COSArray | None:
+        """Protected helper mirroring upstream
+        :code:`protected PDColor getColor(COSName itemName)` (Java line
+        811).
+
+        Returns the raw color ``COSArray`` for a given dictionary entry
+        (typically ``/C`` for stroke or ``/IC`` for interior color on
+        markup annotations), or ``None`` when absent. Cluster #5 lite
+        returns the bare array — the typed PDColor wrapper lands with
+        the rendering cluster (see ``CHANGES.md`` and the divergence
+        note on :meth:`get_color`).
+
+        Subclasses such as ``PDAnnotationMarkup`` use this to expose
+        ``getInteriorColor()`` / ``getColor()`` over their own keys
+        without duplicating the lookup logic."""
+        value = self._dict.get_dictionary_object(item_name)
+        if isinstance(value, COSArray):
+            return value
+        return None
+
     def set_color_components(self, components: list[float] | tuple[float, ...]) -> None:
         """Convenience alternative to ``set_color`` taking raw floats — no
         upstream equivalent (upstream takes a ``PDColor``). Useful before

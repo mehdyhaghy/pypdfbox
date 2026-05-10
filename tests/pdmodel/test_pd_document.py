@@ -1187,3 +1187,252 @@ def test_is_signature_added_blocks_second_add_signature() -> None:
     with pytest.raises(ValueError, match="Only one signature"):
         doc.add_signature(PDSignature())
     doc.close()
+
+
+# ---------- private signing helpers (parity with upstream PDDocument) ----------
+
+
+def test_subset_designated_fonts_drains_set() -> None:
+    """``subset_designated_fonts`` calls ``subset()`` on every queued font
+    and clears the backing set. Mirrors upstream
+    ``PDDocument.subsetDesignatedFonts``."""
+
+    class _FakeFont:
+        def __init__(self) -> None:
+            self.subset_called = 0
+
+        def subset(self) -> None:
+            self.subset_called += 1
+
+    doc = PDDocument()
+    f1, f2 = _FakeFont(), _FakeFont()
+    doc.get_fonts_to_subset().add(f1)
+    doc.get_fonts_to_subset().add(f2)
+
+    doc.subset_designated_fonts()
+
+    assert f1.subset_called == 1
+    assert f2.subset_called == 1
+    assert doc.get_fonts_to_subset() == set()
+    doc.close()
+
+
+def test_subset_designated_fonts_noop_on_empty() -> None:
+    """No-op when the queue is empty (mirrors upstream's bare for-loop)."""
+    doc = PDDocument()
+    doc.subset_designated_fonts()
+    assert doc.get_fonts_to_subset() == set()
+    doc.close()
+
+
+def test_subset_designated_fonts_skips_fonts_without_subset() -> None:
+    """A queued object without a ``subset()`` method is silently dropped —
+    we still clear the set, but don't raise."""
+
+    class _NoSubset:
+        pass
+
+    doc = PDDocument()
+    doc.get_fonts_to_subset().add(_NoSubset())
+    doc.subset_designated_fonts()
+    assert doc.get_fonts_to_subset() == set()
+    doc.close()
+
+
+def test_find_signature_field_returns_match() -> None:
+    """``find_signature_field`` walks an iterator, returning the
+    ``PDSignatureField`` whose ``/V`` is the COS object of ``sig_object``."""
+    from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
+        PDSignature,
+    )
+    from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
+    from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+
+    doc = PDDocument()
+    acro = PDAcroForm(doc)
+    sig = PDSignature()
+    field = PDSignatureField(acro)
+    field.set_value(sig)
+
+    other = PDTextField(acro)  # non-signature field is skipped
+    found = PDDocument.find_signature_field(iter([other, field]), sig)
+    assert found is field
+
+    # No match — different signature.
+    other_sig = PDSignature()
+    not_found = PDDocument.find_signature_field(iter([other, field]), other_sig)
+    assert not_found is None
+    doc.close()
+
+
+def test_check_signature_field_membership() -> None:
+    """``check_signature_field`` returns True if the field is present in
+    the iterator (compared by underlying COS dict)."""
+    from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
+
+    doc = PDDocument()
+    acro = PDAcroForm(doc)
+    a, b, c = PDSignatureField(acro), PDSignatureField(acro), PDSignatureField(acro)
+    assert PDDocument.check_signature_field(iter([a, b]), b) is True
+    assert PDDocument.check_signature_field(iter([a, b]), c) is False
+    doc.close()
+
+
+def test_check_signature_annotation_membership() -> None:
+    """``check_signature_annotation`` reports membership keyed off the
+    underlying COS dict."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+
+    a, b, c = PDAnnotationWidget(), PDAnnotationWidget(), PDAnnotationWidget()
+    assert PDDocument.check_signature_annotation([a, b], b) is True
+    assert PDDocument.check_signature_annotation([a, b], c) is False
+
+
+def test_check_signature_annotation_handles_raw_cos_dict_entries() -> None:
+    """Raw ``COSDictionary`` entries (no ``get_cos_object()``) compare
+    directly — covers the ``annotations`` list yielding bare COS dicts."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+
+    widget = PDAnnotationWidget()
+    raw_cos = widget.get_cos_object()
+    # Pretend the page returned the COS dict directly (some legacy paths).
+    assert PDDocument.check_signature_annotation([raw_cos], widget) is True
+
+
+def test_prepare_non_visible_signature_sets_zero_rect_and_appearance() -> None:
+    """``prepare_non_visible_signature`` zeroes the widget rectangle and
+    installs a normal-appearance stub so the dictionary is well-formed.
+    Mirrors upstream's invisible-signature posture (PDFBox §535-548)."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+
+    doc = PDDocument()
+    widget = PDAnnotationWidget()
+    doc.prepare_non_visible_signature(widget)
+
+    rect = widget.get_rectangle()
+    assert rect is not None
+    assert rect.get_lower_left_x() == 0.0
+    assert rect.get_upper_right_x() == 0.0
+
+    ap = widget.get_appearance()
+    assert ap is not None
+    assert ap.get_normal_appearance() is not None
+    doc.close()
+
+
+def test_assign_signature_rectangle_copies_when_widget_empty() -> None:
+    """``assign_signature_rectangle`` adopts the template's /Rect when the
+    widget has no usable rectangle yet."""
+    from pypdfbox.cos import COSArray, COSInteger
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+
+    widget = PDAnnotationWidget()
+    template = COSDictionary()
+    rect = COSArray()
+    for v in (10, 20, 30, 40):
+        rect.add(COSInteger.get(v))
+    template.set_item(COSName.get_pdf_name("Rect"), rect)
+
+    PDDocument.assign_signature_rectangle(widget, template)
+
+    out = widget.get_rectangle()
+    assert out is not None
+    assert out.get_lower_left_x() == 10.0
+    assert out.get_upper_right_y() == 40.0
+
+
+def test_assign_signature_rectangle_preserves_existing() -> None:
+    """When the widget already has a 4-entry rectangle, the template's
+    /Rect is ignored — mirrors upstream's "preserve original" branch."""
+    from pypdfbox.cos import COSArray, COSInteger
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    widget = PDAnnotationWidget()
+    widget.set_rectangle(PDRectangle(1.0, 2.0, 3.0, 4.0))
+
+    template = COSDictionary()
+    rect = COSArray()
+    for v in (10, 20, 30, 40):
+        rect.add(COSInteger.get(v))
+    template.set_item(COSName.get_pdf_name("Rect"), rect)
+
+    PDDocument.assign_signature_rectangle(widget, template)
+    out = widget.get_rectangle()
+    assert out is not None
+    assert out.get_lower_left_x() == 1.0  # untouched
+
+
+def test_assign_appearance_dictionary_attaches_and_marks_direct() -> None:
+    """``assign_appearance_dictionary`` wraps and forces the AP dict
+    direct so it round-trips inside the widget."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+
+    widget = PDAnnotationWidget()
+    ap_dict = COSDictionary()
+    PDDocument.assign_appearance_dictionary(widget, ap_dict)
+    assert ap_dict.is_direct() is True
+    assert widget.get_appearance() is not None
+
+
+def test_assign_acro_form_default_resource_installs_when_missing() -> None:
+    """When the AcroForm has no /DR, the template's /DR is adopted
+    wholesale and marked direct + dirty."""
+    from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+
+    doc = PDDocument()
+    acro = PDAcroForm(doc)
+    template = COSDictionary()
+    new_dr = COSDictionary()
+    template.set_item(COSName.get_pdf_name("DR"), new_dr)
+
+    PDDocument.assign_acro_form_default_resource(acro, template)
+
+    assert acro.get_default_resources() is not None
+    assert (
+        acro.get_cos_object().get_dictionary_object(COSName.get_pdf_name("DR"))
+        is new_dr
+    )
+    assert new_dr.is_direct() is True
+    doc.close()
+
+
+def test_assign_acro_form_default_resource_noop_when_template_lacks_dr() -> None:
+    """No /DR on the template → no-op (mirrors upstream's null-guard)."""
+    from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+
+    doc = PDDocument()
+    acro = PDAcroForm(doc)
+    PDDocument.assign_acro_form_default_resource(acro, COSDictionary())
+    assert acro.get_default_resources() is None
+    doc.close()
+
+
+def test_prepare_visible_signature_raises_on_incomplete_template() -> None:
+    """Empty template → ``ValueError`` (≈ Java IllegalArgumentException)."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_widget import (
+        PDAnnotationWidget,
+    )
+    from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+
+    doc = PDDocument()
+    acro = PDAcroForm(doc)
+    widget = PDAnnotationWidget()
+    template = COSDocument()
+    with pytest.raises(ValueError, match="Template is missing required objects"):
+        doc.prepare_visible_signature(widget, acro, template)
+    doc.close()

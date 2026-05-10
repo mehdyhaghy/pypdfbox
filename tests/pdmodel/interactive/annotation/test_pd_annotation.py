@@ -150,6 +150,17 @@ def test_rectangle_clear() -> None:
     assert ann.get_rectangle() is None
 
 
+def test_rectangle_returns_none_when_array_too_short() -> None:
+    """A /Rect array shorter than 4 entries is treated as missing —
+    upstream PDAnnotation.getRectangle() returns null in that case."""
+    ann = PDAnnotationText()
+    ann.get_cos_object().set_item(
+        COSName.get_pdf_name("Rect"),
+        COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(1.0)]),
+    )
+    assert ann.get_rectangle() is None
+
+
 # ---------- /Contents round-trip ----------
 
 
@@ -343,6 +354,30 @@ def test_color_clear() -> None:
     ann.set_color_components([0.0, 0.0, 0.0])
     ann.set_color(None)
     assert ann.get_color() is None
+
+
+def test_protected_get_color_reads_arbitrary_item() -> None:
+    """Mirrors upstream protected ``getColor(COSName itemName)`` (Java
+    line 811). Subclasses use it to read /IC interior colors etc."""
+    ann = PDAnnotationText()
+    ic = COSArray([COSFloat(0.1), COSFloat(0.2), COSFloat(0.3)])
+    ann.get_cos_object().set_item(COSName.get_pdf_name("IC"), ic)
+    assert ann._get_color(COSName.get_pdf_name("IC")) is ic
+
+
+def test_protected_get_color_none_when_absent() -> None:
+    ann = PDAnnotationText()
+    assert ann._get_color(COSName.get_pdf_name("IC")) is None
+
+
+def test_protected_get_color_none_when_not_array() -> None:
+    """Non-array /C-style entries are ignored (upstream casts to
+    COSArray; a stray COSName yields null)."""
+    ann = PDAnnotationText()
+    ann.get_cos_object().set_item(
+        COSName.get_pdf_name("IC"), COSName.get_pdf_name("notAnArray")
+    )
+    assert ann._get_color(COSName.get_pdf_name("IC")) is None
 
 
 # ---------- equality ----------

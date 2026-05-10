@@ -97,7 +97,8 @@ class COSDocument(COSBase):
     def get_object_from_pool(self, key: COSObjectKey) -> COSObject:
         """Return the existing ``COSObject`` for ``key``, creating an
         unresolved placeholder if none exists yet. Used by the parser
-        when forward references are encountered."""
+        when forward references are encountered. Mirrors upstream
+        ``getObjectFromPool(COSObjectKey)`` (Java line 511)."""
         existing = self._objects.get(key)
         if existing is None:
             existing = COSObject(key.object_number, key.generation_number)
@@ -108,18 +109,11 @@ class COSDocument(COSBase):
             )
         return existing
 
-    def getObjectFromPool(self, key: COSObjectKey) -> COSObject:  # noqa: N802
-        return self.get_object_from_pool(key)
-
     def get_object(self, key: COSObjectKey) -> COSObject | None:
         """Return the ``COSObject`` registered for ``key`` or ``None`` if no
-        such object has been seen by the parser yet. Mirrors PDFBox's
-        ``getObjectFromPool``-companion ``getObject(COSObjectKey)`` lookup —
-        does NOT auto-create a placeholder."""
+        such object has been seen by the parser yet. Companion to
+        :meth:`get_object_from_pool` — does NOT auto-create a placeholder."""
         return self._objects.get(key)
-
-    def getObject(self, key: COSObjectKey) -> COSObject | None:  # noqa: N802
-        return self.get_object(key)
 
     def has_object(self, key: COSObjectKey) -> bool:
         return key in self._objects
@@ -127,9 +121,6 @@ class COSDocument(COSBase):
     def get_objects(self) -> list[COSObject]:
         """All known indirect objects in insertion order."""
         return list(self._objects.values())
-
-    def getObjects(self) -> list[COSObject]:  # noqa: N802
-        return self.get_objects()
 
     def get_object_keys(self) -> list[COSObjectKey]:
         return list(self._objects.keys())
@@ -147,17 +138,12 @@ class COSDocument(COSBase):
                 return key
         return None
 
-    def getKey(self, base_object: COSBase) -> COSObjectKey | None:  # noqa: N802
-        return self.get_key(base_object)
-
     def remove_object(self, key: COSObjectKey) -> COSObject | None:
         return self._objects.pop(key, None)
 
-    def removeObject(self, key: COSObjectKey) -> COSObject | None:  # noqa: N802
-        return self.remove_object(key)
-
     def add_xref_table(self, table: dict[COSObjectKey | None, int]) -> None:
-        """Bulk-register xref entries — mirrors PDFBox's ``addXRefTable``.
+        """Bulk-register xref entries — mirrors PDFBox's ``addXRefTable``
+        (Java line 527).
 
         Entries with a ``None`` key (PDFBOX-6132 — corrupt xref entry) are
         ignored; offsets are stored in ``_xref_table`` for later retrieval via
@@ -168,18 +154,17 @@ class COSDocument(COSBase):
             self.get_object_from_pool(key)
             self._xref_table[key] = offset
 
-    def addXRefTable(self, table: dict[COSObjectKey | None, int]) -> None:  # noqa: N802
+    def add_x_ref_table(self, table: dict[COSObjectKey | None, int]) -> None:
+        """Alias for :meth:`add_xref_table` matching the parity-audit's
+        token-split spelling of ``XRef``."""
         self.add_xref_table(table)
 
     def get_xref_table(self) -> dict[COSObjectKey, int]:
         """Sparse object-key → byte-offset map populated by the parser.
-        Mirrors PDFBox's ``getXrefTable()``. Positive offsets are absolute
-        file positions; negative values encode object-stream membership
-        (``-objstm_object_number`` per PDFBox convention)."""
+        Mirrors PDFBox's ``getXrefTable()`` (Java line 537). Positive offsets
+        are absolute file positions; negative values encode object-stream
+        membership (``-objstm_object_number`` per PDFBox convention)."""
         return self._xref_table
-
-    def getXrefTable(self) -> dict[COSObjectKey, int]:  # noqa: N802
-        return self.get_xref_table()
 
     def get_objects_by_type(
         self,
@@ -189,9 +174,10 @@ class COSDocument(COSBase):
         """Return every resolved object whose dictionary's ``/Type`` equals
         ``type_name`` (or, when ``type_alt`` is given, either of the two
         names). Matches PDFBox semantics — both the single-arg and the
-        two-arg overloads of ``getObjectsByType``. The two-arg form is used
-        upstream where a /Type entry has both a long and an abbreviated
-        spelling (e.g. ``/CIDFontType0`` vs ``/Font``)."""
+        two-arg overloads of ``getObjectsByType`` (Java lines 242, 255).
+        The two-arg form is used upstream where a /Type entry has both a
+        long and an abbreviated spelling (e.g. ``/CIDFontType0`` vs
+        ``/Font``)."""
         target = type_name if isinstance(type_name, COSName) else COSName.get_pdf_name(type_name)
         target_alt: COSName | None
         if type_alt is None:
@@ -215,14 +201,36 @@ class COSDocument(COSBase):
         """Return the linearization parameter dictionary (PDF 32000-1 Annex F)
         as a typed wrapper, or ``None`` if the document is not linearized.
 
-        Linearized files place the parameter dictionary as the **first**
-        indirect object after the header; we walk the object pool in
-        insertion order and pick the first resolved dictionary carrying a
-        truthy ``/Linearized`` entry. The result is cached — repeated calls
-        do not re-scan."""
+        Mirrors upstream ``getLinearizedDictionary()`` (Java line 207): walks
+        the xref-table entries with a positive offset in ascending order and
+        returns the first resolved dictionary tagged with a ``/Linearized``
+        marker. Falls back to insertion order over the object pool when the
+        xref table is empty (e.g. for in-memory-built documents).
+
+        **Divergence from upstream:** upstream's check is bare key presence
+        (``getItem(COSName.LINEARIZED) != null``); we require a non-zero
+        numeric value because real-world linearization params always carry
+        ``/Linearized 1`` and a key with a zero value would shadow legitimate
+        linearization params on the same object.
+
+        The result is cached — repeated calls do not re-scan."""
         if self._linearized_resolved:
             return self._linearized_dict
-        for cos_obj in self._objects.values():
+        # Match upstream: ascending file-offset order over xref entries with
+        # positive offset (negative offsets encode objstm membership, zero is
+        # a free entry).
+        ordered_keys = sorted(
+            (k for k, off in self._xref_table.items() if off > 0),
+            key=lambda k: self._xref_table[k],
+        )
+        if not ordered_keys:
+            # Fallback for documents built in memory with no xref table —
+            # walk the pool in insertion order.
+            ordered_keys = list(self._objects.keys())
+        for key in ordered_keys:
+            cos_obj = self._objects.get(key)
+            if cos_obj is None:
+                continue
             resolved = cos_obj.get_object()
             if not isinstance(resolved, COSDictionary):
                 continue
@@ -238,68 +246,59 @@ class COSDocument(COSBase):
     def get_trailer(self) -> COSDictionary | None:
         return self._trailer
 
-    def getTrailer(self) -> COSDictionary | None:  # noqa: N802
-        return self.get_trailer()
-
     def set_trailer(self, trailer: COSDictionary | None) -> None:
         self._trailer = trailer
         if trailer is None:
             return
         trailer.get_update_state().set_origin_document_state(self._document_state)
 
-    def setTrailer(self, trailer: COSDictionary | None) -> None:  # noqa: N802
-        self.set_trailer(trailer)
-
     def get_catalog(self) -> COSDictionary | None:
-        """Resolve ``trailer/Root`` to its dictionary, or ``None``."""
+        """Resolve ``trailer/Root`` to its dictionary, or ``None``.
+
+        Convenience accessor — upstream callers fetch ``/Root`` off the
+        trailer manually; we expose it here to keep the most common
+        document-graph traversal one method away."""
         if self._trailer is None:
             return None
         catalog = self._trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
         return catalog if isinstance(catalog, COSDictionary) else None
 
-    def getCatalog(self) -> COSDictionary | None:  # noqa: N802
-        return self.get_catalog()
-
     def get_document_id(self) -> COSArray | None:
         """Return ``trailer/ID`` as a typed ``COSArray`` or ``None`` if the
         trailer is missing / has no ``/ID`` entry / the entry is not an
-        array. Mirrors upstream ``getDocumentID()`` which calls
-        ``getTrailer().getCOSArray(COSName.ID)``."""
+        array. Mirrors upstream ``getDocumentID()`` (Java line 367)."""
         if self._trailer is None:
             return None
         return self._trailer.get_cos_array(COSName.ID)  # type: ignore[attr-defined]
 
     def set_document_id(self, ids: COSArray) -> None:
         """Write ``trailer/ID``. The trailer is auto-created when absent —
-        mirrors PDFBox's ``setDocumentID`` while sparing callers from
-        seeding a trailer first when building a document from scratch."""
+        mirrors PDFBox's ``setDocumentID`` (Java line 380) while sparing
+        callers from seeding a trailer first when building a document from
+        scratch."""
         if self._trailer is None:
             self.set_trailer(COSDictionary())
         self._trailer.set_item(COSName.ID, ids)  # type: ignore[attr-defined]
 
     def is_encrypted(self) -> bool:
+        """Mirrors upstream ``isEncrypted()`` (Java line 335)."""
         if self._trailer is None:
             return False
         return self._trailer.contains_key(COSName.ENCRYPT)  # type: ignore[attr-defined]
 
-    def isEncrypted(self) -> bool:  # noqa: N802
-        return self.is_encrypted()
-
     def get_encryption_dictionary(self) -> COSDictionary | None:
+        """Mirrors upstream ``getEncryptionDictionary()`` (Java line 346)."""
         if self._trailer is None:
             return None
         enc = self._trailer.get_dictionary_object(COSName.ENCRYPT)  # type: ignore[attr-defined]
         return enc if isinstance(enc, COSDictionary) else None
 
-    def getEncryptionDictionary(self) -> COSDictionary | None:  # noqa: N802
-        return self.get_encryption_dictionary()
-
     def set_encryption_dictionary(self, enc_dictionary: COSDictionary) -> None:
         """Write ``trailer/Encrypt`` — used by the writer when a save
         operation needs to install (or replace) the encryption parameters.
-        Mirrors upstream ``setEncryptionDictionary(COSDictionary)``. The
-        trailer is auto-created when absent so callers building a document
-        from scratch do not have to seed it first."""
+        Mirrors upstream ``setEncryptionDictionary(COSDictionary)`` (Java
+        line 357). The trailer is auto-created when absent so callers
+        building a document from scratch do not have to seed it first."""
         if self._trailer is None:
             self.set_trailer(COSDictionary())
         self._trailer.set_item(COSName.ENCRYPT, enc_dictionary)  # type: ignore[attr-defined]
@@ -309,49 +308,53 @@ class COSDocument(COSBase):
         encrypted stream/string in this document's object pool. The writer
         checks this to know whether the in-memory graph is plaintext (and
         must be re-enciphered on save) or already-ciphertext. Mirrors
-        upstream ``isDecrypted()``."""
+        upstream ``isDecrypted()`` (Java line 325)."""
         return self._is_decrypted
 
     def set_decrypted(self) -> None:
         """Mark the document as decrypted — called by the parser/security
         handler once the cipher has been undone over the entire object
-        pool. One-way (matches upstream ``setDecrypted()`` which has no
-        corresponding ``setDecrypted(false)``)."""
+        pool. One-way (matches upstream ``setDecrypted()`` Java line 315
+        which has no corresponding ``setDecrypted(false)``)."""
         self._is_decrypted = True
 
     # ---------- version ----------
 
     def get_version(self) -> float:
+        """Mirrors upstream ``getVersion()`` (Java line 307)."""
         return self._version
 
-    def getVersion(self) -> float:  # noqa: N802
-        return self.get_version()
-
     def set_version(self, version: float) -> None:
+        """Mirrors upstream ``setVersion(float)`` (Java line 297)."""
         if version <= 0:
             raise ValueError("version must be positive")
         self._version = version
 
-    def setVersion(self, version: float) -> None:  # noqa: N802
-        self.set_version(version)
-
     # ---------- xref-stream marker ----------
 
     def is_xref_stream(self) -> bool:
+        """Mirrors upstream ``isXRefStream()`` (Java line 568)."""
         return self._is_xref_stream
 
-    def isXRefStream(self) -> bool:  # noqa: N802
-        return self.is_xref_stream()
-
-    def set_xref_stream(self, value: bool) -> None:
+    def set_is_xref_stream(self, value: bool) -> None:
+        """Mirrors upstream ``setIsXRefStream(boolean)`` (Java line 579).
+        Caller is expected to ensure the PDF version is 1.5 or higher when
+        enabling cross-reference streams."""
         self._is_xref_stream = value
 
-    def setXRefStream(self, value: bool) -> None:  # noqa: N802
-        self.set_xref_stream(value)
+    def set_xref_stream(self, value: bool) -> None:
+        """Older convenience name retained alongside :meth:`set_is_xref_stream`
+        for callers predating the upstream-shaped getter/setter pair."""
+        self._is_xref_stream = value
 
-    def set_is_xref_stream(self, value: bool) -> None:
-        """Mirror of upstream ``setIsXRefStream(boolean)``. Kept alongside
-        :meth:`set_xref_stream` for naming parity with PDFBox 3.x."""
+    def is_x_ref_stream(self) -> bool:
+        """Alias for :meth:`is_xref_stream` matching the parity-audit's
+        token-split spelling of ``XRef``."""
+        return self._is_xref_stream
+
+    def set_is_x_ref_stream(self, value: bool) -> None:
+        """Alias for :meth:`set_is_xref_stream` matching the parity-audit's
+        token-split spelling of ``XRef``."""
         self._is_xref_stream = value
 
     # ---------- hybrid-xref marker ----------
@@ -361,13 +364,24 @@ class COSDocument(COSBase):
         and a cross-reference stream in this document. The hybrid trick
         (PDF 1.5+) is used to keep older readers working while the
         canonical xref information lives in a stream. Mirrors upstream
-        ``hasHybridXRef()``."""
+        ``hasHybridXRef()`` (Java line 589)."""
         return self._has_hybrid_xref
 
     def set_has_hybrid_xref(self) -> None:
         """Mark the document as hybrid-xref. One-way, matches upstream
-        ``setHasHybridXRef()`` (no boolean parameter — the flag is set
-        when the parser detects the second xref form, never cleared)."""
+        ``setHasHybridXRef()`` (Java line 597) — no boolean parameter, the
+        flag is set when the parser detects the second xref form, never
+        cleared."""
+        self._has_hybrid_xref = True
+
+    def has_hybrid_x_ref(self) -> bool:
+        """Alias for :meth:`has_hybrid_xref` matching the parity-audit's
+        token-split spelling of ``XRef``."""
+        return self._has_hybrid_xref
+
+    def set_has_hybrid_x_ref(self) -> None:
+        """Alias for :meth:`set_has_hybrid_xref` matching the parity-audit's
+        token-split spelling of ``XRef``."""
         self._has_hybrid_xref = True
 
     # ---------- COSStream factory ----------
@@ -377,11 +391,12 @@ class COSDocument(COSBase):
         dictionary: COSDictionary | None = None,
     ) -> Any:
         """Allocate a fresh ``COSStream`` bound to this document's scratch
-        file. Mirrors upstream ``createCOSStream()``. When ``dictionary``
-        is supplied, every entry is copied onto the new stream — matches
-        the parser-helper overload ``createCOSStream(COSDictionary, long,
-        long)`` minus the on-disk view (we don't carry a parser-level
-        random-access read view through this surface yet).
+        file. Mirrors upstream ``createCOSStream()`` (Java line 172). When
+        ``dictionary`` is supplied, every entry is copied onto the new
+        stream — matches the parser-helper overload ``createCOSStream(
+        COSDictionary, long, long)`` (Java line 192) minus the on-disk
+        view (we don't carry a parser-level random-access read view through
+        this surface yet — see CHANGES.md).
 
         The returned ``COSStream`` does NOT own the scratch file (the
         document does), so closing the stream releases its buffer but
@@ -402,13 +417,26 @@ class COSDocument(COSBase):
     def get_highest_xref_object_number(self) -> int:
         """Largest object number the parser has registered against this
         document — used by the writer when allocating new objects so it
-        doesn't reuse an existing number."""
+        doesn't reuse an existing number. Mirrors upstream
+        ``getHighestXRefObjectNumber()`` (Java line 413)."""
         return self._highest_xref_object_number
 
     def set_highest_xref_object_number(self, number: int) -> None:
+        """Mirrors upstream ``setHighestXRefObjectNumber(long)`` (Java
+        line 424)."""
         if number < 0:
             raise ValueError("highest xref object number must be non-negative")
         self._highest_xref_object_number = number
+
+    def get_highest_x_ref_object_number(self) -> int:
+        """Alias for :meth:`get_highest_xref_object_number` matching the
+        parity-audit's token-split spelling of ``XRef``."""
+        return self._highest_xref_object_number
+
+    def set_highest_x_ref_object_number(self, number: int) -> None:
+        """Alias for :meth:`set_highest_xref_object_number` matching the
+        parity-audit's token-split spelling of ``XRef``."""
+        self.set_highest_xref_object_number(number)
 
     # ---------- source / startxref (incremental save plumbing) ----------
 
@@ -421,12 +449,14 @@ class COSDocument(COSBase):
 
     def get_start_xref(self) -> int:
         """Byte offset of the trailing ``startxref`` directive in the source
-        file. ``0`` for newly-built (unsaved) documents."""
+        file. ``0`` for newly-built (unsaved) documents. Mirrors upstream
+        ``getStartXref()`` (Java line 558)."""
         return self._start_xref
 
     def set_start_xref(self, offset: int) -> None:
         """Record the trailing ``startxref`` value seen by the parser. The
-        incremental writer reads this back as the ``/Prev`` chain pointer."""
+        incremental writer reads this back as the ``/Prev`` chain pointer.
+        Mirrors upstream ``setStartXref(long)`` (Java line 548)."""
         if offset < 0:
             raise ValueError("startxref offset must be non-negative")
         self._start_xref = offset
@@ -436,19 +466,19 @@ class COSDocument(COSBase):
     def get_document_state(self) -> COSDocumentState:
         """Return the lifecycle marker for this document — initially
         ``parsing``, flipped by the parser to ``accepting updates`` once
-        xref consumption completes. Mirrors upstream ``getDocumentState()``.
-        """
+        xref consumption completes. Mirrors upstream ``getDocumentState()``
+        (Java line 608)."""
         return self._document_state
-
-    def getDocumentState(self) -> COSDocumentState:  # noqa: N802 - upstream Java name
-        return self.get_document_state()
 
     # ---------- visitor / lifecycle ----------
 
     def accept(self, visitor: ICOSVisitor) -> Any:
+        """Visitor double-dispatch — mirrors upstream ``accept(ICOSVisitor)``
+        (Java line 436) which routes to ``visitFromDocument(this)``."""
         return visitor.visit_from_document(self)
 
     def is_closed(self) -> bool:
+        """Mirrors upstream ``isClosed()`` (Java line 499)."""
         return self._closed
 
     def set_warn_missing_close(self, warn: bool) -> None:
@@ -458,6 +488,9 @@ class COSDocument(COSBase):
         self._warn_missing_close = warn
 
     def close(self) -> None:
+        """Release the scratch file (when owned), the source (when owned)
+        and clear the object pool. Mirrors upstream ``close()`` (Java line
+        447); idempotent — repeated calls are safe."""
         if self._closed:
             return
         self._closed = True

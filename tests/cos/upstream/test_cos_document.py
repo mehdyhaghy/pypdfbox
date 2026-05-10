@@ -81,3 +81,40 @@ def test_get_encryption_dictionary() -> None:
     document.set_trailer(trailer)
     assert document.get_encryption_dictionary() is enc
     document.close()
+
+
+def test_get_linearized_dictionary_none_for_nonlinearized() -> None:
+    # Mirrors PDFBox COSDocumentTest#testPDFBox6132 (extracted): with no
+    # /Linearized-bearing dict in the pool, the lookup returns None.
+    document = COSDocument()
+    document.add_xref_table({COSObjectKey(1, 0): 100})
+    assert document.get_linearized_dictionary() is None
+    document.close()
+
+
+def test_objects_by_type_skips_pool_entries_with_no_xref_membership() -> None:
+    # Mirrors PDFBox COSDocumentTest behavior — objects without an entry in
+    # the xref table still resolve via the pool. PDFBOX-6132 specifically
+    # ensures a null xref key does not poison the lookup.
+    from pypdfbox.cos.cos_object import COSObject
+
+    document = COSDocument()
+    page = COSDictionary()
+    page.set_item(COSName.TYPE, COSName.get_pdf_name("Page"))  # type: ignore[attr-defined]
+    pool_obj = COSObject(1, 0)
+    pool_obj.set_object(page)
+    document._objects[COSObjectKey(1, 0)] = pool_obj
+    # PDFBOX-6132: corrupted xref entry — must be tolerated.
+    document.add_xref_table({None: 10})
+    assert document.get_objects_by_type(COSName.get_pdf_name("Page")) == [pool_obj]
+    document.close()
+
+
+def test_set_decrypted_one_way() -> None:
+    # Mirrors PDFBox: setDecrypted has no boolean parameter — it only flips
+    # the flag from False to True.
+    document = COSDocument()
+    assert document.is_decrypted() is False
+    document.set_decrypted()
+    assert document.is_decrypted() is True
+    document.close()
