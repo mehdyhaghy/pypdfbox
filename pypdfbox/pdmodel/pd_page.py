@@ -408,14 +408,19 @@ class PDPage:
         # MediaBox absent everywhere — upstream defaults to Letter.
         return PDRectangle(0.0, 0.0, 612.0, 792.0)
 
-    def _clip_to_media_box(self, box: PDRectangle) -> PDRectangle:
+    def clip_to_media_box(self, box: PDRectangle) -> PDRectangle:
         """Clip ``box`` to the resolved media-box bounds.
 
-        Mirrors upstream ``PDPage.clipToMediaBox(PDRectangle)``: any portion
-        of the supplied rectangle that extends past the media box is trimmed
-        in place (lower-left snaps up, upper-right snaps down). Used by the
-        crop/bleed/trim/art accessors so an oversized box never reports
-        coordinates outside the page's printable surface.
+        Mirrors upstream ``PDPage.clipToMediaBox(PDRectangle)`` (private
+        upstream, exposed publicly here so tools that need the same
+        clipping projection — e.g. annotation-flattening utilities — can
+        reuse it without reimplementing the snap rules).
+
+        Any portion of the supplied rectangle that extends past the media
+        box is trimmed in place (lower-left snaps up, upper-right snaps
+        down). Used internally by the crop/bleed/trim/art accessors so an
+        oversized box never reports coordinates outside the page's
+        printable surface.
         """
         media = self.get_media_box()
         return PDRectangle(
@@ -424,6 +429,11 @@ class PDPage:
             min(media.upper_right_x, box.upper_right_x),
             min(media.upper_right_y, box.upper_right_y),
         )
+
+    # Internal alias — kept so the existing private-name call sites in
+    # this file (and any external callers that adopted the leading-underscore
+    # spelling early) continue to resolve unchanged.
+    _clip_to_media_box = clip_to_media_box
 
     def get_media_box(self) -> PDRectangle:
         """Resolved ``/MediaBox``. Walks ``/Parent`` chain. Defaults to
@@ -916,6 +926,28 @@ class PDPage:
         own_resources = self._page.get_dictionary_object(_RESOURCES)
         if not isinstance(own_resources, COSDictionary):
             return
+        self.remove_resources(own_resources)
+
+    def remove_resources(self, resources: COSDictionary | None) -> None:
+        """Remove every cached entry referenced by ``resources`` from the
+        attached :class:`PDResourceCache`.
+
+        Mirrors upstream ``PDPage.removeResources(COSDictionary)`` (private
+        upstream — see PDPage.java line 136). Exposed publicly here so the
+        recursive XForm-resource purge stays callable from
+        :meth:`remove_page_resource_from_cache` without leaking through a
+        leading-underscore name.
+
+        ``None`` and non-dictionary inputs are no-ops, matching upstream's
+        early-return guard. Indirect entries (``COSObject``) are forwarded
+        to the cache's typed remover; direct entries (inline COS values)
+        are not cached upstream and are silently skipped.
+        """
+        if resources is None or not isinstance(resources, COSDictionary):
+            return
+        cache = getattr(self, "_resource_cache", None)
+        if cache is None:
+            return
         kinds_with_remover = (
             ("ColorSpace", "remove_color_space"),
             ("ExtGState", "remove_ext_state"),
@@ -926,7 +958,7 @@ class PDPage:
             ("XObject", "remove_x_object"),
         )
         for kind, remover_name in kinds_with_remover:
-            kind_dict = own_resources.get_dictionary_object(COSName.get_pdf_name(kind))
+            kind_dict = resources.get_dictionary_object(COSName.get_pdf_name(kind))
             if not isinstance(kind_dict, COSDictionary):
                 continue
             remover = getattr(cache, remover_name, None)
@@ -936,6 +968,30 @@ class PDPage:
                 # Only indirect objects are cached upstream.
                 if isinstance(entry, COSObject):
                     remover(entry)
+
+    def get_indirect_resource_objects(
+        self,
+        page_resources: COSDictionary,
+        kind: COSName,
+    ) -> list[COSObject]:
+        """Return the indirect (``COSObject``) entries of one resource
+        sub-dictionary.
+
+        Mirrors upstream ``PDPage.getIndirectResourceObjects(COSDictionary,
+        COSName)`` (private upstream — see PDPage.java line 192). Exposed
+        publicly so callers writing custom cache-purge logic can reuse the
+        same filter without reimplementing the indirect-vs-direct split.
+
+        Returns an empty list when the named sub-dictionary is absent or
+        not a dictionary. Direct entries (inline COS values) are filtered
+        out because PDFBox only caches indirect references.
+        """
+        if not isinstance(page_resources, COSDictionary):
+            return []
+        sub = page_resources.get_dictionary_object(kind)
+        if not isinstance(sub, COSDictionary):
+            return []
+        return [entry for entry in sub.values() if isinstance(entry, COSObject)]
 
     # ---------- transition ----------
 
@@ -1103,6 +1159,26 @@ class PDPage:
 
     def __repr__(self) -> str:
         return f"PDPage(media_box={self.get_media_box()!s})"
+
+    def equals(self, other: object) -> bool:
+        """Snake_case mirror of upstream ``PDPage.equals(Object)`` —
+        delegates to :meth:`__eq__` so ``page.equals(other)`` and
+        ``page == other`` always agree.
+
+        Upstream defines equality as identity over the underlying page
+        ``COSDictionary`` (see PDPage.java line 838); we keep the same
+        semantics — two ``PDPage`` wrappers are equal iff they wrap the
+        same dictionary instance.
+        """
+        return self.__eq__(other) is True
+
+    def hash_code(self) -> int:
+        """Snake_case mirror of upstream ``PDPage.hashCode()`` —
+        delegates to :meth:`__hash__`. Provided so callers porting from
+        PDFBox can use the upstream spelling directly without reaching
+        for the Python builtin ``hash()``.
+        """
+        return self.__hash__()
 
 
 # Re-export to keep the import surface shallow in pd_page_tree.

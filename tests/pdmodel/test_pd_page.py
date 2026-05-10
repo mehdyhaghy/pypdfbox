@@ -1019,3 +1019,170 @@ def test_get_rotation_in_radians_returns_float() -> None:
     page.set_rotation(90)
     value = page.get_rotation_in_radians()
     assert isinstance(value, float)
+
+
+# ---------- equals / hash_code snake_case mirrors ----------
+
+
+def test_equals_same_underlying_dict_is_true() -> None:
+    """Mirror of upstream ``PDPage.equals`` — equality is identity over
+    the underlying ``COSDictionary``."""
+    raw = COSDictionary()
+    raw.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    page_a = PDPage(raw)
+    page_b = PDPage(raw)
+    assert page_a.equals(page_b) is True
+    assert page_a == page_b
+
+
+def test_equals_distinct_pages_is_false() -> None:
+    page_a = PDPage()
+    page_b = PDPage()
+    assert page_a.equals(page_b) is False
+    assert page_a != page_b
+
+
+def test_equals_non_pdpage_is_false() -> None:
+    """``page.equals(arbitrary_object)`` returns False even though
+    ``__eq__`` returns ``NotImplemented`` for that case (matches Python's
+    fall-back-to-identity semantics)."""
+    page = PDPage()
+    assert page.equals("not a page") is False
+    assert page.equals(None) is False
+
+
+def test_hash_code_matches_dunder_hash() -> None:
+    """``page.hash_code()`` must agree with ``hash(page)``; otherwise sets
+    and dicts that key on PDPage objects desynchronise."""
+    page = PDPage()
+    assert page.hash_code() == hash(page)
+
+
+def test_hash_code_stable_for_same_dict() -> None:
+    raw = COSDictionary()
+    raw.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    assert PDPage(raw).hash_code() == PDPage(raw).hash_code()
+
+
+# ---------- clip_to_media_box public API ----------
+
+
+def test_clip_to_media_box_public_method_clips_overhang() -> None:
+    """``clip_to_media_box`` is callable from outside and produces the
+    same projection as the read-side accessors."""
+    page = PDPage(PDRectangle(0.0, 0.0, 100.0, 200.0))
+    clipped = page.clip_to_media_box(PDRectangle(-50.0, -25.0, 150.0, 250.0))
+    assert (
+        clipped.lower_left_x,
+        clipped.lower_left_y,
+        clipped.upper_right_x,
+        clipped.upper_right_y,
+    ) == (0.0, 0.0, 100.0, 200.0)
+
+
+def test_clip_to_media_box_inside_box_unchanged() -> None:
+    page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+    inside = PDRectangle(36.0, 36.0, 576.0, 756.0)
+    clipped = page.clip_to_media_box(inside)
+    assert (
+        clipped.lower_left_x,
+        clipped.lower_left_y,
+        clipped.upper_right_x,
+        clipped.upper_right_y,
+    ) == (36.0, 36.0, 576.0, 756.0)
+
+
+def test_private_clip_alias_still_resolves() -> None:
+    """Existing call sites that use ``_clip_to_media_box`` keep working."""
+    page = PDPage(PDRectangle(0.0, 0.0, 100.0, 100.0))
+    a = page.clip_to_media_box(PDRectangle(10.0, 10.0, 90.0, 90.0))
+    b = page._clip_to_media_box(PDRectangle(10.0, 10.0, 90.0, 90.0))
+    assert (a.lower_left_x, a.upper_right_x) == (b.lower_left_x, b.upper_right_x)
+
+
+# ---------- remove_resources / get_indirect_resource_objects ----------
+
+
+def test_remove_resources_skips_when_no_cache() -> None:
+    """No cache attached → no-op even with a populated resources dict."""
+    from pypdfbox.cos import COSObject
+
+    page = PDPage()
+    resources = COSDictionary()
+    xobject_dict = COSDictionary()
+    xobject_dict.set_item(
+        COSName.get_pdf_name("Im0"),
+        COSObject(7, resolved=COSStream()),
+    )
+    resources.set_item(COSName.get_pdf_name("XObject"), xobject_dict)
+
+    # No cache; nothing happens.
+    page.remove_resources(resources)
+
+
+def test_remove_resources_handles_none_and_non_dict() -> None:
+    page = PDPage()
+    page.remove_resources(None)  # silently returns
+    # Non-COSDictionary inputs are also tolerated.
+    page.remove_resources(COSArray())  # type: ignore[arg-type]
+
+
+def test_remove_resources_purges_arbitrary_dict() -> None:
+    """``remove_resources`` accepts any resources dict (not necessarily
+    the page's own); used by upstream's recursive XForm-resource purge."""
+    from pypdfbox.cos import COSObject
+
+    class _Cache:
+        def __init__(self) -> None:
+            self.removed_xobjects: list[COSObject] = []
+
+        def remove_x_object(self, obj: COSObject) -> None:
+            self.removed_xobjects.append(obj)
+
+    page = PDPage()
+    cache = _Cache()
+    page.set_resource_cache(cache)
+
+    # Build a freestanding resources dict (NOT attached to the page).
+    resources = COSDictionary()
+    xobject_dict = COSDictionary()
+    indirect = COSObject(11, resolved=COSStream())
+    xobject_dict.set_item(COSName.get_pdf_name("Im0"), indirect)
+    resources.set_item(COSName.get_pdf_name("XObject"), xobject_dict)
+
+    page.remove_resources(resources)
+    assert cache.removed_xobjects == [indirect]
+
+
+def test_get_indirect_resource_objects_returns_only_indirect_entries() -> None:
+    """Mirrors upstream's filter that keeps only ``COSObject`` entries —
+    direct (inline) entries are skipped."""
+    from pypdfbox.cos import COSObject
+
+    page = PDPage()
+    resources = COSDictionary()
+    xobject_dict = COSDictionary()
+    indirect_a = COSObject(1, resolved=COSStream())
+    indirect_b = COSObject(2, resolved=COSStream())
+    direct = COSStream()
+    xobject_dict.set_item(COSName.get_pdf_name("Im0"), indirect_a)
+    xobject_dict.set_item(COSName.get_pdf_name("Im1"), direct)
+    xobject_dict.set_item(COSName.get_pdf_name("Im2"), indirect_b)
+    resources.set_item(COSName.get_pdf_name("XObject"), xobject_dict)
+
+    found = page.get_indirect_resource_objects(
+        resources, COSName.get_pdf_name("XObject")
+    )
+    assert indirect_a in found
+    assert indirect_b in found
+    assert direct not in found
+    assert len(found) == 2
+
+
+def test_get_indirect_resource_objects_missing_kind_returns_empty() -> None:
+    page = PDPage()
+    resources = COSDictionary()
+    assert (
+        page.get_indirect_resource_objects(resources, COSName.get_pdf_name("XObject"))
+        == []
+    )

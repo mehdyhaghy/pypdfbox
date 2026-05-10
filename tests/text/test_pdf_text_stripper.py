@@ -695,3 +695,238 @@ def test_match_pattern_uses_fullmatch_not_search() -> None:
     # A partial / mid-string match does NOT.
     assert PDFTextStripper.match_pattern("a42", patterns) is None
     assert PDFTextStripper.match_pattern("42a", patterns) is None
+
+
+# ---------------------------------------------------------------------------
+# Wave 1258 — newly-ported upstream helpers (1:1 parity).
+# ---------------------------------------------------------------------------
+
+
+def test_within_uses_strict_inequality() -> None:
+    """``within`` matches upstream's ``second < first + variance &&
+    second > first - variance`` — strict on both ends."""
+    assert PDFTextStripper.within(10.0, 10.05, 0.1)
+    # Strict <: equal-to-upper is NOT within.
+    assert not PDFTextStripper.within(10.0, 10.1, 0.1)
+    assert not PDFTextStripper.within(10.0, 9.9, 0.1)
+
+
+def test_overlap_matches_upstream_predicate() -> None:
+    """``overlap`` is true iff the two y-spans share any pixels."""
+    # within tolerance — overlaps.
+    assert PDFTextStripper.overlap(10.0, 5.0, 10.05, 5.0)
+    # y2 sits inside [y1 - height1, y1] — overlaps.
+    assert PDFTextStripper.overlap(10.0, 5.0, 8.0, 3.0)
+    # disjoint — no overlap.
+    assert not PDFTextStripper.overlap(10.0, 1.0, 50.0, 1.0)
+
+
+def test_multiply_float_truncates_to_thousandths() -> None:
+    """Mirrors upstream's ``Math.round(a*b*1000) / 1000f`` so float
+    drift doesn't break == comparisons."""
+    assert PDFTextStripper.multiply_float(1.2345, 1.0) == 1.234
+    assert PDFTextStripper.multiply_float(0.1, 0.1) == 0.01
+
+
+def test_has_font_or_size_changed_detects_size_change() -> None:
+    """``has_font_or_size_changed`` reports a change when the font size
+    moved between two adjacent positions, regardless of font."""
+    a = TextPosition(text="x", x=0.0, y=0.0, font_size=12.0)
+    b = TextPosition(text="x", x=0.0, y=0.0, font_size=14.0)
+    assert PDFTextStripper.has_font_or_size_changed(b, a) is True
+    # Same size, same font (None) -> no change.
+    assert PDFTextStripper.has_font_or_size_changed(
+        TextPosition(text="x", x=0.0, y=0.0, font_size=12.0),
+        TextPosition(text="x", x=0.0, y=0.0, font_size=12.0),
+    ) is False
+    # last == None -> never changed.
+    assert PDFTextStripper.has_font_or_size_changed(a, None) is False
+
+
+def test_remove_contained_spaces_drops_overlapping_space() -> None:
+    """Upstream's PDFBOX-5487 fix: a literal space whose box is fully
+    inside a previous run's box is dropped."""
+    big = TextPosition(text="ab", x=0.0, y=0.0, font_size=12.0, width=20.0)
+    contained_space = TextPosition(
+        text=" ", x=5.0, y=0.0, font_size=12.0, width=2.0
+    )
+    after = TextPosition(text="c", x=30.0, y=0.0, font_size=12.0, width=10.0)
+    text_list = [big, contained_space, after]
+    PDFTextStripper.remove_contained_spaces(text_list)
+    assert [p.text for p in text_list] == ["ab", "c"]
+
+
+def test_remove_contained_spaces_preserves_non_contained() -> None:
+    """When the space is not fully contained, it stays."""
+    a = TextPosition(text="a", x=0.0, y=0.0, font_size=12.0, width=8.0)
+    sp = TextPosition(text=" ", x=10.0, y=0.0, font_size=12.0, width=4.0)
+    b = TextPosition(text="b", x=20.0, y=0.0, font_size=12.0, width=8.0)
+    text_list = [a, sp, b]
+    PDFTextStripper.remove_contained_spaces(text_list)
+    assert [p.text for p in text_list] == ["a", " ", "b"]
+
+
+def test_normalize_word_returns_input_for_basic_latin() -> None:
+    """Pure ASCII input passes through unchanged."""
+    s = PDFTextStripper()
+    assert s.normalize_word("hello") == "hello"
+    assert s.normalize_word("") == ""
+
+
+def test_normalize_word_decomposes_fi_ligature() -> None:
+    """Upstream's ``normalizeWord`` runs FB00–FDFF through NFKC, so the
+    "fi" ligature U+FB01 expands to "fi"."""
+    s = PDFTextStripper()
+    out = s.normalize_word("ﬁnal")
+    assert out == "final"
+
+
+def test_handle_direction_passthrough_for_ltr() -> None:
+    s = PDFTextStripper()
+    assert s.handle_direction("hello") == "hello"
+
+
+def test_handle_direction_reverses_for_rtl() -> None:
+    """Hebrew (R) and Arabic (AL) runs are visually reversed."""
+    s = PDFTextStripper()
+    # Hebrew aleph + bet — bidi class R.
+    assert s.handle_direction("אב") == "בא"
+
+
+def test_create_word_normalizes_text() -> None:
+    """``create_word`` runs the input through :meth:`normalize_word`."""
+    s = PDFTextStripper()
+    word = s.create_word("ﬁx", [])
+    assert word.get_text() == "fix"
+    assert word.get_text_positions() == []
+
+
+def test_word_with_text_positions_factory_returns_uppercase_class() -> None:
+    """Factory matching upstream's inner-class constructor signature."""
+    from pypdfbox.text import WordWithTextPositions
+
+    word = PDFTextStripper.word_with_text_positions("hi", [])
+    assert isinstance(word, WordWithTextPositions)
+    assert word.get_text() == "hi"
+
+
+def test_normalize_round_trips_via_line_items() -> None:
+    """``normalize`` and ``normalize_add`` walk a list of line items and
+    produce one ``WordWithTextPositions`` per word boundary."""
+    from pypdfbox.text.pdf_text_stripper import _LineItem
+
+    s = PDFTextStripper()
+    a = TextPosition(text="he", x=0.0, y=0.0, font_size=12.0)
+    b = TextPosition(text="llo", x=10.0, y=0.0, font_size=12.0)
+    c = TextPosition(text="world", x=40.0, y=0.0, font_size=12.0)
+    line: list[_LineItem] = [
+        _LineItem(a),
+        _LineItem(b),
+        _LineItem.get_word_separator(),
+        _LineItem(c),
+    ]
+    out = s.normalize(line)
+    assert [w.get_text() for w in out] == ["hello", "world"]
+
+
+def test_match_list_item_pattern_matches_position_text() -> None:
+    """Wraps ``match_pattern`` for a :class:`PositionWrapper`."""
+    from pypdfbox.text.position_wrapper import PositionWrapper
+
+    s = PDFTextStripper()
+    wrapper = PositionWrapper(TextPosition(text="1.", x=0.0, y=0.0, font_size=12.0))
+    matched = s.match_list_item_pattern(wrapper)
+    assert matched is not None
+    assert matched.pattern == r"\d+\."
+
+    wrapper2 = PositionWrapper(
+        TextPosition(text="hello", x=0.0, y=0.0, font_size=12.0)
+    )
+    assert s.match_list_item_pattern(wrapper2) is None
+
+
+def test_write_paragraph_separator_emits_end_then_start() -> None:
+    """``write_paragraph_separator`` calls ``write_paragraph_end`` then
+    ``write_paragraph_start`` — mirrors upstream."""
+    chunks: list[str] = []
+    s = PDFTextStripper()
+    s.set_paragraph_start("<P>")
+    s.set_paragraph_end("</P>")
+    s.write_paragraph_separator(chunks.append)
+    assert chunks == ["</P>", "<P>"]
+
+
+def test_write_line_alternates_words_with_separators() -> None:
+    """``write_line`` writes each word + a separator between."""
+    from pypdfbox.text import WordWithTextPositions
+
+    s = PDFTextStripper()
+    s.set_word_separator(" ")
+    chunks: list[str] = []
+    p1 = TextPosition(text="hello", x=0.0, y=0.0, font_size=12.0)
+    p2 = TextPosition(text="world", x=0.0, y=0.0, font_size=12.0)
+    line = [
+        WordWithTextPositions("hello", [p1]),
+        WordWithTextPositions("world", [p2]),
+    ]
+    s.write_line(line, chunks.append)
+    assert "".join(chunks) == "hello world"
+
+
+def test_parse_bidi_file_extracts_mirroring_pairs() -> None:
+    """Mirrors upstream's ``parseBidiFile`` mini-parser."""
+    sample = b"# comment line\n0028; 0029 # paren\n0029; 0028\nbad\n"
+    out = PDFTextStripper.parse_bidi_file(io.BytesIO(sample))
+    assert out["("] == ")"
+    assert out[")"] == "("
+    # Empty / None input -> empty map.
+    assert PDFTextStripper.parse_bidi_file(None) == {}
+
+
+def test_reset_engine_clears_per_walk_state() -> None:
+    """``reset_engine`` clears bead rectangles, bookmarks, and the
+    article accumulator."""
+    s = PDFTextStripper()
+    s._bead_rectangles = [(1.0, 2.0, 3.0, 4.0)]
+    s._characters_by_article = [[TextPosition(text="x", x=0.0, y=0.0, font_size=12.0)]]
+    s._start_bookmark_page_number = 5
+    s._end_bookmark_page_number = 9
+    s._current_page_no = 7
+    s.reset_engine()
+    assert s._bead_rectangles == []
+    assert s._characters_by_article == []
+    assert s._start_bookmark_page_number == -1
+    assert s._end_bookmark_page_number == -1
+    assert s._current_page_no == 0
+
+
+def test_fill_bead_rectangles_returns_empty_when_no_beads() -> None:
+    """``fill_bead_rectangles`` returns an empty list and resets the
+    cached attribute when the page has no thread beads."""
+    doc = PDDocument()
+    page = _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (hi) Tj ET")
+    s = PDFTextStripper()
+    rects = s.fill_bead_rectangles(page)
+    assert rects == []
+    assert s._bead_rectangles == []
+
+
+def test_begin_marked_content_sequence_captures_actual_text() -> None:
+    """``/ActualText`` from BDC properties replaces soft hyphens and is
+    surfaced through ``_actual_text`` for subclasses."""
+    s = PDFTextStripper()
+    props = COSDictionary()
+    props.set_string("ActualText", "fi­ne")
+    s.begin_marked_content_sequence(COSName.get_pdf_name("Span"), props)
+    assert s._actual_text == "fine"  # soft hyphen stripped
+    assert s._first_actual_text_position is True
+    s.end_marked_content_sequence()
+    assert s._actual_text is None
+
+
+def test_end_marked_content_sequence_handles_empty_stack() -> None:
+    """Calling ``end_marked_content_sequence`` with an empty stack is a
+    no-op (defensive parity with upstream's null-safe peek/pop)."""
+    s = PDFTextStripper()
+    s.end_marked_content_sequence()  # must not raise
+    assert s._actual_text is None

@@ -175,3 +175,11 @@ def test_to_string_returns_pattern_literal() -> None:
 def test_to_string_returns_pattern_for_uncolored_form() -> None:
     """Same literal regardless of construction form."""
     assert str(PDPattern(PDDeviceRGB.INSTANCE)) == "Pattern"
+
+
+def test_to_string_method_returns_pattern_literal() -> None:
+    """Snake-case ``to_string()`` alias of upstream ``toString()``
+    (PDPattern.java line 141) — added so callers porting from PDFBox
+    can keep the literal ``.toString()`` invocation."""
+    assert PDPattern().to_string() == "Pattern"
+    assert PDPattern(PDDeviceRGB.INSTANCE).to_string() == "Pattern"

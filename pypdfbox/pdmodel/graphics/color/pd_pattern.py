@@ -275,5 +275,15 @@ class PDPattern(PDColorSpace):
         """
         return "Pattern"
 
+    def to_string(self) -> str:
+        """Snake-case alias of :meth:`__str__`. Mirrors upstream
+        ``PDPattern.toString()`` (PDPattern.java line 141). Surfaced
+        explicitly so callers porting from PDFBox can keep the literal
+        ``.toString()`` invocation spelled snake_case (matches the
+        convention used by :class:`PDSeparation`, :class:`PDDeviceN`,
+        :class:`PDIndexed`, :class:`PDICCBased`, :class:`PDColor`).
+        """
+        return self.__str__()
+
 
 __all__ = ["PDPattern"]

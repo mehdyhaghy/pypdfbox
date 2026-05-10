@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sys
+import unicodedata
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Protocol
 
@@ -10,7 +11,9 @@ from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
 
+from .position_wrapper import PositionWrapper
 from .text_position import TextPosition
+from .word_with_text_positions import WordWithTextPositions
 
 if TYPE_CHECKING:
     from pypdfbox.cos import COSBase
@@ -182,6 +185,21 @@ class PDFTextStripper:
         # ``listOfPatterns`` field; exposed via
         # ``get_list_item_patterns`` / ``set_list_item_patterns``.
         self._list_of_patterns: list[re.Pattern[str]] | None = None
+        # Per-walk caches refreshed by ``process_pages`` / ``reset_engine``.
+        self._bead_rectangles: list[tuple[float, float, float, float]] = []
+        self._start_bookmark_page_number: int = -1
+        self._end_bookmark_page_number: int = -1
+        # Marked-content state. ``_marked_content_stack`` mirrors
+        # upstream's ``Stack<PDMarkedContent>``; lite mode tracks just
+        # the pieces it needs to surface ``/ActualText`` to subclasses.
+        self._marked_content_stack: list[
+            tuple[COSName | None, COSDictionary | None, str | None]
+        ] = []
+        self._actual_text: str | None = None
+        self._first_actual_text_position: bool = False
+        # Document handle for ``process_pages`` bookmark resolution.
+        # Populated by ``get_text`` while a walk is in progress.
+        self._active_document: PDDocument | None = None
 
     # ---------- configuration accessors ----------
 
@@ -467,7 +485,8 @@ class PDFTextStripper:
         # ``charactersByArticle`` accumulator so a fresh walk doesn't
         # leak state from the previous one (subclasses introspecting via
         # ``get_characters_by_article`` rely on this).
-        self._characters_by_article = []
+        self.reset_engine()
+        self._active_document = document
         # Bookmark clamping. Upstream takes the bookmark range as
         # authoritative when set, but only narrows (never widens) the
         # explicit page range.
@@ -506,6 +525,7 @@ class PDFTextStripper:
         finally:
             self.end_document(document)
             self._current_page_no = 0
+            self._active_document = None
         return "".join(chunks)
 
     def write_text(self, document: PDDocument, output: _TextWriter) -> None:
@@ -1462,6 +1482,522 @@ class PDFTextStripper:
         """Hook invoked at the end of an article. Mirrors upstream's
         protected ``endArticle``."""
         return None
+
+    # ---------- additional upstream helpers (1:1 parity) ----------
+
+    @staticmethod
+    def within(first: float, second: float, variance: float) -> bool:
+        """Return ``True`` when ``second`` lies within ``variance`` of
+        ``first`` (i.e. ``|second - first| < variance``).
+
+        Mirrors upstream's private ``within(float, float, float)`` helper
+        (PDFTextStripper.java:857). Note: upstream is strict ``<`` not
+        ``<=`` — preserve that.
+        """
+        return first - variance < second < first + variance
+
+    @staticmethod
+    def overlap(y1: float, height1: float, y2: float, height2: float) -> bool:
+        """Return ``True`` when two vertical glyph spans overlap.
+
+        Mirrors upstream's private ``overlap`` helper
+        (PDFTextStripper.java:762):
+            within(y1, y2, .1f)
+            || y2 <= y1 && y2 >= y1 - height1
+            || y1 <= y2 && y1 >= y2 - height2
+        """
+        if PDFTextStripper.within(y1, y2, 0.1):
+            return True
+        if y2 <= y1 and y2 >= y1 - height1:
+            return True
+        return y1 <= y2 and y1 >= y2 - height2
+
+    @staticmethod
+    def multiply_float(value1: float, value2: float) -> float:
+        """Multiply two floats and truncate the result to 3 decimal
+        places (in thousandths) to avoid float-comparison drift.
+
+        Mirrors upstream's ``multiplyFloat`` (PDFTextStripper.java:1685):
+        ``Math.round(value1 * value2 * 1000) / 1000f``.
+        """
+        return round(value1 * value2 * 1000) / 1000.0
+
+    @staticmethod
+    def has_font_or_size_changed(
+        current: TextPosition, last: TextPosition | None
+    ) -> bool:
+        """Return ``True`` when ``current`` differs from ``last`` in
+        either font instance, font name, or font size.
+
+        Mirrors upstream's private ``hasFontOrSizeChanged``
+        (PDFTextStripper.java:730). The comparison falls back to font
+        identity / hash when both wrappers expose no name — matching
+        upstream's last-resort branch.
+        """
+        if last is None:
+            return False
+        if current.get_font_size() != last.get_font_size():
+            return True
+        cur_font = current.get_font()
+        last_font = last.get_font()
+        if cur_font is last_font:
+            return False
+        cur_name = cur_font.get_name() if cur_font is not None else None
+        last_name = last_font.get_name() if last_font is not None else None
+        if cur_name is not None:
+            return cur_name != last_name
+        if last_name is not None:
+            return True
+        # Both fonts have no name — compare identities (Python equivalent
+        # of upstream's hashCode fallback).
+        return id(cur_font) != id(last_font)
+
+    @staticmethod
+    def remove_contained_spaces(text_list: list[TextPosition]) -> None:
+        """Remove space characters whose bounding box is fully contained
+        in the previous run's bounding box (a fake-space artefact left
+        over by some PDF producers — see PDFBOX-5487).
+
+        Mirrors upstream's private ``removeContainedSpaces``
+        (PDFTextStripper.java:771); mutates the supplied list in place.
+        """
+        if not text_list:
+            return
+        previous_position = text_list[0]
+        idx = 1
+        while idx < len(text_list):
+            position = text_list[idx]
+            if (
+                position.get_unicode() == " "
+                and previous_position.completely_contains(position)
+            ):
+                del text_list[idx]
+                continue
+            previous_position = position
+            idx += 1
+
+    def fill_bead_rectangles(self, page: PDPage) -> list[tuple[float, float, float, float]]:
+        """Collect the rectangles of every thread bead on ``page``.
+
+        Mirrors upstream's private ``fillBeadRectangles``
+        (PDFTextStripper.java:386). Upstream stores the result on the
+        protected ``beadRectangles`` field; the lite stripper exposes it
+        via the return value (and refreshes the cached
+        ``_bead_rectangles`` attribute) so subclasses can inspect the
+        same shape upstream callers see.
+        """
+        rects: list[tuple[float, float, float, float]] = []
+        try:
+            beads = page.get_thread_beads()
+        except Exception:  # noqa: BLE001 — defensive: malformed /B
+            beads = []
+        for bead in beads or []:
+            if bead is None:
+                continue
+            try:
+                r = bead.get_rectangle()
+            except Exception:  # noqa: BLE001
+                continue
+            if r is None:
+                continue
+            rects.append(
+                (
+                    float(r.get_lower_left_x()),
+                    float(r.get_lower_left_y()),
+                    float(r.get_upper_right_x()),
+                    float(r.get_upper_right_y()),
+                )
+            )
+        self._bead_rectangles = rects
+        return rects
+
+    def reset_engine(self) -> None:
+        """Clear per-walk state. Mirrors upstream's private
+        ``resetEngine`` (PDFTextStripper.java:223): resets the
+        ``charactersByArticle`` accumulator, the per-page bead rectangle
+        cache, and the bookmark page resolution cache so back-to-back
+        ``get_text`` walks don't leak state from each other."""
+        self._characters_by_article = []
+        self._bead_rectangles = []
+        self._start_bookmark_page_number = -1
+        self._end_bookmark_page_number = -1
+        self._current_page_no = 0
+
+    def process_pages(self, pages: list[PDPage]) -> str:
+        """Walk every page in ``pages`` invoking
+        :meth:`process_page` and return the concatenated text.
+
+        Mirrors upstream's protected ``processPages(PDPageTree)``
+        (PDFTextStripper.java:263). Bookmark resolution is cached on the
+        instance (``_start_bookmark_page_number`` /
+        ``_end_bookmark_page_number``) for the duration of the call so
+        ``process_page`` can consult it without re-walking the outline
+        tree per page.
+        """
+        chunks: list[str] = []
+        # Resolve bookmarks against the page list — when neither bookmark
+        # resolves but both were set and point to the same outline item,
+        # upstream forces an empty range (start=0, end=0).
+        start_pg = -1
+        end_pg = -1
+        if self._start_bookmark is not None:
+            for idx, page in enumerate(pages, start=1):
+                tgt = self._start_bookmark.find_destination_page(self._active_document)
+                if tgt is not None and page.get_cos_object() is tgt:
+                    start_pg = idx
+                    break
+        if self._end_bookmark is not None:
+            for idx, page in enumerate(pages, start=1):
+                tgt = self._end_bookmark.find_destination_page(self._active_document)
+                if tgt is not None and page.get_cos_object() is tgt:
+                    end_pg = idx
+                    break
+        if (
+            start_pg == -1
+            and self._start_bookmark is not None
+            and end_pg == -1
+            and self._end_bookmark is not None
+            and self._start_bookmark.get_cos_object()
+            is self._end_bookmark.get_cos_object()
+        ):
+            start_pg = 0
+            end_pg = 0
+        self._start_bookmark_page_number = start_pg
+        self._end_bookmark_page_number = end_pg
+        for page in pages:
+            if page.get_contents():
+                chunks.append(self.process_page(page))
+            self._current_page_no += 1
+        return "".join(chunks)
+
+    def write_page(self) -> str:
+        """Render the most recently extracted positions through the
+        line/word/paragraph hooks and return the formatted text.
+
+        Mirrors upstream's protected ``writePage`` (PDFTextStripper.java:495)
+        in shape, but defers to the lite ``_format_positions`` heuristic
+        rather than the wrapper-based line walker since lite mode does
+        not yet maintain the full ``PositionWrapper`` chain. Subclasses
+        relying on the upstream signature can override this method
+        directly.
+        """
+        if not self._characters_by_article:
+            return ""
+        chunks: list[str] = []
+
+        def sink(piece: str) -> None:
+            chunks.append(piece)
+
+        for group in self._characters_by_article:
+            self._emit_group(group, sink)
+        return "".join(chunks)
+
+    def write_line(
+        self,
+        line: list[WordWithTextPositions],
+        sink: Callable[[str], None],
+    ) -> None:
+        """Write a list of normalized words for a single line, inserting
+        the configured word separator between them.
+
+        Mirrors upstream's private ``writeLine`` (PDFTextStripper.java:1853);
+        exposed as a public method here so lite-mode subclasses that
+        compose their own line list can plug into the same hook surface.
+        """
+        n = len(line)
+        for i, word in enumerate(line):
+            self.write_string_with_positions(
+                word.get_text(), word.get_text_positions(), sink
+            )
+            if i < n - 1:
+                self.write_word_separator(sink)
+
+    def write_paragraph_separator(self, sink: Callable[[str], None]) -> None:
+        """Emit ``paragraph_end`` followed by ``paragraph_start``.
+
+        Mirrors upstream's protected ``writeParagraphSeparator``
+        (PDFTextStripper.java:1697)."""
+        self.write_paragraph_end(sink)
+        self.write_paragraph_start(sink)
+
+    def match_list_item_pattern(
+        self, pw: PositionWrapper
+    ) -> re.Pattern[str] | None:
+        """Return the list-item regex matching the wrapped position's
+        decoded text, or ``None`` when none match.
+
+        Mirrors upstream's private ``matchListItemPattern``
+        (PDFTextStripper.java:1763). Public here because Python lacks
+        Java's package-private visibility distinction — subclasses may
+        want to call it directly."""
+        tp = pw.get_text_position()
+        return self.match_pattern(tp.get_unicode(), self.get_list_item_patterns())
+
+    def create_word(
+        self,
+        word: str,
+        word_positions: list[TextPosition],
+    ) -> WordWithTextPositions:
+        """Build a :class:`WordWithTextPositions` for ``word`` after
+        running it through :meth:`normalize_word`.
+
+        Mirrors upstream's private ``createWord``
+        (PDFTextStripper.java:2035)."""
+        return WordWithTextPositions(self.normalize_word(word), word_positions)
+
+    def normalize_word(self, word: str) -> str:
+        """Normalise Unicode presentation forms in ``word`` and apply the
+        bidi reordering performed by :meth:`handle_direction`.
+
+        Mirrors upstream's private ``normalizeWord``
+        (PDFTextStripper.java:2047). Decomposes Unicode Alphabetic
+        Presentation Forms (FB00–FDFF) and Arabic Presentation Forms-B
+        (FE70–FEFF) via NFKC, with the upstream-specific quirks for
+        U+FDF2 (the ``Allah`` ligature) and reversed Hebrew/Arabic
+        decompositions preserved."""
+        builder: list[str] = []
+        p = 0
+        q = 0
+        str_length = len(word)
+        had_change = False
+        while q < str_length:
+            c = word[q]
+            cp = ord(c)
+            if (0xFB00 <= cp <= 0xFDFF) or (0xFE70 <= cp <= 0xFEFF):
+                if not had_change:
+                    builder = []
+                    had_change = True
+                builder.append(word[p:q])
+                if cp == 0xFDF2 and q > 0 and ord(word[q - 1]) in (0x0627, 0xFE8D):
+                    # Compensate for fonts that map U+FDF2 with a leading
+                    # alif by inserting the canonical Allah-without-alif
+                    # decomposition.
+                    builder.append("لله")
+                else:
+                    normalized = unicodedata.normalize("NFKC", word[q : q + 1]).strip()
+                    if cp >= 0xFB1D and len(normalized) > 1:
+                        normalized = normalized[::-1]
+                    builder.append(normalized)
+                p = q + 1
+            q += 1
+        if not had_change:
+            return self.handle_direction(word)
+        builder.append(word[p:q])
+        return self.handle_direction("".join(builder))
+
+    def handle_direction(self, word: str) -> str:
+        """Reorder a string from logical to visual order for mixed bidi
+        text. Mirrors upstream's private ``handleDirection``
+        (PDFTextStripper.java:1903).
+
+        Lite mode follows :meth:`TextPosition.get_visually_ordered_unicode`
+        — when no codepoint is ``R``/``AL`` the string is returned
+        unchanged; otherwise the run is reversed. Genuine ICU
+        ``Bidi.reorderVisually`` parity (multi-run ordering with
+        per-character mirroring) is deferred — Python's stdlib lacks an
+        ICU equivalent. See CHANGES.md."""
+        if not word:
+            return word
+        has_rtl = False
+        for ch in word:
+            if unicodedata.bidirectional(ch) in ("R", "AL"):
+                has_rtl = True
+                break
+        if not has_rtl:
+            return word
+        return word[::-1]
+
+    def normalize(
+        self, line: list[_LineItem]
+    ) -> list[WordWithTextPositions]:
+        """Walk a list of :class:`_LineItem` entries and produce a list
+        of normalized :class:`WordWithTextPositions`.
+
+        Mirrors upstream's private ``normalize(List<LineItem>)``
+        (PDFTextStripper.java:1874). The ``LineItem`` sentinel pattern is
+        ported as :class:`_LineItem`."""
+        normalized: list[WordWithTextPositions] = []
+        line_builder: list[str] = []
+        word_positions: list[TextPosition] = []
+        for item in line:
+            self.normalize_add(normalized, line_builder, word_positions, item)
+        if line_builder:
+            normalized.append(self.create_word("".join(line_builder), list(word_positions)))
+        return normalized
+
+    def normalize_add(
+        self,
+        normalized: list[WordWithTextPositions],
+        line_builder: list[str],
+        word_positions: list[TextPosition],
+        item: _LineItem,
+    ) -> None:
+        """Append a :class:`_LineItem` to the normalized line buffers.
+
+        Mirrors upstream's private ``normalizeAdd``
+        (PDFTextStripper.java:2111). Upstream returns a
+        ``StringBuilder`` (a freshly allocated one when the item is a
+        word separator) — we mutate ``line_builder`` and
+        ``word_positions`` in place to match Python conventions while
+        preserving the same caller contract."""
+        if item.is_word_separator():
+            normalized.append(
+                self.create_word("".join(line_builder), list(word_positions))
+            )
+            line_builder.clear()
+            word_positions.clear()
+            return
+        text = item.get_text_position()
+        if text is not None:
+            line_builder.append(text.get_visually_ordered_unicode())
+            word_positions.append(text)
+
+    @staticmethod
+    def parse_bidi_file(input_stream: object) -> dict[str, str]:
+        """Parse the upstream ``BidiMirroring.txt`` resource format and
+        return a ``{char: mirrored_char}`` map.
+
+        Mirrors upstream's private static ``parseBidiFile(InputStream)``
+        (PDFTextStripper.java:1992). Lite mode keeps the parser as a
+        utility — the actual mirroring map is supplied by Unicode's
+        bidi data inside :func:`unicodedata.mirrored` plus the system
+        font metrics, so the result is informational rather than
+        load-bearing for layout."""
+        mirroring: dict[str, str] = {}
+        if input_stream is None:
+            return mirroring
+        # Accept both file-like and bytes/str inputs.
+        data = input_stream.read() if hasattr(input_stream, "read") else input_stream
+        text = (
+            data.decode("ascii", errors="replace")
+            if isinstance(data, bytes)
+            else str(data)
+        )
+        for raw_line in text.splitlines():
+            line = raw_line
+            comment_at = line.find("#")
+            if comment_at != -1:
+                line = line[:comment_at]
+            if len(line) < 2:
+                continue
+            tokens = [t.strip() for t in line.split(";") if t.strip()]
+            if len(tokens) == 2:
+                try:
+                    a = chr(int(tokens[0], 16))
+                    b = chr(int(tokens[1], 16))
+                except ValueError:
+                    continue
+                mirroring[a] = b
+        return mirroring
+
+    def handle_line_separation(
+        self,
+        current: PositionWrapper,
+        last_position: PositionWrapper | None,
+        last_line_start: PositionWrapper | None,
+        max_height_for_line: float,
+    ) -> PositionWrapper:
+        """Mark ``current`` as a line start and (when the heuristic
+        agrees) a paragraph start.
+
+        Mirrors upstream's private ``handleLineSeparation``
+        (PDFTextStripper.java around the writePage paragraph block).
+        Returns the wrapper that should be remembered as the new
+        ``last_line_start_position``.
+        """
+        current.set_line_start()
+        if last_position is not None:
+            prev = last_position.get_text_position()
+            cur_tp = current.get_text_position()
+            if self.is_paragraph_separation(cur_tp, prev):
+                current.set_paragraph_start()
+        return current
+
+    @staticmethod
+    def word_with_text_positions(
+        word: str, positions: list[TextPosition]
+    ) -> WordWithTextPositions:
+        """Lite-mode factory matching the upstream inner-class
+        constructor signature ``new WordWithTextPositions(word, positions)``.
+        Provided so ports of upstream code can call the same name without
+        having to import the standalone class."""
+        return WordWithTextPositions(word, positions)
+
+    # ---------- marked-content hooks ----------
+
+    def begin_marked_content_sequence(
+        self,
+        tag: COSName | None,
+        properties: COSDictionary | None,
+    ) -> None:
+        """Hook invoked at every ``BMC`` / ``BDC`` operator. Tracks
+        ``/ActualText`` so subsequent runs use the marked-content
+        replacement instead of their raw glyph text.
+
+        Mirrors upstream's overridden
+        ``beginMarkedContentSequence(COSName, COSDictionary)``
+        (PDFTextStripper.java:863). Lite mode does not yet route the
+        content-stream walker through the marked-content stack, so the
+        captured ``actual_text`` is exposed for subclasses but not
+        consumed by the default extraction path. See CHANGES.md."""
+        actual: str | None = None
+        if properties is not None:
+            try:
+                raw = properties.get_string("ActualText")
+            except Exception:  # noqa: BLE001 — defensive
+                raw = None
+            if raw is not None:
+                actual = raw.replace("­", "")
+        self._marked_content_stack.append((tag, properties, actual))
+        if actual is not None:
+            self._actual_text = actual
+            self._first_actual_text_position = True
+
+    def end_marked_content_sequence(self) -> None:
+        """Hook invoked at every ``EMC`` operator. Pops the
+        marked-content stack and clears ``actual_text`` when the popped
+        entry contributed it.
+
+        Mirrors upstream's overridden ``endMarkedContentSequence``
+        (PDFTextStripper.java:877)."""
+        if not self._marked_content_stack:
+            return
+        _, _, actual = self._marked_content_stack.pop()
+        if actual is not None:
+            self._actual_text = None
+
+
+class _LineItem:
+    """Marker class used as a placeholder in a list of
+    :class:`TextPosition` runs being normalised into words.
+
+    Mirrors upstream's private inner class
+    ``PDFTextStripper.LineItem`` (PDFTextStripper.java:2133): a singleton
+    sentinel signals a word boundary; otherwise the entry carries a
+    single ``TextPosition``. Promoted to a top-level (module-private)
+    class so the ``normalize`` / ``normalize_add`` hooks can be invoked
+    without nested-class gymnastics."""
+
+    WORD_SEPARATOR: _LineItem  # set after the class body
+
+    __slots__ = ("_text_position",)
+
+    def __init__(self, text_position: TextPosition | None = None) -> None:
+        self._text_position = text_position
+
+    @classmethod
+    def get_word_separator(cls) -> _LineItem:
+        """Return the singleton word-separator sentinel."""
+        return cls.WORD_SEPARATOR
+
+    def get_text_position(self) -> TextPosition | None:
+        return self._text_position
+
+    def is_word_separator(self) -> bool:
+        return self._text_position is None
+
+
+_LineItem.WORD_SEPARATOR = _LineItem()
 
 
 class _TextState:

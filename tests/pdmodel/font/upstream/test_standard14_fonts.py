@@ -306,3 +306,53 @@ def test_get_glyph_list_for_non_zapf_picks_adobe_list(name: str) -> None:
     assert (
         Standard14Fonts.get_glyph_list(name) is GlyphList.get_adobe_glyph_list()
     )
+
+
+# ---------- FontName enum ----------
+
+
+def test_font_name_enum_is_exposed_as_nested_attribute() -> None:
+    """``Standard14Fonts.FontName`` mirrors the upstream public nested enum
+    (Standard14Fonts.java line 317). Same identity as the top-level alias."""
+    from pypdfbox.pdmodel.font.standard14_fonts import FontName
+
+    assert Standard14Fonts.FontName is FontName
+
+
+@pytest.mark.parametrize("name", _BASE_14)
+def test_font_name_enum_has_constant_for_each_canonical_name(name: str) -> None:
+    """Every canonical PostScript name has a ``FontName`` constant whose
+    ``getName()`` round-trips. Mirrors upstream
+    ``Standard14Fonts.FontName.getName`` (line 341)."""
+    matches = [
+        m for m in Standard14Fonts.FontName if m.get_name() == name
+    ]
+    assert len(matches) == 1
+
+
+def test_font_name_to_string_returns_postscript_name() -> None:
+    """``toString()`` returns the PostScript name (Standard14Fonts.java
+    line 347). Both ``str()`` and the snake_case ``to_string()`` match."""
+    helvetica = Standard14Fonts.FontName.HELVETICA
+    assert str(helvetica) == "Helvetica"
+    assert helvetica.to_string() == "Helvetica"
+
+
+def test_font_name_count_matches_14() -> None:
+    """The enum has exactly 14 constants — the Standard 14 fonts."""
+    assert len(list(Standard14Fonts.FontName)) == 14
+
+
+def test_contains_name_accepts_font_name_enum() -> None:
+    """The lookup methods accept a ``FontName`` enum value transparently
+    (mirrors upstream's ``FontName``-typed overloads)."""
+    assert Standard14Fonts.contains_name(Standard14Fonts.FontName.HELVETICA) is True
+    assert Standard14Fonts.contains_name(Standard14Fonts.FontName.SYMBOL) is True
+
+
+def test_get_mapped_font_name_accepts_font_name_enum() -> None:
+    """``getMappedFontName`` accepts an enum and returns the canonical name."""
+    assert (
+        Standard14Fonts.get_mapped_font_name(Standard14Fonts.FontName.HELVETICA_BOLD)
+        == "Helvetica-Bold"
+    )

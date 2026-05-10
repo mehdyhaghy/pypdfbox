@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from .afm_loader import AfmMetrics, load_standard14
@@ -164,6 +165,55 @@ def _uni_name_of_code_point(code_point: int) -> str:
     return "uni" + hex_str
 
 
+class FontName(Enum):
+    """Enum of the 14 canonical PostScript names of the Standard 14 fonts.
+
+    Mirrors the upstream nested enum
+    :class:`org.apache.pdfbox.pdmodel.font.Standard14Fonts.FontName`
+    (Standard14Fonts.java lines 317-351). Each constant carries the exact
+    PostScript ``/BaseFont`` name a Standard 14 PDF font advertises.
+
+    Exposed both as a top-level name (``pypdfbox.pdmodel.font.FontName``)
+    *and* as a nested attribute on :class:`Standard14Fonts` so callers
+    porting from Java can spell ``Standard14Fonts.FontName.HELVETICA``
+    just like upstream.
+    """
+
+    TIMES_ROMAN = "Times-Roman"
+    TIMES_BOLD = "Times-Bold"
+    TIMES_ITALIC = "Times-Italic"
+    TIMES_BOLD_ITALIC = "Times-BoldItalic"
+    HELVETICA = "Helvetica"
+    HELVETICA_BOLD = "Helvetica-Bold"
+    HELVETICA_OBLIQUE = "Helvetica-Oblique"
+    HELVETICA_BOLD_OBLIQUE = "Helvetica-BoldOblique"
+    COURIER = "Courier"
+    COURIER_BOLD = "Courier-Bold"
+    COURIER_OBLIQUE = "Courier-Oblique"
+    COURIER_BOLD_OBLIQUE = "Courier-BoldOblique"
+    SYMBOL = "Symbol"
+    ZAPF_DINGBATS = "ZapfDingbats"
+
+    def get_name(self) -> str:
+        """Return the canonical PostScript name carried by this constant.
+
+        Mirrors upstream ``Standard14Fonts.FontName.getName()``
+        (Standard14Fonts.java line 341).
+        """
+        return self.value
+
+    def __str__(self) -> str:
+        """Return the canonical PostScript name (mirrors upstream
+        ``Standard14Fonts.FontName.toString()``, line 347).
+        """
+        return self.value
+
+    def to_string(self) -> str:
+        """Return the canonical PostScript name (snake_case alias for
+        :meth:`__str__`, matching upstream ``toString()``)."""
+        return self.value
+
+
 class Standard14Fonts:
     """Names and metrics for the 14 PDF Standard fonts.
 
@@ -176,6 +226,11 @@ class Standard14Fonts:
     :class:`pypdfbox.pdmodel.font.afm_loader.AfmMetrics`. The AFM is parsed
     once per font and cached for the lifetime of the process.
     """
+
+    # Mirror upstream's public nested enum
+    # (``Standard14Fonts.FontName``) so callers can write
+    # ``Standard14Fonts.FontName.HELVETICA`` exactly as in Java.
+    FontName = FontName
 
     # ---- Class constants: canonical PostScript names ------------------
 
@@ -199,15 +254,31 @@ class Standard14Fonts:
 
     # ---- Lookup -------------------------------------------------------
 
-    @classmethod
-    def contains_name(cls, name: str | None) -> bool:
-        """Return True for any of the 14 canonical names or a known alias.
+    @staticmethod
+    def _coerce_name(name: str | FontName | None) -> str | None:
+        """Normalise a :class:`FontName` enum value to its string form.
 
-        Mirrors upstream ``Standard14Fonts.containsName``.
+        Upstream's overloads accept both ``FontName`` and ``String``;
+        this helper lets every public method on ``Standard14Fonts``
+        do the same without per-method branching.
         """
         if name is None:
+            return None
+        if isinstance(name, FontName):
+            return name.value
+        return name
+
+    @classmethod
+    def contains_name(cls, name: str | FontName | None) -> bool:
+        """Return True for any of the 14 canonical names or a known alias.
+
+        Mirrors upstream ``Standard14Fonts.containsName``. Accepts a
+        :class:`FontName` enum value transparently.
+        """
+        coerced = cls._coerce_name(name)
+        if coerced is None:
             return False
-        return name.lower() in _NAME_LOOKUP
+        return coerced.lower() in _NAME_LOOKUP
 
     @classmethod
     def is_standard_14(cls, name: str | None) -> bool:
@@ -247,16 +318,18 @@ class Standard14Fonts:
         return canonical.lower() != name.lower()
 
     @classmethod
-    def get_mapped_font_name(cls, name: str | None) -> str | None:
+    def get_mapped_font_name(cls, name: str | FontName | None) -> str | None:
         """Resolve ``name`` (canonical or alias) to its canonical form.
 
         Returns ``None`` if the name is not one of the Standard 14 or a
         known substitute alias. Mirrors upstream
-        ``Standard14Fonts.getMappedFontName``.
+        ``Standard14Fonts.getMappedFontName``. Accepts a
+        :class:`FontName` enum value transparently.
         """
-        if name is None:
+        coerced = cls._coerce_name(name)
+        if coerced is None:
             return None
-        return _NAME_LOOKUP.get(name.lower())
+        return _NAME_LOOKUP.get(coerced.lower())
 
     @classmethod
     def resolve(cls, name: str | None, default: str | None = None) -> str | None:
@@ -577,4 +650,4 @@ class Standard14Fonts:
         return []
 
 
-__all__ = ["Standard14Fonts"]
+__all__ = ["FontName", "Standard14Fonts"]
